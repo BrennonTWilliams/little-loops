@@ -13,10 +13,10 @@ relates_to:
 - ENH-3210
 decision_needed: false
 confidence_score: 95
-outcome_confidence: 82
-score_complexity: 22
-score_test_coverage: 25
-score_ambiguity: 10
+outcome_confidence: 74
+score_complexity: 13
+score_test_coverage: 18
+score_ambiguity: 18
 score_change_surface: 25
 ---
 
@@ -24,11 +24,20 @@ score_change_surface: 25
 
 ## Summary
 
-**Thirteen** agent-spawning sites issue Agent/Task tool calls with no `run_in_background`
-directive, across six skills, one skill companion file, and six commands.
+**Eighteen** agent-spawning line anchors — across **thirteen files** (six skills, one
+skill companion file, six commands) — issue Agent/Task tool calls with no explicit
+`run_in_background` value.
 
-**Scope corrected 2026-08-16 (third pass): `skills/manage-issue/SKILL.md:110` is a
-thirteenth site, and it is the most important one in the set.** Phase 1.5 says "Spawn
+**The inventory table below is authoritative for scope**; every scalar count in this issue
+is derived from it, not the reverse. Earlier drafts said "thirteen sites", which was the
+table's *row* (file) count misread as a line-anchor count. Two corrections landed
+2026-08-16 alongside the count fix: `audit-issue-conflicts:218` was removed (it is the
+"Wait for all batch agents' results" line, not a spawn instruction — the detector's
+imperative-verb criterion would never flag it), and `go-no-go:174` was **added** as a fix
+target by Key Decision 2's Option A resolution.
+
+**Scope corrected 2026-08-16 (third pass): `skills/manage-issue/SKILL.md:110` is an
+additional site, and it is the most important one in the set.** Phase 1.5 says "Spawn
 these agents in parallel using the Task tool:" (three agents), backed by a prose-only
 "**CRITICAL**: Wait for ALL sub-agent tasks' results synchronously in this same turn"
 at `:116` — and no directive. Earlier drafts cited this file **only** as the wording
@@ -70,10 +79,10 @@ Full site inventory:
 | `skills/audit-docs/SKILL.md` | :120-139 |
 | `skills/audit-claude-config/SKILL.md` | :118, :222 |
 | `skills/audit-claude-config/wave1-prompts.md` | :9 |
-| `skills/audit-issue-conflicts/SKILL.md` | :205, :218, :252 |
+| `skills/audit-issue-conflicts/SKILL.md` | :205, :252 (**not** :218 — that is wait-prose, not a spawn) |
 | `skills/wire-issue/SKILL.md` | :147-190 |
 | `skills/manage-issue/SKILL.md` | :110 (Phase 1.5, 3 agents; wait-prose at :116) |
-| `skills/go-no-go/SKILL.md` | :278 (:174 pending Key Decision 2 — see below) |
+| `skills/go-no-go/SKILL.md` | :174, :278 — **both take `false`** (Key Decision 2, Option A) |
 | `commands/refine-issue.md` | :186 |
 | `commands/tradeoff-review-issues.md` | :81 |
 | `commands/manage-release.md` | :134 |
@@ -87,24 +96,22 @@ from its `allowed-tools` frontmatter, lines 6-15 — it is not in scope. Its onl
 `Task tool` mention is prose in a checklist item, `SKILL.md:235`; see the detector
 caveat under Tests.)
 
-**One site is inside the skill this issue otherwise treats as the exempt
-precedent.** `go-no-go/SKILL.md` has *two* spawn sites, not one, and they are different
-cases:
+**`go-no-go/SKILL.md` has *two* spawn sites, not one, and both are fix targets.** Earlier
+drafts treated this file as the exempt precedent; Key Decision 2 (Option A, settled) ends
+that exemption.
 
-- `:174` — `run_in_background: true`, stated as a deliberate parallel fan-out; currently
-  the sole entry in `SKILL_RUN_IN_BACKGROUND_TRUE_ALLOWLIST`. Earlier drafts called this
-  "genuinely exempt". **That is now the open question in Key Decision 2** — the exemption
-  rests on backgrounding being required for a parallel fan-out, which step 1b denies.
+- `:174` — currently `run_in_background: true`, stated as a deliberate parallel fan-out;
+  today the sole entry in `SKILL_RUN_IN_BACKGROUND_TRUE_ALLOWLIST`. **Flips to `false`**
+  per Key Decision 2: the exemption rested on backgrounding being required for a parallel
+  fan-out, which step 1b denies, and `:174` is itself a single-message fan-out whose only
+  barrier is prose 100 lines away at `:274`.
 - `:278` — "Launch a **foreground** judge agent (no `run_in_background`) using the Agent
   tool." The stated intent is foreground, but the Agent tool **defaults to background**,
   so omitting the directive produces exactly the opposite of what the prose says. This
-  is the bug verbatim, in the file cited as the precedent for exempting it.
+  is the bug verbatim. Takes an explicit `run_in_background: false`.
 
-That partly settles the question Step 2 defers: `:278` takes an explicit
-`run_in_background: false`. **Whether `:174` stays `true` is now an open blocking
-decision** — see **Key Decision 2**, which found that the "deliberate fan-out" exemption
-contradicts step 1b's own premise that a single-message fan-out is already concurrent
-under `false`. `:278`'s fix is unaffected either way.
+Consequence: `SKILL_RUN_IN_BACKGROUND_TRUE_ALLOWLIST` becomes **empty**, and this issue
+has no `true` carve-out anywhere.
 
 The Agent tool defaults to background, so under a headless `claude -p` turn (ll-auto,
 ll-parallel, ll-sprint, FSM prompt states) the parent turn can end with subagent results
@@ -129,7 +136,7 @@ transcripts in `postmortems/feat-3076-verify/`) that
 `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1` covers **both** Bash `run_in_background` *and*
 Agent-tool spawns: with the flag set, an Agent call returns the subagent's full final
 response synchronously in the same turn. So `orchestration.disable_background_tasks:
-true` fixes all thirteen sites at once, mechanically, with no prose edits. ENH-3207
+true` fixes every site at once, mechanically, with no prose edits. ENH-3207
 (2026-08-15, direct user decision) flipped that default `true → false`, making it
 opt-in. Resolving that tension is Step 1 below — see **Key Decision**.
 
@@ -139,11 +146,14 @@ opt-in. Resolving that tension is Step 1 below — see **Key Decision**.
 rejected route's reason be stated.
 
 **(a) Config route (REJECTED)** — automation runs set
-`orchestration.disable_background_tasks: true`. Mechanical, covers all thirteen spawn sites
+`orchestration.disable_background_tasks: true`. Mechanical, covers every spawn site in the inventory table
 plus any skill added later, zero prose edits. Rejected on four costs, the first of which
 is decisive:
 
-1. **It breaks the carve-outs that depend on backgrounding working.** FEAT-3076's own
+1. **It breaks the carve-outs that depend on backgrounding working.** (Recorded as the
+   decisive cost when route (a) was rejected. Note Key Decision 2 later removed the
+   `go-no-go:174` carve-out itself; the `ll-parallel` async launch/notify cost below is
+   unaffected and still decisive.) FEAT-3076's own
    conclusion (`postmortems/feat-3076-verify/README.md:52-66`), from the same empirical
    run that established the flag reaches Agent spawns: *"the async launch/notify
    mechanism `ll-parallel` and the `go-no-go`/`manage-issue` carve-outs depend on is
@@ -159,19 +169,21 @@ is decisive:
    is not None` (`host_runner.py:374`), so it never covers an interactive
    `/ll:audit-docs` run.
 
-**(b) Prose route (SELECTED)** — the flag stays off; each of the thirteen spawn sites
-declares an explicit `run_in_background` value (`false` everywhere except
-`go-no-go:174`, which stays `true`). Accepted cost: prose is **advisory to the model,
+**(b) Prose route (SELECTED)** — the flag stays off; every spawn site in the inventory
+table declares an explicit `run_in_background: false` (Key Decision 2 removed the last
+`true` carve-out). Accepted cost: prose is **advisory to the model,
 not mechanical** — nothing enforces compliance at the tool layer, and it is per-site, so
 a new skill silently regresses. That regression risk is what the two-sided inventory
 test under Tests exists to close; it is the mechanical half of this route and is not
 optional.
 
 
-## Key Decision 2 — UNRESOLVED (blocking): does `go-no-go:174` keep its `true`?
+## Key Decision 2 — SETTLED: Option A, `go-no-go:174` flips to `false`
 
-**Contradiction found 2026-08-16, pre-implementation review. This issue currently asserts
-both halves and never reconciles them; the implementer has no basis to choose.**
+**Contradiction found 2026-08-16, pre-implementation review; resolved the same day. The
+resolution was swept through the whole issue on 2026-08-16 — no section should still
+describe `:174` as an exemption. If you find one, it is a stale edit, not a competing
+decision.**
 
 - **Step 1b's premise:** "'Parallel fan-out' is not a reason to background: multiple Agent
   calls issued in a *single message* already run concurrently while still blocking the
@@ -263,7 +275,7 @@ becomes redundant once `:174` states `run_in_background: false` and waits in-tur
 
 ## Current Behavior
 
-Thirteen sites (inventory table in the Summary) — across `skills/**/*.md` and
+Every site in the Summary's inventory table — across `skills/**/*.md` and
 `commands/*.md` — instruct
 Agent/Task spawns with prose like "wait for results" (or, at `go-no-go:278`, the
 explicit word "**foreground**") but no `run_in_background` value
@@ -282,13 +294,15 @@ this bug at capture, and correcting it is unconditional scope (see Documentation
 
 ## Expected Behavior
 
-Every Agent/Task spawn in an automation-driven skill either declares
-`run_in_background: false` and is awaited synchronously in the same turn, or declares
-`run_in_background: true` as a documented, deliberate exception (as
-`go-no-go/SKILL.md:174` is). No spawn site relies on the tool's default, and no headless
-turn ends with a subagent whose result the parent turn never reads. In particular, a
-skill that says "foreground" states `run_in_background: false` rather than omitting the
-directive.
+Every Agent/Task spawn in an automation-driven skill or command declares
+`run_in_background: false` and is awaited synchronously in the same turn. No spawn site
+relies on the tool's default, and no headless turn ends with a subagent whose result the
+parent turn never reads. In particular, a skill that says "foreground" states
+`run_in_background: false` rather than omitting the directive.
+
+There is **no `true` carve-out** after this issue lands (Key Decision 2, Option A). A
+future one is permitted, but only as a deliberate allowlist append with a recorded
+FEAT-3077-style rationale — never as a silent omission of the directive.
 
 ## Motivation
 
@@ -297,7 +311,7 @@ prompt states) can silently drop subagent findings — the parent turn ends, the
 notification never arrives, and up to `post_stream_close_grace_seconds` (300s) later the
 still-running agent is killed rather than awaited. This is the same failure class
 BUG-3058 and `manage-issue/SKILL.md`'s "Headless-Safe Final Test Run" section already
-guard against for Bash test runs; none of the thirteen sites has an equivalent guard.
+guard against for Bash test runs; none of them has an equivalent guard.
 
 The `commands/` half of the scope is the higher-exposure half: `refine-issue`,
 `tradeoff-review-issues`, and `manage-release` are invoked from FSM prompt states and
@@ -315,7 +329,7 @@ are
     2026-08-16T03:57:38Z  ll:codebase-pattern-finder
 
 — the three-agent fan-out `/ll:wire-issue` ran while wiring this very issue, orphaned.
-That is one of the thirteen sites producing an observable artifact of the defect within
+That is one of the inventoried sites producing an observable artifact of the defect within
 one day, which is a stronger reproduction than the Steps to Reproduce below. Consequences:
 
 - `relates_to: ENH-3210` (added to both issues).
@@ -336,10 +350,10 @@ session). Both are viable; which one the implementer picks determines whether th
 skill/command files or `session_start.py` (or both) get edited. Note the central option
 cannot fully replace the per-site one: `_STAY_IN_TURN_INSTRUCTION` is gated on
 `LL_AUTOMATION`,
-so it never reaches an interactive `/ll:audit-docs` run, and it cannot express the
-per-site distinction `go-no-go` needs (`:174` background, `:278` foreground). Treat
-centralization as reinforcement, not a substitute. `go-no-go:174`'s fan-out stays
-exempted — settled under Key Decision, no longer deferred.
+so it never reaches an interactive `/ll:audit-docs` run, and it is a blanket instruction
+that cannot express per-site intent. Treat centralization as reinforcement, not a
+substitute. Both `go-no-go` sites (`:174` and `:278`) take `false` — Key Decision 2,
+Option A.
 
 ## Integration Map
 
@@ -363,12 +377,15 @@ exempted — settled under Key Decision, no longer deferred.
   `skills/manage-issue/templates.md`, which contains **no** spawn line of its own
   (verified) — unlike `audit-claude-config`, the operative instruction really is in
   `SKILL.md` here, so no companion edit is needed
-- `skills/go-no-go/SKILL.md:278` — the judge-agent spawn. Prose says "Launch a
-  **foreground** judge agent (no `run_in_background`)"; because the tool defaults to
-  background, omitting the directive yields the opposite of the stated intent. Takes an
-  explicit `run_in_background: false`. **Do not touch `:174`** — that one is the
-  deliberate `true` fan-out and must stay as-is to keep
-  `SKILL_RUN_IN_BACKGROUND_TRUE_ALLOWLIST` satisfied.
+- `skills/go-no-go/SKILL.md:174,:278` — **both sites are fix targets** (Key Decision 2,
+  Option A). `:278` is the judge-agent spawn: prose says "Launch a **foreground** judge
+  agent (no `run_in_background`)"; because the tool defaults to background, omitting the
+  directive yields the opposite of the stated intent. `:174` is the adversarial fan-out,
+  flipping `true → false`; fold the now-redundant Step 3c wait-prose at `:274` into the
+  `:174` sentence, mirroring `decide-issue/SKILL.md:335,:340`. Editing `:174` **requires**
+  updating `SKILL_RUN_IN_BACKGROUND_TRUE_ALLOWLIST` to the empty set in the same commit —
+  the allowlist test fails otherwise. 19 lines of headroom under the 500-line cap, so the
+  `:274` fold is net-negative on line count.
 - `commands/refine-issue.md:186` — "Spawn them in a SINGLE message with multiple Task
   tool calls, and wait for their results in this same turn"; no directive. Highest-
   exposure site in the set — invoked from FSM prompt states and `ll-auto`. (`:338`
@@ -390,18 +407,21 @@ the turn. `skills/decide-issue/SKILL.md:335` is the precedent that settles this 
 spawns "one Agent **per option** in a **single message** with multiple Agent tool calls
 (parallel spawn)" and pairs that with `run_in_background: false`. So
 `scan-codebase`/`audit-architecture`/`manage-release`/`refine-issue`'s fan-outs keep
-their concurrency under `false`, and `SKILL_RUN_IN_BACKGROUND_TRUE_ALLOWLIST` stays a
-one-member set.
+their concurrency under `false`. Key Decision 2 applies the identical reasoning to
+`go-no-go:174`, so `SKILL_RUN_IN_BACKGROUND_TRUE_ALLOWLIST` becomes the **empty set**.
 - `skills/confidence-check/SKILL.md` — **not currently in scope**; no Agent/Task spawn
   exists (see Current Behavior correction above)
 
 ### Dependent Files (Existing Precedent)
 - `skills/decide-issue/SKILL.md:335,340` — the one skill with a mechanical
   `run_in_background: false` directive plus a prose backstop
-- `skills/go-no-go/SKILL.md:174` — intentional background fan-out; prose-only
-  wait at `:274`, no mechanical backstop; the one entry in
-  `SKILL_RUN_IN_BACKGROUND_TRUE_ALLOWLIST` (`scripts/tests/test_wiring_skills_and_commands.py:442-464`).
-  Precedent only — `:278` in the same file is a fix target, not precedent (see above)
+- `skills/go-no-go/SKILL.md:174` — **not precedent; a fix target.** Today it is the one
+  entry in `SKILL_RUN_IN_BACKGROUND_TRUE_ALLOWLIST`
+  (`scripts/tests/test_wiring_skills_and_commands.py:445-464`), an intentional background
+  fan-out whose only barrier is prose 100 lines away at `:274`. Key Decision 2 flips it to
+  `false`. Listed here only because the allowlist constant must be emptied in the same
+  commit. Note this file is **not** in `SKILL_MIRRORS_MUST_MATCH_SOURCE`, so no mirror
+  regeneration is needed for it
 - `scripts/little_loops/hooks/session_start.py:57-61,88-102,258-269` —
   `_STAY_IN_TURN_INSTRUCTION`, the sole existing host-agnostic mechanism that injects
   automation-only context into every headless session (gated on the `LL_AUTOMATION` env
@@ -437,10 +457,10 @@ one-member set.
 
 ### Conventions in Force
 - Skills that want synchronous behavior state `run_in_background: false` explicitly next
-  to the spawn instruction plus a "wait for results" sentence; skills that want
-  concurrency state `run_in_background: true` explicitly — evidence:
-  `decide-issue/SKILL.md:335`, `go-no-go/SKILL.md:174`. Nothing is left implicit except
-  the sites this bug names.
+  to the spawn instruction plus a "wait for results" sentence — evidence:
+  `decide-issue/SKILL.md:335,:340`, the only conforming site in the corpus today.
+  `go-no-go/SKILL.md:174` is the sole `true`, and Key Decision 2 removes it. Nothing is
+  left implicit except the sites this bug names.
 - The only existing mechanism for conditionally injecting automation-state-dependent text
   into a headless session's context is hook stdout (`session_start.py`'s
   `LLHookResult.stdout`) — there is no in-skill-markdown conditional-branching mechanism
@@ -448,8 +468,9 @@ one-member set.
 - `test_skill_run_in_background_true_inventory_pinned` enforces a set-equality allowlist
   for `run_in_background: true` occurrences across `skills/*.md`, currently
   `{"skills/go-no-go/SKILL.md"}`. Adding `run_in_background: false` to the other named
-  files doesn't touch this test; changing go-no-go's carve-out status would — which
-  **Key Decision 2's resolution (a) does**.
+  files doesn't touch this test; flipping `go-no-go:174` does — **keep the constant and
+  set it to `set()`**, do not delete it, so a future `true` still requires a deliberate
+  append with a recorded rationale rather than an unguarded reintroduction.
 
   **Line citations re-verified 2026-08-16 and drifted by 2-3 lines.** Actual anchors:
   `SKILL_MIRRORS_MUST_MATCH_SOURCE` `:372`, `SKILL_RUN_IN_BACKGROUND_TRUE_ALLOWLIST`
@@ -458,11 +479,23 @@ one-member set.
   assertion `:458`, the assertion message `:461`. All are named symbols, so the risk is
   low — but re-anchor by symbol name at implementation rather than trusting any line
   number in this issue.
-- Mirror-file drift: `skills/wire-issue/SKILL.md` has a test-guarded mirror
-  (`SKILL_MIRRORS_MUST_MATCH_SOURCE`, same test file :372-394);
-  `skills/audit-issue-conflicts` and `skills/confidence-check` have mirror files on disk
-  but are **not** in that guarded list — editing their sources without
-  `ll-adapt --host {gemini,kimi-code,qwen} --apply` would not be test-caught.
+- Mirror-file drift. `SKILL_MIRRORS_MUST_MATCH_SOURCE`
+  (`test_wiring_skills_and_commands.py:372-382`) contains nine tuples covering **three**
+  skills × three hosts: `wire-issue`, **`manage-issue`**, and `explore-api`. Two of this
+  issue's fix targets are in that guarded list:
+
+  | Skill | Guarded? | Consequence of editing without `ll-adapt` |
+  |---|---|---|
+  | `skills/wire-issue/SKILL.md` | **yes** (×3 mirrors) | `test_skill_mirror_matches_source` **fails** |
+  | `skills/manage-issue/SKILL.md` | **yes** (×3 mirrors) | `test_skill_mirror_matches_source` **fails** |
+  | `skills/go-no-go/SKILL.md` | no | no mirror step needed |
+  | `skills/audit-issue-conflicts/SKILL.md` | no (mirrors exist on disk) | silent drift, not test-caught |
+  | `skills/audit-docs`, `skills/audit-claude-config` | no | silent drift if mirrors exist |
+
+  **`manage-issue` is a hard suite failure, not a drift risk** — it was missing from
+  step 4 in earlier drafts, which named only `wire-issue` and `audit-issue-conflicts`.
+  Both guarded skills are edited by this issue, so the `ll-adapt` regeneration in step 4
+  is mandatory, not conditional.
 
 ### Tests
 - `scripts/tests/test_wiring_skills_and_commands.py` —
@@ -477,9 +510,9 @@ one-member set.
   |---|---|---|---|
   | `skills/manage-issue/SKILL.md` | **499** | **1** | 1 (`:110`) |
   | `skills/wire-issue/SKILL.md` | 493 | 7 | 3 (`:147-190`) |
-  | `skills/go-no-go/SKILL.md` | 481 | 19 | 1 (`:278`) |
+  | `skills/go-no-go/SKILL.md` | 481 | 19 | 2 (`:174` flip, `:278`) + `:274` fold (net −2) |
   | `skills/audit-claude-config/SKILL.md` | 485 | 15 | 2 (`:118`, `:222`) |
-  | `skills/audit-issue-conflicts/SKILL.md` | 474 | 26 | 3 (`:205`, `:218`, `:252`) |
+  | `skills/audit-issue-conflicts/SKILL.md` | 474 | 26 | 2 (`:205`, `:252`) |
   | `skills/audit-docs/SKILL.md` | 433 | 67 | 1 (`:120-139`) |
 
   `manage-issue` has **one line of headroom** and the highest-exposure site in the inventory.
@@ -574,13 +607,18 @@ detector as:
      instruction to the *user*, not a tool call). These are flag/usage documentation that
      happens to contain an imperative verb, so criterion 1's verb requirement does not
      exclude them.
-   - **Judgment call, resolve at implementation:** `commands/audit-architecture.md:51` is
-     a flag description that nonetheless carries an operative directive ("use the Task
-     tool to launch analysis agents in parallel"). Either qualify it like a real site or
-     exempt it and rely on `:68` — do not leave it undecided.
+   - **`commands/audit-architecture.md:51` — SETTLED 2026-08-16: exempt it.** It is a
+     flag description that happens to carry an operative-sounding directive ("use the Task
+     tool to launch analysis agents in parallel"), in the same flag-documentation class as
+     `:17` and `:438` in the same file. The operative spawn instruction the model actually
+     follows is `:68`, which step 1 qualifies. Exempting `:51` keeps the whole
+     flag-documentation class consistent — qualifying one member of it and not the others
+     would be the arbitrary outcome. Every other item in this issue is settled; this one
+     was the last "resolve at implementation" and is now closed.
 4. **Assertion** — every unexempted candidate is satisfied, and the set of files with a
-   `true` value equals `{"skills/go-no-go/SKILL.md"}` (the existing one-sided check,
-   retained unchanged).
+   `true` value equals **`set()`** (Key Decision 2, Option A). The existing one-sided
+   check is retained in structure, with `SKILL_RUN_IN_BACKGROUND_TRUE_ALLOWLIST` emptied
+   rather than deleted — see Conventions in Force.
 
 The detector is deliberately conservative: it under-detects rather than over-detects, so
 a genuinely novel spawn phrasing can slip through. That is the accepted residual risk of
@@ -669,25 +707,25 @@ sweep is doc-only and breaks no assertion.
 0. **DONE** — the Key Decision is recorded above: route (b), with route (a)'s rejection
    reasons stated (chiefly that the flag would break the `ll-parallel`/`go-no-go`/
    `manage-issue` carve-outs per FEAT-3076's conclusion).
-1. All thirteen spawn sites in the Summary's inventory table declare an explicit
+1. Every spawn site in the Summary's inventory table declares an explicit
    `run_in_background: false` — the six skills (`audit-docs`, `audit-claude-config`,
-   `audit-issue-conflicts`, `wire-issue`, `manage-issue:110`, `go-no-go:278`), the
-   companion file
+   `audit-issue-conflicts:205,:252`, `wire-issue`, `manage-issue:110`,
+   `go-no-go:174,:278`), the companion file
    `audit-claude-config/wave1-prompts.md:9`, and the six commands (`refine-issue`,
-   `tradeoff-review-issues`, `manage-release`, `scan-codebase`, `audit-architecture`,
+   `tradeoff-review-issues`, `manage-release`, `scan-codebase`, `audit-architecture:68`,
    `analyze-workflows`) — following the wording at `decide-issue/SKILL.md:335`.
-   Not `confidence-check`, which has no spawn site today.
+   Not `confidence-check`, which has no spawn site today; not
+   `audit-issue-conflicts:218`, which is wait-prose rather than a spawn; not
+   `audit-architecture:51`, exempted as flag documentation (see Tests § exempt list).
 1b. The parallel fan-out sites take `false`, not `true`. `decide-issue/SKILL.md:335`
    establishes that a single-message multi-Agent spawn is already concurrent while
    blocking; backgrounding is not required for parallelism. If the implementer concludes
    otherwise for any site, that is a new carve-out requiring a recorded FEAT-3077-style
    rationale, not a silent allowlist append.
 
-   **This premise is exactly what Key Decision 2 turns on.** `go-no-go:174` is also a
-   single-message fan-out, so the allowlist's final contents follow from that decision:
-   empty under resolution (a), `{"skills/go-no-go/SKILL.md"}` under (b). Do not start
-   step 5 (the two-sided test) until Key Decision 2 is recorded — the allowlist shape is
-   its direct output.
+   **Key Decision 2 applies this same premise to `go-no-go:174`**, which is also a
+   single-message fan-out. Its resolution (Option A) sets the allowlist's final contents:
+   **empty**. That is the input step 5's two-sided test is written against.
 1c. **The added wording fits the 500-line `SKILL.md` cap** — `python -m pytest
    scripts/tests/test_enh494_skill_companions.py -v` passes. `skills/manage-issue/SKILL.md`
    is at 499 of 500 lines and `skills/wire-issue/SKILL.md` at 493 with three sites, so the
@@ -695,33 +733,44 @@ sweep is doc-only and breaks no assertion.
    added as new lines (see the measured table under Tests). Copying
    `decide-issue/SKILL.md:335`'s two-line directive-plus-wait-sentence verbatim into
    `manage-issue` breaks the cap.
-2. **Key Decision 2 is recorded** (with the rejected option's reason) before any edit to
-   `go-no-go/SKILL.md:174`. Under resolution (a) it flips to `false`, the allowlist becomes
-   empty, and the now-redundant Step 3c wait-prose at `:274` is folded into the `:174`
-   sentence. Under (b) it is left unchanged and documented in-place as an explicit
-   carve-out with the stated property `true` buys. Its sibling at `:278` is **not** part of
-   that carve-out under either resolution — it is fixed under step 1.
+2. **`go-no-go/SKILL.md:174` flips `true → false`** per Key Decision 2 (Option A,
+   recorded with Option B's rejection reason), the now-redundant Step 3c wait-prose at
+   `:274` is folded into the `:174` sentence, and
+   `SKILL_RUN_IN_BACKGROUND_TRUE_ALLOWLIST` is set to `set()` **in the same commit** —
+   the allowlist test fails on the flip otherwise. Its sibling at `:278` is fixed under
+   step 1. This file is not mirror-guarded, so no `ll-adapt` step applies to it.
 3. Any wording reused from `skills/manage-issue/SKILL.md`'s "Headless-Safe Final Test
    Run" section preserves the exact strings pinned in `DOC_STRINGS_PRESENT`
    (`test_wiring_skills_and_commands.py` ~:202-203). When fixing `:110` in that same
    file, **append** the directive at the Phase 1.5 spawn and leave `:376-398` untouched —
    do not rewrap `:389`, whose line-split `run_in_background:\n true` would otherwise join
    and trip the `true`-inventory allowlist (see Dependent Files).
-4. If `skills/wire-issue/SKILL.md` or `skills/audit-issue-conflicts/SKILL.md` are
-   edited, their mirrors are regenerated
-   (`ll-adapt --host gemini --apply && ll-adapt --host kimi-code --apply && ll-adapt --host qwen --apply`)
-   — only `wire-issue`'s mirror is currently test-guarded, so drift in the other would go
-   uncaught otherwise.
+4. **Mirrors are regenerated — mandatory, not conditional.** Step 1 edits
+   `skills/wire-issue/SKILL.md` **and `skills/manage-issue/SKILL.md`**, and *both* are in
+   `SKILL_MIRRORS_MUST_MATCH_SOURCE` (`test_wiring_skills_and_commands.py:372-378`,
+   three host mirrors each). Skipping regeneration is a hard
+   `test_skill_mirror_matches_source` failure, not silent drift. Run:
+
+   ```
+   ll-adapt --host gemini --apply && ll-adapt --host kimi-code --apply && ll-adapt --host qwen --apply
+   ```
+
+   `skills/audit-issue-conflicts/SKILL.md` also has mirrors on disk but is **not** in the
+   guarded list, so its drift would go uncaught — regenerate it in the same pass anyway.
+   `go-no-go`, `audit-docs`, and `audit-claude-config` are unguarded; the single
+   `ll-adapt` invocation above covers whatever mirrors exist.
 5. `test_skill_run_in_background_true_inventory_pinned` is extended to its two-sided form
    using the four-part detector specified under Tests, scanning `skills/**/*.md` **and**
    `commands/*.md` for **both** halves (candidate match requires an imperative spawn verb;
    ±3-line satisfaction window; `SPAWN_DETECTOR_EXEMPT` seeded with the
-   `confidence-check/SKILL.md:235` line plus the flag-documentation class listed there;
-   `true`-set equality retained) — this is the gate, not `DOC_STRINGS_PRESENT` needles.
+   `confidence-check/SKILL.md:235` line plus the flag-documentation class listed there,
+   including `audit-architecture.md:51`; `true`-set equality retained but now asserting
+   `set()`) — this is the gate, not `DOC_STRINGS_PRESENT` needles.
    A test asserting the detector does **not** flag `confidence-check` is part of this
    step, since that false positive is already known. The allowlist constant is renamed off
-   its `SKILL_` prefix and its assertion message updated, since the `true`-side is now
-   asserted over `commands/` too (verified empty there today) — see Tests § Widening.
+   its `SKILL_` prefix, emptied (not deleted), and its assertion message updated, since
+   the `true`-side is now asserted over `commands/` too (verified empty there today) —
+   see Tests § Widening.
 6. The seven incomplete `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS`-scope descriptions are
    corrected to name Agent-tool spawns (or split to a linked docs issue), all five
    runner-count sites are corrected to "**seven**" (not reconciled to five or six — both
@@ -732,8 +781,9 @@ sweep is doc-only and breaks no assertion.
 
 - **Priority**: P2 — silent loss of subagent findings in headless automation; wrong
   results rather than a crash, but no operator-visible signal when it happens.
-- **Effort**: Medium-Large — thirteen spawn sites across twelve files (six skills, one
-  skill companion, six commands), mirror regenerations, a two-sided inventory test
+- **Effort**: Medium-Large — eighteen spawn line-anchors across thirteen files (six
+  skills, one skill companion, six commands), six mandatory mirror regenerations
+  (`wire-issue` and `manage-issue` × three hosts), a two-sided inventory test
   with a specified detector over two corpora, seven doc corrections, and a five-site
   runner-count sweep. Revised up from Medium when the `commands/` half of the scope was
   found, and again when `manage-issue:110` was. (Route a, rejected, would have been
@@ -742,10 +792,13 @@ sweep is doc-only and breaks no assertion.
   enforces at the tool layer; the inventory test closes the regression path but is a
   deliberately conservative detector, so a novel spawn phrasing can still slip through.
   Mirror drift in `audit-issue-conflicts` is currently uncaught. Editing
-  `go-no-go/SKILL.md` requires care not to disturb `:174`, whose `true` value the
-  allowlist test pins.
+  `go-no-go/SKILL.md:174` and emptying `SKILL_RUN_IN_BACKGROUND_TRUE_ALLOWLIST` must land
+  in one commit, or the allowlist test fails.
 - **Breaking Change**: No. `go-no-go`'s judge agent (`:278`) becomes genuinely
-  foreground, which is the behavior its own prose already promises.
+  foreground, which is the behavior its own prose already promises. Its adversarial
+  fan-out (`:174`) becomes blocking-but-still-concurrent; if concurrency measurably
+  regresses there, that falsifies step 1b's premise and the five command fan-outs are
+  mis-specified too (Key Decision 2, Option A).
 
 ## Related Key Documentation
 
@@ -759,7 +812,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 1. Ensure `orchestration.disable_background_tasks` is `false` (the default since
    ENH-3207; it is set explicitly to `false` in this repo's `.ll/ll-config.json:134`).
-2. Run any of the thirteen sites under a headless turn — e.g. `ll-auto` or an FSM prompt
+2. Run any site from the inventory table under a headless turn — e.g. `ll-auto` or an FSM prompt
    state that invokes `/ll:audit-docs`, which spawns Task agents at
    `skills/audit-docs/SKILL.md:120-139` with no `run_in_background` value. The
    highest-frequency path is `/ll:refine-issue` (`commands/refine-issue.md:186`), which
@@ -781,11 +834,12 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
   `commands/scan-codebase.md`, `commands/audit-architecture.md`,
   `commands/analyze-workflows.md`
 - **Anchor**: Agent/Task spawn instructions at audit-docs:120-139,
-  audit-claude-config:118,222, wave1-prompts:9, audit-issue-conflicts:205,218,252,
-  wire-issue:147-190, manage-issue:110, go-no-go:278,
+  audit-claude-config:118,222, wave1-prompts:9, audit-issue-conflicts:205,252,
+  wire-issue:147-190, manage-issue:110, go-no-go:174,278,
   refine-issue:186, tradeoff-review-issues:81,
   manage-release:134, scan-codebase:95,97,101, audit-architecture:68,
-  analyze-workflows:102
+  analyze-workflows:102. (`go-no-go:174` declares `true` rather than omitting the
+  directive — a different defect shape, fixed under the same rule per Key Decision 2.)
 - **Cause**: these skills instruct Agent/Task spawns with prose ("wait for results",
   "**foreground**") but no `run_in_background: false` directive on the tool call itself.
   At `go-no-go:278` the prose is self-refuting — it names the desired mode ("foreground")
@@ -819,13 +873,13 @@ alternative: the skill body's Agent/Task call takes `run_in_background: false` d
 
 ### Decision Rules
 - Gate: when `LL_AUTOMATION` is set (the same signal `session_start.py:88` reads via
-  `os.environ.get("LL_AUTOMATION")`), every Agent/Task spawn in the thirteen affected
+  `os.environ.get("LL_AUTOMATION")`), every Agent/Task spawn in the affected
   sites must declare `run_in_background: false` and be awaited synchronously in the
   same turn.
-- Escape hatch: `go-no-go/SKILL.md`'s intentional background fan-out (`:174`) is the
-  one named carve-out (`SKILL_RUN_IN_BACKGROUND_TRUE_ALLOWLIST`) and **stays exempted**
-  — settled, not deferred. The carve-out is scoped to `:174` alone; the judge spawn at
-  `:278` in the same file is a fix target.
+- Escape hatch: **none.** Key Decision 2 (Option A) removed the last carve-out —
+  `go-no-go:174` flips to `false` and `SKILL_RUN_IN_BACKGROUND_TRUE_ALLOWLIST` becomes
+  `set()`. Both `go-no-go` sites (`:174`, `:278`) are fix targets. A future `true`
+  requires a deliberate allowlist append with a recorded FEAT-3077-style rationale.
 - `confidence-check/SKILL.md` is not in scope — no Agent/Task spawn site exists today;
   confirm before treating it as one of the fix's targets.
 
@@ -846,10 +900,11 @@ Headless `claude -p` turns: `ll-auto`, `ll-parallel`, `ll-sprint`, FSM prompt st
 
 ## Frequency
 
-Every headless invocation of the thirteen named sites is exposed; whether the result is
+Every headless invocation of the inventoried sites is exposed; whether the result is
 actually lost depends on whether the subagent outlives the parent turn's `result` event.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-16T04:59:11 - `8af101e8-440c-4dfd-9d90-99c46a875466.jsonl`
 - `/ll:decide-issue` - 2026-08-16T04:47:54 - `d03fba4d-011e-4873-ac13-79314b2ef1a9.jsonl`
 - `/ll:wire-issue` - 2026-08-16T02:33:16 - `580ae8b9-3bf3-43a4-90b3-d6f005806398.jsonl`
 - `/ll:refine-issue` - 2026-08-16T02:20:15 - `8d69c317-1f3a-48ba-9c8b-3d56c7aebd08.jsonl`

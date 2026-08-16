@@ -1,0 +1,12 @@
+{
+  "id": "00041698-cb4d-4b88-bf40-e574f59b9d79",
+  "type": "decision",
+  "timestamp": "2026-08-16T04:47:48Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Structurally identical to the decide-issue:335 single-message multi-Agent precedent, which already uses false with an in-turn wait. FEAT-3077's prior true carve-out was justified only by reachability (flag not live under go-no-go's CLI path), not functional necessity; it explicitly admits true vs false differs only in concurrency, not correctness.",
+  "rule": "go-no-go/SKILL.md:174 flips run_in_background to false; true-allowlist becomes empty",
+  "scope": "issue",
+  "alternatives_rejected": "Option B (keep :174 at true): sole precedent for itself, no functional-necessity evidence found, scored 6/12 vs Option A's 11/12",
+  "issue": "BUG-3209"
+}

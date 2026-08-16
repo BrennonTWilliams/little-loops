@@ -1,7 +1,7 @@
 ---
 id: BUG-3196
 type: BUG
-title: "ll-harness dsl never compares against a task's expected: values — a flagless\
+title: "ll-harness dsl never compares against a task's expected: values \u2014 a flagless\
   \ run reports a 100% pass rate unconditionally"
 priority: P2
 status: open
@@ -10,6 +10,12 @@ discovered_by: ll-issues-create
 discovered_date: '2026-08-15'
 captured_at: '2026-08-15T18:44:20Z'
 decision_needed: false
+confidence_score: 95
+outcome_confidence: 89
+score_complexity: 14
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # BUG-3196: ll-harness dsl never compares against a task's expected: values — a flagless run reports a 100% pass rate unconditionally
@@ -788,5 +794,6 @@ _Added by `/ll:refine-issue` — 2026-08-16 — based on codebase analysis:_
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-16T04:59:10 - `8af101e8-440c-4dfd-9d90-99c46a875466.jsonl`
 - `/ll:decide-issue` - 2026-08-16T04:51:40 - `cc7f1236-7d7a-4f5c-962b-052b11db8a39.jsonl`
 - `/ll:refine-issue` - 2026-08-16T04:48:41 - `cc7f1236-7d7a-4f5c-962b-052b11db8a39.jsonl`

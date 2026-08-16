@@ -59,7 +59,8 @@ in this CLI surface. Sketch:
 - `ll-session subagents <SESSION_ID>` — spawn tree (`subagent_tree`): agent_type,
   duration, status
 - `ll-session subagents <SESSION_ID> --budget` — spawn count + summed duration
-  (`subagent_budget`)
+  (`subagent_budget`, plus `subagent_tree` for the excluded-row count — see the display
+  rule under Proposed Solution)
 - `ll-session subagent-retries <AGENT_TYPE> [--since ...]` — repeat-spawn rollup
   (`subagent_retries`; its existing `since` kwarg is currently unsurfaced)
 - `--json` via the shared `add_json_arg()` helper, matching sibling subcommands
@@ -124,6 +125,21 @@ having *both* `started_at` and `ended_at`, but counts every row in `spawn_count`
 `running`/`orphaned` row silently understates the reported duration. The output must show
 the excluded-row count alongside the total — e.g.
 `spawn_count=12  total_duration_s=430.2  (2 rows excluded: no ended_at)`.
+
+**Corrected 2026-08-16 — the rule is not satisfiable from `subagent_budget` alone.**
+`subagent_budget` returns exactly `{"spawn_count", "total_duration_s"}`
+(`history_reader.py:1670-1673`): no excluded count, no status breakdown. Its SQL sums
+`CASE WHEN started_at IS NOT NULL AND ended_at IS NOT NULL ... ELSE 0`, so the excluded
+rows are silently folded into the `0` branch and never surfaced. Meanwhile Success Metrics
+requires "using the existing readers unmodified" and Scope Boundaries forbids touching the
+writers/schema — so the excluded count cannot come from extending this reader.
+
+**Resolution: the `--budget` path calls two readers.** `subagent_budget(session_id)` for
+the totals, plus `subagent_tree(session_id)` for the rows, deriving the excluded count (and
+its `running`/`orphaned` split, if shown) from `SubagentRun.ended_at is None` /
+`SubagentRun.status` in Python. Both readers stay unmodified, satisfying the constraint.
+State this in step 4 so the implementer does not either modify the reader or silently drop
+the display rule as unimplementable.
 
 **Corrected 2026-08-15:** an earlier draft claimed that post-ENH-3210 the excluded rows
 are "exactly the `orphaned` ones." They are not. ENH-3210's designed failure mode is
@@ -374,6 +390,13 @@ No breaking change — this is a new, additive CLI subcommand. No existing `ll-l
    understated. Excluded rows are `running` **and** `orphaned` — ENH-3210 leaves
    unresolvable rows `running` by design, and live in-flight spawns are excluded too — so
    the output must not label the excluded count as "orphaned."
+
+   The count comes from **`subagent_tree(session_id)`**, not `subagent_budget`, which
+   returns only `{"spawn_count", "total_duration_s"}` and exposes no excluded count
+   (`history_reader.py:1670-1673`). So `--budget` calls both readers and derives the
+   excluded count from `SubagentRun.ended_at is None` in Python. Both readers stay
+   unmodified — do not extend `subagent_budget`'s return shape to carry this; that would
+   violate Scope Boundaries and Success Metrics.
 5. `python -m pytest scripts/tests/test_enh_2505_subagent_runs.py scripts/tests/test_ll_session.py -v`
    and the new CLI test all pass, including an empty-result case that prints
    `"No subagent runs found for {session_id}."` rather than nothing, and a case with an

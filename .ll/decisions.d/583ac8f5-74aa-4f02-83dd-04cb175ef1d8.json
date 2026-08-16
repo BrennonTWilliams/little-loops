@@ -1,0 +1,12 @@
+{
+  "id": "014fe309-87d6-4b5d-912a-f4187a5fb94b",
+  "type": "decision",
+  "timestamp": "2026-08-16T04:51:40Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Deterministic, zero extra LLM calls, and produces a number comparable across --model runs, which is the stated reason the dsl runner exists; per-task semantic grading (Option B) reintroduces nondeterminism and cannot distinguish a wrong model answer from a wrong judge verdict.",
+  "rule": "Structured answer contract (Option A)",
+  "scope": "issue",
+  "alternatives_rejected": "Per-task semantic grading (synthesize a --semantic criterion from expected and call evaluate_llm_structured once per task)",
+  "issue": "BUG-3196"
+}

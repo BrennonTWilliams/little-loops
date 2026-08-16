@@ -13,11 +13,11 @@ relates_to:
 - ENH-3211
 - BUG-3209
 confidence_score: 85
-outcome_confidence: 70
-score_complexity: 17
+outcome_confidence: 86
+score_complexity: 18
 score_test_coverage: 25
-score_ambiguity: 10
-score_change_surface: 18
+score_ambiguity: 18
+score_change_surface: 25
 ---
 
 # ENH-3210: Reconcile stale running rows in subagent_runs so orphaned spawns are distinguishable from live ones
@@ -482,6 +482,7 @@ def reconcile_stale_subagent_runs(
     current_session_id: str | None,
     min_age_seconds: int = STALE_SUBAGENT_MIN_AGE_SECONDS,
     include_secondary: bool = False,
+    dry_run: bool = False,
 ) -> int:
     """Mark orphaned `running` rows as `orphaned`. Returns rows updated.
 
@@ -489,8 +490,22 @@ def reconcile_stale_subagent_runs(
     WARNING, never raises. `current_session_id=None` disables the
     current-session exclusion (see Decision Rules § Nullable current-session ID).
     `include_secondary` gates the optional later-activity branch.
+    `dry_run=True` runs the full selection and returns the count that *would*
+    be updated without issuing the UPDATE (see Decision 5).
     """
 ```
+
+**Decision 5 — `dry_run` is required, not optional polish.** Step 6's success check is
+"run the sweep against this repo's live `.ll/history.db`" — an unguarded, unrepeatable
+mutation of real telemetry with no way to preview the selection or re-run it after a
+miscount. `dry_run` makes that step safe (inspect the count and the selected rows before
+committing), repeatable (re-run freely while tuning `min_age_seconds`), and gives the
+step-5 tests a cheaper assertion surface: the negative tests (live sibling-worker row,
+current-session row, terminal row) can assert `dry_run=True` returns `0` without needing
+to re-read the table to prove nothing changed. Cost is one branch around the UPDATE.
+
+The hook call site always uses the default `dry_run=False`; the flag exists for step 6
+and for tests.
 
 `_reconcile_stale_running` (`fsm/persistence.py:243`) remains the **precedent for the
 guard structure** — first-guard on non-`running` status, "no signal → leave alone" — and
@@ -754,8 +769,20 @@ statuses without a code change).
    - an idempotency test asserting a second sweep is a no-op;
    - a test that `completed`/terminal rows are never touched;
    - a test that with **zero** `running` rows the sweep issues no `tool_events` query at
-     all (step 2b's short-circuit) — the cheap guard on the 15s hook budget.
-6. Running the sweep against this repo's own `.ll/history.db` reclassifies **at least the
+     all (step 2b's short-circuit) — the cheap guard on the 15s hook budget;
+   - **a `dry_run=True` test:** an eligible primary-branch row yields a return count of
+     `1` and the row's `status` is still `running` afterward — proving the flag selects
+     without mutating. The negative tests above may assert against `dry_run=True` for the
+     cheaper return-count check, but at least one negative case must also run with
+     `dry_run=False` so the real UPDATE path is exercised against a non-eligible row.
+6. **Dry-run first, then commit.** Call `reconcile_stale_subagent_runs(..., dry_run=True)`
+   against this repo's own `.ll/history.db` and confirm the returned count matches the
+   primary-branch count recomputed at implementation time; only then re-run with
+   `dry_run=False`. Do not make the first execution against real telemetry a blind
+   mutation — the table has no undo and no `reconciled_at` stamp (Decision 3) to identify
+   which rows a bad run touched.
+
+   The committed run reclassifies **at least the
    primary-branch rows** and leaves `completed` unchanged — the concrete success check.
    Recompute both branch counts at implementation time rather than asserting the
    snapshot figures; they have already drifted once (17/23 at capture → 16/24 on
@@ -764,48 +791,31 @@ statuses without a code change).
 
 ## Confidence Check Notes
 
-_Added by `/ll:confidence-check` on 2026-08-15_
+_Added by `/ll:confidence-check` on 2026-08-16_
 
 **Readiness Score**: 85/100 → PROCEED WITH CAUTION
-**Outcome Confidence**: 70/100 → MODERATE
+**Outcome Confidence**: 86/100 → HIGH CONFIDENCE
 
 ### Concerns
-- Format-check flags claim gaps against the codebase: `history_reader` (claimed in
-  `subagent_stop.py`), `TEXT` (claimed in `schema.py`), and `subagent_runs` mislocated
-  (claimed in `subagent_start.py`) — verify these symbol references before implementing;
-  this caps Criterion 4 (Issue Well-Specified) at 10/20 per the Parity/Claim Cap rule.
-- ~~Two design decisions are explicitly deferred~~ — **resolved 2026-08-15** (see Proposed
-  Solution): status value is `"orphaned"`; the check runs in `sweep_stale_refs.py`'s
-  existing `SessionStart`-hosted sweep; no `reconciled_at` column.
-- ~~The fix requires a second writable connection alongside `history_reader.py`'s
-  read-only connections~~ — **no longer applicable**: Decision 1 moves the write to
-  `sweep_stale_refs.py`, which already holds a writable connection. The remaining new
-  work is the liveness comparison itself.
-- **New concern (2026-08-15, blocking at capture, now corrected):** the issue's original
-  primary liveness signal — "parent session has provably ended" — had no data behind it.
-  `sessions` has no `ended_at` column and `session_lifecycle_events` contains only
-  `stale_ref_sweep` rows. Replaced with the later-parent-activity signal, verified against
-  the live DB. Re-verify this holds before implementing if the schema has moved since.
-- **Second correction (2026-08-15, pre-implementation review):** the *replacement*
-  signal was also unsound as drafted. Measured across the whole table, later-parent-
-  activity holds for 2629/2650 joinable `completed` rows — it is not evidence of
-  orphaning, and on its own would mark live in-flight subagents `orphaned`. Corrected in
-  Summary § Corrected rule (quiet-period guard + current-session exclusion) and
-  Decision 4.
-- **Third correction (2026-08-15, second pre-implementation review) — the primary and
-  fallback were backwards, and one factual claim was wrong.** Re-measuring both branches
-  against both statuses showed the *inverse* branch is the strong one: "parent recorded
-  no `tool_events` after the spawn" holds for 24/40 running (60%) but only 21/2650
-  completed (0.8%), a ~75× enrichment, needing no quiet-period guard. Meanwhile the claim
-  that 23 rows "have no `tool_events` evidence at all" is false — 0 of 40 lack
-  tool_events — so the pure-age fallback those drafts elevated to a majority-case rule
-  has no population to serve and is no longer in scope. `agent_transcript_path` was also
-  measured and closed as a pure Stop-hook proxy. Primary/secondary inverted throughout
-  Summary, Decision 4, Decision Rules, Steps 1/1a/1b, Success Metrics, and Impact.
-  **Re-run the branch measurement before implementing** — the ratios are what justify the
-  design, and the DB moves (17/23 → 16/24 in under a day).
+- Format-check still flags a claim gap against the codebase: `TEXT` (claimed in
+  `scripts/little_loops/session_store/schema.py`) resolves to a generic SQL column-type
+  token rather than a named symbol — likely a linter false-positive, but per the
+  Parity/Claim Cap rule its presence caps Criterion 4 (Issue Well-Specified) at 10/20
+  regardless of how complete the rest of the spec is. Re-run `ll-issues format-check
+  ENH-3210 --format json` after implementation to confirm it clears.
+- `relates_to: BUG-3209` is a **soft, non-blocking** sequencing recommendation ("Sequence
+  BUG-3209 first"), not a `blocked_by` dependency — BUG-3209 is still `open`. This issue
+  is designed to work standalone (it reconciles the existing backlog regardless of whether
+  BUG-3209 has landed), so this does not gate implementation; it only means the backlog
+  keeps growing underneath until BUG-3209 ships.
+- The secondary branch's quiet-period window is decided only qualitatively ("hours, not
+  minutes") — unlike the primary branch's settled `STALE_SUBAGENT_MIN_AGE_SECONDS = 6 *
+  3600`, no concrete number is pinned for the optional secondary branch. If that branch is
+  implemented, the implementer must choose and justify a specific value (or drop the
+  branch per Decision 4, which is explicitly sanctioned).
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-16T04:58:36 - `3732fd32-810c-4cb4-9095-7a5a9dac49d5.jsonl`
 - `/ll:decide-issue` - 2026-08-16T04:51:02 - `3da23951-99b8-442f-b7db-c8c9c673c9c0.jsonl`
 - `/ll:refine-issue` - 2026-08-16T04:49:44 - `3da23951-99b8-442f-b7db-c8c9c673c9c0.jsonl`
 - `/ll:confidence-check` - 2026-08-16T02:38:24 - `b3e5e9f8-dedd-44cd-94d8-d1536fb44209.jsonl`
