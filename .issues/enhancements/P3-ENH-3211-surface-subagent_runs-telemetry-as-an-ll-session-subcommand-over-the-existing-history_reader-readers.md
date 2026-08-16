@@ -4,7 +4,7 @@ type: ENH
 title: Surface subagent_runs telemetry as an ll-session subcommand over the existing
   history_reader readers
 priority: P3
-status: open
+status: blocked
 testable: true
 discovered_by: ll-issues-create
 discovered_date: '2026-08-16'
@@ -14,6 +14,8 @@ relates_to:
 - FEAT-3183
 depends_on:
 - ENH-3210
+blocked_by:
+- FEAT-3183
 confidence_score: 95
 outcome_confidence: 89
 score_complexity: 21
@@ -212,8 +214,11 @@ _Wiring pass added by `/ll:wire-issue`:_
   vocabulary already live in the same CLI surface [Agent 2 finding]
 
 ### Documentation
-- `docs/reference/CLI.md` — needs the new subcommand documented once the host
-  (`ll-logs` vs `ll-history`) is decided
+- `docs/reference/CLI.md` — the new subcommand is documented under `### ll-session`
+  (`:3294-3482`): a row in the subcommand table (`:3306-3321`), a flags table modeled on
+  ``**`recent` flags:**`` (`:3355-3363`), and entries in the Examples block
+  (`:3431-3471`). The host is settled; the `ll-logs`-vs-`ll-history` question this line
+  previously deferred is closed.
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `docs/reference/CLI.md` — exact section locations, by candidate host: `### ll-history`
@@ -252,10 +257,13 @@ The other two readers this issue wraps share the same `db`-keyword shape:
 and `subagent_budget(session_id: str, *, db: Path | str = DEFAULT_DB_PATH) -> dict | None`.
 
 ### Call Path
-CLI subcommand dispatch (`main_logs()`/`main_history()`, mirroring
-`cli/session.py`'s `related`/`recent` branches) `->` one of the three
-`history_reader.py` readers above `->` `print_json()`/`table()`/plain `print()`
-(`cli/output.py`).
+`main_session()` subcommand dispatch (`cli/session.py`, alongside the existing
+`related`/`recent` branches) `->` one of the three `history_reader.py` readers above
+`->` `print_json()`/`table()`/plain `print()` (`cli/output.py`).
+
+(Corrected 2026-08-15: this previously named `main_logs()`/`main_history()`, contradicting
+the Summary's settled decision that `ll-session` is the host. Both of those CLIs are
+explicitly **not** modified — see Files to Modify.)
 
 ### Decision Rules
 N/A — no new gate, threshold, or classification rule; this issue wires existing
@@ -278,7 +286,8 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ## Status
 
-**Open** | Created: 2026-08-16 | Priority: P3 | Blocked on: ENH-3210, FEAT-3183 overlap call
+**Blocked** | Created: 2026-08-16 | Priority: P3 | Blocked on: FEAT-3183 (overlap call);
+depends on ENH-3210 (`orphaned` status must exist first)
 
 ## Current Pain Point
 
@@ -298,15 +307,24 @@ Per the Summary's own scope note: surface only. Does not touch
 `record_subagent_run_start`/`record_subagent_run_stop`, the `SubagentStart`/
 `SubagentStop` hooks, or the `subagent_runs` schema.
 
-**Open question to resolve before scheduling — overlap with FEAT-3183.** FEAT-3183
-(P1, "Local agent quality report over history.db") already plans to consume
+**Blocking overlap with FEAT-3183 — status set to `blocked` 2026-08-15.** FEAT-3183
+(P1, `open`, "Local agent quality report over history.db") already plans to consume
 `subagent_runs.status`/`started_at`/`ended_at` as a retry-inflation signal (~line 130 of
-that issue). That is two surfaces over the same table, one P1 and one P3. Decide one of:
+that issue). That is two surfaces over the same table, one P1 and one P3. The options
+are:
 
 1. Ship this as the low-level per-session inspector; FEAT-3183 remains the aggregate
    quality report. Both survive, with this issue explicitly *not* doing rollup analytics.
 2. Fold this into FEAT-3183 and cancel this issue (`cancelled` + `supersedes: [ENH-3211]`
    on FEAT-3183), if FEAT-3183's report already answers the operator question.
+
+**Resolution: defer the call until FEAT-3183 lands, rather than making it now.** The
+choice turns entirely on what FEAT-3183's report actually outputs, which does not exist
+yet — deciding now means guessing at a P1's eventual surface in order to schedule a P3.
+Once FEAT-3183 is implemented, the question answers itself in minutes: run its report and
+check whether "how many subagents did session X spawn, and did they all finish?" is
+already answerable. Hence `blocked_by: FEAT-3183` (a scheduling block, not a technical
+dependency — nothing here needs FEAT-3183's code).
 
 Do not implement before this is answered — option 2 makes the whole issue wasted work.
 

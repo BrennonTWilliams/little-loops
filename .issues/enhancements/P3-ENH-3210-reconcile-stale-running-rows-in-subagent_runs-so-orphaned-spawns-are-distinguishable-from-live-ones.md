@@ -54,20 +54,61 @@ Verified against the live DB:
   rows) — **zero** session-end events.
 
 As written that rule collapses to a bare `started_at` age threshold, the weakest option
-available. Use instead a signal that does exist and carries positive evidence:
-**later activity in the same parent session**. Compare the row's `started_at` against
-`max(ts)` for that `session_id` in `tool_events` — if the parent kept working after the
-spawn but no `SubagentStop` ever landed, the row is provably orphaned rather than
-in-flight. Verified on the newest stale row (`b9fd5a8c…`, started `2026-08-15T03:48:55Z`,
-parent's last tool event `2026-08-15T03:49:22Z`) — 27s of subsequent parent activity.
+available. A replacement draft proposed **later activity in the same parent session**:
+compare the row's `started_at` against `max(ts)` for that `session_id` in `tool_events`,
+and treat later parent activity as proof the row is orphaned.
+
+**That replacement is also wrong, for two measured reasons (re-measured 2026-08-15
+against the live DB). Do not implement it as the primary rule.**
+
+**(1) It does not discriminate.** The same test applied to `completed` rows:
+
+    running rows (40)                    completed rows (2717)
+    later activity      17               later activity      2632
+    no later activity   23               no later activity     18
+                                         no tool_events        67
+
+2632 of 2650 joinable `completed` rows *also* show later parent activity. "The parent
+kept working after the spawn" is simply the normal case for every spawn — live, dead, or
+finished. It is not positive evidence of orphaning; it is evidence that a session did
+more than one thing. Combined with `status = 'running'` it looks discriminating only
+because the status filter is doing all the work.
+
+The concrete failure this causes: a genuinely in-flight background subagent in an
+*active* session trips the rule the instant its parent issues one more tool call — and
+gets marked `orphaned` while still running. That is precisely the misclassification the
+negative test is meant to prevent, produced by the rule itself rather than caught by it.
+
+**(2) It resolves 17 of 40 rows, not 40.** The remaining 23 have no later-activity
+evidence either way and fall through to the age fallback. The fallback is therefore the
+*primary* mechanism for 57% of the affected rows — not the "generous, days-not-minutes"
+afterthought the Proposed Solution treats it as. It needs a specified threshold and its
+own test.
+
+**Corrected rule — later activity plus a quiet-period guard.** A `running` row is
+reconciled to `orphaned` only when **both** hold:
+
+- `max(ts)` in `tool_events` for its `parent_session_id` is later than the row's
+  `started_at` (the parent moved on), **and**
+- that `max(ts)` is itself older than a quiet-period window (the parent has since gone
+  quiet, so "still working alongside a live agent" is excluded), **and**
+- `parent_session_id` is not the currently-executing session.
+
+The quiet-period window is what converts a non-discriminating comparison into evidence.
+Pick it well outside any plausible subagent runtime — hours, not minutes — and state the
+chosen value in the implementation.
 
 The join is viable: 39 of the 40 stale rows have a `parent_session_id` present in
 `sessions`; **0** have a null parent.
 
-Proposed fix, mirroring ENH-1669's loop-run reconciliation: a `running` row with
-later-parent-activity evidence (primary) or an old `started_at` with no live parent
-(fallback) becomes `orphaned`; a row with no resolvable evidence is **left alone**.
-Best-effort per the EPIC-1707 contract — never raise, never block.
+**Unexplored third signal.** `subagent_runs` has an `agent_transcript_path` column
+(confirmed present in the live schema). A transcript file's existence and mtime may give
+direct positive evidence of completion for some of the 23 rows the activity signal
+cannot resolve, without an age heuristic. Not investigated; worth 15 minutes before
+settling for the age fallback on those rows.
+
+Best-effort per the EPIC-1707 contract — never raise, never block. A row with no
+resolvable evidence is **left alone**.
 
 
 ## Current Behavior
@@ -99,15 +140,17 @@ timing, not true session-end timing.
 
 ## Expected Behavior
 
-A `subagent_runs` row whose parent session has provably ended (or whose `started_at` is
-old enough with no live parent) no longer reads as indistinguishable from a genuinely
-in-flight spawn — it carries a distinct status and a `reconciled_at` stamp, mirroring
-`LoopState.reconciled_at` in the ENH-1669 precedent.
+A `subagent_runs` row whose parent has demonstrably moved on and gone quiet (or whose
+`started_at` is old enough with no evidence either way) no longer reads as
+indistinguishable from a genuinely in-flight spawn — it carries the distinct `orphaned`
+status. Per Decision 3, no `reconciled_at` stamp is added (that would require a schema
+migration this issue excludes); `ended_at` stays `NULL`, correctly recording that no end
+was ever observed.
 
 ## Motivation
 
 Live evidence from this repo's own `.ll/history.db` (40 stale `running` rows against
-2,699 `completed`, oldest from 2026-08-02) shows the problem is not hypothetical. Any
+2,717 `completed`, oldest from 2026-07-21) shows the problem is not hypothetical. Any
 future consumer of this table — including the companion CLI-surface issue ENH-3211 —
 would otherwise report orphaned spawns as if they were still running.
 
@@ -137,8 +180,16 @@ judged necessary, raise it as a separate schema issue.
 
 Since there is no `pid` column, the liveness signal cannot be `os.kill(pid, 0)`
 (`_process_alive()`, `fsm/concurrency.py:56`) as ENH-1669 uses — it is the
-later-parent-activity comparison established in the Summary, with an age threshold as
-fallback and "no evidence → leave alone" as the failure mode.
+later-parent-activity-plus-quiet-period comparison established in the Summary, with an
+age threshold as the (majority-case) fallback and "no evidence → leave alone" as the
+failure mode.
+
+**Decision 4 — the quiet-period window is a required constant, not an optional
+refinement.** Bare later-parent-activity is non-discriminating (Summary § (1)); shipping
+it without the quiet-period guard produces active misclassification of live subagents,
+which is strictly worse than the status quo of leaving rows `running`. If the
+implementer finds the window hard to choose, the correct fallback is to reconcile *only*
+by age, not to drop the guard.
 
 ## Integration Map
 
@@ -277,13 +328,18 @@ for rows passing the later-parent-activity (or age-fallback) test.
 - Gate: a `subagent_runs` row is eligible for reconciliation only when `status ==
   "running"` — mirrors `_reconcile_stale_running()`'s own first guard
   (`if state.status != "running": return state`).
-- **Primary signal — later parent activity.** `max(ts)` in `tool_events` for the row's
-  `parent_session_id` is later than the row's `started_at` ⇒ the parent kept working past
-  the spawn and no `SubagentStop` ever landed ⇒ `orphaned`. This is positive evidence, not
-  a timeout, and it is the rule to implement first.
+- **Primary signal — later parent activity AND a quiet period.** All three must hold:
+  (i) `max(ts)` in `tool_events` for the row's `parent_session_id` is later than the
+  row's `started_at`; (ii) that `max(ts)` is older than the quiet-period window;
+  (iii) `parent_session_id` is not the currently-executing session. Condition (i) alone
+  is **not** sufficient and must not be implemented as the rule — it holds for 2632 of
+  2650 joinable `completed` rows, so on its own it marks live in-flight subagents as
+  orphaned (see Summary § (1)). Conditions (ii) and (iii) are what make it evidence.
 - Fallback signal — age. `started_at` older than a threshold with no later-activity
-  evidence either way ⇒ `orphaned`. Threshold is an implementation choice; pick
-  generously (days, not minutes) since the primary signal already covers the common case.
+  evidence either way ⇒ `orphaned`. **This is not an edge case:** it is the only
+  applicable rule for 23 of the 40 known stale rows (57%), because they have no
+  `tool_events` evidence at all. Specify the threshold explicitly (days, not minutes) and
+  give it its own test — the primary signal does *not* "already cover the common case".
 - **Explicitly unavailable:** "parent session has ended." `sessions` has no `ended_at`
   column and `session_lifecycle_events` emits no session-end event (verified — only
   `stale_ref_sweep`). Do not design against this signal.
@@ -301,9 +357,13 @@ for rows passing the later-parent-activity (or age-fallback) test.
   2026-07-21 and did not grow across two measurements while `completed` gained 18.
 - **Effort**: Small — one writer function plus a call from an existing sweep that already
   writes. No schema migration (Decision 3), no new connection plumbing (Decision 1).
-- **Risk**: Low — additive status value on a CHECK-free TEXT column; the "no evidence →
-  leave alone" rule means the failure mode is under-reconciling, not misclassifying a
-  live spawn. Main risk is a too-aggressive age fallback, covered by a negative test.
+- **Risk**: Low **only if the quiet-period guard ships**. The status value itself is
+  additive on a CHECK-free TEXT column, and "no evidence → leave alone" means the
+  intended failure mode is under-reconciling. But the bare later-parent-activity rule as
+  originally drafted inverts that — it misclassifies live in-flight spawns (Summary
+  § (1)) — so the guard, not the age threshold, is the primary risk control. Secondary
+  risk is a too-aggressive age fallback, which now governs 57% of affected rows; both
+  are covered by the negative tests in step 5.
 - **Breaking Change**: No — but any reader pattern-matching `status == "running"` as a
   proxy for "not completed" changes meaning; audited in Backwards Compatibility below.
 
@@ -325,10 +385,20 @@ that are missing entirely, never corrects one that already exists.
 
 ## Success Metrics
 
-The 40/2,699 stale-row count in this repo's own history.db converges toward 0 stale
-rows after reconciliation runs, without any row that is genuinely still in flight being
-misclassified (see the ENH-1669 negative-test precedent,
-`test_no_reconcile_live_background_pid`).
+Measured against this repo's own history.db (40 `running` / 2,717 `completed`), split by
+which rule resolves each row — **"converges toward 0" is not the metric and is not
+achievable by the primary signal**:
+
+- **17 rows** carry later-parent-activity evidence and are reconciled to `orphaned` by
+  the primary rule (subject to the quiet-period guard, which all 17 should pass given
+  their parents' last activity is weeks old).
+- **23 rows** have no `tool_events` evidence and are reconciled only if they clear the
+  age threshold. Whether all 23 do is a function of the chosen threshold; state the
+  expected count once the threshold is picked.
+- **0 rows** that are genuinely still in flight are misclassified (see the ENH-1669
+  negative-test precedent, `test_no_reconcile_live_background_pid`). This is the
+  hard requirement — under-reconciling is acceptable, misclassifying a live spawn is not.
+- `completed` stays at 2,717 — reconciliation must never touch a terminal row.
 
 ## Scope Boundaries
 
@@ -354,10 +424,17 @@ statuses without a code change).
 
 ## Implementation Steps
 
-1. A later-parent-activity check exists: for a `running` row, `max(ts)` in `tool_events`
-   for its `parent_session_id` compared against the row's `started_at`. There is no
-   existing session-liveness helper in `session_store`/`history_reader.py`, so this is
-   new. An `started_at`-age fallback covers rows with no `tool_events` evidence.
+1. A later-parent-activity check exists **with the quiet-period guard**: for a `running`
+   row, `max(ts)` in `tool_events` for its `parent_session_id` is later than the row's
+   `started_at`, that `max(ts)` is itself older than the chosen quiet-period window, and
+   the parent is not the currently-executing session. There is no existing
+   session-liveness helper in `session_store`/`history_reader.py`, so this is new.
+   Shipping condition (i) alone is an explicit defect, not a simplification — it marks
+   live subagents `orphaned` (Summary § (1)).
+1a. A `started_at`-age fallback covers rows with no `tool_events` evidence — the
+   majority case (23 of 40), with an explicitly chosen and documented threshold.
+1b. (Optional, worth a timeboxed look first) `agent_transcript_path` is checked as a
+   direct completion signal for the no-`tool_events` rows before falling back to age.
 2. A reconciliation writer exists in `session_store/writers.py`, called from
    `hooks/sweep_stale_refs.py`'s existing `session_end`-intent sweep, following the
    two-layer best-effort shape (`try/except sqlite3.Error` in the writer, never raise;
@@ -369,10 +446,18 @@ statuses without a code change).
 4. No schema migration is introduced — `status` takes the new `"orphaned"` value on the
    existing CHECK-free TEXT column, and no `reconciled_at` column is added (Decision 3).
 5. `python -m pytest scripts/tests/test_enh_2505_subagent_runs.py scripts/tests/test_fsm_persistence.py -v`
-   passes, including a negative test asserting a live/recent row is never reconciled and
-   an idempotency test asserting a second sweep is a no-op.
-6. Running the sweep against this repo's own `.ll/history.db` reclassifies the 40 stale
-   rows and leaves `completed` at 2717 — the concrete success check.
+   passes, including all of:
+   - a negative test for the **specific** failure mode the bare activity signal causes:
+     a `running` row whose parent has later `tool_events` but is *still active* (inside
+     the quiet-period window) is **not** reconciled;
+   - a negative test that a row in the currently-executing session is never reconciled;
+   - a positive test for the age fallback on a row with no `tool_events` at all;
+   - an idempotency test asserting a second sweep is a no-op;
+   - a test that `completed`/terminal rows are never touched.
+6. Running the sweep against this repo's own `.ll/history.db` reclassifies the 17
+   later-activity rows plus whichever of the remaining 23 clear the age threshold, and
+   leaves `completed` at 2,717 — the concrete success check. A run that reclassifies all
+   40 is *not* required; a run that changes `completed` is a failure.
 
 ## Confidence Check Notes
 
@@ -398,6 +483,14 @@ _Added by `/ll:confidence-check` on 2026-08-15_
   `sessions` has no `ended_at` column and `session_lifecycle_events` contains only
   `stale_ref_sweep` rows. Replaced with the later-parent-activity signal, verified against
   the live DB. Re-verify this holds before implementing if the schema has moved since.
+- **Second correction (2026-08-15, pre-implementation review):** the *replacement*
+  signal was also unsound as drafted. Measured across the whole table, later-parent-
+  activity holds for 2632/2650 joinable `completed` rows — it is not evidence of
+  orphaning, and on its own would mark live in-flight subagents `orphaned`. It also
+  resolves only 17 of the 40 stale rows, leaving the age fallback to govern the other 23.
+  Corrected in Summary § Corrected rule (quiet-period guard + current-session exclusion)
+  and Decision 4. **Re-run both measurements before implementing** — the ratios are what
+  justify the guard, and the DB moves.
 
 ## Session Log
 - `/ll:confidence-check` - 2026-08-16T02:38:24 - `b3e5e9f8-dedd-44cd-94d8-d1536fb44209.jsonl`
