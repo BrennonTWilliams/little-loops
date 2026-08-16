@@ -10702,6 +10702,1322 @@ Classifies an advisor/main model pairing against the capability floor. The cross
 
 ---
 
+## little_loops.pricing
+
+Model pricing constants (USD per million tokens) for token cost estimation across the model registry. `INTRO_PRICING` overrides `MODEL_PRICING` for a model while a time-bounded introductory rate is active (e.g. Sonnet 5's $2/$10 rate through 2026-08-31 inclusive, ENH-2835); `estimate_cost_usd()` checks `date.today()` against each entry's `expires` date and falls back to standard `MODEL_PRICING` once it lapses.
+
+```python
+from little_loops.pricing import MODEL_PRICING, INTRO_PRICING, BATCH_DISCOUNT, estimate_cost_usd
+```
+
+### MODEL_PRICING
+
+```python
+MODEL_PRICING: dict[str, dict[str, float]]
+```
+
+Per-model pricing table: `{model_id: {"input": ..., "output": ..., "cache_read": ..., "cache_creation": ...}}`, all in USD per million tokens. Covers the current Claude 5.x / 4.x model registry plus legacy 3.x models that may still appear in historical logs.
+
+### INTRO_PRICING
+
+```python
+INTRO_PRICING: dict[str, dict[str, float | str]]
+```
+
+Time-bounded introductory rates that override `MODEL_PRICING` while active: `{model_id: {"expires": iso_date, "input": ..., "output": ..., "cache_read": ..., "cache_creation": ...}}`. Currently holds only `claude-sonnet-5`, expiring `2026-08-31`.
+
+### BATCH_DISCOUNT
+
+```python
+BATCH_DISCOUNT = 0.5
+```
+
+Flat discount applied to all four token types under the Anthropic Message Batches API (FEAT-2710, EPIC-2456). Stacks with prompt caching since the batch discount is a flat 50% off the synchronous per-token rate, cache-adjusted rates included.
+
+### estimate_cost_usd
+
+```python
+def estimate_cost_usd(
+    model: str,
+    input_tokens: int,
+    output_tokens: int,
+    cache_read_tokens: int = 0,
+    cache_creation_tokens: int = 0,
+    is_batch: bool = False,
+) -> float | None
+```
+
+Estimates cost in USD for a token usage event. Returns `None` if `model` is not in `MODEL_PRICING`. Checks `INTRO_PRICING` first and uses it while unexpired, otherwise falls back to `MODEL_PRICING`. `is_batch=True` applies `BATCH_DISCOUNT` to the computed total. `is_batch` is appended at the end of the signature (not inserted) so existing positional callers (`fsm/cost_graph.py`, `session_store.py`) are unaffected.
+
+**Parameters:**
+
+- `model` — model ID to look up in the pricing tables.
+- `input_tokens`, `output_tokens`, `cache_read_tokens`, `cache_creation_tokens` — token counts by type.
+- `is_batch` — apply the Message Batches API flat discount.
+
+**Returns:** estimated cost in USD, or `None` if the model is unrecognized.
+
+---
+
+---
+
+## little_loops.stats
+
+Statistical utilities for loop evaluation reporting. Provides Wilson 95% binomial confidence intervals for honest uncertainty reporting at small sample sizes, where naive ±√(p(1-p)/n) estimates are unreliable near 0 or 1.
+
+```python
+from little_loops.stats import wilson_ci
+```
+
+### wilson_ci
+
+```python
+def wilson_ci(k: int, n: int, z: float = 1.96) -> tuple[float, float]
+```
+
+Computes the Wilson binomial confidence interval: `(p + z²/2n ± z√(p(1-p)/n + z²/4n²)) / (1 + z²/n)`.
+
+**Parameters:**
+
+- `k` — number of successes (`0 <= k <= n`).
+- `n` — total trials (`n > 0`).
+- `z` — z-score for the confidence level (default `1.96` for 95% CI).
+
+**Returns:** `(lower, upper)` bounds as floats, clamped to `[0, 1]`.
+
+**Raises:** `ValueError` if `n <= 0`, `k < 0`, or `k > n`.
+
+---
+
+---
+
+## little_loops.sft_formatter
+
+SFT (supervised fine-tuning) data format converters used by `ll-messages --sft-format`. All three functions take the same input shape — a list of `(role, content)` turn pairs — and convert it to a different training-data wire format.
+
+```python
+from little_loops.sft_formatter import to_chatml, to_alpaca, to_sharegpt
+```
+
+### to_chatml
+
+```python
+def to_chatml(turns: list[tuple[str, str]]) -> dict
+```
+
+Converts conversation turns to ChatML format: `{"messages": [{"role": ..., "content": ...}, ...]}`.
+
+### to_alpaca
+
+```python
+def to_alpaca(turns: list[tuple[str, str]]) -> dict
+```
+
+Converts conversation turns to Alpaca format. Maps the first user turn to `instruction`, all subsequent user turns joined with `\n\n` to `input`, and the last assistant turn to `output`.
+
+### to_sharegpt
+
+```python
+def to_sharegpt(turns: list[tuple[str, str]]) -> dict
+```
+
+Converts conversation turns to ShareGPT format: `{"conversations": [{"from": ..., "value": ...}, ...]}`, mapping `"user"` → `"human"` and `"assistant"` → `"gpt"`.
+
+**Parameters (all three):**
+
+- `turns` — list of `(role, content)` pairs where `role` is `"user"` or `"assistant"`.
+
+---
+
+---
+
+## little_loops.file_utils
+
+Shared file I/O utilities: atomic writes (tempfile + `os.replace`, so readers never observe a partial file), an atomic-JSON-write helper, an issue-tree mutation lock path resolver, and an `fcntl`-based advisory file lock context manager.
+
+```python
+from little_loops.file_utils import atomic_write, atomic_write_json, issue_lock_path, acquire_lock
+```
+
+### atomic_write
+
+```python
+def atomic_write(path: Path, content: str, encoding: str = "utf-8") -> None
+```
+
+Writes `content` to `path` atomically: writes to a sibling temp file in the same directory (same filesystem), then `os.replace`s it over the target. On any exception, best-effort deletes the temp file before re-raising.
+
+### atomic_write_json
+
+```python
+def atomic_write_json(path: Path, data: Any) -> None
+```
+
+Atomically writes `data` as JSON to `path` (Python port of `hooks/scripts/lib/common.sh:atomic_write_json`). Creates the parent directory if missing, serializes with `allow_nan=False` (rejecting NaN/Infinity like `jq empty`), round-trips through `json.loads` as a defensive check, then delegates to `atomic_write`.
+
+**Raises:** `ValueError` if the serialized payload fails round-trip validation.
+
+### issue_lock_path
+
+```python
+def issue_lock_path(issue_path: Path, base_dir: str = ".issues") -> Path
+```
+
+Resolves the path of the issue-tree mutation lock guarding `issue_path` (BUG-3150). Issue files live at `<base_dir>/<type>/<file>.md`, so the lock belongs on the nearest ancestor named `base_dir` — one lock for the whole tree, shared by every mutator (`set-status`, `link`, `session_log`) so they provably serialize against each other. Falls back to `issue_path`'s own resolved parent directory when no `base_dir` ancestor exists (e.g. a bare path in a scratch directory, as several tests use). Deliberately distinct from `cli/issues/create.py`'s `.id-alloc.lock` — ID allocation and issue mutation do not need to serialize against each other.
+
+### acquire_lock
+
+```python
+@contextmanager
+def acquire_lock(path: Path, timeout: float = 10.0) -> Generator[None, None, None]
+```
+
+Acquires an exclusive advisory lock on `path`, polled every 0.05s up to `timeout` seconds. Python port of `hooks/scripts/lib/common.sh:acquire_lock`. Uses `fcntl.flock(LOCK_EX | LOCK_NB)`; the lock releases automatically when the file descriptor closes on context-manager exit — no explicit release call needed. The precompact bash adapter calls this with `timeout=3.0` and falls back to a best-effort unlocked write on `TimeoutError` to preserve its existing semantics.
+
+**Raises:** `TimeoutError` if the lock cannot be acquired within `timeout` seconds.
+
+---
+
+---
+
+## little_loops.decisions_sync
+
+Syncs the decisions log's active required rules to the `## Active Rules` section of `.ll/ll.local.md`, so local project guidance stays in sync with `.ll/decisions.yaml` / `.ll/decisions.d/` without hand-editing.
+
+```python
+from little_loops.decisions_sync import sync_to_local_md
+```
+
+### sync_to_local_md
+
+```python
+def sync_to_local_md(path: Path | None = None) -> None
+```
+
+Writes active required rules to `## Active Rules` in `ll.local.md`. `path` is the decisions YAML path (e.g. `.ll/decisions.yaml`); when omitted, resolves via `little_loops.paths.resolve_ll_dir()` (falling back to a cwd-anchored default if no project root resolves). `ll.local.md` is resolved as `path.parent / "ll.local.md"`.
+
+Filters `list_entries(decisions_path, type="rule")` down to entries with `enforcement == "required"`, then `resolve_active()` to drop superseded/inactive ones, and renders each surviving `RuleEntry.rule` as a `- ` bullet. If `## Active Rules` already exists in the file, replaces that section in place (up to the next `##` heading or end of file); otherwise appends a new section. Writes via `little_loops.file_utils.atomic_write`.
+
+---
+
+---
+
+## little_loops.output_cleaner
+
+Anti-event + duplicate-window pre-filter for tool/log output (FEAT-2470). A LogCleaner-style pre-filter (EPIC-2456 technique [25]) that trims two kinds of avoidable token cost from tool/log output *before* it enters the model's context window:
+
+- **Anti-events** — lines that carry no signal (tqdm/ascii progress bars, spinner frames, pytest-xdist worker chatter, bare carriage-return redraws) are dropped outright.
+- **Duplicate windows** — runs of consecutive identical lines (a stack trace or warning repeated N times) collapse to a single line plus a `… (repeated N×)` marker.
+
+Follows the module-level compiled-`re.Pattern` constant style of `little_loops.text_utils` and the single-regex ANSI-strip precedent in `little_loops.cli.output.strip_ansi`.
+
+```python
+from little_loops.output_cleaner import filter_output
+```
+
+### filter_output
+
+```python
+def filter_output(raw: str, *, dup_threshold: int = 1) -> str
+```
+
+Strips anti-event noise and collapses duplicate windows from `raw`. ANSI CSI escape sequences are stripped before matching so a colorized anti-event line still matches. Blank lines collapse to a single blank and always break a duplicate run (they never carry a `repeated N×` marker).
+
+**Parameters:**
+
+- `raw` — raw tool/log output.
+- `dup_threshold` — emit a `… (repeated N×)` marker once a line has repeated more than this many times consecutively. The default of `1` collapses any run of ≥2 identical lines to one line + marker.
+
+**Returns:** the cleaned text. Trailing newline presence is preserved from `raw`.
+
+---
+
+---
+
+## little_loops.testing
+
+Offline test harness for little-loops extensions. Provides `LLTestBus` — a standalone replay engine that loads a recorded `.events.jsonl` file and dispatches events through registered `little_loops.extension.LLExtension` instances without running a live loop.
+
+```python
+from little_loops.testing import LLTestBus
+
+bus = LLTestBus.from_jsonl("path/to/recorded.events.jsonl")
+bus.register(MyExtension())
+bus.replay()
+assert len(bus.delivered_events) == 15
+assert bus.delivered_events[0].type == "loop_start"
+```
+
+### LLTestBus
+
+```python
+class LLTestBus:
+    def __init__(self, events: list[LLEvent]) -> None
+```
+
+Offline event replay harness for testing `LLExtension` handlers.
+
+**Fields:**
+
+- `delivered_events: list[LLEvent]` — events actually delivered to at least one registered extension (i.e. events that passed the `event_filter` of any registered extension). Populated by `replay()`.
+
+**Methods:**
+
+- `from_jsonl(cls, path: str | Path) -> LLTestBus` (classmethod) — creates an `LLTestBus` from a JSONL events file via `EventBus.read_events`. If the file does not exist, returns an empty bus (no events, no error).
+- `register(self, ext: LLExtension) -> None` — registers an extension to receive events during `replay()`. `ext` must implement the `LLExtension` protocol (`on_event`, optionally `event_filter`).
+- `replay(self) -> None` — replays all loaded events through registered extensions in order. For each event, applies each extension's `event_filter` (if set) using glob matching (`fnmatch`) against `event.type`, then calls `ext.on_event(event)` for matches. `event_filter` semantics mirror `little_loops.events.EventBus`: `None`/absent delivers every event; a `str` is a single glob pattern; a `list[str]` delivers on any match. Resets and repopulates `delivered_events`.
+
+---
+
+---
+
+## little_loops.ab_writer
+
+A/B baseline results aggregation and `ab.json` writer (FEAT-1790). Provides the `ABResults` dataclass, summary-statistics calculation from per-item blind comparison records, JSON (de)serialization, and draft-07 JSON Schema generation.
+
+```python
+from little_loops.ab_writer import (
+    ABResults,
+    calculate_ab_summary,
+    ab_results_to_dict,
+    write_ab_json,
+    read_ab_json,
+    get_ab_schema,
+)
+```
+
+### ABResults
+
+```python
+@dataclass
+class ABResults:
+    harness_pass_rate: float
+    baseline_pass_rate: float
+    delta: float
+    median_tokens_harness: int
+    median_tokens_baseline: int
+    median_duration_harness: float
+    median_duration_baseline: float
+    per_item: list[dict[str, Any]] = field(default_factory=list)
+```
+
+Aggregated A/B comparison results.
+
+**Fields:**
+
+- `harness_pass_rate`, `baseline_pass_rate` — fraction of items where the arm passed (0-1).
+- `delta` — pass-rate difference (`harness - baseline`).
+- `median_tokens_harness`, `median_tokens_baseline` — median token count per arm.
+- `median_duration_harness`, `median_duration_baseline` — median duration (ms) per arm.
+- `per_item` — list of per-item comparison records.
+
+### calculate_ab_summary
+
+```python
+def calculate_ab_summary(per_item_results: list[dict[str, Any]]) -> ABResults
+```
+
+Aggregates per-item verdicts into summary statistics. Each item dict is expected to carry `harness_pass`, `baseline_pass`, `harness_tokens`, `baseline_tokens`, `harness_duration_ms`, `baseline_duration_ms`. An empty `per_item_results` returns an all-zero `ABResults`. Token/duration aggregates use `statistics.median`.
+
+### ab_results_to_dict
+
+```python
+def ab_results_to_dict(results: ABResults) -> dict[str, Any]
+```
+
+Serializes `ABResults` to the `ab.json` wire format: `{"summary": {...}, "items": results.per_item}`.
+
+### write_ab_json
+
+```python
+def write_ab_json(results: ABResults, run_dir: str) -> None
+```
+
+Writes `ab.json` to `run_dir` (created if missing) via `ab_results_to_dict`.
+
+### read_ab_json
+
+```python
+def read_ab_json(run_dir: str) -> ABResults | None
+```
+
+Reads `ab.json` from `run_dir`. Returns `None` if the file is missing or fails to parse (`json.JSONDecodeError`/`OSError`), or on any of the object shapes missing individual summary keys `read_ab_json` still returns a value — each summary field falls back to `0.0`/`0` via `dict.get`.
+
+### get_ab_schema
+
+```python
+def get_ab_schema() -> dict[str, Any]
+```
+
+Returns the `ab.json` JSON Schema (draft-07): a `summary` object with required pass-rate/token/duration keys and an `items` array of per-item records (`index`, `harness_pass`, `baseline_pass`, token/duration counts per arm, plus optional `confidence`/`reason`).
+
+---
+
+---
+
+## little_loops.output_parsing
+
+Output parsing utilities for little-loops. Parses the standardized `## SECTION_NAME` markdown output format that `/ll:ready-issue` and `/ll:manage-issue` slash commands emit, used by both `issue_manager` (`ll-auto`) and `parallel` (`ll-parallel`) to extract structured verdicts and metadata from raw Claude CLI stdout.
+
+```python
+from little_loops.output_parsing import (
+    extract_tagged_json,
+    parse_sections,
+    parse_validation_table,
+    parse_status_lines,
+    parse_ready_issue_output,
+    parse_manage_issue_output,
+    VALID_VERDICTS,
+)
+```
+
+### VALID_VERDICTS
+
+```python
+VALID_VERDICTS = ("READY", "CORRECTED", "NOT_READY", "NEEDS_REVIEW", "CLOSE", "BLOCKED")
+```
+
+The verdict vocabulary recognized by `parse_ready_issue_output`.
+
+### extract_tagged_json
+
+```python
+def extract_tagged_json(raw: str, tag: str) -> tuple[list | dict | None, str | None]
+```
+
+Extracts and parses a tagged JSON line from LLM output. Scans for the last line starting with `<tag>:` and parses the JSON after it. On a clean-parse failure, attempts bounded structural repair by balancing trailing unmatched `]`/`}` (inner-to-outer order).
+
+**Returns:** `(data, None)` on clean parse, `(data, warning)` on successful repair, `(None, error_msg)` on unrecoverable failure. Never swallows — callers must surface the error when `data is None`.
+
+### parse_sections
+
+```python
+def parse_sections(output: str) -> dict[str, str]
+```
+
+Parses `output` into sections delimited by `#`/`##`/`###` uppercase-with-underscores headers (flexible spacing, optional `**bold**` wrapping). Content before the first header is keyed under `"PREAMBLE"`.
+
+### parse_validation_table
+
+```python
+def parse_validation_table(section_content: str) -> dict[str, dict[str, str]]
+```
+
+Parses a `| Check | Status | Details |` markdown table from `section_content` (typically the `VALIDATION` section) into `{check_name: {"status": ..., "details": ...}}`. Skips header/separator rows.
+
+### parse_status_lines
+
+```python
+def parse_status_lines(section_content: str) -> dict[str, str]
+```
+
+Parses `- item: STATUS` lines from `section_content` into `{item: STATUS}` (status uppercased).
+
+### parse_ready_issue_output
+
+```python
+def parse_ready_issue_output(output: str) -> dict[str, Any]
+```
+
+Extracts verdict and concerns from `/ll:ready-issue` output. Tries the new standardized `## VERDICT` section format first, then falls back through five additional strategies (an old `VERDICT: READY` inline format, lines mentioning "verdict", whole-output keyword scanning, artifact-cleaned whole-output scanning, and inference from a `READY_FOR` section's `Implementation: Yes` line) before giving up and returning `"UNKNOWN"`.
+
+**Returns:** a dict with `verdict` (one of `VALID_VERDICTS` or `"UNKNOWN"`), `concerns: list[str]`, `is_ready: bool`, `was_corrected: bool`, `should_close: bool`, `is_blocked: bool`, `close_reason: str | None`, `close_status: str | None`, `corrections: list[str]`, `validated_file_path: str | None`, `sections: dict[str, str]` (raw parsed sections), and `validation: dict` (parsed `VALIDATION` table, if present).
+
+### parse_manage_issue_output
+
+```python
+def parse_manage_issue_output(output: str) -> dict[str, Any]
+```
+
+Extracts structured data from `/ll:manage-issue` output: parses `RESULT` for a `Status: <word>` line, `FILES_CHANGED`/`FILES_CREATED`/`COMMITS` as `- ` bullet lists, `VERIFICATION` via `parse_status_lines`, and `OODA_IMPACT` as `- key: VALUE` pairs.
+
+**Returns:** a dict with `status` (`"COMPLETED"`, `"FAILED"`, `"BLOCKED"`, or `"UNKNOWN"`), `files_changed: list[str]`, `files_created: list[str]`, `commits: list[str]`, `verification: dict[str, str]`, `ooda_impact: dict[str, str]`, and `sections: dict[str, str]` (all parsed sections).
+
+---
+
+## little_loops.decisions
+
+Decisions and rules log data layer. Provides typed dataclasses and CRUD operations for managing architectural decisions, team-enforced rules, exceptions, and file-coupling rules stored in `.ll/decisions.yaml` plus its append-only `.ll/decisions.d/*.json` fragment directory.
+
+### DecisionOutcome
+
+```python
+@dataclass
+class DecisionOutcome:
+    result: str
+    measured_at: str
+    notes: str | None = None
+```
+
+Recorded outcome for a `DecisionEntry`.
+
+**Fields:**
+- `result` — Outcome result string (e.g. pass/fail label).
+- `measured_at` — Timestamp the outcome was measured.
+- `notes` — Optional free-text notes; omitted from `to_dict()` output when `None`.
+
+Also defines `from_dict(data: dict[str, Any]) -> DecisionOutcome` and `to_dict(self) -> dict[str, Any]`.
+
+### RuleEntry
+
+```python
+@dataclass
+class RuleEntry:
+    id: str
+    type: str = "rule"
+    timestamp: str = ""
+    category: str = ""
+    labels: list[str] = field(default_factory=list)
+    rationale: str = ""
+    rule: str = ""
+    enforcement: str = "advisory"
+    supersedes: str | None = None
+    issue: str | None = None
+    source_session_id: str | None = None
+    source_issue_id: str | None = None
+    extra: dict[str, Any] = field(default_factory=dict)
+```
+
+An enforced rule in the decisions log.
+
+**Fields:**
+- `id` — Unique entry identifier.
+- `type` — Always `"rule"` for this dataclass.
+- `enforcement` — Enforcement level (e.g. `"advisory"`).
+- `supersedes` — ID of an earlier entry this one replaces, if any; consumed by `resolve_active()`.
+- `extra` — Any unrecognized keys from the source dict, round-tripped through `to_dict()`.
+
+Also defines `from_dict(data: dict[str, Any]) -> RuleEntry` and `to_dict(self) -> dict[str, Any]`.
+
+### DecisionEntry
+
+```python
+@dataclass
+class DecisionEntry:
+    id: str
+    type: str = "decision"
+    timestamp: str = ""
+    category: str = ""
+    labels: list[str] = field(default_factory=list)
+    rationale: str = ""
+    rule: str = ""
+    alternatives_rejected: str | None = None
+    issue: str | None = None
+    scope: str = "issue"
+    outcome: DecisionOutcome | None = None
+    source_session_id: str | None = None
+    source_issue_id: str | None = None
+    extra: dict[str, Any] = field(default_factory=dict)
+```
+
+A recorded architectural or process decision.
+
+**Fields:**
+- `scope` — Decision scope, e.g. `"issue"` (the default) for a decision tied to a single issue.
+- `outcome` — Optional `DecisionOutcome`, set later via `set_outcome()`.
+- `issue` — Linked issue ID; `generate_from_completed()` uses this to detect issues that already have a `DecisionEntry`.
+
+Also defines `from_dict(data: dict[str, Any]) -> DecisionEntry` and `to_dict(self) -> dict[str, Any]`.
+
+### ExceptionEntry
+
+```python
+@dataclass
+class ExceptionEntry:
+    id: str
+    type: str = "exception"
+    timestamp: str = ""
+    category: str = ""
+    labels: list[str] = field(default_factory=list)
+    rationale: str = ""
+    rule_ref: str = ""
+    issue: str = ""
+    alternatives_rejected: str | None = None
+    source_session_id: str | None = None
+    source_issue_id: str | None = None
+    extra: dict[str, Any] = field(default_factory=dict)
+```
+
+A one-time exception to an existing rule.
+
+**Fields:**
+- `rule_ref` — ID of the `RuleEntry` this exception applies against.
+- `issue` — Issue justifying the exception (required, not optional, unlike other entry types).
+
+Also defines `from_dict(data: dict[str, Any]) -> ExceptionEntry` and `to_dict(self) -> dict[str, Any]`.
+
+### CouplingEntry
+
+```python
+@dataclass
+class CouplingEntry:
+    id: str
+    type: str = "coupling"
+    timestamp: str = ""
+    category: str = ""
+    labels: list[str] = field(default_factory=list)
+    rationale: str = ""
+    if_changed: str = ""
+    then_check: list[str] = field(default_factory=list)
+    tier: str = "soft"  # hard | soft | fyi
+    archetype: str | None = None
+    enforcement: str = "advisory"
+    supersedes: str | None = None
+    issue: str | None = None
+    source_session_id: str | None = None
+    source_issue_id: str | None = None
+    extra: dict[str, Any] = field(default_factory=dict)
+```
+
+A coupling rule linking changed files to required audit targets, consumed by wire-issue.
+
+**Fields:**
+- `if_changed` — Glob pattern matched against changed files (via `fnmatch`).
+- `then_check` — List of things to check/audit when `if_changed` matches.
+- `tier` — One of `"hard"`, `"soft"`, or `"fyi"`.
+- `archetype` — Optional archetype filter, matched by `load_coupling_entries()`.
+
+Also defines `from_dict(data: dict[str, Any]) -> CouplingEntry` and `to_dict(self) -> dict[str, Any]`.
+
+### load_decisions
+
+```python
+def load_decisions(path: Path | None = None) -> list[AnyEntry]
+```
+
+Loads all decision log entries as one logical log (flat file ∪ fragments). Presents the legacy flat `entries:` list (or bare top-level list) *plus* every `.ll/decisions.d/*.json` fragment as a single merged list. The flat file is still parsed strictly (malformed YAML / missing `id` / unknown `type` raise, preserving ENH-2589 corruption gating); malformed *fragments* are skipped (BUG-2644). Returns an empty list when neither source exists.
+
+**Parameters:**
+- `path` — Explicit path to the flat `decisions.yaml`; when `None`, resolved via `resolve_ll_dir()` (project root), falling back to a cwd-anchored `_DEFAULT_LOG_PATH` (`.ll/decisions.yaml`) if no project root is found.
+
+**Returns:** Merged list of `AnyEntry` (`RuleEntry | DecisionEntry | ExceptionEntry | CouplingEntry`), flat-file entries followed by fragment entries sorted by `(timestamp, filename)`.
+
+### save_decisions
+
+```python
+def save_decisions(entries: list[AnyEntry], path: Path | None = None) -> None
+```
+
+Atomically persists entries to the flat YAML file and compacts fragments. Rewrites the whole flat file (the pre-BUG-2644 behavior). Because `entries` is normally the *union* view (flat ∪ fragments) obtained from `load_decisions()`, any fragments are now folded into the flat file, so the fragment directory is cleared afterward to keep a subsequent load from double-counting. This makes `save_decisions()` the compaction point; ordinary appends go through `add_entry()` and never rewrite the flat file.
+
+**Parameters:**
+- `entries` — Full entry list to persist (typically the result of `load_decisions()`).
+- `path` — Flat-file path; resolved the same way as `load_decisions()` when `None`.
+
+**Returns:** `None`. Deletes all `*.json` fragments under the sibling `.d` directory after writing.
+
+### add_entry
+
+```python
+def add_entry(entry: AnyEntry, path: Path | None = None) -> None
+```
+
+Appends a new entry as its own fragment file (append-only, no rewrite). Writes one `.ll/decisions.d/<uuid>.json` fragment rather than rewriting the whole flat file, so concurrent appends from divergent branches never touch the same file region and merge cleanly (BUG-2642 / BUG-2644).
+
+**Parameters:**
+- `entry` — One `AnyEntry` to append.
+- `path` — Flat-file path used to derive the sibling fragment directory (`.d` suffix).
+
+**Returns:** `None`.
+
+### update_entry
+
+```python
+def update_entry(
+    entry_id: str,
+    mutate: Callable[[AnyEntry], AnyEntry],
+    path: Path | None = None,
+) -> None
+```
+
+Updates a single decision entry in place, preserving fragment isolation. Locates the entry whose `id` matches `entry_id` (fragments searched first, in filename order, then the flat file), applies `mutate` to it, and persists only the one file backing it — never rewrites the whole log or clears the fragment directory.
+
+**Parameters:**
+- `entry_id` — ID of the entry to update.
+- `mutate` — Callable that receives the current entry and returns the updated entry.
+- `path` — Flat-file path; resolved the same way as `load_decisions()` when `None`.
+
+**Returns:** `None`. Raises `KeyError` if no entry with `entry_id` exists in either source. Any exception raised by `mutate` propagates before any write occurs.
+
+### list_entries
+
+```python
+def list_entries(
+    path: Path | None = None,
+    *,
+    type: str | None = None,
+    category: str | None = None,
+    label: str | None = None,
+) -> list[AnyEntry]
+```
+
+Returns entries, optionally filtered by type, category, or label.
+
+**Parameters:**
+- `path` — Flat-file path passed through to `load_decisions()`.
+- `type` — Filter to entries whose `type` matches exactly (e.g. `"rule"`, `"decision"`).
+- `category` — Filter to entries whose `category` matches exactly.
+- `label` — Filter to entries whose `labels` list contains this value.
+
+**Returns:** Filtered list of `AnyEntry`.
+
+### resolve_active
+
+```python
+def resolve_active(entries: list[AnyEntry]) -> list[AnyEntry]
+```
+
+Returns entries excluding those superseded by a newer entry. An entry is inactive if another entry's `supersedes` field references its ID.
+
+**Parameters:**
+- `entries` — Entry list to filter (typically from `load_decisions()`).
+
+**Returns:** Entries whose `id` is not referenced by any other entry's `supersedes` field.
+
+### set_outcome
+
+```python
+def set_outcome(
+    entry_id: str,
+    result: str,
+    measured_at: str,
+    notes: str | None = None,
+    path: Path | None = None,
+    *,
+    force: bool = False,
+) -> None
+```
+
+Sets the outcome on a decision entry; refuses to overwrite without `force=True`. Mutates only the single fragment (or flat-file entry) backing `entry_id` via `update_entry()` — sibling fragments are untouched, so a concurrent append on another branch never collides (BUG-2645).
+
+**Parameters:**
+- `entry_id` — ID of the `DecisionEntry` to set an outcome on.
+- `result` — Outcome result string.
+- `measured_at` — Timestamp the outcome was measured.
+- `notes` — Optional free-text notes.
+- `path` — Flat-file path, forwarded to `update_entry()`.
+- `force` — When `False` (default), raises `ValueError` if the entry already has an outcome.
+
+**Returns:** `None`. Raises `TypeError` if the resolved entry is not a `DecisionEntry`.
+
+### load_coupling_entries
+
+```python
+def load_coupling_entries(
+    path: Path | None = None,
+    *,
+    changed_globs: list[str] | None = None,
+    archetype: str | None = None,
+) -> list[CouplingEntry]
+```
+
+Returns coupling entries, optionally filtered by glob match against changed files and archetype. Returns an empty list when `decisions.yaml` is absent (graceful degradation).
+
+**Parameters:**
+- `path` — Flat-file path, forwarded to `load_decisions()`.
+- `changed_globs` — When given, keeps only entries whose `if_changed` glob matches at least one of these file paths (via `fnmatch`).
+- `archetype` — When given, keeps only entries whose `archetype` matches exactly.
+
+**Returns:** Filtered list of `CouplingEntry`.
+
+### generate_from_completed
+
+```python
+def generate_from_completed(config: BRConfig) -> int
+```
+
+Generates `DecisionEntry` records from completed issues and persists them to the log. Prefers the SQLite history DB when present; falls back to filesystem scanning. Skips issues that already have an entry in the log. When `config.decisions.auto_generate` is non-empty, only issues whose type prefix appears in the list are processed (e.g. `["FEAT", "ENH"]` skips BUG entries).
+
+**Parameters:**
+- `config` — `BRConfig` instance; uses `config.project_root`, `config.decisions.log_path`, `config.decisions.auto_generate`, and `config.issues.base_dir`.
+
+**Returns:** Number of `DecisionEntry` records added. Reads completed issues from `<project_root>/.ll/history.db` (via `scan_completed_issues_from_db()`) when present, otherwise scans the issues directory (via `scan_completed_issues()`). Each generated entry has `id` set to `f"DEC-{issue.issue_id}"`, `category` set to the lowercased issue type, and `labels` set to `[priority, issue_type.lower()]`; new entries are persisted via `add_entry()` (fragment-append, not a flat-file rewrite).
+
+---
+
+## little_loops.subprocess_utils
+
+Subprocess utilities for Claude CLI invocation. Provides shared functionality for running Claude CLI commands with real-time output streaming, timeout handling, and context handoff detection.
+
+### TokenUsage
+
+Token usage from a single host-CLI invocation. Passed to `DetailedUsageCallback` / `on_usage_detailed`.
+
+```python
+@dataclass
+class TokenUsage:
+    input_tokens: int
+    output_tokens: int
+    cache_read_tokens: int
+    cache_creation_tokens: int
+    model: str
+    is_batch: bool = False
+```
+
+**Fields:**
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `input_tokens` | `int` | *(required)* | Input tokens from the stream-json `result` event's `usage` block. |
+| `output_tokens` | `int` | *(required)* | Output tokens from the same `usage` block. |
+| `cache_read_tokens` | `int` | *(required)* | `cache_read_input_tokens` from `usage`. |
+| `cache_creation_tokens` | `int` | *(required)* | `cache_creation_input_tokens` from `usage`. |
+| `model` | `str` | *(required)* | Model ID reported by the `result` event, falling back to the model detected from the earlier `system`/`init` event. |
+| `is_batch` | `bool` | `False` | True when this usage came from the Message Batches API (FEAT-2716), eligible for the flat 50% batch discount in `little_loops.pricing.estimate_cost_usd`. Defaults to `False` so every existing construction site is unaffected. |
+
+### ToolCall
+
+A single ordered tool-call captured live from a stream-json run. Mirrors `scripts/tests/spike/eval_trace_capture/trace_capture.py`'s `ToolCall` shape, proven in the FEAT-2878 spike.
+
+```python
+@dataclass(frozen=True)
+class ToolCall:
+    index: int
+    name: str
+    input: dict[str, object]
+```
+
+**Fields:**
+
+| Field | Type | Description |
+|---|---|---|
+| `index` | `int` | The call's 0-based position in the ordered trace for this invocation. |
+| `name` | `str` | Tool name from the `tool_use` block. |
+| `input` | `dict[str, object]` | Tool input payload from the `tool_use` block. |
+
+**Behavior:** Passed to `ToolCallCallback` / `on_tool_call`, invoked live, once per ordered `tool_use` block parsed out of an `assistant` stream-json event, so a caller can build/assert an ordered tool-call trace during a run instead of only reconstructing it post-hoc from on-disk JSONL logs.
+
+### detect_context_handoff
+
+```python
+def detect_context_handoff(output: str) -> bool
+```
+
+**Parameters:**
+- `output` — Command output to check.
+
+**Returns:** `True` if `output` matches `CONTEXT_HANDOFF_PATTERN` (`CONTEXT_HANDOFF:\s*Ready for fresh session`).
+
+### read_continuation_prompt
+
+```python
+def read_continuation_prompt(repo_path: Path | None = None) -> str | None
+```
+
+**Parameters:**
+- `repo_path` — Optional repository root path; defaults to `Path.cwd()`.
+
+**Returns:** Contents of `<repo_path>/.ll/ll-continue-prompt.md` (`CONTINUATION_PROMPT_PATH`), or `None` if the file does not exist.
+
+### read_sentinel
+
+```python
+def read_sentinel(repo_path: Path | None = None) -> dict | None
+```
+
+Reads and consumes the context-handoff sentinel file if it exists. The sentinel is written by `context-handoff-sentinel.sh` (Stop hook) or the Python layer in `run_with_continuation` when a session ends with high context usage but no `CONTEXT_HANDOFF` signal.
+
+**Parameters:**
+- `repo_path` — Optional repository root path; defaults to `Path.cwd()`.
+
+**Returns:** Parsed JSON dict from `<repo_path>/.ll/ll-context-handoff-needed` (`SENTINEL_PATH`), or `None` if the file is absent.
+
+**Behavior:** Consumes the sentinel — the file is unlinked (`missing_ok=True`) whether the read succeeds or the JSON fails to parse. On a parse/read exception, still unlinks the file and returns `{}` rather than `None`, so callers can distinguish "sentinel present but unreadable" from "no sentinel at all."
+
+### write_sentinel
+
+```python
+def write_sentinel(
+    repo_path: Path | None = None,
+    token_count: int = 0,
+    context_limit: int | None = None,
+) -> None
+```
+
+**Parameters:**
+- `repo_path` — Optional repository root path; defaults to `Path.cwd()`.
+- `token_count` — Total tokens used in the session. Default `0`.
+- `context_limit` — Context window size; when `None`, resolved via `context_window_for(None)`.
+
+**Behavior:** Writes a JSON payload (`written_at`, `token_count`, `context_limit`, `usage_percent`) to `SENTINEL_PATH`, creating parent directories as needed. `usage_percent` is `int(token_count * 100 / context_limit)` (0 if `context_limit <= 0`). Swallows all exceptions silently — a failed sentinel write must not crash the caller.
+
+### assemble_guillotine_prompt
+
+```python
+def assemble_guillotine_prompt(
+    original_command: str,
+    captured_stdout: str,
+    token_stats: dict,
+    sprint_context: SprintWorkerContext | None = None,
+    issue_id: str | None = None,
+) -> str
+```
+
+Assembles a fresh-session continuation prompt for Option J (parent-side guillotine). Called when context > 90% or "Prompt is too long" is detected with no handoff. The resulting prompt is passed to a brand-new `claude -p` session (not `--resume`), so it starts with 0 tokens.
+
+**Parameters:**
+- `original_command` — The original task command / skill invocation. Truncated to the first `_GUILLOTINE_MAX_TASK_LINES` (20) lines, with a truncation note appended if longer.
+- `captured_stdout` — All Claude text output captured so far. Only the trailing `_GUILLOTINE_TAIL_CHARS` (12,000) characters are included; empty capture renders as `"(no output captured before interruption)"`.
+- `token_stats` — Dict with keys `input_tokens`, `output_tokens`, `context_limit` (falls back to `context_window_for(None)` if falsy), and optional `trigger_reason` (defaults to `"context > 90%"`).
+- `sprint_context` — Optional `SprintWorkerContext`; when present, prepends a "Sprint Worker Context" framing block scoping the fresh session to exactly `sprint_context.issue_id` on `sprint_context.branch`.
+- `issue_id` — Optional issue ID; when `sprint_context` is `None` and this is set, prepends a "Scope Constraint" framing block scoping the fresh session to exactly that one issue. Ignored if `sprint_context` is provided.
+
+**Returns:** Assembled continuation prompt string, including a scratch-pad file listing (`.loops/tmp/scratch/`) and numbered instructions for the fresh session to continue from the interruption point rather than restarting.
+
+### run_claude_command
+
+```python
+def run_claude_command(
+    command: str,
+    timeout: int = 3600,
+    working_dir: Path | None = None,
+    stream_callback: OutputCallback | None = None,
+    on_process_start: ProcessCallback | None = None,
+    on_process_end: ProcessCallback | None = None,
+    idle_timeout: int = 0,
+    on_model_detected: ModelCallback | None = None,
+    on_usage: UsageCallback | None = None,
+    on_usage_detailed: DetailedUsageCallback | None = None,
+    agent: str | None = None,
+    tools: list[str] | None = None,
+    resume_session: bool = False,
+    model: str | None = None,
+    automation_profile: str | None = None,
+    disable_background_tasks: bool = False,
+    post_stream_close_grace_seconds: int = 300,
+    timeout_kill_grace_seconds: float = 0.0,
+    on_result_seen: ResultSeenCallback | None = None,
+    on_session_id_detected: SessionIdCallback | None = None,
+    on_tool_call: ToolCallCallback | None = None,
+    workspace_root: Path | None = None,
+) -> subprocess.CompletedProcess[str]
+```
+
+Invokes the Claude CLI command with real-time output streaming.
+
+**Parameters:**
+- `command` — Command to pass to the Claude CLI.
+- `timeout` — Wall-clock timeout in seconds (`0` for no timeout). Default `3600`.
+- `working_dir` — Optional working directory for the subprocess.
+- `stream_callback` — Called with `(line, is_stderr)` for each line of output.
+- `on_process_start` — Invoked after the process starts, receiving the `Popen` object.
+- `on_process_end` — Invoked after the process completes (in a `finally` block), receiving the `Popen` object.
+- `idle_timeout` — Kill the process if no output arrives for this many seconds (`0` disables). Default `0`.
+- `on_model_detected` — Invoked at most once with the model name from the stream-json `system`/`init` event.
+- `on_usage` — Invoked with `(input_tokens, output_tokens)` from the stream-json `result` event; `input_tokens` includes `cache_read_input_tokens`. Kept for back-compat with `issue_manager.py` and `worker_pool.py` callers.
+- `on_usage_detailed` — Invoked with a `TokenUsage` carrying all four token fields plus the model ID from the `result` event.
+- `agent` — Optional agent/persona selector forwarded to `build_streaming()`.
+- `tools` — Optional tool allowlist forwarded to `build_streaming()`.
+- `resume_session` — If `True`, passes `--continue` (via `build_streaming(resume=...)`) to continue the most recent conversation. Used for the Option E explicit-handoff path.
+- `model` — Optional model override forwarded to `build_streaming()`.
+- `automation_profile` — ENH-2714 opt-in automation-context static-prefix pruning profile name. When set, forwarded to `build_streaming()` so `LL_AUTOMATION`/`LL_AUTOMATION_PROFILE` are injected into the child environment. `None` (default) is an active opt-out: it clears any inherited `LL_AUTOMATION` to `""` (ENH-3081) rather than passing the parent's value through.
+- `disable_background_tasks` — FEAT-3078 opt-in to hard-disable tool-level background tasks in the spawned child. When `True` and `automation_profile` is set, forwarded so `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1` is injected; otherwise the variable is explicitly neutralized to `""`.
+- `post_stream_close_grace_seconds` — Grace period (seconds) to wait for the process to exit on its own after stdout/stderr streams close before force-killing the process group. Must accommodate synchronous parallel Agent tool calls (`run_in_background: false`) that can still be running when the parent's own streams close (BUG-2718). Default `300`.
+- `timeout_kill_grace_seconds` — Grace period (seconds) given to the process group after a wall-clock or idle timeout fires: SIGTERM is sent first, and SIGKILL only follows if the group is still alive after this many seconds. `0` (default) preserves the historical immediate-SIGKILL behavior (ENH-3130).
+- `on_result_seen` — Invoked once, right before return, with whether a stream-json `result` event was observed (BUG-2731). Lets callers distinguish an exit-143-after-result infra teardown (re-runnable) from a genuine mid-turn crash, without widening this function's `CompletedProcess` return type.
+- `on_session_id_detected` — Invoked with the host CLI's `session_id` from the stream-json `system`/`init` event (FEAT-2711). Called at most once per invocation, alongside `on_model_detected`.
+- `on_tool_call` — Invoked live, once per ordered `tool_use` block parsed out of an `assistant` stream-json event (FEAT-2878). Lets a caller build/assert an ordered tool-call trace (name, order, input) during the run, instead of only reconstructing it post-hoc from on-disk JSONL logs.
+- `workspace_root` — Optional path forwarded to `build_streaming()` to request that tool access be confined to that directory (FEAT-2878). Only honored by hosts advertising `HostCapabilities.workspace_sandboxed` — see that flag's docstring for the current support matrix.
+
+**Returns:** `subprocess.CompletedProcess[str]` with joined `stdout`/`stderr` captured from the parsed stream-json events (or raw text for non-JSON lines).
+
+**Raises:**
+- `subprocess.TimeoutExpired` — if the command exceeds `timeout` or `idle_timeout`. When triggered by idle timeout, the `output` field is set to `"idle_timeout"`.
+
+**Behavior:**
+- Resolves a `HostRunner` via `resolve_host()` and builds the invocation with `runner.build_streaming(...)`, then spawns it with `subprocess.Popen(..., start_new_session=True)` so `_kill_process_group()` can `os.killpg` the whole process group (including inherited background Task/Workflow children) on timeout or teardown.
+- Reads stdout/stderr non-blockingly via `selectors.DefaultSelector`, parsing each stdout line as a stream-json event:
+  - `system`/`init` — captures the detected model (`on_model_detected`) and session id (`on_session_id_detected`); not added to `stdout_lines`.
+  - `assistant` — extracts `text` blocks into `stdout_lines`/`stream_callback`, and emits a `ToolCall` per `tool_use` block via `on_tool_call`.
+  - `result` — the canonical end-of-turn signal (`result_seen = True`); reports usage via `on_usage`/`on_usage_detailed`, appends an `[result] ...` line to `stderr_lines` if `is_error` is set, then the read loop drains the current ready batch and breaks — it does **not** wait for pipe EOF, because inherited background-task file descriptors can keep the pipe open indefinitely even after the turn finished.
+  - Non-JSON lines pass through as raw text to `stdout_lines`/`stderr_lines`.
+- On process spawn failure, returns a `CompletedProcess` with `returncode=1` and the exception message in `stderr` rather than raising.
+- After the read loop exits, waits up to `post_stream_close_grace_seconds` for natural process exit, then force-kills via `_kill_process_group()` if still alive.
+- `on_process_end` and `on_result_seen` always fire (the former in a `finally` block) even on timeout paths.
+
+---
+
+## little_loops.worktree_utils
+
+Shared git worktree setup and cleanup utilities. Used by `ll-parallel`, `ll-sprint`, and `ll-loop` to create and remove isolated git worktrees with consistent file-copy behavior, by the FSM executor's pre-patch check hook (ENH-2997), and by `work_verification`'s non-FSM pre-patch check adapter (ENH-2998). The file-copy contract these functions implement is documented in [WORKTREES.md](WORKTREES.md).
+
+### detect_default_branch
+
+```python
+def detect_default_branch(repo_path: Path, git_lock: GitLock | None = None) -> str
+```
+
+Resolves the repository's default/integration branch (BUG-2323). Resolution order: (1) `origin/HEAD` symbolic ref, stripped of its `origin/` prefix; (2) the current branch via `git rev-parse --abbrev-ref HEAD`, only when it is a real branch name (not the literal `HEAD` from a detached HEAD); (3) `"main"` as a last resort.
+
+**Parameters:**
+- `repo_path` — Path to the repository to inspect.
+- `git_lock` — Optional thread-safe git lock. Pass the orchestrator's lock when calling mid-run (serializes with concurrent checkout/pull); leave as `None` at CLI startup, before the orchestrator exists.
+
+**Returns:** The detected branch name. Never returns the literal `"HEAD"`.
+
+### resolve_epic_base
+
+```python
+def resolve_epic_base(
+    epic_id: str,
+    base_branch: str,
+    repo_path: Path | None = None,
+    config: object | None = None,
+) -> str
+```
+
+Returns the fork base for an EPIC integration branch (ENH-2656, FEAT-2652). Single source of truth for the EPIC fork point. When the EPIC declares a per-EPIC `base_branch:` (alias `target_branch:`) in its frontmatter, that ref is preferred; otherwise the caller's default `base_branch` is returned verbatim. The per-EPIC lookup is gated on `repo_path`: when it is `None`, the function short-circuits to `base_branch` without touching disk, preserving the original two-arg contract for callers (and unit tests) that cannot or need not scan `.issues/`.
+
+**Parameters:**
+- `epic_id` — The EPIC issue id (e.g. `"EPIC-2451"`).
+- `base_branch` — The default fork base the caller resolved.
+- `repo_path` — Repository root to scan for the EPIC's issue file. When `None`, no lookup is performed.
+- `config` — An optional `BRConfig` for the `IssueParser`. Built from `repo_path` when omitted.
+
+**Returns:** The branch to fork the EPIC integration branch from — the EPIC's declared `base_branch` when present, else the passed `base_branch`.
+
+### resolve_epic_branch_name
+
+```python
+def resolve_epic_branch_name(epic_id: str, prefix: str, slug: str) -> str
+```
+
+Returns the EPIC integration branch name (ENH-2656). Single source of truth for the `<prefix><epic-id-lower>-<slug>` format, deduplicating a pattern previously hand-written at three call sites (`worker_pool._resolve_branch_targets`, `orchestrator._inspect_worktree`, and the `checkout_epic_branch` FSM heredoc).
+
+**Parameters:**
+- `epic_id` — The EPIC issue id (e.g. `"EPIC-2451"`); lower-cased into the name.
+- `prefix` — The `epic_branches.prefix` config value (e.g. `"epic/"`).
+- `slug` — The EPIC title slug (or the EPIC id lower-cased as a fallback).
+
+**Returns:** The integration branch name, e.g. `"epic/epic-2451-my-title"`.
+
+### setup_worktree
+
+```python
+def setup_worktree(
+    repo_path: Path,
+    worktree_path: Path,
+    branch_name: str,
+    copy_files: list[str],
+    logger: Logger,
+    git_lock: GitLock,
+    base_branch: str | None = None,
+    checkout_existing: bool = False,
+) -> None
+```
+
+Creates a git worktree and copies essential files. Copies the `.claude/` directory (so Claude Code can detect the project root, BUG-007) and any additional files listed in `copy_files`, then writes a `.ll-session-<pid>` marker so orphan-cleanup routines can identify this process's worktrees. If `worktree_path` already exists, it is torn down via `cleanup_worktree` first.
+
+**Parameters:**
+- `repo_path` — Path to the main repository.
+- `worktree_path` — Destination path for the new worktree.
+- `branch_name` — Name of the branch. By default a *new* branch created via `git worktree add -b`. When `checkout_existing` is `True`, it names an *already-existing* branch checked out in place instead (no new branch is created, and no branch is deleted when this worktree is later torn down for it).
+- `copy_files` — File paths (relative to `repo_path`) to copy into the worktree.
+- `logger` — Logger instance.
+- `git_lock` — Thread-safe git lock for serializing repo operations.
+- `base_branch` — Optional commit-ish to fork the new branch from. When `None`, forks from the current HEAD of `repo_path`. When provided, validated via `git rev-parse --verify` before use. Mutually exclusive with `checkout_existing`.
+- `checkout_existing` — When `True`, check out `branch_name` (which must already exist) instead of creating a new branch.
+
+**Raises:**
+- `ValueError` — If both `base_branch` and `checkout_existing` are given.
+- `RuntimeError` — If git worktree creation fails, or `base_branch` does not resolve.
+
+**Behavior:**
+- BUG-3112: resolves the main repo's history DB while `cwd` is still the main repo and exports it as `LL_HISTORY_DB` (via `os.environ.setdefault`) so every descendant process — host-CLI sessions, FSM shell actions, hooks, pytest runs — resolves the shared DB instead of creating a throwaway `<worktree>/.ll/history.db` that teardown deletes.
+- Copies `user.email`/`user.name` git config from `repo_path` into the new worktree so commits made there have the right author.
+
+### cleanup_worktree
+
+```python
+def cleanup_worktree(
+    worktree_path: Path,
+    repo_path: Path,
+    logger: Logger,
+    git_lock: GitLock,
+    delete_branch: bool = True,
+) -> None
+```
+
+Removes a git worktree and optionally its associated branch. No-op if `worktree_path` does not exist. Before removal, calls `preserve_before_teardown()` (from `little_loops.git_operations`) to snapshot any non-noise uncommitted work to a durable ref — `git worktree remove --force` discards uncommitted changes unconditionally, but the snapshot ref survives because worktrees share the main repo's object database and ref store (BUG-2963 #8). Runs `git worktree unlock` then `git worktree remove --force`, falling back to `shutil.rmtree` if the directory still exists afterward.
+
+**Parameters:**
+- `worktree_path` — Path to the worktree to remove.
+- `repo_path` — Path to the main repository.
+- `logger` — Logger instance.
+- `git_lock` — Thread-safe git lock for serializing repo operations.
+- `delete_branch` — If `True`, detect (via `git rev-parse --abbrev-ref HEAD` in the worktree, before removal) and delete the worktree's branch after removal.
+
+### setup_prepatch_worktree
+
+```python
+def setup_prepatch_worktree(
+    repo_path: Path,
+    worktree_base: str | Path,
+    base_ref: str,
+    test_files: dict[str, str],
+    logger: Logger,
+    git_lock: GitLock,
+    src_dir: str | None = None,
+) -> Path
+```
+
+Forks a worktree at `base_ref` and writes pre-patch test content into it (ENH-3141). Additive sibling of `setup_worktree()` for ENH-2991's pre-patch check core: forks a worktree at an arbitrary base ref via `setup_worktree()`'s existing `base_branch` param, then materializes caller-supplied test-file content directly into the fork via `Path.write_text()` — there is no patch-parsing, 3-way-merge, or reject-hunk handling; `test_files` is the literal content written at each path. The forked branch is named `prepatch-<YYYYMMDD>-<HHMMSS>-<microseconds>`.
+
+**Parameters:**
+- `repo_path` — Path to the main repository.
+- `worktree_base` — Directory (relative to `repo_path`) to create the scratch worktree under. Should be gitignored (e.g. `".worktrees"`) so the fork sits outside `tamper_guard_changed_files()`'s repo-root scan scope.
+- `base_ref` — Commit-ish to fork the pre-patch worktree from.
+- `test_files` — Repo-relative path → content, written directly into the fork after creation. Same shape as `read_paths_at_ref()`'s return value.
+- `logger` — Logger instance.
+- `git_lock` — Thread-safe git lock for serializing repo operations.
+- `src_dir` — When provided, validated to exist in the forked worktree so callers can safely prepend `<worktree_path>/<src_dir>` onto `PYTHONPATH` (mirroring `verify_epic_branch_before_merge()`'s `src_dir` injection, BUG-2629) before running tests — that subprocess/env construction is caller-side; this function only forks and materializes content.
+
+**Returns:** Path to the created pre-patch worktree.
+
+**Raises:**
+- `RuntimeError` — If worktree creation fails, `base_ref` does not resolve, or `src_dir` is given but absent from the forked tree. On error, the worktree (if created) is torn down via `cleanup_worktree` before the error propagates; the main repository's working tree is never touched.
+
+### format_verify_detail
+
+```python
+def format_verify_detail(
+    stdout: str | None,
+    stderr: str | None,
+    *,
+    max_lines: int = 40,
+    max_chars: int = 2000,
+) -> str
+```
+
+Captures the diagnostic *tail* of a failed verify command (ENH-2641). Combines both streams in `stderr + stdout` order (matching the `merge_coordinator.py` idiom) so stdout — which carries pytest's `=== short test summary info ===` / `FAILED …` lines — lands at the tail rather than being dropped, then keeps the last `max_lines` lines bounded to `max_chars` (mirrors the scrollback cap in `cli/loop/_helpers.py`). Fixes BUG-2640, where the prior first-500-char prefix of `stderr or stdout` preferred stderr (pytest-benchmark/xdist warning banners) and clipped its head, losing the real failure summary.
+
+**Returns:** The bounded diagnostic tail string.
+
+### verify_epic_branch_before_merge
+
+```python
+def verify_epic_branch_before_merge(
+    epic_id: str,
+    epic_branch: str,
+    *,
+    verify_before_merge: bool,
+    repo_path: Path,
+    worktree_base: str | Path,
+    test_cmd: str | None,
+    lint_cmd: str | None,
+    logger: Logger,
+    git_lock: GitLock,
+    src_dir: str | None = None,
+) -> tuple[bool, str | None, int | None]
+```
+
+Runs `test_cmd`/`lint_cmd` against an EPIC branch tip before merge/PR (ENH-2603, BUG-2614). Stateless free-function extraction of `ParallelOrchestrator`'s `_verify_epic_branch_before_merge`, shared by `WorkerPool`-based runs and the FSM `auto-refine-and-implement` loop. Checks out `epic_branch` in a scratch worktree under `worktree_base` (via `setup_worktree(..., checkout_existing=True)`), runs `test_cmd` and (if set) `lint_cmd` against it, and always tears the worktree down in a `finally` block regardless of outcome (`cleanup_worktree(..., delete_branch=False)`).
+
+**Parameters:**
+- `epic_id` — The EPIC issue ID, used for logging and the scratch worktree name.
+- `epic_branch` — Name of the EPIC integration branch to verify.
+- `verify_before_merge` — When `False`, returns `(True, None, None)` immediately without doing any work.
+- `repo_path` — Path to the main repository.
+- `worktree_base` — Directory (relative to `repo_path`) to create the scratch worktree in.
+- `test_cmd` — Shell command to run as the test gate, or `None` to skip.
+- `lint_cmd` — Shell command to run as the lint gate, or `None` to skip.
+- `logger` — Logger instance.
+- `git_lock` — Thread-safe git lock for serializing repo operations.
+- `src_dir` — When truthy, the source directory (relative to the branch worktree, e.g. `"scripts"`) whose absolute path is prepended to `PYTHONPATH` for the test/lint subprocess. Defeats editable-install `.pth` shadowing (BUG-2629): the editable `_editable_impl_*.pth` hardcodes the main checkout's source dir at interpreter startup regardless of `cwd`, so `import little_loops.<branch_only_module>` would otherwise resolve to the main tree and fail collection. `.pth` entries land on `sys.path` after `PYTHONPATH`, so the prepend wins.
+
+**Behavior:**
+- The test/lint subprocess always runs with `LL_VERIFY_GATE="1"` in its environment (BUG-2649), independent of `src_dir`, so tests non-deterministic under the gate's non-standard invocation (injected `PYTHONPATH` + parallel-xdist worktree) can detect and quarantine themselves.
+- Also sets `PYTEST_XDIST_AUTO_NUM_WORKERS` (default `max(2, cpu_count // 4)`, via `setdefault`) to cap nested pytest-xdist worker counts across concurrent verify gates, and `LL_FUZZ=full` (via `setdefault`) so the enforced gate always fuzzes at full depth.
+
+**Returns:** `(ok, message, returncode)`. `(True, None, None)` if the gate passed or was disabled. `(False, message, returncode)` if worktree setup or a configured command failed — `message` describes the failure and `returncode` is the failing process's exit code (`None` for a worktree-setup failure, which never ran a command). ENH-2631: the exit code lets callers distinguish a pytest collection/usage error (exit 2, a harness/env problem — BUG-2629) from a real test failure (exit 1) without re-running the suite.
+
+### merge_epic_branch_to_base
+
+```python
+def merge_epic_branch_to_base(
+    epic_id: str,
+    epic_branch: str,
+    *,
+    base_branch: str,
+    repo_path: Path,
+    logger: Logger,
+    git_lock: GitLock,
+    run_dir: Path | None = None,
+) -> bool
+```
+
+Merges `epic_branch` into `base_branch` (via `git merge --no-ff`) then deletes it (FEAT-2449, BUG-2614). Stateless free-function extraction of `ParallelOrchestrator`'s `_merge_epic_branch_to_base`. Assumes `repo_path`'s working tree is already checked out on (or fast-forwardable to) `base_branch` — no checkout is performed here. Never raises; unexpected errors are caught and logged.
+
+**Parameters:**
+- `epic_id` — The EPIC issue ID, used in the merge commit message and logs.
+- `epic_branch` — Name of the EPIC integration branch to merge and delete.
+- `base_branch` — Branch to merge into.
+- `repo_path` — Path to the repository, checked out on `base_branch`.
+- `logger` — Logger instance.
+- `git_lock` — Thread-safe git lock for serializing repo operations.
+- `run_dir` — When non-`None`, the per-run directory to persist a merge-failure diagnostic into (ENH-2643). On failure, before `git merge --abort` discards the conflict state, three flat-text artifacts are written: `merge-returncode.txt` (the failing `git merge` exit code), `merge-detail.txt` (the bounded `stderr + stdout` tail via `format_verify_detail`), and `merge-conflicts.txt` (the conflicted-path list from `git diff --name-only --diff-filter=U`). When `None` (the parallel-orchestrator caller, which has no per-run `run_dir`), nothing is persisted.
+
+**Returns:** `True` if the merge succeeded (and the branch was deleted), `False` on merge failure or an unexpected error.
+
+### open_pr_for_epic_branch
+
+```python
+def open_pr_for_epic_branch(
+    epic_id: str,
+    epic_branch: str,
+    *,
+    base_branch: str,
+    repo_path: Path,
+    logger: Logger,
+) -> None
+```
+
+Opens one PR for a completed EPIC integration branch via `gh` (FEAT-2449, BUG-2614). Stateless free-function extraction of `ParallelOrchestrator`'s `_open_pr_for_epic_branch`. The branch is **not** deleted — the PR needs it. `--head` is `epic_branch`, `--base` is `base_branch`.
+
+**Parameters:**
+- `epic_id` — The EPIC issue ID, used in the PR title/body and logs.
+- `epic_branch` — Name of the EPIC integration branch to open a PR for.
+- `base_branch` — PR base branch.
+- `repo_path` — Path to the repository.
+- `logger` — Logger instance.
+
+**Behavior:**
+- Checks `gh auth status` first; if not authenticated, logs a warning and returns without attempting PR creation.
+- If the `gh` binary is missing (`FileNotFoundError`) or `gh pr create` times out (`subprocess.TimeoutExpired`), logs a warning and returns rather than raising.
+
+---
+
+## little_loops.sync
+
+GitHub Issues bidirectional sync. Provides push/pull/status/diff/close/reopen operations between local `.issues/` markdown files and GitHub Issues via the `gh` CLI, plus PR-merge reconciliation for feature-branch issues.
+
+```python
+from little_loops.sync import GitHubSyncManager, SyncedIssue, SyncResult, SyncStatus
+```
+
+### SyncedIssue
+
+```python
+@dataclass
+class SyncedIssue:
+    local_path: Path | None = None
+    issue_id: str = ""
+    github_number: int | None = None
+    github_url: str = ""
+    last_synced: str = ""
+    local_changed: bool = False
+    github_changed: bool = False
+```
+
+Represents an issue's sync state. Defined for future use as a per-issue state record — not currently constructed anywhere in this module (all operations below build and return `SyncResult`/`SyncStatus` instead).
+
+### SyncResult
+
+```python
+@dataclass
+class SyncResult:
+    action: str  # push, pull, status
+    success: bool
+    created: list[str] = field(default_factory=list)
+    updated: list[str] = field(default_factory=list)
+    skipped: list[str] = field(default_factory=list)
+    failed: list[tuple[str, str]] = field(default_factory=list)  # (issue_id, reason)
+    errors: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]: ...
+```
+
+Result of a single sync operation, returned by every `GitHubSyncManager` method except `get_status`. `created`/`updated`/`skipped` are human-readable summary strings (e.g. `"BUG-123 → #45"`); `failed` pairs an issue ID with a failure reason. `GitHubSyncManager.diff_issue` repurposes `created` to carry raw unified-diff lines rather than summary strings — see that method.
+
+**Fields:**
+
+| Field | Type | Description |
+|---|---|---|
+| `action` | `str` | Operation name: `"push"`, `"pull"`, `"status"`, `"diff"`, `"close"`, `"reopen"`. |
+| `success` | `bool` | `False` if the operation hit an unrecoverable error or any item failed. |
+| `created` | `list[str]` | Summary lines for newly created issues (push→GitHub or pull→local). Overloaded by `diff_issue` to hold diff text. |
+| `updated` | `list[str]` | Summary lines for updated/closed/reopened issues. |
+| `skipped` | `list[str]` | Summary lines for issues skipped (already tracked, not synced, in sync, etc.). |
+| `failed` | `list[tuple[str, str]]` | `(issue_id, reason)` pairs for per-issue failures. |
+| `errors` | `list[str]` | Operation-level errors (e.g. auth failure) that abort before per-issue processing. |
+
+**Methods:**
+- `to_dict() -> dict[str, Any]` — serialize all fields for JSON output.
+
+### SyncStatus
+
+```python
+@dataclass
+class SyncStatus:
+    provider: str
+    repo: str
+    local_total: int = 0
+    local_synced: int = 0
+    local_unsynced: int = 0
+    github_total: int = 0
+    github_only: int = 0
+    github_error: str | None = None
+
+    def to_dict(self) -> dict[str, Any]: ...
+```
+
+Sync status overview returned by `GitHubSyncManager.get_status()`.
+
+**Fields:**
+
+| Field | Type | Description |
+|---|---|---|
+| `provider` | `str` | Sync provider name from config (e.g. `"github"`). |
+| `repo` | `str` | Resolved `owner/repo`, or `"unknown"` if it could not be determined. |
+| `local_total` | `int` | Count of local issue files considered for sync (respects `sync.github.sync_completed`). |
+| `local_synced` | `int` | Count of local issues with a `github_issue` frontmatter field. |
+| `local_unsynced` | `int` | `local_total - local_synced`. |
+| `github_total` | `int` | Count of open issues on GitHub (requires `gh auth`). |
+| `github_only` | `int` | GitHub issue numbers not tracked by any local issue. |
+| `github_error` | `str \| None` | Set if the GitHub query failed (e.g. not authenticated); other GitHub-derived fields stay at their defaults in that case. |
+
+**Methods:**
+- `to_dict() -> dict[str, Any]` — serialize all fields for JSON output.
+
+### GitHubSyncManager
+
+```python
+class GitHubSyncManager:
+    def __init__(
+        self,
+        config: BRConfig,
+        logger: Logger,
+        dry_run: bool = False,
+    ) -> None: ...
+```
+
+Manages bidirectional sync between local `.issues/` files and GitHub Issues, shelling out to the `gh` CLI (via an internal `_run_gh_command` helper) for every remote operation. All mutating methods honor `dry_run`: they report what *would* happen (prefixed `"would create"`/`"would update"`/etc. in `SyncResult.created`/`updated`) without calling `gh` or writing files. Every method first checks `gh auth status`; on failure it returns a `SyncResult`/`SyncStatus` with `success=False` (or a populated `github_error`) and the message `"GitHub CLI not authenticated. Run: gh auth login"`.
+
+**Parameters (`__init__`):**
+- `config` — Project `BRConfig`; `config.sync` supplies GitHub repo/label/limit settings, `config.issues.base_dir` + `config.issue_categories` locate local issue files.
+- `logger` — `Logger` used for all `gh` command tracing and per-issue success/failure messages.
+- `dry_run` — When `True`, mutating operations (push, pull, close, reopen) report intended actions without calling `gh` or writing to disk.
+
+**Methods:**
+
+- `push_issues(issue_ids: list[str] | None = None) -> SyncResult` — Push local issues to GitHub. Iterates all local issue files (or just `issue_ids` if given), creating a new GitHub issue (`gh issue create`) when the file has no `github_issue` frontmatter, or updating the existing one (`gh issue edit`) when it does. On create, writes `github_issue`, `github_url`, and `last_synced` back into the local file's frontmatter. Also posts a `"Duplicate of ..."` comment when the issue has a `duplicate_of` frontmatter field. Labels are derived from the issue's type/priority/`blocked_by`/`labels:` frontmatter via an internal `_get_labels_for_issue` helper.
+
+- `pull_issues(labels: list[str] | None = None) -> SyncResult` — Pull GitHub Issues into new local files via `gh issue list` (bounded by `sync.github.pull_limit`, with a warning if the result count hits that limit — results may be truncated). Skips issues that are closed (unless `sync.github.sync_completed`), already tracked locally (matched by `github_issue` number), or carry no label recognized by `sync.github.label_mapping` (used to infer local issue type). Newly created local files get the next global issue number (`get_next_issue_number`), a filename slug derived from the GitHub title, and are assembled via `assemble_issue_markdown` using the project's per-type section template; GitHub labels are copied into frontmatter `labels:` after stripping ll-managed type/priority/`blocked-by` labels.
+
+- `get_status() -> SyncStatus` — Return a `SyncStatus` with local counts (from local issue files) and, if `gh auth` succeeds, GitHub-side counts (`gh issue list --json number --limit 500`). Does not error out if GitHub is unreachable — sets `github_error` and leaves GitHub counts at their defaults instead.
+
+- `diff_issue(issue_id: str) -> SyncResult` — Show a unified diff (`difflib.unified_diff`) between one local issue's body and its GitHub counterpart's body (`gh issue view --json body`). Requires the local issue to already carry a `github_issue` frontmatter number, else returns `success=False`. On a difference, the diff lines (not summary strings) are stored in `result.created`; if bodies match, a `"... in sync"` note goes to `result.skipped`.
+
+- `diff_all() -> SyncResult` — Summarize (not full diffs — just differs/in-sync) local-vs-GitHub body differences across all synced local issues, using a single batch `gh issue list --json number,body --limit 500 --state all` call rather than one `gh issue view` per issue.
+
+- `close_issues(issue_ids: list[str] | None = None, all_completed: bool = False) -> SyncResult` — Close the GitHub issues (`gh issue close`, with a comment) for local issues that are done. Either pass explicit `issue_ids`, or set `all_completed=True` to close every local issue whose frontmatter `status` is `done`/`cancelled`. Exactly one of the two must be provided; otherwise returns `success=False` with an error asking for `--all-completed` or issue IDs. Issues with no `github_issue` frontmatter are skipped, not failed.
+
+- `reopen_issues(issue_ids: list[str] | None = None, all_reopened: bool = False) -> SyncResult` — Reopen the GitHub issues (`gh issue reopen`, with a comment) for locally-active issues. With `all_reopened=True`, iterates all active-directory local issues and, for each, first queries GitHub state (`gh issue view --json state`) and skips any not currently `CLOSED`; with explicit `issue_ids`, reopens unconditionally. On success also writes local frontmatter `status: open` via `update_frontmatter`. Exactly one of `issue_ids`/`all_reopened` must be provided.
+
+- `reconcile_pr_merges() -> int` — Promote `in_progress` local issues to `status: done` (with `completed_at`) when their associated PR has been merged. For every local issue with `status: in_progress` and a `pr_url` or `branch` frontmatter field, calls `is_pr_merged` (from `little_loops.parallel.github_utils`) and, if merged, updates the local frontmatter (or just logs the intended change under `dry_run`). Returns the count of issues promoted. Unlike the other methods, this does not check `gh auth` up front or return a `SyncResult` — it returns a plain `int` count and logs (rather than raises) per-issue errors.
+
+---
+
 ## Agents
 
 Specialized sub-agents live in `agents/*.md` and are registered in `.claude-plugin/plugin.json`. Each agent is spawned via the `Task` / `Agent` tool with `subagent_type` set to the agent name. Codex-CLI mirrors are generated into `.codex/agents/*.toml` by `ll-adapt --host codex --apply`.
