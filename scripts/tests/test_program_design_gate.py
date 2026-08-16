@@ -377,6 +377,32 @@ class TestRealRepoResolution:
         assert git_grep_resolver("FormatGaps", tmp_path) is True
         assert git_grep_resolver("never_defined_anywhere", tmp_path) is False
 
+    def test_markdown_only_signature_does_not_resolve(self, tmp_path: Path) -> None:
+        """A symbol the issue *proposes* must not resolve against the issue's own text.
+
+        A `## Program Design` signature line strips to exactly the `def foo(` /
+        `class Foo` shape the opener filter accepts, so an unscoped `git grep`
+        let the gate confirm a symbol exists by finding the markdown that asked
+        for it to be written. Measured against the live corpus this resolved
+        several never-implemented symbols (`AutomationContext`,
+        `resolve_host_named`, `run_blocking_json`).
+        """
+        from little_loops.issues.program_design import git_grep_resolver
+
+        _init_repo(tmp_path)
+        (tmp_path / "issue.md").write_text(
+            "## Program Design\n\n"
+            "```python\n"
+            "def proposed_helper(path: Path) -> None\n"
+            "class ProposedThing\n"
+            "```\n",
+            encoding="utf-8",
+        )
+        _commit_all(tmp_path)
+
+        assert git_grep_resolver("proposed_helper", tmp_path) is False
+        assert git_grep_resolver("ProposedThing", tmp_path) is False
+
 
 class TestFindProjectRoot:
     """`find_project_root` prefers a `.git` ancestor over the nearest `.ll` (ENH-2924)."""

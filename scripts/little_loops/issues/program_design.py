@@ -289,6 +289,14 @@ def git_grep_resolver(symbol: str, root: Path | None = None) -> bool:
     Mirrors :meth:`little_loops.codequery.fallback.FallbackProvider.defines_scan_for`:
     a word-boundary ``git grep`` filtered to lines that actually open a definition.
     Returns False (never raises) when git is unavailable or *root* is not a repo.
+
+    Markdown is excluded from the search (``:!*.md``). A ``## Program Design``
+    signature line strips to exactly the ``def foo(`` / ``class Foo`` shape the
+    opener filter below accepts, so an unscoped grep let an issue resolve the
+    very symbols it was *proposing* — the gate confirmed a symbol exists by
+    finding the issue's own text. It is also the bulk of the cost: the tracked
+    markdown corpus dwarfs the source tree, and a definition can never live in
+    it.
     """
     short = _short_symbol(symbol)
     if not short or not _IDENT.match(short):
@@ -296,7 +304,7 @@ def git_grep_resolver(symbol: str, root: Path | None = None) -> bool:
     cwd = root or Path.cwd()
     try:
         proc = subprocess.run(
-            ["git", "grep", "-n", "-w", "--", short],
+            ["git", "grep", "-n", "-w", "--", short, "--", ":!*.md"],
             cwd=cwd,
             capture_output=True,
             text=True,
