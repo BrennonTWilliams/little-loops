@@ -13903,6 +13903,147 @@ class TestCheckSubstrateOptionalState:
             "check_harness_name on_error must route to harness_missing (ENH-2415)"
         )
 
+    # ── BUG-3227: check_substrate abstention probe chain ───────────────────────
+
+    @staticmethod
+    def _slice_state(content: str, start_marker: str, end_marker: str) -> str:
+        start_pos = content.find(start_marker)
+        assert start_pos != -1, f"{start_marker.strip(':').strip()} state not found"
+        end_pos = content.find(end_marker, start_pos)
+        return content[start_pos:end_pos] if end_pos != -1 else content[start_pos:]
+
+    def test_rn_build_check_substrate_declares_on_cannot_judge(self) -> None:
+        """rn-build check_substrate must route abstention to probe_substrate (BUG-3227)."""
+        content = self.RN_BUILD_FILE.read_text()
+        block = self._slice_state(content, "check_substrate:", "\n  probe_substrate:")
+        assert "on_cannot_judge: probe_substrate" in block, (
+            "rn-build check_substrate must declare on_cannot_judge: probe_substrate (BUG-3227)"
+        )
+
+    def test_rn_plan_check_substrate_declares_on_cannot_judge(self) -> None:
+        """rn-plan check_substrate must route abstention to probe_substrate (BUG-3227)."""
+        content = self.RN_PLAN_FILE.read_text()
+        block = self._slice_state(content, "check_substrate:", "\n  probe_substrate:")
+        assert "on_cannot_judge: probe_substrate" in block, (
+            "rn-plan check_substrate must declare on_cannot_judge: probe_substrate (BUG-3227)"
+        )
+
+    def test_rn_build_has_probe_substrate_chain_states(self) -> None:
+        """rn-build.yaml must contain the full probe chain (BUG-3227)."""
+        content = self.RN_BUILD_FILE.read_text()
+        for state in ("probe_substrate:", "check_substrate_probed:", "substrate_unknown:"):
+            assert state in content, f"rn-build.yaml must contain {state} (BUG-3227)"
+
+    def test_rn_plan_has_probe_substrate_chain_states(self) -> None:
+        """rn-plan.yaml must contain the full probe chain (BUG-3227)."""
+        content = self.RN_PLAN_FILE.read_text()
+        for state in ("probe_substrate:", "check_substrate_probed:", "substrate_unknown:"):
+            assert state in content, f"rn-plan.yaml must contain {state} (BUG-3227)"
+
+    def test_rn_build_probe_substrate_is_deterministic_shell(self) -> None:
+        """probe_substrate must be action_type: shell evaluated by output_contains, not an LLM judge."""
+        content = self.RN_BUILD_FILE.read_text()
+        block = self._slice_state(content, "probe_substrate:", "\n  check_substrate_probed:")
+        assert "action_type: shell" in block, "probe_substrate must be action_type: shell (BUG-3227)"
+        assert "type: output_contains" in block, (
+            "probe_substrate must be evaluated with output_contains, not llm_structured (BUG-3227)"
+        )
+        assert "llm_structured" not in block, (
+            "probe_substrate must not use an LLM judge — it is evidence-gathering (BUG-3227)"
+        )
+        assert "on_no: substrate_unknown" in block, (
+            "probe_substrate on_no must fail closed to substrate_unknown (BUG-3227)"
+        )
+        assert "on_error: substrate_unknown" in block, (
+            "probe_substrate on_error must fail closed to substrate_unknown (BUG-3227)"
+        )
+        assert "on_yes: check_substrate_probed" in block, (
+            "probe_substrate on_yes must route to check_substrate_probed (BUG-3227)"
+        )
+
+    def test_rn_build_check_substrate_probed_is_one_shot(self) -> None:
+        """check_substrate_probed must fail closed on a second abstention, not loop (BUG-3227)."""
+        content = self.RN_BUILD_FILE.read_text()
+        block = self._slice_state(content, "check_substrate_probed:", "\n  substrate_unknown:")
+        assert "on_cannot_judge: substrate_unknown" in block, (
+            "check_substrate_probed must be one-shot: on_cannot_judge: substrate_unknown (BUG-3227)"
+        )
+        assert "on_error: substrate_unknown" in block, (
+            "check_substrate_probed on_error must route to substrate_unknown (BUG-3227)"
+        )
+        route_lines = [
+            line.strip()
+            for line in block.splitlines()
+            if line.strip().startswith("on_") and ":" in line
+        ]
+        assert not any(
+            line.split(":", 1)[1].strip() == "check_substrate" for line in route_lines
+        ), (
+            "check_substrate_probed must never route back into check_substrate (BUG-3227): "
+            f"{route_lines}"
+        )
+
+    def test_rn_build_substrate_unknown_is_failure_terminal(self) -> None:
+        """substrate_unknown must be a terminal, failing state (BUG-3227)."""
+        content = self.RN_BUILD_FILE.read_text()
+        su_pos = content.find("substrate_unknown:")
+        assert su_pos != -1, "substrate_unknown state not found in rn-build.yaml"
+        next_state_pos = content.find("\n  scope_project:", su_pos)
+        block = content[su_pos:next_state_pos] if next_state_pos != -1 else content[su_pos:]
+        assert "terminal: true" in block, "substrate_unknown must declare terminal: true (BUG-3227)"
+        assert "failure: true" in block, "substrate_unknown must declare failure: true (BUG-3227)"
+
+    def test_rn_build_probe_substrate_positioned_between_check_substrate_and_scope_project(
+        self,
+    ) -> None:
+        """The new probe chain must sit between check_substrate and scope_project in rn-build.yaml."""
+        content = self.RN_BUILD_FILE.read_text()
+        check_substrate_pos = content.find("check_substrate:")
+        probe_pos = content.find("\n  probe_substrate:")
+        probed_pos = content.find("\n  check_substrate_probed:")
+        unknown_pos = content.find("\n  substrate_unknown:")
+        scope_project_pos = content.find("\n  scope_project:")
+        assert (
+            check_substrate_pos
+            < probe_pos
+            < probed_pos
+            < unknown_pos
+            < scope_project_pos
+        ), "probe_substrate/check_substrate_probed/substrate_unknown must sit between check_substrate and scope_project in rn-build.yaml"
+
+    def test_rn_plan_probe_substrate_positioned_between_check_substrate_and_research_iteration(
+        self,
+    ) -> None:
+        """The new probe chain must sit between check_substrate and research_iteration in rn-plan.yaml."""
+        content = self.RN_PLAN_FILE.read_text()
+        check_substrate_pos = content.find("check_substrate:")
+        probe_pos = content.find("\n  probe_substrate:")
+        probed_pos = content.find("\n  check_substrate_probed:")
+        unknown_pos = content.find("\n  substrate_unknown:")
+        research_iteration_pos = content.find("\n  research_iteration:")
+        assert (
+            check_substrate_pos
+            < probe_pos
+            < probed_pos
+            < unknown_pos
+            < research_iteration_pos
+        ), "probe_substrate/check_substrate_probed/substrate_unknown must sit between check_substrate and research_iteration in rn-plan.yaml"
+
+    def test_rn_build_probe_substrate_uses_bare_var_not_brace_form(self) -> None:
+        """probe_substrate bash must use $VAR, never ${VAR} (FSM pre-interpolates ${...})."""
+        content = self.RN_BUILD_FILE.read_text()
+        block = self._slice_state(content, "probe_substrate:", "\n  check_substrate_probed:")
+        action_start = block.find("action: |")
+        action_end = block.find("\n    capture: substrate_env")
+        action_body = block[action_start:action_end]
+        # The only permitted ${...} is the FSM interpolation ref assigned to RUN_DIR.
+        stray = [
+            line
+            for line in action_body.splitlines()
+            if "${" in line and "RUN_DIR=" not in line
+        ]
+        assert not stray, f"probe_substrate action must not use bash ${{VAR}} form: {stray}"
+
 
 class TestValidatorWarningBudget:
     """Ratchet on deterministic validator warning categories (FSM loop audit 2026-06-12).

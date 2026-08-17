@@ -461,12 +461,31 @@ check_substrate:
       Otherwise NO, listing each infeasible action and the constraint it violates.
   on_yes: research      # all actions feasible → proceed to research
   on_no: plan           # one or more actions infeasible → re-plan with diagnosis context
+  on_cannot_judge: probe_substrate  # BUG-3227: gather env facts, then re-judge once
 ```
 
 The `on_no: plan` routing matches the canonical back-link pattern established by
 `review_plan` in the same planning template. The infeasibility diagnosis in the evaluator
 response is surfaced in the `plan` state's next iteration as captured context, so the
 planner can revise the approach.
+
+`check_substrate`'s `source:` is only the plan/design document, but its prompt asks the
+judge to enumerate *execution-environment* facts — evidence the document was never going
+to contain. An honest judge abstains often here, so `check_substrate` must declare
+`on_cannot_judge` rather than leave the gate to hold-then-die on "No valid transition"
+(BUG-3227). The abstention route is a "capture evidence, then judge again" chain, not a
+direct route to an existing state: `probe_substrate` (`action_type: shell`,
+`evaluate.type: output_contains`) deterministically gathers shell command availability,
+file write permissions, network egress, and MCP tool access, then a one-shot
+`check_substrate_probed` re-asks the same feasibility question with the probe output in
+evidence, carrying the original `on_yes`/`on_no` targets and its own
+`on_cannot_judge`/`on_error` routed to a `terminal: true`/`failure: true` state (fail
+closed — a judge with strictly more evidence that still can't decide isn't going to
+decide on a third pass). See
+[`scripts/little_loops/loops/rn-build.yaml`](../../scripts/little_loops/loops/rn-build.yaml)
+and
+[`scripts/little_loops/loops/rn-plan.yaml`](../../scripts/little_loops/loops/rn-plan.yaml)
+for the full worked example.
 
 ### Activation
 

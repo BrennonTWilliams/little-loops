@@ -166,6 +166,104 @@ states:
     on_yes: research_iteration
     on_no: generate_rubric
     on_partial: generate_rubric
+    on_cannot_judge: probe_substrate  # BUG-3227: gather env facts, then re-judge once
+
+  # BUG-3227: check_substrate's judge is asked to enumerate execution-environment
+  # constraints, but its only `source:` is the plan doc — the environment facts are
+  # not in the evidence. `cannot_judge` is the correct verdict there, so the abstention
+  # route gathers the missing facts deterministically and re-judges ONCE, rather than
+  # re-entering check_substrate (which would re-judge the same evidence and abstain again).
+  probe_substrate:
+    action_type: shell
+    timeout: 60
+    action: |
+      RUN_DIR="${captured.run_dir.output}"
+      echo "=== SUBSTRATE PROBE ==="
+      echo "--- shell command availability ---"
+      for C in git python3 pip node npm gh jq rg curl ll-issues ll-loop claude codex; do
+        if command -v "$C" >/dev/null 2>&1; then
+          echo "CMD_AVAILABLE: $C"
+        else
+          echo "CMD_MISSING: $C"
+        fi
+      done
+      echo "--- file write permissions ---"
+      for D in "$RUN_DIR" "$PWD"; do
+        [ -z "$D" ] && continue
+        PROBE_FILE="$D/.substrate-probe.tmp"
+        if mkdir -p "$D" 2>/dev/null && touch "$PROBE_FILE" 2>/dev/null; then
+          echo "WRITABLE: $D"
+          rm -f "$PROBE_FILE" 2>/dev/null
+        else
+          echo "NOT_WRITABLE: $D"
+        fi
+      done
+      echo "--- network egress ---"
+      if curl -sS -m 5 -o /dev/null https://api.anthropic.com 2>/dev/null; then
+        echo "NETWORK_EGRESS: reachable"
+      else
+        echo "NETWORK_EGRESS: unreachable_or_blocked"
+      fi
+      echo "--- MCP tool access ---"
+      MCP_FOUND=0
+      for F in .mcp.json .claude/settings.json .claude/settings.local.json; do
+        if [ -f "$F" ]; then
+          NAMES=$(jq -r 'try (.mcpServers // {}) | keys[]' "$F" 2>/dev/null | tr '\n' ' ')
+          if [ -n "$NAMES" ]; then
+            echo "MCP_SERVERS: $F: $NAMES"
+            MCP_FOUND=1
+          fi
+        fi
+      done
+      [ "$MCP_FOUND" -eq 0 ] && echo "MCP_SERVERS: none_configured"
+      echo "--- token budget ---"
+      echo "TOKEN_BUDGET: UNKNOWN (not observable from the shell; treat as non-blocking)"
+      echo "SUBSTRATE_PROBE_COMPLETE"
+      exit 0
+    capture: substrate_env
+    evaluate:
+      type: output_contains
+      pattern: "SUBSTRATE_PROBE_COMPLETE"
+    on_yes: check_substrate_probed
+    # A probe that could not run leaves the judge no better off than before, so it is
+    # fail-closed rather than routed into a re-judge that would abstain again.
+    on_no: substrate_unknown
+    on_error: substrate_unknown
+
+  check_substrate_probed:
+    action: "echo 'Re-checking substrate constraints with probed environment facts'"
+    action_type: shell
+    evaluate:
+      type: llm_structured
+      source: "${captured.plan_for_substrate.output}"
+      prompt: >
+        The target execution environment's constraints were probed directly. Probe output:
+        ${captured.substrate_env.output}
+
+        Treat the probe output as authoritative for shell command availability, file write
+        permissions, network egress, and MCP tool access. Lines marked UNKNOWN are not
+        observable and must be treated as non-blocking.
+
+        Validate each proposed action in the plan against these constraints.
+        Answer YES if every action is feasible in the target environment. Otherwise NO,
+        quoting the verbatim plan text of each infeasible action alongside the
+        verbatim probe line stating the constraint it violates.
+    on_yes: research_iteration
+    on_no: generate_rubric
+    on_partial: generate_rubric
+    # One-shot: the enriched judge has strictly more evidence than check_substrate did.
+    # If it still cannot decide, the question is not answerable here — fail closed rather
+    # than loop.
+    on_cannot_judge: substrate_unknown
+    on_error: substrate_unknown
+
+  substrate_unknown:
+    terminal: true
+    failure: true
+    description: >
+      Plan feasibility could not be established even after probing the
+      execution environment directly (BUG-3227). Inspect the probe output in the run
+      transcript to see which constraint class was indeterminate.
 
   research_iteration:
     # Delegates the classify → research → synthesize chain to the shared oracle.

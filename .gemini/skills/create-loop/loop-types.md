@@ -1264,7 +1264,7 @@ questions:
         description: "Add a check_substrate gate after planning to validate each action is feasible before research begins."
 ```
 
-If "Yes": include the `check_substrate` state (uncommented, active) between `review_plan` and `research` in the generated YAML. Use the template from the `# OPTIONAL: check_substrate` block. The `on_no: plan` routing is mandatory.
+If "Yes": include the `check_substrate` state (uncommented, active) between `review_plan` and `research` in the generated YAML. Use the template from the `# OPTIONAL: check_substrate` block. The `on_no: plan` routing is mandatory, and so is `on_cannot_judge: probe_substrate` plus the `probe_substrate` / `check_substrate_probed` / `substrate_unknown` chain (BUG-3227) — an `llm_structured` gate judging only the plan/design doc for execution-environment facts abstains often, and without a declared route it holds-then-dies on "No valid transition".
 
 If "No" (default): emit `check_substrate` only as a commented-out block so users can activate it later.
 
@@ -1355,6 +1355,14 @@ states:
   #       action and the constraint it violates.
   #   on_yes: research                # or implement if Research omitted
   #   on_no: plan                     # re-plan with infeasibility context
+  #   on_cannot_judge: probe_substrate  # required (BUG-3227): the judge's source: is the
+  #                                     # plan doc, which never contains environment facts,
+  #                                     # so an honest judge abstains often here. Add the
+  #                                     # probe_substrate / check_substrate_probed /
+  #                                     # substrate_unknown chain from rn-build.yaml /
+  #                                     # rn-plan.yaml or HARNESS_OPTIMIZATION_GUIDE.md
+  #                                     # § check_substrate — do not leave this gate to
+  #                                     # hold-then-die on "No valid transition".
 
   research:                          # include if "Research" selected in S1
     action: "Research the codebase and documentation relevant to the plan."

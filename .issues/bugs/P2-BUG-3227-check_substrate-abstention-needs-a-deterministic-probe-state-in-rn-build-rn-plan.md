@@ -4,9 +4,10 @@ type: BUG
 title: check_substrate abstention needs a deterministic probe state in rn-build/rn-plan
 priority: P2
 testable: true
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-08-16'
+completed_at: '2026-08-17T04:30:59Z'
 parent: EPIC-3217
 supersedes:
 - BUG-3219
@@ -82,7 +83,7 @@ Both are `evaluate.type: llm_structured`, judging `${captured.design_artifacts.o
 `${captured.plan_for_substrate.output}` (a plan/design doc), with `on_yes`/`on_no`(`/on_partial`)
 but no `on_cannot_judge` and no `on_error`. A run reaching either and abstaining holds
 twice (re-running the state's action each hold via `_route_abstention_hold()`,
-`scripts/little_loops/fsm/executor.py:2683-2697`) then dies after three attempts with
+`scripts/little_loops/fsm/executor.py:2702-2715`) then dies after three attempts with
 "No valid transition".
 
 ## Steps to Reproduce
@@ -116,7 +117,7 @@ exit_code` or `type: output_contains` — never `llm_structured` (evidence:
 example of the pattern — no "capture evidence and re-run the judge" state exists yet
 anywhere in the repo; the nearest structural precedents are `rn-build.yaml:308-336`'s
 `check_research_written` (probes whether an upstream prompt's expected artifact exists,
-writes a placeholder stub if not) and `rn-build.yaml:1231-1250`'s `finalize_build_failed`
+writes a placeholder stub if not) and `rn-build.yaml:1225-1247`'s `finalize_build_failed`
 (reads run-dir state before declaring failure).
 
 Where the probe determines the substrate genuinely doesn't exist, route to a
@@ -307,7 +308,7 @@ extending the inventory is a one-line change.
 ## Root Cause
 
 Same executor mechanism as BUG-3219/BUG-3226 —
-`FSMExecutor._abstention_fallback()` (`scripts/little_loops/fsm/executor.py:2669-2681`)
+`FSMExecutor._abstention_fallback()` (`scripts/little_loops/fsm/executor.py:2688-2700`)
 returns `None` when neither `route.error` nor `on_error` is set, and the main execution
 loop's `next_state is None` branch (758-774) calls `self._finish("error", error="No valid
 transition")`. `check_substrate` was authored before ENH-3185 introduced the `cannot_judge`
@@ -340,7 +341,7 @@ _Added by `/ll:refine-issue` — 2026-08-17 — based on codebase analysis:_
 - `scripts/little_loops/loops/rn-plan.yaml` — `check_substrate` (152-168, judging `${captured.plan_for_substrate.output}`, itself captured by a `cat "${captured.run_dir.output}/plan.md"` shell action in the same state) lacks `on_cannot_judge`/`on_error`. `plan.md` is written by `generate_rubric` (77-147), which routes to `check_substrate`.
 
 ### Dependent Files (Callers/Importers)
-- No Python callers beyond the FSM loader — `FSMExecutor._abstention_fallback()` (`scripts/little_loops/fsm/executor.py:2669-2681`) is the sole consumer of the routing gap and needs no code changes; the new probe state is expressed purely as loop YAML.
+- No Python callers beyond the FSM loader — `FSMExecutor._abstention_fallback()` (`scripts/little_loops/fsm/executor.py:2688-2700`) is the sole consumer of the routing gap and needs no code changes; the new probe state is expressed purely as loop YAML.
 
 ### Conventions in Force
 - Deterministic existence/capability probes in this codebase are `action_type: shell` states whose `evaluate.type` is `output_contains` or `exit_code` — never `llm_structured` — evidence: `cua-agent-desktop.yaml:101-118` (`check_install`), `cua-agent-desktop.yaml:125-152` (`check_permissions`), `rn-build.yaml:108-128` (`check_structure`), `rn-build.yaml:155-171` (`verify_structure`). All four declare `on_yes`/`on_no`/`on_error` explicitly rather than leaving any unhandled.
@@ -352,9 +353,9 @@ _Added by `/ll:refine-issue` — 2026-08-17 — based on codebase analysis:_
 - `rn-build.yaml:1225-1251`'s `finalize_build_failed` is the precedent for reading run-dir state tolerantly (`2>/dev/null || echo ""`) before declaring a failure terminal.
 
 ### Tests
-- `scripts/tests/test_builtin_loops.py::TestCheckSubstrateOptionalState` (13635; line refs in this section are advisory and have already drifted once) already covers both loops' `check_substrate` states via string-slice assertions (locate state start/next-state boundary in `.read_text()`, assert route keys present in the slice) — e.g. `test_rn_build_check_substrate_has_full_routing` (13709-13720), `test_rn_plan_check_substrate_has_full_routing` (13670-13681), plus positional-ordering assertions (13722-13736, 13683-13697). A structurally analogous precedent for asserting a specific route *target* (not just key presence) after a gate was repointed to a new state exists at `test_rn_build_check_harness_name_no_longer_routes_to_synthesize` (13763-13776) and `test_rn_build_has_harness_missing_states`/`test_rn_build_harness_missing_has_full_routing` (13740-13761, added for ENH-2415's `harness_missing` state) — the closest model for asserting a newly-added probe state's own routing.
+- `scripts/tests/test_builtin_loops.py::TestCheckSubstrateOptionalState` (13723; line refs in this section are advisory and have already drifted twice) already covers both loops' `check_substrate` states via string-slice assertions (locate state start/next-state boundary in `.read_text()`, assert route keys present in the slice) — e.g. `test_rn_build_check_substrate_has_full_routing` (13837-13849), `test_rn_plan_check_substrate_has_full_routing` (13798-13810), plus positional-ordering assertions (13850-13867, 13811-13828). A structurally analogous precedent for asserting a specific route *target* (not just key presence) after a gate was repointed to a new state exists at `test_rn_build_check_harness_name_no_longer_routes_to_synthesize` (13891-13906) and `test_rn_build_has_harness_missing_states`/`test_rn_build_harness_missing_has_full_routing` (13868-13890, added for ENH-2415's `harness_missing` state) — the closest model for asserting a newly-added probe state's own routing.
 - `scripts/tests/test_rn_build.py`, `scripts/tests/test_rn_plan.py` — loop-specific test files; unclear whether either currently has assertions touching `check_substrate` beyond `test_builtin_loops.py`'s coverage — needs a dedicated check during implementation.
-- `TestValidatorWarningBudget` (`test_builtin_loops.py:13779-13907`) — corpus-wide lint ratchet; a new probe state that is unreachable or mis-referenced trips its `"unreachable"` (`not reachable from initial state`, message source `fsm/validation/structural_rules.py:1052`) or `"loop-reference"` (`does not resolve to any file`, message source `fsm/validation/reachability.py:93`) categories. `ALLOWLIST` entries require a comment citing the owning issue; ENH-2748's in-YAML `capture_reachability_ok: true` flag is a documented alternative for at least the `capture-ordering` category, but no equivalent flag exists for `unreachable`/`loop-reference`.
+- `TestValidatorWarningBudget` (`test_builtin_loops.py:13907-14037`) — corpus-wide lint ratchet; a new probe state that is unreachable or mis-referenced trips its `"unreachable"` (`not reachable from initial state`, message source `fsm/validation/structural_rules.py:1052`) or `"loop-reference"` (`does not resolve to any file`, message source `fsm/validation/reachability.py:93`) categories. `ALLOWLIST` entries require a comment citing the owning issue; ENH-2748's in-YAML `capture_reachability_ok: true` flag is a documented alternative for at least the `capture-ordering` category, but no equivalent flag exists for `unreachable`/`loop-reference`.
 
 ### Documentation
 - `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` — canonical `check_substrate` "State Shape" YAML block (449-464) needs updating to show the new `on_cannot_judge` → probe route.
@@ -364,9 +365,9 @@ _Added by `/ll:refine-issue` — 2026-08-17 — based on codebase analysis:_
 ## Program Design
 
 ### Signatures
-- `FSMExecutor._abstention_declared(state: StateConfig, verdict: str) -> bool` — becomes `True` for `check_substrate` once `on_cannot_judge: <probe_state_name>` is declared, routing the abstention to the new probe state instead of holding; see `scripts/little_loops/fsm/executor.py:2656-2667`.
-- `FSMExecutor._route_abstention_hold(state: StateConfig, state_name: str, ctx: InterpolationContext) -> str | None` — holds `check_substrate` up to `_ABSTENTION_HOLD_CAP` (2) times, re-running the state's action (the `echo`/`cat` in `rn-build.yaml`/`rn-plan.yaml`) and re-judging each hold, before falling through to `_abstention_fallback()`; see `scripts/little_loops/fsm/executor.py:2683-2697`.
-- `FSMExecutor._abstention_fallback(state: StateConfig, ctx: InterpolationContext) -> str | None` — same fallback mechanism as BUG-3226; returns `None` today for both `check_substrate` states since neither declares `route.error` nor `on_error`; see `scripts/little_loops/fsm/executor.py:2669-2681`.
+- `FSMExecutor._abstention_declared(state: StateConfig, verdict: str) -> bool` — becomes `True` for `check_substrate` once `on_cannot_judge: <probe_state_name>` is declared, routing the abstention to the new probe state instead of holding; see `scripts/little_loops/fsm/executor.py:2660-2680`.
+- `FSMExecutor._route_abstention_hold(state: StateConfig, state_name: str, ctx: InterpolationContext) -> str | None` — holds `check_substrate` up to `_ABSTENTION_HOLD_CAP` (2) times, re-running the state's action (the `echo`/`cat` in `rn-build.yaml`/`rn-plan.yaml`) and re-judging each hold, before falling through to `_abstention_fallback()`; see `scripts/little_loops/fsm/executor.py:2702-2715`.
+- `FSMExecutor._abstention_fallback(state: StateConfig, ctx: InterpolationContext) -> str | None` — same fallback mechanism as BUG-3226; returns `None` today for both `check_substrate` states since neither declares `route.error` nor `on_error`; see `scripts/little_loops/fsm/executor.py:2688-2700`.
 
 ### Types
 N/A — no new data shape. The new probe state is a standard `StateConfig` YAML dict (`action_type: shell`, `evaluate.type: exit_code`/`output_contains`); no schema change is required.
@@ -411,7 +412,7 @@ Today, for both loops: `check_substrate` (`evaluate.type: llm_structured`) absta
    scripts/tests/test_rn_plan.py scripts/tests/test_fsm_executor.py -v` passes, and
    `ll-loop validate` runs clean against `rn-build.yaml`/`rn-plan.yaml`, including against
    `TestValidatorWarningBudget`'s corpus-wide lint ratchet
-   (`test_builtin_loops.py:13779-13907`) — an unreachable or mis-referenced new probe state
+   (`test_builtin_loops.py:13907-14037`) — an unreachable or mis-referenced new probe state
    trips `"unreachable"`/`"loop-reference"` and needs either a fix or a new owned-by-issue
    `ALLOWLIST` entry.
 
@@ -438,6 +439,8 @@ Today, for both loops: `check_substrate` (`evaluate.type: llm_structured`) absta
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-17T04:30:36 - `3cef4625-b93c-4b6e-8228-ab9eca14760e.jsonl`
+- `/ll:ready-issue` - 2026-08-17T04:08:06 - `421b1e21-78f6-46f3-924e-7dbe009ab566.jsonl`
 - `/ll:confidence-check` - 2026-08-17T03:38:40 - `d25ab1c5-ed42-4023-87f3-5b04e53ad7b9.jsonl`
 - `/ll:refine-issue` - 2026-08-17T01:20:21 - `f9d03c8c-c328-4dfd-93cf-1b2bf5193b15.jsonl`
 - `/ll:issue-size-review` - 2026-08-17T01:13:51 - `aac72723-ff3b-4a56-8e20-e1cf00b2242c.jsonl`

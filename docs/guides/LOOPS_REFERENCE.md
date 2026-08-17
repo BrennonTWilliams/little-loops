@@ -286,6 +286,7 @@ init             (shell: mkdir run_dir, touch plan.md / plan-rubric.md / researc
     → check_substrate   (llm: validate plan actions against env constraints; ENH-2098)
         on_yes (feasible)   → research_iteration
         on_no/partial       → generate_rubric  (revise plan before iterating)
+        on_cannot_judge     → probe_substrate → check_substrate_probed (BUG-3227)
           → research_iteration (oracle: classify→research→synthesize→score)
               on_success → score
                 on_yes (ALL_VERY_HIGH) → done
@@ -294,7 +295,7 @@ init             (shell: mkdir run_dir, touch plan.md / plan-rubric.md / researc
               on_failure/on_error → diagnose → failed
 ```
 
-> **`check_substrate` gate** (ENH-2098): After the initial rubric is generated, an LLM feasibility check validates that every proposed action is achievable in the target execution environment (shell commands, MCP tool access, file write permissions, token budget). Infeasible plans route back to `generate_rubric` for revision before any research is run. See [`HARNESS_OPTIMIZATION_GUIDE.md` § check_substrate](HARNESS_OPTIMIZATION_GUIDE.md) for configuration details.
+> **`check_substrate` gate** (ENH-2098): After the initial rubric is generated, an LLM feasibility check validates that every proposed action is achievable in the target execution environment (shell commands, MCP tool access, file write permissions, token budget). Infeasible plans route back to `generate_rubric` for revision before any research is run. If the judge abstains (`cannot_judge`), `probe_substrate` deterministically gathers the environment facts the judge's `source:` never contained, then `check_substrate_probed` re-asks the same question once with that evidence, failing closed to `substrate_unknown` if it still can't decide (BUG-3227). See [`HARNESS_OPTIMIZATION_GUIDE.md` § check_substrate](HARNESS_OPTIMIZATION_GUIDE.md) for configuration details.
 
 ### `rn-refine` — Recursive Refinement of an Existing Plan
 
@@ -711,7 +712,7 @@ End-to-end spec-to-project pipeline. Accepts a spec Markdown file and drives the
 
 > **Integration/acceptance gate** (FEAT-2414): Every feature is built and self-judged in *isolation* by `goal-cluster` → `rn-implement`, so cross-feature integration bugs (shared state, interface drift) escape all per-issue gates. After the eval harness passes, `derive_acceptance_checks` converts each `## Acceptance Criteria` bullet into a runnable check (`${run_dir}/acceptance/checks.json`), `run_acceptance` stands up the assembled project and **executes** them, and `score_acceptance` scores `passed / executed` through a non-LLM `output_numeric` gate. Anything short of `min_acceptance_pass_rate` re-enters `cluster_execute` with the failures captured as issues (bounded by `max_acceptance_retries`), then terminates at `acceptance_failed` — never `done`. Results are derived from execution, not from an LLM reading the code.
 
-> **`check_substrate` gate** (ENH-2098): After `design_artifacts` completes, an LLM feasibility check validates every proposed action against target environment constraints (shell commands, MCP tool access, file write permissions, token budget). Infeasible designs route back to `design_artifacts` for revision before project scoping begins. See [`HARNESS_OPTIMIZATION_GUIDE.md` § check_substrate](HARNESS_OPTIMIZATION_GUIDE.md) for configuration details.
+> **`check_substrate` gate** (ENH-2098): After `design_artifacts` completes, an LLM feasibility check validates every proposed action against target environment constraints (shell commands, MCP tool access, file write permissions, token budget). Infeasible designs route back to `design_artifacts` for revision before project scoping begins. If the judge abstains (`cannot_judge`), `probe_substrate` deterministically gathers the environment facts the judge's `source:` never contained, then `check_substrate_probed` re-asks the same question once with that evidence, failing closed to `substrate_unknown` if it still can't decide (BUG-3227). See [`HARNESS_OPTIMIZATION_GUIDE.md` § check_substrate](HARNESS_OPTIMIZATION_GUIDE.md) for configuration details.
 
 Use `rn-build` for all new spec-driven greenfield projects.
 
