@@ -3,7 +3,8 @@ id: ENH-3247
 type: ENH
 title: Extend format-check --fix to repair structural debris in issue files
 priority: P2
-status: open
+status: done
+completed_at: '2026-08-17T23:00:00Z'
 testable: true
 discovered_by: ll-issues-create
 discovered_date: '2026-08-17'
@@ -409,7 +410,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ## Status
 
-**Open** | Created: 2026-08-17 | Priority: P2
+**Done** | Created: 2026-08-17 | Completed: 2026-08-17 | Priority: P2
 
 
 ## Scope Boundary
@@ -417,6 +418,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 **Note** (added by `/ll:audit-issue-conflicts`): This issue and ENH-2966 both modify `check_format_gaps`/`FormatGaps` in `scripts/little_loops/issue_parser.py` for unrelated gap classes (ENH-3247's two new structural-debris gap classes vs. ENH-2966's testable-keyword scan surface). Coordinate implementation order to avoid a merge collision in the same function.
 
 ## Session Log
+- `/ll:ready-issue` - 2026-08-17T22:12:48 - `4d3fe332-8d66-43da-8f30-42deac212b4e.jsonl`
 - `/ll:confidence-check` - 2026-08-17T21:34:22 - `878d0e98-a6e4-41e7-80a9-53a56e3db6f7.jsonl`
 - `/ll:confidence-check` - 2026-08-17T20:31:13 - `e97f4c03-b671-421e-ac95-ea56a86f3a4e.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-17T20:25:55 - `fe71c380-6bd8-44e2-9c73-d0617456c6e4.jsonl`

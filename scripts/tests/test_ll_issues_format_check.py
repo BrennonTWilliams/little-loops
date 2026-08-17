@@ -356,6 +356,10 @@ class TestFormatCheckJsonOutput:
             # FEAT-3048: backticked `ll-<tool> <sub> [--flag]` claim naming a
             # subcommand/flag the tool's argparse parser doesn't accept.
             "stale_cli_flag": [],
+            # ENH-3247: same ### heading text repeated under one ## parent.
+            "duplicate_heading": [],
+            # ENH-3247: _Added by …:_ stub with no bullet before next heading/stub.
+            "empty_provenance_stub": [],
             # ENH-2992: marker presence rides the same payload; not a gap, so
             # it does not affect the exit code above.
             "superseded_marker_count": 0,
@@ -1613,6 +1617,357 @@ class TestFormatCheckFix:
         assert "BUG-9404" not in out or "prose_dep_drift" not in out.split("BUG-9404:")[-1]
         assert "blocked_by" in path.read_text()
         assert "FEAT-9500" in path.read_text()
+
+
+# ---------------------------------------------------------------------------
+# TestFormatCheckDuplicateHeadingFix (ENH-3247)
+# ---------------------------------------------------------------------------
+
+
+class TestFormatCheckDuplicateHeadingFix:
+    """``--fix``/``--apply`` collapses duplicate ``###`` headings under one ``##``."""
+
+    def _write_dup_heading_bug(self, format_check_dir: Path, bug_id: str, filename: str) -> Path:
+        body = _CLEAN_BUG_BODY.replace("id: BUG-9101", f"id: {bug_id}")
+        body += (
+            "\n\n## Integration Map\n\n"
+            "### Files to Modify\n- a.py\n\n"
+            "### Dependent Files (Callers/Importers)\n- b.py\n\n"
+            "### Dependent Files (Callers/Importers)\n- c.py\n"
+        )
+        return _write_issue(format_check_dir, filename, body)
+
+    def test_detected_as_duplicate_heading_gap(
+        self,
+        temp_project_dir: Path,
+        format_check_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        self._write_dup_heading_bug(format_check_dir, "BUG-9410", "P3-BUG-9410-test-bug.md")
+
+        result = _invoke(
+            ["ll-issues", "format-check", "BUG-9410", "--config", str(temp_project_dir)]
+        )
+        out, _ = capsys.readouterr()
+
+        assert result == 1
+        assert "duplicate_heading: Integration Map > Dependent Files" in out
+
+    def test_fix_without_apply_previews_and_does_not_write(
+        self,
+        temp_project_dir: Path,
+        format_check_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        path = self._write_dup_heading_bug(format_check_dir, "BUG-9411", "P3-BUG-9411-test-bug.md")
+        before = path.read_text()
+
+        result = _invoke(
+            ["ll-issues", "format-check", "BUG-9411", "--fix", "--config", str(temp_project_dir)]
+        )
+        out, _ = capsys.readouterr()
+
+        assert result == 1
+        assert "would collapse" in out
+        assert path.read_text() == before
+
+    def test_fix_apply_collapses_and_is_idempotent(
+        self,
+        temp_project_dir: Path,
+        format_check_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        path = self._write_dup_heading_bug(format_check_dir, "BUG-9412", "P3-BUG-9412-test-bug.md")
+
+        result = _invoke(
+            [
+                "ll-issues",
+                "format-check",
+                "BUG-9412",
+                "--fix",
+                "--apply",
+                "--config",
+                str(temp_project_dir),
+            ]
+        )
+        out, _ = capsys.readouterr()
+        after_first = path.read_text()
+
+        assert result == 0
+        assert "duplicate_heading" not in out
+        assert after_first.count("### Dependent Files (Callers/Importers)") == 1
+        assert "- b.py" in after_first
+        assert "- c.py" in after_first
+
+        result2 = _invoke(
+            [
+                "ll-issues",
+                "format-check",
+                "BUG-9412",
+                "--fix",
+                "--apply",
+                "--config",
+                str(temp_project_dir),
+            ]
+        )
+        capsys.readouterr()
+
+        assert result2 == 0
+        assert path.read_text() == after_first
+
+    def test_sweep_mode_does_not_write_body(
+        self,
+        temp_project_dir: Path,
+        format_check_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        path = self._write_dup_heading_bug(format_check_dir, "BUG-9413", "P3-BUG-9413-test-bug.md")
+        before = path.read_text()
+
+        _invoke(
+            [
+                "ll-issues",
+                "format-check",
+                "--all",
+                "--fix",
+                "--apply",
+                "--config",
+                str(temp_project_dir),
+            ]
+        )
+        capsys.readouterr()
+
+        assert path.read_text() == before
+
+    def test_fence_safety_leaves_file_byte_identical(
+        self,
+        temp_project_dir: Path,
+        format_check_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        body = _CLEAN_BUG_BODY.replace("id: BUG-9101", "id: BUG-9414")
+        body += (
+            "\n\n## Example\n\n"
+            "```markdown\n"
+            "## Integration Map\n\n"
+            "### Files to Modify\n- a.py\n\n"
+            "### Files to Modify\n- b.py\n"
+            "```\n\n"
+            "### Real Heading\n- content\n"
+        )
+        path = _write_issue(format_check_dir, "P3-BUG-9414-test-bug.md", body)
+        before = path.read_text()
+
+        result = _invoke(
+            [
+                "ll-issues",
+                "format-check",
+                "BUG-9414",
+                "--fix",
+                "--apply",
+                "--config",
+                str(temp_project_dir),
+            ]
+        )
+        capsys.readouterr()
+
+        assert path.read_text() == before
+        assert result == 0
+
+
+# ---------------------------------------------------------------------------
+# TestFormatCheckEmptyProvenanceStubFix (ENH-3247)
+# ---------------------------------------------------------------------------
+
+
+class TestFormatCheckEmptyProvenanceStubFix:
+    """``--fix``/``--apply`` deletes empty ``_Added by …:_`` provenance stubs."""
+
+    _STUB = "_Added by `/ll:refine-issue` — {date} — based on codebase analysis:_"
+
+    def _write_stub_bug(self, format_check_dir: Path, bug_id: str, filename: str) -> Path:
+        body = _CLEAN_BUG_BODY.replace("id: BUG-9101", f"id: {bug_id}")
+        body += (
+            "\n\n## Integration Map\n\n"
+            "### Codebase Research Findings\n\n"
+            f"{self._STUB.format(date='2026-08-10')}\n\n"
+            f"{self._STUB.format(date='2026-08-11')}\n\n"
+            f"{self._STUB.format(date='2026-08-12')}\n\n"
+            "- a real finding\n"
+        )
+        return _write_issue(format_check_dir, filename, body)
+
+    def test_detected_as_empty_provenance_stub_gap(
+        self,
+        temp_project_dir: Path,
+        format_check_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        self._write_stub_bug(format_check_dir, "BUG-9420", "P3-BUG-9420-test-bug.md")
+
+        result = _invoke(
+            ["ll-issues", "format-check", "BUG-9420", "--config", str(temp_project_dir)]
+        )
+        out, _ = capsys.readouterr()
+
+        assert result == 1
+        assert "empty_provenance_stub:" in out
+
+    def test_fix_without_apply_previews_and_does_not_write(
+        self,
+        temp_project_dir: Path,
+        format_check_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        path = self._write_stub_bug(format_check_dir, "BUG-9421", "P3-BUG-9421-test-bug.md")
+        before = path.read_text()
+
+        result = _invoke(
+            ["ll-issues", "format-check", "BUG-9421", "--fix", "--config", str(temp_project_dir)]
+        )
+        out, _ = capsys.readouterr()
+
+        assert result == 1
+        assert "would delete" in out
+        assert path.read_text() == before
+
+    def test_fix_apply_deletes_and_is_idempotent(
+        self,
+        temp_project_dir: Path,
+        format_check_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        path = self._write_stub_bug(format_check_dir, "BUG-9422", "P3-BUG-9422-test-bug.md")
+
+        result = _invoke(
+            [
+                "ll-issues",
+                "format-check",
+                "BUG-9422",
+                "--fix",
+                "--apply",
+                "--config",
+                str(temp_project_dir),
+            ]
+        )
+        out, _ = capsys.readouterr()
+        after_first = path.read_text()
+
+        assert result == 0
+        assert "empty_provenance_stub" not in out
+        assert after_first.count("_Added by") == 1
+        assert "- a real finding" in after_first
+        # No three-blank-line gap left behind by collapsing two adjacent stubs.
+        assert "\n\n\n" not in after_first
+
+        result2 = _invoke(
+            [
+                "ll-issues",
+                "format-check",
+                "BUG-9422",
+                "--fix",
+                "--apply",
+                "--config",
+                str(temp_project_dir),
+            ]
+        )
+        capsys.readouterr()
+
+        assert result2 == 0
+        assert path.read_text() == after_first
+
+    def test_sweep_mode_does_not_write_body(
+        self,
+        temp_project_dir: Path,
+        format_check_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        path = self._write_stub_bug(format_check_dir, "BUG-9423", "P3-BUG-9423-test-bug.md")
+        before = path.read_text()
+
+        _invoke(
+            [
+                "ll-issues",
+                "format-check",
+                "--all",
+                "--fix",
+                "--apply",
+                "--config",
+                str(temp_project_dir),
+            ]
+        )
+        capsys.readouterr()
+
+        assert path.read_text() == before
+
+
+# ---------------------------------------------------------------------------
+# TestFormatCheckDuplicateFindingsFix (ENH-3247 — dispatch table N=3)
+# ---------------------------------------------------------------------------
+
+
+class TestFormatCheckDuplicateFindingsFix:
+    """``duplicate_findings_block`` registered into the new --fix dispatch table."""
+
+    def _write_stacked_findings_bug(
+        self, format_check_dir: Path, bug_id: str, filename: str
+    ) -> Path:
+        body = _CLEAN_BUG_BODY.replace("id: BUG-9101", f"id: {bug_id}")
+        body += (
+            "\n\n## Integration Map\n\n"
+            "### Codebase Research Findings\n\n"
+            "_Added by `/ll:refine-issue` — 2026-08-10 — based on codebase analysis:_\n\n"
+            "- one\n\n"
+            "### Codebase Research Findings\n\n"
+            "_Added by `/ll:refine-issue` — 2026-08-11 — based on codebase analysis:_\n\n"
+            "- two\n"
+        )
+        return _write_issue(format_check_dir, filename, body)
+
+    def test_fix_apply_collapses_stacked_findings_and_is_idempotent(
+        self,
+        temp_project_dir: Path,
+        format_check_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        path = self._write_stacked_findings_bug(
+            format_check_dir, "BUG-9430", "P3-BUG-9430-test-bug.md"
+        )
+
+        result = _invoke(
+            [
+                "ll-issues",
+                "format-check",
+                "BUG-9430",
+                "--fix",
+                "--apply",
+                "--config",
+                str(temp_project_dir),
+            ]
+        )
+        capsys.readouterr()
+        after_first = path.read_text()
+
+        assert result == 0
+        assert after_first.count("### Codebase Research Findings") == 1
+        assert "- one" in after_first
+        assert "- two" in after_first
+
+        result2 = _invoke(
+            [
+                "ll-issues",
+                "format-check",
+                "BUG-9430",
+                "--fix",
+                "--apply",
+                "--config",
+                str(temp_project_dir),
+            ]
+        )
+        capsys.readouterr()
+
+        assert result2 == 0
+        assert path.read_text() == after_first
 
 
 # ---------------------------------------------------------------------------

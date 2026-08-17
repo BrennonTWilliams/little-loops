@@ -4708,6 +4708,103 @@ class TestStackedFindingsBlocks:
         assert _duplicate_findings_blocks(folded) == ["Program Design (2)"]
 
 
+class TestDuplicateHeadingDetection:
+    """``duplicate_heading`` gap class: repeated ``###`` under one ``##`` (ENH-3247).
+
+    ``_iter_h2_sections``/``_paragraph_spans`` have no existing test pinning
+    their ``(heading, start, end)`` return-shape contract; these tests
+    establish it for the new detector built on top of it.
+    """
+
+    BODY = (
+        "# BUG-1\n\n"
+        "## Integration Map\n\n"
+        "### Files to Modify\n- a.py\n\n"
+        "### Dependent Files (Callers/Importers)\n- b.py\n\n"
+        "### Dependent Files (Callers/Importers)\n- c.py\n\n"
+        "## Program Design\n\n"
+        "### Call Path\n- one\n"
+    )
+
+    def test_duplicate_h3_reported_per_h2(self) -> None:
+        from little_loops.issue_parser import _duplicate_headings
+
+        assert _duplicate_headings(self.BODY) == [
+            "Integration Map > Dependent Files (Callers/Importers) (2)"
+        ]
+
+    def test_clean_document_reports_nothing(self) -> None:
+        from little_loops.issue_parser import _duplicate_headings
+
+        clean = self.BODY.replace(
+            "### Dependent Files (Callers/Importers)\n- c.py\n\n", ""
+        )
+        assert _duplicate_headings(clean) == []
+
+    def test_codebase_research_findings_carve_out(self) -> None:
+        """Owned by duplicate_findings_block, not duplicate_heading (Decision Rules)."""
+        from little_loops.issue_parser import _duplicate_headings
+
+        body = (
+            "## Integration Map\n\n"
+            "### Codebase Research Findings\n- one\n\n"
+            "### Codebase Research Findings\n- two\n"
+        )
+        assert _duplicate_headings(body) == []
+
+    def test_duplicate_heading_inside_fence_is_invisible(self) -> None:
+        from little_loops.issue_parser import _duplicate_headings
+
+        fenced = (
+            "## Example\n\n"
+            "```markdown\n"
+            "## Integration Map\n\n"
+            "### Files to Modify\n- a.py\n\n"
+            "### Files to Modify\n- b.py\n"
+            "```\n\n"
+            "### Real Heading\n- content\n"
+        )
+        assert _duplicate_headings(fenced) == []
+
+
+class TestEmptyProvenanceStubDetection:
+    """``empty_provenance_stub`` gap class: no bullet before next heading/stub (ENH-3247)."""
+
+    STUB = "_Added by `/ll:refine-issue` — {date} — based on codebase analysis:_"
+
+    def test_three_consecutive_empty_stubs_reports_first_two(self) -> None:
+        from little_loops.issue_parser import _empty_provenance_stubs
+
+        body = (
+            "### Codebase Research Findings\n\n"
+            f"{self.STUB.format(date='2026-08-10')}\n\n"
+            f"{self.STUB.format(date='2026-08-11')}\n\n"
+            f"{self.STUB.format(date='2026-08-12')}\n\n"
+            "- a real finding\n"
+        )
+        # Two empty (nothing but another stub follows); the third has a
+        # bullet before the next heading/stub/EOF, so it is not reported.
+        assert len(_empty_provenance_stubs(body)) == 2
+
+    def test_stub_with_bullet_is_not_reported(self) -> None:
+        from little_loops.issue_parser import _empty_provenance_stubs
+
+        body = "### Codebase Research Findings\n\n" f"{self.STUB.format(date='2026-08-10')}\n\n- a bullet\n"
+        assert _empty_provenance_stubs(body) == []
+
+    def test_empty_stub_inside_fence_is_invisible(self) -> None:
+        from little_loops.issue_parser import _empty_provenance_stubs
+
+        fenced = (
+            "## Example\n\n"
+            "```markdown\n"
+            f"{self.STUB.format(date='2026-08-10')}\n\n"
+            f"{self.STUB.format(date='2026-08-11')}\n"
+            "```\n"
+        )
+        assert _empty_provenance_stubs(fenced) == []
+
+
 class TestBehaviorParityHeadingDetection:
     """`_heading_bodies(content, "Behavior Parity")` absence/presence (ENH-3045).
 

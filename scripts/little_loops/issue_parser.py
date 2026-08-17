@@ -509,6 +509,8 @@ class FormatGaps:
     stale_symbol_ref: list[str] = field(default_factory=list)
     mislocated_symbol_ref: list[str] = field(default_factory=list)
     stale_cli_flag: list[str] = field(default_factory=list)
+    duplicate_heading: list[str] = field(default_factory=list)
+    empty_provenance_stub: list[str] = field(default_factory=list)
 
     @property
     def has_gaps(self) -> bool:
@@ -535,6 +537,8 @@ class FormatGaps:
             or self.stale_symbol_ref
             or self.mislocated_symbol_ref
             or self.stale_cli_flag
+            or self.duplicate_heading
+            or self.empty_provenance_stub
         )
 
     def to_dict(self) -> dict[str, list[str]]:
@@ -561,6 +565,8 @@ class FormatGaps:
             "stale_symbol_ref": self.stale_symbol_ref,
             "mislocated_symbol_ref": self.mislocated_symbol_ref,
             "stale_cli_flag": self.stale_cli_flag,
+            "duplicate_heading": self.duplicate_heading,
+            "empty_provenance_stub": self.empty_provenance_stub,
         }
 
 
@@ -744,6 +750,21 @@ def check_format_gaps(
             (:func:`little_loops.issues.cli_surface.build_cli_surface_index`).
             Only reported when *cli_index* is given; fails open for an
             unscrapable tool.
+        duplicate_heading: the same ``###`` heading text appears more than
+            once under one ``##`` parent (ENH-3247) — e.g. two
+            ``### Files to Modify`` under ``## Integration Map`` after a retry
+            pass. Excludes ``### Codebase Research Findings``, which is
+            already owned by ``duplicate_findings_block`` with its own
+            dedicated repair. Both detection and repair mask fenced code
+            blocks (:func:`little_loops.text_utils.fence_spans`) — a
+            duplicate heading inside an illustrative ``` ``` ``` block is
+            documentation, not a gap.
+        empty_provenance_stub: an ``_Added by `/ll:refine-issue` — DATE —
+            based on codebase analysis:_`` provenance line (ENH-3247,
+            :data:`little_loops.issues.fold_research_findings._MARKER_PREFIX`)
+            with no bullet or other content before the next heading or the
+            next stub — a provenance marker for findings that were never
+            written. Fence-masked like ``duplicate_heading``.
 
     Args:
         issue_path: Path to the issue markdown file.
@@ -1036,6 +1057,8 @@ def check_format_gaps(
             gaps.unmarked_superseded_directive.append(issue_path.name)
 
     gaps.duplicate_findings_block.extend(_duplicate_findings_blocks(content))
+    gaps.duplicate_heading.extend(_duplicate_headings(content))
+    gaps.empty_provenance_stub.extend(_empty_provenance_stubs(content))
 
     return gaps
 
@@ -1044,6 +1067,37 @@ def check_format_gaps(
 # /ll:refine-issue pass; `ll-issues fold-findings` folds them to one per H2.
 _FINDINGS_SUB_HEADING = "Codebase Research Findings"
 _FINDINGS_H3_RE = re.compile(rf"^###\s+{re.escape(_FINDINGS_SUB_HEADING)}\s*$", re.MULTILINE)
+
+
+def _iter_h2_sections_fence_masked(
+    content: str, fences: list[tuple[int, int]] | None = None
+) -> list[tuple[str, int, int]]:
+    """Fence-masked sibling of :func:`_iter_h2_sections` (ENH-3247).
+
+    A ``## `` line inside a fenced code block (e.g. an illustrative markdown
+    example embedded in an issue body) is not a real section boundary — see
+    BUG-3245's own file, whose ```` ```markdown ```` example block contains a
+    ``## Program Design`` line that previously made ``_iter_h2_sections``
+    report that heading twice. New H2-scoped detectors should use this
+    instead of :func:`_iter_h2_sections`.
+    """
+    from little_loops.text_utils import in_fence
+
+    if fences is None:
+        from little_loops.text_utils import fence_spans
+
+        fences = fence_spans(content)
+    matches = [
+        m
+        for m in re.finditer(r"^##\s+(.+?)\s*$", content, re.MULTILINE)
+        if not in_fence(m.start(), m.end(), fences)
+    ]
+    sections = []
+    for i, m in enumerate(matches):
+        start = m.end()
+        end = matches[i + 1].start() if i + 1 < len(matches) else len(content)
+        sections.append((m.group(1).strip(), start, end))
+    return sections
 
 
 def _duplicate_findings_blocks(content: str) -> list[str]:
@@ -1057,15 +1111,114 @@ def _duplicate_findings_blocks(content: str) -> list[str]:
     ``##`` as well as ``###``, so a stray ``## Codebase Research Findings``
     would register as a duplicate of a legitimate nested one.
 
-    Slicing with :func:`_iter_h2_sections` and counting only ``###`` matches
-    *within each slice* avoids both traps.
+    Slicing with :func:`_iter_h2_sections_fence_masked` and counting only
+    ``###`` matches *within each slice*, excluding fenced ones, avoids all
+    three traps (ENH-3247 fixed the fence blindness in the same pass as the
+    two new gap classes below, per Proposed Solution step 0's decision).
     """
+    from little_loops.text_utils import fence_spans, in_fence
+
+    fences = fence_spans(content)
     duplicates: list[str] = []
-    for heading, start, end in _iter_h2_sections(content):
-        count = len(_FINDINGS_H3_RE.findall(content[start:end]))
+    for heading, start, end in _iter_h2_sections_fence_masked(content, fences):
+        count = sum(
+            1
+            for m in _FINDINGS_H3_RE.finditer(content, start, end)
+            if not in_fence(m.start(), m.end(), fences)
+        )
         if count > 1:
             duplicates.append(f"{heading} ({count})")
     return duplicates
+
+
+# ENH-3247: the same "same ### text repeated under one ## parent" shape as
+# _duplicate_findings_blocks, but for arbitrary heading text rather than the
+# one fixed pattern. Codebase Research Findings is excluded — that shape
+# stays owned by _duplicate_findings_blocks/fold-findings (Decision Rules).
+_H3_HEADING_RE = re.compile(r"^###\s+(.+?)\s*$", re.MULTILINE)
+
+
+def _duplicate_heading_groups(
+    content: str,
+) -> list[tuple[str, str, list[tuple[int, int, int]]]]:
+    """Return ``(h2, h3, [(block_start, body_start, block_end), ...])`` per repeated H3.
+
+    Only H3 headings repeated more than once under the same H2 parent are
+    returned. Each block spans from the ``###`` heading line start
+    (``block_start``) through the next heading of level <=3 or the parent H2
+    slice end (``block_end``), with ``body_start`` marking where the heading
+    line ends and the body begins — the same three-way split
+    :func:`little_loops.issues.fold_research_findings.find_subsections` uses,
+    so the repair (which collapses these spans) and that existing precedent
+    agree on what "the block" and "the body" mean. Fence-masked throughout
+    (ENH-3247 Proposed Solution step 0): a duplicate heading that exists only
+    inside a fenced example is not a gap.
+    """
+    from little_loops.text_utils import fence_spans, in_fence
+
+    fences = fence_spans(content)
+    groups: list[tuple[str, str, list[tuple[int, int, int]]]] = []
+    for h2, h2_start, h2_end in _iter_h2_sections_fence_masked(content, fences):
+        by_heading: dict[str, list[tuple[int, int, int]]] = {}
+        for m in _H3_HEADING_RE.finditer(content, h2_start, h2_end):
+            if in_fence(m.start(), m.end(), fences):
+                continue
+            text = m.group(1).strip()
+            if text == _FINDINGS_SUB_HEADING:
+                continue
+            following = re.search(r"^#{1,3}\s", content[m.end() : h2_end], re.MULTILINE)
+            block_end = m.end() + following.start() if following else h2_end
+            by_heading.setdefault(text, []).append((m.start(), m.end(), block_end))
+        for text, spans in by_heading.items():
+            if len(spans) > 1:
+                groups.append((h2, text, spans))
+    return groups
+
+
+def _duplicate_headings(content: str) -> list[str]:
+    """Gap-report strings for the ``duplicate_heading`` class (ENH-3247)."""
+    return [f"{h2} > {h3} ({len(spans)})" for h2, h3, spans in _duplicate_heading_groups(content)]
+
+
+def _empty_provenance_stub_matches(content: str) -> list[re.Match[str]]:
+    """Return regex matches for empty ``_Added by …:_`` stubs (ENH-3247).
+
+    "Empty" means no non-blank line (bullet or otherwise) appears between the
+    stub and whichever comes first: the next heading (any level) or the next
+    stub. Fence-masked. Built on the exact marker text
+    :func:`little_loops.issues.fold_research_findings.fold_research_findings`
+    writes, so detection here and the module that produces (and, post
+    BUG-3245, never again produces empty) these stubs can never disagree
+    about what a stub looks like.
+    """
+    from little_loops.issues.fold_research_findings import _MARKER_PREFIX, _MARKER_SUFFIX
+    from little_loops.text_utils import fence_spans, in_fence
+
+    stub_re = re.compile(
+        rf"^{re.escape(_MARKER_PREFIX)}.*?{re.escape(_MARKER_SUFFIX)}[ \t]*$",
+        re.MULTILINE,
+    )
+    fences = fence_spans(content)
+    stubs = [m for m in stub_re.finditer(content) if not in_fence(m.start(), m.end(), fences)]
+    heading_re = re.compile(r"^#{1,6}\s", re.MULTILINE)
+
+    empty: list[re.Match[str]] = []
+    for i, m in enumerate(stubs):
+        next_stub_start = stubs[i + 1].start() if i + 1 < len(stubs) else len(content)
+        heading_match = heading_re.search(content, m.end())
+        heading_start = heading_match.start() if heading_match else len(content)
+        boundary = min(next_stub_start, heading_start)
+        if not content[m.end() : boundary].strip():
+            empty.append(m)
+    return empty
+
+
+def _empty_provenance_stubs(content: str) -> list[str]:
+    """Gap-report strings for the ``empty_provenance_stub`` class (ENH-3247)."""
+    return [
+        f"line {content.count(chr(10), 0, m.start()) + 1}"
+        for m in _empty_provenance_stub_matches(content)
+    ]
 
 
 # ENH-2995: closed detection list for the unmarked_superseded_directive gap

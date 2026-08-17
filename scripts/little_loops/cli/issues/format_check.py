@@ -10,6 +10,8 @@ from contextlib import contextmanager
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from little_loops.config import BRConfig
     from little_loops.issue_parser import FormatGaps
 
@@ -64,7 +66,7 @@ def add_format_check_parser(subs: argparse._SubParsersAction) -> argparse.Argume
         "multi_frontmatter/testable/stale_file_ref/unmarked_superseded_directive/"
         "duplicate_findings_block/ambiguous_file_ref/missing_behavior_parity/"
         "soft_dep_hard_edge/malformed_dep_id/stale_symbol_ref/mislocated_symbol_ref/"
-        "stale_cli_flag)",
+        "stale_cli_flag/duplicate_heading/empty_provenance_stub)",
     )
     p.set_defaults(command="format-check")
     p.add_argument(
@@ -95,8 +97,12 @@ def add_format_check_parser(subs: argparse._SubParsersAction) -> argparse.Argume
     p.add_argument(
         "--fix",
         action="store_true",
-        help="Preview backfilling blocked_by from prose_dep_drift gaps via "
-        "`ll-issues link` (dry-run by default; combine with --apply to write)",
+        help="Preview repairs for prose_dep_drift (backfill blocked_by via "
+        "`ll-issues link`), duplicate_findings_block (fold via `ll-issues "
+        "fold-findings`), duplicate_heading, and empty_provenance_stub gaps "
+        "(dry-run by default; combine with --apply to write). The latter "
+        "three are single-issue mode only — --all --fix --apply is "
+        "restricted to the frontmatter-only prose_dep_drift repair (ENH-3247)",
     )
     p.add_argument(
         "--apply",
@@ -107,12 +113,16 @@ def add_format_check_parser(subs: argparse._SubParsersAction) -> argparse.Argume
     return p
 
 
-def _fix_prose_deps(config: BRConfig, source_id: str, targets: list[str], *, apply: bool) -> None:
+def _fix_prose_deps(
+    config: BRConfig, source_id: str, path: Path, targets: list[str], *, apply: bool
+) -> None:
     """Backfill ``blocked_by`` edges for *source_id*'s prose_dep_drift targets.
 
     Invokes ``cmd_link`` in-process (the only idempotent, cycle-safe write
     path — FEAT-2851) rather than editing frontmatter directly. Dry-run by
-    default; pass ``apply=True`` to actually write.
+    default; pass ``apply=True`` to actually write. *path* is unused — this
+    repair only ever needs the issue ID — but is accepted for a uniform
+    dispatch signature shared with the three body-rewriting repairs below.
     """
     from little_loops.cli.issues.link import cmd_link
 
@@ -129,6 +139,184 @@ def _fix_prose_deps(config: BRConfig, source_id: str, targets: list[str], *, app
             dry_run=not apply,
         )
         cmd_link(config, ns)
+
+
+def _fix_duplicate_findings(
+    config: BRConfig, source_id: str, path: Path, targets: list[str], *, apply: bool
+) -> None:
+    """Collapse duplicate ``### Codebase Research Findings`` blocks (ENH-3247).
+
+    Registers the pre-existing ``duplicate_findings_block`` gap class into
+    the new dispatch table via the same transform ``ll-issues fold-findings``
+    uses — :func:`~little_loops.issues.fold_research_findings.fold_research_findings`
+    — called with an empty new-content payload, since this repair only
+    collapses what already exists, never adds a batch. Wiring it in is what
+    proves the dispatch table generalizes past N=2 (Decision Rules); *config*
+    is unused (kept for signature parity with the other three fixers).
+    """
+    from little_loops.file_utils import atomic_write
+    from little_loops.issues.fold_research_findings import dated_marker, fold_research_findings
+
+    for entry in targets:
+        heading = entry.rsplit(" (", 1)[0]
+        content = path.read_text(encoding="utf-8")
+        updated = fold_research_findings(content, heading, "", marker=dated_marker())
+        if updated == content:
+            continue
+        if apply:
+            atomic_write(path, updated)
+        else:
+            print(f"  [dry-run] would collapse duplicate findings blocks under '{heading}'")
+
+
+def _fix_duplicate_headings(
+    config: BRConfig, source_id: str, path: Path, targets: list[str], *, apply: bool
+) -> None:
+    """Collapse duplicate ``###`` headings under one ``##`` parent (ENH-3247).
+
+    Pure, fence-masked, idempotent transform in
+    :func:`_collapse_duplicate_headings`; this wrapper is only the dry-run/
+    ``--apply`` write shape. *config*/*source_id*/*targets* are unused — the
+    transform recomputes duplicate groups directly from the file, the same
+    way ``--fix``'s preview text is derived from *gaps* rather than threaded
+    through as an argument.
+    """
+    from little_loops.file_utils import atomic_write
+
+    content = path.read_text(encoding="utf-8")
+    updated = _collapse_duplicate_headings(content)
+    if updated == content:
+        return
+    if apply:
+        atomic_write(path, updated)
+    else:
+        print(f"  [dry-run] would collapse {len(targets)} duplicate heading group(s)")
+
+
+def _fix_empty_provenance_stubs(
+    config: BRConfig, source_id: str, path: Path, targets: list[str], *, apply: bool
+) -> None:
+    """Delete empty ``_Added by …:_`` provenance stubs (ENH-3247).
+
+    Pure, fence-masked, idempotent transform in
+    :func:`_remove_empty_provenance_stubs`, including the blank-line
+    normalization Expected Behavior requires. Same unused-argument rationale
+    as :func:`_fix_duplicate_headings`.
+    """
+    from little_loops.file_utils import atomic_write
+
+    content = path.read_text(encoding="utf-8")
+    updated = _remove_empty_provenance_stubs(content)
+    if updated == content:
+        return
+    if apply:
+        atomic_write(path, updated)
+    else:
+        print(f"  [dry-run] would delete {len(targets)} empty provenance stub(s)")
+
+
+def _collapse_duplicate_headings(content: str) -> str:
+    """Collapse every repeated ``###`` heading under one ``##`` parent.
+
+    Keeps the first occurrence's position; concatenates the later
+    occurrences' bodies into it in document order (never-drop-a-body —
+    Decision Rules). Recomputes duplicate groups from scratch after each
+    single-group collapse rather than adjusting offsets across groups: two
+    duplicated headings whose occurrences interleave in the document would
+    otherwise invalidate each other's cached offsets mid-pass. Issue-file-
+    sized documents make the O(groups) rescans cheap. Fence-masked via
+    :func:`~little_loops.issue_parser._duplicate_heading_groups`, so a
+    duplicate that exists only inside a fenced example is never touched.
+    """
+    from little_loops.issue_parser import _duplicate_heading_groups
+
+    out = content
+    while True:
+        groups = _duplicate_heading_groups(out)
+        if not groups:
+            return out
+        _h2, h3, spans = groups[0]
+        bodies = [out[body_start:block_end].strip("\n") for _, body_start, block_end in spans]
+        merged_body = "\n\n".join(b for b in bodies if b)
+        block = f"### {h3}\n\n{merged_body}\n" if merged_body else f"### {h3}\n"
+
+        rewritten = out
+        for block_start, _body_start, block_end in reversed(spans[1:]):
+            rewritten = rewritten[:block_start] + rewritten[block_end:]
+        first_start, _first_body_start, first_end = spans[0]
+        tail = rewritten[first_end:]
+        out = rewritten[:first_start] + block + (f"\n{tail}" if tail.strip() else tail)
+
+
+def _remove_empty_provenance_stubs(content: str) -> str:
+    """Delete every empty ``_Added by …:_`` stub, normalizing surrounding blanks.
+
+    Processes matches in reverse document order (mirrors
+    :func:`~little_loops.issues.fold_research_findings.fold_research_findings`'s
+    reversed-spans idiom) so an earlier deletion never invalidates a later
+    match's cached offsets. Each deletion removes the stub's own line plus
+    every blank line immediately *following* it, while leaving the blank
+    line immediately *preceding* it untouched — which is what keeps two
+    adjacent stubs collapsing down to exactly one blank line rather than
+    three (Expected Behavior). Fence-masked via
+    :func:`~little_loops.issue_parser._empty_provenance_stub_matches`.
+    """
+    from little_loops.issue_parser import _empty_provenance_stub_matches
+
+    out = content
+    for m in reversed(_empty_provenance_stub_matches(content)):
+        line_start = m.start()
+        after = m.end()
+        if out[after : after + 1] == "\n":
+            after += 1
+        while out[after : after + 1] == "\n":
+            after += 1
+        out = out[:line_start] + out[after:]
+    return out
+
+
+# ENH-3247: gap-class -> repair function dispatch table, replacing the two
+# hardcoded `_fix_prose_deps` call sites. Every fixer shares the signature
+# `(config, source_id, path, targets, *, apply) -> None`.
+_REPAIR_DISPATCH = {
+    "prose_dep_drift": _fix_prose_deps,
+    "duplicate_findings_block": _fix_duplicate_findings,
+    "duplicate_heading": _fix_duplicate_headings,
+    "empty_provenance_stub": _fix_empty_provenance_stubs,
+}
+
+# Impact › Risk — sweep blast radius: --all --fix --apply may only run
+# repairs that write frontmatter through an existing idempotent, cycle-safe
+# command (cmd_link). The three body-rewriting repairs run in single-issue
+# mode only.
+_SWEEP_SAFE_REPAIRS = frozenset({"prose_dep_drift"})
+
+
+def _apply_fix_dispatch(
+    config: BRConfig,
+    source_id: str,
+    path: Path,
+    gaps: FormatGaps,
+    *,
+    apply: bool,
+    sweep: bool,
+) -> bool:
+    """Run every registered fixer whose gap class fired on *gaps*.
+
+    Returns True if any fixer ran, so the caller knows to re-check
+    ``check_format_gaps`` for the post-fix state (only meaningful when
+    *apply* is also True — a dry-run preview never changes the file).
+    """
+    ran = False
+    for name, fixer in _REPAIR_DISPATCH.items():
+        if sweep and name not in _SWEEP_SAFE_REPAIRS:
+            continue
+        targets = getattr(gaps, name)
+        if not targets:
+            continue
+        fixer(config, source_id, path, targets, apply=apply)
+        ran = True
+    return ran
 
 
 def _print_gaps(gaps: FormatGaps) -> None:
@@ -186,6 +374,10 @@ def _print_gaps(gaps: FormatGaps) -> None:
         )
     for entry in gaps.stale_cli_flag:
         print(f"  stale_cli_flag: {entry}")
+    for entry in gaps.duplicate_heading:
+        print(f"  duplicate_heading: {entry}")
+    for entry in gaps.empty_provenance_stub:
+        print(f"  empty_provenance_stub: {entry}")
 
 
 def cmd_format_check(config: BRConfig, args: argparse.Namespace) -> int:
@@ -196,7 +388,7 @@ def cmd_format_check(config: BRConfig, args: argparse.Namespace) -> int:
     multi_frontmatter/testable/stale_file_ref/unmarked_superseded_directive/
     duplicate_findings_block/ambiguous_file_ref/missing_behavior_parity/
     soft_dep_hard_edge/malformed_dep_id/stale_symbol_ref/mislocated_symbol_ref/
-    stale_cli_flag.
+    stale_cli_flag/duplicate_heading/empty_provenance_stub.
 
     Every class in :class:`FormatGaps` must have a matching loop in
     :func:`_print_gaps`; a class counted by ``has_gaps`` but not rendered
@@ -295,9 +487,11 @@ def cmd_format_check(config: BRConfig, args: argparse.Namespace) -> int:
             except OSError as exc:
                 print(f"Warning: skipping {info.path}: {exc}", file=sys.stderr)
                 continue
-            if fix and gaps.prose_dep_drift:
-                _fix_prose_deps(config, info.issue_id, gaps.prose_dep_drift, apply=apply_fix)
-                if apply_fix:
+            if fix:
+                ran = _apply_fix_dispatch(
+                    config, info.issue_id, info.path, gaps, apply=apply_fix, sweep=True
+                )
+                if ran and apply_fix:
                     gaps = check_format_gaps(
                         info.path,
                         templates_dir=templates_dir,
@@ -337,11 +531,11 @@ def cmd_format_check(config: BRConfig, args: argparse.Namespace) -> int:
         cli_index=cli_index,
     )
 
-    if fix and gaps.prose_dep_drift:
+    if fix:
         resolved = next((info for info in all_issues if info.path == path), None)
         source_id = resolved.issue_id if resolved is not None else issue_id
-        _fix_prose_deps(config, source_id, gaps.prose_dep_drift, apply=apply_fix)
-        if apply_fix:
+        ran = _apply_fix_dispatch(config, source_id, path, gaps, apply=apply_fix, sweep=False)
+        if ran and apply_fix:
             gaps = check_format_gaps(
                 path,
                 templates_dir=templates_dir,
