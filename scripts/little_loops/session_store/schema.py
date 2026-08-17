@@ -18,7 +18,7 @@ from little_loops.session_store.db import DEFAULT_DB_PATH, _resolve_db_path
 
 logger = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 41
+SCHEMA_VERSION = 42
 
 VALID_KINDS: tuple[str, ...] = (
     "tool",
@@ -994,6 +994,37 @@ _MIGRATIONS: list[str] = [
     """
     CREATE INDEX IF NOT EXISTS idx_harness_semantic_verdict
         ON harness_events(semantic_verdict);
+    """,
+    # v42 (BUG-3236): rebuild issue_sessions idempotently. Some databases on
+    # this machine were migrated by an uncommitted working-tree revision of
+    # _MIGRATIONS[35] during the ENH-2771 work, leaving a view with no
+    # issue_num column despite recording schema_version >= 36. Re-issuing the
+    # v36 view body verbatim repairs those databases and is a no-op on
+    # correct ones. Deliberately duplicated from _MIGRATIONS[35] rather than
+    # factored into a shared constant: migration entries are historical
+    # records and must not change when the view definition next evolves.
+    """
+    DROP VIEW IF EXISTS issue_sessions;
+    CREATE VIEW issue_sessions AS
+    SELECT MIN(ie.issue_id) AS issue_id,
+           ie.issue_num AS issue_num,
+           ie.session_id,
+           s.jsonl_path,
+           MIN(ie.ts) AS first_message_ts,
+           MAX(ie.ts) AS last_message_ts
+    FROM issue_events ie
+    LEFT JOIN sessions s ON s.session_id = ie.session_id
+    WHERE ie.session_id IS NOT NULL
+    GROUP BY ie.issue_num, ie.session_id
+    UNION ALL
+    SELECT l.issue_id,
+           CAST(substr(l.issue_id, instr(l.issue_id, '-') + 1) AS INTEGER) AS issue_num,
+           l.session_id, l.jsonl_path, l.first_message_ts, l.last_message_ts
+    FROM legacy_issue_sessions_ts_overlap l
+    WHERE CAST(substr(l.issue_id, instr(l.issue_id, '-') + 1) AS INTEGER) NOT IN (
+        SELECT issue_num FROM issue_events
+        WHERE session_id IS NOT NULL AND issue_num IS NOT NULL
+    );
     """,
 ]
 

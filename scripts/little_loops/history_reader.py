@@ -2114,7 +2114,10 @@ def sessions_for_issue(
             (normalize_issue_id(issue_id), limit),
         ).fetchall()
     except sqlite3.Error:
-        logger.warning("history_reader: sessions_for_issue query failed", exc_info=True)
+        logger.error(
+            "history_reader: sessions_for_issue query failed (possible schema drift)",
+            exc_info=True,
+        )
         return []
     finally:
         conn.close()
@@ -2143,7 +2146,10 @@ def issue_effort(
             (normalize_issue_id(issue_id),),
         ).fetchone()
     except sqlite3.Error:
-        logger.warning("history_reader: issue_effort query failed", exc_info=True)
+        logger.error(
+            "history_reader: issue_effort query failed (possible schema drift)",
+            exc_info=True,
+        )
         return None
     finally:
         conn.close()

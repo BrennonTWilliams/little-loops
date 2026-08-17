@@ -4,7 +4,8 @@ type: BUG
 title: 'issue_sessions view drift: issue_num absent on already-migrated databases,
   silently emptying session and effort readers'
 priority: P1
-status: open
+status: done
+completed_at: '2026-08-17T00:00:00Z'
 discovered_by: feat-3183-pre-implementation-review
 discovered_date: '2026-08-17'
 labels:
@@ -101,7 +102,7 @@ the hard-failure risk that motivates the split. Tracked as BUG-3241.
 
 ### Side effect of the version bump: a full cache rebuild on every project
 
-`hooks/session_start.py:181-192` appends `--rebuild` to the backfill worker whenever
+`scripts/little_loops/hooks/session_start.py:181-192` appends `--rebuild` to the backfill worker whenever
 `meta.last_rebuild_version < SCHEMA_VERSION`. This checkout's database has
 `last_rebuild_version = 41`, and so does every other current one — so bumping
 `SCHEMA_VERSION` to 42 triggers a wipe-and-replay of every `raw_events`-derived cache
@@ -310,7 +311,7 @@ No new public types. The change is one appended migration plus a test helper.
 
 Item 2 (reader error surfacing) **is in scope for this change** — it is what Acceptance
 Criterion 4 requires, and an earlier revision of this section left it optional while the
-AC demanded it. It touches `history_reader.py:2107` and `:2136` only: raise the
+AC demanded it. It touches `history_reader.py:2117` and `:2146` only: raise the
 `logger.warning("history_reader: <fn> query failed", exc_info=True)` calls to
 `logger.error` and name the likely cause (schema drift) in the message. No signature
 change, no behavior change for callers. The sentinel-return / strict-flag idea from
@@ -437,7 +438,7 @@ _Wiring pass added by `/ll:wire-issue`:_
   both a fresh database and one upgraded from a stamped older version.
 - A history-reader query that fails against an existing, readable database is
   distinguishable in logs from an empty result (`logger.error`, not `logger.warning`, at
-  `history_reader.py:2107` and `:2136`).
+  `history_reader.py:2117` and `:2146`).
 - `python -m pytest scripts/tests/` exits 0, including the ~32 version literals updated
   from `41` to `42` per [Codebase Research Findings](#codebase-research-findings).
 
@@ -453,10 +454,11 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ## Status
 
-- [ ] open
+- [x] done
 
 
 ## Session Log
+- `/ll:ready-issue` - 2026-08-17T18:39:03 - `75051b14-4da4-4240-8101-9df3b883444a.jsonl`
 - `/ll:confidence-check` - 2026-08-17T18:33:34 - `9b422899-526d-4898-abb7-ec412bd107e6.jsonl`
 - `/ll:confidence-check` - 2026-08-17T17:19:11 - `83adf706-3c34-48ba-adbd-2ccf3898278d.jsonl`
 - `/ll:verify-issues` - 2026-08-17T17:17:33 - `038b6ab4-3b9f-4cfd-a4d6-dac5e7366086.jsonl`
