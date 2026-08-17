@@ -4,11 +4,12 @@ type: BUG
 title: _parse_completion_date's git fallback silently returns None for relative paths,
   so ll-history analyze --since counts depend on the caller's path form
 priority: P2
-status: open
+status: done
 testable: true
 discovered_by: little-loops-hermes
 discovered_date: '2026-08-17'
 captured_at: '2026-08-17T18:48:10Z'
+completed_at: '2026-08-17T20:49:39Z'
 discovered_commit: 3713d7f9268bfb4478a62f0adac15531e5b486e1
 discovered_branch: main
 verify_verdict: VALID
@@ -215,25 +216,25 @@ than at the `scan_completed_issues` boundary.
 
 ## Acceptance Criteria
 
-- [ ] `scan_completed_issues(Path(".issues"))` and
+- [x] `scan_completed_issues(Path(".issues"))` and
       `scan_completed_issues(Path.cwd() / ".issues")` return identical
       `completed_date` values for every file.
-- [ ] A regression test asserts that equality on a fixture repo containing at
+- [x] A regression test asserts that equality on a fixture repo containing at
       least one issue with no `completed_at` and no Resolution date — the only
       files that reach the fallback. A fixture whose issues all carry
       `completed_at` will pass while the bug is fully present.
-- [ ] A file that genuinely has no git history (untracked, or outside any repo)
+- [x] A file that genuinely has no git history (untracked, or outside any repo)
       still yields `None`, and does so with no log output at any level.
-- [ ] A tracked file whose git lookup returns nothing is logged at `debug` per
+- [x] A tracked file whose git lookup returns nothing is logged at `debug` per
       file, and `scan_completed_issues` emits exactly one aggregated
       `logger.warning` naming the count — not one warning per file. A scan in
       which no file hits that case emits no warning.
-- [ ] `ll-issues list --sort completed` and `ll-issues search --sort completed`
+- [x] `ll-issues list --sort completed` and `ll-issues search --sort completed`
       produce the same ordering whether their issue paths are relative or
       absolute. These are the only surfaces whose *output* changes when this
       lands: `ll-history analyze` already passes an absolute `issues_dir`
       (`cli/history.py:281`), so its counts are correct today and must not move.
-- [ ] `python -m pytest scripts/tests/` exits 0.
+- [x] `python -m pytest scripts/tests/` exits 0.
 
 ## Integration Map
 
@@ -351,9 +352,27 @@ the two disagreed by 18; the path form turned out to be the only difference.
 `bug`, `history`, `cli`, `correctness`
 
 
+## Resolution
+
+- **Action**: fix
+- **Completed**: 2026-08-17
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/issue_history/parsing.py`: extracted `_git_completion_date(file_path) -> (date | None, bool)`. Pathspec is now `file_path.name` (agrees with `cwd=file_path.parent`) instead of the caller's possibly-relative `str(file_path)`. On empty `git log` stdout with `returncode == 0`, a follow-up `git ls-files --error-unmatch` distinguishes "tracked, no history" (logged at `debug`, counted) from "no match" (silent `None`). Both `subprocess.run` calls gained `timeout=10`; the `except` clause widened to `(OSError, ValueError, subprocess.SubprocessError)` to catch the resulting `TimeoutExpired`. `scan_completed_issues` resets a module-level counter at scan start and emits one aggregated `logger.warning` naming the count when it's nonzero.
+- `scripts/tests/test_issue_history_parsing.py`: converted the empty-stdout test to an ordered `side_effect` sequence (git log + git ls-files) per the design's implementation note; added a debug-logging case, a real-git-repo path-form-independence class, and two `scan_completed_issues` aggregated-warning tests.
+- `scripts/tests/test_issue_history_cli.py`: added `test_main_history_analyze_since_relative_directory_matches_absolute`, an end-to-end regression using a real git repo and `-d` passed both relative and absolute.
+
+### Verification Results
+- Tests: PASS (`python -m pytest scripts/tests/` — 19744 passed, 46 skipped)
+- Lint: PASS (`ruff check`)
+- Types: PASS (`mypy scripts/little_loops/issue_history/parsing.py`)
+- Run: N/A (library fix, no run_cmd configured)
+- Integration: PASS (`ll-issues check-design BUG-3243` exits 0)
+
 ## Status
 
-- [ ] open
+- [x] done
 
 
 ## Confidence Check Notes
@@ -410,6 +429,8 @@ falls through to `shutil.move`), so the effect is lost git rename tracking
 rather than wrong data — worth a separate capture.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-17T20:49:14 - `59496209-695f-43e1-b600-7354c2775510.jsonl`
+- `/ll:ready-issue` - 2026-08-17T20:37:11 - `434b3d0c-fa4f-475f-9b76-5b74cdd5ede5.jsonl`
 - `/ll:confidence-check` - 2026-08-17T19:45:58 - `62bab2ff-2e1c-48e4-ad61-470060df1e73.jsonl`
 - `/ll:verify-issues` - 2026-08-17T19:43:38 - `93bf5317-f847-4d5e-adb2-63d9cc3864ac.jsonl`
 - `/ll:wire-issue` - 2026-08-17T19:42:10 - `07640cd8-6bac-4fa7-bbea-0a0ea91ebf47.jsonl`

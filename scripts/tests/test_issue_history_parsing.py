@@ -209,13 +209,34 @@ class TestParseCompletionDate:
         assert result == date(2026, 3, 15)
 
     def test_git_log_fallback_returns_none_when_empty(self, tmp_path: Path) -> None:
-        """When git log returns empty output, None is returned."""
+        """When git log returns empty output and the file is untracked, None is returned."""
         f = tmp_path / "P3-ENH-006-test.md"
         f.write_text("## Resolution\n\nNo date field here.\n")
-        mock_result = subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
-        with patch("little_loops.issue_history.parsing.subprocess.run", return_value=mock_result):
+        log_result = subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
+        ls_files_result = subprocess.CompletedProcess(args=[], returncode=1, stdout="", stderr="")
+        with patch(
+            "little_loops.issue_history.parsing.subprocess.run",
+            side_effect=[log_result, ls_files_result],
+        ):
             result = _parse_completion_date(f.read_text(), f)
         assert result is None
+
+    def test_git_log_fallback_none_but_debug_logged_when_tracked(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """A tracked file with no git log output logs a per-file debug line."""
+        f = tmp_path / "P3-ENH-009-test.md"
+        f.write_text("## Resolution\n\nNo date field here.\n")
+        log_result = subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
+        ls_files_result = subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
+        with patch(
+            "little_loops.issue_history.parsing.subprocess.run",
+            side_effect=[log_result, ls_files_result],
+        ):
+            with caplog.at_level("DEBUG", logger="little_loops.issue_history.parsing"):
+                result = _parse_completion_date(f.read_text(), f)
+        assert result is None
+        assert "no history for tracked file" in caplog.text
 
     def test_git_log_fallback_returns_none_on_nonzero_exit(self, tmp_path: Path) -> None:
         """When git log returns non-zero exit code, None is returned."""
@@ -238,6 +259,47 @@ class TestParseCompletionDate:
         ):
             result = _parse_completion_date(f.read_text(), f)
         assert result is None
+
+
+class TestGitCompletionDatePathFormIndependence:
+    """BUG-3243 regression: git-log fallback must not depend on path form."""
+
+    def _git_repo(self, tmp_path: Path) -> Path:
+        subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+        subprocess.run(
+            ["git", "config", "user.email", "test@example.com"], cwd=tmp_path, check=True
+        )
+        subprocess.run(["git", "config", "user.name", "Test"], cwd=tmp_path, check=True)
+        f = tmp_path / "P1-BUG-001-test.md"
+        f.write_text("## Resolution\n\nNo date field here.\n")
+        subprocess.run(["git", "add", "P1-BUG-001-test.md"], cwd=tmp_path, check=True)
+        subprocess.run(["git", "commit", "-qm", "add issue"], cwd=tmp_path, check=True)
+        return f
+
+    def test_absolute_and_relative_paths_agree(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        f = self._git_repo(tmp_path)
+        monkeypatch.chdir(tmp_path)
+
+        absolute_result = _parse_completion_date(f.read_text(), f.resolve())
+        relative_result = _parse_completion_date(f.read_text(), Path(f.name))
+
+        assert absolute_result is not None
+        assert absolute_result == relative_result
+
+    def test_untracked_file_in_repo_returns_none_with_no_log(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        self._git_repo(tmp_path)
+        untracked = tmp_path / "P1-BUG-002-untracked.md"
+        untracked.write_text("## Resolution\n\nNo date field here.\n")
+
+        with caplog.at_level("DEBUG", logger="little_loops.issue_history.parsing"):
+            result = _parse_completion_date(untracked.read_text(), untracked)
+
+        assert result is None
+        assert caplog.text == ""
 
 
 class TestScanCompletedIssues:
@@ -352,6 +414,54 @@ class TestScanCompletedIssues:
 
         assert len(issues) == 1
         assert issues[0].issue_id == "BUG-001"
+
+    def test_aggregated_warning_for_staged_but_uncommitted_issue(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """A staged-but-uncommitted done issue triggers exactly one scan-level warning."""
+        issues_dir = tmp_path / ".issues"
+        bugs_dir = issues_dir / "bugs"
+        bugs_dir.mkdir(parents=True)
+        subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+        subprocess.run(
+            ["git", "config", "user.email", "test@example.com"], cwd=tmp_path, check=True
+        )
+        subprocess.run(["git", "config", "user.name", "Test"], cwd=tmp_path, check=True)
+        (tmp_path / "README.md").write_text("base\n")
+        subprocess.run(["git", "add", "README.md"], cwd=tmp_path, check=True)
+        subprocess.run(["git", "commit", "-qm", "base"], cwd=tmp_path, check=True)
+
+        issue_file = bugs_dir / "P1-BUG-001-test.md"
+        issue_file.write_text("---\nstatus: done\n---\n\n# BUG-001\n")
+        subprocess.run(
+            ["git", "add", ".issues/bugs/P1-BUG-001-test.md"], cwd=tmp_path, check=True
+        )
+
+        with caplog.at_level("WARNING", logger="little_loops.issue_history.parsing"):
+            issues = scan_completed_issues(issues_dir)
+
+        assert len(issues) == 1
+        assert issues[0].completed_date is None
+        warnings = [r for r in caplog.records if r.levelname == "WARNING"]
+        assert len(warnings) == 1
+        assert "1 completed issue file" in warnings[0].message
+
+    def test_no_aggregated_warning_when_all_dates_resolve(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """A scan where every file's date resolves from frontmatter emits no warning."""
+        issues_dir = tmp_path / ".issues"
+        bugs_dir = issues_dir / "bugs"
+        bugs_dir.mkdir(parents=True)
+        (bugs_dir / "P1-BUG-001-test.md").write_text(
+            "---\nstatus: done\ncompleted_at: 2026-03-17T15:02:41Z\n---\n\n# BUG-001\n"
+        )
+
+        with caplog.at_level("WARNING", logger="little_loops.issue_history.parsing"):
+            issues = scan_completed_issues(issues_dir)
+
+        assert len(issues) == 1
+        assert caplog.text == ""
 
 
 class TestScanActiveIssues:

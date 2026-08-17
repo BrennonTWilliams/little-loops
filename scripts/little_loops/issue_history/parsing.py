@@ -20,6 +20,18 @@ from little_loops.text_utils import extract_file_paths
 
 logger = logging.getLogger(__name__)
 
+# (parsed date, tracked_without_history): the second element distinguishes a
+# tracked file whose git log legitimately returned nothing from a pathspec
+# that silently matched nothing (both would otherwise look like `None`).
+_GitDateResult = tuple[date | None, bool]
+
+# Count of _git_completion_date calls that hit the tracked-without-history
+# case during the current scan_completed_issues() run. Reset at the start of
+# each scan and drained into a single aggregated warning at the end, so a
+# per-file warning doesn't spray stderr for routine staged-but-uncommitted
+# issue files (BUG-3243).
+_tracked_without_history_count = 0
+
 
 def parse_completed_issue(
     file_path: Path, *, batch_dates: dict[str, date] | None = None
@@ -181,18 +193,55 @@ def _parse_completion_date(
 
     # Fallback to git log: most recent commit date for this file (typically
     # the close/done commit, since status writes are the latest change).
+    parsed_date, tracked_without_history = _git_completion_date(file_path)
+    if tracked_without_history:
+        global _tracked_without_history_count
+        _tracked_without_history_count += 1
+        logger.debug("git log found no history for tracked file: %s", file_path)
+    return parsed_date
+
+
+def _git_completion_date(file_path: Path) -> _GitDateResult:
+    """Look up ``file_path``'s most recent commit date via ``git log``.
+
+    The pathspec is ``file_path.name`` (not ``file_path`` or
+    ``file_path.resolve()``) so it agrees with ``cwd=file_path.parent`` —
+    passing the caller's (possibly relative) path as-is while running from
+    the file's own directory silently matches nothing (BUG-3243).
+    ``.resolve()`` was considered and rejected: it collapses symlinks, which
+    would mismatch a worktree git discovered by a logical path (e.g. macOS
+    ``/tmp`` -> ``/private/tmp`` under ``tmp_path``-based tests).
+
+    Returns:
+        ``(date, False)`` when git log found a commit; ``(None, False)`` when
+        the file has no git history at all (untracked, or outside a repo);
+        ``(None, True)`` when the file *is* tracked but git log returned no
+        commit for it — a state the caller logs but does not treat as an
+        error, since a staged-but-uncommitted issue file legitimately looks
+        like this.
+    """
     try:
         result = subprocess.run(
-            ["git", "log", "--format=%as", "-1", "--", str(file_path)],
+            ["git", "log", "--format=%as", "-1", "--", file_path.name],
             capture_output=True,
             text=True,
             cwd=file_path.parent,
+            timeout=10,
         )
         if result.returncode == 0 and result.stdout.strip():
-            return date.fromisoformat(result.stdout.strip())
-    except (OSError, ValueError):
+            return date.fromisoformat(result.stdout.strip()), False
+        if result.returncode == 0:
+            tracked = subprocess.run(
+                ["git", "ls-files", "--error-unmatch", "--", file_path.name],
+                capture_output=True,
+                text=True,
+                cwd=file_path.parent,
+                timeout=10,
+            )
+            return None, tracked.returncode == 0
+    except (OSError, ValueError, subprocess.SubprocessError):
         pass
-    return None
+    return None, False
 
 
 def _parse_resolution_action(content: str) -> str:
@@ -311,6 +360,9 @@ def scan_completed_issues(
     """
     issues: list[CompletedIssue] = []
 
+    global _tracked_without_history_count
+    _tracked_without_history_count = 0
+
     if not issues_dir.exists():
         return issues
 
@@ -344,6 +396,14 @@ def scan_completed_issues(
         except Exception as e:
             logger.warning("Failed to parse %s: %s", file_path, e)
             continue
+
+    if _tracked_without_history_count:
+        logger.warning(
+            "%d completed issue file(s) are tracked by git but have no commit "
+            "history for the git-log completion-date fallback; their "
+            "completed_date could not be determined this way",
+            _tracked_without_history_count,
+        )
 
     return issues
 

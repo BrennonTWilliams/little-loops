@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import subprocess
 import sys
 from pathlib import Path
 from unittest.mock import patch
@@ -623,6 +624,57 @@ class TestMainHistoryAnalyze:
         captured = capsys.readouterr()
         data = json.loads(captured.out)
         assert data["total_completed"] == 1
+
+    def test_main_history_analyze_since_relative_directory_matches_absolute(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """BUG-3243: --since counts must not depend on -d being relative or absolute.
+
+        Uses a file with no completed_at/Resolution date, so the count only
+        reflects the git-log fallback path this bug affects.
+        """
+        subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+        subprocess.run(
+            ["git", "config", "user.email", "test@example.com"], cwd=tmp_path, check=True
+        )
+        subprocess.run(["git", "config", "user.name", "Test"], cwd=tmp_path, check=True)
+        bugs_dir = tmp_path / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True)
+        (bugs_dir / "P1-BUG-001-test.md").write_text("---\nstatus: done\n---\n\n# BUG-001\n")
+        subprocess.run(["git", "add", ".issues/bugs/P1-BUG-001-test.md"], cwd=tmp_path, check=True)
+        subprocess.run(["git", "commit", "-qm", "add issue"], cwd=tmp_path, check=True)
+
+        monkeypatch.chdir(tmp_path)
+
+        def run_analyze(directory_arg: str) -> int:
+            with patch.object(
+                sys,
+                "argv",
+                [
+                    "ll-history",
+                    "analyze",
+                    "--since",
+                    "2020-01-01",
+                    "--format",
+                    "json",
+                    "-d",
+                    directory_arg,
+                ],
+            ):
+                from little_loops.cli import main_history
+
+                return main_history()
+
+        assert run_analyze(str(tmp_path / ".issues")) == 0
+        absolute_total = json.loads(capsys.readouterr().out)["total_completed"]
+
+        assert run_analyze(".issues") == 0
+        relative_total = json.loads(capsys.readouterr().out)["total_completed"]
+
+        assert absolute_total == relative_total == 1
 
     def test_main_history_analyze_date_range(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
