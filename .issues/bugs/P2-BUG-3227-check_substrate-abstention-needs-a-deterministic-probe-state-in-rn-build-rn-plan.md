@@ -8,7 +8,14 @@ status: open
 discovered_by: ll-issues-create
 discovered_date: '2026-08-16'
 parent: EPIC-3217
-supersedes: [BUG-3219]
+supersedes:
+- BUG-3219
+confidence_score: 100
+outcome_confidence: 83
+score_complexity: 18
+score_test_coverage: 19
+score_ambiguity: 24
+score_change_surface: 22
 ---
 
 # BUG-3227: check_substrate abstention needs a deterministic probe state in rn-build/rn-plan
@@ -19,10 +26,40 @@ supersedes: [BUG-3219]
 gates named in BUG-3219 that declare neither `on_cannot_judge` nor `on_error`, so an
 abstaining judge holds twice and then terminates the run via "No valid transition". Unlike
 the other eleven gates (BUG-3226), this pair can't be fixed by routing to an
-already-existing target: "does the substrate exist" is deterministically probe-able, and no
-such probe state exists anywhere in the repo today. This issue is the one sub-task
-BUG-3219 itself flags as needing more design than a route addition, and lands
-independently of BUG-3226.
+already-existing target, and no probe state exists anywhere in the repo today. This issue
+is the one sub-task BUG-3219 itself flags as needing more design than a route addition, and
+lands independently of BUG-3226.
+
+### Correction to this issue's original premise
+
+Earlier revisions of this issue (and of BUG-3219) described `check_substrate` as asking
+"does the substrate exist", a question they reasoned was directly probe-able. **That is not
+what the gate asks.** Both states are ENH-2098 *feasibility* gates with an identical prompt
+(`rn-build.yaml:387-396`, `rn-plan.yaml:158-168`, canonical copy at
+`docs/guides/HARNESS_OPTIMIZATION_GUIDE.md:449-464`):
+
+> Enumerate the target execution environment's known constraints: shell command
+> availability, MCP tool access, file write permissions, token budget. Validate each
+> proposed action in the plan against these constraints. Answer YES if every action is
+> feasible in the target environment.
+
+This reframes the root cause and the fix. The judge is asked to enumerate *environment*
+facts, but its `source:` is only the design/plan document
+(`${captured.design_artifacts.output}` / `${captured.plan_for_substrate.output}`) — the
+environment facts are simply not in the evidence it was handed. `cannot_judge` is therefore
+the *correct* verdict here, not an anomaly, and an honest judge should return it often.
+
+Consequences:
+
+- The probe cannot **replace** the judge, because "does each proposed action fit these
+  constraints" is a semantic reading of a design document. It can only **supply the missing
+  evidence**.
+- So the abstention route is a genuine "capture evidence, then judge again" chain — the
+  shape this issue previously noted does not exist in the repo. It is being introduced here.
+- The anti-cycle argument in the earlier resolution (that a re-judge sees identical input
+  and abstains again) **does not apply**, because the probe strictly increases the evidence.
+  The cycle is instead prevented structurally: the re-judge is a *separate one-shot state*,
+  not a re-entry into `check_substrate`.
 
 ## Parent Issue
 
@@ -86,40 +123,186 @@ Where the probe determines the substrate genuinely doesn't exist, route to a
 failure-shaped terminal (`terminal: true`, `failure: true`) rather than leaving the gate to
 die on "No valid transition".
 
-### RESOLVED: a positive probe bypasses the judge, it does not re-enter `check_substrate`
+### RESOLVED: probe gathers environment evidence, then a separate one-shot state re-judges
 
-The Proposed Solution's "route back into the normal flow" means **`check_substrate`'s own
-`on_yes` target** (`scope_project` in `rn-build.yaml`, `research_iteration` in
-`rn-plan.yaml`), not a re-judge.
+The chain is `check_substrate` --(`cannot_judge`)--> `probe_substrate` -->
+`check_substrate_probed`, where:
 
-Rationale: re-entering `check_substrate` re-runs the identical `llm_structured` judge over
-the identical captured input (`${captured.design_artifacts.output}` /
-`${captured.plan_for_substrate.output}` — the probe does not modify either). The judge that
-just abstained will very likely abstain again, producing a `check_substrate → probe →
-check_substrate` cycle bounded only by the loop's `max_iterations`, which surfaces as a
-limit failure rather than the real cause. The deterministic probe exists precisely to be
-*more authoritative* than the judge on this question; deferring back to the judge discards
-that. This also matches the established shape — `check_install` → `check_permissions`,
-`check_structure` `on_yes` → `tech_research`, `verify_structure` `on_yes` →
-`load_normalized` all move forward, none route back to a judge.
+- `probe_substrate` is deterministic (`action_type: shell`, `evaluate.type:
+  output_contains`), gathers the four constraint classes the judge's prompt names, and
+  captures them to `substrate_env`. It always `exit 0`s — it is evidence-gathering, not a
+  pass/fail gate — following `check_research_written`'s (`rn-build.yaml:308-336`) precedent.
+- `check_substrate_probed` re-asks the *same feasibility question* with both the design/plan
+  doc and the probe output in evidence, and carries the loop's original `on_yes`/`on_no`
+  targets.
+- It is **one-shot**: `check_substrate_probed` declares `on_cannot_judge: substrate_unknown`.
+  A judge that still cannot decide with strictly more evidence than it had the first time is
+  not going to decide on a third pass, so it fails closed. No counter or hold budget is
+  needed, and there is no path back into `check_substrate` — the cycle is impossible by
+  construction rather than by bound.
 
-### The probe command must be pinned per loop before implementation
+This supersedes the earlier "bypass the judge entirely" resolution, which rested on the
+mistaken premise corrected in Summary.
 
-"Substrate" is not the same object in the two loops, so a single probe command does not
-transfer:
+### Drafted probe states
 
-- `rn-build.yaml` — `check_substrate` judges `${captured.design_artifacts.output}`, captured
-  by `design_artifacts` (340-360) and committed by `commit_design` (364-377).
-- `rn-plan.yaml` — `check_substrate` judges `${captured.plan_for_substrate.output}`, which
-  is a `cat "${captured.run_dir.output}/plan.md"` of the file written by `generate_rubric`
-  (77-147).
+Both loops take the same probe; only the interpolation refs, the judged `source:`, and the
+forward targets differ. **Verified**: with these states inserted, `ll-loop validate` reports
+both loops valid with no new warnings, all four states resolve as reachable, and
+`StateConfig.from_dict()` parses `cannot_judge` into `extra_routes` (so
+`_abstention_declared()` returns `True` and the abstention routes without a hold). The probe
+script was also run standalone against both a writable and an unwritable directory.
 
-The issue is not implementable until the concrete shell test for each loop is written down
-here — otherwise the implementer invents the substrate semantics at the keyboard, which is
-exactly the ambiguity the LLM judge is already failing on. Both commands should follow
-`finalize_build_failed`'s (`rn-build.yaml:1225-1251`) tolerant read shape
-(`2>/dev/null || echo ""`) so a missing path yields a definite "not found" rather than a
-shell error routed as `on_error`.
+Note the bash in `action:` deliberately uses `$VAR` and never `${VAR}` — the FSM
+interpolates `${...}` before bash sees it, so brace form would need `$${...}` escaping (the
+same reason `check_structure` writes `"$${SPEC_LIST[@]}"` at `rn-build.yaml:116`).
+
+**`rn-build.yaml`** — add `on_cannot_judge` to `check_substrate`, then the three new states:
+
+```yaml
+  check_substrate:
+    # ... existing action/evaluate unchanged ...
+    on_yes: scope_project
+    on_no: design_artifacts
+    on_partial: design_artifacts
+    on_cannot_judge: probe_substrate  # BUG-3227: gather env facts, then re-judge once
+
+  # BUG-3227: check_substrate's judge is asked to enumerate execution-environment
+  # constraints, but its only `source:` is the design doc — the environment facts are
+  # not in the evidence. `cannot_judge` is the correct verdict there, so the abstention
+  # route gathers the missing facts deterministically and re-judges ONCE, rather than
+  # re-entering check_substrate (which would re-judge the same evidence and abstain again).
+  probe_substrate:
+    action_type: shell
+    timeout: 60
+    action: |
+      RUN_DIR="${context.run_dir}"
+      echo "=== SUBSTRATE PROBE ==="
+      echo "--- shell command availability ---"
+      for C in git python3 pip node npm gh jq rg curl ll-issues ll-loop claude codex; do
+        if command -v "$C" >/dev/null 2>&1; then
+          echo "CMD_AVAILABLE: $C"
+        else
+          echo "CMD_MISSING: $C"
+        fi
+      done
+      echo "--- file write permissions ---"
+      for D in "$RUN_DIR" "$PWD"; do
+        [ -z "$D" ] && continue
+        PROBE_FILE="$D/.substrate-probe.tmp"
+        if mkdir -p "$D" 2>/dev/null && touch "$PROBE_FILE" 2>/dev/null; then
+          echo "WRITABLE: $D"
+          rm -f "$PROBE_FILE" 2>/dev/null
+        else
+          echo "NOT_WRITABLE: $D"
+        fi
+      done
+      echo "--- network egress ---"
+      if curl -sS -m 5 -o /dev/null https://api.anthropic.com 2>/dev/null; then
+        echo "NETWORK_EGRESS: reachable"
+      else
+        echo "NETWORK_EGRESS: unreachable_or_blocked"
+      fi
+      echo "--- MCP tool access ---"
+      MCP_FOUND=0
+      for F in .mcp.json .claude/settings.json .claude/settings.local.json; do
+        if [ -f "$F" ]; then
+          NAMES=$(jq -r 'try (.mcpServers // {}) | keys[]' "$F" 2>/dev/null | tr '\n' ' ')
+          if [ -n "$NAMES" ]; then
+            echo "MCP_SERVERS: $F: $NAMES"
+            MCP_FOUND=1
+          fi
+        fi
+      done
+      [ "$MCP_FOUND" -eq 0 ] && echo "MCP_SERVERS: none_configured"
+      echo "--- token budget ---"
+      echo "TOKEN_BUDGET: UNKNOWN (not observable from the shell; treat as non-blocking)"
+      echo "SUBSTRATE_PROBE_COMPLETE"
+      exit 0
+    capture: substrate_env
+    evaluate:
+      type: output_contains
+      pattern: "SUBSTRATE_PROBE_COMPLETE"
+    on_yes: check_substrate_probed
+    # A probe that could not run leaves the judge no better off than before, so it is
+    # fail-closed rather than routed into a re-judge that would abstain again.
+    on_no: substrate_unknown
+    on_error: substrate_unknown
+
+  check_substrate_probed:
+    action: "echo 'Re-checking substrate constraints with probed environment facts'"
+    action_type: shell
+    evaluate:
+      type: llm_structured
+      source: "${captured.design_artifacts.output}"
+      prompt: >
+        The target execution environment's constraints were probed directly. Probe output:
+        ${captured.substrate_env.output}
+
+        Treat the probe output as authoritative for shell command availability, file write
+        permissions, network egress, and MCP tool access. Lines marked UNKNOWN are not
+        observable and must be treated as non-blocking.
+
+        Validate each proposed action in the design artifacts against these constraints.
+        Answer YES if every action is feasible in the target environment. Otherwise NO,
+        quoting the verbatim design-artifact text of each infeasible action alongside the
+        verbatim probe line stating the constraint it violates.
+    on_yes: scope_project
+    on_no: design_artifacts
+    on_partial: design_artifacts
+    # One-shot: the enriched judge has strictly more evidence than check_substrate did.
+    # If it still cannot decide, the question is not answerable here — fail closed rather
+    # than loop.
+    on_cannot_judge: substrate_unknown
+    on_error: substrate_unknown
+
+  substrate_unknown:
+    terminal: true
+    failure: true
+    description: >
+      Design-artifact feasibility could not be established even after probing the
+      execution environment directly (BUG-3227). Inspect the probe output in the run
+      transcript to see which constraint class was indeterminate.
+```
+
+**`rn-plan.yaml`** — identical states with these substitutions:
+
+| in `rn-build` | in `rn-plan` |
+|---|---|
+| `RUN_DIR="${context.run_dir}"` | `RUN_DIR="${captured.run_dir.output}"` |
+| `source: "${captured.design_artifacts.output}"` | `source: "${captured.plan_for_substrate.output}"` |
+| "each proposed action in the design artifacts" | "each proposed action in the plan" |
+| "verbatim design-artifact text" | "verbatim plan text" |
+| `on_yes: scope_project` | `on_yes: research_iteration` |
+| `on_no`/`on_partial: design_artifacts` | `on_no`/`on_partial: generate_rubric` |
+| "Design-artifact feasibility …" (description) | "Plan feasibility …" |
+
+### Why these four constraint classes, and what the probe honestly cannot answer
+
+The probe reports facts; the judge does the matching. That split is deliberate — enumerating
+which commands exist is deterministic, but deciding whether a design's proposed actions fit
+them is not.
+
+| constraint (from the judge's prompt) | probe approach | determinacy |
+|---|---|---|
+| shell command availability | `command -v` over a fixed inventory | fully deterministic |
+| file write permissions | `touch` probe in run dir and CWD, then clean up | fully deterministic |
+| MCP tool access | `mcpServers` keys in `.mcp.json` / `.claude/settings*.json` | deterministic for *configured* servers; cannot confirm a server actually starts |
+| token budget | reported `UNKNOWN` | **not** shell-observable |
+
+`NETWORK_EGRESS` is added beyond the prompt's four because "air-gapped target" is one of the
+documented reasons to enable `check_substrate` at all
+(`docs/guides/HARNESS_OPTIMIZATION_GUIDE.md:438-443`).
+
+Reporting `TOKEN_BUDGET: UNKNOWN` rather than guessing is the point: the re-judge prompt
+instructs that UNKNOWN lines are non-blocking, so an unobservable class cannot silently
+become a NO. If it were omitted entirely, the judge would be left to infer it and abstain
+again — which is the original defect.
+
+The command inventory is a fixed list, which means a design proposing a tool outside it gets
+no `CMD_*` line. The re-judge prompt's "treat the probe output as authoritative" wording
+covers the classes probed, not tool-by-tool completeness; if a run shows this mattering,
+extending the inventory is a one-line change.
 
 ## Root Cause
 
@@ -132,12 +315,19 @@ verdict and declares only `on_yes`/`on_no`.
 
 ## Proposed Solution
 
-Add a new deterministic probe state (shell + `exit_code`/`output_contains`, modeled on
-`check_install`/`check_structure`) that `check_substrate`'s `on_cannot_judge` routes to.
-The probe checks for the substrate's existence directly rather than relying on the LLM
-judge's read of `design_artifacts`/`plan_for_substrate`. If the probe finds substrate, route
-forward to `check_substrate`'s existing `on_yes` target — not back into `check_substrate`
-(see Expected Behavior § RESOLVED); if not, route to a failure-shaped terminal.
+Add three states per loop, drafted and validated in full under Expected Behavior § Drafted
+probe states:
+
+1. `probe_substrate` — deterministic shell probe (`output_contains` sentinel) that gathers
+   the execution-environment constraint facts the judge's prompt names but its `source:`
+   never contained, captured to `substrate_env`.
+2. `check_substrate_probed` — the same feasibility question re-asked with the probe output
+   in evidence, carrying the loop's original `on_yes`/`on_no` targets, and one-shot via
+   `on_cannot_judge: substrate_unknown`.
+3. `substrate_unknown` — `terminal: true` / `failure: true`, fail-closed.
+
+`check_substrate` gains only `on_cannot_judge: probe_substrate`; its existing routes are
+untouched.
 
 ## Integration Map
 
@@ -184,30 +374,26 @@ N/A — no new data shape. The new probe state is a standard `StateConfig` YAML 
 ### Call Path
 `FSMExecutor._abstention_declared` -> `FSMExecutor._route_abstention_hold` -> `FSMExecutor._abstention_fallback` -> `FSMExecutor._finish`.
 
-Today, for both loops: `check_substrate` (`evaluate.type: llm_structured`) abstains → `FSMExecutor._abstention_declared` returns `False` (no route declared) → `FSMExecutor._route_abstention_hold` holds 2× → `FSMExecutor._abstention_fallback` returns `None` → main loop `next_state is None` (`scripts/little_loops/fsm/executor.py:758-774`) → `FSMExecutor._finish("error", "No valid transition")`. Target call path after the fix: `check_substrate` abstains → `on_cannot_judge: <new probe state>` → probe state runs a deterministic shell existence check on the substrate (modeled on `check_install`/`check_structure`'s `action_type: shell` + `exit_code`/`output_contains` shape) → probe's `on_yes` routes back into the loop's normal flow (the state `check_substrate`'s own `on_yes` would have targeted — `scope_project` in `rn-build.yaml`, `research_iteration` in `rn-plan.yaml`) or, on `on_no`, to a `terminal: true`/`failure: true` state (new or existing, per-loop).
+Today, for both loops: `check_substrate` (`evaluate.type: llm_structured`) abstains → `FSMExecutor._abstention_declared` returns `False` (no route declared) → `FSMExecutor._route_abstention_hold` holds 2× → `FSMExecutor._abstention_fallback` returns `None` → main loop `next_state is None` (`scripts/little_loops/fsm/executor.py:758-774`) → `FSMExecutor._finish("error", "No valid transition")`. Target call path after the fix: `check_substrate` abstains → `on_cannot_judge: probe_substrate` → `probe_substrate` gathers execution-environment facts deterministically (`action_type: shell` + `output_contains` sentinel) and captures them to `substrate_env` → `check_substrate_probed` re-asks the feasibility question with both the design/plan doc and the probe output in evidence → its `on_yes` proceeds to the loop's normal forward target (`scope_project` / `research_iteration`), `on_no`/`on_partial` back to the revise state (`design_artifacts` / `generate_rubric`), and `on_cannot_judge`/`on_error` to the new `substrate_unknown` failure terminal. `FSMExecutor._abstention_fallback` is never reached in either loop.
 
 ### Decision Rules
-- New gap kind introduced by this issue: an `on_cannot_judge` route from an `llm_structured` gate to a freshly-added deterministic probe state, rather than to an existing target (contrast with BUG-3226's gates, which route to something that already exists).
-- Exact inputs: the probe's shell command must test substrate existence directly — analogous to `check_install`'s `command -v agent-desktop` or `check_structure`'s `grep -c` header count — the concrete command is an implementation decision, not yet pinned by research (no existing "substrate" probe exists to model verbatim).
-- Threshold/exit condition: probe result surfaces via `evaluate.type: exit_code` (shell exit 0/1) or `output_contains` (echoed sentinel string), following the two evaluator types already in use for this shape in this codebase — not a numeric threshold.
-- Escape hatch / dismissal: on a definitive "substrate does not exist" result, route to a `terminal: true`/`failure: true` state (per Expected Behavior) rather than re-attempting the LLM judge or silently proceeding — mirrors `not_installed`/`perm_denied`/`failed` conventions in Integration Map.
-- **Resolved** (was the issue's one open question): a positive probe result bypasses the judge and proceeds to `check_substrate`'s existing `on_yes` target (`scope_project` / `research_iteration`); it does not route back into `check_substrate` for re-judging. See Expected Behavior § RESOLVED for the reasoning — a re-judge re-runs the same judge over the same unmodified captured input and cycles until `max_iterations`.
-- **Still to pin before implementation**: the concrete probe shell command for each loop. `rn-build.yaml`'s and `rn-plan.yaml`'s substrates are different objects (design artifacts vs `plan.md`), so one command does not transfer; see Expected Behavior § The probe command must be pinned per loop.
+- New gap kind introduced by this issue: an `on_cannot_judge` route from an `llm_structured` gate into a freshly-added *evidence-gathering* chain, rather than to an existing target (contrast with BUG-3226's gates, which route to something that already exists).
+- Division of labor: the probe reports deterministic environment facts; the re-judge does the semantic matching of proposed actions against those facts. The probe never decides feasibility, because "does this design's actions fit these constraints" is a reading of a document, not a shell test.
+- Exact inputs: the four constraint classes named in the judge's own prompt (shell command availability, MCP tool access, file write permissions, token budget), plus network egress. See Expected Behavior for which are deterministic and which are reported `UNKNOWN`.
+- Threshold/exit condition: the probe always `exit 0`s and surfaces via `evaluate.type: output_contains` on the `SUBSTRATE_PROBE_COMPLETE` sentinel — it is evidence-gathering, not a pass/fail gate. A missing sentinel means the probe itself failed to run.
+- Unobservable classes are reported `UNKNOWN` and the re-judge prompt declares them non-blocking, so an unprobe-able constraint cannot silently become a NO.
+- Escape hatch / dismissal: `check_substrate_probed` is one-shot — `on_cannot_judge: substrate_unknown` (`terminal: true` / `failure: true`). A judge that cannot decide with strictly more evidence will not decide on a third pass. There is no route back into `check_substrate`, so the cycle is impossible by construction rather than bounded by a counter.
+- `on_error` on the probe routes to the failure terminal rather than forward (the `check_install`/`check_permissions`/`verify_structure` convention, not `check_structure`'s forward-on-error): a probe that could not run leaves the judge exactly as evidence-starved as before, so proceeding would just abstain again.
 
 ## Implementation Steps
 
-0. Pin the concrete probe shell command for each loop (Expected Behavior § The probe command
-   must be pinned per loop) before writing YAML — this issue is not implementable without it.
-1. Design and add the deterministic probe state to `rn-build.yaml` and `rn-plan.yaml`
-   (shell command + `exit_code`/`output_contains` evaluation, per the `check_install`/
-   `check_structure` shape), with `check_substrate`'s `on_cannot_judge` routing to it.
-2. Route the probe's own failure branch to a `terminal: true` / `failure: true` state in
-   each loop, and its success branch forward to `check_substrate`'s existing `on_yes`
-   target (`scope_project` in `rn-build.yaml`, `research_iteration` in `rn-plan.yaml`) —
-   never back into `check_substrate`. Decide the probe's `on_error` deliberately: the
-   existing probes disagree (`check_install`/`check_permissions`/`verify_structure` send
-   `on_error` to the failure state; `check_structure` sends it forward), so pick one and
-   comment the reason rather than copying either blindly.
+1. Add `on_cannot_judge: probe_substrate` to `check_substrate` in both loops, and add the
+   `probe_substrate` / `check_substrate_probed` / `substrate_unknown` states exactly as
+   drafted in Expected Behavior § Drafted probe states (with the `rn-plan.yaml`
+   substitutions from the table there). Existing `check_substrate` routes are untouched.
+2. Confirm the invariants the draft was validated against: `ll-loop validate` clean on both
+   loops with no new warnings; all three new states reachable; `substrate_unknown` carries
+   both `terminal: true` and `failure: true`; the bash uses `$VAR` and never `${VAR}`.
 3. Update `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md`'s canonical `check_substrate` "State
    Shape" YAML block (lines 449-464) and `docs/guides/LOOPS_REFERENCE.md`'s
    `check_substrate` prose (lines 286, 297, 714 — "infeasible plans route back to...") to
@@ -252,5 +438,6 @@ Today, for both loops: `check_substrate` (`evaluate.type: llm_structured`) absta
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-17T03:38:40 - `d25ab1c5-ed42-4023-87f3-5b04e53ad7b9.jsonl`
 - `/ll:refine-issue` - 2026-08-17T01:20:21 - `f9d03c8c-c328-4dfd-93cf-1b2bf5193b15.jsonl`
 - `/ll:issue-size-review` - 2026-08-17T01:13:51 - `aac72723-ff3b-4a56-8e20-e1cf00b2242c.jsonl`

@@ -8,7 +8,14 @@ status: open
 discovered_by: ll-issues-create
 discovered_date: '2026-08-16'
 parent: EPIC-3217
-supersedes: [BUG-3219]
+supersedes:
+- BUG-3219
+confidence_score: 100
+outcome_confidence: 83
+score_complexity: 20
+score_test_coverage: 20
+score_ambiguity: 23
+score_change_surface: 20
 ---
 
 # BUG-3226: Add on_cannot_judge routes to 11 mechanical judged gates across 9 loop files
@@ -286,5 +293,6 @@ N/A — no new decision logic. This issue applies an existing, already-implement
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-17T03:38:40 - `d25ab1c5-ed42-4023-87f3-5b04e53ad7b9.jsonl`
 - `/ll:refine-issue` - 2026-08-17T01:20:21 - `f9d03c8c-c328-4dfd-93cf-1b2bf5193b15.jsonl`
 - `/ll:issue-size-review` - 2026-08-17T01:13:51 - `aac72723-ff3b-4a56-8e20-e1cf00b2242c.jsonl`
