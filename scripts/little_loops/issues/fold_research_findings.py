@@ -149,8 +149,16 @@ def find_subsections(content: str, parent_heading: str, sub_heading: str) -> lis
 
 
 def _batch(marker: str, new_content: str) -> str:
-    """Render one provenance line plus its verbatim payload block."""
-    return f"{marker}\n\n{new_content.strip(chr(10))}"
+    """Render one provenance line plus its verbatim payload block.
+
+    Returns ``""`` when *new_content* is whitespace-only — a pass with no
+    findings must contribute nothing, not a marker with an empty body
+    (BUG-3245).
+    """
+    stripped = new_content.strip(chr(10))
+    if not stripped.strip():
+        return ""
+    return f"{marker}\n\n{stripped}"
 
 
 def fold_research_findings(
@@ -201,18 +209,28 @@ def fold_research_findings(
     batch = _batch(marker, new_content)
 
     if not spans:
+        if not batch:
+            # No findings and no existing block — nothing to create (BUG-3245).
+            return content
         _, slice_end = bounds
         head = content[:slice_end].rstrip("\n")
         tail = content[slice_end:]
         block = f"### {sub_heading}\n\n{batch}\n"
         return f"{head}\n\n{block}" + (f"\n{tail}" if tail else "")
 
+    if len(spans) == 1 and not batch:
+        # No findings and no duplicates to collapse — a true no-op (BUG-3245).
+        return content
+
     # N>=1: everything collapses into the first block's position. First, not
     # last, because it is the one whose surrounding prose was written to
     # introduce the block. Bodies are carried over verbatim and in order, so
     # every bullet and every pre-existing provenance line survives.
     bodies = [body.strip("\n") for body, _, _ in spans]
-    merged = "\n\n".join([b for b in bodies if b] + [batch])
+    parts = [b for b in bodies if b]
+    if batch:
+        parts.append(batch)
+    merged = "\n\n".join(parts)
     block = f"### {sub_heading}\n\n{merged}\n"
 
     out = content

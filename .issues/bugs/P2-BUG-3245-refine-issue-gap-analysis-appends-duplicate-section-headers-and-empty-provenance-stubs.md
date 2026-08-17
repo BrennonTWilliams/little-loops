@@ -4,7 +4,8 @@ type: BUG
 title: refine-issue gap-analysis appends duplicate section headers and empty provenance
   stubs
 priority: P2
-status: open
+status: done
+completed_at: '2026-08-17T21:58:46Z'
 testable: true
 discovered_by: ll-issues-create
 discovered_date: '2026-08-17'
@@ -341,7 +342,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ## Status
 
-**Open** | Created: 2026-08-17 | Priority: P2
+**Done** | Created: 2026-08-17 | Priority: P2
 
 
 ## Session Log

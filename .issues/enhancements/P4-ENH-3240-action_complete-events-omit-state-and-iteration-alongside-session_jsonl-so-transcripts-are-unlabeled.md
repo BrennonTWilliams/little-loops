@@ -119,6 +119,14 @@ _Added by pre-implementation review — 2026-08-17 — verified against the work
   `scripts/little_loops/fsm/persistence.py` (`:777`, `usage.jsonl` writer) — additive-field
   consumers; listed to confirm no change is needed, per the "existing readers tolerate" AC.
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/cli/loop/_helpers.py` (`:1092`, live-run display renderer's
+  `elif event_type == "action_complete":` branch; also `:1766-1781`,
+  `_capture_failure()`) — a second and third CLI-side reader of the
+  `action_complete` payload beyond `cli/loop/info.py`. Additive-field-tolerant,
+  no change required, but the issue's Integration Map did not name them.
+  [Agent finding]
+
 ### Similar Patterns
 
 - `state_enter` (`generate_schemas.py:91`) already carries `state` as a first-class payload
@@ -136,12 +144,49 @@ _Added by pre-implementation review — 2026-08-17 — verified against the work
 - New test for the emit site: assert a prompt-state `action_complete` names its state and
   iteration, and that they match the `usage.jsonl` record at the same timestamp.
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_cli_loop_audit.py::TestAuditRun` — the module-level `_EVENTS`
+  fixture (`:37-49`) and `test_counters_match_events` (`:78`) already exercise the
+  pre-change shape (`action_complete` with no `state` key), attributed purely via
+  `state_enter` correlation. This is the archived-run fallback regression case and
+  must keep passing unchanged; add a **second** fixture where `action_complete`
+  carries a direct `state` key to test the new direct-read path. [Agent finding]
+- `scripts/tests/test_generate_schemas.py::TestSchemaDefinitions.test_action_complete_schema`
+  (`:154-171`) — needs `assert "state" in props` / `assert "iteration" in props`
+  added, mirroring `test_state_enter_schema` (`:145-152`). [Agent finding]
+- `scripts/tests/test_fsm_executor.py::TestStderrPreview._run_and_collect()`
+  (`:10592`) and `TestObservedEffortFromSessionJsonl._run_and_collect()`
+  (`:10659`) — the harness pattern (build FSM, run, filter events by type) to
+  follow for the new emit-site test. `TestMaxIterations.test_state_enter_includes_iteration_count`
+  (`~:10463`) shows the exact `all(key in e for e in filtered)` idiom for
+  asserting a field is present on every event of a type. [Agent finding]
+
 ### Documentation
 
 - `docs/reference/schemas/action_complete.json` — generated output, regenerate rather
   than hand-edit.
 - `cli/loop/audit.py:177-186` docstring — see Dependent Files; it makes a factual claim this
   change falsifies.
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/EVENT-SCHEMA.md` (`### action_complete`, `:202-248`) — the
+  **hand-maintained** canonical field-table doc, distinct from the auto-regenerated
+  `docs/reference/schemas/action_complete.json`. `ll-generate-schemas` does not
+  touch this file, so it needs a manual field-table row and JSON-example update
+  (examples at `:221-230`, `:233-248` currently show no `state`/`iteration` keys).
+  [Agent finding]
+- `skills/debug-loop-run/SKILL.md` (`:42`, `:140-151`) and
+  `skills/debug-loop-run/reference.md` (`:17`, `:42-43`) — documents the
+  `state_enter`-correlation technique as an analysis rule independent of
+  `audit.py`; the event-field table at `reference.md:17` omits `state`/`iteration`.
+  [Agent finding]
+- `skills/audit-loop-run/SKILL.md` (`:144`, `:181-183`, `:207-216`) — same
+  correlation technique, documented independently. [Agent finding]
+- `skills/distill-traces/SKILL.md` (`:73`) — a third independent
+  `state_enter`/`action_complete` adjacency-correlation implementation. [Agent finding]
+- `docs/generalized-fsm-loop.md` (`:1711-1724`) — illustrative sample event stream
+  showing `action_complete` lines without the new fields; lower priority, visual
+  only. [Agent finding]
 
 ### Configuration
 - N/A — no config surface.
@@ -159,6 +204,25 @@ _Added by pre-implementation review — 2026-08-17 — verified against the work
    archived runs.
 5. Verify: new test asserting a prompt-state action's `action_complete` names its state and
    iteration and agrees with `usage.jsonl`; then `python -m pytest scripts/tests/`.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Update `docs/reference/EVENT-SCHEMA.md` — manually add `state`/`iteration` to
+  the `### action_complete` field table and both JSON examples; not covered by
+  `ll-generate-schemas`.
+- Update `skills/debug-loop-run/reference.md` — add `state`/`iteration` to the
+  `action_complete` event-field table (`:17`).
+- Update `skills/debug-loop-run/SKILL.md`, `skills/audit-loop-run/SKILL.md`, and
+  `skills/distill-traces/SKILL.md` — note the direct `state` field as the
+  preferred read, retaining the `state_enter`-correlation description as the
+  fallback for archived runs.
+- Add `scripts/tests/test_cli_loop_audit.py::TestAuditRun` coverage for the new
+  direct-`state`-field read path, keeping the existing `_EVENTS`-based test as
+  the archived-run fallback regression.
+- Extend `scripts/tests/test_generate_schemas.py::test_action_complete_schema`
+  with `state`/`iteration` presence assertions.
 
 ## Impact
 
@@ -282,5 +346,6 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-08-17T21:49:12 - `0510d699-a148-43d1-84c2-d05ff33b93f2.jsonl`
 - `/ll:format-issue` - 2026-08-17T21:42:04 - `878d0e98-a6e4-41e7-80a9-53a56e3db6f7.jsonl`
 - `/ll:capture-issue` - 2026-08-17T18:23:57 - `66dab8b6-e923-43d4-9f0e-eccb97176e0f.jsonl`

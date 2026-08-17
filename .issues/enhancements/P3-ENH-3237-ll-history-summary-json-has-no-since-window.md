@@ -134,6 +134,22 @@ tests for. See Program Design > The fallback trap._
    file scan); the file-fallback path when the DB is genuinely absent; and a
    loop-run window with an in-flight run.
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Update `scripts/little_loops/cli/issues/decisions.py` — pass the new `source`
+  kwarg at its `calculate_summary(issues)` call site once `source` becomes
+  required.
+- Update `scripts/tests/test_issue_history_cli.py` — add `--since`/`--until` to
+  both local `_parse_history_args()` parser replicas (`:21-25`, `:359-364`).
+- Update `scripts/tests/test_issue_history_summary.py::TestCalculateSummary` —
+  add the `source` kwarg to existing positional `calculate_summary(issues)` calls.
+- Update `docs/reference/API.md` — `HistorySummary` field sketch, `calculate_summary`
+  table entry, `main_history` `summary` row.
+- Update `docs/guides/HISTORY_SESSION_GUIDE.md` — add a `--since`/`--until`
+  example next to the existing `analyze --since` one.
+
 ## Integration Map
 
 - **Modified**: `scripts/little_loops/cli/history.py` — `summary` parser
@@ -158,6 +174,65 @@ tests for. See Program Design > The fallback trap._
   (Flagged `stale_file_ref` by `ll-issues format-check` — expected: it is a path
   in a *separate* repository, not this one, and is not meant to be git-tracked
   here.)
+
+### Dependent Files (Callers/Importers)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/cli/issues/decisions.py` — calls `calculate_summary(issues)`
+  positionally. Step 4's proposed signature makes `source` a required
+  keyword-only argument, so this call site breaks unless updated alongside the
+  primary change. [Agent 1 finding]
+- `scripts/tests/test_issue_history_cli.py` — maintains its own standalone
+  `argparse` replica of the `summary` subparser in two places (`_parse_history_args()`
+  around `:21-25`, and a second inline replica around `:359-364`); both need
+  `--since`/`--until` added or any new test exercising those flags through the
+  local parser (rather than `main_history` directly) fails with "unrecognized
+  arguments." [Agent 1/2 finding]
+- `scripts/tests/test_issue_history_summary.py` — `TestCalculateSummary`
+  (`:118-176`) has multiple call sites passing `calculate_summary(issues)`
+  positionally; all need the new `source` kwarg once it becomes required.
+  [Agent 3 finding]
+
+### Tests
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_issue_history_cli.py::TestSummaryDbSource` (`:212-350`) —
+  the class most directly relevant to the fallback-trigger fix (Implementation
+  Step 1 / AC 2): `test_summary_uses_db_when_populated`, `test_summary_uses_live_written_db_rows`,
+  and `test_summary_falls_back_to_files_when_db_empty` are the precedent to
+  extend with the new "empty window on a populated store must stay DB-sourced"
+  case. [Agent 3 finding]
+- `scripts/tests/test_issue_history_cli.py::TestAnalyzeArgumentParsing` and
+  `TestMainHistoryAnalyze` — the existing `--since`/`--until` test pattern for
+  `analyze` (boundary-inclusive `>=`/`<=` on `completed_date`,
+  `cli/history.py:308-317`) to mirror for `summary`'s new flags, including the
+  `-S` short-form coverage in `TestAnalyzeDateArgParsing::test_analyze_since_short_form`.
+  [Agent 3 finding]
+- `scripts/tests/test_cli_ctx_stats.py::_populate_waste_run` (`:67-87`) — seeds a
+  `loop_runs` row via `record_loop_run_summary()` (`session_store/writers.py:1415`);
+  the pattern to follow for the new loop-run-window tests, including an
+  in-flight run via `ended_at=None`. No existing test in the `issue_history`/
+  `cli/history` suites touches `loop_runs` at all today. [Agent 3 finding]
+
+### Documentation
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/API.md` — the `HistorySummary` dataclass field sketch, the
+  `calculate_summary(issues)` function-table entry, and the `main_history`
+  subcommand table row for `summary` all need updating for the new
+  `source`/`loop_runs`/window fields and signature. [Agent 2 finding]
+- `docs/guides/HISTORY_SESSION_GUIDE.md` (`:365-369`) — the `ll-history summary`
+  usage example sits next to an existing `analyze --since` example; stale once
+  `summary` gains the same flags. [Agent 2 finding]
+
+_Lower-priority, text-format consumers (not JSON-coupled, flagged for awareness):_
+`scripts/little_loops/loops/backlog-flow-optimizer.yaml` and
+`scripts/little_loops/loops/evaluation-quality.yaml` both shell out to
+`ll-history summary` (no `--json`) and reason over `velocity` in an LLM prompt
+via the **text** formatter, not `to_dict()`; `scripts/little_loops/loops/lib/cli.yaml`
+defines the reusable `ll_history_summary` fragment other loops call. None break
+from the JSON-shape change, but if `format_summary_text()` also gains
+window/source lines, these loops' prompt context changes. [Agent 2 finding]
 
 ## Program Design
 
@@ -284,4 +359,5 @@ activity.
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-08-17T21:49:12 - `0510d699-a148-43d1-84c2-d05ff33b93f2.jsonl`
 - `/ll:format-issue` - 2026-08-17T21:38:25 - `878d0e98-a6e4-41e7-80a9-53a56e3db6f7.jsonl`

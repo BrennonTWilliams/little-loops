@@ -216,6 +216,60 @@ class TestSignatureShape:
             assert parse_signature_lines(line), line
 
 
+class TestDuplicateCallPathAnchors:
+    """A duplicated ``### Call Path`` heading unions anchors rather than breaking.
+
+    BUG-3245's fix routes new heading-emission through a containment check
+    that prevents *new* duplicates, but does not touch already-duplicated
+    documents. Pinned here as the intentional resolution behavior so a
+    future change to ``_subsection_body()``'s scan does not silently start
+    dropping one occurrence's anchors instead.
+    """
+
+    def test_unions_anchors_across_two_call_path_headings(self) -> None:
+        from little_loops.issues.program_design import extract_call_path_anchors
+
+        body = "\n".join(
+            [
+                "### Call Path",
+                "`first_caller` -> `shared_function`",
+                "### Decision Rules",
+                "- some rule",
+                "### Call Path",
+                "`second_caller` -> `other_function`",
+            ]
+        )
+
+        anchors = extract_call_path_anchors(body)
+
+        assert "first_caller" in anchors
+        assert "shared_function" in anchors
+        assert "second_caller" in anchors
+        assert "other_function" in anchors
+
+    def test_resolution_still_passes_when_either_occurrence_supplies_the_anchor(
+        self,
+    ) -> None:
+        from little_loops.issues.program_design import grade_program_design
+
+        body = "\n".join(
+            [
+                "### Types",
+                "- `x: int`",
+                "### Signatures",
+                "- `def foo(x: int) -> int`",
+                "### Call Path",
+                "`unrelated_caller` -> `unrelated_callee`",
+                "### Call Path",
+                "`check_format_gaps` -> `foo`",
+            ]
+        )
+
+        verdict = grade_program_design(body, lambda s: s == "check_format_gaps")
+
+        assert verdict.is_specific is True
+
+
 # ------------------------------------------------------------------------- grading
 
 

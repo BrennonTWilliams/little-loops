@@ -283,6 +283,47 @@ class TestParameterization:
         assert "_Wiring pass added by `/ll:wire-issue`:_" in out
         assert SUB_HEADING not in out
 
+
+class TestEmptyPayloadIsLazy:
+    """A whitespace-only batch contributes nothing — no marker, no stub (BUG-3245).
+
+    Required by the step-1 gate regardless of routing decisions: the library
+    itself must be unable to represent a content-free stub.
+    """
+
+    def test_no_block_and_empty_payload_is_a_true_no_op(self) -> None:
+        out = fold_research_findings(NO_BLOCK, "Integration Map", "   \n\n  ")
+        assert out == NO_BLOCK
+        assert _count_headings(out) == 0
+
+    def test_one_block_and_empty_payload_adds_no_marker(self) -> None:
+        out = fold_research_findings(ONE_BLOCK, "Proposed Solution", "")
+        assert out == ONE_BLOCK
+        assert _count_provenance(out) == _count_provenance(ONE_BLOCK)
+
+    def test_n_successive_empty_calls_add_zero_markers(self) -> None:
+        out = ONE_BLOCK
+        for _ in range(5):
+            out = fold_research_findings(out, "Proposed Solution", "\n  \n")
+        assert out == ONE_BLOCK
+
+    def test_mixed_sequence_yields_no_adjacent_empty_pair(self) -> None:
+        out = fold_research_findings(ONE_BLOCK, "Proposed Solution", "- second finding")
+        out = fold_research_findings(out, "Proposed Solution", "   ")
+        out = fold_research_findings(out, "Proposed Solution", "- third finding")
+        assert _count_provenance(out) == 3
+        assert MARKER_PREFIX + "\n\n\n\n" + MARKER_PREFIX not in out
+        assert "- second finding" in out
+        assert "- third finding" in out
+
+    def test_duplicate_headings_still_collapse_with_empty_payload(self) -> None:
+        """N>1 spans: dedup existing headings even when this pass has no new findings."""
+        out = fold_research_findings(THREE_BLOCKS, "Integration Map", "")
+        assert _count_headings(out) == 1
+        for text in ("finding one", "finding two", "finding three"):
+            assert text in out
+        assert _count_provenance(out) == 3
+
     def test_dated_marker_shape(self) -> None:
         assert dated_marker("2026-08-02") == (
             "_Added by `/ll:refine-issue` — 2026-08-02 — based on codebase analysis:_"

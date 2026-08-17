@@ -272,6 +272,50 @@ class TestSupersededDirectiveMarker:
         )
 
 
+class TestGapAnalysisEmissionIdempotency:
+    """Command must document heading-containment and lazy-emission (BUG-3245):
+    a retry pass must not duplicate `### Call Path` / `### Dependent Files
+    (Callers/Importers)` headings, nor emit a provenance stub with no findings.
+    """
+
+    def _enrichment_and_preservation_text(self) -> str:
+        content = COMMAND_FILE.read_text()
+        start = content.index("#### Enrichment Rules")
+        end = content.index("### 5b. Interactive Refinement")
+        return content[start:end]
+
+    def test_call_path_and_dependent_files_headings_named(self) -> None:
+        text = self._enrichment_and_preservation_text()
+        assert "### Call Path" in text
+        assert "### Dependent Files (Callers/Importers)" in text
+
+    def test_containment_check_before_heading_emission_documented(self) -> None:
+        text = self._enrichment_and_preservation_text()
+        assert "Heading Containment Check" in text
+        assert "duplicate" in text.lower(), (
+            "must state that a second `### Call Path` / `### Dependent Files "
+            "(Callers/Importers)` heading is never created within the same H2"
+        )
+
+    def test_append_beneath_existing_heading_documented(self) -> None:
+        text = self._enrichment_and_preservation_text()
+        assert "append" in text.lower(), (
+            "must instruct appending under an existing heading instead of "
+            "emitting a sibling"
+        )
+
+    def test_lazy_emission_rule_documented(self) -> None:
+        text = self._enrichment_and_preservation_text()
+        assert "Lazy emission" in text, (
+            "must restate that a pass with no findings emits no heading, "
+            "provenance stub, or blank placeholder"
+        )
+
+    def test_fold_findings_still_the_only_route_for_findings_blocks(self) -> None:
+        text = self._enrichment_and_preservation_text()
+        assert "ll-issues fold-findings" in text
+
+
 class TestRefineIssueHistoryContextInjection:
     """commands/refine-issue.md must document Step 2.5 historical context query (ENH-1847)."""
 

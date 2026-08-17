@@ -669,6 +669,38 @@ it.
   matching the marker convention are ever deletable; the refuted line and
   every other line stay untouchable.
 
+#### Heading Containment Check (Hand-Emitted Headings, BUG-3245)
+
+`### Call Path` (`## Program Design`) and `### Dependent Files
+(Callers/Importers)` (`## Integration Map`) are the two headings this
+command still emits by direct `Edit` against the Enrichment Rules templates
+above, rather than through `ll-issues fold-findings`. Before writing either
+one:
+
+1. **Check first.** Read the target H2's current content for a `###` heading
+   with that exact text (case-insensitive, whitespace-trimmed) already
+   present.
+2. **If found, append underneath it** — new bullets/lines added to the
+   existing block — instead of emitting a second sibling heading. Never
+   create a duplicate `### Call Path` or `### Dependent Files
+   (Callers/Importers)` heading within the same H2.
+3. **If not found, create it once**, following the Enrichment Rules template
+   shape.
+
+This is the same containment-before-emission shape as the
+`⚠ Superseded` idempotency rule above, applied to headings instead of a
+marker line.
+
+**Lazy emission.** This command writes a section or subsection **only when
+this pass actually has content to deposit under it.** A pass that finds
+nothing new for `### Call Path`, `### Dependent Files (Callers/Importers)`,
+or a `ll-issues fold-findings` findings block makes **no edit for that
+block at all** — no heading, no provenance stub, no blank placeholder.
+`ll-issues fold-findings` already enforces this for the findings-block path
+(an empty payload is a no-op); this restates the same consequence for the
+two hand-emitted headings, where the command itself is the only enforcement
+point.
+
 ### 5b. Interactive Refinement (Skip in Auto Mode)
 
 **Skip this entire section if `AUTO_MODE` is true.**
