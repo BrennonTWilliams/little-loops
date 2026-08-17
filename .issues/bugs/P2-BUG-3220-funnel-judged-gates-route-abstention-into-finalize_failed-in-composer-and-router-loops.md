@@ -109,6 +109,13 @@ Verified against the issue's table (one correction below):
 ### Documentation
 N/A — no user-facing docs describe these four loops' abstention routing specifically; `docs/generalized-fsm-loop.md:547` documents the general `on_cannot_judge` mechanism only.
 
+### Tests
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_goal_cluster.py` — a dedicated test file for `goal-cluster.yaml` not previously named anywhere in this issue. `TestGoalClusterDedupBatch.test_dedup_and_batch_has_full_routing` (lines 227-231) currently asserts only `on_yes`/`on_no`/`on_partial` presence on `dedup_and_batch` — extend with the new `on_cannot_judge` assertion. `propagate_context` and `synthesize_cluster_result` have **zero existing dedicated coverage** in this file — new tests needed, modeled on `TestGoalClusterReassessIntegration.test_reassess_state_has_full_routing` (lines 244-250). [Agent 1/3 finding]
+- `scripts/tests/test_loop_composer.py` `TestLoopComposerStates` and `scripts/tests/test_loop_router.py` `TestLoopRouterStates` use flat `state.get("on_x") == "y"` dict assertions (e.g. `test_dispatch_step_routes_success_and_failure` at `test_loop_composer.py:126-130`, `test_classify_goal_routes_to_branch_project` at `test_loop_router.py:131-135`) — the model to extend for `decompose_goal`, `review_chain`, `classify_goal`, `score_project_loops`, `score_builtin_loops`, `review`'s new `on_cannot_judge` assertions. None of these tests currently pin the pre-fix buggy `on_error`/hold behavior, so nothing breaks — all 9 new assertions are additive. [Agent 3 finding]
+- No repo-wide funnel-consistency check exists yet (confirmed no `cannot_judge`/`abstention`/`funnel`-aware rule in `scripts/little_loops/fsm/validation/*.py`) — `test_builtin_loops.py:59-98`'s `test_no_failure_edge_routes_to_a_success_terminal` (hardcoded-exemption-dict + walk-every-loop + collect-offenders shape) is the closest existing pattern a new funnel-consistency assertion could follow, iterating `fsm.states[name].extra_routes.get("cannot_judge")` against `on_yes`/`on_no`/`on_partial` for each of the 9 gates. Optional — no test currently requires this, but it's the natural place to prevent regression across all 9 sites at once rather than 9 separate one-off assertions. [Agent 3 finding]
+
 ## Program Design
 
 ### Codebase Research Findings
@@ -137,6 +144,14 @@ N/A — no data shape introduced or modified; all 9 fixes are YAML routing-key a
 4. Each changed route carries an inline `#` comment stating why abstention funnels the same way the other verdicts do, following this codebase's existing rationale-comment convention (Integration Map → Conventions in Force).
 5. `python -m pytest scripts/tests/test_loop_composer.py scripts/tests/test_loop_router.py scripts/tests/test_builtin_loops.py scripts/tests/test_fsm_executor.py -v` passes, and `ll-loop validate` runs clean against `goal-cluster.yaml`, `loop-composer.yaml`, and `loop-router.yaml`.
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Update `scripts/tests/test_goal_cluster.py` — extend `TestGoalClusterDedupBatch.test_dedup_and_batch_has_full_routing` (227-231) with an `on_cannot_judge` assertion, and add new coverage for `propagate_context`/`synthesize_cluster_result` (currently untested), modeled on `TestGoalClusterReassessIntegration.test_reassess_state_has_full_routing` (244-250)
+- Extend `scripts/tests/test_loop_composer.py` `TestLoopComposerStates` and `scripts/tests/test_loop_router.py` `TestLoopRouterStates` with `on_cannot_judge` assertions for `decompose_goal`, `review_chain`, `classify_goal`, `score_project_loops`, `score_builtin_loops`, `review`, following the existing flat `state.get("on_x") == "y"` pattern
+- `python -m pytest scripts/tests/test_goal_cluster.py -v` passes alongside the already-listed test command
+
 ## Impact
 
 Removes three spurious run failures, one spurious re-execution branch, and up to two wasted LLM calls per abstention on six further gates. No behavior change on the non-abstention paths.
@@ -154,5 +169,6 @@ Removes three spurious run failures, one spurious re-execution branch, and up to
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-08-17T00:25:03 - `364ce564-b8a8-42f8-9c6e-ae082c11cf3e.jsonl`
 - `/ll:refine-issue` - 2026-08-16T23:58:31 - `40668286-18e1-4fb3-b8c2-566405cf8bec.jsonl`
 - `/ll:capture-issue` - 2026-08-16T23:29:37 - `501abea1-df2c-4fca-aa0c-5bb8bbb6d4ba.jsonl`

@@ -101,6 +101,18 @@ _Added by `/ll:refine-issue` — 2026-08-16 — based on codebase analysis:_
 ### Configuration
 N/A
 
+### Dependent Files (Callers/Importers)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/guides/LOOPS_REFERENCE.md` — the `sprint-build-and-validate` section's ASCII FSM flow diagram (~lines 862-869) shows only `YES/error → commit` and `NO/PARTIAL → audit_conflicts_retry`, with no abstention branch; the per-state table row for `audit_conflicts` (line 890) spells out `on_yes`/`on_no`/`on_partial`/`on_error` explicitly and needs a new clause for `on_cannot_judge`. The `audit_conflicts_retry` row (line 891, "unconditionally routes to `commit`") also needs updating if Implementation Step 2 adds `max_retries`/`on_retry_exhausted`. [Agent 2 finding]
+
+### Tests
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_builtin_loops.py` `TestSprintBuildAndValidateLoop` — add `test_audit_conflicts_on_cannot_judge_routes_to_retry`, modeled on the existing `test_audit_conflicts_on_no_routes_to_retry` (line 8194), asserting `data["states"]["audit_conflicts"].get("on_cannot_judge") == "audit_conflicts_retry"` (this test class reads the raw parsed YAML dict directly, not `StateConfig.extra_routes`) [Agent 3 finding]
+- `scripts/tests/test_builtin_loops.py` `test_audit_conflicts_retry_state_exists` (line 8208) currently asserts `audit_conflicts_retry.next == "commit"` unconditionally — **will break** if Implementation Step 2 converts the state to `max_retries`/`on_retry_exhausted` instead of a bare `next: commit`; update alongside that choice [Agent 2 finding]
+- `scripts/tests/test_builtin_loops.py` `test_max_steps_accommodates_retry_cycle` (line 8216) and the repo-wide failure-terminal walker (`test_no_failure_edge_routes_to_a_success_terminal`-style check at lines 64-87, asserting every `on_error`/`on_failure`/`on_retry_exhausted` target has `failure: true`) — re-verify against whichever exhaustion design Implementation Step 2 picks; if a new failure-shaped terminal is introduced, it must set `failure: true` (matching the `refine_failed`/`sprint_failed` sibling pattern) or the walker fails [Agent 2 finding]
+
 ## Program Design
 
 ### Codebase Research Findings
@@ -144,5 +156,6 @@ Removes a fail-open path to `commit` on an unobservable conflict audit.
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-08-17T00:15:05 - `364ce564-b8a8-42f8-9c6e-ae082c11cf3e.jsonl`
 - `/ll:refine-issue` - 2026-08-16T23:54:28 - `40668286-18e1-4fb3-b8c2-566405cf8bec.jsonl`
 - `/ll:capture-issue` - 2026-08-16T23:29:36 - `501abea1-df2c-4fca-aa0c-5bb8bbb6d4ba.jsonl`

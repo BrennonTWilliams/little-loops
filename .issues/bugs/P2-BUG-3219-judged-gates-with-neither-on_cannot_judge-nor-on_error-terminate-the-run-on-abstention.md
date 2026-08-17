@@ -122,9 +122,27 @@ All 13 gates confirmed present exactly as the issue's table states, each `evalua
 - `scripts/tests/test_fsm_schema.py:1091` `test_on_partial_only_shorthand_is_valid` confirms today's static validator does **not** flag "judged gate with no `on_cannot_judge`/`on_error`" as an error or warning — no existing test would catch a regression here; `ENH-3222` (sibling issue) is the proposed validator rule for this gap.
 - `scripts/tests/test_builtin_loops.py` — `TestBuiltinLoopFiles` walks every loop under `scripts/little_loops/loops/`; this is the file-level harness that would enumerate all 13 gates for a corpus-wide route-completeness check, distinct from the hand-built fixtures in `test_fsm_executor.py`.
 
+### Tests
+
+_Wiring pass added by `/ll:wire-issue`:_
+- Per-loop structural test classes already exist for most of the 13 sites and are the natural home for each new `on_cannot_judge` assertion (text-slice-between-state-boundaries pattern, e.g. `test_rn_build_check_substrate_has_full_routing` at `test_builtin_loops.py:13709-13720`): `TestAssumptionFirewallLoop` (`test_builtin_loops.py:10239`), `TestAdoptThirdPartyApiLoop` (`10748`), `TestIntegrateSdkLoop` (`10815`), `TestIncrementalRefactorLoop` (`11166`), `TestCheckSubstrateOptionalState` (`13595`, covers both `rn-build`/`rn-plan` `check_substrate`). [Agent 3 finding]
+- `scripts/tests/test_feat1544_loop_specialist_eval.py` `TestLoopSpecialistEvalStates` (line 68) is the dedicated per-state test file for `loop-specialist-eval.yaml`'s `check_skill` — the natural home for that gate's new `on_cannot_judge` assertion, not `test_builtin_loops.py`. [Agent 3 finding]
+- `scripts/tests/test_rn_build.py` and `scripts/tests/test_rn_plan.py` are the dedicated per-loop test files for `rn-build.yaml`/`rn-plan.yaml` respectively; neither currently has a `check_substrate`-specific assertion outside the shared `TestCheckSubstrateOptionalState` class — worth checking whether the new deterministic probe state (Implementation Step 2) needs a test in these files too. [Agent 3 finding]
+- `dataset-curation.yaml` has **no dedicated test class** — only the generic `TestBuiltinLoopFiles` walker covers it. Closest pattern to extend: `TestIncrementalRefactorLoop` (`test_builtin_loops.py:11166-11201`), which uses the same `data["states"]["<name>"].get(...)` dict-assertion shape. [Agent 3 finding]
+- `TestHarnessCapture` (`test_builtin_loops.py:2902`, `HARNESS_FILES` list at `2905-2908`) is parametrized only over `harness-single-shot.yaml`/`harness-multi-item.yaml` — it does **not** include `harness-plan-research-implement-report.yaml`, so that third template's `check_semantic` has no dedicated parametrized coverage today; either extend `HARNESS_FILES` or add a parallel class when fixing all three templates together (Implementation Step 1). [Agent 3 finding]
+- `TestValidatorWarningBudget` (`test_builtin_loops.py:13779-13907`, `ALLOWLIST` at `13813`) is a corpus-wide ratchet that fails the suite if any built-in loop starts emitting a new lint warning (`unreachable`, `loop-reference`, `failure-terminal`, etc.). The new evidence-producing state (harness templates) and deterministic probe state (`rn-build`/`rn-plan`) must validate cleanly against this ratchet — an unreachable or mis-referenced new state trips `"unreachable"`/`"loop-reference"` and needs either a fix or a new owned-by-issue `ALLOWLIST` entry (convention at `13803-13852`). [Agent 2 finding]
+
 ### Documentation
 - `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md` and the inline `#` comments in the three `harness-*.yaml` templates are the de facto documentation for this pattern per the issue's own Proposed Solution — both need the `on_cannot_judge` line added alongside the existing `on_partial` comment once the fix lands.
 - `docs/generalized-fsm-loop.md:547` already documents the general `on_cannot_judge` mechanism; no change needed there.
+
+### Dependent Files (Callers/Importers)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `skills/create-loop/loop-types.md` — a **second, independent copy-source** of the same `check_semantic`/`check_skill`/`check_substrate` gate shapes, emitted verbatim by the `/ll:create-loop` wizard into every user-scaffolded loop: Variant A single-shot template `check_skill`/`check_semantic` (lines 790-817), Variant B multi-item template (lines 860-909), Specialist Pipeline template `check_semantic` (lines 1354-1394, already has `on_partial` but no `on_cannot_judge`), the worked `harness-refine-issue` example (lines 1099-1140), and the commented `# OPTIONAL: check_substrate` block (lines 1327-1346). None are in the issue's 13-site table because they're generator source, not a runnable loop file — but every loop scaffolded via `/ll:create-loop` going forward inherits the same defect unless these templates also gain `on_cannot_judge`. This is the same propagation-vector concern the issue's Motivation raises for `AUTOMATIC_HARNESSING_GUIDE.md`, just via the wizard rather than copy-paste. [Agent 1/2 finding]
+- `skills/create-loop/reference.md` (lines 91-177) — the wizard's routing-key field reference documents `on_yes`/`on_no` shorthand only; needs an `on_cannot_judge` entry alongside once the templates above are fixed. [Agent 2 finding]
+- `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` (lines 449-464) — the canonical `check_substrate` "State Shape" YAML block shown to users adding this gate to *any* planning loop (not just `rn-build`/`rn-plan`); currently `on_yes`/`on_no` only. Also cross-references `skills/create-loop/loop-types.md § Specialist Pipeline` (line 507) as its wizard-side counterpart. [Agent 2 finding]
+- `docs/guides/LOOPS_REFERENCE.md` (lines 286, 297, 714) — prose descriptions of `check_substrate`'s routing for both `rn-plan` and `rn-build` ("infeasible plans route back to..."); needs a note once `check_substrate` also routes `on_cannot_judge` to a new probe state. [Agent 2 finding]
 
 ## Program Design
 
@@ -158,6 +176,17 @@ N/A — no data shape introduced or modified; all 13 fixes are YAML routing-key 
 5. Every changed state where the answer is "we cannot proceed" routes to a `terminal: true` / `failure: true` state, not left to die on "No valid transition".
 6. `python -m pytest scripts/tests/test_builtin_loops.py scripts/tests/test_fsm_executor.py -v` passes, and `ll-loop validate` runs clean against each of the 11 changed loop files.
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Update `skills/create-loop/loop-types.md` — add `on_cannot_judge` to the `check_semantic`/`check_skill`/`check_substrate` scaffolding templates (Variant A, Variant B, Specialist Pipeline, `harness-refine-issue` example, `# OPTIONAL: check_substrate` block) so loops scaffolded via `/ll:create-loop` don't inherit the same defect
+- Update `skills/create-loop/reference.md` — document the `on_cannot_judge` routing key alongside `on_yes`/`on_no` in the wizard's field reference
+- Update `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md`'s canonical `check_substrate` "State Shape" block (lines 449-464) and `docs/guides/LOOPS_REFERENCE.md`'s `check_substrate` prose (lines 286, 297, 714)
+- Add `on_cannot_judge` structural assertions to the existing per-loop test classes (`TestAssumptionFirewallLoop`, `TestAdoptThirdPartyApiLoop`, `TestIntegrateSdkLoop`, `TestIncrementalRefactorLoop`, `TestCheckSubstrateOptionalState`) and `test_feat1544_loop_specialist_eval.py`'s `TestLoopSpecialistEvalStates`
+- Add a `TestDatasetCurationLoop` class (no dedicated coverage exists today) and extend `TestHarnessCapture`'s `HARNESS_FILES` list (or add a parallel class) to cover `harness-plan-research-implement-report.yaml`
+- Verify new evidence-producing/probe states pass `TestValidatorWarningBudget`'s corpus-wide lint ratchet (`test_builtin_loops.py:13779-13907`) without needing a new `ALLOWLIST` entry
+
 ## Impact
 
 Removes 13 latent run-terminations and stops the no-route shape from propagating into user harnesses via the documented templates.
@@ -175,5 +204,6 @@ Removes 13 latent run-terminations and stops the no-route shape from propagating
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-08-17T00:19:57 - `364ce564-b8a8-42f8-9c6e-ae082c11cf3e.jsonl`
 - `/ll:refine-issue` - 2026-08-16T23:56:52 - `40668286-18e1-4fb3-b8c2-566405cf8bec.jsonl`
 - `/ll:capture-issue` - 2026-08-16T23:29:36 - `501abea1-df2c-4fca-aa0c-5bb8bbb6d4ba.jsonl`
