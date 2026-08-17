@@ -192,6 +192,8 @@ states:
     on_yes: parse_batch_plan
     on_no: parse_batch_plan
     on_partial: parse_batch_plan
+    # funnel gate: cannot_judge carries no info about the artifact either (BUG-3220)
+    on_cannot_judge: parse_batch_plan
     on_error: finalize_failed
 
   parse_batch_plan:
@@ -623,6 +625,8 @@ states:
     on_yes: save_hints
     on_no: save_hints
     on_partial: save_hints
+    # funnel gate: cannot_judge carries no info about the artifact either (BUG-3220)
+    on_cannot_judge: save_hints
     on_error: execute_cluster
 
   save_hints:
@@ -685,6 +689,8 @@ states:
     on_yes: finalize_present_result
     on_no: finalize_present_result
     on_partial: finalize_present_result
+    # funnel gate: cannot_judge carries no info about the artifact either (BUG-3220)
+    on_cannot_judge: finalize_present_result
     on_error: finalize_present_result
 
   # ─── Phase 7: Terminal Output ─────────────────────────────────────────────────

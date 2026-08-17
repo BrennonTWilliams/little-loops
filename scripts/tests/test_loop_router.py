@@ -132,6 +132,8 @@ class TestLoopRouterStates:
         state = loop_data["states"]["classify_goal"]
         assert state.get("on_yes") == "route_branch_project"
         assert state.get("on_no") == "route_branch_project"
+        assert state.get("on_partial") == "route_branch_project"
+        assert state.get("on_cannot_judge") == "route_branch_project"
 
     def test_three_branch_targets_reachable_from_classify_goal(self, loop_data: dict) -> None:
         """All three branch targets are reachable from the classify_goal→route_branch chain."""
@@ -162,10 +164,28 @@ class TestLoopRouterStates:
         assert state.get("action_type") == "prompt"
         assert state.get("capture") == "project_score"
 
+    def test_score_project_loops_cannot_judge_follows_funnel(self, loop_data: dict) -> None:
+        state = loop_data["states"]["score_project_loops"]
+        assert state.get("on_cannot_judge") == state.get("on_yes") == state.get(
+            "on_no"
+        ) == state.get("on_partial")
+
     def test_score_builtin_loops_is_prompt(self, loop_data: dict) -> None:
         state = loop_data["states"]["score_builtin_loops"]
         assert state.get("action_type") == "prompt"
         assert state.get("capture") == "builtin_score"
+
+    def test_score_builtin_loops_cannot_judge_follows_funnel(self, loop_data: dict) -> None:
+        state = loop_data["states"]["score_builtin_loops"]
+        assert state.get("on_cannot_judge") == state.get("on_yes") == state.get(
+            "on_no"
+        ) == state.get("on_partial")
+
+    def test_review_cannot_judge_follows_funnel(self, loop_data: dict) -> None:
+        state = loop_data["states"]["review"]
+        assert state.get("on_cannot_judge") == state.get("on_yes") == state.get(
+            "on_no"
+        ) == state.get("on_partial")
 
     def test_dispatch_uses_native_loop_field(self, loop_data: dict) -> None:
         state = loop_data["states"]["dispatch"]

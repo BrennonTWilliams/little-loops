@@ -115,6 +115,8 @@ states:
     on_yes: route_branch_project
     on_no: route_branch_project
     on_partial: route_branch_project
+    # funnel gate: cannot_judge carries no info about the artifact either (BUG-3220)
+    on_cannot_judge: route_branch_project
     on_error: finalize_failed
 
   route_branch_project:
@@ -171,6 +173,8 @@ states:
     on_yes: parse_project_score
     on_no: parse_project_score
     on_partial: parse_project_score
+    # funnel gate: cannot_judge carries no info about the artifact either (BUG-3220)
+    on_cannot_judge: parse_project_score
     on_error: parse_project_score
 
   parse_project_score:
@@ -229,6 +233,8 @@ states:
     on_yes: parse_builtin_score
     on_no: parse_builtin_score
     on_partial: parse_builtin_score
+    # funnel gate: cannot_judge carries no info about the artifact either (BUG-3220)
+    on_cannot_judge: parse_builtin_score
     on_error: parse_builtin_score
 
   parse_builtin_score:
@@ -395,6 +401,8 @@ states:
     on_yes: finalize_present_result
     on_no: finalize_present_result
     on_partial: finalize_present_result
+    # funnel gate: cannot_judge carries no info about the artifact either (BUG-3220)
+    on_cannot_judge: finalize_present_result
     on_error: finalize_present_result
 
   # ─── Phase 3C: Propose New Loop ──────────────────────────────────────────────

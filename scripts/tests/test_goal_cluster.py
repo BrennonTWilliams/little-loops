@@ -229,6 +229,41 @@ class TestGoalClusterDedupBatch:
         assert "on_yes" in state
         assert "on_no" in state
         assert "on_partial" in state
+        assert "on_cannot_judge" in state
+
+    def test_dedup_and_batch_cannot_judge_follows_funnel(self, loop_data: dict) -> None:
+        state = loop_data["states"]["dedup_and_batch"]
+        assert state["on_cannot_judge"] == state["on_yes"] == state["on_no"] == state["on_partial"]
+
+
+class TestGoalClusterPropagateContext:
+    """Tests for the propagate_context state's abstention routing (BUG-3220)."""
+
+    def test_propagate_context_has_full_routing(self, loop_data: dict) -> None:
+        state = loop_data["states"]["propagate_context"]
+        assert "on_yes" in state
+        assert "on_no" in state
+        assert "on_partial" in state
+        assert "on_cannot_judge" in state
+
+    def test_propagate_context_cannot_judge_follows_funnel(self, loop_data: dict) -> None:
+        state = loop_data["states"]["propagate_context"]
+        assert state["on_cannot_judge"] == state["on_yes"] == state["on_no"] == state["on_partial"]
+
+
+class TestGoalClusterSynthesizeClusterResult:
+    """Tests for the synthesize_cluster_result state's abstention routing (BUG-3220)."""
+
+    def test_synthesize_cluster_result_has_full_routing(self, loop_data: dict) -> None:
+        state = loop_data["states"]["synthesize_cluster_result"]
+        assert "on_yes" in state
+        assert "on_no" in state
+        assert "on_partial" in state
+        assert "on_cannot_judge" in state
+
+    def test_synthesize_cluster_result_cannot_judge_follows_funnel(self, loop_data: dict) -> None:
+        state = loop_data["states"]["synthesize_cluster_result"]
+        assert state["on_cannot_judge"] == state["on_yes"] == state["on_no"] == state["on_partial"]
 
 
 class TestGoalClusterReassessIntegration:

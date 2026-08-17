@@ -4,10 +4,11 @@ type: BUG
 title: Funnel judged gates route abstention into finalize_failed in composer and router
   loops
 priority: P2
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-08-16'
 captured_at: '2026-08-16T23:28:07Z'
+completed_at: '2026-08-17T02:33:33Z'
 parent: EPIC-3217
 confidence_score: 98
 outcome_confidence: 88
@@ -39,6 +40,12 @@ Funnel gates whose abstention path diverges from the funnel (`scripts/little_loo
 | `goal-cluster` :: `propagate_context` | `save_hints` | `execute_cluster` |
 
 The remaining five in-scope funnel gates — `goal-cluster::synthesize_cluster_result`, `loop-composer::review_chain`, `loop-router::score_project_loops`, `loop-router::score_builtin_loops`, `loop-router::review` — happen to have an `on_error` that equals the funnel target, so they behave correctly today by coincidence rather than by declaration, and only after paying two holds first. (`migrate-sdk-version::classify_outcome` was originally counted here and is out of scope — see the Root Cause scope correction.)
+
+## Steps to Reproduce
+
+1. Run `loop-composer` (or `goal-cluster` / `loop-router`) far enough to reach one of the four diverging funnel gates — e.g. `loop-composer::decompose_goal`.
+2. Force the judge call at that gate to return an abstention verdict (`cannot_judge`) — e.g. an `evaluate_llm_structured` response that doesn't clear `min_confidence`, or a judge timeout, so the evaluator can't classify the artifact as yes/no/partial.
+3. Observe: no gate in `goal-cluster.yaml` / `loop-composer.yaml` / `loop-router.yaml` declares `on_cannot_judge` today, so `FSMExecutor._abstention_declared()` returns `False`. `_route_abstention_hold()` re-enters the state up to `_ABSTENTION_HOLD_CAP = 2` times, then `_abstention_fallback()` resolves `state.on_error` instead of the funnel target — `finalize_failed` for `dedup_and_batch` / `decompose_goal` / `classify_goal` (the run terminates as failed even though `on_yes`/`on_no`/`on_partial` all proceed to `parse_batch_plan` / `parse_plan` / `route_branch_project`), or `execute_cluster` for `propagate_context` (silently skips `save_hints`, dropping the collected hints).
 
 ## Expected Behavior
 
@@ -179,6 +186,8 @@ Removes three spurious run failures, one spurious state-skip branch, and up to t
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-17T02:33:11 - `c12729b2-0647-4860-9dbd-e78521aa9d3b.jsonl`
+- `/ll:ready-issue` - 2026-08-17T02:21:24 - `b00acbb7-c761-4204-b75d-a69850d51c12.jsonl`
 - `/ll:confidence-check` - 2026-08-17T01:07:43 - `5a985576-1a12-4019-84a2-4fcf31653b26.jsonl`
 - `/ll:wire-issue` - 2026-08-17T00:25:03 - `364ce564-b8a8-42f8-9c6e-ae082c11cf3e.jsonl`
 - `/ll:refine-issue` - 2026-08-16T23:58:31 - `40668286-18e1-4fb3-b8c2-566405cf8bec.jsonl`

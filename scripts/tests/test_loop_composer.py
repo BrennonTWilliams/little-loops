@@ -194,6 +194,20 @@ class TestLoopComposerStates:
         )
         assert any_run_dir, "No state references ${context.run_dir} — artifact isolation missing"
 
+    def test_decompose_goal_cannot_judge_follows_funnel(self, states: dict) -> None:
+        """decompose_goal is a funnel gate — cannot_judge must match on_yes/on_no/on_partial (BUG-3220)."""
+        state = states["decompose_goal"]
+        assert state.get("on_cannot_judge") == state.get("on_yes") == state.get(
+            "on_no"
+        ) == state.get("on_partial")
+
+    def test_review_chain_cannot_judge_follows_funnel(self, states: dict) -> None:
+        """review_chain is a funnel gate — cannot_judge must match on_yes/on_no/on_partial (BUG-3220)."""
+        state = states["review_chain"]
+        assert state.get("on_cannot_judge") == state.get("on_yes") == state.get(
+            "on_no"
+        ) == state.get("on_partial")
+
 
 class TestComposerLibFragment:
     """Tests for the shared lib/composer.yaml fragment library."""
