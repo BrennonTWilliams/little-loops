@@ -2838,8 +2838,25 @@ Show issue statistics for completed issues.
 |------|-------|-------------|
 | `--json` | `-j` | Output as JSON |
 | `--directory` | `-d` | Path to issues directory (default: `.issues`) |
+| `--since` | `-S` | Only count issues/loop-runs completed/started on or after DATE (YYYY-MM-DD) (ENH-3237) |
+| `--until` | | Only count issues/loop-runs completed/ended on or before DATE (YYYY-MM-DD) (ENH-3237) |
 
 When the unified session DB (`.ll/history.db`, FEAT-1112) contains `issue_events` rows, `summary` reads from the DB instead of re-parsing every completed-issue file. An empty/absent DB falls back to file parsing — no behavior change for projects without recorded events (ENH-1621). As of ENH-1691, `ll-auto` writes issue lifecycle events live during each run via `AutoManager`'s internal `SQLiteTransport`; `ll-session backfill` is retained for importing historical data captured before ENH-1691. Only the `summary` subcommand is DB-backed; `analyze` and `export` still scan the files because they need bodies and git history.
+
+**Windowed summary (`--since`/`--until`, ENH-3237):** the DB-vs-fallback trigger is
+source availability, not row count — an empty window on a populated DB still
+returns DB-sourced zero counts rather than silently falling through to an
+unfiltered file scan. `--json` output gains: `source` (`"issue_events"` or
+`"files"`, naming which store answered — the two sources can disagree on
+counts, since `issue_events` records emitted events while the file scan
+counts completed issue files), `since`/`until` (the requested bounds, or
+`null` when unbounded), and `loop_runs_started`/`loop_runs_ended` (counts from
+`loop_runs` for the window; `null`, not `0`, when the session DB can't answer
+— an in-flight run with `ended_at IS NULL` counts as started-not-ended).
+`date_range_days`/`velocity` use the requested `--since`/`--until` span as the
+denominator when both bounds are given; otherwise they fall back to the span
+actually observed between the earliest and latest completion in the result
+(unchanged, pre-ENH-3237 behavior).
 
 #### `ll-history analyze`
 

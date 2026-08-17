@@ -87,8 +87,8 @@ def calculate_analysis(
     # Pre-load issue file contents once for all analysis functions
     issue_contents = _load_issue_contents(completed_issues)
 
-    # Get base summary
-    summary = calculate_summary(completed_issues)
+    # Get base summary (analyze always scans issue files, not issue_events)
+    summary = calculate_summary(completed_issues, source="files")
 
     # Scan active issues if directory provided
     active_issues: list[tuple[Path, str, str, date | None]] = []

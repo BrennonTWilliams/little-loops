@@ -22,6 +22,8 @@ class TestHistoryArgumentParsing:
         summary_parser = subparsers.add_parser("summary")
         summary_parser.add_argument("--json", action="store_true")
         summary_parser.add_argument("-d", "--directory", type=Path, default=None)
+        summary_parser.add_argument("-S", "--since", type=str, default=None, metavar="DATE")
+        summary_parser.add_argument("--until", type=str, default=None, metavar="DATE")
         return parser.parse_args(args)
 
     def test_summary_default(self) -> None:
@@ -30,6 +32,23 @@ class TestHistoryArgumentParsing:
         assert args.command == "summary"
         assert args.json is False
         assert args.directory is None
+        assert args.since is None
+        assert args.until is None
+
+    def test_summary_since_flag(self) -> None:
+        """--since is accepted by summary (ENH-3237)."""
+        args = self._parse_history_args(["summary", "--since", "2026-01-01"])
+        assert args.since == "2026-01-01"
+
+    def test_summary_since_short_form(self) -> None:
+        """-S is accepted as the short form of --since (ENH-3237)."""
+        args = self._parse_history_args(["summary", "-S", "2026-01-01"])
+        assert args.since == "2026-01-01"
+
+    def test_summary_until_flag(self) -> None:
+        """--until is accepted by summary (ENH-3237)."""
+        args = self._parse_history_args(["summary", "--until", "2026-03-31"])
+        assert args.until == "2026-03-31"
 
     def test_summary_json_flag(self) -> None:
         """Test --json flag."""
@@ -81,15 +100,15 @@ class TestMainHistoryIntegration:
 
         assert result == 1
 
-    def test_main_history_summary_empty(self, tmp_path: Path) -> None:
+    def test_main_history_summary_empty(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Test main_history summary with empty directory."""
         completed_dir = tmp_path / ".issues" / "completed"
         completed_dir.mkdir(parents=True)
+        monkeypatch.setenv("LL_HISTORY_DB", str(tmp_path / ".ll" / "history.db"))
 
-        with (
-            patch.object(sys, "argv", ["ll-history", "summary", "-d", str(tmp_path / ".issues")]),
-            patch("little_loops.issue_history.scan_completed_issues_from_db", return_value=[]),
-        ):
+        with patch.object(sys, "argv", ["ll-history", "summary", "-d", str(tmp_path / ".issues")]):
             from little_loops.cli import main_history
 
             result = main_history()
@@ -97,18 +116,16 @@ class TestMainHistoryIntegration:
         assert result == 0
 
     def test_main_history_summary_json(
-        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Test main_history summary --json output."""
         completed_dir = tmp_path / ".issues" / "completed"
         completed_dir.mkdir(parents=True)
         (completed_dir / "P1-BUG-001-test.md").write_text("# BUG-001\n")
+        monkeypatch.setenv("LL_HISTORY_DB", str(tmp_path / ".ll" / "history.db"))
 
-        with (
-            patch.object(
-                sys, "argv", ["ll-history", "summary", "--json", "-d", str(tmp_path / ".issues")]
-            ),
-            patch("little_loops.issue_history.scan_completed_issues_from_db", return_value=[]),
+        with patch.object(
+            sys, "argv", ["ll-history", "summary", "--json", "-d", str(tmp_path / ".issues")]
         ):
             from little_loops.cli import main_history
 
@@ -120,20 +137,19 @@ class TestMainHistoryIntegration:
         data = json.loads(captured.out)
         assert data["total_count"] == 1
         assert data["type_counts"]["BUG"] == 1
+        assert data["source"] == "files"
 
     def test_main_history_summary_text(
-        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Test main_history summary text output."""
         completed_dir = tmp_path / ".issues" / "completed"
         completed_dir.mkdir(parents=True)
         (completed_dir / "P1-BUG-001-test.md").write_text("# BUG-001\n")
         (completed_dir / "P2-ENH-002-test.md").write_text("# ENH-002\n")
+        monkeypatch.setenv("LL_HISTORY_DB", str(tmp_path / ".ll" / "history.db"))
 
-        with (
-            patch.object(sys, "argv", ["ll-history", "summary", "-d", str(tmp_path / ".issues")]),
-            patch("little_loops.issue_history.scan_completed_issues_from_db", return_value=[]),
-        ):
+        with patch.object(sys, "argv", ["ll-history", "summary", "-d", str(tmp_path / ".issues")]):
             from little_loops.cli import main_history
 
             result = main_history()
@@ -150,27 +166,25 @@ class TestIntentFlagPassThrough:
     """ENH-1114: --intent/--intent-limit flags on ll-history are a no-op pass-through."""
 
     def test_intent_flag_does_not_break_summary(
-        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """--intent flag (before subcommand) is accepted by ll-history and does not alter output."""
         completed_dir = tmp_path / ".issues" / "completed"
         completed_dir.mkdir(parents=True)
+        monkeypatch.setenv("LL_HISTORY_DB", str(tmp_path / ".ll" / "history.db"))
 
         # --intent is on the top-level parser, so it comes before the subcommand name
-        with (
-            patch.object(
-                sys,
-                "argv",
-                [
-                    "ll-history",
-                    "--intent",
-                    "rate limit",
-                    "summary",
-                    "-d",
-                    str(tmp_path / ".issues"),
-                ],
-            ),
-            patch("little_loops.issue_history.scan_completed_issues_from_db", return_value=[]),
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "ll-history",
+                "--intent",
+                "rate limit",
+                "summary",
+                "-d",
+                str(tmp_path / ".issues"),
+            ],
         ):
             from little_loops.cli import main_history
 
@@ -179,28 +193,26 @@ class TestIntentFlagPassThrough:
         assert result == 0
 
     def test_intent_limit_flag_does_not_break_summary(
-        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """--intent-limit flag (before subcommand) is accepted by ll-history and does not alter output."""
         completed_dir = tmp_path / ".issues" / "completed"
         completed_dir.mkdir(parents=True)
+        monkeypatch.setenv("LL_HISTORY_DB", str(tmp_path / ".ll" / "history.db"))
 
-        with (
-            patch.object(
-                sys,
-                "argv",
-                [
-                    "ll-history",
-                    "--intent",
-                    "FSM",
-                    "--intent-limit",
-                    "25",
-                    "summary",
-                    "-d",
-                    str(tmp_path / ".issues"),
-                ],
-            ),
-            patch("little_loops.issue_history.scan_completed_issues_from_db", return_value=[]),
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "ll-history",
+                "--intent",
+                "FSM",
+                "--intent-limit",
+                "25",
+                "summary",
+                "-d",
+                str(tmp_path / ".issues"),
+            ],
         ):
             from little_loops.cli import main_history
 
@@ -317,7 +329,7 @@ class TestSummaryDbSource:
         assert data["type_counts"].get("BUG") == 1
 
     def test_summary_falls_back_to_files_when_db_empty(
-        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """An absent/empty DB falls back to scan_completed_issues() — no regression."""
         project_root = tmp_path / "proj"
@@ -326,6 +338,7 @@ class TestSummaryDbSource:
         completed_dir = project_root / ".issues" / "completed"
         completed_dir.mkdir(parents=True)
         (completed_dir / "P1-BUG-001-test.md").write_text("# BUG-001\n")
+        monkeypatch.setenv("LL_HISTORY_DB", str(project_root / ".ll" / "history.db"))
 
         with patch.object(
             sys,
@@ -349,6 +362,246 @@ class TestSummaryDbSource:
         assert data["type_counts"].get("BUG") == 1
 
 
+class TestSummaryWindow:
+    """ENH-3237: `ll-history summary --json --since/--until`."""
+
+    def test_source_field_present_without_window(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The JSON payload always names its source, window flags or not."""
+        project_root = tmp_path / "proj"
+        project_root.mkdir()
+        completed_dir = project_root / ".issues" / "completed"
+        completed_dir.mkdir(parents=True)
+        (completed_dir / "P1-BUG-001-test.md").write_text("# BUG-001\n")
+        monkeypatch.setenv("LL_HISTORY_DB", str(project_root / ".ll" / "history.db"))
+
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "ll-history",
+                "--config",
+                str(project_root),
+                "summary",
+                "--json",
+                "-d",
+                str(project_root / ".issues"),
+            ],
+        ):
+            from little_loops.cli import main_history
+
+            assert main_history() == 0
+
+        data = json.loads(capsys.readouterr().out)
+        assert data["source"] == "files"
+        assert data["since"] is None
+        assert data["until"] is None
+
+    def test_empty_window_on_populated_store_stays_db_sourced(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A quiet window on a populated store returns zero counts sourced from
+        issue_events, not a file-scan fallback (the fallback trap)."""
+        from little_loops.session_store import backfill
+
+        seed_dir = tmp_path / "seed-issues" / "enhancements"
+        seed_dir.mkdir(parents=True)
+        (seed_dir / "P1-ENH-100-x.md").write_text(
+            "---\nid: ENH-100\nstatus: done\ntype: ENH\npriority: P1\n"
+            "completed_at: 2026-05-21T12:00:00Z\n---\n",
+            encoding="utf-8",
+        )
+
+        project_root = tmp_path / "proj"
+        project_root.mkdir()
+        db_path = project_root / ".ll" / "history.db"
+        db_path.parent.mkdir(parents=True)
+        monkeypatch.setenv("LL_HISTORY_DB", str(db_path))
+        backfill(db_path, issues_dir=tmp_path / "seed-issues", loops_dir=tmp_path / "no")
+
+        # File-scan directory has the same file — proves the DB path (not the
+        # file fallback) is what answered, since the window excludes it.
+        empty_issues = project_root / ".issues"
+        empty_issues.mkdir()
+
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "ll-history",
+                "--config",
+                str(project_root),
+                "summary",
+                "--json",
+                "--since",
+                "2027-01-01",
+                "-d",
+                str(empty_issues),
+            ],
+        ):
+            from little_loops.cli import main_history
+
+            assert main_history() == 0
+
+        data = json.loads(capsys.readouterr().out)
+        assert data["total_count"] == 0
+        assert data["source"] == "issue_events"
+        assert data["since"] == "2027-01-01"
+
+    def test_window_boundaries_are_inclusive(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """--since/--until bound completed_date inclusively."""
+        from little_loops.session_store import backfill
+
+        seed_dir = tmp_path / "seed-issues" / "enhancements"
+        seed_dir.mkdir(parents=True)
+        (seed_dir / "P1-ENH-100-in.md").write_text(
+            "---\nid: ENH-100\nstatus: done\ntype: ENH\npriority: P1\n"
+            "completed_at: 2026-05-10T12:00:00Z\n---\n",
+            encoding="utf-8",
+        )
+        (seed_dir / "P1-ENH-101-out.md").write_text(
+            "---\nid: ENH-101\nstatus: done\ntype: ENH\npriority: P1\n"
+            "completed_at: 2026-06-01T12:00:00Z\n---\n",
+            encoding="utf-8",
+        )
+
+        project_root = tmp_path / "proj"
+        project_root.mkdir()
+        db_path = project_root / ".ll" / "history.db"
+        db_path.parent.mkdir(parents=True)
+        monkeypatch.setenv("LL_HISTORY_DB", str(db_path))
+        backfill(db_path, issues_dir=tmp_path / "seed-issues", loops_dir=tmp_path / "no")
+
+        empty_issues = project_root / ".issues"
+        empty_issues.mkdir()
+
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "ll-history",
+                "--config",
+                str(project_root),
+                "summary",
+                "--json",
+                "--since",
+                "2026-05-10",
+                "--until",
+                "2026-05-10",
+                "-d",
+                str(empty_issues),
+            ],
+        ):
+            from little_loops.cli import main_history
+
+            assert main_history() == 0
+
+        data = json.loads(capsys.readouterr().out)
+        assert data["total_count"] == 1
+        assert data["type_counts"].get("ENH") == 1
+
+    def test_loop_run_window_counts_in_flight_run_as_started_not_ended(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """An in-flight run (ended_at IS NULL) counts as started-not-ended."""
+        from little_loops.session_store import ensure_db, record_loop_run_summary
+
+        project_root = tmp_path / "proj"
+        project_root.mkdir()
+        db_path = project_root / ".ll" / "history.db"
+        db_path.parent.mkdir(parents=True)
+        monkeypatch.setenv("LL_HISTORY_DB", str(db_path))
+        ensure_db(db_path)
+
+        record_loop_run_summary(
+            db_path,
+            run_id="run-in-flight",
+            loop_name="test-loop",
+            started_at="2026-05-15T10:00:00Z",
+            ended_at=None,
+        )
+        record_loop_run_summary(
+            db_path,
+            run_id="run-finished",
+            loop_name="test-loop",
+            started_at="2026-05-15T10:00:00Z",
+            ended_at="2026-05-15T11:00:00Z",
+        )
+
+        empty_issues = project_root / ".issues"
+        empty_issues.mkdir()
+
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "ll-history",
+                "--config",
+                str(project_root),
+                "summary",
+                "--json",
+                "--since",
+                "2026-05-15",
+                "--until",
+                "2026-05-15",
+                "-d",
+                str(empty_issues),
+            ],
+        ):
+            from little_loops.cli import main_history
+
+            assert main_history() == 0
+
+        data = json.loads(capsys.readouterr().out)
+        assert data["loop_runs_started"] == 2
+        assert data["loop_runs_ended"] == 1
+
+    def test_loop_runs_null_when_db_unqueryable(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """loop_runs_started/ended are null, not 0, when the DB can't be read.
+
+        A merely *absent* DB doesn't isolate this: `ll-history`'s own
+        `cli_event_context` writes a `cli_events` row (creating the DB file
+        with an empty schema) on every invocation, before `summary`'s
+        dispatch even runs — so an empty-but-valid DB reports real zero
+        counts, not null (ENH-3237). Only a DB that fails to open/query at
+        all should report null.
+        """
+        project_root = tmp_path / "proj"
+        project_root.mkdir()
+        completed_dir = project_root / ".issues" / "completed"
+        completed_dir.mkdir(parents=True)
+        db_path = project_root / ".ll" / "history.db"
+        db_path.parent.mkdir(parents=True)
+        db_path.write_text("not a sqlite file", encoding="utf-8")
+        monkeypatch.setenv("LL_HISTORY_DB", str(db_path))
+
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "ll-history",
+                "--config",
+                str(project_root),
+                "summary",
+                "--json",
+                "-d",
+                str(project_root / ".issues"),
+            ],
+        ):
+            from little_loops.cli import main_history
+
+            assert main_history() == 0
+
+        data = json.loads(capsys.readouterr().out)
+        assert data["loop_runs_started"] is None
+        assert data["loop_runs_ended"] is None
+
+
 class TestAnalyzeArgumentParsing:
     """Tests for ll-history analyze argument parsing."""
 
@@ -361,6 +614,8 @@ class TestAnalyzeArgumentParsing:
         summary_parser = subparsers.add_parser("summary")
         summary_parser.add_argument("--json", action="store_true")
         summary_parser.add_argument("-d", "--directory", type=Path, default=None)
+        summary_parser.add_argument("-S", "--since", type=str, default=None, metavar="DATE")
+        summary_parser.add_argument("--until", type=str, default=None, metavar="DATE")
 
         # analyze
         analyze_parser = subparsers.add_parser("analyze")

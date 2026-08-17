@@ -18,11 +18,30 @@ from little_loops.issue_history.models import (
 from little_loops.issue_history.parsing import _extract_subsystem
 
 
-def calculate_summary(issues: list[CompletedIssue]) -> HistorySummary:
+def calculate_summary(
+    issues: list[CompletedIssue],
+    *,
+    source: str = "files",
+    since: date | None = None,
+    until: date | None = None,
+    loop_runs_started: int | None = None,
+    loop_runs_ended: int | None = None,
+) -> HistorySummary:
     """Calculate summary statistics from issues.
 
     Args:
         issues: List of CompletedIssue objects
+        source: Which store answered — `"issue_events"` or `"files"`
+            (ENH-3237). Callers that don't windowed-query a specific
+            source may omit it; the default matches the pre-ENH-3237
+            file-scan behavior.
+        since: Requested window start, if any (recorded on the result,
+            not re-applied — callers filter `issues` beforehand).
+        until: Requested window end, if any.
+        loop_runs_started: Count of loop runs started in the window, or
+            None if the session DB could not answer.
+        loop_runs_ended: Count of loop runs ended in the window, or None
+            if the session DB could not answer.
 
     Returns:
         HistorySummary with calculated statistics
@@ -40,8 +59,8 @@ def calculate_summary(issues: list[CompletedIssue]) -> HistorySummary:
         priority_counts[issue.priority] = priority_counts.get(issue.priority, 0) + 1
 
         # Count by discovery source
-        source = issue.discovered_by or "unknown"
-        discovery_counts[source] = discovery_counts.get(source, 0) + 1
+        discovery_source = issue.discovered_by or "unknown"
+        discovery_counts[discovery_source] = discovery_counts.get(discovery_source, 0) + 1
 
         # Collect dates
         if issue.completed_date:
@@ -59,6 +78,11 @@ def calculate_summary(issues: list[CompletedIssue]) -> HistorySummary:
         discovery_counts=discovery_counts,
         earliest_date=min(dates) if dates else None,
         latest_date=max(dates) if dates else None,
+        source=source,
+        since=since,
+        until=until,
+        loop_runs_started=loop_runs_started,
+        loop_runs_ended=loop_runs_ended,
     )
 
 

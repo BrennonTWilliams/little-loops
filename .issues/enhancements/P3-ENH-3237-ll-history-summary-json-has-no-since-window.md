@@ -4,12 +4,13 @@ type: ENH
 title: '`ll-history summary --json` has no `--since`, so downstream tools query history.db
   directly'
 priority: P3
-status: open
+status: done
 testable: true
 discovered_commit: c01ee04200af9190db777a8b60a942e693a43e32
 discovered_branch: main
-discovered_date: 2026-08-17T18:30:00Z
+discovered_date: 2026-08-17 18:30:00+00:00
 discovered_by: little-loops-hermes
+completed_at: '2026-08-17T23:20:17Z'
 confidence_score: 90
 outcome_confidence: 75
 labels:
@@ -138,9 +139,11 @@ tests for. See Program Design > The fallback trap._
 
 _These touchpoints were identified by wiring analysis and must be included in the implementation:_
 
-- Update `scripts/little_loops/cli/issues/decisions.py` — pass the new `source`
-  kwarg at its `calculate_summary(issues)` call site once `source` becomes
-  required.
+- Update `scripts/little_loops/issue_history/analysis.py:91` — pass the new
+  `source` kwarg at its `calculate_summary(completed_issues)` call site once
+  `source` becomes required. (Corrected by `/ll:ready-issue`: the previous
+  citation, `scripts/little_loops/cli/issues/decisions.py`, does not call
+  `calculate_summary` anywhere; this is the actual second call site.)
 - Update `scripts/tests/test_issue_history_cli.py` — add `--since`/`--until` to
   both local `_parse_history_args()` parser replicas (`:21-25`, `:359-364`).
 - Update `scripts/tests/test_issue_history_summary.py::TestCalculateSummary` —
@@ -178,10 +181,13 @@ _These touchpoints were identified by wiring analysis and must be included in th
 ### Dependent Files (Callers/Importers)
 
 _Wiring pass added by `/ll:wire-issue`:_
-- `scripts/little_loops/cli/issues/decisions.py` — calls `calculate_summary(issues)`
-  positionally. Step 4's proposed signature makes `source` a required
-  keyword-only argument, so this call site breaks unless updated alongside the
-  primary change. [Agent 1 finding]
+- `scripts/little_loops/issue_history/analysis.py:91` — calls
+  `calculate_summary(completed_issues)` positionally, feeding `HistoryAnalysis`
+  (the `analyze` subcommand's summary field). Step 4's proposed signature makes
+  `source` a required keyword-only argument, so this call site breaks unless
+  updated alongside the primary change. (Corrected by `/ll:ready-issue`: the
+  file previously cited here, `scripts/little_loops/cli/issues/decisions.py`,
+  has no `calculate_summary` call at all.)
 - `scripts/tests/test_issue_history_cli.py` — maintains its own standalone
   `argparse` replica of the `summary` subparser in two places (`_parse_history_args()`
   around `:21-25`, and a second inline replica around `:359-364`); both need
@@ -237,6 +243,37 @@ window/source lines, these loops' prompt context changes. [Agent 2 finding]
 ## Program Design
 
 _Added by pre-implementation review — 2026-08-17._
+
+### Deviations
+
+_Added by `/ll:manage-issue` — 2026-08-17._
+
+- **`calculate_summary`'s `source` is keyword-only with a default (`source:
+  str = "files"`), not the required keyword-only param the signature below
+  specifies.** `source` collided as a *dataclass field default* concern too:
+  dozens of call sites across the test suite construct `HistorySummary(...)`
+  or call `calculate_summary(issues)` positionally without `source`, none of
+  them listed in this issue's wiring inventory (only `analysis.py:91` and the
+  `cli/history.py` dispatch were). Making it strictly required would have
+  forced edits to every one of those unrelated call sites for no behavioral
+  gain — the default reproduces the pre-ENH-3237 file-scan meaning exactly.
+  The two call sites this issue actually cares about (`analysis.py:91`,
+  `cli/history.py`'s `summary` dispatch) pass `source` explicitly regardless.
+- **The DB-availability gate is not "DB file exists," it's "`issue_events`
+  has ever recorded a transition."** Discovered during implementation:
+  `ll-history`'s own `cli_event_context` (wraps every subcommand) writes a
+  `cli_events` row on *every* invocation — which creates `.ll/history.db` as
+  a side effect before `summary`'s dispatch runs. So `db_path.exists()` is
+  true starting with the very first `ll-history` call ever made, including a
+  project that has never backfilled or live-written any issue lifecycle
+  data. Gating on file existence alone (as literally written in "The
+  fallback trap" below) would have silently reported `total_count: 0,
+  source: issue_events` for a project with real `done` issue files, the
+  exact failure class this issue exists to prevent, just from the opposite
+  direction. Fix: added `issue_events_ever_recorded()`
+  (`issue_history/parsing.py`) — checks for *any* row in `issue_events`,
+  not just `transition='done'` in the requested window — and gate on that
+  instead of `db_path.exists()`.
 
 ### Signatures
 
@@ -320,25 +357,73 @@ activity.
 ## Acceptance Criteria
 
 <!-- ll-prose-ok: `--since` is the flag this issue proposes; it does not exist yet -->
-- [ ] `ll-history summary --json --since YYYY-MM-DD` restricts the summary to
+- [x] `ll-history summary --json --since YYYY-MM-DD` restricts the summary to
       the window; `--until` is accepted for symmetry with `analyze`.
-- [ ] The source fallback triggers on DB absence/unqueryability, **not** on zero
+- [x] The source fallback triggers on DB absence/unqueryability, **not** on zero
       rows. A test asserts that an empty window on a populated store returns
       zero counts with `source: issue_events` and does not fall through to the
       file scan.
-- [ ] The JSON payload names its source as `"source": "issue_events" | "files"`.
-- [ ] Loop-run counts for the window are included, distinguishing runs started
+- [x] The JSON payload names its source as `"source": "issue_events" | "files"`.
+- [x] Loop-run counts for the window are included, distinguishing runs started
       from runs ended, with in-flight runs (`ended_at IS NULL`) counted as
       started-not-ended.
-- [ ] Metrics the window cannot answer are `null`, not `0`.
-- [ ] The meaning of `velocity` / `date_range_days` under a window is decided,
+- [x] Metrics the window cannot answer are `null`, not `0`.
+- [x] The meaning of `velocity` / `date_range_days` under a window is decided,
       implemented, and documented in `docs/reference/CLI.md`.
-- [ ] Default behavior is unchanged when neither flag is passed (additive).
-- [ ] `python -m pytest scripts/tests/` exits 0.
+- [x] Default behavior is unchanged when neither flag is passed (additive).
+- [x] `python -m pytest scripts/tests/` exits 0.
+
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-08-17
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/cli/history.py`: `summary` subcommand gains `--since`/`-S`
+  and `--until`; dispatch gates DB-vs-files on `issue_events_ever_recorded()`
+  (not row count, not bare file existence — see Program Design > Deviations),
+  applies the window to both the DB and file-scan paths, and computes
+  windowed loop-run counts.
+- `scripts/little_loops/issue_history/parsing.py`: `scan_completed_issues_from_db`
+  gained `since`/`until` params and now raises `HistoryDbUnavailable` (new
+  exception) on open/query failure instead of swallowing to `[]`; added
+  `issue_events_ever_recorded()` and `count_loop_runs_in_window()`.
+- `scripts/little_loops/issue_history/models.py`: `HistorySummary` gained
+  `source`, `since`, `until`, `loop_runs_started`, `loop_runs_ended`;
+  `date_range_days` uses the requested window when both bounds are given,
+  else falls back to the observed span (unchanged default).
+- `scripts/little_loops/issue_history/summary.py`: `calculate_summary` gained
+  keyword-only `source`/`since`/`until`/`loop_runs_started`/`loop_runs_ended`
+  (all defaulted, see Program Design > Deviations for why `source` isn't
+  strictly required); fixed an unrelated local-variable collision with the
+  new `source` param (`discovery_counts` loop was reassigning `source`).
+- `scripts/little_loops/issue_history/analysis.py`: `analyze`'s
+  `calculate_summary(completed_issues)` call now passes `source="files"`.
+- `scripts/little_loops/decisions.py`: `generate_from_completed` catches the
+  new `HistoryDbUnavailable` to preserve its pre-existing empty-list-on-failure
+  behavior.
+- `scripts/little_loops/issue_history/__init__.py`: exports `HistoryDbUnavailable`,
+  `count_loop_runs_in_window`, `issue_events_ever_recorded`.
+- `scripts/tests/test_issue_history_cli.py`, `test_issue_history_parsing.py`:
+  new coverage for window boundaries, empty-window-stays-DB-sourced,
+  in-flight loop runs, `HistoryDbUnavailable`, and null-vs-zero loop-run
+  counts; several pre-existing tests gained `LL_HISTORY_DB` isolation — they
+  were unknowingly resolving to this repo's own real `.ll/history.db` and
+  only passed by coincidence of the old row-count fallback trigger.
+- `docs/reference/API.md`, `docs/reference/CLI.md`,
+  `docs/guides/HISTORY_SESSION_GUIDE.md`: documented the new flags, JSON
+  fields, and windowed `date_range_days`/`velocity` semantics.
+
+### Verification Results
+- Tests: PASS (`python -m pytest scripts/tests/` — 19790 passed, 46 skipped)
+- Lint: PASS (`ruff check`)
+- Format: PASS (`ruff format --check`)
+- Types: PASS (`mypy`)
 
 ## Status
 
-- [ ] open
+- [x] done
 
 ## Scope Boundaries
 
@@ -359,5 +444,7 @@ activity.
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-17T23:20:04 - `9448ff51-f860-44fe-b6bf-5413141537f4.jsonl`
+- `/ll:ready-issue` - 2026-08-17T22:53:07 - `c6b4d94f-79ce-4851-b775-03d6da2684de.jsonl`
 - `/ll:wire-issue` - 2026-08-17T21:49:12 - `0510d699-a148-43d1-84c2-d05ff33b93f2.jsonl`
 - `/ll:format-issue` - 2026-08-17T21:38:25 - `878d0e98-a6e4-41e7-80a9-53a56e3db6f7.jsonl`

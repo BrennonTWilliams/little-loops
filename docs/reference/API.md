@@ -2278,7 +2278,7 @@ Parse a single completed issue file.
 
 | Function | Purpose |
 |----------|---------|
-| `calculate_summary(issues)` | Calculate summary statistics |
+| `calculate_summary(issues, *, source="files", since=None, until=None, loop_runs_started=None, loop_runs_ended=None)` | Calculate summary statistics; `source`/window/loop-run fields are recorded on the result (ENH-3237) |
 | `calculate_analysis(completed_dir, ...)` | Calculate full history analysis |
 | `analyze_hotspots(issues, ...)` | Detect file/directory hotspots |
 | `analyze_coupling(issues, ...)` | Analyze file coupling patterns |
@@ -2346,7 +2346,15 @@ class HistorySummary:
     discovery_counts: dict[str, int] = field(default_factory=dict)
     earliest_date: date | None = None
     latest_date: date | None = None
+    source: str = "files"           # "issue_events" or "files" — which store answered (ENH-3237)
+    since: date | None = None       # requested --since window bound, if any
+    until: date | None = None       # requested --until window bound, if any
+    loop_runs_started: int | None = None  # None (not 0) when the session DB can't answer
+    loop_runs_ended: int | None = None
     # Properties: date_range_days, velocity
+    # date_range_days uses the requested (since, until) span when both are
+    # set; otherwise it falls back to the span actually observed between
+    # earliest_date/latest_date (status quo).
 ```
 
 #### Hotspot
@@ -4542,7 +4550,7 @@ Entry point for `ll-history` command. Display summary statistics, analysis, and 
 
 | Sub-command | Description |
 |-------------|-------------|
-| `summary` | Show issue statistics (count, velocity, type/priority breakdown) |
+| `summary` | Show issue statistics (count, velocity, type/priority breakdown). `--since`/`-S` and `--until` (`YYYY-MM-DD`) restrict the window and add loop-run counts (ENH-3237); `--json` output includes `source` (`"issue_events"` or `"files"`) naming which store answered |
 | `analyze` | Full analysis with trends, subsystems, and debt metrics |
 | `export` | Export topic-filtered excerpts from completed issue history |
 | `rework` | Reopen/follow-up/touch-back/revert rates and quality-adjusted throughput (FEAT-2867) |

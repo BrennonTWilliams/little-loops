@@ -124,9 +124,12 @@ from little_loops.issue_history.models import (
     TechnicalDebtMetrics,
 )
 from little_loops.issue_history.parsing import (
+    HistoryDbUnavailable,
     _detect_processing_agent,
     _extract_paths_from_issue,
     _parse_resolution_action,
+    count_loop_runs_in_window,
+    issue_events_ever_recorded,
     parse_completed_issue,
     scan_active_issues,
     scan_completed_issues,
@@ -197,6 +200,9 @@ __all__ = [
     "scan_completed_issues",
     "scan_completed_issues_from_db",
     "scan_active_issues",
+    "HistoryDbUnavailable",
+    "count_loop_runs_in_window",
+    "issue_events_ever_recorded",
     # Summary functions
     "calculate_summary",
     "calculate_analysis",

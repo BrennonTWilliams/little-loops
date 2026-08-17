@@ -23,9 +23,11 @@ def main_history() -> int:
     """
     with cli_event_context(DEFAULT_DB_PATH, "ll-history", sys.argv[1:]):
         from little_loops.issue_history import (
+            HistoryDbUnavailable,
             analyze_rework,
             calculate_analysis,
             calculate_summary,
+            count_loop_runs_in_window,
             format_analysis_json,
             format_analysis_markdown,
             format_analysis_text,
@@ -36,6 +38,7 @@ def main_history() -> int:
             format_rework_yaml,
             format_summary_json,
             format_summary_text,
+            issue_events_ever_recorded,
             scan_completed_issues,
             scan_completed_issues_from_db,
             synthesize_docs,
@@ -76,6 +79,21 @@ Examples:
             type=Path,
             default=None,
             help="Path to issues directory (default: .issues)",
+        )
+        summary_parser.add_argument(
+            "-S",
+            "--since",
+            type=str,
+            default=None,
+            metavar="DATE",
+            help="Only count issues/loop-runs on or after DATE (YYYY-MM-DD)",
+        )
+        summary_parser.add_argument(
+            "--until",
+            type=str,
+            default=None,
+            metavar="DATE",
+            help="Only count issues/loop-runs on or before DATE (YYYY-MM-DD)",
         )
 
         # analyze subcommand (new - FEAT-110)
@@ -283,13 +301,62 @@ Examples:
         )
 
         if args.command == "summary":
-            # Prefer the unified session DB when populated; fall back to the
-            # file-parsing path when the DB is missing or empty (ENH-1621).
+            from datetime import date as date_type
+
+            since_date = date_type.fromisoformat(args.since) if args.since else None
+            until_date = date_type.fromisoformat(args.until) if args.until else None
+
+            # Prefer the unified session DB when it's available and queryable;
+            # fall back to the file-parsing path only when it isn't — never on
+            # zero matching rows, or a legitimately empty window would trip an
+            # unfiltered, mislabeled file scan (ENH-3237 "the fallback trap").
+            #
+            # "Available" means issue_events has ever recorded a transition,
+            # not just that the DB file exists: `cli_event_context` above
+            # writes a `cli_events` row (and so creates the DB file) on
+            # *every* `ll-history` invocation, so `db_path.exists()` alone is
+            # true from the very first call ever made — including a project
+            # that has never backfilled or live-written any issue lifecycle
+            # data. Gating on file existence would then silently report "0
+            # completed issues" for a project with real `done` issue files.
             db_path = resolve_history_db(project_root / DEFAULT_DB_PATH)
-            issues = scan_completed_issues_from_db(db_path)
-            if not issues:
+            issues = None
+            source = "files"
+            try:
+                db_available = issue_events_ever_recorded(db_path)
+            except HistoryDbUnavailable:
+                db_available = False
+            if db_available:
+                try:
+                    issues = scan_completed_issues_from_db(
+                        db_path, since=since_date, until=until_date
+                    )
+                    source = "issue_events"
+                except HistoryDbUnavailable:
+                    issues = None
+            if issues is None:
                 issues = scan_completed_issues(issues_dir)
-            summary = calculate_summary(issues)
+                if since_date or until_date:
+                    issues = [
+                        i
+                        for i in issues
+                        if i.completed_date is not None
+                        and (since_date is None or i.completed_date >= since_date)
+                        and (until_date is None or i.completed_date <= until_date)
+                    ]
+                source = "files"
+
+            loop_runs_started, loop_runs_ended = count_loop_runs_in_window(
+                db_path, since_date, until_date
+            )
+            summary = calculate_summary(
+                issues,
+                source=source,
+                since=since_date,
+                until=until_date,
+                loop_runs_started=loop_runs_started,
+                loop_runs_ended=loop_runs_ended,
+            )
 
             if args.json:
                 print(format_summary_json(summary))

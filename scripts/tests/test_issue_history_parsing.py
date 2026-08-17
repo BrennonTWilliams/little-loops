@@ -433,9 +433,7 @@ class TestScanCompletedIssues:
 
         issue_file = bugs_dir / "P1-BUG-001-test.md"
         issue_file.write_text("---\nstatus: done\n---\n\n# BUG-001\n")
-        subprocess.run(
-            ["git", "add", ".issues/bugs/P1-BUG-001-test.md"], cwd=tmp_path, check=True
-        )
+        subprocess.run(["git", "add", ".issues/bugs/P1-BUG-001-test.md"], cwd=tmp_path, check=True)
 
         with caplog.at_level("WARNING", logger="little_loops.issue_history.parsing"):
             issues = scan_completed_issues(issues_dir)
@@ -623,3 +621,102 @@ class TestScanCompletedIssuesFromDb:
         assert len(results) == 1
         assert results[0].issue_id == "BUG-300"
         assert results[0].issue_type == "BUG"
+
+    def test_since_until_window_filters_completed_date(self, tmp_path: Path) -> None:
+        """ENH-3237: `since`/`until` restrict results to an inclusive window."""
+        from little_loops.issue_history.parsing import scan_completed_issues_from_db
+        from little_loops.session_store import backfill
+
+        issues = tmp_path / ".issues" / "enhancements"
+        issues.mkdir(parents=True)
+        (issues / "P1-ENH-100-in.md").write_text(
+            "---\nid: ENH-100\nstatus: done\ntype: ENH\npriority: P1\n"
+            "completed_at: 2026-05-10T12:00:00Z\n---\n",
+            encoding="utf-8",
+        )
+        (issues / "P1-ENH-101-out.md").write_text(
+            "---\nid: ENH-101\nstatus: done\ntype: ENH\npriority: P1\n"
+            "completed_at: 2026-06-01T12:00:00Z\n---\n",
+            encoding="utf-8",
+        )
+        db = tmp_path / "session.db"
+        backfill(db, issues_dir=tmp_path / ".issues", loops_dir=tmp_path / "no")
+
+        results = scan_completed_issues_from_db(db, since=date(2026, 5, 1), until=date(2026, 5, 31))
+        assert [r.issue_id for r in results] == ["ENH-100"]
+
+    def test_empty_window_on_populated_db_returns_empty_not_all(self, tmp_path: Path) -> None:
+        """A window with no matches returns [] rather than falling through
+        (the caller, not this function, decides whether to fall back)."""
+        from little_loops.issue_history.parsing import scan_completed_issues_from_db
+        from little_loops.session_store import backfill
+
+        issues = tmp_path / ".issues" / "enhancements"
+        issues.mkdir(parents=True)
+        (issues / "P1-ENH-100-x.md").write_text(
+            "---\nid: ENH-100\nstatus: done\ntype: ENH\npriority: P1\n"
+            "completed_at: 2026-05-10T12:00:00Z\n---\n",
+            encoding="utf-8",
+        )
+        db = tmp_path / "session.db"
+        backfill(db, issues_dir=tmp_path / ".issues", loops_dir=tmp_path / "no")
+
+        results = scan_completed_issues_from_db(db, since=date(2027, 1, 1))
+        assert results == []
+
+    def test_raises_history_db_unavailable_on_open_failure(self, tmp_path: Path) -> None:
+        """A DB that exists but can't be opened raises HistoryDbUnavailable,
+        distinct from the "no matching rows" empty-list case (ENH-3237)."""
+        from little_loops.issue_history.parsing import (
+            HistoryDbUnavailable,
+            scan_completed_issues_from_db,
+        )
+
+        db = tmp_path / "corrupt.db"
+        db.write_text("not a sqlite file", encoding="utf-8")
+
+        with pytest.raises(HistoryDbUnavailable):
+            scan_completed_issues_from_db(db)
+
+
+class TestCountLoopRunsInWindow:
+    """ENH-3237: windowed loop_runs counts for `ll-history summary`."""
+
+    def test_returns_none_when_db_missing(self, tmp_path: Path) -> None:
+        from little_loops.issue_history.parsing import count_loop_runs_in_window
+
+        started, ended = count_loop_runs_in_window(tmp_path / "missing.db", None, None)
+        assert started is None
+        assert ended is None
+
+    def test_counts_started_and_ended_in_window(self, tmp_path: Path) -> None:
+        from little_loops.issue_history.parsing import count_loop_runs_in_window
+        from little_loops.session_store import ensure_db, record_loop_run_summary
+
+        db = tmp_path / "session.db"
+        ensure_db(db)
+        record_loop_run_summary(
+            db,
+            run_id="run-in-flight",
+            loop_name="test-loop",
+            started_at="2026-05-15T10:00:00Z",
+            ended_at=None,
+        )
+        record_loop_run_summary(
+            db,
+            run_id="run-finished",
+            loop_name="test-loop",
+            started_at="2026-05-15T10:00:00Z",
+            ended_at="2026-05-15T11:00:00Z",
+        )
+        record_loop_run_summary(
+            db,
+            run_id="run-outside-window",
+            loop_name="test-loop",
+            started_at="2026-06-01T10:00:00Z",
+            ended_at="2026-06-01T11:00:00Z",
+        )
+
+        started, ended = count_loop_runs_in_window(db, date(2026, 5, 15), date(2026, 5, 15))
+        assert started == 2
+        assert ended == 1

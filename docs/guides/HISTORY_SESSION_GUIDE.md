@@ -366,9 +366,13 @@ Skills call `ll-history-context --for-skill <name>`, which exits 0 with no outpu
 ```bash
 ll-history summary
 ll-history summary --json
+ll-history summary --json --since 2026-08-01   # windowed, includes loop-run counts (ENH-3237)
 ```
 
 Issue counts, completion rate, and age distribution. Quick health check.
+`--since`/`--until` restrict the window and add `loop_runs_started`/
+`loop_runs_ended`; `--json` output also names its `source`
+(`"issue_events"` or `"files"`) since the two can disagree on counts.
 
 ### Trend analysis
 

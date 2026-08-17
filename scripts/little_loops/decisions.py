@@ -565,6 +565,7 @@ def generate_from_completed(config: BRConfig) -> int:
     BUG entries). Returns the count added.
     """
     from little_loops.issue_history.parsing import (
+        HistoryDbUnavailable,
         scan_completed_issues,
         scan_completed_issues_from_db,
     )
@@ -574,7 +575,12 @@ def generate_from_completed(config: BRConfig) -> int:
     db_path = project_root / ".ll" / "history.db"
 
     if db_path.exists():
-        completed = scan_completed_issues_from_db(db_path)
+        try:
+            completed = scan_completed_issues_from_db(db_path)
+        except HistoryDbUnavailable:
+            # Matches the pre-ENH-3237 behavior: a corrupt/unqueryable DB
+            # yielded [] here rather than falling back to a file scan.
+            completed = []
     else:
         completed = scan_completed_issues(project_root / config.issues.base_dir)
 

@@ -52,10 +52,27 @@ class HistorySummary:
     discovery_counts: dict[str, int] = field(default_factory=dict)
     earliest_date: date | None = None
     latest_date: date | None = None
+    # ENH-3237: which store answered (`"issue_events"` or `"files"`), the
+    # requested `--since`/`--until` window bounds (None when unbounded), and
+    # loop-run counts for that window. loop_runs_* is None (not 0) when the
+    # session DB is absent/unqueryable — see Program Design > Source disclosure.
+    source: str = "files"
+    since: date | None = None
+    until: date | None = None
+    loop_runs_started: int | None = None
+    loop_runs_ended: int | None = None
 
     @property
     def date_range_days(self) -> int | None:
-        """Calculate days between earliest and latest completion."""
+        """Calculate days spanned by the summary.
+
+        When both `since` and `until` are set (a fully-bounded window), uses
+        the requested span so repeated polls with the same window get a
+        stable denominator. Otherwise falls back to the span actually
+        *observed* between the earliest and latest completion (status quo).
+        """
+        if self.since and self.until:
+            return (self.until - self.since).days + 1
         if self.earliest_date and self.latest_date:
             return (self.latest_date - self.earliest_date).days + 1
         return None
@@ -78,6 +95,11 @@ class HistorySummary:
             "latest_date": self.latest_date.isoformat() if self.latest_date else None,
             "date_range_days": self.date_range_days,
             "velocity": round(self.velocity, 2) if self.velocity else None,
+            "source": self.source,
+            "since": self.since.isoformat() if self.since else None,
+            "until": self.until.isoformat() if self.until else None,
+            "loop_runs_started": self.loop_runs_started,
+            "loop_runs_ended": self.loop_runs_ended,
         }
 
 

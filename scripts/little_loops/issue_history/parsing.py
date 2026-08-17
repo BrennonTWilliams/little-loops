@@ -408,7 +408,59 @@ def scan_completed_issues(
     return issues
 
 
-def scan_completed_issues_from_db(db_path: Path) -> list[CompletedIssue]:
+class HistoryDbUnavailable(Exception):
+    """Raised when the session DB exists but cannot be opened or queried.
+
+    Distinguishes "no such store" / "unqueryable" from a genuine empty
+    result set (ENH-3237) — callers that need to gate a file-scan fallback
+    on availability rather than row count should catch this, not treat an
+    empty list as ambiguous.
+    """
+
+
+def issue_events_ever_recorded(db_path: Path) -> bool:
+    """True when ``issue_events`` has at least one row, of any transition.
+
+    ENH-3237: ``ll-history`` writes a ``cli_events`` row on *every* invocation
+    (``cli_event_context``), so ``db_path.exists()`` alone is true after the
+    very first ``ll-history`` call ever made — including a project that has
+    never backfilled or live-written any issue lifecycle data. Gating the
+    ``summary`` DB-vs-files fallback on file existence alone would then
+    silently report "0 completed issues" for a project with real `done`
+    issue files simply because the DB happens to have been touched. This
+    checks for genuine issue-lifecycle data (any transition, not just
+    ``done``) so a never-backfilled DB still routes to the file scan, while a
+    populated store answering a legitimately empty window does not.
+
+    Raises :class:`HistoryDbUnavailable` on open/query failure, matching
+    :func:`scan_completed_issues_from_db`'s contract, so callers can use one
+    except clause for both.
+    """
+    from little_loops.session_store import connect
+
+    if not db_path.exists():
+        return False
+    try:
+        conn = connect(db_path)
+    except Exception as exc:
+        logger.warning("Failed to open session DB %s: %s", db_path, exc)
+        raise HistoryDbUnavailable(str(exc)) from exc
+    try:
+        try:
+            row = conn.execute("SELECT EXISTS(SELECT 1 FROM issue_events)").fetchone()
+        except Exception as exc:
+            logger.warning("issue_events existence check failed for %s: %s", db_path, exc)
+            raise HistoryDbUnavailable(str(exc)) from exc
+    finally:
+        conn.close()
+    return bool(row[0])
+
+
+def scan_completed_issues_from_db(
+    db_path: Path,
+    since: date | None = None,
+    until: date | None = None,
+) -> list[CompletedIssue]:
     """Read completed-issue summary rows from the unified session DB (ENH-1621).
 
     Queries the v2 ``issue_events`` table for rows with ``transition='done'``
@@ -417,8 +469,17 @@ def scan_completed_issues_from_db(db_path: Path) -> list[CompletedIssue]:
     ``analyze`` / ``export`` paths that need file bodies or git history must
     continue to use :func:`scan_completed_issues`.
 
-    Returns ``[]`` when the DB is missing or the table has no done rows; the
-    caller treats an empty result as a signal to fall back to file parsing.
+    Args:
+        since: When given, keep only issues with ``completed_date >= since``.
+        until: When given, keep only issues with ``completed_date <= until``.
+
+    Returns ``[]`` when the DB is present and queryable but has no matching
+    rows — a real, empty answer. Raises :class:`HistoryDbUnavailable` when
+    the DB cannot be opened or the query fails, so a caller windowing this
+    (ENH-3237) can tell "no such store" apart from "no matching rows" instead
+    of collapsing both into the same empty list (the fallback trap: falling
+    back to an unfiltered file scan on an empty *window* would silently
+    misreport a quiet period as a data-source failure).
     """
     from little_loops.session_store import connect
 
@@ -426,9 +487,9 @@ def scan_completed_issues_from_db(db_path: Path) -> list[CompletedIssue]:
         return []
     try:
         conn = connect(db_path)
-    except Exception as exc:  # pragma: no cover - defensive
+    except Exception as exc:
         logger.warning("Failed to open session DB %s: %s", db_path, exc)
-        return []
+        raise HistoryDbUnavailable(str(exc)) from exc
 
     issues: list[CompletedIssue] = []
     try:
@@ -438,9 +499,9 @@ def scan_completed_issues_from_db(db_path: Path) -> list[CompletedIssue]:
                 "captured_at, completed_at, completed_date "
                 "FROM issue_events WHERE transition = 'done'"
             ).fetchall()
-        except Exception as exc:  # pragma: no cover - schema mismatch / corruption
+        except Exception as exc:
             logger.warning("issue_events read failed for %s: %s", db_path, exc)
-            return []
+            raise HistoryDbUnavailable(str(exc)) from exc
     finally:
         conn.close()
 
@@ -475,7 +536,67 @@ def scan_completed_issues_from_db(db_path: Path) -> list[CompletedIssue]:
                 completed_at=completed_at,
             )
         )
+
+    if since is not None or until is not None:
+        issues = [
+            i
+            for i in issues
+            if i.completed_date is not None
+            and (since is None or i.completed_date >= since)
+            and (until is None or i.completed_date <= until)
+        ]
+
     return issues
+
+
+def count_loop_runs_in_window(
+    db_path: Path,
+    since: date | None,
+    until: date | None,
+) -> tuple[int | None, int | None]:
+    """Count ``loop_runs`` rows started/ended within ``[since, until]`` (ENH-3237).
+
+    Started and ended are counted separately since they answer different
+    questions: an in-flight run (``ended_at IS NULL``) counts toward
+    "started" but never toward "ended", even inside its own window.
+
+    Returns ``(None, None)`` when the DB is absent or unqueryable — a
+    metric the store cannot answer must not be reported as ``(0, 0)``
+    (see Expected Behavior in ENH-3237).
+    """
+    from little_loops.session_store import connect
+
+    if not db_path.exists():
+        return (None, None)
+    try:
+        conn = connect(db_path)
+    except Exception as exc:
+        logger.warning("Failed to open session DB %s: %s", db_path, exc)
+        return (None, None)
+
+    try:
+        try:
+            rows = conn.execute("SELECT started_at, ended_at FROM loop_runs").fetchall()
+        except Exception as exc:
+            logger.warning("loop_runs read failed for %s: %s", db_path, exc)
+            return (None, None)
+    finally:
+        conn.close()
+
+    def _in_window(ts: Any) -> bool:
+        parsed = _parse_iso_datetime(ts)
+        if parsed is None:
+            return False
+        d = parsed.date()
+        if since is not None and d < since:
+            return False
+        if until is not None and d > until:
+            return False
+        return True
+
+    started = sum(1 for r in rows if _in_window(r["started_at"]))
+    ended = sum(1 for r in rows if r["ended_at"] is not None and _in_window(r["ended_at"]))
+    return (started, ended)
 
 
 def _parse_discovered_date(fm: dict[str, Any]) -> date | None:
