@@ -2069,6 +2069,37 @@ class TestAbstentionRouting:
         assert result.final_state == "errored"
         assert result.iterations == 3
 
+    def test_declared_on_cannot_judge_covers_cannot_judge_uncertain_no_hold(self) -> None:
+        """BUG-3228: a declared on_cannot_judge also declares cannot_judge_uncertain —
+        it routes on the first abstention, no hold, matching the base verdict's behavior."""
+        fsm = FSMLoop(
+            name="test",
+            initial="evaluate",
+            states={
+                "evaluate": StateConfig(
+                    action="/some-slash-command",
+                    action_type="slash_command",
+                    on_yes="done",
+                    on_no="done",
+                    extra_routes={"cannot_judge": "abstained"},
+                ),
+                "abstained": StateConfig(terminal=True),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        mock_runner = MockActionRunner()
+        mock_runner.set_result("/some-slash-command", output="unclear", exit_code=0)
+
+        with patch(
+            "little_loops.fsm.executor.evaluate_llm_structured",
+            self._cannot_judge_eval("cannot_judge_uncertain"),
+        ):
+            executor = FSMExecutor(fsm, action_runner=mock_runner)
+            result = executor.run()
+
+        assert result.final_state == "abstained"
+        assert result.iterations == 1
+
     def test_classify_route_default_catches_unknown_token(self) -> None:
         """classify route: table default: catches any unlisted token."""
         fsm = FSMLoop(
@@ -2117,6 +2148,110 @@ class TestAbstentionRouting:
         executor = FSMExecutor(fsm, action_runner=mock_runner)
         result = executor.run()
         assert result.final_state == "error_state"
+
+
+class TestUncertainSuffixRouteFallback:
+    """BUG-3228: `X_uncertain` falls back to `X`'s declared route when the state
+    declares no explicit `X_uncertain` route, resolved before route.default/error."""
+
+    def _ctx(self) -> InterpolationContext:
+        return InterpolationContext(
+            context={},
+            captured={},
+            prev=None,
+            result=None,
+            state_name="evaluate",
+            iteration=1,
+            loop_name="test",
+            started_at="2026-08-17T00:00:00Z",
+            elapsed_ms=0,
+        )
+
+    def _executor(self) -> FSMExecutor:
+        fsm = FSMLoop(
+            name="test",
+            initial="evaluate",
+            states={
+                "evaluate": StateConfig(action="noop"),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        return FSMExecutor(fsm, action_runner=MockActionRunner())
+
+    def test_shorthand_yes_uncertain_falls_back_to_on_yes(self) -> None:
+        state = StateConfig(action="noop", on_yes="deploy", on_error="failed")
+        assert self._executor()._route(state, "yes_uncertain", self._ctx()) == "deploy"
+
+    def test_shorthand_no_uncertain_falls_back_to_on_no(self) -> None:
+        state = StateConfig(action="noop", on_no="fix", on_error="failed")
+        assert self._executor()._route(state, "no_uncertain", self._ctx()) == "fix"
+
+    def test_shorthand_partial_uncertain_falls_back_to_on_partial(self) -> None:
+        state = StateConfig(action="noop", on_partial="retry", on_error="failed")
+        assert self._executor()._route(state, "partial_uncertain", self._ctx()) == "retry"
+
+    def test_shorthand_blocked_uncertain_falls_back_to_on_blocked(self) -> None:
+        state = StateConfig(action="noop", on_blocked="rollback", on_error="failed")
+        assert self._executor()._route(state, "blocked_uncertain", self._ctx()) == "rollback"
+
+    def test_shorthand_error_uncertain_falls_back_to_on_error(self) -> None:
+        state = StateConfig(action="noop", on_yes="deploy", on_error="failed")
+        assert self._executor()._route(state, "error_uncertain", self._ctx()) == "failed"
+
+    def test_route_table_yes_uncertain_uses_yes_route_not_default(self) -> None:
+        """The specific regression the resolution-order decision exists to prevent:
+        a route: table with a `_` default must not absorb the suffixed verdict."""
+        state = StateConfig(
+            action="noop",
+            route=RouteConfig(routes={"yes": "verify", "no": "fix", "_": "fix"}, default="fix"),
+        )
+        assert self._executor()._route(state, "yes_uncertain", self._ctx()) == "verify"
+
+    def test_route_table_blocked_uncertain_uses_blocked_route_not_default(self) -> None:
+        state = StateConfig(
+            action="noop",
+            route=RouteConfig(
+                routes={"yes": "verify", "no": "fix", "blocked": "rollback"}, default="fix"
+            ),
+        )
+        assert self._executor()._route(state, "blocked_uncertain", self._ctx()) == "rollback"
+
+    def test_explicit_on_yes_uncertain_wins_over_fallback(self) -> None:
+        state = StateConfig(
+            action="noop", on_yes="deploy", extra_routes={"yes_uncertain": "review"}
+        )
+        assert self._executor()._route(state, "yes_uncertain", self._ctx()) == "review"
+
+    def test_explicit_route_table_yes_uncertain_wins_over_fallback(self) -> None:
+        state = StateConfig(
+            action="noop",
+            route=RouteConfig(routes={"yes": "verify", "yes_uncertain": "review"}, default="fix"),
+        )
+        assert self._executor()._route(state, "yes_uncertain", self._ctx()) == "review"
+
+    def test_custom_schema_verdict_uncertain_falls_back_via_extra_routes(self) -> None:
+        state = StateConfig(action="noop", extra_routes={"needs_review": "flagged"})
+        assert self._executor()._route(state, "needs_review_uncertain", self._ctx()) == "flagged"
+
+    def test_yes_uncertain_uncertain_does_not_recurse_unboundedly(self) -> None:
+        """A pathological double suffix resolves at most one level: strips once to
+        `yes_uncertain`, which itself has no declared route and is not stripped
+        again — so this does not reach on_yes (only a single-suffix `yes_uncertain`
+        would)."""
+        state = StateConfig(action="noop", on_yes="deploy", on_error="failed")
+        assert self._executor()._route(state, "yes_uncertain_uncertain", self._ctx()) is None
+
+    def test_bare_uncertain_verdict_does_not_crash(self) -> None:
+        """A verdict that is exactly `_uncertain` strips to an empty base, which
+        must not be treated as a valid route key — no fallback is attempted."""
+        state = StateConfig(action="noop", on_yes="deploy", on_error="failed")
+        assert self._executor()._route(state, "_uncertain", self._ctx()) is None
+
+    def test_fallback_absent_when_base_route_absent(self) -> None:
+        """The fallback never introduces a route the base verdict lacks — if
+        on_yes is absent, yes_uncertain resolves exactly as yes would (None)."""
+        state = StateConfig(action="noop", on_no="fix")
+        assert self._executor()._route(state, "yes_uncertain", self._ctx()) is None
 
 
 class TestEvents:

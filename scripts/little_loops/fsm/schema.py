@@ -59,7 +59,9 @@ class EvaluateConfig:
         prompt: Custom prompt for llm_structured
         schema: Custom JSON schema for llm_structured response
         min_confidence: Minimum confidence threshold for llm_structured
-        uncertain_suffix: If True, append _uncertain to low-confidence verdicts
+        uncertain_suffix: If True, append _uncertain to low-confidence verdicts.
+            X_uncertain falls back to X's declared route unless the state
+            explicitly declares its own X_uncertain route.
         source: Override default source (current action output)
         previous: Previous value reference for convergence
         direction: Optimization direction for convergence (minimize/maximize)

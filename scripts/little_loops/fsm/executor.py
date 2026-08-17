@@ -2052,6 +2052,10 @@ class FSMExecutor:
         # state uses retryable_exit_codes and the action fails with a code that
         # is NOT retryable, bypass the normal error route (which may be a
         # self-retry) and go directly to on_retry_exhausted (or on_error).
+        # BUG-3228: deliberately compares `verdict == "error"` exactly, not
+        # `error_uncertain` too — this filter is exit-code-driven and
+        # `uncertain_suffix` only applies to `llm_structured` evaluation, which
+        # has no `action_result.exit_code` contract to match against.
         if (
             verdict == "error"
             and state.retryable_exit_codes is not None
@@ -2661,7 +2665,22 @@ class FSMExecutor:
         shorthand (``extra_routes``) — the same lookups ``_route()`` itself uses, so
         "declared" here means exactly what would make ``_route()`` resolve it without
         falling through to ``default``/``error``.
+
+        BUG-3228: a declared ``on_cannot_judge`` (or ``route.routes["cannot_judge"]``)
+        also counts as declaring ``cannot_judge_uncertain`` — matching the ``_route()``
+        suffix fallback so the declared path routes immediately instead of holding.
         """
+        if self._exact_route_declared(state, verdict):
+            return True
+        if verdict.endswith("_uncertain"):
+            base = verdict[: -len("_uncertain")]
+            if base and self._exact_route_declared(state, base):
+                return True
+        return False
+
+    @staticmethod
+    def _exact_route_declared(state: StateConfig, verdict: str) -> bool:
+        """True when *state* has an explicit route for the literal *verdict* string."""
         if state.route is not None and verdict in state.route.routes:
             return True
         return verdict in state.extra_routes
@@ -2701,6 +2720,7 @@ class FSMExecutor:
         state: StateConfig,
         verdict: str,
         ctx: InterpolationContext,
+        _stripped: bool = False,
     ) -> str | None:
         """Determine next state from verdict.
 
@@ -2710,6 +2730,13 @@ class FSMExecutor:
         3. on_success/on_failure/on_error (shorthand)
         4. terminal - handled in main loop
         5. error
+
+        BUG-3228: a verdict ending in the literal ``_uncertain`` suffix that has
+        no explicit route of its own falls back to its base verdict's route,
+        resolved *before* ``route.default``/``route.error``/``on_error`` — an
+        explicit suffixed route always wins over the fallback. ``_stripped``
+        guards against recursing more than one level (a pathological
+        ``yes_uncertain_uncertain`` resolves at most once).
 
         Args:
             state: State configuration
@@ -2723,6 +2750,12 @@ class FSMExecutor:
             routes = state.route.routes
             if verdict in routes:
                 return self._resolve_route(routes[verdict], ctx)
+            if not _stripped and verdict.endswith("_uncertain"):
+                base = verdict[: -len("_uncertain")]
+                if base:
+                    fallback = self._route(state, base, ctx, _stripped=True)
+                    if fallback is not None:
+                        return fallback
             if state.route.default:
                 return self._resolve_route(state.route.default, ctx)
             if verdict == "error" and state.route.error:
@@ -2748,6 +2781,11 @@ class FSMExecutor:
         # Dynamic on_<verdict> shorthands from extra_routes
         if verdict in state.extra_routes:
             return self._resolve_route(state.extra_routes[verdict], ctx)
+
+        if not _stripped and verdict.endswith("_uncertain"):
+            base = verdict[: -len("_uncertain")]
+            if base:
+                return self._route(state, base, ctx, _stripped=True)
 
         return None
 

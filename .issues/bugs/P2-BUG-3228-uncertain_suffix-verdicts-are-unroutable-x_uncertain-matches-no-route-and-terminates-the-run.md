@@ -5,7 +5,8 @@ title: 'uncertain_suffix verdicts are unroutable: X_uncertain matches no route a
   terminates the run'
 priority: P2
 testable: true
-status: open
+status: done
+completed_at: '2026-08-16T00:00:00Z'
 discovered_by: ll-issues-create
 discovered_date: '2026-08-17'
 captured_at: '2026-08-17T01:19:18Z'
@@ -319,8 +320,9 @@ absorbs low-confidence verdicts into the `_` default with no diagnostic.
 
 ## Status
 
-**Open** | Created: 2026-08-17 | Priority: P2
+**Done** | Created: 2026-08-17 | Priority: P2
 
 
 ## Session Log
+- `/ll:ready-issue` - 2026-08-17T03:05:14 - `d1871d6e-e254-4c9b-b1ed-7df263883c17.jsonl`
 - `/ll:confidence-check` - 2026-08-17T03:01:39 - `950fed1e-dcee-4e9e-a142-297b86aebff5.jsonl`

@@ -24,6 +24,14 @@ Reference for the state structures each loop type generates. Use this when gener
 >      _: "done"      # default for unmatched verdicts
 >      _error: "error" # fallback for evaluation errors
 >    ```
+>
+> **`uncertain_suffix` routing (BUG-3228):** when a state's `evaluate:` block sets
+> `uncertain_suffix: true`, a low-confidence verdict gains an `_uncertain` suffix
+> (`yes` → `yes_uncertain`). Suffixed keys (`on_yes_uncertain`, `route.yes_uncertain`,
+> …) are **optional overrides**, not required declarations — an unlisted
+> `X_uncertain` automatically falls back to `X`'s route. Do not scaffold six extra
+> `on_<verdict>_uncertain` keys per gate; only add one when a state needs distinct
+> handling for the low-confidence case.
 
 ### Fix Until Clean
 ```

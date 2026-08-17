@@ -544,7 +544,9 @@ states:
 
 > **`on_no` → `on_error` fallthrough**: When a `no` verdict is returned and the state defines `on_error` but not `on_no`, the executor routes to `on_error`. This applies to both shorthand (`on_no`/`on_error` keys) and full `route` tables (`no:`/`error:` keys). Use this to share a single error-recovery branch for both evaluator failures and hard-`no` verdicts when they require the same remediation.
 
-> **`cannot_judge` abstention (ENH-3185)**: `llm_structured` states can also produce `cannot_judge` — the judge could not evaluate the check from the evidence available, as distinct from a genuine `no`. Declare `on_cannot_judge: <target>` (or a `cannot_judge:` key in a `route` table) to route it explicitly, same as `on_blocked`. Left undeclared, an abstention **holds** — the state re-enters itself, giving the judge a bounded number of retries — before escalating to `on_error` (never to `on_no`, and never absorbed by a `route` table's `default:`). A state with neither `on_cannot_judge` nor `on_error` terminates the run loudly on hold exhaustion rather than silently passing or failing.
+> **`cannot_judge` abstention (ENH-3185)**: `llm_structured` states can also produce `cannot_judge` — the judge could not evaluate the check from the evidence available, as distinct from a genuine `no`. Declare `on_cannot_judge: <target>` (or a `cannot_judge:` key in a `route` table) to route it explicitly, same as `on_blocked`. Left undeclared, an abstention **holds** — the state re-enters itself, giving the judge a bounded number of retries — before escalating to `on_error` (never to `on_no`, and never absorbed by a `route` table's `default:`). A state with neither `on_cannot_judge` nor `on_error` terminates the run loudly on hold exhaustion rather than silently passing or failing. A declared `on_cannot_judge` also covers the `_uncertain`-suffixed form below — `cannot_judge_uncertain` routes immediately through it rather than holding.
+
+> **`_uncertain` suffix fallback (BUG-3228)**: with `uncertain_suffix: true`, a verdict below `min_confidence` gains an `_uncertain` suffix (e.g. `yes` → `yes_uncertain`). An unlisted `X_uncertain` key **falls back to `X`'s declared route** rather than dead-ending — a state that declares `on_yes` but not `on_yes_uncertain` still routes `yes_uncertain` through `on_yes`. Declaring `on_yes_uncertain` (or a `yes_uncertain:` key in a `route` table) explicitly always overrides the fallback. This fallback is resolved before a `route` table's `default:`, so a `_` default never silently absorbs a suffixed verdict.
 
 This is equivalent to:
 
@@ -844,6 +846,8 @@ states:
       no_uncertain: "probe"
       blocked: "escalate"
       _: "fix"
+      # blocked_uncertain is unlisted — it inherits blocked's route ("escalate")
+      # rather than falling to `_` (BUG-3228).
 ```
 
 #### Implementation
@@ -1363,6 +1367,10 @@ states:
       no: "refactor"
       blocked: "rollback"
       _: "refactor"
+      # no_uncertain and blocked_uncertain are unlisted — they inherit no's
+      # and blocked's routes ("refactor", "rollback") rather than falling to
+      # `_` (BUG-3228). blocked_uncertain in particular now reaches "rollback"
+      # instead of silently taking the "refactor" default.
 
   verify:
     action: "pytest && mypy src/"

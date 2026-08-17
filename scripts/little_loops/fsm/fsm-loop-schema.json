@@ -764,7 +764,7 @@
         },
         "uncertain_suffix": {
           "type": "boolean",
-          "description": "If true, append _uncertain to low-confidence verdicts",
+          "description": "If true, append _uncertain to low-confidence verdicts. X_uncertain falls back to X's declared route unless the state explicitly declares its own X_uncertain route.",
           "default": false
         },
         "source": {
