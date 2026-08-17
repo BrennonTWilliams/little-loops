@@ -4,10 +4,11 @@ type: BUG
 title: 'll-issues normalize: malformed_filename findings for underscored slugs are
   self-referential no-ops, permanently failing --check'
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-08-16'
 captured_at: '2026-08-16T23:38:23Z'
+completed_at: '2026-08-17T01:15:17Z'
 labels:
 - issue-management
 - normalize-issues
@@ -17,6 +18,7 @@ score_complexity: 25
 score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 18
+testable: true
 ---
 
 # BUG-3225: ll-issues normalize: malformed_filename findings for underscored slugs are self-referential no-ops, permanently failing --check
@@ -32,6 +34,14 @@ On the little-loops corpus itself, `ll-issues normalize` reports ~29 `malformed_
 ## Expected Behavior
 
 Either `is_normalized()`'s slug pattern should accept underscores (matching what `slugify()` actually produces), or `slugify()`/`_slug_for()` should strip underscores (matching what `is_normalized()` requires) so the two functions agree and `malformed_filename` findings are always resolvable by `--auto`.
+
+## Steps to Reproduce
+
+1. In a project whose `.issues/` corpus contains a filename with an underscored slug (e.g. `P2-BUG-3216-ll-logs-telemetry-digest-refresh_corpus-passes-unregistered-quiet-and-omits-required-extract-target-loop-dies-on-first-state.md`), run `ll-issues normalize --check`.
+2. Observe a `malformed_filename` finding is reported for the file, and `--check` exits non-zero.
+3. Run `ll-issues normalize --auto` to attempt the fix.
+4. Observe: `applied` is empty for that finding — `_slug_for()` → `slugify()` computes `proposed_path == path` (underscores survive `slugify()`), so there is nothing to apply.
+5. Re-run `ll-issues normalize --check`: the same finding is reported again, unchanged. The gate fails permanently with no available auto-fix.
 
 ## Proposed Solution
 
@@ -97,10 +107,10 @@ _Added by `/ll:refine-issue` — 2026-08-17 — based on codebase analysis:_
 
 ## Impact
 
-- **Priority**: [P0-P5] - [Justification]
-- **Effort**: [Small/Medium/Large] - [Justification]
-- **Risk**: [Low/Medium/High] - [Justification]
-- **Breaking Change**: [Yes/No]
+- **Priority**: P3 - Doesn't block day-to-day issue work, but permanently fails the deterministic `ll-issues normalize --check` FSM gate for any project with an underscored slug in its corpus (the little-loops corpus itself has ~29 such findings).
+- **Effort**: Small - Widening a single regex character class (`_NORMALIZED_RE` at `scripts/little_loops/issue_parser.py:50`) plus adding test coverage for the underscore case.
+- **Risk**: Low - Reconciles two existing regex definitions of "slug" to agree with each other; no new decision logic, no data-shape change, and no other code path depends on the slug's character set.
+- **Breaking Change**: No - Widening acceptance is backward compatible; no filenames become newly invalid.
 
 ## Root Cause
 
@@ -129,6 +139,8 @@ _Added by `/ll:refine-issue` — 2026-08-17 — based on codebase analysis:_
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-17T01:14:53 - `f9d03c8c-c328-4dfd-93cf-1b2bf5193b15.jsonl`
+- `/ll:ready-issue` - 2026-08-17T01:07:51 - `11ab7f08-a3d4-4dd5-ab5f-82e08e1bce24.jsonl`
 - `/ll:confidence-check` - 2026-08-17T01:04:47 - `11ab7f08-a3d4-4dd5-ab5f-82e08e1bce24.jsonl`
 - `/ll:confidence-check` - 2026-08-17T00:58:43 - `a037325c-9566-4955-97cc-2bea551a22bc.jsonl`
 - `/ll:refine-issue` - 2026-08-17T00:14:16 - `7f601de8-8324-466e-9daf-f07f549bd4be.jsonl`

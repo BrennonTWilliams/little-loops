@@ -173,6 +173,18 @@ class TestMalformedFilename:
         data = f.to_dict()
         assert data["priority_defaulted"] is True
 
+    def test_underscored_slug_is_not_flagged(
+        self, temp_project_dir: Path, normalize_dir: Path
+    ) -> None:
+        _write(
+            normalize_dir / "bugs" / "P2-BUG-051-refresh_corpus-passes-quiet.md",
+            _issue_body(id_="BUG-051"),
+        )
+
+        config = _config(temp_project_dir)
+        findings = scan_normalize(config)
+        assert [f for f in findings if f.kind == "malformed_filename"] == []
+
 
 # ---------------------------------------------------------------------------
 # duplicate_id

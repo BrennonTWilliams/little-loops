@@ -17,6 +17,7 @@ from little_loops.issue_parser import (
     find_highest_priority_issue,
     find_issues,
     get_next_issue_number,
+    is_normalized,
     slugify,
 )
 
@@ -60,6 +61,22 @@ class TestSlugify:
     def test_slugify_only_special_chars(self) -> None:
         """Test slugify with only special characters."""
         assert slugify("!@#$%") == ""
+
+    def test_slugify_preserves_underscores(self) -> None:
+        """Test slugify does not strip underscores (they're part of \\w)."""
+        assert slugify("refresh_corpus passes") == "refresh_corpus-passes"
+
+
+class TestIsNormalized:
+    """Tests for the is_normalized function."""
+
+    def test_underscored_slug_is_normalized(self) -> None:
+        """A filename with an underscore in the slug is considered normalized,
+        matching what slugify() actually produces (BUG-3225)."""
+        assert is_normalized("P2-BUG-010-refresh_corpus-passes-quiet.md") is True
+
+    def test_missing_priority_is_not_normalized(self) -> None:
+        assert is_normalized("BUG-010-my-issue.md") is False
 
 
 class TestIssueInfo:

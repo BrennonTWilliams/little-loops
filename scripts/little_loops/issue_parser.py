@@ -47,7 +47,7 @@ _CRITERION_BULLET_PATTERN = re.compile(r"^(?:-\s*\[[xX ]\]\s+|[-*]\s+|\d+\.\s+)(
 _CRITERIA_SECTION_NAMES = ("Acceptance Criteria", "Expected Behavior")
 
 
-_NORMALIZED_RE = re.compile(r"^P[0-5]-(BUG|FEAT|ENH|EPIC)-[0-9]{3,}-[a-z0-9-]+\.md$")
+_NORMALIZED_RE = re.compile(r"^P[0-5]-(BUG|FEAT|ENH|EPIC)-[0-9]{3,}-[a-z0-9_-]+\.md$")
 _ISSUE_TYPE_RE = re.compile(r"-(BUG|FEAT|ENH|EPIC)-")
 _FILENAME_ID_RE = re.compile(r"(BUG|FEAT|ENH|EPIC)-(\d+)")
 
@@ -139,7 +139,7 @@ def is_normalized(filename: str) -> bool:
         filename: The basename of the issue file (e.g. 'P2-BUG-010-my-issue.md').
 
     Returns:
-        True if the filename matches ``^P[0-5]-(BUG|FEAT|ENH|EPIC)-[0-9]{3,}-[a-z0-9-]+\\.md$``.
+        True if the filename matches ``^P[0-5]-(BUG|FEAT|ENH|EPIC)-[0-9]{3,}-[a-z0-9_-]+\\.md$``.
     """
     return bool(_NORMALIZED_RE.match(filename))
 
