@@ -16,8 +16,6 @@ from little_loops.cli.output import (
     strip_ansi,
     terminal_width,
 )
-from little_loops.frontmatter import parse_frontmatter
-from little_loops.issue_parser import parse_issue_filename
 
 if TYPE_CHECKING:
     from little_loops.config import BRConfig
@@ -41,22 +39,14 @@ def _source_label(discovered_by: str | None) -> str:
 def _resolve_issue_id(config: BRConfig, user_input: str) -> Path | None:
     """Resolve user input to an issue file path.
 
-    Accepts three input formats:
-    - Numeric ID only: "518"
-    - Type + ID: "FEAT-518"
-    - Priority + Type + ID: "P3-FEAT-518"
-
-    Searches the type-scoped category directories, plus any existing legacy
-    `completed_dir`/`deferred_dir` (BUG-2733) — a `done`/`cancelled` issue
-    parked there by a stale migration or manual placement would otherwise
-    resolve as "not found". Status (open/done/deferred) lives in frontmatter,
-    so active and inactive issues alike resolve here.
-
-    Issue numbers are globally unique across types (see ``get_next_issue_number``),
-    so a numeric match is unambiguous. The type prefix and priority are therefore
-    treated as **advisory**: an exact match is preferred, but a stale or mismatched
-    prefix (e.g. ``FEAT-1903`` for a file now named ``ENH-1903``) still resolves to
-    the one file bearing that number rather than reporting "not found" (BUG-2003).
+    Thin delegation to the shared resolver (BUG-3229) — see
+    `little_loops.issue_parser.resolve_issue_path` for the full contract
+    (accepted input formats, legacy-dir search, BUG-2003/BUG-2733/BUG-2806
+    tolerances). Kept here as the stable import path: several other modules
+    (`cli/issues/check_verify_verdict.py`, `set_status.py`, `path_cmd.py`,
+    `set_scores.py`, `cli/loop/_scaffold_core.py`, `mcp_server/tools.py`)
+    import `_resolve_issue_id` from this module rather than the shared helper
+    directly.
 
     Args:
         config: Project configuration
@@ -65,125 +55,9 @@ def _resolve_issue_id(config: BRConfig, user_input: str) -> Path | None:
     Returns:
         Path to the matched issue file, or None if not found
     """
-    user_input = user_input.strip()
+    from little_loops.issue_parser import resolve_issue_path
 
-    # Parse input to extract components
-    numeric_id: str | None = None
-    type_prefix: str | None = None
-    priority: str | None = None
-
-    # Try P-TYPE-NNN format (e.g., P3-FEAT-518)
-    m = re.match(r"^(P\d)-(BUG|FEAT|ENH|EPIC)-(\d+)$", user_input, re.IGNORECASE)
-    if m:
-        priority = m.group(1).upper()
-        type_prefix = m.group(2).upper()
-        numeric_id = m.group(3)
-    else:
-        # Try TYPE-NNN format (e.g., FEAT-518)
-        m = re.match(r"^(BUG|FEAT|ENH|EPIC)-(\d+)$", user_input, re.IGNORECASE)
-        if m:
-            type_prefix = m.group(1).upper()
-            numeric_id = m.group(2)
-        else:
-            # Try numeric only (e.g., 518)
-            m = re.match(r"^(\d+)$", user_input)
-            if m:
-                numeric_id = m.group(1)
-
-    if numeric_id is None:
-        return None
-
-    # Build search directories: type-scoped dirs, plus existing legacy dirs
-    search_dirs: list[Path] = []
-    for category in config.issue_categories:
-        search_dirs.append(config.get_issue_dir(category))
-    search_dirs.extend(config.legacy_issue_dirs())
-
-    # Collect every file matching the numeric ID. Because numbers are globally
-    # unique, this is normally a single candidate; the prefix/priority hints only
-    # disambiguate the rare artificial case of two files sharing a number.
-    candidates: list[Path] = []
-    for search_dir in search_dirs:
-        if not search_dir.is_dir():
-            continue
-        candidates.extend(sorted(search_dir.glob(f"*-{numeric_id}-*.md")))
-
-    if not candidates:
-        return None
-
-    # The glob above is a substring match over the whole filename, so a title
-    # slug embedding another issue's number (e.g. "...-correct-epic-3127-..."
-    # in ENH-3144's slug) also lands here. Keep only files whose *anchored*
-    # `P?-TYPE-NNN-` position carries the requested number; fall back to the
-    # raw glob set only when no filename parses (legacy/unnormalized names).
-    anchored = [
-        p
-        for p in candidates
-        if (fid := parse_issue_filename(p.name)) is not None and fid.number == numeric_id
-    ]
-    if anchored:
-        candidates = anchored
-
-    def _frontmatter_identity(path: Path) -> tuple[str | None, str | None]:
-        """Return (type, number) claimed by frontmatter, format-agnostically.
-
-        Both `id: EPIC-3127` and bare `id: 3127` are supported formats; for a
-        bare numeric id the type comes from the `type:` field when present.
-        """
-        try:
-            content = path.read_text()
-        except OSError:
-            return (None, None)
-        fm = parse_frontmatter(content)
-        raw = fm.get("id")
-        if not raw:
-            return (None, None)
-        m = re.match(r"^(?:(BUG|FEAT|ENH|EPIC)-)?(\d+)$", str(raw).strip(), re.IGNORECASE)
-        if not m:
-            return (None, None)
-        fm_type = m.group(1).upper() if m.group(1) else None
-        if fm_type is None:
-            raw_type = fm.get("type")
-            fm_type = str(raw_type).strip().upper() if raw_type else None
-        return (fm_type, m.group(2))
-
-    # Prefer a frontmatter `id:` match over filename-derived matching
-    # (BUG-2806): when a candidate's own frontmatter claims the requested
-    # number (and doesn't contradict the requested type), it wins outright. A
-    # missing/unparseable `id:` field is "no opinion" and falls through
-    # unchanged to the filename-derived matching below (BUG-2003 tolerance for
-    # stale/mismatched type prefixes relies on that fallback).
-    if type_prefix:
-        frontmatter_matches = []
-        for p in candidates:
-            fm_type, fm_number = _frontmatter_identity(p)
-            if fm_number == numeric_id and (fm_type is None or fm_type == type_prefix):
-                frontmatter_matches.append(p)
-        if frontmatter_matches:
-            candidates = frontmatter_matches
-
-    def _matches_type(path: Path) -> bool:
-        fid = parse_issue_filename(path.name)
-        if fid is not None:
-            return fid.type_prefix == type_prefix
-        # Legacy/unnormalized filename: fall back to the historical substring
-        # heuristic rather than excluding the file outright.
-        upper = path.name.upper()
-        return f"-{type_prefix}-" in upper or upper.startswith(f"{type_prefix}-")
-
-    # Prefer an exact-type match; fall back to the unambiguous numeric match when
-    # the caller's type prefix is stale or mismatched (advisory, not required).
-    pool = [p for p in candidates if _matches_type(p)] if type_prefix else candidates
-    if not pool:
-        pool = candidates
-
-    # Within the chosen pool, prefer an exact priority match if one exists.
-    if priority:
-        prioritized = [p for p in pool if p.name.upper().startswith(f"{priority}-")]
-        if prioritized:
-            return prioritized[0]
-
-    return pool[0]
+    return resolve_issue_path(config, user_input)
 
 
 def _parse_card_fields(path: Path, config: BRConfig) -> dict[str, str | None]:

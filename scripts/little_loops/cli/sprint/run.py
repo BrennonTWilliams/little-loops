@@ -23,7 +23,7 @@ from little_loops.logger import Logger, format_duration
 from little_loops.parallel.orchestrator import ParallelOrchestrator
 from little_loops.parallel.types import SprintWorkerContext
 from little_loops.session_store import record_orchestration_run, resolve_history_db
-from little_loops.sprint import SprintManager, SprintState
+from little_loops.sprint import SprintManager, SprintState, sprint_not_found_message
 from little_loops.worktree_utils import detect_default_branch
 
 if TYPE_CHECKING:
@@ -379,7 +379,7 @@ def _cmd_sprint_run(
 
     sprint = manager.load_or_resolve(args.sprint)
     if not sprint:
-        logger.error(f"Sprint not found: {args.sprint}")
+        logger.error(sprint_not_found_message(args.sprint))
         return 1
 
     if not sprint.issues:

@@ -10,7 +10,7 @@ from little_loops.cli.output import print_json
 from little_loops.cli.sprint._helpers import _render_execution_plan
 from little_loops.dependency_graph import DependencyGraph, refine_waves_for_contention
 from little_loops.logger import Logger
-from little_loops.sprint import SprintManager
+from little_loops.sprint import SprintManager, sprint_not_found_message
 
 
 def _cmd_sprint_list(args: argparse.Namespace, manager: SprintManager) -> int:
@@ -72,7 +72,7 @@ def _cmd_sprint_analyze(args: argparse.Namespace, manager: SprintManager) -> int
     logger = Logger()
     sprint = manager.load_or_resolve(args.sprint)
     if not sprint:
-        logger.error(f"Sprint not found: {args.sprint}")
+        logger.error(sprint_not_found_message(args.sprint))
         return 1
 
     # Validate issues

@@ -8,7 +8,7 @@ from pathlib import Path
 from little_loops.cli.sprint._helpers import _build_issue_contents, _render_dependency_analysis
 from little_loops.cli_args import parse_issue_ids
 from little_loops.logger import Logger
-from little_loops.sprint import SprintManager
+from little_loops.sprint import SprintManager, sprint_not_found_message
 
 
 def _cmd_sprint_edit(args: argparse.Namespace, manager: SprintManager) -> int:
@@ -16,7 +16,7 @@ def _cmd_sprint_edit(args: argparse.Namespace, manager: SprintManager) -> int:
     logger = Logger()
     sprint = manager.load_or_resolve(args.sprint)
     if not sprint:
-        logger.error(f"Sprint not found: {args.sprint}")
+        logger.error(sprint_not_found_message(args.sprint))
         return 1
 
     if not args.add and not args.remove and not args.prune and not args.revalidate:

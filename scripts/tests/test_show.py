@@ -263,6 +263,27 @@ class TestResolveIssueIdAnchored:
         legacy.write_text("---\nstatus: open\n---\n# 2100: legacy\n")
         assert _resolve_issue_id(config, "2100") == legacy
 
+    def test_sole_wrong_number_candidate_does_not_resolve(self, tmp_path: Path) -> None:
+        """A slug embedding another issue's ID as the SOLE candidate on disk must
+        not resolve for that embedded ID (BUG-3229, AC #5/#6).
+
+        Probed pre-fix: `_resolve_issue_id(config, "BUG-001")` returned
+        `P2-FEAT-500-fix-BUG-001-regression.md` because the anchored filter's
+        no-match case fell back to the raw (unfiltered) glob set, and the
+        subsequent type filter's own empty-pool fallback then handed the
+        rejected file back. Both fallbacks must require "nothing parsed",
+        never "a filter emptied the pool".
+        """
+        categories = {
+            "features": {"prefix": "FEAT", "dir": "features", "action": "implement"},
+        }
+        config = _make_config(tmp_path, categories)
+        feat_dir = tmp_path / ".issues" / "features"
+        (feat_dir / "P2-FEAT-500-fix-BUG-001-regression.md").write_text(
+            "---\nstatus: open\nid: FEAT-500\n---\n# FEAT-500: T\n"
+        )
+        assert _resolve_issue_id(config, "BUG-001") is None
+
 
 # =============================================================================
 # _parse_card_fields

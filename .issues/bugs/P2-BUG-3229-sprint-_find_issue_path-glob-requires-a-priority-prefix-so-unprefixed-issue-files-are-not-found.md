@@ -4,9 +4,10 @@ type: BUG
 title: 'll-sprint: _find_issue_path''s glob requires a priority prefix, so an unprefixed
   issue file reports "not found" while ll-issues list shows it'
 priority: P2
-status: open
+status: done
 discovered_by: little-loops-hermes-audit
 discovered_date: '2026-08-16'
+completed_at: '2026-08-17T05:37:04Z'
 labels:
 - sprint
 - issue-management
@@ -23,7 +24,7 @@ score_change_surface: 18
 
 ## Summary
 
-`SprintManager._find_issue_path` (`scripts/little_loops/sprint.py:426`) locates issue files with `issue_dir.glob(f"*-{issue_id}-*.md")` (line 443). That pattern requires a literal `-` before the ID, so it matches `P2-BUG-002-slug.md` but **cannot** match `BUG-002-slug.md` — `*` may match empty, but the `-` preceding the ID is literal and has nothing to match against.
+`SprintManager._find_issue_path` (`scripts/little_loops/sprint.py:426`) locates issue files with `issue_dir.glob(f"*-{issue_id}-*.md")` (line 444). That pattern requires a literal `-` before the ID, so it matches `P2-BUG-002-slug.md` but **cannot** match `BUG-002-slug.md` — `*` may match empty, but the `-` preceding the ID is literal and has nothing to match against.
 
 `IssueParser`'s own discovery has no such requirement: `ll-issues list` finds unprefixed files and renders them normally (defaulting them to P5). The two disagree, so an issue that is visibly present in the backlog is invisible to every sprint operation that resolves IDs through `_find_issue_path` — `validate_issues` (line 470), `load_issue_infos` (line 492), and EPIC synthesis (line 311).
 
@@ -139,9 +140,9 @@ PosixPath('.issues/features/P2-FEAT-500-fix-BUG-001-regression.md')
 
 The chain: glob `*-001-*.md` matches the file (its slug embeds `-001-`) → the
 anchored filter yields `[]` because the file's anchored number is `500`, so
-`candidates` stays the **raw glob set** (`show.py:170-171`, `if anchored:`) →
+`candidates` stays the **raw glob set** (`show.py:124`, `if anchored:`) →
 `_matches_type` rejects it (`FEAT != BUG`) so `pool` is empty → `if not pool:
-pool = candidates` (`show.py:180-181`) hands the rejected file straight back.
+pool = candidates` (`show.py:177-178`) hands the rejected file straight back.
 
 `sprint.py:_find_issue_path` gets this case **right today**: its per-candidate
 anchored check (`fid.type_prefix == expected_type and fid.number ==
@@ -217,7 +218,7 @@ load-bearing fact for the fix's safety and is worth re-asserting in a test.
    **keep** a fallback, but scoped as option (i) in the BLOCKING section above:
    set-level, and conditioned on *nothing parsing* rather than on a filter
    emptying the pool. Do **not** carry over show.py's `if not pool: pool =
-   candidates` (`:180-181`) — that is the clause that returns a rejected
+   candidates` (`:177-178`) — that is the clause that returns a rejected
    wrong-type file and breaks AC #5.
 3. **The EPIC branch.** "Distinguish 'no such epic' from 'epic found but
    unusable'" is not yet actionable: `load_or_synthesize` (line 311) returns a
@@ -259,7 +260,7 @@ load-bearing fact for the fix's safety and is worth re-asserting in a test.
 
 Two independent definitions of "an issue file on disk" drifted apart:
 
-- `_find_issue_path` (`sprint.py:443`): `glob(f"*-{issue_id}-*.md")` — requires a prefix token before the ID.
+- `_find_issue_path` (`sprint.py:444`): `glob(f"*-{issue_id}-*.md")` — requires a prefix token before the ID.
 - `IssueParser` / `find_issues`: no prefix requirement; a missing priority prefix is tolerated and defaulted to P5 at display time.
 
 The glob's leading `*-` encodes an assumption that every issue filename is normalized to `P<n>-TYPE-NNN-slug.md`. `ll-issues normalize` exists precisely because that is not guaranteed, and `ll-issues list` renders unprefixed files as first-class — so the assumption is not one the rest of the system makes.
@@ -296,6 +297,53 @@ sprint resolver's *intent* differed — only its choice of glob key.
 ### Call Path
 `ll-sprint create --issues BUG-001` → `SprintManager.validate_issues()` (`sprint.py:470`) → `_find_issue_path("BUG-001")` → `issue_dir.glob("*-BUG-001-*.md")` → the leading `*-` requires a `-` before `BUG` that an unprefixed filename cannot supply → zero candidates → `None` → `validate_issues` omits the ID from its `valid` dict → CLI renders `Issue IDs not found: BUG-001`. After the fix the same path calls `resolve_issue_path()`, which globs `*-001-*.md` (the `-` supplied by the `BUG` token itself), parses each candidate's anchor, matches `number == "001"`, and returns the path. The EPIC variant enters at `load_or_synthesize()` (`sprint.py:311`) instead, whose `None` return is rendered by the caller as `Sprint not found: EPIC-100`.
 
+### Deviations
+
+- 2026-08-17: **Decision (c) not applied as literally stated.** The design's
+  Decision Rule (c) said show.py's `if not pool: pool = candidates` (the
+  type-filter-stage fallback) "must not be carried over." Implemented,
+  `resolve_issue_path` (`issue_parser.py`) *keeps* that line. Reason: the
+  anchored-stage fix (rule b — fall back to the raw glob set only when *no*
+  candidate parses) is sufficient on its own to fix AC #5's false positive
+  (`P2-FEAT-500-fix-BUG-001-regression.md` as sole candidate for `BUG-001`
+  now returns `None` at the anchored stage, before the type filter ever
+  runs) — the two fallbacks were sequential contributors to the original bug,
+  not independent ones. Once `candidates` reaching the type-filter stage is
+  guaranteed to contain only anchored-number matches, its own
+  `if not pool: pool = candidates` cannot resurrect a wrong-number file; it
+  can only relax a stale/mismatched *type* prefix on an already-numeric-
+  correct single candidate, which is exactly the BUG-2003 behavior two
+  existing tests (`test_stale_type_prefix_falls_back_to_numeric`,
+  `test_stale_prefix_tolerance_preserved`) require. Removing it regressed
+  both. Verified AC #5 holds with a new test
+  (`test_find_issue_path_sole_wrong_type_candidate_does_not_resolve`).
+- 2026-08-17: **EPIC branch used option (b), not the recommended option (a).**
+  Decision (3) recommended (a) — have `load_or_resolve` raise/return a
+  discriminated failure for the EPIC-specific cases. Implemented (b) instead:
+  `load_or_resolve` still returns a bare `None`; a new
+  `sprint.sprint_not_found_message(arg)` helper (EPIC-shape regex, reused
+  from `_EPIC_ID_RE`) is called at each of the 4 CLI sites that render
+  "Sprint not found" after a `load_or_resolve` miss
+  (`cli/sprint/show.py`, `run.py`, `edit.py`, `manage.py::_cmd_sprint_analyze`).
+  Reason: (a) would touch the return contract of a function with several
+  existing callers and require exception handling at each; (b) is a single
+  shared one-line check reused at all 4 sites rather than duplicated, which
+  is the objection (3) raised against (b) — the duplication is avoided by
+  centralizing the check in the helper rather than inlining
+  `_EPIC_ID_RE.match(arg)` at each site.
+- 2026-08-17: **Type-prefix alternation made project-configurable, not
+  hardcoded to BUG|FEAT|ENH|EPIC.** Not discussed in the design. Required
+  because `resolve_issue_path`'s input-parsing regexes (inherited from
+  `show.py`) only recognized the four built-in type tokens; converging
+  `sprint.py`'s `_find_issue_path` onto this resolver silently broke
+  existing custom-category support (`TestSprintManager::test_validate_issues_respects_custom_categories`,
+  `test_load_issue_infos_respects_custom_categories`, prefix `TASK`) since the
+  old sprint glob treated `issue_id` as an opaque string with no type
+  vocabulary. Fixed by deriving the type alternation from
+  `config.get_issue_prefix(c) for c in config.issue_categories` instead of a
+  literal set, falling back to the four built-ins only if a project defines
+  no categories at all.
+
 ### Decision Rules
 Candidate acceptance is unchanged in *kind* — anchored parse remains the arbiter — but four rules are now stated rather than implied: (a) a candidate is accepted when its anchored `FilenameId.number` equals the requested number, regardless of whether a `P<n>-` prefix is present; (b) fall back to the raw glob set only when **no** candidate parses at all (set-level legacy escape hatch), not per-candidate as `sprint.py:449` does today; (c) a filter emptying the pool is **not** a fallback trigger — show.py's `if not pool: pool = candidates` (`:180-181`) must not be carried over, since it is what returns a wrong-type sole candidate and breaks AC #5; (d) when more than one candidate survives, order `sorted()` and disambiguate by frontmatter identity rather than returning an arbitrary `glob` hit. Zero-padding equivalence (`BUG-1` ≡ `BUG-001`) is explicitly **not** a rule here — comparison stays string equality. A mismatched type prefix demotes a candidate but does not, on its own, resurrect one that the anchored filter already rejected.
 
@@ -316,33 +364,33 @@ Candidate acceptance is unchanged in *kind* — anchored parse remains the arbit
 
 ## Acceptance Criteria
 
-- [ ] `ll-sprint create <name> --issues BUG-001` resolves `BUG-001-no-prefix.md`
+- [x] `ll-sprint create <name> --issues BUG-001` resolves `BUG-001-no-prefix.md`
       (no `P<n>-`) — no `Issue IDs not found`, no `Invalid issues`.
-- [ ] `ll-sprint show <name>` for that sprint plans the issue and reports no
+- [x] `ll-sprint show <name>` for that sprint plans the issue and reports no
       `not found on disk` health warning.
-- [ ] `ll-sprint show EPIC-100` against an unprefixed
+- [x] `ll-sprint show EPIC-100` against an unprefixed
       `.issues/epics/EPIC-100-*.md` synthesizes the epic sprint.
-- [ ] `ll-sprint show EPIC-999` (genuinely absent) reports a message naming the
+- [x] `ll-sprint show EPIC-999` (genuinely absent) reports a message naming the
       **EPIC**, not a missing sprint.
-- [ ] A file whose slug embeds another issue's `TYPE-NNN` (e.g.
+- [x] A file whose slug embeds another issue's `TYPE-NNN` (e.g.
       `P2-FEAT-500-fix-BUG-001-regression.md`) does **not** resolve for
       `BUG-001` — the existing false-positive guard still holds under the wider
       pattern. Assert this with that file as the **sole** candidate on disk,
       which is the configuration that fails today (probed: `_resolve_issue_id`
       returns it, `sprint._find_issue_path` correctly returns `None`).
-- [ ] The same assertion holds for `ll-issues show BUG-001` — the shared helper
+- [x] The same assertion holds for `ll-issues show BUG-001` — the shared helper
       fixes `cmd_show`'s sole-candidate false positive rather than importing it
       into sprint.
-- [ ] A genuinely legacy filename that `parse_issue_filename` cannot parse at
+- [x] A genuinely legacy filename that `parse_issue_filename` cannot parse at
       all still resolves (set-level fallback preserved), pinning rule (b)
       against rule (c)'s narrowing.
-- [ ] Two files legitimately matching the same number resolve deterministically
+- [x] Two files legitimately matching the same number resolve deterministically
       (sorted + frontmatter disambiguation), not by arbitrary `glob` order.
-- [ ] A direct unit assertion that
+- [x] A direct unit assertion that
       `parse_issue_filename("BUG-001-slug.md")` returns a non-`None`
       `FilenameId` with `type_prefix == "BUG"` and `number == "001"`, pinning the
       optional-priority group the fix depends on.
-- [ ] `python -m pytest scripts/tests/` exits 0.
+- [x] `python -m pytest scripts/tests/` exits 0.
 
 ## Notes
 
@@ -354,4 +402,6 @@ Found while auditing `little-loops-hermes`, which shells out to these CLIs; the 
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-17T05:36:41 - `af5ecaaf-7d2f-4ff9-8741-cf96fa2f12de.jsonl`
+- `/ll:ready-issue` - 2026-08-17T05:17:37 - `e60f02db-5093-4bf7-a849-9bfd9f46c7e3.jsonl`
 - `/ll:confidence-check` - 2026-08-17T04:01:08 - `03558def-29ef-40d7-87ba-66fe5fe13be8.jsonl`

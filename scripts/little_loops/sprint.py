@@ -14,6 +14,21 @@ logger = logging.getLogger(__name__)
 _EPIC_ID_RE = re.compile(r"^EPIC-\d+$", re.IGNORECASE)
 _ACTIVE_STATUSES: set[str] = {"open", "in_progress", "blocked"}
 
+
+def sprint_not_found_message(arg: str) -> str:
+    """Render the "not found" message for a `load_or_resolve()` miss (BUG-3229).
+
+    `load_or_resolve(arg)` returns a bare `None` both when `arg` is a sprint
+    name with no matching file and when `arg` is EPIC-shaped but the epic
+    file itself does not exist. Reporting the latter as "Sprint not found"
+    names the wrong noun — there is no sprint file to speak of, only a
+    missing (or genuinely absent) EPIC. Callers of `load_or_resolve()` should
+    render this message instead of hardcoding "Sprint not found: {arg}".
+    """
+    if _EPIC_ID_RE.match(arg):
+        return f"EPIC not found: {arg}"
+    return f"Sprint not found: {arg}"
+
 if TYPE_CHECKING:
     from little_loops.config import BRConfig
     from little_loops.issue_parser import IssueInfo
@@ -426,7 +441,16 @@ class SprintManager:
     def _find_issue_path(self, issue_id: str) -> Path | None:
         """Find the filesystem path for an issue ID.
 
-        Searches all configured issue categories for a file matching the issue ID.
+        Thin delegation to the shared resolver (BUG-3229) —
+        `little_loops.issue_parser.resolve_issue_path`, the same helper
+        `ll-issues show`/`path`/etc. use. This fixed a divergence where this
+        method's own `glob(f"*-{issue_id}-*.md")` required a literal `-`
+        before the ID, so it could not match a filename with no `P<n>-`
+        priority prefix (`BUG-001-slug.md`) even though `ll-issues list`
+        found the same file. Converging on the shared resolver also means a
+        stale/mismatched type prefix is now advisory rather than
+        disqualifying, and legacy `completed_dir`/`deferred_dir` join the
+        search — both intentional widenings, not just the unprefixed-name fix.
 
         Args:
             issue_id: Issue ID to locate (e.g. "BUG-001")
@@ -436,21 +460,9 @@ class SprintManager:
         """
         if not self.config:
             return None
-        from little_loops.issue_parser import parse_issue_filename
+        from little_loops.issue_parser import resolve_issue_path
 
-        expected_type, _, expected_number = issue_id.partition("-")
-        for category in self.config.issue_categories:
-            issue_dir = self.config.get_issue_dir(category)
-            for path in issue_dir.glob(f"*-{issue_id}-*.md"):
-                fid = parse_issue_filename(path.name)
-                # A slug embedding another issue's TYPE-NNN also satisfies the
-                # glob; require the anchored P?-TYPE-NNN- position to carry the
-                # requested ID. Unanchored legacy names keep the glob's verdict.
-                if fid is None or (
-                    fid.type_prefix == expected_type.upper() and fid.number == expected_number
-                ):
-                    return path
-        return None
+        return resolve_issue_path(self.config, issue_id)
 
     def validate_issues(self, issues: list[str]) -> dict[str, Path]:
         """Validate that issue IDs exist.

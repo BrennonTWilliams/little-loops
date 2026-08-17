@@ -165,7 +165,9 @@ def _cmd_sprint_show(args: argparse.Namespace, manager: SprintManager) -> int:
     logger = Logger()
     sprint = manager.load_or_resolve(args.sprint)
     if not sprint:
-        logger.error(f"Sprint not found: {args.sprint}")
+        from little_loops.sprint import sprint_not_found_message
+
+        logger.error(sprint_not_found_message(args.sprint))
         return 1
 
     # Validate issues

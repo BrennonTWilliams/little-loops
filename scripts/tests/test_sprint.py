@@ -397,6 +397,95 @@ class TestSprintManager:
         assert len(infos) == 1
         assert infos[0].issue_id == "TASK-001"
 
+    def test_validate_issues_resolves_unprefixed_filename(self, tmp_path: Path) -> None:
+        """BUG-001-no-prefix.md (no P<n>- prefix) resolves via validate_issues (BUG-3229)."""
+        issues_dir = tmp_path / ".issues"
+        for category in ["bugs"]:
+            (issues_dir / category).mkdir(parents=True, exist_ok=True)
+
+        config_dir = tmp_path / ".ll"
+        config_dir.mkdir(exist_ok=True)
+        config_data = {
+            "project": {"name": "test-project", "src_dir": "src/"},
+            "issues": {
+                "base_dir": ".issues",
+                "categories": {
+                    "bugs": {"prefix": "BUG", "dir": "bugs", "action": "fix"},
+                },
+            },
+        }
+        (config_dir / "ll-config.json").write_text(json.dumps(config_data))
+
+        issue_file = issues_dir / "bugs" / "BUG-001-no-priority-prefix.md"
+        issue_file.write_text("---\nstatus: open\nid: BUG-001\n---\n# BUG-001: Test\n")
+
+        config = BRConfig(tmp_path)
+        manager = SprintManager(sprints_dir=tmp_path, config=config)
+
+        valid = manager.validate_issues(["BUG-001"])
+        assert valid == {"BUG-001": issue_file}
+
+    def test_find_issue_path_sole_wrong_type_candidate_does_not_resolve(
+        self, tmp_path: Path
+    ) -> None:
+        """A slug embedding another issue's ID as sole candidate stays a false-positive
+        guard under the wider resolver (AC #5, BUG-3229)."""
+        issues_dir = tmp_path / ".issues"
+        for category in ["bugs", "features"]:
+            (issues_dir / category).mkdir(parents=True, exist_ok=True)
+
+        config_dir = tmp_path / ".ll"
+        config_dir.mkdir(exist_ok=True)
+        config_data = {
+            "project": {"name": "test-project", "src_dir": "src/"},
+            "issues": {
+                "base_dir": ".issues",
+                "categories": {
+                    "bugs": {"prefix": "BUG", "dir": "bugs", "action": "fix"},
+                    "features": {"prefix": "FEAT", "dir": "features", "action": "implement"},
+                },
+            },
+        }
+        (config_dir / "ll-config.json").write_text(json.dumps(config_data))
+
+        (issues_dir / "features" / "P2-FEAT-500-fix-BUG-001-regression.md").write_text(
+            "---\nstatus: open\nid: FEAT-500\n---\n# FEAT-500: Test\n"
+        )
+
+        config = BRConfig(tmp_path)
+        manager = SprintManager(sprints_dir=tmp_path, config=config)
+
+        assert manager._find_issue_path("BUG-001") is None
+
+    def test_find_issue_path_legacy_unparseable_filename_still_resolves(
+        self, tmp_path: Path
+    ) -> None:
+        """A genuinely legacy filename with no canonical anchor still resolves
+        via the set-level fallback (BUG-3229)."""
+        issues_dir = tmp_path / ".issues"
+        (issues_dir / "enhancements").mkdir(parents=True, exist_ok=True)
+
+        config_dir = tmp_path / ".ll"
+        config_dir.mkdir(exist_ok=True)
+        config_data = {
+            "project": {"name": "test-project", "src_dir": "src/"},
+            "issues": {
+                "base_dir": ".issues",
+                "categories": {
+                    "enhancements": {"prefix": "ENH", "dir": "enhancements", "action": "improve"},
+                },
+            },
+        }
+        (config_dir / "ll-config.json").write_text(json.dumps(config_data))
+
+        legacy = issues_dir / "enhancements" / "notes-2100-old-capture.md"
+        legacy.write_text("---\nstatus: open\n---\n# 2100: legacy\n")
+
+        config = BRConfig(tmp_path)
+        manager = SprintManager(sprints_dir=tmp_path, config=config)
+
+        assert manager._find_issue_path("ENH-2100") == legacy
+
 
 class TestSprintYAMLFormat:
     """Tests for YAML file format."""
@@ -2925,6 +3014,53 @@ class TestSprintManagerLoadOrResolve:
         assert "BUG-043" in result.issues
         assert "BUG-041" not in result.issues
         assert "BUG-042" not in result.issues
+
+    def test_load_or_resolve_unprefixed_epic_filename(
+        self, tmp_path: Path, epic_project: BRConfig
+    ) -> None:
+        """EPIC-100 resolves against an unprefixed EPIC-100-*.md filename (BUG-3229)."""
+        issues_dir = tmp_path / ".issues"
+        (issues_dir / "epics" / "EPIC-100-unprefixed-epic.md").write_text(
+            "---\nid: EPIC-100\nstatus: open\nrelates_to:\n  - BUG-001\n---\n# EPIC-100: T\n"
+        )
+        (issues_dir / "bugs" / "P1-BUG-001-test-bug.md").write_text(
+            "# BUG-001: Test Bug\n\n## Summary\nFix this.\n"
+        )
+
+        manager = SprintManager(sprints_dir=tmp_path / ".sprints", config=epic_project)
+        result = manager.load_or_resolve("EPIC-100")
+
+        assert result is not None
+        assert result.name == "epic-100"
+        assert "BUG-001" in result.issues
+
+    def test_load_or_resolve_genuinely_absent_epic_returns_none(
+        self, tmp_path: Path, epic_project: BRConfig
+    ) -> None:
+        """A genuinely absent EPIC still returns None from load_or_resolve
+        (the CLI layer names it correctly via sprint_not_found_message)."""
+        manager = SprintManager(sprints_dir=tmp_path / ".sprints", config=epic_project)
+        result = manager.load_or_resolve("EPIC-999")
+        assert result is None
+
+
+class TestSprintNotFoundMessage:
+    """Tests for sprint_not_found_message() (BUG-3229)."""
+
+    def test_epic_shaped_arg_names_the_epic(self) -> None:
+        from little_loops.sprint import sprint_not_found_message
+
+        assert sprint_not_found_message("EPIC-999") == "EPIC not found: EPIC-999"
+
+    def test_epic_shaped_arg_is_case_insensitive(self) -> None:
+        from little_loops.sprint import sprint_not_found_message
+
+        assert sprint_not_found_message("epic-999") == "EPIC not found: epic-999"
+
+    def test_non_epic_arg_names_the_sprint(self) -> None:
+        from little_loops.sprint import sprint_not_found_message
+
+        assert sprint_not_found_message("my-sprint") == "Sprint not found: my-sprint"
 
 
 class TestSprintListJsonShortForm:
