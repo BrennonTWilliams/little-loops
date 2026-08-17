@@ -169,9 +169,10 @@ N/A — no new Python types; the fix is a plain SQL string appended to the exist
 
 ### Signatures
 
-- `_MIGRATIONS: list[str]` — append one new entry: dedup `DELETE` + `CREATE [UNIQUE]
-  INDEX IF NOT EXISTS` statements for all three indexes, executed the same way every
-  other entry is.
+- `_MIGRATIONS: list[str]` — append one new entry (v43): FK repoint `UPDATE` + dedup
+  `DELETE` + `CREATE UNIQUE INDEX IF NOT EXISTS` for the two UNIQUE indexes, plus a blanket
+  `CREATE INDEX IF NOT EXISTS` re-assertion of every non-UNIQUE index. Executed the same way
+  every other entry is. Exact SQL in [Proposed Solution](#proposed-solution).
 
 ### Call Path
 
@@ -181,8 +182,22 @@ other migration)
 
 ## Proposed Solution
 
-A migration that deletes duplicates before creating each UNIQUE index, keeping the
-lowest `rowid` of each duplicate group:
+One new migration (v43), standalone — see [Scope](#scope-relative-to-enh-3242). The two
+UNIQUE indexes need a dedup pass first; the plain indexes do not.
+
+**Survivor rule (settled — do not re-open):** `MIN(rowid)` for `assistant_messages`,
+`MIN(id)` for `summary_nodes`. The `ROW_NUMBER() ... ORDER BY ts ASC` form of the v36
+precedent (`schema.py:851-885`) is **not** reusable here: `summary_nodes` has no `ts`
+column, and its `ts_start`/`ts_end` are themselves *inside* the dedup key, so a `ts`
+ordering is undefined for that table. What v36 *is* the precedent for is the NULL guard
+(`WHERE issue_num IS NOT NULL` on both its DELETE and its index, `schema.py:874-884`) —
+that part is load-bearing here, see below.
+
+### `assistant_messages` — dedup, then UNIQUE index
+
+Safe as the simple form: all three key columns are `NOT NULL` (`schema.py:297-303`), the
+key covers every meaningful column, and nothing holds an FK-shaped reference to
+`assistant_messages.id`. No NULL guard and no repoint step needed.
 
 ```sql
 DELETE FROM assistant_messages
@@ -194,20 +209,110 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_assistant_messages_dedup
     ON assistant_messages(session_id, ts, content);
 ```
 
-with the analogous pair for `idx_summary_nodes_retention_dedup`, and a plain
-`CREATE INDEX IF NOT EXISTS` for `idx_summary_nodes_parent_id` (no dedup needed — a
-non-UNIQUE index cannot fail on duplicate rows).
+### `summary_nodes` — repoint FKs, dedup, then UNIQUE index
 
-Open questions for implementation:
+**The `assistant_messages` shape must NOT be copied verbatim to this table.** It is wrong
+in two independent ways, each of which destroys data:
 
-- **Cost on large tables.** The `DELETE ... GROUP BY` is a full scan plus a temp B-tree.
-  68,693 rows on this checkout is trivial; confirm the shape is acceptable before assuming
-  it holds for a much larger database, since it runs inside the startup write lock.
-- **`MIN(rowid)` as the survivor.** Correct for `assistant_messages`, where duplicate rows
-  are byte-identical by construction (the index key covers every meaningful column).
-  Verify the same holds for `summary_nodes` retention rows before reusing the pattern —
-  if those rows carry columns outside the index key, picking an arbitrary survivor is a
-  silent data decision, not a no-op.
+1. **Scope to `kind = 'retention'`.** The index is *partial*
+   (`WHERE kind = 'retention'`, `schema.py:484-485`). An unscoped
+   `GROUP BY session_id, ts_start, ts_end` also groups `leaf` and `condensed` rows, which
+   share those exact key columns under their own partial index
+   (`idx_summary_nodes_leaf_dedup`, `schema.py:283-284`). Leaf rows carry live
+   `summary_spans` children and `parent_id` edges, so deleting one shreds the summary DAG —
+   damage entirely outside what this issue set out to repair.
+2. **Exclude NULL keys.** `session_id`, `ts_start`, `ts_end` are all nullable
+   (`schema.py:273-275`), and a NULL `session_id` is a real, expected value for retention
+   rows: `compact()` buckets by `row["session_id"]` typed `str | None`
+   (`lifecycle.py:1193`) and its fallback lookup uses `session_id IS ?`
+   (`lifecycle.py:1215-1217`) precisely to handle it. SQLite treats NULLs as **distinct**
+   in a UNIQUE index, so such rows can never violate it — but `GROUP BY` treats NULLs as
+   **equal**, so an unguarded DELETE removes rows the index would have accepted. Pure
+   gratuitous loss.
+
+Repoint before deleting (`raw_events.summary_node_id`, `schema.py:480-481`, points into
+exactly the `kind = 'retention'` subset this DELETE targets — populated by `compact()` at
+`lifecycle.py:1211-1227`):
+
+```sql
+-- 1. repoint FK references from each non-survivor to its group's survivor
+UPDATE raw_events
+   SET summary_node_id = (
+     SELECT MIN(s2.id) FROM summary_nodes s2
+      WHERE s2.kind = 'retention'
+        AND s2.session_id IS (SELECT s1.session_id FROM summary_nodes s1
+                               WHERE s1.id = raw_events.summary_node_id)
+        AND s2.ts_start = (SELECT s1.ts_start FROM summary_nodes s1
+                            WHERE s1.id = raw_events.summary_node_id)
+        AND s2.ts_end   = (SELECT s1.ts_end   FROM summary_nodes s1
+                            WHERE s1.id = raw_events.summary_node_id)
+   )
+ WHERE summary_node_id IS NOT NULL
+   AND EXISTS (SELECT 1 FROM summary_nodes s1
+                WHERE s1.id = raw_events.summary_node_id
+                  AND s1.kind = 'retention'
+                  AND s1.ts_start IS NOT NULL AND s1.ts_end IS NOT NULL);
+
+-- 2. delete non-survivors, scoped to retention AND to non-NULL keys
+DELETE FROM summary_nodes
+ WHERE kind = 'retention'
+   AND session_id IS NOT NULL AND ts_start IS NOT NULL AND ts_end IS NOT NULL
+   AND id NOT IN (
+     SELECT MIN(id) FROM summary_nodes
+      WHERE kind = 'retention'
+        AND session_id IS NOT NULL AND ts_start IS NOT NULL AND ts_end IS NOT NULL
+      GROUP BY session_id, ts_start, ts_end
+   );
+
+-- 3. create the index
+CREATE UNIQUE INDEX IF NOT EXISTS idx_summary_nodes_retention_dedup
+    ON summary_nodes(session_id, ts_start, ts_end) WHERE kind = 'retention';
+```
+
+Note the asymmetry between steps 1 and 2: the repoint uses `IS` for `session_id` (so
+NULL-session retention rows still get repointed if their group is collapsed), while the
+DELETE excludes NULL keys entirely (because those rows are never collapsed). Since step 2
+never deletes a NULL-`session_id` row, step 1's NULL-tolerant match is harmless — but the
+two must not be "simplified" into using the same predicate.
+
+**The three statements above were executed against a synthetic drifted database** (real
+`summary_nodes`/`raw_events` DDL; a duplicate `retention` pair, a NULL-`session_id`
+`retention` pair, a colliding `leaf` pair, and `raw_events` rows pointing at both
+non-survivors). Confirmed: the lower-`id` retention row survives and its duplicate is
+deleted; both NULL-`session_id` rows survive; both `leaf` rows survive; the `raw_events`
+reference is repointed to the survivor; zero dangling `summary_node_id` values remain; a
+second run is a no-op. The `CREATE UNIQUE INDEX` also succeeded *with the NULL-key duplicate
+pair still present*, which is the direct demonstration of the NULL-distinct semantics
+argued above.
+
+**Complete repoint surface — verified, do not widen.** `raw_events.summary_node_id` is the
+only reference at risk. The other two references into `summary_nodes.id` never point at
+`retention` rows: `summary_spans.summary_id` (`schema.py:279`) is written only for
+`kind = 'leaf'` (`lifecycle.py:293-303`), and `parent_id` (`schema.py:272`) is set only on
+`leaf`/`condensed` rows (`lifecycle.py:326-327`, `657-662`).
+
+### Plain indexes — re-assert all of them, not just the one observed missing
+
+`idx_summary_nodes_parent_id` is the only *observed*-missing plain index, but the
+three-index list in [Current Behavior](#current-behavior) is what a sweep of this machine
+found — not the complete v42 index inventory. Because `CREATE INDEX IF NOT EXISTS` on a
+non-UNIQUE index cannot fail, the migration should re-assert **every** non-UNIQUE index the
+schema defines, repairing unobserved drift at zero added risk. The two UNIQUE ones stay
+explicit with their dedup passes above; do **not** blanket re-assert UNIQUE indexes, which
+is precisely the hard-failure mode this issue exists to avoid.
+
+### Scope relative to ENH-3242
+
+Ships as its own migration (v43). ENH-3242 is a *detector* — a checked-in structural
+manifest plus an on-demand check — not a repairer, so it cannot subsume this work.
+BUG-3241 repairs the known drift; ENH-3242 later makes the next instance loud.
+
+### Remaining open question
+
+- **Cost on large tables.** The `DELETE ... GROUP BY` is a full scan plus a temp B-tree,
+  and it runs inside the startup write lock on every project at next `ensure_db()`. 68,693
+  rows on this checkout is trivial; confirm the shape is acceptable before assuming it
+  holds for a much larger database.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
@@ -216,15 +321,24 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - Bump `SCHEMA_VERSION` at `scripts/little_loops/session_store/schema.py:21` from `42` to `43` by hand — it is not derived from `len(_MIGRATIONS)`.
 - Update the 21 hardcoded `assert SCHEMA_VERSION == 42` literals to `43`: 15 in `scripts/tests/test_session_store_schema.py`, 5 in `scripts/tests/test_session_store_writers.py`, 1 in `scripts/tests/test_assistant_messages.py:88`. See exact line numbers in Integration Map → Tests.
 - Write the new regression test using the `_bootstrap_schema_at()` + insert-duplicate-rows-then-`ensure_db()` pattern described in Integration Map → Tests.
-- Whether this ships as its own migration or as part of ENH-3242's general structural
-  repair. Sequence after BUG-3236 either way.
+- Add a one-line guard test asserting `SCHEMA_VERSION == len(_MIGRATIONS)`. Verified absent:
+  the only references to `len(_MIGRATIONS)` anywhere in `scripts/` are
+  `session_store/schema.py:1096`, `schema.py:1104`, and the parallel pair in
+  `queue_store.py:172,180` — no test asserts the equality. Since hand-desync of these two
+  is the trap flagged above, this makes the whole failure class loud instead of silent.
+- BUG-3236 has **landed** (`4beb93b2`): v42 is present in `_MIGRATIONS`,
+  `TestSchemaV42IssueSessionsRepair` exists, and `SCHEMA_VERSION == len(_MIGRATIONS) == 42`
+  is confirmed on `main`. The "sequence after BUG-3236" constraint is already satisfied — no
+  further sequencing work.
+- Scope question ("own migration vs. part of ENH-3242") is **settled**: standalone v43. See
+  Proposed Solution → Scope relative to ENH-3242.
 
 ### Codebase Research Findings
 
 _Added by `/ll:refine-issue` — 2026-08-17 — based on codebase analysis:_
 
-- **Dangling FK risk in `summary_nodes` dedup delete, not currently listed as an open question**: `raw_events.summary_node_id` (`ALTER TABLE raw_events ADD COLUMN summary_node_id INTEGER`, `scripts/little_loops/session_store/schema.py:480`) is a live reference into `summary_nodes.id`, populated by `compact()` (`scripts/little_loops/session_store/lifecycle.py:1211-1227`) for `kind = 'retention'` rows specifically — the exact `summary_nodes` subset this issue's dedup delete targets. A `MIN(rowid)`-only delete (as currently drafted) removes non-survivor `summary_nodes` rows without checking whether any `raw_events.summary_node_id` points at them, which would orphan those references. Any dedup delete on `summary_nodes` must first repoint `raw_events.summary_node_id` from each non-survivor id to its group's survivor id, before deleting the non-survivor rows.
-- **Existing precedent uses `ROW_NUMBER() OVER (PARTITION BY ...) ORDER BY ts ASC`, not `MIN(rowid)`**: the only existing "dedup-then-unique-index" migration in this codebase, v36/ENH-2771 (`scripts/little_loops/session_store/schema.py:851-885`), selects its survivor via `ROW_NUMBER() OVER (PARTITION BY issue_num, transition ORDER BY ts ASC) ... WHERE rn = 1`, keeping the earliest `ts` — not `MIN(rowid)`. Its own comment (`schema.py:838-848`) states the ordering (backfill, then dedup DELETE, then `DROP INDEX IF EXISTS` + `CREATE UNIQUE INDEX IF NOT EXISTS`) is load-bearing. `MIN(rowid)` and `ROW_NUMBER() ... ORDER BY ts ASC` are not necessarily equivalent (`rowid` order need not match `ts` order on a table that has had rows deleted/reinserted), so reusing the `ROW_NUMBER()`/`ts`-ordered form matches the one precedent this codebase has already reasoned through, rather than introducing a second, differently-ordered survivor rule.
+- **Dangling FK risk in `summary_nodes` dedup delete, not currently listed as an open question**: `raw_events.summary_node_id` (`ALTER TABLE raw_events ADD COLUMN summary_node_id INTEGER`, `scripts/little_loops/session_store/schema.py:480`) is a live reference into `summary_nodes.id`, populated by `compact()` (`scripts/little_loops/session_store/lifecycle.py:1211-1227`) for `kind = 'retention'` rows specifically — the exact `summary_nodes` subset this issue's dedup delete targets. A `MIN(rowid)`-only delete (as currently drafted) removes non-survivor `summary_nodes` rows without checking whether any `raw_events.summary_node_id` points at them, which would orphan those references. Any dedup delete on `summary_nodes` must first repoint `raw_events.summary_node_id` from each non-survivor id to its group's survivor id, before deleting the non-survivor rows. **Resolved** — repoint `UPDATE` drafted in [Proposed Solution](#summary_nodes--repoint-fks-dedup-then-unique-index), and the repoint surface verified complete at `raw_events.summary_node_id` alone (`summary_spans.summary_id` and `parent_id` never reference `retention` rows).
+- **Existing precedent uses `ROW_NUMBER() OVER (PARTITION BY ...) ORDER BY ts ASC`, not `MIN(rowid)`**: the only existing "dedup-then-unique-index" migration in this codebase, v36/ENH-2771 (`scripts/little_loops/session_store/schema.py:851-885`), selects its survivor via `ROW_NUMBER() OVER (PARTITION BY issue_num, transition ORDER BY ts ASC) ... WHERE rn = 1`, keeping the earliest `ts` — not `MIN(rowid)`. Its own comment (`schema.py:838-848`) states the ordering (backfill, then dedup DELETE, then `DROP INDEX IF EXISTS` + `CREATE UNIQUE INDEX IF NOT EXISTS`) is load-bearing. `MIN(rowid)` and `ROW_NUMBER() ... ORDER BY ts ASC` are not necessarily equivalent (`rowid` order need not match `ts` order on a table that has had rows deleted/reinserted), so reusing the `ROW_NUMBER()`/`ts`-ordered form matches the one precedent this codebase has already reasoned through, rather than introducing a second, differently-ordered survivor rule. **Superseded** — the `ts`-ordered form is not applicable to `summary_nodes`, which has no `ts` column and whose `ts_start`/`ts_end` sit *inside* the dedup key. Settled rule is `MIN(rowid)`/`MIN(id)`; what v36 *is* the binding precedent for here is its NULL guard, not its ordering. See [Proposed Solution](#proposed-solution).
 - **`_apply_migrations()` only ever runs the pending range**: `_apply_migrations()` (`scripts/little_loops/session_store/schema.py:1050-1086`) loops `for index in range(version, len(_MIGRATIONS))` — it does not re-run already-applied entries. Because the affected databases have `schema_version` already recorded past v11/v19 (that is this issue's premise), a newly appended migration runs standalone; it does not re-execute the original v11/v19 statements. The existing `assistant_messages`/`summary_nodes` table rows are untouched by re-running v11/v19 — only the new appended migration's own statements execute.
 - **No FK risk for `assistant_messages`**: its columns (`id, ts, content, session_id, tool_use_count`; `schema.py:297-303`) are exactly the dedup key (`session_id, ts, content`) plus one non-key column, and no other table holds a foreign-key-shaped reference to `assistant_messages.id` — a `MIN(rowid)` (or `ROW_NUMBER()`/`ts`-ordered) delete is safe there with no repointing step needed.
 
@@ -253,6 +367,12 @@ _Added by `/ll:refine-issue` — 2026-08-17 — based on codebase analysis:_
       past their creating migrations but structurally missing them.
 - [ ] A regression test constructs the duplicate-rows case explicitly; it must not rely on
       any local database happening to be clean.
+- [ ] The `summary_nodes` dedup does not delete any `leaf` or `condensed` row, and does not
+      delete any `retention` row whose `(session_id, ts_start, ts_end)` contains a NULL —
+      SQLite's UNIQUE index accepts those, so the repair must too.
+- [ ] After repair, no `raw_events.summary_node_id` references a deleted `summary_nodes.id`:
+      every non-NULL `summary_node_id` resolves to an existing row.
+- [ ] `SCHEMA_VERSION == len(_MIGRATIONS)` is asserted by a test.
 - [ ] `python -m pytest scripts/tests/` exits 0.
 
 ## Notes
@@ -266,6 +386,7 @@ Split out of BUG-3236 during its pre-implementation review. BUG-3236 documents t
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-17T19:24:22 - `35d64d8e-092e-4c90-875f-40feb688fbd4.jsonl`
 - `/ll:confidence-check` - 2026-08-17T19:06:24 - `3098ae6c-d494-47ea-a3e0-bfd1d90e6eaf.jsonl`
 - `/ll:wire-issue` - 2026-08-17T18:58:52 - `4375f1ee-af64-420b-8e51-de7f17563fd4.jsonl`
 - `/ll:refine-issue` - 2026-08-17T18:44:49 - `73e92a5b-b52b-41fd-896b-d930c6b15dc8.jsonl`
