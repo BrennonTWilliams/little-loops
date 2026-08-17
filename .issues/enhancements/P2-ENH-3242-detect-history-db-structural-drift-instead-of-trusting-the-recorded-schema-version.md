@@ -104,7 +104,7 @@ _Added by `/ll:refine-issue` — 2026-08-17 — based on codebase analysis:_
 
 - `scripts/little_loops/queue_store.py:154-210` — `_current_version()`, `_apply_migrations()` (fast-path short-circuit at `:172-173`), and `ensure_db()` duplicate the exact `session_store/schema.py` pattern (its own docstring at `:168-171` cross-references `little_loops.session_store._apply_migrations` for the concurrency rationale, but shares no code). Any fix to `schema.py`'s fast-path or a new `_schema_manifest()` needs a parallel decision for `queue_store.py` to be complete — it is not automatically covered.
 - Importers of `session_store/schema.py` (confirmed via code graph): `session_store/queries.py:18`, `session_store/lifecycle.py:33`, `session_store/writers.py:33`, `session_store/__init__.py:96`.
-- `scripts/little_loops/cli/doctor.py` — an existing check-registration framework (`@register_check`, `_CHECKS: list[Callable[[], list[CheckResult]]]`, `doctor.py:81-87`) already exists, with `CheckResult(status: full|partial|unsupported, severity: error|informational)` (`doctor.py:54-73`). A `_history_db_data()` check (`doctor.py:353-395`) already exists for `.ll/history.db` but is presence/readability-only (`SELECT 1` on a read-only connection) — it does not touch schema structure. Piece 2's "ll-history doctor" option has a ready home in this registry rather than needing a new command.
+- `scripts/little_loops/cli/doctor.py` — an existing check-registration framework (`@register_check`, `_CHECKS: list[Callable[[], list[CheckResult]]]`, `doctor.py:81-87`) already exists, with `CheckResult(status: full|partial|unsupported, severity: error|informational)` (`doctor.py:54-73`). A `_history_db_data()` check (`doctor.py:353-395`) already exists for `.ll/history.db` but is presence/readability-only (`SELECT 1` on a read-only connection) — it does not touch schema structure. Piece 2's proposed `ll-history` `doctor` option has a ready home in this registry rather than needing a new command.
 - Two competing repair-command shapes exist as precedent for piece 2's decision: (a) diagnose-only `ll-doctor` registry above, with no `--fix`/repair path anywhere in `doctor.py`; (b) per-command `--fix` flag that both diagnoses and repairs in one surface — `ll-verify-docs --fix` (`cli/docs.py:66-70`) and `epic-consistency --fix` (`cli/issues/epic_consistency.py:279-283,295-299`, which documents itself as detecting/reconciling "drift" with the same report-only-by-default / `--fix`-to-repair shape this issue would need).
 - `scripts/little_loops/history_reader.py` — confirmed **62** (not "60+") `except sqlite3.Error:` sites via exact grep count. Representative sites: `:436-438` (`_connect_readonly` ensure-schema failure), `:443-445` (read-only open failure), `:487-489` (`find_user_corrections` query failure). ~~All 62 currently log at `logger.warning` uniformly — there is no existing warning/error split to preserve or break.~~ **STRICKEN 2026-08-17 (review pass): false.** 2 sites use `logger.error` (`:2117`, `:2149`), 60 use `logger.warning` — see the correcting bullet below and Files to Modify.
 - A second, separate "missing vs present" distinction already exists outside the `except sqlite3.Error:` handlers: `lookup_session_metadata` (`history_reader.py:2217`) and `conversation_turns` (`:2302`) each do `if not db_path.exists(): return {}/[]` *before* calling `_connect_readonly()`, and log nothing in that branch — a second undocumented "missing" convention alongside the uniform-`warning` one for "present but broken."
@@ -117,7 +117,7 @@ _Added by `/ll:refine-issue` — 2026-08-17 — based on codebase analysis:_
 - Correction to the earlier "Codebase Research Findings" bullet on `history_reader.py`'s log levels: it states "all 62 currently log at `logger.warning` uniformly — there is no existing warning/error split to preserve or break." That is stale/incorrect — the "Files to Modify" section below it already has the accurate count (2 `logger.error`, 60 `logger.warning`), confirmed again this pass: `sessions_for_issue()` (`history_reader.py:2117-2120`) and `issue_effort()` (`:2149-2152`) use `logger.error` with a `"(possible schema drift)"` annotation; the remaining 60 sites use `logger.warning`. Both error sites query the `issue_sessions` VIEW specifically — the object BUG-3236 found drifted — and this is a one-off point-fix annotation, not a documented or repeated convention. No structural/exception-type difference distinguishes the 2 sites from the 60; a mechanical classifier (e.g. "does this except-block touch `issue_sessions`") could only reclassify that one already-fixed object, not generalize to the other 60, none of which have a known drift history to key off of.
 - `ensure_db()` is confirmed on essentially every `ll-*` invocation's hot path via two independent chains: `cli_event_context()` (`session_store/writers.py:483-561`, calls `_pkg.connect()` at `:521`) is imported/called from ~52 files under `scripts/little_loops/cli/`; and `hooks/session_start.py:132-135` calls `ensure_db()` directly on every session start (wrapped in `contextlib.suppress(Exception)`, independent of the CLI path). This confirms the AC's "startup-cost measurement, not an estimate" requirement is measuring a real, structural cost center, not a speculative one.
 - A directly reusable timing-measurement pattern already exists for piece 2's required startup-cost measurement: `scripts/tests/bench_opencode_adapter.py` (a standalone script, not pytest-collected) measures cold-start latency across N sequential invocations via `time.perf_counter()` (`:55,69`), reports min/median/p95/max via `statistics`, and states explicit numeric decision thresholds in-file (`_DECISION_TARGET_MS`/`_DECISION_THRESHOLD_MS`, `:34-35`, docstring `:7-10`: "Target: p95 ≤ 200ms; if p95 ≥ 400ms: a persistent sidecar must be proposed"). Piece 2's measurement can reuse this shape instead of inventing new benchmarking tooling.
-- Adding a new check to `cli/doctor.py`'s registry is structurally trivial by existing precedent: write a `_data()`-returning helper matching the `{"status", "severity", "note"}` dict shape `_history_db_data()` uses (`doctor.py:353-374`), wrap it with an `@register_check`-decorated function returning `[CheckResult(...)]` (pattern at `_history_db_check()`, `doctor.py:387-395`). `main_doctor()`'s `for check in _CHECKS:` loop (`:119`) picks it up automatically — no argument-parsing or dispatch plumbing needed. The only real decision is registry-check vs. a new `ll-history doctor` subcommand in `cli/history.py`.
+- Adding a new check to `cli/doctor.py`'s registry is structurally trivial by existing precedent: write a `_data()`-returning helper matching the `{"status", "severity", "note"}` dict shape `_history_db_data()` uses (`doctor.py:353-374`), wrap it with an `@register_check`-decorated function returning `[CheckResult(...)]` (pattern at `_history_db_check()`, `doctor.py:387-395`). `main_doctor()`'s `for check in _CHECKS:` loop (`:119`) picks it up automatically — no argument-parsing or dispatch plumbing needed. The only real decision is registry-check vs. a new `ll-history` `doctor` subcommand in `cli/history.py`.
 
 _Added by pre-implementation review — 2026-08-17 — verified against the working tree:_
 
@@ -160,6 +160,12 @@ _Added by pre-implementation review — 2026-08-17 — verified against the work
 
 _Wiring pass added by `/ll:wire-issue`; line anchors corrected by the 2026-08-17 review pass:_
 
+⚠ Superseded — the pre-v43 line anchors quoted by the earlier passes (`:1064`, `:1081`,
+`:1096-1097`, `:1120`, `:1161`) and every "v42" reference in this issue are stale and must not
+be used; the corrected anchors are the ones listed below and in the Integration Map review
+block. The `history_reader.py` "all 62 log at `logger.warning` uniformly" finding is likewise
+struck (2 sites use `logger.error`).
+
 - `scripts/little_loops/session_store/schema.py` — `SCHEMA_VERSION` (`:21`), `_MIGRATIONS`
   (`:111`), `_current_version()` (`:1197`), `_apply_migrations()` (`:1214`, fast-path
   short-circuit at `:1229`), `ensure_db()` (`:1253`). Piece 1's `_schema_manifest()` lands
@@ -201,11 +207,11 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/little_loops/cli/doctor.py` — existing `register_check()`/`_CHECKS` registry
   (`:81-87`) with `_history_db_data()`/`_history_db_check()` (`:353-395`), currently
   presence/readability-only. This is a smaller, in-registry extension point for piece 2's
-  manifest check than standing up a new `ll-history doctor` subcommand, and the AC's
-  "explicit `ll-history doctor` command" fallback should weigh this existing home before
+  manifest check than standing up a new `ll-history` `doctor` subcommand, and the AC's
+  "explicit `ll-history` `doctor` command" fallback should weigh this existing home before
   picking a name.
 - `scripts/little_loops/cli/history.py` (`main_history()` at `:16`, subparsers `:66-248`) —
-  alternate registration point if the `ll-history doctor` subcommand name is chosen instead
+  alternate registration point if the `ll-history` `doctor` subcommand name is chosen instead
   of extending `ll-doctor`.
 - `scripts/little_loops/cli/__init__.py` (`:64` import of `main_doctor`, `:40` module
   docstring documenting `ll-doctor`) — a second wire-issue pass (post-decision, 2026-08-17)
@@ -356,9 +362,46 @@ fails when a migration changes structure without regenerating the file.
 
 Piece 2 (runtime): `ll-doctor` -> `_run_registered_checks()` (`doctor.py:116`) ->
 `_schema_drift_check()` -> `_schema_drift_data()` -> `Path.exists()` guard -> read-only
-`sqlite3.connect(f"file:{db}?mode=ro", uri=True)` -> `_schema_manifest(conn)` compared
-against `_load_schema_manifest()` -> `CheckResult` naming the differing objects. Never calls
-`ensure_db()`/`connect()` — those would create and migrate the DB, erasing the drift.
+`sqlite3.connect(f"file:{db}?mode=ro", uri=True)` -> **version guard (below)** ->
+`_schema_manifest(conn)` compared against `_load_schema_manifest()` -> `CheckResult` naming
+the differing objects. Never calls `ensure_db()`/`connect()` — those would create and migrate
+the DB, erasing the drift.
+
+#### Version guard — required before any structural comparison
+
+_Added by the 2026-08-17 pre-implementation review; the Call Path above and AC bullet 5
+previously went straight from "open read-only" to "compare", which produces a false positive
+on the first real database that is merely behind._
+
+Because the check deliberately never migrates, it will encounter databases whose recorded
+`schema_version` is **below** the manifest's. Such a database is not drifted — it is behind,
+and `_apply_migrations()` will bring it to v43 correctly on the next `connect()`. Comparing
+its structure against the v43 manifest reports every object added since its version as drift.
+
+The check therefore reads `meta.schema_version` (same query shape as `_current_version()`,
+`schema.py:1197`, but on the read-only connection) and branches:
+
+- **`recorded < manifest["schema_version"]`** — report `status: partial`, severity
+  `informational`, note naming both versions and stating it will migrate on next use. **Do
+  not compare structure**; a stale-but-honest database is the expected steady state for any
+  project that has not run an `ll-*` command since the upgrade.
+- **`recorded == manifest["schema_version"]`** — compare structure. This is the only branch
+  where a difference means drift, and it is exactly the BUG-3236 / BUG-3241 condition:
+  stamped current, structurally not.
+- **`recorded > manifest["schema_version"]`** — report `informational`, note that the
+  installed little-loops is older than the database (a downgrade or a mixed install), and do
+  not compare. The manifest cannot describe a future version.
+- **`meta` table missing entirely** — `_current_version()` treats this as version 0; report
+  `informational` (uninitialized), not drift.
+
+This is what makes the manifest's `"schema_version"` key load-bearing at *runtime*, not only
+in piece 1's test.
+
+**Comparison direction, when the versions match**: an object or index present in the manifest
+but missing from the database is drift (BUG-3236 / BUG-3241's shape); an object present in the
+database but absent from the manifest is *also* drift — the manifest enumerates from
+`sqlite_master` (see Enumeration rules) precisely so an out-of-band addition is visible. The
+`note` must distinguish the two directions rather than reporting an undifferentiated count.
 
 ### Codebase Research Findings
 
@@ -436,7 +479,7 @@ Either way, never store or diff a whole `sqlite_master.sql` string.
 _Added by `/ll:refine-issue` — 2026-08-17 — based on codebase analysis:_
 
 - **Piece 1 (manifest snapshot test) — dominant convention confirmed**: for "assert generated structure against a fixed expectation" against a live SQLite schema, this codebase's established shape is an inline Python dict/set literal compared against `PRAGMA table_info` results inside the test body — see `scripts/tests/test_codequery_codegraph.py:224` (`TestSchemaGuard.test_pinned_columns_present_in_fixture`, module docstring calls this exact shape a "schema-drift guard"), and the same idiom repeated ad hoc across `scripts/tests/test_session_store_schema.py` (e.g. lines 94, 243, 303, 820, 883, 989, 1165, 1220). The checked-in-JSON-manifest convention (`scripts/tests/fixtures/*/manifest.json`) and the syrupy `.ambr` snapshot convention (`conftest.py:130-144` `stable_snapshot_env`) both exist but are scoped to different domains (fixture-set cataloging; CLI text-output regression) — neither has any precedent of being applied to schema/PRAGMA assertions. No shared PRAGMA-introspection helper exists anywhere in `scripts/little_loops/` (confirmed via grep for `def.*table_info`/`def.*introspect_schema`) — every PRAGMA/`sqlite_master` use across the codebase is written inline per call site, as the issue already claims.
-- **Piece 2 (fast-path check vs. `ll-history doctor`) — no existing precedent combines a PRAGMA-based structural check with either shape**. Two established-but-disagreeing shapes exist for "diagnose vs. repair" surfaces: (a) `cli/doctor.py`'s shared `_CHECKS`/`register_check` registry (`:81-87`), consumed by one diagnose-only command — no `--fix`/repair path exists anywhere in that file; (b) independent per-command `--fix` flags that diagnose-and-optionally-repair within a single command, e.g. `cli/docs.py:67` (`"--fix"`, "Auto-fix mismatches") and `cli/issues/epic_consistency.py` (self-describes its subject as "drift" throughout — `has_drift`, `compute_drift`, `any_drift`; its `--fix` is scoped to only one drift category, remaining report-only for the rest; exit code is `0` under `--fix`, `1` on unresolved drift in report-only mode). Neither shape has been combined with a `PRAGMA table_info`-based structural check before — this is a genuinely undecided choice, not resolvable by precedent alone.
+- **Piece 2 (fast-path check vs. `ll-history` `doctor`) — no existing precedent combines a PRAGMA-based structural check with either shape**. Two established-but-disagreeing shapes exist for "diagnose vs. repair" surfaces: (a) `cli/doctor.py`'s shared `_CHECKS`/`register_check` registry (`:81-87`), consumed by one diagnose-only command — no `--fix`/repair path exists anywhere in that file; (b) independent per-command `--fix` flags that diagnose-and-optionally-repair within a single command, e.g. `cli/docs.py:67` (`"--fix"`, "Auto-fix mismatches") and `cli/issues/epic_consistency.py` (self-describes its subject as "drift" throughout — `has_drift`, `compute_drift`, `any_drift`; its `--fix` is scoped to only one drift category, remaining report-only for the rest; exit code is `0` under `--fix`, `1` on unresolved drift in report-only mode). Neither shape has been combined with a `PRAGMA table_info`-based structural check before — this is a genuinely undecided choice, not resolvable by precedent alone.
 - **Piece 3 (log-level convention) — no mechanical rule exists to generalize from today, and none is derivable structurally**. The near-universal pattern across `history_reader.py`'s ~45 `except sqlite3.Error:`/`OperationalError:` sites and ~20 more in `session_store/writers.py`, `queries.py`, `lifecycle.py`, `schema.py` is `logger.warning(...)` with a `"<fn>: <thing> failed"` message; the sole exception is the matched `sessions_for_issue()`/`issue_effort()` pair (`history_reader.py:2117-2120`, `:2149-2152`) already covered above. Every site is exception-handler-identical in shape (`except sqlite3.Error:` → log → return empty/None) — the `.warning` vs `.error` choice does not correlate with table-vs-view, connect-vs-query, or any other structural condition visible at the call site, so a mechanical classifier cannot generalize the 2-site fix to the other 60 without new logic (e.g. checking `db_path.exists()` first, which `lookup_session_metadata`/`conversation_turns` already do as a third, undocumented convention — silently returning empty with no log at all when the db file itself is absent).
 
 _Added by `/ll:refine-issue` — 2026-08-17 — based on codebase analysis:_
@@ -446,11 +489,11 @@ _Added by `/ll:refine-issue` — 2026-08-17 — based on codebase analysis:_
 
 _Added by `/ll:refine-issue` — 2026-08-17 — based on codebase analysis:_
 
-> **Selected:** Option A — matches `doctor.py`'s existing read-only convention exactly, adds zero cost to the `ensure_db()` hot path, and stays inside the issue's own Scope Boundary of "a recorded decision, not full implementation."
+> **Selected:** Option A — matches `doctor.py`'s existing read-only convention exactly, adds zero cost to the `ensure_db()` hot path, ~~and stays inside the issue's own Scope Boundary of "a recorded decision, not full implementation."~~ **STRICKEN 2026-08-17 (pre-implementation review):** that clause predates the Scope Boundaries revision, which now states piece 2 *ships* as a working report-only detector. Option A is selected on convention and hot-path grounds alone — it is not a licence to record a decision and build nothing.
 
 **Option A**: Extend `cli/doctor.py`'s `_CHECKS` registry with a manifest-based structural check (report-only). Write a `_data()`-shaped helper returning `{"status","severity","note"}`, wrap it with `@register_check`, and `main_doctor()`'s `for check in _CHECKS:` loop picks it up automatically — no new subcommand plumbing. Matches the file's existing convention (every check in `doctor.py` is read-only; there is no `--fix`/repair vocabulary anywhere in it). Diagnose-only: an operator still has to act on the finding manually.
 
-**Option B**: Add a per-command `--fix` flag on a new/extended `ll-history doctor` subcommand (`cli/history.py`) that both diagnoses and repairs the structural drift in one surface, following `cli/docs.py --fix` and `cli/issues/epic_consistency.py --fix` precedent (self-describes its subject as "drift" throughout; `--fix` diagnoses, repairs, then re-diagnoses to report post-fix state). Self-healing, but a larger surface — new argument parsing, a repair code path, and re-diagnose-after-fix logic that Option A's registry does not need.
+**Option B**: Add a per-command `--fix` flag on a new/extended `ll-history` `doctor` subcommand (`cli/history.py`) that both diagnoses and repairs the structural drift in one surface, following `cli/docs.py --fix` and `cli/issues/epic_consistency.py --fix` precedent (self-describes its subject as "drift" throughout; `--fix` diagnoses, repairs, then re-diagnoses to report post-fix state). Self-healing, but a larger surface — new argument parsing, a repair code path, and re-diagnose-after-fix logic that Option A's registry does not need.
 
 Both options can detect drift; only Option B repairs it in the same invocation. Neither has prior precedent combining a PRAGMA-based structural check with its shape — this is a genuinely open choice, not a coin-flip: it hinges on whether piece 2 should stop at detection (matching the issue's Scope Boundaries, which asks only for "a recorded decision... not full implementation") or extend to self-healing (which Acceptance Criteria bullet 4 arguably already requires — see the Confidence Check Notes' flagged inconsistency).
 
@@ -458,12 +501,12 @@ Both options can detect drift; only Option B repairs it in the same invocation. 
 
 **Selected**: Option A — extend `cli/doctor.py`'s `_CHECKS` registry with a report-only manifest check.
 
-**Reasoning**: Option A matches the registry's own established convention exactly (every existing check in `doctor.py` is read-only; there is no `--fix`/repair vocabulary anywhere in the file), needs no new subcommand plumbing, and adds zero cost to `ensure_db()`'s hot path — sidestepping the startup-cost measurement the issue's Acceptance Criteria otherwise require for a fast-path check. It also stays inside the issue's own Scope Boundary ("a recorded decision... not their full implementation"). Option B's self-healing appeal presumes Acceptance Criteria bullet 4 requires a working repair path now — exactly the internal inconsistency the Confidence Check Notes flagged as unresolved between Scope Boundaries and AC bullet 4. Deferring repair to a follow-up issue is cheaper than building it against a contested requirement.
+**Reasoning**: Option A matches the registry's own established convention exactly (every existing check in `doctor.py` is read-only; there is no `--fix`/repair vocabulary anywhere in the file), needs no new subcommand plumbing, and adds zero cost to `ensure_db()`'s hot path — sidestepping the startup-cost measurement the issue's Acceptance Criteria otherwise require for a fast-path check. ~~It also stays inside the issue's own Scope Boundary ("a recorded decision... not their full implementation").~~ **STRICKEN 2026-08-17 (pre-implementation review):** stale against the revised Scope Boundaries — piece 2 ships a working detector under Option A; only *repair* is deferred. Option B's self-healing appeal presumes Acceptance Criteria bullet 4 requires a working repair path now — exactly the internal inconsistency the Confidence Check Notes flagged as unresolved between Scope Boundaries and AC bullet 4. Deferring repair to a follow-up issue is cheaper than building it against a contested requirement.
 
 | Option | Consistency | Simplicity | Testability | Risk | Total |
 |---|---|---|---|---|---|
 | A — doctor.py registry (report-only) | 3 | 3 | 3 | 3 | 12/12 |
-| B — `--fix` flag on `ll-history doctor` | 2 | 1 | 2 | 1 | 6/12 |
+| B — `--fix` flag on `ll-history` `doctor` | 2 | 1 | 2 | 1 | 6/12 |
 
 **Key evidence**:
 - `cli/doctor.py`'s `_CHECKS`/`register_check()` registry (`:81-87`) has zero `--fix`/repair vocabulary anywhere in the file; `_history_db_data()`/`_history_db_check()` (`:353-395`) is the direct precedent this check extends.
@@ -490,11 +533,18 @@ _These touchpoints were identified by wiring analysis and must be included in th
   registered in `package_data.py:PACKAGE_DATA_ASSETS`, loaded via `importlib.resources` by
   both the test and the check. Letting the two read different files would recreate this
   issue's own failure class inside the fix.
-- Decide `_CHECKS` vs. `_FULL_CHECKS` (`doctor.py:81-87` vs. `:484-490`) for the new check —
-  earlier passes were unaware the second registry exists. `_CHECKS` runs on every `ll-doctor`;
-  `_FULL_CHECKS` only under `--full`. Weigh the cost of a full PRAGMA sweep of `history.db`
-  against how often drift needs surfacing; a default-on check that is slow makes `ll-doctor`
-  worse for everyone, while a `--full`-only check may never be run by the person who needs it.
+- ~~Decide `_CHECKS` vs. `_FULL_CHECKS` (`doctor.py:81-87` vs. `:484-490`) for the new check.
+  Weigh the cost of a full PRAGMA sweep of `history.db` against how often drift needs
+  surfacing.~~ **RESOLVED 2026-08-17 (pre-implementation review): `_CHECKS`** — the default
+  registry, running on every `ll-doctor`. The cost premise behind the open question does not
+  hold: `PRAGMA table_info` / `index_list` / `index_info` read `sqlite_master` metadata only,
+  so the sweep is proportional to the ~10-table schema and **independent of the store's data
+  size** (5.8 GB on this repo). It is sub-millisecond, in the same class as the `SELECT 1` the
+  existing `_history_db_data()` (`doctor.py:353-395`) already performs from `_CHECKS`.
+  Against that, drift that only surfaces under `--full` will not be seen by the operator who
+  needs it — both known instances (BUG-3236, BUG-3241) went undetected for months precisely
+  because nothing surfaced them by default. Registering beside the existing `history.db`
+  check also keeps the two `.ll/history.db` findings adjacent in the report.
 - Provide a regeneration path for the manifest and document it in the test's failure message
   (e.g. a `python -m little_loops.session_store.schema --dump-manifest`-style hook, or an
   explicit "regenerate with: ..." line). Neither of the rejected conventions' tooling
@@ -512,7 +562,9 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - **Sequencing**: after **both** BUG-3236 and BUG-3241 — the manifest must be generated at
   v43 or later, or it bakes in exactly the index drift BUG-3241's v43 migration repairs. The
   earlier "taken against a correct v42 schema / independent of BUG-3241" note predates v43
-  and is wrong.
+  and is wrong. **Satisfied as of 2026-08-17**: both BUG-3236 and BUG-3241 are `done`
+  (verified via `ll-issues show`), and `SCHEMA_VERSION = 43` is live in the working tree, so
+  nothing blocks this issue — generate the manifest against the current schema.
 - **Breaking Change**: No.
 
 ## Acceptance Criteria
@@ -543,8 +595,17 @@ ships" was ambiguous about whether anything ships at all. Both are now concrete.
 - [ ] The check never creates or migrates `.ll/history.db`: it guards on `Path.exists()` and
       opens read-only, per `_history_db_data()`'s existing constraint. A test asserts running
       it in a directory with no `.ll/history.db` leaves none behind.
-- [ ] A decision is recorded on `_CHECKS` (every run) vs. `_FULL_CHECKS` (`--full` only) for
-      the new check, and on whether it surfaces in `ll-doctor --json`.
+- [ ] The check compares structure **only** when the database's recorded `meta.schema_version`
+      equals the manifest's. A database at an older version is reported as behind-and-will-
+      migrate (`informational`), **not** as drift; a newer version and a missing `meta` table
+      are likewise informational. Tests cover a v41 database (behind → informational, no drift
+      claim) alongside the healthy and drifted cases — without this the check's first
+      real-world output on any un-upgraded project is a false positive.
+- [ ] The drift `note` distinguishes objects/indexes missing from the database from those
+      present but absent from the manifest, rather than reporting an undifferentiated count.
+- [ ] The check is registered in `_CHECKS` (runs on every `ll-doctor`), not `_FULL_CHECKS` —
+      decided 2026-08-17, see Wiring Phase. A decision is recorded on whether it also surfaces
+      in `ll-doctor --json` (`_print_report()`, `doctor.py:951-971`).
 - [ ] Explicitly deferred, recorded in this issue rather than silently dropped: any repair
       path, the `queue_store.py` parallel manifest, and piece 3's log-level reclassification.
 - [ ] `python -m pytest scripts/tests/` exits 0.
@@ -566,7 +627,7 @@ _Added by `/ll:confidence-check` on 2026-08-17_
 **Outcome Confidence**: 49/100 → LOW
 
 ### Outcome Risk Factors
-- Piece 2's chosen shape (fast-path check in `ensure_db()` vs. a new `ll-history doctor` command) is genuinely undecided by the issue's own research findings — no existing precedent combines a PRAGMA-based structural check with either the `doctor.py` registry or a `--fix`-flag shape. Whichever is chosen, `ensure_db()` sits on nearly every `ll-*` invocation's hot path (~52 files via `cli_event_context()`, plus `hooks/session_start.py` independently) — a fast-path change is an 11+-caller blast radius, not an isolated one.
+- Piece 2's chosen shape (fast-path check in `ensure_db()` vs. a new `ll-history` `doctor` command) is genuinely undecided by the issue's own research findings — no existing precedent combines a PRAGMA-based structural check with either the `doctor.py` registry or a `--fix`-flag shape. Whichever is chosen, `ensure_db()` sits on nearly every `ll-*` invocation's hot path (~52 files via `cli_event_context()`, plus `hooks/session_start.py` independently) — a fast-path change is an 11+-caller blast radius, not an isolated one.
 - Scope Boundaries states pieces 2 and 3 need only "a recorded decision... not their full implementation," but Acceptance Criteria bullet 4 ("Whichever ships detects a database stamped current but structurally drifted, on both known shapes") reads as requiring piece 2 to actually ship a working detector, not just a documented decision. Resolve this internal inconsistency before implementation to avoid over- or under-building piece 2.
 
 ### Review-Pass Resolutions — 2026-08-17
@@ -584,8 +645,37 @@ _Added by `/ll:confidence-check` on 2026-08-17_
   revised to carry `unique`/`partial`/`origin`/columns per index. Outcome confidence should
   be re-scored against the revised Program Design.
 
+### Second Review Pass — 2026-08-17 (verified against the working tree)
+
+Three changes, all recorded in place above rather than as a separate plan:
+
+1. **The check had no `schema_version` guard — a false-positive generator.** The Call Path
+   went from "open read-only" straight to "compare against the v43 manifest", but the check
+   deliberately never migrates, so it will meet databases legitimately sitting below v43.
+   Those are behind, not drifted, and would have been reported as drift in every object added
+   since their version — meaning the check's first output on any un-upgraded project is
+   wrong. Resolved: a four-branch version guard is now specified under Program Design > Call
+   Path, with a matching AC bullet and a v41 test case. This is the finding most likely to
+   have shipped as a defect.
+2. **`_CHECKS` vs `_FULL_CHECKS` decided: `_CHECKS`.** The open question weighed a "full
+   PRAGMA sweep" cost that does not exist — PRAGMA introspection reads `sqlite_master`
+   metadata and is independent of the 5.8 GB data size, putting it in the same class as the
+   `SELECT 1` `_history_db_data()` already runs by default. A `--full`-gated check would not
+   have surfaced either known instance. Reasoning recorded at the Wiring Phase bullet; AC
+   bullet updated from "record a decision" to the decision itself.
+3. **Two stale Option-A justifications struck.** Both the `> **Selected:**` blockquote and the
+   Decision Rationale still justified Option A partly as "stays inside the issue's own Scope
+   Boundary ('a recorded decision, not full implementation')" — written before Scope
+   Boundaries was revised to state piece 2 *ships*. Left as strikethrough rather than deleted,
+   per this issue's existing correction convention. An implementer reading only the Decision
+   Rationale would otherwise have shipped a decision record and no detector.
+
+Also confirmed: BUG-3236 and BUG-3241 are both `done`, so the Impact > Sequencing constraint
+is satisfied and nothing blocks implementation.
+
 
 ## Session Log
+- `/ll:format-issue` - 2026-08-17T21:42:04 - `878d0e98-a6e4-41e7-80a9-53a56e3db6f7.jsonl`
 - `/ll:confidence-check` - 2026-08-17T20:20:09 - `fe71c380-6bd8-44e2-9c73-d0617456c6e4.jsonl`
 - `/ll:confidence-check` - 2026-08-17T20:06:56 - `86ab77f1-d20d-487b-9f55-2f4d8abf9a06.jsonl`
 - `/ll:wire-issue` - 2026-08-17T20:02:00 - `39c0d6a6-4890-4cb9-b9a6-2422918637ba.jsonl`

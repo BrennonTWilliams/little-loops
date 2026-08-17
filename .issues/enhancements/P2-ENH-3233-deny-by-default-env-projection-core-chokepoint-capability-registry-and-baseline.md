@@ -217,6 +217,12 @@ ENH-3203 effort per its Scope Boundaries section):
 - **Breaking Change**: No — `env_allow=None` (the default) is a strict no-op for every existing
   call site.
 
+
+## Blocks
+
+- ENH-3234
+- ENH-3235
+
 ## Status
 
 **Open** | Created: 2026-08-17 | Priority: P2

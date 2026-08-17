@@ -13,6 +13,12 @@ relates_to:
 - ENH-3247
 - ENH-3248
 - ENH-3238
+confidence_score: 100
+outcome_confidence: 100
+score_complexity: 25
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # ENH-3246: Widen reconcile-issue's rewrite mandate to the whole Integration Map
@@ -83,13 +89,23 @@ accumulate.
 1. In `commands/reconcile-issue.md`, replace rewrite-list entry 3 (`### Files to Modify`) with
    `## Integration Map` — the whole section, subsections included.
 2. Remove `## Integration Map`'s subsections from the "Preserve untouched" enumeration.
-3. Leave every other contract term unchanged — in particular the two guardrails that make this safe:
+3. **Add an explicit wiring-marker preservation rule.** `_Wiring pass added by \`/ll:wire-issue\`:_`
+   blocks are reconcile's **input** wherever they appear, and must stay preserved even inside a
+   now-rewritable subsection. This is a genuine gap in the current preserve list, not a restatement:
+   the existing term preserves the `### Wiring Phase` H3 (under `## Implementation Steps`), but
+   `/ll:wire-issue` also deposits marker blocks *directly inside* `### Dependent Files
+   (Callers/Importers)`, `### Tests`, and `### Documentation` — exactly the subsections this issue
+   makes writable. BUG-3245's own file is the specimen: four separate `_Wiring pass added by …:_`
+   blocks nested under Integration Map subsections (`:234-250`, `:254-278`). Without this rule, the
+   widening lets reconcile rewrite its own source, which is the circularity the existing
+   findings-preservation term exists to prevent.
+4. Leave every other contract term unchanged — in particular the two guardrails that make this safe:
    - **Source restriction**: "You are reconciling the issue *against itself* — do not go re-research
      the codebase (that is `/ll:refine-issue`'s job) and do not verify paths against the tree (that
      is `/ll:ready-issue`'s job)."
    - **Tracing requirement**: "Every rewritten claim must trace to an existing finding … if a
      directive bullet has no supporting finding, leave it as-is and note it under `## CONCERNS`."
-4. Regenerate host mirrors with `ll-adapt` (see Integration Map).
+5. Regenerate host mirrors with `ll-adapt` (see Integration Map).
 
 ### Behavior Parity
 
@@ -104,14 +120,16 @@ current contract, with its disposition:
 | Conditionally rewrites `## Scope Boundaries` on a findings contradiction (ENH-2937) | **Preserved** — the conditional guard and its precondition are unchanged |
 | Clears `⚠ Superseded` markers on every directive line evaluated, including the no-op branch | **Preserved** — unchanged; `autodev.yaml`'s `check_reconcile_needed` routes on marker presence and must keep working |
 | Preserves `### Codebase Research Findings` / `### Wiring Phase` | **Preserved** — these are reconcile's input; still never written |
+| Preserves `_Wiring pass added by …:_` blocks nested *inside* Integration Map subsections | **Newly stated** — previously covered only incidentally, by the blanket preservation of those subsections. That blanket is being dropped, so this becomes an explicit term (Proposed Solution § 3). Same rationale as the findings-preservation term: it is reconcile's input. |
 | Preserves `## Summary` / `## Motivation` / `## Current Behavior` / `## Expected Behavior` / `## Proposed Solution` | **Preserved** — unchanged |
 | Preserves `## Integration Map`'s four non-`Files to Modify` subsections | **Dropped** — this is the point of the issue; they become rewritable |
 | Source restriction: reconciles the issue against itself, never re-researches the codebase | **Preserved** — explicitly unchanged |
 | Tracing requirement: unsupported bullets stay as-is and go to `## CONCERNS` | **Preserved** — this is the guardrail that makes the widening safe |
 | Arms `reconcile_attempted: true` before rewriting | **Preserved** — unchanged |
 
-Nothing is dropped except the preservation of the four subsections, which is the change itself. No
-behavior is silently lost.
+Nothing is dropped except the preservation of the four subsections, which is the change itself — and
+the wiring-marker blocks nested inside them are re-preserved by an explicit term so that drop does
+not silently take them along. No behavior is silently lost.
 
 ## Integration Map
 
@@ -161,6 +179,11 @@ behavior is silently lost.
   loosening — the rewrite list stays a closed enumeration.
 - **Bounding guardrails (unchanged)**: self-referential source only; every rewritten claim traces to
   an existing finding; unsupported bullets go to `## CONCERNS` rather than being invented.
+- **Input blocks stay preserved regardless of which section holds them.** The preserve/rewrite line is
+  drawn by *provenance*, not by *location*: a `_Wiring pass added by …:_` or
+  `_Added by \`/ll:refine-issue\` …:_` block is machine-deposited research that reconcile reads, so it
+  is preserved even when nested inside a subsection that is otherwise rewritable. Location-based
+  preservation was sufficient only while the whole subsection was off-limits.
 - **Why unconditional**: unlike ENH-2937's Scope Boundaries carve-out, these subsections hold
   machine-deposited directive content, not human prose, so no contradiction precondition is needed.
 
@@ -173,9 +196,12 @@ behavior is silently lost.
 
 1. Replace rewrite-list entry 3 with `## Integration Map` in `commands/reconcile-issue.md`.
 2. Remove those subsections from the "Preserve untouched" enumeration.
-3. Regenerate the three host mirrors via `ll-adapt`.
-4. Add the content-assertion tests.
-5. `python -m pytest scripts/tests/` exits 0.
+3. Add the wiring-marker preservation term to the preserve list, scoped by provenance rather than
+   location (Proposed Solution § 3).
+4. Regenerate the three host mirrors via `ll-adapt`.
+5. Add the content-assertion tests, including one asserting the wiring-marker term is present and
+   that `### Tests` / `### Dependent Files (Callers/Importers)` no longer appear in the preserve list.
+6. `python -m pytest scripts/tests/` exits 0.
 
 ## Impact
 
@@ -197,7 +223,10 @@ required codebase probing and remain out of reconcile's reach by design — that
 
 **Not touching the preserved research sections.** `### Codebase Research Findings` and
 `### Wiring Phase` stay on the preserve list — they are reconcile's *input*, and letting it rewrite
-its own source would be circular. Structural debris inside them is ENH-3247's subject.
+its own source would be circular. **This extends to `_Wiring pass added by …:_` and `_Added by
+\`/ll:refine-issue\` …:_` blocks nested inside the newly-rewritable Integration Map subsections** —
+preservation follows provenance, not location (Proposed Solution § 3, Decision Rules). Structural
+debris inside any of them is ENH-3247's subject.
 
 ## Related Issues
 
@@ -209,6 +238,11 @@ its own source would be circular. Structural debris inside them is ENH-3247's su
 ## Related Key Documentation
 
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
+
+
+## Blocks
+
+- ENH-3248
 
 ## Status
 

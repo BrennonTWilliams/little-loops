@@ -17,6 +17,12 @@ relates_to:
 - BUG-3245
 - ENH-3238
 depends_on: []
+confidence_score: 80
+outcome_confidence: 68
+score_complexity: 14
+score_test_coverage: 18
+score_ambiguity: 18
+score_change_surface: 18
 ---
 
 # ENH-3248: Triage the refine-to-ready-issue retry path by failure kind instead of always refining
@@ -70,8 +76,11 @@ normalize (deterministic, no LLM)  →  reconcile (self-referential)  →  refin
 - **Unfilled placeholders / stale directive sections / non-automatable ACs** → `/ll:reconcile-issue`
   (ENH-3246). Reads the issue's own findings; no codebase research.
 - **Claim/codebase mismatch, low readiness** → `refine_followup`. Unchanged.
+- **Missing/failing Program Design (BUG-3249's new `check_design` gate)** → `refine_followup`
+  **directly**, skipping both cheaper rungs. See Decision Rules › Design-gap exception.
 
-A retry escalates to `refine_followup` only when the cheaper remedies cannot clear the gate.
+A retry escalates to `refine_followup` only when the cheaper remedies cannot clear the gate — except
+for the design-gap kind, where the cheaper rungs are known-incapable rather than merely untried.
 
 ## Motivation
 
@@ -164,6 +173,20 @@ most common failure kinds into the cheapest remedies.
 - **Remedy-capability match**: a gate routes to a remedy only if that remedy can perform the
   operation the failure requires (delete / rewrite / research). This is the invariant the current
   design violates.
+- **Design-gap exception: cheapest-first is subordinate to remedy-capability.** BUG-3249 adds a
+  `check_design` gate to this loop. Its failure kind routes **straight to `refine_followup`**, not
+  through `normalize_structure` or `reconcile_issue`. This is not a violation of the escalation order
+  — it is the capability rule taking precedence, and two completed issues make it a fact rather than
+  a judgment call:
+  - **BUG-3002** (done) — *"autodev routes `design_gate_failed` to reconcile-issue, whose contract
+    excludes the Program Design section"*. Reconcile **cannot** write `## Program Design`. Sending a
+    design-gap failure down the reconcile rung re-creates a bug that was already fixed once.
+  - **BUG-3001** (done) — *"refine-issue never populates `## Program Design` despite being the
+    prescribed remedy for the gate"*. Now fixed, so refine is the capable remedy.
+
+  A missing design section is *absent research*, not *stale or malformed text*, so no deterministic
+  normalize and no self-referential rewrite can produce it. Generalized: **the ladder is ordered by
+  cost only among remedies that are capable; an incapable rung is skipped, not tried.**
 - **Escalation is mandatory, not optional**: every new state is bounded by a per-run counter and
   falls through to `check_refine_limit`, so a failure the cheap remedies cannot fix still reaches
   refine and ultimately `breakdown_issue`.
@@ -223,20 +246,58 @@ makes it safe to run repeatedly. Removal capability comes from the other two rem
 
 ## Related Issues
 
-- ENH-3244 — supplies the placeholder gate this triage routes.
+- ENH-3244 — **supplies the placeholder signal this triage routes, and nothing more.** ENH-3244 is
+  detection-only by decision: it adds the `format-check` gap class and JSON key, and this issue owns
+  every `refine-to-ready-issue.yaml` edit. Both previously proposed adding a gate to that file, which
+  would have been a merge collision in the same sprint wave.
+- BUG-3249 — adds the `check_design` gate to this loop. Sequenced **after** this issue, and its
+  failure kind takes the design-gap exception in Decision Rules (straight to `refine_followup`).
 - BUG-3245 — removes the debris the current additive retry creates.
+- BUG-3001, BUG-3002 (both done) — the evidence behind the design-gap exception.
 - ENH-3238 — the run that surfaced this.
 
 ## Related Key Documentation
 
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
 
+
+## Blocks
+
+- BUG-3249
+- ENH-3250
+
 ## Status
 
 **Open** | Created: 2026-08-17 | Priority: P2
 
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-08-17_
+
+**Readiness Score**: 80/100 → STOP — ADDRESS GAPS (hard override; would otherwise be PROCEED WITH CAUTION)
+**Outcome Confidence**: 68/100 → MODERATE
+
+### Concerns
+- Both `blocked_by` dependencies (ENH-3246, ENH-3247) are still `open`, not `done`/`cancelled` — the
+  Implementation Steps section itself calls both "hard prerequisites," so this issue cannot be
+  implemented as written until they land.
+
+### Gaps to Address
+- Land ENH-3247 (`format-check --fix` structural repairs) before `normalize_structure` has anything
+  to call.
+- Land ENH-3246 (widened reconcile mandate) before routing placeholder/AC failures to
+  `reconcile_issue` is safe.
+
+### Outcome Risk Factors
+- Moderate complexity: the change is concentrated in one file
+  (`scripts/little_loops/loops/refine-to-ready-issue.yaml`) but touches many distinct locations
+  (two new states, two retargeted gates, counter init, four enumeration blocks, `max_steps`
+  arithmetic), with real risk of phantom convergence against the existing
+  `circuit.repeated_failure` stall detector if the new attempt counters are wired incorrectly.
+
 ## Session Log
+- `/ll:confidence-check` - 2026-08-17T21:35:01 - `878d0e98-a6e4-41e7-80a9-53a56e3db6f7.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-17T20:25:54 - `fe71c380-6bd8-44e2-9c73-d0617456c6e4.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-17T20:13:03 - `ffec4b47-4ed9-4eda-baf1-3dc49ac82fa1.jsonl`
 - `/ll:capture-issue` - 2026-08-17T19:29:38 - `3ce34465-00fd-4ba7-a470-b61774849ebd.jsonl`

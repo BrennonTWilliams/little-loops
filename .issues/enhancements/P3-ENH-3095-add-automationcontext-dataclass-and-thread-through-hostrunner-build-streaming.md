@@ -74,6 +74,12 @@ unblocks ENH-3096 (`ActionRunner` boundary) and ENH-3097
 (`run_claude_command()` / caller boundary), which both need to import the
 `AutomationContext` type defined here.
 
+
+## Blocks
+
+- ENH-3096
+- ENH-3097
+
 ## Status
 
 Open — unblocked. FEAT-3078 and BUG-3112 have both landed (`status: done`),

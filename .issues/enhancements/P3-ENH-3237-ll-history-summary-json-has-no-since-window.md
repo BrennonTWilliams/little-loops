@@ -1,11 +1,22 @@
 ---
+id: ENH-3237
+type: ENH
+title: '`ll-history summary --json` has no `--since`, so downstream tools query history.db
+  directly'
+priority: P3
+status: open
+testable: true
 discovered_commit: c01ee04200af9190db777a8b60a942e693a43e32
 discovered_branch: main
 discovered_date: 2026-08-17T18:30:00Z
 discovered_by: little-loops-hermes
 confidence_score: 90
 outcome_confidence: 75
-status: open
+labels:
+- enhancement
+- cli
+- history
+- integration
 ---
 
 # ENH-3237: `ll-history summary --json` has no `--since`, so downstream tools query `history.db` directly
@@ -62,6 +73,7 @@ tool asks a question instead of reading a table.
 
 ## Expected Behavior
 
+<!-- ll-prose-ok: `--since` is the flag this issue proposes; it does not exist yet -->
 `ll-history summary --json --since <DATE>` returns the same summary shape
 restricted to the window, and includes loop-run counts from `loop_runs`.
 
@@ -74,6 +86,15 @@ metric the store cannot answer is **null rather than 0** — a caller that
 cannot distinguish "not recorded" from "nothing happened" will report the
 first as the second, which is exactly the bug this request came out of.
 
+_Added by pre-implementation review — 2026-08-17:_ the same contract requires
+the JSON to name **which store answered**. `summary` reads `issue_events` when
+the DB is populated and falls back to parsing issue *files* when it is not
+(`cli/history.py:285-292`) — two sources that disagree by ~40% on this repo (the
+107-vs-66 gap below). A windowed consumer that cannot tell which one it got
+will silently mix them across polls. Emit `"source": "issue_events" | "files"`
+alongside the counts. This does not resolve the discrepancy — that stays
+deferred — it makes the deferral safe by making the number self-describing.
+
 ## Location
 
 - **File**: `scripts/little_loops/cli/history.py`
@@ -82,25 +103,167 @@ first as the second, which is exactly the bug this request came out of.
 
 ## Implementation Steps
 
-1. Add `--since` (and optionally `--until`) to `summary_parser`, matching
-   `analyze`'s `-S` short flag and `YYYY-MM-DD` metavar.
-2. Filter in `scan_completed_issues_from_db` (or at `calculate_summary`) by the
-   window; keep the file-parsing fallback path consistent with it.
-3. Add loop-run counts for the window from `loop_runs`, distinguishing runs
-   *started* from runs *ended* in it — they are different questions and both
-   have callers.
-4. Emit `null`, not `0`, for anything the window cannot be computed for.
-5. Tests covering: window boundaries, an empty window on a populated store
-   (must not read as an unpopulated store), and the file-fallback path.
+_Reordered by pre-implementation review — 2026-08-17. Step 1 was previously step
+2's parenthetical; it must come first because every later step depends on it,
+and implementing the old step 2 as written introduces the very defect step 5
+tests for. See Program Design > The fallback trap._
+
+1. **Fix the fallback trigger before adding any window.** `cli/history.py:285-292`
+   currently reads `issues = scan_completed_issues_from_db(db); if not issues:
+   issues = scan_completed_issues(issues_dir)` — it falls back on *zero rows*,
+   not on *no database*. Change the trigger to "DB absent or unqueryable" so an
+   empty result is a real answer. Without this, a legitimately empty window
+   silently falls through to an unfiltered file scan.
+2. Add `--since` (and optionally `--until`) to `summary_parser`
+   (`cli/history.py:66-79`), matching `analyze`'s `-S` short flag and
+   `YYYY-MM-DD` metavar (`:119-130`).
+3. Apply the window filter. With step 1 done, `scan_completed_issues_from_db`
+   (`issue_history/parsing.py:411`) is a safe place for it; the file-parsing
+   path must apply the same window so the two sources stay comparable.
+4. Extend the summary shape with loop-run counts for the window from `loop_runs`
+   (`session_store/schema.py:557-570`), distinguishing runs *started* from runs
+   *ended* in it — they are different questions and both have callers. Note
+   in-flight runs carry `ended_at IS NULL`, so they count as started-not-ended
+   rather than as absent.
+5. Emit `null`, not `0`, for anything the window cannot be computed for, and
+   emit `"source"` naming which store answered (see Expected Behavior).
+6. Decide and document what `velocity` / `date_range_days`
+   (`issue_history/models.py:56-68`) mean under a window — see Program Design.
+7. Tests covering: window boundaries; an empty window on a populated store
+   (must return zeros with `source: issue_events`, **not** fall through to the
+   file scan); the file-fallback path when the DB is genuinely absent; and a
+   loop-run window with an in-flight run.
 
 ## Integration Map
 
-- **Modified**: `scripts/little_loops/cli/history.py` — `summary` parser and
-  dispatch
-- **Likely modified**: the `scan_completed_issues_from_db` / `calculate_summary`
-  pair, wherever the window filter lands
+- **Modified**: `scripts/little_loops/cli/history.py` — `summary` parser
+  (`:66-79`), dispatch (`:285-300`), and the fallback trigger at `:285-292`
+- **Modified**: `scripts/little_loops/issue_history/parsing.py:411`
+  (`scan_completed_issues_from_db`) — where the window filter lands
+- **Modified**: `scripts/little_loops/issue_history/summary.py:21`
+  (`calculate_summary`)
+- **Modified**: `scripts/little_loops/issue_history/models.py:46-76`
+  (`HistorySummary`) — *added by the 2026-08-17 review; previously unlisted.*
+  This dataclass **is** the JSON contract: `to_dict()` at `:70-76` produces the
+  `--json` payload. It has no loop-run fields today, so step 4 requires
+  extending it (or introducing a sibling), and the `"source"` field lands here
+  too. Its `velocity` (`:63-68`) and `date_range_days` (`:56-61`) properties
+  derive from *observed* earliest/latest completion dates, not a requested
+  window — see Program Design.
+- **Read, not modified**: `scripts/little_loops/session_store/schema.py:557-570`
+  (`loop_runs` DDL) — confirms `started_at` and `ended_at` both exist, so step
+  4's started-vs-ended split is implementable as specified.
 - **Downstream consumer**: `little-loops-hermes`
-  `src/little_loops_hermes/db/history.py` drops its raw SQL once this exists
+  `src/little_loops_hermes/db/history.py` drops its raw SQL once this exists.
+  (Flagged `stale_file_ref` by `ll-issues format-check` — expected: it is a path
+  in a *separate* repository, not this one, and is not meant to be git-tracked
+  here.)
+
+## Program Design
+
+_Added by pre-implementation review — 2026-08-17._
+
+### Signatures
+
+- `scan_completed_issues_from_db(db_path: Path, since: date | None = None, until: date | None = None) -> list[CompletedIssue]`
+  (`issue_history/parsing.py:411`) — window params added; existing callers unaffected by the
+  defaults.
+- `calculate_summary(issues: list[CompletedIssue], *, source: str, since: date | None = None, until: date | None = None) -> HistorySummary`
+  (`issue_history/summary.py:21`) — takes the resolved source and bounds so the window can be
+  recorded on the result rather than inferred from the data.
+- `HistorySummary.to_dict(self) -> dict[str, Any]` (`issue_history/models.py:70`) — gains
+  `source`, the loop-run counts, and the window bounds.
+- `HistorySummary.velocity(self) -> float | None` (`issue_history/models.py:63`) — denominator
+  semantics decided below.
+
+### Call Path
+
+<!-- ll-prose-ok: `--since` is the flag this issue proposes; it does not exist yet -->
+`ll-history summary --json --since` → `HistoryCLI.run()` (`cli/history.py:285`) → source
+selection (**the fallback trap below**) → `scan_completed_issues_from_db()`
+(`issue_history/parsing.py:411`) *or* `scan_completed_issues()` on the file path → windowed
+`loop_runs` query against `session_store/schema.py:557-570` → `calculate_summary()`
+(`issue_history/summary.py:21`) → `format_summary_json()` → stdout.
+
+### The fallback trap
+
+`cli/history.py:285-292` selects its source by result-emptiness, not by source
+availability:
+
+```python
+issues = scan_completed_issues_from_db(db_path)
+if not issues:                                    # ← triggers on zero ROWS
+    issues = scan_completed_issues(issues_dir)
+```
+
+Today that is harmless: zero `done` rows in a populated store is rare and the
+file scan is a reasonable guess. **Under `--since` it becomes a defect.** A
+window with no completions is the common case (ask about yesterday, ask about a
+quiet week), and it returns `[]` from the DB path — which trips the fallback,
+runs an unfiltered file scan, and returns an all-time file-derived summary
+labeled as a window. The caller sees a large number where the truthful answer
+was zero. That is the same class of failure this issue was filed to prevent, so
+it must not be introduced by the fix.
+
+Fix: gate the fallback on source availability — DB file absent, or the
+`issue_events` query raising — not on row count. `scan_completed_issues_from_db`
+already distinguishes these internally (`parsing.py:425-427` returns `[]` for a
+missing path; `:440-443` returns `[]` on a failed read) but collapses both into
+the same empty list the caller cannot interpret. Either return a sentinel that
+separates "no such store" from "no matching rows", or hoist the
+`db_path.exists()` check into the dispatch.
+
+### Windowed velocity
+
+`HistorySummary.velocity` divides `total_count` by `date_range_days`, which is
+computed from the earliest and latest completion actually *observed*
+(`models.py:56-68`). Under a window those are the observed dates **within** the
+window, not the window's own bounds — so a `--since 2026-01-01` query on a store
+whose only two completions are in March reports velocity over the March span,
+not over the requested range. Both readings are defensible; the current one is
+not obviously wrong, only unstated. Decide and document one:
+
+- **Observed range** (status quo, no code change): velocity describes the burst,
+  not the window. Cheap, but two callers passing the same `--since` get
+  different denominators as data arrives.
+- **Requested range** (denominator = the `--since`/`--until` span): stable across
+  polls and comparable between windows, which is what a polling consumer wants.
+  Requires threading the bounds into `HistorySummary`.
+
+Recommend the requested range when both bounds are given, falling back to
+observed when `--until` is omitted and the window is open-ended.
+
+### Source disclosure
+
+`to_dict()` gains `"source": "issue_events" | "files"`. This is the minimum that
+keeps the deferred 107-vs-66 discrepancy from becoming a silent one: the two
+sources answer different questions (`issue_events` records emitted events;
+`analyze` and the file fallback scan completed issue *files*), and a consumer
+polling across a fallback boundary would otherwise attribute the jump to real
+activity.
+
+## Acceptance Criteria
+
+<!-- ll-prose-ok: `--since` is the flag this issue proposes; it does not exist yet -->
+- [ ] `ll-history summary --json --since YYYY-MM-DD` restricts the summary to
+      the window; `--until` is accepted for symmetry with `analyze`.
+- [ ] The source fallback triggers on DB absence/unqueryability, **not** on zero
+      rows. A test asserts that an empty window on a populated store returns
+      zero counts with `source: issue_events` and does not fall through to the
+      file scan.
+- [ ] The JSON payload names its source as `"source": "issue_events" | "files"`.
+- [ ] Loop-run counts for the window are included, distinguishing runs started
+      from runs ended, with in-flight runs (`ended_at IS NULL`) counted as
+      started-not-ended.
+- [ ] Metrics the window cannot answer are `null`, not `0`.
+- [ ] The meaning of `velocity` / `date_range_days` under a window is decided,
+      implemented, and documented in `docs/reference/CLI.md`.
+- [ ] Default behavior is unchanged when neither flag is passed (additive).
+- [ ] `python -m pytest scripts/tests/` exits 0.
+
+## Status
+
+- [ ] open
 
 ## Scope Boundaries
 
@@ -118,3 +281,7 @@ first as the second, which is exactly the bug this request came out of.
 ## Labels
 
 `enhancement`, `cli`, `history`, `integration`
+
+
+## Session Log
+- `/ll:format-issue` - 2026-08-17T21:38:25 - `878d0e98-a6e4-41e7-80a9-53a56e3db6f7.jsonl`

@@ -221,6 +221,11 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - **Risk**: Low — Purely additive; existing PostToolUse handler unchanged until stabilization confirms parity
 - **Breaking Change**: No
 
+
+## Blocks
+
+- EPIC-2149
+
 ## Status
 
 **Open** | Created: 2026-06-13 | Priority: P2

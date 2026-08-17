@@ -167,6 +167,11 @@ _Added by `/ll:refine-issue` — concrete steps grounded in actual file referenc
 - **Risk**: Low — research/docs; may surface upstream oh-my-pi gaps.
 - **Breaking Change**: No.
 
+
+## Blocks
+
+- FEAT-2261
+
 ## Status
 
 **Open** | Created: 2026-06-24 | Priority: P4

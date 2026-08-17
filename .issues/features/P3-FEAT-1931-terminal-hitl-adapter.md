@@ -203,6 +203,11 @@ state, so it only needs to render, not resolve variables.
 - [HOST_COMPATIBILITY.md](../../docs/reference/HOST_COMPATIBILITY.md) — host CLI abstraction layer
 
 ---
+
+## Blocks
+
+- FEAT-2102
+
 ## Status
 
 open

@@ -13,7 +13,7 @@ relates_to:
 - BUG-3245
 - ENH-3246
 - ENH-3248
-confidence_score: 90
+confidence_score: 100
 outcome_confidence: 82
 score_complexity: 14
 score_test_coverage: 25
@@ -276,6 +276,13 @@ _Added by `/ll:refine-issue` — 2026-08-17 — based on codebase analysis:_
   heading or empty stub that exists only inside a code fence is *not* a gap — it is documentation.
   See Proposed Solution step 0 for the empirical confirmation and the `_duplicate_findings_blocks()`
   decision this forces.
+- **`empty_provenance_stub` is owned here, not by ENH-3244.** ENH-3244's pattern list previously
+  included the same shape ("an `_Added by …:_` stub with no bullet before the next heading"), which
+  would have put two detectors for one defect into the same dataclass in the same file. Ownership is
+  now strict: this issue owns stub emptiness (a **line-adjacency** check, built on `_paragraph_spans`
+  — `issue_parser.py:1100-1117`); ENH-3244 owns literal template strings (a **containment** check
+  against `scripts/little_loops/templates/`). ENH-3244 is `blocked_by` this issue and adds its class
+  alongside these two rather than racing them.
 - **`Codebase Research Findings` carve-out**: `duplicate_heading` **excludes** the exact heading text
   `Codebase Research Findings`, deferring to the pre-existing `duplicate_findings_block` class
   (`issue_parser.py:1049`), which already detects it per-H2 and has a dedicated repair path
@@ -383,13 +390,22 @@ Impact › Risk — sweep blast radius. Extending them to `--all` is a separate 
 - BUG-3245 — stops new duplicate headings and empty stubs being created; this issue cleans existing
   ones. Both are needed; neither blocks the other. BUG-3245's own file is this issue's real-world
   duplicate-heading fixture and is deliberately left uncleaned until this issue's detection lands.
-- ENH-3244 — placeholder detection, which lands in the same `format-check` payload.
+- ENH-3244 — placeholder detection, which lands in the same `format-check` payload and is
+  `blocked_by` this issue. **Ownership split (see Decision Rules):** `empty_provenance_stub` is this
+  issue's; literal template strings are ENH-3244's. Note ENH-3244 additionally needs *inline-code*
+  masking that this issue's fence-only masking does not provide — its own file is the counter-example.
 - ENH-3246 — owns the non-deterministic half (filling placeholders from findings).
 - ENH-3248 — consumes this as the first, cheapest stage of the retry triage.
 
 ## Related Key Documentation
 
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
+
+
+## Blocks
+
+- ENH-3244
+- ENH-3248
 
 ## Status
 
@@ -401,6 +417,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 **Note** (added by `/ll:audit-issue-conflicts`): This issue and ENH-2966 both modify `check_format_gaps`/`FormatGaps` in `scripts/little_loops/issue_parser.py` for unrelated gap classes (ENH-3247's two new structural-debris gap classes vs. ENH-2966's testable-keyword scan surface). Coordinate implementation order to avoid a merge collision in the same function.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-17T21:34:22 - `878d0e98-a6e4-41e7-80a9-53a56e3db6f7.jsonl`
 - `/ll:confidence-check` - 2026-08-17T20:31:13 - `e97f4c03-b671-421e-ac95-ea56a86f3a4e.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-17T20:25:55 - `fe71c380-6bd8-44e2-9c73-d0617456c6e4.jsonl`
 - `/ll:confidence-check` - 2026-08-17T20:10:26 - `37e075a7-49b8-44db-b567-e15852c40c0b.jsonl`

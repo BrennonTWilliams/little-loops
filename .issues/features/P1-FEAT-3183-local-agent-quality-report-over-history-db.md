@@ -476,6 +476,11 @@ Remaining unresolved:
    already-written null rows, so the coverage gate is required either way. Sequencing is the only
    question, not necessity.
 
+
+## Blocks
+
+- ENH-3211
+
 ## Status
 
 - [ ] open

@@ -77,29 +77,88 @@ event payload.
 
 ## Integration Map
 
+_Added by pre-implementation review — 2026-08-17 — verified against the working tree._
+
 ### Files to Modify
-- TBD - requires codebase analysis
+
+- `scripts/little_loops/fsm/executor.py` (`:2304-2337`) — the emit site. The `payload` dict is
+  built at `:2304`; `self._emit("action_complete", payload)` fires at `:2337`. **Both values
+  are already in scope**: `self.current_state` is used ten lines below at `:2333`
+  (`self._usage_events_collected.append((self.current_state, usage))`), and `self.iteration`
+  is an executor attribute initialized at `:253` and incremented at `:604`/`:664`/`:2815`.
+  Other events already emit it under the key `"iteration"` (`:670`, `:2821`) — match that key
+  exactly rather than inventing a variant.
+- `scripts/little_loops/generate_schemas.py` (`:136-159`) —
+  `SCHEMA_DEFINITIONS["action_complete"]` is the wire-format contract. Add `state` and
+  `iteration` properties. **Keep them out of the `required` list** (currently
+  `["exit_code", "duration_ms", "is_prompt"]`) — the second emitter below cannot supply them.
+  Regenerate `docs/reference/schemas/` via `ll-generate-schemas`.
+- `scripts/little_loops/observability/schema.py` (`:267-273`) — `ActionCompleteVariant`
+  (frozen dataclass, currently carries `exit_code` / `duration_ms`). Add the two fields with
+  defaults, matching the `EvaluateVariant` shape at `:290-296`.
 
 ### Dependent Files (Callers/Importers)
-- TBD - use grep to find references
+
+- `scripts/little_loops/cli/loop/audit.py` (`:177-215`) — **the consumer this obsoletes.**
+  `audit_run()`'s docstring at `:181-184` asserts *"the `state_enter`-tracking correlation
+  technique ... to attribute `action_complete`/`evaluate` events to the state active when
+  they fired (neither event type carries its own `state` field)"* — false once this lands.
+  It tracks `current_state` from `state_enter` at `:207-210` and applies it to
+  `action_complete` at `:211-215`. Either update the docstring or read the direct field with
+  the correlation retained as fallback (see the archived-run AC below).
+- `scripts/little_loops/analytics/variance.py` (`_correlate_verdicts`) — the technique
+  `audit.py:181` cites as its precedent; same correlation, same staleness question.
+- `scripts/little_loops/cli/action.py` (`:255`) — **a second, independent `action_complete`
+  emitter**, from `ll-action` outside any FSM. It has no state, no iteration, and emits no
+  `session_jsonl`, so it is out of scope (see Scope Boundaries) — but it is the reason the new
+  schema fields must be optional rather than required.
+- `scripts/little_loops/cli/loop/info.py` (`:800-818`) — renders `action_complete` for
+  `ll-loop history`, and already special-cases `session_jsonl` at `:811-813`. The natural
+  place to *display* the state next to the transcript path; optional, not required by the ACs.
+- `scripts/little_loops/transport.py` (`:405-406`, `_handle_action_complete()` at `:456`) and
+  `scripts/little_loops/fsm/persistence.py` (`:777`, `usage.jsonl` writer) — additive-field
+  consumers; listed to confirm no change is needed, per the "existing readers tolerate" AC.
 
 ### Similar Patterns
-- TBD - search for consistency
+
+- `state_enter` (`generate_schemas.py:91`) already carries `state` as a first-class payload
+  field — the shape being extended to `action_complete`, not a new convention.
+- `fsm/executor.py:670` and `:2821` emit `"iteration"` in other payloads; the key name and
+  integer type are settled precedent.
 
 ### Tests
-- TBD - identify test files to update
+
+- `scripts/tests/test_generate_schemas.py` — catalog-completeness over `SCHEMA_DEFINITIONS`
+  (the precedent `test_des_schema.py:7` cites); asserts generated schema files.
+- `scripts/tests/test_des_schema.py` (`:27-55`) — `TestSchemaDefinitions` gates
+  `DES_VARIANTS` against `SCHEMA_DEFINITIONS`; both must stay in lockstep, so a change to one
+  without the other fails here.
+- New test for the emit site: assert a prompt-state `action_complete` names its state and
+  iteration, and that they match the `usage.jsonl` record at the same timestamp.
 
 ### Documentation
-- TBD - docs that need updates
+
+- `docs/reference/schemas/action_complete.json` — generated output, regenerate rather
+  than hand-edit.
+- `cli/loop/audit.py:177-186` docstring — see Dependent Files; it makes a factual claim this
+  change falsifies.
 
 ### Configuration
-- N/A or list config files
+- N/A — no config surface.
 
 ## Implementation Steps
 
-1. [Major phase 1]
-2. [Major phase 2]
-3. [Verification approach]
+1. Add `state` (`self.current_state`) and `iteration` (`self.iteration`) to the
+   `action_complete` payload in `fsm/executor.py:2304-2337`, before the `_emit` at `:2337`.
+2. Extend `SCHEMA_DEFINITIONS["action_complete"]` (`generate_schemas.py:136-159`) with both
+   properties, **not** added to `required`; regenerate `docs/reference/schemas/`.
+3. Add the matching fields to `ActionCompleteVariant` (`observability/schema.py:267-273`) so
+   `test_des_schema.py`'s lockstep gate stays green.
+4. Update `cli/loop/audit.py`'s docstring (`:181-184`) and decide whether `audit_run()` reads
+   the direct field; if it does, keep the `state_enter` correlation as the fallback path for
+   archived runs.
+5. Verify: new test asserting a prompt-state action's `action_complete` names its state and
+   iteration and agrees with `usage.jsonl`; then `python -m pytest scripts/tests/`.
 
 ## Impact
 
@@ -117,6 +176,54 @@ Add `state` (and `iteration`, for consistency with `usage.jsonl`) to the `action
 payload at the site where `session_jsonl` is written. Both values are in scope at emission time —
 `usage.jsonl` is written from the same point with the same timestamp.
 
+## Program Design
+
+_Added by pre-implementation review — 2026-08-17._
+
+### Types
+
+No new types. Two optional fields are added to an existing payload:
+
+- `state: str` — the FSM state whose action produced the transcript. Same value and same key
+  name `state_enter` already carries (`generate_schemas.py:91`).
+- `iteration: int` — the executor's step counter. Same key name already emitted at
+  `fsm/executor.py:670` and `:2821`.
+
+Both are **optional** in the schema, not required. `SCHEMA_DEFINITIONS["action_complete"]`
+currently requires `["exit_code", "duration_ms", "is_prompt"]` (`generate_schemas.py:158`) and
+must keep exactly that list — the `cli/action.py:255` emitter has neither value to supply.
+
+### Signatures
+
+- `FSMExecutor._emit(self, event: str, data: dict[str, Any]) -> None`
+  (`fsm/executor.py:3306`) — unchanged; only the `payload` dict passed at `:2337` grows.
+- `audit_run(run_dir: Path, max_steps: int | None = None) -> RunAuditStats`
+  (`cli/loop/audit.py:178`) — signature unchanged; its state-attribution body and its
+  docstring's factual claim both change.
+
+### Call Path
+
+Emission: `FSMExecutor._run_action()` builds `payload` (`fsm/executor.py:2304`) → adds
+`session_jsonl` in the `action_mode == "prompt"` branch (`:2311-2313`) → **adds `state` from
+`self.current_state` and `iteration` from `self.iteration`** → `self._emit("action_complete",
+payload)` (`:2337`) → transports (`transport.py:405`) → `.loops/.history/<run>/events.jsonl`.
+
+Consumption: `audit_run()` (`cli/loop/audit.py:178`) reads events, tracks `current_state` from
+`state_enter` (`:207-210`), and applies it to `action_complete` (`:211-215`). After this
+change it prefers `event.get("state")` and falls back to the tracked value when the key is
+absent.
+
+### Why the fallback is not optional
+
+`self.current_state` and `self.iteration` are both already in scope at the emit site —
+`current_state` is used ten lines below at `:2333` — so the emission half is genuinely a
+two-line change. The consumption half is not, because **every run already archived under
+`.loops/.history/` was written without these fields**. A consumer that switches to the direct
+read unconditionally silently misattributes every historical run to `None`. The
+`state_enter` correlation must therefore be retained as a fallback rather than deleted, and
+`audit.py`'s docstring updated to describe it as the compatibility path rather than the only
+path.
+
 ## Scope Boundaries
 
 **In scope**: adding `state` and `iteration` to the `action_complete` event payload that already
@@ -129,6 +236,12 @@ consolidating the two locations is a separate question and should not be folded 
 **Out of scope**: any change to what is written to the host session transcripts themselves, or
 to their retention.
 
+**Out of scope** (added by the 2026-08-17 review): the second `action_complete` emitter at
+`cli/action.py:255`. `ll-action` emits the same event type from outside any FSM — it has no
+state, no iteration, and no `session_jsonl`, so there is nothing to label. It is named here
+because it constrains the fix: the new schema properties must be **optional**, or this
+emitter's payload becomes schema-invalid.
+
 ## Acceptance Criteria
 
 - [ ] `action_complete` events carrying `session_jsonl` also carry `state` and `iteration`.
@@ -136,6 +249,17 @@ to their retention.
 - [ ] Existing `events.jsonl` readers tolerate the added fields (additive change only; no
       existing field renamed or removed).
 - [ ] A test asserts that a prompt-state action's `action_complete` event names its state.
+- [ ] The new `state` / `iteration` properties are declared in
+      `SCHEMA_DEFINITIONS["action_complete"]` (`generate_schemas.py:136-159`) and on
+      `ActionCompleteVariant` (`observability/schema.py:267-273`), and
+      `docs/reference/schemas/` is regenerated. Both are **optional, not `required`** — the
+      `cli/action.py:255` emitter cannot supply them and must remain schema-valid.
+- [ ] Archived runs keep working: every run already under `.loops/.history/` was written
+      without these fields, so any consumer switched to the direct read must fall back to the
+      existing `state_enter` correlation when `state` is absent. A test covers an event with
+      no `state` key resolving to the correct state via the fallback.
+- [ ] `cli/loop/audit.py`'s `audit_run()` docstring (`:181-184`) no longer asserts that
+      `action_complete` carries no `state` field — it is the claim this change falsifies.
 - [ ] `python -m pytest scripts/tests/` exits 0.
 
 ## Notes
@@ -158,4 +282,5 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:format-issue` - 2026-08-17T21:42:04 - `878d0e98-a6e4-41e7-80a9-53a56e3db6f7.jsonl`
 - `/ll:capture-issue` - 2026-08-17T18:23:57 - `66dab8b6-e923-43d4-9f0e-eccb97176e0f.jsonl`

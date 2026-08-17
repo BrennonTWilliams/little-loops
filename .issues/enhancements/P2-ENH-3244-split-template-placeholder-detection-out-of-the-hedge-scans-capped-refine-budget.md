@@ -12,8 +12,17 @@ captured_at: '2026-08-17T19:14:03Z'
 relates_to:
 - BUG-3245
 - ENH-3238
+- ENH-3247
+- ENH-3248
 blocked_by:
 - BUG-3245
+- ENH-3247
+confidence_score: 75
+outcome_confidence: 79
+score_complexity: 18
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 18
 ---
 
 # ENH-3244: Split template-placeholder detection out of the hedge scan's capped refine budget
@@ -113,34 +122,45 @@ Split the signal by kind.
    - `[P0-P5]`, `[Small/Medium/Large]`, `[Low/Medium/High]`, `[Yes/No]`, `[YYYY-MM-DD]`
    - `[If applicable - describe what currently happens]`, `[What should happen instead]`,
      `[Why this issue matters - ...]`
-   - An `_Added by \`/ll:refine-issue\` — <date> — based on codebase analysis:_` provenance stub with
-     no bullet following it before the next heading (see BUG-3245, which produces these)
 
-3. **Remove `\bTBD\b` from `_OPEN_QUESTION_SIGNAL_RE`** (`issue_parser.py:1733`) once the structural
-   check covers it, so the hedge scan stops double-reporting it and its capped budget is spent only
-   on genuine prose hedges. `\bto be determined\b` is prose and stays.
+   **Empty provenance stubs are explicitly NOT on this list.** The
+   `_Added by \`/ll:refine-issue\` — <date> — based on codebase analysis:_` stub with no bullet
+   following it is **ENH-3247's `empty_provenance_stub` gap class**, not a template placeholder. It
+   was on this list in an earlier revision; that was a duplicate detector for the same shape, in the
+   same dataclass, in the same file. Ownership is now strict: ENH-3247 owns stub emptiness (a
+   line-adjacency check), this issue owns literal template strings (a containment check). See
+   Decision Rules › Boundary with ENH-3247.
 
-4. **Wire a gate into `refine-to-ready-issue.yaml`.** Uncapped — a placeholder is always a defect —
-   but see Scope Boundaries for the interaction with the additive-only retry path, which is scoped
-   separately.
+3. **Remove `\bTBD\b` from `_OPEN_QUESTION_SIGNAL_RE`** (`issue_parser.py:1717`, the `\bTBD\b` term
+   itself at `:1733`) once the structural check covers it, so the hedge scan stops double-reporting
+   it and its capped budget is spent only on genuine prose hedges. `\bto be determined\b` is prose
+   and stays.
+
+4. **No FSM wiring here.** Routing the new signal into `refine-to-ready-issue.yaml` is
+   **ENH-3248's** job, not this issue's — see Scope Boundaries. This issue ends at detection plus
+   JSON exposure.
 
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/issue_parser.py` — `_OPEN_QUESTION_SIGNAL_RE:1733` (drop `\bTBD\b`); add the
-  placeholder pattern set and a `placeholder_count`-style public accessor next to
-  `superseded_marker_count`.
+- `scripts/little_loops/issue_parser.py` — `_OPEN_QUESTION_SIGNAL_RE` (`:1717`; the `\bTBD\b` term at
+  `:1733`) drops `\bTBD\b`; add the placeholder pattern set and a `placeholder_count`-style public
+  accessor next to `superseded_marker_count`. **Lands on top of ENH-3247's `FormatGaps` widening** —
+  see Decision Rules › Boundary with ENH-3247.
 - `scripts/little_loops/cli/issues/format_check.py` — surface the new count as a structural gap and
-  in `--format json`.
-- `scripts/little_loops/loops/refine-to-ready-issue.yaml` — new gate consuming it; see Dependent
-  Files for the routing constraint.
+  in `--format json`. ENH-3247 lands the `--fix` dispatch table here first; this issue adds a
+  detection-only class and registers no repair.
 - `scripts/little_loops/templates/` — the issue templates that emit these placeholders are the
   authoritative source for the literal pattern list; keep the two in sync.
+- **Not** `scripts/little_loops/loops/refine-to-ready-issue.yaml` — no FSM edit in this issue. The
+  gate belongs to ENH-3248.
 
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/loops/refine-to-ready-issue.yaml:301-333` — `check_hedges` /
   `check_hedge_attempts`. Removing `TBD` from the hedge vocabulary changes what this pair fires on;
-  the BUG-3170 cap on the remaining prose vocabulary is deliberately left intact.
+  the BUG-3170 cap on the remaining prose vocabulary is deliberately left intact. **Read-only for
+  this issue** — the behavior change here is what the existing gate no longer fires on, not a new
+  state.
 - `scripts/little_loops/loops/autodev.yaml:1590-1596` — the `superseded_marker_count` precedent this
   change mirrors. Any new key must follow the same "public JSON key read by a shell gate" shape.
 - Every consumer of `ll-issues check-open-questions` — the exit-code contract changes meaning
@@ -164,13 +184,18 @@ Split the signal by kind.
 
 ## Implementation Steps
 
-1. Add the placeholder pattern set and public count accessor in `issue_parser.py`, next to
+1. Confirm ENH-3247 has landed (`FormatGaps` widening + `--fix` dispatch table); this issue's gap
+   class is added alongside its two, not in a competing edit.
+2. Add the placeholder pattern set and public count accessor in `issue_parser.py`, next to
    `superseded_marker_count`.
-2. Surface it from `ll-issues format-check` as a structural gap and in `--format json`.
-3. Remove `\bTBD\b` from `_OPEN_QUESTION_SIGNAL_RE`; update affected tests.
-4. Add the uncapped gate to `refine-to-ready-issue.yaml`, routing a placeholder hit to a repair pass.
+3. Surface it from `ll-issues format-check` as a structural gap and in `--format json` (field,
+   `has_gaps` clause, `to_dict` key, docstring table, `_print_gaps` loop — the five touchpoints
+   ENH-3247 enumerates).
+4. Remove `\bTBD\b` from `_OPEN_QUESTION_SIGNAL_RE`; update affected tests.
 5. Add tests per the Tests section, including the fresh-template fixture.
 6. `python -m pytest scripts/tests/` exits 0.
+
+No FSM edit. The gate that consumes this signal is ENH-3248's.
 
 ## Program Design
 
@@ -197,9 +222,32 @@ Split the signal by kind.
 - **Boundary with the hedge scan**: prose hedges (`worth confirming`, `needs decision`,
   `to be determined`) stay in `_OPEN_QUESTION_SIGNAL_RE` under the existing cap. Only `\bTBD\b`
   moves.
-- **Split-landing rule**: steps 1-3 and 5-6 (detection) may land without step 4 (routing). Detection
-  without routing is still useful — `format-check` reports it — and routing depends on an unresolved
-  repair-path decision (see Scope Boundaries).
+- **Boundary with ENH-3247 (ownership, not sequencing)**: ENH-3247 owns `empty_provenance_stub` — a
+  line-adjacency check ("is there a bullet between this stub and the next heading?") built on
+  `_paragraph_spans`. This issue owns `template_placeholders` — a literal-string containment check
+  against the strings `scripts/little_loops/templates/` emits. An earlier revision of this issue
+  claimed the stub shape too; that was a second detector for one defect in one dataclass in one
+  file. Neither issue re-implements the other's detector, and neither reports the other's shape.
+- **Boundary with ENH-3248 (detection vs. routing)**: this issue produces a signal; ENH-3248 consumes
+  it. Both would otherwise edit `refine-to-ready-issue.yaml` in the same sprint wave — ENH-3248
+  restructures that file's routing, adds two states, and recomputes `max_steps`, so a second
+  concurrent gate insertion is a merge collision with no upside. Detection without routing is
+  independently useful: `format-check` reports it and `--format json` exposes it.
+- **Masking must cover inline code, not just fences.** Reuse ENH-3247's
+  `fence_spans()`/`in_fence()` masking, but it is **not sufficient on its own** for this detector.
+  **This issue's own file is the counter-example**: Proposed Solution § 2 enumerates every literal
+  pattern as `` `TBD - requires codebase analysis` ``-style *inline* code spans, not inside a
+  ```` ``` ```` fence — so a fence-only mask leaves ~15 false positives on this very file, and
+  ENH-3247's `boilerplate`/`empty_provenance_stub` precedent does not solve it (neither of those
+  shapes occurs in inline code). Options, to decide during implementation:
+  1. Add inline-code-span masking alongside fence masking (a backtick-pair scan). Preferred —
+     smallest rule, symmetric with the fence decision, and inline code means "this is a literal I am
+     naming" everywhere in the corpus.
+  2. Scope the detector to the sections the template actually emits placeholders into
+     (`Integration Map`, `Implementation Steps`, `Impact`, `Motivation`), which excludes a
+     `Proposed Solution` enumeration but not a `## Impact` discussion of one.
+  Whichever is chosen, **this file must be a fixture asserting zero placeholders** — it is the
+  natural adversarial case and it exists already.
 
 ### Signatures
 - `superseded_marker_count(issue_path: Path) -> int` — the existing deterministic public accessor at
@@ -221,23 +269,32 @@ Split the signal by kind.
 
 ## Scope Boundaries
 
-**The additive-only retry path is deliberately not fixed here.** The observed run's cap spent its one
-retry on `refine_followup`, which runs `/ll:refine-issue --auto --gap-analysis` — additive-only by
-contract (`refine-to-ready-issue.yaml:177-181`, "Gap-analysis is additive-only (never removes
-content)"). A placeholder needs *deleting*, so the only repair mode this loop can invoke is
-structurally incapable of clearing what triggered it. Trigger and remedy are mismatched.
+**Detection only — no FSM routing.** The observed run's cap spent its one retry on `refine_followup`,
+which runs `/ll:refine-issue --auto --gap-analysis` — additive-only by contract
+(`refine-to-ready-issue.yaml:177-181`, "Gap-analysis is additive-only (never removes content)"). A
+placeholder needs *deleting*, so the only repair mode that loop can invoke today is structurally
+incapable of clearing what triggered it. Trigger and remedy are mismatched.
 
-That means step 4's gate must route to a repair that can actually remove content, or it will spin.
-Choosing that repair path — `/ll:reconcile-issue`, a new narrowly-scoped skill, or a widened
-deletion right in `refine-issue` — is a design question with a blast radius beyond this issue and is
-scoped separately. **This issue may land its detection half (steps 1-3, 5-6) independently of the
-routing half (step 4).**
+Choosing the remedy — deterministic normalize, `/ll:reconcile-issue`, or refine — is exactly
+**ENH-3248's** subject, and ENH-3248 answers it: normalize → reconcile → refine, cheapest-first,
+each rung bounded by a per-run counter. This issue therefore ships **no gate at all**. Wiring one
+here would (a) duplicate ENH-3248's routing decision, and (b) collide with ENH-3248's edits to the
+same YAML in the same sprint wave.
+
+**Empty provenance stubs belong to ENH-3247.** See Decision Rules › Boundary with ENH-3247. This
+issue detects literal template strings only.
 
 **Not widening prose-hedge detection.** BUG-3170's cap on genuine prose hedges is correct and stays.
 
 ## Related Issues
 
-- BUG-3245 — produces the empty `_Added by_` provenance stubs this issue detects.
+- ENH-3247 — **hard prerequisite.** Lands the `FormatGaps` widening and `--fix` dispatch table this
+  issue's gap class is added alongside, and **owns `empty_provenance_stub`** (previously claimed by
+  this issue's pattern list — now ceded).
+- ENH-3248 — **owns the FSM gate that consumes this signal.** This issue is detection-only precisely
+  so the two do not both edit `refine-to-ready-issue.yaml`.
+- BUG-3245 — produces the empty `_Added by_` provenance stubs; detection of those is ENH-3247's, and
+  stopping their creation is BUG-3245's. This issue touches neither.
 - ENH-3238 — the issue whose refine run surfaced this; the same run also passed two substantive
   errors that no gate in the loop could see.
 
@@ -250,7 +307,32 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 **Open** | Created: 2026-08-17 | Priority: P2
 
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-08-17_
+
+**Readiness Score**: 75/100 → STOP — ADDRESS GAPS (hard override)
+**Outcome Confidence**: 79/100 → MODERATE
+
+### Concerns
+- Both `blocked_by` dependencies (BUG-3245, ENH-3247) are still `open`, not `done`/`cancelled`. This
+  issue's own Implementation Steps §1 requires ENH-3247's `FormatGaps` widening to have landed first
+  ("this issue's gap class is added alongside its two, not in a competing edit"), and confirmed by
+  code inspection: `empty_provenance_stub` does not yet exist in `issue_parser.py`'s `FormatGaps`.
+
+### Gaps to Address
+- Resolve or land BUG-3245 and ENH-3247 before implementing this issue — the dependency is a hard
+  prerequisite by the issue's own design, not just an ordering preference.
+- Decision Rules § "Masking must cover inline code, not just fences" leaves the inline-vs-section-scope
+  masking approach explicitly undecided ("Options, to decide during implementation") — pick one before
+  or during implementation to avoid false positives on the issue's own fixture file.
+
+### Outcome Risk Factors
+- None beyond the open masking-strategy decision noted above; the pattern otherwise mirrors the
+  existing `superseded_marker_count` precedent closely (mechanical, well-scoped, test plan specified).
+
 ## Session Log
+- `/ll:confidence-check` - 2026-08-17T21:33:51 - `878d0e98-a6e4-41e7-80a9-53a56e3db6f7.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-17T20:25:54 - `fe71c380-6bd8-44e2-9c73-d0617456c6e4.jsonl`
 - `/ll:capture-issue` - 2026-08-17T19:29:37 - `3ce34465-00fd-4ba7-a470-b61774849ebd.jsonl`
 - `/ll:capture-issue` - 2026-08-17T19:16:20 - `33a98a0f-5403-4525-92db-f7737c5401c4.jsonl`
