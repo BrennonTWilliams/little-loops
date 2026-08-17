@@ -15,9 +15,11 @@ parent: EPIC-3217
 
 ## Summary
 
-Ten LLM-judged gates in the built-in loops are *funnels*: `on_yes`, `on_no`, and `on_partial` all point at the same next state, because the LLM call produces an artifact (a plan, a classification, a score sheet) rather than judging a condition. The verdict is structurally irrelevant — every branch proceeds.
+Nine LLM-judged gates in the built-in loops are *funnels*: `on_yes`, `on_no`, and `on_partial` all point at the same next state, because the LLM call produces an artifact (a plan, a classification, a score sheet) rather than judging a condition. The verdict is structurally irrelevant — every branch proceeds.
 
-Since ENH-3185, abstention is the one verdict that does not follow the funnel. It escalates to `on_error` instead. For three of these gates, `on_error` is `finalize_failed`, so a state that structurally cannot fail today becomes a run-killer the first time a judge returns `cannot_judge`.
+Since ENH-3185, abstention is the one verdict that does not follow the funnel. It escalates to `on_error` instead. For three of these gates, `on_error` is `finalize_failed`, so a state that structurally cannot fail today becomes a run-killer the first time a judge returns `cannot_judge`. A fourth diverges without failing (`goal-cluster::propagate_context` skips `save_hints` and lands directly on `execute_cluster`, silently dropping the hints); the remaining five reach the funnel target only by coincidence, after two wasted holds.
+
+The title's "into `finalize_failed`" describes the three run-killers specifically, not all nine gates.
 
 ## Current Behavior
 
@@ -30,7 +32,7 @@ Funnel gates whose abstention path diverges from the funnel (`scripts/little_loo
 | `loop-router` :: `classify_goal` | `route_branch_project` | `finalize_failed` |
 | `goal-cluster` :: `propagate_context` | `save_hints` | `execute_cluster` |
 
-The remaining six funnel gates — `goal-cluster::synthesize_cluster_result`, `loop-composer::review_chain`, `loop-router::score_project_loops`, `loop-router::score_builtin_loops`, `loop-router::review`, `migrate-sdk-version::classify_outcome` — happen to have an `on_error` that equals the funnel target, so they behave correctly today by coincidence rather than by declaration, and only after paying two holds first.
+The remaining five in-scope funnel gates — `goal-cluster::synthesize_cluster_result`, `loop-composer::review_chain`, `loop-router::score_project_loops`, `loop-router::score_builtin_loops`, `loop-router::review` — happen to have an `on_error` that equals the funnel target, so they behave correctly today by coincidence rather than by declaration, and only after paying two holds first. (`migrate-sdk-version::classify_outcome` was originally counted here and is out of scope — see the Root Cause scope correction.)
 
 ## Expected Behavior
 
@@ -40,7 +42,7 @@ Where the parse state genuinely cannot tolerate an unproduced artifact, that is 
 
 ## Motivation
 
-These four gates convert a working loop into a failing one on a verdict that carries no information about the artifact. The six coincidentally-correct gates additionally waste two re-runs of an LLM call per abstention. Both are cheap to fix and the fix is mechanical: one line per gate.
+Three of these gates convert a working loop into a failing one, and a fourth silently skips a state, on a verdict that carries no information about the artifact. The five coincidentally-correct gates additionally waste two re-runs of an LLM call per abstention. Both are cheap to fix and the fix is mechanical: one line per gate.
 
 ## Root Cause
 
@@ -51,9 +53,11 @@ These four gates convert a working loop into a failing one on a verdict that car
 
 ## Proposed Solution
 
-Declare `on_cannot_judge: <funnel target>` on all ten gates. A declared route fires immediately with no hold (ENH-3185 precedence), which removes both the spurious failures and the wasted retries.
+Declare `on_cannot_judge: <funnel target>` on all nine in-scope gates. A declared route fires immediately with no hold (ENH-3185 precedence), which removes both the spurious failures and the wasted retries.
 
-Doing this on the six coincidentally-correct gates as well is deliberate: it converts an accident of the error route into a stated intent, so a later change to `on_error` cannot silently reintroduce the divergence.
+Doing this on the five coincidentally-correct gates as well is deliberate: it converts an accident of the error route into a stated intent, so a later change to `on_error` cannot silently reintroduce the divergence.
+
+**Verdict-string scope.** `_abstention_declared` (`executor.py:2655-2664`) and `_route` both match the *literal* verdict string, so `on_cannot_judge` does not claim `cannot_judge_uncertain` — that verdict would still hold twice and escalate to `on_error`, reproducing the exact divergence this issue closes. Unreachable in these loops today (`uncertain_suffix` defaults to `false` — `fsm/schema.py:103`, `evaluators.py:1295-1296` — and none of the three loops sets it), so this issue does not block on it. EPIC-3217 owns the cross-cutting call (prefix-match in the executor vs. declaring both keys at every site); if that lands as "declare both keys", these nine gates each need a second line, which is why the funnel-consistency test below is worth having.
 
 ## Integration Map
 
@@ -154,7 +158,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ## Impact
 
-Removes three spurious run failures, one spurious re-execution branch, and up to two wasted LLM calls per abstention on six further gates. No behavior change on the non-abstention paths.
+Removes three spurious run failures, one spurious state-skip branch, and up to two wasted LLM calls per abstention on five further gates. No behavior change on the non-abstention paths.
 
 ## Related Key Documentation
 

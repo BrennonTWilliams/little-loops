@@ -29,11 +29,17 @@ This is the fabricated-pass failure mode ENH-3185 was written to remove, relocat
 
 An abstention takes the `on_error` branch (`executor.py:2669` `_abstention_fallback`) after `_ABSTENTION_HOLD_CAP = 2` holds, landing on `commit`. Note the two holds re-enter the state and re-run its action, so the audit is attempted three times before the loop gives up and commits anyway.
 
+**The retry path is itself fail-open.** `audit_conflicts_retry` (lines 120-129) has **no `evaluate:` block at all** and an unconditional `next: commit`. So the `on_no`/`on_partial` branches already reach `commit` after exactly one more audit attempt, with the second attempt's result never inspected. This is a pre-existing fail-open wider than the abstention case: a conflict audit that reports unaddressed conflicts twice still commits. Any fix that only redirects abstention *into* this retry path inherits the same fail-open.
+
+**Verdict-string scope.** `_abstention_declared` (`executor.py:2655-2664`) matches the *literal* verdict string, and `_route` resolves only `extra_routes[verdict]`. A declared `on_cannot_judge` therefore does **not** claim `cannot_judge_uncertain`; that verdict still holds twice and escalates to `on_error`. It cannot occur here today (`uncertain_suffix` defaults to `false` and no built-in loop sets it — `fsm/schema.py:103`, `evaluators.py:1295-1296`), but it re-opens this exact fail-open the moment anyone sets `uncertain_suffix: true` on this gate while `on_error` still resolves to `commit`. See EPIC-3217 for the cross-cutting decision (prefix-match in the executor vs. declaring both keys at every site); this issue's fix is written to be safe either way by removing `commit` from the error route.
+
 ## Expected Behavior
 
 An abstained conflict audit must not reach `commit`. Abstention here means "the audit could not be performed", which is a reason to retry with better evidence or to stop — never a reason to proceed as though no conflicts exist.
 
-The `on_error: commit` route should also be re-examined on its own merits: it was presumably written to keep an infrastructure failure from stalling a sprint, but it has the same fail-open shape for genuine errors.
+The same must hold for the retry attempt: no path through `audit_conflicts` / `audit_conflicts_retry` may reach `commit` without a `yes` verdict from an audit that actually ran.
+
+The `on_error: commit` route is re-examined on its own merits as part of this fix: it was presumably written to keep an infrastructure failure from stalling a sprint, but it has the same fail-open shape for genuine errors, and leaving it pointed at `commit` leaves a second unguarded door into the same defect.
 
 ## Motivation
 
@@ -47,11 +53,15 @@ This gate guards a commit. A silent fail-open on an unobservable audit is the hi
 
 ## Proposed Solution
 
-Declare `on_cannot_judge: audit_conflicts_retry` so an abstention routes immediately (a declared route fires with no hold, per the ENH-3185 precedence) into the existing retry path, which already exists for `no`/`partial`.
+Three changes, all required — the first alone does not satisfy Expected Behavior, because it routes abstention into a retry path that unconditionally commits.
 
-If the retry path can itself abstain indefinitely, pair it with the state's `max_retries` / `on_retry_exhausted` machinery so exhaustion terminates in a failure-shaped state rather than in `commit`.
+1. `audit_conflicts` declares `on_cannot_judge: audit_conflicts_retry`, so an abstention routes immediately (a declared route fires with no hold, per the ENH-3185 precedence) into the same retry path `no`/`partial` already use.
+2. `audit_conflicts_retry` gains its own `evaluate:` block — the same `llm_structured` judge and prompt as `audit_conflicts` over the re-captured `conflict_result` — replacing the unconditional `next: commit`. Only `on_yes` reaches `commit`; `on_no`, `on_partial`, `on_cannot_judge`, and `on_error` all reach a failure-shaped terminal.
+3. `audit_conflicts`'s `on_error` is repointed off `commit` to that same failure-shaped terminal.
 
-Separately, evaluate whether `on_error: commit` should become a failure-shaped terminal.
+This makes the gate fail-closed on every path: a sprint whose conflict audit cannot be resolved (or cannot be performed, or errors) reports failure instead of committing and running. That is a deliberate behavior change beyond the abstention case — it also closes the pre-existing `no`/`partial` fail-open documented in Current Behavior.
+
+`max_retries` / `on_retry_exhausted` are *not* used here: the loop already bounds the audit at two attempts by construction (`audit_conflicts` → `audit_conflicts_retry`), and the ENH-3185 hold mechanism supplies bounded retry for the abstention case on its own.
 
 ## Integration Map
 
@@ -120,7 +130,10 @@ _Wiring pass added by `/ll:wire-issue`:_
 _Added by `/ll:refine-issue` — 2026-08-16 — based on codebase analysis:_
 
 ### Decision Rules
-- New routing decision this fix introduces: `audit_conflicts`'s `evaluate.type: llm_structured` block (`sprint-build-and-validate.yaml:104-113`, `min_confidence: 0.7`) may itself downgrade a low-confidence YES/NO/PARTIAL to `cannot_judge` — the exact inputs are the verdict enum `{yes, no, partial, cannot_judge, cannot_judge_uncertain}` and the `min_confidence` threshold already declared. This issue's fix is to declare `on_cannot_judge: audit_conflicts_retry` so that verdict routes immediately (no hold), matching the existing `on_no`/`on_partial` destination. Escape hatch: if `audit_conflicts_retry`'s own re-run also abstains, it currently has an unconditional `next: commit` (line 129) regardless of verdict — the Expected Behavior section's request to "evaluate whether `on_error: commit` should become a failure-shaped terminal" and to pair the retry with `max_retries`/`on_retry_exhausted` (per the `harness-single-shot.yaml:32-42` / `general-task.yaml:309-329` convention found above) is the open decision the implementer must resolve; this issue does not mandate a specific target name.
+- New routing decision this fix introduces: `audit_conflicts`'s `evaluate.type: llm_structured` block (`sprint-build-and-validate.yaml:104-113`) uses the default schema, so its verdict grammar is `DEFAULT_VERDICT_ENUM` = `{yes, no, blocked, partial, cannot_judge}` (`fsm/verdicts.py:15`), and the universally-injected `CHECK_SEMANTIC_EVIDENCE_CONTRACT` (`evaluators.py:66-74`) instructs the judge to answer Cannot Judge when it cannot quote supporting text. That is the input to the new route.
+- **Correction to an earlier reading of this state**: the declared `min_confidence: 0.7` does **not** downgrade a low-confidence verdict to `cannot_judge`, and in fact has no routing effect at all here. `evaluators.py:1263` computes `confident = confidence >= min_confidence`, but the only consumer is `evaluators.py:1295-1296`, which appends an `_uncertain` suffix *and only when `uncertain_suffix: true`* (`fsm/schema.py:103`, default `false`; this state does not set it). Otherwise `confident` lands in `details` and is never routed on. Do not implement against a low-confidence→`cannot_judge` path; it does not exist.
+- Verdict-string scope: `on_cannot_judge` claims the literal `cannot_judge` only, not `cannot_judge_uncertain` (see Current Behavior). Unreachable at this gate today; the fix's removal of `commit` from the error route is what keeps it safe if that changes. The general resolution is EPIC-3217's call, not this issue's.
+- The failure-shaped terminal this fix routes to follows the sibling pattern already in this file (`refine_failed`, `sprint_failed`, `refine_unresolved_failed`, lines 171-181): `terminal: true` **and** `failure: true` must both be set explicitly, or `test_builtin_loops.py`'s failure-terminal walker (lines 64-87) fails. Name is the implementer's call; `audit_failed` matches the file's `<phase>_failed` convention.
 
 ### Types
 N/A — no data shape introduced or modified.
@@ -133,15 +146,18 @@ N/A — no data shape introduced or modified.
 
 ## Implementation Steps
 
-1. `audit_conflicts` in `scripts/little_loops/loops/sprint-build-and-validate.yaml:97-118` declares `on_cannot_judge: audit_conflicts_retry`, so an abstained audit routes on the first occurrence, with no hold, into the same retry path `on_no`/`on_partial` already use.
-2. The retry path's exhaustion behavior is decided and stated explicitly: either `audit_conflicts_retry` (lines 120-129) gains `max_retries`/`on_retry_exhausted` pointed at a failure-shaped terminal (following the `harness-single-shot.yaml:32-42` / `general-task.yaml:309-329` convention), or the existing unconditional `next: commit` is left as a deliberate choice — whichever is chosen, the issue's Expected Behavior constraint holds: an audit that never resolves must not reach `commit` silently.
-3. `on_error: commit` (line 118) is re-examined on its own merits per the issue's Expected Behavior — a genuine infrastructure error reaching `commit` has the same fail-open shape being fixed for abstention; the resolution (leave as-is with rationale, or route to a failure terminal) is recorded either in this issue or a follow-up.
-4. `scripts/tests/test_builtin_loops.py`'s existing `audit_conflicts` assertions (8176-8216) continue passing, and a new assertion covers the added `on_cannot_judge` route the same way `test_audit_conflicts_on_no_routes_to_retry` (8194) covers `on_no`.
-5. `python -m pytest scripts/tests/test_builtin_loops.py scripts/tests/test_fsm_executor.py -v` passes.
+1. A failure-shaped terminal (e.g. `audit_failed`) is added to `scripts/little_loops/loops/sprint-build-and-validate.yaml` with both `terminal: true` and `failure: true`, matching the `refine_failed`/`sprint_failed` siblings (lines 171-181).
+2. `audit_conflicts` (lines 97-118) declares `on_cannot_judge: audit_conflicts_retry`, so an abstained audit routes on the first occurrence with no hold, into the same retry path `on_no`/`on_partial` already use.
+3. `audit_conflicts`'s `on_error` (line 118) is repointed from `commit` to the failure terminal — a genuine infrastructure error reaching `commit` is the same fail-open shape being fixed for abstention, and leaving it in place keeps a second unguarded door to `commit`.
+4. `audit_conflicts_retry` (lines 120-129) gains an `evaluate:` block (the same `llm_structured` judge and prompt as `audit_conflicts`, over the re-captured `conflict_result`) replacing its unconditional `next: commit`. Routes: `on_yes: commit`; `on_no`, `on_partial`, `on_cannot_judge`, `on_error` all to the failure terminal. This closes the pre-existing `no`/`partial` fail-open as well as the abstention one.
+5. `max_steps` (currently 18) is re-checked against the longest path now that the retry state evaluates rather than falling straight through, and `test_max_steps_accommodates_retry_cycle` (`test_builtin_loops.py:8216`) is updated if the bound moved.
+6. `scripts/tests/test_builtin_loops.py`: a new assertion covers the added `on_cannot_judge` route the same way `test_audit_conflicts_on_no_routes_to_retry` (8194) covers `on_no`; `test_audit_conflicts_retry_state_exists` (8208) is updated, since its `audit_conflicts_retry.next == "commit"` assertion **will break** by design under Step 4; and an assertion pins `audit_conflicts.on_error` to the failure terminal so Step 3 cannot silently regress.
+7. The failure-terminal walker (`test_builtin_loops.py:64-87`, asserting every `on_error`/`on_failure`/`on_retry_exhausted` target sets `failure: true`) passes against the new terminal, and `TestValidatorWarningBudget`'s corpus-wide lint ratchet stays clean (this loop already emits a pre-existing MR-8 evidence-contract warning on `audit_conflicts`; do not add a new warning class).
+8. `python -m pytest scripts/tests/test_builtin_loops.py scripts/tests/test_fsm_executor.py -v` passes and `ll-loop validate scripts/little_loops/loops/sprint-build-and-validate.yaml` exits 0.
 
 ## Impact
 
-Removes a fail-open path to `commit` on an unobservable conflict audit.
+Removes every fail-open path to `commit` in this gate: the unobservable audit (abstention), the errored audit, and the pre-existing unchecked-retry path that commits on a second `no`/`partial`. Behavior change: a sprint whose conflict audit cannot be resolved now terminates as failed instead of committing and running.
 
 ## Related Key Documentation
 
