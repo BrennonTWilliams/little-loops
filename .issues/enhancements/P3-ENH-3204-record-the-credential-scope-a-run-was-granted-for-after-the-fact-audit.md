@@ -3,10 +3,11 @@ id: ENH-3204
 type: ENH
 title: Record the credential scope a run was granted for after-the-fact audit
 priority: P3
-status: blocked
+status: open
 parent: EPIC-3212
 epic: EPIC-3212
-blocked_by: [ENH-3203]
+blocked_by:
+- ENH-3203
 discovered_by: ll-issues-create
 discovered_date: '2026-08-15'
 captured_at: '2026-08-15T22:28:30Z'
@@ -22,7 +23,7 @@ Nothing anywhere records what authority a given run held. Once ENH-3203 lets a t
 
 Record the declared scope with the run. The record stores **capability and variable *names* only — never values**.
 
-**Blocked by ENH-3203** — there is no declaration to record until it lands.
+ENH-3203 has landed, so the declaration this issue records now exists.
 
 ## Current Behavior
 

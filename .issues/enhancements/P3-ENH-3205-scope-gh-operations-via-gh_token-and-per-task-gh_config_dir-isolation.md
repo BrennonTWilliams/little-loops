@@ -3,10 +3,11 @@ id: ENH-3205
 type: ENH
 title: Scope gh operations via GH_TOKEN and per-task GH_CONFIG_DIR isolation
 priority: P3
-status: blocked
+status: open
 parent: EPIC-3212
 epic: EPIC-3212
-blocked_by: [ENH-3203]
+blocked_by:
+- ENH-3203
 discovered_by: ll-issues-create
 discovered_date: '2026-08-15'
 captured_at: '2026-08-15T22:28:30Z'
@@ -24,7 +25,7 @@ gh operations bypass `host_runner` entirely. `sync.py`'s `_run_gh_command()`/`_c
 
 This is the one place where ENH-3203's guarantee visibly does not reach, and gh is what FSM loops actually use to make changes to the outside world — so it is the highest-value gap and the one most likely to be misread as already covered.
 
-**Blocked by ENH-3203.** Decide it in or out explicitly; leaving it ambiguous is how the largest hole ships open.
+ENH-3203 has landed. Decide this in or out explicitly; leaving it ambiguous is how the largest hole ships open.
 
 ## Current Behavior
 
@@ -81,7 +82,7 @@ Explicitly **out of scope**:
 
 ## Impact
 
-- **Priority**: P3 — the highest-value remaining gap, but it depends on ENH-3203 and its value is bounded by Open Decision #1: without minting, this isolates *which* processes see a broad token rather than narrowing the token itself.
+- **Priority**: P3 — the highest-value remaining gap, but its value is bounded by Open Decision #1: without minting, this isolates *which* processes see a broad token rather than narrowing the token itself.
 - **Effort**: Medium — two call sites plus config-dir lifecycle, but the keyring interaction is easy to get subtly wrong.
 - **Risk**: Medium — a `GH_CONFIG_DIR` redirect that breaks the operator's interactive gh usage, or a scoped child that silently falls back to the ambient session and appears to work while proving nothing.
 - **Breaking Change**: No, if gated on a declaration.
