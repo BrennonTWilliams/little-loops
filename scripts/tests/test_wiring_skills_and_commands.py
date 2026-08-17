@@ -246,6 +246,10 @@ DOC_STRINGS_PRESENT: list[tuple[str, str, str]] = [
     # ENH-3126: verify-issues gains graph-assisted anchor drift and
     # negative-claim checks, gated behind Bash(ll-code:*).
     ("commands/verify-issues.md", "Bash(ll-code:*)", "ENH-3126"),
+    # ENH-3238: verify-issues gains a causal/identity-claim rule so a
+    # consequence merely consistent with a stated cause is not accepted as
+    # sufficient to confirm it.
+    ("commands/verify-issues.md", "Causal / identity claims", "ENH-3238"),
 ]
 
 

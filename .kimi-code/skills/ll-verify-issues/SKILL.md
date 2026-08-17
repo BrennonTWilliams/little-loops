@@ -155,6 +155,24 @@ Program Design gate's arming.
    non-suppressed violation is found. An absent decisions log (no `.ll/decisions.yaml`
 **and** no `.ll/decisions.d/`) is a graceful skip.
 
+**Causal / identity claims (method for check 4, unconditional — runs regardless of
+`ll-code` availability or index freshness; not part of §2B.0):** for issue text
+attributing observed state to a named cause, origin, or version — "is the vN
+definition", "caused by", "because", "the result of", "introduced by", "this is the
+pre-X form" — where that attribution is load-bearing for the fix (the issue's stated
+root cause, an artifact-identity assertion, or a version/origin attribution that
+determines what gets changed), probe the claimed cause directly rather than a
+consequence merely consistent with it: read the artifact in its own terms (e.g.
+stored DDL via `SELECT sql FROM sqlite_master WHERE name=...`) over an inferred
+signal (e.g. `PRAGMA table_info(...)`), the actual file/commit content over a
+symptom that is merely consistent with it. Incidental causal prose ("we filed this
+because the reader was empty") does not trigger this rule. Observing a consequence
+consistent with the stated cause is necessary but not sufficient to confirm it — it
+only fails to refute it. If the cause can be read directly and the direct read
+confirms it, `VALID` is available as before. If the cause cannot be read directly,
+assign `NEEDS_UPDATE` rather than `VALID`, and name the unverified claim in the
+verification output.
+
 #### C. Determine Verdict
 
 | Verdict | Meaning |

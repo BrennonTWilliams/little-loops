@@ -4,11 +4,12 @@ type: ENH
 title: verify-issues confirms a stated cause by checking a consequence consistent
   with it
 priority: P2
-status: open
+status: done
 testable: true
 discovered_by: ll-issues-create
 discovered_date: '2026-08-17'
 captured_at: '2026-08-17T18:22:51Z'
+completed_at: '2026-08-17T19:23:26Z'
 verify_verdict: VALID
 confidence_score: 98
 outcome_confidence: 91
@@ -359,6 +360,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-17T19:23:08 - `35d64d8e-092e-4c90-875f-40feb688fbd4.jsonl`
 - `/ll:confidence-check` - 2026-08-17T19:10:24 - `1c7713ed-8915-4fd7-8992-b696cbcef42b.jsonl`
 - `/ll:confidence-check` - 2026-08-17T18:58:30 - `96129ae9-f1da-4ee1-bce0-e86f5c24bd56.jsonl`
 - `/ll:verify-issues` - 2026-08-17T18:56:27 - `99964d33-7f49-497c-aa7c-9d0d86522353.jsonl`
