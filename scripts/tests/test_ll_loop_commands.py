@@ -455,6 +455,163 @@ states:
         assert "plain-loop is valid" in out
         assert "States:" in out
 
+    def test_validate_json_missing_field_reports_reason_on_stdout(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """BUG-3230: a loop missing a required field (initial) under --json exits 1
+        and carries the reason in violations[0].message on stdout, not stderr."""
+        from little_loops.cli.loop.config_cmds import cmd_validate
+        from little_loops.logger import Logger
+
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        (loops_dir / "bad.yaml").write_text("name: probe\nstates:\n  a:\n    prompt: x\n")
+
+        logger = Logger(use_color=False)
+        args = argparse.Namespace(json=True)
+        result = cmd_validate("bad", args, loops_dir, logger)
+
+        assert result == 1
+        data = json.loads(capsys.readouterr().out)
+        assert data["loop"] == "bad"
+        assert data["valid"] is False
+        assert len(data["violations"]) == 1
+        assert "initial" in data["violations"][0]["message"]
+
+    def test_validate_json_malformed_yaml_no_traceback(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """BUG-3230: malformed YAML under --json exits 1, emits the standard JSON
+        shape on stdout, and does not let yaml.YAMLError escape as a traceback."""
+        from little_loops.cli.loop.config_cmds import cmd_validate
+        from little_loops.logger import Logger
+
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        (loops_dir / "malformed.yaml").write_text("this is: [not, valid\n  yaml at all\n")
+
+        logger = Logger(use_color=False)
+        args = argparse.Namespace(json=True)
+        result = cmd_validate("malformed", args, loops_dir, logger)
+
+        assert result == 1
+        data = json.loads(capsys.readouterr().out)
+        assert data["valid"] is False
+        assert len(data["violations"]) == 1
+
+    def test_validate_no_json_malformed_yaml_clean_error_no_traceback(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """BUG-3230: malformed YAML without --json exits 1 with a clean
+        logger.error line, not an unhandled traceback."""
+        from little_loops.cli.loop.config_cmds import cmd_validate
+        from little_loops.logger import Logger
+
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        (loops_dir / "malformed.yaml").write_text("this is: [not, valid\n  yaml at all\n")
+
+        logger = Logger(use_color=False)
+        result = cmd_validate("malformed", argparse.Namespace(), loops_dir, logger)
+
+        assert result == 1
+
+    def test_validate_json_missing_file_still_reports_file_not_found(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """BUG-3230 regression guard: widening the load-error handler to catch
+        OSError must not swallow the FileNotFoundError case ahead of it."""
+        from little_loops.cli.loop.config_cmds import cmd_validate
+        from little_loops.logger import Logger
+
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+
+        logger = Logger(use_color=False)
+        args = argparse.Namespace(json=True)
+        result = cmd_validate("does-not-exist", args, loops_dir, logger)
+
+        assert result == 1
+        data = json.loads(capsys.readouterr().out)
+        assert data["valid"] is False
+        assert len(data["violations"]) == 1
+
+    def test_validate_json_every_exit_path_produces_parseable_json(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """BUG-3230: loop over every -j exit path (valid, violations, missing
+        file, load error, parse error) and assert stdout is always valid JSON,
+        so a future sixth exit path is caught by the same test."""
+        from little_loops.cli.loop.config_cmds import cmd_validate
+        from little_loops.logger import Logger
+
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+
+        cases = {
+            "valid": "name: valid\ndescription: t\ninitial: a\nstates:\n  a:\n    terminal: true\n",
+            "violations": "name: violations\ninitial: nonexistent\nstates:\n  a:\n    action: echo\n    on_yes: a\n    on_no: a\n",
+            "load-error": "name: probe\nstates:\n  a:\n    prompt: x\n",
+            "parse-error": "this is: [not, valid\n  yaml at all\n",
+        }
+        for loop_name, content in cases.items():
+            (loops_dir / f"{loop_name}.yaml").write_text(content)
+
+        logger = Logger(use_color=False)
+        for loop_name in [*cases, "missing-file"]:
+            args = argparse.Namespace(json=True)
+            cmd_validate(loop_name, args, loops_dir, logger)
+            out = capsys.readouterr().out
+            data = json.loads(out)  # raises if not parseable JSON
+            assert "loop" in data and "valid" in data and "violations" in data
+
+    def test_validate_broken_pipe_on_success_does_not_emit_second_failure_doc(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """BUG-3230: a BrokenPipeError raised while emitting a valid result must
+        not be caught by the widened load-error handler and reported as a
+        second, contradictory "invalid" document."""
+        from little_loops.cli.loop.config_cmds import cmd_validate
+        from little_loops.logger import Logger
+
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        (loops_dir / "valid.yaml").write_text(
+            "name: valid\ndescription: t\ninitial: a\nstates:\n  a:\n    terminal: true\n"
+        )
+
+        calls = []
+
+        def _raising_print_json(data: object) -> None:
+            calls.append(data)
+            raise BrokenPipeError("pipe closed")
+
+        import little_loops.cli.output as output_module
+
+        monkeypatch.setattr(output_module, "print_json", _raising_print_json)
+
+        logger = Logger(use_color=False)
+        args = argparse.Namespace(json=True)
+
+        with pytest.raises(BrokenPipeError):
+            cmd_validate("valid", args, loops_dir, logger)
+
+        assert len(calls) == 1
+        assert calls[0]["valid"] is True
+
 
 class TestCmdList:
     """Tests for list command logic."""

@@ -5,9 +5,10 @@ title: 'll-loop validate -j: the load-error path ignores --json and writes the r
   to stderr with an empty stdout, so a programmatic caller gets a rejection with no
   reason'
 priority: P2
-status: open
+status: done
 discovered_by: little-loops-hermes-audit
 discovered_date: '2026-08-16'
+completed_at: '2026-08-17T05:01:16Z'
 labels:
 - loops
 - cli-json
@@ -266,4 +267,6 @@ Found while auditing `little-loops-hermes`, whose `ll_create_loop` tool shells o
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-17T05:00:53 - `66a7a1fa-2c81-4a0b-ab18-8cc637065ccf.jsonl`
+- `/ll:ready-issue` - 2026-08-17T04:53:55 - `9e5dd851-5232-45a7-9885-384e8b5eb139.jsonl`
 - `/ll:confidence-check` - 2026-08-17T04:01:20 - `03558def-29ef-40d7-87ba-66fe5fe13be8.jsonl`
