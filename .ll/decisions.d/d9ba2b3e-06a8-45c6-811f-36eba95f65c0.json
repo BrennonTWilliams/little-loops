@@ -1,0 +1,11 @@
+{
+  "id": "1d7d5450-f60e-4e8c-9fa5-129de694285f",
+  "type": "decision",
+  "timestamp": "2026-08-17T20:04:13Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Loop verifies descriptive claims only; prescriptive defects (TimeoutExpired handler mismatch, stale subprocess mocks, AC coverage gaps) pass all four LLM states. Must be designed jointly with ENH-3248.",
+  "rule": "Captured: refine-to-ready-issue never reviews the Proposed Solution against the code it will touch",
+  "scope": "issue",
+  "issue": "ENH-3250"
+}
