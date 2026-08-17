@@ -15,6 +15,12 @@ labels:
 relates_to:
 - BUG-3236
 - ENH-3242
+confidence_score: 95
+outcome_confidence: 86
+score_complexity: 18
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 25
 ---
 
 # BUG-3241: Missing UNIQUE dedup indexes on migrated history databases
@@ -61,6 +67,29 @@ A database at the current `SCHEMA_VERSION` has every index its migration history
 or the discrepancy is detected and repaired — without any `ll-*` command hard-failing at
 startup.
 
+## Steps to Reproduce
+
+1. On any `.ll/history.db` whose recorded `meta.schema_version` is past migration v11
+   (`idx_assistant_messages_dedup`) and v19 (`idx_summary_nodes_retention_dedup`), run the
+   detection snippet from [Current Behavior](#current-behavior):
+   ```python
+   import sqlite3
+   c = sqlite3.connect("file:.ll/history.db?mode=ro", uri=True)
+   have = {r[0] for r in c.execute("SELECT name FROM sqlite_master WHERE type='index'")}
+   missing = {"idx_assistant_messages_dedup",
+              "idx_summary_nodes_retention_dedup",
+              "idx_summary_nodes_parent_id"} - have
+   ```
+2. Observe `missing` is non-empty even though `schema_version` claims the creating
+   migrations already ran.
+3. Attempt the naive repair — append `CREATE UNIQUE INDEX IF NOT EXISTS
+   idx_assistant_messages_dedup ON assistant_messages(session_id, ts, content);` as a new
+   migration and run `ensure_db()` against a copy of the database seeded with a duplicate
+   `(session_id, ts, content)` row.
+4. Observe `_apply_migrations()` raises `sqlite3.IntegrityError`, rolls back the whole
+   migration, and `ensure_db()` propagates the exception — every `ll-*` command on that
+   project now hard-fails at startup.
+
 ## Root Cause
 
 Two separate questions, and only the second is settled.
@@ -81,6 +110,74 @@ back the whole migration and re-raises, `ensure_db()` propagates, and **every `l
 command on that project hard-fails at startup** — converting a silent, low-impact
 correctness gap into a total outage for that project. That asymmetry is the entire reason
 this was split out of BUG-3236 rather than folded into its v42 migration.
+
+## Integration Map
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-17 — based on codebase analysis:_
+
+### Files to Modify
+- `scripts/little_loops/session_store/schema.py` — append one new entry to `_MIGRATIONS: list[str]` (defined `schema.py:111`), following the `_apply_migrations()`/`ensure_db()` mechanics at `schema.py:1050` and `schema.py:1089`
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/session_store/schema.py:21` — `SCHEMA_VERSION` constant must be bumped 42 → 43 by hand. `_apply_migrations()` drives entirely off `len(_MIGRATIONS)` (`schema.py:1096`); `SCHEMA_VERSION` is a separate, hand-maintained int nothing in `schema.py` asserts equal to `len(_MIGRATIONS)`. Appending the migration without bumping this constant silently desyncs the two. [Agent 2 finding]
+
+### Dependent Files (Callers/Consumers of the affected indexes)
+- `scripts/little_loops/session_store/writers.py:3021-3068` — `_backfill_assistant_messages()`, `INSERT OR IGNORE` at `writers.py:3064-3068`, relies on `idx_assistant_messages_dedup` for idempotency during `rebuild()`
+- `scripts/little_loops/session_store/lifecycle.py:1152-1227` — `compact()`; its rowcount-based `INSERT OR IGNORE` + fallback `SELECT` (`lifecycle.py:1204-1220`) relies on `idx_summary_nodes_retention_dedup`; without it, repeated `compact()` runs over the same session/date-range insert new duplicate `retention` rows instead of reusing the prior one — idempotency degrades to silent duplicate accumulation rather than raising
+- `scripts/little_loops/session_store/lifecycle.py:928` — `rebuild()`, wipes `_REBUILD_TABLES` (includes `assistant_messages`, `summary_nodes`, `summary_spans`) and replays `raw_events` through the `_backfill_*` parsers above
+- `scripts/little_loops/hooks/session_start.py:132-135` — wraps `ensure_db()` in `contextlib.suppress(Exception)`; a stuck migration here is currently swallowed with no logging
+- `scripts/little_loops/history_reader.py:422-438` — `_connect_readonly()` catches `sqlite3.Error` around `ensure_db(db_path)`, logs a WARNING, returns `None`; downstream readers see "no connection" rather than the underlying migration failure
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/session_store/__init__.py` — re-export hub for `_MIGRATIONS`, `SCHEMA_VERSION`, `ensure_db`, `_apply_migrations` (lines 96-110, 117-161); no code change needed but confirms the blast radius below [Agent 1 finding]
+- 45 CLI entry points call `cli_event_context()`, which calls `ensure_db()` at startup — representative examples: `scripts/little_loops/cli/history.py`, `scripts/little_loops/cli/doctor.py`, `scripts/little_loops/cli/session.py`, `scripts/little_loops/cli/compact_session.py`; this is the concrete mechanism behind "every `ll-*` command hard-fails at startup" in this issue's Root Cause section — no per-file change needed, but confirms the failure-mode scope is the full CLI surface, not just the session-store internals [Agent 1 finding]
+
+### Conventions in Force
+- Migrations in `_MIGRATIONS` are idempotent multi-statement SQL strings using `IF NOT EXISTS` (or `DROP ... IF EXISTS` + unconditional `CREATE` for views, since SQLite has no `CREATE VIEW IF NOT EXISTS`) — evidence: `schema.py:111-997` throughout.
+- The one existing "dedup rows before creating a UNIQUE index" migration, v36/ENH-2771 (`schema.py:851-885`), orders its statements as backfill → dedup `DELETE` (via `ROW_NUMBER() OVER (PARTITION BY ...) ORDER BY ts ASC`, keeping the earliest `ts`) → `DROP INDEX IF EXISTS` → `CREATE UNIQUE INDEX IF NOT EXISTS`, and its own comment states this ordering is load-bearing.
+- Plain (non-UNIQUE) index migrations never pair with a dedup `DELETE` anywhere in `_MIGRATIONS` — evidence: `idx_summary_nodes_parent_id` at v10 (`schema.py:287-288`), `idx_issue_events_session_id` at v16 (`schema.py:371`).
+- `_apply_migrations()` wraps the entire pending range (not each migration individually) in one `BEGIN IMMEDIATE` / rollback-on-`BaseException` transaction (`schema.py:1050-1086`); statements are split on `;` via `_split_sql_statements()` (`schema.py:1020`) rather than `executescript()`, deliberately, since `executescript()`'s implicit commit would drop the write lock mid-sequence.
+
+### Tests
+- `scripts/tests/test_session_store_schema.py` — per-version migration test classes (e.g. `TestSchemaV9`, `TestSchemaV10`, `TestSchemaV12`, `TestSchemaV27`); the `_bootstrap_schema_at(db, version)` helper (`test_session_store_schema.py:1134-1154`) replays real `_MIGRATIONS[:version]` entries to construct an old-schema-version fixture — the established convention for this kind of test. A byte-identical copy of this helper exists in `scripts/tests/test_session_store_writers.py:1045-1065` (not shared between the two files).
+- No existing test in `scripts/tests/` inserts duplicate rows that violate a not-yet-created UNIQUE index and asserts repair — this is new fixture territory the regression-test AC requires. `test_dedup_on_source_path_and_line_no` (`test_session_store_schema.py:945-968`) is the nearest existing test but covers application-level idempotency (calling `backfill_raw_events` twice), not pre-existing duplicate rows at the migration/SQL level.
+
+_Wiring pass added by `/ll:wire-issue`:_
+- Bumping `SCHEMA_VERSION` breaks 21 hardcoded `assert SCHEMA_VERSION == 42` literals across three files that must be updated to `43`: 15 in `scripts/tests/test_session_store_schema.py` (lines 650, 664-665, 716-717, 795, 812-813, 1034-1035, 1075-1076, 1130, 1413, 1453, 1497, 1547, 1622, 1682, 1750, 1815, 1883, 1928, 1983), 5 in `scripts/tests/test_session_store_writers.py` (lines 470-471, 1153, 1283, 1540, 1738), and 1 in `scripts/tests/test_assistant_messages.py:88` (`test_schema_version_is_12`) — this last file was not previously listed and is not otherwise in scope for this issue [Agent 2 + Agent 3 findings]
+- `scripts/tests/test_session_store_lifecycle.py:1486` — asserts `int(row["value"]) == SCHEMA_VERSION` dynamically (references the constant, not a literal); no edit needed, but its `TestCompact` class (from line 1806) has no coverage of duplicate `summary_nodes` rows colliding on `(session_id, ts_start, ts_end) WHERE kind='retention'` — closest gap to the FK-repointing risk already flagged in this issue's Codebase Research Findings [Agent 3 finding]
+- Fixture pattern to model the new regression test on: combine `_bootstrap_schema_at()` (bootstrap at the version before the new migration) with the insert-then-upgrade shape of `TestSchemaV15SkillCompletionColumns.test_v14_db_upgrades_preserving_dispatch_only_rows` (`test_session_store_schema.py:1170-1198`) — insert duplicate rows under the old schema, then run `ensure_db()` and assert survivors + index existence. `TestSchemaV42IssueSessionsRepair.test_issue_sessions_view_repaired_on_drifted_db` (`test_session_store_schema.py:2040-2094`) is the closest existing "drifted DB gets repaired by `ensure_db()`" precedent, using a `_stamp_version()` helper (`test_session_store_schema.py:2012`) [Agent 3 finding]
+- No existing test asserts `raw_events.summary_node_id` behavior when the `summary_nodes` row it references is deleted (the dangling-FK risk already flagged in this issue's Codebase Research Findings); `raw_events.REFERENCES summary_nodes(id)` (`schema.py:480-481`) is declarative-only — no `PRAGMA foreign_keys=ON` observed in these tests [Agent 3 finding]
+
+### Behavior Parity
+N/A — no existing file is being rewritten, deleted, or delegated away; this is an additive migration.
+
+### Documentation
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/API.md:8883,8887` — states "Current schema version: 38" and `SCHEMA_VERSION, # 38`; already 4 versions stale before this issue, widens to 5. Not test-enforced; optional to update alongside this change. [Agent 2 finding]
+- `docs/guides/HISTORY_SESSION_GUIDE.md:56` and its `| Version | Issue | Adds |` table (lines 58-99) — stops at v40, would go 3 versions behind once this issue's migration lands. Not test-enforced. [Agent 2 finding]
+- `docs/ARCHITECTURE.md:621-662` — a separate `| Version | Object | Purpose |` table, stops at v38 and individually documents `idx_assistant_messages_dedup` at v11 (`ARCHITECTURE.md:635`) without noting a later migration had to repair it. Not test-enforced. [Agent 2 finding]
+
+## Program Design
+
+### Types
+
+N/A — no new Python types; the fix is a plain SQL string appended to the existing
+`_MIGRATIONS` list (`schema.py`).
+
+### Signatures
+
+- `_MIGRATIONS: list[str]` — append one new entry: dedup `DELETE` + `CREATE [UNIQUE]
+  INDEX IF NOT EXISTS` statements for all three indexes, executed the same way every
+  other entry is.
+
+### Call Path
+
+`ensure_db()` -> `_apply_migrations()` -> `_MIGRATIONS` (new dedup-then-index migration
+entry, inside the same `BEGIN IMMEDIATE` / `ROLLBACK`-on-exception transaction as every
+other migration)
 
 ## Proposed Solution
 
@@ -111,8 +208,25 @@ Open questions for implementation:
   Verify the same holds for `summary_nodes` retention rows before reusing the pattern —
   if those rows carry columns outside the index key, picking an arbitrary survivor is a
   silent data decision, not a no-op.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Bump `SCHEMA_VERSION` at `scripts/little_loops/session_store/schema.py:21` from `42` to `43` by hand — it is not derived from `len(_MIGRATIONS)`.
+- Update the 21 hardcoded `assert SCHEMA_VERSION == 42` literals to `43`: 15 in `scripts/tests/test_session_store_schema.py`, 5 in `scripts/tests/test_session_store_writers.py`, 1 in `scripts/tests/test_assistant_messages.py:88`. See exact line numbers in Integration Map → Tests.
+- Write the new regression test using the `_bootstrap_schema_at()` + insert-duplicate-rows-then-`ensure_db()` pattern described in Integration Map → Tests.
 - Whether this ships as its own migration or as part of ENH-3242's general structural
   repair. Sequence after BUG-3236 either way.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-17 — based on codebase analysis:_
+
+- **Dangling FK risk in `summary_nodes` dedup delete, not currently listed as an open question**: `raw_events.summary_node_id` (`ALTER TABLE raw_events ADD COLUMN summary_node_id INTEGER`, `scripts/little_loops/session_store/schema.py:480`) is a live reference into `summary_nodes.id`, populated by `compact()` (`scripts/little_loops/session_store/lifecycle.py:1211-1227`) for `kind = 'retention'` rows specifically — the exact `summary_nodes` subset this issue's dedup delete targets. A `MIN(rowid)`-only delete (as currently drafted) removes non-survivor `summary_nodes` rows without checking whether any `raw_events.summary_node_id` points at them, which would orphan those references. Any dedup delete on `summary_nodes` must first repoint `raw_events.summary_node_id` from each non-survivor id to its group's survivor id, before deleting the non-survivor rows.
+- **Existing precedent uses `ROW_NUMBER() OVER (PARTITION BY ...) ORDER BY ts ASC`, not `MIN(rowid)`**: the only existing "dedup-then-unique-index" migration in this codebase, v36/ENH-2771 (`scripts/little_loops/session_store/schema.py:851-885`), selects its survivor via `ROW_NUMBER() OVER (PARTITION BY issue_num, transition ORDER BY ts ASC) ... WHERE rn = 1`, keeping the earliest `ts` — not `MIN(rowid)`. Its own comment (`schema.py:838-848`) states the ordering (backfill, then dedup DELETE, then `DROP INDEX IF EXISTS` + `CREATE UNIQUE INDEX IF NOT EXISTS`) is load-bearing. `MIN(rowid)` and `ROW_NUMBER() ... ORDER BY ts ASC` are not necessarily equivalent (`rowid` order need not match `ts` order on a table that has had rows deleted/reinserted), so reusing the `ROW_NUMBER()`/`ts`-ordered form matches the one precedent this codebase has already reasoned through, rather than introducing a second, differently-ordered survivor rule.
+- **`_apply_migrations()` only ever runs the pending range**: `_apply_migrations()` (`scripts/little_loops/session_store/schema.py:1050-1086`) loops `for index in range(version, len(_MIGRATIONS))` — it does not re-run already-applied entries. Because the affected databases have `schema_version` already recorded past v11/v19 (that is this issue's premise), a newly appended migration runs standalone; it does not re-execute the original v11/v19 statements. The existing `assistant_messages`/`summary_nodes` table rows are untouched by re-running v11/v19 — only the new appended migration's own statements execute.
+- **No FK risk for `assistant_messages`**: its columns (`id, ts, content, session_id, tool_use_count`; `schema.py:297-303`) are exactly the dedup key (`session_id, ts, content`) plus one non-key column, and no other table holds a foreign-key-shaped reference to `assistant_messages.id` — a `MIN(rowid)` (or `ROW_NUMBER()`/`ts`-ordered) delete is safe there with no repointing step needed.
 
 ## Impact
 
@@ -149,3 +263,10 @@ Split out of BUG-3236 during its pre-implementation review. BUG-3236 documents t
 ## Status
 
 - [ ] open
+
+
+## Session Log
+- `/ll:confidence-check` - 2026-08-17T19:06:24 - `3098ae6c-d494-47ea-a3e0-bfd1d90e6eaf.jsonl`
+- `/ll:wire-issue` - 2026-08-17T18:58:52 - `4375f1ee-af64-420b-8e51-de7f17563fd4.jsonl`
+- `/ll:refine-issue` - 2026-08-17T18:44:49 - `73e92a5b-b52b-41fd-896b-d930c6b15dc8.jsonl`
+- `/ll:format-issue` - 2026-08-17T18:39:06 - `73e92a5b-b52b-41fd-896b-d930c6b15dc8.jsonl`
