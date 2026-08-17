@@ -1,0 +1,11 @@
+{
+  "id": "9b3638d4-f783-4e97-8e5e-b81a70d09ead",
+  "type": "decision",
+  "timestamp": "2026-08-17T00:05:52Z",
+  "category": "implementation",
+  "labels": [],
+  "rationale": "Schema already accepts on_cannot_judge via patternProperties; claimed autocomplete benefit has no live consumer (no loop YAML wires yaml-language-server); P4 vs EPIC-3217's P1/P2 siblings.",
+  "rule": "NO-GO",
+  "scope": "issue",
+  "issue": "BUG-3221"
+}
