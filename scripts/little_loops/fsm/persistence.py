@@ -1121,12 +1121,17 @@ def list_running_loops(loops_dir: Path | None = None) -> list[LoopState]:
     if not running_dir.exists():
         return []
 
+    if not os.access(running_dir, os.R_OK | os.X_OK):
+        logger.warning("Cannot read running-loops directory %s: permission denied", running_dir)
+        return []
+
     states: list[LoopState] = []
     for state_file in running_dir.glob("*.state.json"):
         try:
             data = json.loads(state_file.read_text())
             state = LoopState.from_dict(data)
-        except (json.JSONDecodeError, KeyError):
+        except (json.JSONDecodeError, KeyError) as e:
+            logger.warning("Skipping malformed state file %s: %s", state_file, e)
             continue  # Skip malformed files
         stem = state_file.stem.removesuffix(".state")
         persistence = StatePersistence(

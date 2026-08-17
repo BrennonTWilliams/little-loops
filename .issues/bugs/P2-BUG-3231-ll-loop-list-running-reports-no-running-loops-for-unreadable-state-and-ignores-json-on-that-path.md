@@ -4,9 +4,10 @@ type: BUG
 title: 'll-loop list --running: unreadable or malformed run state is absorbed into
   an affirmative "No running loops", and --json is ignored on that path'
 priority: P2
-status: open
+status: done
 discovered_by: little-loops-hermes-audit
 discovered_date: '2026-08-16'
+completed_at: '2026-08-17T05:12:58Z'
 labels:
 - loops
 - cli-json
@@ -215,7 +216,7 @@ ACs below are worded in terms of a *logged* warning for this reason; the
   **Two in-tree tests encode the current behavior and must be updated as part of
   this fix** — they are the concrete break surface, not just downstream consumers:
 
-  - `scripts/tests/test_ll_loop_commands.py:3692-3706`
+  - `scripts/tests/test_ll_loop_commands.py:3849-3863`
     `test_list_running_json_empty` — constructs `Namespace(running=True,
     status=None, json=True)` and asserts `"No running loops" in out`. Its
     docstring states the buggy behavior as the contract
@@ -245,7 +246,7 @@ The `--json` ordering in `cmd_list` is a separate oversight: the early `print`/`
 | `scripts/little_loops/cli/loop/info.py:110-123` `cmd_list` | Defect (2); both empty-case early returns sit above the `--json` check. |
 | `scripts/little_loops/cli/loop/info.py:209`, `:274` | In-file `print_json([])` precedent for the empty case. |
 | `scripts/little_loops/transport.py:588` `_make_seed_callback` | Second caller of `list_running_loops`; constrains the signature. |
-| `scripts/tests/test_ll_loop_commands.py:3692` | Test asserting the buggy empty-case string under `json=True`. |
+| `scripts/tests/test_ll_loop_commands.py:3849` | Test asserting the buggy empty-case string under `json=True`. |
 | `scripts/tests/test_ll_loop_integration.py:318,325` | Second `"No running loops"` assertion — human path (no `--json`); must **not** change. |
 
 ## Program Design
@@ -285,31 +286,42 @@ Three rules, each currently absent: (a) *absent* and *unreadable* are different 
 
 ## Acceptance Criteria
 
-- [ ] `ll-loop list --running --json` with nothing running prints `[]` (parses
+- [x] `ll-loop list --running --json` with nothing running prints `[]` (parses
       via `json.loads` to an empty list), exit 0.
-- [ ] `ll-loop list --status running --json` with no matches prints `[]`, and its
+- [x] `ll-loop list --status running --json` with no matches prints `[]`, and its
       exit code is asserted explicitly.
-- [ ] `ll-loop list --running --json` with a running loop still prints a bare
+- [x] `ll-loop list --running --json` with a running loop still prints a bare
       **array** of state dicts — populated-path shape unchanged.
-- [ ] `ll-loop list --running` **without** `--json` and nothing running still
+- [x] `ll-loop list --running` **without** `--json` and nothing running still
       prints `No running loops` and exits 0 — the human empty path is unchanged.
       This is the positive guard for `test_ll_loop_integration.py:325`, which is
       edited around but must keep passing.
-- [ ] A corrupt `.loops/.running/probe.state.json` (`not json {{{`) yields `[]` on
+- [x] A corrupt `.loops/.running/probe.state.json` (`not json {{{`) yields `[]` on
       stdout **and** a logged `WARNING` naming `probe.state.json` (assert via
       `caplog`, not `capsys` — see the testing trap above).
-- [ ] A well-formed-but-wrong-shape state file (`{"unexpected": true}`, the
+- [x] A well-formed-but-wrong-shape state file (`{"unexpected": true}`, the
       `KeyError` branch) does the same.
-- [ ] A `chmod 000` `.loops/.running/` yields a logged `WARNING` distinguishing it
+- [x] A `chmod 000` `.loops/.running/` yields a logged `WARNING` distinguishing it
       from an absent directory. Guard this test with a skip when running as root
       (permissions are not enforced for uid 0) and on non-POSIX platforms.
-- [ ] An absent `.loops/.running/` still yields `[]` with **no** warning record —
+- [x] An absent `.loops/.running/` still yields `[]` with **no** warning record —
       the genuinely-idle case stays quiet.
-- [ ] `transport.py:_make_seed_callback` still iterates `list_running_loops`
+- [x] `transport.py:_make_seed_callback` still iterates `list_running_loops`
       correctly (signature unchanged, or updated at that call site).
-- [ ] `python -m pytest scripts/tests/` exits 0.
+- [x] `python -m pytest scripts/tests/` exits 0.
 
 ## Notes
+
+**Decision on the sibling silent clause (implementation step 2):** the
+`except json.JSONDecodeError: return None` at `persistence.py:495-496` inside
+`StatePersistence.load_state()` is left unchanged. It is a different code path
+(single loop's own state load, not the `list_running_loops` directory scan
+this issue is about) with a different caller contract — `load_state()`
+already documents `None` as "not present or invalid" and several callers rely
+on that duality. Widening this issue's scope to add a warning there risks
+behavior callers don't expect from a bug fix scoped to `list_running_loops`.
+Tracked as a known, deliberately out-of-scope inconsistency rather than an
+oversight.
 
 Found while auditing `little-loops-hermes`, whose `ll_status` tool shells out to `ll-loop list --running --json`. Hermes cannot work around this one: the CLI writes no diagnostic anywhere for it to surface, which is why the fix has to be here. Its `idle_outputs` string-match on `"No running loops"` exists solely because of defect (2).
 
@@ -319,4 +331,6 @@ Found while auditing `little-loops-hermes`, whose `ll_status` tool shells out to
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-17T05:12:31 - `32f78e5d-562f-40de-9ecf-a185194b906d.jsonl`
+- `/ll:ready-issue` - 2026-08-17T05:03:21 - `a73fbd02-6064-47c5-a732-a378e26731da.jsonl`
 - `/ll:confidence-check` - 2026-08-17T04:01:31 - `03558def-29ef-40d7-87ba-66fe5fe13be8.jsonl`

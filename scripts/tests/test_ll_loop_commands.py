@@ -753,6 +753,23 @@ class TestCmdList:
         captured = capsys.readouterr().out
         assert "No loops with status: interrupted" in captured
 
+    def test_status_filter_no_match_json_emits_empty_array(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """--status --json with no matches emits a parseable [] and still exits 1."""
+        from little_loops.cli.loop.info import cmd_list
+
+        loops_dir = tmp_path / ".loops"
+        args = argparse.Namespace(running=False, status="interrupted", json=True)
+        with patch("little_loops.fsm.persistence.list_running_loops", return_value=[]):
+            result = cmd_list(args, loops_dir)
+
+        assert result == 1
+        out = capsys.readouterr().out
+        assert json.loads(out) == []
+
     def test_list_json_output(
         self,
         tmp_path: Path,
@@ -3851,7 +3868,7 @@ class TestCmdListRunningJson:
         tmp_path: Path,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
-        """list --running --json with no running loops exits 0 with 'No running loops' message."""
+        """list --running --json with no running loops emits a parseable empty array."""
         from little_loops.cli.loop.info import cmd_list
 
         args = argparse.Namespace(running=True, status=None, json=True)
@@ -3860,7 +3877,7 @@ class TestCmdListRunningJson:
 
         assert result == 0
         out = capsys.readouterr().out
-        assert "No running loops" in out
+        assert json.loads(out) == []
 
     def test_list_running_without_json_unchanged(
         self,

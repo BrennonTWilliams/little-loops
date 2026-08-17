@@ -2145,6 +2145,74 @@ class TestCorruptedStateFiles:
         # Null values are accepted - documents behavior
         assert result is not None
 
+    # list_running_loops skip/unreadable diagnostics (BUG-3231)
+    def test_list_running_loops_warns_on_corrupt_state_file(
+        self, tmp_loops_dir: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """A corrupt state file is skipped and logs a WARNING naming the file."""
+        running_dir = tmp_loops_dir / ".running"
+        running_dir.mkdir(parents=True)
+        bad_file = running_dir / "probe.state.json"
+        bad_file.write_text("not json {{{")
+
+        with caplog.at_level("WARNING", logger="little_loops.fsm.persistence"):
+            states = list_running_loops(tmp_loops_dir)
+
+        assert states == []
+        assert any("probe.state.json" in r.message for r in caplog.records)
+
+    def test_list_running_loops_warns_on_wrong_shape_state_file(
+        self, tmp_loops_dir: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """A well-formed but wrong-shape state file is skipped and logs a WARNING."""
+        running_dir = tmp_loops_dir / ".running"
+        running_dir.mkdir(parents=True)
+        bad_file = running_dir / "probe.state.json"
+        bad_file.write_text(json.dumps({"unexpected": True}))
+
+        with caplog.at_level("WARNING", logger="little_loops.fsm.persistence"):
+            states = list_running_loops(tmp_loops_dir)
+
+        assert states == []
+        assert any("probe.state.json" in r.message for r in caplog.records)
+
+    @pytest.mark.skipif(
+        hasattr(__import__("os"), "geteuid") and __import__("os").geteuid() == 0,
+        reason="permissions are not enforced for uid 0",
+    )
+    @pytest.mark.skipif(
+        not hasattr(__import__("os"), "chmod") or __import__("sys").platform == "win32",
+        reason="POSIX permission bits only",
+    )
+    def test_list_running_loops_warns_on_unreadable_directory(
+        self, tmp_loops_dir: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """An unreadable .running/ directory is distinguished from an absent one."""
+        import os
+
+        running_dir = tmp_loops_dir / ".running"
+        running_dir.mkdir(parents=True)
+        (running_dir / "probe.state.json").write_text(json.dumps({"unexpected": True}))
+        os.chmod(running_dir, 0)
+        try:
+            with caplog.at_level("WARNING", logger="little_loops.fsm.persistence"):
+                states = list_running_loops(tmp_loops_dir)
+        finally:
+            os.chmod(running_dir, 0o755)
+
+        assert states == []
+        assert any("permission" in r.message.lower() for r in caplog.records)
+
+    def test_list_running_loops_absent_directory_no_warning(
+        self, tmp_loops_dir: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """A genuinely absent .running/ directory yields [] with no warning."""
+        with caplog.at_level("WARNING", logger="little_loops.fsm.persistence"):
+            states = list_running_loops(tmp_loops_dir)
+
+        assert states == []
+        assert caplog.records == []
+
     # Events file corruption tests
     def test_truncated_events_file(self, tmp_loops_dir: Path) -> None:
         """Truncated events JSONL recovers gracefully."""

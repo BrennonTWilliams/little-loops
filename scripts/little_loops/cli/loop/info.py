@@ -114,6 +114,9 @@ def cmd_list(
         if status_filter:
             states = [s for s in states if s.status == status_filter]
         if not states:
+            if getattr(args, "json", False):
+                print_json([])
+                return 1 if status_filter else 0
             if status_filter:
                 print(f"No loops with status: {status_filter}")
                 return 1
