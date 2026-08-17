@@ -4,7 +4,7 @@ type: BUG
 title: ll-logs-telemetry-digest omits the required --project/--all target on all five
   corpus states and reports failures as empty results
 priority: P2
-status: open
+status: done
 testable: true
 discovered_by: ll-issues-create
 discovered_date: '2026-08-16'
@@ -194,6 +194,33 @@ So the current behavior fails loudly on state one; the partially-fixed
 behavior emits a confident, wrong clean bill of health. That is a regression in
 diagnosability, and it is why the four downstream states are in scope.
 
+> **Do not "fix" the dict-key branch — it is dead code that must stay dead.**
+> Both subcommands emit a **bare top-level JSON array**, not an object. Verified
+> against the real commands:
+>
+> ```
+> $ ll-logs scan-failures --project . --json > /tmp/sf.json; echo "exit=$?"
+> exit=0
+> $ python3 -c "import json;d=json.load(open('/tmp/sf.json'));print(type(d).__name__, len(d))"
+> list 415
+>
+> $ ll-logs dead-skills --project . --json | head -6
+> [
+>   {
+>     "skill": "align-issues",
+>     "invocations": 0,
+>     "tier": "never"
+>   },
+> ```
+>
+> So in `d.get('failures', d) if isinstance(d, dict) else d`, the
+> `isinstance(d, dict)` test is always false and `items = d` is always the
+> array — the `'failures'` / `'dead'` keys never resolve against anything. The
+> parse works *today* on well-formed output. An implementer who reads those key
+> names as the contract and "aligns" them (e.g. asserting `d['failures']`) will
+> break a currently-correct path. Leave the array handling intact; the change
+> required here is exit-status separation, not key handling.
+
 ### Codebase Research Findings
 
 _Added by `/ll:refine-issue` — 2026-08-16 — based on codebase analysis:_
@@ -253,29 +280,69 @@ ll-logs-telemetry-digest` terminates after one state with no digest produced.
 ## Expected Behavior
 
 Every `ll-logs` invocation in the file parses against the built argument
-surface and supplies an explicit target. `refresh_corpus` refreshes the corpus
-and proceeds to `run_stats`; the four downstream states produce real artifacts
-rather than argparse usage text; and a failed invocation is reported as a
-failure rather than as an empty result.
+surface and supplies an explicit target; the loop proceeds past its first state
+to `run_stats`; the four downstream states produce real artifacts rather than
+argparse usage text; and a failed or no-data invocation is reported as such
+rather than as an empty result.
+
+The `discover` line becomes simply:
 
 ```yaml
-ll-logs discover 2>/dev/null || true
+ll-logs discover 2>/dev/null || true   # no target: discover takes none
+```
+
+**There is deliberately no canonical `extract` line shown here.** The obvious
+repair —
+
+```yaml
+# NOT the recommended fix — see Proposed Solution part 1a
 ll-logs extract --all 2>/dev/null && echo "REFRESHED" || echo "REFRESH_FAILED"
 ```
 
+— parses, but gates on a command that cannot return non-zero and produces
+output no other state reads. What `refresh_corpus` should look like follows
+from the part-1a decision (keep non-gating / drop / re-gate), not from patching
+this line.
+
 If output suppression is genuinely wanted, `--quiet` should be wired via the
 existing shared `add_quiet_arg(parser)` helper (`cli_args.py:209-215`) rather
-than dropped — see Proposed Solution for the two-part choice.
+than dropped — see Proposed Solution part 4.
 
 ## Proposed Solution
 
-Three parts. The first two are required; the third is a judgment call.
+Four parts. The first three are required; the fourth is a judgment call.
 
 **Required (1) — supply a target on all five states.** Add an explicit
 `--project`/`--all` to `extract` (`refresh_corpus`), `stats`, `scan-failures`,
 `sequences`, and `dead-skills`, and drop `--quiet` from `refresh_corpus`'s two
-lines (or keep it only if part 3 ships first). See Decision Rules for which
+lines (or keep it only if part 4 ships first). See Decision Rules for which
 target each state should get — it is not uniform.
+
+**Required (1a) — decide what `refresh_corpus` is *for*, don't just re-arm its
+gate.** Per [refresh_corpus gates work nothing consumes](#refresh_corpus-gates-work-nothing-consumes),
+`extract`'s output feeds no downstream state and `extract --all` always returns
+0. Adding `--all` alone produces a state that always says `REFRESHED`, gates
+nothing, and writes every project's session records into this repo's `logs/`.
+Pick one, explicitly:
+
+- **(a) Keep it, stop gating on it.** Fix the arguments, then replace
+  `evaluate`/`on_yes`/`on_no` with a plain `next: run_stats`. Honest about the
+  fact that the state has no pass/fail signal to offer. Keeps corpus
+  materialization as an intentional side effect for humans and other tools
+  reading `logs/`.
+- **(b) Drop the state; make `run_stats` the `initial:`.** Smallest resulting
+  loop, and nothing the digest reads regresses. Costs the `logs/` refresh, which
+  nothing in this loop wants.
+- **(c) Keep it gating, but gate on something real.** Requires a signal that
+  actually exists — e.g. asserting `logs/` index freshness after the call, or
+  `--project .` so the `get_project_folder is None` → `return 1` path
+  (`logs.py:745-747`) can genuinely fail. Most work; only worth it if the
+  materialized corpus is deemed a real product of this loop.
+
+**(a) is the recommended default**: it is the minimal honest change, preserves
+existing behavior for anything outside the loop reading `logs/`, and does not
+require inventing a signal. Whichever is chosen, the loop's `description:`
+(`:3-8`) must stop claiming the analysis subcommands depend on the refresh.
 
 **Required (2) — make failure distinguishable from emptiness.** Fixing the
 arguments without this leaves the loop one drift away from the false-clean
@@ -286,6 +353,18 @@ digest described above. Two changes:
   `NO_FAILURES`/`NO_DEAD_SKILLS` when the command exited non-zero. The current
   `except: print(0)` idiom makes an unparseable artifact look like an empty
   one.
+- **Exit status alone is not enough — there are three outcomes, not two.**
+  These subcommands return 0 on "ran but had nothing to read": `_cmd_stats`
+  returns 0 after only `logger.warning("No history.db found — run with an
+  active ll project.")`, and `_cmd_dead_skills` returns 0 after
+  `logger.warning("No catalog skills found — run from an ll project root with
+  skills/ directory.")` (`logs.py:997-1002`). So a correctly-parsing but
+  wrongly-scoped call still yields exit 0 with empty output — the same
+  false-clean digest this part exists to prevent. States must distinguish
+  **failed** (non-zero exit) from **ran-but-found-no-data** (exit 0, warning on
+  stderr, no records) from **ran-and-legitimately-empty** (exit 0, corpus
+  present, zero findings). Capturing stderr to `${context.run_dir}` per the
+  next bullet is what makes the middle case detectable.
 - Replace `2>/dev/null` (and the stderr-into-artifact `2>&1` redirects) with
   capture to a distinct file under `${context.run_dir}`, so the next
   argument-surface drift leaves a diagnosable artifact. This was previously
@@ -297,7 +376,22 @@ Do **not** extend the `ll-logs <sub> --help` capability probe to
 detection. Either replace it with a probe that exercises the real argument
 surface, or leave the real invocation's exit code as the signal.
 
-**Optional (3) — wire `--quiet` on `ll-logs`.** `add_quiet_arg` already exists
+**Required (3) — declare `scope:` while the file is open.** `ll-loop validate
+ll-logs-telemetry-digest` currently exits 0 but emits a live WARNING:
+
+```
+[WARNING] scope: Loop declares no 'scope:'. Without it, ll-loop run falls back
+to a repo-root lock that false-conflicts with every other concurrently running
+loop.
+```
+
+This loop writes `.issues/` (via the two `capture-issue` prompt states),
+`logs/` (via `extract`, if part 1a keeps it), and `${context.run_dir}`, and
+runs `/ll:commit`. Add a `scope:` naming those paths — or `scope: ["."]` as the
+explicit repo-wide opt-in given the commit state. Cheap, adjacent, and removes
+the only outstanding validator warning on the file.
+
+**Optional (4) — wire `--quiet` on `ll-logs`.** `add_quiet_arg` already exists
 and is used by the sprint/parallel parsers (`cli_args.py:531`, `:554`). Wiring
 it on `ll-logs` subcommands would honor the original FEAT-1002 spec. Note this
 interacts with ENH-2926, which adds success-path summary output to
@@ -314,13 +408,17 @@ either direction.
   built-in shipped to consuming projects. It *is* git-tracked, so it is real
   committed content, not local scratch. Within that radius the failure is
   total, and the silence is what makes it worth fixing promptly.
-- **Effort**: Small-to-moderate — the argument fixes are five one-line YAML
-  edits, but the failure-vs-emptiness work (Required part 2) touches the two
-  inline `python3 -c` count blocks.
+- **Effort**: Small-to-moderate — four of the argument fixes are one-line YAML
+  edits; `refresh_corpus` additionally needs the part-1a gating decision (which
+  may remove the state or its `evaluate` block), and the failure-vs-emptiness
+  work (Required part 2) touches the two inline `python3 -c` count blocks and
+  now must also detect the exit-0-but-no-data case.
 - **Risk**: Low for the change itself. The notable risk is *under*-fixing:
   repairing only `refresh_corpus` yields a loop that completes and reports a
   false clean corpus (see Post-Partial-Fix Failure Mode), which is worse than
-  today's fail-fast. Repairing all five states exposes downstream states that
+  today's fail-fast. A second, subtler under-fix is treating a re-armed
+  `REFRESHED` gate as evidence the loop works — it passes unconditionally once
+  `--all` is supplied. Repairing all five states exposes downstream states that
   have never executed; expect follow-up issues from their first real run.
 - **Breaking Change**: No
 
@@ -372,8 +470,10 @@ confidence without detecting anything.
 invoke a corpus-scoped `ll-logs` subcommand — `refresh_corpus`, `run_stats`,
 `scan_failures`, `run_sequences`, `check_dead_skills` — covering both the
 missing `--project`/`--all` target and the failure-vs-emptiness reporting in
-the latter two; the unregistered `--quiet` in `refresh_corpus`; optionally
-wiring `add_quiet_arg` onto `ll-logs` parsers.
+the latter two; the unregistered `--quiet` in `refresh_corpus`; the
+`refresh_corpus` gating decision (Proposed Solution part 1a) and the
+`description:` claim it rests on; the loop's missing `scope:` declaration;
+optionally wiring `add_quiet_arg` onto `ll-logs` parsers.
 
 **Out of scope:** `_cmd_extract`'s success-path reporting and `-j/--json`
 (ENH-2926); the loop's `action_type: prompt` states (`triage_failures`,
@@ -410,12 +510,14 @@ All edits are in the single file `.loops/ll-logs-telemetry-digest.yaml`
 (git-tracked; confirmed via `git ls-files .loops/`), plus an optional CLI change
 and a new test:
 
-- `:15-16` — `refresh_corpus`: drop the unregistered `--quiet` from both `discover` and `extract`; add a target to `extract`; capture stderr to `${context.run_dir}` instead of `/dev/null`
+- `:3-8` — `description:`: stop claiming the analysis subcommands depend on the corpus refresh (they read `history.db` / `~/.claude/projects/` directly, never `logs/`)
+- top level — add `scope:` (Proposed Solution part 3); resolves the only `ll-loop validate` warning
+- `:15-16` — `refresh_corpus`: drop the unregistered `--quiet` from both `discover` and `extract`; **resolve the state per Proposed Solution part 1a** (keep non-gating / drop / re-gate) rather than only adding a target; if kept, capture stderr to `${context.run_dir}` instead of `/dev/null`. Note `:18-23`'s `evaluate`/`on_yes`/`on_no`/`on_error` block is what changes under options (a) and (b), not just the action.
 - `:29` — `run_stats`: add a target to `ll-logs stats`
 - `:41` — `scan_failures`: add a target to `ll-logs scan-failures --json`; separate exit-status checking from the JSON count so a failed call cannot report `NO_FAILURES`
 - `:86` — `run_sequences`: add a target to `ll-logs sequences --top 20 --min-count 3`
 - `:99` — `check_dead_skills`: add a target to `ll-logs dead-skills --json`; same exit-status/count separation as `scan_failures`
-- `scripts/little_loops/cli/logs.py` — **optional only** (Proposed Solution part 3): `add_quiet_arg` on the relevant subcommand parsers in `_build_parser()` (`:2065`)
+- `scripts/little_loops/cli/logs.py` — **optional only** (Proposed Solution part 4): `add_quiet_arg` on the relevant subcommand parsers in `_build_parser()` (`:2065`)
 - `scripts/tests/` — new regression test guarding the loop's `ll-logs` invocations (see Tests below for why it cannot join `TestBuiltinLoopFiles`)
 
 ### Dependent Files (Callers/Importers of `cli/logs.py`)
@@ -447,7 +549,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `docs/reference/CLI.md:3294-3306` — the `## ll-logs` section's "Companion loop" prose narratively describes this loop's pipeline and shows `ll-loop run ll-logs-telemetry-digest`; a second reference site (beyond :3263-3265) worth rechecking for staleness once the fix lands, though it makes no claim the loop currently works.
-- `docs/reference/CLI.md:20` — the "Common Flags" table's `--quiet` row lists `Used by: ll-auto, ll-parallel, ll-sprint run, ll-sync`; `ll-logs` is absent. **Only needs an edit if optional Part 3 ships** (wiring `add_quiet_arg` onto `ll-logs` subcommand parsers) — otherwise no action.
+- `docs/reference/CLI.md:20` — the "Common Flags" table's `--quiet` row lists `Used by: ll-auto, ll-parallel, ll-sprint run, ll-sync`; `ll-logs` is absent. **Only needs an edit if optional Part 4 ships** (wiring `add_quiet_arg` onto `ll-logs` subcommand parsers) — otherwise no action.
 
 ## Program Design
 
@@ -485,10 +587,20 @@ is why no partial extraction or diagnostic appears.
 - **Which target each state gets — not uniform.** The rule is whether the
   state's output feeds issue *filing* in this project or read-only aggregate
   reporting:
-  - `refresh_corpus` (`extract`), `run_stats`, `run_sequences` → **`--all`**.
-    These are corpus-wide reads whose output lands in the digest; the
-    `discover` line on `refresh_corpus`'s preceding row is likewise
-    corpus-wide.
+  - `run_stats`, `run_sequences` → **`--all`**. These are corpus-wide reads
+    whose output lands in the digest and feeds no issue-filing state.
+  - `refresh_corpus` (`extract`) → **depends on Proposed Solution part 1a, and
+    it is not a read.** `extract --all` writes one subdirectory per discovered
+    project into this repo's `logs/` (`out_base = Path.cwd() / "logs" / slug`,
+    `logs.py:787`) — corpus-wide *write* amplification, not a corpus-wide read,
+    so the rule above does not transfer. It also cannot fail (`--all` always
+    returns 0, `:796`), so no target choice restores a meaningful gate. Under
+    option (a) or (b) the target is immaterial to the digest; under option (c),
+    `--project .` is the only choice that yields a real failure signal, via the
+    `get_project_folder is None → return 1` path (`:745-747`). The `discover`
+    line takes no target at all — `discover_parser` registers only
+    `add_json_arg` and `--existing-only` (`logs.py:2082-2092`), confirmed by
+    `ll-logs discover --help`.
   - `scan_failures`, `check_dead_skills` → **`--project .`** by default. Both
     feed `action_type: prompt` states (`triage_failures`,
     `file_dead_skill_issues`) that run `/ll:capture-issue`, which files issue
@@ -503,6 +615,14 @@ is why no partial extraction or diagnostic appears.
   - If corpus-wide triage is actually wanted, that is a deliberate design
     change: pass `--all` *and* narrow the prompt states' capture instructions,
     rather than letting `--all` reach issue-filing implicitly.
+- **Shell braces in new `action` text must be `$$`-escaped.** The FSM
+  interpolates the entire action string — comments included — before bash sees
+  it, so a bare `${RC}` or `${OUT}` is parsed as an FSM namespace reference and
+  raises "expected namespace.path". Required part 2 adds exit-capture shell, so
+  this is live for this change, not hypothetical. Write `$${RC}`, or stay with
+  brace-free `$RC` / `"$OUT"` as the existing states already do. The
+  `code-run-gate.yaml` precedent quoted under Integration Map shows the escaped
+  form (`$${ABS_DIR}`) for exactly this reason.
 
 ### Codebase Research Findings
 
@@ -531,36 +651,56 @@ _Added by `/ll:refine-issue` — 2026-08-16 — based on codebase analysis:_
 
 ## Acceptance Criteria
 
-- [ ] `refresh_corpus` reaches `run_stats` on a project with ll activity.
-- [ ] Every command in `.loops/ll-logs-telemetry-digest.yaml` parses against
+- [x] The loop reaches `run_stats` on a project with ll activity. **Note this
+      criterion is nearly free and proves little**: under Proposed Solution
+      1a(a)/(b) the transition is unconditional, and under a naive
+      `--all` fix it passes vacuously because `extract --all` always exits 0.
+      It guards against the first-state death, not against a working loop.
+- [x] **`refresh_corpus` is resolved per Proposed Solution part 1a** — kept
+      non-gating, dropped, or given a signal that can actually fail — rather
+      than left as an always-true `output_contains: "REFRESHED"` gate. The
+      loop's `description:` (`:3-8`) no longer claims the analysis subcommands
+      depend on the corpus refresh.
+- [x] Every command in `.loops/ll-logs-telemetry-digest.yaml` parses against
       the current `ll-logs` argument surface — no unregistered flags, no
       missing required arguments.
-- [ ] **All five states invoking corpus subcommands — `refresh_corpus`
+- [x] **All five states invoking corpus subcommands — `refresh_corpus`
       (`extract`), `run_stats`, `scan_failures`, `run_sequences`,
       `check_dead_skills` — pass an explicit `--project`/`--all` target**,
       chosen per Decision Rules rather than uniformly.
-- [ ] **A failed `ll-logs` call is distinguishable from an empty result.**
+- [x] **A failed `ll-logs` call is distinguishable from an empty result.**
       `scan_failures` and `check_dead_skills` check the invocation's exit
       status separately from the parsed count, and do not report
       `NO_FAILURES` / `NO_DEAD_SKILLS` when the command exited non-zero. A
       forced failure of either command must not yield a digest claiming a
       clean corpus.
-- [ ] **`--help` capability probes are not treated as proof that the real
+- [x] **"Ran but found no data" is distinguishable from "found nothing".**
+      Exit 0 is not sufficient evidence of a real read: `stats` and
+      `dead-skills` return 0 with only a stderr warning when no `history.db` /
+      no skills catalog is found (`logs.py:997-1002`). A run pointed at a
+      project with no telemetry must not produce a digest reporting a clean
+      corpus.
+- [x] The array-shaped `--json` parsing in both count blocks still works — the
+      `d.get('failures')` / `d.get('dead')` branches are dead code against the
+      real bare-array output and must not be "corrected" into a required key.
+- [x] `ll-loop validate ll-logs-telemetry-digest` emits no warnings — in
+      particular the loop declares a `scope:`.
+- [x] **`--help` capability probes are not treated as proof that the real
       invocation parses.** Either the probe is replaced with one that
       exercises the actual argument surface, or the real invocation's exit
       code is the signal — and the probe is not copied into `refresh_corpus`.
-- [ ] **Command output and stderr are captured under `${context.run_dir}`**
+- [x] **Command output and stderr are captured under `${context.run_dir}`**
       rather than discarded to `/dev/null` or merged into an artifact that a
       JSON parser will then choke on, so the next drift leaves a diagnosable
       file.
-- [ ] If `--quiet` remains in the loop, it is registered via `add_quiet_arg`
+- [x] If `--quiet` remains in the loop, it is registered via `add_quiet_arg`
       and covered by a test; otherwise it is removed.
-- [ ] A test guards against recurrence: assert the loop's `ll-logs`
+- [x] A test guards against recurrence: assert the loop's `ll-logs`
       invocations parse (e.g. via the subcommand parsers with
       `parse_known_args`), covering all five states rather than
       `refresh_corpus` alone, so spec/implementation drift fails the suite
       rather than silently disabling the loop.
-- [ ] `python -m pytest scripts/tests/` exits 0.
+- [x] `python -m pytest scripts/tests/` exits 0.
 
 ### Codebase Research Findings
 
@@ -600,9 +740,53 @@ _Wiring pass added by `/ll:wire-issue`:_
   both need a follow-up note: the "no scope flag" premise their designs
   protect against no longer holds.
 
+## Resolution
+
+_Implemented 2026-08-16 — Proposed Solution option 1a(a), `--quiet` Part 4 deferred._
+
+Two files changed: `.loops/ll-logs-telemetry-digest.yaml` and the new
+`scripts/tests/test_bug_3216_telemetry_digest_invocations.py`. `cli/logs.py` and
+`docs/reference/CLI.md` untouched.
+
+- **`refresh_corpus` de-gated** — `evaluate`/`on_yes`/`on_no`/`on_error` replaced
+  with `next: run_stats`; `extract --all` retained as a `logs/` refresh for
+  external readers, with a comment recording why it cannot gate. `description:`
+  no longer claims the analysis subcommands depend on it. `REFRESHED` token gone.
+- **Targets supplied** — `--all` on `extract`/`stats`/`sequences`; `--project .`
+  on `scan-failures`/`dead-skills` per Decision Rules. `--quiet` dropped.
+- **Three-outcome reporting** — every shell state captures `RC=$?` on the line
+  after its redirected command, appends `exit_code=$RC` to a per-state `.err`
+  file under `${context.run_dir}`, and emits a distinct `_ERROR` / `_NO_DATA` /
+  clean token. The `except: print(0)` idiom became `print(-1)` so an unparseable
+  artifact can no longer read as an empty one.
+- **Triage gate polarity inverted** — gates now match the positive token
+  (`FAILURES_FOUND` / `DEAD_SKILLS_FOUND`), so `_ERROR`/`_NO_DATA` route away
+  from the issue-filing prompt states instead of into them. Under the old
+  `NO_FAILURES` polarity an error would have triaged garbage.
+- **`--help` capability probes removed** — the real exit code is now the signal.
+- **`scope:` added** (`${context.run_dir}`, `.issues/`, `logs/`); `ll-loop
+  validate` is now warning-free.
+- **Array-shaped JSON parsing preserved** — the dead `d.get('failures')` /
+  `d.get('dead')` branches deliberately left as-is, with a test pinning the
+  behavior.
+
+Verification: all four shell blocks executed directly against the real CLI —
+happy path (`FAILURES_FOUND:414`, `DEAD_SKILLS_FOUND:25`, `STATS_OK`,
+`SEQUENCES_OK`), forced non-zero exit (`FAILURES_ERROR:rc=1`), exit-0 unparseable
+output (`FAILURES_ERROR:unparseable`), exit-0 empty array (`NO_FAILURES`), and
+exit-0 no-data warning (`DEAD_SKILLS_NO_DATA`). The two middle cases are the ones
+that previously produced a false clean bill of health. The new test was also run
+against the pre-fix YAML and fails 18 of 31 there, confirming it is not vacuous.
+Full suite: 19587 passed, 46 skipped, exit 0.
+
+Not done (deliberate): `--quiet` wiring (Part 4), deferred pending ENH-2926. The
+four `action_type: prompt` states still have never executed; the first real run
+is expected to surface defects in them, which belong in follow-up issues. The
+ENH-2317 / ENH-2318 follow-up note below is still outstanding.
+
 ## Status
 
-**Open** | Created: 2026-08-16 | Priority: P2
+**Done** | Created: 2026-08-16 | Completed: 2026-08-16 | Priority: P2
 
 
 ## Session Log
