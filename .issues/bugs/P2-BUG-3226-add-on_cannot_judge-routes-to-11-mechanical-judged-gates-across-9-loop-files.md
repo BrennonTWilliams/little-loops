@@ -3,10 +3,12 @@ id: BUG-3226
 type: BUG
 title: Add on_cannot_judge routes to 11 mechanical judged gates across 9 loop files
 priority: P2
+testable: true
 status: open
 discovered_by: ll-issues-create
 discovered_date: '2026-08-16'
-parent: BUG-3219
+parent: EPIC-3217
+supersedes: [BUG-3219]
 ---
 
 # BUG-3226: Add on_cannot_judge routes to 11 mechanical judged gates across 9 loop files
@@ -16,15 +18,27 @@ parent: BUG-3219
 Eleven of the thirteen judged gates named in BUG-3219 declare neither `on_cannot_judge`
 nor `on_error`. When such a gate abstains, `FSMExecutor` holds the state twice and then
 terminates the run via `_finish("error", "No valid transition")`. For these eleven gates
-the fix is mechanical — a route to an already-existing target (a failure terminal or the
-gate's existing funnel target) — as distinct from `check_substrate`
+the fix is a route addition rather than new machinery — as distinct from `check_substrate`
 (`rn-build.yaml`/`rn-plan.yaml`), which needs a brand-new deterministic probe state and is
 tracked separately in BUG-3227.
 
+"Route addition" is not the same as "purely mechanical" for all eleven. Nine route to a
+target that already exists. **Three files have no failure terminal at all and need one
+added** (`harness-plan-research-implement-report.yaml`, `loop-specialist-eval.yaml`,
+`dataset-curation.yaml`), and **two gates require a per-gate judgement call because they are
+not funnel-shaped** (`validate_schema`, `check_complete` — see Expected Behavior). Treating
+those two as funnels routes an abstention into a repair loop that re-enters the same
+abstaining judge; that is the specific mistake this issue exists to avoid.
+
 ## Parent Issue
 
-Decomposed from BUG-3219: Judged gates with neither on_cannot_judge nor on_error terminate
-the run on abstention.
+Supersedes BUG-3219 (decomposed): Judged gates with neither on_cannot_judge nor on_error
+terminate the run on abstention. BUG-3227 is the sibling successor.
+
+Relationship to BUG-3228 (`_uncertain` suffix fallback): independent, per EPIC-3217
+Sequencing. This issue declares `on_cannot_judge` only, exactly as written, and needs no
+revision when BUG-3228 lands — at which point `cannot_judge_uncertain` inherits these same
+routes automatically.
 
 ## Current Behavior
 
@@ -44,6 +58,27 @@ Gates with neither route, in scope for this issue:
 
 Out of scope: `rn-build.yaml`/`rn-plan.yaml` `check_substrate` (BUG-3227).
 
+## Steps to Reproduce
+
+1. Pick any gate from the table above, e.g. `integrate-sdk.yaml`'s `enumerate_from_code`.
+2. Drive its `llm_structured` judge to return `{"verdict": "cannot_judge", ...}` — either by
+   running the loop against input the criterion cannot be evaluated from, or by unit-driving
+   `FSMExecutor` with a stubbed evaluator (the shape `TestAbstentionRouting`,
+   `scripts/tests/test_fsm_executor.py:1882`, already uses).
+3. Observe the state re-enter itself twice (`_ABSTENTION_HOLD_CAP`), then the run terminate
+   with `status="error"`, `error="No valid transition"` — rather than routing anywhere.
+
+## Impact
+
+Eleven gates across nine built-in loops kill their run on any abstention. Because
+`harness-single-shot.yaml`, `harness-multi-item.yaml`, and
+`harness-plan-research-implement-report.yaml` are the templates users copy per
+`docs/guides/AUTOMATIC_HARNESSING_GUIDE.md`, the defect propagates into every
+harness a user scaffolds. The failure surfaces as a generic "No valid transition" with no
+indication that a judge abstained, so it reads as an FSM authoring bug rather than an
+unevaluable criterion. Until ENH-3185's abstention grammar has routes to land on, the
+feature's benefit remains theoretical for these gates.
+
 ## Expected Behavior
 
 - `check_semantic` in the three `harness-*` templates: route `on_cannot_judge` to the
@@ -58,14 +93,47 @@ Out of scope: `rn-build.yaml`/`rn-plan.yaml` `check_substrate` (BUG-3227).
   `on_cannot_judge` route so the expensive two-hold agentic re-simulation (documented
   30-300s) is skipped entirely. `loop-specialist-eval.yaml` has no failure terminal today
   and needs one added if that is the chosen destination.
-- The six extraction-shaped gates (`enumerate_from_code`, `enumerate_from_docs`,
-  `enumerate`, `extract_assumptions`, `validate_schema`, `check_complete`) may fold
-  `on_cannot_judge` into the same funnel target their other verdicts already share (e.g.
-  `integrate-sdk.yaml`'s `enumerate_from_code`/`enumerate_from_docs` already funnel
-  `on_yes`/`on_no`/`on_partial` to `prove` — `on_cannot_judge` funnels there too). See the
-  sibling funnel-gate issue BUG-3220 for this pattern.
+- The **four** genuinely funnel-shaped extraction gates fold `on_cannot_judge` into the
+  single target their other verdicts already share. Verified as true funnels (all of
+  `on_yes`/`on_no`/`on_partial` pointing at one state):
+
+  | gate | funnel target |
+  |---|---|
+  | `integrate-sdk.yaml` `enumerate_from_code` (80-82) | `prove` |
+  | `integrate-sdk.yaml` `enumerate_from_docs` (120-122) | `prove` |
+  | `adopt-third-party-api.yaml` `enumerate` (59-61) | `prove` |
+  | `assumption-firewall.yaml` `extract_assumptions` (54-56) | `parse_assumptions` |
+
+  See the sibling funnel-gate issue BUG-3220 for this pattern.
+
+- `validate_schema` and `check_complete` are **not** funnels and must not be folded. Their
+  verdicts diverge, so "the target their other verdicts already share" is undefined, and the
+  target they *partially* share is the repair branch:
+
+  | gate | routing today |
+  |---|---|
+  | `dataset-curation.yaml` `validate_schema` (186-188) | `on_yes: publish`, `on_no`/`on_partial`: `fix_item` |
+  | `incremental-refactor.yaml` `check_complete` (51-53) | `on_yes: done`, `on_no`/`on_partial`: `execute_step` |
+
+  Routing `cannot_judge` to `fix_item`/`execute_step` sends an abstention into a repair loop
+  that re-enters the same abstaining judge on the next pass — an unbounded cycle capped only
+  by the loop's `max_iterations`, which reports as a limit failure rather than the real
+  cause. Both must instead be fail-closed to a failure terminal, consistent with EPIC-3217
+  decision (b) ("`failure: true` remains the FSM's only non-success terminal shape —
+  fail-closed, which is the right default for gates"):
+  - `check_complete` → `failed` (`incremental-refactor.yaml:69`, already `terminal: true` +
+    `failure: true`).
+  - `validate_schema` → a **new** failure terminal; `dataset-curation.yaml` has only `done`
+    (205-206) today.
 - Every changed state where the answer is "we cannot proceed" routes to a `terminal:
-  true` / `failure: true` state, not left to die on "No valid transition".
+  true` / `failure: true` state, not left to die on "No valid transition". This requires
+  adding a failure terminal to three files that have none:
+  `harness-plan-research-implement-report.yaml` (only `done`, 176),
+  `loop-specialist-eval.yaml` (only `done`, 66-67), and `dataset-curation.yaml` (only
+  `done`, 205-206).
+- `adopt-third-party-api.yaml`'s existing `failed` terminal (140-141) declares only
+  `terminal: true` and is missing `failure: true`, unlike every other failure terminal in
+  the corpus. Fix it as part of this change rather than propagating the outlier.
 - Update the harness templates' inline `#` comments to show the `on_cannot_judge` line
   alongside the existing `on_partial` self-hold, since those comments are the de facto
   documentation for the pattern (`docs/generalized-fsm-loop.md:547`).
@@ -81,11 +149,18 @@ transition")`. No executor code changes are required — the fix is per-loop YAM
 
 ## Proposed Solution
 
-Work gate by gate. For the three `harness-*` `check_semantic` states, add `on_cannot_judge:
-failed` (adding a `failed` terminal to `harness-plan-research-implement-report.yaml`). For
-the two `check_skill` states, add an explicit `on_cannot_judge` route bypassing the hold.
-For the six extraction-shaped gates, fold `on_cannot_judge` into each gate's existing
-funnel target.
+Work gate by gate, in three groups:
+
+1. **`check_semantic` × 3 (harness templates)** — `on_cannot_judge: failed`, adding a
+   `failed` terminal to `harness-plan-research-implement-report.yaml`.
+2. **`check_skill` × 2** — explicit `on_cannot_judge` route bypassing the expensive
+   two-hold agentic re-simulation; `loop-specialist-eval.yaml` needs a failure terminal
+   added.
+3. **Extraction-shaped gates × 6** — the *four* true funnels fold into their existing funnel
+   target; `validate_schema` and `check_complete` route fail-closed to a failure terminal
+   (new one for `dataset-curation.yaml`; existing `failed` for `incremental-refactor.yaml`).
+
+Plus the `adopt-third-party-api.yaml` `failed`-terminal `failure: true` correction.
 
 ## Integration Map
 
@@ -128,31 +203,13 @@ _Added by `/ll:refine-issue` — 2026-08-17 — based on codebase analysis:_
 
 ## Program Design
 
-### Codebase Research Findings
-
-_Added by `/ll:refine-issue` — 2026-08-17 — based on codebase analysis:_
-
-_Added by `/ll:refine-issue` — 2026-08-17 — based on codebase analysis:_
-
-_Added by `/ll:refine-issue` — 2026-08-17 — based on codebase analysis:_
-
 ### Signatures
-- `FSMExecutor._abstention_fallback(state: StateConfig, ctx: InterpolationContext) -> str | None` — the on_error-equivalent fallback checked once the hold cap is exhausted; see `scripts/little_loops/fsm/executor.py:2669-2681`.
-- `FSMExecutor._route_abstention_hold(state: StateConfig, state_name: str, ctx: InterpolationContext) -> str | None` — re-enters the same state up to `_ABSTENTION_HOLD_CAP` times before calling `_abstention_fallback`; see `scripts/little_loops/fsm/executor.py:2683-2697`.
-- `FSMExecutor._abstention_declared(state: StateConfig, verdict: str) -> bool` — becomes `True` once a state declares `on_cannot_judge`, which is exactly what this issue's routes add; see `scripts/little_loops/fsm/executor.py:2656-2667`.
-
-### Signatures (corrected — file:line as trailing prose, not a mid-line parenthetical)
-- `FSMExecutor._abstention_fallback(state: StateConfig, ctx: InterpolationContext) -> str | None` — the on_error-equivalent fallback checked once the hold cap is exhausted; see `scripts/little_loops/fsm/executor.py:2669-2681`.
-- `FSMExecutor._route_abstention_hold(state: StateConfig, state_name: str, ctx: InterpolationContext) -> str | None` — re-enters the same state up to `_ABSTENTION_HOLD_CAP` times before calling `_abstention_fallback`; see `scripts/little_loops/fsm/executor.py:2683-2697`.
-- `FSMExecutor._abstention_declared(state: StateConfig, verdict: str) -> bool` — becomes `True` once a state declares `on_cannot_judge`, which is exactly what this issue's routes add; see `scripts/little_loops/fsm/executor.py:2656-2667`.
+- `FSMExecutor._abstention_declared(state: StateConfig, verdict: str) -> bool` — the dispatch gate; becomes `True` once a state declares `on_cannot_judge`, which is exactly what this issue's routes add, sending the abstention through the normal `_route()` path instead of the hold-then-fallback path; see `scripts/little_loops/fsm/executor.py:2656-2667`.
+- `FSMExecutor._route_abstention_hold(state: StateConfig, state_name: str, ctx: InterpolationContext) -> str | None` — re-enters the same state up to `_ABSTENTION_HOLD_CAP` (2) times before calling `_abstention_fallback`; see `scripts/little_loops/fsm/executor.py:2683-2697`.
+- `FSMExecutor._abstention_fallback(state: StateConfig, ctx: InterpolationContext) -> str | None` — the on_error-equivalent fallback checked once the hold cap is exhausted; returns `route.error`, else `on_error`, else `None`, and never `route.default` or an implicit `on_no`; see `scripts/little_loops/fsm/executor.py:2669-2681`.
 
 ### Types
 N/A — no new data shape; this issue adds routing keys (`on_cannot_judge: <state_name>`) to existing `StateConfig` YAML dicts. `StateConfig._from_dict()` (`scripts/little_loops/fsm/schema.py`) already collects unrecognized `on_*` keys into `extra_routes`, and `fsm-loop-schema.json`'s `stateConfig.patternProperties: "^on_"` already accepts the key — no schema change needed (BUG-3221, which would have added explicit support, is cancelled as unnecessary).
-
-### Signatures
-- `FSMExecutor._abstention_fallback(state: StateConfig, ctx: InterpolationContext) -> str | None` (`scripts/little_loops/fsm/executor.py:2669-2681`) — the fallback path this issue's routes exist to preempt. Returns `_resolve_route(state.route.error, ctx)` if `state.route.error` is set; else `_resolve_route(state.on_error, ctx)` if `state.on_error` is set; else `None`. Docstring: never falls back to `route.default` or an implicit `on_no`.
-- `FSMExecutor._route_abstention_hold(state, state_name, ctx) -> str | None` (`:2683-2697`) — re-enters the same state name up to `_ABSTENTION_HOLD_CAP` (2) times on a consecutive undeclared `cannot_judge`/`cannot_judge_uncertain` verdict, then calls `_abstention_fallback()`.
-- `FSMExecutor._abstention_declared(state, verdict) -> bool` (`:2656-2667`) — the dispatch gate: an explicit `on_cannot_judge: <target>` (or `route.routes["cannot_judge"]`) makes this return `True`, which routes the abstention through the normal `_route()` path instead of the hold-then-fallback path.
 
 ### Call Path
 `FSMExecutor` main loop → judge evaluates `evaluate.type: llm_structured` state, returns `cannot_judge` verdict → `_abstention_declared(state, "cannot_judge")` checks for `on_cannot_judge`/`route.routes["cannot_judge"]` on the 11 named states (currently absent in all 11) → `_route_abstention_hold()` holds up to 2× → `_abstention_fallback()` checks `state.on_error` (absent in all 11) → returns `None` → main loop's `next_state is None` branch (`:758-774`, no summary/iteration-cap state active) → `self._finish("error", error="No valid transition")`, terminating the run. Adding `on_cannot_judge: <target>` to each of the 11 states makes `_abstention_declared()` return `True` for that state, routing the abstention through the normal `_route()` path to `<target>` instead — no executor code changes required, only per-loop YAML additions.
@@ -169,17 +226,22 @@ N/A — no new decision logic. This issue applies an existing, already-implement
 2. `loop-specialist-eval.yaml`/`harness-multi-item.yaml`'s `check_skill` states gain an
    explicit `on_cannot_judge` route (`loop-specialist-eval.yaml` needs a failure terminal
    added if routing there).
-3. The six extraction-shaped gates (`enumerate_from_code`, `enumerate_from_docs`,
-   `enumerate`, `extract_assumptions`, `validate_schema`, `check_complete`) gain
-   `on_cannot_judge` routes to their existing funnel targets.
-4. Every changed state where the answer is "we cannot proceed" routes to a `terminal:
-   true` / `failure: true` state.
-5. Update `skills/create-loop/loop-types.md`'s `check_semantic`/`check_skill` scaffolding
+3. The four true funnel gates (`enumerate_from_code`, `enumerate_from_docs`, `enumerate`,
+   `extract_assumptions`) gain `on_cannot_judge` routes to their existing funnel targets
+   (`prove`, `prove`, `prove`, `parse_assumptions`).
+4. `check_complete` (`incremental-refactor.yaml`) gains `on_cannot_judge: failed`, and
+   `validate_schema` (`dataset-curation.yaml`) gains `on_cannot_judge` to a newly added
+   `failure: true` terminal — neither routes into its repair branch (`execute_step` /
+   `fix_item`), per Expected Behavior.
+5. Every changed state where the answer is "we cannot proceed" routes to a `terminal:
+   true` / `failure: true` state, and `adopt-third-party-api.yaml`'s `failed` terminal
+   (140-141) gains the missing `failure: true`.
+6. Update `skills/create-loop/loop-types.md`'s `check_semantic`/`check_skill` scaffolding
    templates (Variant A, Variant B, the `harness-refine-issue` example) and
    `skills/create-loop/reference.md`'s routing-key field reference to document
    `on_cannot_judge` alongside `on_yes`/`on_no`, so loops scaffolded via `/ll:create-loop`
    don't inherit the same defect.
-6. Add `on_cannot_judge` structural assertions to the existing per-loop test classes in
+7. Add `on_cannot_judge` structural assertions to the existing per-loop test classes in
    `scripts/tests/test_builtin_loops.py`: `TestAssumptionFirewallLoop` (10239),
    `TestAdoptThirdPartyApiLoop` (10748), `TestIntegrateSdkLoop` (10815),
    `TestIncrementalRefactorLoop` (11166); to `scripts/tests/test_feat1544_loop_specialist_eval.py`'s
@@ -189,11 +251,26 @@ N/A — no new decision logic. This issue applies an existing, already-implement
    `HARNESS_FILES` list (`test_builtin_loops.py:2905-2908`, currently only
    `harness-single-shot.yaml`/`harness-multi-item.yaml`) or add a parallel class to cover
    `harness-plan-research-implement-report.yaml`.
-7. `python -m pytest scripts/tests/test_builtin_loops.py scripts/tests/test_fsm_executor.py
+   The new failure terminals in `harness-plan-research-implement-report.yaml`,
+   `loop-specialist-eval.yaml`, and `dataset-curation.yaml` each get a `terminal: true` +
+   `failure: true` assertion.
+8. `python -m pytest scripts/tests/test_builtin_loops.py scripts/tests/test_fsm_executor.py
    scripts/tests/test_feat1544_loop_specialist_eval.py -v` passes, and `ll-loop validate`
    runs clean against each of the 9 changed loop files, including against
    `TestValidatorWarningBudget`'s corpus-wide lint ratchet
    (`test_builtin_loops.py:13779-13907`) without needing a new `ALLOWLIST` entry.
+
+## Sequencing Notes
+
+- Independent of BUG-3228; see Parent Issue. Nothing here needs revision when the
+  `_uncertain` fallback lands.
+- **Do not run in parallel with BUG-3227.** Both issues edit
+  `skills/create-loop/loop-types.md` (this issue: the Variant A/B and `harness-refine-issue`
+  `check_semantic`/`check_skill` scaffolds; BUG-3227: the Specialist Pipeline template and
+  the `# OPTIONAL: check_substrate` block) and `skills/create-loop/reference.md`'s
+  routing-key field reference. Under `parallel.epic_branches` these land as conflicting
+  edits to the same two files. Sequence them, or land the shared `reference.md` routing-key
+  update in whichever issue goes first and have the other rebase.
 
 ## Related Key Documentation
 

@@ -10,6 +10,12 @@ discovered_date: '2026-08-16'
 captured_at: '2026-08-16T23:29:27Z'
 parent: EPIC-3217
 decision_needed: false
+confidence_score: 95
+outcome_confidence: 79
+score_complexity: 18
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 18
 ---
 
 # ENH-3224: ll-harness ABSTAIN exit code 3 is indistinguishable from an error to a parent FSM
@@ -176,6 +182,7 @@ Enables abstention-aware loop composition over `ll-harness`. No current built-in
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-17T03:01:36 - `950fed1e-dcee-4e9e-a142-297b86aebff5.jsonl`
 - `/ll:wire-issue` - 2026-08-17T01:55:28 - `bd5e977d-8602-4117-8dad-6c8c2098b8c6.jsonl`
 - `/ll:decide-issue` - 2026-08-17T01:37:33 - `998c4c4b-eb46-4ebd-9513-1c70f20dff43.jsonl`
 - `/ll:refine-issue` - 2026-08-17T01:32:26 - `998c4c4b-eb46-4ebd-9513-1c70f20dff43.jsonl`

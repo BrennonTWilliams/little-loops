@@ -37,7 +37,11 @@ Out of scope: changing the abstention grammar, the hold cap, or the routing prec
 
 1. Funnel-gate repairs (BUG-3220 — mechanical, one line per gate, removes three run-killers).
 2. Validator rule (ENH-3222 — prevents regression before the semantic work lands). No JSON-schema change is needed: `fsm-loop-schema.json`'s `stateConfig.patternProperties` `^on_` catch-all (lines 686-692) already admits `on_cannot_judge` under `additionalProperties: false`, verified by `ll-loop validate` exiting 0 on a loop carrying the key. BUG-3221 was cancelled NO-GO on that basis.
-3. Per-gate semantics for the 13 no-route gates, including the harness templates (BUG-3219).
+3. Per-gate semantics for the 13 no-route gates, including the harness templates (BUG-3219,
+   decomposed into BUG-3226 for the 11 route-addition gates and BUG-3227 for the two
+   `check_substrate` gates needing a deterministic probe). BUG-3226 and BUG-3227 both edit
+   `skills/create-loop/loop-types.md` and `reference.md`, so run them serially rather than
+   as parallel epic branches.
 4. Telemetry consumers (ENH-3223, ENH-3224).
 
 The `audit_conflicts` fix (BUG-3218) is independent of the sequence and should land first on severity.
@@ -59,7 +63,7 @@ cannot_judge_uncertain -> _route=None   (even with on_cannot_judge declared)
 
 So `uncertain_suffix: true` kills a run on the first below-threshold **yes**, long before abstention is reachable. That is why no loop in the corpus sets it, and why the "declare both keys at every site" option was rejected: it would add ~22 lines of routing ritual (plus an ENH-3222 rule to enforce them) to harden one branch of an already-fatal configuration. An abstention-only prefix-match was rejected for fixing 1 of 5 suffixed verdicts and encoding an asymmetry that would be hard to explain later.
 
-Resolution: `X_uncertain` falls back to `on_X` when no explicit `on_X_uncertain` is declared. This fixes the whole family, makes `uncertain_suffix` usable for the first time, and subsumes the abstention case. It preserves AC12's "these are distinct signals" stance, which is about *meaning* — an author wanting different handling still declares `on_X_uncertain` explicitly and it wins. Because it changes shipped ENH-3185 routing semantics, it lands as its own issue with its own tests, **not** inside the retrofit children.
+Resolution: `X_uncertain` falls back to `on_X` when no explicit `on_X_uncertain` is declared, applied **after** the exact-verdict lookup and **before** `route.default` — see BUG-3228, which also records that the family is six verdicts, not five (`error_uncertain` is reachable: `evaluators.py:1270` exempts `"error"` from the grammar check), and that `route:`-table states carrying a `_` default silently misroute suffixed verdicts today rather than dying. This fixes the whole family, makes `uncertain_suffix` usable for the first time, and subsumes the abstention case. It preserves AC12's "these are distinct signals" stance, which is about *meaning* — an author wanting different handling still declares `on_X_uncertain` explicitly and it wins. Because it changes shipped ENH-3185 routing semantics, it lands as its own issue with its own tests, **not** inside the retrofit children.
 
 Consequence for the children: BUG-3218/3219/3220 declare `on_cannot_judge` only, exactly as written, and need no revision when the fallback lands. ENH-3222's rule likewise checks `on_cannot_judge` only.
 
@@ -154,9 +158,11 @@ Every LLM-judged gate in the built-in loops routes abstention deliberately, stat
 
 ## Children
 - **BUG-3218** — sprint-build-and-validate commits when the conflict audit abstains (open)
-- **BUG-3219** — Judged gates with neither on_cannot_judge nor on_error terminate the run on abstention (open)
+- **BUG-3219** — Judged gates with neither on_cannot_judge nor on_error terminate the run on abstention (cancelled — decomposed into BUG-3226/BUG-3227, nothing implemented under this ID)
+- **BUG-3226** — Add on_cannot_judge routes to 11 judged gates across 9 loop files (open; supersedes BUG-3219)
+- **BUG-3227** — check_substrate abstention needs a deterministic probe state in rn-build/rn-plan (open; supersedes BUG-3219)
 - **BUG-3220** — Funnel judged gates route abstention into finalize_failed in composer and router loops (open)
-- **BUG-3221** — fsm-loop-schema.json stateConfig omits on_cannot_judge under additionalProperties false (open)
+- **BUG-3221** — fsm-loop-schema.json stateConfig omits on_cannot_judge under additionalProperties false (cancelled — NO-GO, the `^on_` patternProperties catch-all already admits the key; see Sequencing step 2)
 - **ENH-3222** — Validator rule for judged gates with no abstention route and no error route (open)
 - **ENH-3223** — harness_eval_abstention_rate has no consumers - surface abstention as a criterion-quality signal (open)
 - **ENH-3224** — ll-harness ABSTAIN exit code 3 is indistinguishable from an error to a parent FSM (open)

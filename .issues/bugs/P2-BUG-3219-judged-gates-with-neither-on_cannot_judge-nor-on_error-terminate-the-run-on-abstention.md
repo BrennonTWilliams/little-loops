@@ -4,7 +4,7 @@ type: BUG
 title: Judged gates with neither on_cannot_judge nor on_error terminate the run on
   abstention
 priority: P2
-status: done
+status: cancelled
 discovered_by: ll-issues-create
 discovered_date: '2026-08-16'
 captured_at: '2026-08-16T23:27:46Z'
@@ -227,9 +227,9 @@ _Added by `/ll:confidence-check` on 2026-08-16_
 
 ## Resolution
 
-- **Status**: Decomposed
-- **Completed**: 2026-08-16
-- **Reason**: Issue too large for single session
+- **Status**: Cancelled (decomposed — nothing was implemented under this ID)
+- **Closed**: 2026-08-16
+- **Reason**: Issue too large for single session. Marked `cancelled`, not `done`, per `.claude/CLAUDE.md` § Issue File Format: there is no `superseded` status, and `done` would falsely report the abstention gaps as fixed. The successors declare `supersedes: [BUG-3219]`; `ll-issues show` derives the reverse `Superseded by` row.
 
 ### Decomposed Into
 - BUG-3226: Add on_cannot_judge routes to 11 mechanical judged gates across 9 loop files
@@ -237,7 +237,7 @@ _Added by `/ll:confidence-check` on 2026-08-16_
 
 ## Status
 
-**Done** | Created: 2026-08-16 | Priority: P2
+**Cancelled** | Created: 2026-08-16 | Priority: P2
 
 
 ## Session Log
