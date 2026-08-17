@@ -2946,6 +2946,94 @@ class TestHarnessCapture:
         )
 
 
+class TestOnCannotJudgeRoutes:
+    """BUG-3226: judged gates must declare on_cannot_judge so an abstention routes
+
+    somewhere instead of holding the state twice (_ABSTENTION_HOLD_CAP) and
+    terminating the run via _finish("error", "No valid transition").
+    """
+
+    # (loop_file, state_name, expected on_cannot_judge target)
+    ROUTES: list[tuple[str, str, str]] = [
+        ("harness-single-shot.yaml", "check_semantic", "failed"),
+        ("harness-multi-item.yaml", "check_skill", "failed"),
+        ("harness-multi-item.yaml", "check_semantic", "failed"),
+        ("harness-plan-research-implement-report.yaml", "check_semantic", "failed"),
+        ("loop-specialist-eval.yaml", "check_skill", "failed"),
+        ("integrate-sdk.yaml", "enumerate_from_code", "prove"),
+        ("integrate-sdk.yaml", "enumerate_from_docs", "prove"),
+        ("adopt-third-party-api.yaml", "enumerate", "prove"),
+        ("assumption-firewall.yaml", "extract_assumptions", "parse_assumptions"),
+        ("dataset-curation.yaml", "validate_schema", "failed"),
+        ("incremental-refactor.yaml", "check_complete", "failed"),
+    ]
+
+    @pytest.mark.parametrize("loop_file,state_name,expected", ROUTES)
+    def test_state_declares_on_cannot_judge(
+        self, loop_file: str, state_name: str, expected: str
+    ) -> None:
+        path = BUILTIN_LOOPS_DIR / loop_file
+        assert path.exists(), f"Loop file not found: {path}"
+        data = yaml.safe_load(path.read_text())
+        state = data.get("states", {}).get(state_name, {})
+        assert state.get("on_cannot_judge") == expected, (
+            f"{loop_file}:{state_name}.on_cannot_judge should be {expected!r}, "
+            f"got {state.get('on_cannot_judge')!r}"
+        )
+
+    # (loop_file, terminal_name) for the three files that had no failure terminal
+    NEW_FAILURE_TERMINALS: list[tuple[str, str]] = [
+        ("harness-plan-research-implement-report.yaml", "failed"),
+        ("loop-specialist-eval.yaml", "failed"),
+        ("dataset-curation.yaml", "failed"),
+    ]
+
+    @pytest.mark.parametrize("loop_file,terminal_name", NEW_FAILURE_TERMINALS)
+    def test_new_failure_terminal_is_terminal_and_failure(
+        self, loop_file: str, terminal_name: str
+    ) -> None:
+        path = BUILTIN_LOOPS_DIR / loop_file
+        assert path.exists(), f"Loop file not found: {path}"
+        data = yaml.safe_load(path.read_text())
+        state = data.get("states", {}).get(terminal_name, {})
+        assert state.get("terminal") is True, (
+            f"{loop_file}:{terminal_name} must declare terminal: true"
+        )
+        assert state.get("failure") is True, (
+            f"{loop_file}:{terminal_name} must declare failure: true"
+        )
+
+    def test_adopt_third_party_api_failed_terminal_has_failure_true(self) -> None:
+        """The pre-existing `failed` terminal was missing failure: true, unlike every
+
+        other failure terminal in the corpus (BUG-3226).
+        """
+        path = BUILTIN_LOOPS_DIR / "adopt-third-party-api.yaml"
+        data = yaml.safe_load(path.read_text())
+        state = data.get("states", {}).get("failed", {})
+        assert state.get("terminal") is True
+        assert state.get("failure") is True, (
+            "adopt-third-party-api.yaml:failed must declare failure: true"
+        )
+
+    def test_validate_schema_and_check_complete_do_not_route_into_repair_loop(self) -> None:
+        """validate_schema/check_complete are not funnels: routing cannot_judge into
+
+        fix_item/execute_step would re-enter the same abstaining judge (BUG-3226).
+        """
+        dataset_data = yaml.safe_load(
+            (BUILTIN_LOOPS_DIR / "dataset-curation.yaml").read_text()
+        )
+        validate_schema = dataset_data.get("states", {}).get("validate_schema", {})
+        assert validate_schema.get("on_cannot_judge") != "fix_item"
+
+        refactor_data = yaml.safe_load(
+            (BUILTIN_LOOPS_DIR / "incremental-refactor.yaml").read_text()
+        )
+        check_complete = refactor_data.get("states", {}).get("check_complete", {})
+        assert check_complete.get("on_cannot_judge") != "execute_step"
+
+
 class TestBuiltinLoopOnBlockedCoverage:
     """Tests that llm_structured evaluate states in built-in loops define on_blocked handlers."""
 

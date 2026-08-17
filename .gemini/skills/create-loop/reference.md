@@ -120,15 +120,18 @@ Transitions:
     evaluate.type: llm_structured
     - on_yes -> check_semantic (or check_invariants / advance; omit check_semantic when check_skill covers quality)
     - on_no -> execute
+    - on_cannot_judge -> failed (BUG-3226: skip re-simulation, fail closed)
   check_semantic:          (present if LLM-as-judge enabled; can omit when check_skill covers quality)
     - on_yes -> check_invariants (or advance / done)
     - on_no -> execute
+    - on_cannot_judge -> failed (BUG-3226: an unjudgeable quality gate is not a pass)
   check_invariants:        (present if diff invariants enabled)
     - on_yes -> advance
     - on_no -> execute
   advance:
     - next -> discover
   done: [terminal]
+  failed: [terminal, failure]
 ```
 
 **`execute` field reference (Multi-Item variant):**
@@ -152,6 +155,7 @@ Transitions:
 | `evaluate.prompt` | `str` | yes | Question posed to the LLM evaluator about the skill's output; must include evidence-contract keywords (`verbatim`, `quote`, or `evidence`) to satisfy MR-8, or verdicts may default to optimism (SHOR Table 1: 33–55% accuracy) |
 | `on_yes` | `str` | yes | State to transition to on pass |
 | `on_no` | `str` | yes | State to transition to on fail (typically `execute` for retry) |
+| `on_cannot_judge` | `str` | recommended | State to transition to when the judge abstains (`cannot_judge` verdict, ENH-3185). Without it, an abstention holds the state twice (`_ABSTENTION_HOLD_CAP`) then terminates the run with `error="No valid transition"` instead of routing anywhere. Route to a failure terminal, not back into `execute` or the same gate (BUG-3226) |
 
 **`check_skill` vs `check_mcp` comparison:**
 
@@ -182,13 +186,16 @@ Transitions:
   check_skill:             (present if skill-based evaluation enabled)
     - on_yes -> check_semantic (or check_invariants / done)
     - on_no -> execute
+    - on_cannot_judge -> failed (BUG-3226: skip re-simulation, fail closed)
   check_semantic:          (present if LLM-as-judge enabled; can omit when check_skill covers quality)
     - on_yes -> check_invariants (or done)
     - on_no -> execute
+    - on_cannot_judge -> failed (BUG-3226: an unjudgeable quality gate is not a pass)
   check_invariants:        (present if diff invariants enabled)
     - on_yes -> done
     - on_no -> execute
   done: [terminal]
+  failed: [terminal, failure]
 ```
 
 **`execute` field reference (Single-Shot variant):**

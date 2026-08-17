@@ -4,9 +4,10 @@ type: BUG
 title: Add on_cannot_judge routes to 11 mechanical judged gates across 9 loop files
 priority: P2
 testable: true
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-08-16'
+completed_at: '2026-08-16T00:00:00Z'
 parent: EPIC-3217
 supersedes:
 - BUG-3219
@@ -293,6 +294,7 @@ N/A — no new decision logic. This issue applies an existing, already-implement
 
 
 ## Session Log
+- `/ll:ready-issue` - 2026-08-17T03:42:41 - `049620f8-c0de-45aa-a205-2a46a9ca8dec.jsonl`
 - `/ll:confidence-check` - 2026-08-17T03:38:40 - `d25ab1c5-ed42-4023-87f3-5b04e53ad7b9.jsonl`
 - `/ll:refine-issue` - 2026-08-17T01:20:21 - `f9d03c8c-c328-4dfd-93cf-1b2bf5193b15.jsonl`
 - `/ll:issue-size-review` - 2026-08-17T01:13:51 - `aac72723-ff3b-4a56-8e20-e1cf00b2242c.jsonl`

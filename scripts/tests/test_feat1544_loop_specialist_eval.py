@@ -106,6 +106,20 @@ class TestLoopSpecialistEvalStates:
         state = loop_data["states"]["check_skill"]
         assert state.get("on_no") == "execute"
 
+    def test_check_skill_routes_on_cannot_judge_to_failed(self, loop_data: dict) -> None:
+        """BUG-3226: an abstention must skip the expensive re-simulation, fail closed."""
+        state = loop_data["states"]["check_skill"]
+        assert state.get("on_cannot_judge") == "failed"
+
+    def test_has_failed_terminal(self, loop_data: dict) -> None:
+        """BUG-3226: a new failure terminal was added since the loop previously had
+
+        only `done`.
+        """
+        state = loop_data["states"].get("failed", {})
+        assert state.get("terminal") is True
+        assert state.get("failure") is True
+
 
 class TestBrokenVerifyFixture:
     """Tests for the seeded broken-verify-loop.yaml fixture.

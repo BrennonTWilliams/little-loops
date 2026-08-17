@@ -54,6 +54,7 @@ states:
     on_yes: parse_assumptions
     on_no: parse_assumptions
     on_partial: parse_assumptions
+    on_cannot_judge: parse_assumptions  # BUG-3226: funnel — all verdicts converge on parse_assumptions
 
   parse_assumptions:
     fragment: parse_tagged_json

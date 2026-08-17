@@ -152,6 +152,7 @@ states:
     on_yes: check_invariants          # quality confirmed → check diff size
     on_no: execute                    # quality not confirmed → retry
     on_partial: check_semantic        # ambiguous → re-evaluate
+    on_cannot_judge: failed           # BUG-3226: an unjudgeable quality gate is not a pass
 
   check_invariants:
     # EXAMPLE: Diff size gate — prevents runaway changes from being accepted.

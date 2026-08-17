@@ -184,6 +184,7 @@ states:
     on_yes: publish
     on_no: fix_item
     on_partial: fix_item
+    on_cannot_judge: failed           # BUG-3226: not a funnel — fail closed, not into repair loop
 
   publish:
     # Write the final curated dataset and generate a manifest with curation metrics.
@@ -204,3 +205,8 @@ states:
 
   done:
     terminal: true
+
+  # BUG-3226: gates that abstain must exit to a failure terminal, not "No valid transition".
+  failed:
+    terminal: true
+    failure: true

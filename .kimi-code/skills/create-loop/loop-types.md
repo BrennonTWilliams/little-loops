@@ -800,6 +800,7 @@ states:
         Answer YES or NO with what it observed.
     on_yes: check_semantic   # or check_invariants / done if semantic omitted
     on_no: execute
+    on_cannot_judge: failed  # BUG-3226: skip the expensive re-simulation, fail closed
   check_semantic:                # include if LLM-as-judge selected (can omit when check_skill covers quality)
     action: "echo 'Evaluating output quality'"
     action_type: shell
@@ -815,6 +816,7 @@ states:
         If you cannot find a verbatim quote, your verdict MUST be No.
     on_yes: check_invariants # or done if diff invariants omitted
     on_no: execute
+    on_cannot_judge: failed  # BUG-3226: an unjudgeable quality gate is not a pass
   check_invariants:              # include if diff invariants selected
     action: "git diff --stat HEAD | wc -l | tr -d ' '"
     action_type: shell
@@ -826,6 +828,9 @@ states:
     on_no: execute
   done:
     terminal: true
+  failed:                        # ENH-2825/BUG-3226: an uncheckable gate is not a pass
+    terminal: true
+    failure: true
 ```
 
 #### Variant B: Multi-Item (discover → iterate)
@@ -897,6 +902,7 @@ states:
         Answer YES or NO with what it observed.
     on_yes: check_semantic   # or check_invariants / advance if semantic omitted
     on_no: execute
+    on_cannot_judge: failed  # BUG-3226: skip the expensive re-simulation, fail closed
   check_semantic:                # include if LLM-as-judge selected (can omit when check_skill covers quality)
     action: "echo 'Evaluating output quality'"
     action_type: shell
@@ -912,6 +918,7 @@ states:
         If you cannot find a verbatim quote, your verdict MUST be No.
     on_yes: check_invariants # or advance
     on_no: execute
+    on_cannot_judge: failed  # BUG-3226: an unjudgeable quality gate is not a pass
   check_invariants:              # include if diff invariants selected
     action: "git diff --stat HEAD | wc -l | tr -d ' '"
     action_type: shell
@@ -927,6 +934,9 @@ states:
     next: discover
   done:
     terminal: true
+  failed:                        # ENH-2825/BUG-3226: an uncheckable gate is not a pass
+    terminal: true
+    failure: true
 ```
 
 > **`max_retries` on harness states**: Use `max_retries` + `on_retry_exhausted` on any check state that routes back to `execute` on failure. This prevents a single bad item from exhausting the global `max_steps` budget. See [reference.md](reference.md) for details.
@@ -1122,6 +1132,7 @@ states:
         If you cannot find a verbatim quote, your verdict MUST be No.
     on_yes: check_invariants
     on_no: execute
+    on_cannot_judge: failed  # BUG-3226: an unjudgeable quality gate is not a pass
   check_invariants:
     action: "git diff --stat HEAD | wc -l | tr -d ' '"
     action_type: shell

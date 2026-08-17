@@ -59,6 +59,7 @@ states:
     on_yes: prove
     on_no: prove
     on_partial: prove
+    on_cannot_judge: prove            # BUG-3226: funnel — all verdicts converge on prove
 
   prove:
     loop: oracles/enumerate-and-prove
@@ -139,3 +140,4 @@ states:
 
   failed:
     terminal: true
+    failure: true  # BUG-3226: was missing failure:true, unlike every other failure terminal

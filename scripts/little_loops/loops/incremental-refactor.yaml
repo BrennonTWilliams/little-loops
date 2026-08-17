@@ -50,6 +50,7 @@ states:
     on_yes: done
     on_no: execute_step
     on_partial: execute_step
+    on_cannot_judge: failed           # BUG-3226: not a funnel — fail closed, not into repair loop
 
   revert:
     action: "git checkout -- ."

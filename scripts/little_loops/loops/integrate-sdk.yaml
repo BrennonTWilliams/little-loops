@@ -80,6 +80,7 @@ states:
     on_yes: prove
     on_no: prove
     on_partial: prove
+    on_cannot_judge: prove            # BUG-3226: funnel — all verdicts converge on prove
 
   # ─── Phase 2b: Enumerate from docs/knowledge (greenfield branch) ────────────
 
@@ -120,6 +121,7 @@ states:
     on_yes: prove
     on_no: prove
     on_partial: prove
+    on_cannot_judge: prove            # BUG-3226: funnel — all verdicts converge on prove
 
   # ─── Phase 3 & 4: Parse, flatten, and prove via oracle ──────────────────────
 

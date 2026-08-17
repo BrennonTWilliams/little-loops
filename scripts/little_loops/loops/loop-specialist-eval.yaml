@@ -62,6 +62,12 @@ states:
     on_yes: done
     on_no: execute
     on_partial: execute
+    on_cannot_judge: failed           # BUG-3226: skip the expensive re-simulation, fail closed
 
   done:
     terminal: true
+
+  # BUG-3226: gates that abstain must exit to a failure terminal, not "No valid transition".
+  failed:
+    terminal: true
+    failure: true

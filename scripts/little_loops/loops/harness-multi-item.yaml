@@ -137,6 +137,7 @@ states:
     on_yes: check_semantic            # user simulation passed → LLM quality judge
     on_no: execute                    # user simulation failed → retry skill
     on_partial: execute               # ambiguous → retry skill
+    on_cannot_judge: failed           # BUG-3226: skip the expensive re-simulation, fail closed
 
   check_semantic:
     # EXAMPLE: LLM-as-judge evaluates whether the skill achieved its intent.
@@ -157,6 +158,7 @@ states:
     on_yes: check_invariants          # quality confirmed → diff size gate
     on_no: execute                    # quality not confirmed → retry
     on_partial: check_semantic        # ambiguous → re-evaluate
+    on_cannot_judge: failed           # BUG-3226: an unjudgeable quality gate is not a pass
 
   check_invariants:
     # EXAMPLE: Diff size gate — catches runaway changes before advancing to next item.
