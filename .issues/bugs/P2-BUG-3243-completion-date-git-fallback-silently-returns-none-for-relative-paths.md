@@ -36,8 +36,9 @@ subprocess.run(
 ```
 
 When `file_path` is absolute the two agree and git returns a date. When it is
-relative, the pathspec is re-interpreted relative to `cwd` — `.issues/bugs/X.md`
-becomes `.issues/bugs/.issues/bugs/X.md`, which matches nothing. Git exits **0**
+relative, the pathspec is re-interpreted relative to `cwd` — a path of the form
+`<issues-dir>/<type>/<name>.md` is looked up as that same prefix repeated twice,
+which matches nothing. Git exits **0**
 with empty stdout, so the `returncode == 0` guard passes, the body is skipped,
 and the function returns `None`.
 
@@ -151,16 +152,66 @@ why this survived: the resulting count is plausible, just wrong.
 - **`subprocess.run` here has no `check`, no timeout, and no logging**, so the
   fallback cannot report that it failed even in principle.
 
+## Program Design
+
+### Types
+
+- `_GitDateResult: tuple[date | None, bool]` — the fallback's outcome as
+  (parsed date, `tracked_without_history`). The second element is what lets the
+  caller distinguish "this file has no git history" from "the lookup silently
+  matched nothing", which the current single `date | None` return cannot express.
+
+### Signatures
+
+- `_git_completion_date(file_path: Path) -> _GitDateResult` (new, extracted from
+  the inline fallback block in `issue_history/parsing.py`)
+- `_parse_completion_date(content: str, file_path: Path, *, batch_dates: dict[str, date] | None = None, fm: dict[str, Any] | None = None) -> date | None` (unchanged signature, `issue_history/parsing.py:137`)
+- `scan_completed_issues(issues_dir: Path, category_dirs: list[str] | None = None) -> list[CompletedIssue]` (unchanged signature, gains the aggregated warning, `issue_history/parsing.py:289`)
+
+### Call Path
+
+`scan_completed_issues(issues_dir)` -> `parse_completed_issue(file_path)` ->
+`_parse_completion_date(content, file_path)` -> (frontmatter miss, Resolution
+miss, `batch_dates is None`) -> `_git_completion_date(file_path)` ->
+`subprocess.run(["git", "log", "--format=%as", "-1", "--", file_path.name], cwd=file_path.parent, timeout=...)`.
+On empty stdout, a second `subprocess.run(["git", "ls-files", "--error-unmatch", "--", file_path.name], cwd=file_path.parent, timeout=...)`
+sets the `tracked_without_history` flag. `_parse_completion_date` returns the
+date and logs the flag at `debug`; `scan_completed_issues` counts flagged files
+and emits one aggregated `logger.warning` after the scan.
+
+The three direct callers outside the scanner —
+`cli/issues/list_cmd.py:112`, `cli/issues/list_cmd.py:124` (`batch_dates={}`,
+never reaches git), and `cli/issues/search.py:397` — enter at
+`_parse_completion_date`, which is why the fix belongs at that layer rather
+than at the `scan_completed_issues` boundary.
+
 ## Proposed Solution
 
-1. Pass `file_path.resolve()` as the pathspec (or use `file_path.name` with the
-   existing `cwd`), so the pathspec and `cwd` agree.
-2. Distinguish "no match" from "no history": when stdout is empty, check whether
-   the path is tracked at all (`git ls-files --error-unmatch`) or run the lookup
-   from the repo root, and log at warning level when the fallback yields nothing
-   for a tracked file.
-3. Add a `timeout=` to the `subprocess.run` call, matching the defensive posture
-   elsewhere in this module.
+1. **Use `file_path.name` as the pathspec** with the existing
+   `cwd=file_path.parent`, so pathspec and `cwd` agree.
+
+   Chosen over `file_path.resolve()`: `.resolve()` collapses symlinks, and the
+   tests for this run under macOS `tmp_path` where `/tmp` is a symlink to
+   `/private/tmp`. A resolved (physical) pathspec against a worktree that git
+   discovered by a logical path is an avoidable class of flake.
+   `file_path.name` is also correct for every input form including a bare
+   `Path("X.md")`, where `.parent` is `Path(".")`.
+
+2. **Distinguish "no match" from "no history"** via a second
+   `git ls-files --error-unmatch -- <name>` call, run only when the `git log`
+   stdout is empty (rare once fault 1 is fixed, so no meaningful added cost on
+   the hot path).
+
+3. **Log the tracked-but-no-history case at `debug` per file, and emit one
+   aggregated `warning` per scan.** A per-file warning would be routinely noisy
+   rather than exceptional: an issue file that `/ll:capture-issue` has `git
+   add`ed but not yet committed is tracked with an empty `git log`, which is a
+   normal working state in this repo. Per-file warnings would spray stderr
+   during `ll-history analyze --format json` over ~2900 files.
+
+4. **Add a `timeout=` to both `subprocess.run` calls** — and widen the `except`
+   clause in the same edit (see Implementation Notes; the current clause does
+   not catch the exception a timeout raises).
 
 ## Acceptance Criteria
 
@@ -171,10 +222,17 @@ why this survived: the resulting count is plausible, just wrong.
       least one issue with no `completed_at` and no Resolution date — the only
       files that reach the fallback. A fixture whose issues all carry
       `completed_at` will pass while the bug is fully present.
-- [ ] A file that genuinely has no git history still yields `None`, and does so
-      without a warning.
-- [ ] A tracked file whose git lookup returns nothing logs a warning rather than
-      returning `None` silently.
+- [ ] A file that genuinely has no git history (untracked, or outside any repo)
+      still yields `None`, and does so with no log output at any level.
+- [ ] A tracked file whose git lookup returns nothing is logged at `debug` per
+      file, and `scan_completed_issues` emits exactly one aggregated
+      `logger.warning` naming the count — not one warning per file. A scan in
+      which no file hits that case emits no warning.
+- [ ] `ll-issues list --sort completed` and `ll-issues search --sort completed`
+      produce the same ordering whether their issue paths are relative or
+      absolute. These are the only surfaces whose *output* changes when this
+      lands: `ll-history analyze` already passes an absolute `issues_dir`
+      (`cli/history.py:281`), so its counts are correct today and must not move.
 - [ ] `python -m pytest scripts/tests/` exits 0.
 
 ## Integration Map
@@ -182,6 +240,25 @@ why this survived: the resulting count is plausible, just wrong.
 ### Files to Modify
 - `scripts/little_loops/issue_history/parsing.py` — `_parse_completion_date`,
   the `git log` fallback block
+
+### Implementation Notes
+
+- **Adding `timeout=` requires widening the `except` clause in the same edit.**
+  `parsing.py:193` catches `(OSError, ValueError)`. `subprocess.TimeoutExpired`
+  subclasses `subprocess.SubprocessError`, **not** `OSError`, so adding a
+  timeout without touching the handler converts a hang into an uncaught
+  exception propagated through every caller of `scan_completed_issues` and
+  `ll-issues list`. Widen to `(OSError, ValueError, subprocess.SubprocessError)`.
+- **Two existing tests will silently mis-exercise the new second subprocess
+  call.** `test_git_log_fallback_returns_none_when_empty`
+  (`test_issue_history_parsing.py:210-217`) and
+  `test_git_log_fallback_returns_none_on_oserror` (`:232-240`) patch
+  `subprocess.run` with a single `return_value` / `side_effect`. Once an empty
+  `git log` triggers a follow-up `git ls-files --error-unmatch`, that second
+  call receives the *same* `returncode=0` mock and reads as "tracked" for an
+  untracked `tmp_path` file — putting the test on the warning path and directly
+  contradicting AC 3. Convert these to ordered `side_effect=[...]` sequences
+  supplying a distinct `CompletedProcess` per call.
 
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/cli/history.py` — `analyze` (`--since` / `--until`
@@ -274,6 +351,11 @@ the two disagreed by 18; the path form turned out to be the only difference.
 `bug`, `history`, `cli`, `correctness`
 
 
+## Status
+
+- [ ] open
+
+
 ## Confidence Check Notes
 
 _Added by `/ll:confidence-check` on 2026-08-17_
@@ -298,6 +380,34 @@ _Added by `/ll:confidence-check` on 2026-08-17_
   whether the path is tracked at all via `git ls-files --error-unmatch`, or run
   the lookup from the repo root") — pick one approach before implementing to
   avoid a mid-implementation design decision.
+
+### Resolution of the Above — 2026-08-17
+
+All three gaps are closed; `ll-issues check-design BUG-3243` now exits 0.
+
+- `## Program Design` added with types, signatures, and a call path.
+- `## Status` footer added.
+- The Proposed Solution either/or is resolved: `git ls-files --error-unmatch`
+  on empty stdout, with the pathspec fixed by `file_path.name` (not
+  `.resolve()`, for the symlink reason recorded there).
+
+Three further changes made in the same pass:
+
+- The tracked-but-no-history signal is specified as per-file `debug` plus one
+  aggregated per-scan `warning`, because the per-file warning AC 4 originally
+  mandated would fire routinely for staged-but-uncommitted issue files.
+- An AC was added for `ll-issues list`/`search --sort completed`, the only
+  surfaces whose output actually changes; `ll-history analyze` counts must not
+  move, since it already passes an absolute path.
+- Two implementation traps are recorded under Integration Map → Implementation
+  Notes: `subprocess.TimeoutExpired` escaping the existing `except` clause, and
+  two existing tests whose single-value `subprocess.run` mock would
+  mis-exercise the new second git call.
+
+Noted but deliberately out of scope: `recursive_finalize.py:74-89` `_git_mv`
+has the identical pathspec/`cwd` mismatch. It degrades safely (non-zero exit
+falls through to `shutil.move`), so the effect is lost git rename tracking
+rather than wrong data — worth a separate capture.
 
 ## Session Log
 - `/ll:confidence-check` - 2026-08-17T19:45:58 - `62bab2ff-2e1c-48e4-ad61-470060df1e73.jsonl`

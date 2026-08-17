@@ -149,6 +149,14 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/little_loops/cli/history.py` (`main_history()` at `:16`, subparsers `:66-248`) —
   alternate registration point if the `ll-history doctor` subcommand name is chosen instead
   of extending `ll-doctor`.
+- `scripts/little_loops/cli/__init__.py` (`:64` import of `main_doctor`, `:40` module
+  docstring documenting `ll-doctor`) — a second wire-issue pass (post-decision, 2026-08-17)
+  found this is a third independent one-line `ll-doctor` description surface (alongside
+  `commands/help.md`, `.claude/CLAUDE.md`) that FEAT-2796's precedent flagged as prone to
+  drifting stale independently — check whether the new check's wording belongs here too.
+- `scripts/pyproject.toml` (`:89`, `ll-doctor = "little_loops.cli:main_doctor"`) — the
+  console-script entry point completing the call chain from shell invocation to the `_CHECKS`
+  registry; no change needed, listed for completeness of the wiring trace.
 
 ### Documentation
 
@@ -199,6 +207,28 @@ _Wiring pass added by `/ll:wire-issue`:_
   `test_correction_retirement.py`, `test_issue_manager.py` — all call `ensure_db()` directly
   or transitively; relevant if piece 2's fast-path measurement needs broader startup-cost
   coverage than the primary schema tests provide.
+- `scripts/tests/test_cli_doctor_install_checks.py` — `TestHistoryDb` (`:158-200`) is the
+  exact template for the new check's `_*_data()` function: three-tier scenario coverage
+  (absent/healthy/drifted), `monkeypatch.chdir(tmp_path)`, asserts the returned dict's
+  `status`/`severity`/`note`. Add a new dedicated test class here (e.g. `TestSchemaDrift`) —
+  do not extend `TestHistoryDb` itself, since its `test_absent_is_informational_and_does_not_create`
+  asserts exact dict equality that a shared/extended return shape would break.
+- `scripts/tests/test_cli_doctor.py` — `TestCheckRegistry` (`:656-755`), specifically
+  `test_register_check_appends_and_runs` (`:682-697`)'s save/clear/restore idiom for
+  isolating `_CHECKS` mutation in tests. Confirmed no existing test enumerates the full
+  `_CHECKS` list or count, so registering a new check needs no update here — additive-safe.
+- `scripts/tests/test_wiring_guides_and_meta.py` (`:40` pattern) and
+  `scripts/tests/test_wiring_reference_docs.py` (`:51` pattern) — FEAT-2796 precedent: each
+  new default `_CHECKS` entry gets a paired `(doc_path, check_name_or_json_key, ISSUE_ID)`
+  string-presence wiring-test tuple once its doc prose lands, so a future edit can't silently
+  drop the new check's documentation. The Documentation section above already flags
+  API.md/ARCHITECTURE.md/CLI.md prose updates but not these paired test rows — add them when
+  that prose lands.
+- New comment-drift regression test (no existing precedent in the suite) — a
+  `TestSchemaManifest` case that appends a SQL comment to a table's DDL post-creation (via
+  a raw `sqlite3.connect` + `executescript`, following the `_bootstrap_schema_at` helper
+  shape at `test_session_store_schema.py:1134-1154`) and asserts `_schema_manifest()` output
+  is unchanged — the concrete proof for AC bullet 2 ("comment-only edit does not fail it").
 
 ## Program Design
 
@@ -304,6 +334,25 @@ Both options can detect drift; only Option B repairs it in the same invocation. 
 - `cli/doctor.py`'s `_CHECKS`/`register_check()` registry (`:81-87`) has zero `--fix`/repair vocabulary anywhere in the file; `_history_db_data()`/`_history_db_check()` (`:353-395`) is the direct precedent this check extends.
 - `ensure_db()` sits on nearly every `ll-*` invocation's hot path (`cli_event_context()` in `session_store/writers.py`, plus `hooks/session_start.py` independently) — Option A avoids that surface entirely rather than adding to it.
 - Option B's precedent (`cli/docs.py --fix`, `cli/issues/epic_consistency.py --fix`) is real but belongs to a different diagnose-and-repair convention that has never before been combined with a PRAGMA-based structural check.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Pick a `CheckResult.name` for the new check that does not collide with `"history_db"` —
+  `_run_registered_checks()` (`doctor.py:116-121`) has no uniqueness guard across `_CHECKS`.
+- If the new check's data should surface in `ll-doctor --json` (not just text output), add an
+  explicit `data[...]` line in `_print_report()` (`doctor.py:951-971`) and a matching
+  `_print_<x>_section()` call in `main_doctor()`'s ordered list (`doctor.py:1072-1079`) —
+  neither is automatic from `@register_check` alone; every existing install-surface check
+  (`_decisions_store_check`, `_history_db_check`, `_loop_validity_check`) required this as a
+  separate step.
+- Decide the checked-in manifest snapshot's storage convention before writing
+  `test_schema_manifest_matches_snapshot()`: syrupy `.ambr` under
+  `scripts/tests/__snapshots__/` (regenerated via `pytest --snapshot-update`) vs. a plain JSON
+  fixture under a new `scripts/tests/fixtures/schema/` dir (following the existing
+  `fixtures/*/manifest.json` convention) — both are live, disagreeing conventions in this
+  repo (see Codebase Research Findings above); pick one rather than inventing a third shape.
 
 ## Impact
 

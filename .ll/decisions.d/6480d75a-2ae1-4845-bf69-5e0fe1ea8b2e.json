@@ -1,0 +1,12 @@
+{
+  "id": "ee1da640-fe34-4fbc-bb11-e48458de37cb",
+  "type": "decision",
+  "timestamp": "2026-08-17T19:50:12Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Matches doctor.py's read-only convention exactly, adds zero cost to ensure_db()'s hot path, and stays inside the issue's Scope Boundary of decision-only for piece 2.",
+  "rule": "Option A \u2014 extend cli/doctor.py's _CHECKS registry with a report-only manifest check",
+  "scope": "issue",
+  "alternatives_rejected": "Option B: --fix flag on ll-history doctor (diagnose+repair) \u2014 larger surface, presumes AC bullet 4 requires repair now, which is a contested/unresolved reading",
+  "issue": "ENH-3242"
+}

@@ -111,6 +111,12 @@ happened; a new command would make the existing `--fix` read as an inconsistency
   docstring table (`:623-650`).
 - `scripts/little_loops/cli/issues/format_check.py` — `_print_gaps` (`:132`) for text output.
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/cli/issues/format_check.py` — `add_format_check_parser()` (`:55-68`) hardcodes
+  the gap-class list into `--help` text, and `cmd_format_check`'s own docstring (`:194-199`) repeats
+  the same enumerated list — two additional go-stale sites beyond `check_format_gaps`'s docstring
+  table and CLI.md, both in the file already listed above. [Agent 2 finding]
+
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/loops/autodev.yaml:1590-1596` — reads `format-check --format json`; new keys
   are additive and must not change existing ones.
@@ -119,6 +125,22 @@ happened; a new command would make the existing `--fix` read as an inconsistency
 - Every caller of `ll-issues format-check` — the exit-code contract (`1` when `gaps.has_gaps`,
   `format_check.py:379`) now also fires on the two new classes, so a previously-clean issue with
   duplicate headings starts reporting. Intended, but it is a behavior change for existing callers.
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/loops/rn-remediate.yaml` — `ensure_formatted` state (`:100-121`) is a **real
+  exit-code consumer**, confirmed distinct from `autodev.yaml`'s JSON-key read: `action_type: shell`
+  runs `ll-issues format-check "$ID"` with `evaluate: {type: exit_code}`, `on_no: format_issue`. An
+  issue that previously exited 0 here but now trips `duplicate_heading`/`empty_provenance_stub` routes
+  through an extra `/ll:format-issue --auto` pass where none ran before — consistent with the state's
+  documented fail-open intent, but confirm it's the intended new trigger, not just an accepted side
+  effect. [Agent 2 finding]
+- `scripts/little_loops/cli/issues/check_design.py:38` — calls `check_format_gaps()` directly (not via
+  `cmd_format_check`); the two new gap classes flow through this call site automatically since
+  `FormatGaps` is keyword-constructed everywhere (confirmed: no positional-construction call site
+  exists repo-wide), but note it as a second consumer of the widened dataclass. [Agent 1 + Agent 2
+  finding]
+- `scripts/little_loops/issues/program_design.py` — imports and uses `check_format_gaps()`; same
+  additive-safe note as above. [Agent 1 finding]
 
 ### Similar Patterns
 - `_fix_prose_deps` (`format_check.py:110-130`) — the existing repair's shape: a dedicated helper
@@ -133,11 +155,51 @@ happened; a new command would make the existing `--fix` read as an inconsistency
   pre-cleanup revision as a real-world fixture.
 - Existing `--fix` tests must still pass unchanged, proving the dispatch refactor is behavior-preserving.
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_ll_issues_format_check.py::TestFormatCheckFix` — new tests follow the existing
+  4-case template exactly: `test_fix_without_apply_previews_and_does_not_write` (`:1507-1524`),
+  `test_fix_apply_writes_blocked_by_and_clears_drift` (`:1526-1551`), `test_fix_apply_is_idempotent`
+  (`:1553-1590`), `test_fix_all_mode_applies_across_sweep` (`:1592-1616`) — all via `_invoke([...])`
+  + `capsys.readouterr()`, never internals directly. [Agent 3 finding]
+- `scripts/tests/test_issue_parser.py` — new detection-only test classes for `duplicate_heading` and
+  `empty_provenance_stub`, modeled on `TestStackedFindingsBlocks` (`:4658-4708`), which builds its
+  fixture as an inline class-level string constant rather than a file on disk. Note: neither
+  `_iter_h2_sections()` nor `_paragraph_spans()` (the two helpers the new detectors are meant to
+  build on) has any existing direct test pinning its `(heading, start, end)` return-shape contract —
+  the new tests establish that contract for the first time. [Agent 3 finding]
+- `scripts/tests/test_ll_issues_format_check.py::TestFormatCheckTestableRendering.test_every_format_gaps_field_is_rendered`
+  (`:1920-1942`) — no edit needed; it iterates `dataclasses.fields(FormatGaps)` dynamically and will
+  automatically enforce that both new fields get a `_print_gaps` loop, failing loudly if one is
+  missing. [Agent 3 finding]
+- **Exit-code widening sweep**: grep the suite for any existing fixture that currently asserts
+  `format-check` returns `0` on an issue body containing duplicate `###` headings or an empty
+  `_Added by …:_` stub — such fixtures would flip to exit 1 once the two new gap classes land, and
+  weren't targeted by this wiring pass's search. [Agent 3 finding]
+- `scripts/tests/test_ll_issues_check_design.py`, `scripts/tests/test_program_design_gate.py` —
+  existing coverage of `check_format_gaps()` consumers (`check_design.py`, `program_design.py`); no
+  changes required (additive-safe, confirmed keyword-only `FormatGaps` construction), but worth a
+  pass-through run to confirm. [Agent 1 finding]
+
 ### Documentation
 - `docs/reference/CLI.md` — `ll-issues format-check` gap classes and `--fix` scope.
 
+_Wiring pass added by `/ll:wire-issue`:_
+- No update needed in `commands/refine-issue.md`, `commands/ready-issue.md`,
+  `skills/confidence-check/SKILL.md`, or `skills/wire-issue/prose-dependency-gate.md` — each reads
+  only specific `FormatGaps` keys by name (`prose_dep_drift`, `program_design_nonspecific`, etc.),
+  never enumerates the full gap-class list, so the two new classes are additive-safe there.
+  [Agent 2 finding]
+
 ### Configuration
 - N/A
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-17 — based on codebase analysis:_
+
+- Test precedent for the 4-case matrix this issue's AC calls for (detect / preview-no-write / apply-writes / idempotent-reapply), already exercised for the existing `prose_dep_drift` repair: `TestFormatCheckFix` (`scripts/tests/test_ll_issues_format_check.py:1487-1616`) — `test_fix_without_apply_previews_and_does_not_write` (asserts byte-identical file, "would link (dry-run)" in output), `test_fix_apply_writes_blocked_by_and_clears_drift`, `test_fix_apply_is_idempotent` (runs `--fix --apply` twice, asserts byte-identical on the second apply), `test_fix_all_mode_applies_across_sweep` (`--all --fix --apply` variant). A related invariant test worth mirroring: `test_ref_index_built_once_with_fix_apply_recheck` (`:716-749`), pinned to the index being built exactly once even across the fix/apply re-check.
+- Test precedent for detection-only gap classes at the `issue_parser` layer: `TestStackedFindingsBlocks` (`scripts/tests/test_issue_parser.py:4658-4708`) — builds a raw markdown fixture inline at class scope (not a file on disk) and asserts against exact/sorted list output; a template for the `duplicate_heading`/`empty_provenance_stub` detection tests.
+- `_fix_prose_deps` (`format_check.py:110-131`) delegates to `cmd_link` — an existing idempotent, cycle-safe write path (FEAT-2851) — rather than editing frontmatter directly; this is the "use a dedicated sub-command when one exists" branch. The alternative branch, for repairs with no dedicated sub-command (this issue's two new repairs, and the existing `cmd_fold_findings`), writes via `atomic_write()` (`scripts/little_loops/file_utils.py:16-31`, tempfile + `os.replace`) directly on transformed file content.
 
 ## Program Design
 
@@ -172,6 +234,16 @@ happened; a new command would make the existing `--fix` read as an inconsistency
   existing single repair whose shape the new repairs mirror, at
   `scripts/little_loops/cli/issues/format_check.py:110`.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-17 — based on codebase analysis:_
+
+- Exact anchors, corrected against current line numbers: `_fix_prose_deps` spans `scripts/little_loops/cli/issues/format_check.py:110-131` (not 110-130); the two hardcoded dispatch sites are `:298-308` (sweep) and `:340-352` (single-issue), each pairing the `if fix and gaps.prose_dep_drift:` gate with a re-check call to `check_format_gaps` (same kwargs) only `if apply_fix` — this re-check-after-apply call is duplicated verbatim at both sites today and is a natural third thing the dispatch refactor can centralize alongside the fixer lookup.
+- `FormatGaps` dataclass spans `scripts/little_loops/issue_parser.py:483-564` (fields `:491-511`, `has_gaps` OR-chain `:513-538`, `to_dict()` `:540-564`); the "Gap classes:" docstring table inside `check_format_gaps()` runs `:623-746`. `cmd_format_check`'s own docstring (`:201-203`) states the enforced invariant: every `FormatGaps` field must have a matching loop in `_print_gaps` (`format_check.py:134-189`), or it counts toward `has_gaps`/exit 1 while rendering nothing — the exact defect class ENH-2946 fixed for the `testable` field. The two new gap classes need the same four-touchpoint treatment (field, has_gaps clause, to_dict key, docstring paragraph) plus a `_print_gaps` loop.
+- Existing "collapse duplicates, concatenate bodies in document order, keep first position" precedent, directly reusable as the merge-order template: `fold_research_findings()` (`scripts/little_loops/issues/fold_research_findings.py:156-223`) — a pure function on `str` (I/O and dry-run live only in the CLI wrapper), documented as relocation-only ("nothing is deleted, summarized, or deduped"), collapsing N>1 occurrences into the *first* span's position by removing later spans in reverse order (so earlier offsets stay valid) and reinserting the merged block there.
+- `duplicate_findings_block` detection precedent: `_duplicate_findings_blocks()` (`issue_parser.py:1049-1068`), built on `_iter_h2_sections()` (`:1380-1395`), which yields `(heading, start, end)` per `##` slice — explicitly *not* built on the document-wide `_heading_bodies()` helper, because that helper carries no parent-section info and would false-positive on N separate H2s each legitimately holding one instance. `duplicate_heading` detection needs the same per-H2 slicing but tallying a variable heading text via `Counter`, not a single fixed-pattern count like `_FINDINGS_H3_RE`.
+- `empty_provenance_stub` detection has no existing precedent as close as `duplicate_findings_block`'s: `superseded_marker_count` (`issue_parser.py:1173-1199`) is a whole-body substring count via `_heading_bodies()`, not a line-adjacency check. The closer shape is `_paragraph_spans` (`:1100-1117`), which walks `text.splitlines(keepends=True)` tracking blank-line-delimited spans — needed because "stub with no bullet before the next heading" requires looking at what comes after the stub line, not just counting occurrences within a body.
+
 ## Implementation Steps
 
 1. Refactor `--fix` into a gap-class → repair dispatch table; prove `prose_dep_drift` behavior is
@@ -183,6 +255,19 @@ happened; a new command would make the existing `--fix` read as an inconsistency
    fixture.
 5. Update `docs/reference/CLI.md`.
 6. `python -m pytest scripts/tests/` exits 0.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Update `add_format_check_parser()`'s `--help` text (`format_check.py:55-68`) and
+  `cmd_format_check`'s docstring (`:194-199`) with the two new gap-class names — both hardcode the
+  gap-class list independently of CLI.md.
+- Confirm `rn-remediate.yaml`'s `ensure_formatted` state (`:100-121`) picking up the exit-code
+  widening (routes to an extra `/ll:format-issue --auto` pass) is the intended behavior, not an
+  unnoticed side effect.
+- Sweep existing test fixtures across the suite for any that assert `format-check` exits 0 on an
+  issue containing duplicate `###` headings or an empty provenance stub — these will flip to exit 1.
 
 ## Impact
 
@@ -223,4 +308,6 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-08-17T19:59:57 - `86ab77f1-d20d-487b-9f55-2f4d8abf9a06.jsonl`
+- `/ll:refine-issue` - 2026-08-17T19:49:50 - `91301036-37cc-4bb2-8a07-a3ddf3c555b7.jsonl`
 - `/ll:capture-issue` - 2026-08-17T19:29:38 - `3ce34465-00fd-4ba7-a470-b61774849ebd.jsonl`
