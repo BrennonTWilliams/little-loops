@@ -15,6 +15,15 @@ relates_to:
 - FEAT-3183
 - ENH-2771
 testable: true
+learning_tests_required:
+- sqlite3
+verify_verdict: VALID
+confidence_score: 96
+outcome_confidence: 90
+score_complexity: 20
+score_test_coverage: 25
+score_ambiguity: 22
+score_change_surface: 23
 ---
 
 # BUG-3236: `issue_sessions` view drift leaves `issue_num` absent on migrated databases
@@ -22,7 +31,7 @@ testable: true
 ## Summary
 
 On this repo's `.ll/history.db` — reporting `schema_version = 41` — the `issue_sessions`
-view is the **pre-v36** definition and has no `issue_num` column. Every reader that
+view is a **variant that never shipped** and has no `issue_num` column. Every reader that
 queries `issue_sessions WHERE issue_num = ?` raises
 `sqlite3.OperationalError: no such column: issue_num`, and every one of them catches
 `sqlite3.Error` and returns an empty result. The failure is therefore **silent**:
@@ -32,8 +41,10 @@ queries `issue_sessions WHERE issue_num = ?` raises
 
 ## Steps to Reproduce
 
-Requires a database that crossed schema v36 before the current code — a freshly created
-one will **not** reproduce this. This checkout's `.ll/history.db` is one such database.
+Requires a database that crossed schema v36 under the uncommitted migration body
+described in [Root Cause](#root-cause) — a freshly created one will **not** reproduce
+this, and neither will one upgraded by today's committed code. This checkout's
+`.ll/history.db` is one such database.
 
 ```bash
 python - <<'PY'
@@ -66,10 +77,25 @@ idx_issue_events_dedup                 ON issue_events(issue_num, transition)  -
 legacy_issue_sessions_ts_overlap       present
 ```
 
-So migration 36 (`schema.py` migration index 35, ENH-2771) applied its `ALTER TABLE`
-and index statements but its final two statements — `DROP VIEW IF EXISTS
-issue_sessions` / `CREATE VIEW issue_sessions ...` — are not reflected in
-`sqlite_master`. The live view is the v16 (ENH-2462) definition.
+Migration 36 (`schema.py` migration index 35, ENH-2771) applied its `ALTER TABLE` and
+index statements, and it *did* run a `DROP VIEW` / `CREATE VIEW issue_sessions` pair —
+but with a body that matches neither the v16 nor the committed v36 definition. See
+[Root Cause](#root-cause) for the live SQL.
+
+### Additional drift on the same database (not `issue_sessions`)
+
+Diffing the live schema against a fresh `ensure_db()` — comparing PRAGMA-derived
+column sets and index names, not `sqlite_master.sql` text — turns up three missing
+indexes:
+
+| Index | Migration | Kind | Consequence of absence |
+|---|---|---|---|
+| `idx_assistant_messages_dedup` | v11 (`schema.py:306`) | UNIQUE | `INSERT OR IGNORE` idempotency for `assistant_messages` is not enforced |
+| `idx_summary_nodes_retention_dedup` | v19 (`schema.py:484`) | UNIQUE | same, for `kind = 'retention'` summary nodes |
+| `idx_summary_nodes_parent_id` | v10 (`schema.py:287`) | plain | DAG parent traversal unindexed |
+
+This is **out of scope for this fix** — see [Fix](#fix) item 5 for the reasoning and
+the hard-failure risk that motivates the split.
 
 Reproduced failures against that database:
 
@@ -101,21 +127,57 @@ sqlite3.OperationalError: no such column: issue_num
 
 ## Root Cause
 
-**Undetermined, and the fix does not depend on it.** Two things were ruled out:
+**The migration ran against a working-tree-only revision of `_MIGRATIONS[35]` that was
+never committed.** The live view is a third variant, distinct from both v16 and the
+committed v36:
+
+```sql
+CREATE VIEW issue_sessions AS
+    SELECT ie.issue_id, ie.session_id, s.jsonl_path,
+           MIN(ie.ts) AS first_message_ts, MAX(ie.ts) AS last_message_ts
+    FROM issue_events ie
+    LEFT JOIN sessions s ON s.session_id = ie.session_id
+    WHERE ie.session_id IS NOT NULL
+    GROUP BY ie.issue_num, ie.session_id          -- v36-shaped (v16 groups by issue_id)
+    UNION ALL
+    SELECT l.issue_id, l.session_id, l.jsonl_path, l.first_message_ts, l.last_message_ts
+    FROM legacy_issue_sessions_ts_overlap l
+    JOIN issue_events le ON le.issue_id = l.issue_id   -- exists in NO commit
+    WHERE le.issue_num NOT IN (
+        SELECT issue_num FROM issue_events
+        WHERE session_id IS NOT NULL AND issue_num IS NOT NULL
+    ) OR le.issue_num IS NULL;
+```
+
+It references `issue_num` internally but never projects it — an in-progress state of the
+ENH-2771 rewrite, halfway between keying on `issue_id` and keying on `issue_num`.
+Evidence:
+
+- `git log -S "JOIN issue_events le ON le.issue_id" --all` returns **no commits**. The
+  live body has no committed ancestor.
+- `6a402cf8` (ENH-2771), the commit that bumped `SCHEMA_VERSION` to 36, introduced the
+  migration already projecting `issue_num AS issue_num`. The only later touch is
+  `2b2abdb9` (the `session_store.py` → subpackage split), which moved the text unchanged.
+- Committed v36 uses `CAST(substr(l.issue_id, ...) AS INTEGER)` for the legacy branch;
+  the live view uses a `JOIN issue_events le` instead.
+
+This is the source repo, and every little-loops project on this machine is
+`local-editable` against this checkout — so an `ll-*` invocation during the ENH-2771 work
+migrated these databases with the then-uncommitted migration body. That is precisely the
+"editing a migration in place after databases have already passed it" failure the
+[Fix](#fix) warns against, arrived at through the working tree rather than through a
+committed edit.
+
+Two things are correct and were verified:
 
 - **A fresh database is correct.** `ensure_db()` on a new path produces
-  `issue_sessions` with `issue_num`. (Verified.)
+  `issue_sessions` with `issue_num`.
 - **The current upgrade path is correct.** Hand-applying migrations 0–34, stamping
-  `schema_version = 35`, then calling `ensure_db()` produces the v36 view with
-  `issue_num`. (Verified.) `_split_sql_statements(_MIGRATIONS[35])` yields all 14
-  statements including the `DROP VIEW` / `CREATE VIEW` pair, and `_apply_migrations()`
-  runs the whole migration inside one `BEGIN IMMEDIATE` with `ROLLBACK` on any
-  exception — so a partial apply cannot happen under today's code.
-
-Candidate explanations (not distinguished): the database crossed v36 under a code
-revision whose migration list differed at that index, or a migration was applied by a
-process that did not run the view statements. Git history shows the view redefinition
-present in `6a402cf8` (ENH-2771), the same commit that bumped `SCHEMA_VERSION` to 36.
+  `schema_version = 35`, then calling `ensure_db()` produces the committed v36 view with
+  `issue_num`. `_split_sql_statements(_MIGRATIONS[35])` yields all 14 statements including
+  the `DROP VIEW` / `CREATE VIEW` pair, and `_apply_migrations()` runs the whole migration
+  inside one `BEGIN IMMEDIATE` with `ROLLBACK` on any exception — so a partial apply cannot
+  happen under today's code. **`schema.py:888-908` never shipped in a broken form.**
 
 **The load-bearing fact is the one that is certain: whatever produced the drift, the
 current code can never repair it.** `_apply_migrations()` short-circuits on
@@ -156,6 +218,29 @@ returns without taking the write lock when the version is current; a single
 `PRAGMA table_info` on one sentinel view would keep that path cheap while making drift
 self-healing rather than permanent. Weigh against startup cost; option 1 alone fixes the
 known instance.
+
+> **Implementation trap — do not compare `sqlite_master.sql` text.** SQLite stores the
+> *original* `CREATE` statement verbatim and never rewrites it, so a comment added to a
+> `CREATE TABLE` body after the table was created reads as drift forever. A naive text
+> diff of this checkout's database against a fresh one flags `raw_events` as drifted;
+> the only difference is a block comment added to the `raw_events` DDL long after the
+> table existed. The structure is identical. Any structural check must compare
+> **PRAGMA-derived column sets and index names**, never SQL strings.
+
+**5. Index drift is real but deliberately out of scope here.** The three missing indexes
+listed under [Current Behavior](#current-behavior) are genuine drift, and not confined to
+this database — two other local databases (at v40 and v41) each lack one despite having a
+correct `issue_sessions` view. They are **not** repaired by this fix. The reason to split
+rather than fold them into the same v42 migration:
+
+`CREATE UNIQUE INDEX` fails outright on any database that accumulated duplicate rows
+while the index was missing. `_apply_migrations()` rolls back the entire migration and
+re-raises, `ensure_db()` propagates, and **every `ll-*` command on that project hard-fails
+at startup** — converting a silent read bug into a total outage. This checkout happens to
+have zero duplicate groups in both `assistant_messages` (68,693 rows) and `summary_nodes`
+(0 rows), but that is luck, not a guarantee for other affected databases. A correct index
+repair must delete duplicates before creating each UNIQUE index, which is a materially
+larger and riskier change than the view rebuild. File it as a follow-up.
 
 ## Program Design
 
@@ -211,14 +296,58 @@ If item 2 (reader error surfacing) is taken in the same change, it touches
 6. `issue_effort()` — `scripts/little_loops/history_reader.py:2126`; second reader, feeding
    `recent_issue_velocity()` at `scripts/little_loops/history_reader.py:2178`.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-17 — based on codebase analysis:_
+
+- Verified against current `schema.py`: `_MIGRATIONS` is a flat `list[str]` (opens line 111, closes line 998), `SCHEMA_VERSION = 41` is a plain module constant (line 21) kept in sync with `len(_MIGRATIONS)` by hand — not derived. Appending one entry makes `len(_MIGRATIONS) == 42`, occupying 0-based index 41, matching this issue's `_MIGRATIONS[41]` citation. `_apply_migrations()`'s loop (`schema.py:1050-1086`) needs no change to pick up the new entry: with `schema_version = 41` and `len(_MIGRATIONS) = 42`, the line-1065 short-circuit (`41 >= 42`) is false, the loop runs `range(41, 42)` (index 41 only), and stamps `schema_version = 42` on completion — this is the same mechanism every prior migration append has exercised.
+- **New gap, not previously noted**: `SCHEMA_VERSION == 41` is hard-coded as a literal assertion in 9 separate places across `scripts/tests/test_session_store_schema.py` (lines 650, 664, 716, 813, 1035, 1076, 1130, 1195, 1413), plus one each in `test_session_store_writers.py`, `test_assistant_messages.py`, and `test_session_store_lifecycle.py`. All of these must be updated to `42` alongside the `SCHEMA_VERSION` bump or they fail as an unrelated-looking regression.
+- `history_reader.py:2107` and `:2136` confirmed to be the exact `logger.warning("history_reader: <fn> query failed", exc_info=True)` lines this issue cites for item 2's log-level change. This warning+sentinel shape is uniform across 60+ `except sqlite3.Error:` sites in `history_reader.py` (`_connect_readonly` at :422-436, `find_user_corrections`, `recent_file_events`, etc.) — there is currently no log-level distinction anywhere in the file between "database missing" and "query failed against a present database," so item 2 would establish a new convention, not extend an existing one. `sessions_for_issue`'s own docstring (`history_reader.py:2092-2093`) already documents that its empty-list return conflates three distinct causes (absent view, no sessions, unavailable db) into one indistinguishable signal.
+- Two prior idempotent `DROP VIEW IF EXISTS issue_sessions` / `CREATE VIEW issue_sessions AS ...` precedents already exist for this exact view: v16/ENH-2462 (`schema.py:372,386`) and v36/ENH-2771 (`schema.py:888-909`). Both are unconditional statement pairs (SQLite `CREATE VIEW` has no `IF NOT EXISTS` combinable with a column-list change) — confirms this fix's rebuild approach matches the established idiom for "a view's column list changed," as opposed to `ALTER TABLE ... ADD COLUMN`, which is the idiom used everywhere a *table* (not a view) gains a column.
+- No `_stamp_version(conn, version)` helper exists anywhere in the codebase today. The closest existing analogue, `_bootstrap_schema_at(db, version)` (`test_session_store_schema.py:1134-1154`), replays real `_MIGRATIONS[:version]` DDL *and* stamps `schema_version` together — it only ever constructs a database whose recorded version matches its actual structure. No existing helper stamps a version number against a schema that does *not* match it, which is exactly the drifted scenario this issue's regression test needs to construct; `_stamp_version` fills a genuinely unprecedented gap and should not be conflated with `_bootstrap_schema_at`.
+- Migration entry comment convention is inconsistent in the file as written: entries before ~v37 use `# vNN (ISSUE-ID): ...` (e.g. `schema.py:164,180,196`); v37+ entries drop the `vNN` prefix (`schema.py:910,922,939,966`). Either form is accepted today (unenforced); the new entry may follow either.
+- Existing per-migration tests use a dedicated `TestSchemaVNN` class per migration (e.g. `TestSchemaV27`, `TestSchemaV28`) rather than bare module-level test functions — the two new test names in this issue's Program Design (`test_issue_sessions_view_has_issue_num_on_fresh_db`, `test_issue_sessions_view_repaired_on_drifted_db`) can be added as module-level functions or under a new `TestSchemaV42`-style class; both shapes coexist in the current file (module-level functions also appear, e.g. `test_v1_db_upgrades_to_v2_idempotently`).
+
+_Added by pre-implementation review — 2026-08-17 — verified against the live database:_
+
+- **The fix is empirically validated.** Applying the two `issue_sessions` statements from
+  `_MIGRATIONS[35]` to a copy of this checkout's `.ll/history.db` produces
+  `['issue_id', 'issue_num', 'session_id', 'jsonl_path', 'first_message_ts', 'last_message_ts']`,
+  after which `sessions_for_issue("ENH-3195")` returns a real `SessionRef` and
+  `issue_effort("ENH-3195")` returns `{'session_count': 1, 'cycle_time_days': 0.0}`.
+  Acceptance criteria 1 and 2 are satisfiable exactly as written.
+- **No type-affinity trap in the readers.** `sessions_for_issue()` passes
+  `normalize_issue_id(issue_id)` into `WHERE issue_num = ?`; `normalize_issue_id`
+  (`session_store/writers.py:145`) returns `int | None`, so `"ENH-3195"` arrives as
+  `3195` and matches the INTEGER column. Worth having checked — a `str` return would have
+  let the migration land, the tests pass, and the readers still return nothing.
+- The repaired view's `jsonl_path` is `NULL` for the sampled issue (no matching `sessions`
+  row), and `cycle_time_days` is `0.0` because the v36 dedup index keeps one
+  `issue_events` row per `(issue_num, transition)`. The data is thin but real; do not read
+  a sparse result after the fix as the fix having failed.
+
+### Documentation
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/API.md:8887` — the `from little_loops.session_store import (SCHEMA_VERSION,        # 38` line already carries a stale inline value comment (live value is 41, not 38, even before this fix); bumping `SCHEMA_VERSION` to 42 is a natural point to correct it to `# 42` while in the area. Optional — the comment is pre-existing drift, not something this fix's diff newly breaks. [Agent 2 finding]
+
 ## Impact
 
 - **Priority**: P1 — a shipped user-facing command (`ll-history sessions`) returns
   nothing on an affected database, and two library readers silently return empty. The
   failure mode is indistinguishable from "no data," so it does not get reported.
-- **Blast radius**: any database that crossed v36 before the current code, on any
-  project. Unknown how many; this checkout's is one. A fresh install is unaffected,
-  which is why the test suite never caught it.
+- **Blast radius**: measured, not estimated. A sweep of all 31 `.ll/history.db` files on
+  this machine finds **three** drifted databases at `schema_version >= 36`: this
+  checkout's (v41), and two others (v41 and v39). Every database below v36 legitimately
+  lacks `issue_num` — that is staleness, not drift, and `ensure_db()` will migrate them
+  correctly whenever they are next opened.
+- **Released users are almost certainly unaffected.** The committed migration body has
+  always projected `issue_num` (see [Root Cause](#root-cause)); only databases migrated
+  by an uncommitted working-tree revision of `_MIGRATIONS[35]` — i.e. local-editable
+  projects on the development machine during the ENH-2771 work — can be drifted. The fix
+  is still worth shipping as a migration: it is idempotent and cheap on correct
+  databases, and there is no way to prove the set is closed. A fresh install is
+  unaffected, which is why the test suite never caught it.
 - **Blocks**: FEAT-3183, whose session→issue joins all key on `issue_num`.
 - **Effort**: Small — one appended migration plus tests. Items 2–4 are the durable
   part and can be scoped separately.
@@ -238,3 +367,10 @@ If item 2 (reader error surfacing) is taken in the same change, it touches
 ## Status
 
 - [ ] open
+
+
+## Session Log
+- `/ll:confidence-check` - 2026-08-17T17:19:11 - `83adf706-3c34-48ba-adbd-2ccf3898278d.jsonl`
+- `/ll:verify-issues` - 2026-08-17T17:17:33 - `038b6ab4-3b9f-4cfd-a4d6-dac5e7366086.jsonl`
+- `/ll:wire-issue` - 2026-08-17T17:15:27 - `72df34c5-4823-4f9c-bb82-d4eea9e4edcc.jsonl`
+- `/ll:refine-issue` - 2026-08-17T17:08:25 - `0d1d5748-87d3-4915-a4de-db31a62296c5.jsonl`
