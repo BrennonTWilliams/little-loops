@@ -401,6 +401,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 **Note** (added by `/ll:audit-issue-conflicts`): This issue and ENH-2966 both modify `check_format_gaps`/`FormatGaps` in `scripts/little_loops/issue_parser.py` for unrelated gap classes (ENH-3247's two new structural-debris gap classes vs. ENH-2966's testable-keyword scan surface). Coordinate implementation order to avoid a merge collision in the same function.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-17T20:31:13 - `e97f4c03-b671-421e-ac95-ea56a86f3a4e.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-17T20:25:55 - `fe71c380-6bd8-44e2-9c73-d0617456c6e4.jsonl`
 - `/ll:confidence-check` - 2026-08-17T20:10:26 - `37e075a7-49b8-44db-b567-e15852c40c0b.jsonl`
 - `/ll:wire-issue` - 2026-08-17T19:59:57 - `86ab77f1-d20d-487b-9f55-2f4d8abf9a06.jsonl`
