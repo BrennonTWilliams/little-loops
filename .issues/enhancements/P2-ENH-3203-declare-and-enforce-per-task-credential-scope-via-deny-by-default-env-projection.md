@@ -3,11 +3,10 @@ id: ENH-3203
 type: ENH
 title: Declare and enforce per-task credential scope via deny-by-default env projection
 priority: P2
-status: open
+status: done
 parent: EPIC-3212
 epic: EPIC-3212
-blocked_by:
-- ENH-3184
+blocked_by: []
 discovered_by: ll-issues-create
 discovered_date: '2026-08-15'
 captured_at: '2026-08-15T22:26:51Z'
@@ -19,6 +18,8 @@ score_complexity: 0
 score_test_coverage: 25
 score_ambiguity: 18
 score_change_surface: 0
+relates_to:
+- ENH-3184
 ---
 
 # ENH-3203: Declare and enforce per-task credential scope via deny-by-default env projection
@@ -38,6 +39,12 @@ Today a scheduled docs-sweep agent and a scheduled release agent run with identi
 ENH-3184 centralizes child-environment construction behind a single projection helper, but that helper's default policy is "inherit everything, apply overrides" — today's behaviour, expressed once instead of twelve times. There is no way for a task to say what it needs, and no way for the helper to withhold anything.
 
 `HostInvocation.env` is additive/override-only by documented contract (`_apply_automation_env()`, `host_runner.py:1784-1799`): absence of a key means "inherit the parent's value," never "clear."
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-17 — based on codebase analysis:_
+
+- Stale anchor: this section's `_apply_automation_env()` citation (`host_runner.py:1784-1799`) is out of date — confirmed current location is `host_runner.py:1819-1834` (already correctly re-cited under Program Design → Codebase Research Findings, but this section's own citation was never updated). Behavior itself is unchanged and matches this section's description: sets only `LL_AUTOMATION`/`LL_AUTOMATION_PROFILE` in place, never deletes a key. [codebase-analyzer, verified by direct read]
 
 ## Expected Behavior
 
@@ -137,6 +144,10 @@ _Wiring pass added by `/ll:wire-issue`:_
 ### Codebase Research Findings
 
 _Added by `/ll:refine-issue` — 2026-08-17 — based on codebase analysis:_
+
+_Added by `/ll:refine-issue` — 2026-08-17 — based on codebase analysis:_
+
+- `scripts/little_loops/parallel/worker_pool.py:812` (`WorkerPool._detect_worktree_model_via_api()`, method starts line 792) is a `project_child_env(invocation, extra={...})` call passing a real `HostInvocation` — confirmed present but not named anywhere in the "with an `invocation`" call-site census under Program Design → Codebase Research Findings (that list names `worker_pool.py:105`, the sibling no-invocation call, but not `:812`). It is a model-detection probe run once per worktree setup (`resolve_host().build_blocking_json(...)` then `subprocess.run([invocation.binary, *args], ...)`), not a `bash -c` shell action, so it is not an AC7 target — but since it constructs and passes a real `HostInvocation`, it is a tenth `invocation`-bearing call site that will route through `env_allow` once that field lands, alongside the nine already named at line 204. [codebase-locator + codebase-analyzer, confirmed independently]
 
 ### Conventions in Force (pattern-finder additions)
 - **Per-state declaration precedent.** The `tools:` allowlist is `array[string]`/optional (`fsm-loop-schema.json:590-596`; `StateConfig.tools: list[str] | None = None`, `schema.py:686`), flows into `build_streaming(tools=...)` at `fsm/executor.py:2284`, only for prompt-mode states. Runners that honor it read the flag directly (`ClaudeCodeRunner.build_streaming`, `host_runner.py:358-359`; `OmpRunner`, `host_runner.py:1246-1247`); runners that decline it warn-and-drop via `CapabilityNotSupported` (`CodexRunner`, `host_runner.py:645-654`; same shape in `QwenRunner:1624-1627`, `KimiRunner:1411-1415`), gated on each runner's `capabilities.tool_allowlist` flag.
@@ -242,9 +253,22 @@ Explicitly **out of scope**:
 - **Risk**: High — deny-by-default on process environments fails closed in production. Getting AC4's baseline wrong means a shell action dies on an unrelated-looking error (missing `VIRTUAL_ENV`, `SSH_AUTH_SOCK`, a proxy var), not a clean "credential denied"; missing a spawn site means the guarantee is silently false. Both failure modes are worse than the status quo, because they look like protection that isn't there. A third, quieter risk is *overclaiming*: describing tasks as authority-scoped when every disk-backed credential is still readable (see Scope Boundaries). Mitigations: ENH-3184 lands the chokepoint with a guard first; derive the baseline from a report-only run over this repo's own loops (AC6) rather than by guessing; keep projection opt-in per declared spec (AC5) so undeclared specs cannot regress.
 - **Breaking Change**: No — AC5 preserves coarse behaviour for undeclared specs.
 
+---
+
+## Resolution
+
+- **Status**: Decomposed
+- **Completed**: 2026-08-17
+- **Reason**: Issue too large for single session (`ll-issues size` score: 11/11, Very Large)
+
+### Decomposed Into
+- ENH-3233: Deny-by-default env projection core — chokepoint, capability registry, and baseline
+- ENH-3234: ActionSpec credential scope declaration and runner_spec.py wiring
+- ENH-3235: FSM StateConfig credential scope declaration and fsm/runners.py wiring
+
 ## Status
 
-**Open** | Created: 2026-08-15 | Priority: P2 | Unblocked: 2026-08-16 (ENH-3184 done)
+**Decomposed** | Created: 2026-08-15 | Priority: P2 | Unblocked: 2026-08-16 (ENH-3184 done)
 
 
 ## Confidence Check Notes
@@ -260,7 +284,13 @@ _Added by `/ll:confidence-check` on 2026-08-17_
 - `project_child_env()` has ~18 confirmed call sites (9 with an `HostInvocation`, 9 without) — a very wide blast radius for a chokepoint change; getting AC4's baseline wrong fails a shell action on an unrelated-looking error rather than a clean denial.
 - Open Decision #3 (does AC3's failure raise directly or promote via `warnings.simplefilter`) is still unresolved in the issue text — minor, but worth settling before AC3's implementation.
 
+_Re-checked by `/ll:confidence-check` on 2026-08-17 — scores unchanged after the two subsequent `/ll:refine-issue` passes (Codebase Research Findings additions, incl. the `worker_pool.py:812` call site) and the `/ll:decide-issue`/`/ll:wire-issue` passes already reflected above. Readiness gates (learning tests, Program Design, dependencies, parity/claim) all clean/inert. Recommendation stands: PROCEED, with the outcome risk factors above unchanged — this is inherent to the issue's architectural shape (chokepoint inversion + wide blast radius), not a specification gap._
+
 ## Session Log
+- `/ll:issue-size-review` - 2026-08-17T16:32:35 - `bcf99734-092e-4d7b-9a71-2d6fb04c8246.jsonl`
+- `/ll:confidence-check` - 2026-08-17T16:27:27 - `d113a1c4-b361-4aaf-8a68-f645d463ffc1.jsonl`
+- `/ll:refine-issue` - 2026-08-17T16:21:54 - `5214fece-3e2e-4586-ba55-a9b9426f6884.jsonl`
+- `/ll:refine-issue` - 2026-08-17T16:21:46 - `5214fece-3e2e-4586-ba55-a9b9426f6884.jsonl`
 - `/ll:confidence-check` - 2026-08-17T16:05:52 - `032bd3ea-edea-4d83-ac86-673f9f985746.jsonl`
 - `/ll:wire-issue` - 2026-08-17T15:52:14 - `aa07a6fa-b5bb-47c3-b8d4-077fa1c9e302.jsonl`
 - `/ll:decide-issue` - 2026-08-17T15:38:28 - `86adafaa-70d2-4c08-ac9c-a7da1b885403.jsonl`

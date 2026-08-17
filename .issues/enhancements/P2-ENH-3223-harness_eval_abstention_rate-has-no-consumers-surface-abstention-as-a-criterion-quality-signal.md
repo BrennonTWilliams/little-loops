@@ -11,6 +11,12 @@ captured_at: '2026-08-16T23:29:07Z'
 parent: EPIC-3217
 decision_needed: true
 testable: true
+confidence_score: 60
+outcome_confidence: 42
+score_complexity: 14
+score_test_coverage: 0
+score_ambiguity: 10
+score_change_surface: 18
 ---
 
 # ENH-3223: harness_eval_abstention_rate has no consumers - surface abstention as a criterion-quality signal
@@ -133,10 +139,29 @@ Turns recorded-but-unread abstention data into an actionable signal for criterio
   `harness_eval_abstention_rate()`'s source data (`semantic_passed = NULL`
   on abstention) is produced
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-08-17_
+
+**Readiness Score**: 60/100 → STOP — ADDRESS GAPS (Program Design hard override)
+**Outcome Confidence**: 42/100 → LOW
+
+### Gaps to Address
+- **Program Design section is missing entirely** (`ll-issues check-design ENH-3223` exits 1; `format-check`'s `missing` list includes `Program Design`). Populate `## Program Design` with concrete types, signatures, and call path, or run `/ll:refine-issue` / `/ll:wire-issue` to produce one — this is a hard override per project policy and blocks PROCEED regardless of aggregate score.
+- Integration Map is entirely `TBD` and Implementation Steps is explicitly marked as a placeholder ("Do not implement from this section").
+- `decision_needed: true` is unresolved: the reporting-surface choice (Option A recommended) is not yet closed via `/ll:decide-issue`.
+- Two internal blockers flagged by the issue's own research are unresolved: (1) `target` is written inconsistently across single-task vs DSL paths in `cli/harness.py`, so a rate lookup keyed on `args.target` under-reports; (2) the read-before-write ordering that makes "abstention rate before this run" correct is currently accidental and needs an explicit AC + regression test.
+
+### Outcome Risk Factors
+- Moderate-depth cross-module work: normalizing `target` writes touches multiple existing call sites in `cli/harness.py` (single-task and DSL paths) with shared state, not a single contained edit.
+- No test coverage identified yet for the modified areas (Integration Map's Tests section is `TBD`).
+- Several competing design decisions remain open (reporting-surface choice, target-key normalization approach, read-before-write AC) — expect judgment calls during implementation.
+
 ## Status
 
 **Open** | Created: 2026-08-16 | Priority: P2
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-17T16:17:47 - `c786d9ca-0348-4ed5-812d-bc2de7a34350.jsonl`
 - `/ll:capture-issue` - 2026-08-16T23:29:37 - `501abea1-df2c-4fca-aa0c-5bb8bbb6d4ba.jsonl`

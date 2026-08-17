@@ -10,6 +10,12 @@ captured_at: '2026-08-16T23:28:45Z'
 parent: EPIC-3217
 decision_needed: true
 testable: true
+confidence_score: 88
+outcome_confidence: 86
+score_complexity: 18
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 25
 ---
 
 # ENH-3222: Validator rule for judged gates with no abstention route and no error route
@@ -175,11 +181,23 @@ Prevents recurrence of the abstention dead-end defect class. Under the recommend
 - `docs/reference/API.md` `little_loops.fsm.validation` section — existing
   MR-4/MR-8/MR-14 rule patterns to model the new rule after
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-08-17_
+
+**Readiness Score**: 88/100 → PROCEED WITH CAUTION
+**Outcome Confidence**: 86/100 → HIGH CONFIDENCE
+
+### Concerns
+- `decision_needed: true` is still set even though the issue carries a strong, data-backed recommendation (narrow scope, tier-1 ship). Severity (WARNING vs ERROR) and the suppression-flag name remain explicit implementer choices rather than closed decisions.
+- ENH-3224 has not landed yet, and this issue's own text states the predicate must cover ENH-3224's flag-gated `exit_code` abstention case ("ENH-3224 should land before or with this issue"). Implementing ENH-3222 first without that seam risks a near-immediate re-open.
+
 ## Status
 
 **Open** | Created: 2026-08-16 | Priority: P3
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-17T16:17:47 - `c786d9ca-0348-4ed5-812d-bc2de7a34350.jsonl`
 - `/ll:refine-issue` - 2026-08-17T06:06:13 - `86eb12f1-b126-4db7-a22d-252ffa585d1f.jsonl`
 - `/ll:capture-issue` - 2026-08-16T23:29:37 - `501abea1-df2c-4fca-aa0c-5bb8bbb6d4ba.jsonl`
