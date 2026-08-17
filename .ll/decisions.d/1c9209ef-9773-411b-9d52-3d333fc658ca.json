@@ -1,0 +1,12 @@
+{
+  "id": "c8b2396c-b01e-49f8-8092-5e2c8d36c59f",
+  "type": "decision",
+  "timestamp": "2026-08-17T17:03:37Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Reuses the existing _read_prepatch_evidence best-effort-read convention with no new CLI-location decision; Options B and C both cite precedents that don't exist as shipped code.",
+  "rule": "Option A: wire harness_eval_abstention_rate/harness_eval_pass_rate into ll-harness's _evaluate_and_report()",
+  "scope": "issue",
+  "alternatives_rejected": "Option B (new ll-session subcommand, cited precedent ENH-3211 is blocked/unimplemented); Option C (new ll-logs/ll-history subcommand, no existing history_reader import in either module)",
+  "issue": "ENH-3223"
+}
