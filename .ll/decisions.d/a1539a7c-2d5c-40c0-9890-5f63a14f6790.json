@@ -1,0 +1,11 @@
+{
+  "id": "47def3e6-ad37-4856-965d-64b9795e6af7",
+  "type": "decision",
+  "timestamp": "2026-08-17T18:24:14Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Verifier accepted necessary-but-not-sufficient evidence for a causal claim; fix is a claim-shape rule in verify-issues 2B mirroring the existing negative-claims rule. confidence_check and meta-loop detection deliberately out of scope.",
+  "rule": "Captured: verify-issues confirms a stated cause by checking a consequence consistent with it",
+  "scope": "issue",
+  "issue": "ENH-3238"
+}

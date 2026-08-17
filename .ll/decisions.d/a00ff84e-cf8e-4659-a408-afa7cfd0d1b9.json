@@ -1,0 +1,11 @@
+{
+  "id": "91b43f23-ac08-42cb-82d0-8514c36a809e",
+  "type": "decision",
+  "timestamp": "2026-08-17T18:24:14Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Transcript pointers are recorded correctly but unlabeled; additive event-payload fix.",
+  "rule": "Captured: action_complete events omit state and iteration alongside session_jsonl",
+  "scope": "issue",
+  "issue": "ENH-3240"
+}

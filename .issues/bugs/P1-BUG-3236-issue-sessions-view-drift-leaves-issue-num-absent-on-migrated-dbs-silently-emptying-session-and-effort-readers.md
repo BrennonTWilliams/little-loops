@@ -14,15 +14,17 @@ labels:
 relates_to:
 - FEAT-3183
 - ENH-2771
+- BUG-3241
+- ENH-3242
 testable: true
 learning_tests_required:
 - sqlite3
 verify_verdict: VALID
 confidence_score: 96
 outcome_confidence: 90
-score_complexity: 20
+score_complexity: 19
 score_test_coverage: 25
-score_ambiguity: 22
+score_ambiguity: 23
 score_change_surface: 23
 ---
 
@@ -95,7 +97,30 @@ indexes:
 | `idx_summary_nodes_parent_id` | v10 (`schema.py:287`) | plain | DAG parent traversal unindexed |
 
 This is **out of scope for this fix** — see [Fix](#fix) item 5 for the reasoning and
-the hard-failure risk that motivates the split.
+the hard-failure risk that motivates the split. Tracked as BUG-3241.
+
+### Side effect of the version bump: a full cache rebuild on every project
+
+`hooks/session_start.py:181-192` appends `--rebuild` to the backfill worker whenever
+`meta.last_rebuild_version < SCHEMA_VERSION`. This checkout's database has
+`last_rebuild_version = 41`, and so does every other current one — so bumping
+`SCHEMA_VERSION` to 42 triggers a wipe-and-replay of every `raw_events`-derived cache
+table (`assistant_messages`, `message_events`, `tool_events`, `skill_events`, `sessions`,
+`user_corrections`, `summary_nodes`, `summary_spans`, and their `search_index` rows) on
+the **next SessionStart of every local-editable project**, not only the drifted ones.
+68,693 `assistant_messages` rows here. This is the intended ENH-2581 behavior for a
+migration and it runs on a detached background worker, so it does not block startup —
+but it is a real consequence of this fix and it is not free.
+
+It also interacts with item 5 above. `rebuild()` re-derives `assistant_messages` with
+`INSERT OR IGNORE`, whose idempotency depends on `idx_assistant_messages_dedup` — the
+very index missing on the drifted databases. **Measured, not assumed:** a rebuild
+already ran at v41 on this checkout's database *without* that index and left zero
+duplicate `(session_id, ts, content)` groups across 68,693 rows, so the replay path
+does not emit duplicates in practice. The risk is therefore low, but it is the reason
+item 5's "we aren't touching those databases" framing no longer holds — this fix does
+touch them. Confirm the duplicate-group count is still zero after the first post-fix
+rebuild on this checkout.
 
 Reproduced failures against that database:
 
@@ -213,7 +238,7 @@ caught this. The cheap version: assert `issue_num` is in
 `PRAGMA table_info(issue_sessions)` after `ensure_db()` on both a fresh database and one
 stamped at each prior version.
 
-**4. Consider a lightweight structural check in `ensure_db()`** — the fast path already
+**4. A lightweight structural check in `ensure_db()` is deferred to ENH-3242.** — the fast path already
 returns without taking the write lock when the version is current; a single
 `PRAGMA table_info` on one sentinel view would keep that path cheap while making drift
 self-healing rather than permanent. Weigh against startup cost; option 1 alone fixes the
@@ -240,7 +265,13 @@ at startup** — converting a silent read bug into a total outage. This checkout
 have zero duplicate groups in both `assistant_messages` (68,693 rows) and `summary_nodes`
 (0 rows), but that is luck, not a guarantee for other affected databases. A correct index
 repair must delete duplicates before creating each UNIQUE index, which is a materially
-larger and riskier change than the view rebuild. File it as a follow-up.
+larger and riskier change than the view rebuild. **Filed as BUG-3241.**
+
+Note the one place the split is not clean: the `SCHEMA_VERSION` bump this fix ships
+causes a `--rebuild` on the databases missing `idx_assistant_messages_dedup`, so this
+change does touch them even though it does not repair them. See
+[Current Behavior](#current-behavior) for the measurement that shows the replay does not
+in fact emit duplicates.
 
 ## Program Design
 
@@ -275,8 +306,17 @@ No new public types. The change is one appended migration plus a test helper.
   pre-v36 view, stamp it to the pre-fix current version, call `ensure_db()`, assert the
   column appears. This is the regression gate.
 
-If item 2 (reader error surfacing) is taken in the same change, it touches
-`history_reader.py:2107` and `:2136` only — log level and message, no signature change.
+**`scripts/little_loops/history_reader.py`**
+
+Item 2 (reader error surfacing) **is in scope for this change** — it is what Acceptance
+Criterion 4 requires, and an earlier revision of this section left it optional while the
+AC demanded it. It touches `history_reader.py:2107` and `:2136` only: raise the
+`logger.warning("history_reader: <fn> query failed", exc_info=True)` calls to
+`logger.error` and name the likely cause (schema drift) in the message. No signature
+change, no behavior change for callers. The sentinel-return / strict-flag idea from
+[Fix](#fix) item 2 is **not** taken here — it would change a convention shared by 60+
+`except sqlite3.Error:` sites in this file and belongs with the durable structural work
+in ENH-3242.
 
 ### Call Path
 
@@ -301,7 +341,16 @@ If item 2 (reader error surfacing) is taken in the same change, it touches
 _Added by `/ll:refine-issue` — 2026-08-17 — based on codebase analysis:_
 
 - Verified against current `schema.py`: `_MIGRATIONS` is a flat `list[str]` (opens line 111, closes line 998), `SCHEMA_VERSION = 41` is a plain module constant (line 21) kept in sync with `len(_MIGRATIONS)` by hand — not derived. Appending one entry makes `len(_MIGRATIONS) == 42`, occupying 0-based index 41, matching this issue's `_MIGRATIONS[41]` citation. `_apply_migrations()`'s loop (`schema.py:1050-1086`) needs no change to pick up the new entry: with `schema_version = 41` and `len(_MIGRATIONS) = 42`, the line-1065 short-circuit (`41 >= 42`) is false, the loop runs `range(41, 42)` (index 41 only), and stamps `schema_version = 42` on completion — this is the same mechanism every prior migration append has exercised.
-- **New gap, not previously noted**: `SCHEMA_VERSION == 41` is hard-coded as a literal assertion in 9 separate places across `scripts/tests/test_session_store_schema.py` (lines 650, 664, 716, 813, 1035, 1076, 1130, 1195, 1413), plus one each in `test_session_store_writers.py`, `test_assistant_messages.py`, and `test_session_store_lifecycle.py`. All of these must be updated to `42` alongside the `SCHEMA_VERSION` bump or they fail as an unrelated-looking regression.
+- **New gap, not previously noted**: the version number is hard-coded as a literal assertion across the test suite and every occurrence must move to `42` alongside the bump, or they fail as an unrelated-looking regression. Counts below were re-measured directly (an earlier revision of this bullet undercounted badly and named a file that has no occurrences at all):
+
+  | File | `SCHEMA_VERSION == 41` | Other literal-41 version assertions |
+  |---|---|---|
+  | `scripts/tests/test_session_store_schema.py` | 23 | 2 — `int(version[0]) == 41` at `:795`, `:1130` |
+  | `scripts/tests/test_session_store_writers.py` | 5 | 1 — `int(row[0]) == 41` at `:471` |
+  | `scripts/tests/test_assistant_messages.py` | 1 | — |
+  | `scripts/tests/test_session_store_lifecycle.py` | **0** | — (contains no `41` at all) |
+
+- **Do not bulk-replace `41` across `scripts/tests/`.** `scripts/tests/test_generate_schemas.py` contains four `== 41` assertions (`:19`, `:76`, `:83`, `:203`) that count **LLEvent schema types**, not schema versions — a coincidental collision with no relationship to `SCHEMA_VERSION`. A blind `sed`/`replace_all` breaks them. Scope the edit to the three files in the table above, matching on `SCHEMA_VERSION == 41` and the two `int(...) == 41` version reads specifically.
 - `history_reader.py:2107` and `:2136` confirmed to be the exact `logger.warning("history_reader: <fn> query failed", exc_info=True)` lines this issue cites for item 2's log-level change. This warning+sentinel shape is uniform across 60+ `except sqlite3.Error:` sites in `history_reader.py` (`_connect_readonly` at :422-436, `find_user_corrections`, `recent_file_events`, etc.) — there is currently no log-level distinction anywhere in the file between "database missing" and "query failed against a present database," so item 2 would establish a new convention, not extend an existing one. `sessions_for_issue`'s own docstring (`history_reader.py:2092-2093`) already documents that its empty-list return conflates three distinct causes (absent view, no sessions, unavailable db) into one indistinguishable signal.
 - Two prior idempotent `DROP VIEW IF EXISTS issue_sessions` / `CREATE VIEW issue_sessions AS ...` precedents already exist for this exact view: v16/ENH-2462 (`schema.py:372,386`) and v36/ENH-2771 (`schema.py:888-909`). Both are unconditional statement pairs (SQLite `CREATE VIEW` has no `IF NOT EXISTS` combinable with a column-list change) — confirms this fix's rebuild approach matches the established idiom for "a view's column list changed," as opposed to `ALTER TABLE ... ADD COLUMN`, which is the idiom used everywhere a *table* (not a view) gains a column.
 - No `_stamp_version(conn, version)` helper exists anywhere in the codebase today. The closest existing analogue, `_bootstrap_schema_at(db, version)` (`test_session_store_schema.py:1134-1154`), replays real `_MIGRATIONS[:version]` DDL *and* stamps `schema_version` together — it only ever constructs a database whose recorded version matches its actual structure. No existing helper stamps a version number against a schema that does *not* match it, which is exactly the drifted scenario this issue's regression test needs to construct; `_stamp_version` fills a genuinely unprecedented gap and should not be conflated with `_bootstrap_schema_at`.
@@ -321,6 +370,17 @@ _Added by pre-implementation review — 2026-08-17 — verified against the live
   (`session_store/writers.py:145`) returns `int | None`, so `"ENH-3195"` arrives as
   `3195` and matches the INTEGER column. Worth having checked — a `str` return would have
   let the migration land, the tests pass, and the readers still return nothing.
+- **Migrations 37–41 do not touch `issue_sessions`** (verified by reading each entry:
+  they add `loop_runs.failure_terminal`, `orchestration_runs.base_sha`/`base_dirty`,
+  three `harness_events` columns, the `prepatch_evidence` table, and one
+  `harness_events(semantic_verdict)` index). So copying the v36 body verbatim is
+  correct — there is no intermediate revision of the view to reconcile against.
+- **The v42 migration does not need to rebuild `legacy_issue_sessions_ts_overlap` too.**
+  The v36 view body's second `UNION ALL` branch reads that view, so its absence would
+  produce the same silent-empty failure by a different route. A sweep of all 53 local
+  databases found it present on every database at v16 or above and absent only below
+  v16, where it is not yet supposed to exist. No defensive rebuild is warranted; this is
+  recorded so the question is not re-opened during implementation.
 - The repaired view's `jsonl_path` is `NULL` for the sampled issue (no matching `sessions`
   row), and `cycle_time_days` is `0.0` because the v36 dedup index keeps one
   `issue_events` row per `(issue_num, transition)`. The data is thin but real; do not read
@@ -336,11 +396,25 @@ _Wiring pass added by `/ll:wire-issue`:_
 - **Priority**: P1 — a shipped user-facing command (`ll-history sessions`) returns
   nothing on an affected database, and two library readers silently return empty. The
   failure mode is indistinguishable from "no data," so it does not get reported.
-- **Blast radius**: measured, not estimated. A sweep of all 31 `.ll/history.db` files on
-  this machine finds **three** drifted databases at `schema_version >= 36`: this
-  checkout's (v41), and two others (v41 and v39). Every database below v36 legitimately
-  lacks `issue_num` — that is staleness, not drift, and `ensure_db()` will migrate them
-  correctly whenever they are next opened.
+- **Blast radius**: measured, not estimated. A sweep of all 53 `.ll/history.db` files on
+  this machine finds **five** drifted databases at `schema_version >= 36` — four at v41,
+  one at v39:
+
+  | Database | Version |
+  |---|---|
+  | this checkout | 41 |
+  | second local-editable little-loops checkout | 41 |
+  | third local-editable little-loops checkout | 41 |
+  | consuming project A (not a little-loops checkout) | 41 |
+  | consuming project B (not a little-loops checkout) | 39 |
+
+  An earlier revision of this bullet reported 31 databases and three drifted; both were
+  undercounts. Two of the five are ordinary consuming projects rather than little-loops
+  checkouts, which strengthens rather than weakens the argument below: drift reached
+  projects that were only ever *using* the tool, and the affected set cannot be bounded
+  by inspection. Every database below v36 legitimately lacks `issue_num` — that is
+  staleness, not drift, and `ensure_db()` will migrate them correctly whenever they are
+  next opened.
 - **Released users are almost certainly unaffected.** The committed migration body has
   always projected `issue_num` (see [Root Cause](#root-cause)); only databases migrated
   by an uncommitted working-tree revision of `_MIGRATIONS[35]` — i.e. local-editable
@@ -355,14 +429,27 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ## Acceptance Criteria
 
+**Suite-gated** — must be enforced by `python -m pytest scripts/tests/`:
+
 - A database stamped at `schema_version = 41` with the pre-v36 `issue_sessions` view
-  gains `issue_num` after `ensure_db()`.
-- `ll-history sessions <ID>`, `issue_effort()`, and `recent_issue_velocity()` return
-  real data on this repo's `.ll/history.db` after the fix.
+  gains `issue_num` after `ensure_db()`. **This is the regression gate.**
 - A test asserts the `issue_sessions` column set for the current `SCHEMA_VERSION`, on
   both a fresh database and one upgraded from a stamped older version.
 - A history-reader query that fails against an existing, readable database is
-  distinguishable in logs from an empty result.
+  distinguishable in logs from an empty result (`logger.error`, not `logger.warning`, at
+  `history_reader.py:2107` and `:2136`).
+- `python -m pytest scripts/tests/` exits 0, including the ~32 version literals updated
+  from `41` to `42` per [Codebase Research Findings](#codebase-research-findings).
+
+**Manual verification** — depends on local machine state and cannot run under pytest:
+
+- `ll-history sessions <ID>`, `issue_effort()`, and `recent_issue_velocity()` return
+  real data on this repo's `.ll/history.db` after the fix. Expect a *sparse* result
+  (`jsonl_path` NULL, `cycle_time_days` 0.0 for a single-session issue) — see the
+  pre-implementation review notes; sparseness is not failure.
+- After the first post-fix SessionStart triggers the `--rebuild` described under
+  [Current Behavior](#current-behavior), `assistant_messages` still has zero duplicate
+  `(session_id, ts, content)` groups on this checkout's database.
 
 ## Status
 
@@ -370,6 +457,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-17T18:33:34 - `9b422899-526d-4898-abb7-ec412bd107e6.jsonl`
 - `/ll:confidence-check` - 2026-08-17T17:19:11 - `83adf706-3c34-48ba-adbd-2ccf3898278d.jsonl`
 - `/ll:verify-issues` - 2026-08-17T17:17:33 - `038b6ab4-3b9f-4cfd-a4d6-dac5e7366086.jsonl`
 - `/ll:wire-issue` - 2026-08-17T17:15:27 - `72df34c5-4823-4f9c-bb82-d4eea9e4edcc.jsonl`
