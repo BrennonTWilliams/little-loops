@@ -9,6 +9,12 @@ discovered_by: ll-issues-create
 discovered_date: '2026-08-16'
 captured_at: '2026-08-16T23:28:07Z'
 parent: EPIC-3217
+confidence_score: 98
+outcome_confidence: 88
+score_complexity: 21
+score_test_coverage: 22
+score_ambiguity: 23
+score_change_surface: 22
 ---
 
 # BUG-3220: Funnel judged gates route abstention into finalize_failed in composer and router loops
@@ -57,7 +63,7 @@ Declare `on_cannot_judge: <funnel target>` on all nine in-scope gates. A declare
 
 Doing this on the five coincidentally-correct gates as well is deliberate: it converts an accident of the error route into a stated intent, so a later change to `on_error` cannot silently reintroduce the divergence.
 
-**Verdict-string scope.** `_abstention_declared` (`executor.py:2655-2664`) and `_route` both match the *literal* verdict string, so `on_cannot_judge` does not claim `cannot_judge_uncertain` — that verdict would still hold twice and escalate to `on_error`, reproducing the exact divergence this issue closes. Unreachable in these loops today (`uncertain_suffix` defaults to `false` — `fsm/schema.py:103`, `evaluators.py:1295-1296` — and none of the three loops sets it), so this issue does not block on it. EPIC-3217 owns the cross-cutting call (prefix-match in the executor vs. declaring both keys at every site); if that lands as "declare both keys", these nine gates each need a second line, which is why the funnel-consistency test below is worth having.
+**Verdict-string scope.** `_abstention_declared` (`executor.py:2655-2664`) and `_route` both match the *literal* verdict string, so `on_cannot_judge` does not claim `cannot_judge_uncertain` — that verdict would still hold twice and escalate to `on_error`, reproducing the exact divergence this issue closes. Unreachable in these loops today (`uncertain_suffix` defaults to `false` — `fsm/schema.py:103`, `evaluators.py:1295-1296` — and none of the three loops sets it), so this issue does not block on it. **Resolved at EPIC-3217 (decision (a), 2026-08-16): BUG-3228** adds a general `_uncertain` suffix fallback to `_route`, so `cannot_judge_uncertain` will follow the funnel through these same `on_cannot_judge` declarations once it lands. These nine gates get **one** line each, not two, and need no revision when BUG-3228 lands.
 
 ## Integration Map
 
@@ -173,6 +179,7 @@ Removes three spurious run failures, one spurious state-skip branch, and up to t
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-17T01:07:43 - `5a985576-1a12-4019-84a2-4fcf31653b26.jsonl`
 - `/ll:wire-issue` - 2026-08-17T00:25:03 - `364ce564-b8a8-42f8-9c6e-ae082c11cf3e.jsonl`
 - `/ll:refine-issue` - 2026-08-16T23:58:31 - `40668286-18e1-4fb3-b8c2-566405cf8bec.jsonl`
 - `/ll:capture-issue` - 2026-08-16T23:29:37 - `501abea1-df2c-4fca-aa0c-5bb8bbb6d4ba.jsonl`

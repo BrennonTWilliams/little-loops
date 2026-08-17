@@ -4,11 +4,18 @@ type: BUG
 title: Judged gates with neither on_cannot_judge nor on_error terminate the run on
   abstention
 priority: P2
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-08-16'
 captured_at: '2026-08-16T23:27:46Z'
 parent: EPIC-3217
+confidence_score: 98
+outcome_confidence: 56
+score_complexity: 12
+score_test_coverage: 18
+score_ambiguity: 12
+score_change_surface: 14
+size: Large
 ---
 
 # BUG-3219: Judged gates with neither on_cannot_judge nor on_error terminate the run on abstention
@@ -49,7 +56,7 @@ Each of these gates routes abstention somewhere deliberate. The right destinatio
   - Routing to a state that *produces* the missing evidence (re-run with artifact capture, widen the diff scope) is the richer answer, but no such state exists anywhere in the repo (see Conventions in Force) and designing one is out of scope here. **Split to a follow-up** rather than blocking this issue.
   - Do **not** route abstention back into `check_semantic` itself. The existing `on_partial: check_semantic` is an unbounded self-loop capped only by `max_steps`; the ENH-3185 hold mechanism already supplies bounded retry for abstention, so a self-route would stack two retry mechanisms on one verdict.
   - Terminal availability differs across the three templates: `harness-single-shot.yaml` and `harness-multi-item.yaml` already have `failed` (`terminal: true`, `failure: true`); **`harness-plan-research-implement-report.yaml` has no failure terminal at all** (only `done`), so one must be added there, with both flags set explicitly per the walker in `test_builtin_loops.py:64-87`. Same gap in `loop-specialist-eval.yaml` (only `done`) for the `check_skill` fix below.
-  - Open cross-issue question (EPIC-3217, ENH-3224): `ll-harness` already models abstention as a *third* outcome — `cli/harness.py:621-633`, "neither a pass nor a failure", exit code 3 — while these FSM templates have only `done` and `failed`. Routing to `failed` states that an unobservable harness run is a failure, which contradicts the CLI's stance for the same condition. If the EPIC decides an abstain-shaped terminal should exist, these three templates are its first consumers and should be revisited; `failed` is the correct interim, since it is fail-closed either way.
+  - **Resolved at EPIC-3217 (decision (b), 2026-08-16): `failed` is the permanent answer here, not an interim.** The EPIC considered adding an abstain-shaped FSM terminal to mirror `ll-harness`'s third outcome (`cli/harness.py:621-633`, exit code 3) and rejected it: the distinction that has a real consumer lives at the evaluator boundary, not the terminal boundary, so ENH-3224 is rescoped to map `exit_code 3 → cannot_judge` in `evaluate_exit_code` instead. FSM terminals stay binary (`failure: true` is the only non-success shape, fail-closed, which is right for gates), and abstention is surfaced in telemetry via ENH-3223. These templates never need revisiting.
 - `rn-build` / `rn-plan` `check_substrate`: "does the substrate exist" is deterministically probe-able. Abstention should run a probe rather than guess `design_artifacts`.
 - `loop-specialist-eval` / `harness-multi-item` `check_skill`: declare an explicit route so the expensive hold is skipped entirely.
 - The extraction-shaped gates (`enumerate*`, `extract_assumptions`, `validate_schema`, `check_complete`) may legitimately funnel abstention to the same target as their other verdicts — see the sibling funnel-gate issue for that pattern.
@@ -70,7 +77,7 @@ Work gate by gate rather than applying one blanket route. For each, decide what 
 
 Update the harness templates' inline comments to show the `on_cannot_judge` line alongside the existing `on_partial` self-hold, since those comments are the de facto documentation for the pattern.
 
-**Verdict-string scope.** `_abstention_declared` (`executor.py:2655-2664`) and `_route` both match the *literal* verdict string, so a declared `on_cannot_judge` does **not** claim `cannot_judge_uncertain` — a gate fixed by this issue still terminates on "No valid transition" for that verdict, since these 13 gates have no `on_error` either. Unreachable today (`uncertain_suffix` defaults to `false` — `fsm/schema.py:103`, `evaluators.py:1295-1296` — and no built-in loop sets it), but it is a live trap for the harness *templates*, which users copy and modify. EPIC-3217 owns the cross-cutting call (prefix-match in `_abstention_declared`/`_route` vs. declaring both keys at every site). Note ENH-3222's proposed validator rule, as currently specified, would also miss the `_uncertain` form — worth resolving before that rule is written.
+**Verdict-string scope.** `_abstention_declared` (`executor.py:2655-2664`) and `_route` both match the *literal* verdict string, so a declared `on_cannot_judge` does **not** claim `cannot_judge_uncertain` — a gate fixed by this issue still terminates on "No valid transition" for that verdict, since these 13 gates have no `on_error` either. Unreachable today (`uncertain_suffix` defaults to `false` — `fsm/schema.py:103`, `evaluators.py:1295-1296` — and no built-in loop sets it), but it is a live trap for the harness *templates*, which users copy and modify. **Resolved at EPIC-3217 (decision (a), 2026-08-16): BUG-3228** adds a general `_uncertain` suffix fallback to `_route`/`_abstention_declared`, so `cannot_judge_uncertain` resolves through the `on_cannot_judge` routes this issue declares once it lands. These 13 gates get **one** route line each, not two; ENH-3222's rule likewise checks `on_cannot_judge` only. BUG-3228 is independent and does not block this issue.
 
 ## Integration Map
 
@@ -204,12 +211,38 @@ Removes 13 latent run-terminations and stops the no-route shape from propagating
 - `.claude/CLAUDE.md` `## Loop Authoring` — meta-loop shape rules referenced by
   `ll-loop validate`, and the harness-template guide these gates propagate into
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-08-16_
+
+**Readiness Score**: 98/100 → PROCEED
+**Outcome Confidence**: 56/100 → LOW
+
+### Outcome Risk Factors
+- Broad enumeration across 11 loop files / 13 gates raises breadth: most sites are a mechanical one-line `on_cannot_judge` addition, but `check_substrate` (`rn-build.yaml`, `rn-plan.yaml`) requires designing and adding a new deterministic probe state that has no existing precedent in the repo — the issue itself flags this sub-task as separable if it needs more design than the route additions.
+- `dataset-curation.yaml` has no dedicated test class today (only the generic corpus-wide walker), so its `check_complete`-shaped sibling `validate_schema` change has weaker verification coverage than the other 10 sites.
+- The EPIC-3217 cross-cutting question (prefix-match vs. declare-both-keys for `cannot_judge_uncertain`) is explicitly left open; if it resolves toward "declare both keys," all 13 sites in this issue need a second route line.
+
+---
+
+## Resolution
+
+- **Status**: Decomposed
+- **Completed**: 2026-08-16
+- **Reason**: Issue too large for single session
+
+### Decomposed Into
+- BUG-3226: Add on_cannot_judge routes to 11 mechanical judged gates across 9 loop files
+- BUG-3227: check_substrate abstention needs a deterministic probe state in rn-build/rn-plan
+
 ## Status
 
-**Open** | Created: 2026-08-16 | Priority: P2
+**Done** | Created: 2026-08-16 | Priority: P2
 
 
 ## Session Log
+- `/ll:issue-size-review` - 2026-08-17T01:13:52 - `aac72723-ff3b-4a56-8e20-e1cf00b2242c.jsonl`
+- `/ll:confidence-check` - 2026-08-17T01:07:27 - `11ab7f08-a3d4-4dd5-ab5f-82e08e1bce24.jsonl`
 - `/ll:wire-issue` - 2026-08-17T00:19:57 - `364ce564-b8a8-42f8-9c6e-ae082c11cf3e.jsonl`
 - `/ll:refine-issue` - 2026-08-16T23:56:52 - `40668286-18e1-4fb3-b8c2-566405cf8bec.jsonl`
 - `/ll:capture-issue` - 2026-08-16T23:29:36 - `501abea1-df2c-4fca-aa0c-5bb8bbb6d4ba.jsonl`

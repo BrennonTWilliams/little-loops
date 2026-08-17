@@ -1,0 +1,12 @@
+{
+  "id": "ea8596a9-036a-4f5a-8859-8fe4c5ed7add",
+  "type": "decision",
+  "timestamp": "2026-08-17T01:37:33Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Reuses the existing uncertain_suffix opt-in-flag triad on EvaluateConfig with no new abstraction; abstention routing is already verdict-string-driven and evaluator-agnostic. Option B (dedicated harness_exit evaluator type) needs 6+ touch points; Option C (numeric route keys) has no precedent and breaks string-typed routing across 8 consumer files.",
+  "rule": "Map exit 3 to cannot_judge in the exit_code evaluator via a per-state opt-in flag (Option A)",
+  "scope": "issue",
+  "alternatives_rejected": "Option B: dedicated harness_exit fragment/evaluator; Option C: numeric verdict keys in route:",
+  "issue": "ENH-3224"
+}

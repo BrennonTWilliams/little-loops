@@ -8,6 +8,12 @@ discovered_by: ll-issues-create
 discovered_date: '2026-08-16'
 captured_at: '2026-08-16T23:27:23Z'
 parent: EPIC-3217
+confidence_score: 98
+outcome_confidence: 85
+score_complexity: 21
+score_test_coverage: 21
+score_ambiguity: 21
+score_change_surface: 22
 ---
 
 # BUG-3218: sprint-build-and-validate commits when the conflict audit abstains
@@ -31,7 +37,7 @@ An abstention takes the `on_error` branch (`executor.py:2669` `_abstention_fallb
 
 **The retry path is itself fail-open.** `audit_conflicts_retry` (lines 120-129) has **no `evaluate:` block at all** and an unconditional `next: commit`. So the `on_no`/`on_partial` branches already reach `commit` after exactly one more audit attempt, with the second attempt's result never inspected. This is a pre-existing fail-open wider than the abstention case: a conflict audit that reports unaddressed conflicts twice still commits. Any fix that only redirects abstention *into* this retry path inherits the same fail-open.
 
-**Verdict-string scope.** `_abstention_declared` (`executor.py:2655-2664`) matches the *literal* verdict string, and `_route` resolves only `extra_routes[verdict]`. A declared `on_cannot_judge` therefore does **not** claim `cannot_judge_uncertain`; that verdict still holds twice and escalates to `on_error`. It cannot occur here today (`uncertain_suffix` defaults to `false` and no built-in loop sets it — `fsm/schema.py:103`, `evaluators.py:1295-1296`), but it re-opens this exact fail-open the moment anyone sets `uncertain_suffix: true` on this gate while `on_error` still resolves to `commit`. See EPIC-3217 for the cross-cutting decision (prefix-match in the executor vs. declaring both keys at every site); this issue's fix is written to be safe either way by removing `commit` from the error route.
+**Verdict-string scope.** `_abstention_declared` (`executor.py:2655-2664`) matches the *literal* verdict string, and `_route` resolves only `extra_routes[verdict]`. A declared `on_cannot_judge` therefore does **not** claim `cannot_judge_uncertain`; that verdict still holds twice and escalates to `on_error`. It cannot occur here today (`uncertain_suffix` defaults to `false` and no built-in loop sets it — `fsm/schema.py:103`, `evaluators.py:1295-1296`), but it re-opens this exact fail-open the moment anyone sets `uncertain_suffix: true` on this gate while `on_error` still resolves to `commit`. **Resolved at EPIC-3217 (decision (a), 2026-08-16): BUG-3228** adds a general `_uncertain` suffix fallback to `_route`, so `cannot_judge_uncertain` will resolve through this issue's `on_cannot_judge` route once it lands. This issue declares `on_cannot_judge` only, needs no second key, and is safe before or after BUG-3228 because it removes `commit` from the error route regardless.
 
 ## Expected Behavior
 
@@ -172,6 +178,7 @@ Removes every fail-open path to `commit` in this gate: the unobservable audit (a
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-17T01:07:43 - `5a985576-1a12-4019-84a2-4fcf31653b26.jsonl`
 - `/ll:wire-issue` - 2026-08-17T00:15:05 - `364ce564-b8a8-42f8-9c6e-ae082c11cf3e.jsonl`
 - `/ll:refine-issue` - 2026-08-16T23:54:28 - `40668286-18e1-4fb3-b8c2-566405cf8bec.jsonl`
 - `/ll:capture-issue` - 2026-08-16T23:29:36 - `501abea1-df2c-4fca-aa0c-5bb8bbb6d4ba.jsonl`
