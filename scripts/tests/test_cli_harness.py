@@ -537,6 +537,56 @@ class TestCmdCmd:
         mock_read.assert_called_once_with("ENH-9999")
         mock_run.assert_not_called()
 
+    def test_no_history_omits_keys(self, capsys: pytest.CaptureFixture) -> None:
+        """ENH-3223 AC3: no matching history -- new fields are simply omitted."""
+        args = _make_namespace(runner="cmd", target="echo hi", output="json")
+        mock_proc = _make_selector_mock_process(["hi\n"])
+        sel = _make_ready_selector()
+
+        with (
+            patch("little_loops.runner_spec.subprocess.Popen", return_value=mock_proc),
+            patch("little_loops.runner_spec.selectors.DefaultSelector", return_value=sel),
+            patch("little_loops.cli.harness._read_target_history", return_value=None),
+        ):
+            result = cmd_cmd(args)
+
+        assert result == 0
+        data = json.loads(capsys.readouterr().out)
+        assert "history_pass_rate" not in data
+        assert "history_abstention_rate" not in data
+
+    def test_history_present_adds_additive_keys(self, capsys: pytest.CaptureFixture) -> None:
+        """ENH-3223 AC1/AC5: a resolved history dict is folded in verbatim,
+        under keys distinct from `prepatch_evidence`/existing payload keys."""
+        args = _make_namespace(runner="cmd", target="echo hi", output="json")
+        mock_proc = _make_selector_mock_process(["hi\n"])
+        sel = _make_ready_selector()
+        history = {
+            "history_pass_rate": 0.8,
+            "history_pass_rate_runs": 10,
+            "history_abstention_rate": 0.25,
+            "history_judged_runs": 4,
+            "history_since": "2026-07-18T00:00:00Z",
+        }
+
+        with (
+            patch("little_loops.runner_spec.subprocess.Popen", return_value=mock_proc),
+            patch("little_loops.runner_spec.selectors.DefaultSelector", return_value=sel),
+            patch(
+                "little_loops.cli.harness._read_target_history", return_value=history
+            ) as mock_read,
+        ):
+            result = cmd_cmd(args)
+
+        assert result == 0
+        data = json.loads(capsys.readouterr().out)
+        for key, value in history.items():
+            assert data[key] == value
+        # AC5: the two rates render under distinct field names, not a shared "scored" key.
+        assert "history_pass_rate_runs" in data
+        assert "history_judged_runs" in data
+        mock_read.assert_called_once_with("echo hi")
+
 
 # ---------------------------------------------------------------------------
 # TestCmdMcp
@@ -1529,6 +1579,29 @@ class TestCmdDsl:
         out = capsys.readouterr().out
         assert "95% CI" in out
 
+    def test_cmd_dsl_per_task_never_reads_history_on_prompt_text(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        """ENH-3223 AC4: the per-task path must not query on `args.target` --
+        inside `_evaluate_and_report()` that value is the raw prompt text, not
+        `task_file.name`, the value actually written to `harness_events.target`.
+        """
+        task_file = self._make_task_yaml(tmp_path)
+        args = _make_namespace(runner="dsl", path=str(task_file))
+
+        with (
+            patch("little_loops.runner_spec.resolve_host", return_value=FakeRunner()),
+            patch(
+                "subprocess.run",
+                return_value=_make_completed(returncode=0, stdout=self._ANSWER_JSON),
+            ),
+            patch("little_loops.cli.harness._read_target_history") as mock_read,
+        ):
+            result = cmd_dsl(args)
+
+        assert result == 0
+        mock_read.assert_not_called()
+
 
 # ---------------------------------------------------------------------------
 # TestHarnessEventPersistence
@@ -1630,3 +1703,159 @@ class TestHarnessEventPersistence:
             result = main_harness(["cmd", "true"])
 
         assert result == 0
+
+
+# ---------------------------------------------------------------------------
+# TestReadTargetHistory (ENH-3223)
+# ---------------------------------------------------------------------------
+
+
+class TestReadTargetHistory:
+    """Tests for `_read_target_history()` — the historical rate reader."""
+
+    def _seed(self, target: str, rows: list[dict]) -> None:
+        from little_loops.session_store import DEFAULT_DB_PATH, record_harness_event
+
+        for row in rows:
+            record_harness_event(DEFAULT_DB_PATH, target=target, **row)
+
+    def test_below_threshold_returns_none(self) -> None:
+        """AC7: fewer than `_HISTORY_MIN_SCORED` scored rows -- suppressed entirely."""
+        from little_loops.cli.harness import _HISTORY_MIN_SCORED, _read_target_history
+
+        assert _HISTORY_MIN_SCORED > 2
+        self._seed(
+            "some-target",
+            [
+                {"ts": "2026-08-01T00:00:00Z", "runner": "cmd", "semantic_passed": True},
+                {"ts": "2026-08-02T00:00:00Z", "runner": "cmd", "semantic_passed": True},
+            ],
+        )
+
+        assert _read_target_history("some-target") is None
+
+    def test_at_threshold_renders(self) -> None:
+        """AC7: exactly `_HISTORY_MIN_SCORED` scored rows -- rendered, not suppressed."""
+        from little_loops.cli.harness import _HISTORY_MIN_SCORED, _read_target_history
+
+        self._seed(
+            "some-target",
+            [
+                {"ts": f"2026-08-0{i}T00:00:00Z", "runner": "cmd", "semantic_passed": True}
+                for i in range(1, _HISTORY_MIN_SCORED + 1)
+            ],
+        )
+
+        history = _read_target_history("some-target")
+
+        assert history is not None
+        assert history["history_pass_rate"] == 1.0
+        assert history["history_pass_rate_runs"] == _HISTORY_MIN_SCORED
+
+    def test_distinct_denominators_for_pass_and_abstention(self) -> None:
+        """AC5: pass-rate and abstention-rate denominators are different
+        populations and must not collide under one key."""
+        from little_loops.cli.harness import _read_target_history
+
+        rows = []
+        # Four semantically-judged rows (one abstained) -- feeds both counters.
+        for i in range(4):
+            verdict = "cannot_judge" if i == 0 else "yes"
+            rows.append(
+                {
+                    "ts": f"2026-08-0{i + 1}T00:00:00Z",
+                    "runner": "cmd",
+                    "semantic_verdict": verdict,
+                    "semantic_passed": None if verdict == "cannot_judge" else True,
+                }
+            )
+        # Three more exit-code-only rows (no --semantic) -- pass-rate only.
+        for i in range(3):
+            rows.append(
+                {
+                    "ts": f"2026-08-1{i}T00:00:00Z",
+                    "runner": "cmd",
+                    "semantic_passed": True,
+                }
+            )
+        self._seed("some-target", rows)
+
+        history = _read_target_history("some-target")
+
+        assert history is not None
+        assert history["history_pass_rate_runs"] == 6  # 3 non-abstained judged + 3 exit-only
+        assert history["history_judged_runs"] == 4
+        assert history["history_pass_rate_runs"] != history["history_judged_runs"]
+        assert abs(history["history_abstention_rate"] - 0.25) < 1e-9
+
+    def test_window_excludes_old_rows(self) -> None:
+        """AC6: rows older than the window are excluded from both rates."""
+        from little_loops.cli.harness import _HISTORY_MIN_SCORED, _read_target_history
+
+        rows = [
+            {"ts": "2020-01-01T00:00:00Z", "runner": "cmd", "semantic_passed": False}
+            for _ in range(_HISTORY_MIN_SCORED)
+        ]
+        rows += [
+            {"ts": f"2026-08-1{i}T00:00:00Z", "runner": "cmd", "semantic_passed": True}
+            for i in range(_HISTORY_MIN_SCORED)
+        ]
+        self._seed("some-target", rows)
+
+        history = _read_target_history("some-target")
+
+        assert history is not None
+        assert history["history_pass_rate"] == 1.0  # old failing rows excluded
+        assert history["history_pass_rate_runs"] == _HISTORY_MIN_SCORED
+
+    def test_none_when_db_empty(self) -> None:
+        from little_loops.cli.harness import _read_target_history
+
+        assert _read_target_history("nonexistent-target") is None
+
+
+# ---------------------------------------------------------------------------
+# TestTargetHistoryRegression (ENH-3223 AC2)
+# ---------------------------------------------------------------------------
+
+
+class TestTargetHistoryRegression:
+    """AC2: the current run's own row must not leak into its reported rate."""
+
+    def test_current_run_excluded_from_reported_rate(self, capsys: pytest.CaptureFixture) -> None:
+        from little_loops.fsm.evaluators import EvaluationResult
+        from little_loops.session_store import DEFAULT_DB_PATH, record_harness_event
+
+        target = "some-target"
+        for i in range(3):
+            record_harness_event(
+                DEFAULT_DB_PATH,
+                ts=f"2026-08-0{i + 1}T00:00:00Z",
+                runner="cmd",
+                target=target,
+                semantic_verdict="cannot_judge",
+                semantic_passed=None,
+            )
+
+        args = _make_namespace(
+            runner="cmd", target=target, output="json", semantic="some criterion"
+        )
+        mock_proc = _make_selector_mock_process(["hi\n"])
+        sel = _make_ready_selector()
+
+        with (
+            patch("little_loops.runner_spec.subprocess.Popen", return_value=mock_proc),
+            patch("little_loops.runner_spec.selectors.DefaultSelector", return_value=sel),
+            patch(
+                "little_loops.cli.harness.evaluate_llm_structured",
+                return_value=EvaluationResult(verdict="cannot_judge", details={}),
+            ),
+        ):
+            result = cmd_cmd(args)
+
+        assert result == 3
+        data = json.loads(capsys.readouterr().out)
+        # The read happens before `_record_harness_event()` for this run -- if a
+        # future refactor moved the write above the read, this would become 4.
+        assert data["history_judged_runs"] == 3
+        assert data["history_abstention_rate"] == 1.0

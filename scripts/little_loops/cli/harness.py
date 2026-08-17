@@ -11,7 +11,7 @@ import subprocess
 import sys
 import time
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from enum import Enum
 from pathlib import Path
 from typing import Any
@@ -368,6 +368,7 @@ Examples:
   ll-harness mcp my-server:my-tool --args '{"key": "val"}' --semantic "tool returned results"
   ll-harness prompt "What is 2+2?" --semantic "response contains a number"
   ll-harness cmd "echo hello" --issue-id ENH-1234 --output json  # includes prepatch_evidence when a bundle exists
+  ll-harness skill check-code --output json  # includes history_pass_rate/history_abstention_rate (target-scoped, last 30d) once enough runs exist
 
 Exit codes:
   0  PASS
@@ -577,12 +578,91 @@ def _read_prepatch_evidence(issue_id: str | None) -> dict | None:
     return read_prepatch_evidence(issue_id, db=DEFAULT_DB_PATH)
 
 
+# ENH-3223: window and noise-floor for the historical rate read below. Both are
+# display-only tuning knobs -- a wrong value degrades signal quality but cannot
+# change an exit code, so they are picked pragmatically rather than measured.
+_HISTORY_WINDOW_DAYS = 30
+_HISTORY_MIN_SCORED = 3
+
+
+def _read_target_history(target: str) -> dict | None:
+    """Best-effort read of historical pass/abstention rates for *target* (ENH-3223).
+
+    Target-scoped, not criterion-scoped: ``semantic_prompt`` is never written by
+    any caller today, so this cannot attribute abstention to a specific
+    ``--semantic`` string, only to the target as a whole (see issue Summary).
+    Called from `_evaluate_and_report()` before that run's own
+    `_record_harness_event()` call, so the reported figures exclude the current
+    run. Each rate is suppressed independently when its own denominator is
+    below `_HISTORY_MIN_SCORED` -- a single row would render as a meaningless
+    0%/100% figure (AC7). Returns None (never raises) when neither rate clears
+    the threshold, mirroring `_read_prepatch_evidence()`'s absent-is-not-an-error
+    contract.
+    """
+    from little_loops.history_reader import (
+        harness_eval_abstention_rate,
+        harness_eval_pass_rate,
+        recent_harness_events,
+    )
+    from little_loops.session_store import resolve_history_db
+
+    # `_connect_readonly()` opens whatever path it is handed as-is -- it does
+    # not re-resolve a default-shaped path through the env/config chain
+    # (root-anchored callers like `ll-mcp`'s `history_search` rely on that,
+    # BUG-3181). Resolve once here, the same way `_record_harness_event()`'s
+    # `connect(DEFAULT_DB_PATH)` resolves for the write side, so this read
+    # lands on the same database file.
+    db_path = resolve_history_db(DEFAULT_DB_PATH)
+    since = (datetime.now(UTC) - timedelta(days=_HISTORY_WINDOW_DAYS)).strftime(
+        "%Y-%m-%dT%H:%M:%SZ"
+    )
+    # `harness_eval_pass_rate()`/`harness_eval_abstention_rate()` return only a
+    # rate, not the row count behind it -- pull the events once to derive both
+    # denominators for the AC7 suppression check without duplicating their SQL.
+    events = recent_harness_events(target=target, since=since, limit=1000, db=db_path)
+    pass_scored = sum(1 for e in events if e.semantic_passed is not None)
+    judged_scored = sum(1 for e in events if e.semantic_verdict is not None)
+
+    history: dict[str, Any] = {}
+    if pass_scored >= _HISTORY_MIN_SCORED:
+        rate = harness_eval_pass_rate(target, since=since, db=db_path)
+        if rate is not None:
+            history["history_pass_rate"] = rate
+            history["history_pass_rate_runs"] = pass_scored
+    if judged_scored >= _HISTORY_MIN_SCORED:
+        abstention = harness_eval_abstention_rate(target, since=since, db=db_path)
+        if abstention is not None:
+            history["history_abstention_rate"] = abstention["abstention_rate"]
+            history["history_judged_runs"] = judged_scored
+    if not history:
+        return None
+    history["history_since"] = since
+    return history
+
+
+def _format_target_history_line(history: dict) -> str:
+    """Render `_read_target_history()`'s dict as one status line (target-scoped)."""
+    parts = []
+    if "history_pass_rate" in history:
+        parts.append(
+            f"pass {history['history_pass_rate']:.0%} ({history['history_pass_rate_runs']} runs)"
+        )
+    if "history_abstention_rate" in history:
+        parts.append(
+            f"abstention {history['history_abstention_rate']:.0%} "
+            f"({history['history_judged_runs']} judged)"
+        )
+    since_date = history["history_since"][:10]
+    return f"Target history since {since_date}: " + ", ".join(parts)
+
+
 def _evaluate_and_report(
     runner_label: str,
     result: RunnerResult,
     args: argparse.Namespace,
     *,
     expected_grade: ExpectedGrade | None = None,
+    skip_history: bool = False,
 ) -> tuple[int, HarnessEvalOutcome]:
     """Evaluate result against criteria and print the report. Returns (exit_code, outcome)."""
     if result.timed_out:
@@ -639,6 +719,12 @@ def _evaluate_and_report(
     # (not an error) when no --issue-id was given or no bundle exists.
     prepatch_evidence = _read_prepatch_evidence(getattr(args, "issue_id", None))
 
+    # ENH-3223: additive, read-only historical pass/abstention-rate lookup for
+    # the target. `skip_history` covers the DSL per-task call path, where
+    # `args.target` is the raw prompt text rather than the value actually
+    # written to `harness_events.target` (task_file.name) -- see AC4.
+    target_history = None if skip_history else _read_target_history(args.target)
+
     expected_display: str | None = None
     if expected_grade is not None:
         if expected_grade.status is GradeStatus.PASS:
@@ -670,6 +756,8 @@ def _evaluate_and_report(
             payload["expected"] = expected_display
         if prepatch_evidence is not None:
             payload["prepatch_evidence"] = prepatch_evidence
+        if target_history is not None:
+            payload.update(target_history)
         print_json(payload)
     else:
         status_fields = {
@@ -683,6 +771,8 @@ def _evaluate_and_report(
         print(status_block(status_fields))
         if prepatch_evidence is not None:
             print(f"Pre-patch check: {prepatch_evidence.get('verdict', 'unknown')}")
+        if target_history is not None:
+            print(_format_target_history_line(target_history))
         if show_output and result.stdout:
             print("---")
             sys.stdout.write(result.stdout)
@@ -980,7 +1070,7 @@ def cmd_dsl(args: argparse.Namespace) -> int:  # noqa: PLR0912, PLR0915 — grad
         label_text = prompt_text[:40] + ("..." if len(prompt_text) > 40 else "")
         runner_label = f"prompt {label_text}"
         rc, outcome = _evaluate_and_report(
-            runner_label, result, task_args, expected_grade=expected_grade
+            runner_label, result, task_args, expected_grade=expected_grade, skip_history=True
         )
 
         if expected_grade is not None and expected_grade.status is GradeStatus.UNGRADED:

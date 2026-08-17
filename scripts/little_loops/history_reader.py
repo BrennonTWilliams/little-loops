@@ -420,7 +420,17 @@ def _stale_cutoff(days: int) -> str:
 
 
 def _connect_readonly(db_path: Path) -> sqlite3.Connection | None:
-    """Open a read-only connection, or return None on failure."""
+    """Open a read-only connection, or return None on failure.
+
+    Opens *db_path* as given, not `ensure_db()`'s return value: `ensure_db()`
+    re-resolves a default-shaped path (bare `DEFAULT_DB_PATH`, or any path
+    whose basename+parent look like `.ll/history.db`) through the env/config
+    chain with no root context, which would silently redirect an
+    already-root-anchored absolute path a caller resolved on purpose
+    (BUG-3181's `root=` contract) back to a cwd-relative guess. Callers that
+    want env/config resolution must resolve *before* calling in (see
+    `read_prepatch_evidence`/`harness_eval_*`'s `db=DEFAULT_DB_PATH` callers).
+    """
     try:
         ensure_db(db_path)
     except sqlite3.Error:
@@ -3035,8 +3045,11 @@ def harness_eval_pass_rate(
 ) -> float | None:
     """Return the semantic-verdict pass fraction for *target*, or None if no scored rows (ENH-2741).
 
-    Only rows with a non-NULL ``semantic_passed`` (the ``check_semantic`` verdict path,
-    not the plain ``exit_code``) count toward the rollup.
+    Counts every row with a non-NULL ``semantic_passed``. ``cli/harness.py`` sets
+    ``semantic_passed`` on every non-abstained run regardless of whether
+    ``--semantic`` was supplied (exit-code-only runs included), so the
+    denominator is *all non-abstained runs* for *target*, not only the
+    ``check_semantic`` verdict path (ENH-3223).
     """
     db_path = Path(db)
     conn = _connect_readonly(db_path)

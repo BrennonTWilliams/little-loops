@@ -4,10 +4,11 @@ type: ENH
 title: harness_eval_abstention_rate has no consumers - surface abstention as a criterion-quality
   signal
 priority: P2
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-08-16'
 captured_at: '2026-08-16T23:29:07Z'
+completed_at: '2026-08-17T18:33:13Z'
 parent: EPIC-3217
 decision_needed: false
 testable: true
@@ -113,6 +114,47 @@ Decided by `/ll:decide-issue` on 2026-08-17.
 - Option C: neither `ll-logs` nor `ll-history` imports `harness_eval_pass_rate`/`harness_eval_abstention_rate` today; `ll-logs`'s closest rollup analog (`_aggregate_skill_stats`) bypasses `history_reader.py` entirely with hand-rolled SQL, and the `since: str` vs. `--window-days`-derived `datetime` mismatch needs new glue either way.
 
 ## Program Design
+
+### Deviations
+
+_2026-08-17 (implementation):_ Program Design's Signatures section states
+`harness_eval_pass_rate()`/`harness_eval_abstention_rate()` "reuse both return
+shapes as-is" and neither gains new parameters. Implementation kept that (no
+signature changes), but two things not anticipated in Program Design were
+needed:
+
+1. **AC7's per-rate suppression needs a scored *count*, which neither function
+   returns** (`harness_eval_pass_rate()` returns only `float | None`). Rather
+   than adding a parameter to either function, `_read_target_history()` (new,
+   `cli/harness.py`) calls the already-public `recent_harness_events()` once
+   to derive both denominators (`semantic_passed is not None` /
+   `semantic_verdict is not None` counts) client-side, then calls the two rate
+   functions only when a denominator clears `_HISTORY_MIN_SCORED`. No new
+   function or parameter in `history_reader.py`.
+2. **A latent DB-path-resolution bug surfaced by testing this against a real
+   isolated DB (not mocked).** `harness_eval_pass_rate(db=DEFAULT_DB_PATH)` —
+   the exact call shape Program Design specifies — silently read an
+   empty/wrong database whenever `LL_HISTORY_DB` (or `history.db_path`
+   config) differs from the literal relative path, because
+   `_connect_readonly()` discards `ensure_db()`'s resolved return and reopens
+   at the original unresolved `db_path`. This pre-dates ENH-3223 and equally
+   affects `_read_prepatch_evidence()` (ENH-2998) and every other
+   `db=DEFAULT_DB_PATH` reader caller — it was never caught because existing
+   wiring tests mock the reader wrapper rather than exercising a real
+   env-var-isolated DB. Fixing `_connect_readonly()` itself to always honor
+   `ensure_db()`'s resolved path was tried first and reverted: it broke
+   `test_enh_3171_mcp_project_root.py`'s root-anchored `history_search`
+   contract (BUG-3181), which relies on `_connect_readonly()` opening an
+   already-resolved absolute path *verbatim* even though it superficially
+   matches the "default-shaped" pattern re-resolution would re-derive
+   (incorrectly, since re-resolution has no `root` context) from cwd.
+   `_connect_readonly()` was left as originally shipped (open `db_path` as
+   given); instead `_read_target_history()` resolves `DEFAULT_DB_PATH` once
+   via `session_store.resolve_history_db()` (no `root=`, matching
+   `_record_harness_event()`'s own write-side resolution) and passes the
+   resolved absolute path to all three reader calls. This is scoped to
+   ENH-3223's new code only — `_read_prepatch_evidence()`'s pre-existing
+   instance of the same bug is untouched and would need its own fix.
 
 ### Types
 N/A — no new data type. `harness_eval_pass_rate()` already returns `float | None`
@@ -285,6 +327,8 @@ _Superseded. Current residual risk after the 2026-08-17 review pass:_
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-17T18:32:43 - `9b422899-526d-4898-abb7-ec412bd107e6.jsonl`
+- `/ll:ready-issue` - 2026-08-17T18:08:18 - `e584aa15-2dbb-4ba0-9a8b-bf66ec82e3fd.jsonl`
 - `/ll:confidence-check` - 2026-08-17T17:15:33 - `874f81b5-d638-4302-8b4b-3679eae19140.jsonl`
 - `/ll:wire-issue` - 2026-08-17T17:12:42 - `874f81b5-d638-4302-8b4b-3679eae19140.jsonl`
 - `/ll:decide-issue` - 2026-08-17T17:03:44 - `387b922e-f595-49bc-8769-737c1dde2c37.jsonl`

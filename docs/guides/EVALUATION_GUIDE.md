@@ -295,8 +295,13 @@ the feature is good, adversarial before you depend on it.
 `[not checked]` in either row means that gate contributed nothing. Two `[not checked]` rows
 and a `PASS` is a null result.
 
-`--output json` adds `stdout`/`stderr`, and — when `--issue-id` is passed and a bundle
-exists — a read-only `prepatch_evidence` block from `.ll/history.db`.
+`--output json` adds `stdout`/`stderr`, a read-only `prepatch_evidence` block when
+`--issue-id` is passed and a bundle exists, and (ENH-3223) `history_pass_rate` /
+`history_abstention_rate` — the run's target's historical rates over the last 30 days, once
+at least 3 prior runs exist. These are **target-scoped**: pooled across every `--semantic`
+string ever run against that target, not attributable to the specific criterion just
+evaluated (`semantic_prompt`, the column that would allow that, is unwritten). See
+[CLI Reference → `ll-harness`](../reference/CLI.md#ll-harness) for the full field table.
 
 ### Across runs
 
@@ -305,7 +310,9 @@ Every `ll-harness` invocation writes a row to the `harness_events` table in `.ll
 content hash of the evaluated target. The content pin is what lets you compare a skill's
 pass rate across commits without re-diffing by hand.
 
-**No `ll-*` command reads this table.** Query it through the Python API:
+`ll-harness` itself is now a consumer (ENH-3223, see above) — its per-run report folds in
+the target's historical rate. For anything beyond a single target's own report, query the
+table through the Python API:
 
 ```python
 from little_loops.history_reader import recent_harness_events, harness_eval_pass_rate
@@ -314,9 +321,10 @@ recent_harness_events(runner="skill", target="check-code", limit=20)
 harness_eval_pass_rate("check-code", since="2026-08-01")   # None if nothing scored
 ```
 
-`harness_eval_pass_rate` counts only rows with a non-NULL `semantic_passed` — runs gated
-solely on exit code are invisible to it, and a target evaluated only that way returns
-`None`, not `1.0`.
+`harness_eval_pass_rate` counts every row with a non-NULL `semantic_passed` — `ll-harness`
+sets this on every non-abstained run, including ones gated solely on `--exit-code` with no
+`--semantic` at all, so its denominator is *all non-abstained runs* for the target, not only
+the semantically-judged ones. A target with zero scored runs returns `None`, not `1.0`.
 
 ---
 

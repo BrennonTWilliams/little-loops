@@ -219,6 +219,26 @@ counted as a pass (BUG-3196).
 **Exit codes:** `0` = PASS, `1` = FAIL, `2` = internal error / timeout, `3` = ABSTAIN (no
 failure, but the semantic judge could not evaluate the check).
 
+**`--output json` payload fields (`skill`/`cmd`/`mcp`/`prompt` runners):** always present:
+`runner`, `exit_code`, `exit_code_check`, `semantic`, `result`, `stdout`, `stderr`. Additive,
+present only when applicable:
+
+| Field | Present when |
+|-------|--------------|
+| `expected` | An `expected:` grade was evaluated (DSL tasks) |
+| `prepatch_evidence` | `--issue-id` was given and a persisted pre-patch check bundle exists |
+| `history_pass_rate`, `history_pass_rate_runs` | `.ll/history.db` has ≥3 non-abstained prior runs for this target in the last 30 days (ENH-3223) |
+| `history_abstention_rate`, `history_judged_runs` | `.ll/history.db` has ≥3 prior `--semantic`-judged runs for this target in the last 30 days (ENH-3223) |
+| `history_since` | Either history field above is present — the ISO 8601 window start |
+
+The `history_*` fields are **target-scoped, not criterion-scoped**: they answer "how often is
+this target abstained on / does this target pass", pooled across every `--semantic` string
+ever run against it, not "how often does this specific criterion abstain" (`semantic_prompt`,
+the column that would allow criterion attribution, is not written by any caller today). They
+are read before this run's own `harness_events` row is written, so they never include the
+current run, and they are omitted entirely (not zero/null) below the 3-run noise floor. Not
+read for the DSL per-task path.
+
 For `ll-harness dsl` specifically, exit `2` covers four distinct "the run could not produce
 a measurement" triggers: the given path does not exist, the task directory has no `.yaml`
 files, every task in the set is ungraded, or ≥1 task hit a per-task infra error (host
