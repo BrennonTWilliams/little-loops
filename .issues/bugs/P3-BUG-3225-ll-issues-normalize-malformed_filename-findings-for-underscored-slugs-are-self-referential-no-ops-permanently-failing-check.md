@@ -11,12 +11,12 @@ captured_at: '2026-08-16T23:38:23Z'
 labels:
 - issue-management
 - normalize-issues
-confidence_score: 92
-outcome_confidence: 94
-score_complexity: 24
-score_test_coverage: 23
-score_ambiguity: 24
-score_change_surface: 23
+confidence_score: 95
+outcome_confidence: 93
+score_complexity: 25
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 18
 ---
 
 # BUG-3225: ll-issues normalize: malformed_filename findings for underscored slugs are self-referential no-ops, permanently failing --check
@@ -129,5 +129,6 @@ _Added by `/ll:refine-issue` — 2026-08-17 — based on codebase analysis:_
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-17T01:04:47 - `11ab7f08-a3d4-4dd5-ab5f-82e08e1bce24.jsonl`
 - `/ll:confidence-check` - 2026-08-17T00:58:43 - `a037325c-9566-4955-97cc-2bea551a22bc.jsonl`
 - `/ll:refine-issue` - 2026-08-17T00:14:16 - `7f601de8-8324-466e-9daf-f07f549bd4be.jsonl`
