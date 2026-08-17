@@ -4,6 +4,7 @@ Provides automated verification that documented counts (commands, agents, skills
 match actual file counts in the codebase.
 """
 
+import json
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -34,6 +35,23 @@ COUNT_TARGETS = {
 # Bridge skills are auto-generated from commands/ and should be excluded from the skill count
 BRIDGE_MARKER = "Bridged from `commands/"
 
+# Step 0 decision (ENH-3195): the canonical "skill count" documented in README.md,
+# CONTRIBUTING.md, and docs/ARCHITECTURE.md is the *authored, non-bridge* count —
+# i.e. False here means bridge skills (BRIDGE_MARKER) are subtracted, matching
+# BRIDGE_MARKER's existing intent. Flipping this to True would mean the documented
+# count includes the 29 command-bridge skills (69 total); every doc callout and the
+# extractor/fix_counts pairing above assume False. Change only alongside a matching
+# rewording pass across all four documented callouts.
+SKILL_COUNT_INCLUDES_BRIDGES = False
+
+# Opt-out marker for count lines that are deliberately approximate/non-derivable
+# prose (e.g. "about 70 skills"). Two forms, checked in this order by
+# is_count_opted_out(): (a) trailing, same line as the count — works inside a
+# ``` ``` ``` tree-fence "#" comment and a ```mermaid``` "%%" comment; (b) a
+# preceding-line HTML comment, for plain markdown only (breaks both fence types).
+_COUNT_IGNORE_MARKER = "ll-doc-count: ignore"
+_COUNT_IGNORE_MARKER_HTML = f"<!-- {_COUNT_IGNORE_MARKER} -->"
+
 
 @dataclass
 class CountResult:
@@ -57,6 +75,10 @@ class CountResult:
     matches: bool = True
     action_severity: Literal["auto", "mention", "route"] = "auto"
     route_owner: str | None = None
+    missing: list[str] = field(default_factory=list)
+    """Coverage-gap mismatches (category "cli_entry_points"/"hooks") name the
+    specific entries a doc omits here instead of comparing a single number.
+    Empty for ordinary numeric-callout mismatches."""
 
 
 @dataclass
@@ -117,17 +139,44 @@ def extract_count_from_line(line: str, category: str) -> int | None:
     Returns:
         Extracted count or None if not found
     """
-    # For skills, also match singular "skill" (e.g., "skill definitions")
-    # Pattern matches: number followed by optional words and category name
-    # Examples: "34 commands", "8 specialized agents", "6 skill definitions"
+    # For skills/commands, also match the singular form (e.g., "skill
+    # definitions", "command templates"). Pattern matches: number followed by
+    # optional words and category name. Examples: "34 commands", "29 slash
+    # command templates", "8 specialized agents", "6 skill definitions".
     if category == "skills":
         # Match both "skills" and "skill" (singular)
         pattern = r"(\d+)\s+\w*\s*skills?(?!\s+description)"
+    elif category == "commands":
+        # Match both "commands" and "command" (singular)
+        pattern = r"(\d+)\s+\w*\s*commands?"
     else:
         pattern = rf"(\d+)\s+\w*\s*{category}"
 
     match = re.search(pattern, line, re.IGNORECASE)
     return int(match.group(1)) if match else None
+
+
+def is_count_opted_out(lines: list[str], index: int) -> bool:
+    """Return True if the count line at ``index`` is marked as opt-out.
+
+    Checked in this order: (a) a trailing same-line marker anywhere after the
+    count — usable inside a tree-fence ``#`` comment or a mermaid ``%%``
+    comment; (b) a preceding-line ``<!-- ll-doc-count: ignore -->`` HTML
+    comment, for plain markdown only. Shared by ``verify_documentation`` and
+    ``fix_counts`` so the verifier and the rewriter can never disagree.
+
+    Args:
+        lines: All lines of the document (0-indexed).
+        index: 0-indexed position of the line to check.
+
+    Returns:
+        True if the line should be skipped by count verification/fixing.
+    """
+    if _COUNT_IGNORE_MARKER in lines[index]:
+        return True
+    if index > 0 and lines[index - 1].strip() == _COUNT_IGNORE_MARKER_HTML:
+        return True
+    return False
 
 
 def verify_documentation(
@@ -159,8 +208,9 @@ def verify_documentation(
         actual_counts["loops"] = sum(1 for p in loops_dir.rglob("*.yaml") if is_runnable_loop(p))
 
     # Adjust skill count to exclude bridge skills (auto-generated from commands/)
+    # per the SKILL_COUNT_INCLUDES_BRIDGES decision.
     skills_dir = base_dir / "skills"
-    if "skills" in actual_counts and skills_dir.exists():
+    if "skills" in actual_counts and skills_dir.exists() and not SKILL_COUNT_INCLUDES_BRIDGES:
         actual_counts["skills"] -= sum(
             1 for p in skills_dir.glob("*/SKILL.md") if BRIDGE_MARKER in p.read_text()
         )
@@ -175,6 +225,8 @@ def verify_documentation(
         lines = content.splitlines()
 
         for line_num, line in enumerate(lines, start=1):
+            if is_count_opted_out(lines, line_num - 1):
+                continue
             for category in COUNT_TARGETS:
                 documented = extract_count_from_line(line, category)
                 if documented is not None:
@@ -191,6 +243,123 @@ def verify_documentation(
                     )
                     result.add_result(count_result)
                     result.total_checked += 1
+
+    return result
+
+
+# -- Enumeration-coverage checks (ENH-3195 checks 3-4) ---------------------
+#
+# Unlike the numeric callouts above, these compare *sets* derived from the
+# filesystem/pyproject.toml against sets of names documented in a reference
+# file, and report the specific missing entries rather than a count mismatch.
+# `verify_coverage()` is the single entry point the pytest gate, `ll-verify-docs`,
+# and `ll-doctor` all share — never re-derive these sets in a test file.
+
+_PYPROJECT_PATH = "scripts/pyproject.toml"
+_CLI_DOC_PATH = "docs/reference/CLI.md"
+_HOOKS_JSON_PATH = "hooks/hooks.json"
+_HOOKS_GUIDE_PATH = "docs/guides/BUILTIN_HOOKS_GUIDE.md"
+
+_CLI_SECTION_RE = re.compile(r"^###\s+`?([A-Za-z0-9][\w.-]*)`?\s*$", re.MULTILINE)
+_SH_BASENAME_RE = re.compile(r"\b([\w.-]+\.sh)\b")
+
+
+def declared_entry_points(pyproject: Path) -> set[str]:
+    """Return every ``[project.scripts]`` entry-point name declared in *pyproject*.
+
+    Parsed with stdlib ``tomllib`` rather than ``importlib.metadata.entry_points()``,
+    which reflects a possibly-stale editable install (ENH-3195 check 3).
+    """
+    import tomllib
+
+    data = tomllib.loads(pyproject.read_text(encoding="utf-8"))
+    return set(data.get("project", {}).get("scripts", {}))
+
+
+def documented_cli_sections(cli_md: Path) -> set[str]:
+    """Return every ``### `` heading name in *cli_md*, tolerating backticks."""
+    text = cli_md.read_text(encoding="utf-8")
+    return set(_CLI_SECTION_RE.findall(text))
+
+
+def registered_hook_scripts(hooks_json: Path) -> set[str]:
+    """Return the deduped set of ``*.sh`` basenames registered in *hooks_json*.
+
+    Walks the nested ``hooks`` / matcher-entry / ``hooks`` structure and reduces
+    each ``command`` string to its script basename (e.g. ``record-hook-event.sh``
+    appears once even though it is registered under several events).
+    """
+    data = json.loads(hooks_json.read_text(encoding="utf-8"))
+    scripts: set[str] = set()
+    for matcher_entries in data.get("hooks", {}).values():
+        for matcher_entry in matcher_entries:
+            for hook in matcher_entry.get("hooks", []):
+                command = hook.get("command", "")
+                match = _SH_BASENAME_RE.search(command)
+                if match:
+                    scripts.add(match.group(1))
+    return scripts
+
+
+def documented_hook_names(guide: Path) -> set[str]:
+    """Return every ``*.sh`` basename named anywhere in *guide*."""
+    text = guide.read_text(encoding="utf-8")
+    return set(_SH_BASENAME_RE.findall(text))
+
+
+def verify_coverage(base_dir: Path | None = None) -> VerificationResult:
+    """Verify enumeration coverage: every CLI entry point and registered hook
+    is named in its reference doc.
+
+    Unlike ``verify_documentation``'s numeric callouts, a failure here reports
+    the specific missing entry-point/hook names via ``CountResult.missing``
+    rather than a single documented/actual pair.
+
+    Args:
+        base_dir: Base directory path (defaults to current working directory)
+
+    Returns:
+        VerificationResult with coverage-gap mismatches, if any
+    """
+    if base_dir is None:
+        base_dir = Path.cwd()
+    result = VerificationResult(total_checked=0)
+
+    pyproject = base_dir / _PYPROJECT_PATH
+    cli_doc = base_dir / _CLI_DOC_PATH
+    if pyproject.exists() and cli_doc.exists():
+        entry_points = declared_entry_points(pyproject)
+        cli_sections = documented_cli_sections(cli_doc)
+        missing_cli = sorted(entry_points - cli_sections)
+        result.add_result(
+            CountResult(
+                category="cli_entry_points",
+                actual=len(entry_points),
+                documented=len(cli_sections & entry_points),
+                file=_CLI_DOC_PATH,
+                matches=not missing_cli,
+                missing=missing_cli,
+            )
+        )
+        result.total_checked += 1
+
+    hooks_json = base_dir / _HOOKS_JSON_PATH
+    hooks_guide = base_dir / _HOOKS_GUIDE_PATH
+    if hooks_json.exists() and hooks_guide.exists():
+        registered = registered_hook_scripts(hooks_json)
+        documented = documented_hook_names(hooks_guide)
+        missing_hooks = sorted(registered - documented)
+        result.add_result(
+            CountResult(
+                category="hooks",
+                actual=len(registered),
+                documented=len(documented & registered),
+                file=_HOOKS_GUIDE_PATH,
+                matches=not missing_hooks,
+                missing=missing_hooks,
+            )
+        )
+        result.total_checked += 1
 
     return result
 
@@ -213,10 +382,16 @@ def format_result_text(result: VerificationResult) -> str:
         lines.append("")
 
         for mismatch in result.mismatches:
-            lines.append(
-                f"  {mismatch.category}: documented={mismatch.documented}, actual={mismatch.actual}"
-            )
-            lines.append(f"    at {mismatch.file}:{mismatch.line}")
+            if mismatch.missing:
+                lines.append(f"  {mismatch.category}: missing {', '.join(mismatch.missing)}")
+            else:
+                lines.append(
+                    f"  {mismatch.category}: documented={mismatch.documented}, actual={mismatch.actual}"
+                )
+            if mismatch.line is not None:
+                lines.append(f"    at {mismatch.file}:{mismatch.line}")
+            elif mismatch.file is not None:
+                lines.append(f"    at {mismatch.file}")
 
     return "\n".join(lines)
 
@@ -230,8 +405,6 @@ def format_result_json(result: VerificationResult) -> str:
     Returns:
         JSON string
     """
-    import json
-
     data = {
         "all_match": result.all_match,
         "total_checked": result.total_checked,
@@ -244,6 +417,7 @@ def format_result_json(result: VerificationResult) -> str:
                 "line": m.line,
                 "action_severity": m.action_severity,
                 "route_owner": m.route_owner,
+                "missing": m.missing,
             }
             for m in result.mismatches
         ],
@@ -273,10 +447,20 @@ def format_result_markdown(result: VerificationResult) -> str:
         lines.append("|----------|-----------|--------|----------|")
 
         for mismatch in result.mismatches:
-            lines.append(
-                f"| {mismatch.category} | {mismatch.documented} | "
-                f"{mismatch.actual} | `{mismatch.file}:{mismatch.line}` |"
+            location = (
+                f"`{mismatch.file}:{mismatch.line}`"
+                if mismatch.line is not None
+                else f"`{mismatch.file}`"
             )
+            if mismatch.missing:
+                lines.append(
+                    f"| {mismatch.category} | missing: {', '.join(mismatch.missing)} | | {location} |"
+                )
+            else:
+                lines.append(
+                    f"| {mismatch.category} | {mismatch.documented} | "
+                    f"{mismatch.actual} | {location} |"
+                )
 
     return "\n".join(lines)
 
@@ -452,13 +636,21 @@ def fix_counts(base_dir: Path, result: VerificationResult) -> FixResult:
         lines = content.splitlines()
 
         for mismatch in mismatches:
+            # CoverageGap-shaped mismatches (category "cli_entry_points"/"hooks")
+            # carry no file:line — they name missing entries, not a number to
+            # rewrite, and are already excluded from mismatches_by_file above
+            # since mismatch.file is None for them.
             if mismatch.line is not None and 1 <= mismatch.line <= len(lines):
+                if is_count_opted_out(lines, mismatch.line - 1):
+                    continue
                 line = lines[mismatch.line - 1]
 
                 # Build regex pattern based on category
-                # For skills, also match singular "skill"
+                # For skills/commands, also match the singular form
                 if mismatch.category == "skills":
                     pattern = r"(\d+)(\s+\w*\s*skills?(?!\s+description))"
+                elif mismatch.category == "commands":
+                    pattern = r"(\d+)(\s+\w*\s*commands?)"
                 else:
                     pattern = rf"(\d+)(\s+\w*\s*{re.escape(mismatch.category)})"
 

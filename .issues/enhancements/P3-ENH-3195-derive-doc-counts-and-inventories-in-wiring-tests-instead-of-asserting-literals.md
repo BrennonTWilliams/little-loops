@@ -4,11 +4,12 @@ type: ENH
 title: Derive doc counts and inventories in wiring tests instead of asserting string
   literals
 priority: P3
-status: open
+status: done
 testable: true
 discovered_by: manual-review
 discovered_date: '2026-08-15'
 captured_at: '2026-08-15T00:00:00Z'
+completed_at: '2026-08-17T16:09:28Z'
 relates_to:
 - BUG-3186
 - BUG-3188
@@ -302,20 +303,20 @@ Explicitly **out of scope**:
 
 ## Acceptance Criteria
 
-- [ ] Step 0a: the canonical skill count is 40 (non-bridge), recorded in a comment next to `BRIDGE_MARKER` in `doc_counts.py`; all four documented skill callouts are reworded per the Blocker table so each is true in its context. `ll-verify-docs` exits 0 on a clean tree.
-- [ ] Step 0b: `docs/guides/BUILTIN_HOOKS_GUIDE.md` documents `drift-check.sh`, so check 4 is green on a clean tree.
-- [ ] `extract_count_from_line` matches the singular "N slash command templates" phrasing, so `docs/ARCHITECTURE.md:63` is covered by the existing scan.
-- [ ] The widened `commands?` pattern introduces **no new mismatches** on a clean tree — asserted by a test that runs `verify_documentation` over the real `DOC_FILES` and requires `all_match`, not just by a unit test of the `:63` line.
-- [ ] `ll-verify-docs --fix` is a **no-op on a clean tree** (0 files modified), and `verify → fix → verify` converges in one pass on a dirtied tree. This is the oscillation guard the Blocker section names; without it `--fix` and the gate can still disagree.
-- [ ] Check 3 requires a `CLI.md` section for every entry point declared in `[project.scripts]`, with no exclusion list — currently 52/52.
-- [ ] Skill-count, command-count, CLI-entry-point, and hook-coverage assertions exist and derive ground truth from the filesystem/`pyproject.toml`, not from a hardcoded expected number.
-- [ ] All four checks are reachable from one `doc_counts` entry point shared by the pytest gate, `ll-verify-docs`, `--fix`, `ll-doctor`, and `drift-check.sh` — no second derivation path in a test file.
-- [ ] Each assertion's failure message names both the documented value and the derived value; coverage-gap failures additionally name the specific missing entry points / hook basenames rather than only set sizes.
-- [ ] The opt-out marker supports both the trailing same-line and preceding-comment forms, is honored by both the verifier and `--fix`, and has a test covering an opted-out line in each of the three contexts that matter: plain markdown, a ``` ``` ``` tree fence, and a ` ```mermaid ` block.
-- [ ] The three commented-out `# REMOVED (stale/false-positive, count drifted ...)` entries are deleted and superseded by derived checks.
-- [ ] A negative test mutates a copy of the tree in `tmp_path` (drop a `CLI.md` section, register a hook the guide omits, bump a documented count) and asserts the check fails — verified by the suite, not by manual re-introduction.
-- [ ] Re-introducing any BUG-3186/3189/3190 defect fails `python -m pytest scripts/tests/`.
-- [ ] The suite still passes on a clean tree; no new third-party dependency (`tomllib` is stdlib on 3.11+).
+- [x] Step 0a: the canonical skill count is 40 (non-bridge), recorded in a comment next to `BRIDGE_MARKER` in `doc_counts.py`; all four documented skill callouts are reworded per the Blocker table so each is true in its context. `ll-verify-docs` exits 0 on a clean tree.
+- [x] Step 0b: `docs/guides/BUILTIN_HOOKS_GUIDE.md` documents `drift-check.sh`, so check 4 is green on a clean tree.
+- [x] `extract_count_from_line` matches the singular "N slash command templates" phrasing, so `docs/ARCHITECTURE.md:63` is covered by the existing scan.
+- [x] The widened `commands?` pattern introduces **no new mismatches** on a clean tree — asserted by a test that runs `verify_documentation` over the real `DOC_FILES` and requires `all_match`, not just by a unit test of the `:63` line.
+- [x] `ll-verify-docs --fix` is a **no-op on a clean tree** (0 files modified), and `verify → fix → verify` converges in one pass on a dirtied tree. This is the oscillation guard the Blocker section names; without it `--fix` and the gate can still disagree.
+- [x] Check 3 requires a `CLI.md` section for every entry point declared in `[project.scripts]`, with no exclusion list — currently 52/52.
+- [x] Skill-count, command-count, CLI-entry-point, and hook-coverage assertions exist and derive ground truth from the filesystem/`pyproject.toml`, not from a hardcoded expected number.
+- [x] All four checks are reachable from one `doc_counts` entry point shared by the pytest gate, `ll-verify-docs`, `--fix`, `ll-doctor`, and `drift-check.sh` — no second derivation path in a test file.
+- [x] Each assertion's failure message names both the documented value and the derived value; coverage-gap failures additionally name the specific missing entry points / hook basenames rather than only set sizes.
+- [x] The opt-out marker supports both the trailing same-line and preceding-comment forms, is honored by both the verifier and `--fix`, and has a test covering an opted-out line in each of the three contexts that matter: plain markdown, a ``` ``` ``` tree fence, and a ` ```mermaid ` block.
+- [x] The three commented-out `# REMOVED (stale/false-positive, count drifted ...)` entries are deleted and superseded by derived checks.
+- [x] A negative test mutates a copy of the tree in `tmp_path` (drop a `CLI.md` section, register a hook the guide omits, bump a documented count) and asserts the check fails — verified by the suite, not by manual re-introduction.
+- [x] Re-introducing any BUG-3186/3189/3190 defect fails `python -m pytest scripts/tests/`.
+- [x] The suite still passes on a clean tree; no new third-party dependency (`tomllib` is stdlib on 3.11+).
 
 ## Motivation
 
@@ -348,5 +349,7 @@ goes blocking.
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-17T16:08:43 - `2bed08d6-709a-4779-9c84-e88d155461d1.jsonl`
+- `/ll:ready-issue` - 2026-08-17T15:38:26 - `86adafaa-70d2-4c08-ac9c-a7da1b885403.jsonl`
 - `/ll:confidence-check` - 2026-08-17T06:08:01 - `86eb12f1-b126-4db7-a22d-252ffa585d1f.jsonl`
 - `/ll:confidence-check` - 2026-08-17T05:57:22 - `dbac7370-5229-482f-9783-efd7ccbe7021.jsonl`

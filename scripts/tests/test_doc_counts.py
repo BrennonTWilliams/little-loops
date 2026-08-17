@@ -9,11 +9,17 @@ from little_loops.doc_counts import (
     VerificationResult,
     check_skill_budget,
     count_files,
+    declared_entry_points,
+    documented_cli_sections,
+    documented_hook_names,
     extract_count_from_line,
     fix_counts,
     format_result_json,
     format_result_markdown,
     format_result_text,
+    is_count_opted_out,
+    registered_hook_scripts,
+    verify_coverage,
     verify_documentation,
 )
 from little_loops.fsm import is_runnable_loop
@@ -273,6 +279,16 @@ class TestExtractCountFromLine:
         """Extract count from plain '12 loops' phrasing."""
         count = extract_count_from_line("12 loops", "loops")
         assert count == 12
+
+    def test_extract_command_templates_singular(self) -> None:
+        """[ENH-3195] Extract '29 slash command templates' (singular 'command')."""
+        count = extract_count_from_line("29 slash command templates", "commands")
+        assert count == 29
+
+    def test_extract_commands_plural_still_matches(self) -> None:
+        """Widening to commands? must not break the existing plural match."""
+        count = extract_count_from_line("34 commands", "commands")
+        assert count == 34
 
 
 class TestVerificationResult:
@@ -647,6 +663,52 @@ class TestFixCounts:
         assert len(fix_result.files_modified) == 0
         assert test_file.read_text() == original_content
 
+    def test_fix_skips_opted_out_line(self, tmp_path: Path) -> None:
+        """[ENH-3195] fix_counts never rewrites a line is_count_opted_out() flags,
+        even if a caller hands it a mismatch pointing at one directly (defense in
+        depth — verify_documentation never emits such a mismatch in the first
+        place, since it skips opted-out lines before extracting a count)."""
+        test_file = tmp_path / "README.md"
+        original_content = "34 commands  <!-- ll-doc-count: ignore -->\n"
+        test_file.write_text(original_content)
+
+        result = VerificationResult(total_checked=1, all_match=False)
+        result.mismatches.append(
+            CountResult(
+                category="commands",
+                actual=35,
+                documented=34,
+                file="README.md",
+                line=1,
+                matches=False,
+            )
+        )
+
+        fix_result = fix_counts(tmp_path, result)
+
+        assert fix_result.fixed_count == 0
+        assert test_file.read_text() == original_content
+
+    def test_verify_fix_verify_converges_in_one_pass(self, tmp_path: Path) -> None:
+        """[ENH-3195] verify -> fix -> verify converges immediately on a dirtied
+        tree — the oscillation guard for the 68->42/39->42 drift the Blocker
+        section describes: fix_counts and verify_documentation must never
+        disagree about the definition of a count."""
+        commands_dir = tmp_path / "commands"
+        commands_dir.mkdir()
+        for i in range(5):
+            (commands_dir / f"cmd{i}.md").write_text(f"# Command {i}")
+        readme = tmp_path / "README.md"
+        readme.write_text("- **3 commands** for workflows\n")
+
+        first = verify_documentation(tmp_path)
+        assert first.all_match is False
+
+        fix_counts(tmp_path, first)
+
+        second = verify_documentation(tmp_path)
+        assert second.all_match is True, format_result_text(second)
+
 
 class TestVerifyDocumentation:
     """Integration tests for verify_documentation function."""
@@ -875,3 +937,189 @@ class TestCheckSkillBudget:
         assert desc != "|"  # regression guard: old parser returned literal "|"
         assert "Real multi-line content" in desc
         assert tokens > 0
+
+
+class TestIsCountOptedOut:
+    """Tests for is_count_opted_out (ENH-3195): both marker forms, three contexts."""
+
+    def test_no_marker_not_opted_out(self) -> None:
+        lines = ["## 34 commands"]
+        assert is_count_opted_out(lines, 0) is False
+
+    def test_trailing_marker_plain_markdown(self) -> None:
+        """Trailing same-line marker on ordinary prose."""
+        lines = ["about 70 skills  <!-- ll-doc-count: ignore -->"]
+        assert is_count_opted_out(lines, 0) is True
+
+    def test_trailing_marker_inside_tree_fence_hash_comment(self) -> None:
+        """Trailing marker inside a ``` ``` ``` tree-fence '#' comment."""
+        lines = ["├── skills/  # about 70 skills, ll-doc-count: ignore"]
+        assert is_count_opted_out(lines, 0) is True
+
+    def test_trailing_marker_inside_mermaid_comment(self) -> None:
+        """Trailing marker inside a mermaid '%%' comment."""
+        lines = ["SKL[Skills<br/>about 70 skills] %% ll-doc-count: ignore"]
+        assert is_count_opted_out(lines, 0) is True
+
+    def test_preceding_line_html_comment_plain_markdown(self) -> None:
+        """Preceding-line HTML comment form, for plain markdown."""
+        lines = ["<!-- ll-doc-count: ignore -->", "about 70 skills"]
+        assert is_count_opted_out(lines, 1) is True
+
+    def test_preceding_line_marker_does_not_apply_inside_fence(self) -> None:
+        """Preceding-line marker is documented as plain-markdown-only; a fenced
+        line one row below an HTML comment is not implicitly opted out unless
+        the trailing form is used (the HTML comment itself would break the fence
+        rendering, which is exactly why the trailing form exists for fences)."""
+        lines = ["some other line", "├── skills/  # 70 skills"]
+        assert is_count_opted_out(lines, 1) is False
+
+    def test_verify_documentation_skips_opted_out_line(self, tmp_path: Path) -> None:
+        """A mismatched count on an opted-out line is not reported."""
+        readme = tmp_path / "README.md"
+        readme.write_text("about 70 skills  <!-- ll-doc-count: ignore -->\n")
+        commands_dir = tmp_path / "commands"
+        commands_dir.mkdir()
+
+        result = verify_documentation(tmp_path)
+
+        assert result.all_match is True
+        assert result.total_checked == 0
+
+
+class TestVerifyCoverage:
+    """Tests for verify_coverage (ENH-3195 checks 3-4): CLI entry points + hooks."""
+
+    def test_declared_entry_points(self, tmp_path: Path) -> None:
+        pyproject = tmp_path / "pyproject.toml"
+        pyproject.write_text('[project.scripts]\nll-foo = "x:y"\nll-bar = "x:y"\n')
+        assert declared_entry_points(pyproject) == {"ll-foo", "ll-bar"}
+
+    def test_documented_cli_sections(self, tmp_path: Path) -> None:
+        cli_md = tmp_path / "CLI.md"
+        cli_md.write_text("### ll-foo\n\nSome text.\n\n### `ll-bar`\n")
+        assert documented_cli_sections(cli_md) == {"ll-foo", "ll-bar"}
+
+    def test_registered_hook_scripts_dedupes_across_events(self, tmp_path: Path) -> None:
+        import json
+
+        hooks_json = tmp_path / "hooks.json"
+        hooks_json.write_text(
+            json.dumps(
+                {
+                    "hooks": {
+                        "Stop": [
+                            {
+                                "matcher": "*",
+                                "hooks": [
+                                    {
+                                        "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/adapters/claude-code/record-hook-event.sh Stop x"
+                                    }
+                                ],
+                            }
+                        ],
+                        "SessionEnd": [
+                            {
+                                "matcher": "*",
+                                "hooks": [
+                                    {
+                                        "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/adapters/claude-code/record-hook-event.sh SessionEnd x"
+                                    }
+                                ],
+                            }
+                        ],
+                    }
+                }
+            )
+        )
+        assert registered_hook_scripts(hooks_json) == {"record-hook-event.sh"}
+
+    def test_documented_hook_names(self, tmp_path: Path) -> None:
+        guide = tmp_path / "GUIDE.md"
+        guide.write_text("**Hook:** `session-start.sh` -> ...\n")
+        assert documented_hook_names(guide) == {"session-start.sh"}
+
+    def _write_coverage_fixture(
+        self, tmp_path: Path, entry_points: dict[str, str], cli_sections: list[str]
+    ) -> None:
+        (tmp_path / "scripts").mkdir()
+        pyproject = tmp_path / "scripts" / "pyproject.toml"
+        scripts_toml = "\n".join(f'{name} = "{target}"' for name, target in entry_points.items())
+        pyproject.write_text(f"[project.scripts]\n{scripts_toml}\n")
+        (tmp_path / "docs" / "reference").mkdir(parents=True)
+        cli_md = tmp_path / "docs" / "reference" / "CLI.md"
+        cli_md.write_text("\n".join(f"### {name}" for name in cli_sections) + "\n")
+
+    def test_cli_coverage_detects_missing_section(self, tmp_path: Path) -> None:
+        """[ENH-3195] A CLI.md missing a declared entry point's section fails."""
+        self._write_coverage_fixture(
+            tmp_path, {"ll-foo": "x:y", "ll-bar": "x:y"}, cli_sections=["ll-foo"]
+        )
+
+        result = verify_coverage(tmp_path)
+
+        cli_mismatch = next(m for m in result.mismatches if m.category == "cli_entry_points")
+        assert cli_mismatch.missing == ["ll-bar"]
+        assert result.all_match is False
+
+    def test_cli_coverage_passes_when_fully_documented(self, tmp_path: Path) -> None:
+        self._write_coverage_fixture(
+            tmp_path, {"ll-foo": "x:y", "ll-bar": "x:y"}, cli_sections=["ll-foo", "ll-bar"]
+        )
+
+        result = verify_coverage(tmp_path)
+
+        cli_mismatches = [m for m in result.mismatches if m.category == "cli_entry_points"]
+        assert cli_mismatches == []
+
+    def _write_hooks_fixture(
+        self, tmp_path: Path, registered: list[str], documented: list[str]
+    ) -> None:
+        import json
+
+        hooks_dir = tmp_path / "hooks"
+        hooks_dir.mkdir()
+        hooks = {
+            "SessionStart": [
+                {"matcher": "*", "hooks": [{"command": f"bash adapters/claude-code/{name}"}]}
+                for name in registered
+            ]
+        }
+        (hooks_dir / "hooks.json").write_text(json.dumps({"hooks": hooks}))
+        guides_dir = tmp_path / "docs" / "guides"
+        guides_dir.mkdir(parents=True)
+        (guides_dir / "BUILTIN_HOOKS_GUIDE.md").write_text(
+            "\n".join(f"**Hook:** `{name}`" for name in documented) + "\n"
+        )
+
+    def test_hook_coverage_detects_missing_doc(self, tmp_path: Path) -> None:
+        """[ENH-3195] A hooks.json script the guide never names fails."""
+        self._write_hooks_fixture(
+            tmp_path,
+            registered=["session-start.sh", "drift-check.sh"],
+            documented=["session-start.sh"],
+        )
+
+        result = verify_coverage(tmp_path)
+
+        hooks_mismatch = next(m for m in result.mismatches if m.category == "hooks")
+        assert hooks_mismatch.missing == ["drift-check.sh"]
+        assert result.all_match is False
+
+    def test_hook_coverage_passes_when_fully_documented(self, tmp_path: Path) -> None:
+        self._write_hooks_fixture(
+            tmp_path,
+            registered=["session-start.sh", "drift-check.sh"],
+            documented=["session-start.sh", "drift-check.sh"],
+        )
+
+        result = verify_coverage(tmp_path)
+
+        hooks_mismatches = [m for m in result.mismatches if m.category == "hooks"]
+        assert hooks_mismatches == []
+
+    def test_verify_coverage_missing_files_skipped_not_crashed(self, tmp_path: Path) -> None:
+        """No pyproject.toml/hooks.json present: verify_coverage returns cleanly."""
+        result = verify_coverage(tmp_path)
+        assert result.total_checked == 0
+        assert result.all_match is True

@@ -168,6 +168,12 @@ The dispatch intent stays `session_end` (host-agnostic) and the adapter file is 
 
 Every invocation also writes one best-effort `stale_ref_sweep` row to `.ll/history.db`'s `session_lifecycle_events` table (findings count, fix mode) — including zero findings — so churn is queryable via `ll-session recent --kind session_lifecycle` (ENH-2495).
 
+### Doc-drift check
+
+**Hook:** `drift-check.sh` → `little_loops.hooks.drift_check.handle`
+
+Runs `verify_documentation()` (the same derived checker behind `ll-verify-docs`) and surfaces throttled `mention`/`route` doc-drift findings — count mismatches between documented and actual file counts — as advisory context at session start. Throttled to at most once every `hooks.doc_drift_throttle_days` (default **7**) days per project. Opt out entirely with `LL_DOC_DRIFT_DISABLE` (any non-empty value). Never blocks.
+
 ---
 
 ## UserPromptSubmit

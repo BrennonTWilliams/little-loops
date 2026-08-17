@@ -19,10 +19,8 @@ import pytest
 
 DOC_STRINGS_PRESENT: list[tuple[str, str, str]] = [
     # (doc_path, expected_string, issue_id)
-    # REMOVED (stale/false-positive, count drifted 68->42 via ll-verify-docs --fix
-    # during FEAT-2354): ("README.md", "68 skills", "FEAT-1287"),
-    # REMOVED (stale/false-positive, count drifted 39->42 via ll-verify-docs --fix
-    # during FEAT-2354): ("CONTRIBUTING.md", "39 skill definitions", "FEAT-1287"),
+    # Superseded by the derived skill/command-count gate (ENH-3195,
+    # test_doc_counts_all_match below) — stale count literals removed here.
     ("CONTRIBUTING.md", "explore-api/", "FEAT-1287"),
     ("docs/ARCHITECTURE.md", "## Learning Test Registry", "FEAT-1287"),
     ("docs/ARCHITECTURE.md", "LearnTestRecord", "FEAT-1287"),
@@ -30,10 +28,6 @@ DOC_STRINGS_PRESENT: list[tuple[str, str, str]] = [
     ("docs/ARCHITECTURE.md", "list", "FEAT-1287"),
     ("docs/ARCHITECTURE.md", "mark-stale", "FEAT-1287"),
     ("CONTRIBUTING.md", "verify-issue-loop/", "FEAT-1447"),
-    # REMOVED (stale/false-positive, count drifted 39->42 via ll-verify-docs --fix
-    # during FEAT-2354): ("docs/ARCHITECTURE.md", "39 composable skills", "FEAT-1447"),
-    # REMOVED (stale/false-positive, count drifted 39->42 via ll-verify-docs --fix
-    # during FEAT-2354): ("docs/ARCHITECTURE.md", "# 39 skill definitions", "FEAT-1447"),
     ("CONTRIBUTING.md", "LLHookIntentExtension", "FEAT-1457"),
     ("CONTRIBUTING.md", "LLHookEvent", "FEAT-1457"),
     ("docs/ARCHITECTURE.md", "LLHookIntentExtension", "FEAT-1457"),
@@ -152,8 +146,6 @@ DOC_STRINGS_PRESENT: list[tuple[str, str, str]] = [
     ("docs/ARCHITECTURE.md", "epics/", "FEAT-1407"),
     # REMOVED (stale/false-positive): ("README.md", "verify-issue-loop/", "FEAT-1447"),
     # REMOVED (stale/false-positive): ("CONTRIBUTING.md", "63 composable skills", "FEAT-1447"),
-    # REMOVED (stale/false-positive, count drifted 39->42 via ll-verify-docs --fix
-    # during FEAT-2354): ("CONTRIBUTING.md", "# 39 skill definitions", "FEAT-1447"),
     ("docs/guides/LOOPS_GUIDE.md", "distill-traces", "FEAT-2078"),
     # APO guide — pins the two corrected facts most likely to silently regress.
     # apo-opro reads prompt_file but no state writes it (apo-opro.yaml:29);
@@ -432,4 +424,42 @@ def test_host_tier_table_matches_adapter_installers(project_root: Path) -> None:
         f"install_*_adapter functions in init/writers.py. "
         f"Installers with no doc row: {sorted(actual - documented)}. "
         f"Documented as adapter-wired with no installer: {sorted(documented - actual)}."
+    )
+
+
+# -- Derived doc-count + hook-coverage gate (ENH-3195) ---------------------
+#
+# Blocking version of the existing `ll-verify-docs` checker (little_loops.doc_counts).
+# Replaces the individual skill/command-count string-literal rows removed above
+# with a single derived assertion — the gate, `ll-verify-docs`, `--fix`,
+# `ll-doctor`, and `drift-check.sh` all read from the same verify_documentation()/
+# verify_coverage() functions, so there is exactly one ground truth for these
+# counts (see the ENH-3195 Blocker section on the 68->42/39->42 oscillation this
+# replaces).
+
+
+def test_doc_counts_all_match(project_root: Path) -> None:
+    """[ENH-3195] Every documented skill/command/agent/loop count matches the
+    filesystem across all of DOC_FILES. Not a per-line unit test — this runs
+    verify_documentation() over the real repo tree so the widened `commands?`
+    extractor pattern is validated against every real doc line, not just the
+    :63 line it was added for."""
+    from little_loops.doc_counts import format_result_text, verify_documentation
+
+    result = verify_documentation(project_root)
+    assert result.all_match, format_result_text(result)
+
+
+def test_hook_coverage_matches_guide(project_root: Path) -> None:
+    """[ENH-3195] Every hooks.json-registered *.sh script (Claude Code adapter
+    registry only — the Codex adapter registry at
+    scripts/little_loops/hooks/adapters/codex/hooks.json is deliberately out of
+    scope for this check) is named somewhere in BUILTIN_HOOKS_GUIDE.md."""
+    from little_loops.doc_counts import verify_coverage
+
+    result = verify_coverage(project_root)
+    hooks_mismatch = next((m for m in result.mismatches if m.category == "hooks"), None)
+    assert hooks_mismatch is None, (
+        f"Hooks registered in hooks/hooks.json but undocumented in "
+        f"BUILTIN_HOOKS_GUIDE.md: {hooks_mismatch.missing if hooks_mismatch else []}"
     )

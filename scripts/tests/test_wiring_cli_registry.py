@@ -209,3 +209,25 @@ DOC_FILES_MUST_EXIST: list[tuple[str, str]] = [
 def test_file_exists(project_root: Path, doc_rel: str, issue_id: str) -> None:
     """Verify that expected documentation files exist."""
     assert (project_root / doc_rel).exists(), "[{issue_id}] File must exist: {doc_rel}"
+
+
+# -- Derived CLI entry-point coverage gate (ENH-3195 check 3) --------------
+#
+# Every console-script declared in scripts/pyproject.toml's [project.scripts]
+# must have a `### ` section in docs/reference/CLI.md. No exclusion list —
+# since BUG-3186 landed, all 52 declared entry points (including the non-`ll-`
+# `mcp-call` and the internal `ll-generate-schemas`) already have a section.
+# Ground truth is little_loops.doc_counts.verify_coverage(), shared with
+# ll-verify-docs — never re-derive this set here.
+
+
+def test_cli_entry_point_coverage(project_root: Path) -> None:
+    """[ENH-3195] Every declared console-script entry point has a CLI.md section."""
+    from little_loops.doc_counts import verify_coverage
+
+    result = verify_coverage(project_root)
+    cli_mismatch = next((m for m in result.mismatches if m.category == "cli_entry_points"), None)
+    assert cli_mismatch is None, (
+        f"Entry points declared in scripts/pyproject.toml with no docs/reference/"
+        f"CLI.md section: {cli_mismatch.missing if cli_mismatch else []}"
+    )

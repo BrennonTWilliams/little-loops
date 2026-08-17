@@ -26,6 +26,7 @@ def main_verify_docs() -> int:
             format_result_json,
             format_result_markdown,
             format_result_text,
+            verify_coverage,
             verify_documentation,
         )
 
@@ -84,8 +85,14 @@ Exit codes:
         # Determine base directory
         base_dir = args.directory or Path.cwd()
 
-        # Run verification
+        # Run verification: numeric-callout counts plus enumeration coverage
+        # (CLI entry points, hooks) — one merged result so ll-verify-docs stays
+        # the single entry point for both check families (ENH-3195).
         result = verify_documentation(base_dir)
+        coverage_result = verify_coverage(base_dir)
+        result.mismatches.extend(coverage_result.mismatches)
+        result.total_checked += coverage_result.total_checked
+        result.all_match = result.all_match and coverage_result.all_match
 
         # Format output
         if args.json or args.format == "json":
