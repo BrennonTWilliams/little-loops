@@ -144,6 +144,33 @@ existing ordering happens to be correct; adding `OSError` makes that ordering
 something the code depends on rather than something incidental. Add a comment
 saying so.
 
+#### The larger `OSError` trap: the `try` wraps the whole success path
+
+Ordering is the *small* hazard. The bigger one is scope: the `try` opens at
+`config_cmds.py:25` and does not close until after every success-path emission —
+`print_json` in the `as_json` branch (`:35`) and the six `print()` calls in the
+human branch (`:49-56`) are all inside it. `BrokenPipeError` is an `OSError`
+subclass, so `ll-loop validate -j big.yaml | head` would print the document,
+break the pipe, and then fall into the new handler and emit a **second** JSON
+document asserting the loop is invalid — with the pipe error as the violation
+message. A `SIGPIPE` in a shell pipeline is a normal, common event, not a
+validation outcome.
+
+Two acceptable fixes; pick one and say which:
+
+- **(a)** Narrow the `try` so it wraps only `resolve_loop_path()` and the two
+  `load_and_validate()` calls, leaving the emissions outside it. Structurally
+  correct — the handlers are about *loading*, and should never see an output
+  error. Recommended.
+- **(b)** Keep the wide `try` and re-raise the pipe case first:
+  `except BrokenPipeError: raise` immediately above the widened clause.
+  Cheaper, but leaves a second ordering dependency in a handler stack that now
+  has two.
+
+This does not apply to `ValueError` or `yaml.YAMLError`, which the success-path
+emissions cannot raise — it is `OSError` specifically that makes the `try`'s
+width load-bearing.
+
 ### Scope
 
 Deliberately confined to `cmd_validate`. Other `ll-loop` subcommands may share
@@ -193,14 +220,18 @@ One rule, applied at a single point: on any load failure, emit the standard viol
 ## Implementation Steps
 
 1. Add `import yaml` to `config_cmds.py` (not currently imported).
-2. Widen the final handler to `except (ValueError, yaml.YAMLError, OSError) as e`,
+2. Narrow the `try` (opened at `:25`) so it covers `resolve_loop_path()` and the
+   two `load_and_validate()` calls only, leaving `print_json` and the human
+   `print()` block outside it — option (a) above. If keeping the wide `try`
+   instead, add `except BrokenPipeError: raise` above the widened clause.
+3. Widen the final handler to `except (ValueError, yaml.YAMLError, OSError) as e`,
    placed **below** the existing `except FileNotFoundError`, with a comment
    noting the ordering dependency.
-3. Give that handler the same `if as_json:` / `else:` shape as the
+4. Give that handler the same `if as_json:` / `else:` shape as the
    `FileNotFoundError` handler: `print_json({"loop", "valid": False,
    "violations": [{"severity": "error", "path": "<root>", "message": str(e)}]})`
    or `logger.error(...)`.
-4. Keep the `return 1` exit code unchanged on all failure paths.
+5. Keep the `return 1` exit code unchanged on all failure paths.
 
 ## Acceptance Criteria
 
@@ -219,6 +250,10 @@ One rule, applied at a single point: on any load failure, emit the standard viol
       sixth exit path is caught by the same test.
 - [ ] Human-readable (non-`-j`) output for the *valid* and *violations* cases is
       unchanged.
+- [ ] A `BrokenPipeError` raised by the success-path emission does **not** produce
+      a second, contradictory failure document. Assert on a **valid** loop with
+      stdout patched to raise `BrokenPipeError` on write: exactly one emission is
+      attempted and the widened handler does not claim the loop is invalid.
 - [ ] `python -m pytest scripts/tests/` exits 0.
 
 ## Notes

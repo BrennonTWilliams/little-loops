@@ -102,23 +102,92 @@ drift between them is the defect. A fix that invents a fourth pattern in
 | Resolver | Keys on | Handles unprefixed names |
 | --- | --- | --- |
 | `sprint.py:444` `_find_issue_path` | `*-{issue_id}-*.md` (full ID) | **No** — this bug |
-| `cli/issues/show.py:96-124` | `*-{numeric_id}-*.md` (number only) | **Yes** |
+| `cli/issues/show.py:41` `_resolve_issue_id` | `*-{numeric_id}-*.md` (number only) | **Yes** |
 | `issue_parser.find_issues` | frontmatter `id:` | Yes |
 
-`cli/issues/show.py` is the convergence target. It already does the right thing
-for the reason this bug exists: because it globs on the **numeric ID alone**, the
-`-` preceding the number is supplied by the type token itself
-(`BUG-001-slug.md` → `*` matches `BUG`, `-001-` matches literally), so a missing
-priority prefix is a non-event. It then:
+`cli/issues/show.py`'s `_resolve_issue_id` is the convergence target for the
+*glob key*. It gets the unprefixed case right for the reason this bug exists:
+because it globs on the **numeric ID alone**, the `-` preceding the number is
+supplied by the type token itself (`BUG-001-slug.md` → `*` matches `BUG`,
+`-001-` matches literally), so a missing priority prefix is a non-event. It then:
 
 1. collects **all** candidates across type-scoped *and* legacy dirs, `sorted()`;
 2. filters to those whose *anchored* `parse_issue_filename` position carries the
-   requested number, falling back to the raw glob set only when nothing parses;
-3. disambiguates a multi-candidate result by frontmatter identity.
+   requested number, keeping the raw glob set when nothing survives;
+3. disambiguates by frontmatter identity, then by type, then by priority.
 
 Extract that resolution into a shared helper and have `_find_issue_path` call it.
 That fixes the bug and removes one of the three definitions rather than adding a
-fourth.
+fourth — **but not by adopting show.py's fallback behavior verbatim**; see the
+blocking correction immediately below.
+
+### BLOCKING: show.py's fallback chain violates AC #5 today (probed)
+
+An earlier draft of decision (2) below read "recommend **keep** the fallback,
+matching show.py, which only falls back when *no* candidate parses — a narrower
+fallback than sprint.py's per-candidate one." **That is wrong, and inverted.**
+show.py falls back when no candidate *survives a filter*, which is a far wider
+net than "no candidate parses," and it composes two such fallbacks in series.
+
+Probed live, with `P2-FEAT-500-fix-BUG-001-regression.md` as the only file on
+disk:
+
+```python
+>>> _resolve_issue_id(config, "BUG-001")
+PosixPath('.issues/features/P2-FEAT-500-fix-BUG-001-regression.md')
+```
+
+The chain: glob `*-001-*.md` matches the file (its slug embeds `-001-`) → the
+anchored filter yields `[]` because the file's anchored number is `500`, so
+`candidates` stays the **raw glob set** (`show.py:170-171`, `if anchored:`) →
+`_matches_type` rejects it (`FEAT != BUG`) so `pool` is empty → `if not pool:
+pool = candidates` (`show.py:180-181`) hands the rejected file straight back.
+
+`sprint.py:_find_issue_path` gets this case **right today**: its per-candidate
+anchored check (`fid.type_prefix == expected_type and fid.number ==
+expected_number`) returns `None`. So on this axis sprint.py is the *stricter*
+resolver, and a naive convergence is a **regression on exactly the false-positive
+guard AC #5 exists to protect**.
+
+The implementer must not be left to discover this. Settle it here — pick one:
+
+- **(i) Narrow the fallback inside the shared helper** (recommended): fall back
+  to the raw glob set only when `parse_issue_filename` returns `None` for
+  **every** candidate — a genuine legacy-name escape hatch — never merely
+  because a type or priority filter emptied the pool. Keep AC #5.
+- **(ii) Keep show.py's chain as-is** and delete AC #5, accepting that a slug
+  embedding another issue's ID can resolve when it is the sole candidate.
+
+Choosing (i) means `cmd_show`'s behavior **changes** for this input class, so
+Implementation Step 1's "keeping `show.py` behavior byte-identical" does not
+hold; that is the intended trade and should be asserted by a test on the
+`cmd_show` side too. Choosing (ii) trades a real guard for zero code change.
+Recommend **(i)** — the false positive is silent and points a user at an
+unrelated issue file.
+
+### Extraction boundary: the unit is the whole function, not lines 96-124
+
+`_resolve_issue_id` spans `show.py:41-186` — 145 lines. Lines 96-124 are only
+the candidate collection and anchored filter. The frontmatter disambiguation
+that decision (1) requires lives at `:154-166`; the type-preference and
+priority-preference passes at `:168-186`; and an input-parsing front end at
+`:41-95` accepts three shapes (`518`, `BUG-518`, `P2-BUG-518`) of which sprint
+only ever passes the middle one. Extracting a 29-line slice loses the
+disambiguation the issue asks for. Move the whole function.
+
+### Two widenings this fix carries, stated rather than discovered
+
+1. **Type prefix becomes advisory.** `_find_issue_path` today *requires*
+   `fid.type_prefix == expected_type`. show.py treats a mismatched type as a
+   stale hint and falls back to the unambiguous numeric match. After
+   convergence, `ll-sprint create --issues BUG-500` can resolve
+   `P2-FEAT-500-*.md`. This is consistent with the house position that the
+   numeric ID is the true unique identifier and the type token is human-readable
+   shorthand — but it is a behavior change on the sprint path, not a no-op.
+2. **`legacy_issue_dirs()` joins the search.** show.py scans `completed_dir` /
+   `deferred_dir` in addition to `issue_categories` (BUG-2733 tolerance);
+   sprint.py does not today. After convergence a sprint can resolve an issue
+   parked in a legacy directory. Probably desirable; state it.
 
 ### Why the anchored re-check makes this safe (verified)
 
@@ -141,14 +210,15 @@ load-bearing fact for the fix's safety and is worth re-asserting in a test.
    increases the chance of more than one hit, so first-match-wins gets worse, not
    better. Adopt show.py's `sorted()` + frontmatter disambiguation; do not ship a
    widened glob that still returns an arbitrary first match.
-2. **The `fid is None` fallback at line 449.** Today
-   `if fid is None or (type/number match)` returns the path for *any* filename
-   the anchor regex cannot parse. Under a widened pattern this admits names where
-   the ID is not `-`-preceded (e.g. `xBUG-001-y.md`). Decide explicitly: keep the
-   fallback (legacy tolerance, accepts the false positive) or drop it (stricter,
-   may orphan genuinely legacy names). Recommend **keep**, matching show.py,
-   which only falls back when *no* candidate parses — a narrower fallback than
-   sprint.py's per-candidate one.
+2. **The `fid is None` fallback at line 449 — and show.py's two wider ones.**
+   Today `if fid is None or (type/number match)` returns the path for *any*
+   filename the anchor regex cannot parse. Under a widened pattern this admits
+   names where the ID is not `-`-preceded (e.g. `xBUG-001-y.md`). Recommend
+   **keep** a fallback, but scoped as option (i) in the BLOCKING section above:
+   set-level, and conditioned on *nothing parsing* rather than on a filter
+   emptying the pool. Do **not** carry over show.py's `if not pool: pool =
+   candidates` (`:180-181`) — that is the clause that returns a rejected
+   wrong-type file and breaks AC #5.
 3. **The EPIC branch.** "Distinguish 'no such epic' from 'epic found but
    unusable'" is not yet actionable: `load_or_synthesize` (line 311) returns a
    bare `None` for *three* distinct outcomes — arg is not EPIC-shaped (line 304),
@@ -166,16 +236,24 @@ load-bearing fact for the fix's safety and is worth re-asserting in a test.
 ## Impact
 
 - **Priority**: P2 — Not a silent data loss (a warning is printed), but a false diagnosis on a path users act on: they are told an issue does not exist while `ll-issues list` shows it, so the natural next step is to re-create an issue that is already there. The EPIC case misdirects entirely, pointing at sprints rather than at the epic file.
-- **Effort**: Small-to-Medium. A bare glob widening is one line, but the
-  recommended shape — extracting `cli/issues/show.py`'s resolver into a shared
-  helper and calling it from `_find_issue_path` — touches two call sites plus the
-  EPIC message change. The larger number is the honest one; the one-line version
-  leaves the arbitrary-first-match and three-resolver problems in place.
-- **Risk**: Low. The anchored `parse_issue_filename` re-check at lines 444-451 is
-  the arbiter and already guards the false-positive case that motivated the
-  narrow pattern; the regex's priority group is optional, so unprefixed names
-  resolve through the positive check rather than the legacy fallback.
-- **Breaking Change**: No — strictly widens what resolves. Files that resolve today continue to.
+- **Effort**: Medium. A bare glob widening is one line, but the recommended
+  shape — moving the whole 145-line `_resolve_issue_id` (`show.py:41-186`) into
+  a shared helper, narrowing its fallback chain per option (i), and calling it
+  from `_find_issue_path` — touches two call sites plus the EPIC message change,
+  and changes `cmd_show` behavior for the sole-candidate wrong-type case. The
+  larger number is the honest one; the one-line version leaves the
+  arbitrary-first-match and three-resolver problems in place.
+- **Risk**: Low-to-Medium. The anchored `parse_issue_filename` re-check is the
+  arbiter and the regex's priority group is optional, so unprefixed names
+  resolve through the positive check rather than the legacy fallback. The
+  medium component is show.py's composed fallbacks, which today return a
+  wrong-type file when it is the sole candidate (see BLOCKING above) — adopting
+  them unchanged would regress a guard sprint.py currently holds.
+- **Breaking Change**: No for the *unprefixed* case — strictly widens what
+  resolves, and files that resolve today continue to. Two adjacent widenings do
+  change sprint behavior, deliberately: a mismatched type prefix becomes
+  advisory rather than disqualifying, and `legacy_issue_dirs()` enters the
+  search path. Neither removes a resolution that works today.
 
 ## Root Cause
 
@@ -206,7 +284,8 @@ sprint resolver's *intent* differed — only its choice of glob key.
 ## Program Design
 
 ### Signatures
-- `resolve_issue_path(config: BRConfig, issue_id: str) -> Path | None` — new shared helper extracted from the resolver that already works; globs on the **numeric** ID across type-scoped and legacy dirs, filters candidates by anchored `parse_issue_filename` position, and disambiguates a multi-hit by frontmatter identity; extraction source is `scripts/little_loops/cli/issues/show.py:96-124`.
+- `resolve_issue_path(config: BRConfig, issue_id: str) -> Path | None` — new shared helper; globs on the **numeric** ID across type-scoped and legacy dirs, filters candidates by anchored `parse_issue_filename` position, and disambiguates a multi-hit by frontmatter identity, then type, then priority. Extraction source is the **whole** of `_resolve_issue_id`, `scripts/little_loops/cli/issues/show.py:41-186` — not the `:96-124` slice, which omits the frontmatter disambiguation at `:154-166` and the type/priority passes at `:168-186`. Its fallback chain must be narrowed per option (i) before reuse.
+- `_resolve_issue_id(config: BRConfig, user_input: str) -> Path | None` — becomes a thin delegation to the helper (or is deleted in favour of it); its input-parsing front end at `:41-95` accepts `518` / `BUG-518` / `P2-BUG-518`, a superset of what sprint passes, so the helper must keep accepting all three; see `scripts/little_loops/cli/issues/show.py:41`.
 - `SprintManager._find_issue_path(self, issue_id: str) -> Path | None` — becomes a thin delegation to the helper, preserving its `None`-on-missing contract so all three callers are untouched; currently at `scripts/little_loops/sprint.py:426-451`.
 - `parse_issue_filename(filename: str) -> FilenameId | None` — unchanged arbiter; its optional priority group is what lets an unprefixed name resolve through the positive branch rather than the legacy fallback; see `scripts/little_loops/issue_parser.py:70` and the regex at `:58`.
 - `SprintManager.load_or_synthesize(self, arg: str, name: str) -> Sprint | None` — return contract widens (or raises) so the EPIC-specific failures are distinguishable from "not a sprint"; see `scripts/little_loops/sprint.py:311-322`.
@@ -218,17 +297,19 @@ sprint resolver's *intent* differed — only its choice of glob key.
 `ll-sprint create --issues BUG-001` → `SprintManager.validate_issues()` (`sprint.py:470`) → `_find_issue_path("BUG-001")` → `issue_dir.glob("*-BUG-001-*.md")` → the leading `*-` requires a `-` before `BUG` that an unprefixed filename cannot supply → zero candidates → `None` → `validate_issues` omits the ID from its `valid` dict → CLI renders `Issue IDs not found: BUG-001`. After the fix the same path calls `resolve_issue_path()`, which globs `*-001-*.md` (the `-` supplied by the `BUG` token itself), parses each candidate's anchor, matches `number == "001"`, and returns the path. The EPIC variant enters at `load_or_synthesize()` (`sprint.py:311`) instead, whose `None` return is rendered by the caller as `Sprint not found: EPIC-100`.
 
 ### Decision Rules
-Candidate acceptance is unchanged in *kind* — anchored parse remains the arbiter — but three rules are now stated rather than implied: (a) a candidate is accepted when its anchored `FilenameId.number` equals the requested number, regardless of whether a `P<n>-` prefix is present; (b) when **no** candidate parses, fall back to the raw glob set (show.py's set-level fallback), not per-candidate as `sprint.py:449` does today; (c) when more than one candidate survives, order `sorted()` and disambiguate by frontmatter identity rather than returning an arbitrary `glob` hit. Zero-padding equivalence (`BUG-1` ≡ `BUG-001`) is explicitly **not** a rule here — comparison stays string equality.
+Candidate acceptance is unchanged in *kind* — anchored parse remains the arbiter — but four rules are now stated rather than implied: (a) a candidate is accepted when its anchored `FilenameId.number` equals the requested number, regardless of whether a `P<n>-` prefix is present; (b) fall back to the raw glob set only when **no** candidate parses at all (set-level legacy escape hatch), not per-candidate as `sprint.py:449` does today; (c) a filter emptying the pool is **not** a fallback trigger — show.py's `if not pool: pool = candidates` (`:180-181`) must not be carried over, since it is what returns a wrong-type sole candidate and breaks AC #5; (d) when more than one candidate survives, order `sorted()` and disambiguate by frontmatter identity rather than returning an arbitrary `glob` hit. Zero-padding equivalence (`BUG-1` ≡ `BUG-001`) is explicitly **not** a rule here — comparison stays string equality. A mismatched type prefix demotes a candidate but does not, on its own, resurrect one that the anchored filter already rejected.
 
 ## Implementation Steps
 
-1. Extract `cli/issues/show.py`'s candidate collection + anchored filter +
-   frontmatter disambiguation into a shared helper (suggest
-   `issue_parser.resolve_issue_path(config, issue_id)`), keeping `show.py`
-   behavior byte-identical.
+1. Move the whole of `cli/issues/show.py:_resolve_issue_id` (`:41-186`) into a
+   shared helper (suggest `issue_parser.resolve_issue_path(config, issue_id)`),
+   and have `show.py` delegate to it. Behavior is preserved **except** for the
+   fallback narrowing in step 3, which is an intended `cmd_show` change.
 2. Reimplement `sprint.py:_find_issue_path` as a call to that helper.
-3. Resolve decision (2) above (the `fid is None` fallback) inside the shared
-   helper so both call sites get the same answer.
+3. Apply the BLOCKING decision — option (i) unless overridden: fall back to the
+   raw glob set only when no candidate parses, and drop
+   `if not pool: pool = candidates`. Both call sites then get the same answer,
+   and AC #5 holds for `cmd_show` as well as for sprint.
 4. Apply decision (3) to `load_or_synthesize` + its caller so an existing-but-
    unresolvable EPIC no longer renders as a missing sprint.
 5. Add the regression tests below.
@@ -246,7 +327,15 @@ Candidate acceptance is unchanged in *kind* — anchored parse remains the arbit
 - [ ] A file whose slug embeds another issue's `TYPE-NNN` (e.g.
       `P2-FEAT-500-fix-BUG-001-regression.md`) does **not** resolve for
       `BUG-001` — the existing false-positive guard still holds under the wider
-      pattern.
+      pattern. Assert this with that file as the **sole** candidate on disk,
+      which is the configuration that fails today (probed: `_resolve_issue_id`
+      returns it, `sprint._find_issue_path` correctly returns `None`).
+- [ ] The same assertion holds for `ll-issues show BUG-001` — the shared helper
+      fixes `cmd_show`'s sole-candidate false positive rather than importing it
+      into sprint.
+- [ ] A genuinely legacy filename that `parse_issue_filename` cannot parse at
+      all still resolves (set-level fallback preserved), pinning rule (b)
+      against rule (c)'s narrowing.
 - [ ] Two files legitimately matching the same number resolve deterministically
       (sorted + frontmatter disambiguation), not by arbitrary `glob` order.
 - [ ] A direct unit assertion that

@@ -165,12 +165,45 @@ Prefer one of:
 - **(a)** Keep the signature; emit `logger.warning(...)` per skipped file from
   inside `list_running_loops`. Simplest, and the warning reaches stderr for both
   callers. Recommended.
+
+  **This is an existing in-file pattern, not a new one.** `persistence.py:500`
+  already does exactly this for the same `KeyError`, inside
+  `StatePersistence.load()`:
+
+  ```python
+  except KeyError as e:
+      logger.warning("Corrupted state file %s: missing key %s", self.state_file, e)
+  ```
+
+  Match that message shape and the module logger at `persistence.py:53`
+  (`logging.getLogger(__name__)`). Note that its sibling clause two lines above
+  (`except json.JSONDecodeError: return None`, `:495-496`) is **silent** — the
+  same defect as this issue's, in a second location. Fixing it here is optional
+  but cheap and keeps the two skip paths consistent; if left alone, say so
+  rather than leaving it to look like an oversight.
 - **(b)** Add a sibling `list_running_loops_detailed()` returning the pair, and
   implement the existing function in terms of it. Use only if `cmd_list` needs
   the skipped list as structured data for its human rendering.
 
 Do not add an optional out-param that mutates a caller-supplied list; it reads
 as an accident at the second call site.
+
+### Testing trap: the warning will not appear in `capsys`
+
+`persistence.py` uses a module `logging.Logger` and **nothing in the tree calls
+`logging.basicConfig`** (verified across `cli/` and `logger.py`). In a real CLI
+run the warning reaches stderr only via `logging.lastResort`, the implicit
+WARNING-level handler. Under pytest, the logging plugin installs its own root
+handler, so `lastResort` never fires and `capsys.readouterr().err` is
+**empty** — a test written the obvious way fails even though the fix is correct.
+
+Assert with **`caplog`** (`caplog.set_level(logging.WARNING)`, then match the
+record's message), not `capsys`. Do not "fix" a failing `capsys` assertion by
+switching the implementation to `print(..., file=sys.stderr)`: that diverges
+from `persistence.py:500` and puts CLI-layer output in a library module. The
+ACs below are worded in terms of a *logged* warning for this reason; the
+"stderr" phrasing in Expected Behavior describes real-world CLI behavior, which
+`lastResort` does deliver.
 
 ## Impact
 
@@ -239,7 +272,11 @@ Three rules, each currently absent: (a) *absent* and *unreadable* are different 
    the `--running` and `--status` empty cases (recommend preserving current codes
    and documenting them, to keep this change output-only).
 2. In `list_running_loops`, replace the bare `continue` at 1129-1130 with a
-   `logger.warning` naming the skipped file and the reason, then `continue`.
+   `logger.warning` naming the skipped file and the reason, then `continue`,
+   using the module logger at `persistence.py:53` and matching the message shape
+   already at `persistence.py:500`. Decide whether the silent
+   `except json.JSONDecodeError: return None` at `:495-496` gets the same
+   treatment, and record the decision either way.
 3. Add an `os.access(running_dir, os.R_OK | os.X_OK)` check alongside the
    `exists()` test at line 1121, warning when the directory exists but cannot be
    read. Do not alter the `exists()` semantics.
@@ -254,15 +291,20 @@ Three rules, each currently absent: (a) *absent* and *unreadable* are different 
       exit code is asserted explicitly.
 - [ ] `ll-loop list --running --json` with a running loop still prints a bare
       **array** of state dicts — populated-path shape unchanged.
+- [ ] `ll-loop list --running` **without** `--json` and nothing running still
+      prints `No running loops` and exits 0 — the human empty path is unchanged.
+      This is the positive guard for `test_ll_loop_integration.py:325`, which is
+      edited around but must keep passing.
 - [ ] A corrupt `.loops/.running/probe.state.json` (`not json {{{`) yields `[]` on
-      stdout **and** a stderr warning naming `probe.state.json`.
+      stdout **and** a logged `WARNING` naming `probe.state.json` (assert via
+      `caplog`, not `capsys` — see the testing trap above).
 - [ ] A well-formed-but-wrong-shape state file (`{"unexpected": true}`, the
       `KeyError` branch) does the same.
-- [ ] A `chmod 000` `.loops/.running/` yields a stderr warning distinguishing it
+- [ ] A `chmod 000` `.loops/.running/` yields a logged `WARNING` distinguishing it
       from an absent directory. Guard this test with a skip when running as root
       (permissions are not enforced for uid 0) and on non-POSIX platforms.
-- [ ] An absent `.loops/.running/` still yields `[]` with **no** warning — the
-      genuinely-idle case stays quiet.
+- [ ] An absent `.loops/.running/` still yields `[]` with **no** warning record —
+      the genuinely-idle case stays quiet.
 - [ ] `transport.py:_make_seed_callback` still iterates `list_running_loops`
       correctly (signature unchanged, or updated at that call site).
 - [ ] `python -m pytest scripts/tests/` exits 0.
