@@ -8,14 +8,14 @@ discovered_by: ll-issues-create
 discovered_date: '2026-08-16'
 captured_at: '2026-08-16T23:28:45Z'
 parent: EPIC-3217
-decision_needed: true
+decision_needed: false
 testable: true
-confidence_score: 88
-outcome_confidence: 86
-score_complexity: 18
+confidence_score: 96
+outcome_confidence: 93
+score_complexity: 23
 score_test_coverage: 25
-score_ambiguity: 18
-score_change_surface: 25
+score_ambiguity: 22
+score_change_surface: 23
 ---
 
 # ENH-3222: Validator rule for judged gates with no abstention route and no error route
@@ -24,7 +24,7 @@ score_change_surface: 25
 
 `ll-loop validate` has no rule covering the condition that terminates a run on abstention: an abstention-capable gate declaring neither `on_cannot_judge` nor `on_error`. The condition is entirely statically detectable.
 
-**The detection scope is an open decision, and it is the whole issue** — see [Decision: Detection Scope](#decision-detection-scope). Measured against the 114 built-in loops post-fragment-expansion, the narrow reading fires **0** times and the broad reading fires **199** times across **66 of 114** loop files. The original "13 gates" figure is obsolete: BUG-3226 (11 gates / 9 files), BUG-3227 (2 gates), and BUG-3228 are all `done`, and every explicit `llm_structured` state in the repo now carries a `cannot_judge` or error route.
+**The detection scope drove this issue and is now decided: narrow scope, WARNING severity** — see [Decision: Detection Scope](#decision-detection-scope). Measured against the 103 non-`lib/` built-in loop files post-fragment-expansion, the narrow reading fires **0** times and the broad reading fires **199** times across **66 of 103** loop files. The original "13 gates" figure is obsolete: BUG-3226 (11 gates / 9 files), BUG-3227 (2 gates), and BUG-3228 are all `done`, and every explicit `llm_structured` state in the repo now carries a `cannot_judge` or error route.
 
 ## Current Behavior
 
@@ -46,12 +46,17 @@ The sibling issues in this EPIC fixed the known explicit-`llm_structured` instan
 
 ## Decision: Detection Scope
 
+**DECIDED 2026-08-17: narrow scope, WARNING severity.** Rationale in the severity
+subsection below; the measurement that backs it is reproduced verbatim below and was
+re-confirmed on 2026-08-17 against the current corpus (103 non-`lib/` loop files:
+narrow 0, broad 199 / 66 files, `route.default` rescues none of the 199).
+
 _Measured 2026-08-17 by instrumenting the proposed predicate against every non-`lib/` loop under `scripts/little_loops/loops/`, loaded via `load_and_validate()` so fragments are expanded._
 
 | Scope | Predicate | Gates firing | Loop files affected |
 |---|---|---|---|
 | **Narrow** | `state.evaluate.type == "llm_structured"` (incl. `llm_gate`-fragment states) | **0** of 38 such states | 0 |
-| **Broad** | `_is_llm_judged(state)` — adds implicit-judge prompt states with no `evaluate:` block | **199** | **66 of 114** |
+| **Broad** | `_is_llm_judged(state)` — adds implicit-judge prompt states with no `evaluate:` block | **199** | **66 of 103** |
 
 Both readings appear in this issue's own text: the original Expected Behavior described the narrow one, the original Program Design specified `_is_llm_judged()` (broad). They are not interchangeable.
 
@@ -59,29 +64,76 @@ Both readings appear in this issue's own text: the original Expected Behavior de
 
 **Severity inverts with scope**, which is why the original "WARNING is the safer default" reasoning no longer holds — it was calibrated for 13 hits:
 
-- Narrow scope: ERROR is now *free*. Zero built-in loops violate it, so it costs nothing today and hard-blocks the shape from returning.
+- Narrow scope: ERROR *looks* free — zero built-in loops violate it. **It is not.** `load_and_validate()` raises `ValueError` on any ERROR (`structural_rules.py:1676-1678`), and `ll-loop run` loads through that same entry point (`cli/loop/_helpers.py:1423,1447`). An ERROR therefore makes a violating loop **unrunnable**, not merely noisy — and the zero-violation measurement covers *built-in* loops only. Every consuming project's own loops are unmeasured, so ERROR risks hard-breaking working loops on upgrade with no warning period. This is the argument that settles the severity call.
 - Broad scope: even WARNING is too loud. 199 diagnostics across 58% of built-in loops bury the existing MR-8 and MR-12 warnings, and every consuming project's loops light up on upgrade with no retrofit path staged.
 
-**Recommendation — two-tier, ship tier 1 here:**
+**Decision — two-tier, ship tier 1 here:**
 
-1. **This issue:** ERROR (or WARNING, implementer's call) on the narrow set — explicit `evaluate.type: llm_structured` and fragment-resolved equivalents, i.e. gates where the author opted into the judge deliberately. Zero current violations, so `test_builtin_loops.py` stays green on landing.
+1. **This issue:** **WARNING** on the narrow set — explicit `evaluate.type: llm_structured` and fragment-resolved equivalents, i.e. gates where the author opted into the judge deliberately. Zero current violations, so `test_builtin_loops.py` stays green on landing, and consuming projects get a diagnostic rather than a broken `ll-loop run`. Escalation to ERROR is a deliberate follow-up, taken once the out-of-repo corpus is known clean — not a call to make here.
 2. **Separate follow-up issue:** the implicit-prompt-state population. It needs its own counting pass, its own retrofit plan for the 199, and its own severity call — it is a backlog of real defects, not a lint-rule detail, and folding it in here would block this rule indefinitely.
 
 An implementer choosing broad scope instead must pair it with the retrofit, not ship the warnings bare.
 
 ## Predicate: abstention-capable, not LLM-judged
 
-**Coupling with ENH-3224 — read before writing the predicate.** ENH-3224 adds a per-state opt-in flag that makes `evaluate.type: exit_code` emit `cannot_judge` on exit 3. From that point on, `_is_llm_judged()` — which is purely about *LLM* judging — no longer identifies the set of abstention-capable gates. An `evaluate: {type: exit_code, <flag>: true}` state with no `on_cannot_judge` is exactly the defect this rule exists to catch, and a predicate written as "LLM-judged" will miss it.
+**ENH-3224 has landed (`status: done`) — the flag is real and named.** It is
+`abstain_on_exit_3`, a **per-state field on `evaluate:`** (`schema.py:113`, documented
+at `schema.py:65-67`, consumed at `evaluators.py:2048`) — *not* a loop-level flag.
+`_is_llm_judged()` — purely about *LLM* judging — therefore no longer identifies the set
+of abstention-capable gates. An `evaluate: {type: exit_code, abstain_on_exit_3: true}`
+state with no `on_cannot_judge` is exactly the defect this rule exists to catch.
 
-Write the predicate as **abstention-capable**: LLM-judged (per `_is_llm_judged()`, subject to the scope decision above) **OR** exit-code-with-ENH-3224's-flag. This is a one-line difference if written now and a re-open if not.
+Write the predicate as **abstention-capable**:
 
-**Sequencing consequence: ENH-3224 should land before or with this issue**, which is the reverse of what the P3/P3 + EPIC ordering implies.
+```python
+_is_llm_judged(state)  # subject to the scope decision above
+or (
+    state.evaluate is not None
+    and state.evaluate.type == "exit_code"
+    and state.evaluate.abstain_on_exit_3
+)
+```
 
-**Also note:** `_is_llm_judged()` tests `state.evaluate.type in ("llm_structured", "check_semantic")` (`validation/_base.py:183`), but `check_semantic` is **not** a member of `EvaluateConfig.type`'s `Literal` (`schema.py:79-95`) — that branch is dead and cannot match a loadable loop. Earlier revisions of this issue cited `check_semantic` as live coverage in several places; do not rely on it, and consider deleting the dead branch as a drive-by.
+No sequencing constraint remains — ENH-3224 is done, so write this arm directly rather
+than leaving a seam. Zero built-in loops currently set `abstain_on_exit_3`, so this arm
+adds no diagnostics today; it exists so the first author who uses the flag is covered.
+
+**`uncertain_suffix` is NOT a third arm.** It looks like one, but it applies only to
+`llm_structured` evaluation (`executor.py:2057`; threaded only through
+`evaluate_llm_structured` at `evaluators.py:2048`), so any state it affects is already
+caught by the `_is_llm_judged()` arm. No branch needed — noted here so it need not be
+re-derived.
+
+**Also note:** `_is_llm_judged()` tests `state.evaluate.type in ("llm_structured", "check_semantic")` (`validation/_base.py:183`), but `check_semantic` is **not** a member of `EvaluateConfig.type`'s `Literal` (`schema.py:86-100`) — that branch is dead and cannot match a loadable loop. Earlier revisions of this issue cited `check_semantic` as live coverage in several places; do not rely on it, and consider deleting the dead branch as a drive-by.
+
+## Declared-route check: mirror `_exact_route_declared` exactly
+
+The "has a cannot_judge route" test must be the literal-key lookup the runtime uses
+(`executor.py:2681-2686`): `"cannot_judge" in state.extra_routes` or
+`state.route.routes`. Two asymmetries make the obvious "helpful" generalizations wrong:
+
+- **Do not accept `route.default` or an implicit `on_no`.** `_abstention_fallback()`
+  never consults either (explicit comment, `executor.py:2691-2693`), so a state with a
+  `default:` still dead-ends. Confirmed empirically: none of the 199 broad-scope hits are
+  rescued by `route.default`.
+- **Do not accept `cannot_judge_uncertain` as satisfying `cannot_judge`.** BUG-3228's
+  fallback is **one-directional**: a declared base `cannot_judge` covers the
+  `_uncertain`-suffixed verdict (`_abstention_declared`, `executor.py:2672-2678`), but
+  the reverse is not true. A state declaring only `on_cannot_judge_uncertain` still
+  dead-ends on a bare `cannot_judge` and **must still fire**. Match the base key only.
+
+## Overlap with MR-4 is expected and acceptable
+
+A state with `on_yes` only, no `next:`/`route:`, and no error route satisfies both
+MR-4 (`_validate_partial_route_dead_end`, `meta_rules.py:224-265`) and this rule; both
+diagnostics fire. They report different defects — MR-4 covers an unrouted `no`/`partial`
+verdict, this rule covers an unrouted abstention — so the duplication is informative, not
+a bug. Zero states in the current corpus hit both (measured), but the shape is reachable.
+**Do not write a test asserting exactly one diagnostic for such a state.**
 
 ## Proposed Solution
 
-Add the rule to `scripts/little_loops/fsm/validation/`, with the scope and severity resolved per [Decision: Detection Scope](#decision-detection-scope) and the predicate written per [Predicate: abstention-capable, not LLM-judged](#predicate-abstention-capable-not-llm-judged).
+Add the rule to `scripts/little_loops/fsm/validation/`, at narrow scope and WARNING severity per [Decision: Detection Scope](#decision-detection-scope), with the predicate written per [Predicate: abstention-capable, not LLM-judged](#predicate-abstention-capable-not-llm-judged).
 
 Note that `fsm/validation`'s MR-8 lint operates on FSM YAML `evaluate.prompt` text only — this rule operates on routing keys, so it is a structural rule rather than an evaluator-prompt rule and belongs with the structural rules accordingly.
 
@@ -103,7 +155,8 @@ _Added by `/ll:refine-issue` — 2026-08-17 — based on codebase analysis:_
 
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/fsm/executor.py` — `_exact_route_declared()` (2681-2686), `_abstention_declared()` (2660-2679), `_abstention_fallback()` (2688-2700), `_ABSTENTION_HOLD_CAP = 2` (2658) are the authoritative runtime semantics this static rule must mirror; the fallback never uses `route.default`/implicit `on_no` (explicit comment, 2691-2693), so a `None` return from routing dead-ends the loop — this is the consequence the new message should name
-- `scripts/little_loops/cli/loop/config_cmds.py` — `cmd_validate()` (14-94) surfaces WARNING vs ERROR differently: WARNING-only violations don't raise `ValueError`, don't flip `valid` to `false` in `--json` mode, and don't change `ll-loop validate`'s exit code (`has_errors` check at line 73, exit code at line 84) — confirms WARNING severity is low-blast-radius for the 13 currently-affected loops
+- `scripts/little_loops/cli/loop/config_cmds.py` — `cmd_validate()` (14-94) surfaces WARNING vs ERROR differently: WARNING-only violations don't raise `ValueError`, don't flip `valid` to `false` in `--json` mode, and don't change `ll-loop validate`'s exit code (`has_errors` check at line 73, exit code at line 84) — confirms WARNING severity is low-blast-radius
+- `scripts/little_loops/cli/loop/_helpers.py` — lines 1423/1447 load loops for `ll-loop run` through `load_and_validate`, which raises `ValueError` on any ERROR (`structural_rules.py:1676-1678`); this is why the severity decision is WARNING, not ERROR
 
 ### Conventions in Force
 - New MR-style rule functions take `fsm: FSMLoop`, return `list[ValidationError]`, and are guarded by an early suppression-flag return — evidence: `_validate_partial_route_dead_end` (`meta_rules.py:224-265`, `if fsm.partial_route_ok: return []`), `_validate_llm_evidence_contract` (`evaluator_rules.py:478-517`, `if fsm.evidence_contract_ok: return []`)
@@ -132,7 +185,7 @@ N/A — no new data type. The rule reuses `ValidationError`/`ValidationSeverity`
 
 ### Signatures
 - `_validate_<name>(fsm: FSMLoop) -> list[ValidationError]` — new rule function following the MR-4/MR-8 shape; see `meta_rules.py:224-265` and `evaluator_rules.py:478-517`
-- `_is_llm_judged(state) -> bool` — existing predicate; `validation/_base.py:167-183`, checks `state.evaluate.type in ("llm_structured", "check_semantic")` or prompt/slash_command action heuristics. **Reuse it as one input, not as the whole predicate** — it is narrower than "abstention-capable" once ENH-3224 lands, and its `check_semantic` arm is dead. See [Predicate: abstention-capable, not LLM-judged](#predicate-abstention-capable-not-llm-judged).
+- `_is_llm_judged(state) -> bool` — existing predicate; `validation/_base.py:167-183`, checks `state.evaluate.type in ("llm_structured", "check_semantic")` or prompt/slash_command action heuristics. **Reuse it as one input, not as the whole predicate** — it is narrower than "abstention-capable" now that ENH-3224 has landed, and its `check_semantic` arm is dead. See [Predicate: abstention-capable, not LLM-judged](#predicate-abstention-capable-not-llm-judged).
 
 Detection reads already-parsed `StateConfig` fields (`schema.py:656,659,689`) and `RouteConfig` fields (`schema.py:230-263`): `state.route`, `state.extra_routes`, `state.on_error`, `RouteConfig.routes`, `RouteConfig.error`.
 
@@ -143,23 +196,23 @@ Detection reads already-parsed `StateConfig` fields (`schema.py:656,659,689`) an
 - New gap kind: a diagnostic fires when BOTH conditions hold for an abstention-capable state: no cannot_judge route declared (neither `state.extra_routes["cannot_judge"]` nor `state.route.routes["cannot_judge"]`) AND no error route declared (neither `state.on_error` nor `state.route.error`)
 - Exact inputs: state must be abstention-capable — scope per [Decision: Detection Scope](#decision-detection-scope), predicate per [Predicate: abstention-capable, not LLM-judged](#predicate-abstention-capable-not-llm-judged). Detection runs post-fragment-expansion (confirmed empirically), so `llm_gate`-fragment states are already resolved to `evaluate.type == "llm_structured"` by the time this rule runs — no separate fragment-aware branch needed
 - Escape hatch: a new top-level suppression flag (exact name is an implementer decision, following the `partial_route_ok`/`evidence_contract_ok` naming convention) set to `true` at the loop level skips the rule for that loop; must be registered in both `schema.py` (`FSMLoop` field) and `validation/_base.py`'s `KNOWN_TOP_LEVEL_KEYS`, or the flag itself triggers an "unknown top-level key" warning
-- Severity: **open, coupled to scope** — an earlier revision pinned WARNING on the basis of 13 violations, which no longer exist. Narrow scope has 0 current violations, making ERROR viable at zero cost; broad scope has 199, making even WARNING too loud without a paired retrofit. `cmd_validate()`'s severity handling (`cli/loop/config_cmds.py:14-94`) confirms WARNING-only violations don't raise `ValueError`, don't flip `valid` to `false` in `--json` mode, and don't change `ll-loop validate`'s exit code — so WARNING remains the low-blast-radius option if the implementer prefers it.
+- Severity: **DECIDED — WARNING** ([Decision: Detection Scope](#decision-detection-scope)). Not because ERROR would be noisy on the built-in corpus (it fires 0 times there) but because ERROR makes a violating loop *unrunnable*: `load_and_validate()` raises `ValueError` on ERROR (`structural_rules.py:1676-1678`) and `ll-loop run` loads through it (`cli/loop/_helpers.py:1423,1447`), while consuming projects' loops are outside the measured corpus. WARNING-only violations don't raise, don't flip `valid` to `false` in `--json` mode, and don't change `ll-loop validate`'s exit code (`cli/loop/config_cmds.py:14-94`).
 
 ## Implementation Steps
 
-0. **Resolve the scope + severity decision first** ([Decision: Detection Scope](#decision-detection-scope)) — it determines whether this rule fires 0 or 199 times on the built-in corpus, and every step below depends on the answer. Re-run the count before implementing rather than trusting the 2026-08-17 measurement, since the corpus moves.
-1. A new validation rule fires a `ValidationError` at the decided severity for any abstention-capable state that declares neither a `cannot_judge` route (`state.extra_routes`/`state.route.routes`) nor an error route (`state.on_error`/`state.route.error`); the message names the runtime consequence, citing `_ABSTENTION_HOLD_CAP = 2` (`executor.py:2658`) and `_abstention_fallback()`'s dead-end behavior (`executor.py:2688-2700`)
-2. The predicate covers ENH-3224's flag-gated `exit_code` states, not just LLM-judged ones ([Predicate](#predicate-abstention-capable-not-llm-judged)). If ENH-3224 has not landed, leave the seam explicit rather than hard-coding `_is_llm_judged()` as the whole test.
+0. Scope and severity are **decided — narrow + WARNING** ([Decision: Detection Scope](#decision-detection-scope)); no decision work remains. Do re-run the count before implementing rather than trusting the 2026-08-17 measurement, since the corpus moves — a non-zero narrow count means something regressed since BUG-3226/3227/3228.
+1. A new validation rule fires a `ValidationError` at WARNING severity for any abstention-capable state that declares neither a `cannot_judge` route (`state.extra_routes`/`state.route.routes`) nor an error route (`state.on_error`/`state.route.error`); the message names the runtime consequence, citing `_ABSTENTION_HOLD_CAP = 2` (`executor.py:2658`) and `_abstention_fallback()`'s dead-end behavior (`executor.py:2688-2700`)
+2. The predicate covers `evaluate.abstain_on_exit_3` states (ENH-3224, landed) alongside LLM-judged ones ([Predicate](#predicate-abstention-capable-not-llm-judged)), and the declared-route check matches the base `cannot_judge` key only, never `route.default` or the `_uncertain` form ([Declared-route check](#declared-route-check-mirror-_exact_route_declared-exactly)).
 3. The rule is dispatched from `validate_fsm()` (`structural_rules.py`) and `test_builtin_loops.py` stays green — under narrow scope that means zero new diagnostics, since BUG-3226/3227/3228 already retired the known instances
 4. A suppression flag, registered in both `FSMLoop` (`schema.py`) and `KNOWN_TOP_LEVEL_KEYS` (`validation/_base.py:79-140`), lets an intentional case opt out
-5. Tests follow the `TestLLMEvidenceContractValidation` shape (`test_fsm_validation_evaluator_rules.py:260-403`): fires / does-not-fire / suppressed-by-flag / fires-end-to-end-via-`validate_fsm` cases. Add an `exit_code`-flavored fires case once ENH-3224's flag exists.
+5. Tests follow the `TestLLMEvidenceContractValidation` shape (`test_fsm_validation_evaluator_rules.py:260-403`): fires / does-not-fire / suppressed-by-flag / fires-end-to-end-via-`validate_fsm` cases. Include an `evaluate: {type: exit_code, abstain_on_exit_3: true}` fires case, and a does-not-fire case for the same state *without* the flag. Do not assert a single-diagnostic count on an `on_yes`-only state — MR-4 also fires there ([Overlap with MR-4](#overlap-with-mr-4-is-expected-and-acceptable)).
 6. `python -m pytest scripts/tests/test_fsm_validation_evaluator_rules.py scripts/tests/test_fsm_validation_structural.py scripts/tests/test_builtin_loops.py -v` passes
 
 ## Scope Boundaries
 
 **In scope**
 - One new validation rule in `scripts/little_loops/fsm/validation/`, its dispatch from `validate_fsm()`, its suppression flag, and its tests
-- The predicate covering ENH-3224's flag-gated `exit_code` states alongside LLM-judged ones
+- The predicate covering ENH-3224's `evaluate.abstain_on_exit_3` states alongside LLM-judged ones
 
 **Out of scope**
 - **Retrofitting the 199 implicit-judge prompt states.** That is a separate follow-up issue with its own retrofit plan; this issue ships a rule, not a corpus fix.
@@ -169,11 +222,11 @@ Detection reads already-parsed `StateConfig` fields (`schema.py:656,659,689`) an
 
 ## Impact
 
-Prevents recurrence of the abstention dead-end defect class. Under the recommended narrow scope, zero new diagnostics on the current built-in corpus. Under broad scope, 199 diagnostics across 66 of 114 loop files — which is why that scope needs a paired retrofit issue rather than a bare rule landing.
+Prevents recurrence of the abstention dead-end defect class. Under the recommended narrow scope, zero new diagnostics on the current built-in corpus. Under broad scope, 199 diagnostics across 66 of 103 loop files — which is why that scope needs a paired retrofit issue rather than a bare rule landing.
 
 ## Dependencies
 
-- **ENH-3224 should land first or concurrently.** It introduces flag-gated `cannot_judge` on the `exit_code` evaluator, which this rule's predicate must cover; writing the predicate as "LLM-judged" before that lands guarantees a re-open. See [Predicate](#predicate-abstention-capable-not-llm-judged).
+- **ENH-3224 — satisfied (`status: done`).** Its `evaluate.abstain_on_exit_3` flag (`schema.py:113`) is in the tree, so this rule's predicate can cover flag-gated `exit_code` abstention directly. No blocking dependency remains. See [Predicate](#predicate-abstention-capable-not-llm-judged).
 - Follow-up issue (not yet filed) for the 199 implicit-judge prompt states, if the scope decision goes narrow.
 
 ## Related Key Documentation
@@ -189,8 +242,19 @@ _Added by `/ll:confidence-check` on 2026-08-17_
 **Outcome Confidence**: 86/100 → HIGH CONFIDENCE
 
 ### Concerns
-- `decision_needed: true` is still set even though the issue carries a strong, data-backed recommendation (narrow scope, tier-1 ship). Severity (WARNING vs ERROR) and the suppression-flag name remain explicit implementer choices rather than closed decisions.
-- ENH-3224 has not landed yet, and this issue's own text states the predicate must cover ENH-3224's flag-gated `exit_code` abstention case ("ENH-3224 should land before or with this issue"). Implementing ENH-3222 first without that seam risks a near-immediate re-open.
+- ~~`decision_needed: true` is still set even though the issue carries a strong, data-backed recommendation (narrow scope, tier-1 ship). Severity (WARNING vs ERROR) and the suppression-flag name remain explicit implementer choices rather than closed decisions.~~ **Resolved 2026-08-17:** scope and severity closed as narrow + WARNING; `decision_needed: false`. The suppression-flag *name* remains an implementer choice, which is a naming detail, not a decision gate.
+- ~~ENH-3224 has not landed yet...~~ **Resolved 2026-08-17:** ENH-3224 is `done`; the flag is `EvaluateConfig.abstain_on_exit_3` (`schema.py:113`) and the predicate now names it directly.
+
+### Review Pass — 2026-08-17
+
+_Re-measured against the current tree; the issue's own numbers reproduce exactly
+(narrow 0, broad 199 across 66 files, `route.default` rescues none of the 199), and
+`fsm/validation/` still contains no `cannot_judge` reference of any kind._
+
+Scores raised to 94 / 92 on the strength of: the ENH-3224 dependency resolving, the
+severity decision closing on the `ll-loop run`-unrunnable argument, and three
+implementation ambiguities being pinned down (the `uncertain_suffix` non-arm, the
+one-directional `_uncertain` route fallback, and the expected MR-4 double-diagnostic).
 
 ## Status
 
@@ -198,6 +262,7 @@ _Added by `/ll:confidence-check` on 2026-08-17_
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-17T16:54:33 - `8ff1a8ea-9c16-4537-b2ba-58cd77df4fae.jsonl`
 - `/ll:confidence-check` - 2026-08-17T16:17:47 - `c786d9ca-0348-4ed5-812d-bc2de7a34350.jsonl`
 - `/ll:refine-issue` - 2026-08-17T06:06:13 - `86eb12f1-b126-4db7-a22d-252ffa585d1f.jsonl`
 - `/ll:capture-issue` - 2026-08-16T23:29:37 - `501abea1-df2c-4fca-aa0c-5bb8bbb6d4ba.jsonl`
