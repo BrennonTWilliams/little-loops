@@ -7972,6 +7972,7 @@ class TestSprintBuildAndValidateLoop:
             "refine_failed",
             "sprint_failed",
             "refine_unresolved_failed",
+            "audit_failed",
             "done",
         }
         actual = set(data["states"].keys())
@@ -8206,12 +8207,51 @@ class TestSprintBuildAndValidateLoop:
         )
 
     def test_audit_conflicts_retry_state_exists(self, data: dict) -> None:
-        """audit_conflicts_retry state must exist with next: commit."""
+        """audit_conflicts_retry state must exist and evaluate rather than fall through."""
         state = data["states"].get("audit_conflicts_retry", {})
         assert state, "audit_conflicts_retry state must exist"
-        assert state.get("next") == "commit", (
-            f"audit_conflicts_retry.next should be 'commit', got {state.get('next')!r}"
+        assert "next" not in state, (
+            "audit_conflicts_retry must not use bare next: — it must route via "
+            "llm_structured evaluate block (BUG-3218 closes the unconditional-commit "
+            "fail-open)"
         )
+        evaluate = state.get("evaluate", {})
+        assert evaluate.get("type") == "llm_structured", (
+            f"audit_conflicts_retry.evaluate.type should be 'llm_structured', "
+            f"got {evaluate.get('type')!r}"
+        )
+        assert state.get("on_yes") == "commit", (
+            f"audit_conflicts_retry.on_yes should be 'commit', got {state.get('on_yes')!r}"
+        )
+
+    def test_audit_conflicts_on_cannot_judge_routes_to_retry(self, data: dict) -> None:
+        """audit_conflicts.on_cannot_judge must route to audit_conflicts_retry (BUG-3218)."""
+        state = data["states"].get("audit_conflicts", {})
+        assert state.get("on_cannot_judge") == "audit_conflicts_retry", (
+            f"audit_conflicts.on_cannot_judge should be 'audit_conflicts_retry', "
+            f"got {state.get('on_cannot_judge')!r}"
+        )
+
+    def test_audit_conflicts_on_error_routes_to_audit_failed(self, data: dict) -> None:
+        """audit_conflicts.on_error must not route to commit (BUG-3218 fail-open close)."""
+        state = data["states"].get("audit_conflicts", {})
+        assert state.get("on_error") == "audit_failed", (
+            f"audit_conflicts.on_error should be 'audit_failed', got {state.get('on_error')!r}"
+        )
+
+    def test_audit_conflicts_retry_no_verdict_routes_to_audit_failed(self, data: dict) -> None:
+        """audit_conflicts_retry's non-yes verdicts must all reach the audit_failed terminal."""
+        state = data["states"].get("audit_conflicts_retry", {})
+        for edge in ("on_no", "on_partial", "on_cannot_judge", "on_error"):
+            assert state.get(edge) == "audit_failed", (
+                f"audit_conflicts_retry.{edge} should be 'audit_failed', got {state.get(edge)!r}"
+            )
+
+    def test_audit_failed_is_terminal(self, data: dict) -> None:
+        """audit_failed must be a terminal failure state."""
+        state = data["states"].get("audit_failed", {})
+        assert state.get("terminal") is True, "audit_failed must have terminal: true"
+        assert state.get("failure") is True, "audit_failed must have failure: true"
 
     def test_max_steps_accommodates_retry_cycle(self, data: dict) -> None:
         """max_steps must be at least 18 to accommodate the audit_conflicts retry path."""

@@ -3,10 +3,11 @@ id: BUG-3218
 type: BUG
 title: sprint-build-and-validate commits when the conflict audit abstains
 priority: P1
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-08-16'
 captured_at: '2026-08-16T23:27:23Z'
+completed_at: '2026-08-17T02:18:45Z'
 parent: EPIC-3217
 confidence_score: 98
 outcome_confidence: 85
@@ -46,6 +47,32 @@ An abstained conflict audit must not reach `commit`. Abstention here means "the 
 The same must hold for the retry attempt: no path through `audit_conflicts` / `audit_conflicts_retry` may reach `commit` without a `yes` verdict from an audit that actually ran.
 
 The `on_error: commit` route is re-examined on its own merits as part of this fix: it was presumably written to keep an infrastructure failure from stalling a sprint, but it has the same fail-open shape for genuine errors, and leaving it pointed at `commit` leaves a second unguarded door into the same defect.
+
+## Steps to Reproduce
+
+This is a routing defect reached through the FSM, not a manually-driven UI
+repro. To trigger it end to end:
+
+1. Run the `sprint-build-and-validate` loop (`scripts/little_loops/loops/sprint-build-and-validate.yaml`)
+   on a sprint whose `audit_conflicts` state's judged evaluation returns
+   `cannot_judge` (e.g. `/ll:audit-issue-conflicts --auto` produces output the
+   judge cannot ground a YES/NO/PARTIAL verdict in, per the
+   `CHECK_SEMANTIC_EVIDENCE_CONTRACT`) on three consecutive attempts (the
+   initial run plus the two `_ABSTENTION_HOLD_CAP` holds).
+2. Observe that `FSMExecutor._route_abstention_hold` exhausts its holds and
+   calls `_abstention_fallback`, which — because `audit_conflicts` declares no
+   `on_cannot_judge` — falls through to `state.on_error`, resolving to
+   `commit` (`sprint-build-and-validate.yaml:118`).
+3. The loop proceeds to `commit` exactly as if the audit had returned `yes`,
+   even though the conflict audit never actually produced a usable verdict.
+
+Equivalently, at the unit level: `scripts/tests/test_fsm_executor.py`'s
+`TestAbstentionRouting` (from line 1882) already exercises the generic
+hold/escalate mechanism this bug relies on
+(`test_undeclared_cannot_judge_shorthand_holds_then_falls_to_on_error`); this
+issue is that mechanism reached through `sprint-build-and-validate.yaml`'s
+specific `on_error: commit` route, which no test in
+`test_builtin_loops.py` currently asserts against (see Tests below).
 
 ## Motivation
 
@@ -172,12 +199,47 @@ Removes every fail-open path to `commit` in this gate: the unobservable audit (a
 - `docs/ARCHITECTURE.md` `## Extension Architecture & Event Flow` — FSM executor
   role and event emission for state transitions
 
+## Resolution
+
+Implemented per Implementation Steps 1-8:
+
+1. Added `audit_failed` terminal state (`terminal: true`, `failure: true`) to
+   `sprint-build-and-validate.yaml`.
+2. `audit_conflicts` now declares `on_cannot_judge: audit_conflicts_retry` so
+   an abstention routes on the first occurrence, no hold.
+3. `audit_conflicts.on_error` repointed from `commit` to `audit_failed`.
+4. `audit_conflicts_retry` gained its own `evaluate:` block (same
+   `llm_structured` judge/prompt) replacing the unconditional `next: commit`;
+   only `on_yes` reaches `commit` — `on_no`/`on_partial`/`on_cannot_judge`/
+   `on_error` all route to `audit_failed`.
+5. `max_steps` (18) re-checked — unchanged; the retry state already counted
+   as one step whether or not it evaluates.
+6. `test_builtin_loops.py::TestSprintBuildAndValidateLoop` updated: existing
+   `test_audit_conflicts_retry_state_exists` now asserts the evaluate block
+   instead of the removed `next: commit`; new tests cover
+   `on_cannot_judge`, `audit_conflicts.on_error`, all four
+   `audit_conflicts_retry` failure edges, and `audit_failed`'s
+   terminal/failure flags; `audit_failed` added to
+   `test_required_states_exist`.
+7. Failure-terminal walker (`test_no_failure_edge_routes_to_a_success_terminal`)
+   and `TestValidatorWarningBudget` both pass unchanged — no new warning
+   class introduced (the pre-existing MR-8 evidence-contract warning now
+   also fires on `audit_conflicts_retry`, same category, not new).
+8. `python -m pytest scripts/tests/` — 19595 passed, 46 skipped.
+   `ll-loop validate scripts/little_loops/loops/sprint-build-and-validate.yaml`
+   exits 0.
+
+No `## Program Design` deviations — implementation matched the documented
+Decision Rules, Signatures, and Call Path exactly.
+
 ## Status
 
 **Open** | Created: 2026-08-16 | Priority: P1
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-17T02:18:15 - `36f8e2e2-aff6-4bce-a03c-7b4dc7185314.jsonl`
+- `/ll:ready-issue` - 2026-08-17T02:09:27 - `7484266f-2a08-44d2-9f57-f74069bbea9e.jsonl`
 - `/ll:confidence-check` - 2026-08-17T01:07:43 - `5a985576-1a12-4019-84a2-4fcf31653b26.jsonl`
 - `/ll:wire-issue` - 2026-08-17T00:15:05 - `364ce564-b8a8-42f8-9c6e-ae082c11cf3e.jsonl`
 - `/ll:refine-issue` - 2026-08-16T23:54:28 - `40668286-18e1-4fb3-b8c2-566405cf8bec.jsonl`
