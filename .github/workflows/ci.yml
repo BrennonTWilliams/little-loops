@@ -1,0 +1,39 @@
+# little-loops CI — self-hosted runner on Thinky (see .claude/CLAUDE.md § Testing & CI Policy).
+#
+# Security: deliberately push-only (no `pull_request`). This repo is public, and a
+# self-hosted runner executes whatever code it checks out — a fork-PR trigger would be
+# a remote-code-execution surface on Thinky. If PR coverage is added later, gate it on
+# approval / trusted branches.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  unit-tests:
+    name: Unit tests (Thinky)
+    runs-on: thinky
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install package + dev deps
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e "./scripts[dev]"
+
+      - name: Run unit tests (exclude integration + conformance)
+        run: python -m pytest scripts/tests/ -m "not integration and not conformance"

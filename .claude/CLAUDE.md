@@ -112,18 +112,23 @@ ruff format scripts/
 
 ### Testing & CI Policy
 
-**There is no hosted/paid CI in this project — do not add GitHub Actions (or any
-paid CI runner).** The single enforced, cost-free gate is the local test suite:
+The authoritative gate is the local test suite — "Ensure CI passes" throughout
+the docs means `python -m pytest scripts/tests/` exits 0:
 
 ```bash
 python -m pytest scripts/tests/
 ```
 
-This suite *is* our CI. "Ensure CI passes" / "will fail CI" throughout the docs
-means this command must exit 0 — not that a hosted pipeline runs.
+A **self-hosted GitHub Actions runner on Thinky** (cost-free, see
+`.github/workflows/ci.yml`) automates this on every push to `main`. It runs the
+unit suite (`-m "not integration and not conformance"`); integration and
+conformance tests stay local/manual for now. It is deliberately **not** triggered
+on `pull_request`: the repo is public and a self-hosted runner executes untrusted
+fork code, so PR runs would be a remote-code-execution surface on Thinky. If PR
+coverage is added later, it must gate on approval / trusted branches.
 
-When an issue asks for a "CI-gated" check, satisfy it **inside this suite**, not
-with a workflow file:
+Do not add **paid/hosted** CI. When an issue asks for a "CI-gated" check, satisfy
+it **inside this suite**, not with a workflow file:
 
 - Pure-Python gates are ordinary pytest tests / `ll-verify-*` CLIs invoked from a
   test.
