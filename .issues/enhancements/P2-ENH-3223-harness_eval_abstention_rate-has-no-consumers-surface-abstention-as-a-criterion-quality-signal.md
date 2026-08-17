@@ -9,6 +9,7 @@ discovered_by: ll-issues-create
 discovered_date: '2026-08-16'
 captured_at: '2026-08-16T23:29:07Z'
 parent: EPIC-3217
+decision_needed: true
 ---
 
 # ENH-3223: harness_eval_abstention_rate has no consumers - surface abstention as a criterion-quality signal
@@ -47,6 +48,18 @@ Open questions for the implementer:
 - Which CLI does this belong to — `ll-logs telemetry`, an `ll-history` subcommand, or the harness's own reporting? Pick by where pass rate is already reported, so the two appear together.
 - What threshold makes a criterion a rewrite candidate? This should be measured against real data rather than guessed; the first version may report without gating.
 - `ll-harness` already distinguishes abstention in its summary and exit code (ABSTAIN = 3). Check whether that summary should also report the historical rate for the target, which would put the signal in front of the user at the moment they are looking at the criterion.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-17 — based on codebase analysis:_
+
+**Option A**: Wire the new report into `ll-harness`'s own per-run summary/exit-code output (`cli/harness.py`). This is exactly what the issue's own text names as the strongest placement ("put the signal in front of the user at the moment they are looking at the criterion") — `_evaluate_and_report()` (`cli/harness.py:580`) already distinguishes abstention via `is_abstention_verdict()` and sets `overall = "ABSTAIN"`/exit code 3; it would gain one additional call to `harness_eval_abstention_rate(target, ...)` and print/attach the historical rate alongside the current run's verdict.
+
+**Option B**: Add a new `ll-session` subcommand mirroring the wiring pattern ENH-3211 established for a structurally similar "reader has no consumers" case (`subagent_tree`/`subagent_retries`/`subagent_budget`). Weaker analogy here: ENH-3211's functions are per-session lookups, while `harness_eval_abstention_rate`/`harness_eval_pass_rate` are per-`target` rollups — `ll-session`'s existing subcommands (`path`, `related`, `recent`) are all session-scoped, not target-scoped, so this would be a new argument shape for that CLI, not a drop-in fit.
+
+**Option C**: Add a new subcommand under `ll-logs` telemetry or `ll-history`. No precedent exists for either module: neither currently imports `history_reader.py`'s `harness_eval_pass_rate`/`harness_eval_abstention_rate` at all, and `harness_eval_pass_rate` (the older, ENH-2741 sibling) is itself unwired into any CLI today despite being documented in `docs/reference/API.md` — so there is no existing "pass rate is already reported here" location to co-locate with, contrary to the Proposed Solution's original assumption that such a location exists.
+
+**Recommended**: Option A for v1 — it is the smallest surface, matches the issue's own stated preference for where the signal is most actionable, and requires no new CLI-location decision. The meta-loop gating consumer (`harness-optimize` and friends) is a separate, later wiring step regardless of which reporting surface ships first, since none of those loops currently reference `harness_events`/`harness_eval_abstention_rate` at all.
 
 ## Integration Map
 

@@ -9,8 +9,22 @@ testable: true
 discovered_by: manual-review
 discovered_date: '2026-08-15'
 captured_at: '2026-08-15T00:00:00Z'
-relates_to: [BUG-3186, BUG-3188, BUG-3189, BUG-3190, BUG-3191]
-depends_on: [BUG-3186, BUG-3189, BUG-3190]
+relates_to:
+- BUG-3186
+- BUG-3188
+- BUG-3189
+- BUG-3190
+- BUG-3191
+depends_on:
+- BUG-3186
+- BUG-3189
+- BUG-3190
+confidence_score: 98
+outcome_confidence: 76
+score_complexity: 12
+score_test_coverage: 24
+score_ambiguity: 20
+score_change_surface: 20
 ---
 
 # ENH-3195: Derive doc counts and inventories in wiring tests instead of asserting string literals
@@ -40,14 +54,14 @@ definition of ground truth, which is the failure mode described in the next sect
 
 ### Blocker: the two ground truths disagree today
 
-On the current tree, `ll-verify-docs` fails:
+On the current tree (verified 2026-08-17), `ll-verify-docs` exits 1:
 
 ```
 ✗ Found 4 mismatch(es):
   skills: documented=69, actual=40   README.md:183
-  skills: documented=69, actual=40   CONTRIBUTING.md:177
+  skills: documented=69, actual=40   CONTRIBUTING.md:176
   skills: documented=69, actual=40   docs/ARCHITECTURE.md:26
-  skills: documented=69, actual=40   docs/ARCHITECTURE.md:112
+  skills: documented=69, actual=40   docs/ARCHITECTURE.md:111
 ```
 
 `doc_counts` counts `skills/*/SKILL.md` (69) and then subtracts the 29 bridge skills
@@ -61,14 +75,46 @@ Two consequences that must be resolved *before* any gate lands:
    Behavior section quotes as evidence — it is still live.** The gate and `--fix` must
    share a single ground-truth function, over a single agreed definition of "skill."
 
+Neither number is simply wrong, which is why this needs a decision rather than a fix.
+Three of the four callouts annotate the `skills/` **directory** inside a tree diagram,
+and that directory does literally contain 69 `SKILL.md` files — renumbering them to 40
+makes the directory comment false. The fourth (`README.md:183`) is a product claim, and
+there "69 skills" double-counts the command surface: the 29 bridges correspond exactly to
+the 29 `commands/*.md`, so README simultaneously advertises 29 commands and 69 skills for
+a real surface of 69.
+
+**Decision (Step 0): the canonical skill count is 40** — authored, non-bridge, matching
+`BRIDGE_MARKER`'s existing intent. The directory callouts are **reworded, not
+renumbered**, so each site stays factually true:
+
+| Site | Context | Resolution |
+|---|---|---|
+| `README.md:183` | product bullet | `**40 skills**` |
+| `CONTRIBUTING.md:176` | ``` ``` ``` directory tree | `# 40 skill definitions + 29 command bridges` |
+| `docs/ARCHITECTURE.md:26` | ` ```mermaid ` node label | `SKL[Skills<br/>40 composable skills]` |
+| `docs/ARCHITECTURE.md:111` | ``` ``` ``` directory tree | `# 40 skill definitions + 29 command bridges` |
+
+Caution when rewording: `extract_count_from_line`'s `\w*\s*` tolerates exactly **one**
+filler word between the number and the category, and each line is scanned against *every*
+category. `40 skill definitions + 29 command bridges` therefore yields two matches on one
+line — `skills=40` and (once the extractor is widened, below) `commands=29` — both of
+which happen to be correct. Any alternate wording must be re-run through `ll-verify-docs`
+to confirm it still matches and does not match the wrong category.
+
 ### Blocker: the command-count miss is an extractor bug, not a missing test
 
-BUG-3191's `docs/ARCHITECTURE.md:64` — `# 28 slash command templates` — is in a file
-`doc_counts` already scans, yet is not flagged. `extract_count_from_line` builds
+`docs/ARCHITECTURE.md:63` — `# 29 slash command templates` — is in a file `doc_counts`
+already scans, yet is not checked at all. `extract_count_from_line` builds
 `rf"(\d+)\s+\w*\s*{category}"` with `category="commands"`; the line reads "command
 **templates**" (singular), so it never matches. This is the same class as the
 special-case the function already carries for `skills?`. Fixing the extractor makes that
 check exist for free — no new test row needed.
+
+Note that BUG-3191 has landed: the line reads 29 and agrees with `:24`, so this fix is
+now purely **preventative** — it closes an unchecked line, it does not resolve a live
+mismatch. Widening the pattern to `commands?` also widens the false-positive surface
+across all of `DOC_FILES` (any "N command …" prose becomes an assertion), so the change
+must be validated against a clean tree, not just against `:63`.
 
 ## Current Behavior
 
@@ -106,33 +152,45 @@ policy — this suite *is* CI), backed by the existing `doc_counts` module so th
 `ll-verify-docs`, `ll-verify-docs --fix`, `ll-doctor`, and `drift-check.sh` all read from
 one function.
 
-**Step 0 — reconcile the skill definition (prerequisite for everything else).** Decide
-whether the canonical skill count is all 69 `skills/*/SKILL.md` or the 40 non-bridge
-skills, then make `doc_counts.COUNT_TARGETS`/`BRIDGE_MARKER` and the four documented
-callouts agree. Do not proceed to the gate while `ll-verify-docs` is red on a clean tree.
+**Step 0a — reconcile the skill definition (prerequisite for checks 1–2).** Apply the
+decision recorded in the Blocker section above: canonical count is **40** (non-bridge),
+`BRIDGE_MARKER` semantics unchanged, and the four callouts reworded per the table so each
+stays factually true in its context. Record the decision as a comment next to
+`BRIDGE_MARKER`. Do not proceed to the gate while `ll-verify-docs` is red on a clean tree.
+
+**Step 0b — close the one live hook-coverage gap (prerequisite for check 4).**
+`drift-check.sh` is registered in `hooks/hooks.json` but named nowhere in
+`docs/guides/BUILTIN_HOOKS_GUIDE.md` (24 registered scripts, 1 undocumented). Check 4
+lands red until the guide documents it. Same rule as Step 0a: no gate goes blocking over
+a red checker.
+
+There is no equivalent Step 0 for check 3 — see below, it is already green.
 
 Then:
 
-1. **Skill count** — derived from the filesystem per the Step-0 definition, vs. every
+1. **Skill count** — derived from the filesystem per the Step-0a definition, vs. every
    documented skill count in `README.md`, `CONTRIBUTING.md`, `docs/ARCHITECTURE.md`.
-   Mechanism already exists; this item is Step 0 plus making failure blocking.
-2. **Command count** — `len(glob("commands/*.md"))` vs. documented counts, including the
-   two independent claims in `docs/ARCHITECTURE.md:24` and `:64` that currently disagree
-   with each other. Requires the `extract_count_from_line` fix above so the singular
-   "command templates" phrasing at `:64` is matched.
+   Mechanism already exists; this item is Step 0a plus making failure blocking.
+2. **Command count** — `len(glob("commands/*.md"))` vs. documented counts, covering both
+   `docs/ARCHITECTURE.md:24` and `:63`. Requires the `extract_count_from_line` fix above
+   so the singular "command templates" phrasing at `:63` is matched. Both lines currently
+   read 29 and agree; this closes an unchecked line rather than fixing a mismatch.
 3. **CLI entry-point coverage** — console-scripts declared in `scripts/pyproject.toml`
    (parsed with stdlib `tomllib`, **not** `importlib.metadata.entry_points()`, which
-   reflects a possibly-stale editable install) vs. `### ll-*` sections in
+   reflects a possibly-stale editable install) vs. `### ` sections in
    `docs/reference/CLI.md`. Fails on any entry point with no section. Would have caught
    `ll-compact-session`.
 
-   Exclusions must be explicit, or the check demands sections for all 51 scripts: define
-   the rule for the non-`ll-` entry point (`mcp-call`) and for entries marked internal in
-   `pyproject.toml` (`ll-generate-schemas` carries an `# internal: dev tooling` comment).
-   Prefer keying the exclusion off that existing comment convention over a second list.
+   **No exclusion list.** Since BUG-3186 landed, all 52 declared entry points have a
+   section — including the non-`ll-` `mcp-call` and the internal `ll-generate-schemas`.
+   The check is green today with zero exclusions, so require a section for *every*
+   declared entry point. An earlier draft prescribed keying exclusions off the
+   `# internal:` comment convention at `scripts/pyproject.toml:102`; that machinery buys
+   nothing here and weakens the gate. Do not build it.
 4. **Hook coverage** — handler entries in `hooks/hooks.json` vs. hooks named in
    `docs/guides/BUILTIN_HOOKS_GUIDE.md`. Fails on any registered hook the guide omits.
-   Would have caught `check-private-refs.sh` and both `record-hook-event.sh` shims.
+   Would have caught `check-private-refs.sh` and both `record-hook-event.sh` shims, and
+   catches `drift-check.sh` today (see Step 0b).
 
    Join on **script basename**, deduped: `hooks.json` stores full
    `bash ${CLAUDE_PLUGIN_ROOT}/hooks/adapters/claude-code/<name>.sh` command strings while
@@ -187,8 +245,20 @@ on a doc issue.
   with a `...` should not fail.
 - Allow an explicit opt-out marker for intentionally-approximate prose ("about 70
   skills") so the gate does not force false precision. Pin the syntax rather than leaving
-  it to the implementer — proposed: an HTML comment `<!-- ll-doc-count: ignore -->` on the
-  preceding line, honored by both `verify_documentation` and `fix_counts`.
+  it to the implementer.
+
+  A preceding-line HTML comment (`<!-- ll-doc-count: ignore -->`) is **not sufficient on
+  its own**: 3 of the 4 real count sites are inside fenced blocks, where it does not work.
+  `docs/ARCHITECTURE.md:24` sits in a ` ```mermaid ` block (an HTML comment breaks the
+  diagram) and `CONTRIBUTING.md:176` / `docs/ARCHITECTURE.md:111` sit in ``` ``` ```
+  directory-tree fences (it renders literally as tree content). Only `README.md:183` is
+  plain markdown.
+
+  Pin **both** forms, checked in this order: (a) a trailing same-line marker
+  `ll-doc-count: ignore` appearing anywhere after the count — usable inside a tree fence
+  as part of the existing `#` comment and inside a mermaid `%%` comment; (b) the
+  preceding-line `<!-- ll-doc-count: ignore -->` for plain markdown. `is_count_opted_out`
+  owns both, and both are honored by `verify_documentation` and `fix_counts`.
 - `DOC_FILES` is currently three files. Checks 3–4 read `docs/reference/CLI.md` and
   `docs/guides/BUILTIN_HOOKS_GUIDE.md`, which are not in that list; extend it or keep the
   coverage checks on their own file list, but do not silently leave a doc unscanned.
@@ -205,9 +275,9 @@ on a doc issue.
 
 - `verify_documentation(base_dir: Path | None = None) -> VerificationResult` — existing entry point (`doc_counts.py:133-195`), unchanged in signature; gains opt-out-marker skipping inside its per-line loop.
 - `extract_count_from_line(line: str, category: str) -> int | None` — existing (`doc_counts.py:105-130`); its `commands` branch is widened to match the singular "N slash command templates" phrasing the way the `skills?` branch already does.
-- `verify_coverage(base_dir: Path | None = None) -> VerificationResult` — new sibling holding checks 3-4, returning the same result type so `format_result_text` / `format_result_json` / `format_result_markdown` (`doc_counts.py:198-281`) render it with no changes.
-- `declared_entry_points(pyproject: Path) -> dict[str, bool]` — new; parses `[project.scripts]` with stdlib `tomllib`, mapping name to "is internal", where internal is derived from the `# internal:` comment convention already used at `scripts/pyproject.toml:102`.
-- `documented_cli_sections(cli_md: Path) -> set[str]` — new; captures `### ll-*` headings from `docs/reference/CLI.md`.
+- `verify_coverage(base_dir: Path | None = None) -> VerificationResult` — new sibling holding checks 3-4, returning the same result type so `format_result_json` / `format_result_markdown` render it. **`format_result_text` does need a change**: its mismatch branch (`doc_counts.py:213-217`) prints only `category: documented=N, actual=M` then `at {file}:{line}`. A coverage gap has no line and its whole value is in the names, so it renders as an unactionable `hooks: documented=23, actual=24   at None:None`. Add a branch that prints `missing` (and omits the `file:line` row when `line is None`); mirror it in the JSON and markdown formatters.
+- `declared_entry_points(pyproject: Path) -> set[str]` — new; parses `[project.scripts]` with stdlib `tomllib` and returns every declared name. No internal/external partition — see check 3, there are no exclusions.
+- `documented_cli_sections(cli_md: Path) -> set[str]` — new; captures `### ` headings from `docs/reference/CLI.md`, tolerating the backtick-wrapped form (`### \`ll-doctor\``).
 - `registered_hook_scripts(hooks_json: Path) -> set[str]` — new; walks the nested `hooks`/`matcher`/`hooks` structure of `hooks/hooks.json` and reduces each `command` string to its script basename, deduped.
 - `documented_hook_names(guide: Path) -> set[str]` — new; extracts `*.sh` basenames named anywhere in `docs/guides/BUILTIN_HOOKS_GUIDE.md`.
 - `is_count_opted_out(lines: list[str], index: int) -> bool` — new; returns True when the preceding line carries the `<!-- ll-doc-count: ignore -->` marker. Called by both `verify_documentation` and `fix_counts` so the verifier and the rewriter can never disagree.
@@ -232,12 +302,16 @@ Explicitly **out of scope**:
 
 ## Acceptance Criteria
 
-- [ ] The canonical skill-count definition is decided and recorded in a comment in `doc_counts.py`; `COUNT_TARGETS`/`BRIDGE_MARKER` and every documented skill callout in `README.md`, `CONTRIBUTING.md`, `docs/ARCHITECTURE.md` agree with it. `ll-verify-docs` exits 0 on a clean tree.
-- [ ] `extract_count_from_line` matches the singular "N slash command templates" phrasing, so `docs/ARCHITECTURE.md:64` is covered by the existing scan.
+- [ ] Step 0a: the canonical skill count is 40 (non-bridge), recorded in a comment next to `BRIDGE_MARKER` in `doc_counts.py`; all four documented skill callouts are reworded per the Blocker table so each is true in its context. `ll-verify-docs` exits 0 on a clean tree.
+- [ ] Step 0b: `docs/guides/BUILTIN_HOOKS_GUIDE.md` documents `drift-check.sh`, so check 4 is green on a clean tree.
+- [ ] `extract_count_from_line` matches the singular "N slash command templates" phrasing, so `docs/ARCHITECTURE.md:63` is covered by the existing scan.
+- [ ] The widened `commands?` pattern introduces **no new mismatches** on a clean tree — asserted by a test that runs `verify_documentation` over the real `DOC_FILES` and requires `all_match`, not just by a unit test of the `:63` line.
+- [ ] `ll-verify-docs --fix` is a **no-op on a clean tree** (0 files modified), and `verify → fix → verify` converges in one pass on a dirtied tree. This is the oscillation guard the Blocker section names; without it `--fix` and the gate can still disagree.
+- [ ] Check 3 requires a `CLI.md` section for every entry point declared in `[project.scripts]`, with no exclusion list — currently 52/52.
 - [ ] Skill-count, command-count, CLI-entry-point, and hook-coverage assertions exist and derive ground truth from the filesystem/`pyproject.toml`, not from a hardcoded expected number.
 - [ ] All four checks are reachable from one `doc_counts` entry point shared by the pytest gate, `ll-verify-docs`, `--fix`, `ll-doctor`, and `drift-check.sh` — no second derivation path in a test file.
-- [ ] Each assertion's failure message names both the documented value and the derived value.
-- [ ] The opt-out marker has a pinned syntax, is honored by both the verifier and `--fix`, and has a test covering an opted-out line.
+- [ ] Each assertion's failure message names both the documented value and the derived value; coverage-gap failures additionally name the specific missing entry points / hook basenames rather than only set sizes.
+- [ ] The opt-out marker supports both the trailing same-line and preceding-comment forms, is honored by both the verifier and `--fix`, and has a test covering an opted-out line in each of the three contexts that matter: plain markdown, a ``` ``` ``` tree fence, and a ` ```mermaid ` block.
 - [ ] The three commented-out `# REMOVED (stale/false-positive, count drifted ...)` entries are deleted and superseded by derived checks.
 - [ ] A negative test mutates a copy of the tree in `tmp_path` (drop a `CLI.md` section, register a hook the guide omits, bump a documented count) and asserts the check fails — verified by the suite, not by manual re-introduction.
 - [ ] Re-introducing any BUG-3186/3189/3190 defect fails `python -m pytest scripts/tests/`.
@@ -253,19 +327,26 @@ recurring multi-issue audit sweep.
 ## Impact
 
 - **Priority**: P3 — no user-facing defect, but it is the only item in this batch that stops the class rather than one instance.
-- **Effort**: Medium — smaller than a from-scratch build for items 1–2 (the checker exists), larger than first scoped because of Step 0: the skill-count definition must be settled and four doc callouts reconciled before anything can go blocking.
-- **Risk**: Low-Medium. Over-strictness on deliberately approximate prose is mitigated by the opt-out marker and by asserting count callouts rather than enumerations. The real risk is Step 0 — flipping the documented skill count 69 → 40 (or changing `BRIDGE_MARKER` semantics) touches user-facing docs and the `ll-doctor`/`drift-check.sh` output that consuming projects see.
+- **Effort**: Medium — smaller than a from-scratch build for items 1–2 (the checker exists) and for item 3 (already green, needs only the assertion), larger than first scoped because of Step 0a/0b: four doc callouts reworded and one hook documented before anything can go blocking.
+- **Risk**: Low-Medium. Over-strictness on deliberately approximate prose is mitigated by the opt-out marker and by asserting count callouts rather than enumerations. The two live risks are (a) Step 0a — changing the documented skill count touches user-facing docs and the `ll-doctor`/`drift-check.sh` output consuming projects see, though rewording rather than renumbering keeps each callout true and preserves `BRIDGE_MARKER` semantics; and (b) the widened `commands?` extractor turning previously-inert prose into assertions, guarded by the clean-tree AC.
 - **Breaking Change**: No.
 
 ## Sequencing
 
-Land **after** BUG-3186/3189/3190 (recorded as `depends_on`) so the derived assertions go
-green on first run. Landing it first would red the suite until each doc fix merges.
+**Unblocked as of 2026-08-17**: BUG-3186, BUG-3189, and BUG-3190 (the `depends_on` set)
+are all `done`, along with BUG-3188 and BUG-3191. Their doc fixes are in the tree, so the
+derived assertions for checks 2 and 3 go green on first run.
 
-Within this issue, Step 0 (skill-definition reconciliation) must land before the gate
-becomes blocking — `ll-verify-docs` is red on the current tree, so the ordering is not
-optional.
+Within this issue the ordering is still not optional. Step 0a (skill-definition
+reconciliation) must land before check 1 goes blocking — `ll-verify-docs` is red on the
+current tree — and Step 0b (`drift-check.sh` in the hooks guide) must land before check 4
+goes blocking.
 
 ## Status
 
 **Open** | Created: 2026-08-15 | Priority: P3
+
+
+## Session Log
+- `/ll:confidence-check` - 2026-08-17T06:08:01 - `86eb12f1-b126-4db7-a22d-252ffa585d1f.jsonl`
+- `/ll:confidence-check` - 2026-08-17T05:57:22 - `dbac7370-5229-482f-9783-efd7ccbe7021.jsonl`
