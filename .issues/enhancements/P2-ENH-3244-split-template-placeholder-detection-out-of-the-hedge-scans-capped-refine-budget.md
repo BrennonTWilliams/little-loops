@@ -12,6 +12,8 @@ captured_at: '2026-08-17T19:14:03Z'
 relates_to:
 - BUG-3245
 - ENH-3238
+blocked_by:
+- BUG-3245
 ---
 
 # ENH-3244: Split template-placeholder detection out of the hedge scan's capped refine budget
@@ -249,5 +251,6 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-08-17T20:25:54 - `fe71c380-6bd8-44e2-9c73-d0617456c6e4.jsonl`
 - `/ll:capture-issue` - 2026-08-17T19:29:37 - `3ce34465-00fd-4ba7-a470-b61774849ebd.jsonl`
 - `/ll:capture-issue` - 2026-08-17T19:16:20 - `33a98a0f-5403-4525-92db-f7737c5401c4.jsonl`

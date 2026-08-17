@@ -13,6 +13,12 @@ relates_to:
 - BUG-3245
 - ENH-3246
 - ENH-3248
+confidence_score: 90
+outcome_confidence: 82
+score_complexity: 14
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 18
 ---
 
 # ENH-3247: Extend format-check --fix to repair structural debris in issue files
@@ -64,7 +70,11 @@ structural debris:
 
 - Duplicate `###` headings within the same parent `##` section are collapsed into one, with the
   bodies concatenated in document order.
-- An `_Added by …:_` provenance stub with no bullet before the next heading is deleted.
+- An `_Added by …:_` provenance stub with no bullet before the next heading is deleted. Deletion
+  **normalizes surrounding whitespace to exactly one blank line** — two adjacent stubs collapsing
+  must not leave a three-blank-line gap. Without this, the idempotency criterion below is satisfiable
+  while the repair still emits a new debris shape.
+- Content inside fenced code blocks is neither detected nor modified (see Proposed Solution step 0).
 
 Both are pure functions of the input file. Running the repair twice is a no-op.
 
@@ -88,6 +98,24 @@ happened; a new command would make the existing `--fix` read as an inconsistency
 
 ## Proposed Solution
 
+0. **Fence-masking is a precondition, not a caveat.** Both detectors *and* both repairs must operate
+   on fence-masked offsets via `fence_spans()`/`in_fence()`
+   (`scripts/little_loops/text_utils`; precedent BUG-3202, applied at
+   `scripts/little_loops/issue_parser.py:21`, `:439-463`). This is load-bearing because `--fix
+   --apply` is a **writer**: the two helpers this issue builds on are both fence-blind, so without
+   masking the repairs would delete and relocate content *inside illustrative code fences* —
+   corrupting exactly the population these two issues target, namely issues that document markdown
+   structure.
+
+   Confirmed empirically against BUG-3245's own file. Its ```` ```markdown ```` example block
+   (`BUG-3245:48-60`) contains a `## Program Design` line and three consecutive empty `_Added by`
+   stubs, and `_iter_h2_sections()` reports `Program Design` **twice** for that file — so both new
+   detectors false-positive on this very issue pair, and the repair would rewrite the example.
+
+   Also decide and record: `_duplicate_findings_blocks()` (`issue_parser.py:1049-1068`) has the same
+   latent blindness today. Either fix it in the same pass or explicitly defer it — do not leave it
+   unstated.
+
 1. **Add a dispatch layer for `--fix`.** Replace the two hardcoded `_fix_prose_deps` calls
    (`:299`, `:343`) with a table mapping gap class → repair function, so repairs compose and future
    classes are additive. Preserve the existing `prose_dep_drift` behavior exactly.
@@ -110,6 +138,10 @@ happened; a new command would make the existing `--fix` read as an inconsistency
   (`:494`), its truthiness aggregate (`:520`), its dict serialization (`:546`), and the gap-class
   docstring table (`:623-650`).
 - `scripts/little_loops/cli/issues/format_check.py` — `_print_gaps` (`:132`) for text output.
+- `scripts/little_loops/text_utils` — **read-only consumer**, no change expected:
+  `fence_spans()`/`in_fence()` supply the fence masking both detectors and both repairs require
+  (Proposed Solution step 0). Already imported by `issue_parser.py:21`; listed here so the dependency
+  is not rediscovered mid-implementation.
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/little_loops/cli/issues/format_check.py` — `add_format_check_parser()` (`:55-68`) hardcodes
@@ -151,9 +183,25 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ### Tests
 - `scripts/tests/` — per gap class: detection on a crafted fixture, `--fix` previewing without
-  writing, `--fix --apply` writing, and idempotency (apply twice → byte-identical). Use ENH-3238's
-  pre-cleanup revision as a real-world fixture.
+  writing, `--fix --apply` writing, and idempotency (apply twice → byte-identical).
+- **Fixture sourcing — ENH-3238's pre-cleanup revision does not exist and cannot be used.**
+  Verified: `aadbe100`, `a65245fe`, and `HEAD` all show that file with **0** `_Added by` stubs and a
+  single `### Call Path`. The debris lived only in the working tree and was cleaned before commit;
+  no committed revision carries it. Use these three fixtures instead:
+  1. **Real-world duplicate headings** — BUG-3245's own file, which carries two
+     `### Dependent Files (Callers/Importers)` under `## Integration Map` and passes `format-check`
+     today. Copy the relevant slice into the fixture rather than reading the live file, so the test
+     does not break when BUG-3245 is eventually cleaned.
+  2. **Synthetic empty stubs** — adjacent `_Added by …:_` lines with no bullets between them,
+     covering the blank-line normalization rule in Expected Behavior.
+  3. **Fence safety (required)** — a fixture whose ```` ```markdown ```` block contains a duplicate
+     `##`/`###` heading and adjacent empty stubs. Assert detection reports **nothing** and that
+     `--fix --apply` leaves the file **byte-identical**. This is the regression test for Proposed
+     Solution step 0; without it the repair silently corrupts documentation.
 - Existing `--fix` tests must still pass unchanged, proving the dispatch refactor is behavior-preserving.
+- `duplicate_findings_block` routed through the new dispatch table (see Decision Rules) needs its own
+  preview / apply / idempotency cases, and a case asserting a duplicated
+  `### Codebase Research Findings` is reported **once**, under the old class name only.
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_ll_issues_format_check.py::TestFormatCheckFix` — new tests follow the existing
@@ -197,7 +245,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 _Added by `/ll:refine-issue` — 2026-08-17 — based on codebase analysis:_
 
-- Test precedent for the 4-case matrix this issue's AC calls for (detect / preview-no-write / apply-writes / idempotent-reapply), already exercised for the existing `prose_dep_drift` repair: `TestFormatCheckFix` (`scripts/tests/test_ll_issues_format_check.py:1487-1616`) — `test_fix_without_apply_previews_and_does_not_write` (asserts byte-identical file, "would link (dry-run)" in output), `test_fix_apply_writes_blocked_by_and_clears_drift`, `test_fix_apply_is_idempotent` (runs `--fix --apply` twice, asserts byte-identical on the second apply), `test_fix_all_mode_applies_across_sweep` (`--all --fix --apply` variant). A related invariant test worth mirroring: `test_ref_index_built_once_with_fix_apply_recheck` (`:716-749`), pinned to the index being built exactly once even across the fix/apply re-check.
+- Test precedent for the 4-case matrix this issue's Tests section calls for (detect / preview-no-write / apply-writes / idempotent-reapply), already exercised for the existing `prose_dep_drift` repair: `TestFormatCheckFix` (`scripts/tests/test_ll_issues_format_check.py:1487-1616`) — `test_fix_without_apply_previews_and_does_not_write` (asserts byte-identical file, "would link (dry-run)" in output), `test_fix_apply_writes_blocked_by_and_clears_drift`, `test_fix_apply_is_idempotent` (runs `--fix --apply` twice, asserts byte-identical on the second apply), `test_fix_all_mode_applies_across_sweep` (`--all --fix --apply` variant). A related invariant test worth mirroring: `test_ref_index_built_once_with_fix_apply_recheck` (`:716-749`), pinned to the index being built exactly once even across the fix/apply re-check.
 - Test precedent for detection-only gap classes at the `issue_parser` layer: `TestStackedFindingsBlocks` (`scripts/tests/test_issue_parser.py:4658-4708`) — builds a raw markdown fixture inline at class scope (not a file on disk) and asserts against exact/sorted list output; a template for the `duplicate_heading`/`empty_provenance_stub` detection tests.
 - `_fix_prose_deps` (`format_check.py:110-131`) delegates to `cmd_link` — an existing idempotent, cycle-safe write path (FEAT-2851) — rather than editing frontmatter directly; this is the "use a dedicated sub-command when one exists" branch. The alternative branch, for repairs with no dedicated sub-command (this issue's two new repairs, and the existing `cmd_fold_findings`), writes via `atomic_write()` (`scripts/little_loops/file_utils.py:16-31`, tempfile + `os.replace`) directly on transformed file content.
 
@@ -223,14 +271,32 @@ _Added by `/ll:refine-issue` — 2026-08-17 — based on codebase analysis:_
   bodies in document order. Never drop a body — this is a *move*, not a deletion.
 - **Empty-stub deletion is a true deletion**, justified because the stub carries no information: it
   is a provenance marker for content that does not exist.
+- **Fenced regions are invisible to detection and untouchable by repair.** Both new detectors and
+  both repairs mask fences via `fence_spans()`/`in_fence()` before computing any offset. A duplicate
+  heading or empty stub that exists only inside a code fence is *not* a gap — it is documentation.
+  See Proposed Solution step 0 for the empirical confirmation and the `_duplicate_findings_blocks()`
+  decision this forces.
+- **`Codebase Research Findings` carve-out**: `duplicate_heading` **excludes** the exact heading text
+  `Codebase Research Findings`, deferring to the pre-existing `duplicate_findings_block` class
+  (`issue_parser.py:1049`), which already detects it per-H2 and has a dedicated repair path
+  (`ll-issues fold-findings`). Without this carve-out a duplicated findings block is reported twice
+  under two different gap names, and two repairs would race for the same region. The alternative —
+  subsuming `duplicate_findings_block` into the general class — is rejected: it would break the
+  existing gap-class name in the JSON payload for current consumers.
+- **Register `fold-findings` as `duplicate_findings_block`'s repair.** The dispatch table lands
+  anyway; wiring the existing class into it is nearly free and is the only thing that proves the
+  table generalizes past N=2 rather than being a two-case `if`. In scope.
 - **Safety convention (inherited)**: `--fix` previews, `--fix --apply` writes. Do not introduce a
   second convention.
+- **Sweep mode does not write bodies.** `--all --fix --apply` remains restricted to the existing
+  frontmatter repairs (`prose_dep_drift` via `cmd_link`). The two new body-rewriting repairs run in
+  single-issue mode only. Rationale under Impact › Risk.
 
 ### Signatures
 - `cmd_format_check(config: BRConfig, args: argparse.Namespace) -> int` — the entry point gaining
   the `--fix` dispatch layer, at `scripts/little_loops/cli/issues/format_check.py:191`; returns 1
   when any gap remains.
-- `_fix_prose_deps(config: BRConfig, source_id: str, targets: list[str], apply: bool) -> None` — the
+- `_fix_prose_deps(config: BRConfig, source_id: str, targets: list[str], *, apply: bool) -> None` — the
   existing single repair whose shape the new repairs mirror, at
   `scripts/little_loops/cli/issues/format_check.py:110`.
 
@@ -247,14 +313,22 @@ _Added by `/ll:refine-issue` — 2026-08-17 — based on codebase analysis:_
 ## Implementation Steps
 
 1. Refactor `--fix` into a gap-class → repair dispatch table; prove `prose_dep_drift` behavior is
-   unchanged by the existing tests.
+   unchanged by the existing tests. Register `duplicate_findings_block` → `fold-findings` in the same
+   table (see Decision Rules) so the table is exercised at N=3, not N=2.
 2. Add the `duplicate_heading` and `empty_provenance_stub` gap classes to `issue_parser.py`
-   (`FormatGaps`, `has_gaps`, dict serialization, docstring table) and to `_print_gaps`.
-3. Implement the two repairs behind the existing dry-run/`--apply` convention.
-4. Add detection, preview, apply, and idempotency tests; use ENH-3238's pre-cleanup revision as a
-   fixture.
-5. Update `docs/reference/CLI.md`.
-6. `python -m pytest scripts/tests/` exits 0.
+   (`FormatGaps`, `has_gaps`, dict serialization, docstring table) and to `_print_gaps`. Both
+   detectors mask fences via `fence_spans()`/`in_fence()` from the outset — retrofitting this after
+   the repairs exist is how the corruption ships. Apply the `Codebase Research Findings` carve-out to
+   `duplicate_heading`.
+3. Implement the two repairs behind the existing dry-run/`--apply` convention, fence-masked, with the
+   blank-line normalization rule from Expected Behavior. Restrict both to single-issue mode; leave
+   `--all` writing frontmatter only.
+4. Record the `_duplicate_findings_blocks()` fence-blindness decision (fix here, or defer with a
+   captured follow-up issue).
+5. Add detection, preview, apply, idempotency, and **fence-safety** tests using the three fixtures
+   named in Integration Map › Tests.
+6. Update `docs/reference/CLI.md`.
+7. `python -m pytest scripts/tests/` exits 0.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
@@ -274,10 +348,17 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - **Priority**: P2 - Removes an entire debris class from every issue deterministically and at
   near-zero cost, and supplies the cheap first stage of ENH-3248's triage.
 - **Effort**: Small-Medium - the dispatch refactor is mechanical; the two repairs are small; the
-  test matrix (4 cases × 2 classes) is the bulk of it.
+  test matrix (4 cases × 2 classes, plus fence safety) is the bulk of it.
 - **Risk**: Medium - `--fix --apply` mutates issue files, and the duplicate-heading merge moves
-  content between locations. Mitigated by dry-run default, the never-drop-a-body rule, and
-  idempotency tests. The exit-code widening also affects existing `format-check` callers.
+  content between locations. Mitigated by dry-run default, the never-drop-a-body rule, fence masking,
+  and idempotency tests. The exit-code widening also affects existing `format-check` callers.
+- **Risk — sweep blast radius**: today `--all --fix --apply` only adds frontmatter edges via
+  `cmd_link`, which is idempotent and cycle-safe. Extending the new body-rewriting repairs to sweep
+  mode would rewrite markdown bodies across the entire backlog in one command, with no backup and no
+  per-file review — a categorically larger failure mode than anything `--fix` can do now. **Mitigation
+  (decided, see Decision Rules): the two new repairs are single-issue mode only.** If sweep support is
+  wanted later it should be a separate issue, gated on a clean git working tree so the blast is
+  reviewable as a diff.
 - **Breaking Change**: No - new gap classes are additive to the JSON payload; the exit code fires on
   strictly more conditions, which is the intent.
 
@@ -290,10 +371,18 @@ Filling a `TBD` requires knowing what should replace it — that is `/ll:reconci
 **Not a new command.** `format-check --fix` already exists with the right convention; a separate
 `normalize-structure` would duplicate the write path and split detection from repair.
 
+**Fenced content is out of scope by construction**, not by omission. A duplicate heading or empty
+stub inside a ```` ``` ```` block is documentation — an issue explaining the debris this command
+repairs must be able to show it. See Proposed Solution step 0.
+
+**Sweep-mode body repair is out of scope.** The two new repairs run in single-issue mode only; see
+Impact › Risk — sweep blast radius. Extending them to `--all` is a separate issue.
+
 ## Related Issues
 
 - BUG-3245 — stops new duplicate headings and empty stubs being created; this issue cleans existing
-  ones. Both are needed.
+  ones. Both are needed; neither blocks the other. BUG-3245's own file is this issue's real-world
+  duplicate-heading fixture and is deliberately left uncleaned until this issue's detection lands.
 - ENH-3244 — placeholder detection, which lands in the same `format-check` payload.
 - ENH-3246 — owns the non-deterministic half (filling placeholders from findings).
 - ENH-3248 — consumes this as the first, cheapest stage of the retry triage.
@@ -307,7 +396,13 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 **Open** | Created: 2026-08-17 | Priority: P2
 
 
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): This issue and ENH-2966 both modify `check_format_gaps`/`FormatGaps` in `scripts/little_loops/issue_parser.py` for unrelated gap classes (ENH-3247's two new structural-debris gap classes vs. ENH-2966's testable-keyword scan surface). Coordinate implementation order to avoid a merge collision in the same function.
+
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-08-17T20:25:55 - `fe71c380-6bd8-44e2-9c73-d0617456c6e4.jsonl`
+- `/ll:confidence-check` - 2026-08-17T20:10:26 - `37e075a7-49b8-44db-b567-e15852c40c0b.jsonl`
 - `/ll:wire-issue` - 2026-08-17T19:59:57 - `86ab77f1-d20d-487b-9f55-2f4d8abf9a06.jsonl`
 - `/ll:refine-issue` - 2026-08-17T19:49:50 - `91301036-37cc-4bb2-8a07-a3ddf3c555b7.jsonl`
 - `/ll:capture-issue` - 2026-08-17T19:29:38 - `3ce34465-00fd-4ba7-a470-b61774849ebd.jsonl`

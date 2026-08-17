@@ -16,6 +16,7 @@ relates_to:
 - ENH-3244
 - BUG-3245
 - ENH-3238
+depends_on: []
 ---
 
 # ENH-3248: Triage the refine-to-ready-issue retry path by failure kind instead of always refining
@@ -236,4 +237,6 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-08-17T20:25:54 - `fe71c380-6bd8-44e2-9c73-d0617456c6e4.jsonl`
+- `/ll:audit-issue-conflicts` - 2026-08-17T20:13:03 - `ffec4b47-4ed9-4eda-baf1-3dc49ac82fa1.jsonl`
 - `/ll:capture-issue` - 2026-08-17T19:29:38 - `3ce34465-00fd-4ba7-a470-b61774849ebd.jsonl`

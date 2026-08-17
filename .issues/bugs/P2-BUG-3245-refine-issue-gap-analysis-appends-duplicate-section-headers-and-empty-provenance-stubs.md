@@ -12,6 +12,13 @@ captured_at: '2026-08-17T19:14:11Z'
 relates_to:
 - ENH-3244
 - ENH-3238
+- ENH-3247
+confidence_score: 90
+outcome_confidence: 82
+score_complexity: 21
+score_test_coverage: 18
+score_ambiguity: 25
+score_change_surface: 18
 ---
 
 # BUG-3245: refine-issue gap-analysis appends duplicate section headers and empty provenance stubs
@@ -34,6 +41,12 @@ Observed, not synthesized — on the `refine-to-ready-issue` run over ENH-3238
    (`--auto --gap-analysis`) — confirmed by the run's route trace:
    `refine_issue → wire_issue → verify_issue → check_hedges NO → check_refine_limit → refine_followup`.
 3. Read the resulting issue file.
+
+**This issue's own file is a live specimen.** It carries two
+`### Dependent Files (Callers/Importers)` headings under `## Integration Map`, and
+`ll-issues format-check BUG-3245` reports "structurally compliant" today. Leave them in place —
+they are ENH-3247's real-world duplicate-heading fixture. Do not clean them until that issue's
+detection lands and can be demonstrated against them.
 
 ## Current Behavior
 
@@ -82,10 +95,12 @@ once.
 - **Priority**: P2 - Degrades every issue that takes a retry path, which is the common case for any
   issue that trips a gate. Not P1: the damage is readability and downstream-parser ambiguity, not
   incorrect content.
-- **Effort**: Small - a containment check before each header emission, plus deferring the provenance
-  stub until a bullet exists.
-- **Risk**: Low - the change only suppresses emissions; it never deletes existing content, so it
-  needs no widening of `refine-issue`'s deletion rights.
+- **Effort**: Small - a non-empty gate in `_batch()` plus a containment check before each header
+  emission. Split across one Python file and one prose file.
+- **Risk**: Low - both changes only suppress emissions; neither deletes existing content, so no
+  widening of `refine-issue`'s deletion rights is needed. The `_batch()` gate has exactly one caller
+  (`cmd_fold_findings`), which already rejects empty input, so the gate is unreachable in normal
+  operation and cannot regress the happy path.
 - **Breaking Change**: No
 
 ## Root Cause
@@ -100,8 +115,37 @@ The rule itself is correct and is not what needs changing. What is missing is a 
 before emission** — appending nothing is not removing anything, so idempotent emission is fully
 compatible with the never-remove rule and needs no new deletion right.
 
-The empty-stub case is a second, simpler defect: the provenance stub is emitted eagerly (before the
-pass knows whether it has findings) instead of lazily (on first bullet).
+### Empty-stub half: fold-shaped, but the routed path is guarded
+
+The empty-stub case is a **separate defect with a different locus**, and the original "emitted
+eagerly instead of lazily by the prose rules" framing is not supported by the evidence:
+
+- The observed shape is **one** `### Codebase Research Findings` heading carrying **three adjacent
+  markers**. That is the signature of `fold_research_findings()`, which collapses N>1 heading
+  occurrences into one and appends a marker per call. A hand-`Edit` would almost certainly have
+  duplicated the heading alongside the marker, as it demonstrably did for the two headings in the
+  other half of this bug.
+- Reproduced directly: three successive `fold_research_findings(content, "Program Design", <blank>)`
+  calls yield exactly one heading and three consecutive markers with nothing between them.
+  `_batch()` (`scripts/little_loops/issues/fold_research_findings.py:151-153`) is
+  `f"{marker}\n\n{new_content.strip(chr(10))}"` — **no non-empty gate at all**.
+- But the only caller, `cmd_fold_findings`, *does* guard empty input
+  (`scripts/little_loops/cli/issues/fold_findings.py:107-112` —
+  `if not payload.strip(): return 1`). So a purely empty payload cannot reach `_batch()` through the
+  CLI. The reproduction bypassed that guard by calling the library directly.
+
+Two explanations therefore survive, and this issue does not need to pick between them because the
+same fix closes both:
+
+1. A hand-`Edit` violating `commands/refine-issue.md:588-592`, which already states
+   `ll-issues fold-findings` is the only route and that the `_Added by …_` line must never be
+   hand-written.
+2. A later pass stripping the bullets out from under markers a fold had legitimately written,
+   leaving the markers adjacent.
+
+The fix is therefore **defense in depth**: gate the primitive (so the library cannot produce a
+content-free stub regardless of caller) *and* restate the prose rule. See the Open Question below
+for the diagnostic that would settle which one occurred.
 
 ### Codebase Research Findings
 
@@ -113,15 +157,24 @@ _Added by `/ll:refine-issue` — 2026-08-17 — based on codebase analysis:_
 
 ## Proposed Solution
 
-1. **Lazy provenance stub.** Emit `_Added by \`/ll:refine-issue\` — <date> — based on codebase
-   analysis:_` only immediately before the first finding bullet the pass actually writes. No
-   findings → no stub.
-2. **Containment check before heading emission.** Before writing `### Call Path` or
+1. **Gate the primitive (Python).** In `_batch()`
+   (`scripts/little_loops/issues/fold_research_findings.py:151-153`), return `""` when
+   `new_content.strip()` is empty, and have `fold_research_findings()` treat a no-op batch as
+   contributing nothing — no marker, no blank-line churn. This makes a content-free stub
+   unrepresentable at the library level, independent of which caller or explanation produced the
+   observed one.
+2. **Restate the prose rule (`commands/refine-issue.md`).** Keep the existing "fold-findings is the
+   only route" rule at `:588-592` and make its lazy-emission consequence explicit: a pass with no
+   findings runs no fold call at all. This is a restatement for the LLM's benefit; step 1 is what
+   actually enforces it.
+3. **Containment check before heading emission (prose-only).** Before writing `### Call Path` or
    `### Dependent Files (Callers/Importers)`, check whether that heading already exists **within the
-   same parent section**; if so, append under it rather than emitting a sibling.
-3. Do **not** add a deletion right. Existing duplicates already in the backlog are cleaned by
-   `/ll:reconcile-issue` (which holds an in-place rewrite mandate over `### Files to Modify` and the
-   directive sections) or by hand — out of scope here.
+   same parent section**; if so, append under it rather than emitting a sibling. Verified correct as
+   a prose-only change: both headings are hand-emitted from the "Enrichment Rules" template blocks
+   (`commands/refine-issue.md:409`, `:474`) with no fold routing, so there is no Python site to gate.
+4. Do **not** add a deletion right. Existing duplicates already in the backlog are cleaned by
+   **ENH-3247** (`ll-issues format-check --fix --apply`, which owns deterministic structural repair)
+   — out of scope here. This issue stops new debris being created; ENH-3247 removes what exists.
 
 ### Codebase Research Findings
 
@@ -158,7 +211,12 @@ Routed path that already exists and is idempotent, for comparison:
 ## Integration Map
 
 ### Files to Modify
-- `commands/refine-issue.md` — the emission rules for the provenance stub and the two headings.
+- `scripts/little_loops/issues/fold_research_findings.py:151-153` — `_batch()` gains the
+  non-empty gate; `fold_research_findings()` drops no-op batches without emitting a marker or
+  leaving blank-line churn. This is the enforcing change for the empty-stub half.
+- `commands/refine-issue.md` — the emission rules: the containment check before the two hand-emitted
+  headings (`:409`, `:474`), and the restated lazy-emission consequence of the existing
+  fold-findings-only rule (`:588-592`).
 - Generated host mirrors are regenerated, never hand-edited — `ll-adapt --host <gemini|qwen|kimi-code>
   --apply`. (See ENH-3238's Integration Map for why the "no DO NOT EDIT banner" test is not evidence
   of hand-authorship.)
@@ -210,6 +268,11 @@ _Wiring pass added by `/ll:wire-issue`:_
   than staying prose-only, add a new test class parameterizing `sub_heading` to each of the two
   headings (mirrors `test_heading_count_invariant_across_n_calls`, `:185-192`, without editing it).
   Not needed if the fix stays prose-only. [Agent 3 finding]
+- `scripts/tests/test_fold_research_findings.py` — **required by the step-1 gate** (not conditional
+  on a routing decision, unlike the `sub_heading` parameterization noted above): N successive calls
+  with a whitespace-only payload add zero markers and leave the content byte-identical; a mixed
+  sequence (content → empty → content) yields exactly two markers with no adjacent pair. These
+  assert the primitive can no longer represent a content-free stub.
 - `scripts/tests/test_epic_consistency.py::TestEpicConsistencyIdempotency.test_fix_is_idempotent`
   (`:517-549`) — an additional byte-identical-after-second-run idempotency idiom precedent, alongside
   the two already cited. [Agent 3 finding]
@@ -222,12 +285,15 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ## Implementation Steps
 
-1. Make the provenance stub lazy (emit on first bullet, not before the pass).
-2. Add the same-parent-section containment check before emitting `### Call Path` and
-   `### Dependent Files (Callers/Importers)`.
-3. Regenerate the three host mirrors with `ll-adapt`.
-4. Add the idempotency and empty-stub tests.
-5. `python -m pytest scripts/tests/` exits 0.
+1. Gate `_batch()` on non-empty content and drop no-op batches in `fold_research_findings()`.
+2. Add the empty-payload tests in `scripts/tests/test_fold_research_findings.py`; confirm they fail
+   before step 1 and pass after.
+3. Add the same-parent-section containment check before emitting `### Call Path` and
+   `### Dependent Files (Callers/Importers)`, plus the restated lazy-emission rule, in
+   `commands/refine-issue.md`.
+4. Regenerate the three host mirrors with `ll-adapt --host <gemini|qwen|kimi-code> --apply`.
+5. Add the prose-conformance and heading-idempotency tests.
+6. `python -m pytest scripts/tests/` exits 0.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
@@ -242,8 +308,25 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - Add a regression-safety test in `scripts/tests/test_program_design_gate.py` pinning that
   `extract_call_path_anchors()` unions duplicate `### Call Path` occurrences rather than breaking.
 
+## Open Questions
+
+- **Which of the two surviving explanations produced the observed stubs?** (See Root Cause §
+  "Empty-stub half".) **Not a blocker** — the step-1 gate closes both, and implementation may proceed
+  without an answer. Resolving it only tells us whether a *second*, separate follow-up is warranted
+  (a rule-violating hand-`Edit` would be; a later pass stripping bullets would be).
+  **Diagnostic**: the run's `events.jsonl`
+  (`.loops/.history/2026-08-17T183652-refine-to-ready-issue/`) is a summarized narration stream and
+  carries no tool-call payloads — it has one mention of `fold-findings` and zero of `_Added by`, so
+  it cannot settle this. The decisive artifact is the refine session transcript jsonl: search it for
+  an `Edit` tool call whose `new_string` contains `_Added by`. If one exists, explanation (1) holds.
+  Note the pre-cleanup ENH-3238 file itself is unrecoverable — no committed revision carries the
+  debris (see ENH-3247 § Tests).
+
 ## Related Issues
 
+- ENH-3247 — owns cleanup of duplicate headings and empty stubs already in the backlog via
+  `format-check --fix --apply`. Strict division: this issue stops creation, ENH-3247 removes what
+  exists. Both are needed; neither blocks the other.
 - ENH-3244 — proposes detecting the empty `_Added by_` stubs this bug produces as a structural gap.
 - ENH-3238 — the issue whose refine run exhibited this.
 
@@ -257,6 +340,8 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-08-17T20:25:54 - `fe71c380-6bd8-44e2-9c73-d0617456c6e4.jsonl`
+- `/ll:confidence-check` - 2026-08-17T20:10:26 - `37e075a7-49b8-44db-b567-e15852c40c0b.jsonl`
 - `/ll:wire-issue` - 2026-08-17T19:59:57 - `86ab77f1-d20d-487b-9f55-2f4d8abf9a06.jsonl`
 - `/ll:refine-issue` - 2026-08-17T19:49:50 - `91301036-37cc-4bb2-8a07-a3ddf3c555b7.jsonl`
 - `/ll:capture-issue` - 2026-08-17T19:29:38 - `3ce34465-00fd-4ba7-a470-b61774849ebd.jsonl`
