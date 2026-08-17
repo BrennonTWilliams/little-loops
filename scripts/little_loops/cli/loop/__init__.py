@@ -116,7 +116,8 @@ Examples:
   %(prog)s test fix-types         # Run single test iteration
   %(prog)s simulate fix-types     # Interactive simulation (dry-run with prompts)
   %(prog)s list                   # List available loops
-  %(prog)s list --running         # List running loops
+  %(prog)s list --running         # List loops currently executing
+  %(prog)s list --all-runs        # List every run with saved state, any status
   %(prog)s status fix-types       # Show loop status
   %(prog)s stop fix-types         # Stop a running loop
   %(prog)s resume fix-types       # Resume interrupted loop
@@ -362,7 +363,16 @@ Examples:
         # List subcommand
         list_parser = subparsers.add_parser("list", aliases=["l"], help="List loops")
         list_parser.set_defaults(command="list")
-        list_parser.add_argument("--running", action="store_true", help="Only show running loops")
+        list_parser.add_argument(
+            "--running",
+            action="store_true",
+            help="Only show loops currently executing (status running/starting)",
+        )
+        list_parser.add_argument(
+            "--all-runs",
+            action="store_true",
+            help="Show every loop run with saved state, whatever status it ended in",
+        )
         list_parser.add_argument(
             "--status",
             help="Filter running loops by status (e.g., interrupted, awaiting_continuation)",

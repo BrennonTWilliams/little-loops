@@ -118,12 +118,22 @@ never set", never "unknown". Consumers should default rather than require them.
 
 ### Alternate entry point: `ll-loop list --running --json`
 
-`ll-loop list --running --json` (and `--status <status> --json`) returns a JSON
-array of the **same base state objects** — but none of the diagnostic fields.
-It is a plain `[state.to_dict() for state in states]`, so `pid_source`,
-`log_file`, `log_updated_ago`, `last_event`, `events_file`, and `instance_id`
-are all absent; `pid` appears only when the persisted state itself carries one
+`ll-loop list --running --json`, `ll-loop list --all-runs --json`, and
+`ll-loop list --status <status> --json` all return a JSON array of the **same
+base state objects** — but none of the diagnostic fields. It is a plain
+`[state.to_dict() for state in states]`, so `pid_source`, `log_file`,
+`log_updated_ago`, `last_event`, `events_file`, and `instance_id` are all
+absent; `pid` appears only when the persisted state itself carries one
 (unlike `status --json`, which always emits the key, `null` included).
+
+**Status filtering (BUG-3232):** `--running` alone applies a `{running,
+starting}` allowlist — only dispatches genuinely executing right now.
+`--all-runs` returns every state with saved state regardless of status
+(`completed`, `failed`, `interrupted`, `user_stopped`, `awaiting_continuation`,
+etc. — this was `--running`'s behavior before the fix). An explicit `--status
+<value>` selects exactly that status and overrides the `--running` allowlist
+if both are given (e.g. `--running --status interrupted` still returns the
+`interrupted` entries).
 
 Use `ll-loop status --json` when you need process/log diagnostics, and
 `ll-loop list --json` when you only need the loop-state contract across many

@@ -334,6 +334,9 @@ states:
 
         BUG-1731: list --running must apply the same dead-PID reconciliation as
         ll-loop status, so both commands report identical state counts.
+        BUG-3232: the reconciled `interrupted` entry is genuinely no longer
+        running, so bare `--running` must exclude it from its output (while
+        the on-disk reconciliation still happens); `--all-runs` still shows it.
         """
         loops_dir = tmp_path / ".loops"
         running_dir = loops_dir / ".running"
@@ -391,12 +394,21 @@ states:
         assert written["status"] == "interrupted", "Stale entry must be reconciled to interrupted"
         assert "reconciled_at" in written
 
-        # live-loop still running; stale-loop reconciled to [paused] (interrupted), not [running]
+        # live-loop still running; stale-loop reconciled to interrupted and is
+        # therefore excluded from bare --running output (BUG-3232).
         assert "live-loop" in captured.out
         assert "[running]" in captured.out  # live-loop is still shown as running
-        assert "stale-loop" in captured.out  # stale entry still shown but reconciled
-        # Stale entry must appear as [paused] (the display label for interrupted), not [running]
-        out_lines = captured.out.splitlines()
+        assert "stale-loop" not in captured.out
+
+        # --all-runs still surfaces the reconciled entry, as [paused].
+        capsys.readouterr()  # drain
+        with patch.object(sys, "argv", ["ll-loop", "list", "--all-runs"]):
+            from little_loops.cli import main_loop
+
+            result = main_loop()
+        assert result == 0
+        all_runs_out = capsys.readouterr().out
+        out_lines = all_runs_out.splitlines()
         stale_line = next((ln for ln in out_lines if "stale-loop" in ln), None)
         assert stale_line is not None
         assert "[paused]" in stale_line, (

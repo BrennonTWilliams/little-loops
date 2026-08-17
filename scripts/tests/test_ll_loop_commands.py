@@ -3911,6 +3911,162 @@ class TestCmdListRunningJson:
         assert "my-loop" in out
 
 
+class TestCmdListRunningAllowlistBUG3232:
+    """BUG-3232: --running applies a {running, starting} status allowlist;
+    --all-runs is the unfiltered enumeration path; --status overrides both."""
+
+    @staticmethod
+    def _make_state(name: str, status: str, **overrides: object):
+        from little_loops.fsm.persistence import LoopState
+
+        kwargs: dict[str, object] = {
+            "loop_name": name,
+            "current_state": "check",
+            "iteration": 1,
+            "captured": {},
+            "prev_result": None,
+            "last_result": None,
+            "started_at": "2026-01-01T00:00:00",
+            "updated_at": "2026-01-01T00:00:01",
+            "status": status,
+            "accumulated_ms": 5_000,
+        }
+        kwargs.update(overrides)
+        return LoopState(**kwargs)
+
+    def _mixed_states(self) -> list:
+        return [
+            self._make_state("loop-running", "running"),
+            self._make_state("loop-starting", "starting"),
+            self._make_state("loop-completed", "completed"),
+            self._make_state("loop-interrupted", "interrupted"),
+            self._make_state("loop-user-stopped", "user_stopped"),
+            self._make_state("loop-awaiting", "awaiting_continuation"),
+        ]
+
+    def test_running_alone_filters_to_active_allowlist(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """--running excludes completed/interrupted/user_stopped/awaiting_continuation."""
+        from little_loops.cli.loop.info import cmd_list
+
+        args = argparse.Namespace(running=True, status=None, all_runs=False, json=True)
+        with patch(
+            "little_loops.fsm.persistence.list_running_loops", return_value=self._mixed_states()
+        ):
+            result = cmd_list(args, tmp_path / ".loops")
+
+        assert result == 0
+        data = json.loads(capsys.readouterr().out)
+        names = {d["loop_name"] for d in data}
+        assert names == {"loop-running", "loop-starting"}
+
+    def test_all_runs_returns_full_mixed_status_set(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """--all-runs returns every status unfiltered — the pre-fix --running behavior."""
+        from little_loops.cli.loop.info import cmd_list
+
+        args = argparse.Namespace(running=False, status=None, all_runs=True, json=True)
+        with patch(
+            "little_loops.fsm.persistence.list_running_loops", return_value=self._mixed_states()
+        ):
+            result = cmd_list(args, tmp_path / ".loops")
+
+        assert result == 0
+        data = json.loads(capsys.readouterr().out)
+        names = {d["loop_name"] for d in data}
+        assert names == {
+            "loop-running",
+            "loop-starting",
+            "loop-completed",
+            "loop-interrupted",
+            "loop-user-stopped",
+            "loop-awaiting",
+        }
+
+    def test_status_overrides_running_allowlist(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """--running --status interrupted returns the interrupted entries, not []."""
+        from little_loops.cli.loop.info import cmd_list
+
+        args = argparse.Namespace(running=True, status="interrupted", all_runs=False, json=True)
+        with patch(
+            "little_loops.fsm.persistence.list_running_loops", return_value=self._mixed_states()
+        ):
+            result = cmd_list(args, tmp_path / ".loops")
+
+        assert result == 0
+        data = json.loads(capsys.readouterr().out)
+        assert {d["loop_name"] for d in data} == {"loop-interrupted"}
+
+    def test_running_is_superset_of_status_running_differing_only_by_starting(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        from little_loops.cli.loop.info import cmd_list
+
+        states = self._mixed_states()
+
+        args_running = argparse.Namespace(running=True, status=None, all_runs=False, json=True)
+        with patch("little_loops.fsm.persistence.list_running_loops", return_value=states):
+            cmd_list(args_running, tmp_path / ".loops")
+        running_names = {d["loop_name"] for d in json.loads(capsys.readouterr().out)}
+
+        args_status = argparse.Namespace(running=False, status="running", all_runs=False, json=True)
+        with patch("little_loops.fsm.persistence.list_running_loops", return_value=states):
+            cmd_list(args_status, tmp_path / ".loops")
+        status_names = {d["loop_name"] for d in json.loads(capsys.readouterr().out)}
+
+        assert status_names.issubset(running_names)
+        assert running_names - status_names == {"loop-starting"}
+
+    def test_awaiting_continuation_excluded_from_running_present_elsewhere(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        from little_loops.cli.loop.info import cmd_list
+
+        states = self._mixed_states()
+
+        args_running = argparse.Namespace(running=True, status=None, all_runs=False, json=True)
+        with patch("little_loops.fsm.persistence.list_running_loops", return_value=states):
+            cmd_list(args_running, tmp_path / ".loops")
+        running_names = {d["loop_name"] for d in json.loads(capsys.readouterr().out)}
+        assert "loop-awaiting" not in running_names
+
+        args_all = argparse.Namespace(running=False, status=None, all_runs=True, json=True)
+        with patch("little_loops.fsm.persistence.list_running_loops", return_value=states):
+            cmd_list(args_all, tmp_path / ".loops")
+        all_names = {d["loop_name"] for d in json.loads(capsys.readouterr().out)}
+        assert "loop-awaiting" in all_names
+
+        args_status = argparse.Namespace(
+            running=False, status="awaiting_continuation", all_runs=False, json=True
+        )
+        with patch("little_loops.fsm.persistence.list_running_loops", return_value=states):
+            cmd_list(args_status, tmp_path / ".loops")
+        status_names = {d["loop_name"] for d in json.loads(capsys.readouterr().out)}
+        assert status_names == {"loop-awaiting"}
+
+    def test_empty_path_exit_codes(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """--running/--all-runs empty -> 0; --status <no match> empty -> 1; both output modes."""
+        from little_loops.cli.loop.info import cmd_list
+
+        for kwargs, expected in [
+            ({"running": True, "status": None, "all_runs": False}, 0),
+            ({"running": False, "status": None, "all_runs": True}, 0),
+            ({"running": False, "status": "interrupted", "all_runs": False}, 1),
+        ]:
+            for json_flag in (True, False):
+                args = argparse.Namespace(**kwargs, json=json_flag)
+                with patch("little_loops.fsm.persistence.list_running_loops", return_value=[]):
+                    result = cmd_list(args, tmp_path / ".loops")
+                assert result == expected, f"{kwargs}, json={json_flag}"
+                capsys.readouterr()
+
+
 class TestCmdShow:
     """Tests for show command."""
 

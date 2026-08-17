@@ -31,7 +31,7 @@ files, and clean them up after user confirmation.
 ## Step 1: Enumerate All Loops with State Files
 
 ```bash
-ll-loop list --running --json
+ll-loop list --all-runs --json
 ```
 
 This returns a JSON array of all loops that have a `.state.json` file in `.loops/.running/`,

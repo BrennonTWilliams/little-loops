@@ -51,12 +51,12 @@ ls -d .loops/.history/*-<loop_name>/ 2>/dev/null | sort | tail -1
 Otherwise, enumerate candidate loops:
 
 ```bash
-ll-loop list --running --json
+ll-loop list --all-runs --json
 ```
 
 Filter to `status` one of `"running"`, `"interrupted"`, `"failed"`, `"timed_out"`, `"awaiting_continuation"`. Sort by `updated_at` descending.
 
-Note: `ll-loop list --running --json` output does **not** include `instance_id` — entries with the same `loop_name` are indistinguishable at this level.
+Note: `ll-loop list --all-runs --json` output does **not** include `instance_id` — entries with the same `loop_name` are indistinguishable at this level.
 
 - **Zero candidates**: Report "No interrupted or running loops found. Specify a loop name explicitly." and stop.
 - **One candidate**: Select automatically and report.

@@ -107,12 +107,19 @@ def cmd_list(
 ) -> int:
     """List loops."""
     status_filter = getattr(args, "status", None)
-    if getattr(args, "running", False) or status_filter:
-        from little_loops.fsm.persistence import list_running_loops
+    running_flag = getattr(args, "running", False)
+    all_runs_flag = getattr(args, "all_runs", False)
+    if running_flag or status_filter or all_runs_flag:
+        from little_loops.fsm.persistence import ACTIVE_RUN_STATUSES, list_running_loops
 
         states = list_running_loops(loops_dir)
         if status_filter:
+            # BUG-3232: an explicit --status always overrides the --running
+            # allowlist below, even when both flags are set — otherwise
+            # `--running --status interrupted` would silently return [].
             states = [s for s in states if s.status == status_filter]
+        elif running_flag and not all_runs_flag:
+            states = [s for s in states if s.status in ACTIVE_RUN_STATUSES]
         if not states:
             if getattr(args, "json", False):
                 print_json([])

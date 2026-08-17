@@ -4,9 +4,10 @@ type: BUG
 title: 'll-loop list --running: no status filter is applied, so completed, interrupted
   and user_stopped runs are reported as running'
 priority: P2
-status: open
+status: done
 discovered_by: little-loops-hermes-audit
 discovered_date: '2026-08-17'
+completed_at: '2026-08-17T15:34:33Z'
 labels:
 - loops
 - cli-json
@@ -79,8 +80,19 @@ itself — which is the field the flag was supposed to have filtered on.
 ## Expected Behavior
 
 `ll-loop list --running` returns only dispatches that are actually executing,
-and `ll-loop list --all` returns every loop with saved state — the behavior
+and `ll-loop list --all-runs` returns every loop with saved state — the behavior
 `--running` has today, under a name that describes it.
+
+## Steps to Reproduce
+
+1. In a project with `.loops/.running/` state files spanning multiple
+   statuses (e.g. `completed`, `interrupted`, `user_stopped`, `running`), run:
+   `ll-loop list --running --json | python -c "import json,sys; [print(s['loop_name'], s['status']) for s in json.load(sys.stdin)]"`
+2. Observe that entries with `status` values other than `running` (e.g.
+   `completed`, `interrupted`, `user_stopped`) are included in the output.
+3. Run `ll-loop list --status running` against the same directory and observe
+   it returns a strict subset (often empty) — confirming `--running` alone
+   applies no status filter.
 
 ## Integration Map
 
@@ -89,8 +101,8 @@ and `ll-loop list --all` returns every loop with saved state — the behavior
 _Added by `/ll:refine-issue` — 2026-08-17 — based on codebase analysis:_
 
 ### Files to Modify
-- `scripts/little_loops/cli/loop/info.py` (`cmd_list()`, lines 104-127) — the `--running` branch (entered via `getattr(args, "running", False) or status_filter` at line 110) calls `list_running_loops(loops_dir)` at line 113 and applies a `status == status_filter` list-comprehension filter at lines 114-115 **only when `--status` is also set**. No equivalent filter line exists for the `--running`-alone case. The branch condition at line 110 must also admit `--all`, and the allowlist must be applied in an `elif`-style relationship to the `--status` filter (see Proposed Fix ▸ Flag interaction).
-- `scripts/little_loops/cli/loop/__init__.py` (lines 363-370, plus the usage epilog at line 119) — declares the `list` subparser's flags; `--all` is added here.
+- `scripts/little_loops/cli/loop/info.py` (`cmd_list()`, lines 104-127) — the `--running` branch (entered via `getattr(args, "running", False) or status_filter` at line 110) calls `list_running_loops(loops_dir)` at line 113 and applies a `status == status_filter` list-comprehension filter at lines 114-115 **only when `--status` is also set**. No equivalent filter line exists for the `--running`-alone case. The branch condition at line 110 must also admit `--all-runs`, and the allowlist must be applied in an `elif`-style relationship to the `--status` filter (see Proposed Fix ▸ Flag interaction).
+- `scripts/little_loops/cli/loop/__init__.py` (lines 363-370, plus the usage epilog at line 119) — declares the `list` subparser's flags; `--all-runs` is added here.
 
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/transport.py:588` (`_make_seed_callback()._seed()`) — the **other** caller of `list_running_loops()`. It emits a `state_change` event for every returned state, regardless of status, to seed a freshly-connected observability/dashboard client with the full on-disk snapshot (including recently-finished runs). This caller depends on `list_running_loops()` itself continuing to return the unfiltered set — filtering must happen in `cmd_list()`, not inside `list_running_loops()`, or this caller silently stops seeding terminal-status history to new clients.
@@ -125,10 +137,10 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_ll_loop_integration.py:327` (`test_list_running_reconciles_dead_pid_entries`) — **must be updated**, not just noted; see Dependent Files above for why it currently conflicts with the fix, and Implementation Steps for which of its assertions must survive verbatim.
 
 _Added by 2026-08-17 pre-implementation review:_
-- **New test needed**: `--all` returns the full mixed-status set (`running`, `starting`, `completed`, `interrupted`, `user_stopped`, `awaiting_continuation`) — i.e. the pre-fix `--running` behavior — using the same `make_state()` mocking idiom.
+- **New test needed**: `--all-runs` returns the full mixed-status set (`running`, `starting`, `completed`, `interrupted`, `user_stopped`, `awaiting_continuation`) — i.e. the pre-fix `--running` behavior — using the same `make_state()` mocking idiom.
 - **New test needed**: `--running --status interrupted` returns the `interrupted` entries, not `[]`. This pins the precedence decision (explicit `--status` overrides the allowlist) that the two flags' non-mutually-exclusive declaration makes reachable.
-- **New test needed**: `awaiting_continuation` is absent from `--running` and present under both `--all` and `--status awaiting_continuation`.
-- **New test needed**: exit codes on the empty path — `--running` → 0, `--all` → 0, `--status <no match>` → 1 — asserted in both `--json` and human-readable modes. This block (`info.py:116-124`) is also rewritten by BUG-3231; whichever lands second must not regress the other's assertions.
+- **New test needed**: `awaiting_continuation` is absent from `--running` and present under both `--all-runs` and `--status awaiting_continuation`.
+- **New test needed**: exit codes on the empty path — `--running` → 0, `--all-runs` → 0, `--status <no match>` → 1 — asserted in both `--json` and human-readable modes. This block (`info.py:116-124`) is also rewritten by BUG-3231; whichever lands second must not regress the other's assertions.
 - **Verified, no change needed**: `scripts/tests/test_json_output_contracts.py:245-266` (`test_json_output_via_cmd_list_running`) — its mocked state defaults to `status="running"` and survives the allowlist.
 - **Check on implementation**: `scripts/tests/test_cli_e2e.py:448` and `scripts/tests/test_cli.py:803` both run bare `--running` against an empty/fresh `.loops` and assert only `exit_code == 0`. They pass unchanged provided the empty-path exit code stays 0 (see AC) — they are the tripwire if it does not.
 
@@ -144,7 +156,7 @@ _Added by `/ll:refine-issue` — 2026-08-17 — based on codebase analysis:_
 
 ### Signatures
 - `list_running_loops(loops_dir: Path) -> list[LoopState]` — defined at `persistence.py:1109`; globs `.running/*.state.json`, applies the `_reconcile_stale_running()` liveness self-heal (running → interrupted on dead PID) to each, then appends a synthesized `status="starting"` entry per live-PID `.pid` file with no matching state file. No status-based filtering exists in this function today.
-- `cmd_list(args, loops_dir)` — defined at `info.py:104`; reads `getattr(args, "running", False)` and `getattr(args, "status", None)`. Both flags share one entry branch (line 110) but only `--status` currently narrows the result set (lines 114-115). Post-fix it also reads `getattr(args, "all", False)`; note `args.all` shadows nothing but is adjacent to the builtin — argparse stores `--all` as `args.all`, which is the established argparse convention and is fine, but `getattr` access (matching the existing idiom at lines 109-110) keeps it uniform.
+- `cmd_list(args, loops_dir)` — defined at `info.py:104`; reads `getattr(args, "running", False)` and `getattr(args, "status", None)`. Both flags share one entry branch (line 110) but only `--status` currently narrows the result set (lines 114-115). Post-fix it also reads `getattr(args, "all_runs", False)` — argparse derives `dest="all_runs"` from `--all-runs` by default, matching the existing idiom at lines 109-110.
 
 ### Call Path
 `cmd_list` (`info.py:104`) -> `list_running_loops` (`persistence.py:1109`) -> [no status filter applied when only `--running` is set] -> JSON emission (`info.py:125-127`, `print_json([s.to_dict() for s in states])`) or human-readable table (colorized via `_STATUS_COLORS`, `info.py:132-139`, and `display_status` remapping `interrupted`/`user_stopped` → `"paused"` at `info.py:158-163`).
@@ -156,11 +168,11 @@ Separately: `transport.py:588` (`_make_seed_callback()._seed()`) -> `list_runnin
 _Revised by 2026-08-17 pre-implementation review — the three rules below are
 decisions the original draft left implicit:_
 
-1. **Allowlist vs. `--status` precedence.** `--running` and `--status` are declared as independent, non-mutually-exclusive `store_true`/free-form arguments (`__init__.py:365-369`) and share one `cmd_list` branch (`info.py:110`), so `--running --status interrupted` is reachable — and is the shape the affected skills are most likely to be edited into. Rule: the `{running, starting}` allowlist applies **only when `status_filter` is falsy**; an explicit `--status` selects exactly that status irrespective of `--running`/`--all`. The intersection reading (allowlist AND `--status`) is rejected: it makes every `--running --status <non-running>` invocation silently return `[]`.
-2. **Empty-path exit codes are frozen at current values.** `info.py:116-124` returns 0 for the `--running` empty path and 1 for the `--status` empty path. The fix dramatically increases how often `--running` reaches that path, and BUG-3231 rewrites the same block — so this is stated as a rule rather than left to whichever change lands first: `--running` → 0, `--all` → 0, `--status <no match>` → 1, in both output modes. Liveness is signalled to `--json` consumers by array length, not exit status.
-3. **`awaiting_continuation` is excluded from "genuinely executing."** A spawn-mode handoff may have a live successor process, but the state itself is parked awaiting resume, and `--status`'s own help text already names `awaiting_continuation` as the way to select it. Escape hatch: `/ll:cleanup-loops`'s "abandoned-handoff" classification must source it via `--all` or `--status awaiting_continuation`.
+1. **Allowlist vs. `--status` precedence.** `--running` and `--status` are declared as independent, non-mutually-exclusive `store_true`/free-form arguments (`__init__.py:365-369`) and share one `cmd_list` branch (`info.py:110`), so `--running --status interrupted` is reachable — and is the shape the affected skills are most likely to be edited into. Rule: the `{running, starting}` allowlist applies **only when `status_filter` is falsy**; an explicit `--status` selects exactly that status irrespective of `--running`/`--all-runs`. The intersection reading (allowlist AND `--status`) is rejected: it makes every `--running --status <non-running>` invocation silently return `[]`.
+2. **Empty-path exit codes are frozen at current values.** `info.py:116-124` returns 0 for the `--running` empty path and 1 for the `--status` empty path. The fix dramatically increases how often `--running` reaches that path, and BUG-3231 rewrites the same block — so this is stated as a rule rather than left to whichever change lands first: `--running` → 0, `--all-runs` → 0, `--status <no match>` → 1, in both output modes. Liveness is signalled to `--json` consumers by array length, not exit status.
+3. **`awaiting_continuation` is excluded from "genuinely executing."** A spawn-mode handoff may have a live successor process, but the state itself is parked awaiting resume, and `--status`'s own help text already names `awaiting_continuation` as the way to select it. Escape hatch: `/ll:cleanup-loops`'s "abandoned-handoff" classification must source it via `--all-runs` or `--status awaiting_continuation`.
 
-**On the naming remedy:** `list_running_loops`'s *docstring* is accurate ("List all loops with saved state"); the *name* is what misleads. Renaming is rejected as out of proportion — `transport.py:588`, `cmd_list`, and the `test_fsm_persistence.py` suite all bind to it. Instead the docstring is strengthened to state the contract affirmatively (returns every saved state regardless of status; callers wanting live-only must filter; `transport.py` depends on this), and the honest name is delivered at the CLI surface as `--all`.
+**On the naming remedy:** `list_running_loops`'s *docstring* is accurate ("List all loops with saved state"); the *name* is what misleads. Renaming is rejected as out of proportion — `transport.py:588`, `cmd_list`, and the `test_fsm_persistence.py` suite all bind to it. Instead the docstring is strengthened to state the contract affirmatively (returns every saved state regardless of status; callers wanting live-only must filter; `transport.py` depends on this), and the honest name is delivered at the CLI surface as `--all-runs`.
 
 ---
 
@@ -181,7 +193,7 @@ flag named for it, only by `--status running`.
 
 ## Proposed Fix
 
-**Decided (2026-08-17): do both halves — filter `--running`, *and* add `--all`
+**Decided (2026-08-17): do both halves — filter `--running`, *and* add `--all-runs`
 as the supported unfiltered enumeration path.** The two directions originally
 sketched here were framed as alternatives; they are not. Filtering `--running`
 without providing a replacement enumeration surface deletes the data source
@@ -195,29 +207,31 @@ that `/ll:cleanup-loops` exists to consume.
    entries are synthesized further down in `list_running_loops` for loops with
    a live PID and no state file yet, and must survive the filter.
 
-2. **Add `--all`** (`store_true`, help: *"Show every loop with saved state,
+2. **Add `--all-runs`** (`store_true`, help: *"Show every loop with saved state,
    whatever status it ended in"*) to the `list` subparser, entering the same
    `cmd_list` branch and emitting `list_running_loops()`'s result set
    unfiltered. This is the flag whose behavior `--running` accidentally has
    today, given a name that tells the truth.
 
-   **Naming caveat — resolve at implementation.** `ll-loop list` has two
-   distinct modes: with `--running`/`--status` it lists *runs* (state files in
-   `.loops/.running/`); bare, it lists *loop definitions* (`*.yaml`, filtered
-   by `--builtin`/`--category`/`--label`, `info.py:183-208`). A flag named
-   `--all` reads naturally against the definitions mode ("all loops including
-   built-ins") — which is what bare `list` already does. Verified there is no
-   existing `--all` on this subparser, so there is no collision, but the help
-   text must disambiguate explicitly ("every loop **run** with saved state,
-   whatever status it ended in"). If that reads too thin at implementation
-   time, `--all-runs` or `--saved` are acceptable substitutes; the requirement
-   is an unfiltered enumeration surface, not this specific spelling.
+   **Naming — corrected during `/ll:ready-issue` (2026-08-17).** `ll-loop
+   list` has two distinct modes: with `--running`/`--status` it lists *runs*
+   (state files in `.loops/.running/`); bare, it lists *loop definitions*
+   (`*.yaml`, filtered by `--builtin`/`--category`/`--label`,
+   `info.py:183-208`). The plain spelling `--all`/`-a` is **already taken** on
+   this same `list_parser` (`__init__.py:406-411`), with an unrelated meaning
+   — "Include internal sub-loops and examples (hidden by default)" for the
+   loop-definitions mode. Reusing `--all` for the unfiltered-runs meaning
+   would collide with that existing flag on the same subparser, not merely
+   read confusingly against it. The flag this fix adds is therefore
+   `--all-runs` (one of the two alternatives this section had already named
+   as acceptable substitutes), with help text disambiguating explicitly
+   ("every loop **run** with saved state, whatever status it ended in").
 
-   Rejected alternative: leave `--all` out and have the three affected skills
+   Rejected alternative: leave `--all-runs` out and have the three affected skills
    iterate `--status` once per value. That is up to nine subprocess
    invocations against a status vocabulary that is not enumerated anywhere in
    code (`LoopState.status` is a bare `str`, no enum — see Program Design ▸
-   Types), and it would silently miss any status added later. `--all` is one
+   Types), and it would silently miss any status added later. `--all-runs` is one
    flag and three one-line skill edits.
 
 Do **not** filter inside `list_running_loops()` — `transport.py:588` depends
@@ -232,21 +246,21 @@ These are behavioral decisions the fix must make explicitly, not fall into:
   (`info.py:110`), so `--running --status interrupted` is reachable and is
   what the affected skills will most naturally be edited into. The allowlist
   applies **only when `--status` is absent**; when `--status` is given it
-  selects exactly that status, `--running`/`--all` notwithstanding. An
+  selects exactly that status, `--running`/`--all-runs` notwithstanding. An
   allowlist AND `--status interrupted` intersection (always empty) would be
   the wrong answer.
 - **Exit code on the empty path is unchanged.** Today bare `--running` with no
   results prints `No running loops` and returns 0, while `--status` with no
   match returns 1 (`info.py:116-124`). The fix makes many more projects reach
   that empty path via `--running`, and BUG-3231 rewrites the same block —
-  pin the current semantics (`--running`/`--all` empty → 0; `--status` empty →
+  pin the current semantics (`--running`/`--all-runs` empty → 0; `--status` empty →
   1) so neither fix flips it by accident. `--json` consumers distinguish
   liveness by array length, not exit status.
 - **`awaiting_continuation` is excluded** from the `--running` allowlist. A
   spawn-mode handoff may have a live successor process, but the state itself
   is not executing, and the `--status` help text already advertises
   `awaiting_continuation` as the way to select it. `/ll:cleanup-loops`'s
-  "abandoned-handoff" classification must therefore source it via `--all` or
+  "abandoned-handoff" classification must therefore source it via `--all-runs` or
   `--status awaiting_continuation`, not `--running`.
 
 ### On `list_running_loops`'s name vs. docstring
@@ -264,17 +278,17 @@ filter, and `transport.py` depends on the unfiltered behavior.
 
 _These touchpoints were identified by wiring analysis and must be included in the implementation:_
 
-- Add `--all` to the `list` subparser (`scripts/little_loops/cli/loop/__init__.py:365-369`, alongside `--running`/`--status`) and handle it in `cmd_list`'s branch condition (`info.py:110`) so it enters the same path and skips the allowlist. Also update the usage epilog example block at `__init__.py:119`.
-- Update `scripts/tests/test_ll_loop_integration.py::test_list_running_reconciles_dead_pid_entries` (BUG-1731 regression, line 327) — its current assertions require the dead-PID-reconciled `interrupted` entry to appear under bare `--running`, which directly contradicts the planned allowlist filter. Update it to assert the entry is excluded from `--running` output while confirming reconciliation itself still happens (e.g. via `--all`, `--status interrupted`, or directly against the rewritten state file). **Note this is not a weakening of the regression:** the test's own docstring (line 333) already claims it "flips stale running entries to interrupted **and excludes them from output**" — the assertions have always contradicted the docstring. The fix brings the test in line with its stated intent, and the on-disk `written["status"] == "interrupted"` + `reconciled_at` assertions (the actual BUG-1731 guarantee) must be preserved verbatim.
-- Update `skills/cleanup-loops/SKILL.md` (Step 1, line 34) — switch `ll-loop list --running --json` to `ll-loop list --all --json` and rewrite the accompanying prose, which currently documents the pre-fix bug as the mechanism ("returns all loops that have a `.state.json` file... regardless of whether they are actually running"). That sentence becomes true of `--all` and false of `--running`.
-- Update `skills/debug-loop-run/SKILL.md:53-64` and `skills/audit-loop-run/SKILL.md:54-57` — same switch to `--all`. Their existing client-side filters for `running`/`interrupted`/`failed`/`timed_out`/`awaiting_continuation` candidates then keep working unchanged; with `--running` they would go permanently dead.
-- Update `docs/reference/json-output-contracts.md:119-124` — the "Alternate entry point" section documents `--running --json` as returning "the same base state objects" unfiltered. Describe the `{running, starting}` allowlist, document `--all` as the unfiltered entry point, and note that `--status` selects arbitrary statuses independently.
-- Update `docs/reference/CLI.md:1216` — the flags table describes `--status` as meaningful only "with `--running`", which implies bare `--running` is unfiltered. Reword and add the `--all` row.
-- **(Added 2026-08-17 review)** Update `docs/reference/COMMANDS.md:950` — the `/ll:cleanup-loops` entry repeats the same stale claim as the skill it documents: "Runs `ll-loop list --running --json` to enumerate all loops with state files". Must track the skill's switch to `--all`.
-- **(Added 2026-08-17 review)** Update `docs/guides/LOOPS_GUIDE.md:1321` — scope-conflict troubleshooting tells the reader to find the conflicting lock holder with `ll-loop list --running`. The blocking holder is frequently a stale-`interrupted` entry whose lock PID is still alive (exactly the case `/ll:cleanup-loops` step 5 handles), which disappears from `--running` post-fix. Redirect to `--all`.
+- Add `--all-runs` to the `list` subparser (`scripts/little_loops/cli/loop/__init__.py:365-369`, alongside `--running`/`--status`) and handle it in `cmd_list`'s branch condition (`info.py:110`) so it enters the same path and skips the allowlist. Also update the usage epilog example block at `__init__.py:119`.
+- Update `scripts/tests/test_ll_loop_integration.py::test_list_running_reconciles_dead_pid_entries` (BUG-1731 regression, line 327) — its current assertions require the dead-PID-reconciled `interrupted` entry to appear under bare `--running`, which directly contradicts the planned allowlist filter. Update it to assert the entry is excluded from `--running` output while confirming reconciliation itself still happens (e.g. via `--all-runs`, `--status interrupted`, or directly against the rewritten state file). **Note this is not a weakening of the regression:** the test's own docstring (line 333) already claims it "flips stale running entries to interrupted **and excludes them from output**" — the assertions have always contradicted the docstring. The fix brings the test in line with its stated intent, and the on-disk `written["status"] == "interrupted"` + `reconciled_at` assertions (the actual BUG-1731 guarantee) must be preserved verbatim.
+- Update `skills/cleanup-loops/SKILL.md` (Step 1, line 34) — switch `ll-loop list --running --json` to `ll-loop list --all-runs --json` and rewrite the accompanying prose, which currently documents the pre-fix bug as the mechanism ("returns all loops that have a `.state.json` file... regardless of whether they are actually running"). That sentence becomes true of `--all-runs` and false of `--running`.
+- Update `skills/debug-loop-run/SKILL.md:53-64` and `skills/audit-loop-run/SKILL.md:54-57` — same switch to `--all-runs`. Their existing client-side filters for `running`/`interrupted`/`failed`/`timed_out`/`awaiting_continuation` candidates then keep working unchanged; with `--running` they would go permanently dead.
+- Update `docs/reference/json-output-contracts.md:119-124` — the "Alternate entry point" section documents `--running --json` as returning "the same base state objects" unfiltered. Describe the `{running, starting}` allowlist, document `--all-runs` as the unfiltered entry point, and note that `--status` selects arbitrary statuses independently.
+- Update `docs/reference/CLI.md:1216` — the flags table describes `--status` as meaningful only "with `--running`", which implies bare `--running` is unfiltered. Reword and add the `--all-runs` row.
+- **(Added 2026-08-17 review)** Update `docs/reference/COMMANDS.md:950` — the `/ll:cleanup-loops` entry repeats the same stale claim as the skill it documents: "Runs `ll-loop list --running --json` to enumerate all loops with state files". Must track the skill's switch to `--all-runs`.
+- **(Added 2026-08-17 review)** Update `docs/guides/LOOPS_GUIDE.md:1321` — scope-conflict troubleshooting tells the reader to find the conflicting lock holder with `ll-loop list --running`. The blocking holder is frequently a stale-`interrupted` entry whose lock PID is still alive (exactly the case `/ll:cleanup-loops` step 5 handles), which disappears from `--running` post-fix. Redirect to `--all-runs`.
 - **(Added 2026-08-17 review)** `docs/generalized-fsm-loop.md:1619` — bare `ll-loop list --running` in an example; verify the surrounding prose does not promise unfiltered output before leaving it as-is.
 - **(Added 2026-08-17 review)** No change needed at `scripts/tests/test_json_output_contracts.py:245-266` (`test_json_output_via_cmd_list_running`) — verified: it mocks `list_running_loops` with a single state from `_make_loop_state()`, whose default `status` is `"running"` (line 181), so the entry survives the allowlist and the contract assertions hold. Recorded here so implementation does not re-derive it.
-- **(Added 2026-08-17 review)** Do **not** delete `_STATUS_COLORS`' non-running entries or the `interrupted`/`user_stopped` → `"paused"` `display_status` remapping (`info.py:132-163`). They become unreachable on the `--running` path but are still required by `--all` and `--status`.
+- **(Added 2026-08-17 review)** Do **not** delete `_STATUS_COLORS`' non-running entries or the `interrupted`/`user_stopped` → `"paused"` `display_status` remapping (`info.py:132-163`). They become unreachable on the `--running` path but are still required by `--all-runs` and `--status`.
 
 ## Acceptance Criteria
 
@@ -289,16 +303,16 @@ _These touchpoints were identified by wiring analysis and must be included in th
       entry.)
 - [ ] A loop with a live PID and no state file yet (`status="starting"`) is
       still reported by `--running`.
-- [ ] `ll-loop list --all --json` returns every state in `.loops/.running/`
+- [ ] `ll-loop list --all-runs --json` returns every state in `.loops/.running/`
       regardless of status — the pre-fix `--running` behavior, under an
       honest name.
 - [ ] `--status` overrides the allowlist: `ll-loop list --running --status
       interrupted` returns the `interrupted` entries, not `[]`.
-- [ ] Exit codes on the empty path are unchanged: `--running` and `--all`
+- [ ] Exit codes on the empty path are unchanged: `--running` and `--all-runs`
       return 0, `--status <no match>` returns 1, in both `--json` and
       human-readable modes.
 - [ ] `awaiting_continuation` entries do **not** appear under `--running`, and
-      do appear under `--all` and `--status awaiting_continuation`.
+      do appear under `--all-runs` and `--status awaiting_continuation`.
 - [ ] State files are not deleted or archived as a side effect of `list` —
       `interrupted` runs remain resumable, and dead-PID reconciliation
       (`running` → `interrupted`, written to disk) still happens on the
@@ -307,12 +321,18 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - [ ] `list_running_loops`'s docstring states affirmatively that it returns
       all saved states regardless of status and that callers wanting live-only
       must filter; the `--running` help text says "Only show loops currently
-      executing"; the `--all` help text describes the unfiltered set.
+      executing"; the `--all-runs` help text describes the unfiltered set.
 - [ ] `/ll:cleanup-loops`, `/ll:debug-loop-run`, and `/ll:audit-loop-run` still
-      discover terminal- and paused-status loops after the fix (via `--all`).
+      discover terminal- and paused-status loops after the fix (via `--all-runs`).
 
+
+## Status
+
+**Open** | Created: 2026-08-17 | Priority: P2
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-17T15:34:02 - `82413b78-5f49-49d2-809f-b74ee621f3c7.jsonl`
+- `/ll:ready-issue` - 2026-08-17T15:22:00 - `be92c547-fe8a-4348-a51a-3b680c72f920.jsonl`
 - `/ll:confidence-check` - 2026-08-17T05:59:39 - `2842c23a-3637-4e5a-8f3a-147fcbcc8790.jsonl`
 - `/ll:verify-issues` - 2026-08-17T05:56:54 - `1741dcb3-c773-4b6b-b0db-7b1b7643db32.jsonl`
 - `/ll:wire-issue` - 2026-08-17T05:54:24 - `4a3da90a-08c0-47c7-883c-30dda4587b68.jsonl`

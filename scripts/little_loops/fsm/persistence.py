@@ -50,6 +50,13 @@ RESUMABLE_STATUSES: frozenset[str] = frozenset(
 # died mid-state, so resume is unsafe. "user_stopped" IS in the set because the user
 # ran `ll-loop stop` and the state on disk reflects a clean user-initiated pause.
 
+# BUG-3232: statuses that mean a dispatch is genuinely executing right now, as
+# opposed to merely resumable (RESUMABLE_STATUSES also includes paused states
+# like "interrupted"/"user_stopped"). "awaiting_continuation" is deliberately
+# excluded — a spawn-mode handoff may have a live successor process, but the
+# state itself is parked awaiting resume, not executing.
+ACTIVE_RUN_STATUSES: frozenset[str] = frozenset({"running", "starting"})
+
 logger = logging.getLogger(__name__)
 
 # FEAT-2478 — cache the observability.otel_attributes.enabled toggle so the
@@ -1107,7 +1114,16 @@ def _find_instances(loop_name: str, running_dir: Path) -> list[tuple[str | None,
 
 
 def list_running_loops(loops_dir: Path | None = None) -> list[LoopState]:
-    """List all loops with saved state.
+    """List all loops with saved state, regardless of status.
+
+    Returns every dispatch that has a `.state.json` (or live `.pid`) file
+    under `.loops/.running/` — including terminal statuses like `completed`,
+    `failed`, and `timed_out`, since `_reconcile_stale_runs` only archives
+    those at loop *startup*, never here. Callers that want only genuinely
+    executing runs must filter the result themselves, e.g. against
+    `ACTIVE_RUN_STATUSES` (BUG-3232). This unfiltered contract is
+    intentional: `transport.py`'s dashboard-seed callback depends on
+    receiving the full history, not just live runs.
 
     Args:
         loops_dir: Base directory for loops (default: .loops)

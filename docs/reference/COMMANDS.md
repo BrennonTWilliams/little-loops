@@ -947,7 +947,7 @@ Find stuck or stale `ll-loop` processes, diagnose root causes from state and eve
 - `--interrupted-age H` (optional): Hours before an `interrupted` loop's `updated_at` makes it eligible for cleanup (default: 24)
 
 **What it does:**
-1. Runs `ll-loop list --running --json` to enumerate all loops with state files
+1. Runs `ll-loop list --all-runs --json` to enumerate all loops with state files
 2. Checks each loop's PID liveness and `updated_at` staleness
 3. Classifies loops: stuck-running, stale-interrupted, abandoned-handoff, terminal, or healthy
 4. Prompts user to confirm cleanup of actionable loops

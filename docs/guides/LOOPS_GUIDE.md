@@ -1318,7 +1318,7 @@ Branch with ternary syntax — `check_ready?run_impl:done` gives `check_ready` a
 
 **Stall detector fires even though the loop is making progress.** This is the BUG-1674 false positive: a `check`→`work` ping-pong where `work` has no evaluator is invisible to the detector. Add `progress_paths` under `circuit.repeated_failure` listing the files `work` writes — see [Stall Detector](#stall-detector-circuit-repeated-failure).
 
-**Scope conflict error.** Another loop holds a lock on overlapping paths. Find it with `ll-loop list --running` and stop it, or re-run with `--queue` to wait. If you queued a waiter and want to abandon it, inspect the queue with `ll-loop queue list` and cancel the entry with `ll-loop queue remove <id>`.
+**Scope conflict error.** Another loop holds a lock on overlapping paths. The blocking holder is often a stale `interrupted` entry whose lock PID is still alive — find it with `ll-loop list --all-runs` and stop it, or re-run with `--queue` to wait. If you queued a waiter and want to abandon it, inspect the queue with `ll-loop queue list` and cancel the entry with `ll-loop queue remove <id>`.
 
 **LLM evaluator errors.** Claude CLI auth or network issue. Ensure the `claude` CLI is authenticated, or use `--no-llm` to fall back to deterministic evaluators.
 

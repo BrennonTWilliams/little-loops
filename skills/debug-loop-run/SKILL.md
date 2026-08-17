@@ -50,7 +50,7 @@ This lists folders matching the flat layout `[TIMESTAMP]-[LOOP-NAME]` for the gi
 Otherwise, enumerate candidate loops:
 
 ```bash
-ll-loop list --running --json
+ll-loop list --all-runs --json
 ```
 
 This outputs a JSON array of `LoopState` objects. Each object contains:

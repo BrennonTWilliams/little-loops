@@ -844,8 +844,9 @@ For nested loops, the displayed identifier is the **relative path** without the 
 
 | Flag | Short | Description |
 |------|-------|-------------|
-| `--running` | | Only show currently running loops |
-| `--status STATUS` | | With `--running`, filter to loops with the given status (e.g. `interrupted`, `awaiting_continuation`) |
+| `--running` | | Only show loops currently executing (`running`/`starting` status allowlist — BUG-3232) |
+| `--all-runs` | | Show every loop run with saved state, whatever status it ended in (`completed`, `failed`, `interrupted`, `user_stopped`, `awaiting_continuation`, etc. — this is what bare `--running` returned before BUG-3232) |
+| `--status STATUS` | | Filter to loops with the given status (e.g. `interrupted`, `awaiting_continuation`); overrides the `--running` allowlist if both are given |
 | `--builtin` | | Only show built-in loops (exclude project `.loops/`) |
 | `--category <cat>` | `-c` | Filter to loops with the given category (e.g. `apo`, `issue-management`, `code-quality`) |
 | `--label <tag>` | `-l` | Filter to loops that carry the given label tag; repeat for multiple tags (OR match) |
@@ -1213,7 +1214,8 @@ ll-loop test fix-types                # Run single test iteration
 ll-loop simulate fix-types            # Interactive simulation
 ll-loop simulate fix-types --scenario all-pass
 ll-loop list                          # List available loops
-ll-loop list --running                # List running loops
+ll-loop list --running                # List loops currently executing
+ll-loop list --all-runs               # List every run with saved state, any status
 ll-loop list --json                   # JSON array of available loops
 ll-loop status fix-types              # Show loop status
 ll-loop status fix-types --json       # Loop state as JSON
