@@ -31,6 +31,11 @@ concurrency:
 
 permissions:
   contents: read
+  # upload-artifact needs the `actions: write` scope. Because `permissions` is
+  # set explicitly here, every *other* scope (including `actions`) defaults to
+  # `none` — without this line the failure-upload step 403s with "Resource not
+  # accessible by integration" and the paper trail silently never uploads.
+  actions: write
 
 jobs:
   unit-tests:
