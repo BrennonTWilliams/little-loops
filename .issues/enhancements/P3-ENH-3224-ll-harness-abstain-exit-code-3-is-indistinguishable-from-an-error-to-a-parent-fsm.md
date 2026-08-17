@@ -4,10 +4,11 @@ type: ENH
 title: ll-harness ABSTAIN exit code 3 is indistinguishable from an error to a parent
   FSM
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-08-16'
 captured_at: '2026-08-16T23:29:27Z'
+completed_at: '2026-08-17T16:43:40Z'
 parent: EPIC-3217
 decision_needed: false
 confidence_score: 95
@@ -207,12 +208,38 @@ Enables abstention-aware loop composition over `ll-harness`. No current built-in
 - `docs/reference/API.md` `little_loops.fsm.executor` section — the
   `exit_code` evaluator's verdict mapping this issue targets
 
+## Resolution
+
+Implemented Option A exactly as specified in Program Design: a new opt-in
+`EvaluateConfig.abstain_on_exit_3: bool = False` field, following the
+`uncertain_suffix` triad (dataclass field -> `to_dict()`/`from_dict()` ->
+keyword parameter on `evaluate_exit_code()` -> dispatch-site wiring). Exit
+code 3 maps to `cannot_judge` only when the flag is set; unset states are
+unaffected (existing `0/1/2+` mapping unchanged, confirmed by extending
+`TestExitCodeEvaluator`). Shipped with the required consumer: a `harness_exit`
+fragment in `scripts/little_loops/loops/lib/common.yaml` pairing
+`abstain_on_exit_3: true` with a documented `on_cannot_judge` requirement.
+Documented in `docs/reference/API.md` and `docs/generalized-fsm-loop.md`
+(verdict table + the exit-`2` per-tool contract disagreement note). Both
+declared-route and undeclared-hold-then-error abstention paths covered by new
+`test_fsm_executor.py::TestAbstentionRouting` cases and a real-subprocess
+`test_loop_run_e2e.py` case. `evaluate_exit_code()`'s other two call sites
+(`executor.py:2601` default-evaluator path, `cli/loop/testing.py:128` `ll-loop
+test` simulate path) keep compiling unchanged — neither has an `EvaluateConfig`
+in scope, so neither can carry the new flag, matching the issue's scope
+boundary. Full suite: 19704 passed, 46 skipped, 1 pre-existing unrelated
+failure (`test_prose_dep_sweep_gate.py` prose-dependency drift on
+ENH-3203/3204/3205, present in the working tree before this session started).
+
 ## Status
 
 **Open** | Created: 2026-08-16 | Priority: P3
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-17T16:42:57 - `bcf99734-092e-4d7b-9a71-2d6fb04c8246.jsonl`
+- `/ll:ready-issue` - 2026-08-17T16:25:29 - `c5822cf6-d799-4d6d-8bfb-1ad40360927c.jsonl`
+- `/ll:confidence-check` - 2026-08-17T16:17:47 - `c786d9ca-0348-4ed5-812d-bc2de7a34350.jsonl`
 - `/ll:confidence-check` - 2026-08-17T03:01:36 - `950fed1e-dcee-4e9e-a142-297b86aebff5.jsonl`
 - `/ll:wire-issue` - 2026-08-17T01:55:28 - `bd5e977d-8602-4117-8dad-6c8c2098b8c6.jsonl`
 - `/ll:decide-issue` - 2026-08-17T01:37:33 - `998c4c4b-eb46-4ebd-9513-1c70f20dff43.jsonl`

@@ -235,22 +235,29 @@ _NUMERIC_OPERATORS: dict[str, Callable[[float, float], bool]] = {
 }
 
 
-def evaluate_exit_code(exit_code: int) -> EvaluationResult:
+def evaluate_exit_code(exit_code: int, abstain_on_exit_3: bool = False) -> EvaluationResult:
     """Map Unix exit code to verdict.
 
     Args:
         exit_code: The process exit code
+        abstain_on_exit_3: If True, exit code 3 maps to cannot_judge instead
+            of error. Opt-in per state (ENH-3224) because exit code 3 is not
+            OS-reserved — only invocations known to follow the ll-harness
+            ABSTAIN exit-code contract should set this.
 
     Returns:
         EvaluationResult with verdict:
             - 0 -> yes
             - 1 -> no
-            - 2+ -> error
+            - 3 -> cannot_judge (only when abstain_on_exit_3 is True)
+            - everything else -> error
     """
     if exit_code == 0:
         verdict = "yes"
     elif exit_code == 1:
         verdict = "no"
+    elif exit_code == 3 and abstain_on_exit_3:
+        verdict = "cannot_judge"
     else:
         verdict = "error"
 
@@ -1896,7 +1903,7 @@ def evaluate(
         )
 
     if eval_type == "exit_code":
-        return evaluate_exit_code(exit_code)
+        return evaluate_exit_code(exit_code, abstain_on_exit_3=config.abstain_on_exit_3)
 
     elif eval_type == "output_numeric":
         if config.target is None:

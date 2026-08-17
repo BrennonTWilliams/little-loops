@@ -60,6 +60,7 @@ class TestExitCodeEvaluator:
             (0, "yes"),
             (1, "no"),
             (2, "error"),
+            (3, "error"),
             (127, "error"),
             (255, "error"),
         ],
@@ -74,6 +75,23 @@ class TestExitCodeEvaluator:
         """Negative exit codes treated as error."""
         result = evaluate_exit_code(-1)
         assert result.verdict == "error"
+
+    def test_exit_3_without_flag_is_error(self) -> None:
+        """Exit code 3 maps to error when abstain_on_exit_3 is not set (default False)."""
+        result = evaluate_exit_code(3)
+        assert result.verdict == "error"
+
+    def test_exit_3_with_flag_is_cannot_judge(self) -> None:
+        """Exit code 3 maps to cannot_judge when abstain_on_exit_3=True (ENH-3224)."""
+        result = evaluate_exit_code(3, abstain_on_exit_3=True)
+        assert result.verdict == "cannot_judge"
+        assert result.details["exit_code"] == 3
+
+    def test_other_exit_codes_unaffected_by_flag(self) -> None:
+        """abstain_on_exit_3=True only changes exit code 3's mapping."""
+        assert evaluate_exit_code(0, abstain_on_exit_3=True).verdict == "yes"
+        assert evaluate_exit_code(1, abstain_on_exit_3=True).verdict == "no"
+        assert evaluate_exit_code(2, abstain_on_exit_3=True).verdict == "error"
 
 
 class TestOutputNumericEvaluator:
@@ -1578,6 +1596,22 @@ class TestEvaluateDispatcherLLM:
 
         assert result.verdict == "yes_uncertain"
         assert result.details["confident"] is False
+
+    def test_dispatch_exit_code_abstain_on_exit_3(self) -> None:
+        """exit_code dispatch honors abstain_on_exit_3 (ENH-3224)."""
+        config = EvaluateConfig(type="exit_code", abstain_on_exit_3=True)
+        ctx = InterpolationContext()
+        result = evaluate(config, "", 3, ctx)
+
+        assert result.verdict == "cannot_judge"
+
+    def test_dispatch_exit_code_without_abstain_flag(self) -> None:
+        """exit_code dispatch keeps exit 3 as error when the flag is unset."""
+        config = EvaluateConfig(type="exit_code")
+        ctx = InterpolationContext()
+        result = evaluate(config, "", 3, ctx)
+
+        assert result.verdict == "error"
 
     def test_dispatch_llm_structured_interpolates_prompt(self, mock_cli) -> None:
         """llm_structured interpolates ${context.*} variables in prompt before sending to LLM."""

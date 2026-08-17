@@ -620,6 +620,31 @@ evaluate:
 
 Result details: `{ exit_code: <int> }`
 
+**`abstain_on_exit_3` (ENH-3224):** opt-in per-state flag that carves out exit
+code 3, for wrapping a child process (e.g. `ll-harness`) that follows an
+ABSTAIN exit-code contract:
+
+```yaml
+evaluate:
+  type: exit_code
+  abstain_on_exit_3: true
+```
+
+| Exit Code | Verdict |
+|-----------|---------|
+| 0 | `yes` |
+| 1 | `no` |
+| 3 | `cannot_judge` |
+| 2, 4+ | `error` |
+
+Not a global remap — exit code 3 is not OS-reserved, so this only applies to
+states that explicitly set the flag. **Always pair it with a declared
+`on_cannot_judge` route.** Without one, the abstention holds up to the retry
+cap (re-running the command) and then falls to `on_error` anyway — worse than
+not setting the flag at all. `loops/lib/common.yaml`'s `harness_exit`
+fragment is the worked example: `fragment: harness_exit` plus
+`on_yes`/`on_no`/`on_cannot_judge`.
+
 #### `output_numeric`
 
 Parse stdout as a number and compare.

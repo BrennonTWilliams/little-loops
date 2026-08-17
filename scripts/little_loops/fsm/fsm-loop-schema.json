@@ -767,6 +767,11 @@
           "description": "If true, append _uncertain to low-confidence verdicts. X_uncertain falls back to X's declared route unless the state explicitly declares its own X_uncertain route.",
           "default": false
         },
+        "abstain_on_exit_3": {
+          "type": "boolean",
+          "description": "exit_code evaluator only. If true, exit code 3 maps to verdict cannot_judge instead of error. Opt-in per state since exit 3 is not OS-reserved; only invocations known to follow the ll-harness ABSTAIN exit-code contract should set this. Pair with an on_cannot_judge route, or an undeclared abstention holds up to the cap and re-runs the command before falling to on_error anyway.",
+          "default": false
+        },
         "source": {
           "type": "string",
           "description": "Override default source (current action output)"

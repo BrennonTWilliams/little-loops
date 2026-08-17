@@ -1976,6 +1976,64 @@ class TestAbstentionRouting:
         assert result.terminated_by == "error"
         assert result.error == "No valid transition"
 
+    def test_exit_code_abstain_on_exit_3_declared_route(self) -> None:
+        """ENH-3224: exit_code evaluator with abstain_on_exit_3=True and a
+        declared on_cannot_judge routes immediately on exit code 3."""
+        fsm = FSMLoop(
+            name="test",
+            initial="check",
+            states={
+                "check": StateConfig(
+                    action="ll-harness.sh",
+                    evaluate=EvaluateConfig(type="exit_code", abstain_on_exit_3=True),
+                    on_yes="pass",
+                    on_no="fail",
+                    on_error="errored",
+                    extra_routes={"cannot_judge": "abstained"},
+                ),
+                "pass": StateConfig(terminal=True),
+                "fail": StateConfig(terminal=True),
+                "errored": StateConfig(terminal=True, failure=True),
+                "abstained": StateConfig(terminal=True),
+            },
+        )
+        mock_runner = MockActionRunner()
+        mock_runner.set_result("ll-harness.sh", exit_code=3)
+
+        result = FSMExecutor(fsm, action_runner=mock_runner).run()
+
+        assert result.final_state == "abstained"
+        assert result.iterations == 1
+
+    def test_exit_code_abstain_on_exit_3_undeclared_holds_then_errors(self) -> None:
+        """ENH-3224: without a declared on_cannot_judge route, exit 3 under
+        abstain_on_exit_3=True holds up to the cap then falls to on_error —
+        it must never be silently coerced to on_no."""
+        fsm = FSMLoop(
+            name="test",
+            initial="check",
+            states={
+                "check": StateConfig(
+                    action="ll-harness.sh",
+                    evaluate=EvaluateConfig(type="exit_code", abstain_on_exit_3=True),
+                    on_yes="pass",
+                    on_no="fail",
+                    on_error="errored",
+                ),
+                "pass": StateConfig(terminal=True),
+                "fail": StateConfig(terminal=True),
+                "errored": StateConfig(terminal=True, failure=True),
+            },
+            max_steps=20,
+        )
+        mock_runner = MockActionRunner()
+        mock_runner.set_result("ll-harness.sh", exit_code=3)
+
+        result = FSMExecutor(fsm, action_runner=mock_runner).run()
+
+        assert result.final_state == "errored"
+        assert result.iterations == 3
+
     def test_undeclared_cannot_judge_route_table_ignores_default(self) -> None:
         """AC6: a route: table with a default: must NOT absorb an undeclared
         abstention — that would reintroduce the coin-flip this issue removes."""

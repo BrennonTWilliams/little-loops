@@ -62,6 +62,13 @@ class EvaluateConfig:
         uncertain_suffix: If True, append _uncertain to low-confidence verdicts.
             X_uncertain falls back to X's declared route unless the state
             explicitly declares its own X_uncertain route.
+        abstain_on_exit_3: If True (exit_code evaluator only), exit code 3
+            maps to verdict cannot_judge instead of error. Opt-in per state
+            (ENH-3224) since exit 3 is not OS-reserved; only invocations
+            known to follow the ll-harness ABSTAIN exit-code contract should
+            set this. Pair with an on_cannot_judge route — without one, an
+            abstention holds up to the cap and re-runs the command before
+            falling to on_error anyway.
         source: Override default source (current action output)
         previous: Previous value reference for convergence
         direction: Optimization direction for convergence (minimize/maximize)
@@ -103,6 +110,7 @@ class EvaluateConfig:
     schema: dict[str, Any] | None = None
     min_confidence: float = 0.5
     uncertain_suffix: bool = False
+    abstain_on_exit_3: bool = False
     source: str | None = None
     previous: str | None = None
     direction: Literal["minimize", "maximize"] = "minimize"
@@ -147,6 +155,8 @@ class EvaluateConfig:
             result["min_confidence"] = self.min_confidence
         if self.uncertain_suffix:
             result["uncertain_suffix"] = self.uncertain_suffix
+        if self.abstain_on_exit_3:
+            result["abstain_on_exit_3"] = self.abstain_on_exit_3
         if self.source is not None:
             result["source"] = self.source
         if self.previous is not None:
@@ -197,6 +207,7 @@ class EvaluateConfig:
             schema=data.get("schema"),
             min_confidence=data.get("min_confidence", 0.5),
             uncertain_suffix=data.get("uncertain_suffix", False),
+            abstain_on_exit_3=data.get("abstain_on_exit_3", False),
             source=data.get("source"),
             previous=data.get("previous"),
             direction=data.get("direction", "minimize"),

@@ -5839,9 +5839,25 @@ For `llm_structured` evaluations (ENH-2342), `details` always includes:
 #### Tier 1 Evaluators (Deterministic)
 
 ```python
-def evaluate_exit_code(exit_code: int) -> EvaluationResult
+def evaluate_exit_code(exit_code: int, abstain_on_exit_3: bool = False) -> EvaluationResult
 ```
-Map Unix exit code to verdict: 0→success, 1→failure, 2+→error
+Map Unix exit code to verdict: 0→success, 1→failure, 2+→error. When
+`abstain_on_exit_3=True`, exit code 3 maps to `cannot_judge` instead of
+`error` (ENH-3224) — an opt-in per-state flag (`EvaluateConfig.abstain_on_exit_3`),
+**not** a global remap, since exit code 3 is not OS-reserved: only invocations
+known to follow a tool's ABSTAIN exit-code contract (e.g. `ll-harness`, whose
+own exit-code mapping is `0`=pass, `1`=fail, `3`=abstained — see
+`cli/harness.py`) should set it. Pair the flag with a declared
+`on_cannot_judge` route; a state that sets the flag with no such route holds
+up to `_ABSTENTION_HOLD_CAP` (2), re-running the command, before falling to
+`on_error` anyway — strictly worse than not opting in. The `loops/lib/common.yaml`
+`harness_exit` fragment is the worked example: `fragment: harness_exit` plus
+`on_yes`/`on_no`/`on_cannot_judge`.
+
+Note the two built-in CLIs already disagree on exit code `2`: `ll-loop run`
+treats it as a failure terminal (`fsm/types.py`), while `ll-harness` treats it
+as an infra error (`cli/harness.py`). There is no single global exit-code
+vocabulary across tools — read each tool's own contract.
 
 ```python
 def evaluate_output_numeric(

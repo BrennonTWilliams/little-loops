@@ -105,6 +105,37 @@ class TestLoopRunEndToEnd:
         assert visited == ["check"]
         assert "done" not in visited
 
+    def test_abstain_on_exit_3_routes_to_declared_cannot_judge(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """ENH-3224: exit 3 under `abstain_on_exit_3` routes to a declared
+        `on_cannot_judge` route through the real executor, no mocks."""
+        from little_loops.fsm.schema import EvaluateConfig
+
+        monkeypatch.chdir(tmp_path)
+        fsm = _loop(
+            name="abstain-path",
+            initial="check",
+            states={
+                "check": _state(
+                    action="exit 3",
+                    action_type="shell",
+                    evaluate=EvaluateConfig(type="exit_code", abstain_on_exit_3=True),
+                    on_yes="done",
+                    on_no="failed",
+                    extra_routes={"cannot_judge": "abstained"},
+                ),
+                "failed": _state(terminal=True),
+                "abstained": _state(terminal=True),
+                "done": _state(terminal=True),
+            },
+        )
+        result, visited = _run(fsm)
+
+        assert result.final_state == "abstained"
+        assert result.terminated_by == "terminal"
+        assert visited == ["check"]
+
     def test_repair_loop_creates_artifact_then_converges(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:

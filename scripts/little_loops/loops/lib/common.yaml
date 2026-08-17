@@ -20,6 +20,21 @@ fragments:
     evaluate:
       type: exit_code
 
+  harness_exit:
+    description: |
+      Shell command that invokes `ll-harness` (or any command following its
+      ABSTAIN exit-code contract: 0=pass, 1=fail, 3=abstained) and routes an
+      abstained run distinctly from a crash (ENH-3224).
+      State must supply: action, on_yes, on_no, on_cannot_judge (and
+      optionally on_error, timeout).
+      REQUIRED: declare on_cannot_judge. Without it, an abstention holds up
+      to the hold cap — re-running the harness — and then falls to on_error
+      anyway, which is strictly worse than not opting in at all.
+    action_type: shell
+    evaluate:
+      type: exit_code
+      abstain_on_exit_3: true
+
   retry_counter:
     description: |
       Shell state that increments a counter file and evaluates whether it is still below
