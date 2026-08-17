@@ -261,6 +261,7 @@ _Added by `/ll:confidence-check` on 2026-08-17_
 - Open Decision #3 (does AC3's failure raise directly or promote via `warnings.simplefilter`) is still unresolved in the issue text — minor, but worth settling before AC3's implementation.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-17T16:05:52 - `032bd3ea-edea-4d83-ac86-673f9f985746.jsonl`
 - `/ll:wire-issue` - 2026-08-17T15:52:14 - `aa07a6fa-b5bb-47c3-b8d4-077fa1c9e302.jsonl`
 - `/ll:decide-issue` - 2026-08-17T15:38:28 - `86adafaa-70d2-4c08-ac9c-a7da1b885403.jsonl`
 - `/ll:refine-issue` - 2026-08-17T15:33:51 - `82413b78-5f49-49d2-809f-b74ee621f3c7.jsonl`

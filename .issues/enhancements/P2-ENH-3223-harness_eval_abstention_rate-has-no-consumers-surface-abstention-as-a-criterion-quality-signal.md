@@ -10,13 +10,18 @@ discovered_date: '2026-08-16'
 captured_at: '2026-08-16T23:29:07Z'
 parent: EPIC-3217
 decision_needed: true
+testable: true
 ---
 
 # ENH-3223: harness_eval_abstention_rate has no consumers - surface abstention as a criterion-quality signal
 
 ## Summary
 
+> **Not implementation-ready.** This issue still carries `decision_needed: true`, has no `confidence_score`, no Program Design section, and an entirely `TBD` Integration Map — a different maturity tier from its EPIC siblings ENH-3224 (decided, wired, scored 95/79) and ENH-3222. Route it through `/ll:refine-issue` and `/ll:wire-issue` before implementation. The findings below narrow the decision but do not close it.
+
 ENH-3185 shipped `harness_eval_abstention_rate()` in `scripts/little_loops/history_reader.py` (schema v41) so that "a criterion that is abstained on repeatedly becomes visible as a badly written criterion rather than disappearing into a pass/fail number". Nothing reads it. The function has no callers outside its own definition and its tests — no loop, no CLI report, no skill.
+
+**The same is true of its older sibling.** `harness_eval_pass_rate()` (ENH-2741) is *also* unwired into any CLI, despite being documented in `docs/reference/API.md`. This reframes the issue: the Proposed Solution below assumes a place where "pass rate is already reported" that this surface can join, and **no such place exists**. Whatever surface ships here has to introduce both rates, not append abstention to an existing report. That materially enlarges the smallest viable v1.
 
 The persistence half is done and correct (`semantic_passed = NULL` on abstention, excluded from the pass-rate denominator). The signal is recorded and unqueried.
 
@@ -45,7 +50,7 @@ Start with the reporting surface, since it is a thin wrapper over an existing qu
 
 Open questions for the implementer:
 
-- Which CLI does this belong to — `ll-logs telemetry`, an `ll-history` subcommand, or the harness's own reporting? Pick by where pass rate is already reported, so the two appear together.
+- ~~Which CLI does this belong to — pick by where pass rate is already reported, so the two appear together.~~ **This question rests on a false premise**: `harness_eval_pass_rate()` is not reported anywhere either (see Summary). There is no existing co-location to pick. Choose the surface on its own merits and expect to introduce both rates there.
 - What threshold makes a criterion a rewrite candidate? This should be measured against real data rather than guessed; the first version may report without gating.
 - `ll-harness` already distinguishes abstention in its summary and exit code (ABSTAIN = 3). Check whether that summary should also report the historical rate for the target, which would put the signal in front of the user at the moment they are looking at the criterion.
 
@@ -60,6 +65,19 @@ _Added by `/ll:refine-issue` — 2026-08-17 — based on codebase analysis:_
 **Option C**: Add a new subcommand under `ll-logs` telemetry or `ll-history`. No precedent exists for either module: neither currently imports `history_reader.py`'s `harness_eval_pass_rate`/`harness_eval_abstention_rate` at all, and `harness_eval_pass_rate` (the older, ENH-2741 sibling) is itself unwired into any CLI today despite being documented in `docs/reference/API.md` — so there is no existing "pass rate is already reported here" location to co-locate with, contrary to the Proposed Solution's original assumption that such a location exists.
 
 **Recommended**: Option A for v1 — it is the smallest surface, matches the issue's own stated preference for where the signal is most actionable, and requires no new CLI-location decision. The meta-loop gating consumer (`harness-optimize` and friends) is a separate, later wiring step regardless of which reporting surface ships first, since none of those loops currently reference `harness_events`/`harness_eval_abstention_rate` at all.
+
+#### Two blockers on Option A, found 2026-08-17
+
+Both must be resolved during refinement; neither is fatal to Option A but both change its acceptance criteria.
+
+**1. `target` is not written consistently, so a lookup keyed on `args.target` under-reports.** `harness_eval_abstention_rate(target, ...)` filters `harness_events WHERE target = ?` (`history_reader.py:3092-3096`), but the CLI writes three different things into that column:
+
+- single-task paths: `target=args.target` (`cli/harness.py:738, 753, 783, 826, 867`)
+- multi-task DSL paths: `target=str(path)` (`cli/harness.py:917`) and `target=task_file.name` (`cli/harness.py:940`)
+
+So a rate computed from `args.target` inside `_evaluate_and_report()` silently excludes every DSL-path row for the same logical target. Decide during refinement whether to (a) normalize `target` at write time, (b) accept the single-task-only scope and say so in the output, or (c) key the lookup on something stabler such as `target_content_hash`/`target_path` (the ENH-141 content-pin columns, already populated).
+
+**2. Read-before-write ordering must be pinned as an AC, not left incidental.** `_evaluate_and_report()` (`cli/harness.py:580`) runs *before* `_record_harness_event()` (`cli/harness.py:751`), so a rate read inside it naturally excludes the current run. That is the desired behavior — "abstention rate before this run" is the meaningful number — but it is currently an accident of call ordering that a future refactor could invert silently, flipping the reported figure with no test catching it. Add an explicit acceptance criterion and a regression test asserting the current run is excluded.
 
 ## Integration Map
 
@@ -83,9 +101,24 @@ _Added by `/ll:refine-issue` — 2026-08-17 — based on codebase analysis:_
 
 ## Implementation Steps
 
-1. [Major phase 1]
-2. [Major phase 2]
-3. [Verification approach]
+_Placeholder — this issue has not been through `/ll:refine-issue` or `/ll:wire-issue`. Do not implement from this section. Prerequisites before it can be filled in:_
+
+1. Close the `decision_needed` flag on the reporting surface (Option A/B/C), factoring in that both rates are unwired, not just abstention.
+2. Resolve blocker 1 (`target` write inconsistency across single-task vs DSL paths).
+3. Pin blocker 2 (read-before-write ordering) as an explicit AC with a regression test.
+4. Run `/ll:refine-issue` then `/ll:wire-issue` to produce a real Program Design, Integration Map, and Implementation Steps, then `/ll:confidence-check`.
+
+## Scope Boundaries
+
+**In scope**
+- One reporting surface that exposes abstention rate (and, per the Summary finding, pass rate — since it has no existing home either)
+- Resolving the `target` write inconsistency enough that the reported figure is correct or its limits are stated
+
+**Out of scope**
+- **Meta-loop gating.** Wiring `harness-optimize` / `evaluation-quality` / `rubric-refine` to consume the signal is a separate, later step — none of those loops reference `harness_events` at all today, and the threshold that makes a criterion a rewrite candidate should be measured against real data rather than guessed. v1 reports; it does not gate.
+- Choosing that threshold
+- Any change to the persistence half (`semantic_passed = NULL` on abstention, the pass-rate denominator) — it is already correct
+- Backfilling or migrating existing `harness_events` rows
 
 ## Impact
 

@@ -16,6 +16,7 @@ score_complexity: 18
 score_test_coverage: 25
 score_ambiguity: 18
 score_change_surface: 18
+testable: true
 ---
 
 # ENH-3224: ll-harness ABSTAIN exit code 3 is indistinguishable from an error to a parent FSM
@@ -33,6 +34,10 @@ No built-in loop currently invokes `ll-harness`, so this is latent rather than a
 ## Expected Behavior
 
 A parent FSM can route an abstained sub-invocation distinctly from an errored one, so that the abstention semantics established inside the FSM (hold, or a declared `on_cannot_judge` route) survive a process boundary.
+
+**The flag is only useful paired with a declared `on_cannot_judge` route.** `_abstention_fallback()` (`executor.py:2688-2700`) resolves `on_error` *only* — it deliberately never falls back to `route.default` or an implicit `on_no`. So a state that sets the new flag but declares no `cannot_judge` route will hold up to `_ABSTENTION_HOLD_CAP = 2` times (`executor.py:2658`), **re-running the full `ll-harness` evaluation twice**, and then land on `on_error` anyway — i.e. exactly the ABSTAIN→error collapse this issue exists to remove, plus two expensive re-executions. The flag without the route is strictly worse than the status quo.
+
+This is the natural enforcement hook for ENH-3222: that rule's predicate must treat a flag-carrying `exit_code` state as abstention-capable, so `ll-loop validate` catches the flag-without-route shape statically. The two issues should be sequenced together.
 
 ## Motivation
 
@@ -52,6 +57,8 @@ Options 2 and 3, retained for context but not chosen:
 3. **Allow numeric verdict keys in `route:`** so a state can write `route: {3: <state>}`. Most general, largest schema surface.
 
 Document the mapping next to the ABSTAIN exit code so the two stay in sync. Note the two CLIs already disagree on exit `2` (`ll-loop run` = failure terminal, `fsm/types.py:25`; `ll-harness` = infra error, `cli/harness.py:698-700`), so the doc should state the contract per-tool rather than implying one global exit-code vocabulary.
+
+**Ship it with a consumer.** This issue's own Current Behavior notes that no built-in loop invokes `ll-harness`, so as scoped the flag ships with zero users — reproducing the exact "mechanism exists, nothing reads it" defect that ENH-3185 left behind and that ENH-3223 (and this EPIC) exist to clean up. Landing the flag alone means the abstention-across-a-process-boundary story is still untested against a real composition. Minimum bar: a worked example that a loop author can copy — either a `harness_exit`-shaped fragment in `loops/lib/common.yaml` (wrapping `evaluate: {type: exit_code, <flag>: true}` with an `on_cannot_judge` route) or a documented example in the exit-code contract doc. See the added acceptance criterion below.
 
 ### Codebase Research Findings
 
@@ -96,7 +103,11 @@ N/A — no new data type. The existing `EvaluationResult(verdict: str, details: 
 - `evaluate_config_known_fields() -> set[str]` — derives its field set from the `EvaluateConfig` dataclass itself, `schema.py:217-225`; a new field is automatically visible to the MR-14 unknown-evaluate-key validator with no separate registration.
 
 ### Call Path
-FSM state `evaluate: {type: exit_code, <new_opt_in_flag>: true}` -> `evaluate()` dispatcher (`evaluators.py:1836-1899`; two executor call sites at `executor.py` ~1860-1899 and ~2560-2608) -> `evaluate_exit_code(exit_code, <new_opt_in_flag>)` (`evaluators.py:238`) -> `EvaluationResult(verdict="cannot_judge", ...)` when `exit_code == 3` and the flag is set -> `executor.py:2081` `is_abstention_verdict()` gate -> undeclared abstention: `_abstention_declared()` (`executor.py:2656-2667`) is false -> `_route_abstention_hold()` (`executor.py:2683-2697`, holds up to `_ABSTENTION_HOLD_CAP = 2` at `executor.py:2654`) -> `_abstention_fallback()` (`executor.py:2669-2681`, resolves `on_error` only, never `route.default`); declared abstention (`on_cannot_judge: <state>` present) instead routes immediately through the normal `_route()` path (`executor.py:2699-2752`) via `state.extra_routes` (`schema.py:849-870`, generic `on_<verdict>` capture — `on_cannot_judge` has no dedicated `StateConfig` field, confirmed by BUG-3221's NO-GO on adding one).
+_Line anchors re-verified 2026-08-17; the previous revision's `executor.py` numbers were ~4 lines stale._
+
+FSM state `evaluate: {type: exit_code, <new_opt_in_flag>: true}` -> `evaluate()` dispatcher (`evaluators.py:1836-1899`, `exit_code` branch dispatching `evaluate_exit_code(exit_code)` at `evaluators.py:1899`) -> `evaluate_exit_code(exit_code, <new_opt_in_flag>)` (`evaluators.py:238`) -> `EvaluationResult(verdict="cannot_judge", ...)` when `exit_code == 3` and the flag is set -> `is_abstention_verdict()` gate -> undeclared abstention: `_abstention_declared()` (`executor.py:2660-2679`) is false -> `_route_abstention_hold()` (`executor.py:2702-2712`, holds up to `_ABSTENTION_HOLD_CAP = 2` at `executor.py:2658`) -> `_abstention_fallback()` (`executor.py:2688-2700`, resolves `on_error` only, never `route.default`); declared abstention (`on_cannot_judge: <state>` present) instead routes immediately through the normal `_route()` path via `state.extra_routes` (`schema.py:849-870`, generic `on_<verdict>` capture — `on_cannot_judge` has no dedicated `StateConfig` field, confirmed by BUG-3221's NO-GO on adding one).
+
+Confirmed reachable: `exit_code` is a member of `_EXIT_CODE_AWARE_EVALUATORS` (`evaluators.py:1876-1888`), so BUG-1815's non-zero-exit short-circuit does **not** intercept exit 3 before it reaches `evaluate_exit_code()`.
 
 ### Decision Rules
 - New gap kind: `evaluate_exit_code()`'s verdict mapping gains a third branch for exit code 3, gated by a per-state opt-in flag on `EvaluateConfig` (default `false`/absent).
@@ -114,7 +125,7 @@ FSM state `evaluate: {type: exit_code, <new_opt_in_flag>: true}` -> `evaluate()`
 - `docs/reference/API.md` — `exit_code` evaluator's verdict-mapping documentation (module reference around `evaluate_exit_code`, currently listing only `0/1/2+`)
 
 ### Dependent Files (Callers/Importers)
-- `scripts/little_loops/fsm/executor.py` — both call sites of `evaluate_exit_code` (~1860-1899, ~2560-2608); abstention hold/route dispatch this change must reach: `is_abstention_verdict` gate (2081), `_abstention_declared` (2656-2667), `_abstention_fallback` (2669-2681), `_route_abstention_hold` (2683-2697), `_route` (2699-2752)
+- `scripts/little_loops/fsm/executor.py` — the default-evaluator call site of `evaluate_exit_code` at `executor.py:2601` (the shell-mode `else` branch of `_evaluate()`, reached when a state has no `evaluate:` block — it has no `EvaluateConfig` in scope and so can never carry the flag); abstention hold/route dispatch this change must reach: the `is_abstention_verdict` gate, `_abstention_declared` (2660-2679), `_abstention_fallback` (2688-2700), `_route_abstention_hold` (2702-2712), `_route` (2716+). _Anchors re-verified 2026-08-17._
 - `scripts/little_loops/loops/lib/common.yaml` — `shell_exit` fragment (15-21), the composition point for `evaluate.type: exit_code` shell states and the likely site for any `ll-harness`-aware wrapping (issue's own "Current Behavior" notes no built-in loop invokes `ll-harness` yet)
 - `scripts/little_loops/cli/harness.py` — the ABSTAIN exit-code contract this evaluator must interoperate with: CLI epilog doc (372-376), single-task mapping (600-706, final mapping at 698-706: `not passed -> 1`, `abstained -> 3`, else `0`), multi-task `dsl` mapping (1035-1080, its own fail/error/abstain precedence documented at 1035-1037)
 
@@ -155,7 +166,9 @@ _Wiring pass added by `/ll:wire-issue`:_
 1. `evaluate_exit_code()` (`scripts/little_loops/fsm/evaluators.py:238-257`) accepts a per-state opt-in flag and maps `exit_code == 3` to verdict `"cannot_judge"` only when that flag is set; exit 3 without the flag still maps to `"error"`, matching every existing `TestExitCodeEvaluator` case in `scripts/tests/test_fsm_evaluators.py:54-76`
 2. The opt-in flag is a real `EvaluateConfig` field (`scripts/little_loops/fsm/schema.py:38-121`) with `to_dict()`/`from_dict()` round-tripping and a matching `fsm-loop-schema.json` schema entry, following the `uncertain_suffix` triad (`schema.py:103, 146-147, 197`; `evaluators.py:1107, 1295-1296, 2041`)
 3. A state declaring `evaluate: {type: exit_code, <flag>: true}` and exiting 3 reaches the existing abstention hold/route machinery (`executor.py:2075-2097`) exactly as any other `cannot_judge`-yielding evaluator does today — verified by extending `test_fsm_executor.py`'s abstention-routing coverage, not by adding new executor logic
-4. `python -m pytest scripts/tests/test_fsm_evaluators.py scripts/tests/test_fsm_schema.py scripts/tests/test_fsm_executor.py -v` passes, and `docs/reference/API.md`'s `exit_code` evaluator entry documents the new opt-in mapping alongside the existing `0/1/2+` table
+4. The flag ships with at least one consumer: a `harness_exit`-shaped fragment in `scripts/little_loops/loops/lib/common.yaml` pairing `evaluate: {type: exit_code, <flag>: true}` with an `on_cannot_judge` route, **or** an equivalent worked example in the exit-code contract documentation. Landing the flag with zero consumers repeats the ENH-3185 pattern this EPIC is retiring.
+5. The docs state plainly that the flag without an `on_cannot_judge` route is a regression, not a partial win — 2 holds (`_ABSTENTION_HOLD_CAP`, `executor.py:2658`) re-run the harness twice before `_abstention_fallback()` lands on `on_error` anyway
+6. `python -m pytest scripts/tests/test_fsm_evaluators.py scripts/tests/test_fsm_schema.py scripts/tests/test_fsm_executor.py -v` passes, and `docs/reference/API.md`'s `exit_code` evaluator entry documents the new opt-in mapping alongside the existing `0/1/2+` table
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
@@ -167,9 +180,27 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - Add an `scripts/tests/integration/test_loop_run_e2e.py` case (`action="exit 3", action_type="shell"`) modeled on `test_failure_path_reaches_failure_terminal`, exercising the flag through a real, unmocked `FSMExecutor`
 - Confirm `scripts/tests/test_fsm_schema.py::test_schema_json_evaluate_config_properties_match_dataclass_fields` passes after the schema-JSON edit — it fails loudly on drift, so treat it as the acceptance gate for that file
 
+## Scope Boundaries
+
+**In scope**
+- The opt-in flag on `EvaluateConfig`, its `to_dict()`/`from_dict()` round-trip, its `fsm-loop-schema.json` entry, and the exit-3 branch in `evaluate_exit_code()`
+- One worked consumer (fragment or documented example) per the added acceptance criterion
+- Documenting the per-tool exit-code contract, including the existing exit-`2` disagreement between `ll-loop run` and `ll-harness`
+
+**Out of scope**
+- **An abstain-shaped FSM terminal** — explicitly rejected by EPIC-3217 decision (b); FSM terminals stay binary
+- Options B (`harness_exit` evaluator type) and C (numeric verdict keys in `route:`) — scored 5/12 and 0/12 respectively
+- Changing `ll-harness`'s own exit codes or the ABSTAIN contract; this issue only teaches a parent FSM to read them
+- Any global remap of exit 3 — the mapping is per-state opt-in precisely because exit 3 is not OS-reserved
+- The default-evaluator path (`executor.py:2601`) and `ll-loop test`'s simulate path (`cli/loop/testing.py:128`), which have no `EvaluateConfig` in scope and therefore can never carry the flag; they must keep compiling and behaving as they do today, but gain no new capability
+
 ## Impact
 
-Enables abstention-aware loop composition over `ll-harness`. No current built-in loop changes behavior.
+Enables abstention-aware loop composition over `ll-harness`. No current built-in loop changes behavior — which is also the risk: without the consumer required by step 4, the flag is unexercised outside its own tests.
+
+## Dependencies
+
+- **ENH-3222 must extend its predicate to cover this flag.** Once `exit_code` can emit `cannot_judge`, "LLM-judged" no longer means "abstention-capable", and ENH-3222's validator would miss a flag-carrying `exit_code` state with no `on_cannot_judge` route — the precise shape that makes this flag harmful. Land this issue first or concurrently.
 
 ## Related Key Documentation
 

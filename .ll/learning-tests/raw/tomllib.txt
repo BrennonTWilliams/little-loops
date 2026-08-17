@@ -1,0 +1,11 @@
+loads returns type: <class 'dict'>
+loads result: {'title': 'example', 'created': datetime.datetime(2026, 1, 1, 12, 0, tzinfo=datetime.timezone.utc), 'owner': {'name': 'brennon', 'nested': {'depth': 2}}}
+nested type: <class 'dict'>
+nested value: {'depth': 2}
+created type: <class 'datetime.datetime'>
+is datetime.datetime: True
+load(text-mode) raised TypeError: File must be opened in binary mode, e.g. use `open('foo.toml', 'rb')`
+load(binary) returns type: <class 'dict'>
+invalid TOML raised TOMLDecodeError: Expected '=' after a key in a key/value pair (at line 1, column 5)
+has dump: False
+has dumps: False

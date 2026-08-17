@@ -1,0 +1,12 @@
+{
+  "id": "1bbf189b-f2bc-4320-9e15-4d12ae3c6162",
+  "type": "decision",
+  "timestamp": "2026-08-17T15:38:22Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "AC7 mandates coverage of two structurally separate bash -c call sites (fsm/runners.py shell branch, runner_spec.py::_run_cmd()); neither existing per-task object (ActionSpec, StateConfig) is visible to the other path, so a single-surface declaration cannot satisfy AC7. Both declarations converge on the shared project_child_env() enforcement chokepoint.",
+  "rule": "Declare per-task credential scope on both ActionSpec and FSM StateConfig/loop-YAML independently (Option C)",
+  "scope": "issue",
+  "alternatives_rejected": "Option A (ActionSpec only) \u2014 leaves the FSM shell branch (fsm/runners.py:266) with no way to receive a declaration, zero ActionSpec references exist under fsm/. Option B (loop YAML only) \u2014 leaves runner_spec.py::_run_cmd() unreachable since it never calls resolve_host() or reads StateConfig.",
+  "issue": "ENH-3203"
+}
