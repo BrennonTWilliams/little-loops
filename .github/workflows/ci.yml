@@ -58,7 +58,46 @@ jobs:
           .venv/bin/python -c "import pytest, pytest_cov, xdist, pytest_timeout, syrupy, hypothesis; print('dev deps verified')"
 
       - name: Run unit tests (exclude integration + conformance)
-        run: .venv/bin/python -m pytest scripts/tests/ -m "not integration and not conformance"
+        # `tee` mirrors pytest output to `pytest.log` for upload without
+        # buffering the streamed CI log (which would break live-progress in
+        # the GH Actions UI). `--junit-xml` writes a structured report that
+        # GH Actions parses for the test summary table; also machine-readable
+        # for triage scripts. `set -o pipefail` is required: without it the
+        # pipeline's exit code is tee's (always 0), masking pytest's actual
+        # failure status from the GH Actions summary and from any
+        # `if: <status>` step conditions. Both files are uploaded on every
+        # CI outcome below (success, failure, or cancellation). Rebased onto
+        # main: pytest now runs under `.venv/bin/python` (G1 fresh venv)
+        # instead of the bare `python`.
+        run: |
+          set -o pipefail
+          .venv/bin/python -m pytest scripts/tests/ \
+            -m "not integration and not conformance" \
+            --junit-xml=pytest-junit.xml \
+            | tee pytest.log
+
+      - name: Upload unit-test artifacts
+        # `if: always()` is the data-collection gate — green runs need to
+        # upload too, because the clean-finish signal (junit pass, no busy-spin
+        # tail) is exactly the verification surface we need for the BUG-3208
+        # stack and would otherwise collapse to "no data on green." `if-no-files-
+        # found: warn` is deliberate: if pytest hangs at 98-99% (the BUG-3208
+        # failure mode) junit XML never gets written, and the upload step
+        # should not turn a hung run into a *double* failure. Retention 7d is
+        # enough to triage a recent failure or confirm a recent green, short
+        # enough to not pile up on the artifact service. `run_id + run_attempt`
+        # prevents clobbering on retry. Rebased onto main: artifact name
+        # scoped to the unit job (`pytest-unit-*`) so the unit and conformance
+        # jobs don't collide on the artifact store.
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-unit-failures-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            pytest.log
+            pytest-junit.xml
+          retention-days: 7
+          if-no-files-found: warn
 
       - name: Snapshot .ll/history.db (two-tier retention)
         if: always()
@@ -85,9 +124,36 @@ jobs:
           .venv/bin/python -m pip install -e "./scripts[dev]"
 
       - name: Run host conformance matrix
+        # Same pipefail + tee + junit pattern as the unit job. Without
+        # `set -o pipefail` the pipeline's exit code is tee's (always 0),
+        # masking pytest's actual failure status from the GH Actions summary
+        # and from any `if: <status>` step conditions. `--junit-xml` produces
+        # a structured report GH Actions parses for the test summary table.
         run: |
           set -o pipefail
-          .venv/bin/python -m pytest scripts/tests/ -m conformance -ra --tb=short 2>&1 | tee /tmp/conformance.log
+          .venv/bin/python -m pytest scripts/tests/ \
+            -m conformance \
+            -ra --tb=short \
+            --junit-xml=pytest-conformance-junit.xml \
+            2>&1 | tee /tmp/conformance.log
+
+      - name: Upload conformance artifacts
+        # Mirrors the unit job's upload shape. Separate artifact name
+        # (`pytest-conformance-failures-*`) so the two jobs' artifacts don't
+        # collide on the artifact store. `if: always()` so a clean green
+        # conformance produces a junit-paper-trail alongside failure capture;
+        # `if-no-files-found: warn` handles the FEAT-992 host-CLI stub case
+        # where junit XML may be written but pytest exits non-zero purely on
+        # unexpected skip behavior — we still want the log, not a double-failure.
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-conformance-failures-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            /tmp/conformance.log
+            pytest-conformance-junit.xml
+          retention-days: 7
+          if-no-files-found: warn
 
       - name: Surface conformance summary
         if: always()
