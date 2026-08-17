@@ -1,5 +1,5 @@
 ---
-description: Rewrite an issue's Implementation Steps, Acceptance Criteria, and Files to Modify in place from its own accumulated research findings — plus, conditionally, a Scope Boundaries claim contradicted by those findings — without appending or bulldozing human prose
+description: Rewrite an issue's Implementation Steps, Acceptance Criteria, and Integration Map (Files to Modify, Dependent Files, Similar Patterns, Tests, Documentation) in place from its own accumulated research findings — plus, conditionally, a Scope Boundaries claim contradicted by those findings — without appending or bulldozing human prose
 argument-hint: "[issue-id]"
 allowed-tools:
   - Read
@@ -24,14 +24,16 @@ You are tasked with **reconciling an issue's directive sections against its own
 accumulated research**. Over a long refine/spike/confidence-check cycle,
 `/ll:refine-issue` and `/ll:confidence-check` only **append** new "Codebase
 Research Findings" bullets — they never rewrite the issue's own Implementation
-Steps / Acceptance Criteria / Files to Modify to match. When those directive
+Steps / Acceptance Criteria / Integration Map to match. When those directive
 sections contradict the findings, `/ll:confidence-check` re-flags the same
 Concern every pass and the Readiness score plateaus.
 
-Your job is a **targeted, in-place rewrite** of three unconditional sections —
-plus, conditionally, a `## Scope Boundaries` claim the findings directly refute
-(ENH-2937) — so they reflect the accumulated findings. **Not** another appended
-finding, and **not** a wholesale rewrite.
+Your job is a **targeted, in-place rewrite** of the unconditional directive
+sections — `## Implementation Steps`, `## Acceptance Criteria`, and the whole
+`## Integration Map` section (ENH-3246) — plus, conditionally, a
+`## Scope Boundaries` claim the findings directly refute (ENH-2937) — so they
+reflect the accumulated findings. **Not** another appended finding, and
+**not** a wholesale rewrite.
 
 ## Configuration
 
@@ -41,10 +43,15 @@ This command uses project configuration from `.ll/ll-config.json`:
 
 ## Contract (read this first — it is binding)
 
-**Rewrite ONLY these three directive sections, in place:**
+**Rewrite ONLY these directive sections, in place:**
 1. `## Implementation Steps`
 2. `## Acceptance Criteria`
-3. `### Files to Modify` (under `## Integration Map`)
+3. `## Integration Map` — the whole section, including every `###`
+   subsection (`### Files to Modify`, `### Dependent Files
+   (Callers/Importers)`, `### Similar Patterns`, `### Tests`,
+   `### Documentation`). All five hold the same kind of content — directive
+   statements derived from `### Codebase Research Findings` — and go stale the
+   same way, so none is singled out (ENH-3246).
 
 **Conditionally rewrite-eligible — `## Scope Boundaries`:** a Scope Boundaries
 claim (or any section asserting "X is not needed because Y") may be rewritten
@@ -79,10 +86,20 @@ subsequent pass.
 - `## Summary`, `## Motivation`, `## Current Behavior`, `## Expected Behavior`
 - `## Proposed Solution` and any `### Option …` / `### Decision Rationale`
   (human-authored prose and recorded decisions)
-- `### Codebase Research Findings`, `### Wiring Phase`, `### Similar Patterns`,
-  `### Constraints`, `## Confidence Check Notes`, `## Session Log`, `## Status`
+- `### Codebase Research Findings`, `### Wiring Phase`, `### Constraints`,
+  `## Confidence Check Notes`, `## Session Log`, `## Status`
 - `## Scope Boundaries`, except for the narrow contradicted-claim carve-out above
 - Every other section not in the rewrite list above.
+
+**Wiring-marker preservation (ENH-3246, by provenance not location):** a
+`_Wiring pass added by \`/ll:wire-issue\`:_` or `_Added by
+\`/ll:refine-issue\` …:_` block is machine-deposited research reconcile
+*reads*, not a directive it may rewrite — this holds even when the block sits
+inside a now-rewritable `## Integration Map` subsection (`### Dependent Files
+(Callers/Importers)`, `### Similar Patterns`, `### Tests`, `### Documentation`).
+Preservation follows the block's provenance marker, not the section it
+happens to be nested in. Leave every such block byte-for-byte untouched; rewrite
+only the directive bullets around it.
 
 **Source of truth for the rewrite:** the issue's own `### Codebase Research
 Findings` and `### Wiring Phase` (and any `### Decision Rationale` that selected
@@ -129,7 +146,8 @@ Skip this write only when `CHECK_MODE` is true (check mode never writes).
 ### 3. Read the issue and its findings
 
 Read the full issue file. Extract:
-- The current text of the three directive sections.
+- The current text of the directive sections: `## Implementation Steps`,
+  `## Acceptance Criteria`, and every `## Integration Map` subsection.
 - Every bullet under `### Codebase Research Findings` and `### Wiring Phase`.
 - The selected option / decision under `### Decision Rationale` (if present) —
   the directive sections must describe the **selected** mechanism, not a
@@ -137,9 +155,11 @@ Read the full issue file. Extract:
 
 ### 4. Detect contradictions
 
-For each of the three directive sections, compare its claims against the
-findings. A section is **stale** when it describes a mechanism, file, step, or
-acceptance condition that a later finding corrected, superseded, or contradicted.
+For each directive section (`## Implementation Steps`, `## Acceptance
+Criteria`, and each `## Integration Map` subsection), compare its claims
+against the findings. A section is **stale** when it describes a mechanism,
+file, step, or acceptance condition that a later finding corrected,
+superseded, or contradicted.
 
 ### 4a. Detect contradicted Scope Boundaries claims
 
@@ -177,10 +197,16 @@ pass.
 Using the Edit tool, rewrite only the stale directive sections so they reflect
 the findings. Rules:
 - Keep the section's heading and overall shape (numbered steps stay numbered;
-  AC stays a `- [ ]` checklist; Files to Modify stays a bulleted file list).
+  AC stays a `- [ ]` checklist; every `## Integration Map` subsection stays a
+  bulleted file/pattern list).
 - Replace superseded content; do not append a parallel "corrected" block beside
   the stale one (that reproduces the append-only bug this skill exists to fix).
 - Preserve any bullets that are still accurate.
+- **Skip past wiring-marker blocks.** When rewriting an `## Integration Map`
+  subsection, never edit or remove a `_Wiring pass added by
+  \`/ll:wire-issue\`:_` or `_Added by \`/ll:refine-issue\` …:_` block nested
+  inside it (Contract's wiring-marker preservation rule) — rewrite only the
+  directive bullets around it.
 - Cite the driving finding inline where it clarifies (e.g. a short parenthetical),
   but keep the section directive and terse — this is not a findings dump.
 - **Canonical dependency phrasing.** If a rewritten line asserts that this issue
@@ -251,6 +277,10 @@ This integrates with FSM `evaluate: type: exit_code` routing.
 - Implementation Steps: [rewritten | unchanged]
 - Acceptance Criteria: [rewritten | unchanged]
 - Files to Modify: [rewritten | unchanged]
+- Dependent Files (Callers/Importers): [rewritten | unchanged]
+- Similar Patterns: [rewritten | unchanged]
+- Tests: [rewritten | unchanged]
+- Documentation: [rewritten | unchanged]
 - Scope Boundaries: [rewritten | decision-directive | unchanged]
 
 ## CORRECTIONS_MADE

@@ -3,11 +3,12 @@ id: ENH-3246
 type: ENH
 title: Widen reconcile-issue's rewrite mandate to the whole Integration Map
 priority: P2
-status: open
+status: done
 testable: true
 discovered_by: ll-issues-create
 discovered_date: '2026-08-17'
 captured_at: '2026-08-17T19:30:00Z'
+completed_at: '2026-08-17T22:11:17Z'
 relates_to:
 - ENH-3244
 - ENH-3247
@@ -250,4 +251,5 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-17T22:10:54 - `a1cb8198-d1dc-40cc-a534-5a26f3efa932.jsonl`
 - `/ll:capture-issue` - 2026-08-17T19:29:38 - `3ce34465-00fd-4ba7-a470-b61774849ebd.jsonl`

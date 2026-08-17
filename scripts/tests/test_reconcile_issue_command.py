@@ -214,6 +214,60 @@ class TestReconcileMarkerClearing:
         assert "only marker lines" in content.lower() or "only the marker line" in content.lower()
 
 
+class TestReconcileIntegrationMapWidening:
+    """ENH-3246: the rewrite mandate covers the whole ## Integration Map
+    section, not just ### Files to Modify — the four sibling subsections
+    (Dependent Files, Similar Patterns, Tests, Documentation) are now
+    rewrite-eligible too, and drop out of the preserve list. Wiring-marker
+    blocks nested inside them stay preserved by provenance."""
+
+    def _contract_text(self) -> str:
+        content = COMMAND_FILE.read_text()
+        start = content.index("## Contract (read this first")
+        end = content.index("\n## Process", start)
+        return content[start:end]
+
+    def test_rewrite_list_names_whole_integration_map(self) -> None:
+        text = self._contract_text()
+        assert "## Integration Map" in text, (
+            "rewrite list must name the whole Integration Map section, not just "
+            "the Files to Modify subsection"
+        )
+
+    def test_sibling_subsections_no_longer_in_preserve_list(self) -> None:
+        text = self._contract_text()
+        preserve_start = text.index("Preserve untouched")
+        preserve_end = text.index("Wiring-marker preservation", preserve_start)
+        preserve_text = text[preserve_start:preserve_end]
+        for subsection in ("### Tests", "### Dependent Files (Callers/Importers)"):
+            assert subsection not in preserve_text, (
+                f"'{subsection}' must no longer appear in the preserve list — "
+                "it is now rewrite-eligible under the widened Integration Map mandate"
+            )
+
+    def test_wiring_marker_preservation_term_present(self) -> None:
+        text = self._contract_text()
+        assert "Wiring pass added by" in text, (
+            "Contract must explicitly preserve wiring-marker blocks nested "
+            "inside now-rewritable Integration Map subsections"
+        )
+        assert "provenance" in text.lower(), (
+            "the preservation rule must be scoped by provenance, not location"
+        )
+
+    def test_sections_rewritten_lists_all_integration_map_subsections(self) -> None:
+        content = COMMAND_FILE.read_text()
+        for line in (
+            "Dependent Files (Callers/Importers): [rewritten",
+            "Similar Patterns: [rewritten",
+            "Tests: [rewritten",
+            "Documentation: [rewritten",
+        ):
+            assert line in content, (
+                f"Output Format's SECTIONS_REWRITTEN checklist must include: {line}"
+            )
+
+
 class TestReconcileCheckModeCoverage:
     """--check mode (step 7) must report a contradicted Scope Boundaries claim
     as a stale section, not just the three unconditional sections."""

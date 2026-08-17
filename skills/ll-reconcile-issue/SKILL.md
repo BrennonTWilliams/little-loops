@@ -1,6 +1,6 @@
 ---
 name: ll-reconcile-issue
-description: Rewrite an issue's Implementation Steps, Acceptance Criteria, and Files to Modify in place from its own accumulated research findings — plus, conditionally, a Scope Boundaries claim contradicted by those findings — without appending or bulldozing human prose
+description: Rewrite an issue's Implementation Steps, Acceptance Criteria, and Integration Map (Files to Modify, Dependent Files, Similar Patterns, Tests, Documentation) in place from its own accumulated research findings — plus, conditionally, a Scope Boundaries claim contradicted by those findings — without appending or bulldozing human prose
 args: "ISSUE_ID"
 allowed-tools:
   - Read
