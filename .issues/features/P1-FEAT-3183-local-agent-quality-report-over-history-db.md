@@ -12,6 +12,8 @@ labels:
 - path-a
 - observability
 - history-db
+depends_on:
+- BUG-3236
 relates_to:
 - FEAT-2867
 - FEAT-3182
@@ -26,7 +28,7 @@ score_change_surface: 24
 
 ## Summary
 
-Ship a local, screenshot-worthy agent-quality report built from `.ll/history.db`: fix-rate, correction rate, retry inflation, and cost per issue, each **trended over time** rather than reported as a point-in-time total.
+Ship a local, screenshot-worthy agent-quality report built from `.ll/history.db`: fix-rate, correction rate, retry inflation, cost per issue, and tokens per issue, each **trended over time** rather than reported as a point-in-time total — and each carrying the coverage of the data behind it, so a trend driven by incomplete instrumentation is distinguishable from a real one.
 
 ## Current Behavior
 
@@ -46,17 +48,31 @@ populated since v20 (ENH-2461) — currently has **no reader at all**.
 ```
 agent quality — little-loops (by month x orchestrator)
 
+2026-07 / unattributed   closed 41
+  fix-rate           0.74  (stable)
+  correction rate    0.22 /closed issue  (degrading vs 2026-05)
+  cost per issue     $1.44  (no verdict — priced coverage 0.44)
+  tokens per issue   612k  (degrading vs 2026-05)
+
 2026-07 / ll-auto        closed 24
   fix-rate           0.79  (stable)
-  correction rate    0.31 /session  (degrading vs 2026-05)
-  retry inflation    2.4  iterations/run  (stable)
+  correction rate    0.31 /closed issue  (degrading vs 2026-05)
   cost per issue     $1.82  (degrading vs 2026-05)
+  tokens per issue   748k  (degrading vs 2026-05)
 
 2026-08 / ll-auto        closed 3
   insufficient history (min sample 5)
 
+retry inflation (by month x loop)
+  2026-07 / rn-refine        2.4 iterations/run  (stable)
+  2026-07 / code-run-gate    1.6 iterations/run  (improving vs 2026-05)
+
 > Orchestrator attribution is correlational, not causal.
+> Most issues have no orchestration_runs row and fall into `unattributed`.
 > Cost is attributed via issue_sessions; multi-issue sessions are split evenly.
+> Cost verdicts are suppressed below 50% priced coverage; tokens per issue is
+> unaffected by pricing-table gaps.
+> Retry inflation buckets by loop, not orchestrator — loop_runs has no issue_id.
 ```
 
 `--format json|yaml|markdown` emit the same data, each payload carrying the metric-definition
@@ -129,14 +145,86 @@ yet — this issue must therefore *establish* the shared definition surface, not
 ## Metric Data Sources
 
 _Added by wiring pass — all tables verified against `scripts/little_loops/session_store/schema.py`
-at `SCHEMA_VERSION = 40`._
+at `SCHEMA_VERSION = 41`._
 
 | Metric | Source | Notes |
 |---|---|---|
-| **Fix-rate** | `issue_events` (`issue_id`, `transition`, `ts`) + the reopen/revert signals in `rework.py` | Largely derivable from `analyze_rework()`. Reuse its signals rather than recomputing — and inherit its documented caveat that `issue_events` dedups per `(issue_num, transition)`, so a second done→open→done cycle collapses into the first. |
-| **Correction rate** | `user_corrections` (`ts`, `session_id`, `content`, `source`), net of `correction_retirements` (`topic_fingerprint`, `addressed_at`) | `issue_history/evolution.py` (`detect_recurring_feedback`) already queries this pair — reuse, don't re-query. Denominator must be an explicit per-window unit (sessions or closed issues), stated in the metric definition. |
-| **Retry inflation** | `loop_runs` (`iterations`, `final_state`, `terminated_by`, `started_at`) | Net-new. `iterations` is the direct retry count; `terminated_by`/`final_state` separate genuine convergence from exhaustion. `subagent_runs` (`status`, `started_at`/`ended_at`) is a secondary signal. |
-| **Cost per issue** | `usage_events` (`input_tokens`, `output_tokens`, `cache_read_input_tokens`, `cache_creation_input_tokens`, `cost_usd`, `session_id`) | Net-new. **`usage_events` has no `issue_id`** — join `usage_events.session_id` → the `issue_sessions` view (`schema.py:889`) → `issue_id`. Sessions touching multiple issues need a stated attribution rule (split vs. duplicate vs. drop); pick one and document it. Prefer `cost_usd` when present, fall back to token counts when null. |
+| **Fix-rate** | `issue_events` (`issue_id`, `transition`, `ts`) + the reopen/revert signals in `rework.py` | Formula pinned below (see **Fix-rate definition**). Reuse `analyze_rework()`'s signals rather than recomputing — and inherit its documented caveat that `issue_events` dedups per `(issue_num, transition)`, so a second done→open→done cycle collapses into the first. |
+| **Correction rate** | `user_corrections` (`ts`, `session_id`, `content`, `source`), net of `correction_retirements` (`topic_fingerprint`, `addressed_at`) | `issue_history/evolution.py` (`detect_recurring_feedback`) already queries this pair — but see the research finding below: it is not directly reusable. **`user_corrections` has no `issue_id`** — bucketing by orchestrator requires `user_corrections.session_id` → `issue_sessions` → issue → `orchestration_runs.driver`. Denominator is **per closed issue** (decided, see Open Decisions). |
+| **Retry inflation** | `loop_runs` (`iterations`, `final_state`, `terminated_by`, `started_at`) | Net-new. `iterations` is the direct retry count; `terminated_by`/`final_state` separate genuine convergence from exhaustion. `subagent_runs` (`status`, `started_at`/`ended_at`) is a secondary signal. **Attribution axis is contested — see Retry-inflation attribution below.** |
+| **Cost per issue** | `usage_events` (`input_tokens`, `output_tokens`, `cache_read_input_tokens`, `cache_creation_input_tokens`, `cost_usd`, `session_id`) | Net-new. **`usage_events` has no `issue_id`** — join `usage_events.session_id` → the `issue_sessions` view (`schema.py:889`) → issue. Sessions touching multiple issues split `cost_usd` evenly (decided, see Open Decisions). **`cost_usd` is null for unpriced models and the nulls are not random — see Cost coverage bias below.** |
+| **Tokens per issue** | same as cost per issue, summing the four token columns | Companion to cost per issue, added because it is the only always-computable spend signal (no pricing-table dependency). Reported alongside cost, not instead of it. |
+
+### Fix-rate definition (pinned)
+
+`fix_rate = 1 - rework_share`, reusing the term already computed for
+`quality_adjusted_throughput()` (`rework.py:53`) so the two reports cannot disagree. This is
+deliberately *not* "share of closed issues that never reopened" — that variant counts issues,
+this one carries the same weighting `rework` already publishes. The distinction is material and
+was previously unstated; it is now the definition emitted in the `MetricDefinition` payload.
+
+Inherited caveat (must appear in-band): `issue_events` dedups per `(issue_num, transition)`, so
+repeat done→open→done cycles collapse into one and fix-rate is biased optimistic.
+
+### Cost coverage bias (must be gated, not assumed away)
+
+`usage_events.cost_usd` is written at ingest by `pricing.estimate_cost_usd()`, which returns
+`None` for any model absent from `MODEL_PRICING` (`pricing.py:120-122`). Measured on this repo's
+`.ll/history.db`: **68,092 of 301,563 rows (22.6%) have a null `cost_usd`**, and the nulls are
+concentrated entirely in models missing from the table:
+
+| model | rows | null `cost_usd` |
+|---|---|---|
+| claude-sonnet-5 | 129,969 | 0 |
+| claude-sonnet-4-6 | 65,547 | 0 |
+| **MiniMax-M3** | 41,061 | **41,061** |
+| claude-opus-4-8 | 31,709 | 0 |
+| **claude-opus-5** | 23,084 | **23,084** |
+| **deepseek-v4-flash** | 3,663 | **3,663** |
+| claude-fable-5 | 4,559 | 0 |
+| claude-haiku-4-5-20251001 | 1,687 | 0 |
+
+The current-generation model is the unpriced one. Older windows are fully costed, recent windows
+are partially costed, so **cost per issue drifts downward over time from pricing-table coverage
+alone** — precisely the artifact this issue's Use Case asks the report to distinguish from a real
+regression. The Metric Data Sources draft previously said "fall back to token counts when null";
+that does not work, because converting tokens to dollars needs the same missing pricing.
+
+Required handling:
+
+1. Each cost window carries `priced_share` (rows with non-null `cost_usd` ÷ total rows), gated the
+   way `rework.py:396` already gates on `LOW_COVERAGE_THRESHOLD = 0.5`. Below threshold, the
+   window reports `insufficient_history`-style suppression of the *verdict*, not a silent number.
+2. **Tokens per issue** ships as the always-computable companion (no pricing dependency), so a
+   spend trend is still readable when pricing coverage is poor.
+3. In-band caveat: `cost_usd` is frozen at write time from the then-current pricing table
+   (including Sonnet 5's introductory rate, which expires 2026-08-31 — `pricing.py:5-7`), so a
+   pricing-table change alone moves the trend.
+
+Adding `claude-opus-5` and a documented unpriced/non-Anthropic path to `MODEL_PRICING` is a
+worthwhile prerequisite but is **not** a substitute for the coverage gate — historical rows are
+already written with null and are not recomputed.
+
+### Retry-inflation attribution
+
+The Expected Behavior sample (`retry inflation 2.4 iterations/run`) is a per-**run** mean and needs
+no join at all. Only the orchestrator axis forces one, and that join is lossy: **280 of 1,038
+distinct `loop_runs` are reachable** via `loop_runs.run_id → usage_events.run_id →
+issue_sessions.session_id` (27%), because only 40,891 of 301,563 `usage_events` rows carry a
+`run_id` (13.5%).
+
+Decision: report retry inflation bucketed by `(calendar month, loop_name)` — outside the
+orchestrator axis — so no runs are dropped, and carry the note that this metric's second axis
+differs from the other four. The two-hop per-issue attribution is explicitly out of scope; if a
+future consumer needs it, it needs the coverage fraction reported alongside.
+
+### Orchestrator bucket skew
+
+`orchestration_runs` holds 363 rows on this repo's DB (`ll-auto` 343, `ll-sprint` 20) against
+2,237 distinct issues in `issue_events` — **roughly 84% of issues fall into the `unattributed`
+bucket**. The Expected Behavior sample shows only `ll-auto` windows and is therefore not
+representative of real output. The text renderer must be designed and tested with `unattributed`
+as the dominant bucket, not as an edge case.
 
 **Windowing**: reuse `rework.py`'s `(calendar month, orchestrator)` bucketing via `_month_key()`
 (`rework.py:130`) and `_orchestrator_labels()` (`rework.py:186`, reads `orchestration_runs.driver`,
@@ -147,7 +235,8 @@ up and can be read side by side.
 
 _Added by `/ll:refine-issue` — 2026-08-16 — based on codebase analysis:_
 
-- **`SCHEMA_VERSION` is currently 41, not 40** (`session_store/schema.py:21`) — the Metric Data Sources header's "verified at `SCHEMA_VERSION = 40`" claim is one version stale; the tables cited (`usage_events`, `loop_runs`, `user_corrections`, `correction_retirements`, `issue_sessions` view) are unaffected by v41 (ENH-3185, unrelated).
+- **BLOCKER — `issue_sessions.issue_num` does not exist on already-migrated databases. Filed as [[BUG-3236]]; this issue now `depends_on` it.** `schema.py:889-908` (migration index 35 → v36, ENH-2771) redefines the view with an `issue_num` column, and the finding below correctly reports that as the source-of-truth definition. It is not what a live database has. This repo's `.ll/history.db` reports `schema_version = 41` in its `meta` table, yet `sqlite_master` holds the **v16** view — five columns (`issue_id, session_id, jsonl_path, first_message_ts, last_message_ts`), no `issue_num`. `SELECT issue_num FROM issue_sessions` raises `sqlite3.OperationalError: no such column` on it today (verified), and the drift is already breaking shipped readers — `ll-history sessions <ID>`, `issue_effort()`, and `recent_issue_velocity()` all silently return empty against it. Fresh databases and the current upgrade path are both correct, so a fresh-install test will not reproduce it. Every metric in this issue except retry inflation depends on this join, so BUG-3236 gates the feature; until it lands, any code written against `issue_num` must also carry an `issue_id` fallback path.
+- **`SCHEMA_VERSION` is 41** (`session_store/schema.py:21`); the tables cited (`usage_events`, `loop_runs`, `user_corrections`, `correction_retirements`, `issue_sessions` view) are unaffected by v41 (ENH-3185, unrelated). The Metric Data Sources header has been corrected to match.
 - **`loop_runs` has no `issue_id` column.** Confirmed schema (`session_store/schema.py:557-571`, v23/ENH-2814): `id, run_id (UNIQUE), loop_name, started_at, ended_at, final_state, iterations, terminated_by, error, evaluator_score, diagnostics_path, head_sha, branch, failure_terminal`. Retry inflation per-issue requires a two-hop join not exercised anywhere in the codebase today: `loop_runs.run_id → usage_events.run_id → usage_events.session_id → issue_sessions.session_id → issue_num`. The one existing precedent, `history_reader.waste_attribution()` (`history_reader.py:1010-1049`), only goes one hop (`usage_events JOIN loop_runs ON run_id`, grouped by `loop_name`, never by issue) and its own comment (`history_reader.py:1017-1021`) notes rows with no matching `loop_runs` are dropped by the inner join, not misattributed — the same drop-not-misattribute behavior would need to hold for the two-hop chain.
 - **`issue_sessions` view does support the claimed `usage_events.session_id → issue_id` join**, but the correct group key is `issue_num` (stable numeric), not `issue_id` (mutable TEXT on retype — rationale at `schema.py:827-833`, ENH-2771). Current live view definition is v36/ENH-2771 (`schema.py:889-908`; it has been redefined three times — v5, v16, v36 — each `DROP VIEW IF EXISTS` + `CREATE VIEW` supersedes the prior, so v36 is authoritative), exposing `issue_id, issue_num, session_id, jsonl_path, first_message_ts, last_message_ts`.
 - **`detect_recurring_feedback()` reuse for the correction-rate numerator is not straightforward** (`issue_history/evolution.py:92-183`): it opens the DB via a separate `_open_db()` helper (`evolution.py:30-47`) that deliberately skips `ensure_db()`'s migration path (docstring at lines 31-36), distinct from `rework.py`'s `_connect_readonly()` (which does call `ensure_db()`, `history_reader.py:422-436`) — combining both in one report means picking one DB-open semantics, not both. Its core query groups by exact `content` string equality over a flat 90-day lookback (`_STALE_DAYS = 90`) with **no calendar-month or orchestrator bucketing at all** — adapting it for a windowed rate means writing new SQL, not calling the existing function. `user_corrections` also has no `issue_id` column (only `session_id`), so it needs the same `user_corrections.session_id → issue_sessions.session_id → issue_id` hop as `loop_runs`. Retirement filtering (`correction_retirements` join) happens as an in-memory Python filter after the SQL query returns (fingerprint computed via `sha256(content[:512])`, `evolution.py:53-55`), not in SQL — would need to run per-window if adapted.
@@ -191,8 +280,12 @@ _Added by wiring pass — based on codebase analysis._
   empty-database path for AC #3.
 - `scripts/little_loops/session_store/` — `DEFAULT_DB_PATH`; the `issue_sessions` view
   (`schema.py:889`) for the session→issue join.
-- `scripts/little_loops/issue_history/evolution.py` — `detect_recurring_feedback()` for the
-  correction-rate numerator.
+- `scripts/little_loops/issue_history/evolution.py` — **reference only, not a call site.** Per the
+  research findings, `detect_recurring_feedback()` uses a different DB-open helper, a flat 90-day
+  lookback with no month/orchestrator bucketing, and in-memory retirement filtering; the
+  correction-rate numerator needs new windowed SQL modeled on it, not a call to it. Reuse its
+  `sha256(content[:512])` retirement-fingerprint convention so the two agree on what "retired"
+  means.
 - `scripts/little_loops/issue_history/rework.py` — `analyze_rework()` for the fix-rate signals.
 - `scripts/little_loops/cli/output.py` — `print_json()`.
 
@@ -213,7 +306,19 @@ _Added by wiring pass — based on codebase analysis._
   `TestInjectedRework` (line 124) / `TestInjectedImprovement` (line 216) → trend direction,
   `TestFormatting` (line 286) → AC #5. Reuse its seeding helpers `_close()` (line 40),
   `_stamp_ts()` (line 48), `_reopen()` (line 62); add equivalents that insert `usage_events`,
-  `loop_runs`, and `user_corrections` rows.
+  `loop_runs`, and `user_corrections` rows. Additionally required:
+  - `TestCostCoverageGate` — seed a window whose `usage_events` are majority null-`cost_usd`
+    (mimicking the `claude-opus-5` rows) and assert the cost metric reports `coverage < 0.5` and
+    `verdict is None`, while `tokens per issue` still emits a verdict. This is the regression test
+    for the bias described in **Cost coverage bias**; without it the defect is invisible because
+    the number still renders.
+  - `TestUnattributedDominant` — seed a window where most closed issues have no
+    `orchestration_runs` row and assert the text renderer emits a readable `unattributed` block.
+  - `TestMinSampleZero` — assert `--min-sample 0` is honored rather than replaced by
+    `MIN_SAMPLE_SIZE`.
+  - A test that runs against a database seeded at `schema_version >= 36` with the **pre-v36**
+    `issue_sessions` view (no `issue_num`) and asserts the report degrades rather than raising
+    `sqlite3.OperationalError` — the step-0 hazard. Drop this only if the view repair lands first.
 - `scripts/tests/test_issue_history_rework.py` — must pass **unchanged** after the `_utils`
   extraction; that is the regression gate on the refactor.
 - `scripts/tests/test_cli_history.py` / `test_issue_history_cli.py` — add a `ll-history quality`
@@ -230,7 +335,10 @@ _Added by wiring pass — based on codebase analysis._
   (line 2413); the `main_history` entry (line 4537) describing the subcommand set.
 - `docs/guides/HISTORY_SESSION_GUIDE.md` — **the single documented home required by AC #4.**
   Add a "Quality metric definitions" section covering both `rework` and `quality` metrics, with
-  each definition stated once and cited from the CLI.md prose rather than restated.
+  each definition stated once and cited from the CLI.md prose rather than restated. Must also
+  document the coverage semantics: what `priced_share` means, why cost verdicts are suppressed
+  below `LOW_COVERAGE_THRESHOLD`, and that unpriced models (any model absent from
+  `pricing.MODEL_PRICING`) contribute tokens but not dollars.
 - `.claude/CLAUDE.md` / `commands/help.md` — neither currently mentions `ll-history` subcommands
   individually (verified), so no change is required; do not add a one-off entry.
 
@@ -252,7 +360,7 @@ render through the same shape.
 
 **New in `scripts/little_loops/issue_history/_utils.py`** (extracted from `rework.py`):
 
-- `MetricDefinition` — frozen dataclass holding `name`, `unit`, `window`, `denominator`, `threshold`, and `caveats`; the single documented definition emitted into every JSON payload.
+- `MetricDefinition` — frozen dataclass holding `name`, `unit`, `window`, `denominator`, `formula`, `min_sample`, `verdict_band`, and `caveats`; the single documented definition emitted into every JSON payload. (The draft's single `threshold` field was ambiguous between the min-sample gate and the improving/degrading band — it is split into `min_sample` and `verdict_band`, and `formula` is added so fix-rate's pinned definition travels with the payload.)
 - `month_key(ts: str | None) -> str` — calendar-month bucket key; the public rename of `_month_key`.
 - `add_days(ts: str, days: int) -> str` — ISO timestamp offset; the public rename of `_add_days`.
 - `classify_verdict(rate: float, baseline: float) -> str` — returns `improving`/`stable`/`degrading`; the public rename of `_classify_verdict`.
@@ -260,9 +368,10 @@ render through the same shape.
 
 **New in `scripts/little_loops/issue_history/agent_quality.py`:**
 
-- `QualityMetric` — dataclass carrying `name`, `value: float | None`, `sample_size`, `verdict`, `baseline_period`, `insufficient_history: bool`, and `to_dict()`.
+- `QualityMetric` — dataclass carrying `name`, `value: float | None`, `sample_size`, `verdict`, `baseline_period`, `insufficient_history: bool`, `coverage: float | None` (the priced/joinable share backing this value; `None` when the metric has no coverage concept), and `to_dict()`. A metric below `LOW_COVERAGE_THRESHOLD` reports its `value` with `verdict = None` rather than suppressing the number.
 - `QualityWindow` — dataclass carrying `period`, `orchestrator`, `closed_count`, `metrics: dict[str, QualityMetric]`, and `to_dict()`.
-- `QualityAnalysis` — dataclass carrying `windows: list[QualityWindow]`, `definitions: list[MetricDefinition]`, `min_sample_size`, `notes: tuple[str, ...]`, and `to_dict()`.
+- `RetryWindow` — dataclass carrying `period`, `loop_name`, `run_count`, `mean_iterations`, `verdict`, `insufficient_history: bool`, and `to_dict()`. Separate from `QualityWindow` because retry inflation buckets by loop, not orchestrator (see Retry-inflation attribution).
+- `QualityAnalysis` — dataclass carrying `windows: list[QualityWindow]`, `retry_windows: list[RetryWindow]`, `definitions: list[MetricDefinition]`, `min_sample_size`, `notes: tuple[str, ...]`, and `to_dict()`.
 - `analyze_agent_quality(issues: list[IssueInfo], *, db: Path | str = DEFAULT_DB_PATH, min_sample: int = MIN_SAMPLE_SIZE) -> QualityAnalysis` — the entry point; returns an empty `QualityAnalysis` when `_connect_readonly()` returns `None`.
 - `format_agent_quality_text(analysis: QualityAnalysis) -> str` — human renderer; the other three formatters take and return the same types.
 
@@ -271,24 +380,30 @@ render through the same shape.
 1. `main_history()` — `scripts/little_loops/cli/history.py:16` entry point; parses argv and dispatches on `args.command`.
 2. `quality` dispatch branch — `scripts/little_loops/cli/history.py:339` is the `rework` branch to copy, including its `resolve_history_db(project_root / DEFAULT_DB_PATH)` call.
 3. `find_issues()` — `scripts/little_loops/issue_parser.py` supplies the `list[IssueInfo]` with `status_filter=all_statuses`, needed for supersession edges.
-4. `analyze_agent_quality()` — `scripts/little_loops/issue_history/agent_quality.py` fans out to the four metric collectors.
+4. `analyze_agent_quality()` — `scripts/little_loops/issue_history/agent_quality.py` fans out to the five metric collectors (four on the orchestrator axis, retry inflation on the loop axis).
 5. `_connect_readonly()` — `scripts/little_loops/history_reader.py` opens `.ll/history.db`; returns `None` on a missing DB, which short-circuits to the empty analysis.
 6. `analyze_rework()` — `scripts/little_loops/issue_history/rework.py:310` supplies the fix-rate signals.
-7. `detect_recurring_feedback()` — `scripts/little_loops/issue_history/evolution.py` supplies the correction-rate numerator.
+7. New windowed correction SQL in `agent_quality.py` — `user_corrections` → `issue_sessions` → issue → `orchestration_runs.driver`, retirement-filtered on the `correction_retirements` fingerprint convention borrowed from `evolution.py` (not a call into it).
 8. `classify_verdict()` — `scripts/little_loops/issue_history/_utils.py` assigns each metric its `improving`/`stable`/`degrading` verdict against the earliest same-orchestrator window.
 9. `print()` via the chosen `format_agent_quality_*` renderer, matching the `rework` branch at `scripts/little_loops/cli/history.py:362`.
 
 ## Implementation Steps
 
+0. **Prerequisite — BUG-3236** (`depends_on`): land the `issue_sessions` view repair, or implement
+   every session→issue join with an `issue_id` fallback. Verify against a database already at
+   `schema_version >= 36`, not a freshly created one — a fresh DB masks the defect entirely.
 1. Extract the windowing/min-sample primitives from `rework.py` into `_utils.py`; refactor
    `rework.py` to import them. Confirm `test_issue_history_rework.py` passes unchanged.
-2. Define the metric-definition structure (name, window, denominator, threshold, caveats) in
-   `_utils.py` so both modules emit it into their JSON payloads — AC #4's "one place."
-3. Resolve the two stated attribution decisions and record them in the module docstring:
-   the multi-issue session cost split, and the correction-rate denominator.
-4. Implement `agent_quality.py`: the four metrics, windowed, each with an
-   `insufficient_history` gate.
+2. Define the metric-definition structure (name, unit, window, denominator, formula, min_sample,
+   verdict_band, caveats) in `_utils.py` so both modules emit it into their JSON payloads —
+   AC #4's "one place." Fix-rate's pinned formula goes here.
+3. Record the resolved attribution decisions in the module docstring: even-split multi-issue cost,
+   per-closed-issue correction denominator, loop-bucketed retry inflation.
+4. Implement `agent_quality.py`: the five metrics, windowed, each with an `insufficient_history`
+   gate, plus the `coverage` field and `LOW_COVERAGE_THRESHOLD` verdict suppression on cost.
 5. Implement the four renderers; wire the `quality` subparser + dispatch in `cli/history.py`.
+   Use `if args.min_sample is None` rather than `args.min_sample or MIN_SAMPLE_SIZE` — a deliberate
+   divergence from the `rework` branch, which silently discards an explicit `--min-sample 0`.
 6. Tests per the Tests section.
 7. Docs per the Documentation section.
 
@@ -297,8 +412,15 @@ render through the same shape.
 - One command emits the report from any project's `history.db` with no network access and no LLM call.
   → **`ll-history quality`**, not a new top-level command.
 - At least four metrics, each with a time series and an explicit window definition.
-  → fix-rate, correction rate, retry inflation, cost per issue; windows shared with
-  `ll-history rework` via `_utils`.
+  → fix-rate, correction rate, cost per issue, tokens per issue (shared `(month, orchestrator)`
+  windows via `_utils`), plus retry inflation on its own `(month, loop_name)` axis. Each metric's
+  formula and denominator are stated in its `MetricDefinition`, not left implicit.
+- A metric whose backing data is incomplete reports its coverage and withholds its trend verdict
+  rather than publishing a verdict derived from a shifting denominator.
+  → `QualityMetric.coverage` + `LOW_COVERAGE_THRESHOLD`; specifically, cost per issue must not
+  emit an improving/degrading verdict on a window whose priced share is below 0.5.
+- The report is legible when most issues are `unattributed` (~84% on the source repo's DB).
+  → the text renderer is tested with `unattributed` as the dominant bucket.
 - Empty or sparse databases degrade to a clear "insufficient data" state, not a crash and not a
   misleading zero. → missing DB via `_connect_readonly() is None`; sparse via the
   `MIN_SAMPLE_SIZE` gate emitting `insufficient_history: true`.
@@ -321,22 +443,38 @@ alone concealed. They pin the prior model without having to hand-assemble a sess
 - **Priority**: P1 — the first reader of `usage_events`, and the load-bearing input to any future
   quality-regression detection. Not blocking, but nothing else surfaces this data.
 - **Effort**: Medium — the windowing/min-sample/rendering scaffolding is inherited from
-  `rework.py`; the real work is the `_utils` extraction, the two net-new metrics
-  (retry inflation, cost per issue), and the attribution decisions in step 3.
-- **Risk**: Low-Medium — the new command is read-only and additive, but the `_utils` extraction
-  touches shipped `ll-history rework` behavior. `test_issue_history_rework.py` passing unchanged
-  is the gate.
+  `rework.py`; the real work is the `_utils` extraction, the three net-new metrics
+  (retry inflation, cost per issue, tokens per issue), and the coverage-gating machinery.
+  Add the `issue_sessions` view repair (step 0) if it is not landed separately first.
+- **Risk**: Medium — the new command is read-only and additive, but (a) the `_utils` extraction
+  touches shipped `ll-history rework` behavior, gated by `test_issue_history_rework.py` passing
+  unchanged, and (b) the session→issue join it depends on is broken on already-migrated databases
+  (step 0). The dominant *product* risk is publishing a cost trend that reflects pricing-table
+  coverage rather than agent behavior — the coverage gate exists to prevent exactly that.
 - **Breaking Change**: No.
 
 ## Open Decisions
 
-Both must be resolved during implementation (step 3) and recorded in the module docstring:
+_Both previously-open decisions are now **resolved**; they remain recorded here and must be
+restated in the module docstring._
 
-1. **Multi-issue session cost attribution** — a session touching N issues can split `cost_usd`
-   evenly, duplicate the full cost to each, or be dropped from the metric. Even-split is the
-   suggested default; whichever is chosen must be stated in-band with the output.
-2. **Correction-rate denominator** — per session or per closed issue. Per-session is more stable
-   at low issue volume; per-closed-issue is comparable against the other three metrics' windows.
+1. **Multi-issue session cost attribution** — **RESOLVED: split `cost_usd` evenly** across the N
+   issues a session touches. Duplicating inflates the project total; dropping silently loses the
+   multi-issue sessions, which are the expensive ones. Stated in-band with the output.
+2. **Correction-rate denominator** — **RESOLVED: per closed issue.** Per-session was the more
+   stable choice at low volume, but `user_corrections` carries only `session_id` while the
+   orchestrator label is derived per-issue from `orchestration_runs.issue_id` — a per-session
+   denominator would count sessions while its numerator buckets by issue, in the same ratio.
+   Per-closed-issue keeps one bucketing key and makes the metric comparable against the others.
+   Viability confirmed: 193 of 195 `user_corrections` rows map to an `issue_sessions` row on this
+   repo's DB.
+
+Remaining unresolved:
+
+3. **Whether to land the `MODEL_PRICING` gap first.** Adding `claude-opus-5` (and a documented
+   unpriced path for non-Anthropic models) improves coverage going forward but does not recompute
+   already-written null rows, so the coverage gate is required either way. Sequencing is the only
+   question, not necessity.
 
 ## Status
 
