@@ -1385,6 +1385,9 @@ class FSMLoop:
     # ENH-2896 suppression flag: silences the MR-14 unknown-evaluate-key warning
     # (a state's raw `evaluate:` mapping has a key outside EvaluateConfig's fields).
     evaluate_unknown_keys_ok: bool = False
+    # ENH-3222 suppression flag: silences the abstention-capable-state-with-no-route
+    # warning (a judged gate with neither a cannot_judge route nor an error route).
+    abstention_route_ok: bool = False
     # Populated from the raw `import:` list by from_dict(); not serialized by to_dict()
     imports: list[str] = field(default_factory=list)
 
@@ -1520,6 +1523,8 @@ class FSMLoop:
             result["abandonment_verdict_ok"] = self.abandonment_verdict_ok
         if self.evaluate_unknown_keys_ok:
             result["evaluate_unknown_keys_ok"] = self.evaluate_unknown_keys_ok
+        if self.abstention_route_ok:
+            result["abstention_route_ok"] = self.abstention_route_ok
 
         return result
 
@@ -1630,6 +1635,7 @@ class FSMLoop:
             terminal_action_ok=data.get("terminal_action_ok", False),
             abandonment_verdict_ok=data.get("abandonment_verdict_ok", False),
             evaluate_unknown_keys_ok=data.get("evaluate_unknown_keys_ok", False),
+            abstention_route_ok=data.get("abstention_route_ok", False),
             imports=data.get("import", []),
         )
 

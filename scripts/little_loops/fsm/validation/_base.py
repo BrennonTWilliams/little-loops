@@ -130,6 +130,7 @@ KNOWN_TOP_LEVEL_KEYS: frozenset[str] = frozenset(
         "terminal_action_ok",
         "abandonment_verdict_ok",
         "evaluate_unknown_keys_ok",
+        "abstention_route_ok",
         "import",
         "fragments",
         "from",

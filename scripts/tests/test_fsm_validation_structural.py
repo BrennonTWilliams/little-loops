@@ -25,6 +25,7 @@ from little_loops.fsm.schema import (
 )
 from little_loops.fsm.validation import (
     ValidationSeverity,
+    _validate_abstention_route,
     _validate_evaluator,
     _validate_failure_terminal_action,
     _validate_input_key_without_guard,
@@ -1855,3 +1856,188 @@ class TestFailureTerminalActionFlagDriven:
 # ---------------------------------------------------------------------------
 # MR-13 (ENH-2860) — abandonment must reach summary.json and downgrade verdict
 # ---------------------------------------------------------------------------
+
+
+# ---------------------------------------------------------------------------
+# ENH-3222 — abstention-capable states need a cannot_judge or error route
+# ---------------------------------------------------------------------------
+
+
+class TestAbstentionRouteValidation:
+    """ENH-3222: judged gates that can abstain need a cannot_judge/error route."""
+
+    def _simple_fsm(self, **kwargs) -> FSMLoop:
+        defaults: dict = {
+            "name": "test-abstention",
+            "initial": "check",
+            "states": {
+                "check": make_state(terminal=True),
+            },
+        }
+        defaults.update(kwargs)
+        return FSMLoop(**defaults)
+
+    def test_fires_for_llm_structured_with_no_route(self) -> None:
+        """An explicit llm_structured judge with no cannot_judge/error route dead-ends."""
+        fsm = self._simple_fsm(
+            states={
+                "check": make_state(
+                    action="run.sh",
+                    evaluate=EvaluateConfig(type="llm_structured"),
+                    on_yes="done",
+                    on_no="check",
+                ),
+                "done": make_state(terminal=True),
+            }
+        )
+        errors = _validate_abstention_route(fsm)
+        assert len(errors) == 1
+        assert errors[0].severity == ValidationSeverity.WARNING
+        assert errors[0].path == "states.check"
+
+    def test_does_not_fire_when_on_cannot_judge_declared(self) -> None:
+        fsm = self._simple_fsm(
+            states={
+                "check": make_state(
+                    action="run.sh",
+                    evaluate=EvaluateConfig(type="llm_structured"),
+                    on_yes="done",
+                    on_no="check",
+                    extra_routes={"cannot_judge": "check"},
+                ),
+                "done": make_state(terminal=True),
+            }
+        )
+        assert _validate_abstention_route(fsm) == []
+
+    def test_does_not_fire_when_error_route_declared(self) -> None:
+        fsm = self._simple_fsm(
+            states={
+                "check": make_state(
+                    action="run.sh",
+                    evaluate=EvaluateConfig(type="llm_structured"),
+                    on_yes="done",
+                    on_no="check",
+                    on_error="check",
+                ),
+                "done": make_state(terminal=True),
+            }
+        )
+        assert _validate_abstention_route(fsm) == []
+
+    def test_route_default_does_not_rescue(self) -> None:
+        """route.default is never consulted by _abstention_fallback(); must still fire."""
+        from little_loops.fsm.schema import RouteConfig
+
+        fsm = self._simple_fsm(
+            states={
+                "check": make_state(
+                    action="run.sh",
+                    evaluate=EvaluateConfig(type="llm_structured"),
+                    route=RouteConfig(routes={"yes": "done"}, default="check"),
+                ),
+                "done": make_state(terminal=True),
+            }
+        )
+        errors = _validate_abstention_route(fsm)
+        assert len(errors) == 1
+
+    def test_cannot_judge_uncertain_route_does_not_satisfy_base_key(self) -> None:
+        """Declaring only on_cannot_judge_uncertain still dead-ends on a bare cannot_judge."""
+        fsm = self._simple_fsm(
+            states={
+                "check": make_state(
+                    action="run.sh",
+                    evaluate=EvaluateConfig(type="llm_structured"),
+                    on_yes="done",
+                    extra_routes={"cannot_judge_uncertain": "check"},
+                ),
+                "done": make_state(terminal=True),
+            }
+        )
+        errors = _validate_abstention_route(fsm)
+        assert len(errors) == 1
+
+    def test_fires_for_abstain_on_exit_3_state(self) -> None:
+        """ENH-3224's flag-gated exit_code abstention is covered too."""
+        fsm = self._simple_fsm(
+            states={
+                "check": make_state(
+                    action="run.sh",
+                    evaluate=EvaluateConfig(type="exit_code", abstain_on_exit_3=True),
+                    on_yes="done",
+                    on_no="check",
+                ),
+                "done": make_state(terminal=True),
+            }
+        )
+        errors = _validate_abstention_route(fsm)
+        assert len(errors) == 1
+
+    def test_does_not_fire_for_exit_code_without_abstain_flag(self) -> None:
+        """A plain exit_code evaluator (no abstain_on_exit_3) cannot abstain."""
+        fsm = self._simple_fsm(
+            states={
+                "check": make_state(
+                    action="run.sh",
+                    evaluate=EvaluateConfig(type="exit_code"),
+                    on_yes="done",
+                    on_no="check",
+                ),
+                "done": make_state(terminal=True),
+            }
+        )
+        assert _validate_abstention_route(fsm) == []
+
+    def test_does_not_fire_for_non_judged_state(self) -> None:
+        fsm = self._simple_fsm(
+            states={
+                "check": make_state(
+                    action="run.sh",
+                    evaluate=EvaluateConfig(type="output_contains", pattern="ok"),
+                    on_yes="done",
+                    on_no="check",
+                ),
+                "done": make_state(terminal=True),
+            }
+        )
+        assert _validate_abstention_route(fsm) == []
+
+    def test_suppressed_by_abstention_route_ok(self) -> None:
+        fsm = self._simple_fsm(
+            abstention_route_ok=True,
+            states={
+                "check": make_state(
+                    action="run.sh",
+                    evaluate=EvaluateConfig(type="llm_structured"),
+                    on_yes="done",
+                    on_no="check",
+                ),
+                "done": make_state(terminal=True),
+            },
+        )
+        assert _validate_abstention_route(fsm) == []
+
+    def test_fires_end_to_end_via_validate_fsm(self) -> None:
+        fsm = FSMLoop(
+            name="test",
+            initial="check",
+            states={
+                "check": make_state(
+                    action="run.sh",
+                    evaluate=EvaluateConfig(type="llm_structured"),
+                    on_yes="done",
+                    on_no="check",
+                ),
+                "done": make_state(terminal=True),
+            },
+        )
+        all_errors = validate_fsm(fsm)
+        abstention_warnings = [
+            e
+            for e in all_errors
+            if e.severity == ValidationSeverity.WARNING and "ENH-3222" in e.message
+        ]
+        assert len(abstention_warnings) >= 1, (
+            f"ENH-3222 WARNING not found in validate_fsm output: {all_errors}"
+        )

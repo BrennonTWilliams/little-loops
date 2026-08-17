@@ -3,10 +3,11 @@ id: ENH-3222
 type: ENH
 title: Validator rule for judged gates with no abstention route and no error route
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-08-16'
 captured_at: '2026-08-16T23:28:45Z'
+completed_at: '2026-08-17T17:15:33Z'
 parent: EPIC-3217
 decision_needed: false
 testable: true
@@ -262,6 +263,7 @@ one-directional `_uncertain` route fallback, and the expected MR-4 double-diagno
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-17T17:15:11 - `874f81b5-d638-4302-8b4b-3679eae19140.jsonl`
 - `/ll:confidence-check` - 2026-08-17T16:54:33 - `8ff1a8ea-9c16-4537-b2ba-58cd77df4fae.jsonl`
 - `/ll:confidence-check` - 2026-08-17T16:17:47 - `c786d9ca-0348-4ed5-812d-bc2de7a34350.jsonl`
 - `/ll:refine-issue` - 2026-08-17T06:06:13 - `86eb12f1-b126-4db7-a22d-252ffa585d1f.jsonl`

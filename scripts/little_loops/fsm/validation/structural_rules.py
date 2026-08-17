@@ -1102,6 +1102,8 @@ def validate_fsm(
 
     errors.extend(_validate_prompt_size_guard(fsm))
 
+    errors.extend(_validate_abstention_route(fsm))
+
     errors.extend(_validate_progress_paths_isolation(fsm))
 
     errors.extend(_validate_capture_reachability(fsm))
@@ -1431,6 +1433,93 @@ def _validate_prompt_size_guard(fsm: FSMLoop) -> list[ValidationError]:
             )
         )
 
+    return errors
+
+
+def _is_abstention_capable(state: StateConfig) -> bool:
+    """True when *state* can produce a ``cannot_judge`` verdict (ENH-3222).
+
+    Narrow scope per the issue's Decision: Detection Scope — deliberately
+    narrower than ``_is_llm_judged()``, which also matches implicit-judge
+    prompt states with no ``evaluate:`` block. Those states are real
+    abstention risks too (measured: 199 hits across 66 loop files) but are
+    out of scope here pending a paired retrofit plan; only states where the
+    author explicitly opted into a judge are flagged:
+
+    - ``evaluate.type == "llm_structured"`` (includes ``llm_gate``-fragment
+      states, already resolved to this shape by the time validation runs)
+    - ``evaluate.type == "exit_code"`` with ``abstain_on_exit_3: true``
+      (ENH-3224)
+    """
+    if state.evaluate is None:
+        return False
+    if state.evaluate.type == "llm_structured":
+        return True
+    return state.evaluate.type == "exit_code" and state.evaluate.abstain_on_exit_3
+
+
+def _has_cannot_judge_route(state: StateConfig) -> bool:
+    """True when *state* declares a route for the literal ``cannot_judge`` verdict.
+
+    Mirrors ``FSMExecutor._exact_route_declared()`` (``executor.py``): matches
+    the base ``cannot_judge`` key only, via ``route.routes``/``extra_routes``.
+    Deliberately does not accept ``route.default`` (the runtime's
+    ``_abstention_fallback()`` never consults it) or a declared
+    ``cannot_judge_uncertain`` (BUG-3228's fallback is one-directional — a base
+    route covers the ``_uncertain`` suffix, not vice versa).
+    """
+    if state.route is not None and "cannot_judge" in state.route.routes:
+        return True
+    return "cannot_judge" in state.extra_routes
+
+
+def _has_error_route(state: StateConfig) -> bool:
+    """True when *state* declares an error route (``on_error`` or ``route.error``)."""
+    if state.on_error is not None:
+        return True
+    return state.route is not None and state.route.error is not None
+
+
+def _validate_abstention_route(fsm: FSMLoop) -> list[ValidationError]:
+    """Validate rule (ENH-3222): abstention-capable states need a cannot_judge or error route.
+
+    A state that can produce a ``cannot_judge`` verdict (an explicit
+    ``llm_structured`` judge, or ``evaluate.abstain_on_exit_3: true``) but
+    declares neither a ``cannot_judge`` route nor an error route dead-ends the
+    run: ``_abstention_fallback()`` (``executor.py``) never falls back to
+    ``route.default`` or an implicit ``on_no``, so after
+    ``_ABSTENTION_HOLD_CAP = 2`` re-executions of the state's action, the run
+    terminates via "No valid transition".
+
+    This may double-fire alongside MR-4 (``_validate_partial_route_dead_end``)
+    for an ``on_yes``-only state with no error route — expected, since the two
+    rules cover different unrouted verdicts.
+
+    Suppressed by ``abstention_route_ok: true`` at the loop top-level.
+    """
+    if fsm.abstention_route_ok:
+        return []
+    errors: list[ValidationError] = []
+    for state_name, state in fsm.states.items():
+        if not _is_abstention_capable(state):
+            continue
+        if _has_cannot_judge_route(state) or _has_error_route(state):
+            continue
+        errors.append(
+            ValidationError(
+                message=(
+                    f"[state: {state_name}] abstention-capable state declares no "
+                    "cannot_judge route (on_cannot_judge/route.cannot_judge) and no "
+                    "error route (on_error/route.error); an undeclared abstention "
+                    "terminates the run via 'No valid transition' after "
+                    "_ABSTENTION_HOLD_CAP=2 holds. Add a cannot_judge or error route, "
+                    "or set `abstention_route_ok: true` at the loop top-level to "
+                    "suppress. (ENH-3222)"
+                ),
+                path=f"states.{state_name}",
+                severity=ValidationSeverity.WARNING,
+            )
+        )
     return errors
 
 
