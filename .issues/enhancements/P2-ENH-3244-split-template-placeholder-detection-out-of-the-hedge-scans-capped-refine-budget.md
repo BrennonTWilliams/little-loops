@@ -49,6 +49,23 @@ The issue reached the `done` terminal carrying five literal `TBD - requires code
 bullets and `1. [Major phase 1] / 2. [Major phase 2] / 3. [Verification approach]`. Downstream
 `confidence_check` then scored it 96 readiness / 90 outcome, 25/25 on the ambiguity axis.
 
+### Why the existing `boilerplate` gap class does not catch this
+
+`format-check` already has a `boilerplate` gap class, but it fires only when a **required section's
+body equals its `creation_template` in full** (`scripts/little_loops/issue_parser.py:853-856`):
+
+```python
+template = section_defs.get(name, {}).get("creation_template", "")
+if template and _normalize_whitespace(stripped) == _normalize_whitespace(template):
+    gaps.boilerplate.append(name)
+```
+
+Any partial fill defeats that whole-body equality test. ENH-3238's `## Integration Map` had
+`### Codebase Research Findings` populated with real research while its five sibling subsections
+still held `TBD` bullets — so the section body no longer equalled the template, `boilerplate` stayed
+silent, and the debris passed. The new check must be **per-placeholder containment**, not
+whole-section equality.
+
 ## Expected Behavior
 
 An issue cannot reach `done` while its file still contains unfilled template placeholders. That
@@ -232,4 +249,5 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:capture-issue` - 2026-08-17T19:29:37 - `3ce34465-00fd-4ba7-a470-b61774849ebd.jsonl`
 - `/ll:capture-issue` - 2026-08-17T19:16:20 - `33a98a0f-5403-4525-92db-f7737c5401c4.jsonl`

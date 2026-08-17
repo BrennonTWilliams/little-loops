@@ -647,7 +647,7 @@ class TestSchemaV6:
         finally:
             conn.close()
         assert int(row[0]) == SCHEMA_VERSION
-        assert SCHEMA_VERSION == 42
+        assert SCHEMA_VERSION == 43
 
 
 class TestSchemaV9:
@@ -661,8 +661,8 @@ class TestSchemaV9:
             row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
         finally:
             conn.close()
-        assert SCHEMA_VERSION == 42
-        assert int(row[0]) == 42
+        assert SCHEMA_VERSION == 43
+        assert int(row[0]) == 43
 
     def test_idx_corrections_dedup_exists(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
@@ -713,8 +713,8 @@ class TestSchemaV10:
             row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
         finally:
             conn.close()
-        assert SCHEMA_VERSION == 42
-        assert int(row[0]) == 42
+        assert SCHEMA_VERSION == 43
+        assert int(row[0]) == 43
 
     def test_summary_nodes_table_exists(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
@@ -792,7 +792,7 @@ class TestSchemaV10:
             }
         finally:
             conn.close()
-        assert int(version[0]) == 42
+        assert int(version[0]) == 43
         assert "summary_nodes" in names
         assert "summary_spans" in names
         assert "assistant_messages" in names
@@ -809,8 +809,8 @@ class TestSchemaV12:
             row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
         finally:
             conn.close()
-        assert SCHEMA_VERSION == 42
-        assert int(row[0]) == 42
+        assert SCHEMA_VERSION == 43
+        assert int(row[0]) == 43
 
     def test_summary_nodes_has_level_column(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
@@ -1031,8 +1031,8 @@ class TestSchemaV13:
             row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
         finally:
             conn.close()
-        assert SCHEMA_VERSION == 42
-        assert int(row[0]) == 42
+        assert SCHEMA_VERSION == 43
+        assert int(row[0]) == 43
 
     def test_correction_retirements_table_exists(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
@@ -1072,8 +1072,8 @@ class TestSchemaV14:
             row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
         finally:
             conn.close()
-        assert SCHEMA_VERSION == 42
-        assert int(row[0]) == 42
+        assert SCHEMA_VERSION == 43
+        assert int(row[0]) == 43
 
     def test_issue_snapshots_table_exists(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
@@ -1127,7 +1127,7 @@ class TestSchemaV14:
             }
         finally:
             conn.close()
-        assert int(version[0]) == 42
+        assert int(version[0]) == 43
         assert "issue_snapshots" in names
 
 
@@ -1410,7 +1410,7 @@ class TestSchemaV27:
         assert cols == {"id", "ts", "session_id", "event", "detail", "head_sha", "branch"}
 
     def test_v26_db_upgrades_gains_session_lifecycle_events(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 42
+        assert SCHEMA_VERSION == 43
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 26)
         ensure_db(db)
@@ -1450,7 +1450,7 @@ class TestSchemaV28:
         }
 
     def test_v27_db_upgrades_gains_subagent_runs(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 42
+        assert SCHEMA_VERSION == 43
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 27)
         ensure_db(db)
@@ -1494,7 +1494,7 @@ class TestSchemaV29:
         assert "idx_usage_events_run_id" in names
 
     def test_v28_db_upgrades_gains_run_id_column(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 42
+        assert SCHEMA_VERSION == 43
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 28)
         ensure_db(db)
@@ -1544,7 +1544,7 @@ class TestSchemaV30HookEvents:
         assert {"idx_hook_event_name", "idx_hook_session", "idx_hook_exit"} <= names
 
     def test_v29_db_upgrades_gains_hook_events(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 42
+        assert SCHEMA_VERSION == 43
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 29)
         ensure_db(db)
@@ -1619,7 +1619,7 @@ class TestSchemaV31HarnessEvents:
         } <= names
 
     def test_v30_db_upgrades_gains_harness_events(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 42
+        assert SCHEMA_VERSION == 43
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 30)
         ensure_db(db)
@@ -1679,7 +1679,7 @@ class TestSchemaV32PromptOptEvents:
         assert {"idx_prompt_opt_events_session", "idx_prompt_opt_events_mode"} <= names
 
     def test_v31_db_upgrades_gains_prompt_opt_events(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 42
+        assert SCHEMA_VERSION == 43
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 31)
         ensure_db(db)
@@ -1747,7 +1747,7 @@ class TestSchemaV33VerdictEvents:
         assert {"idx_verdict_kind", "idx_verdict_target", "idx_verdict_session"} <= names
 
     def test_v32_db_upgrades_gains_verdict_events(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 42
+        assert SCHEMA_VERSION == 43
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 32)
         ensure_db(db)
@@ -1812,7 +1812,7 @@ class TestSchemaV34ContextPressureEvents:
         assert {"idx_pressure_session", "idx_pressure_ts", "idx_pressure_crossed"} <= names
 
     def test_v33_db_upgrade_gains_context_pressure_events(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 42
+        assert SCHEMA_VERSION == 43
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 33)
         ensure_db(db)
@@ -1880,7 +1880,7 @@ class TestSchemaV35ReviewEvents:
         assert {"idx_review_skill", "idx_review_target", "idx_review_session"} <= names
 
     def test_v34_db_upgrade_gains_review_events(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 42
+        assert SCHEMA_VERSION == 43
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 34)
         ensure_db(db)
@@ -1925,7 +1925,7 @@ class TestSchemaV38BaseShaColumns:
 
     def test_v37_db_upgrades_preserving_unstamped_rows(self, tmp_path: Path) -> None:
         """Pre-migration orchestration rows survive with NULL stamp columns."""
-        assert SCHEMA_VERSION == 42
+        assert SCHEMA_VERSION == 43
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 37)
         conn = sqlite3.connect(str(db))
@@ -1980,7 +1980,7 @@ class TestSchemaV39HarnessContentPin:
 
     def test_v38_db_upgrades_preserving_unpinned_rows(self, tmp_path: Path) -> None:
         """Pre-v39 harness rows survive with NULL content-pin columns."""
-        assert SCHEMA_VERSION == 42
+        assert SCHEMA_VERSION == 43
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 38)
         conn = sqlite3.connect(str(db))
@@ -2048,7 +2048,13 @@ class TestSchemaV42IssueSessionsRepair:
         from v36 onward.
         """
         db = tmp_path / "history.db"
-        _bootstrap_schema_at(db, 36)
+        # Bootstrap through v40 (not just v36) so every column later
+        # migrations assume unconditionally -- e.g. v43's blanket
+        # `CREATE INDEX ... loop_runs(failure_terminal)` re-assertion --
+        # genuinely exists; only the view itself is reverted below to
+        # simulate the drift, matching BUG-3236's actual failure mode
+        # (a manually-patched view, not a partially-applied migration chain).
+        _bootstrap_schema_at(db, 40)
         conn = sqlite3.connect(str(db))
         try:
             # Overwrite the correct v36 view with the pre-v36-shaped body
@@ -2092,6 +2098,176 @@ class TestSchemaV42IssueSessionsRepair:
             conn.close()
         assert int(version[0]) == SCHEMA_VERSION
         assert "issue_num" in cols
+
+
+def _insert_summary_node(
+    conn: sqlite3.Connection,
+    kind: str,
+    session_id: str | None,
+    ts_start: str | None,
+    ts_end: str | None,
+) -> int:
+    """Insert a minimal summary_nodes row and return its id (BUG-3241 fixtures)."""
+    conn.execute(
+        "INSERT INTO summary_nodes(kind, content, session_id, ts_start, ts_end, created_at) "
+        "VALUES (?, 'body', ?, ?, ?, '2026-01-01T00:00:00Z')",
+        (kind, session_id, ts_start, ts_end),
+    )
+    return int(conn.execute("SELECT last_insert_rowid()").fetchone()[0])
+
+
+def _insert_raw_event(conn: sqlite3.Connection, session_id: str, summary_node_id: int | None) -> None:
+    """Insert a minimal raw_events row pointing at *summary_node_id* (BUG-3241 fixtures)."""
+    conn.execute(
+        "INSERT INTO raw_events"
+        "(ts, session_id, host, source_path, line_no, event_type, raw_line, parsed_json, summary_node_id) "
+        "VALUES ('2026-01-01T00:00:00Z', ?, 'h', '/p', 1, 'tool', '{}', '{}', ?)",
+        (session_id, summary_node_id),
+    )
+
+
+def test_schema_version_matches_migrations_length() -> None:
+    """SCHEMA_VERSION is a hand-maintained int, not derived from len(_MIGRATIONS);
+    guard against the two silently desyncing (BUG-3241 wiring finding)."""
+    from little_loops.session_store import _MIGRATIONS
+
+    assert SCHEMA_VERSION == len(_MIGRATIONS)
+
+
+class TestSchemaV43IndexRepair:
+    """v43 migration: repair missing dedup indexes on drifted databases (BUG-3241)."""
+
+    def test_assistant_messages_duplicates_repaired_without_raising(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        _bootstrap_schema_at(db, 42)
+        conn = sqlite3.connect(str(db))
+        try:
+            conn.execute("DROP INDEX IF EXISTS idx_assistant_messages_dedup")
+            conn.execute(
+                "INSERT INTO assistant_messages(ts, content, session_id, tool_use_count) "
+                "VALUES ('t1', 'c1', 's1', 0)"
+            )
+            conn.execute(
+                "INSERT INTO assistant_messages(ts, content, session_id, tool_use_count) "
+                "VALUES ('t1', 'c1', 's1', 0)"
+            )
+            conn.commit()
+            _stamp_version(conn, 42)
+        finally:
+            conn.close()
+
+        ensure_db(db)  # must not raise sqlite3.IntegrityError
+
+        conn = sqlite3.connect(str(db))
+        try:
+            version = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
+            count = conn.execute("SELECT COUNT(*) FROM assistant_messages").fetchone()[0]
+            index_row = conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='index' AND name='idx_assistant_messages_dedup'"
+            ).fetchone()
+        finally:
+            conn.close()
+        assert int(version[0]) == SCHEMA_VERSION
+        assert count == 1
+        assert index_row is not None
+
+    def test_clean_database_is_idempotent(self, tmp_path: Path) -> None:
+        """A database already carrying the indexes is unaffected: no row deletions."""
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        conn = sqlite3.connect(str(db))
+        try:
+            conn.execute(
+                "INSERT INTO assistant_messages(ts, content, session_id, tool_use_count) "
+                "VALUES ('t1', 'c1', 's1', 0)"
+            )
+            surv = _insert_summary_node(conn, "retention", "s1", "a", "b")
+            conn.commit()
+        finally:
+            conn.close()
+
+        ensure_db(db)  # re-run: no pending migrations, but exercise idempotency of a rerun
+
+        conn = sqlite3.connect(str(db))
+        try:
+            am_count = conn.execute("SELECT COUNT(*) FROM assistant_messages").fetchone()[0]
+            sn_count = conn.execute("SELECT COUNT(*) FROM summary_nodes WHERE kind='retention'").fetchone()[0]
+            surviving = conn.execute("SELECT id FROM summary_nodes WHERE kind='retention'").fetchone()[0]
+        finally:
+            conn.close()
+        assert am_count == 1
+        assert sn_count == 1
+        assert surviving == surv
+
+    def test_all_three_indexes_present_on_drifted_db(self, tmp_path: Path) -> None:
+        """A db stamped past the creating migrations but structurally missing the
+        indexes has all three present after ensure_db()."""
+        db = tmp_path / "history.db"
+        _bootstrap_schema_at(db, 42)
+        conn = sqlite3.connect(str(db))
+        try:
+            conn.execute("DROP INDEX IF EXISTS idx_assistant_messages_dedup")
+            conn.execute("DROP INDEX IF EXISTS idx_summary_nodes_retention_dedup")
+            conn.execute("DROP INDEX IF EXISTS idx_summary_nodes_parent_id")
+            conn.commit()
+            _stamp_version(conn, 42)
+        finally:
+            conn.close()
+
+        ensure_db(db)
+
+        conn = sqlite3.connect(str(db))
+        try:
+            have = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='index'")}
+        finally:
+            conn.close()
+        assert "idx_assistant_messages_dedup" in have
+        assert "idx_summary_nodes_retention_dedup" in have
+        assert "idx_summary_nodes_parent_id" in have
+
+    def test_summary_nodes_dedup_preserves_leaf_condensed_and_null_key_rows(self, tmp_path: Path) -> None:
+        """The retention dedup must not touch leaf/condensed rows, and must not
+        delete a retention row whose (session_id, ts_start, ts_end) contains a
+        NULL -- SQLite's UNIQUE index accepts those, so the repair must too."""
+        db = tmp_path / "history.db"
+        _bootstrap_schema_at(db, 42)
+        conn = sqlite3.connect(str(db))
+        try:
+            conn.execute("DROP INDEX IF EXISTS idx_summary_nodes_retention_dedup")
+            survivor = _insert_summary_node(conn, "retention", "s1", "a", "b")
+            loser = _insert_summary_node(conn, "retention", "s1", "a", "b")
+            null_a = _insert_summary_node(conn, "retention", None, "x", "y")
+            null_b = _insert_summary_node(conn, "retention", None, "x", "y")
+            leaf_a = _insert_summary_node(conn, "leaf", "s1", "a", "b")
+            leaf_b = _insert_summary_node(conn, "leaf", "s2", "a", "b")
+            _insert_raw_event(conn, "s1", loser)
+            conn.commit()
+            _stamp_version(conn, 42)
+        finally:
+            conn.close()
+
+        ensure_db(db)
+
+        conn = sqlite3.connect(str(db))
+        try:
+            retention_ids = {
+                r[0] for r in conn.execute("SELECT id FROM summary_nodes WHERE kind='retention'")
+            }
+            leaf_ids = {r[0] for r in conn.execute("SELECT id FROM summary_nodes WHERE kind='leaf'")}
+            re_target = conn.execute("SELECT summary_node_id FROM raw_events").fetchone()[0]
+            dangling = conn.execute(
+                "SELECT COUNT(*) FROM raw_events "
+                "WHERE summary_node_id IS NOT NULL "
+                "AND summary_node_id NOT IN (SELECT id FROM summary_nodes)"
+            ).fetchone()[0]
+        finally:
+            conn.close()
+
+        assert retention_ids == {survivor, null_a, null_b}
+        assert loser not in retention_ids
+        assert leaf_ids == {leaf_a, leaf_b}
+        assert dangling == 0
+        assert re_target == survivor  # repointed from the deleted loser to its survivor
 
 
 class TestPackageReexportSurface:

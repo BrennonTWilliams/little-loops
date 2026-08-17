@@ -18,7 +18,7 @@ from little_loops.session_store.db import DEFAULT_DB_PATH, _resolve_db_path
 
 logger = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 42
+SCHEMA_VERSION = 43
 
 VALID_KINDS: tuple[str, ...] = (
     "tool",
@@ -1025,6 +1025,139 @@ _MIGRATIONS: list[str] = [
         SELECT issue_num FROM issue_events
         WHERE session_id IS NOT NULL AND issue_num IS NOT NULL
     );
+    """,
+    # v43 (BUG-3241): repair databases missing idx_assistant_messages_dedup
+    # and/or idx_summary_nodes_retention_dedup despite a recorded
+    # schema_version past v11/v19 (the migrations that create them) — see
+    # BUG-3241's Root Cause. A bare `CREATE UNIQUE INDEX IF NOT EXISTS` is
+    # unsafe here: any database that accumulated duplicate rows while the
+    # index was missing would raise sqlite3.IntegrityError, roll back this
+    # whole migration, and make ensure_db() (and therefore every ll-*
+    # command) hard-fail at startup. Each UNIQUE index is preceded by a dedup
+    # pass; the survivor rule is MIN(rowid)/MIN(id), not the ROW_NUMBER()
+    # ... ORDER BY ts ASC form v36 (_MIGRATIONS[35]) uses, because
+    # summary_nodes has no ts column and its ts_start/ts_end sit inside the
+    # dedup key itself.
+    """
+    -- assistant_messages: all three key columns (session_id, ts, content)
+    -- are NOT NULL and cover every meaningful column, and nothing holds an
+    -- FK-shaped reference to assistant_messages.id, so the simple form is
+    -- safe with no NULL guard and no repoint step.
+    DELETE FROM assistant_messages
+     WHERE rowid NOT IN (
+       SELECT MIN(rowid) FROM assistant_messages
+        GROUP BY session_id, ts, content
+     );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_assistant_messages_dedup
+        ON assistant_messages(session_id, ts, content);
+
+    -- summary_nodes: the index is partial (WHERE kind = 'retention') and its
+    -- key columns are nullable, so the assistant_messages shape above is not
+    -- reusable verbatim:
+    --   - unscoped by kind, the dedup would also collapse leaf/condensed
+    --     rows that share the same (session_id, ts_start, ts_end) shape
+    --     under their own partial index (idx_summary_nodes_leaf_dedup /
+    --     idx_summary_nodes_condensed_dedup), shredding the summary DAG
+    --     (live summary_spans children, parent_id edges).
+    --   - SQLite treats NULLs as distinct in a UNIQUE index but GROUP BY
+    --     treats them as equal, so an unguarded dedup would delete rows the
+    --     index would have accepted -- NULL session_id is a real, expected
+    --     value for retention rows (see lifecycle.compact()).
+    -- raw_events.summary_node_id is the only live reference into
+    -- summary_nodes.id that ever points at a retention row
+    -- (summary_spans.summary_id is written only for kind='leaf', parent_id
+    -- is set only on leaf/condensed rows) -- repoint it from each
+    -- non-survivor to its group's survivor before deleting, so no dangling
+    -- reference survives.
+    UPDATE raw_events
+       SET summary_node_id = (
+         SELECT MIN(s2.id) FROM summary_nodes s2
+          WHERE s2.kind = 'retention'
+            AND s2.session_id IS (SELECT s1.session_id FROM summary_nodes s1
+                                   WHERE s1.id = raw_events.summary_node_id)
+            AND s2.ts_start = (SELECT s1.ts_start FROM summary_nodes s1
+                                WHERE s1.id = raw_events.summary_node_id)
+            AND s2.ts_end   = (SELECT s1.ts_end   FROM summary_nodes s1
+                                WHERE s1.id = raw_events.summary_node_id)
+       )
+     WHERE summary_node_id IS NOT NULL
+       AND EXISTS (SELECT 1 FROM summary_nodes s1
+                    WHERE s1.id = raw_events.summary_node_id
+                      AND s1.kind = 'retention'
+                      AND s1.ts_start IS NOT NULL AND s1.ts_end IS NOT NULL);
+    DELETE FROM summary_nodes
+     WHERE kind = 'retention'
+       AND session_id IS NOT NULL AND ts_start IS NOT NULL AND ts_end IS NOT NULL
+       AND id NOT IN (
+         SELECT MIN(id) FROM summary_nodes
+          WHERE kind = 'retention'
+            AND session_id IS NOT NULL AND ts_start IS NOT NULL AND ts_end IS NOT NULL
+          GROUP BY session_id, ts_start, ts_end
+       );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_summary_nodes_retention_dedup
+        ON summary_nodes(session_id, ts_start, ts_end) WHERE kind = 'retention';
+
+    -- Re-assert every non-UNIQUE index the schema defines. CREATE INDEX IF
+    -- NOT EXISTS on a non-UNIQUE index cannot fail (no dedup precondition),
+    -- so this is zero-risk and repairs any unobserved drift beyond the one
+    -- plain index (idx_summary_nodes_parent_id) BUG-3241 happened to observe
+    -- missing. UNIQUE indexes are deliberately excluded from this blanket
+    -- re-assertion -- that is precisely the hard-failure mode this
+    -- migration exists to avoid.
+    CREATE INDEX IF NOT EXISTS idx_assistant_messages_session_ts ON assistant_messages(session_id, ts);
+    CREATE INDEX IF NOT EXISTS idx_commit_events_branch ON commit_events(branch);
+    CREATE INDEX IF NOT EXISTS idx_commit_events_issue_id ON commit_events(issue_id);
+    CREATE INDEX IF NOT EXISTS idx_commit_events_sha ON commit_events(commit_sha);
+    CREATE INDEX IF NOT EXISTS idx_harness_exit ON harness_events(exit_code);
+    CREATE INDEX IF NOT EXISTS idx_harness_parent ON harness_events(parent_id);
+    CREATE INDEX IF NOT EXISTS idx_harness_runner ON harness_events(runner);
+    CREATE INDEX IF NOT EXISTS idx_harness_semantic_verdict ON harness_events(semantic_verdict);
+    CREATE INDEX IF NOT EXISTS idx_harness_target ON harness_events(target);
+    CREATE INDEX IF NOT EXISTS idx_hook_event_name ON hook_events(event_name);
+    CREATE INDEX IF NOT EXISTS idx_hook_exit ON hook_events(exit_code);
+    CREATE INDEX IF NOT EXISTS idx_hook_session ON hook_events(session_id);
+    CREATE INDEX IF NOT EXISTS idx_issue_events_num ON issue_events(issue_num);
+    CREATE INDEX IF NOT EXISTS idx_issue_events_session_id ON issue_events(session_id);
+    CREATE INDEX IF NOT EXISTS idx_issue_snapshots_num ON issue_snapshots(issue_num);
+    CREATE INDEX IF NOT EXISTS idx_learning_test_events_status ON learning_test_events(status);
+    CREATE INDEX IF NOT EXISTS idx_learning_test_events_target ON learning_test_events(target);
+    CREATE INDEX IF NOT EXISTS idx_lifecycle_event ON session_lifecycle_events(event);
+    CREATE INDEX IF NOT EXISTS idx_lifecycle_session ON session_lifecycle_events(session_id);
+    CREATE INDEX IF NOT EXISTS idx_loop_runs_evaluator_score ON loop_runs(evaluator_score);
+    CREATE INDEX IF NOT EXISTS idx_loop_runs_failure_terminal ON loop_runs(failure_terminal);
+    CREATE INDEX IF NOT EXISTS idx_loop_runs_loop_name ON loop_runs(loop_name);
+    CREATE INDEX IF NOT EXISTS idx_loop_runs_terminated_by ON loop_runs(terminated_by);
+    CREATE INDEX IF NOT EXISTS idx_orchestration_runs_driver ON orchestration_runs(driver);
+    CREATE INDEX IF NOT EXISTS idx_orchestration_runs_issue_id ON orchestration_runs(issue_id);
+    CREATE INDEX IF NOT EXISTS idx_orchestration_runs_status ON orchestration_runs(status);
+    CREATE INDEX IF NOT EXISTS idx_prepatch_evidence_issue_id ON prepatch_evidence(issue_id, id DESC);
+    CREATE INDEX IF NOT EXISTS idx_pressure_crossed ON context_pressure_events(threshold_crossed);
+    CREATE INDEX IF NOT EXISTS idx_pressure_session ON context_pressure_events(session_id);
+    CREATE INDEX IF NOT EXISTS idx_pressure_ts ON context_pressure_events(ts);
+    CREATE INDEX IF NOT EXISTS idx_prompt_opt_events_mode ON prompt_opt_events(mode);
+    CREATE INDEX IF NOT EXISTS idx_prompt_opt_events_session ON prompt_opt_events(session_id);
+    CREATE INDEX IF NOT EXISTS idx_raw_events_host_ts ON raw_events(host, ts);
+    CREATE INDEX IF NOT EXISTS idx_raw_events_session_ts ON raw_events(session_id, ts);
+    CREATE INDEX IF NOT EXISTS idx_review_session ON review_events(session_id);
+    CREATE INDEX IF NOT EXISTS idx_review_skill ON review_events(reviewer_skill);
+    CREATE INDEX IF NOT EXISTS idx_review_target ON review_events(target_id);
+    CREATE INDEX IF NOT EXISTS idx_subagent_agent ON subagent_runs(agent_type);
+    CREATE INDEX IF NOT EXISTS idx_subagent_agent_id ON subagent_runs(agent_id);
+    CREATE INDEX IF NOT EXISTS idx_subagent_parent ON subagent_runs(parent_session_id);
+    CREATE INDEX IF NOT EXISTS idx_subagent_status ON subagent_runs(status);
+    CREATE INDEX IF NOT EXISTS idx_summary_nodes_parent_id ON summary_nodes(parent_id);
+    CREATE INDEX IF NOT EXISTS idx_test_run_events_branch ON test_run_events(branch);
+    CREATE INDEX IF NOT EXISTS idx_test_run_events_failed_count ON test_run_events(failed);
+    CREATE INDEX IF NOT EXISTS idx_test_run_events_head_sha ON test_run_events(head_sha);
+    CREATE INDEX IF NOT EXISTS idx_tool_events_agent ON tool_events(agent_type);
+    CREATE INDEX IF NOT EXISTS idx_tool_events_mcp_outcome ON tool_events(mcp_outcome);
+    CREATE INDEX IF NOT EXISTS idx_tool_events_mcp_server ON tool_events(mcp_server);
+    CREATE INDEX IF NOT EXISTS idx_usage_events_model ON usage_events(model);
+    CREATE INDEX IF NOT EXISTS idx_usage_events_run_id ON usage_events(run_id);
+    CREATE INDEX IF NOT EXISTS idx_usage_events_session ON usage_events(session_id);
+    CREATE INDEX IF NOT EXISTS idx_verdict_kind ON verdict_events(verdict_kind);
+    CREATE INDEX IF NOT EXISTS idx_verdict_session ON verdict_events(session_id);
+    CREATE INDEX IF NOT EXISTS idx_verdict_target ON verdict_events(target_id);
     """,
 ]
 

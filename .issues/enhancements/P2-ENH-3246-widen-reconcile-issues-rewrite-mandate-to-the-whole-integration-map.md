@@ -91,6 +91,28 @@ accumulate.
      directive bullet has no supporting finding, leave it as-is and note it under `## CONCERNS`."
 4. Regenerate host mirrors with `ll-adapt` (see Integration Map).
 
+### Behavior Parity
+
+This issue replaces a term in `commands/reconcile-issue.md`'s binding contract. Each behavior of the
+current contract, with its disposition:
+
+| Current behavior | Disposition |
+|---|---|
+| Rewrites `## Implementation Steps` | **Preserved** — untouched |
+| Rewrites `## Acceptance Criteria` | **Preserved** — untouched |
+| Rewrites `### Files to Modify` | **Changed** — subsumed by the widened `## Integration Map` entry; the subsection is still rewritable, now alongside its four siblings |
+| Conditionally rewrites `## Scope Boundaries` on a findings contradiction (ENH-2937) | **Preserved** — the conditional guard and its precondition are unchanged |
+| Clears `⚠ Superseded` markers on every directive line evaluated, including the no-op branch | **Preserved** — unchanged; `autodev.yaml`'s `check_reconcile_needed` routes on marker presence and must keep working |
+| Preserves `### Codebase Research Findings` / `### Wiring Phase` | **Preserved** — these are reconcile's input; still never written |
+| Preserves `## Summary` / `## Motivation` / `## Current Behavior` / `## Expected Behavior` / `## Proposed Solution` | **Preserved** — unchanged |
+| Preserves `## Integration Map`'s four non-`Files to Modify` subsections | **Dropped** — this is the point of the issue; they become rewritable |
+| Source restriction: reconciles the issue against itself, never re-researches the codebase | **Preserved** — explicitly unchanged |
+| Tracing requirement: unsupported bullets stay as-is and go to `## CONCERNS` | **Preserved** — this is the guardrail that makes the widening safe |
+| Arms `reconcile_attempted: true` before rewriting | **Preserved** — unchanged |
+
+Nothing is dropped except the preservation of the four subsections, which is the change itself. No
+behavior is silently lost.
+
 ## Integration Map
 
 ### Files to Modify
@@ -191,3 +213,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 ## Status
 
 **Open** | Created: 2026-08-17 | Priority: P2
+
+
+## Session Log
+- `/ll:capture-issue` - 2026-08-17T19:29:38 - `3ce34465-00fd-4ba7-a470-b61774849ebd.jsonl`

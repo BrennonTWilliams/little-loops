@@ -11,6 +11,13 @@ discovered_date: '2026-08-17'
 captured_at: '2026-08-17T18:48:10Z'
 discovered_commit: 3713d7f9268bfb4478a62f0adac15531e5b486e1
 discovered_branch: main
+verify_verdict: VALID
+confidence_score: 100
+outcome_confidence: 82
+score_complexity: 21
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 18
 ---
 
 # BUG-3243: `_parse_completion_date`'s git fallback silently returns None for relative paths, so `ll-history analyze --since` counts depend on the caller's path form
@@ -182,9 +189,55 @@ why this survived: the resulting count is plausible, just wrong.
 - `scripts/little_loops/decisions.py`, `scripts/little_loops/cli/issues/decisions.py`
 - Any caller of `scan_completed_issues` / `parse_completed_issue`
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/cli/issues/list_cmd.py:110-124` — two direct calls to
+  `_parse_completion_date(content, issue.path, ...)`, for `--sort completed`
+  and for `--json` output's completion date. `issue.path` here is not
+  guaranteed absolute, so `ll-issues list` is a second observable surface
+  (beyond `ll-history analyze`) affected by the same relative-path defect.
+- `scripts/little_loops/cli/issues/search.py:395-397` — same direct call to
+  `_parse_completion_date(content, issue.path)` for `ll-issues search --sort
+  completed`.
+
 ### Tests
 - `scripts/tests/test_issue_history_parsing.py`
 - `scripts/tests/test_cli_history.py`
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_issue_history_parsing.py` — `TestParseCompletionDate`
+  (lines 159-240) mocks `subprocess.run` in every case and every fixture
+  path comes from `tmp_path`, which is always absolute; none of the existing
+  cases exercise a relative path or assert on the actual `git log` argv
+  passed to the subprocess call. Extend with a real-git-repo regression test
+  (model the fixture on `_git_repo(tmp_path)` in
+  `scripts/tests/test_verify_private_refs.py:250-259`) that calls
+  `_parse_completion_date` with both an absolute and a relative form of the
+  same tracked file and asserts identical results. For the new "tracked file,
+  fallback yields nothing" warning (AC 4), reuse the
+  `caplog.at_level("WARNING", logger="little_loops.issue_history.parsing")`
+  pattern from `test_scan_logs_warning_on_unreadable_file` (same file, lines
+  419-435).
+- `scripts/tests/test_issue_history_cli.py` — `TestMainHistoryAnalyze`
+  (`test_main_history_analyze_since` / `_until`, lines 555-614) always
+  invokes `ll-history analyze` with an absolute `-d`/`--directory` value;
+  add a case that passes a relative `--directory` (or omits it under a
+  relative cwd) to cover the end-to-end path this bug affects.
+
+### Documentation
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/API.md` — `#### parse_completed_issue` (~line 2257-2275)
+  documents the git-log fallback's "one subprocess per file" performance
+  note; should note the fix makes the result path-form independent.
+- `docs/reference/CLI.md` — `#### ll-history analyze` (~line 2816-2826,
+  `--since`/`--until`), `#### ll-history export <topic>` (~line 2839,
+  `--since`), and `ll-issues decisions extract-from-completed --since`
+  (~line 2604) all document the "completed on or after DATE" contract this
+  bug undermines.
+- `skills/update-docs/SKILL.md:108` — embedded script calls
+  `scan_completed_issues(Path('.issues'))` with a **relative** path literal,
+  a live reproduction of this exact defect class; behavior should be
+  re-verified once the fix lands.
 
 ## Related Observation — not part of this bug
 
@@ -219,3 +272,34 @@ the two disagreed by 18; the path form turned out to be the only difference.
 ## Labels
 
 `bug`, `history`, `cli`, `correctness`
+
+
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-08-17_
+
+**Readiness Score**: 100/100 → PROCEED (overridden — see below)
+**Outcome Confidence**: 82/100 → HIGH CONFIDENCE
+
+### Gaps to Address
+- `## Program Design` section is missing entirely (not present-but-nonspecific —
+  `format-check` reports it under `missing`, and `program_design_nonspecific` is
+  empty). `ll-issues check-design BUG-3243` fails, which forces
+  `STOP — ADDRESS GAPS` regardless of the 100/100 readiness sum above. Add a
+  `## Program Design` section with concrete types/signatures and a call path
+  (run `/ll:refine-issue` or `/ll:reconcile-issue`), or set
+  `program_design_not_applicable: true` in frontmatter if this is judged
+  genuinely trivial.
+- `## Status` section is also reported missing by `format-check` — the issue
+  file has no `## Status` footer.
+
+### Outcome Risk Factors
+- Point 2 of the Proposed Solution leaves an unresolved either/or ("check
+  whether the path is tracked at all via `git ls-files --error-unmatch`, or run
+  the lookup from the repo root") — pick one approach before implementing to
+  avoid a mid-implementation design decision.
+
+## Session Log
+- `/ll:confidence-check` - 2026-08-17T19:45:58 - `62bab2ff-2e1c-48e4-ad61-470060df1e73.jsonl`
+- `/ll:verify-issues` - 2026-08-17T19:43:38 - `93bf5317-f847-4d5e-adb2-63d9cc3864ac.jsonl`
+- `/ll:wire-issue` - 2026-08-17T19:42:10 - `07640cd8-6bac-4fa7-bbea-0a0ea91ebf47.jsonl`

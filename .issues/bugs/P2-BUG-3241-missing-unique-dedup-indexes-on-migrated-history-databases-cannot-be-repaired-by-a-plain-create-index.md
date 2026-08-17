@@ -4,10 +4,11 @@ type: BUG
 title: Missing UNIQUE dedup indexes on migrated history databases cannot be repaired
   by a plain CREATE INDEX
 priority: P2
-status: open
+status: done
 testable: true
 discovered_by: bug-3236-pre-implementation-review
 discovered_date: '2026-08-17'
+completed_at: 2026-08-17T00:00:00Z
 labels:
 - history-db
 - session-store
@@ -118,7 +119,7 @@ this was split out of BUG-3236 rather than folded into its v42 migration.
 _Added by `/ll:refine-issue` — 2026-08-17 — based on codebase analysis:_
 
 ### Files to Modify
-- `scripts/little_loops/session_store/schema.py` — append one new entry to `_MIGRATIONS: list[str]` (defined `schema.py:111`), following the `_apply_migrations()`/`ensure_db()` mechanics at `schema.py:1050` and `schema.py:1089`
+- `scripts/little_loops/session_store/schema.py` — append one new entry to `_MIGRATIONS: list[str]` (defined `schema.py:111`), following the `_apply_migrations()`/`ensure_db()` mechanics at `schema.py:1081` and `schema.py:1120`
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/little_loops/session_store/schema.py:21` — `SCHEMA_VERSION` constant must be bumped 42 → 43 by hand. `_apply_migrations()` drives entirely off `len(_MIGRATIONS)` (`schema.py:1096`); `SCHEMA_VERSION` is a separate, hand-maintained int nothing in `schema.py` asserts equal to `len(_MIGRATIONS)`. Appending the migration without bumping this constant silently desyncs the two. [Agent 2 finding]
@@ -386,6 +387,7 @@ Split out of BUG-3236 during its pre-implementation review. BUG-3236 documents t
 
 
 ## Session Log
+- `/ll:ready-issue` - 2026-08-17T19:27:10 - `676a273b-145a-4506-854d-a60a012321cb.jsonl`
 - `/ll:confidence-check` - 2026-08-17T19:24:22 - `35d64d8e-092e-4c90-875f-40feb688fbd4.jsonl`
 - `/ll:confidence-check` - 2026-08-17T19:06:24 - `3098ae6c-d494-47ea-a3e0-bfd1d90e6eaf.jsonl`
 - `/ll:wire-issue` - 2026-08-17T18:58:52 - `4375f1ee-af64-420b-8e51-de7f17563fd4.jsonl`
