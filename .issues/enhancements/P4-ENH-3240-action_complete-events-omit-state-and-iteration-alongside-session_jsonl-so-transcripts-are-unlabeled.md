@@ -9,6 +9,12 @@ testable: true
 discovered_by: ll-issues-create
 discovered_date: '2026-08-17'
 captured_at: '2026-08-17T18:23:48Z'
+confidence_score: 100
+outcome_confidence: 87
+score_complexity: 20
+score_test_coverage: 22
+score_ambiguity: 23
+score_change_surface: 22
 ---
 
 # ENH-3240: action_complete events omit state and iteration alongside session_jsonl so transcripts are unlabeled
@@ -191,6 +197,54 @@ _Wiring pass added by `/ll:wire-issue`:_
 ### Configuration
 - N/A — no config surface.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-18 — based on codebase analysis:_
+
+- **Precision correction on the emit-site line range**: `codebase-analyzer` traced the payload dict
+  construction to `fsm/executor.py:2299-2337` (not `:2304-2337` as stated above) — base keys
+  (`exit_code`, `duration_ms`, `output_preview`, `stderr_preview`, `is_prompt`) are set
+  unconditionally starting at `:2299`; `session_jsonl` is added only inside
+  `if action_mode == "prompt":` (`:2306-2308`). `self.current_state`/`self.iteration` are ungated
+  by `action_mode`, so adding them at the payload-build site applies uniformly to prompt *and*
+  non-prompt (shell/mcp) `action_complete` events alike — unlike `session_jsonl`, which stays
+  prompt-only.
+- **The "identical timestamp" claim is a literal shared string, not a clock coincidence**:
+  `FSMExecutor._emit()` (`fsm/executor.py:3306`) generates `ts` once via `_iso_now()` and calls
+  `self.event_callback(...)`. `PersistentExecutor._handle_event()` (`fsm/persistence.py:765`)
+  appends that event verbatim to `events.jsonl` (`:771`), then — only when `"input_tokens" in
+  event"` (`:777`) — builds the `usage.jsonl` row reading `self._executor.iteration` and
+  `self._executor.current_state` directly off the live executor instance (not off the event
+  payload) and copies `event.get("ts", "")` verbatim into `usage.jsonl`'s `timestamp` field
+  (`:778-804`). This confirms both values are already in scope at this call site independent of
+  whether the emit-site payload carries them, and that the two files' timestamps are the same
+  string written twice, not two independent reads of the clock.
+- **Existing field drift shows the schema/dataclass "lockstep" is not currently enforced at the
+  field level**: `stderr_preview`, `effort`, and `is_batch` are already emitted in the
+  `action_complete` payload (`fsm/executor.py:2296-2333`, added under ENH-2469/ENH-2885/FEAT-2716)
+  but none of the three appear in `SCHEMA_DEFINITIONS["action_complete"]`
+  (`generate_schemas.py:136-157`) or on `ActionCompleteVariant`
+  (`observability/schema.py:267-273`) today. `docs/reference/EVENT-SCHEMA.md`'s field table lists
+  `stderr_preview` but omits `effort`/`is_batch`, so all three of {emit site, `EVENT-SCHEMA.md`,
+  `SCHEMA_DEFINITIONS`} already disagree with each other for this event, pre-existing this issue.
+  `test_des_schema.py`'s "lockstep gate" (`TestVariantShape`, `:74-117`) only asserts each
+  registered `*Variant` has a `type` field and that `DES_VARIANTS` covers every event-type
+  *string* in `SCHEMA_DEFINITIONS` — it does not assert per-field coverage between the two, so
+  this drift is not test-caught and adding `state`/`iteration` without touching the dataclass
+  would not fail that gate either (though the AC's stated intent — keeping them in lockstep going
+  forward — is still achievable, just not mechanically forced by an existing test).
+- **Documented maintenance order** (`CONTRIBUTING.md:784-799`, "Event Schema Maintenance"):
+  the written procedure is `docs/reference/EVENT-SCHEMA.md` first (cited as source of truth by
+  `generate_schemas.py:79`), then `SCHEMA_DEFINITIONS`, then `ll-generate-schemas` to regenerate
+  `docs/reference/schemas/*.json` mechanically, committed together — i.e. the hand-maintained doc
+  leads, not trails, the schema dict.
+- **No existing precedent for a direct-field-with-correlation-fallback read**: both `audit_run()`
+  (`cli/loop/audit.py:177-217`) and `_correlate_verdicts()` (`analytics/variance.py:75-101`) do
+  unconditional stream-order correlation from `state_enter` — neither branches on "does this event
+  already carry its own `state` field," because as of `main` no event type they read has ever had
+  one to prefer. The direct-read-with-fallback-to-correlation shape this issue's Program Design
+  section calls for is a new pattern in this codebase, not a variant of an existing one.
+
 ## Implementation Steps
 
 1. Add `state` (`self.current_state`) and `iteration` (`self.iteration`) to the
@@ -346,6 +400,8 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-18T01:47:30 - `45517e10-4dcf-4cdb-ac90-c8175e3464a2.jsonl`
+- `/ll:refine-issue` - 2026-08-18T01:43:40 - `b1fcbc27-6cc0-4f61-afba-f89fc37a602f.jsonl`
 - `/ll:wire-issue` - 2026-08-17T21:49:12 - `0510d699-a148-43d1-84c2-d05ff33b93f2.jsonl`
 - `/ll:format-issue` - 2026-08-17T21:42:04 - `878d0e98-a6e4-41e7-80a9-53a56e3db6f7.jsonl`
 - `/ll:capture-issue` - 2026-08-17T18:23:57 - `66dab8b6-e923-43d4-9f0e-eccb97176e0f.jsonl`

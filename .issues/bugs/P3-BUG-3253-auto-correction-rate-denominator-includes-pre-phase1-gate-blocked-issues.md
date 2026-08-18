@@ -12,6 +12,14 @@ discovered_commit: 6ba249d0
 discovered_source: ll-auto run 2026-08-17T17:51-18:20 (--only ENH-3237,ENH-3240)
 relates_to:
 - BUG-3252
+reconcile_attempted: true
+confidence_score: 88
+outcome_confidence: 60
+score_complexity: 18
+score_test_coverage: 12
+score_ambiguity: 10
+score_change_surface: 20
+decision_needed: true
 ---
 
 # BUG-3253: Auto-correction rate denominator includes issues blocked before Phase 1 ever ran
@@ -74,6 +82,15 @@ computation needs and does not consult.
 `scripts/little_loops/parallel/orchestrator.py:1653` carries an identical
 computation for `ll-parallel` and has the same defect.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-18 — based on codebase analysis:_
+
+- **Only the confidence gate is genuinely pre-Phase-1; the learning gate is not.** Tracing `process_issue_inplace()`'s call order: the confidence gate (`issue_manager.py:800-835`) runs before the `# Phase 1` block. The learning gate (`issue_manager.py:1141-1207`) runs *after* `issue_timing["ready"]` is recorded — i.e. after `/ll:ready-issue` (Phase 1) has already completed with `is_ready=True`. An issue blocked by the learning gate had the opportunity to be auto-corrected during Phase 1, and per the finding below, often was.
+- **The decision gate never produces a `_stamped_result` failure at all.** `issue_manager.py:1111-1136`: on a non-zero `/ll:decide-issue` returncode it only logs a warning and falls through to Phase 2 — "continuing to implementation anyway." It cannot contribute a `failure_reason` to `state.failed_issues` through this path, despite being listed as one of the three gate branches that do.
+- **Corrections made during Phase 1 are preserved into `state.corrections` for a subsequently gate-blocked issue in the sequential path.** `corrections` is threaded into `_stamped_result(..., corrections=corrections, ...)` on the CLOSE/BLOCKED/NOT-READY/all-three-learning-gate failure branches (e.g. `issue_manager.py:1010, 1074, 1101, 1164, 1182, 1206`) — so an issue corrected by `ready-issue` and then blocked by the learning gate contributes to `total_corrected` *and* to the `+ failed` half of the denominator. This is the concrete mechanism producing the bias this issue describes, for the learning-gate case specifically.
+- **The parallel path diverges independently, in the opposite direction.** `parallel/worker_pool.py` has no confidence-gate equivalent at all — a grep for the readiness-check entry point used elsewhere in this issue turns up no hits in that file. Its BLOCKED-verdict result does set `was_blocked=True` (`worker_pool.py:508-520`), but `ParallelOrchestrator._on_worker_complete`'s dispatch (`orchestrator.py:1071-1232`) has no `elif result.was_blocked` arm before its generic `else: self.queue.mark_failed(...)` (`1229-1232`) — so BLOCKED issues count toward `queue.failed_count` there, unlike the sequential path (which excludes them via `mark_skipped`, `issue_manager.py:2109-2111`). Separately, `WorkerResult.corrections` is attached only on the single success-path return (`worker_pool.py:743-744`) — every failure return (BLOCKED, NOT_READY, proof-first-task-gate-blocked) omits it, so the parallel path's numerator can never include a gate-blocked issue's corrections even though its denominator (`queue.completed_count + queue.failed_count`, `orchestrator.py:1649`) still counts that issue.
+
 ## Expected Behavior
 
 The denominator counts issues that actually ran `/ll:ready-issue` — the only
@@ -125,6 +142,12 @@ Prefer the first if BUG-3252 is being worked; it removes the string-matching.
 Apply the same fix to `parallel/orchestrator.py:1653` regardless — the two
 summary blocks are near-duplicates and should not diverge.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-18 — based on codebase analysis:_
+
+- **The existing "no-silent-caps" annotation convention uses round-parenthesis inline suffixes, not square brackets.** Evidence: `_sample()` (`work_verification.py:48-58`, `"(first {limit} of {len(paths)})"`), `worker_pool.py:1365` (`"(+{N} more)"`), `issue_history/formatting.py:216,735` (`"(+{N} more)"`), `cli/issues/sequence.py:204` (`"… +{N} more"`). This issue's own suggested `[N gated]` bracket suffix (Expected Behavior) does not match this format; no prior example in the codebase uses square-bracket annotation.
+
 ## Program Design
 
 ### Types
@@ -151,6 +174,17 @@ The parallel mirror: `ll-parallel` run completes -> `parallel/orchestrator.py:16
 - **Do not silently drop the excluded count.** A bare `1/1 (100.0%)` is indistinguishable from a run where nothing was gated. Annotating the excluded count preserves the operator's ability to tell those apart, consistent with this repo's no-silent-caps posture.
 - **Guard the empty denominator.** The existing `if total_issues > 0 else 0` must survive: a run where every issue was gate-blocked now has a denominator of zero where it previously had a nonzero one.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-18 — based on codebase analysis:_
+
+- **`processed_count` and `state.timing` (sequential path) already exclude every non-success outcome — confirms the Open Questions speculation.** `AutoManager.run()` increments `self.processed_count` only `if success:` (`issue_manager.py:1911-1914`), and `state.timing` is populated only from `mark_completed(issue_id, timing)`'s `timing` argument, which only the `elif result.success:` branch supplies (`issue_manager.py:2113`). "Issues processed:" and "Average per issue:" already report success-only figures — no change needed there.
+- **The parallel path's timing is NOT success-only, unlike the sequential path.** `self.state.timing[result.issue_id]` is set unconditionally for every `WorkerResult` in `orchestrator.py` (~1243-1246), outside the success/failure branching. No orchestrator "Average per issue:"-style line currently exists, but this is relevant if a fix is extended there.
+- **No `_is_pre_phase1_gate_failure`-style predicate, nor any `failure_reason`-string classifier, exists anywhere in the codebase today.** A search for `_is_.*failure`/`_is_.*_reason` under `scripts/little_loops/` returns zero matches. Gate classification today happens exclusively via stdout markers (`CONFIDENCE_GATE_BLOCKED`, `LEARNING_GATE_BLOCKED`, `PHASE1_NOT_STARTED ... <gate>`), never `failure_reason` prefix matching. The standalone route's proposed predicate would be a new pattern, not an extension of an existing family.
+- **The zero-denominator guard (`if total > 0 else 0`) is a uniform, codebase-wide convention** — evidence: `issue_manager.py:1974`, `orchestrator.py:1650`, `issue_progress.py:161-162`, `hotspots.py:70,96`, `dependency_mapper/analysis.py:227,317,389`, `verify_triggers.py:365-366`. No divergent example found.
+- **`issue_manager.py` and `parallel/orchestrator.py` are maintained as intentionally separate, lockstep-edited duplicate blocks, not a shared module.** No `metrics.py`/`summary.py`-style shared helper exists for this computation; the orchestrator's block is already a superset (it adds `by_category` grouping, `orchestrator.py:1662-1669`) despite sharing the identical core rate computation — the two blocks already drift in scope even under the "edit together" convention.
+- **No existing test exercises `_log_timing_summary`'s or the orchestrator's `Auto-corrections:`/correction-rate output.** A grep for `_log_timing_summary`, `Auto-corrections`, and `PROCESSING SUMMARY` across `scripts/tests/` returns no hits — whichever route this issue takes, its test will be new, not an extension.
+
 ## Open Questions
 
 - Are the learning-gate and decision-gate `failure_reason` strings as stable as
@@ -171,10 +205,31 @@ The parallel mirror: `ll-parallel` run completes -> `parallel/orchestrator.py:16
 - `scripts/little_loops/state.py:32-34` — states that failed issues and
   auto-corrections are tracked for quality purposes.
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-08-18_
+
+**Readiness Score**: 88/100 → PROCEED WITH CAUTION
+**Outcome Confidence**: 60/100 → LOW
+
+### Concerns
+- The Proposed Solution has two unresolved routes (standalone `_is_pre_phase1_gate_failure` predicate vs. consuming BUG-3252 Part 3's skip bucket) — the winning route depends on whether BUG-3252 lands first, which is not yet decided.
+- Open Questions ask whether the learning-gate and decision-gate `failure_reason` strings are stable enough to string-match under the standalone route; unconfirmed.
+
+### Gaps to Address
+_(none — no format-check, program-design, or dependency gate gaps found)_
+
+### Outcome Risk Factors
+- No existing test exercises `_log_timing_summary`'s or the orchestrator's `Auto-corrections:`/correction-rate output (confirmed via grep) — any fix requires new test infrastructure, not an extension of existing coverage.
+- Two-route ambiguity (standalone vs. BUG-3252-dependent) means the implementer must make a sequencing/design call mid-implementation rather than following a single specified path.
+
 ## Status
 
 **Open** | Created: 2026-08-17 | Priority: P3
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-18T01:57:01 - `22c6cfbd-e81b-49b4-b781-b4588a9711ab.jsonl`
+- `/ll:reconcile-issue` - 2026-08-18T01:53:03 - `06441b6f-0a06-4067-9c07-e33e815934ec.jsonl`
+- `/ll:refine-issue` - 2026-08-18T01:45:34 - `45517e10-4dcf-4cdb-ac90-c8175e3464a2.jsonl`
 - `/ll:format-issue` - 2026-08-18T01:35:12 - `f0f6a7d7-4813-4604-95ee-0469a847224f.jsonl`
 - `/analyze_log` - 2026-08-17 - ll-auto run audit (ENH-3237, ENH-3240)
