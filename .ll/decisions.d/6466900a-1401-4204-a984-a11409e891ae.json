@@ -1,0 +1,12 @@
+{
+  "id": "d3a78cfe-5ef2-4a03-b848-acb3bf58ff7c",
+  "type": "decision",
+  "timestamp": "2026-08-17T23:24:03Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Matches the 24-field FormatGaps pattern exactly; Option B (superseded_marker_count-style scalar key) contradicts the issue's presence-is-always-a-defect model since that precedent's exclusion from FormatGaps is justified by presence being neutral/positive.",
+  "rule": "Option A - FormatGaps dataclass field",
+  "scope": "issue",
+  "alternatives_rejected": "Option B - scalar out-of-band --format json key",
+  "issue": "ENH-3244"
+}
