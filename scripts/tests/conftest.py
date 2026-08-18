@@ -794,13 +794,17 @@ def _reset_deprecated_key_warnings() -> Generator[None, None, None]:
 # series is CUMULATIVE (one line per flush) so the resource trend is visible
 # across the whole run; per-test records are a rolling last-_FLUSH_EVERY
 # window so the exact wedging test is identifiable without blowing the 65 KB
-# comment-body limit (no rotation in this first cut).
+# comment-body limit (meta capped at _META_MAX entries, drop-oldest — no rotation).
 #
 # xdist note: each worker process has its own module state and posts its own
 # comment; the run_id in the HTML-marker header links them. Current addopts
 # force `-n 0` (serial), so the diagnostic dispatch is single-comment.
 
 _FLUSH_EVERY = 50
+# Cap the cumulative meta time-series so the rebuilt body stays under GitHub's
+# 65,535-char comment limit (200 entries * ~80 B ≈ 16 KB), leaving headroom for
+# the rolling per-test window + final snapshot. Drop-oldest, not rotation.
+_META_MAX = 200
 _INSTRUMENT = os.environ.get("LL_PYTEST_INSTRUMENT") == "1"
 _COMMENT_HEADER = (
     f"<!-- ll-pytest-d-trace run={os.environ.get('GITHUB_RUN_ID', 'local')} -->\n"
@@ -826,6 +830,24 @@ def _env_ready() -> bool:
     )
 
 
+def _read_vmrss_kb() -> int:
+    """Instantaneous resident-set size in KB, from /proc/self/status VmRSS.
+
+    ``os.getrusage(...).ru_maxrss`` is a high-water mark (monotonic max), so a
+    flat read near the wedge would mean "no new peak" rather than "memory
+    stable" — muddied for the memory axis. VmRSS is the current value, the
+    load-bearing read. Linux-only: returns -1 where /proc is unavailable.
+    """
+    try:
+        with open("/proc/self/status", encoding="utf-8") as f:
+            for line in f:
+                if line.startswith("VmRSS:"):
+                    return int(line.split()[1])  # value is already in kB
+    except (OSError, ValueError, IndexError):
+        pass
+    return -1
+
+
 def _sample_system() -> dict[str, Any]:
     st = os.statvfs("/")
     free_disk_kb = (st.f_bavail * st.f_frsize) // 1024
@@ -836,14 +858,8 @@ def _sample_system() -> dict[str, Any]:
             open_fd_count = len(os.listdir("/proc/self/fd"))
         except OSError:
             open_fd_count = -1
-    rss_kb = -1
-    getrusage = getattr(os, "getrusage", None)  # POSIX only (absent on Windows)
-    if getrusage is not None:
-        rss_kb = getrusage(getattr(os, "RUSAGE_SELF", 0)).ru_maxrss
-        if sys.platform == "darwin":
-            rss_kb //= 1024  # macOS reports bytes; Linux reports KB
     return {
-        "rss_kb": rss_kb,
+        "rss_kb": _read_vmrss_kb(),
         "free_disk_kb": free_disk_kb,
         "open_fd_count": open_fd_count,
         "inode_free": inode_free,
@@ -888,6 +904,11 @@ def _flush_buffer() -> None:
                     }
                 )
             )
+            # Cap the cumulative meta so the rebuilt body stays under GitHub's
+            # 65,535-char limit — a single overflow 422s and (pre-fix) silently
+            # killed every subsequent flush. Drop-oldest keeps the tail trend.
+            if len(_state["meta_lines"]) > _META_MAX:
+                _state["meta_lines"] = _state["meta_lines"][-_META_MAX:]
             body = (
                 _COMMENT_HEADER
                 + "\n".join(_state["meta_lines"])
@@ -910,10 +931,16 @@ def _flush_buffer() -> None:
             )
             r.raise_for_status()
             _state["test_buf"].clear()
-    except Exception:
-        # Best-effort sink: a network blip must never fail the test run. The
-        # next flush retries with whatever is still buffered.
-        pass
+    except Exception as exc:
+        # A diagnostic whose own failure is silent cannot satisfy its purpose:
+        # surface every sink failure as a visible CI-log warning line instead
+        # of swallowing it (a dead sink + green run voids the whole (d) trace).
+        print(
+            f"::warning::(d) sink failure: {type(exc).__name__}: {exc}; "
+            f"test_buf={len(_state['test_buf'])} "
+            f"meta_lines={len(_state['meta_lines'])} "
+            f"comment_id={_state['comment_id']}"
+        )
 
 
 @pytest.hookimpl
