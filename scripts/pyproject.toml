@@ -261,8 +261,11 @@ addopts = [
     "--strict-config",
     "--timeout=120",
     "--timeout-method=signal",
+    # BUG-3208: `-n 0` forces single-process (xdist disabled). The wedge
+    # reproduced under `-n logical` (2 workers) despite the pin + signal
+    # method, so serial is the empirical fix until xdist is root-caused.
     "-n",
-    "logical",
+    "0",
     "--dist",
     "loadfile",
 ]
