@@ -214,6 +214,34 @@ class TestFullBodyMerge:
         assert "[What should happen instead]" in content  # Expected Behavior placeholder
         assert "**Priority**: [P0-P5]" in content  # Impact placeholder
 
+    def test_fresh_full_variant_issue_reports_nonzero_placeholder_count(
+        self, project: Path
+    ) -> None:
+        """ENH-3244: a freshly created issue ships the template's own placeholders."""
+        from little_loops.issue_parser import placeholder_count
+
+        config = _config(project)
+        created = create_issue(config, IssueSpec(type="BUG", title="Fresh full", variant="full"))
+
+        assert placeholder_count(created.path) > 0
+
+    def test_filling_every_placeholder_drops_count_to_zero(self, project: Path) -> None:
+        """Replacing every derived placeholder token clears the gap entirely."""
+        from little_loops.issue_parser import _template_placeholder_patterns, placeholder_count
+
+        config = _config(project)
+        created = create_issue(config, IssueSpec(type="BUG", title="Fresh full", variant="full"))
+        assert placeholder_count(created.path) > 0
+
+        content = created.path.read_text(encoding="utf-8")
+        patterns = _template_placeholder_patterns("BUG")
+        for tokens in patterns.values():
+            for token in tokens:
+                content = content.replace(token, "REAL CONTENT")
+        created.path.write_text(content, encoding="utf-8")
+
+        assert placeholder_count(created.path) == 0
+
     def test_leading_h1_not_doubled(self, project: Path) -> None:
         config = _config(project)
         body = "# Some caller title\n\n## Summary\n\nSummary text.\n\n## Status\n\n**Open**\n"

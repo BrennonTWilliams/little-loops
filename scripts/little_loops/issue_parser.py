@@ -511,6 +511,7 @@ class FormatGaps:
     stale_cli_flag: list[str] = field(default_factory=list)
     duplicate_heading: list[str] = field(default_factory=list)
     empty_provenance_stub: list[str] = field(default_factory=list)
+    template_placeholders: list[str] = field(default_factory=list)
 
     @property
     def has_gaps(self) -> bool:
@@ -539,6 +540,7 @@ class FormatGaps:
             or self.stale_cli_flag
             or self.duplicate_heading
             or self.empty_provenance_stub
+            or self.template_placeholders
         )
 
     def to_dict(self) -> dict[str, list[str]]:
@@ -567,6 +569,7 @@ class FormatGaps:
             "stale_cli_flag": self.stale_cli_flag,
             "duplicate_heading": self.duplicate_heading,
             "empty_provenance_stub": self.empty_provenance_stub,
+            "template_placeholders": self.template_placeholders,
         }
 
 
@@ -765,6 +768,20 @@ def check_format_gaps(
             with no bullet or other content before the next heading or the
             next stub — a provenance marker for findings that were never
             written. Fence-masked like ``duplicate_heading``.
+        template_placeholders: a literal unfilled template placeholder
+            (ENH-3244) — e.g. ``TBD - requires codebase analysis``,
+            ``[Major phase 1]`` — still present in the section whose
+            ``creation_template`` emits it. The pattern set is derived at
+            runtime from ``scripts/little_loops/templates/*-sections.json``
+            (:func:`_template_placeholder_patterns`), not hand-transcribed.
+            Section-scoped (a mention in a different section does not
+            count), fence- and inline-backtick-masked
+            (:func:`_template_placeholders`), and excludes ``Program
+            Design`` — its placeholders are the only ones every template
+            already wraps in backticks, so inline masking would swallow
+            them anyway, and its residue is already caught by
+            ``boilerplate``/``program_design_nonspecific``. Detection only —
+            no ``--fix`` handler is registered.
 
     Args:
         issue_path: Path to the issue markdown file.
@@ -1059,6 +1076,7 @@ def check_format_gaps(
     gaps.duplicate_findings_block.extend(_duplicate_findings_blocks(content))
     gaps.duplicate_heading.extend(_duplicate_headings(content))
     gaps.empty_provenance_stub.extend(_empty_provenance_stubs(content))
+    gaps.template_placeholders.extend(_template_placeholders(content, issue_type, templates_dir))
 
     return gaps
 
@@ -1350,6 +1368,156 @@ def superseded_marker_count(issue_path: Path) -> int:
         for name in _SUPERSEDED_DIRECTIVE_SECTIONS
         for body in _heading_bodies(content, name)
     )
+
+
+# ENH-3244: `[bracket]`-shaped tokens and "TBD ..." bullet lines are the two
+# shapes every shipped template's `creation_template` values use for unfilled
+# placeholders (verified against all four `templates/*-sections.json`
+# files). Anything else in a creation_template — headings, "N/A" defaults,
+# static label text — is not a placeholder and must not be extracted, or a
+# well-filled section would report a defect forever.
+_PLACEHOLDER_BRACKET_RE = re.compile(r"\[[^\[\]\n]+\]")
+_PLACEHOLDER_TBD_LINE_RE = re.compile(r"^\s*(?:[-*+]|\d+[.)])?\s*(TBD\b.*?)\s*$", re.MULTILINE)
+
+# Mirrors `symbol_claims._BACKTICK_SPAN_RE` / `cli_claims._BACKTICK_SPAN_RE` /
+# `prose_deps._BACKTICK_SPAN_RE` — same single-backtick-pair pattern, kept as
+# its own copy per that existing (independently-defined, cross-referenced)
+# convention rather than a new shared import.
+_PLACEHOLDER_BACKTICK_SPAN_RE = re.compile(r"`([^`\n]+)`")
+
+# Decision Rules › Masking part 3: `Program Design` is the only section whose
+# `creation_template` already wraps every placeholder in backticks
+# (`` `[FieldName]` ``, `` `[function_name]` ``, ...), so inline-code masking
+# (part 2 below) would silently swallow it anyway. Excluding it here costs no
+# coverage: a fully-templated `Program Design` body is already caught by the
+# `boilerplate` gap class (whole-section equality against creation_template,
+# a few dozen lines up in this function), and a partially-filled one is
+# already caught by `program_design_nonspecific` (ENH-2852).
+_TEMPLATE_PLACEHOLDER_EXCLUDED_SECTIONS = frozenset({_PROGRAM_DESIGN_TITLE})
+
+
+def _template_placeholder_patterns(
+    issue_type: str, templates_dir: Path | None = None
+) -> dict[str, list[str]]:
+    """Per-section placeholder strings derived from *issue_type*'s templates (ENH-3244).
+
+    Runtime derivation, not a hand-copied list: reads the same
+    ``creation_template`` values the ``boilerplate`` gap class already reads
+    (a few dozen lines up in :func:`check_format_gaps`), so a placeholder
+    line added to ``scripts/little_loops/templates/*-sections.json`` is
+    picked up here with zero Python changes. ``Program Design`` is skipped
+    entirely (see :data:`_TEMPLATE_PLACEHOLDER_EXCLUDED_SECTIONS`).
+
+    Returns:
+        A mapping of section name -> list of distinct placeholder strings
+        that section's ``creation_template`` emits. Empty dict when the
+        type's template cannot be loaded (fails open, mirroring
+        :func:`check_format_gaps`).
+    """
+    from little_loops.issue_template import load_issue_sections
+
+    try:
+        sections_data = load_issue_sections(issue_type, templates_dir)
+    except Exception:
+        return {}
+
+    patterns: dict[str, list[str]] = {}
+    for group in ("common_sections", "type_sections"):
+        for name, defn in sections_data.get(group, {}).items():
+            if not isinstance(defn, dict) or name in _TEMPLATE_PLACEHOLDER_EXCLUDED_SECTIONS:
+                continue
+            template = defn.get("creation_template", "")
+            if not template:
+                continue
+            tokens: list[str] = []
+            seen: set[str] = set()
+            for m in _PLACEHOLDER_BRACKET_RE.finditer(template):
+                token = m.group(0)
+                if token not in seen:
+                    seen.add(token)
+                    tokens.append(token)
+            for m in _PLACEHOLDER_TBD_LINE_RE.finditer(template):
+                token = m.group(1).strip()
+                if token and token not in seen:
+                    seen.add(token)
+                    tokens.append(token)
+            if tokens:
+                patterns[name] = tokens
+    return patterns
+
+
+def _template_placeholders(
+    content: str, issue_type: str, templates_dir: Path | None = None
+) -> list[str]:
+    """Gap-report strings for the ``template_placeholders`` class (ENH-3244).
+
+    Applies the three-part masking rule (Decision Rules › Masking,
+    ENH-3244's own Program Design section):
+
+    1. **Section-scoped** — a placeholder counts only inside the body of the
+       section whose ``creation_template`` emits it
+       (:func:`_section_body_with_offset`), not any other section.
+    2. **Inline-code masked, composed with fence masking** — a backtick-pair
+       span scan whose matches are appended into the same list
+       :func:`~little_loops.text_utils.fence_spans` produces, then
+       :func:`~little_loops.text_utils.in_fence` is reused unmodified to
+       check containment — the composition ``issues/prose_deps.py`` already
+       uses for the same reason (a section's own prose legitimately names
+       its own placeholder string as documentation).
+    3. **``Program Design`` excluded** from the pattern set entirely (see
+       :data:`_TEMPLATE_PLACEHOLDER_EXCLUDED_SECTIONS`).
+
+    Each distinct placeholder is reported at most once per section, even if
+    it occurs multiple times (mirrors ``duplicate_heading``'s one-entry-per-
+    group shape) — but a masked occurrence does not suppress a later
+    unmasked occurrence of the same token in the same section.
+    """
+    patterns = _template_placeholder_patterns(issue_type, templates_dir)
+    if not patterns:
+        return []
+
+    inline_spans = [(m.start(), m.end()) for m in _PLACEHOLDER_BACKTICK_SPAN_RE.finditer(content)]
+    masks = fence_spans(content) + inline_spans
+
+    gaps: list[str] = []
+    for name, tokens in patterns.items():
+        section = _section_body_with_offset(content, name)
+        if section is None:
+            continue
+        body, offset = section
+        for token in tokens:
+            start = 0
+            while True:
+                idx = body.find(token, start)
+                if idx == -1:
+                    break
+                abs_start = offset + idx
+                abs_end = abs_start + len(token)
+                if not in_fence(abs_start, abs_end, masks):
+                    gaps.append(f"{name}: {token}")
+                    break
+                start = idx + 1
+    return gaps
+
+
+def placeholder_count(issue_path: Path, templates_dir: Path | None = None) -> int:
+    """Count unfilled template placeholders in *issue_path* (ENH-3244).
+
+    The deterministic public accessor over :func:`_template_placeholders`,
+    mirroring :func:`superseded_marker_count`'s shape: reused by both
+    ``check_format_gaps`` (via ``FormatGaps.template_placeholders``) and any
+    non-LLM gate that wants the scalar count directly. Returns 0 for an
+    unreadable/missing file or a file whose type cannot be determined —
+    fails open like every other deterministic accessor in this module.
+    """
+    try:
+        content = issue_path.read_text()
+    except OSError:
+        return 0
+    type_match = _ISSUE_TYPE_RE.search(issue_path.name)
+    if not type_match:
+        return 0
+    return len(_template_placeholders(content, type_match.group(1), templates_dir))
 
 
 def _heading_bodies(content: str, heading: str) -> list[str]:
@@ -1883,7 +2051,9 @@ _OPEN_QUESTION_SIGNAL_RE = re.compile(
     r"|\bworth confirming\b"
     r"|\bworth checking\b"
     r"|\bshould be considered\b"
-    r"|\bTBD\b"
+    # ENH-3244: `\bTBD\b` moved to the `template_placeholders` structural gap
+    # (deterministic, uncapped) — this hedge scan's capped budget
+    # (BUG-3170) now spends only on genuine prose hedges below.
     r"|\bto be determined\b"
     r"|\bneeds confirmation\b"
     r"|\bworth a decision\b"

@@ -66,7 +66,8 @@ def add_format_check_parser(subs: argparse._SubParsersAction) -> argparse.Argume
         "multi_frontmatter/testable/stale_file_ref/unmarked_superseded_directive/"
         "duplicate_findings_block/ambiguous_file_ref/missing_behavior_parity/"
         "soft_dep_hard_edge/malformed_dep_id/stale_symbol_ref/mislocated_symbol_ref/"
-        "stale_cli_flag/duplicate_heading/empty_provenance_stub)",
+        "stale_cli_flag/duplicate_heading/empty_provenance_stub/"
+        "template_placeholders)",
     )
     p.set_defaults(command="format-check")
     p.add_argument(
@@ -378,6 +379,10 @@ def _print_gaps(gaps: FormatGaps) -> None:
         print(f"  duplicate_heading: {entry}")
     for entry in gaps.empty_provenance_stub:
         print(f"  empty_provenance_stub: {entry}")
+    for entry in gaps.template_placeholders:
+        print(
+            f"  template_placeholders: {entry} (literal template debris; no --fix, needs content)"
+        )
 
 
 def cmd_format_check(config: BRConfig, args: argparse.Namespace) -> int:
@@ -388,7 +393,8 @@ def cmd_format_check(config: BRConfig, args: argparse.Namespace) -> int:
     multi_frontmatter/testable/stale_file_ref/unmarked_superseded_directive/
     duplicate_findings_block/ambiguous_file_ref/missing_behavior_parity/
     soft_dep_hard_edge/malformed_dep_id/stale_symbol_ref/mislocated_symbol_ref/
-    stale_cli_flag/duplicate_heading/empty_provenance_stub.
+    stale_cli_flag/duplicate_heading/empty_provenance_stub/
+    template_placeholders.
 
     Every class in :class:`FormatGaps` must have a matching loop in
     :func:`_print_gaps`; a class counted by ``has_gaps`` but not rendered

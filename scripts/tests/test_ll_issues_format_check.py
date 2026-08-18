@@ -360,6 +360,9 @@ class TestFormatCheckJsonOutput:
             "duplicate_heading": [],
             # ENH-3247: _Added by …:_ stub with no bullet before next heading/stub.
             "empty_provenance_stub": [],
+            # ENH-3244: literal unfilled template placeholder still present in
+            # its emitting section.
+            "template_placeholders": [],
             # ENH-2992: marker presence rides the same payload; not a gap, so
             # it does not affect the exit code above.
             "superseded_marker_count": 0,
@@ -1902,6 +1905,107 @@ class TestFormatCheckEmptyProvenanceStubFix:
 
 
 # ---------------------------------------------------------------------------
+# TestFormatCheckTemplatePlaceholdersDetection (ENH-3244)
+# ---------------------------------------------------------------------------
+
+
+class TestFormatCheckTemplatePlaceholdersDetection:
+    """``template_placeholders`` gap class: literal unfilled template debris.
+
+    Detection only — no ``--fix`` handler is registered for this class
+    (Scope Boundaries: a placeholder needs content the tool cannot invent).
+    """
+
+    def _write_placeholder_bug(
+        self, format_check_dir: Path, bug_id: str, filename: str, extra: str
+    ) -> Path:
+        body = _CLEAN_BUG_BODY.replace("id: BUG-9101", f"id: {bug_id}") + extra
+        return _write_issue(format_check_dir, filename, body)
+
+    def test_detected_as_template_placeholders_gap(
+        self,
+        temp_project_dir: Path,
+        format_check_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        self._write_placeholder_bug(
+            format_check_dir,
+            "BUG-9440",
+            "P3-BUG-9440-test-bug.md",
+            "\n\n## Integration Map\n\n### Files to Modify\n- TBD - requires codebase analysis\n",
+        )
+
+        result = _invoke(
+            ["ll-issues", "format-check", "BUG-9440", "--config", str(temp_project_dir)]
+        )
+        out, _ = capsys.readouterr()
+
+        assert result == 1
+        assert "template_placeholders: Integration Map: TBD - requires codebase analysis" in out
+
+    def test_json_output_carries_template_placeholders(
+        self,
+        temp_project_dir: Path,
+        format_check_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        self._write_placeholder_bug(
+            format_check_dir,
+            "BUG-9441",
+            "P3-BUG-9441-test-bug.md",
+            "\n\n## Implementation Steps\n\n1. [Major phase 1]\n2. Real step.\n",
+        )
+
+        result = _invoke(
+            [
+                "ll-issues",
+                "format-check",
+                "BUG-9441",
+                "--format",
+                "json",
+                "--config",
+                str(temp_project_dir),
+            ]
+        )
+        out, _ = capsys.readouterr()
+
+        assert result == 1
+        data = json.loads(out)
+        assert data["template_placeholders"] == ["Implementation Steps: [Major phase 1]"]
+
+    def test_no_fix_handler_registered(
+        self,
+        temp_project_dir: Path,
+        format_check_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """--fix must neither claim nor attempt to repair template debris."""
+        path = self._write_placeholder_bug(
+            format_check_dir,
+            "BUG-9442",
+            "P3-BUG-9442-test-bug.md",
+            "\n\n## Integration Map\n\n### Files to Modify\n- TBD - requires codebase analysis\n",
+        )
+        before = path.read_text()
+
+        result = _invoke(
+            [
+                "ll-issues",
+                "format-check",
+                "BUG-9442",
+                "--fix",
+                "--config",
+                str(temp_project_dir),
+            ]
+        )
+        out, _ = capsys.readouterr()
+
+        assert result == 1
+        assert "template_placeholders" in out
+        assert path.read_text() == before
+
+
+# ---------------------------------------------------------------------------
 # TestFormatCheckDuplicateFindingsFix (ENH-3247 — dispatch table N=3)
 # ---------------------------------------------------------------------------
 
@@ -2069,6 +2173,44 @@ class TestFormatCheckProgramDesign:
         out, _ = capsys.readouterr()
 
         assert result == 0, out
+
+    def test_full_residue_caught_by_boilerplate_not_template_placeholders(
+        self,
+        temp_project_dir: Path,
+        format_check_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """ENH-3244 Decision Rules › Masking part 3: excluding Program Design from
+        the derived pattern set costs no coverage — a pure-template body is still
+        caught, just by boilerplate (whole-section equality) rather than the new
+        class."""
+        self._arm(temp_project_dir, "2020-01-01")
+        body = _CLEAN_BUG_BODY.replace("id: BUG-9101", "id: BUG-9605").replace(
+            "## Status\nopen",
+            "## Program Design\n\n### Types\n\n- `[FieldName]: [type]`\n\n"
+            "### Signatures\n\n- `[function_name]([param]: [type]) -> [ReturnType]`\n\n"
+            "### Call Path\n\n`[existing_caller]` -> `[new_function]` -> "
+            "`[existing_callee]`\n\n## Status\nopen",
+        )
+        _write_issue(format_check_dir, "P3-BUG-9605-test-bug.md", body)
+
+        result = _invoke(
+            [
+                "ll-issues",
+                "format-check",
+                "BUG-9605",
+                "--format",
+                "json",
+                "--config",
+                str(temp_project_dir),
+            ]
+        )
+        out, _ = capsys.readouterr()
+
+        assert result == 1
+        data = json.loads(out)
+        assert data["boilerplate"] == ["Program Design"]
+        assert data["template_placeholders"] == []
 
 
 # ---------------------------------------------------------------------------

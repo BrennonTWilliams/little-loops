@@ -4736,9 +4736,7 @@ class TestDuplicateHeadingDetection:
     def test_clean_document_reports_nothing(self) -> None:
         from little_loops.issue_parser import _duplicate_headings
 
-        clean = self.BODY.replace(
-            "### Dependent Files (Callers/Importers)\n- c.py\n\n", ""
-        )
+        clean = self.BODY.replace("### Dependent Files (Callers/Importers)\n- c.py\n\n", "")
         assert _duplicate_headings(clean) == []
 
     def test_codebase_research_findings_carve_out(self) -> None:
@@ -4789,7 +4787,10 @@ class TestEmptyProvenanceStubDetection:
     def test_stub_with_bullet_is_not_reported(self) -> None:
         from little_loops.issue_parser import _empty_provenance_stubs
 
-        body = "### Codebase Research Findings\n\n" f"{self.STUB.format(date='2026-08-10')}\n\n- a bullet\n"
+        body = (
+            "### Codebase Research Findings\n\n"
+            f"{self.STUB.format(date='2026-08-10')}\n\n- a bullet\n"
+        )
         assert _empty_provenance_stubs(body) == []
 
     def test_empty_stub_inside_fence_is_invisible(self) -> None:
@@ -4803,6 +4804,197 @@ class TestEmptyProvenanceStubDetection:
             "```\n"
         )
         assert _empty_provenance_stubs(fenced) == []
+
+
+class TestTemplatePlaceholderDetection:
+    """``template_placeholders`` gap class: literal unfilled template debris (ENH-3244).
+
+    Mirrors :class:`TestSupersededMarkerCount`'s 6-case shape plus the two
+    fence/inline-masking cases :class:`TestDuplicateHeadingDetection` /
+    :class:`TestEmptyProvenanceStubDetection` establish.
+    """
+
+    def test_zero_when_absent(self) -> None:
+        from little_loops.issue_parser import _template_placeholders
+
+        content = "# ENH-1\n\n## Integration Map\n\n### Files to Modify\n- `real_file.py` — done.\n"
+        assert _template_placeholders(content, "ENH") == []
+
+    def test_single_positive(self) -> None:
+        from little_loops.issue_parser import _template_placeholders
+
+        content = (
+            "# ENH-1\n\n## Integration Map\n\n### Files to Modify\n"
+            "- TBD - requires codebase analysis\n"
+        )
+        assert _template_placeholders(content, "ENH") == [
+            "Integration Map: TBD - requires codebase analysis"
+        ]
+
+    def test_multi_section_coverage(self) -> None:
+        from little_loops.issue_parser import _template_placeholders
+
+        content = (
+            "# ENH-1\n\n"
+            "## Integration Map\n\n### Files to Modify\n- TBD - requires codebase analysis\n\n"
+            "## Implementation Steps\n\n1. [Major phase 1]\n2. Real step.\n"
+        )
+        assert sorted(_template_placeholders(content, "ENH")) == sorted(
+            [
+                "Integration Map: TBD - requires codebase analysis",
+                "Implementation Steps: [Major phase 1]",
+            ]
+        )
+
+    def test_out_of_scope_mention_does_not_count(self) -> None:
+        """A section only counts placeholders its own creation_template emits."""
+        from little_loops.issue_parser import _template_placeholders
+
+        content = (
+            "# ENH-1\n\n"
+            "## Proposed Solution\n\n"
+            "See Integration Map: TBD - requires codebase analysis for details.\n\n"
+            "## Integration Map\n\n### Files to Modify\n- real_file.py\n"
+        )
+        assert _template_placeholders(content, "ENH") == []
+
+    def test_fenced_placeholder_is_invisible(self) -> None:
+        from little_loops.issue_parser import _template_placeholders
+
+        content = (
+            "# ENH-1\n\n## Integration Map\n\n### Files to Modify\n\n"
+            "```markdown\n- TBD - requires codebase analysis\n```\n"
+        )
+        assert _template_placeholders(content, "ENH") == []
+
+    def test_inline_backtick_mask_vs_bare_list_item(self) -> None:
+        """Composed with fence masking (issues/prose_deps.py:110's shape)."""
+        from little_loops.issue_parser import _template_placeholders
+
+        masked = (
+            "# ENH-1\n\n## Implementation Steps\n\n"
+            "1. See `[Major phase 1]` for the shape.\n2. Real.\n"
+        )
+        bare = "# ENH-1\n\n## Implementation Steps\n\n1. [Major phase 1]\n2. Real.\n"
+
+        assert _template_placeholders(masked, "ENH") == []
+        assert _template_placeholders(bare, "ENH") == ["Implementation Steps: [Major phase 1]"]
+
+    def test_program_design_absent_from_derived_pattern_set(self) -> None:
+        """Decision Rules › Masking part 3: Program Design is excluded entirely."""
+        from little_loops.issue_parser import _template_placeholder_patterns
+
+        patterns = _template_placeholder_patterns("ENH")
+        assert "Program Design" not in patterns
+
+    def test_program_design_pure_residue_not_reported_by_this_class(self) -> None:
+        """Program Design residue is caught by boilerplate/program_design_nonspecific,
+        not template_placeholders — proven non-lossy rather than asserted."""
+        from little_loops.issue_parser import _template_placeholders
+
+        content = (
+            "# ENH-1\n\n## Program Design\n\n### Types\n\n- `[FieldName]: [type]`\n\n"
+            "### Signatures\n\n- `[function_name]([param]: [type]) -> [ReturnType]`\n\n"
+            "### Call Path\n\n`[existing_caller]` -> `[new_function]` -> `[existing_callee]`\n"
+        )
+        assert _template_placeholders(content, "ENH") == []
+
+    def test_positive_control_enh_3238_debris_shape(self) -> None:
+        """Every real placeholder in the motivating ENH-3238 shape is reported."""
+        from little_loops.issue_parser import _template_placeholders
+
+        content = (
+            "# ENH-3238\n\n"
+            "## Integration Map\n\n"
+            "### Files to Modify\n- TBD - requires codebase analysis\n\n"
+            "### Dependent Files (Callers/Importers)\n- TBD - use grep to find references\n\n"
+            "### Similar Patterns\n- TBD - search for consistency\n\n"
+            "### Tests\n- TBD - identify test files to update\n\n"
+            "### Documentation\n- TBD - docs that need updates\n\n"
+            "## Implementation Steps\n\n"
+            "1. [Major phase 1]\n2. [Major phase 2]\n3. [Verification approach]\n"
+        )
+        result = _template_placeholders(content, "ENH")
+        assert sorted(result) == sorted(
+            [
+                "Integration Map: TBD - requires codebase analysis",
+                "Integration Map: TBD - use grep to find references",
+                "Integration Map: TBD - search for consistency",
+                "Integration Map: TBD - identify test files to update",
+                "Integration Map: TBD - docs that need updates",
+                "Implementation Steps: [Major phase 1]",
+                "Implementation Steps: [Major phase 2]",
+                "Implementation Steps: [Verification approach]",
+            ]
+        )
+
+    def test_placeholder_count_missing_file_returns_zero(self, tmp_path: Path) -> None:
+        from little_loops.issue_parser import placeholder_count
+
+        assert placeholder_count(tmp_path / "does-not-exist.md") == 0
+
+    def test_placeholder_count_matches_len_of_gap_list(self, tmp_path: Path) -> None:
+        from little_loops.issue_parser import placeholder_count
+
+        bugs_dir = tmp_path / "bugs"
+        bugs_dir.mkdir()
+        issue_file = bugs_dir / "P3-BUG-9441-test-bug.md"
+        body = _CLEAN_BUG_BODY + (
+            "\n\n## Integration Map\n\n### Files to Modify\n- TBD - requires codebase analysis\n"
+        )
+        issue_file.write_text(body)
+
+        assert placeholder_count(issue_file) == 1
+
+    def test_pattern_set_derived_from_creation_template_at_runtime(self, tmp_path: Path) -> None:
+        """A placeholder added to a template JSON fires with zero Python changes.
+
+        Guards against a future transcribed/hand-copied list drifting out of
+        sync with the shipped templates (ENH-3244 Proposed Solution §2).
+        """
+        from little_loops.issue_parser import _template_placeholder_patterns, _template_placeholders
+
+        new_placeholder = "TBD - a brand new placeholder never hand-copied into Python"
+        templates_dir = tmp_path / "templates"
+        templates_dir.mkdir()
+        (templates_dir / "bug-sections.json").write_text(
+            json.dumps(
+                {
+                    "common_sections": {
+                        "Summary": {"creation_template": new_placeholder},
+                    },
+                    "type_sections": {},
+                }
+            )
+        )
+
+        patterns = _template_placeholder_patterns("BUG", templates_dir=templates_dir)
+        assert patterns["Summary"] == [new_placeholder]
+
+        content = f"# BUG-1\n\n## Summary\n\n{new_placeholder}\n"
+        assert _template_placeholders(content, "BUG", templates_dir=templates_dir) == [
+            f"Summary: {new_placeholder}"
+        ]
+
+    def test_this_issue_own_file_measures_zero(self) -> None:
+        """ENH-3244's own file deliberately carries many placeholder-looking
+        strings as adversarial documentation examples (inline code and
+        prose); the full three-part masking rule must measure zero real
+        placeholders."""
+        from little_loops.issue_parser import placeholder_count
+
+        repo_root = Path(__file__).resolve().parents[2]
+        issue_path = (
+            repo_root
+            / ".issues"
+            / "enhancements"
+            / (
+                "P2-ENH-3244-split-template-placeholder-detection-out-of-the-"
+                "hedge-scans-capped-refine-budget.md"
+            )
+        )
+        assert issue_path.exists()
+        assert placeholder_count(issue_path) == 0
 
 
 class TestBehaviorParityHeadingDetection:

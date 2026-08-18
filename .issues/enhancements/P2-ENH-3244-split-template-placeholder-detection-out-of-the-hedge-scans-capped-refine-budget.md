@@ -4,11 +4,12 @@ type: ENH
 title: Split template-placeholder detection out of the hedge scan's capped refine
   budget
 priority: P2
-status: open
+status: done
 testable: true
 discovered_by: ll-issues-create
 discovered_date: '2026-08-17'
 captured_at: '2026-08-17T19:14:03Z'
+completed_at: '2026-08-18T03:28:26Z'
 relates_to:
 - BUG-3245
 - ENH-3238
@@ -654,6 +655,7 @@ _Added by `/ll:confidence-check` on 2026-08-17_
   changing any part of the rule.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-18T03:28:08 - `7477cbb5-7291-4ec5-9006-f5d98de4e412.jsonl`
 - `/ll:confidence-check` - 2026-08-18T02:34:22 - `03772c9c-53ba-4e89-aaef-c80c30ba01c3.jsonl`
 - `/ll:confidence-check` - 2026-08-18T01:40:06 - `b1fcbc27-6cc0-4f61-afba-f89fc37a602f.jsonl`
 - `/ll:wire-issue` - 2026-08-18T01:33:31 - `707dea9b-b70a-4464-bf06-ca7b4497f26c.jsonl`

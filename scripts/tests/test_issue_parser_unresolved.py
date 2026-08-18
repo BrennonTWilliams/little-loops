@@ -334,7 +334,13 @@ class TestCountOpenQuestionsWidenedSections:
     def test_codebase_research_findings_section_counted(self) -> None:
         from little_loops.issue_parser import count_open_questions_in_sections
 
-        content = "## Codebase Research Findings\n\n- TBD whether this path is actually hit.\n"
+        # ENH-3244: `\bTBD\b` moved out of the hedge scan into the
+        # `template_placeholders` structural gap; this fixture now uses
+        # `to be determined`, still a genuine prose hedge alternative.
+        content = (
+            "## Codebase Research Findings\n\n"
+            "- To be determined whether this path is actually hit.\n"
+        )
         assert count_open_questions_in_sections(content) == 1
 
     def test_suggested_fix_direction_section_counted(self) -> None:
