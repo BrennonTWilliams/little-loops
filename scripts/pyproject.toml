@@ -141,7 +141,14 @@ dev = [
     # clean full-suite run on the newer major.
     "pytest>=7.0,<9",
     "pytest-cov>=4.0",
-    "pytest-xdist>=3.0",
+    # BUG-3208 had two halves: pytest 9.x AND pytest-xdist 3.8.0 interact to
+    # trigger the thread-method watchdog leak on idle workers (same root
+    # cause as the pytest<9 cap above: xdist issue #1094/#117 + timeout #72/#137).
+    # The pytest<9 cap is in place, but xdist<3.8 is also required — a fresh
+    # venv still resolves `pytest-xdist>=3.0` to 3.8.0 (the BUG-3208-stamped
+    # version) and repros the wedge on pytest 8.x with the same addopts.
+    # Lift only alongside a verified clean full-suite run on the newer xdist.
+    "pytest-xdist>=3.0,<3.8",
     # psutil moved to [project].dependencies (FEAT-2930) — it now backs both
     # xdist's `-n logical` core detection and _reclaim_stale's PID-liveness
     # identity check, so it's no longer dev-only.
