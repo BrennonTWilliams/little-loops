@@ -2136,6 +2136,146 @@ def test_schema_version_matches_migrations_length() -> None:
     assert SCHEMA_VERSION == len(_MIGRATIONS)
 
 
+class TestSchemaOverStampedClamp:
+    """BUG-3255: recorded schema_version > len(_MIGRATIONS) must not silently
+    block future migrations forever. Guarded clamp: only rewrite the stamp
+    down when the live structure matches len(_MIGRATIONS); otherwise leave it
+    alone (the legitimately-ahead / older-checkout case)."""
+
+    def test_structurally_matching_over_stamp_is_clamped(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        import logging
+
+        from little_loops.session_store import _MIGRATIONS
+
+        db = tmp_path / "history.db"
+        _bootstrap_schema_at(db, len(_MIGRATIONS))
+        conn = sqlite3.connect(str(db))
+        try:
+            _stamp_version(conn, len(_MIGRATIONS) + 2)
+        finally:
+            conn.close()
+
+        with caplog.at_level(logging.WARNING, logger="little_loops.session_store.schema"):
+            ensure_db(db)
+
+        conn = sqlite3.connect(str(db))
+        try:
+            version = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
+            rebuild = conn.execute(
+                "SELECT value FROM meta WHERE key='last_rebuild_version'"
+            ).fetchone()
+        finally:
+            conn.close()
+        assert int(version[0]) == len(_MIGRATIONS)
+        assert rebuild is None or rebuild[0] is None
+        assert any("schema_version" in rec.message for rec in caplog.records)
+
+    def test_clamp_unblocks_next_migration_on_subsequent_call(self, tmp_path: Path) -> None:
+        """A single ensure_db() call cannot both clamp and apply a migration
+        that didn't exist when the clamp ran; the probe migration is only
+        picked up on the *next* call."""
+        from little_loops import session_store as _ss
+        from little_loops.session_store import _MIGRATIONS, schema as _schema_mod
+
+        db = tmp_path / "history.db"
+        _bootstrap_schema_at(db, len(_MIGRATIONS))
+        conn = sqlite3.connect(str(db))
+        try:
+            _stamp_version(conn, len(_MIGRATIONS) + 2)
+        finally:
+            conn.close()
+
+        ensure_db(db)
+
+        conn = sqlite3.connect(str(db))
+        try:
+            version = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
+        finally:
+            conn.close()
+        assert int(version[0]) == len(_MIGRATIONS)
+
+        probe_migrations = list(_MIGRATIONS) + ["CREATE TABLE probe (id INTEGER);"]
+        monkeypatch_target = _schema_mod
+        original = monkeypatch_target._MIGRATIONS
+        original_pkg = _ss._MIGRATIONS
+        monkeypatch_target._MIGRATIONS = probe_migrations
+        _ss._MIGRATIONS = probe_migrations
+        try:
+            ensure_db(db)
+        finally:
+            monkeypatch_target._MIGRATIONS = original
+            _ss._MIGRATIONS = original_pkg
+
+        conn = sqlite3.connect(str(db))
+        try:
+            version = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
+            probe = conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='probe'"
+            ).fetchone()
+        finally:
+            conn.close()
+        assert int(version[0]) == len(_MIGRATIONS) + 1
+        assert probe is not None
+
+    def test_structurally_mismatched_over_stamp_is_left_unchanged(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        import logging
+
+        from little_loops.session_store import _MIGRATIONS
+
+        db = tmp_path / "history.db"
+        _bootstrap_schema_at(db, len(_MIGRATIONS))
+        conn = sqlite3.connect(str(db))
+        try:
+            conn.execute("CREATE TABLE ahead_probe (id INTEGER);")
+            _stamp_version(conn, len(_MIGRATIONS) + 2)
+        finally:
+            conn.close()
+
+        with caplog.at_level(logging.WARNING, logger="little_loops.session_store.schema"):
+            ensure_db(db)
+
+        conn = sqlite3.connect(str(db))
+        try:
+            version = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
+        finally:
+            conn.close()
+        assert int(version[0]) == len(_MIGRATIONS) + 2
+        assert any("schema_version" in rec.message for rec in caplog.records)
+
+    def test_equal_stamp_does_not_reach_manifest_guard(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The `==` fast path must stay lock-free and never pay the ~5ms
+        manifest-replay cost."""
+        from little_loops.session_store import schema as _schema_mod
+
+        def _boom(_version: int) -> None:
+            raise AssertionError("manifest guard reached on == branch")
+
+        monkeypatch.setattr(_schema_mod, "_reference_manifest_at", _boom)
+
+        db = tmp_path / "history.db"
+        ensure_db(db)  # brings db to SCHEMA_VERSION == len(_MIGRATIONS)
+        ensure_db(db)  # second call must take the == fast path, no guard call
+
+    def test_behind_stamp_still_applies_normally(self, tmp_path: Path) -> None:
+        from little_loops.session_store import _MIGRATIONS
+
+        db = tmp_path / "history.db"
+        _bootstrap_schema_at(db, len(_MIGRATIONS) - 1)
+        ensure_db(db)
+        conn = sqlite3.connect(str(db))
+        try:
+            version = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
+        finally:
+            conn.close()
+        assert int(version[0]) == len(_MIGRATIONS)
+
+
 class TestSchemaV43IndexRepair:
     """v43 migration: repair missing dedup indexes on drifted databases (BUG-3241)."""
 

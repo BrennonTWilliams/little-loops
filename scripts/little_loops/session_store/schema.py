@@ -1229,15 +1229,46 @@ def _apply_migrations(conn: sqlite3.Connection) -> None:
     Fast path: when the schema is already current, return without taking the
     write lock at all — in WAL mode this read never blocks on a concurrent
     writer, so the steady-state ``ll-*`` startup stays lock-free.
+
+    BUG-3255: a recorded version *greater* than ``len(_MIGRATIONS)`` is not
+    treated as current forever. That state has two distinct causes — an
+    over-stamped database whose structure actually matches
+    ``len(_MIGRATIONS)`` (self-heals: the stamp is clamped down), or a
+    genuinely-ahead database from an older checkout / downgraded install
+    (left untouched, so returning to a newer checkout stays a no-op). The
+    manifest comparison that tells them apart is paid only on this branch,
+    never in the ``==`` steady state.
     """
-    if _current_version(conn) >= len(_MIGRATIONS):
+    recorded = _current_version(conn)
+    if recorded == len(_MIGRATIONS):
         return
+    if recorded > len(_MIGRATIONS):
+        live = _schema_manifest(conn)
+        reference = _reference_manifest_at(len(_MIGRATIONS))
+        if (live["objects"], live["indexes"]) != (reference["objects"], reference["indexes"]):
+            logger.warning(
+                "session_store: history.db records schema_version=%d, ahead of this "
+                "install's %d migrations, and its structure does not match %d; leaving "
+                "the stamp intact (run `ll-doctor` for the structural diff)",
+                recorded,
+                len(_MIGRATIONS),
+                len(_MIGRATIONS),
+            )
+            return
+        logger.warning(
+            "session_store: history.db records schema_version=%d but installed code "
+            "carries %d migrations; structure matches %d, resetting stamp",
+            recorded,
+            len(_MIGRATIONS),
+            len(_MIGRATIONS),
+        )
     prior_isolation = conn.isolation_level
     conn.isolation_level = None  # manual transaction control
     try:
         conn.execute("BEGIN IMMEDIATE")
         try:
-            version = _current_version(conn)
+            in_lock_recorded = _current_version(conn)
+            version = min(in_lock_recorded, len(_MIGRATIONS))
             for index in range(version, len(_MIGRATIONS)):
                 for statement in _split_sql_statements(_MIGRATIONS[index]):
                     conn.execute(statement)
@@ -1245,6 +1276,14 @@ def _apply_migrations(conn: sqlite3.Connection) -> None:
                     "INSERT INTO meta(key, value) VALUES('schema_version', ?) "
                     "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
                     (str(index + 1),),
+                )
+            if in_lock_recorded > len(_MIGRATIONS) and version == len(_MIGRATIONS):
+                # Clamp-only case: the loop above ran zero iterations (nothing
+                # to apply), so the stamp write must happen explicitly here.
+                conn.execute(
+                    "INSERT INTO meta(key, value) VALUES('schema_version', ?) "
+                    "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                    (str(len(_MIGRATIONS)),),
                 )
             conn.execute("COMMIT")
         except BaseException:

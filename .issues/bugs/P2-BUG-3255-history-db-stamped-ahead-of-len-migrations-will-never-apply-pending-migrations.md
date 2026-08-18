@@ -4,7 +4,8 @@ type: BUG
 title: A history.db stamped ahead of len(_MIGRATIONS) silently never applies pending
   migrations
 priority: P2
-status: open
+status: done
+completed_at: '2026-08-18T23:41:29Z'
 testable: true
 discovered_by: enh-3242-pre-implementation-review
 discovered_date: '2026-08-18'

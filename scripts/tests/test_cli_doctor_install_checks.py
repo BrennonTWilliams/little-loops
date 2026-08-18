@@ -389,9 +389,9 @@ class TestSchemaDrift:
     def test_version_ahead_is_a_finding_not_informational(
         self, tmp_path: Path, monkeypatch
     ) -> None:
-        """This repo's own history.db is in exactly this state (BUG-3255): a
-        recorded version beyond what this install's migrations know about, which
-        means later migrations will never apply to it."""
+        """A recorded version beyond what this install's migrations know about
+        is a read-only detection finding (BUG-3255's guarded clamp only fires
+        via `ensure_db()`, which this check never calls)."""
         import sqlite3
 
         from little_loops.cli.doctor import _schema_drift_data

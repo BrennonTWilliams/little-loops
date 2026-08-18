@@ -441,9 +441,12 @@ def _schema_drift_data() -> dict:
                     "severity": "error",
                     "note": (
                         f"recorded schema_version {recorded} exceeds this install's "
-                        f"{len(_MIGRATIONS)} known migrations; migrations "
-                        f"{len(_MIGRATIONS) + 1}-{recorded} will never apply to this "
-                        "database until repaired (see BUG-3255)"
+                        f"{len(_MIGRATIONS)} known migrations; if structurally "
+                        f"over-stamped, the stamp self-heals on the next `ensure_db()` "
+                        f"call, otherwise this database genuinely carries "
+                        f"migrations {len(_MIGRATIONS) + 1}-{recorded} from a newer "
+                        "install (older checkout or downgrade) and the stamp is left "
+                        "intact"
                     ),
                 }
             live = _schema_manifest(conn)
