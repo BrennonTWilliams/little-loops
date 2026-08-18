@@ -1520,17 +1520,18 @@ class TestRefineToReadyIssueSubLoop:
 
     def test_check_hedges_state_routing(self, data: dict) -> None:
         """check_hedges routes on_no through the attempt-bounded gate, not check_refine_limit
-        directly (BUG-3170)."""
+        directly (BUG-3170); on_yes/on_error go through check_placeholders, not straight to
+        check_ac_automatable (ENH-3248)."""
         state = data["states"].get("check_hedges", {})
         assert state, "State 'check_hedges' not found (ENH-3031)"
-        assert state.get("on_yes") == "check_ac_automatable", (
-            f"check_hedges.on_yes should be 'check_ac_automatable', got {state.get('on_yes')!r}"
+        assert state.get("on_yes") == "check_placeholders", (
+            f"check_hedges.on_yes should be 'check_placeholders', got {state.get('on_yes')!r}"
         )
         assert state.get("on_no") == "check_hedge_attempts", (
             f"check_hedges.on_no should be 'check_hedge_attempts', got {state.get('on_no')!r}"
         )
-        assert state.get("on_error") == "check_ac_automatable", (
-            f"check_hedges.on_error should be 'check_ac_automatable', got {state.get('on_error')!r}"
+        assert state.get("on_error") == "check_placeholders", (
+            f"check_hedges.on_error should be 'check_placeholders', got {state.get('on_error')!r}"
         )
         assert (
             state.get("action") == "ll-issues check-open-questions ${captured.issue_id.output}"
@@ -1564,12 +1565,13 @@ class TestRefineToReadyIssueSubLoop:
             f"check_hedge_attempts.on_yes should be 'check_refine_limit' (pre-filter, not a "
             f"private budget), got {state.get('on_yes')!r}"
         )
-        assert state.get("on_no") == "check_ac_automatable", (
-            f"check_hedge_attempts.on_no should be 'check_ac_automatable', got {state.get('on_no')!r}"
+        assert state.get("on_no") == "check_placeholders", (
+            f"check_hedge_attempts.on_no should be 'check_placeholders' (ENH-3248), "
+            f"got {state.get('on_no')!r}"
         )
-        assert state.get("on_error") == "check_ac_automatable", (
-            f"check_hedge_attempts.on_error should be 'check_ac_automatable' (fail-open, "
-            f"matching check_hedges), got {state.get('on_error')!r}"
+        assert state.get("on_error") == "check_placeholders", (
+            f"check_hedge_attempts.on_error should be 'check_placeholders' (fail-open, "
+            f"matching check_hedges; ENH-3248), got {state.get('on_error')!r}"
         )
         assert "${context.run_dir}/refine-to-ready-hedge-attempts" in state.get("action", ""), (
             "check_hedge_attempts.action should target the run-scoped counter file"
@@ -1628,15 +1630,194 @@ class TestRefineToReadyIssueSubLoop:
         assert first_b == "1", f"run-b first entry should emit '1', got {first_b!r}"
 
     def test_check_ac_automatable_state_routing(self, data: dict) -> None:
-        """check_ac_automatable force-routes to check_refine_limit regardless of score (ENH-3031)."""
+        """check_ac_automatable force-routes to check_reconcile_limit on failure (ENH-3248: ACs
+        are inside reconcile's rewrite scope, retargeted from check_refine_limit)."""
         state = data["states"].get("check_ac_automatable", {})
         assert state, "State 'check_ac_automatable' not found (ENH-3031)"
         assert state.get("on_yes") == "confidence_check", (
             f"check_ac_automatable.on_yes should be 'confidence_check', got {state.get('on_yes')!r}"
         )
-        assert state.get("on_no") == "check_refine_limit", (
-            f"check_ac_automatable.on_no should be 'check_refine_limit', got {state.get('on_no')!r}"
+        assert state.get("on_no") == "check_reconcile_limit", (
+            f"check_ac_automatable.on_no should be 'check_reconcile_limit' (ENH-3248), "
+            f"got {state.get('on_no')!r}"
         )
+
+    def test_check_placeholders_state_routing(self, data: dict) -> None:
+        """check_placeholders (ENH-3248) gates the template_placeholders class: on_yes proceeds
+        to check_ac_automatable, on_no escalates straight to check_refine_limit (no counter, no
+        normalize_structure loopback — every remaining placeholder is by construction one --fix
+        could not repair)."""
+        state = data["states"].get("check_placeholders", {})
+        assert state, "State 'check_placeholders' not found (ENH-3248)"
+        assert state.get("on_yes") == "check_ac_automatable", (
+            f"check_placeholders.on_yes should be 'check_ac_automatable', got {state.get('on_yes')!r}"
+        )
+        assert state.get("on_no") == "check_refine_limit", (
+            f"check_placeholders.on_no should be 'check_refine_limit', got {state.get('on_no')!r}"
+        )
+        assert state.get("on_error") == "check_ac_automatable", (
+            f"check_placeholders.on_error should be 'check_ac_automatable' (fail-open), "
+            f"got {state.get('on_error')!r}"
+        )
+        assert "attempts" not in state and "capture" not in state, (
+            "check_placeholders must carry no attempt counter (Proposed Solution step 3)"
+        )
+        evaluate = state.get("evaluate", {})
+        assert evaluate.get("type") == "output_numeric", (
+            f"check_placeholders.evaluate.type should be 'output_numeric', got {evaluate.get('type')!r}"
+        )
+        assert evaluate.get("operator") == "eq" and evaluate.get("target") == 0, (
+            "check_placeholders.evaluate should be eq 0 (count of template_placeholders)"
+        )
+        action = state.get("action", "")
+        assert "--format json" in action and "--json" not in action.replace("--format json", ""), (
+            "check_placeholders.action must use --format json, not --json"
+        )
+        assert "template_placeholders" in action, (
+            "check_placeholders.action must count the template_placeholders array"
+        )
+
+    def test_check_reconcile_limit_state_routing(self, data: dict) -> None:
+        """check_reconcile_limit (ENH-3248) bounds the reconcile_issue rung to one attempt per
+        run, mirroring check_hedge_attempts/check_refine_limit's independent scoped-counter
+        shape, then falls through to check_refine_limit — escalation is mandatory, not
+        discretionary."""
+        state = data["states"].get("check_reconcile_limit", {})
+        assert state, "State 'check_reconcile_limit' not found (ENH-3248)"
+        assert state.get("action_type") == "shell", (
+            f"check_reconcile_limit.action_type should be 'shell', got {state.get('action_type')!r}"
+        )
+        assert state.get("capture") == "check_reconcile_limit", (
+            f"check_reconcile_limit.capture should be 'check_reconcile_limit', "
+            f"got {state.get('capture')!r}"
+        )
+        evaluate = state.get("evaluate", {})
+        assert evaluate.get("type") == "output_numeric", (
+            f"check_reconcile_limit.evaluate.type should be 'output_numeric', "
+            f"got {evaluate.get('type')!r}"
+        )
+        assert evaluate.get("operator") == "lt", (
+            f"check_reconcile_limit.evaluate.operator should be 'lt', got {evaluate.get('operator')!r}"
+        )
+        assert evaluate.get("target") == 2, (
+            f"check_reconcile_limit.evaluate.target should be 2, got {evaluate.get('target')!r}"
+        )
+        assert state.get("on_yes") == "reconcile_issue", (
+            f"check_reconcile_limit.on_yes should be 'reconcile_issue', got {state.get('on_yes')!r}"
+        )
+        assert state.get("on_no") == "check_refine_limit", (
+            f"check_reconcile_limit.on_no should be 'check_refine_limit' (escalation is "
+            f"mandatory, never discretionary), got {state.get('on_no')!r}"
+        )
+        assert state.get("on_error") == "check_refine_limit", (
+            f"check_reconcile_limit.on_error should be 'check_refine_limit', "
+            f"got {state.get('on_error')!r}"
+        )
+        assert (
+            "${context.run_dir}/refine-to-ready-reconcile-attempts" in state.get("action", "")
+        ), "check_reconcile_limit.action should target the run-scoped counter file"
+
+    def test_reconcile_issue_state_routing(self, data: dict) -> None:
+        """reconcile_issue (ENH-3248) is a bare slash-command state — no rate-limit fragment,
+        matching this file's own convention (0/5 sibling slash-command states carry it), unlike
+        autodev.yaml's reconcile_current. Both next/on_error fall through to normalize_structure —
+        non-fatal, like wire_issue."""
+        state = data["states"].get("reconcile_issue", {})
+        assert state, "State 'reconcile_issue' not found (ENH-3248)"
+        assert state.get("action") == "/ll:reconcile-issue ${captured.issue_id.output}", (
+            f"reconcile_issue.action mismatch, got {state.get('action')!r}"
+        )
+        assert state.get("action_type") == "slash_command", (
+            f"reconcile_issue.action_type should be 'slash_command', got {state.get('action_type')!r}"
+        )
+        assert "fragment" not in state, (
+            "reconcile_issue must not carry fragment: with_rate_limit_handling "
+            "(Decision Rules › Rate-limit fragment follows the host file)"
+        )
+        assert "on_rate_limit_exhausted" not in state, (
+            "reconcile_issue must not carry on_rate_limit_exhausted"
+        )
+        assert state.get("next") == "normalize_structure", (
+            f"reconcile_issue.next should be 'normalize_structure', got {state.get('next')!r}"
+        )
+        assert state.get("on_error") == "normalize_structure", (
+            f"reconcile_issue.on_error should be 'normalize_structure', got {state.get('on_error')!r}"
+        )
+
+    def test_normalize_structure_state_is_pass_through(self, data: dict) -> None:
+        """normalize_structure (ENH-3248) carries no evaluate:/on_yes:/on_no: — it is a
+        pass-through, not a gate, since cmd_format_check's exit code is not a usable routing
+        signal (returns 1 for ANY remaining gap, fixable or not). on_error equals next, mirroring
+        mark_wire_done's not-load-bearing fall-through."""
+        state = data["states"].get("normalize_structure", {})
+        assert state, "State 'normalize_structure' not found (ENH-3248)"
+        assert "evaluate" not in state and "on_yes" not in state and "on_no" not in state, (
+            "normalize_structure must be a pass-through with no evaluate:/on_yes:/on_no:"
+        )
+        assert state.get("next") == "verify_issue", (
+            f"normalize_structure.next should be 'verify_issue', got {state.get('next')!r}"
+        )
+        assert state.get("on_error") == state.get("next"), (
+            "normalize_structure.on_error should equal .next (not load-bearing downstream)"
+        )
+        action = state.get("action", "")
+        assert "format-check" in action and "--fix" in action and "--apply" in action, (
+            "normalize_structure.action should run format-check --fix --apply"
+        )
+        assert "|| true" in action, (
+            "normalize_structure.action must end in `|| true` — cmd_format_check's exit code "
+            "is not a usable gate signal here"
+        )
+
+    def test_resolve_issue_seeds_reconcile_attempts_counter(self, data: dict) -> None:
+        """resolve_issue seeds the reconcile-attempts counter alongside its siblings (ENH-3248)."""
+        state = data["states"].get("resolve_issue", {})
+        action = state.get("action", "")
+        assert "refine-to-ready-reconcile-attempts" in action, (
+            "resolve_issue.action should seed refine-to-ready-reconcile-attempts"
+        )
+
+    @staticmethod
+    def _run_check_reconcile_limit(data: dict, run_dir: Path) -> str:
+        """Execute check_reconcile_limit's bash `action` against `run_dir` and return stdout."""
+        action = data["states"].get("check_reconcile_limit", {}).get("action", "")
+        script = action.replace("${context.run_dir}", str(run_dir))
+        assert "${" not in script, f"unsubstituted interpolation token remains: {script}"
+        result = subprocess.run(["bash", "-c", script], cwd=run_dir, capture_output=True, text=True)
+        assert result.returncode == 0, f"check_reconcile_limit failed: {result.stderr}"
+        return result.stdout.strip()
+
+    def test_check_reconcile_limit_counts_up_and_gates_at_two(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        """First entry emits 1 (lt 2 -> yes, spend a reconcile attempt); second emits 2 (lt 2 ->
+        no, escalate to check_refine_limit) — exactly one reconcile attempt per run (ENH-3248,
+        mirrors BUG-3170's check_hedge_attempts shape)."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir(parents=True, exist_ok=True)
+
+        first = self._run_check_reconcile_limit(data, run_dir)
+        assert first == "1", f"first entry should emit '1', got {first!r}"
+        assert int(first) < 2, "first entry (1) should satisfy lt 2 -> on_yes: reconcile_issue"
+
+        second = self._run_check_reconcile_limit(data, run_dir)
+        assert second == "2", f"second entry should emit '2', got {second!r}"
+        assert not (int(second) < 2), (
+            "second entry (2) should fail lt 2 -> on_no: check_refine_limit"
+        )
+
+    def test_check_reconcile_limit_counter_is_per_run(self, data: dict, tmp_path: Path) -> None:
+        """The counter file lives under run_dir, so two different run dirs each start from 1
+        independently (ENH-3248)."""
+        run_dir_a = tmp_path / "run-a"
+        run_dir_a.mkdir(parents=True, exist_ok=True)
+        run_dir_b = tmp_path / "run-b"
+        run_dir_b.mkdir(parents=True, exist_ok=True)
+
+        first_a = self._run_check_reconcile_limit(data, run_dir_a)
+        first_b = self._run_check_reconcile_limit(data, run_dir_b)
+        assert first_a == "1", f"run-a first entry should emit '1', got {first_a!r}"
+        assert first_b == "1", f"run-b first entry should emit '1', got {first_b!r}"
 
     def test_check_epic_id_state_exists(self, data: dict) -> None:
         """check_epic_id guard state must exist (BUG-2638 defense-in-depth)."""
@@ -2080,34 +2261,36 @@ class TestRefineToReadyIssueSubLoop:
         )
 
     def test_wire_issue_on_error_is_verify_issue(self, data: dict) -> None:
-        """wire_issue.on_error must route to verify_issue (ENH-3031): wiring failure
-        is non-fatal, and the retarget closes the loopback bypass that used to skip
-        the verification chain entirely on a gate-forced second pass."""
+        """wire_issue.on_error must route to normalize_structure (ENH-3031: wiring failure
+        is non-fatal, and the retarget closes the loopback bypass that used to skip the
+        verification chain entirely on a gate-forced second pass; ENH-3248: normalize_structure
+        interposed before verify_issue on every fan-in route)."""
         state = data["states"].get("wire_issue", {})
-        assert state.get("on_error") == "verify_issue", (
-            f"wire_issue.on_error should be 'verify_issue', got {state.get('on_error')!r}"
+        assert state.get("on_error") == "normalize_structure", (
+            f"wire_issue.on_error should be 'normalize_structure', got {state.get('on_error')!r}"
         )
 
     def test_check_wire_done_on_no_and_on_error_route_to_verify_issue(self, data: dict) -> None:
-        """check_wire_done.on_no/.on_error must route to verify_issue (ENH-3031).
+        """check_wire_done.on_no/.on_error must route to normalize_structure (ENH-3031; ENH-3248).
 
         This is the loopback-bypass closure: on a gate-forced second pass the
         wire-done marker is already 1, so on_no previously skipped straight to
         confidence_check, bypassing verify_issue/check_hedges/check_ac_automatable.
+        ENH-3248 interposes normalize_structure before verify_issue on this route.
         """
         state = data["states"].get("check_wire_done", {})
-        assert state.get("on_no") == "verify_issue", (
-            f"check_wire_done.on_no should be 'verify_issue', got {state.get('on_no')!r}"
+        assert state.get("on_no") == "normalize_structure", (
+            f"check_wire_done.on_no should be 'normalize_structure', got {state.get('on_no')!r}"
         )
-        assert state.get("on_error") == "verify_issue", (
-            f"check_wire_done.on_error should be 'verify_issue', got {state.get('on_error')!r}"
+        assert state.get("on_error") == "normalize_structure", (
+            f"check_wire_done.on_error should be 'normalize_structure', got {state.get('on_error')!r}"
         )
 
     def test_mark_wire_done_on_error_routes_to_verify_issue(self, data: dict) -> None:
-        """mark_wire_done.on_error must route to verify_issue (ENH-3031)."""
+        """mark_wire_done.on_error must route to normalize_structure (ENH-3031; ENH-3248)."""
         state = data["states"].get("mark_wire_done", {})
-        assert state.get("on_error") == "verify_issue", (
-            f"mark_wire_done.on_error should be 'verify_issue', got {state.get('on_error')!r}"
+        assert state.get("on_error") == "normalize_structure", (
+            f"mark_wire_done.on_error should be 'normalize_structure', got {state.get('on_error')!r}"
         )
 
     def test_mark_wire_done_state_exists(self, data: dict) -> None:
@@ -2259,10 +2442,11 @@ class TestRefineToReadyIssueSubLoop:
 
     def test_resolve_decision_mid_wire_on_success_resumes_verify_issue(self, data: dict) -> None:
         """resolve_decision_mid_wire.on_success must resume the chain at
-        verify_issue — the same target check_decision_mid_wire.on_no uses."""
+        normalize_structure — the same target check_decision_mid_wire.on_no uses
+        (ENH-3248: normalize_structure interposed before verify_issue)."""
         state = data["states"].get("resolve_decision_mid_wire", {})
-        assert state.get("on_success") == "verify_issue", (
-            f"resolve_decision_mid_wire.on_success should be 'verify_issue', "
+        assert state.get("on_success") == "normalize_structure", (
+            f"resolve_decision_mid_wire.on_success should be 'normalize_structure', "
             f"got {state.get('on_success')!r}"
         )
 
@@ -2454,19 +2638,21 @@ class TestRefineToReadyIssueSubLoop:
         )
 
     def test_check_decision_mid_wire_on_no_routes_to_verify_issue(self, data: dict) -> None:
-        """check_decision_mid_wire.on_no must route to verify_issue (ENH-3031: no flag
-        → fall through into the claim-verification chain, not straight to confidence_check)."""
+        """check_decision_mid_wire.on_no must route to normalize_structure (ENH-3031: no flag
+        → fall through into the claim-verification chain, not straight to confidence_check;
+        ENH-3248: via normalize_structure, interposed before verify_issue)."""
         state = data["states"].get("check_decision_mid_wire", {})
-        assert state.get("on_no") == "verify_issue", (
-            f"check_decision_mid_wire.on_no should be 'verify_issue', got {state.get('on_no')!r}"
+        assert state.get("on_no") == "normalize_structure", (
+            f"check_decision_mid_wire.on_no should be 'normalize_structure', "
+            f"got {state.get('on_no')!r}"
         )
 
     def test_check_decision_mid_wire_on_error_routes_to_verify_issue(self, data: dict) -> None:
-        """check_decision_mid_wire.on_error must fall through to verify_issue (ENH-3031)
-        (a transient check-flag failure should not stall the sub-loop)."""
+        """check_decision_mid_wire.on_error must fall through to normalize_structure (ENH-3031;
+        ENH-3248) (a transient check-flag failure should not stall the sub-loop)."""
         state = data["states"].get("check_decision_mid_wire", {})
-        assert state.get("on_error") == "verify_issue", (
-            f"check_decision_mid_wire.on_error should be 'verify_issue', "
+        assert state.get("on_error") == "normalize_structure", (
+            f"check_decision_mid_wire.on_error should be 'normalize_structure', "
             f"got {state.get('on_error')!r}"
         )
 

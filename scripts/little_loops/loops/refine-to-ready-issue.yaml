@@ -5,18 +5,26 @@ category: issue-management
 #   resolve_issue → check_epic_id → (on_yes: EPIC id) breakdown_issue | (on_no: leaf) check_lifetime_limit
 #   ENH-3031: every mid-chain route that used to skip straight to confidence_check
 #   (check_wire_done.on_no/.on_error, wire_issue.on_error, mark_wire_done.on_error,
-#   check_decision_mid_wire.on_no/.on_error) now retargets to verify_issue, so a
-#   gate-forced refine_followup cycle always re-enters through the gates below, not
-#   at confidence_check.
+#   check_decision_mid_wire.on_no/.on_error) now retargets to normalize_structure
+#   (ENH-3248; was verify_issue directly), so a gate-forced refine_followup cycle
+#   always re-enters through the gates below, not at confidence_check.
+#   ENH-3248: normalize_structure (ll-issues format-check --fix --apply, no-LLM
+#   pass-through, no evaluate/on_yes/on_no) → verify_issue unconditionally, so
+#   every downstream gate reads a post-normalize file.
 #   verify_issue (/ll:verify-issues --check, non-fatal) → check_verify_verdict
 #     check_verify_verdict (reads persisted verify_verdict) → (on_yes) check_hedges
 #                                                            → (on_no)  check_refine_limit
-#     check_hedges (ll-issues check-open-questions)          → (on_yes) check_ac_automatable
+#     check_hedges (ll-issues check-open-questions)          → (on_yes) check_placeholders
 #                                                            → (on_no)  check_hedge_attempts
 #     check_hedge_attempts (BUG-3170: one hedge-forced refine per run) → (on_yes, 1st) check_refine_limit
-#                                                                       → (on_no, 2nd)  check_ac_automatable
-#     check_ac_automatable (ll-issues check-acceptance-criteria) → (on_yes) confidence_check
-#                                                                 → (on_no)  check_refine_limit
+#                                                                       → (on_no, 2nd)  check_placeholders
+#     check_placeholders (ENH-3248: template_placeholders class, count via
+#     --format json; no counter, no normalize_structure loopback)      → (on_yes) check_ac_automatable
+#                                                                       → (on_no)  check_refine_limit
+#     check_ac_automatable (ll-issues check-acceptance-criteria)  → (on_yes) confidence_check
+#                                                                  → (on_no)  check_reconcile_limit (ENH-3248; was check_refine_limit)
+#     check_reconcile_limit (ENH-3248: 1 reconcile attempt/run)   → (on_yes, 1st) reconcile_issue → normalize_structure
+#                                                                  → (on_no, 2nd)  check_refine_limit
 #   confidence_check (oracle: verify-confidence-scores) → (on_success) check_readiness → (on_yes) check_outcome → (on_yes) done
 #                                                       → (on_failure) diagnose
 #                      check_readiness         → (on_no)  check_refine_limit → refine_followup (additive --gap-analysis)
@@ -28,7 +36,7 @@ category: issue-management
 #   on_yes — each routes to its own loop: oracles/resolve-decision call state
 #   (resolve_decision_mid_refine / resolve_decision_mid_wire /
 #   resolve_decision_pre_breakdown), which resolves the decision inline and
-#   resumes the chain (check_wire_done / verify_issue / confidence_check
+#   resumes the chain (check_wire_done / normalize_structure / confidence_check
 #   respectively) on_success, or routes to record_decision_unresolved →
 #   failed on_failure/on_error.
 initial: resolve_issue
@@ -49,7 +57,18 @@ scope:
 # three call states). The cycle cannot spin: the second pass through
 # check_decision_needed sees decision_needed: false (the sub-loop's done
 # terminal asserts exactly that) and falls through on_no.
-max_steps: 40
+# ENH-3248: 40 -> 55. Three new states: normalize_structure adds 1 step per
+# refine/wire pass on the happy path (≤3 passes = 3); check_placeholders adds
+# 1 per gate-band pass (≤3 = 3); a reconcile_issue cycle costs ~6
+# (check_reconcile_limit -> reconcile_issue -> normalize_structure ->
+# verify_issue -> the gate band back to check_ac_automatable), bounded at one
+# cycle by check_reconcile_limit's counter (target: 2, mirrors
+# check_refine_limit) -> ~12 more worst case. The cycle cannot spin:
+# check_reconcile_limit's counter is per-run and reconcile_issue always falls
+# through to check_refine_limit once exhausted, never back to itself. 55
+# preserves roughly the same worst-case-to-budget headroom the ENH-3031 and
+# BUG-3065 blocks left.
+max_steps: 55
 on_handoff: spawn
 context:
   # readiness_threshold / outcome_threshold are seeded at launch from
@@ -82,6 +101,7 @@ states:
       printf '0' > ${context.run_dir}/refine-to-ready-wire-done &&
       printf '0' > ${context.run_dir}/refine-broke-down &&
       printf '0' > ${context.run_dir}/refine-to-ready-hedge-attempts &&
+      printf '0' > ${context.run_dir}/refine-to-ready-reconcile-attempts &&
       { [ -n ${context.input:shell} ] && printf '%s' ${context.input:shell} ||
       ll-issues next-issue; } | tr -d '\n\r '
     action_type: shell
@@ -225,8 +245,8 @@ states:
       operator: lt
       target: 1
     on_yes: wire_issue      # 0 → not yet wired → run wire
-    on_no: verify_issue     # 1 → already wired → enter the verification chain (ENH-3031)
-    on_error: verify_issue
+    on_no: normalize_structure  # 1 → already wired → enter the verification chain (ENH-3031; ENH-3248: via normalize_structure)
+    on_error: normalize_structure
 
   wire_issue:
     action: "/ll:wire-issue ${captured.issue_id.output} --auto"
@@ -236,35 +256,51 @@ states:
       name: wire-issue-auto
       suppress_claude_md: true
     next: mark_wire_done
-    on_error: verify_issue  # wiring failure is non-fatal (ENH-3031: re-enter via verify_issue)
+    on_error: normalize_structure  # wiring failure is non-fatal (ENH-3031: re-enter via normalize_structure -> verify_issue)
 
   mark_wire_done:
     action: printf '1' > ${context.run_dir}/refine-to-ready-wire-done
     action_type: shell
     next: check_decision_mid_wire
-    on_error: verify_issue
+    on_error: normalize_structure
 
   check_decision_mid_wire:
     # Mid-chain gate after wire: if /ll:wire-issue set decision_needed: true,
     # resolve it inline via the resolve-decision sub-loop and resume the chain
-    # at verify_issue (BUG-3065; was: exit via done and dead-end). BUG-2528.
+    # at normalize_structure (BUG-3065; was: exit via done and dead-end;
+    # ENH-3248: normalize_structure interposed before verify_issue). BUG-2528.
     action: "ll-issues check-flag ${captured.issue_id.output} decision_needed"
     fragment: shell_exit
     on_yes: resolve_decision_mid_wire
-    on_no: verify_issue
-    on_error: verify_issue
+    on_no: normalize_structure
+    on_error: normalize_structure
 
   resolve_decision_mid_wire:
     # BUG-3065: resolves the decision_needed flag armed by wire_issue, then
-    # resumes the chain at verify_issue — the same target
-    # check_decision_mid_wire's on_no already used.
+    # resumes the chain at normalize_structure — the same target
+    # check_decision_mid_wire's on_no already used (ENH-3248).
     loop: oracles/resolve-decision
     with:
       issue_id: "${captured.issue_id.output}"
     capture: resolve_decision_mid_wire
-    on_success: verify_issue
+    on_success: normalize_structure
     on_failure: record_decision_unresolved
     on_error: record_decision_unresolved
+
+  normalize_structure:
+    # ENH-3248: deterministic, no-LLM structural repair pass. Unconditional
+    # after refine_issue / refine_followup / wire_issue, placed before
+    # verify_issue so every downstream gate reads a post-normalize file.
+    # cmd_format_check returns 1 whenever ANY gap remains — fixable or not —
+    # so its exit code carries no routing signal here (this is a
+    # pass-through, not a gate: no evaluate:/on_yes:/on_no:); `|| true` keeps
+    # a routine post-fix nonzero exit from being misread as a real error.
+    # Not load-bearing for any downstream reader (mirrors mark_wire_done's
+    # fall-through, not write_broke_down's): on_error equals next.
+    action: ll-issues format-check ${captured.issue_id.output} --fix --apply || true
+    action_type: shell
+    next: verify_issue
+    on_error: verify_issue
 
   # ENH-3031: claim-verification gate, inserted before confidence_check on every
   # path (all five mid-chain routes above now retarget here). Tests the issue's
@@ -305,9 +341,9 @@ states:
     # scanned, not just Edge Cases / Confidence Check Notes / Open Questions.
     action: "ll-issues check-open-questions ${captured.issue_id.output}"
     fragment: shell_exit
-    on_yes: check_ac_automatable    # exit 0 = no hedges
+    on_yes: check_placeholders      # exit 0 = no hedges (ENH-3248: via check_placeholders)
     on_no: check_hedge_attempts     # exit 1 = OPEN_QUESTIONS_REMAIN → bound the retry
-    on_error: check_ac_automatable
+    on_error: check_placeholders
 
   check_hedge_attempts:
     # BUG-3170: bound how many refine passes the hedge scan may force. The scan
@@ -329,8 +365,35 @@ states:
       operator: lt
       target: 2
     on_yes: check_refine_limit      # 1st red reading: allowed to ask for a refine (pre-filter, not a private budget)
-    on_no: check_ac_automatable     # 2nd red reading: proceed rather than exhaust the shared budget
-    on_error: check_ac_automatable  # fail open, matching check_hedges
+    on_no: check_placeholders       # 2nd red reading: proceed rather than exhaust the shared budget (ENH-3248)
+    on_error: check_placeholders    # fail open, matching check_hedges
+
+  check_placeholders:
+    # ENH-3248: score-independent gate for the template_placeholders class
+    # ENH-3244 split out of the hedge scan but never gated (its detection
+    # shipped with no repair and no gate). normalize_structure already ran
+    # `--fix --apply` unconditionally before verify_issue, so every
+    # placeholder this gate still sees is by construction one --fix could
+    # not repair — judgment or research-shaped, both of which are refine's.
+    # No attempt counter and no normalize_structure loopback: a loopback
+    # here would be an idempotent re-run and risks phantom convergence
+    # against circuit.repeated_failure for no gain.
+    #
+    # placeholder_count() (issue_parser.py) has no CLI entry point, so this
+    # reads --format json and counts the template_placeholders array itself
+    # — cmd_format_check's own exit code is not usable here (it returns 1
+    # for ANY gap, not just this class, per normalize_structure's note).
+    action: |
+      ll-issues format-check ${captured.issue_id.output} --format json 2>/dev/null \
+        | python3 -c "import json,sys; d=json.load(sys.stdin); print(len(d.get('template_placeholders', [])))"
+    action_type: shell
+    evaluate:
+      type: output_numeric
+      operator: eq
+      target: 0
+    on_yes: check_ac_automatable
+    on_no: check_refine_limit
+    on_error: check_ac_automatable
 
   check_ac_automatable:
     # Score-independent gate: a manual-verification acceptance criterion scores
@@ -340,8 +403,51 @@ states:
     action: "ll-issues check-acceptance-criteria ${captured.issue_id.output}"
     fragment: shell_exit
     on_yes: confidence_check
-    on_no: check_refine_limit
+    on_no: check_reconcile_limit  # ENH-3248: ACs are inside reconcile's rewrite scope
     on_error: confidence_check
+
+  check_reconcile_limit:
+    # ENH-3248: bounds the reconcile_issue rung — independent, scoped counter
+    # mirroring check_hedge_attempts/check_refine_limit's shape (Decision
+    # Rules › Counter shape), not autodev.yaml's shared+marker layering. A
+    # check_ac_automatable failure the reconcile pass cannot clear escalates
+    # to check_refine_limit rather than spinning.
+    action: |
+      FILE="${context.run_dir}/refine-to-ready-reconcile-attempts"
+      N=$(cat "$FILE" 2>/dev/null || echo 0)
+      N=$((N + 1))
+      printf '%s' "$N" > "$FILE"
+      echo "$N"
+    action_type: shell
+    # BUG-2726: capture so a counter-file failure surfaces via
+    # ${captured.check_reconcile_limit.stderr} in the diagnose prompt.
+    capture: check_reconcile_limit
+    # target: 2 → allows 1 reconcile attempt per run, mirroring check_refine_limit.
+    evaluate:
+      type: output_numeric
+      operator: lt
+      target: 2
+    on_yes: reconcile_issue
+    on_no: check_refine_limit
+    on_error: check_refine_limit
+
+  reconcile_issue:
+    # ENH-3248: self-referential rewrite rung. check_ac_automatable's failure
+    # (non-automatable ACs) is inside /ll:reconcile-issue's rewrite scope
+    # (commands/reconcile-issue.md: Acceptance Criteria), so this remedy can
+    # actually clear the gate an additive refine_followup cannot. Bare
+    # slash-command shape — no fragment: with_rate_limit_handling / no
+    # on_rate_limit_exhausted (Decision Rules › Rate-limit fragment follows
+    # the host file: 0/5 sibling slash-command states in this file carry
+    # them, unlike autodev.yaml's reconcile_current).
+    action: "/ll:reconcile-issue ${captured.issue_id.output}"
+    action_type: slash_command
+    pruning_profile:
+      enabled: true
+      name: reconcile-issue-auto
+      suppress_claude_md: true
+    next: normalize_structure
+    on_error: normalize_structure  # non-fatal, like wire_issue: re-enter the gate band
 
   confidence_check:
     loop: oracles/verify-confidence-scores
@@ -634,6 +740,7 @@ states:
       - check_outcome:          ${captured.check_outcome.stderr?}
       - check_refine_limit:     ${captured.check_refine_limit.stderr?}
       - check_hedge_attempts:   ${captured.check_hedge_attempts.stderr?}
+      - check_reconcile_limit:  ${captured.check_reconcile_limit.stderr?}
       - check_scores_from_file: ${captured.check_scores_from_file.stderr?}
       - breakdown_issue:        ${captured.breakdown_issue.stderr?}
       - confidence_check (sub-loop — no stderr channel; event stream instead):
@@ -680,6 +787,7 @@ states:
         printf 'check_outcome: %s\n' '${captured.check_outcome.exit_code?}'
         printf 'check_refine_limit: %s\n' '${captured.check_refine_limit.exit_code?}'
         printf 'check_hedge_attempts: %s\n' '${captured.check_hedge_attempts.exit_code?}'
+        printf 'check_reconcile_limit: %s\n' '${captured.check_reconcile_limit.exit_code?}'
         printf 'check_scores_from_file: %s\n' '${captured.check_scores_from_file.exit_code?}'
         printf 'issue_id: %s\n' '${captured.issue_id.exit_code?}'
         printf 'check_lifetime_limit: %s\n' '${captured.check_lifetime_limit.exit_code?}'
@@ -690,6 +798,7 @@ states:
         printf 'check_outcome: %s\n' '${captured.check_outcome.failure_type?}'
         printf 'check_refine_limit: %s\n' '${captured.check_refine_limit.failure_type?}'
         printf 'check_hedge_attempts: %s\n' '${captured.check_hedge_attempts.failure_type?}'
+        printf 'check_reconcile_limit: %s\n' '${captured.check_reconcile_limit.failure_type?}'
         printf 'check_scores_from_file: %s\n' '${captured.check_scores_from_file.failure_type?}'
         printf 'issue_id: %s\n' '${captured.issue_id.failure_type?}'
         printf 'check_lifetime_limit: %s\n' '${captured.check_lifetime_limit.failure_type?}'

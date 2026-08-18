@@ -1912,8 +1912,12 @@ class TestFormatCheckEmptyProvenanceStubFix:
 class TestFormatCheckTemplatePlaceholdersDetection:
     """``template_placeholders`` gap class: literal unfilled template debris.
 
-    Detection only — no ``--fix`` handler is registered for this class
-    (Scope Boundaries: a placeholder needs content the tool cannot invent).
+    A ``--fix`` handler is registered for this class (ENH-3248), but it
+    covers only the four frontmatter-derivable tokens
+    (``_TEMPLATE_PLACEHOLDER_FIXABLE``) — every other placeholder (judgment
+    assessments, research-shaped prose like the ``TBD -`` tokens exercised
+    below) needs content the tool cannot invent and is left untouched. See
+    ``TestFormatCheckTemplatePlaceholdersFix`` for the fixer's own coverage.
     """
 
     def _write_placeholder_bug(
@@ -1973,13 +1977,15 @@ class TestFormatCheckTemplatePlaceholdersDetection:
         data = json.loads(out)
         assert data["template_placeholders"] == ["Implementation Steps: [Major phase 1]"]
 
-    def test_no_fix_handler_registered(
+    def test_research_shaped_token_not_repaired(
         self,
         temp_project_dir: Path,
         format_check_dir: Path,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
-        """--fix must neither claim nor attempt to repair template debris."""
+        """--fix must not touch a research-shaped token (ENH-3248: out of the
+        fixer's frontmatter-derivable allowlist — needs content the tool
+        cannot invent)."""
         path = self._write_placeholder_bug(
             format_check_dir,
             "BUG-9442",
@@ -2003,6 +2009,256 @@ class TestFormatCheckTemplatePlaceholdersDetection:
         assert result == 1
         assert "template_placeholders" in out
         assert path.read_text() == before
+
+
+# ---------------------------------------------------------------------------
+# TestFormatCheckTemplatePlaceholdersFix (ENH-3248 — frontmatter-derivable tokens)
+# ---------------------------------------------------------------------------
+
+
+class TestFormatCheckTemplatePlaceholdersFix:
+    """``--fix``/``--apply`` fills only the four frontmatter-derivable
+    ``template_placeholders`` tokens; every other token is untouched."""
+
+    def _write_placeholder_bug(
+        self, format_check_dir: Path, bug_id: str, filename: str, *, priority: str = "P2"
+    ) -> Path:
+        body = "\n".join(
+            [
+                "---",
+                f"id: {bug_id}",
+                "type: BUG",
+                f"priority: {priority}",
+                "discovered_date: '2026-08-17'",
+                "status: open",
+                "---",
+                "",
+                f"# {bug_id}: Test bug",
+                "",
+                "## Summary",
+                "A real problem happens under specific conditions.",
+                "",
+                "## Current Behavior",
+                "It breaks in a specific way.",
+                "",
+                "## Expected Behavior",
+                "It should not break.",
+                "",
+                "## Steps to Reproduce",
+                "1. Do the thing.",
+                "2. Observe failure.",
+                "",
+                "## Impact",
+                "- **Priority**: [P0-P5] - [Justification]",
+                "- **Effort**: [Small/Medium/Large] - [Justification]",
+                "- **Risk**: [Low/Medium/High] - [Justification]",
+                "- **Breaking Change**: [Yes/No]",
+                "",
+                "## Status",
+                "**Open** | Created: [YYYY-MM-DD] | Priority: [P0-P5]",
+            ]
+        )
+        return _write_issue(format_check_dir, filename, body)
+
+    def test_fix_apply_fills_derivable_tokens_and_leaves_judgment_tokens(
+        self,
+        temp_project_dir: Path,
+        format_check_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        path = self._write_placeholder_bug(
+            format_check_dir, "BUG-9450", "P3-BUG-9450-test-bug.md", priority="P2"
+        )
+
+        result = _invoke(
+            [
+                "ll-issues",
+                "format-check",
+                "BUG-9450",
+                "--fix",
+                "--apply",
+                "--config",
+                str(temp_project_dir),
+            ]
+        )
+        capsys.readouterr()
+        after = path.read_text()
+
+        # Derivable tokens filled from frontmatter.
+        assert "- **Priority**: P2 - [Justification]" in after
+        assert "**Open** | Created: 2026-08-17 | Priority: P2" in after
+        # Judgment tokens (not a pure function of frontmatter) untouched.
+        assert "[Small/Medium/Large]" in after
+        assert "[Low/Medium/High]" in after
+        assert "[Yes/No]" in after
+        assert "[Justification]" in after
+        # Report still exits 1 — judgment tokens remain unfilled gaps.
+        assert result == 1
+
+    def test_fix_without_apply_previews_and_does_not_write(
+        self,
+        temp_project_dir: Path,
+        format_check_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        path = self._write_placeholder_bug(format_check_dir, "BUG-9451", "P3-BUG-9451-test-bug.md")
+        before = path.read_text()
+
+        _invoke(
+            ["ll-issues", "format-check", "BUG-9451", "--fix", "--config", str(temp_project_dir)]
+        )
+        out, _ = capsys.readouterr()
+
+        assert "would fill" in out
+        assert path.read_text() == before
+
+    def test_fix_apply_is_idempotent(
+        self,
+        temp_project_dir: Path,
+        format_check_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        path = self._write_placeholder_bug(format_check_dir, "BUG-9452", "P3-BUG-9452-test-bug.md")
+
+        _invoke(
+            [
+                "ll-issues",
+                "format-check",
+                "BUG-9452",
+                "--fix",
+                "--apply",
+                "--config",
+                str(temp_project_dir),
+            ]
+        )
+        capsys.readouterr()
+        after_first = path.read_text()
+
+        _invoke(
+            [
+                "ll-issues",
+                "format-check",
+                "BUG-9452",
+                "--fix",
+                "--apply",
+                "--config",
+                str(temp_project_dir),
+            ]
+        )
+        capsys.readouterr()
+
+        assert path.read_text() == after_first
+
+    def test_documenting_prose_naming_placeholder_is_untouched(
+        self,
+        temp_project_dir: Path,
+        format_check_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """A section that quotes its own placeholder as inline-code documentation
+        (e.g. `` `[P0-P5]` ``) is masked, matching detection's own masking rule."""
+        path = self._write_placeholder_bug(format_check_dir, "BUG-9453", "P3-BUG-9453-test-bug.md")
+        content = path.read_text()
+        content = content.replace(
+            "- **Priority**: [P0-P5] - [Justification]",
+            "- **Priority**: `[P0-P5]` - [Justification]",
+        )
+        path.write_text(content)
+
+        _invoke(
+            [
+                "ll-issues",
+                "format-check",
+                "BUG-9453",
+                "--fix",
+                "--apply",
+                "--config",
+                str(temp_project_dir),
+            ]
+        )
+        capsys.readouterr()
+        after = path.read_text()
+
+        assert "`[P0-P5]`" in after
+
+    def test_sweep_mode_does_not_write_body(
+        self,
+        temp_project_dir: Path,
+        format_check_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        path = self._write_placeholder_bug(format_check_dir, "BUG-9454", "P3-BUG-9454-test-bug.md")
+        before = path.read_text()
+
+        _invoke(
+            [
+                "ll-issues",
+                "format-check",
+                "--all",
+                "--fix",
+                "--apply",
+                "--config",
+                str(temp_project_dir),
+            ]
+        )
+        capsys.readouterr()
+
+        assert path.read_text() == before
+
+
+class TestTemplatePlaceholderFixableAllowlistInvariant:
+    """Token-granularity capability invariant (ENH-3248 Tests section).
+
+    A class-level ``routed-set ⊆ _REPAIR_DISPATCH.keys()`` check is
+    necessary but not sufficient once ``template_placeholders`` is
+    registered with a *partial* fixer — the routed granularity is the
+    token, so the invariant is enforced at token granularity here: every
+    allowlisted ``"{section}: {token}"`` entry must actually be a token
+    ``_template_placeholder_patterns`` emits for at least one issue type,
+    and every allowlisted frontmatter field must exist on a real issue.
+    """
+
+    def test_allowlist_tokens_are_real_template_tokens(self) -> None:
+        from little_loops.cli.issues.format_check import _TEMPLATE_PLACEHOLDER_FIXABLE
+        from little_loops.issue_parser import _template_placeholder_patterns
+
+        all_tokens: set[str] = set()
+        for issue_type in ("BUG", "ENH", "FEAT", "EPIC"):
+            for section, tokens in _template_placeholder_patterns(issue_type).items():
+                for token in tokens:
+                    all_tokens.add(f"{section}: {token}")
+
+        missing = set(_TEMPLATE_PLACEHOLDER_FIXABLE) - all_tokens
+        assert not missing, f"allowlisted entries not emitted by any type's template: {missing}"
+
+    def test_allowlist_frontmatter_fields_exist_on_a_real_issue(self) -> None:
+        from little_loops.cli.issues.format_check import _TEMPLATE_PLACEHOLDER_FIXABLE
+        from little_loops.frontmatter import parse_frontmatter
+
+        real_issue = "\n".join(
+            [
+                "---",
+                "id: BUG-9101",
+                "type: BUG",
+                "priority: P2",
+                "discovered_date: '2026-08-17'",
+                "status: open",
+                "---",
+                "",
+                "# BUG-9101: Test bug",
+            ]
+        )
+        fm = parse_frontmatter(real_issue)
+        fields = set(_TEMPLATE_PLACEHOLDER_FIXABLE.values())
+        missing = fields - set(fm)
+        assert not missing, f"allowlisted fields absent from a real issue's frontmatter: {missing}"
+
+    def test_allowlist_is_not_in_sweep_safe_repairs(self) -> None:
+        from little_loops.cli.issues.format_check import _SWEEP_SAFE_REPAIRS
+
+        assert "template_placeholders" not in _SWEEP_SAFE_REPAIRS, (
+            "template_placeholders is body-rewriting and must stay single-issue-mode only"
+        )
 
 
 # ---------------------------------------------------------------------------

@@ -100,9 +100,10 @@ def add_format_check_parser(subs: argparse._SubParsersAction) -> argparse.Argume
         action="store_true",
         help="Preview repairs for prose_dep_drift (backfill blocked_by via "
         "`ll-issues link`), duplicate_findings_block (fold via `ll-issues "
-        "fold-findings`), duplicate_heading, and empty_provenance_stub gaps "
+        "fold-findings`), duplicate_heading, empty_provenance_stub, and "
+        "template_placeholders (frontmatter-derivable tokens only) gaps "
         "(dry-run by default; combine with --apply to write). The latter "
-        "three are single-issue mode only — --all --fix --apply is "
+        "four are single-issue mode only — --all --fix --apply is "
         "restricted to the frontmatter-only prose_dep_drift repair (ENH-3247)",
     )
     p.add_argument(
@@ -276,6 +277,83 @@ def _remove_empty_provenance_stubs(content: str) -> str:
     return out
 
 
+# ENH-3248: token -> frontmatter-field allowlist for the four
+# frontmatter-derivable `template_placeholders` gap entries. Every other
+# placeholder token (judgment assessments, research-shaped prose) is out of
+# scope for this fixer and is left in place for refine (Scope Boundaries).
+_TEMPLATE_PLACEHOLDER_FIXABLE: dict[str, str] = {
+    "Impact: [P0-P5]": "priority",
+    "Status: [P0-P5]": "priority",
+    "Status: [YYYY-MM-DD]": "discovered_date",
+    "Labels: [type-label]": "type",
+}
+
+# The Labels section's `[type-label]` token, filled from frontmatter `type`.
+# Independent of sync.py's GitHub label_mapping (FEAT/ENH both map to
+# "enhancement" there for GitHub label consolidation) — this is a local
+# body-text label, one per type, matching the issue's own stated mapping.
+_TEMPLATE_PLACEHOLDER_TYPE_LABELS: dict[str, str] = {
+    "BUG": "bug",
+    "ENH": "enhancement",
+    "FEAT": "feature",
+    "EPIC": "epic",
+}
+
+
+def _fix_template_placeholders(
+    config: BRConfig, source_id: str, path: Path, targets: list[str], *, apply: bool
+) -> None:
+    """Fill frontmatter-derivable ``template_placeholders`` tokens (ENH-3248).
+
+    Covers exactly the four tokens whose correct value is a pure function of
+    the issue's own frontmatter — Impact/Status Priority, Status date, and
+    the Labels type-label (:data:`_TEMPLATE_PLACEHOLDER_FIXABLE`). Every
+    other entry (judgment assessments, research-shaped prose) is left
+    untouched. :func:`_apply_fix_dispatch` does not pre-filter *targets*, so
+    this fixer filters its own down to the allowlist first. Fence/inline-code
+    masked and section-scoped via
+    :func:`~little_loops.issue_parser._replace_template_placeholder_tokens`,
+    the same helper :func:`~little_loops.issue_parser._template_placeholders`
+    uses for detection, so idempotent re-runs are a no-op.
+    """
+    from little_loops.file_utils import atomic_write
+    from little_loops.frontmatter import parse_frontmatter
+    from little_loops.issue_parser import _replace_template_placeholder_tokens
+
+    fixable = [t for t in targets if t in _TEMPLATE_PLACEHOLDER_FIXABLE]
+    if not fixable:
+        return
+
+    content = path.read_text(encoding="utf-8")
+    fm = parse_frontmatter(content)
+    priority = fm.get("priority")
+    discovered_date = fm.get("discovered_date")
+    issue_type = fm.get("type")
+
+    values: dict[str, str] = {}
+    for entry in fixable:
+        field = _TEMPLATE_PLACEHOLDER_FIXABLE[entry]
+        if field == "priority" and priority:
+            values[entry] = str(priority)
+        elif field == "discovered_date" and discovered_date:
+            values[entry] = str(discovered_date)
+        elif field == "type" and issue_type:
+            label = _TEMPLATE_PLACEHOLDER_TYPE_LABELS.get(str(issue_type).upper())
+            if label:
+                values[entry] = label
+
+    if not values:
+        return
+
+    updated = _replace_template_placeholder_tokens(content, values)
+    if updated == content:
+        return
+    if apply:
+        atomic_write(path, updated)
+    else:
+        print(f"  [dry-run] would fill {len(values)} template placeholder(s)")
+
+
 # ENH-3247: gap-class -> repair function dispatch table, replacing the two
 # hardcoded `_fix_prose_deps` call sites. Every fixer shares the signature
 # `(config, source_id, path, targets, *, apply) -> None`.
@@ -284,6 +362,7 @@ _REPAIR_DISPATCH = {
     "duplicate_findings_block": _fix_duplicate_findings,
     "duplicate_heading": _fix_duplicate_headings,
     "empty_provenance_stub": _fix_empty_provenance_stubs,
+    "template_placeholders": _fix_template_placeholders,
 }
 
 # Impact › Risk — sweep blast radius: --all --fix --apply may only run

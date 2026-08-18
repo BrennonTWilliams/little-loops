@@ -4,11 +4,12 @@ type: ENH
 title: Triage the refine-to-ready-issue retry path by failure kind instead of always
   refining
 priority: P2
-status: open
+status: done
 testable: true
 discovered_by: ll-issues-create
 discovered_date: '2026-08-17'
 captured_at: '2026-08-17T19:30:10Z'
+completed_at: '2026-08-18T19:29:27Z'
 blocked_by: []
 relates_to:
 - BUG-3245
@@ -617,6 +618,8 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-18T19:28:55 - `f0159f45-11d8-4867-9748-ca1d591ef8ee.jsonl`
+- `/ll:ready-issue` - 2026-08-18T19:02:38 - `0bda2f92-786e-4202-a05d-e6630e60e1aa.jsonl`
 - `/ll:confidence-check` - 2026-08-18T18:00:48 - `f6334ce4-fd4a-470a-a0cc-dbd1d14f42eb.jsonl`
 - `/ll:refine-issue` - 2026-08-18T15:25:10 - `b98d0491-3f8d-44db-ac19-187eca069c7f.jsonl`
 - `/ll:refine-issue` - 2026-08-18T14:58:03 - `81050041-a768-4bbc-b672-f371308c0627.jsonl`

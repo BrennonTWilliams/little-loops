@@ -1500,6 +1500,47 @@ def _template_placeholders(
     return gaps
 
 
+def _replace_template_placeholder_tokens(content: str, values: dict[str, str]) -> str:
+    """Replace masked, section-scoped placeholder tokens with derived values (ENH-3248).
+
+    *values* maps ``"{section}: {token}"`` gap strings — the exact format
+    :func:`_template_placeholders` reports — to their replacement text.
+    Mirrors that function's section-scoping and fence/inline-code masking
+    exactly, but replaces the first unmasked occurrence per entry instead of
+    only recording it, matching its "each distinct placeholder is reported
+    at most once per section" contract — so a second pass over an already-
+    filled file finds no remaining unmasked occurrence and is a no-op
+    (idempotent), and a section's own prose naming its placeholder as
+    documentation is left untouched.
+    """
+    inline_spans = [(m.start(), m.end()) for m in _PLACEHOLDER_BACKTICK_SPAN_RE.finditer(content)]
+    masks = fence_spans(content) + inline_spans
+
+    replacements: list[tuple[int, int, str]] = []
+    for entry, replacement in values.items():
+        section, _, token = entry.partition(": ")
+        result = _section_body_with_offset(content, section)
+        if result is None:
+            continue
+        body, offset = result
+        start = 0
+        while True:
+            idx = body.find(token, start)
+            if idx == -1:
+                break
+            abs_start = offset + idx
+            abs_end = abs_start + len(token)
+            if not in_fence(abs_start, abs_end, masks):
+                replacements.append((abs_start, abs_end, replacement))
+                break
+            start = idx + 1
+
+    out = content
+    for start, end, replacement in sorted(replacements, key=lambda r: r[0], reverse=True):
+        out = out[:start] + replacement + out[end:]
+    return out
+
+
 def placeholder_count(issue_path: Path, templates_dir: Path | None = None) -> int:
     """Count unfilled template placeholders in *issue_path* (ENH-3244).
 

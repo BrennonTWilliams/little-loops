@@ -2196,22 +2196,28 @@ fence- and inline-backtick-masked (composed the way
 Design` is excluded from the derived pattern set entirely — its
 placeholders are the only ones every template already wraps in backticks,
 so inline masking would swallow them anyway, and full/partial residue there
-is already caught by `boilerplate`/`program_design_nonspecific`. Detection
-only: no `--fix` handler is registered, since a placeholder needs content
-the tool cannot invent.
+is already caught by `boilerplate`/`program_design_nonspecific`. A `--fix`
+handler (ENH-3248) covers only the four tokens whose correct value is a pure
+function of the issue's own frontmatter — `Impact: [P0-P5]` / `Status:
+[P0-P5]` ← `priority`, `Status: [YYYY-MM-DD]` ← `discovered_date`, `Labels:
+[type-label]` ← `type`. Every other placeholder (judgment assessments like
+Effort/Risk/Breaking Change, and research-shaped prose like `TBD -` tokens)
+needs content the tool cannot invent and is left untouched.
 
 `--fix` runs every repair whose gap class fired, via a gap-class → repair
 function dispatch table: `prose_dep_drift` (backfill `blocked_by` via
 `ll-issues link`'s idempotent, cycle-safe write path — FEAT-2851),
 `duplicate_findings_block` (collapse via the same transform
 `ll-issues fold-findings` uses), `duplicate_heading` (collapse duplicate
-headings, concatenating bodies in document order — never drops a body), and
+headings, concatenating bodies in document order — never drops a body),
 `empty_provenance_stub` (delete empty stubs, normalizing surrounding
-whitespace to exactly one blank line). Dry-run by default; combine with
+whitespace to exactly one blank line), and `template_placeholders`
+(ENH-3248: fill the four frontmatter-derivable tokens above; every other
+placeholder token is left in place). Dry-run by default; combine with
 `--apply` to write. **`--all --fix --apply` (sweep mode) is restricted to
 `prose_dep_drift`** — the only repair that writes frontmatter through an
 existing idempotent command rather than rewriting the markdown body; the
-other three repairs run in single-issue mode only, to keep a sweep's blast
+other four repairs run in single-issue mode only, to keep a sweep's blast
 radius reviewable.
 
 | Argument/Flag | Default | Description |
@@ -2220,7 +2226,7 @@ radius reviewable.
 | `--all` / `-a` | `false` | Sweep every active issue instead of one (FEAT-2850) |
 | `--next` | `false` | Target the highest-priority active issue, no type filter (same selection as `find_highest_priority_issue`); mutually exclusive with `issue_id`/`--all`; exits 1 with "No active issues found." on an empty backlog (ENH-2946) |
 | `--format {text,json}` | `text` | Output format |
-| `--fix` | `false` | Preview repairs for `prose_dep_drift`, `duplicate_findings_block`, `duplicate_heading`, and `empty_provenance_stub` gaps via the repair dispatch table (dry-run by default; the latter three are single-issue mode only — ENH-3247) |
+| `--fix` | `false` | Preview repairs for `prose_dep_drift`, `duplicate_findings_block`, `duplicate_heading`, `empty_provenance_stub`, and `template_placeholders` (frontmatter-derivable tokens only) gaps via the repair dispatch table (dry-run by default; the latter four are single-issue mode only — ENH-3247, ENH-3248) |
 | `--apply` | `false` | With `--fix`, write the proposed repairs instead of previewing them |
 
 **Examples:**
@@ -2230,7 +2236,7 @@ ll-issues format-check ENH-2426               # text report, exit 0/1
 ll-issues format-check ENH-2426 --format json # {"missing": [...], "renamed": [...], "empty": [...], "boilerplate": [...], "malformed_id": [...], "prose_dep_drift": [...], "stale_prose_dep": [...], "program_design_nonspecific": [...], "deprecated_key": [...], "multi_frontmatter": [...], "testable": [...], "stale_file_ref": [...], "unmarked_superseded_directive": [...], "duplicate_findings_block": [...], "ambiguous_file_ref": [...], "missing_behavior_parity": [...], "soft_dep_hard_edge": [...], "malformed_dep_id": [...], "stale_symbol_ref": [...], "mislocated_symbol_ref": [...], "stale_cli_flag": [...], "duplicate_heading": [...], "empty_provenance_stub": [...], "template_placeholders": [...], "superseded_marker_count": 0}
 ll-issues format-check --all --fix            # preview blocked_by backfills for every drifting issue (dry-run)
 ll-issues format-check --all --fix --apply    # write the previewed edges via `ll-issues link`
-ll-issues format-check ENH-2426 --fix --apply # single-issue: also collapses duplicate headings/findings blocks and deletes empty provenance stubs
+ll-issues format-check ENH-2426 --fix --apply # single-issue: also collapses duplicate headings/findings blocks, deletes empty provenance stubs, and fills frontmatter-derivable template placeholders
 ll-issues format-check --next                 # target the highest-priority active issue
 ```
 
