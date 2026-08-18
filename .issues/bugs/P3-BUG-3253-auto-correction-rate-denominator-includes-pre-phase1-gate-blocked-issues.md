@@ -148,6 +148,18 @@ _Added by `/ll:refine-issue` — 2026-08-18 — based on codebase analysis:_
 
 - **The existing "no-silent-caps" annotation convention uses round-parenthesis inline suffixes, not square brackets.** Evidence: `_sample()` (`work_verification.py:48-58`, `"(first {limit} of {len(paths)})"`), `worker_pool.py:1365` (`"(+{N} more)"`), `issue_history/formatting.py:216,735` (`"(+{N} more)"`), `cli/issues/sequence.py:204` (`"… +{N} more"`). This issue's own suggested `[N gated]` bracket suffix (Expected Behavior) does not match this format; no prior example in the codebase uses square-bracket annotation.
 
+_Added by `/ll:refine-issue` — 2026-08-18 — based on codebase analysis:_
+
+- **A third route surfaces from `ll:codebase-pattern-finder` research**: `StateManager` (`state.py`) already has a `skipped_issues` bucket, distinct from `failed_issues`, with its own `mark_skipped()` method — and the dispatch chain mapping `IssueProcessingResult` to state tracking already routes two other non-implemented outcomes (`was_blocked`, `plan_created`) through `mark_skipped` instead of `mark_failed` (`issue_manager.py:2105-2123`, BUG-3005 precedent). The confidence gate (`issue_manager.py:813-835`) and the learning gate's three verdict branches (`issue_manager.py:1159-1207`) return `_stamped_result(success=False, ..., failure_reason=...)` with neither `was_blocked` nor `plan_created` set, so they fall through the `elif result.failure_reason:` branch straight to `mark_failed` — landing in `state.failed_issues`, the same bucket `_log_timing_summary`'s denominator reads (`issue_manager.py:1957, 1973`). No `_is_*`-style classifier predicate exists anywhere in the codebase today (a grep for `_is_.*failure`/`_is_.*_reason` returns zero hits) — the existing precedent for excluding a non-implemented outcome from `failed_issues` is a boolean field on `IssueProcessingResult`, not string matching.
+
+**Option A**: Consume BUG-3252's skip/gated bucket, if it lands first — a one-line fix at `issue_manager.py:1973` since `total_issues = len(completed) + len(failed)` already excludes the new bucket; only the "[N gated]"-style annotation remains.
+
+**Option B**: Standalone `_is_pre_phase1_gate_failure(reason: str) -> bool` predicate filtering the denominator on `failure_reason` string prefixes, applied at both `issue_manager.py:1973` and `parallel/orchestrator.py:1653`. Fallback if BUG-3252 is not being worked; introduces a string-matching classification pattern with no existing precedent in this codebase.
+
+**Option C**: Route the three pre-Phase-1 gate branches through the existing `mark_skipped()`/`skipped_issues` mechanism instead of `mark_failed()`/`failed_issues` — add a new `IssueProcessingResult` boolean field (e.g. `was_gated: bool = False`) alongside `was_blocked`/`plan_created`, set it on the confidence-gate and learning-gate `_stamped_result(...)` returns, and add a matching `elif result.was_gated: mark_skipped(...)` arm to the dispatch chain (`issue_manager.py:2105-2123`), mirroring the BUG-3005 precedent already in force for `was_blocked`/`plan_created`. `_log_timing_summary`'s `total_issues = len(state.completed_issues) + len(state.failed_issues)` then excludes gated issues automatically, with zero string-matching and no dependency on BUG-3252. The parallel path (`parallel/orchestrator.py:1653`, `worker_pool.py`) has no `was_blocked`-equivalent skip-routing infrastructure today (per this issue's existing Codebase Research Findings above) — extending Option C there is a larger, structurally distinct change than mirroring it in the sequential path.
+
+**Recommended**: Option C for the sequential path (`issue_manager.py`) — it reuses an existing, already-tested mechanism (`mark_skipped`, `skipped_issues`, the BUG-3005 dispatch precedent) rather than introducing a new classification pattern (Option B) or a cross-issue dependency (Option A). The parallel path (`orchestrator.py:1653`) needs its own decision separately, since it lacks the `was_blocked`-equivalent skip-routing infrastructure Option C depends on — see Open Questions.
+
 ## Program Design
 
 ### Types
@@ -184,6 +196,11 @@ _Added by `/ll:refine-issue` — 2026-08-18 — based on codebase analysis:_
 - **The zero-denominator guard (`if total > 0 else 0`) is a uniform, codebase-wide convention** — evidence: `issue_manager.py:1974`, `orchestrator.py:1650`, `issue_progress.py:161-162`, `hotspots.py:70,96`, `dependency_mapper/analysis.py:227,317,389`, `verify_triggers.py:365-366`. No divergent example found.
 - **`issue_manager.py` and `parallel/orchestrator.py` are maintained as intentionally separate, lockstep-edited duplicate blocks, not a shared module.** No `metrics.py`/`summary.py`-style shared helper exists for this computation; the orchestrator's block is already a superset (it adds `by_category` grouping, `orchestrator.py:1662-1669`) despite sharing the identical core rate computation — the two blocks already drift in scope even under the "edit together" convention.
 - **No existing test exercises `_log_timing_summary`'s or the orchestrator's `Auto-corrections:`/correction-rate output.** A grep for `_log_timing_summary`, `Auto-corrections`, and `PROCESSING SUMMARY` across `scripts/tests/` returns no hits — whichever route this issue takes, its test will be new, not an extension.
+
+_Added by `/ll:refine-issue` — 2026-08-18 — based on codebase analysis:_
+
+- **Option C signature** (see Proposed Solution): `IssueProcessingResult.was_gated: bool = False` — new field alongside `was_blocked`/`plan_created` (`issue_manager.py:640-655`), set on the confidence-gate return (`issue_manager.py:827-830`) and the learning gate's `blocked`/`impl_failed`/`infra_failed` returns (`issue_manager.py:1159-1207`). Consumed by a new `elif result.was_gated:` arm in the dispatch chain (`issue_manager.py:2105-2123`), calling `self.state_manager.mark_skipped(info.issue_id, result.failure_reason)` — same call shape as the existing `was_blocked`/`plan_created` arms.
+- **Existing skip infrastructure this reuses**: `StateManager.mark_skipped(issue_id: str, reason: str) -> None` (`state.py:208-232`) and `ProcessingState.skipped_issues: dict[str, str]` (`state.py:26-57`) — both already tested in `scripts/tests/test_state.py` (`test_mark_skipped_emits_event`, `test_from_dict_missing_skipped_issues_backward_compat`).
 
 ## Open Questions
 
@@ -228,6 +245,7 @@ _(none — no format-check, program-design, or dependency gate gaps found)_
 **Open** | Created: 2026-08-17 | Priority: P3
 
 ## Session Log
+- `/ll:refine-issue` - 2026-08-18T02:33:23 - `0595427a-e046-4320-9ff8-afb689cf611c.jsonl`
 - `/ll:confidence-check` - 2026-08-18T01:57:01 - `22c6cfbd-e81b-49b4-b781-b4588a9711ab.jsonl`
 - `/ll:reconcile-issue` - 2026-08-18T01:53:03 - `06441b6f-0a06-4067-9c07-e33e815934ec.jsonl`
 - `/ll:refine-issue` - 2026-08-18T01:45:34 - `45517e10-4dcf-4cdb-ac90-c8175e3464a2.jsonl`

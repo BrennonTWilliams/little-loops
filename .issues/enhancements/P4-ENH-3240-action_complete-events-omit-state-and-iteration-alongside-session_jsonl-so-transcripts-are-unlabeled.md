@@ -10,11 +10,11 @@ discovered_by: ll-issues-create
 discovered_date: '2026-08-17'
 captured_at: '2026-08-17T18:23:48Z'
 confidence_score: 100
-outcome_confidence: 87
+outcome_confidence: 88
 score_complexity: 20
-score_test_coverage: 22
-score_ambiguity: 23
-score_change_surface: 22
+score_test_coverage: 24
+score_ambiguity: 24
+score_change_surface: 20
 ---
 
 # ENH-3240: action_complete events omit state and iteration alongside session_jsonl so transcripts are unlabeled
@@ -68,10 +68,18 @@ is specifically the `session_jsonl`-bearing `action_complete` event that lacks i
 
 ## Expected Behavior
 
-An `action_complete` event that records `session_jsonl` also records the `state` and
-`iteration` that produced it, so a run's per-state transcripts can be attributed to their
-states by reading `events.jsonl` alone — no timestamp join against `usage.jsonl`, and no
-opening each transcript to identify it.
+Every FSM-emitted `action_complete` event records the `state` and `iteration` that produced it, so
+a run's per-state transcripts can be attributed to their states by reading `events.jsonl` alone —
+no timestamp join against `usage.jsonl`, and no opening each transcript to identify it.
+
+**Scope note (2026-08-17 review)**: the labeling applies to *every* FSM `action_complete`, not only
+the `session_jsonl`-bearing ones. `session_jsonl` is added inside an `if action_mode == "prompt":`
+branch (`fsm/executor.py:2306-2308`), but `self.current_state` / `self.iteration` are ungated by
+`action_mode`, so setting them at the payload-build site labels shell and mcp actions too. That is
+intended, not scope creep: the same attribution problem exists for those events, they are cheaper to
+label than to special-case, and the un-prefixed key names match `state_enter` / `action_error`.
+Wording elsewhere in this issue that frames the change as "events carrying `session_jsonl`" is
+describing the *motivating* subset, not the implemented condition.
 
 ## Motivation
 
@@ -87,8 +95,10 @@ _Added by pre-implementation review — 2026-08-17 — verified against the work
 
 ### Files to Modify
 
-- `scripts/little_loops/fsm/executor.py` (`:2304-2337`) — the emit site. The `payload` dict is
-  built at `:2304`; `self._emit("action_complete", payload)` fires at `:2337`. **Both values
+- `scripts/little_loops/fsm/executor.py` (`:2299-2337`) — the emit site. The `payload` dict is
+  built from `:2299` (base keys set unconditionally; `session_jsonl` added only inside
+  `if action_mode == "prompt":` at `:2306-2308`); `self._emit("action_complete", payload)` fires at
+  `:2337`. The new fields go outside that branch. **Both values
   are already in scope**: `self.current_state` is used ten lines below at `:2333`
   (`self._usage_events_collected.append((self.current_state, usage))`), and `self.iteration`
   is an executor attribute initialized at `:253` and incremented at `:604`/`:664`/`:2815`.
@@ -135,6 +145,10 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ### Similar Patterns
 
+- `action_error` (`generate_schemas.py`, the `SCHEMA_DEFINITIONS` entry immediately *below*
+  `action_complete`) already declares `state` as `_str("State name whose action raised")` — the
+  closest precedent of all, since it is a sibling action-lifecycle event in the same dict. Match its
+  property shape and description style.
 - `state_enter` (`generate_schemas.py:91`) already carries `state` as a first-class payload
   field — the shape being extended to `action_complete`, not a new convention.
 - `fsm/executor.py:670` and `:2821` emit `"iteration"` in other payloads; the key name and
@@ -248,11 +262,27 @@ _Added by `/ll:refine-issue` — 2026-08-18 — based on codebase analysis:_
 ## Implementation Steps
 
 1. Add `state` (`self.current_state`) and `iteration` (`self.iteration`) to the
-   `action_complete` payload in `fsm/executor.py:2304-2337`, before the `_emit` at `:2337`.
+   `action_complete` payload in `fsm/executor.py:2299-2337` (the payload dict is built from `:2299`,
+   not `:2304`), before the `_emit` at `:2337`. Set them **outside** the
+   `if action_mode == "prompt":` branch at `:2306-2308`, so shell and mcp actions are labeled too.
 2. Extend `SCHEMA_DEFINITIONS["action_complete"]` (`generate_schemas.py:136-159`) with both
    properties, **not** added to `required`; regenerate `docs/reference/schemas/`.
-3. Add the matching fields to `ActionCompleteVariant` (`observability/schema.py:267-273`) so
-   `test_des_schema.py`'s lockstep gate stays green.
+3. Add the matching fields to `ActionCompleteVariant` (`observability/schema.py:267-273`).
+   **Note**: an earlier revision justified this as "so `test_des_schema.py`'s lockstep gate stays
+   green" — that rationale is false. `TestVariantShape` (`:74-117`) asserts only that each
+   registered variant has a `type` field and that `DES_VARIANTS` covers every event-type *string*
+   in `SCHEMA_DEFINITIONS`; it does not check per-field agreement, so omitting this step would not
+   fail any test. Do it anyway — the dataclass is the typed read-side of the payload, and leaving
+   it behind is how the existing drift in step 3a accumulated.
+3a. Close the pre-existing `action_complete` drift in the same edit: `stderr_preview`, `effort`
+   and `is_batch` are emitted (`fsm/executor.py:2296-2333`, from ENH-2469/ENH-2885/FEAT-2716) but
+   appear in neither `SCHEMA_DEFINITIONS["action_complete"]` nor `ActionCompleteVariant`, and
+   `EVENT-SCHEMA.md` lists only `stderr_preview` of the three. Add all three as optional
+   properties/fields alongside `state`/`iteration`. **Rationale for folding in rather than
+   deferring**: this issue's own AC asserts the schema describes the payload, which stays false
+   otherwise; it is the same three files and the same regeneration step; and the drift is invisible
+   to every existing test, so a separate issue would likely never be written. Scope is bounded to
+   declaring already-emitted fields — no emit-site change.
 4. Update `cli/loop/audit.py`'s docstring (`:181-184`) and decide whether `audit_run()` reads
    the direct field; if it does, keep the `state_enter` correlation as the fallback path for
    archived runs.
@@ -321,9 +351,10 @@ must keep exactly that list — the `cli/action.py:255` emitter has neither valu
 
 ### Call Path
 
-Emission: `FSMExecutor._run_action()` builds `payload` (`fsm/executor.py:2304`) → adds
-`session_jsonl` in the `action_mode == "prompt"` branch (`:2311-2313`) → **adds `state` from
-`self.current_state` and `iteration` from `self.iteration`** → `self._emit("action_complete",
+Emission: `FSMExecutor._run_action()` builds `payload` (`fsm/executor.py:2299`) → adds
+`session_jsonl` in the `action_mode == "prompt"` branch (`:2306-2308`) → **adds `state` from
+`self.current_state` and `iteration` from `self.iteration`, unconditionally (outside that branch)**
+→ `self._emit("action_complete",
 payload)` (`:2337`) → transports (`transport.py:405`) → `.loops/.history/<run>/events.jsonl`.
 
 Consumption: `audit_run()` (`cli/loop/audit.py:178`) reads events, tracks `current_state` from
@@ -354,6 +385,16 @@ consolidating the two locations is a separate question and should not be folded 
 **Out of scope**: any change to what is written to the host session transcripts themselves, or
 to their retention.
 
+**In scope, decided by the 2026-08-17 review**: declaring the three already-emitted-but-undeclared
+`action_complete` fields (`stderr_preview`, `effort`, `is_batch`) — see Implementation Steps §3a.
+This is a declaration-only edit to the same three files this issue already touches; it does not
+change the emit site or any behavior.
+
+**Out of scope**: adding a test that *enforces* per-field lockstep between the emit site,
+`SCHEMA_DEFINITIONS` and `ActionCompleteVariant`. No such gate exists today (`test_des_schema.py`
+checks event-type coverage only), which is why the §3a drift went unnoticed. Building one is a
+distinct piece of work across every event type, not this issue's.
+
 **Out of scope** (added by the 2026-08-17 review): the second `action_complete` emitter at
 `cli/action.py:255`. `ll-action` emits the same event type from outside any FSM — it has no
 state, no iteration, and no `session_jsonl`, so there is nothing to label. It is named here
@@ -362,7 +403,11 @@ emitter's payload becomes schema-invalid.
 
 ## Acceptance Criteria
 
-- [ ] `action_complete` events carrying `session_jsonl` also carry `state` and `iteration`.
+- [ ] **Every FSM-emitted `action_complete` carries `state` and `iteration`** — prompt, shell and
+      mcp alike, not only the `session_jsonl`-bearing subset (see Expected Behavior › Scope note).
+      The test asserts presence across every `action_complete` in a run containing both a prompt
+      state and a shell state, using the `all(key in e for e in filtered)` idiom from
+      `TestMaxIterations.test_state_enter_includes_iteration_count`.
 - [ ] The values match the corresponding `usage.jsonl` record for the same timestamp.
 - [ ] Existing `events.jsonl` readers tolerate the added fields (additive change only; no
       existing field renamed or removed).
@@ -378,6 +423,10 @@ emitter's payload becomes schema-invalid.
       no `state` key resolving to the correct state via the fallback.
 - [ ] `cli/loop/audit.py`'s `audit_run()` docstring (`:181-184`) no longer asserts that
       `action_complete` carries no `state` field — it is the claim this change falsifies.
+- [ ] The pre-existing drift is closed: `stderr_preview`, `effort` and `is_batch` — already emitted
+      but undeclared — are added as optional properties in `SCHEMA_DEFINITIONS["action_complete"]`,
+      as fields on `ActionCompleteVariant`, and to `EVENT-SCHEMA.md`'s field table (which currently
+      lists only `stderr_preview` of the three). No emit-site change for these; declaration only.
 - [ ] `python -m pytest scripts/tests/` exits 0.
 
 ## Notes
@@ -400,6 +449,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-18T02:34:22 - `03772c9c-53ba-4e89-aaef-c80c30ba01c3.jsonl`
 - `/ll:confidence-check` - 2026-08-18T01:47:30 - `45517e10-4dcf-4cdb-ac90-c8175e3464a2.jsonl`
 - `/ll:refine-issue` - 2026-08-18T01:43:40 - `b1fcbc27-6cc0-4f61-afba-f89fc37a602f.jsonl`
 - `/ll:wire-issue` - 2026-08-17T21:49:12 - `0510d699-a148-43d1-84c2-d05ff33b93f2.jsonl`

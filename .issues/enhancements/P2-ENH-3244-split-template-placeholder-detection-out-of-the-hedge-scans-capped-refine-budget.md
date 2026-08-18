@@ -16,14 +16,13 @@ relates_to:
 - ENH-3248
 blocked_by:
 - BUG-3245
-- ENH-3247
 decision_needed: false
-confidence_score: 92
-outcome_confidence: 82
+confidence_score: 98
+outcome_confidence: 87
 score_complexity: 18
 score_test_coverage: 25
-score_ambiguity: 21
-score_change_surface: 18
+score_ambiguity: 24
+score_change_surface: 20
 ---
 
 # ENH-3244: Split template-placeholder detection out of the hedge scan's capped refine budget
@@ -40,8 +39,9 @@ not share a budget.
 
 The detection works. The waiver is what fails.
 
-`\bTBD\b` is a term in `_OPEN_QUESTION_SIGNAL_RE` (`scripts/little_loops/issue_parser.py:1733`) and
-`Integration Map` is in `_OPEN_QUESTION_SECTIONS` (`:1746`), so `ll-issues check-open-questions`
+`\bTBD\b` is a term in `_OPEN_QUESTION_SIGNAL_RE` (`scripts/little_loops/issue_parser.py:1870-1892`,
+the term itself at `:1886`) and `Integration Map` is in `_OPEN_QUESTION_SECTIONS` (`:1898-1906`),
+so `ll-issues check-open-questions`
 correctly returns exit 1 on an issue still carrying template debris.
 
 Observed on the `refine-to-ready-issue` run over ENH-3238
@@ -114,15 +114,42 @@ Split the signal by kind.
    `autodev.yaml:1590-1596` to route a gate with no LLM in the chain (MR-1). Add a
    `placeholder_count` (or a `template_placeholders` structural gap) alongside it.
 
-2. **Patterns to detect** — anchored to the literal strings the shipped template emits, so this
-   stays a true-zero probe and does not drift into prose matching:
-   - `TBD - requires codebase analysis`, `TBD - use grep to find references`,
-     `TBD - search for consistency`, `TBD - identify test files to update`,
-     `TBD - docs that need updates`, `TBD - requires investigation`
-   - `[Major phase 1]`, `[Major phase 2]`, `[Verification approach]`
-   - `[P0-P5]`, `[Small/Medium/Large]`, `[Low/Medium/High]`, `[Yes/No]`, `[YYYY-MM-DD]`
-   - `[If applicable - describe what currently happens]`, `[What should happen instead]`,
-     `[Why this issue matters - ...]`
+2. **Patterns to detect — derived from `creation_template`, not hand-copied.** The detector reads
+   the `creation_template` values out of `scripts/little_loops/templates/{enh,bug,feat,epic}-sections.json`
+   at runtime and extracts each section's placeholder strings, exactly as the existing `boilerplate`
+   gap class already reads those same values (`issue_parser.py:853-856`). This satisfies "keep the
+   two in sync" **by construction rather than by discipline**, and it produces the per-section
+   placeholder mapping the section-scoped detection rule requires (Decision Rules › Masking).
+
+   A hand-copied list was specified in an earlier revision and was already incomplete against the
+   shipped templates. The full inventory, machine-extracted from the four template files, is:
+
+   | Section | Placeholders emitted |
+   |---|---|
+   | Summary | `[Description extracted from input]` |
+   | Context | `[How this issue was identified]` |
+   | Current Behavior | `[If applicable - describe what currently happens]` |
+   | Expected Behavior | `[What should happen instead]` |
+   | Proposed Solution | `TBD - requires investigation` |
+   | Integration Map | `TBD - requires codebase analysis`, `TBD - use grep to find references`, `TBD - search for consistency`, `TBD - identify test files to update`, `TBD - docs that need updates`; epic-only variant `TBD - identify shared test infrastructure` |
+   | Program Design | `[FieldName]`, `[type]`, `[function_name]`, `[param]`, `[ReturnType]`, `[existing_caller]`, `[new_function]`, `[existing_callee]` |
+   | Implementation Steps | `[Major phase 1]`, `[Major phase 2]`, `[Verification approach]` |
+   | Impact | `[P0-P5]`, `[Justification]`, `[Small/Medium/Large]`, `[Low/Medium/High]`, `[Yes/No]` |
+   | Labels | `[type-label]` |
+   | Status | `[P0-P5]`, `[YYYY-MM-DD]` |
+   | Steps to Reproduce (BUG) | `[Step 1]`, `[Step 2]`, `[Observe: description of the bug]` |
+   | Root Cause (BUG) | `[Explanation of why bug happens]` |
+   | Location (BUG) | `[COMMIT_HASH_SHORT]`, `[lines]` |
+
+   The earlier hand-copied list carried only the Integration Map / Implementation Steps / Impact /
+   Status / Current Behavior / Expected Behavior rows — it omitted Summary, Context, `[Justification]`,
+   Labels, the epic-only Integration Map variant, the entire Program Design row, and every BUG-only
+   row. **The table above is documentation of the derivation's output, not the detector's input.**
+   Do not transcribe it into code; regenerating it from `creation_template` is the point.
+
+   **The `Program Design` row is excluded from the derived set** — it is the only row the templates
+   emit already wrapped in backticks, and its residue is already caught by `boilerplate` /
+   `program_design_nonspecific`. See Decision Rules › Masking, part 3.
 
    **Empty provenance stubs are explicitly NOT on this list.** The
    `_Added by \`/ll:refine-issue\` — <date> — based on codebase analysis:_` stub with no bullet
@@ -132,8 +159,8 @@ Split the signal by kind.
    line-adjacency check), this issue owns literal template strings (a containment check). See
    Decision Rules › Boundary with ENH-3247.
 
-3. **Remove `\bTBD\b` from `_OPEN_QUESTION_SIGNAL_RE`** (`issue_parser.py:1717`, the `\bTBD\b` term
-   itself at `:1733`) once the structural check covers it, so the hedge scan stops double-reporting
+3. **Remove `\bTBD\b` from `_OPEN_QUESTION_SIGNAL_RE`** (`issue_parser.py:1870-1892`, the `\bTBD\b`
+   term itself at `:1886`) once the structural check covers it, so the hedge scan stops double-reporting
    it and its capped budget is spent only on genuine prose hedges. `\bto be determined\b` is prose
    and stays.
 
@@ -207,15 +234,17 @@ surface through the existing `--fix`/`--apply` machinery, matching Implementatio
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/issue_parser.py` — `_OPEN_QUESTION_SIGNAL_RE` (`:1717`; the `\bTBD\b` term at
-  `:1733`) drops `\bTBD\b`; add the placeholder pattern set and a `placeholder_count`-style public
-  accessor next to `superseded_marker_count`. **Lands on top of ENH-3247's `FormatGaps` widening** —
+- `scripts/little_loops/issue_parser.py` — `_OPEN_QUESTION_SIGNAL_RE` (`:1870-1892`; the `\bTBD\b`
+  term at `:1886`) drops `\bTBD\b`; add the `creation_template`-derived placeholder extraction and a
+  `placeholder_count`-style public accessor next to `superseded_marker_count` (`:1326-1352`). **Lands on top of ENH-3247's `FormatGaps` widening** —
   see Decision Rules › Boundary with ENH-3247.
 - `scripts/little_loops/cli/issues/format_check.py` — surface the new count as a structural gap and
   in `--format json`. ENH-3247 lands the `--fix` dispatch table here first; this issue adds a
   detection-only class and registers no repair.
-- `scripts/little_loops/templates/` — the issue templates that emit these placeholders are the
-  authoritative source for the literal pattern list; keep the two in sync.
+- `scripts/little_loops/templates/{enh,bug,feat,epic}-sections.json` — the `creation_template` values
+  are the authoritative source the detector derives its per-section pattern set from at runtime.
+  **Read-only for this issue** (no template edit); named because the derivation depends on their
+  shape, and because a future template edit silently changes what the detector fires on — by design.
 - **Not** `scripts/little_loops/loops/refine-to-ready-issue.yaml` — no FSM edit in this issue. The
   gate belongs to ENH-3248.
 
@@ -246,6 +275,14 @@ _Wiring pass added by `/ll:wire-issue`:_
   gate with residual template debris will now fail it and route to `format_issue` instead — a
   behavior change for this consumer, not an edit target. [Agent 1 finding]
 
+  **Bounded, and quantified (2026-08-17 review).** `format_issue` routes *unconditionally* to
+  `assess` and never back to `ensure_formatted` (`rn-remediate.yaml:122-135`, "adds at most ONE
+  format pass — bounded, no oscillation"), so the trigger/remedy mismatch described in Scope
+  Boundaries cannot loop this consumer — it costs at most one extra `/ll:format-issue` pass.
+  Blast radius over the current backlog: 28 of 3157 files in `.issues/` carry a matching literal,
+  of which **6 are `status: open`** (18 `done`, 2 `cancelled`, 2 `deferred`). No migration or
+  backfill is required.
+
 ### Similar Patterns
 - `superseded_marker_count` — deterministic count on `format-check --format json`, consumed by a
   non-LLM gate. The model for this change.
@@ -254,7 +291,24 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/` — a test asserting a freshly created issue (`ll-issues create --variant full`)
   reports a non-zero placeholder count, and that a filled-in issue reports zero. The fresh-template
   case is the strongest fixture because the template ships the placeholders.
-- Existing `check-open-questions` tests that assert on `TBD` will need updating when it moves.
+- Existing `check-open-questions` tests that assert on `TBD` will need updating when it moves —
+  exactly one fixture (`test_issue_parser_unresolved.py:337`), verified as the only `TBD` occurrence
+  across every test file touching `count_open_questions` / `check-open-questions`.
+- Cases novel to this detector, beyond the `TestSupersededMarkerCount` 6-case shape:
+  1. **Derivation** — adding a placeholder to a template's `creation_template` makes the detector
+     fire with no Python change (guards against a future transcribed list).
+  2. **Section scoping** — a `TBD - requires codebase analysis` bullet is detected in
+     `## Integration Map` (its home) and *not* in `## Proposed Solution`.
+  3. **Inline-code masking** — `` `[Major phase 1]` `` named in inline code inside
+     `## Implementation Steps` is not detected; the same string as a bare list item is.
+  4. **Fence masking** — the `test_*_inside_fence_is_invisible` case
+     `TestDuplicateHeadingDetection`/`TestEmptyProvenanceStubDetection` already establish.
+  5. **`Program Design` exclusion** — a `## Program Design` body of pure template residue yields no
+     `template_placeholders` entry, but *is* still reported by `boilerplate` (full residue) or
+     `program_design_nonspecific` (partial), so the exclusion is proven non-lossy rather than
+     asserted.
+  6. **Adversarial real file** — this issue's own file measures zero, and the ENH-3238-shaped
+     positive control measures every placeholder in it.
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_issue_parser_unresolved.py:334-338` —
@@ -313,14 +367,20 @@ _Added by `/ll:refine-issue` — 2026-08-17 — based on codebase analysis:_
 
 ## Implementation Steps
 
-1. Confirm ENH-3247 has landed (`FormatGaps` widening + `--fix` dispatch table); this issue's gap
-   class is added alongside its two, not in a competing edit.
-2. Add the placeholder pattern set and public count accessor in `issue_parser.py`, next to
-   `superseded_marker_count`.
+1. ENH-3247 has landed (`FormatGaps` widening + `--fix` dispatch table, `empty_provenance_stub` at
+   `issue_parser.py:513`); this issue's gap class is added alongside its two, not in a competing
+   edit.
+2. Add the `creation_template`-derived per-section placeholder extraction and the public count
+   accessor in `issue_parser.py`, next to `superseded_marker_count` (`:1326-1352`). Apply all three
+   parts of the masking rule — section scoping, inline-code masking composed with fence masking
+   (`issues/prose_deps.py:110`'s shape), and the `Program Design` exclusion (Decision Rules ›
+   Masking). Any two of the three still leave false positives; the matrix is in that section.
 3. Surface it from `ll-issues format-check` as a structural gap and in `--format json` (field,
    `has_gaps` clause, `to_dict` key, docstring table, `_print_gaps` loop — the five touchpoints
    ENH-3247 enumerates).
-4. Remove `\bTBD\b` from `_OPEN_QUESTION_SIGNAL_RE`; update affected tests.
+4. Remove `\bTBD\b` from `_OPEN_QUESTION_SIGNAL_RE` (`:1886`); update affected tests — exactly one
+   fixture depends on it (`test_issue_parser_unresolved.py:337`, verified as the only occurrence
+   across every test touching `count_open_questions` / `check-open-questions`).
 5. Add tests per the Tests section, including the fresh-template fixture.
 6. `python -m pytest scripts/tests/` exits 0.
 
@@ -355,11 +415,12 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 `check_open_questions` -> `superseded_marker_count` -> `cmd_format_check`
 
-- `_OPEN_QUESTION_SIGNAL_RE` (`scripts/little_loops/issue_parser.py:1733`) currently carries
-  `\bTBD\b`; `_OPEN_QUESTION_SECTIONS` (`:1746`) scopes the scan to seven sections including
-  `Integration Map`. Together these make `ll-issues check-open-questions` exit 1 on template debris.
-- `superseded_marker_count` (`scripts/little_loops/issue_parser.py`) is the shape to copy: a
-  deterministic public count exposed on `ll-issues format-check --format json`.
+- `_OPEN_QUESTION_SIGNAL_RE` (`scripts/little_loops/issue_parser.py:1870-1892`) currently carries
+  `\bTBD\b` (`:1886`); `_OPEN_QUESTION_SECTIONS` (`:1898-1906`) scopes the scan to seven sections
+  including `Integration Map`. Together these make `ll-issues check-open-questions` exit 1 on
+  template debris.
+- `superseded_marker_count` (`scripts/little_loops/issue_parser.py:1326-1352`) is the shape to copy:
+  a deterministic public count exposed on `ll-issues format-check --format json`.
 - `cmd_format_check` (`scripts/little_loops/cli/issues/format_check.py`) surfaces structural gaps and
   the JSON payload the new count joins.
 - `autodev.yaml:1590-1596` consumes `superseded_marker_count` from a shell gate with no LLM in the
@@ -385,27 +446,118 @@ _These touchpoints were identified by wiring analysis and must be included in th
   restructures that file's routing, adds two states, and recomputes `max_steps`, so a second
   concurrent gate insertion is a merge collision with no upside. Detection without routing is
   independently useful: `format-check` reports it and `--format json` exposes it.
-- **Masking must cover inline code, not just fences.** Reuse ENH-3247's
-  `fence_spans()`/`in_fence()` masking, but it is **not sufficient on its own** for this detector.
-  **This issue's own file is the counter-example**: Proposed Solution § 2 enumerates every literal
-  pattern as `` `TBD - requires codebase analysis` ``-style *inline* code spans, not inside a
-  ```` ``` ```` fence — so a fence-only mask leaves ~15 false positives on this very file, and
-  ENH-3247's `boilerplate`/`empty_provenance_stub` precedent does not solve it (neither of those
-  shapes occurs in inline code). Options, to decide during implementation:
-  1. Add inline-code-span masking alongside fence masking (a backtick-pair scan). Preferred —
-     smallest rule, symmetric with the fence decision, and inline code means "this is a literal I am
-     naming" everywhere in the corpus.
-  2. Scope the detector to the sections the template actually emits placeholders into
-     (`Integration Map`, `Implementation Steps`, `Impact`, `Motivation`), which excludes a
-     `Proposed Solution` enumeration but not a `## Impact` discussion of one.
-  Whichever is chosen, **this file must be a fixture asserting zero placeholders** — it is the
-  natural adversarial case and it exists already.
+- **Masking: a three-part rule — section scoping AND inline-code masking AND a `Program Design`
+  exclusion.** *(Decided 2026-08-17 by simulating each combination against real files. Two earlier
+  revisions each named one part of this rule alone; neither is sufficient, and the second one's
+  stated reason for rejecting inline masking was factually wrong. Both are corrected here.)*
+
+  The false-positive problem is real: this file enumerates literal patterns as
+  `` `TBD - requires codebase analysis` ``-style *inline* code spans outside any fence, so ENH-3247's
+  `fence_spans()`/`in_fence()` masking alone leaves 53 hits on it.
+
+  The three parts:
+
+  1. **Section scoping.** A placeholder counts only in the body of the section whose
+     `creation_template` emits it (per Proposed Solution §2's derivation). This file's
+     `## Proposed Solution` mention of `TBD - requires codebase analysis` does not count — that
+     string's home is `Integration Map`.
+  2. **Inline-code masking**, alongside fence masking. A backtick-pair scan whose spans are appended
+     into the same list `fence_spans()` produces, then `in_fence()` is reused unmodified — exactly
+     the composition `issues/prose_deps.py:110` already uses. Needed because prose *inside* a
+     section legitimately names that same section's own placeholder (line 133's derivation-table
+     row for `Proposed Solution`, and the `## Integration Map` research note at line 298), which
+     section scoping by construction cannot separate.
+  3. **`Program Design` is excluded from the derived pattern set** — its eight placeholders
+     (`[FieldName]`, `[function_name]`, `[existing_caller]`, …) are the *only* ones the templates
+     emit already wrapped in backticks, so part 2 would neutralize them anyway.
+
+  **Part 3 costs no coverage — `Program Design` residue is already caught twice**, verified against
+  `check_format_gaps()`:
+
+  | `## Program Design` body | Existing gap class that fires |
+  |---|---|
+  | full template residue | `boilerplate` — whole-section equality (`issue_parser.py:875-877`), which then `continue`s |
+  | partial residue (one signature filled in) | `program_design_nonspecific` (`:878-883`, ENH-2852) |
+
+  An earlier revision asserted the opposite — that excluding or masking these would leave them
+  "permanently undetectable" — and used that to reject inline masking. **That assertion was false**,
+  and the probe behind it was invalid: run outside the project root, the template lookup fails open
+  and *every* gap class returns empty, which reads as "nothing catches this."
+
+  **Evidence that only the full rule works.** Each combination simulated over both issue files plus
+  a positive control carrying the real ENH-3238 debris shape (bare `TBD -` bullets in
+  `## Integration Map`, `[Major phase N]` in `## Implementation Steps`):
+
+  | scope | inline-mask | exclude PD | ENH-3244 | ENH-3240 | control |
+  |---|---|---|---|---|---|
+  | ✓ | ✗ | ✗ | 13 | 0 | 3 |
+  | ✗ | ✓ | ✓ | 1 | 0 | 3 |
+  | ✓ | ✗ | ✓ | 2 | 0 | 3 |
+  | **✓** | **✓** | **✓** | **0** | **0** | **3** |
+
+  Only the three together reach zero false positives while still reporting every real placeholder.
+
+  **Fence-masking gotcha, for the implementer**: `fence_spans()` matches via
+  `_LINE_FENCE_DELIMITER_RE`, which is **line-start-anchored** (`text_utils.py:64-95`), so a
+  ```` ``` ```` fence indented under a list item is not masked at all. Issue bodies routinely
+  indent fences that way. Part 2 covers the case here, but do not assume fence masking alone
+  handles nested-fence content.
+
+  **This file must be a fixture asserting zero placeholders** — it is the natural adversarial case,
+  it exists already, and under the full three-part rule it measures 0.
 
 ### Signatures
 - `superseded_marker_count(issue_path: Path) -> int` — the existing deterministic public accessor at
-  `scripts/little_loops/issue_parser.py:1173` whose shape and JSON exposure the new count mirrors.
+  `scripts/little_loops/issue_parser.py:1326-1352` whose shape and JSON exposure the new count
+  mirrors.
 - `placeholder_count(issue_path: Path) -> int` — proposed new sibling accessor returning the number
   of unfilled template placeholders found in the issue file.
+- `_template_placeholders(content: str, issue_type: str) -> list[str]` — proposed internal detector
+  returning gap-report strings, mirroring `_duplicate_headings` / `_empty_provenance_stubs`
+  (`issue_parser.py:1178`, `:1216`). Derives its per-section pattern set from the type's
+  `creation_template` values (excluding `Program Design`) and applies the three-part rule —
+  section scoping, inline-code masking, fence masking (Decision Rules › Masking).
+
+## Acceptance Criteria
+
+- [ ] `ll-issues format-check` reports a new `template_placeholders` structural gap — a `FormatGaps`
+      dataclass field (`list[str]`) participating in `has_gaps`, `to_dict()`, `_print_gaps()`, the
+      `argparse` `help=` enumeration, and `cmd_format_check()`'s docstring enumeration (the five
+      touchpoints ENH-3247 established, plus the two enumerations the wiring pass found).
+- [ ] The pattern set is **derived at runtime** from the `creation_template` values in
+      `scripts/little_loops/templates/*-sections.json`, not transcribed into Python. A test asserts
+      that adding a placeholder to a template's `creation_template` makes the detector fire on it
+      with no code change.
+- [ ] Detection applies the **three-part rule** (Decision Rules › Masking), each part covered by a
+      test:
+      1. **Section-scoped** — a placeholder counts only inside the section whose `creation_template`
+         emits it; a mention in any other section does not count.
+      2. **Inline-code masked** — a placeholder inside a `` ` `` … `` ` `` span does not count,
+         composed with fence masking the way `issues/prose_deps.py:110` composes them.
+      3. **`Program Design` excluded** from the derived pattern set.
+- [ ] Fence-masked (`text_utils.fence_spans`/`in_fence`); a test covers a placeholder inside a
+      ```` ``` ```` fence being invisible.
+- [ ] The `Program Design` exclusion is documented in code with the reason it costs no coverage
+      (`boilerplate` catches full residue, `program_design_nonspecific` catches partial), and a test
+      asserts that a `## Program Design` section holding pure template residue is still reported by
+      `format-check` — via those existing classes, not via `template_placeholders`.
+- [ ] This issue's own file is a fixture asserting **zero** placeholders. It is the adversarial
+      case: under fence-masking alone it measures 53 hits, and under any two of the three parts it
+      is still non-zero.
+- [ ] A positive-control fixture in the ENH-3238 debris shape (bare `TBD -` bullets in
+      `## Integration Map`, `[Major phase N]` in `## Implementation Steps`) reports every
+      placeholder — the rule must not be so narrow that it stops catching what motivated it.
+- [ ] A freshly created issue (`ll-issues create --variant full`) reports a non-zero placeholder
+      count; a filled-in issue reports zero.
+- [ ] `\bTBD\b` is removed from `_OPEN_QUESTION_SIGNAL_RE`; `\bto be determined\b` and the prose
+      hedge vocabulary are unchanged, and BUG-3170's cap in `refine-to-ready-issue.yaml:312-333` is
+      untouched.
+- [ ] **No `--fix` handler is registered** for this gap class. A placeholder requires content the
+      tool cannot invent, so `format-check --fix` must neither claim nor attempt to repair it.
+- [ ] **No FSM edit.** `refine-to-ready-issue.yaml` is unmodified; the consuming gate is ENH-3248's.
+- [ ] `docs/reference/CLI.md:2051` enumeration and written class count updated, and `:2213`'s
+      `--format json` example payload carries the new key.
+- [ ] `python -m pytest scripts/tests/` exits 0.
 
 ## Impact
 
@@ -414,9 +566,11 @@ _These touchpoints were identified by wiring analysis and must be included in th
   catches it.
 - **Effort**: Small - a pattern set, a public accessor, one gate, tests. Mirrors an existing
   precedent end to end.
-- **Risk**: Low - the patterns are literal strings from the shipped template, so false positives are
-  near-impossible. The one real risk is an uncapped gate looping when the repair pass cannot fix the
-  placeholder; see Scope Boundaries.
+- **Risk**: Low - the patterns are derived from the shipped template's own `creation_template`
+  values and scoped to their emitting section, so false positives are near-impossible. The residual
+  risk of a repair pass that cannot clear what it was triggered by is confined to `refine-to-ready-issue`
+  (ENH-3248's subject, no gate shipped here); the other consumer, `rn-remediate`'s `ensure_formatted`,
+  routes its repair unconditionally onward and cannot loop — see Integration Map › Dependent Files.
 - **Breaking Change**: No
 
 ## Scope Boundaries
@@ -440,9 +594,12 @@ issue detects literal template strings only.
 
 ## Related Issues
 
-- ENH-3247 — **hard prerequisite.** Lands the `FormatGaps` widening and `--fix` dispatch table this
-  issue's gap class is added alongside, and **owns `empty_provenance_stub`** (previously claimed by
-  this issue's pattern list — now ceded).
+- ENH-3247 — **landed (`done`); relationship is ownership, not sequencing.** It shipped the
+  `FormatGaps` widening and `--fix` dispatch table this issue's gap class is added alongside
+  (`empty_provenance_stub` confirmed present at `issue_parser.py:513`), and it **owns
+  `empty_provenance_stub`** (previously claimed by this issue's pattern list — now ceded). Held in
+  `relates_to` rather than `blocked_by`: there is nothing left to wait on, and the live constraint
+  is the ownership boundary in Decision Rules.
 - ENH-3248 — **owns the FSM gate that consumes this signal.** This issue is detection-only precisely
   so the two do not both edit `refine-to-ready-issue.yaml`.
 - BUG-3245 — produces the empty `_Added by_` provenance stubs; detection of those is ENH-3247's, and
@@ -475,15 +632,29 @@ _Added by `/ll:confidence-check` on 2026-08-17_
 ### Gaps to Address
 - ~~Resolve or land BUG-3245 and ENH-3247 before implementing this issue.~~ Resolved — both are
   `done`.
-- Decision Rules § "Masking must cover inline code, not just fences" leaves the inline-vs-section-scope
+- ~~Decision Rules § "Masking must cover inline code, not just fences" leaves the inline-vs-section-scope
   masking approach explicitly undecided ("Options, to decide during implementation") — pick one before
-  or during implementation to avoid false positives on the issue's own fixture file.
+  or during implementation to avoid false positives on the issue's own fixture file.~~
+  **Resolved by the 2026-08-17 pre-implementation review**: a three-part rule — section scoping
+  **and** inline-code masking **and** excluding `Program Design` from the derived pattern set. Each
+  combination was simulated against this file, ENH-3240, and an ENH-3238-shaped positive control;
+  only all three together reach zero false positives while still reporting every real placeholder.
+  Two intermediate revisions each picked one part alone, and the second rejected inline masking on
+  the false premise that `Program Design` residue would become undetectable — it is already caught
+  by `boilerplate` and `program_design_nonspecific`. See Decision Rules › Masking for the matrix and
+  the verification.
 
 ### Outcome Risk Factors
-- None beyond the open masking-strategy decision noted above; the pattern otherwise mirrors the
-  existing `superseded_marker_count` precedent closely (mechanical, well-scoped, test plan specified).
+- None outstanding. The masking rule is decided and measured rather than reasoned-about, the
+  pattern set is derived from `creation_template` rather than transcribed (removing the
+  sync-by-discipline risk), and the shape otherwise mirrors the existing `superseded_marker_count` /
+  `empty_provenance_stub` precedents.
+- Worth noting for the implementer: the two false starts here both came from asserting masking
+  behavior instead of measuring it. Re-run the combination matrix against the real files before
+  changing any part of the rule.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-18T02:34:22 - `03772c9c-53ba-4e89-aaef-c80c30ba01c3.jsonl`
 - `/ll:confidence-check` - 2026-08-18T01:40:06 - `b1fcbc27-6cc0-4f61-afba-f89fc37a602f.jsonl`
 - `/ll:wire-issue` - 2026-08-18T01:33:31 - `707dea9b-b70a-4464-bf06-ca7b4497f26c.jsonl`
 - `/ll:decide-issue` - 2026-08-17T23:24:03 - `33a38c46-fd9e-408d-980c-20585c294776.jsonl`
