@@ -12,6 +12,12 @@ discovered_source: pre-implementation review of BUG-3252/BUG-3253, 2026-08-18
 relates_to:
 - BUG-3252
 - BUG-3253
+confidence_score: 90
+outcome_confidence: 75
+score_complexity: 14
+score_test_coverage: 18
+score_ambiguity: 18
+score_change_surface: 25
 ---
 
 # BUG-3254: ll-parallel counts BLOCKED issues as failed in the queue while recording them as skipped, diverging from the sequential path
@@ -144,6 +150,30 @@ Whether the summary should surface a skipped count, as the sequential path's
 summary also fails to do (`issue_manager.py:1949-1991` renders no
 `skipped_issues` block), is a shared gap worth settling once for both paths.
 
+## Integration Map
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-18 — based on codebase analysis:_
+
+**Files to Modify**
+- `scripts/little_loops/parallel/orchestrator.py` — `ParallelOrchestrator._on_worker_complete` (1071-1263): queue-counter dispatch (1096-1232, terminal `else` -> `mark_failed` at 1229-1232) and orchestration-record classification (1248-1263, `if result.was_blocked: orchestration_status = "skipped"`). Correction-rate calculation at 1646-1654.
+- `scripts/little_loops/parallel/priority_queue.py` — `IssuePriorityQueue` (22-233). Has `_completed`/`_failed` sets, `mark_completed`/`mark_failed` (110-128), `completed_count`/`failed_count` properties (166-176), `completed_ids`/`failed_ids` properties (184-194), `load_completed`/`load_failed` (196-212). No skip bucket in any form (`_skipped`, `mark_skipped`, `skipped_count`, `skipped_ids`, `load_skipped` — none exist).
+- `scripts/little_loops/parallel/worker_pool.py` — BLOCKED return (507-520, `was_blocked=True`, `success=False`, no `corrections=` passed); success return (731-745, the only return path that populates `corrections`).
+
+### Dependent Files (Callers/Importers)
+- `scripts/little_loops/cli/sprint/show.py`, `scripts/little_loops/cli/logs.py`, `scripts/little_loops/cli/ctx_stats.py` — reference `failed_count`/`skipped_issues`/`correction_rate`; a queue-side skip bucket, if added, may need surfacing here for parity with the sequential-path summary.
+
+### Reference Implementation (Sequential Path)
+- `scripts/little_loops/issue_manager.py:2130-2155` — `AutoManager._process_issue`'s single-point classification: `was_closed` -> `mark_completed`; `was_blocked` -> `mark_skipped` (logged at `info`, not `error`); `was_gated` -> `mark_skipped` + `_gated_issue_ids.add()` (BUG-3252); `success` -> `mark_completed`; `plan_created` -> `mark_skipped`; else -> `mark_failed`.
+- `scripts/little_loops/state.py:221-232` — `StateManager.mark_skipped(issue_id, reason)`, writes to `ProcessingState.skipped_issues: dict[str, str]` (`state.py:54`), structurally parallel to `mark_completed`/`mark_failed`.
+- `scripts/little_loops/issue_manager.py:1976-1997` — run summary already renders a `Skipped issues:` block (1981-1984) and excludes `skipped_issues` from the correction-rate denominator (1987-1990: `len(state.completed_issues) + len(state.failed_issues)`), plus a `_gated_issue_ids` disclosure suffix (1991-1997). The parallel-path summary (orchestrator.py:1600-1685) has no equivalent skip rendering.
+
+### Tests
+- `scripts/tests/test_orchestrator.py` `TestOnWorkerComplete` (~2530) and a dispatch-routing class (~4990) — construct `WorkerResult(...)`, call `_on_worker_complete`, assert on `orchestrator.queue.mark_completed`/`mark_failed` call counts via `MagicMock`. Confirmed via grep: no existing test constructs `WorkerResult(was_blocked=True)` and asserts on `orchestrator.queue`.
+- `scripts/tests/test_priority_queue.py` `TestIssuePriorityQueueStateTransitions` (331-386) — direct-instantiation tests on `mark_completed`/`mark_failed` and counter/id-list properties; `TestIssuePriorityQueuePersistence` (509-547) tests `load_completed`/`load_failed`. A symmetry assertion at line 638 (`queue.completed_count + queue.failed_count == 20`) would need revisiting if a skip bucket is added.
+- `scripts/tests/test_issue_manager.py` — reference coverage for the sequential path's `was_blocked` -> `mark_skipped` routing, for parity comparison.
+
 ## Program Design
 
 _Preliminary — this issue is filed to keep the defect tracked, not yet designed.
@@ -189,4 +219,6 @@ The same `result` then reaches `:1249`, where `if result.was_blocked` sets `orch
 **Open** | Created: 2026-08-18 | Priority: P3
 
 ## Session Log
+- `/ll:refine-issue` - 2026-08-18T14:56:18 - `1b75a5d5-cd19-4f54-9db4-f0438e3206cc.jsonl`
+- `/ll:confidence-check` - 2026-08-18T03:58:40 - `e1587cf9-62dc-4b5b-8de8-7b698165c90b.jsonl`
 - filed from pre-implementation review - 2026-08-18 - factored out of BUG-3253 before its cancellation into BUG-3252; claims verified against `orchestrator.py:1096-1251`, `worker_pool.py:508-520,743-744`, `priority_queue.py:110-194`

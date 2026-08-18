@@ -130,11 +130,41 @@ debris (`stale_file_ref`, missing `## Status`), coordinating with ENH-3247
 - `skills/confidence-check/SKILL.md:141` -- the oracle already computing this
   verdict; its `PD_FAIL` output is the contract being made routable.
 
+## Program Design
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-18 — based on codebase analysis:_
+
+**Signatures**
+- `design_gate_failed(gaps: FormatGaps) -> bool` — `scripts/little_loops/issue_parser.py:576-590`. Single owner of the three-way OR (`program_design_nonspecific` truthy, or `"Program Design"` in `gaps.missing`, or in `gaps.empty`). Fails open (returns `False`) on projects that haven't armed the gate.
+- `cmd_check_design(config, args) -> int` — `scripts/little_loops/cli/issues/check_design.py:19-39`. Resolves the issue, calls `check_format_gaps(path)`, returns 1 if `design_gate_failed(gaps)` else 0 (also 1, with a stderr message, if the issue id doesn't resolve). Exit 0 = pass/inert, exit 1 = fail-or-not-found.
+- New FSM state (not yet added): a one-line `action_type: shell` gate calling `ll-issues check-design "$ID"` with `evaluate: {type: exit_code}`, matching the shape of state ensure_formatted, `scripts/little_loops/loops/rn-remediate.yaml:100-121` (which calls the broader `format-check` rather than `check-design` specifically, but is the same one-liner + `evaluate: exit_code` + three-way yes/no/error routing template).
+
+**Call Path**
+ll-loop run refine-to-ready-issue -> state check_ac_automatable, `scripts/little_loops/loops/refine-to-ready-issue.yaml:335-344` (currently routes its yes-branch straight to state confidence_check, `scripts/little_loops/loops/refine-to-ready-issue.yaml:346-358`) -> new state check_design (not yet added), action `ll-issues check-design "$ID"` -> shells out to `cmd_check_design` (`scripts/little_loops/cli/issues/check_design.py:19`) -> which calls `check_format_gaps()` and returns exit 1 iff `design_gate_failed()` (`scripts/little_loops/issue_parser.py:576`) is true -> `evaluate: {type: exit_code}` -> yes-branch -> state confidence_check, `scripts/little_loops/loops/refine-to-ready-issue.yaml:346-358` (unchanged path) -> no-branch -> state refine_followup, `scripts/little_loops/loops/refine-to-ready-issue.yaml:177-191` -> error-branch -> state confidence_check, `scripts/little_loops/loops/refine-to-ready-issue.yaml:346-358` (fail-open).
+
+Confirmed: state refine_followup, `scripts/little_loops/loops/refine-to-ready-issue.yaml:177-191` (action `/ll:refine-issue ${captured.issue_id.output} --auto --gap-analysis`) and state check_refine_limit, `scripts/little_loops/loops/refine-to-ready-issue.yaml:482-502` (the state that currently routes its yes-branch to refine_followup) already exist in that file today, prior to ENH-3248 landing — so the routing target this issue names is already wired and reachable. ENH-3248 (still a hard blocker) is expected to modify refine_followup's behavior into a remedy ladder, not create the state from scratch.
+
+Reference shape for the compound form (not a template to replicate — the new gate here should stay a plain one-liner per Proposed Solution): the three existing check-design call sites in `scripts/little_loops/loops/autodev.yaml` — state recheck_scores, `scripts/little_loops/loops/autodev.yaml:1251-1278` (action at `scripts/little_loops/loops/autodev.yaml:1265-1274`), the state with action at `scripts/little_loops/loops/autodev.yaml:1797-1843`, and the state with action at `scripts/little_loops/loops/autodev.yaml:1797-2087` — all fold the design check into a larger compound shell block computing pass/fail shell variables, rather than gating on check-design's exit code alone.
+
+**Decision Rules**
+- Gate predicate: exit code of `ll-issues check-design "$ID"` (`scripts/little_loops/cli/issues/check_design.py:19-39`) — 0 = pass (or inert on an unarmed project), 1 = fail or issue-not-found.
+- On failure (no-branch): route to state refine_followup, `scripts/little_loops/loops/refine-to-ready-issue.yaml:177-191` — never directly to check_refine_limit and never to reconcile_issue — per BUG-3001 (refine now populates Program Design) and BUG-3002 (reconcile's contract excludes Program Design, so routing a design-gap failure there would reproduce that bug).
+- On error (CLI/exception failure, not a design-gap failure): fail-open, route to state confidence_check, `scripts/little_loops/loops/refine-to-ready-issue.yaml:346-358` — matching the existing error-branch targets of state check_hedges, `scripts/little_loops/loops/refine-to-ready-issue.yaml:301-310` and state check_ac_automatable, `scripts/little_loops/loops/refine-to-ready-issue.yaml:335-344`.
+- No new copy of the design-gate predicate is introduced in YAML and no `loops/lib/` fragment is created — `design_gate_failed()` (`scripts/little_loops/issue_parser.py:576-590`) via `ll-issues check-design` (ENH-2967) is reused as-is.
+
 ## Implementation Steps
 
-1. [Major phase 1]
-2. [Major phase 2]
-3. [Verification approach]
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-18 — based on codebase analysis:_
+
+1. `refine-to-ready-issue.yaml` contains a `check_design` state, positioned on the edge between `check_ac_automatable` (`:335-344`) and `confidence_check` (`:346-358`), so every path reaching `confidence_check` crosses it first.
+2. The gate re-derives nothing: its action is `ll-issues check-design "$ID"` with `evaluate: {type: exit_code}`; no new copy of the design predicate is added to any YAML and no `loops/lib/` fragment is introduced.
+3. `on_no` routes to `refine_followup` (`:177-191`), `on_error` routes to `confidence_check` (`:346-358`) fail-open — matching the sibling gates `check_hedges`/`check_ac_automatable`.
+4. The top-of-file routing-summary comment block (`:4-33`) is updated in the same edit to include the new state, since it is the loop's only routing documentation.
+5. `ll-loop validate refine-to-ready-issue` exits 0 and `python -m pytest scripts/tests/` passes, including a regression test asserting an issue with no `## Program Design` section cannot reach the `done` terminal.
 
 ## Impact
 
@@ -226,5 +256,6 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-08-18T14:52:51 - `1b75a5d5-cd19-4f54-9db4-f0438e3206cc.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-17T20:25:53 - `fe71c380-6bd8-44e2-9c73-d0617456c6e4.jsonl`
 - `/ll:capture-issue` - 2026-08-17T20:04:12 - `86ab77f1-d20d-487b-9f55-2f4d8abf9a06.jsonl`

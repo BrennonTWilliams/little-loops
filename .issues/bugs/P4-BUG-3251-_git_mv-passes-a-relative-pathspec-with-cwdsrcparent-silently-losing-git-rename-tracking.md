@@ -91,11 +91,56 @@ logged, so a lost rename is discoverable.
 - BUG-3243 -- same defect shape in `_parse_completion_date`, explicitly scoped
   to exclude this instance.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-18 — based on codebase analysis:_
+
+- **Reachability confirmed via the production call chain.** `finalize_decomposed_parent`'s only caller, `cmd_finalize_decomposition` (`scripts/little_loops/cli/issues/finalize_decomposition.py:38-46`), resolves `issues_dir` to absolute via `Path.cwd()` whenever `--config`/`-C` is not passed: `project_root = args.config or Path.cwd()`. All four current invocation sites (`rn-decompose.yaml:232`, `autodev.yaml:1130`, `autodev.yaml:1485`, `recursive-refine.yaml:431`, `recursive-refine.yaml:722`) call `ll-issues finalize-decomposition "$ID" --children-file ...` with no `--config` flag, so `issues_dir`/`src`/`dst` are absolute in every currently-wired call and the defect is not exercised today. It is reachable only via an explicit relative `--config` value, or a direct/future caller of `finalize_decomposed_parent()`/`_git_mv()` with relative paths. The fix is still correct to make — `_git_mv` should not depend on its caller's path form — but this bounds the bug's current blast radius to latent rather than active.
+- **`dst` always differs from `src`'s directory when `_git_mv` is invoked** (confirmed, not just claimed): the guard `"completed" not in parent_path.parts` (`recursive_finalize.py:171`) ensures `src` is never already under `completed/`, and `dst.parent` is always `issues_dir / "completed"` (`:172`) — so `src.name`/`dst.name` alone (the BUG-3243 remedy) cannot work here.
+- **No logging capability exists in this module today.** `recursive_finalize.py`'s module docstring (line 9) states it is deliberately filesystem-only ("no git, no Logger, no BRConfig") so it can be unit tested against a temp `.issues` tree — any fix that logs the fallback needs to either accept a logger dependency here or return/print through another channel, a design tradeoff not yet made.
+- **Directly analogous existing precedent for the logging half**: `scripts/little_loops/issue_discovery/search.py:415-418` already does `logger.warning(f"git mv failed, using manual copy: {result.stderr}")` at a `git mv` fallback branch — same shape, different module (one that does have a logger in scope).
+- **A second existing `git mv` implementation with no `cwd` mismatch**: `scripts/little_loops/issue_lifecycle.py:1339-1346` (`git_mv_with_fallback`) passes full path strings with no `cwd=` argument at all — worth checking during implementation whether consolidating onto one shared git-mv helper (rather than fixing `_git_mv` in isolation) is in scope, per the capability-search guidance for avoiding duplicate near-identical logic.
+- **Codebase-wide pattern survey**: no other `subprocess.run(["git", ...])` call site in the repo pairs a caller's full/relative path with `cwd=<that path's own parent>` — the three shapes that do work are (a) pathspec reduced to agree with `cwd` (`issue_history/parsing.py:224-240`, the BUG-3243 fix; test fixtures using bare filenames), (b) `cwd` omitted and full/absolute paths used directly (`issue_lifecycle.py:1339`, `cli/migrate.py:52-84`, `issue_discovery/search.py:410-418`), (c) `cwd` fixed at the repo root with bare relative args (`parallel/git_lock.py:81-142`, `hooks/post_tool_use.py:115-134`, which explicitly resolves the path to absolute before calling git). `_git_mv` is the only site combining a caller-relative path with `cwd=` set to that path's own parent.
+- **No existing test file covers `_git_mv`/`finalize_decomposed_parent`'s git-tracking behavior.** `scripts/tests/test_recursive_finalize.py` has general coverage of `finalize_decomposed_parent()` (e.g. `test_parent_moved_when_explicitly_requested`, lines 62-73) but does not assert on `git status --porcelain` rename detection. `scripts/tests/test_issue_migration.py:55-80` exercises a different function (`cli/migrate.py`'s `_move_file`) via mocked `subprocess.run`, not a real repo.
+- Second regression-test precedent to model beyond `_git_repo(tmp_path)`: `TestGitCompletionDatePathFormIndependence` in `scripts/tests/test_issue_history_parsing.py:264-289` — the standing "same operation, relative and absolute path form, assert identical outcome" shape (using `monkeypatch.chdir(tmp_path)` for the relative case).
+
+## Program Design
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-18 — based on codebase analysis:_
+
+**Signatures**
+- `_git_mv(src: Path, dst: Path) -> None` — `scripts/little_loops/recursive_finalize.py:74-89` (existing, full body already confirmed):
+  ```python
+  def _git_mv(src: Path, dst: Path) -> None:
+      dst.parent.mkdir(parents=True, exist_ok=True)
+      try:
+          result = subprocess.run(["git", "mv", str(src), str(dst)],
+                                   capture_output=True, text=True, cwd=src.parent)
+          if result.returncode == 0:
+              return
+      except (OSError, subprocess.SubprocessError):
+          pass
+      shutil.move(str(src), str(dst))
+  ```
+- Sole caller: `finalize_decomposed_parent()` (`recursive_finalize.py:~148-176`) — `dst = issues_dir / "completed" / parent_path.name`; `_git_mv(parent_path, dst)` called only when `move_to_completed` is set and `dst` doesn't already exist.
+
+**Call Path**
+`ll-issues finalize-decomposition "$ID"` -> `cmd_finalize_decomposition()` (`cli/issues/finalize_decomposition.py:38-46`, resolves `issues_dir` absolute via `Path.cwd()` unless `--config` is relative) -> `finalize_decomposed_parent(issues_dir, ...)` (`recursive_finalize.py:~137-176`) -> `_git_mv(parent_path, dst)` (`:175`) -> `subprocess.run(["git", "mv", str(src), str(dst)], cwd=src.parent)` -> non-zero exit on relative-path mismatch -> silent `shutil.move(str(src), str(dst))` fallback (no log line, no distinction recorded in the caller's summary dict).
+
+**Decision Rules**
+N/A — no new gap kind, gate, or threshold. This is a path-resolution correctness fix plus adding a previously-absent log line on the fallback path; it does not introduce new classification logic.
+
 ## Implementation Steps
 
-1. [Major phase 1]
-2. [Major phase 2]
-3. [Verification approach]
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-18 — based on codebase analysis:_
+
+1. `_git_mv(src, dst)` produces a git-tracked rename (`git status --porcelain` shows `R`) for a tracked file, regardless of whether the caller passes relative or absolute `src`/`dst`, and regardless of whether `src` and `dst` are in different directories (`recursive_finalize.py:170-176` guarantees they always are, when `_git_mv` is invoked from `finalize_decomposed_parent`).
+2. When the `git mv` invocation fails (non-zero exit, or `OSError`/`SubprocessError`) and the `shutil.move` fallback runs, a log line names git's captured `stderr` — matching the existing precedent at `scripts/little_loops/issue_discovery/search.py:415-418` (`logger.warning(f"git mv failed, using manual copy: {result.stderr}")`). `recursive_finalize.py` currently has no logger in scope (module docstring, line 9); decide deliberately whether to add one or route the notice through the caller instead of leaving the fallback silent.
+3. `python -m pytest scripts/tests/` passes, including new regression coverage in a real temp git repo (model on `_git_repo(tmp_path)`, `scripts/tests/test_verify_private_refs.py:250-259`, or the path-form-independence shape in `TestGitCompletionDatePathFormIndependence`, `scripts/tests/test_issue_history_parsing.py:264-289`) asserting the rename stages correctly for both relative and absolute path forms, and that `src`/`dst` in different directories is handled (the case `.name`-only remedies from BUG-3243 do not cover).
 
 ## Impact
 
@@ -136,6 +181,14 @@ Unlike BUG-3243 there is no second fault making it silent at the git layer --
 `git mv` does exit non-zero. It is silent at the *application* layer, because
 the fallback is unconditional and unlogged.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-18 — based on codebase analysis:_
+
+Confirmed exact mechanism, and confirmed the shutil.move fallback is unconditionally silent today: `_git_mv`'s `except (OSError, subprocess.SubprocessError): pass` and its implicit fallthrough on non-zero `returncode` both drop straight to `shutil.move(str(src), str(dst))` with no print/log/exception of `result.stdout`/`result.stderr` — because `recursive_finalize.py` has no `Logger`/logging import anywhere in the module (its docstring at line 9 states this is deliberate, so the module can be unit-tested filesystem-only). The caller (`finalize_decomposed_parent`) only records whether a move happened (`moved: True/False`) in its summary dict, not whether it went through `git mv` or the fallback — so a lost rename is invisible end to end, not just at the subprocess boundary.
+
+Also confirmed: in every currently-wired production call path (`rn-decompose.yaml`, `autodev.yaml`, `recursive-refine.yaml` — none pass `--config`), `issues_dir` resolves to absolute via `Path.cwd()` before reaching `_git_mv`, so the defect is latent rather than actively triggered today; it would trigger the moment a caller supplies a relative `--config` or calls `finalize_decomposed_parent`/`_git_mv` directly with relative paths. See Integration Map for the exact resolution chain.
+
 ## Acceptance Criteria
 
 - [ ] `_git_mv` produces a git-tracked rename for a tracked file whether the
@@ -167,4 +220,5 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-08-18T14:51:52 - `1b75a5d5-cd19-4f54-9db4-f0438e3206cc.jsonl`
 - `/ll:capture-issue` - 2026-08-17T20:04:13 - `86ab77f1-d20d-487b-9f55-2f4d8abf9a06.jsonl`
