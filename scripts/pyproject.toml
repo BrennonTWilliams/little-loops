@@ -245,8 +245,13 @@ python_functions = ["test_*"]
 # killed and reported as a timeout, freeing the xdist worker slot before it
 # can wedge a core indefinitely. Tests with legitimately slow wall-clock
 # can opt out via @pytest.mark.timeout(N) per test.
-# --timeout-method=thread is explicit because signal-based timeouts race
-# with xdist worker process management.
+# --timeout-method=signal is explicit (was thread) because thread-based
+# timeouts leak watchdog threads on idle xdist workers — the BUG-3208 busy-spin
+# that wedges the unit run at ~98% completion. Reproduced on ubuntu-latest
+# (run 32094539282) despite pytest-xdist<3.8 + pytest<9 pins both in place:
+# the version pin was necessary-not-sufficient; the timeout METHOD is the
+# axis. Signal (SIGALRM) kills the worker on timeout instead of abandoning it
+# to a leaked thread. Keep in sync with the root pytest.ini stub.
 # --dist loadfile gives each test file worker affinity: far fewer
 # controller<->worker scheduling round-trips than the default per-test `load`
 # on a ~13.7k-test suite, and per-file fixtures (git repos, subprocess envs)
@@ -255,9 +260,12 @@ addopts = [
     "--strict-markers",
     "--strict-config",
     "--timeout=120",
-    "--timeout-method=thread",
+    "--timeout-method=signal",
+    # BUG-3208: `-n 0` forces single-process (xdist disabled). The wedge
+    # reproduced under `-n logical` (2 workers) despite the pin + signal
+    # method, so serial is the empirical fix until xdist is root-caused.
     "-n",
-    "logical",
+    "0",
     "--dist",
     "loadfile",
 ]
