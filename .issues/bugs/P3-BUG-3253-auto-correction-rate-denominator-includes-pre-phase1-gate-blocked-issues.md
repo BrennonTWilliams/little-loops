@@ -364,9 +364,16 @@ _Added by `/ll:refine-issue` — 2026-08-18 — based on codebase analysis:_
 
 - Should this issue be closed in favor of BUG-3252, with the annotation folded
   into that change? Everything else here is subsumed by Part 3.
-- Does the parallel path's divergence (no `was_blocked` skip arm; `corrections`
-  attached only on the success return) warrant its own issue? It is a real
-  classification defect, just not this one.
+_Resolved by the 2026-08-18 supersession:_
+
+- ~~Should this issue be closed in favor of BUG-3252?~~ Yes — cancelled; see the
+  banner at the top.
+- ~~Does the parallel path's divergence warrant its own issue?~~ Yes. Filed as
+  **BUG-3254**, which also records a sharper form of the defect than this issue
+  had: `_on_worker_complete` already classifies `was_blocked` as `"skipped"` for
+  the orchestration record at `orchestrator.py:1249-1251`, forty lines below the
+  dispatch that counts the same result as failed — an internal contradiction,
+  not merely a missing arm.
 
 _Resolved by review, 2026-08-18:_
 

@@ -12,6 +12,7 @@ discovered_commit: 6ba249d0
 discovered_source: ll-auto run 2026-08-17T17:51-18:20 (--only ENH-3237,ENH-3240)
 relates_to:
 - FEAT-3117
+- BUG-3254
 supersedes:
 - BUG-3253
 reconcile_attempted: true
@@ -452,6 +453,13 @@ _Resolved by review, 2026-08-18:_
   call site (`issue_manager.py`'s pre-Phase-1 gate). Adjacent, not overlapping:
   it adds an escalation path, this fixes what the gate reports. FEAT-3117 is
   blocked on FEAT-3116/FEAT-3120; this issue is not.
+- BUG-3254 — the parallel path's own classification defect: `_on_worker_complete`
+  counts a BLOCKED result via `mark_failed` (`orchestrator.py:1229-1232`) while
+  recording it as `"skipped"` forty lines later (`1249-1251`), and
+  `WorkerResult.corrections` is attached only on the success return
+  (`worker_pool.py:743-744`). Deliberately **not** fixed here — see the
+  parallel-path exclusion in Decision Rules. It inherits this issue's
+  numerator/denominator symmetry invariant.
 - BUG-3253 — **superseded by this issue and cancelled, 2026-08-18.** It reported
   the auto-correction rate metric distorted by this issue's
   failure-classification half. Once the route was settled on Option C′, its
