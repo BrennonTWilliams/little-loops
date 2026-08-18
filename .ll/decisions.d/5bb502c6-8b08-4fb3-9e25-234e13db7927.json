@@ -1,0 +1,12 @@
+{
+  "id": "d2642e59-df57-478d-9106-edeb68d52a7f",
+  "type": "decision",
+  "timestamp": "2026-08-18T02:40:03Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Only option that satisfies the issue's own requirement to keep both summary sites in sync without depending on infrastructure (was_blocked-style skip routing) the parallel path lacks; Option A depends on an unstarted issue (BUG-3252); Option C as specified reintroduces a correctness bug by over-excluding learning-gate-attempted issues from the denominator.",
+  "rule": "Option B \u2014 standalone _is_pre_phase1_gate_failure predicate, applied at both issue_manager.py:1973 and parallel/orchestrator.py:1653",
+  "scope": "issue",
+  "alternatives_rejected": "Option A (consume BUG-3252's bucket \u2014 BUG-3252 has no implementation session, currently a no-op); Option C (was_gated + mark_skipped \u2014 correctness defect on learning-gate scope, no parallel-path equivalent)",
+  "issue": "BUG-3253"
+}
