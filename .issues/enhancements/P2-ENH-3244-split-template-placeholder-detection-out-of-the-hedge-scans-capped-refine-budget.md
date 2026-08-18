@@ -17,6 +17,7 @@ relates_to:
 blocked_by:
 - BUG-3245
 - ENH-3247
+decision_needed: false
 confidence_score: 75
 outcome_confidence: 79
 score_complexity: 18
@@ -140,6 +141,69 @@ Split the signal by kind.
    **ENH-3248's** job, not this issue's — see Scope Boundaries. This issue ends at detection plus
    JSON exposure.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-17 — based on codebase analysis:_
+
+Codebase research surfaced a real ambiguity the issue's own text does not resolve: Implementation
+Steps §3 points at the five-touchpoint `FormatGaps` checklist ENH-3247 used, while Program Design §
+Signatures points at `superseded_marker_count`'s scalar shape — and those two existing precedents
+disagree with each other, not just with the reader.
+
+> **Selected:** Option A — matches the 24-field `FormatGaps` pattern exactly and avoids Option B's semantic mismatch with `superseded_marker_count` (presence-is-neutral vs. this issue's presence-is-always-a-defect model).
+
+**Option A**: Add the new count as a `FormatGaps` dataclass field (`list[str]`), following the
+five-touchpoint pattern ENH-3247 used for `empty_provenance_stub`/`duplicate_heading` — field
+(`issue_parser.py:513`-style), `has_gaps` OR-clause (`:541`-style), `to_dict()` key (`:569`-style),
+`_print_gaps()` loop (`format_check.py:379-380`-style), and a CLI.md enumeration/paragraph. A
+residual placeholder then participates in `has_gaps`/exit-code and the normal `--fix` dispatch
+surface.
+
+**Option B**: Add it as a scalar out-of-band `--format json` key (`placeholder_count: int`),
+mirroring `superseded_marker_count`'s exact shape (`issue_parser.py:1326-1352`, wired at
+`format_check.py:566-573`) — deliberately excluded from `FormatGaps`/`has_gaps`, documented as its
+own `--format json`-only paragraph.
+
+**Recommended**: Option A. `superseded_marker_count`'s exclusion from `FormatGaps` is justified in
+its own code comment by marker *presence* being a neutral/positive signal, not a defect — the
+opposite of this issue's own claim that placeholder residue is "always a defect... there is no
+legitimate residual" (Decision Rules § Budget). Implementation Steps §3 already names the five
+`FormatGaps` touchpoints, and Option A is the only one of the two that lets a placeholder gap block
+"Formatted" status and surface through the existing `--fix`/`--apply` machinery the way `boilerplate`
+and `empty_provenance_stub` do today.
+
+### Decision Rationale
+
+Decided by `/ll:decide-issue` on 2026-08-17.
+
+**Selected**: Option A — `FormatGaps` dataclass field
+
+**Reasoning**: Two independent codebase-evidence agents confirmed Option A matches the dominant,
+actively-used `FormatGaps` shape (24 existing fields, with `duplicate_heading`/`empty_provenance_stub`
+as direct structural precedents added by ENH-3247) and its fence-masking dependency
+(`text_utils.fence_spans`/`in_fence`) is already a shared, importable utility. Option B is a
+mechanically cheaper mirror of `superseded_marker_count`, but that precedent's own exclusion from
+`FormatGaps` is justified by marker *presence* being a neutral/positive signal — the opposite of this
+issue's stated defect model that placeholder residue is "always a defect... there is no legitimate
+residual." Option A is also the only shape that lets a placeholder gap block "Formatted" status and
+surface through the existing `--fix`/`--apply` machinery, matching Implementation Steps §3.
+
+#### Scoring Summary
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|--------|-------------|------------|-------------|------|-------|
+| Option A | 3/3 | 2/3 | 3/3 | 2/3 | 10/12 |
+| Option B | 1/3 | 3/3 | 3/3 | 2/3 | 9/12 |
+
+**Key evidence**:
+- Option A: `duplicate_heading`/`empty_provenance_stub` (`issue_parser.py:512-513`) are structurally
+  identical recent precedents; `_print_gaps()`'s docstring (`format_check.py:393-395`) documents a
+  completeness contract tying every `FormatGaps` field to a matching print loop.
+- Option B: `superseded_marker_count` (`issue_parser.py:1326-1352`) is a clean 2-line-wiring mirror,
+  but its sole justification for excluding `FormatGaps` (presence is neutral/positive) directly
+  contradicts this issue's own defect model, and it would ship with zero consumers until ENH-3248
+  lands.
+
 ## Integration Map
 
 ### Files to Modify
@@ -155,6 +219,15 @@ Split the signal by kind.
 - **Not** `scripts/little_loops/loops/refine-to-ready-issue.yaml` — no FSM edit in this issue. The
   gate belongs to ENH-3248.
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/cli/issues/format_check.py:63-69` — the `argparse` subparser `help=` string
+  enumerates gap classes by name (currently ending
+  `.../duplicate_heading/empty_provenance_stub)`); append the new field's name. Separate from the
+  `_print_gaps()` loop already listed above. [Agent 2 finding]
+- `scripts/little_loops/cli/issues/format_check.py:386-391` — `cmd_format_check()`'s own docstring
+  carries a second, independent gap-class enumeration ("Gap classes: missing/renamed/.../
+  duplicate_heading/empty_provenance_stub."); append the new field's name here too. [Agent 2 finding]
+
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/loops/refine-to-ready-issue.yaml:301-333` — `check_hedges` /
   `check_hedge_attempts`. Removing `TBD` from the hedge vocabulary changes what this pair fires on;
@@ -166,6 +239,13 @@ Split the signal by kind.
 - Every consumer of `ll-issues check-open-questions` — the exit-code contract changes meaning
   slightly (fewer true positives, all of them prose).
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/loops/rn-remediate.yaml:100-122` — `ensure_formatted` gate calls
+  `ll-issues format-check` and routes on its overall exit code. Once the new placeholder gap class
+  participates in `has_gaps` (Option A, per Decision Rationale), issues that previously passed this
+  gate with residual template debris will now fail it and route to `format_issue` instead — a
+  behavior change for this consumer, not an edit target. [Agent 1 finding]
+
 ### Similar Patterns
 - `superseded_marker_count` — deterministic count on `format-check --format json`, consumed by a
   non-LLM gate. The model for this change.
@@ -176,11 +256,60 @@ Split the signal by kind.
   case is the strongest fixture because the template ships the placeholders.
 - Existing `check-open-questions` tests that assert on `TBD` will need updating when it moves.
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_issue_parser_unresolved.py:334-338` —
+  `TestCountOpenQuestionsWidenedSections.test_codebase_research_findings_section_counted` asserts
+  `count_open_questions_in_sections(...) == 1` on a fixture ("- TBD whether this path is actually
+  hit.") that matches `_OPEN_QUESTION_SIGNAL_RE` **only** via the `\bTBD\b` alternative — no other
+  vocabulary in that fixture matches. This is the concrete test that breaks when `\bTBD\b` is
+  removed; update its fixture text or expected count. [Agent 3 finding, confirms Proposed
+  Solution §3's "update affected tests"]
+- `scripts/tests/test_ll_issues_format_check.py:1779-1874` —
+  `TestFormatCheckEmptyProvenanceStubFix` is the CLI-level (not just `issue_parser.py` unit-level)
+  test-class shape to mirror for the new gap class: detection message assertion, `--fix`
+  preview-without-`--apply` behavior, and idempotent-apply behavior if a fixer is ever added.
+  [Agent 3 finding]
+- `scripts/tests/test_ll_issues_format_check.py:~300-393` (`test_gapped_issue_json_output`) — the
+  `to_dict()` JSON-output assertion dict already has `"empty_provenance_stub": []`; add the new
+  field's key alongside it. [Agent 3 finding]
+- `scripts/tests/test_ll_issues_create.py:93,102` (`variant="full"` issue creation) and `:209-214`
+  (`test_unsupplied_variant_sections_keep_placeholder`, asserting placeholder-string presence) —
+  the existing fixture patterns to combine for the "fresh issue reports non-zero placeholder count /
+  filled-in issue reports zero" test this issue's Tests section calls for. [Agent 3 finding]
+- `scripts/tests/test_ll_issues_format_check.py:2275-2297` —
+  `test_every_format_gaps_field_is_rendered` is a self-updating completeness-contract test (via
+  `dataclasses.fields(FormatGaps)`): no edit needed, but it will fail if the new field is added to
+  the dataclass without a matching `_print_gaps()` loop branch — this is the same enforcement the
+  `_print_gaps()` docstring at `format_check.py:393-395` describes. [Agent 2/3 finding, FYI only]
+
 ### Documentation
 - `docs/reference/CLI.md` — `ll-issues format-check` output keys, if enumerated there.
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/CLI.md:2051` — the gap-class enumeration prose (currently ending "... and
+  `empty_provenance_stub`" with a written count of "twenty-three classes... re-derive this count
+  from `dataclasses.fields(FormatGaps)` rather than trusting the number written here"); insert the
+  new field name and bump the written count. [Agent 2 finding]
+- `docs/reference/CLI.md:2213` — the literal `--format json` example payload (a comma-joined
+  dict-literal-shaped string ending `..., "empty_provenance_stub": [...], "superseded_marker_count":
+  0`); insert the new key in field order. [Agent 2 finding]
+- `docs/reference/API.md:895-916` — carries the same kind of gap-class enumeration, but confirmed
+  already stale (lists only 21 names and never picked up ENH-3247's `duplicate_heading` /
+  `empty_provenance_stub`); optional/best-effort touch, not a hard requirement enforced by any test.
+  [Agent 2 finding]
+
 ### Configuration
 - N/A
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-17 — based on codebase analysis:_
+
+- **Stale anchors corrected**: `_OPEN_QUESTION_SIGNAL_RE` is now at `issue_parser.py:1870-1892` (the `\bTBD\b` term at `:1886`), not `:1717`/`:1733` as currently cited in Current Behavior/Program Design. `_OPEN_QUESTION_SECTIONS` is now at `:1898-1906`. `superseded_marker_count()` is now at `:1326-1352`, not `:1173` as cited in Program Design § Signatures.
+- **Template strings are literal JSON, not procedural**: the placeholder text lives as `creation_template` values in `scripts/little_loops/templates/{enh,bug,feat,epic}-sections.json` — the `TBD -` bullets at `enh-sections.json:80` (mirrored in `bug-sections.json:80`, `feat-sections.json:80`, a shorter variant in `epic-sections.json:39`) and the `[Major phase N]` steps at `enh-sections.json:106` (mirrored in `bug-sections.json:106`, `feat-sections.json:106`). The existing `boilerplate` gap class already reads these same `creation_template` values at runtime (`issue_parser.py:853-856`) — a new detector could derive its literal-string list from `creation_template` instead of a hand-copied list, which would satisfy Proposed Solution §2's "keep the two in sync" by construction rather than by discipline.
+- **Inline single-backtick masking already exists as a precedent** — independently defined (not shared) in three files: `scripts/little_loops/issues/symbol_claims.py:98`, `scripts/little_loops/issues/cli_claims.py:19`, and `scripts/little_loops/issues/prose_deps.py:42` (`_BACKTICK_SPAN_RE = re.compile(r"`([^`\n]+)`")`, cross-referenced across all three by comment). `prose_deps.py:110` shows the masking-mode usage relevant here: its match spans are appended into the same `fence_spans` list built from triple-backtick fences, then `_in_fence()` is reused unmodified. No shared `text_utils.py` helper exists for this yet — each site defines its own copy.
+- **Test pattern to mirror**: `TestSupersededMarkerCount` (`scripts/tests/test_issue_parser.py:4571-4655`) — 6-case shape: zero-when-absent, single positive, multi-section coverage, out-of-scope negative, multiple-hits-in-one-section, missing-file fail-open. `TestDuplicateHeadingDetection`/`TestEmptyProvenanceStubDetection` (`:4711-4767`, `:4770-4805`) add a `test_*_inside_fence_is_invisible` case that neither `TestSupersededMarkerCount` nor either of those two test for inline-backtick exclusion — a new placeholder-detector test class needs that case added, since it would be novel to this detector.
+- **Documentation touchpoints depend on the FormatGaps-field-vs-scalar-key choice** (see Proposed Solution § Codebase Research Findings): a `FormatGaps` field gets an inline enumeration mention (`docs/reference/CLI.md:2051`) or a dedicated "Also reports X" paragraph (`:2144-2161`, `:2173-2182`); an out-of-band `--format json`-only key gets its own "additionally carries X" paragraph (`:2163-2171`, the `superseded_marker_count` precedent).
 
 ## Implementation Steps
 
@@ -196,6 +325,29 @@ Split the signal by kind.
 6. `python -m pytest scripts/tests/` exits 0.
 
 No FSM edit. The gate that consumes this signal is ENH-3248's.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Update `scripts/little_loops/cli/issues/format_check.py:63-69` — append the new field's name to
+  the `argparse` subparser `help=` gap-class enumeration.
+- Update `scripts/little_loops/cli/issues/format_check.py:386-391` — append the new field's name to
+  `cmd_format_check()`'s own docstring enumeration (separate from the `_print_gaps()` loop).
+- Update `docs/reference/CLI.md:2051` — insert the new field name into the enumeration prose and
+  bump the written class count.
+- Update `docs/reference/CLI.md:2213` — insert the new key into the `--format json` example payload.
+- Update `scripts/tests/test_issue_parser_unresolved.py:334-338` — fix or retarget the fixture that
+  relies solely on the `\bTBD\b` alternative, which will break once it's removed.
+- Update `scripts/tests/test_ll_issues_format_check.py:~300-393` — add the new key to the
+  `to_dict()` JSON-output assertion dict.
+- Add a CLI-level test class mirroring `TestFormatCheckEmptyProvenanceStubFix`
+  (`scripts/tests/test_ll_issues_format_check.py:1779-1874`) for the new gap class.
+- Build the fresh-issue placeholder-count fixture from `scripts/tests/test_ll_issues_create.py:93,
+  102,209-214`'s existing `variant="full"` creation + placeholder-presence-assertion patterns.
+- Be aware (no required edit): `scripts/little_loops/loops/rn-remediate.yaml:100-122`'s
+  `ensure_formatted` gate will start failing on issues with residual placeholder debris that
+  previously passed, once the new gap class participates in `has_gaps`.
 
 ## Program Design
 
@@ -315,14 +467,14 @@ _Added by `/ll:confidence-check` on 2026-08-17_
 **Outcome Confidence**: 79/100 → MODERATE
 
 ### Concerns
-- Both `blocked_by` dependencies (BUG-3245, ENH-3247) are still `open`, not `done`/`cancelled`. This
-  issue's own Implementation Steps §1 requires ENH-3247's `FormatGaps` widening to have landed first
-  ("this issue's gap class is added alongside its two, not in a competing edit"), and confirmed by
-  code inspection: `empty_provenance_stub` does not yet exist in `issue_parser.py`'s `FormatGaps`.
+- ~~Both `blocked_by` dependencies (BUG-3245, ENH-3247) are still `open`, not `done`/`cancelled`.~~
+  **Resolved as of this pass (2026-08-17)**: both are now `done`, and code inspection confirms
+  `empty_provenance_stub` exists in `issue_parser.py`'s `FormatGaps` (`:513`), so ENH-3247's widening
+  Implementation Steps §1 waits on has landed.
 
 ### Gaps to Address
-- Resolve or land BUG-3245 and ENH-3247 before implementing this issue — the dependency is a hard
-  prerequisite by the issue's own design, not just an ordering preference.
+- ~~Resolve or land BUG-3245 and ENH-3247 before implementing this issue.~~ Resolved — both are
+  `done`.
 - Decision Rules § "Masking must cover inline code, not just fences" leaves the inline-vs-section-scope
   masking approach explicitly undecided ("Options, to decide during implementation") — pick one before
   or during implementation to avoid false positives on the issue's own fixture file.
@@ -332,6 +484,9 @@ _Added by `/ll:confidence-check` on 2026-08-17_
   existing `superseded_marker_count` precedent closely (mechanical, well-scoped, test plan specified).
 
 ## Session Log
+- `/ll:wire-issue` - 2026-08-18T01:33:31 - `707dea9b-b70a-4464-bf06-ca7b4497f26c.jsonl`
+- `/ll:decide-issue` - 2026-08-17T23:24:03 - `33a38c46-fd9e-408d-980c-20585c294776.jsonl`
+- `/ll:refine-issue` - 2026-08-17T23:15:34 - `bbbe7744-e9dc-4cca-8051-3fce993a1ce7.jsonl`
 - `/ll:confidence-check` - 2026-08-17T21:33:51 - `878d0e98-a6e4-41e7-80a9-53a56e3db6f7.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-17T20:25:54 - `fe71c380-6bd8-44e2-9c73-d0617456c6e4.jsonl`
 - `/ll:capture-issue` - 2026-08-17T19:29:37 - `3ce34465-00fd-4ba7-a470-b61774849ebd.jsonl`
