@@ -941,6 +941,29 @@ class TestFeatureBranchInPlaceWarning:
         assert self.orchestration_calls[0]["status"] == "skipped"
         assert self.orchestration_calls[0]["failure_reason"] == "blocked by BUG-1"
 
+    def test_direct_gated_outcome_is_mapped_to_skipped(self) -> None:
+        """BUG-3252: a confidence-gate skip (was_gated) must land in
+        skipped_blocked_issues via the "skipped" status, not failed_issues —
+        mirrors the was_blocked case above."""
+        from little_loops.issue_manager import IssueProcessingResult
+
+        args = self._make_args()
+        config = self._make_config(use_feature_branches=False)
+        gated = IssueProcessingResult(
+            success=False,
+            duration=0.1,
+            issue_id="ignored",
+            was_gated=True,
+            failure_reason="no_confidence_score (never assessed)",
+        )
+        exit_code, _ = self._run(args, config, issue_result=gated)
+        assert exit_code == 0
+        assert self.orchestration_calls[0]["status"] == "skipped"
+        assert (
+            self.orchestration_calls[0]["failure_reason"]
+            == "no_confidence_score (never assessed)"
+        )
+
     def test_warning_emitted_when_config_flag_set_and_wave_in_place(self) -> None:
         """Warning fires when use_feature_branches=True (via config) and wave runs in-place."""
         args = self._make_args(feature_branches=None)

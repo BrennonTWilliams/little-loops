@@ -714,6 +714,15 @@ def _cmd_sprint_run(
                         completed.add(issue.issue_id)
                         state.skipped_blocked_issues[issue.issue_id] = issue_result.failure_reason
                         logger.warning(f"  {issue.issue_id}: skipped (blocked by open dependency)")
+                    elif issue_result.was_gated:
+                        # BUG-3252: confidence-gate skip, never attempted —
+                        # not a failure. Mirrors issue_manager.py's was_gated
+                        # routing arm.
+                        orchestration_status = "skipped"
+                        orchestration_reason = issue_result.failure_reason or None
+                        completed.add(issue.issue_id)
+                        state.skipped_blocked_issues[issue.issue_id] = issue_result.failure_reason
+                        logger.warning(f"  {issue.issue_id}: skipped (gated before Phase 1)")
                     else:
                         orchestration_status = "failed"
                         orchestration_reason = (
@@ -884,6 +893,18 @@ def _cmd_sprint_run(
                             )
                             logger.warning(
                                 f"  Retry skipped: {issue.issue_id} (blocked by open dependency)"
+                            )
+                        elif retry_result.was_gated:
+                            # BUG-3252: same-shape skip as the was_blocked arm
+                            # above, for a confidence-gate halt on retry.
+                            orchestration_status = "skipped"
+                            orchestration_reason = retry_result.failure_reason or None
+                            state.failed_issues.pop(issue.issue_id, None)
+                            state.skipped_blocked_issues[issue.issue_id] = (
+                                retry_result.failure_reason
+                            )
+                            logger.warning(
+                                f"  Retry skipped: {issue.issue_id} (gated before Phase 1)"
                             )
                         else:
                             orchestration_status = "failed"

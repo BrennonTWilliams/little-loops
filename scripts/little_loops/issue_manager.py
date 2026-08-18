@@ -645,6 +645,7 @@ class IssueProcessingResult:
     issue_id: str
     was_closed: bool = False
     was_blocked: bool = False
+    was_gated: bool = False
     failure_reason: str = ""
     corrections: list[str] = field(default_factory=list)
     plan_created: bool = False
@@ -810,10 +811,19 @@ def process_issue_inplace(
 
         status = readiness_status(config, info.issue_id)
         if status is not None and status.enabled and not status.meets_readiness:
-            logger.warning(
-                f"{info.issue_id}: below readiness threshold "
-                f"(confidence {status.confidence} < {status.readiness_threshold})"
-            )
+            if status.raw_confidence is None:
+                gate_message = f"{info.issue_id}: has no confidence score (never assessed)"
+                gate_reason = "no_confidence_score (never assessed)"
+            else:
+                gate_message = (
+                    f"{info.issue_id}: below readiness threshold "
+                    f"(confidence {status.confidence} < {status.readiness_threshold})"
+                )
+                gate_reason = (
+                    f"below_readiness_threshold "
+                    f"({status.confidence} < {status.readiness_threshold})"
+                )
+            logger.warning(f"{gate_message} — run /ll:confidence-check {info.issue_id}")
             # Stable, greppable marker for FSM loops that implement via
             # `ll-auto --only` — mirrors LEARNING_GATE_BLOCKED
             # (issue_manager.py:991-997). Without it, a gate refusal is
@@ -828,10 +838,8 @@ def process_issue_inplace(
                 success=False,
                 duration=time.time() - issue_start_time,
                 issue_id=info.issue_id,
-                failure_reason=(
-                    f"below_readiness_threshold "
-                    f"({status.confidence} < {status.readiness_threshold})"
-                ),
+                was_gated=True,
+                failure_reason=gate_reason,
             )
 
     # Phase 1: Ready/verify the issue
@@ -1684,6 +1692,9 @@ class AutoManager:
         # state.attempted_issues (persisted, may carry earlier-run IDs under
         # --resume). Used by _unreachable_reason() to word outcomes correctly.
         self._run_attempted: set[str] = set()
+        # BUG-3252 Part 4: IDs skipped by the pre-Phase-1 confidence gate this
+        # run, for the "Auto-corrections:" disclosure suffix.
+        self._gated_issue_ids: set[str] = set()
 
         signal.signal(signal.SIGINT, self._signal_handler)
         signal.signal(signal.SIGTERM, self._signal_handler)
@@ -1967,13 +1978,26 @@ class AutoManager:
             for issue_id, reason in state.failed_issues.items():
                 self.logger.warning(f"  - {issue_id}: {reason[:50]}...")
 
+        if state.skipped_issues:
+            self.logger.info(f"Skipped issues: {len(state.skipped_issues)}")
+            for issue_id, reason in state.skipped_issues.items():
+                self.logger.info(f"  - {issue_id}: {reason[:50]}...")
+
         # Log correction statistics for quality tracking
         if state.corrections:
             total_corrected = len(state.corrections)
             total_issues = len(state.completed_issues) + len(state.failed_issues)
             correction_rate = (total_corrected / total_issues * 100) if total_issues > 0 else 0
+            # BUG-3252 Part 4: disclose confidence-gate skips excluded from the
+            # denominator so a still-accurate rate isn't mistaken for "nothing
+            # was gated". `self._gated_issue_ids` is populated only from the
+            # was_gated routing arm, so this is a direct count, not a
+            # failure_reason-string classifier.
+            gated_count = len(self._gated_issue_ids)
+            gated_suffix = f" ({gated_count} gated before Phase 1)" if gated_count else ""
             self.logger.info(
-                f"Auto-corrections: {total_corrected}/{total_issues} ({correction_rate:.1f}%)"
+                f"Auto-corrections: {total_corrected}/{total_issues} "
+                f"({correction_rate:.1f}%){gated_suffix}"
             )
 
             # Log most common correction types
@@ -2109,6 +2133,14 @@ class AutoManager:
             # Blocked issues are skipped, not failed — leave in pending state
             self.logger.info(f"{info.issue_id} skipped — blocked by open dependency")
             self.state_manager.mark_skipped(info.issue_id, "skipped — blocked by open dependency")
+        elif result.was_gated:
+            # BUG-3252: the confidence gate halted before Phase 1 ever ran —
+            # a skip, not a failure. Confined to the confidence gate (never
+            # carries `corrections=`), so this can't distort the
+            # auto-correction rate's numerator/denominator symmetry.
+            self.logger.info(f"{info.issue_id} skipped — {result.failure_reason}")
+            self.state_manager.mark_skipped(info.issue_id, result.failure_reason)
+            self._gated_issue_ids.add(info.issue_id)
         elif result.success:
             self.state_manager.mark_completed(info.issue_id, {"total": result.duration})
         elif result.plan_created:

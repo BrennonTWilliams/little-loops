@@ -109,3 +109,56 @@ class TestCheckReadinessCliArgFallback:
         _make_issue(bugs_dir, "P2-BUG-001-test.md", confidence_score=85, outcome_confidence=70)
         # CLI default readiness (85) would pass; config's 90 must win and fail it.
         assert _run_check_readiness(temp_project_dir) == 1
+
+
+class TestReadinessStatusRawConfidence:
+    """BUG-3252 Part 1: raw_confidence/raw_outcome distinguish "absent" from
+    the synthesized 0 that `confidence`/`outcome` still carry for backward
+    compatibility. The gate decision (meets_readiness) is unaffected."""
+
+    def test_absent_confidence_score_yields_none_raw(self, temp_project_dir: Path) -> None:
+        from little_loops.cli.issues.check_readiness import readiness_status
+        from little_loops.config import BRConfig
+
+        bugs_dir = _setup_dirs(temp_project_dir)
+        _make_issue(bugs_dir, "P2-BUG-001-test.md")  # no confidence_score at all
+        config = BRConfig(temp_project_dir)
+        status = readiness_status(config, "BUG-001")
+
+        assert status is not None
+        assert status.raw_confidence is None
+        assert status.raw_outcome is None
+        # Backward-compat: confidence/outcome still synthesize 0 for existing callers.
+        assert status.confidence == 0
+        assert status.outcome == 0
+        assert status.meets_readiness is False
+
+    def test_scored_confidence_score_yields_int_raw(self, temp_project_dir: Path) -> None:
+        from little_loops.cli.issues.check_readiness import readiness_status
+        from little_loops.config import BRConfig
+
+        bugs_dir = _setup_dirs(temp_project_dir)
+        _make_issue(bugs_dir, "P2-BUG-001-test.md", confidence_score=40, outcome_confidence=30)
+        config = BRConfig(temp_project_dir)
+        status = readiness_status(config, "BUG-001")
+
+        assert status is not None
+        assert status.raw_confidence == 40
+        assert status.raw_outcome == 30
+
+    def test_explicit_zero_confidence_score_yields_zero_raw_not_none(
+        self, temp_project_dir: Path
+    ) -> None:
+        """An explicit `confidence_score: 0` is a real (if bad) score, distinct
+        from the key being absent — raw_confidence must be 0, not None."""
+        from little_loops.cli.issues.check_readiness import readiness_status
+        from little_loops.config import BRConfig
+
+        bugs_dir = _setup_dirs(temp_project_dir)
+        _make_issue(bugs_dir, "P2-BUG-001-test.md", confidence_score=0, outcome_confidence=0)
+        config = BRConfig(temp_project_dir)
+        status = readiness_status(config, "BUG-001")
+
+        assert status is not None
+        assert status.raw_confidence == 0
+        assert status.raw_outcome == 0

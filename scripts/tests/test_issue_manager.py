@@ -5498,6 +5498,10 @@ class TestConfidenceGatePreCheck:
             "enabled": True,
         }
         defaults.update(kwargs)
+        # BUG-3252: a scored fixture is scored unless the caller explicitly
+        # asks for the unscored case via raw_confidence=None.
+        defaults.setdefault("raw_confidence", defaults["confidence"])
+        defaults.setdefault("raw_outcome", defaults["outcome"])
         return ReadinessStatus(**defaults)
 
     def test_gate_disabled_runs_phase_1(
@@ -5540,6 +5544,56 @@ class TestConfidenceGatePreCheck:
         mock_ready.assert_not_called()
         assert result.success is False
         assert result.failure_reason == "below_readiness_threshold (80 < 85)"
+        assert result.was_gated is True
+
+    def test_unscored_issue_reports_never_assessed_not_zero(
+        self, mock_config: BRConfig, sample_issue: IssueInfo
+    ) -> None:
+        """BUG-3252: an issue with no confidence_score at all must not be
+        reported as though it scored a measured 0."""
+        from little_loops.issue_manager import process_issue_inplace
+
+        status = self._status(confidence=0, raw_confidence=None, readiness_threshold=85)
+        mock_logger = MagicMock()
+        with (
+            patch(
+                "little_loops.cli.issues.check_readiness.readiness_status",
+                return_value=status,
+            ),
+            patch("little_loops.issue_manager.run_claude_command") as mock_ready,
+        ):
+            result = process_issue_inplace(sample_issue, mock_config, mock_logger)
+
+        mock_ready.assert_not_called()
+        assert result.success is False
+        assert result.was_gated is True
+        assert result.failure_reason == "no_confidence_score (never assessed)"
+        warning_text = " ".join(str(call.args[0]) for call in mock_logger.warning.call_args_list)
+        assert "has no confidence score (never assessed)" in warning_text
+        assert "0 < 85" not in warning_text
+        assert "/ll:confidence-check BUG-001" in warning_text
+
+    def test_scored_gate_message_includes_remediation(
+        self, mock_config: BRConfig, sample_issue: IssueInfo
+    ) -> None:
+        """BUG-3252 Part 2: the scored (non-None raw_confidence) branch must
+        also carry the /ll:confidence-check remediation suggestion."""
+        from little_loops.issue_manager import process_issue_inplace
+
+        status = self._status(confidence=40, readiness_threshold=85)
+        mock_logger = MagicMock()
+        with (
+            patch(
+                "little_loops.cli.issues.check_readiness.readiness_status",
+                return_value=status,
+            ),
+            patch("little_loops.issue_manager.run_claude_command"),
+        ):
+            process_issue_inplace(sample_issue, mock_config, mock_logger)
+
+        warning_text = " ".join(str(call.args[0]) for call in mock_logger.warning.call_args_list)
+        assert "confidence 40 < 85" in warning_text
+        assert "/ll:confidence-check BUG-001" in warning_text
 
     def test_sub_threshold_prints_confidence_gate_blocked_marker(
         self,
@@ -5685,3 +5739,98 @@ class TestConfidenceGatePreCheck:
         mock_impl.assert_called_once()
         called_cmd = mock_impl.call_args[0][0]
         assert "--force-implement" in called_cmd
+
+    @pytest.fixture
+    def gate_routing_project(self, temp_project_dir: Path) -> Path:
+        """Minimal real-config project for AutoManager routing/summary tests
+        (full_project lives on a different test class)."""
+        ll_dir = temp_project_dir / ".ll"
+        ll_dir.mkdir(exist_ok=True)
+        config_content = {
+            "project": {"name": "test-project"},
+            "issues": {
+                "base_dir": ".issues",
+                "categories": {"bugs": {"prefix": "BUG", "dir": "bugs", "action": "fix"}},
+                "completed_dir": "completed",
+            },
+            "automation": {"timeout_seconds": 60, "state_file": ".auto-manage-state.json"},
+        }
+        (ll_dir / "ll-config.json").write_text(json.dumps(config_content))
+        issues_dir = temp_project_dir / ".issues" / "bugs"
+        issues_dir.mkdir(parents=True)
+        (temp_project_dir / ".issues" / "completed").mkdir(parents=True)
+        (issues_dir / "P1-BUG-001-test-issue.md").write_text(
+            "# BUG-001: Test Issue\n\n## Summary\nTest"
+        )
+        return temp_project_dir
+
+    def test_gated_issue_routes_to_skipped_not_failed(
+        self, gate_routing_project: Path
+    ) -> None:
+        """BUG-3252 Part 3: a confidence-gate skip must land in
+        state.skipped_issues, not state.failed_issues — it was never attempted."""
+        from little_loops.config import BRConfig
+        from little_loops.issue_manager import AutoManager
+
+        issues_dir = gate_routing_project / ".issues" / "bugs"
+        issue_file = issues_dir / "P1-BUG-001-test-issue.md"
+        info = IssueInfo(
+            path=issue_file,
+            issue_type="bugs",
+            priority="P1",
+            issue_id="BUG-001",
+            title="Test Issue",
+        )
+
+        config = BRConfig(gate_routing_project)
+        with patch("little_loops.issue_manager.check_git_status", return_value=False):
+            manager = AutoManager(
+                config,
+                dry_run=False,
+                db_path=config.project_root / ".ll" / "history.db",
+            )
+
+        status = self._status(confidence=0, raw_confidence=None, readiness_threshold=85)
+        with patch(
+            "little_loops.cli.issues.check_readiness.readiness_status",
+            return_value=status,
+        ):
+            manager._process_issue(info)
+
+        assert "BUG-001" in manager.state_manager.state.skipped_issues
+        assert "BUG-001" not in manager.state_manager.state.failed_issues
+
+    def test_auto_corrections_annotates_gated_exclusion(
+        self, gate_routing_project: Path
+    ) -> None:
+        """BUG-3252 Part 4: the Auto-corrections line discloses how many
+        gated (never-attempted) issues were excluded from its denominator,
+        and the rate itself reflects only issues that reached Phase 1."""
+        import time as time_module
+
+        from little_loops.config import BRConfig
+        from little_loops.issue_manager import AutoManager
+
+        config = BRConfig(gate_routing_project)
+        with patch("little_loops.issue_manager.check_git_status", return_value=False):
+            manager = AutoManager(
+                config,
+                dry_run=False,
+                db_path=config.project_root / ".ll" / "history.db",
+            )
+        manager.logger = MagicMock()
+
+        # One issue reached Phase 1 and was corrected.
+        manager.state_manager.mark_completed("BUG-001", {"total": 1.0})
+        manager.state_manager.record_corrections("BUG-001", ["fixed frontmatter"])
+        # One issue never reached Phase 1 — gated before it.
+        manager.state_manager.mark_skipped(
+            "BUG-002", "no_confidence_score (never assessed)"
+        )
+        manager._gated_issue_ids.add("BUG-002")
+
+        manager._log_timing_summary(time_module.time())
+
+        info_text = " ".join(str(call.args[0]) for call in manager.logger.info.call_args_list)
+        assert "Auto-corrections: 1/1 (100.0%) (1 gated before Phase 1)" in info_text
+        assert "Skipped issues: 1" in info_text

@@ -4,7 +4,8 @@ type: BUG
 title: ll-auto confidence gate conflates an unscored issue with a zero-scored one,
   emits no remediation, and records the skip as a failure
 priority: P2
-status: open
+status: done
+completed_at: '2026-08-17T00:00:00Z'
 testable: true
 discovered_by: analyze_log
 discovered_date: '2026-08-17'
@@ -479,9 +480,11 @@ _Resolved by review, 2026-08-18:_
 
 ## Status
 
-**Open** | Created: 2026-08-17 | Priority: P2
+**Done** | Created: 2026-08-17 | Priority: P2
 
 ## Session Log
+- implementation - 2026-08-17 - Parts 1-4 implemented (`ReadinessStatus.raw_confidence`/`raw_outcome`, gated-message/remediation, `was_gated`/`mark_skipped` routing for `ll-auto` and `ll-sprint`, `Auto-corrections:` gated-count annotation); full suite green (19821 passed, 46 skipped)
+- `/ll:ready-issue` - 2026-08-18T03:58:28 - `1abb4e6b-45ee-4a0c-856b-258513d91294.jsonl`
 - supersession - 2026-08-18 - absorbed BUG-3253 as Part 4 (correction-rate annotation, zero-denominator guard, numerator/denominator symmetry invariant, new `Auto-corrections:` test); declared `supersedes: [BUG-3253]`
 - pre-implementation review (round 2) - 2026-08-18 - corrected the `_coerce_optional_int` citation (instance method on `IssueParser` at `issue_parser.py:2908`, not a module function at 2738) and added the Coercion Helper decision rule; pulled `ll-sprint`'s two dispatch sites into Part 3 scope; added `docs/reference/CLI.md:406` to Files to Modify; resolved the `failed_issues` FSM-consumer open question
 - `/ll:confidence-check` - 2026-08-18T03:03:04 - `1941922d-3eb4-4f32-8b99-167f8846ca3b.jsonl`

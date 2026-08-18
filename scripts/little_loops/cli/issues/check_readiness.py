@@ -6,7 +6,7 @@ import argparse
 import json
 import sys
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from little_loops.config import BRConfig
@@ -28,6 +28,8 @@ class ReadinessStatus:
     readiness_threshold: int
     outcome_threshold: int
     enabled: bool
+    raw_confidence: int | None = None
+    raw_outcome: int | None = None
 
     @property
     def meets_readiness(self) -> bool:
@@ -37,6 +39,17 @@ class ReadinessStatus:
     @property
     def meets_outcome(self) -> bool:
         return self.outcome >= self.outcome_threshold
+
+
+def _coerce_optional_int(raw: Any) -> int | None:
+    """Coerce a frontmatter value to int, rejecting non-digit strings.
+
+    Mirrors ``IssueParser._coerce_optional_int`` (issue_parser.py:2908) — not
+    imported from there because that method is an instance method on a class
+    this thin CLI leaf should not depend on. Correct on both `int` and `str`
+    input via `str.isdigit()`; negatives and floats coerce to None.
+    """
+    return int(raw) if raw is not None and str(raw).isdigit() else None
 
 
 def readiness_status(
@@ -84,6 +97,8 @@ def readiness_status(
         return None
 
     fm = parse_frontmatter(path.read_text(), coerce_types=True)
+    raw_confidence = _coerce_optional_int(fm.get("confidence_score"))
+    raw_outcome = _coerce_optional_int(fm.get("outcome_confidence"))
     confidence = int(fm.get("confidence_score") or 0)
     outcome_val = int(fm.get("outcome_confidence") or 0)
 
@@ -93,6 +108,8 @@ def readiness_status(
         readiness_threshold=readiness,
         outcome_threshold=outcome,
         enabled=enabled,
+        raw_confidence=raw_confidence,
+        raw_outcome=raw_outcome,
     )
 
 
