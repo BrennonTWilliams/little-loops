@@ -20,6 +20,8 @@ relates_to:
 - ENH-2933
 - ENH-2934
 - ENH-2935
+- ENH-3256
+- ENH-3257
 labels:
 - epic
 - rework
@@ -177,6 +179,10 @@ interventions begin (plus the caveat that `.ll/history.db` attribution for old
 windows depends on manual retention). "Did any of this work" is then answered
 by FEAT-2867 comparing rework windows either side of that stamp, with FEAT-2855
 supplying the maintainability dimension of the same comparison.
+- **ENH-3256** — confidence-check Criterion C credits a decision record without verifying the decision was applied (open)
+- **ENH-3257** — confidence-check fetches format-check JSON but reads only four of its gap keys (open)
+
+
 
 ## Success Metrics
 

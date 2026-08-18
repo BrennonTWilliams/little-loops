@@ -1,0 +1,11 @@
+{
+  "id": "c723cb0a-c356-4010-baf7-5884c362ad97",
+  "type": "decision",
+  "timestamp": "2026-08-18T20:49:55Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "SKILL.md:138 captures the full format-check payload; Phases 1.6/1.8 read only program_design_nonspecific, missing_behavior_parity, stale_symbol_ref, stale_cli_flag. template_placeholders/boilerplate/missing are fetched and discarded. Fix caps Criterion 4 from the existing payload, mirroring CLAIM_GAP.",
+  "rule": "Captured: confidence-check fetches format-check JSON but reads only four of its gap keys",
+  "scope": "issue",
+  "issue": "ENH-3257"
+}

@@ -13,8 +13,7 @@ relates_to:
 discovered_by: ll-issues-create
 discovered_date: '2026-08-17'
 captured_at: '2026-08-17T20:04:02Z'
-blocked_by:
-- ENH-3248
+blocked_by: []
 confidence_score: 50
 outcome_confidence: 9
 score_complexity: 9
@@ -231,9 +230,10 @@ _Added by `/ll:confidence-check` on 2026-08-17_
   satisfied) — the issue's own `## Proposed Solution` is "TBD - requires
   investigation" by design, since this is explicitly a spike-first,
   design-decision-first issue (per Scope Boundaries).
-- Hard override: `blocked_by: ENH-3248` is unresolved (status `open`, not
-  `done`/`completed`/`cancelled`). The issue's Related Issues section says
-  ENH-3248 should be "designed together" with this one.
+- ~~Hard override: `blocked_by: ENH-3248` is unresolved~~ — resolved 2026-08-18:
+  ENH-3248 is now `done`. The issue's Related Issues section still notes it
+  should have been "designed together" with this one; revisit that framing
+  against ENH-3248's actual outcome before implementing.
 
 ### Gaps to Address
 - All three Open Questions (new adversarial state vs. routable risk factors;
@@ -247,8 +247,8 @@ _Added by `/ll:confidence-check` on 2026-08-17_
 - Approach is fundamentally undetermined (three unresolved design decisions),
   so complexity, test coverage, and change surface cannot be meaningfully
   estimated from the current issue content.
-- Depends on ENH-3248's design outcome per the issue's own text, compounding
-  uncertainty until that dependency resolves.
+- Named ENH-3248's design outcome as a compounding source of uncertainty; that
+  dependency resolved 2026-08-18 when ENH-3248 reached `done`.
 
 ## Session Log
 - `/ll:spike (declined — decision ambiguity, not a mechanism risk)` - 2026-08-17T21:38:52 - `71139c18-5abb-4bd8-97d3-e9c138f42ce3.jsonl`

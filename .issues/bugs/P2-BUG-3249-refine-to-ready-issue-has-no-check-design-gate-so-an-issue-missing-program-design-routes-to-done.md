@@ -16,6 +16,13 @@ captured_at: '2026-08-17T20:04:01Z'
 blocked_by:
 - ENH-3248
 decision_needed: false
+reconcile_attempted: true
+confidence_score: 100
+outcome_confidence: 99
+score_complexity: 24
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # BUG-3249: refine-to-ready-issue has no check-design gate, so an issue missing Program Design routes to done
@@ -146,8 +153,9 @@ A parallel codebase-pattern-finder pass over the full 879-line `refine-to-ready-
 
 ### Files to Modify
 - `scripts/little_loops/loops/refine-to-ready-issue.yaml` -- new gate state; the
-  routing-summary comment block at the top (lines 4-33) must be updated in the
-  same edit, since it is the loop's only routing documentation.
+  routing-summary comment block at the top (lines 4-41, corrected from an
+  earlier pass's 4-33 after ENH-3248 landed) must be updated in the same edit,
+  since it is the loop's only routing documentation.
 
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/cli/issues/check_design.py` -- the `ll-issues
@@ -160,6 +168,19 @@ A parallel codebase-pattern-finder pass over the full 879-line `refine-to-ready-
   target** -- they are already thin shell calls over the factored predicate.
 - `skills/confidence-check/SKILL.md:141` -- the oracle already computing this
   verdict; its `PD_FAIL` output is the contract being made routable.
+
+### Tests
+
+_Wiring pass added by `/ll:wire-issue` — 2026-08-18:_
+- `scripts/tests/test_builtin_loops.py:1632` — `test_check_ac_automatable_state_routing` (class `TestRefineToReadyIssueSubLoop`, `:1366`) asserts `state.get("on_yes") == "confidence_check"` for `check_ac_automatable`. **Will break** once `check_design` is spliced into that edge — the assertion must change to `"check_design"`. [Agent 2/3 finding]
+- `scripts/tests/test_builtin_loops.py` (same class, `:1366`) — new test needed asserting `check_design`'s own routing: `action` contains `ll-issues check-design`, `evaluate.type == "exit_code"`, `on_no == "refine_followup"`, `on_error == "confidence_check"`. Follow the sibling pattern `test_check_placeholders_state_routing` (`:1645`). [Agent 3 finding]
+- `scripts/tests/test_autodev_loop.py:1034` — `TestRecheckScoresDesignGateEndToEnd` is the closest existing pattern for a behavioral regression test: it extracts a state's literal `action:` string, substitutes FSM interpolation placeholders, and runs it as a real `bash -c` subprocess against a `tmp_path` fixture project, then asserts on the exit code / side effect. The Acceptance Criteria's "regression test asserting an issue with no `## Program Design` section cannot reach the `done` terminal" should follow this shape (assert `returncode == 1` for a design-less issue) since no full-FSM-run test exists for this loop (paid host-CLI, no live-run integration coverage). [Agent 3 finding]
+- `scripts/tests/test_ll_issues_check_design.py` — reusable fixture helpers (`_stamp_gate`, `_write_issue`/`_clean_bug_body(program_design=...)`, `_invoke`) for building the new regression test's fixture issue. [Agent 3 finding]
+
+### Documentation
+
+_Wiring pass added by `/ll:wire-issue` — 2026-08-18:_
+- `docs/guides/LOOPS_REFERENCE.md` — the "Claim-verification gate chain (ENH-3031)" paragraph narrates the same gate sequence as the YAML's own routing-summary comment block (`verify_issue -> check_verify_verdict -> check_hedges -> check_ac_automatable`) and needs a clause naming `check_design` (trigger, `on_no: refine_followup` retry routing, fail-open `on_error`) to stay in sync with the YAML update already required by this issue. [Agent 2 finding]
 
 ### Codebase Research Findings
 
@@ -210,9 +231,18 @@ _Added by `/ll:refine-issue` — 2026-08-18 — based on codebase analysis:_
 
 1. `refine-to-ready-issue.yaml` contains a `check_design` state, positioned on the edge between `check_ac_automatable` (`:335-344`) and `confidence_check` (`:346-358`), so every path reaching `confidence_check` crosses it first.
 2. The gate re-derives nothing: its action is `ll-issues check-design "$ID"` with `evaluate: {type: exit_code}`; no new copy of the design predicate is added to any YAML and no `loops/lib/` fragment is introduced.
-3. `on_no` routes to `refine_followup` (`:177-191`), `on_error` routes to `confidence_check` (`:346-358`) fail-open — matching the sibling gates `check_hedges`/`check_ac_automatable`.
+3. `on_no` routes to `check_refine_limit` (`:588-608`), not directly to `refine_followup` (Decision Rationale: Option B) — this keeps the design-gap failure inside the same 1-loopback-per-run budget every other refine-triggering gate in this file shares, rather than bypassing `refine-to-ready-refine-count`. `check_refine_limit` itself then routes `on_yes` to `refine_followup` (`:197-211`) or `on_no` (budget exhausted) to `breakdown_issue`. `on_error` routes to `confidence_check` (`:346-358`) fail-open — matching the sibling gates `check_hedges`/`check_ac_automatable`.
 4. The top-of-file routing-summary comment block (`:4-33`) is updated in the same edit to include the new state, since it is the loop's only routing documentation.
 5. `ll-loop validate refine-to-ready-issue` exits 0 and `python -m pytest scripts/tests/` passes, including a regression test asserting an issue with no `## Program Design` section cannot reach the `done` terminal.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Update `scripts/tests/test_builtin_loops.py:1632` — `test_check_ac_automatable_state_routing` asserts `check_ac_automatable.on_yes == "confidence_check"`; change to `"check_design"` once the new state is spliced into that edge, or this test fails immediately.
+- Add a new routing test in `scripts/tests/test_builtin_loops.py` (class `TestRefineToReadyIssueSubLoop`, `:1366`) for `check_design`'s own `action`/`evaluate`/`on_no`/`on_error` fields, following `test_check_placeholders_state_routing` (`:1645`).
+- Add the Acceptance Criteria's regression test following the `TestRecheckScoresDesignGateEndToEnd` pattern (`scripts/tests/test_autodev_loop.py:1034`) — extract `check_design`'s literal `action:` string, run it as a subprocess against a design-less fixture issue, assert `returncode == 1`.
+- Update `docs/guides/LOOPS_REFERENCE.md`'s "Claim-verification gate chain (ENH-3031)" paragraph to name `check_design` alongside the YAML routing-summary comment block update.
 
 ## Impact
 
@@ -304,6 +334,10 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-18T20:51:54 - `5491b59e-a6c5-4a45-b4ed-cd1561ccc8e0.jsonl`
+- `/ll:reconcile-issue` - 2026-08-18T20:47:58 - `24073cc9-e549-4e9d-bf50-aad174e84958.jsonl`
+- `/ll:confidence-check` - 2026-08-18T20:38:56 - `44a85abf-b40c-4da8-961d-a5effae2f301.jsonl`
+- `/ll:wire-issue` - 2026-08-18T20:33:34 - `6de622c4-679f-4103-85dd-6052cd306b1b.jsonl`
 - `/ll:decide-issue` - 2026-08-18T20:26:10 - `1c813b5d-37f0-4a50-81e2-6e9078893ccd.jsonl`
 - `/ll:refine-issue` - 2026-08-18T20:21:06 - `c090f4bd-e3d2-4c82-bae4-0b85177735d3.jsonl`
 - `/ll:refine-issue` - 2026-08-18T14:52:51 - `1b75a5d5-cd19-4f54-9db4-f0438e3206cc.jsonl`

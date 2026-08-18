@@ -1,0 +1,11 @@
+{
+  "id": "839f4332-292f-496c-afc9-6d2c2833498d",
+  "type": "decision",
+  "timestamp": "2026-08-18T20:49:55Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Criterion C (rubric.md:311) awards top marks for a fully-specified single approach but never checks the selected option propagated into Proposed Solution / Program Design / AC. BUG-3249 scored score_ambiguity 25 with five sections still specifying the rejected option.",
+  "rule": "Captured: confidence-check Criterion C credits a decision record without verifying the decision was applied",
+  "scope": "issue",
+  "issue": "ENH-3256"
+}
