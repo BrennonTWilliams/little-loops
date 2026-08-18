@@ -4,11 +4,12 @@ type: ENH
 title: action_complete events omit state and iteration alongside session_jsonl so
   transcripts are unlabeled
 priority: P4
-status: open
+status: done
 testable: true
 discovered_by: ll-issues-create
 discovered_date: '2026-08-17'
 captured_at: '2026-08-17T18:23:48Z'
+completed_at: '2026-08-18T02:54:55Z'
 confidence_score: 100
 outcome_confidence: 88
 score_complexity: 20
@@ -449,6 +450,8 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-18T02:54:38 - `8cd0f621-1688-4e01-993b-3c9392753392.jsonl`
+- `/ll:ready-issue` - 2026-08-18T02:35:55 - `905167ed-f948-4d3f-b4d8-e8c72f34100e.jsonl`
 - `/ll:confidence-check` - 2026-08-18T02:34:22 - `03772c9c-53ba-4e89-aaef-c80c30ba01c3.jsonl`
 - `/ll:confidence-check` - 2026-08-18T01:47:30 - `45517e10-4dcf-4cdb-ac90-c8175e3464a2.jsonl`
 - `/ll:refine-issue` - 2026-08-18T01:43:40 - `b1fcbc27-6cc0-4f61-afba-f89fc37a602f.jsonl`

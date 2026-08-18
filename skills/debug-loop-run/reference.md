@@ -14,7 +14,7 @@ type) and `"ts"` (ISO 8601 timestamp) plus the type-specific fields below:
 | Event type | Key fields |
 |---|---|
 | `state_enter` | `state` (str), `iteration` (int) |
-| `action_complete` | `exit_code` (int), `duration_ms` (int), `is_prompt` (bool) |
+| `action_complete` | `exit_code` (int), `duration_ms` (int), `is_prompt` (bool), `state` (str, ENH-3240 — absent on runs archived before this field was added; fall back to the most recent `state_enter.state`), `iteration` (int, same caveat) |
 | `evaluate` | `verdict` (str: pass/fail/continue/retry/error), `reason` (str, optional) |
 | `route` | `from` (str), `to` (str) |
 | `retry_exhausted` | `state` (str), `retries` (int), `next` (str) |
@@ -39,8 +39,10 @@ splatted via `**result.details` in `executor.py::_evaluate`. There is no
 ## Signal Rules (Step 3)
 
 Scan the event list and classify signals using the rules below. Group events by
-`state` (use the most recent `state_enter.state` before each `action_complete`
-or `evaluate` to track which state each event belongs to).
+`state` — prefer `action_complete`'s own `state` field (ENH-3240) when present;
+fall back to the most recent `state_enter.state` before each `action_complete`
+or `evaluate` for runs archived before that field was added, and always for
+`evaluate` (which never carries `state` directly).
 
 ### BUG — Action failure (exit_code ≠ 0)
 - Trigger: `action_complete` events where `exit_code != 0` AND `is_prompt == false`, grouped by state — **3 or more occurrences** on the same state

@@ -178,10 +178,12 @@ def audit_run(run_dir: Path, max_steps: int | None = None) -> RunAuditStats:
     """Compute deterministic counters for a single archived loop run.
 
     Reuses the event-stream access patterns of `ll-loop history`/`audit-meta`:
-    defensive per-line JSONL parsing, and the `state_enter`-tracking
-    correlation technique from `analytics/variance.py::_correlate_verdicts`
-    to attribute `action_complete`/`evaluate` events to the state active when
-    they fired (neither event type carries its own `state` field).
+    defensive per-line JSONL parsing. `action_complete` events emitted after
+    ENH-3240 carry their own `state` field and are attributed directly; older
+    archived runs lack that field, so the `state_enter`-tracking correlation
+    technique from `analytics/variance.py::_correlate_verdicts` is retained as
+    a fallback for those. `evaluate` events never carry `state` and are always
+    attributed via correlation.
     """
     events = _read_events(run_dir)
     state_data = _read_json_file(run_dir / "state.json") or {}
@@ -210,8 +212,12 @@ def audit_run(run_dir: Path, max_steps: int | None = None) -> RunAuditStats:
                 per_state.setdefault(current_state, StateStats()).entries += 1
         elif ev_type == "action_complete":
             tool_call_count += 1
-            if current_state:
-                stats = per_state.setdefault(current_state, StateStats())
+            # ENH-3240: prefer the event's own `state`, falling back to the
+            # state_enter-tracked value for runs archived before this field
+            # was added.
+            action_state = event.get("state") or current_state
+            if action_state:
+                stats = per_state.setdefault(action_state, StateStats())
                 stats.actions_complete += 1
                 stats.duration_s += (event.get("duration_ms") or 0) / 1000.0
         elif ev_type == "evaluate":

@@ -270,6 +270,11 @@ class ActionCompleteVariant(DESVariant):
     type: Literal["action_complete"] = "action_complete"
     exit_code: int = 0
     duration_ms: int = 0
+    state: str | None = None
+    iteration: int | None = None
+    stderr_preview: str | None = None
+    effort: str | None = None
+    is_batch: bool = False
 
 
 @dataclass(frozen=True)

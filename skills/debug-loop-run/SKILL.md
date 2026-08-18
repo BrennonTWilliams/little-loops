@@ -139,16 +139,18 @@ For each match, emit a Signal 3 entry into `static_issues`:
 **Parse the events** into a structured list for classification. Each event has
 `"event"` (the type) and `"ts"` (timestamp) plus type-specific fields — e.g.
 `state_enter` carries `state`/`iteration`, `action_complete` carries
-`exit_code`/`duration_ms`/`is_prompt`, `loop_complete` carries
-`terminated_by`/`final_state`/`iterations`, and `rate_limit_waiting` carries
-`state`/`elapsed_seconds`/`budget_seconds`/`tier`. See [reference.md](reference.md)
-for the full event-type field table (all event types and their key fields).
+`exit_code`/`duration_ms`/`is_prompt`/`state`/`iteration` (the latter two per
+ENH-3240, absent on runs archived before that field was added), `loop_complete`
+carries `terminated_by`/`final_state`/`iterations`, and `rate_limit_waiting`
+carries `state`/`elapsed_seconds`/`budget_seconds`/`tier`. See
+[reference.md](reference.md) for the full event-type field table (all event
+types and their key fields).
 
 ---
 
 ## Step 3: Classify Issue Signals
 
-Scan the event list and classify signals using the rules below. Group events by `state` (use the most recent `state_enter.state` before each `action_complete` or `evaluate` to track which state each event belongs to).
+Scan the event list and classify signals using the rules below. Group events by `state` — prefer `action_complete`'s own `state` field (ENH-3240) when present; fall back to the most recent `state_enter.state` before each `action_complete` or `evaluate` for archived-run compatibility, and always for `evaluate` (which never carries `state` directly).
 
 ### Signal Rules
 

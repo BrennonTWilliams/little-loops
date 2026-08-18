@@ -10721,6 +10721,77 @@ class TestObservedEffortFromSessionJsonl:
         assert "effort" not in completes[0]
 
 
+class TestActionCompleteStateIterationLabel:
+    """ENH-3240: action_complete events carry state/iteration for direct
+    transcript attribution, without a timestamp join against usage.jsonl."""
+
+    def _mixed_fsm(self) -> FSMLoop:
+        return FSMLoop(
+            name="test",
+            initial="shell_step",
+            states={
+                "shell_step": StateConfig(action="echo hi", next="prompt_step"),
+                "prompt_step": StateConfig(action="Say hi", action_type="prompt", next="done"),
+                "done": StateConfig(terminal=True),
+            },
+        )
+
+    def _run_and_collect(self, fsm: FSMLoop, runner: Any) -> list[dict[str, Any]]:
+        events: list[dict[str, Any]] = []
+        executor = FSMExecutor(fsm, event_callback=events.append, action_runner=runner)
+        executor.run()
+        return [e for e in events if e["event"] == "action_complete"]
+
+    def test_every_action_complete_carries_state_and_iteration(self) -> None:
+        """Prompt and shell action_complete events alike name their state."""
+        fsm = self._mixed_fsm()
+        runner = MockActionRunner()
+        runner.always_return(output="hi", exit_code=0)
+
+        completes = self._run_and_collect(fsm, runner)
+
+        assert len(completes) == 2
+        assert all("state" in e for e in completes)
+        assert all("iteration" in e for e in completes)
+
+    def test_prompt_state_action_complete_names_its_state(self) -> None:
+        """A prompt-state action's event names the state that produced it."""
+        fsm = self._mixed_fsm()
+        runner = MockActionRunner()
+        runner.always_return(output="hi", exit_code=0)
+
+        completes = self._run_and_collect(fsm, runner)
+        prompt_complete = next(e for e in completes if e.get("is_prompt"))
+
+        assert prompt_complete["state"] == "prompt_step"
+
+    def test_state_and_iteration_match_usage_events_collection(self) -> None:
+        """The labeled state/iteration match what is collected for usage.jsonl
+        at the same emit site (fsm/executor.py `_usage_events_collected`)."""
+        usage = TokenUsage(
+            input_tokens=100,
+            output_tokens=50,
+            cache_read_tokens=10,
+            cache_creation_tokens=5,
+            model="claude-sonnet-5",
+        )
+        fsm = self._mixed_fsm()
+        runner = MockActionRunner()
+        runner.always_return(output="hi", exit_code=0, usage_events=[usage])
+
+        events: list[dict[str, Any]] = []
+        executor = FSMExecutor(fsm, event_callback=events.append, action_runner=runner)
+        executor.run()
+
+        prompt_complete = next(
+            e for e in events if e["event"] == "action_complete" and e.get("is_prompt")
+        )
+        collected_states = [state for state, _usage in executor._usage_events_collected]
+
+        assert prompt_complete["state"] in collected_states
+        assert prompt_complete["iteration"] is not None
+
+
 class TestRequestPathDispatchWiring:
     """FEAT-2716: request_path == 'sdk'/'batch' branches before action_runner.run()."""
 

@@ -2302,6 +2302,12 @@ class FSMExecutor:
             "output_preview": preview,
             "stderr_preview": stderr_preview or None,
             "is_prompt": action_mode == "prompt",
+            # ENH-3240: label every action_complete (prompt, shell, and mcp
+            # alike) with the state/iteration that produced it, so transcripts
+            # recorded via session_jsonl (prompt-only, below) can be attributed
+            # without a timestamp join against usage.jsonl.
+            "state": self.current_state,
+            "iteration": self.iteration,
         }
         if action_mode == "prompt":
             session_jsonl = get_current_session_jsonl()

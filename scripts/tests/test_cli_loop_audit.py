@@ -100,6 +100,45 @@ class TestAuditRun:
         assert stats.terminated_by == "terminal"
         assert stats.failure_terminal is False
 
+    def test_counters_match_events_with_direct_state_field(self, tmp_path: Path) -> None:
+        """ENH-3240: action_complete events carrying their own `state` field are
+        attributed directly, without relying on state_enter correlation."""
+        loops_dir = tmp_path / ".loops"
+        events = [
+            {"event": "state_enter", "state": "step1", "ts": "2026-01-01T00:00:00Z"},
+            {
+                "event": "action_complete",
+                "exit_code": 0,
+                "duration_ms": 1000,
+                "state": "step1",
+                "iteration": 1,
+            },
+            {"event": "state_enter", "state": "step2", "ts": "2026-01-01T00:00:02Z"},
+            {
+                "event": "action_complete",
+                "exit_code": 0,
+                "duration_ms": 2000,
+                "state": "step2",
+                "iteration": 2,
+            },
+            {"event": "evaluate", "type": "exit_code", "verdict": "yes"},
+            {
+                "event": "loop_complete",
+                "terminated_by": "terminal",
+                "failure_terminal": False,
+                "iterations": 3,
+            },
+        ]
+        run_dir = _write_run(loops_dir, "2026-01-01T000000", "mytest", events)
+
+        stats = audit_run(run_dir, max_steps=10)
+
+        assert stats.tool_call_count == 2
+        assert stats.per_state["step1"].actions_complete == 1
+        assert stats.per_state["step1"].duration_s == pytest.approx(1.0)
+        assert stats.per_state["step2"].actions_complete == 1
+        assert stats.per_state["step2"].duration_s == pytest.approx(2.0)
+
     def test_diff_stall_detected(self, tmp_path: Path) -> None:
         loops_dir = tmp_path / ".loops"
         events = [

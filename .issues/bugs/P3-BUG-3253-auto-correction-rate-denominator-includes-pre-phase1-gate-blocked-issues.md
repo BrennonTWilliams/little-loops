@@ -19,7 +19,7 @@ score_complexity: 18
 score_test_coverage: 12
 score_ambiguity: 10
 score_change_surface: 20
-decision_needed: true
+decision_needed: false
 ---
 
 # BUG-3253: Auto-correction rate denominator includes issues blocked before Phase 1 ever ran
@@ -156,9 +156,31 @@ _Added by `/ll:refine-issue` — 2026-08-18 — based on codebase analysis:_
 
 **Option B**: Standalone `_is_pre_phase1_gate_failure(reason: str) -> bool` predicate filtering the denominator on `failure_reason` string prefixes, applied at both `issue_manager.py:1973` and `parallel/orchestrator.py:1653`. Fallback if BUG-3252 is not being worked; introduces a string-matching classification pattern with no existing precedent in this codebase.
 
+> **Selected:** Option B — the only route that satisfies the issue's own "apply to both call sites regardless" requirement without depending on infrastructure the parallel path doesn't have. See Decision Rationale below.
+
 **Option C**: Route the three pre-Phase-1 gate branches through the existing `mark_skipped()`/`skipped_issues` mechanism instead of `mark_failed()`/`failed_issues` — add a new `IssueProcessingResult` boolean field (e.g. `was_gated: bool = False`) alongside `was_blocked`/`plan_created`, set it on the confidence-gate and learning-gate `_stamped_result(...)` returns, and add a matching `elif result.was_gated: mark_skipped(...)` arm to the dispatch chain (`issue_manager.py:2105-2123`), mirroring the BUG-3005 precedent already in force for `was_blocked`/`plan_created`. `_log_timing_summary`'s `total_issues = len(state.completed_issues) + len(state.failed_issues)` then excludes gated issues automatically, with zero string-matching and no dependency on BUG-3252. The parallel path (`parallel/orchestrator.py:1653`, `worker_pool.py`) has no `was_blocked`-equivalent skip-routing infrastructure today (per this issue's existing Codebase Research Findings above) — extending Option C there is a larger, structurally distinct change than mirroring it in the sequential path.
 
 **Recommended**: Option C for the sequential path (`issue_manager.py`) — it reuses an existing, already-tested mechanism (`mark_skipped`, `skipped_issues`, the BUG-3005 dispatch precedent) rather than introducing a new classification pattern (Option B) or a cross-issue dependency (Option A). The parallel path (`orchestrator.py:1653`) needs its own decision separately, since it lacks the `was_blocked`-equivalent skip-routing infrastructure Option C depends on — see Open Questions.
+
+> Superseded by `/ll:decide-issue` below — Option C's specified scope (confidence gate + all three learning-gate verdicts) was found to reintroduce a correctness bug of its own; see Decision Rationale.
+
+### Decision Rationale
+
+**Selected: Option B** — standalone `_is_pre_phase1_gate_failure(reason: str) -> bool` predicate, applied identically at both `issue_manager.py:1973` and `parallel/orchestrator.py:1653`.
+
+`/ll:decide-issue` spawned one `ll:codebase-pattern-finder` agent per option to independently verify feasibility against current codebase state:
+
+- **Option A is currently a no-op, not a deferral to a ready mechanism.** BUG-3252 (`status: open`) has no implementation session in its Session Log, and none of the field names its Program Design section specifies (`was_gated`, `confidence_present`, `raw_confidence`) appear anywhere under `scripts/little_loops/`. The confidence gate still falls through to `mark_failed` today (`issue_manager.py:2122-2123`) regardless of BUG-3252's status — Option A does not fix this bug, it waits for a different issue to.
+- **Option C — as specified — has a correctness defect of its own.** Its stated scope sets `was_gated` on the confidence gate *and* all three learning-gate verdict branches. But this issue's own Codebase Research Findings (above) establish that the learning gate runs *after* Phase 1 (`/ll:ready-issue`) already completed — a learning-gate-blocked issue had the opportunity to be corrected and should stay in the denominator per this issue's own Expected Behavior ("issues that actually ran `/ll:ready-issue`"). Routing it to `skipped_issues` instead removes it from `total_issues` while its Phase-1 corrections still land unconditionally in `state.corrections`, producing bugs like `"Auto-corrections: 1/0 (0.0%)"` for a single learning-gate-blocked-after-correction run — the same class of denominator bias this issue is fixing, in the opposite direction. Confining `was_gated` to the confidence-gate return alone would avoid this, but that is a narrower change than Option C as written. Separately, Option C's dispatch-chain mechanism has no equivalent in `parallel/orchestrator.py` (no `was_blocked`-style skip routing exists there), so it cannot satisfy this issue's own Decision Rule ("Apply the same fix to `parallel/orchestrator.py:1653` regardless — the two summary blocks are near-duplicates and should not diverge") without a second, structurally distinct effort.
+- **Option B satisfies the two-call-site requirement directly.** A string-classification predicate works identically at both `issue_manager.py:1973` and `parallel/orchestrator.py:1653`, regardless of how differently the two paths currently route their gate outcomes internally — it needs no shared dispatch infrastructure between the two modules (confirmed: neither currently imports the other, and no shared `metrics.py`/`summary.py`-style module exists). Of the four `failure_reason` strings it would match, three (all three learning-gate verdicts) are fully static literals with no interpolation, and the fourth (confidence gate) has a stable literal prefix (`below_readiness_threshold`) followed only by interpolated numeric data — a prefix match is stable against it. It also avoids inserting a new arm into `issue_manager.py`'s heavily `MagicMock`-exercised `AutoManager.run()` dispatch chain, where several existing tests use bare (non-`spec`'d) mocks that would need auditing if a new attribute-checked field were added there.
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|---|---|---|---|---|---|
+| A — consume BUG-3252's bucket | 1 | 1 | 0 | 0 | 2/12 |
+| B — standalone predicate | 2 | 3 | 3 | 2 | 10/12 |
+| C — `was_gated` + `mark_skipped` | 2 | 1 | 1 | 1 | 5/12 |
+
+Key evidence: BUG-3252 (`.issues/bugs/P2-BUG-3252-*.md`) status `open`, no implementation session; `issue_manager.py:639-655` (`IssueProcessingResult`, no `was_gated` field today); `issue_manager.py:2105-2123` (dispatch chain); `issue_manager.py:1159-1207` (learning-gate verdict strings, all static); `issue_manager.py:827-834` (confidence-gate string, static prefix + interpolated suffix); `test_issue_manager.py:5542` (exact-equality test on the confidence-gate string); `test_issue_manager.py:3563-3699,3967-3976` (bare-`MagicMock`-based `AutoManager.run()` tests that don't `spec=IssueProcessingResult`).
 
 ## Program Design
 
@@ -245,6 +267,7 @@ _(none — no format-check, program-design, or dependency gate gaps found)_
 **Open** | Created: 2026-08-17 | Priority: P3
 
 ## Session Log
+- `/ll:decide-issue` - 2026-08-18T02:40:03 - `8cd0f621-1688-4e01-993b-3c9392753392.jsonl`
 - `/ll:refine-issue` - 2026-08-18T02:33:23 - `0595427a-e046-4320-9ff8-afb689cf611c.jsonl`
 - `/ll:confidence-check` - 2026-08-18T01:57:01 - `22c6cfbd-e81b-49b4-b781-b4588a9711ab.jsonl`
 - `/ll:reconcile-issue` - 2026-08-18T01:53:03 - `06441b6f-0a06-4067-9c07-e33e815934ec.jsonl`

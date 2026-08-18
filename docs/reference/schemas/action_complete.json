@@ -66,6 +66,29 @@
     "model": {
       "type": "string",
       "description": "Model ID reported by the host CLI (prompt/slash_command only)"
+    },
+    "state": {
+      "type": "string",
+      "description": "FSM state whose action produced this event (ENH-3240; absent on archived runs and on the non-FSM ll-action emitter)"
+    },
+    "iteration": {
+      "type": "integer",
+      "description": "Executor step count when this action ran (ENH-3240; absent on archived runs and on the non-FSM ll-action emitter)"
+    },
+    "stderr_preview": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Short preview of stderr output, null if none (ENH-2469)"
+    },
+    "effort": {
+      "type": "string",
+      "description": "Reasoning effort level applied (prompt actions only, ENH-2885)"
+    },
+    "is_batch": {
+      "type": "boolean",
+      "description": "True if the host CLI invocation was a batch request (FEAT-2716)"
     }
   },
   "additionalProperties": true

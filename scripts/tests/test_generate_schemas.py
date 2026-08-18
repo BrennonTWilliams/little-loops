@@ -169,6 +169,15 @@ class TestGenerateSchemas:
         assert "model" in props
         # Token fields are optional (not in required)
         assert "input_tokens" not in data.get("required", [])
+        # ENH-3240: state/iteration labeling, and pre-existing drift closure
+        # for already-emitted-but-undeclared fields.
+        assert "state" in props
+        assert "iteration" in props
+        assert "stderr_preview" in props
+        assert "effort" in props
+        assert "is_batch" in props
+        assert "state" not in data.get("required", [])
+        assert "iteration" not in data.get("required", [])
 
     def test_loop_start_schema_id_format(self, tmp_path: Path) -> None:
         """$id uses little-loops://event-<type>.json format."""

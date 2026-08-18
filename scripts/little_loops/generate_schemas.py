@@ -152,6 +152,19 @@ SCHEMA_DEFINITIONS: dict[str, dict[str, Any]] = {
                 "Cache creation tokens written (prompt/slash_command only)"
             ),
             "model": _str("Model ID reported by the host CLI (prompt/slash_command only)"),
+            "state": _str(
+                "FSM state whose action produced this event (ENH-3240; absent on "
+                "archived runs and on the non-FSM ll-action emitter)"
+            ),
+            "iteration": _int(
+                "Executor step count when this action ran (ENH-3240; absent on "
+                "archived runs and on the non-FSM ll-action emitter)"
+            ),
+            "stderr_preview": _nullable_str(
+                "Short preview of stderr output, null if none (ENH-2469)"
+            ),
+            "effort": _str("Reasoning effort level applied (prompt actions only, ENH-2885)"),
+            "is_batch": _bool("True if the host CLI invocation was a batch request (FEAT-2716)"),
         },
         ["exit_code", "duration_ms", "is_prompt"],
     ),
