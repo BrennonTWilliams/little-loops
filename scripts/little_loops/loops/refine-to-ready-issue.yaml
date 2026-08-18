@@ -21,8 +21,10 @@ category: issue-management
 #     check_placeholders (ENH-3248: template_placeholders class, count via
 #     --format json; no counter, no normalize_structure loopback)      → (on_yes) check_ac_automatable
 #                                                                       → (on_no)  check_refine_limit
-#     check_ac_automatable (ll-issues check-acceptance-criteria)  → (on_yes) confidence_check
+#     check_ac_automatable (ll-issues check-acceptance-criteria)  → (on_yes) check_design (BUG-3249)
 #                                                                  → (on_no)  check_reconcile_limit (ENH-3248; was check_refine_limit)
+#     check_design (BUG-3249: ll-issues check-design)              → (on_yes) confidence_check
+#                                                                    → (on_no)  check_refine_limit
 #     check_reconcile_limit (ENH-3248: 1 reconcile attempt/run)   → (on_yes, 1st) reconcile_issue → normalize_structure
 #                                                                  → (on_no, 2nd)  check_refine_limit
 #   confidence_check (oracle: verify-confidence-scores) → (on_success) check_readiness → (on_yes) check_outcome → (on_yes) done
@@ -402,9 +404,21 @@ states:
     # prevent — no rubric axis can see it.
     action: "ll-issues check-acceptance-criteria ${captured.issue_id.output}"
     fragment: shell_exit
-    on_yes: confidence_check
+    on_yes: check_design
     on_no: check_reconcile_limit  # ENH-3248: ACs are inside reconcile's rewrite scope
     on_error: confidence_check
+
+  check_design:
+    # BUG-3249: the Program Design gate (ENH-2967's design_gate_failed(),
+    # already exposed as `ll-issues check-design`) was never wired into this
+    # loop, so an issue with no `## Program Design` section could reach
+    # `done`. Pure shell, no new predicate copy: reuses the same CLI the
+    # sibling autodev.yaml loop already calls at three sites.
+    action: "ll-issues check-design ${captured.issue_id.output}"
+    fragment: shell_exit
+    on_yes: confidence_check
+    on_no: check_refine_limit  # Decision Rationale: Option B — shares the same 1-loopback-per-run budget as the other refine-triggering gates, rather than bypassing check_refine_limit's counter to reach refine_followup directly.
+    on_error: confidence_check  # fail-open, matching check_hedges / check_ac_automatable
 
   check_reconcile_limit:
     # ENH-3248: bounds the reconcile_issue rung — independent, scoped counter

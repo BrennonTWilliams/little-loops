@@ -4,7 +4,7 @@ type: BUG
 title: refine-to-ready-issue has no check-design gate, so an issue missing Program
   Design routes to done
 priority: P2
-status: open
+status: done
 testable: true
 relates_to:
 - ENH-3250
@@ -13,6 +13,7 @@ relates_to:
 discovered_by: ll-issues-create
 discovered_date: '2026-08-17'
 captured_at: '2026-08-17T20:04:01Z'
+completed_at: '2026-08-18T22:25:07Z'
 blocked_by:
 - ENH-3248
 decision_needed: false
@@ -70,9 +71,29 @@ A run that ends `done` implies `ll-issues check-design <ID>` exits 0. When the
 design gate fails, the loop spends its unused refine budget instead of
 terminating.
 
+## Steps to Reproduce
+
+1. Have an issue whose `## Program Design` section is missing, empty, or
+   non-specific enough that `ll-issues check-design <ID>` exits 1 (e.g.
+   BUG-3243 before its Program Design section was filled).
+2. Run `ll-loop run refine-to-ready-issue <ID>`.
+3. Observe the run reaches the `done` terminal (e.g. 16 iterations / 17m49s /
+   ~$1.47 on BUG-3243).
+4. Run `ll-issues check-design <ID>` and `ll-issues format-check <ID>` against
+   the same issue — both report the Program Design gate still failing /
+   `## Program Design` still missing, despite the loop having already declared
+   the issue `done`.
+
 ## Motivation
 
-[Why this issue matters - business value, user impact, technical debt cost]
+Issues that reach `done` without a real `## Program Design` section carry that
+gap forward into implementation: `/ll:manage-issue` and downstream automation
+treat `done` as "ready to build," so under-specified design work gets picked
+up and iterated on with no signal that it was ever missing. The gate that
+would catch this already exists (`ll-issues check-design`, ENH-2967) and is
+already wired into the sibling `autodev.yaml` loop — `refine-to-ready-issue`
+is simply missing the one state that calls it, which is why this surfaced on a
+real run (BUG-3243) rather than only in theory.
 
 ## Proposed Solution
 
@@ -246,10 +267,10 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ## Impact
 
-- **Priority**: [P0-P5] - [Justification]
-- **Effort**: [Small/Medium/Large] - [Justification]
-- **Risk**: [Low/Medium/High] - [Justification]
-- **Breaking Change**: [Yes/No]
+- **Priority**: P2 - loops can silently mark design-incomplete issues `done`, but this doesn't corrupt data or block other work; it's a quality gap in an internal tool.
+- **Effort**: Small - a one-line `action_type: shell` gate plus routing-summary comment and test updates; no new predicate or CLI (ENH-2967 already factored `design_gate_failed()`/`ll-issues check-design`).
+- **Risk**: Low - fails open on error (matches sibling gates `check_hedges`/`check_ac_automatable`) and is scoped to a single loop file; routes through the existing `check_refine_limit` budget rather than adding a new uncounted retry path.
+- **Breaking Change**: No - additive gate; issues that already pass `check-design` are unaffected.
 
 ## Root Cause
 
@@ -277,19 +298,19 @@ try and fail -- it was never given a reason to iterate.
 
 ## Acceptance Criteria
 
-- [ ] `refine-to-ready-issue.yaml` contains a state invoking `ll-issues
+- [x] `refine-to-ready-issue.yaml` contains a state invoking `ll-issues
       check-design`, positioned so every path to `confidence_check` crosses it.
-- [ ] An issue with no `## Program Design` section cannot reach the `done`
+- [x] An issue with no `## Program Design` section cannot reach the `done`
       terminal; it routes into ENH-3248's remedy ladder at the **refine** rung
       (`refine_followup`), not at `normalize_structure` or `reconcile_issue`.
-- [ ] The gate re-derives nothing: it shells out to `ll-issues check-design` and
+- [x] The gate re-derives nothing: it shells out to `ll-issues check-design` and
       routes on exit code. No new copy of the `DESIGN_FAIL` predicate is added
       to any YAML, and no `loops/lib/` fragment is introduced (ENH-2967 already
       factored this).
-- [ ] The gate fails open on error, matching `check_hedges` /
+- [x] The gate fails open on error, matching `check_hedges` /
       `check_ac_automatable`.
-- [ ] `ll-loop validate refine-to-ready-issue` exits 0.
-- [ ] `python -m pytest scripts/tests/` exits 0.
+- [x] `ll-loop validate refine-to-ready-issue` exits 0.
+- [x] `python -m pytest scripts/tests/` exits 0.
 
 ## Notes
 
@@ -334,6 +355,8 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-18T22:24:27 - `28115056-f36d-4c68-80e6-5e31b1cbeab9.jsonl`
+- `/ll:ready-issue` - 2026-08-18T22:15:19 - `aa6be034-4a78-4c91-88d7-1a3f677b6dfa.jsonl`
 - `/ll:confidence-check` - 2026-08-18T20:51:54 - `5491b59e-a6c5-4a45-b4ed-cd1561ccc8e0.jsonl`
 - `/ll:reconcile-issue` - 2026-08-18T20:47:58 - `24073cc9-e549-4e9d-bf50-aad174e84958.jsonl`
 - `/ll:confidence-check` - 2026-08-18T20:38:56 - `44a85abf-b40c-4da8-961d-a5effae2f301.jsonl`

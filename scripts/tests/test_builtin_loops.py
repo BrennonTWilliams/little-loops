@@ -1634,12 +1634,99 @@ class TestRefineToReadyIssueSubLoop:
         are inside reconcile's rewrite scope, retargeted from check_refine_limit)."""
         state = data["states"].get("check_ac_automatable", {})
         assert state, "State 'check_ac_automatable' not found (ENH-3031)"
-        assert state.get("on_yes") == "confidence_check", (
-            f"check_ac_automatable.on_yes should be 'confidence_check', got {state.get('on_yes')!r}"
+        assert state.get("on_yes") == "check_design", (
+            f"check_ac_automatable.on_yes should be 'check_design' (BUG-3249), got {state.get('on_yes')!r}"
         )
         assert state.get("on_no") == "check_reconcile_limit", (
             f"check_ac_automatable.on_no should be 'check_reconcile_limit' (ENH-3248), "
             f"got {state.get('on_no')!r}"
+        )
+
+    def test_check_design_state_routing(self, data: dict) -> None:
+        """check_design (BUG-3249) gates the Program Design section: on_yes proceeds to
+        confidence_check, on_no escalates to check_refine_limit (Decision Rationale Option B
+        — shares the existing 1-loopback-per-run budget rather than bypassing it to reach
+        refine_followup directly), on_error fails open to confidence_check."""
+        state = data["states"].get("check_design", {})
+        assert state, "State 'check_design' not found (BUG-3249)"
+        action = state.get("action", "")
+        assert "ll-issues check-design" in action, (
+            f"check_design.action should call 'll-issues check-design', got {action!r}"
+        )
+        assert state.get("on_yes") == "confidence_check", (
+            f"check_design.on_yes should be 'confidence_check', got {state.get('on_yes')!r}"
+        )
+        assert state.get("on_no") == "check_refine_limit", (
+            f"check_design.on_no should be 'check_refine_limit', got {state.get('on_no')!r}"
+        )
+        assert state.get("on_error") == "confidence_check", (
+            f"check_design.on_error should be 'confidence_check' (fail-open), "
+            f"got {state.get('on_error')!r}"
+        )
+
+    def test_check_design_gate_blocks_design_less_issue(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        """BUG-3249 regression: an issue with no `## Program Design` section must fail
+        check_design's real `ll-issues check-design` subprocess call (returncode == 1),
+        following the TestRecheckScoresDesignGateEndToEnd pattern (test_autodev_loop.py) —
+        extract the literal action, run it as a real subprocess against a fixture project."""
+        action = data["states"]["check_design"]["action"]
+        script = action.replace("${captured.issue_id.output}", "BUG-9700")
+
+        issues_dir = tmp_path / ".issues" / "bugs"
+        issues_dir.mkdir(parents=True)
+        (issues_dir / "P3-BUG-9700-test-bug.md").write_text(
+            "\n".join(
+                [
+                    "---",
+                    "id: BUG-9700",
+                    "status: open",
+                    "discovered_date: 2026-07-20",
+                    "---",
+                    "",
+                    "# BUG-9700: Something broke",
+                    "",
+                    "## Summary",
+                    "The widget explodes when the input is empty.",
+                    "",
+                    "## Steps to Reproduce",
+                    "1. Open the widget\n2. Submit an empty form",
+                    "",
+                    "## Current Behavior",
+                    "It explodes.",
+                    "",
+                    "## Expected Behavior",
+                    "It should not break.",
+                    "",
+                    "## Actual Behavior",
+                    "It breaks loudly.",
+                    "",
+                    "## Impact",
+                    "- **Priority**: P3 - Minor annoyance for a rare input.",
+                    "",
+                    "## Status",
+                    "**Open** | Created: 2026-07-20 | Priority: P3",
+                    "",
+                ]
+            ),
+            encoding="utf-8",
+        )
+        ll_dir = tmp_path / ".ll"
+        ll_dir.mkdir()
+        (ll_dir / "program-design-cutover.json").write_text(
+            json.dumps({"sha": "0" * 40, "date": "2026-07-01"}), encoding="utf-8"
+        )
+
+        result = subprocess.run(
+            ["bash", "-c", script],
+            cwd=str(tmp_path),
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 1, (
+            f"check_design's action should exit 1 for a design-less issue, "
+            f"got {result.returncode} (stdout={result.stdout!r}, stderr={result.stderr!r})"
         )
 
     def test_check_placeholders_state_routing(self, data: dict) -> None:
