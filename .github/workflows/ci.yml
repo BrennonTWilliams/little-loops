@@ -89,6 +89,13 @@ jobs:
           # exactly the silent-skip class we must not let through.
           .venv/bin/python -c "import pytest, pytest_cov, xdist, pytest_timeout, syrupy, hypothesis; print('dev deps verified')"
 
+      - name: Log resolved test-dep versions (runtime ≠ install-time)
+        # Closes the install-time vs runtime gap: the pin shape is verified at
+        # install (cold-resolve), but only `pip show` confirms what actually
+        # landed in the venv at execution time — the axis BUG-3208 depends on.
+        run: |
+          .venv/bin/python -m pip show pytest pytest-xdist pytest-timeout 2>/dev/null | grep -E "^(Name|Version):"
+
       - name: Run unit tests (exclude integration + conformance)
         # `tee` mirrors pytest output to `pytest.log` for upload without
         # buffering the streamed CI log (which would break live-progress in
