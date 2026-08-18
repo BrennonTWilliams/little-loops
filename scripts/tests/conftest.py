@@ -5,11 +5,14 @@ from __future__ import annotations
 import itertools
 import json
 import os
+import sys
 import tempfile
+import time
 from collections.abc import Callable, Generator
 from pathlib import Path
 from typing import Any
 
+import httpx
 import pytest
 from hypothesis import settings as _hypothesis_settings
 
@@ -760,3 +763,206 @@ def _reset_deprecated_key_warnings() -> Generator[None, None, None]:
     reset_deprecated_key_warnings()
     yield
     reset_deprecated_key_warnings()
+
+
+# =============================================================================
+# (d) BUG-3208 wedge instrumentation — streaming PR-comment trace
+# =============================================================================
+#
+# Data-survival diagnostic for the ~98% wedge. The wedge kills the run before
+# any pytest teardown hook fires, so a final-at-once snapshot would be lost.
+# Instead each completed test's result is buffered and flushed to a GitHub PR
+# comment (issues/comments API) every _FLUSH_EVERY tests — a streaming sink
+# whose last successful flush is already persisted server-side when the process
+# wedges, so the trace *survives* the hang.
+#
+# Armed only when LL_PYTEST_INSTRUMENT=1 AND the comment-sink env is present
+# (GITHUB_TOKEN / GITHUB_REPOSITORY / LL_PYTEST_COMMENT_PR_NUMBER). Every hook
+# no-ops otherwise, so bare pytest (local dev, conformance, normal CI) is
+# unchanged.
+#
+# Field shape (mem/d-instrumentation-data-survival-via-in-step-api, priority-
+# ordered): per-test = nodeid/outcome/duration_s/worker_id; per-flush =
+# flush_ts/free_disk_kb/open_fd_count/inode_free/rss_kb; final snapshot =
+# last_completed/last_failed/run_duration_s/last_rss_kb/last_flush_ts/
+# last_free_disk_kb/last_open_fd_count/last_inode_free.
+#
+# Three-axis read: rss climbing + disk/fd flat -> per-test OOM; free_disk
+# decreasing -> disk exhaustion; open_fd climbing -> fd exhaustion; all flat
+# -> different mechanism (infra throttling / network / external kill).
+# `inode_free` is the second-pass disk-axis check. The per-flush meta time-
+# series is CUMULATIVE (one line per flush) so the resource trend is visible
+# across the whole run; per-test records are a rolling last-_FLUSH_EVERY
+# window so the exact wedging test is identifiable without blowing the 65 KB
+# comment-body limit (no rotation in this first cut).
+#
+# xdist note: each worker process has its own module state and posts its own
+# comment; the run_id in the HTML-marker header links them. Current addopts
+# force `-n 0` (serial), so the diagnostic dispatch is single-comment.
+
+_FLUSH_EVERY = 50
+_INSTRUMENT = os.environ.get("LL_PYTEST_INSTRUMENT") == "1"
+_COMMENT_HEADER = (
+    f"<!-- ll-pytest-d-trace run={os.environ.get('GITHUB_RUN_ID', 'local')} -->\n"
+)
+
+_state: dict[str, Any] = {
+    "comment_id": None,
+    "test_buf": [],
+    "meta_lines": [],
+    "start_ts": 0.0,
+    "last_completed": None,
+    "last_failed": None,
+    "last_flush_ts": None,
+}
+
+
+def _env_ready() -> bool:
+    return bool(
+        _INSTRUMENT
+        and os.environ.get("GITHUB_TOKEN")
+        and os.environ.get("GITHUB_REPOSITORY")
+        and os.environ.get("LL_PYTEST_COMMENT_PR_NUMBER")
+    )
+
+
+def _sample_system() -> dict[str, Any]:
+    st = os.statvfs("/")
+    free_disk_kb = (st.f_bavail * st.f_frsize) // 1024
+    inode_free = st.f_favail
+    open_fd_count = -1
+    if sys.platform.startswith("linux"):
+        try:
+            open_fd_count = len(os.listdir("/proc/self/fd"))
+        except OSError:
+            open_fd_count = -1
+    rss_kb = -1
+    getrusage = getattr(os, "getrusage", None)  # POSIX only (absent on Windows)
+    if getrusage is not None:
+        rss_kb = getrusage(getattr(os, "RUSAGE_SELF", 0)).ru_maxrss
+        if sys.platform == "darwin":
+            rss_kb //= 1024  # macOS reports bytes; Linux reports KB
+    return {
+        "rss_kb": rss_kb,
+        "free_disk_kb": free_disk_kb,
+        "open_fd_count": open_fd_count,
+        "inode_free": inode_free,
+    }
+
+
+def _open_or_get_comment(client: httpx.Client) -> None:
+    if _state["comment_id"] is not None:
+        return
+    repo = os.environ["GITHUB_REPOSITORY"]
+    pr_number = os.environ["LL_PYTEST_COMMENT_PR_NUMBER"]
+    body = _COMMENT_HEADER + f"flushing... init at {time.time():.3f}\n"
+    r = client.post(
+        f"https://api.github.com/repos/{repo}/issues/{pr_number}/comments",
+        headers={
+            "Authorization": f"Bearer {os.environ['GITHUB_TOKEN']}",
+            "Accept": "application/vnd.github+json",
+            "Content-Type": "application/json",
+        },
+        json={"body": body},
+    )
+    r.raise_for_status()
+    _state["comment_id"] = r.json()["id"]
+
+
+def _flush_buffer() -> None:
+    try:
+        with httpx.Client(timeout=15.0) as client:
+            if _state["comment_id"] is None:
+                _open_or_get_comment(client)
+            meta = _sample_system()
+            _state["last_flush_ts"] = time.time()
+            _state["meta_lines"].append(
+                json.dumps(
+                    {
+                        "t": "meta",
+                        "flush_ts": _state["last_flush_ts"],
+                        "rss_kb": meta["rss_kb"],
+                        "free_disk_kb": meta["free_disk_kb"],
+                        "open_fd_count": meta["open_fd_count"],
+                        "inode_free": meta["inode_free"],
+                    }
+                )
+            )
+            body = (
+                _COMMENT_HEADER
+                + "\n".join(_state["meta_lines"])
+                + "\n---\n"
+                + "\n".join(_state["test_buf"])
+                + "\n"
+            )
+            url = (
+                f"https://api.github.com/repos/{os.environ['GITHUB_REPOSITORY']}"
+                f"/issues/comments/{_state['comment_id']}"
+            )
+            r = client.patch(
+                url,
+                headers={
+                    "Authorization": f"Bearer {os.environ['GITHUB_TOKEN']}",
+                    "Accept": "application/vnd.github+json",
+                    "Content-Type": "application/json",
+                },
+                json={"body": body},
+            )
+            r.raise_for_status()
+            _state["test_buf"].clear()
+    except Exception:
+        # Best-effort sink: a network blip must never fail the test run. The
+        # next flush retries with whatever is still buffered.
+        pass
+
+
+@pytest.hookimpl
+def pytest_sessionstart(session: pytest.Session) -> None:
+    if _env_ready():
+        _state["start_ts"] = time.time()
+
+
+@pytest.hookimpl
+def pytest_runtest_logreport(report: pytest.TestReport) -> None:
+    if not _env_ready() or report.when != "call":
+        return
+    _state["test_buf"].append(
+        json.dumps(
+            {
+                "t": "test",
+                "nodeid": report.nodeid,
+                "outcome": report.outcome,
+                "duration_s": report.duration,
+                "worker_id": os.environ.get("PYTEST_XDIST_WORKER"),
+            }
+        )
+    )
+    if report.outcome == "passed":
+        _state["last_completed"] = report.nodeid
+    elif report.outcome == "failed":
+        _state["last_failed"] = report.nodeid
+    if len(_state["test_buf"]) >= _FLUSH_EVERY:
+        _flush_buffer()
+
+
+@pytest.hookimpl
+def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
+    if not _env_ready():
+        return
+    meta = _sample_system()
+    _state["test_buf"].append(
+        json.dumps(
+            {
+                "t": "final",
+                "last_completed": _state["last_completed"],
+                "last_failed": _state["last_failed"],
+                "run_duration_s": time.time() - _state["start_ts"],
+                "last_rss_kb": meta["rss_kb"],
+                "last_flush_ts": _state["last_flush_ts"],
+                "last_free_disk_kb": meta["free_disk_kb"],
+                "last_open_fd_count": meta["open_fd_count"],
+                "last_inode_free": meta["inode_free"],
+            }
+        )
+    )
+    _flush_buffer()

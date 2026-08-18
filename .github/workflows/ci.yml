@@ -62,6 +62,20 @@ on:
         type: choice
         options: [thread, signal]
         default: thread
+      # (d) BUG-3208 wedge instrumentation. `instrument=1` arms the conftest
+      # trace; `pr_number` selects the PR-comment sink. Both empty on normal
+      # runs, so bare pytest is unchanged. Diagnostic dispatch:
+      #   gh workflow run ci.yml --ref <ref> -f instrument=1 -f pr_number=4
+      instrument:
+        description: 'Instrument unit-test run (PR-comment RSS trace for BUG-3208 wedge)'
+        required: false
+        default: '0'
+        type: choice
+        options: ['0', '1']
+      pr_number:
+        description: 'PR number for the instrumentation comment sink'
+        required: false
+        default: ''
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -74,6 +88,10 @@ permissions:
   # `none` — without this line the failure-upload step 403s with "Resource not
   # accessible by integration" and the paper trail silently never uploads.
   actions: write
+  # The (d) BUG-3208 wedge trace posts/patches a PR comment via the
+  # issues/comments API, which needs `issues: write`. Under an explicit
+  # `permissions` block it otherwise defaults to `none` and the sink 403s.
+  issues: write
 
 jobs:
   unit-tests:
@@ -109,12 +127,19 @@ jobs:
       - name: Run unit tests (exclude integration + conformance)
         # Diagnostic instrumentation (ci/diagnose-unit-hang): a background
         # sampler records `date + free -m + top-RSS` every 20s to mem.log, and a
-        # `timeout 48m` backstop SIGTERMs pytest BEFORE the hosted runner's
+        # `timeout 30m` backstop SIGTERMs pytest BEFORE the hosted runner's
         # ~52m resource-watchdog fires — so the step completes with exit 124 and
         # the upload step (if: always()) runs, persisting pytest.log + mem.log
         # + junit that a lost-communication death would otherwise wipe.
         # A frozen tail in pytest.log + climbing RSS in mem.log = the hang/OOM
         # point, captured instead of purged.
+        env:
+          # (d) BUG-3208 wedge trace. Empty on normal runs (workflow_dispatch
+          # inputs default to '0'/''), so bare pytest is unchanged. Armed only
+          # on a diagnostic dispatch: `-f instrument=1 -f pr_number=N`.
+          LL_PYTEST_INSTRUMENT: ${{ github.event.inputs.instrument }}
+          LL_PYTEST_COMMENT_PR_NUMBER: ${{ github.event.inputs.pr_number }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -o pipefail
           EXTRA=()
