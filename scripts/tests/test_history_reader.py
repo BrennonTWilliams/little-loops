@@ -1959,6 +1959,213 @@ class TestNewEventReaders:
         assert rates[0]["successes"] == 1
         assert rates[0]["success_rate"] == 0.5
 
+    def test_verdict_pass_rate_buckets_cannot_judge_and_refused_separately(
+        self, tmp_path: Path
+    ) -> None:
+        """ENH-230: cannot_judge and refused must bucket separately.
+
+        Operators route `refused` to "fix the rubric/pipeline" and
+        `cannot_judge` to "fix the criteria/context" — merging them would
+        hide the routing signal and is the silent regression this contract
+        prevents.
+        """
+        from little_loops.history_reader import verdict_pass_rate
+        from little_loops.session_store import record_verdict_event
+
+        db = tmp_path / "history.db"
+        # pass: counted as success
+        record_verdict_event(
+            db,
+            ts="2026-07-23T10:00:00Z",
+            session_id=None,
+            verdict_kind="ready-issue",
+            target_id="BUG-1",
+            verdict="pass",
+            confidence=92,
+        )
+        # fail: not a success, not abstention
+        record_verdict_event(
+            db,
+            ts="2026-07-23T10:01:00Z",
+            session_id=None,
+            verdict_kind="ready-issue",
+            target_id="BUG-2",
+            verdict="fail",
+            confidence=40,
+        )
+        # cannot_judge with abstention_reason
+        record_verdict_event(
+            db,
+            ts="2026-07-23T10:02:00Z",
+            session_id=None,
+            verdict_kind="ready-issue",
+            target_id="BUG-3",
+            verdict="cannot_judge",
+            abstention_reason="missing_artifacts",
+        )
+        # refused with principled_refusal
+        record_verdict_event(
+            db,
+            ts="2026-07-23T10:03:00Z",
+            session_id=None,
+            verdict_kind="ready-issue",
+            target_id="BUG-4",
+            verdict="refused",
+            abstention_reason="principled_refusal",
+        )
+
+        rates = verdict_pass_rate(db=db)
+        assert len(rates) == 1
+        row = rates[0]
+        assert row["verdict_kind"] == "ready-issue"
+        assert row["invocations"] == 4
+        assert row["successes"] == 1
+        assert row["cannot_judge_count"] == 1
+        assert row["refused_count"] == 1
+        # success_rate denominator is still invocations (existing contract);
+        # a decision-rate variant is a follow-up if requested.
+        assert row["success_rate"] == 0.25
+
+    def test_verdict_pass_rate_null_findings_not_coalesced_to_zero(
+        self, tmp_path: Path
+    ) -> None:
+        """ENH-230: NULL findings_count is the abstention contract.
+
+        Coalescing NULL to 0 would mask abstention rows in any aggregation
+        that reads findings_count (an LLM could "fail softly" by emitting a
+        cannot_judge row with findings_count=0 and have it bucketed as a
+        normal fail). The writer emits Python None (SQL NULL) when verdict
+        is cannot_judge; readers MUST see None, not 0.
+        """
+        import sqlite3
+
+        from little_loops.history_reader import recent_verdict_events
+        from little_loops.session_store import record_verdict_event
+
+        db = tmp_path / "history.db"
+        record_verdict_event(
+            db,
+            ts="2026-07-23T10:00:00Z",
+            session_id=None,
+            verdict_kind="ready-issue",
+            target_id="BUG-9",
+            verdict="cannot_judge",
+            abstention_reason="unparseable_criteria",
+        )
+
+        rows = recent_verdict_events(db=db)
+        assert len(rows) == 1
+        row = rows[0]
+        assert row.verdict == "cannot_judge"
+        assert row.findings_count is None
+        assert row.confidence is None
+        assert row.abstention_reason == "unparseable_criteria"
+
+        # Confirm raw SQL NULL, not 0 — defense against any future writer
+        # refactor that accidentally re-introduces `or 0` coalescing.
+        conn = sqlite3.connect(db)
+        try:
+            raw = conn.execute(
+                "SELECT findings_count, confidence FROM verdict_events WHERE verdict='cannot_judge'"
+            ).fetchone()
+        finally:
+            conn.close()
+        assert raw is not None
+        assert raw[0] is None
+        assert raw[1] is None
+
+    def test_high_confidence_cannot_judge_emits_warning(
+        self, tmp_path: Path, caplog
+    ) -> None:
+        """ENH-230: cannot_judge with confidence >= 90 is a producer-regression flag.
+
+        A high-confidence abstention is implausible — if the gate is
+        confident enough to score >= 90, it should be able to render a real
+        verdict. Manual-review queue catches producer drift (e.g. an LLM
+        using `cannot_judge` as a defensive fallback on borderline inputs).
+
+        The aggregator emits a `logging.warning` (QA-recommended mechanism
+        via caplog). A separate, well-known threshold field could replace
+        this in a follow-up; the caplog shape is the standard pytest path
+        and the loud-failure point for this contract.
+        """
+        import logging
+
+        from little_loops.history_reader import check_high_confidence_abstention
+        from little_loops.session_store import record_verdict_event
+
+        db = tmp_path / "history.db"
+        # Cannot write confidence=95 with verdict=cannot_judge — the writer
+        # rejects None + numeric mismatch. The high-confidence abstention is
+        # caught downstream in the aggregator, not blocked at write-time,
+        # because the producer contract permits abstention_reason alone
+        # without confidence. So we test the aggregator's check directly.
+        record_verdict_event(
+            db,
+            ts="2026-07-23T10:00:00Z",
+            session_id=None,
+            verdict_kind="ready-issue",
+            target_id="BUG-12",
+            verdict="cannot_judge",
+            abstention_reason="missing_artifacts",
+            confidence=95,  # implausible — should warn
+        )
+
+        with caplog.at_level(logging.WARNING, logger="little_loops.history_reader"):
+            warnings = check_high_confidence_abstention(db=db, threshold=90)
+        assert any(w.target_id == "BUG-12" for w in warnings)
+        assert any("BUG-12" in rec.message for rec in caplog.records)
+
+    def test_recent_verdict_events_includes_abstention_reason(
+        self, tmp_path: Path
+    ) -> None:
+        """ENH-230: abstention_reason surfaces on VerdictEvent dataclass.
+
+        RecentVerdictEvents must include the new column in the SELECT and
+        propagate it to the dataclass. The pre-ENH-230 VerdictEvent
+        silently dropped it; that would be a silent regression on the
+        abstention-reporting surface.
+        """
+        from little_loops.history_reader import recent_verdict_events
+        from little_loops.session_store import record_verdict_event
+
+        db = tmp_path / "history.db"
+        record_verdict_event(
+            db,
+            ts="2026-07-23T10:00:00Z",
+            session_id=None,
+            verdict_kind="ready-issue",
+            target_id="BUG-5",
+            verdict="cannot_judge",
+            abstention_reason="circular_dependencies",
+        )
+        record_verdict_event(
+            db,
+            ts="2026-07-23T10:01:00Z",
+            session_id=None,
+            verdict_kind="ready-issue",
+            target_id="BUG-6",
+            verdict="refused",
+            abstention_reason="principled_refusal",
+        )
+        record_verdict_event(
+            db,
+            ts="2026-07-23T10:02:00Z",
+            session_id=None,
+            verdict_kind="ready-issue",
+            target_id="BUG-7",
+            verdict="pass",
+            confidence=88,
+        )
+
+        rows = recent_verdict_events(db=db)
+        assert len(rows) == 3
+        by_target = {r.target_id: r for r in rows}
+        assert by_target["BUG-5"].abstention_reason == "circular_dependencies"
+        assert by_target["BUG-6"].abstention_reason == "principled_refusal"
+        assert by_target["BUG-7"].abstention_reason is None
+        assert by_target["BUG-7"].confidence == 88
+
     def test_recent_review_events_and_velocity(self, tmp_path: Path) -> None:
         from little_loops.history_reader import recent_review_events, review_velocity
         from little_loops.session_store import record_review_event

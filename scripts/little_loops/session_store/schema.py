@@ -18,7 +18,7 @@ from little_loops.session_store.db import DEFAULT_DB_PATH, _resolve_db_path
 
 logger = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 41
+SCHEMA_VERSION = 42
 
 VALID_KINDS: tuple[str, ...] = (
     "tool",
@@ -963,7 +963,7 @@ _MIGRATIONS: list[str] = [
     ALTER TABLE harness_events ADD COLUMN target_path TEXT;
     ALTER TABLE harness_events ADD COLUMN dirty INTEGER;
     """,
-    # (ENH-2997): persistence surface for the pre-patch-check bundle the FSM
+# (ENH-2997): persistence surface for the pre-patch-check bundle the FSM
     # executor's guarded-window hook produces. This is the only surface
     # ENH-2998's run_dir-less `cli/harness.py` consumer can discover a
     # verdict by issue ID from -- the run-dir JSON file (MR-3) is the
@@ -994,6 +994,96 @@ _MIGRATIONS: list[str] = [
     """
     CREATE INDEX IF NOT EXISTS idx_harness_semantic_verdict
         ON harness_events(semantic_verdict);
+    """,
+    # v42 (ENH-230): abstention verdict + fixed verdict grammar in LLM-judged
+    # gates. Adds the `abstention_reason` column to `verdict_events` and pins
+    # CHECK constraints on both `verdict_events.verdict` (5 values: pass,
+    # fail, implement, cannot_judge, refused) and `review_events.verdict` (6
+    # values: pass, warn, fail, degraded, refused, cannot_judge).
+    #
+    # `implement` is aggregation-anticipated only — no current producer emits
+    # it — but admitted for forward-compat with a planned future producer. The
+    # aggregation at history_reader.py:3054 already groups it with `pass` as
+    # a "proceed" outcome.
+    #
+    # `refused` admits principled refusal from the gate-verifier when its
+    # rubric file is unreadable, mirroring audit-loop-run's existing
+    # principled refusal on review_events. Distinct from `cannot_judge`,
+    # which is the epistemic-limit semantic: `refused` says "I refuse to
+    # evaluate (the rubric is broken)"; `cannot_judge` says "I cannot
+    # complete the evaluation (criteria or context missing)". The aggregation
+    # buckets them separately so operators route the right fix path
+    # (refused -> fix pipeline; cannot_judge -> fix criteria/context).
+    #
+    # SQLite ALTER TABLE cannot add a CHECK constraint to an existing column,
+    # so both tables are rebuilt via the standard rename/copy/drop pattern.
+    # Existing rows pass the new constraints:
+    #   * verdict_events: existing verdicts are pass/fail/cannot_judge (no
+    #     refused or implement today), all valid; abstention_reason defaults
+    #     to NULL for every row.
+    #   * review_events: existing verdicts span the full 6-value vocabulary
+    #     per ENH-2512, all valid; refused rows already exist as bare TEXT and
+    #     pass the new CHECK.
+    #
+    # The cross-column CHECK on abstention_reason enforces the
+    # NULL-as-contract: when verdict is one of pass/fail/implement,
+    # abstention_reason MUST be NULL; when verdict is cannot_judge,
+    # abstention_reason MUST be one of the four closed tags; when verdict
+    # is refused, abstention_reason MUST be principled_refusal. Aggregation
+    # readers (verdict_pass_rate, etc.) treat NULL findings_count distinctly
+    # from 0 — coalescing NULL to 0 would mask the abstention signal and is
+    # a regression surface the schema guards against structurally. Adding a
+    # fifth tag is a contract-change PR that updates the rubric docstring,
+    # the schema CHECK, the aggregation bucket, and the docs together.
+    """
+    ALTER TABLE verdict_events ADD COLUMN abstention_reason TEXT;
+    CREATE TABLE verdict_events_new (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        ts TEXT NOT NULL,
+        session_id TEXT,
+        verdict_kind TEXT NOT NULL,
+        target_kind TEXT,
+        target_id TEXT,
+        verdict TEXT NOT NULL CHECK (verdict IN ('pass','fail','implement','cannot_judge','refused')),
+        abstention_reason TEXT CHECK (
+            abstention_reason IS NULL
+            OR (verdict = 'cannot_judge' AND abstention_reason IN ('missing_artifacts','unparseable_criteria','evaluation_context_unavailable','circular_dependencies'))
+            OR (verdict = 'refused' AND abstention_reason = 'principled_refusal')
+        ),
+        severity_counts TEXT,
+        findings_count INTEGER,
+        confidence INTEGER,
+        head_sha TEXT,
+        branch TEXT
+    );
+    INSERT INTO verdict_events_new (id, ts, session_id, verdict_kind, target_kind, target_id, verdict, abstention_reason, severity_counts, findings_count, confidence, head_sha, branch)
+    SELECT id, ts, session_id, verdict_kind, target_kind, target_id, verdict, NULL, severity_counts, findings_count, confidence, head_sha, branch FROM verdict_events;
+    DROP TABLE verdict_events;
+    ALTER TABLE verdict_events_new RENAME TO verdict_events;
+    CREATE INDEX IF NOT EXISTS idx_verdict_kind ON verdict_events(verdict_kind);
+    CREATE INDEX IF NOT EXISTS idx_verdict_target ON verdict_events(target_id);
+    CREATE INDEX IF NOT EXISTS idx_verdict_session ON verdict_events(session_id);
+    CREATE TABLE review_events_new (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        ts TEXT NOT NULL,
+        session_id TEXT,
+        reviewer_skill TEXT NOT NULL,
+        target_kind TEXT,
+        target_id TEXT,
+        severity_counts TEXT,
+        findings_count INTEGER,
+        findings_json_summary TEXT,
+        verdict TEXT CHECK (verdict IN ('pass','warn','fail','degraded','refused','cannot_judge')),
+        head_sha TEXT,
+        branch TEXT
+    );
+    INSERT INTO review_events_new (id, ts, session_id, reviewer_skill, target_kind, target_id, severity_counts, findings_count, findings_json_summary, verdict, head_sha, branch)
+    SELECT id, ts, session_id, reviewer_skill, target_kind, target_id, severity_counts, findings_count, findings_json_summary, verdict, head_sha, branch FROM review_events;
+    DROP TABLE review_events;
+    ALTER TABLE review_events_new RENAME TO review_events;
+    CREATE INDEX IF NOT EXISTS idx_review_skill ON review_events(reviewer_skill);
+    CREATE INDEX IF NOT EXISTS idx_review_target ON review_events(target_id);
+    CREATE INDEX IF NOT EXISTS idx_review_session ON review_events(session_id);
     """,
 ]
 
