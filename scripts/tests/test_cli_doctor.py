@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import subprocess
 from collections.abc import Iterator
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -56,8 +57,11 @@ def _json_safe_config() -> MagicMock:
 class TestMainDoctor:
     """Tests for main_doctor entry point."""
 
-    def test_exit_zero_when_all_capabilities_supported(self) -> None:
+    def test_exit_zero_when_all_capabilities_supported(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Returns 0 when no capabilities have status 'unsupported'."""
+        monkeypatch.chdir(tmp_path)  # isolate from this repo's own history.db (ENH-3242)
         report = CapabilityReport(
             host="claude-code",
             binary="claude",
@@ -80,11 +84,14 @@ class TestMainDoctor:
 
         assert result == 0
 
-    def test_exit_zero_on_real_claude_code_report(self) -> None:
+    def test_exit_zero_on_real_claude_code_report(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """BUG-2759: ll-doctor must exit 0 for a healthy claude-code host — a
         hand-built fixture can't reproduce a stale-entry regression like the
         json_schema/structured_output contradiction, so this exercises the
         real ClaudeCodeRunner.describe_capabilities() output directly."""
+        monkeypatch.chdir(tmp_path)  # isolate from this repo's own history.db (ENH-3242)
         runner = ClaudeCodeRunner()
 
         with (
@@ -98,12 +105,15 @@ class TestMainDoctor:
 
         assert result == 0
 
-    def test_advisory_capability_unsupported_does_not_fail(self) -> None:
+    def test_advisory_capability_unsupported_does_not_fail(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """An unsupported *advisory* capability is reported but must not fail
         the exit code. claude_md_suppression is an optimization, not a
         correctness requirement — claude-code honestly reports it unsupported
         (the CLI has no flag to skip CLAUDE.md), and that must not make the
         primary host fail its own health check."""
+        monkeypatch.chdir(tmp_path)  # isolate from this repo's own history.db (ENH-3242)
         report = CapabilityReport(
             host="claude-code",
             binary="claude",
@@ -159,8 +169,11 @@ class TestMainDoctor:
 
         assert result == 1
 
-    def test_partial_capability_does_not_trigger_exit_one(self) -> None:
+    def test_partial_capability_does_not_trigger_exit_one(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Returns 0 when capabilities are 'partial' but none are 'unsupported'."""
+        monkeypatch.chdir(tmp_path)  # isolate from this repo's own history.db (ENH-3242)
         report = CapabilityReport(
             host="opencode",
             binary="opencode",
@@ -182,8 +195,11 @@ class TestMainDoctor:
 
         assert result == 0
 
-    def test_empty_capabilities_returns_zero(self) -> None:
+    def test_empty_capabilities_returns_zero(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Returns 0 when the capabilities list is empty (no critical gaps)."""
+        monkeypatch.chdir(tmp_path)  # isolate from this repo's own history.db (ENH-3242)
         report = CapabilityReport(host="claude-code", binary="claude", version="", capabilities=[])
         runner = _make_runner(report)
 
@@ -294,8 +310,9 @@ class TestMainDoctor:
         output = "\n".join(lines)
         assert "no inline schema flag" in output
 
-    def test_json_output_flag(self) -> None:
+    def test_json_output_flag(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """--json flag outputs valid JSON with host and capabilities keys."""
+        monkeypatch.chdir(tmp_path)  # isolate from this repo's own history.db (ENH-3242)
         report = CapabilityReport(
             host="claude-code",
             binary="claude",

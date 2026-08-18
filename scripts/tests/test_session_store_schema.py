@@ -2116,7 +2116,9 @@ def _insert_summary_node(
     return int(conn.execute("SELECT last_insert_rowid()").fetchone()[0])
 
 
-def _insert_raw_event(conn: sqlite3.Connection, session_id: str, summary_node_id: int | None) -> None:
+def _insert_raw_event(
+    conn: sqlite3.Connection, session_id: str, summary_node_id: int | None
+) -> None:
     """Insert a minimal raw_events row pointing at *summary_node_id* (BUG-3241 fixtures)."""
     conn.execute(
         "INSERT INTO raw_events"
@@ -2191,8 +2193,12 @@ class TestSchemaV43IndexRepair:
         conn = sqlite3.connect(str(db))
         try:
             am_count = conn.execute("SELECT COUNT(*) FROM assistant_messages").fetchone()[0]
-            sn_count = conn.execute("SELECT COUNT(*) FROM summary_nodes WHERE kind='retention'").fetchone()[0]
-            surviving = conn.execute("SELECT id FROM summary_nodes WHERE kind='retention'").fetchone()[0]
+            sn_count = conn.execute(
+                "SELECT COUNT(*) FROM summary_nodes WHERE kind='retention'"
+            ).fetchone()[0]
+            surviving = conn.execute(
+                "SELECT id FROM summary_nodes WHERE kind='retention'"
+            ).fetchone()[0]
         finally:
             conn.close()
         assert am_count == 1
@@ -2225,7 +2231,9 @@ class TestSchemaV43IndexRepair:
         assert "idx_summary_nodes_retention_dedup" in have
         assert "idx_summary_nodes_parent_id" in have
 
-    def test_summary_nodes_dedup_preserves_leaf_condensed_and_null_key_rows(self, tmp_path: Path) -> None:
+    def test_summary_nodes_dedup_preserves_leaf_condensed_and_null_key_rows(
+        self, tmp_path: Path
+    ) -> None:
         """The retention dedup must not touch leaf/condensed rows, and must not
         delete a retention row whose (session_id, ts_start, ts_end) contains a
         NULL -- SQLite's UNIQUE index accepts those, so the repair must too."""
@@ -2253,7 +2261,9 @@ class TestSchemaV43IndexRepair:
             retention_ids = {
                 r[0] for r in conn.execute("SELECT id FROM summary_nodes WHERE kind='retention'")
             }
-            leaf_ids = {r[0] for r in conn.execute("SELECT id FROM summary_nodes WHERE kind='leaf'")}
+            leaf_ids = {
+                r[0] for r in conn.execute("SELECT id FROM summary_nodes WHERE kind='leaf'")
+            }
             re_target = conn.execute("SELECT summary_node_id FROM raw_events").fetchone()[0]
             dangling = conn.execute(
                 "SELECT COUNT(*) FROM raw_events "
@@ -2300,3 +2310,205 @@ class TestPackageReexportSurface:
         names = list(session_store.__all__) + required_private + ["sqlite3"]
         missing = [name for name in names if not hasattr(session_store, name)]
         assert not missing, f"missing session_store package attributes: {missing}"
+
+
+class TestSchemaManifest:
+    """ENH-3242 piece 1: structural drift detection via a checked-in manifest.
+
+    Regenerate the checked-in manifest with:
+
+        python -c "
+        import json, sqlite3, tempfile
+        from pathlib import Path
+        from little_loops.session_store.schema import ensure_db, _schema_manifest
+        with tempfile.TemporaryDirectory() as td:
+            db = Path(td) / 'history.db'
+            ensure_db(db)
+            conn = sqlite3.connect(str(db))
+            manifest = _schema_manifest(conn)
+            conn.close()
+        Path('little_loops/session_store/schema_manifest.json').write_text(
+            json.dumps(manifest, sort_keys=True, indent=2) + chr(10), encoding='utf-8'
+        )
+        "
+
+    run from ``scripts/`` after any migration that intentionally changes structure.
+    """
+
+    def test_schema_manifest_matches_checked_in_file(self, tmp_path: Path) -> None:
+        from little_loops.session_store import _load_schema_manifest, _schema_manifest
+
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        conn = sqlite3.connect(str(db))
+        try:
+            live = _schema_manifest(conn)
+        finally:
+            conn.close()
+
+        checked_in = _load_schema_manifest()
+        assert live == checked_in, (
+            "schema_manifest.json is stale against the current migrations. "
+            "Regenerate it (see this test's docstring) and commit the result."
+        )
+
+    def test_manifest_schema_version_matches_live_schema_version(self, tmp_path: Path) -> None:
+        from little_loops.session_store import _schema_manifest
+
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        conn = sqlite3.connect(str(db))
+        try:
+            manifest = _schema_manifest(conn)
+        finally:
+            conn.close()
+
+        assert manifest["schema_version"] == SCHEMA_VERSION
+
+    def test_excludes_sqlite_internal_and_fts5_shadow_tables(self, tmp_path: Path) -> None:
+        from little_loops.session_store import _schema_manifest
+
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        conn = sqlite3.connect(str(db))
+        try:
+            manifest = _schema_manifest(conn)
+        finally:
+            conn.close()
+
+        names = set(manifest["objects"])
+        assert not any(name.startswith("sqlite_") for name in names)
+        for shadow in (
+            "search_index_config",
+            "search_index_content",
+            "search_index_data",
+            "search_index_docsize",
+            "search_index_idx",
+        ):
+            assert shadow not in names
+        assert "search_index" in names
+
+    def test_comment_only_ddl_edit_does_not_change_manifest(self, tmp_path: Path) -> None:
+        """SQLite never rewrites a stored CREATE statement, so a text diff would
+        flag a harmless comment forever (BUG-3236's trap). A PRAGMA-derived
+        manifest must be unaffected by it."""
+        from little_loops.session_store import _schema_manifest
+
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        conn = sqlite3.connect(str(db))
+        try:
+            before = _schema_manifest(conn)
+            conn.execute("DROP TABLE user_corrections")
+            conn.execute(
+                """
+                -- a harmless comment that changes no structure
+                CREATE TABLE user_corrections (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    ts TEXT NOT NULL,
+                    session_id TEXT,
+                    content TEXT,
+                    source TEXT
+                )
+                """
+            )
+            after = _schema_manifest(conn)
+        finally:
+            conn.close()
+
+        assert before["objects"]["user_corrections"] == after["objects"]["user_corrections"]
+
+    def test_view_columns_record_name_and_order_only(self, tmp_path: Path) -> None:
+        from little_loops.session_store import _schema_manifest
+
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        conn = sqlite3.connect(str(db))
+        try:
+            manifest = _schema_manifest(conn)
+        finally:
+            conn.close()
+
+        view = manifest["objects"]["issue_sessions"]
+        assert view["type"] == "view"
+        assert view["columns"] == [
+            "issue_id",
+            "issue_num",
+            "session_id",
+            "jsonl_path",
+            "first_message_ts",
+            "last_message_ts",
+        ]
+
+    def test_index_records_unique_partial_origin_and_columns(self, tmp_path: Path) -> None:
+        from little_loops.session_store import _schema_manifest
+
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        conn = sqlite3.connect(str(db))
+        try:
+            manifest = _schema_manifest(conn)
+        finally:
+            conn.close()
+
+        retention_idx = manifest["indexes"]["idx_summary_nodes_retention_dedup"]
+        assert retention_idx["unique"] is True
+        assert retention_idx["partial"] is True
+
+        dedup_idx = manifest["indexes"]["idx_assistant_messages_dedup"]
+        assert dedup_idx["unique"] is True
+        assert dedup_idx["partial"] is False
+
+    def test_degraded_index_losing_unique_changes_manifest(self, tmp_path: Path) -> None:
+        """The BUG-3241 shape: an index present by name but no longer UNIQUE, which
+        a name-only manifest would miss entirely."""
+        from little_loops.session_store import _schema_manifest
+
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        conn = sqlite3.connect(str(db))
+        try:
+            before = _schema_manifest(conn)
+            conn.execute("DROP INDEX idx_assistant_messages_dedup")
+            conn.execute(
+                "CREATE INDEX idx_assistant_messages_dedup "
+                "ON assistant_messages(session_id, ts, content)"
+            )
+            after = _schema_manifest(conn)
+        finally:
+            conn.close()
+
+        assert before["indexes"]["idx_assistant_messages_dedup"]["unique"] is True
+        assert after["indexes"]["idx_assistant_messages_dedup"]["unique"] is False
+
+
+class TestReferenceManifestAt:
+    """ENH-3242 piece 2 support: replay-based reference manifests at any version."""
+
+    def test_reference_at_current_version_matches_fresh_database(self, tmp_path: Path) -> None:
+        from little_loops.session_store import _reference_manifest_at, _schema_manifest
+
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        conn = sqlite3.connect(str(db))
+        try:
+            fresh = _schema_manifest(conn)
+        finally:
+            conn.close()
+
+        assert _reference_manifest_at(SCHEMA_VERSION) == fresh
+
+    def test_reference_at_historical_version_matches_bootstrapped_database(
+        self, tmp_path: Path
+    ) -> None:
+        from little_loops.session_store import _reference_manifest_at, _schema_manifest
+
+        db = tmp_path / "history.db"
+        _bootstrap_schema_at(db, 41)
+        conn = sqlite3.connect(str(db))
+        try:
+            bootstrapped = _schema_manifest(conn)
+        finally:
+            conn.close()
+
+        assert _reference_manifest_at(41) == bootstrapped

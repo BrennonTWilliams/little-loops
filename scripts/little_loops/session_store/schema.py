@@ -10,9 +10,13 @@ through), and the kind/table lookup constants. Depends on
 
 from __future__ import annotations
 
+import importlib.resources
+import json
 import logging
 import sqlite3
+from functools import lru_cache
 from pathlib import Path
+from typing import Any
 
 from little_loops.session_store.db import DEFAULT_DB_PATH, _resolve_db_path
 
@@ -1301,3 +1305,135 @@ def connect(path: Path | str = DEFAULT_DB_PATH) -> sqlite3.Connection:
     _configure_connection(conn)
     conn.row_factory = sqlite3.Row
     return conn
+
+
+# ENH-3242: structural drift detection. A recorded ``schema_version`` proves
+# only that ``_apply_migrations()`` once ran through that index — it says
+# nothing about whether the database's actual structure still matches what
+# those migrations produce. `_schema_manifest()` is the PRAGMA-derived source
+# of truth both the authoring-time test (piece 1, against a checked-in file)
+# and the `ll-doctor` runtime check (piece 2, against a replayed reference)
+# compare against. Never compare `sqlite_master.sql` text directly: SQLite
+# never rewrites a stored `CREATE` statement, so a harmless comment added
+# after the fact reads as permanent drift (see BUG-3236).
+
+SchemaManifest = dict[str, Any]
+
+
+def _schema_manifest(conn: sqlite3.Connection) -> SchemaManifest:
+    """Build a PRAGMA-derived structural manifest of *conn*'s database.
+
+    Excludes every ``sqlite_%`` name (not just ``sqlite_autoindex_*`` /
+    ``sqlite_stat*`` — ``sqlite_sequence`` is present on any database with an
+    ``AUTOINCREMENT`` column) and the shadow tables SQLite materialises for
+    each FTS5 virtual table (e.g. ``search_index_content``), whose internals
+    are SQLite-build-dependent. The virtual table itself (``search_index``) is
+    kept with its own declared columns; shadow names are derived from the
+    virtual tables actually present, not a hardcoded suffix list.
+
+    View columns record name and ordinal position only — a view's
+    type/notnull/pk are inferred by SQLite from its defining query, not
+    declared, and that inference has changed across SQLite versions.
+    """
+    rows = conn.execute(
+        "SELECT name, type, sql FROM sqlite_master WHERE type IN ('table', 'view')"
+    ).fetchall()
+
+    virtual_prefixes = [
+        name
+        for name, _obj_type, sql in rows
+        if sql and sql.strip().upper().startswith("CREATE VIRTUAL TABLE")
+    ]
+
+    def _excluded(name: str) -> bool:
+        if name.startswith("sqlite_"):
+            return True
+        return any(name.startswith(f"{prefix}_") for prefix in virtual_prefixes)
+
+    objects: dict[str, dict[str, Any]] = {}
+    for name, obj_type, _sql in rows:
+        if _excluded(name):
+            continue
+        columns = conn.execute(f'PRAGMA table_info("{name}")').fetchall()
+        if obj_type == "view":
+            objects[name] = {
+                "type": "view",
+                "columns": [col[1] for col in columns],
+            }
+        else:
+            objects[name] = {
+                "type": "table",
+                "columns": [
+                    {
+                        "name": col[1],
+                        "type": col[2],
+                        "notnull": bool(col[3]),
+                        "pk": bool(col[5]),
+                    }
+                    for col in columns
+                ],
+            }
+
+    indexes: dict[str, dict[str, Any]] = {}
+    for name, obj_type, _sql in rows:
+        if obj_type != "table" or _excluded(name):
+            continue
+        for idx_row in conn.execute(f'PRAGMA index_list("{name}")').fetchall():
+            index_name = idx_row[1]
+            if index_name.startswith("sqlite_autoindex_"):
+                continue
+            index_columns = conn.execute(f'PRAGMA index_info("{index_name}")').fetchall()
+            indexes[index_name] = {
+                "unique": bool(idx_row[2]),
+                "origin": idx_row[3],
+                "partial": bool(idx_row[4]),
+                "columns": [col[2] for col in index_columns],
+            }
+
+    return {
+        "schema_version": _current_version(conn),
+        "objects": dict(sorted(objects.items())),
+        "indexes": dict(sorted(indexes.items())),
+    }
+
+
+@lru_cache(maxsize=1)
+def _load_schema_manifest() -> SchemaManifest:
+    """Load the checked-in ``schema_manifest.json`` package data (piece 1).
+
+    Used only by :func:`_schema_manifest`'s authoring-time test — the
+    `ll-doctor` runtime check compares against :func:`_reference_manifest_at`
+    instead, since a real database is essentially never at exactly
+    ``SCHEMA_VERSION``.
+    """
+    traversable = (
+        importlib.resources.files("little_loops")
+        .joinpath("session_store")
+        .joinpath("schema_manifest.json")
+    )
+    return json.loads(traversable.read_text(encoding="utf-8"))
+
+
+def _reference_manifest_at(version: int) -> SchemaManifest:
+    """Return the manifest a database at *version* is supposed to have.
+
+    Replays ``_MIGRATIONS[:version]`` into an in-memory database rather than
+    loading the checked-in manifest, so the `ll-doctor` runtime check (piece
+    2) can compare a real database against the structure its own recorded
+    version produces at any version, not only at ``SCHEMA_VERSION`` (measured
+    at 5.0ms for the full migration sequence on this machine).
+    """
+    conn = sqlite3.connect(":memory:")
+    try:
+        for script in _MIGRATIONS[:version]:
+            for statement in _split_sql_statements(script):
+                conn.execute(statement)
+        if version > 0:
+            conn.execute(
+                "INSERT OR IGNORE INTO meta(key, value) VALUES('schema_version', ?)",
+                (str(version),),
+            )
+        conn.commit()
+        return _schema_manifest(conn)
+    finally:
+        conn.close()

@@ -395,6 +395,131 @@ def _history_db_check() -> list[CheckResult]:
     ]
 
 
+def _schema_drift_data() -> dict:
+    """Report-only structural drift check for `.ll/history.db` (ENH-3242).
+
+    A recorded `schema_version` only proves `_apply_migrations()` once ran
+    through that index — it says nothing about whether the database's actual
+    structure still matches what those migrations produce (BUG-3236,
+    BUG-3241 both drifted silently for months). Compares the live database's
+    PRAGMA-derived structure against what its own recorded version's
+    migrations produce (`_reference_manifest_at()`, an in-memory replay),
+    never against a fixed version — real databases are essentially never at
+    exactly `SCHEMA_VERSION`.
+
+    Must not create or migrate the database: guards on `Path.exists()` and
+    opens read-only, mirroring `_history_db_data()`'s constraint. Reusing
+    `ensure_db()`/`connect()` here would migrate away the very drift this
+    check exists to report.
+    """
+    import sqlite3
+
+    from little_loops.session_store.schema import (
+        _MIGRATIONS,
+        _current_version,
+        _reference_manifest_at,
+        _schema_manifest,
+    )
+
+    db_path = Path.cwd() / DEFAULT_DB_PATH
+    if not db_path.exists():
+        return {"status": "unsupported", "severity": "informational", "note": "not yet created"}
+
+    try:
+        conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+        try:
+            recorded = _current_version(conn)
+            if recorded == 0:
+                return {
+                    "status": "unsupported",
+                    "severity": "informational",
+                    "note": "uninitialized (no meta table)",
+                }
+            if recorded > len(_MIGRATIONS):
+                return {
+                    "status": "unsupported",
+                    "severity": "error",
+                    "note": (
+                        f"recorded schema_version {recorded} exceeds this install's "
+                        f"{len(_MIGRATIONS)} known migrations; migrations "
+                        f"{len(_MIGRATIONS) + 1}-{recorded} will never apply to this "
+                        "database until repaired (see BUG-3255)"
+                    ),
+                }
+            live = _schema_manifest(conn)
+        finally:
+            conn.close()
+    except sqlite3.Error as exc:
+        return {"status": "unsupported", "severity": "error", "note": f"unreadable: {exc}"}
+
+    reference = _reference_manifest_at(recorded)
+
+    missing_from_db = sorted(set(reference["objects"]) - set(live["objects"])) + sorted(
+        set(reference["indexes"]) - set(live["indexes"])
+    )
+    extra_in_db = sorted(set(live["objects"]) - set(reference["objects"])) + sorted(
+        set(live["indexes"]) - set(reference["indexes"])
+    )
+    degraded = sorted(
+        name
+        for name in set(reference["objects"]) & set(live["objects"])
+        if reference["objects"][name] != live["objects"][name]
+    ) + sorted(
+        name
+        for name in set(reference["indexes"]) & set(live["indexes"])
+        if reference["indexes"][name] != live["indexes"][name]
+    )
+
+    behind_note = (
+        f"; behind (recorded {recorded} of {len(_MIGRATIONS)}, will migrate on next use)"
+        if recorded < len(_MIGRATIONS)
+        else ""
+    )
+
+    if not missing_from_db and not extra_in_db and not degraded:
+        return {
+            "status": "full",
+            "severity": "error",
+            "note": f"structure matches recorded version {recorded}{behind_note}",
+        }
+
+    parts = []
+    if missing_from_db:
+        parts.append(f"{len(missing_from_db)} missing from database: {', '.join(missing_from_db)}")
+    if extra_in_db:
+        parts.append(
+            f"{len(extra_in_db)} present but absent from recorded version: {', '.join(extra_in_db)}"
+        )
+    if degraded:
+        parts.append(f"{len(degraded)} degraded: {', '.join(degraded)}")
+    return {
+        "status": "unsupported",
+        "severity": "error",
+        "note": "; ".join(parts) + behind_note,
+    }
+
+
+def _print_schema_drift_section() -> None:
+    """Print the Schema Drift section."""
+    data = _schema_drift_data()
+    print()
+    print("Schema Drift")
+    print("─" * 40)
+    symbol = _STATUS_SYMBOLS.get(data["status"], "?")
+    print(f"  {symbol}  {data['note']}")
+
+
+@register_check
+def _schema_drift_check() -> list[CheckResult]:
+    """Registered check for `.ll/history.db` structural drift."""
+    data = _schema_drift_data()
+    return [
+        CheckResult(
+            name="schema_drift", status=data["status"], note=data["note"], severity=data["severity"]
+        )
+    ]
+
+
 def _loop_validity_data() -> dict:
     """Aggregate `load_and_validate()` across every runnable loop YAML.
 
@@ -962,6 +1087,7 @@ def _print_report(
             "skills_commands": _skills_commands_data(),
             "decisions_store": _decisions_store_data(),
             "history_db": _history_db_data(),
+            "schema_drift": _schema_drift_data(),
             "loop_validity": _loop_validity_data(),
         }
         if full:
@@ -1076,6 +1202,7 @@ not a broken install.
             _print_skills_commands_section()
             _print_decisions_store_section()
             _print_history_db_section()
+            _print_schema_drift_section()
             _print_loop_validity_section()
             if args.full:
                 _print_full_section()

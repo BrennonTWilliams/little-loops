@@ -45,6 +45,7 @@ PACKAGE_DATA_ASSETS: Final[tuple[tuple[str, ...], ...]] = (
     ("templates", "java-maven.json"),
     ("templates", "java-gradle.json"),
     ("templates", "dotnet.json"),
+    ("session_store", "schema_manifest.json"),
 )
 
 # BUG-3177: skills/ is force-included into the wheel by hatch_build.py rather than

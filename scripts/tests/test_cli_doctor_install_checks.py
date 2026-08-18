@@ -200,6 +200,235 @@ class TestHistoryDb:
         assert data["severity"] == "error"
 
 
+def _bootstrap_at(db: Path, version: int) -> None:
+    """Bootstrap a database at an exact historical schema *version*.
+
+    Mirrors ``test_session_store_schema.py::_bootstrap_schema_at`` — kept as a
+    separate copy since that module isn't a public import surface for this file.
+    """
+    import sqlite3
+
+    from little_loops.session_store.schema import _MIGRATIONS, _split_sql_statements
+
+    conn = sqlite3.connect(str(db))
+    try:
+        for script in _MIGRATIONS[:version]:
+            for stmt in _split_sql_statements(script):
+                conn.execute(stmt)
+        conn.execute(
+            "INSERT OR IGNORE INTO meta(key, value) VALUES('schema_version', ?)",
+            (str(version),),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+class TestSchemaDrift:
+    """Tests for `_schema_drift_data()` (ENH-3242 piece 2)."""
+
+    def test_absent_is_informational_and_does_not_create(self, tmp_path: Path, monkeypatch) -> None:
+        from little_loops.cli.doctor import _schema_drift_data
+
+        monkeypatch.chdir(tmp_path)
+
+        data = _schema_drift_data()
+
+        assert data == {
+            "status": "unsupported",
+            "severity": "informational",
+            "note": "not yet created",
+        }
+        assert not (tmp_path / ".ll" / "history.db").exists()
+
+    def test_healthy_current_version_is_full(self, tmp_path: Path, monkeypatch) -> None:
+        from little_loops.cli.doctor import _schema_drift_data
+        from little_loops.session_store import ensure_db
+
+        monkeypatch.chdir(tmp_path)
+        ensure_db(tmp_path / ".ll" / "history.db")
+
+        data = _schema_drift_data()
+
+        assert data["status"] == "full"
+        assert data["severity"] == "error"
+
+    def test_missing_meta_table_is_informational(self, tmp_path: Path, monkeypatch) -> None:
+        import sqlite3
+
+        from little_loops.cli.doctor import _schema_drift_data
+
+        monkeypatch.chdir(tmp_path)
+        db_dir = tmp_path / ".ll"
+        db_dir.mkdir()
+        db_path = db_dir / "history.db"
+        conn = sqlite3.connect(str(db_path))
+        conn.execute("CREATE TABLE unrelated (id INTEGER)")
+        conn.commit()
+        conn.close()
+
+        data = _schema_drift_data()
+
+        assert data["status"] == "unsupported"
+        assert data["severity"] == "informational"
+        assert "uninitialized" in data["note"]
+
+    def test_dropped_view_column_is_reported(self, tmp_path: Path, monkeypatch) -> None:
+        """BUG-3236 shape: a view stamped current but missing a column."""
+        import sqlite3
+
+        from little_loops.cli.doctor import _schema_drift_data
+        from little_loops.session_store import SCHEMA_VERSION, ensure_db
+
+        monkeypatch.chdir(tmp_path)
+        db_path = tmp_path / ".ll" / "history.db"
+        ensure_db(db_path)
+        conn = sqlite3.connect(str(db_path))
+        conn.execute("DROP VIEW issue_sessions")
+        conn.execute(
+            """
+            CREATE VIEW issue_sessions AS
+            SELECT ie.issue_id, me.session_id, s.jsonl_path, MIN(me.ts) AS first_message_ts
+            FROM issue_events ie
+            JOIN message_events me ON me.ts >= ie.captured_at
+            LEFT JOIN sessions s ON s.session_id = me.session_id
+            WHERE ie.captured_at IS NOT NULL
+            GROUP BY ie.issue_id, me.session_id
+            """
+        )
+        conn.execute(
+            "INSERT OR REPLACE INTO meta(key, value) VALUES('schema_version', ?)",
+            (str(SCHEMA_VERSION),),
+        )
+        conn.commit()
+        conn.close()
+
+        data = _schema_drift_data()
+
+        assert data["status"] == "unsupported"
+        assert data["severity"] == "error"
+        assert "issue_sessions" in data["note"]
+
+    def test_dropped_index_is_reported(self, tmp_path: Path, monkeypatch) -> None:
+        """BUG-3241 shape: an index missing from a database stamped current."""
+        import sqlite3
+
+        from little_loops.cli.doctor import _schema_drift_data
+        from little_loops.session_store import ensure_db
+
+        monkeypatch.chdir(tmp_path)
+        db_path = tmp_path / ".ll" / "history.db"
+        ensure_db(db_path)
+        conn = sqlite3.connect(str(db_path))
+        conn.execute("DROP INDEX idx_assistant_messages_dedup")
+        conn.commit()
+        conn.close()
+
+        data = _schema_drift_data()
+
+        assert data["status"] == "unsupported"
+        assert "idx_assistant_messages_dedup" in data["note"]
+
+    def test_degraded_index_losing_unique_is_reported(self, tmp_path: Path, monkeypatch) -> None:
+        """The name-only-manifest blind spot BUG-3241 needed caught: an index
+        present by name but no longer UNIQUE."""
+        import sqlite3
+
+        from little_loops.cli.doctor import _schema_drift_data
+        from little_loops.session_store import ensure_db
+
+        monkeypatch.chdir(tmp_path)
+        db_path = tmp_path / ".ll" / "history.db"
+        ensure_db(db_path)
+        conn = sqlite3.connect(str(db_path))
+        conn.execute("DROP INDEX idx_assistant_messages_dedup")
+        conn.execute(
+            "CREATE INDEX idx_assistant_messages_dedup "
+            "ON assistant_messages(session_id, ts, content)"
+        )
+        conn.commit()
+        conn.close()
+
+        data = _schema_drift_data()
+
+        assert data["status"] == "unsupported"
+        assert "idx_assistant_messages_dedup" in data["note"]
+
+    def test_behind_clean_database_reports_no_drift(self, tmp_path: Path, monkeypatch) -> None:
+        from little_loops.cli.doctor import _schema_drift_data
+
+        monkeypatch.chdir(tmp_path)
+        db_path = tmp_path / ".ll" / "history.db"
+        db_path.parent.mkdir()
+        _bootstrap_at(db_path, 41)
+
+        data = _schema_drift_data()
+
+        assert data["status"] == "full"
+        assert "behind" in data["note"]
+
+    def test_behind_drifted_database_reports_drift(self, tmp_path: Path, monkeypatch) -> None:
+        import sqlite3
+
+        from little_loops.cli.doctor import _schema_drift_data
+
+        monkeypatch.chdir(tmp_path)
+        db_path = tmp_path / ".ll" / "history.db"
+        db_path.parent.mkdir()
+        _bootstrap_at(db_path, 41)
+        conn = sqlite3.connect(str(db_path))
+        conn.execute("DROP INDEX idx_assistant_messages_dedup")
+        conn.commit()
+        conn.close()
+
+        data = _schema_drift_data()
+
+        assert data["status"] == "unsupported"
+        assert "idx_assistant_messages_dedup" in data["note"]
+
+    def test_version_ahead_is_a_finding_not_informational(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        """This repo's own history.db is in exactly this state (BUG-3255): a
+        recorded version beyond what this install's migrations know about, which
+        means later migrations will never apply to it."""
+        import sqlite3
+
+        from little_loops.cli.doctor import _schema_drift_data
+        from little_loops.session_store import SCHEMA_VERSION, ensure_db
+
+        monkeypatch.chdir(tmp_path)
+        db_path = tmp_path / ".ll" / "history.db"
+        ensure_db(db_path)
+        conn = sqlite3.connect(str(db_path))
+        conn.execute(
+            "UPDATE meta SET value = ? WHERE key = 'schema_version'",
+            (str(SCHEMA_VERSION + 2),),
+        )
+        conn.commit()
+        conn.close()
+
+        data = _schema_drift_data()
+
+        assert data["status"] == "unsupported"
+        assert data["severity"] == "error"
+        assert str(SCHEMA_VERSION) in data["note"]
+        assert str(SCHEMA_VERSION + 2) in data["note"]
+
+    def test_never_creates_or_migrates_database(self, tmp_path: Path, monkeypatch) -> None:
+        from little_loops.cli.doctor import _schema_drift_data
+
+        monkeypatch.chdir(tmp_path)
+        db_path = tmp_path / ".ll" / "history.db"
+        db_path.parent.mkdir()
+        _bootstrap_at(db_path, 41)
+        before = db_path.read_bytes()
+
+        _schema_drift_data()
+
+        assert db_path.read_bytes() == before
+
+
 class TestLoopValidity:
     """Tests for `_loop_validity_data()`."""
 

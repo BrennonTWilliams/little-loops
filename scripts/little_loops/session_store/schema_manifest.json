@@ -1,0 +1,2438 @@
+{
+  "indexes": {
+    "idx_assistant_messages_dedup": {
+      "columns": [
+        "session_id",
+        "ts",
+        "content"
+      ],
+      "origin": "c",
+      "partial": false,
+      "unique": true
+    },
+    "idx_assistant_messages_session_ts": {
+      "columns": [
+        "session_id",
+        "ts"
+      ],
+      "origin": "c",
+      "partial": false,
+      "unique": false
+    },
+    "idx_commit_events_branch": {
+      "columns": [
+        "branch"
+      ],
+      "origin": "c",
+      "partial": false,
+      "unique": false
+    },
+    "idx_commit_events_issue_id": {
+      "columns": [
+        "issue_id"
+      ],
+      "origin": "c",
+      "partial": false,
+      "unique": false
+    },
+    "idx_commit_events_sha": {
+      "columns": [
+        "commit_sha"
+      ],
+      "origin": "c",
+      "partial": false,
+      "unique": false
+    },
+    "idx_corrections_dedup": {
+      "columns": [
+        "session_id",
+        "content"
+      ],
+      "origin": "c",
+      "partial": false,
+      "unique": true
+    },
+    "idx_harness_exit": {
+      "columns": [
+        "exit_code"
+      ],
+      "origin": "c",
+      "partial": false,
+      "unique": false
+    },
+    "idx_harness_parent": {
+      "columns": [
+        "parent_id"
+      ],
+      "origin": "c",
+      "partial": false,
+      "unique": false
+    },
+    "idx_harness_runner": {
+      "columns": [
+        "runner"
+      ],
+      "origin": "c",
+      "partial": false,
+      "unique": false
+    },
+    "idx_harness_semantic_verdict": {
+      "columns": [
+        "semantic_verdict"
+      ],
+      "origin": "c",
+      "partial": false,
+      "unique": false
+    },
+    "idx_harness_target": {
+      "columns": [
+        "target"
+      ],
+      "origin": "c",
+      "partial": false,
+      "unique": false
+    },
+    "idx_hook_event_name": {
+      "columns": [
+        "event_name"
+      ],
+      "origin": "c",
+      "partial": false,
+      "unique": false
+    },
+    "idx_hook_exit": {
+      "columns": [
+        "exit_code"
+      ],
+      "origin": "c",
+      "partial": false,
+      "unique": false
+    },
+    "idx_hook_session": {
+      "columns": [
+        "session_id"
+      ],
+      "origin": "c",
+      "partial": false,
+      "unique": false
+    },
+    "idx_issue_events_dedup": {
+      "columns": [
+        "issue_num",
+        "transition"
+      ],
+      "origin": "c",
+      "partial": true,
+      "unique": true
+    },
+    "idx_issue_events_num": {
+      "columns": [
+        "issue_num"
+      ],
+      "origin": "c",
+      "partial": false,
+      "unique": false
+    },
+    "idx_issue_events_session_id": {
+      "columns": [
+        "session_id"
+      ],
+      "origin": "c",
+      "partial": false,
+      "unique": false
+    },
+    "idx_issue_snapshots_dedup": {
+      "columns": [
+        "issue_num",
+        "transition"
+      ],
+      "origin": "c",
+      "partial": true,
+      "unique": true
+    },
+    "idx_issue_snapshots_num": {
+      "columns": [
+        "issue_num"
+      ],
+      "origin": "c",
+      "partial": false,
+      "unique": false
+    },
+    "idx_learning_test_events_status": {
+      "columns": [
+        "status"
+      ],
+      "origin": "c",
+      "partial": false,
+      "unique": false
+    },
+    "idx_learning_test_events_target": {
+      "columns": [
+        "target"
+      ],
+      "origin": "c",
+      "partial": false,
+      "unique": false
+    },
+    "idx_lifecycle_event": {
+      "columns": [
+        "event"
+      ],
+      "origin": "c",
+      "partial": false,
+      "unique": false
+    },
+    "idx_lifecycle_session": {
+      "columns": [
+        "session_id"
+      ],
+      "origin": "c",
+      "partial": false,
+      "unique": false
+    },
+    "idx_loop_runs_evaluator_score": {
+      "columns": [
+        "evaluator_score"
+      ],
+      "origin": "c",
+      "partial": false,
+      "unique": false
+    },
+    "idx_loop_runs_failure_terminal": {
+      "columns": [
+        "failure_terminal"
+      ],
+      "origin": "c",
+      "partial": false,
+      "unique": false
+    },
+    "idx_loop_runs_loop_name": {
+      "columns": [
+        "loop_name"
+      ],
+      "origin": "c",
+      "partial": false,
+      "unique": false
+    },
+    "idx_loop_runs_terminated_by": {
+      "columns": [
+        "terminated_by"
+      ],
+      "origin": "c",
+      "partial": false,
+      "unique": false
+    },
+    "idx_orchestration_runs_driver": {
+      "columns": [
+        "driver"
+      ],
+      "origin": "c",
+      "partial": false,
+      "unique": false
+    },
+    "idx_orchestration_runs_issue_id": {
+      "columns": [
+        "issue_id"
+      ],
+      "origin": "c",
+      "partial": false,
+      "unique": false
+    },
+    "idx_orchestration_runs_status": {
+      "columns": [
+        "status"
+      ],
+      "origin": "c",
+      "partial": false,
+      "unique": false
+    },
+    "idx_prepatch_evidence_issue_id": {
+      "columns": [
+        "issue_id",
+        "id"
+      ],
+      "origin": "c",
+      "partial": false,
+      "unique": false
+    },
+    "idx_pressure_crossed": {
+      "columns": [
+        "threshold_crossed"
+      ],
+      "origin": "c",
+      "partial": false,
+      "unique": false
+    },
+    "idx_pressure_session": {
+      "columns": [
+        "session_id"
+      ],
+      "origin": "c",
+      "partial": false,
+      "unique": false
+    },
+    "idx_pressure_ts": {
+      "columns": [
+        "ts"
+      ],
+      "origin": "c",
+      "partial": false,
+      "unique": false
+    },
+    "idx_prompt_opt_events_mode": {
+      "columns": [
+        "mode"
+      ],
+      "origin": "c",
+      "partial": false,
+      "unique": false
+    },
+    "idx_prompt_opt_events_session": {
+      "columns": [
+        "session_id"
+      ],
+      "origin": "c",
+      "partial": false,
+      "unique": false
+    },
+    "idx_raw_events_dedup": {
+      "columns": [
+        "source_path",
+        "line_no"
+      ],
+      "origin": "c",
+      "partial": false,
+      "unique": true
+    },
+    "idx_raw_events_host_ts": {
+      "columns": [
+        "host",
+        "ts"
+      ],
+      "origin": "c",
+      "partial": false,
+      "unique": false
+    },
+    "idx_raw_events_session_ts": {
+      "columns": [
+        "session_id",
+        "ts"
+      ],
+      "origin": "c",
+      "partial": false,
+      "unique": false
+    },
+    "idx_retirements_fingerprint": {
+      "columns": [
+        "topic_fingerprint"
+      ],
+      "origin": "c",
+      "partial": false,
+      "unique": true
+    },
+    "idx_review_session": {
+      "columns": [
+        "session_id"
+      ],
+      "origin": "c",
+      "partial": false,
+      "unique": false
+    },
+    "idx_review_skill": {
+      "columns": [
+        "reviewer_skill"
+      ],
+      "origin": "c",
+      "partial": false,
+      "unique": false
+    },
+    "idx_review_target": {
+      "columns": [
+        "target_id"
+      ],
+      "origin": "c",
+      "partial": false,
+      "unique": false
+    },
+    "idx_subagent_agent": {
+      "columns": [
+        "agent_type"
+      ],
+      "origin": "c",
+      "partial": false,
+      "unique": false
+    },
+    "idx_subagent_agent_id": {
+      "columns": [
+        "agent_id"
+      ],
+      "origin": "c",
+      "partial": false,
+      "unique": false
+    },
+    "idx_subagent_parent": {
+      "columns": [
+        "parent_session_id"
+      ],
+      "origin": "c",
+      "partial": false,
+      "unique": false
+    },
+    "idx_subagent_status": {
+      "columns": [
+        "status"
+      ],
+      "origin": "c",
+      "partial": false,
+      "unique": false
+    },
+    "idx_summary_nodes_condensed_dedup": {
+      "columns": [
+        "session_id"
+      ],
+      "origin": "c",
+      "partial": true,
+      "unique": true
+    },
+    "idx_summary_nodes_cross_dedup": {
+      "columns": [
+        "level",
+        "ts_start",
+        "ts_end"
+      ],
+      "origin": "c",
+      "partial": true,
+      "unique": true
+    },
+    "idx_summary_nodes_leaf_dedup": {
+      "columns": [
+        "session_id",
+        "ts_start",
+        "ts_end"
+      ],
+      "origin": "c",
+      "partial": true,
+      "unique": true
+    },
+    "idx_summary_nodes_parent_id": {
+      "columns": [
+        "parent_id"
+      ],
+      "origin": "c",
+      "partial": false,
+      "unique": false
+    },
+    "idx_summary_nodes_retention_dedup": {
+      "columns": [
+        "session_id",
+        "ts_start",
+        "ts_end"
+      ],
+      "origin": "c",
+      "partial": true,
+      "unique": true
+    },
+    "idx_test_run_events_branch": {
+      "columns": [
+        "branch"
+      ],
+      "origin": "c",
+      "partial": false,
+      "unique": false
+    },
+    "idx_test_run_events_failed_count": {
+      "columns": [
+        "failed"
+      ],
+      "origin": "c",
+      "partial": false,
+      "unique": false
+    },
+    "idx_test_run_events_head_sha": {
+      "columns": [
+        "head_sha"
+      ],
+      "origin": "c",
+      "partial": false,
+      "unique": false
+    },
+    "idx_tool_events_agent": {
+      "columns": [
+        "agent_type"
+      ],
+      "origin": "c",
+      "partial": false,
+      "unique": false
+    },
+    "idx_tool_events_mcp_outcome": {
+      "columns": [
+        "mcp_outcome"
+      ],
+      "origin": "c",
+      "partial": false,
+      "unique": false
+    },
+    "idx_tool_events_mcp_server": {
+      "columns": [
+        "mcp_server"
+      ],
+      "origin": "c",
+      "partial": false,
+      "unique": false
+    },
+    "idx_usage_events_model": {
+      "columns": [
+        "model"
+      ],
+      "origin": "c",
+      "partial": false,
+      "unique": false
+    },
+    "idx_usage_events_run_id": {
+      "columns": [
+        "run_id"
+      ],
+      "origin": "c",
+      "partial": false,
+      "unique": false
+    },
+    "idx_usage_events_session": {
+      "columns": [
+        "session_id"
+      ],
+      "origin": "c",
+      "partial": false,
+      "unique": false
+    },
+    "idx_verdict_kind": {
+      "columns": [
+        "verdict_kind"
+      ],
+      "origin": "c",
+      "partial": false,
+      "unique": false
+    },
+    "idx_verdict_session": {
+      "columns": [
+        "session_id"
+      ],
+      "origin": "c",
+      "partial": false,
+      "unique": false
+    },
+    "idx_verdict_target": {
+      "columns": [
+        "target_id"
+      ],
+      "origin": "c",
+      "partial": false,
+      "unique": false
+    }
+  },
+  "objects": {
+    "assistant_messages": {
+      "columns": [
+        {
+          "name": "id",
+          "notnull": false,
+          "pk": true,
+          "type": "INTEGER"
+        },
+        {
+          "name": "ts",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "session_id",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "content",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "tool_use_count",
+          "notnull": false,
+          "pk": false,
+          "type": "INTEGER"
+        }
+      ],
+      "type": "table"
+    },
+    "cli_events": {
+      "columns": [
+        {
+          "name": "id",
+          "notnull": false,
+          "pk": true,
+          "type": "INTEGER"
+        },
+        {
+          "name": "ts",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "binary",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "args",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "exit_code",
+          "notnull": false,
+          "pk": false,
+          "type": "INTEGER"
+        },
+        {
+          "name": "duration_ms",
+          "notnull": false,
+          "pk": false,
+          "type": "INTEGER"
+        }
+      ],
+      "type": "table"
+    },
+    "commit_events": {
+      "columns": [
+        {
+          "name": "id",
+          "notnull": false,
+          "pk": true,
+          "type": "INTEGER"
+        },
+        {
+          "name": "ts",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "commit_sha",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "parent_sha",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "message",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "author",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "branch",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "issue_id",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "files_json",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        }
+      ],
+      "type": "table"
+    },
+    "context_pressure_events": {
+      "columns": [
+        {
+          "name": "id",
+          "notnull": false,
+          "pk": true,
+          "type": "INTEGER"
+        },
+        {
+          "name": "ts",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "session_id",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "used_pct",
+          "notnull": false,
+          "pk": false,
+          "type": "REAL"
+        },
+        {
+          "name": "used_tokens_est",
+          "notnull": false,
+          "pk": false,
+          "type": "INTEGER"
+        },
+        {
+          "name": "threshold_crossed",
+          "notnull": false,
+          "pk": false,
+          "type": "INTEGER"
+        },
+        {
+          "name": "crossed_level",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "head_sha",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "branch",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        }
+      ],
+      "type": "table"
+    },
+    "correction_retirements": {
+      "columns": [
+        {
+          "name": "id",
+          "notnull": false,
+          "pk": true,
+          "type": "INTEGER"
+        },
+        {
+          "name": "topic_fingerprint",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "rule_id",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "addressed_at",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "session_id",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        }
+      ],
+      "type": "table"
+    },
+    "file_events": {
+      "columns": [
+        {
+          "name": "id",
+          "notnull": false,
+          "pk": true,
+          "type": "INTEGER"
+        },
+        {
+          "name": "ts",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "session_id",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "path",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "op",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "issue_id",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "git_sha",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        }
+      ],
+      "type": "table"
+    },
+    "harness_events": {
+      "columns": [
+        {
+          "name": "id",
+          "notnull": false,
+          "pk": true,
+          "type": "INTEGER"
+        },
+        {
+          "name": "ts",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "runner",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "target",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "exit_code",
+          "notnull": false,
+          "pk": false,
+          "type": "INTEGER"
+        },
+        {
+          "name": "semantic_verdict",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "semantic_passed",
+          "notnull": false,
+          "pk": false,
+          "type": "INTEGER"
+        },
+        {
+          "name": "timed_out",
+          "notnull": false,
+          "pk": false,
+          "type": "INTEGER"
+        },
+        {
+          "name": "duration_ms",
+          "notnull": false,
+          "pk": false,
+          "type": "INTEGER"
+        },
+        {
+          "name": "head_sha",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "branch",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "parent_id",
+          "notnull": false,
+          "pk": false,
+          "type": "INTEGER"
+        },
+        {
+          "name": "semantic_prompt",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "semantic_confidence",
+          "notnull": false,
+          "pk": false,
+          "type": "REAL"
+        },
+        {
+          "name": "semantic_reason",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "semantic_evidence",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "semantic_model",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "target_content_hash",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "target_path",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "dirty",
+          "notnull": false,
+          "pk": false,
+          "type": "INTEGER"
+        }
+      ],
+      "type": "table"
+    },
+    "hook_events": {
+      "columns": [
+        {
+          "name": "id",
+          "notnull": false,
+          "pk": true,
+          "type": "INTEGER"
+        },
+        {
+          "name": "ts",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "session_id",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "event_name",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "matcher",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "script",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "exit_code",
+          "notnull": false,
+          "pk": false,
+          "type": "INTEGER"
+        },
+        {
+          "name": "duration_ms",
+          "notnull": false,
+          "pk": false,
+          "type": "INTEGER"
+        },
+        {
+          "name": "stderr_preview",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "head_sha",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "branch",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        }
+      ],
+      "type": "table"
+    },
+    "issue_events": {
+      "columns": [
+        {
+          "name": "id",
+          "notnull": false,
+          "pk": true,
+          "type": "INTEGER"
+        },
+        {
+          "name": "ts",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "issue_id",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "transition",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "discovered_by",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "issue_type",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "priority",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "completed_date",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "captured_at",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "completed_at",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "session_id",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "issue_num",
+          "notnull": false,
+          "pk": false,
+          "type": "INTEGER"
+        }
+      ],
+      "type": "table"
+    },
+    "issue_sessions": {
+      "columns": [
+        "issue_id",
+        "issue_num",
+        "session_id",
+        "jsonl_path",
+        "first_message_ts",
+        "last_message_ts"
+      ],
+      "type": "view"
+    },
+    "issue_snapshots": {
+      "columns": [
+        {
+          "name": "id",
+          "notnull": false,
+          "pk": true,
+          "type": "INTEGER"
+        },
+        {
+          "name": "ts",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "issue_id",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "transition",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "title",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "priority",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "issue_type",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "body",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "frontmatter",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "issue_num",
+          "notnull": false,
+          "pk": false,
+          "type": "INTEGER"
+        }
+      ],
+      "type": "table"
+    },
+    "learning_test_events": {
+      "columns": [
+        {
+          "name": "id",
+          "notnull": false,
+          "pk": true,
+          "type": "INTEGER"
+        },
+        {
+          "name": "ts",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "record_id",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "target",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "status",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "assertions_json",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "date",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "raw_output_path",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        }
+      ],
+      "type": "table"
+    },
+    "legacy_issue_sessions_ts_overlap": {
+      "columns": [
+        "issue_id",
+        "session_id",
+        "jsonl_path",
+        "first_message_ts",
+        "last_message_ts"
+      ],
+      "type": "view"
+    },
+    "loop_events": {
+      "columns": [
+        {
+          "name": "id",
+          "notnull": false,
+          "pk": true,
+          "type": "INTEGER"
+        },
+        {
+          "name": "ts",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "loop_name",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "state",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "transition",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "retries",
+          "notnull": false,
+          "pk": false,
+          "type": "INTEGER"
+        }
+      ],
+      "type": "table"
+    },
+    "loop_runs": {
+      "columns": [
+        {
+          "name": "id",
+          "notnull": false,
+          "pk": true,
+          "type": "INTEGER"
+        },
+        {
+          "name": "run_id",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "loop_name",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "started_at",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "ended_at",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "final_state",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "iterations",
+          "notnull": false,
+          "pk": false,
+          "type": "INTEGER"
+        },
+        {
+          "name": "terminated_by",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "error",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "evaluator_score",
+          "notnull": false,
+          "pk": false,
+          "type": "REAL"
+        },
+        {
+          "name": "diagnostics_path",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "head_sha",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "branch",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "failure_terminal",
+          "notnull": false,
+          "pk": false,
+          "type": "INTEGER"
+        }
+      ],
+      "type": "table"
+    },
+    "message_events": {
+      "columns": [
+        {
+          "name": "id",
+          "notnull": false,
+          "pk": true,
+          "type": "INTEGER"
+        },
+        {
+          "name": "ts",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "session_id",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "content",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        }
+      ],
+      "type": "table"
+    },
+    "meta": {
+      "columns": [
+        {
+          "name": "key",
+          "notnull": false,
+          "pk": true,
+          "type": "TEXT"
+        },
+        {
+          "name": "value",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        }
+      ],
+      "type": "table"
+    },
+    "orchestration_runs": {
+      "columns": [
+        {
+          "name": "id",
+          "notnull": false,
+          "pk": true,
+          "type": "INTEGER"
+        },
+        {
+          "name": "run_id",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "driver",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "issue_id",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "status",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "failure_reason",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "duration_s",
+          "notnull": false,
+          "pk": false,
+          "type": "REAL"
+        },
+        {
+          "name": "wave",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "pr_url",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "started_at",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "ended_at",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "head_sha",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "branch",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "base_sha",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "base_dirty",
+          "notnull": false,
+          "pk": false,
+          "type": "INTEGER"
+        }
+      ],
+      "type": "table"
+    },
+    "prepatch_evidence": {
+      "columns": [
+        {
+          "name": "id",
+          "notnull": false,
+          "pk": true,
+          "type": "INTEGER"
+        },
+        {
+          "name": "issue_id",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "run_id",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "state",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "evidence_json",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "created_at",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        }
+      ],
+      "type": "table"
+    },
+    "prompt_opt_events": {
+      "columns": [
+        {
+          "name": "id",
+          "notnull": false,
+          "pk": true,
+          "type": "INTEGER"
+        },
+        {
+          "name": "ts",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "session_id",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "mode",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "offered",
+          "notnull": false,
+          "pk": false,
+          "type": "INTEGER"
+        },
+        {
+          "name": "bypass_reason",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "raw_len",
+          "notnull": false,
+          "pk": false,
+          "type": "INTEGER"
+        },
+        {
+          "name": "optimized_len",
+          "notnull": false,
+          "pk": false,
+          "type": "INTEGER"
+        },
+        {
+          "name": "optimized_text",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "accepted",
+          "notnull": false,
+          "pk": false,
+          "type": "INTEGER"
+        }
+      ],
+      "type": "table"
+    },
+    "raw_events": {
+      "columns": [
+        {
+          "name": "id",
+          "notnull": false,
+          "pk": true,
+          "type": "INTEGER"
+        },
+        {
+          "name": "ts",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "session_id",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "host",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "source_path",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "line_no",
+          "notnull": true,
+          "pk": false,
+          "type": "INTEGER"
+        },
+        {
+          "name": "event_type",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "raw_line",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "parsed_json",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "compacted",
+          "notnull": true,
+          "pk": false,
+          "type": "INTEGER"
+        },
+        {
+          "name": "summary_node_id",
+          "notnull": false,
+          "pk": false,
+          "type": "INTEGER"
+        }
+      ],
+      "type": "table"
+    },
+    "review_events": {
+      "columns": [
+        {
+          "name": "id",
+          "notnull": false,
+          "pk": true,
+          "type": "INTEGER"
+        },
+        {
+          "name": "ts",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "session_id",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "reviewer_skill",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "target_kind",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "target_id",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "severity_counts",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "findings_count",
+          "notnull": false,
+          "pk": false,
+          "type": "INTEGER"
+        },
+        {
+          "name": "findings_json_summary",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "verdict",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "head_sha",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "branch",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        }
+      ],
+      "type": "table"
+    },
+    "search_index": {
+      "columns": [
+        {
+          "name": "content",
+          "notnull": false,
+          "pk": false,
+          "type": ""
+        },
+        {
+          "name": "kind",
+          "notnull": false,
+          "pk": false,
+          "type": ""
+        },
+        {
+          "name": "ref",
+          "notnull": false,
+          "pk": false,
+          "type": ""
+        },
+        {
+          "name": "anchor",
+          "notnull": false,
+          "pk": false,
+          "type": ""
+        },
+        {
+          "name": "ts",
+          "notnull": false,
+          "pk": false,
+          "type": ""
+        }
+      ],
+      "type": "table"
+    },
+    "session_lifecycle_events": {
+      "columns": [
+        {
+          "name": "id",
+          "notnull": false,
+          "pk": true,
+          "type": "INTEGER"
+        },
+        {
+          "name": "ts",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "session_id",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "event",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "detail",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "head_sha",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "branch",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        }
+      ],
+      "type": "table"
+    },
+    "sessions": {
+      "columns": [
+        {
+          "name": "session_id",
+          "notnull": false,
+          "pk": true,
+          "type": "TEXT"
+        },
+        {
+          "name": "jsonl_path",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "started_at",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "project_path",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        }
+      ],
+      "type": "table"
+    },
+    "skill_events": {
+      "columns": [
+        {
+          "name": "id",
+          "notnull": false,
+          "pk": true,
+          "type": "INTEGER"
+        },
+        {
+          "name": "ts",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "session_id",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "skill_name",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "args",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "exit_code",
+          "notnull": false,
+          "pk": false,
+          "type": "INTEGER"
+        },
+        {
+          "name": "success",
+          "notnull": false,
+          "pk": false,
+          "type": "INTEGER"
+        },
+        {
+          "name": "duration_ms",
+          "notnull": false,
+          "pk": false,
+          "type": "INTEGER"
+        }
+      ],
+      "type": "table"
+    },
+    "subagent_runs": {
+      "columns": [
+        {
+          "name": "id",
+          "notnull": false,
+          "pk": true,
+          "type": "INTEGER"
+        },
+        {
+          "name": "ts",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "parent_session_id",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "agent_id",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "agent_type",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "agent_transcript_path",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "started_at",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "ended_at",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "status",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "head_sha",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "branch",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        }
+      ],
+      "type": "table"
+    },
+    "summary_nodes": {
+      "columns": [
+        {
+          "name": "id",
+          "notnull": false,
+          "pk": true,
+          "type": "INTEGER"
+        },
+        {
+          "name": "kind",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "content",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "tokens",
+          "notnull": false,
+          "pk": false,
+          "type": "INTEGER"
+        },
+        {
+          "name": "parent_id",
+          "notnull": false,
+          "pk": false,
+          "type": "INTEGER"
+        },
+        {
+          "name": "session_id",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "ts_start",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "ts_end",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "created_at",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "level",
+          "notnull": false,
+          "pk": false,
+          "type": "INTEGER"
+        }
+      ],
+      "type": "table"
+    },
+    "summary_spans": {
+      "columns": [
+        {
+          "name": "summary_id",
+          "notnull": false,
+          "pk": true,
+          "type": "INTEGER"
+        },
+        {
+          "name": "message_event_id",
+          "notnull": false,
+          "pk": true,
+          "type": "INTEGER"
+        }
+      ],
+      "type": "table"
+    },
+    "test_run_events": {
+      "columns": [
+        {
+          "name": "id",
+          "notnull": false,
+          "pk": true,
+          "type": "INTEGER"
+        },
+        {
+          "name": "ts",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "ended_at",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "total",
+          "notnull": false,
+          "pk": false,
+          "type": "INTEGER"
+        },
+        {
+          "name": "passed",
+          "notnull": false,
+          "pk": false,
+          "type": "INTEGER"
+        },
+        {
+          "name": "failed",
+          "notnull": false,
+          "pk": false,
+          "type": "INTEGER"
+        },
+        {
+          "name": "errored",
+          "notnull": false,
+          "pk": false,
+          "type": "INTEGER"
+        },
+        {
+          "name": "skipped",
+          "notnull": false,
+          "pk": false,
+          "type": "INTEGER"
+        },
+        {
+          "name": "duration_s",
+          "notnull": false,
+          "pk": false,
+          "type": "REAL"
+        },
+        {
+          "name": "failing_names_json",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "env_label",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "head_sha",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "branch",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "command",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        }
+      ],
+      "type": "table"
+    },
+    "tool_events": {
+      "columns": [
+        {
+          "name": "id",
+          "notnull": false,
+          "pk": true,
+          "type": "INTEGER"
+        },
+        {
+          "name": "ts",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "session_id",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "tool_name",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "args_hash",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "result_size",
+          "notnull": false,
+          "pk": false,
+          "type": "INTEGER"
+        },
+        {
+          "name": "bytes_in",
+          "notnull": false,
+          "pk": false,
+          "type": "INTEGER"
+        },
+        {
+          "name": "bytes_out",
+          "notnull": false,
+          "pk": false,
+          "type": "INTEGER"
+        },
+        {
+          "name": "cache_hit",
+          "notnull": false,
+          "pk": false,
+          "type": "INTEGER"
+        },
+        {
+          "name": "agent_type",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "mcp_server",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "mcp_tool",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "mcp_outcome",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "latency_ms",
+          "notnull": false,
+          "pk": false,
+          "type": "INTEGER"
+        }
+      ],
+      "type": "table"
+    },
+    "usage_events": {
+      "columns": [
+        {
+          "name": "id",
+          "notnull": false,
+          "pk": true,
+          "type": "INTEGER"
+        },
+        {
+          "name": "ts",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "session_id",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "model",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "state",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "input_tokens",
+          "notnull": false,
+          "pk": false,
+          "type": "INTEGER"
+        },
+        {
+          "name": "output_tokens",
+          "notnull": false,
+          "pk": false,
+          "type": "INTEGER"
+        },
+        {
+          "name": "cache_read_input_tokens",
+          "notnull": false,
+          "pk": false,
+          "type": "INTEGER"
+        },
+        {
+          "name": "cache_creation_input_tokens",
+          "notnull": false,
+          "pk": false,
+          "type": "INTEGER"
+        },
+        {
+          "name": "cost_usd",
+          "notnull": false,
+          "pk": false,
+          "type": "REAL"
+        },
+        {
+          "name": "invocation_id",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "provider_vendor",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "run_id",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        }
+      ],
+      "type": "table"
+    },
+    "user_corrections": {
+      "columns": [
+        {
+          "name": "id",
+          "notnull": false,
+          "pk": true,
+          "type": "INTEGER"
+        },
+        {
+          "name": "ts",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "session_id",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "content",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "source",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        }
+      ],
+      "type": "table"
+    },
+    "verdict_events": {
+      "columns": [
+        {
+          "name": "id",
+          "notnull": false,
+          "pk": true,
+          "type": "INTEGER"
+        },
+        {
+          "name": "ts",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "session_id",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "verdict_kind",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "target_kind",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "target_id",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "verdict",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "severity_counts",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "findings_count",
+          "notnull": false,
+          "pk": false,
+          "type": "INTEGER"
+        },
+        {
+          "name": "confidence",
+          "notnull": false,
+          "pk": false,
+          "type": "INTEGER"
+        },
+        {
+          "name": "head_sha",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "branch",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        }
+      ],
+      "type": "table"
+    }
+  },
+  "schema_version": 43
+}
