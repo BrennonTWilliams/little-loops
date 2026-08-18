@@ -15,6 +15,7 @@ discovered_date: '2026-08-17'
 captured_at: '2026-08-17T20:04:01Z'
 blocked_by:
 - ENH-3248
+decision_needed: false
 ---
 
 # BUG-3249: refine-to-ready-issue has no check-design gate, so an issue missing Program Design routes to done
@@ -111,6 +112,36 @@ Consider pairing a `format-check` gate on the same edge for the structural
 debris (`stale_file_ref`, missing `## Status`), coordinating with ENH-3247
 (`format-check --fix` repairing structural debris).
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-18 — based on codebase analysis:_
+
+**Option A**: Route `check_design`'s `on_no` directly to state `refine_followup` (`:197-211`), as originally proposed above. Matches this issue's own BUG-3001/BUG-3002 reasoning (refine now populates Program Design; reconcile's contract excludes it). Bypasses `check_refine_limit`'s per-run counter (`refine-to-ready-refine-count`, cap 2) — this would be the first edge in `refine-to-ready-issue.yaml` that reaches `refine_followup` without incrementing that counter (see Program Design → Codebase Research Findings).
+
+> **Selected:** Option B — matches all 5 existing refine-triggering gates in this file; Option A has zero precedent and would silently break the file's `max_steps` budget accounting.
+
+**Option B**: Route `check_design`'s `on_no` to state `check_refine_limit` (`:588-608`), mirroring the pattern every other direct-to-refine gate in this file already follows (`check_verify_verdict.on_no`, `check_placeholders.on_no`, `check_readiness.on_no`). `check_refine_limit` itself decides on_yes: `refine_followup` vs on_no (budget exhausted): `breakdown_issue`. Keeps the design-gate failure inside the same 1-loopback-per-run budget the other three gates already share, at the cost of that budget being contended across four failure classes instead of three.
+
+**Recommended**: Option B — no gate in the current file bypasses `check_refine_limit` to reach `refine_followup`; Option A would be the first exception to a convention the rest of the file (including `check_ac_automatable`'s newer `check_reconcile_limit` rung) consistently follows. This is a routing judgment for the implementer to confirm, not a settled fact — Option A has textual support in this issue's own prior BUG-3001/BUG-3002 reasoning, which predates ENH-3248 landing and did not have this counter-bypass tradeoff to weigh.
+
+### Decision Rationale
+
+_Added by `/ll:decide-issue` — 2026-08-18:_
+
+**Selected: Option B** — route `check_design`'s `on_no` to `check_refine_limit`, not directly to `refine_followup`.
+
+A parallel codebase-pattern-finder pass over the full 879-line `refine-to-ready-issue.yaml` confirmed: zero gates in this file (or the sibling `autodev.yaml`) route `on_no` directly to `refine_followup`. All five existing refine-triggering gates (`check_verify_verdict`, `check_hedge_attempts`, `check_placeholders`, `check_reconcile_limit`, `check_readiness`) escalate through `check_refine_limit`, which is the sole edge reaching `refine_followup` (`check_refine_limit.on_yes: refine_followup`, line 606). Option A would be the first uncounted exception to that convention, and would silently break the file's own `max_steps` budget-accounting comments (lines 46-70), which assume every gate-forced refine cycle passes through a bounding counter.
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|---|---|---|---|---|---|
+| A — direct to `refine_followup` | 0 | 2 | 2 | 1 | 5/12 |
+| B — via `check_refine_limit` | 3 | 3 | 3 | 3 | **12/12** |
+
+**Key evidence:**
+- 5/5 existing refine-triggering gates route through `check_refine_limit`; 0/5 route direct to `refine_followup` (`refine-to-ready-issue.yaml:334,367,395,431,495`).
+- `refine_followup` has exactly one inbound edge in the file: `check_refine_limit.on_yes` (`:606`).
+- `max_steps` comments (`:46-70`) budget on the assumption every forced-refine loopback is counter-gated; Option A would violate that invariant.
+
 ## Integration Map
 
 ### Files to Modify
@@ -129,6 +160,14 @@ debris (`stale_file_ref`, missing `## Status`), coordinating with ENH-3247
   target** -- they are already thin shell calls over the factored predicate.
 - `skills/confidence-check/SKILL.md:141` -- the oracle already computing this
   verdict; its `PD_FAIL` output is the contract being made routable.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-18 — based on codebase analysis:_
+
+- ENH-3248 landed 2026-08-18T14:29:51-05:00 (commit `37159351`) — after this issue's prior refine pass captured line numbers, so all line citations below correct those against current `scripts/little_loops/loops/refine-to-ready-issue.yaml` (879 lines).
+- Corrected current line ranges: `check_ac_automatable` 398-407, `confidence_check` 452-464, `check_readiness` 466-496, `check_refine_limit` 588-608, `refine_followup` 197-211, `check_reconcile_limit` 409-432, `reconcile_issue` 434-450, `check_placeholders` 371-396. The routing-summary comment block is lines 4-41 (not 4-33).
+- ENH-3248 added `check_placeholders` and retargeted `check_ac_automatable.on_no` from `check_refine_limit` to the new `check_reconcile_limit` (line 406) — the edge this issue's new `check_design` state must still straddle (`check_ac_automatable` -> `confidence_check`) is unaffected by that retarget; it sits on the on_yes side.
 
 ## Program Design
 
@@ -153,6 +192,15 @@ Reference shape for the compound form (not a template to replicate — the new g
 - On failure (no-branch): route to state refine_followup, `scripts/little_loops/loops/refine-to-ready-issue.yaml:177-191` — never directly to check_refine_limit and never to reconcile_issue — per BUG-3001 (refine now populates Program Design) and BUG-3002 (reconcile's contract excludes Program Design, so routing a design-gap failure there would reproduce that bug).
 - On error (CLI/exception failure, not a design-gap failure): fail-open, route to state confidence_check, `scripts/little_loops/loops/refine-to-ready-issue.yaml:346-358` — matching the existing error-branch targets of state check_hedges, `scripts/little_loops/loops/refine-to-ready-issue.yaml:301-310` and state check_ac_automatable, `scripts/little_loops/loops/refine-to-ready-issue.yaml:335-344`.
 - No new copy of the design-gate predicate is introduced in YAML and no `loops/lib/` fragment is created — `design_gate_failed()` (`scripts/little_loops/issue_parser.py:576-590`) via `ll-issues check-design` (ENH-2967) is reused as-is.
+
+_Added by `/ll:refine-issue` — 2026-08-18 — based on codebase analysis:_
+
+**Post-ENH-3248 routing constraint (corrects prior Call Path / Decision Rules line numbers and surfaces a new constraint)**
+
+- `refine_followup` (`scripts/little_loops/loops/refine-to-ready-issue.yaml:197-211`) is reached from exactly one routing edge in the current file: `check_refine_limit.on_yes` (line 606). No other `next:`/`on_yes:`/`on_no:`/`on_error:` value in the file targets `refine_followup` directly — grep-confirmed across all 879 lines.
+- `check_refine_limit` (588-608) is gated by a per-run counter file `${context.run_dir}/refine-to-ready-refine-count`, initialized to `'0'` in `resolve_issue` (line 100), incremented by `check_refine_limit`'s own action, and capped at `operator: lt, target: 2` (lines 602-605) — i.e. at most 1 loopback into `refine_followup` per run. This counter is separate from `check_reconcile_limit`'s own counter file (`refine-to-ready-reconcile-attempts`) and from `check_hedge_attempts`'s counter — each rung owns a distinct, independently-scoped counter.
+- Every existing gate's `on_no` in this file routes through one of two patterns, and both terminate at `check_refine_limit`, never around it: (a) direct-to-`check_refine_limit` — `check_verify_verdict.on_no` (334), `check_placeholders.on_no` (395), `check_readiness.on_no` (495); or (b) via a bounded rung that itself escalates to `check_refine_limit` on exhaustion — `check_ac_automatable.on_no` -> `check_reconcile_limit` (406) -> `on_no`/`on_error: check_refine_limit` (431-432).
+- Constraint this places on the new `check_design` gate's `on_no` edge: an edge routed directly to `refine_followup` (bypassing `check_refine_limit`) would be the first such edge in the file, and that call would not increment `refine-to-ready-refine-count` — it falls outside the 1-loopback-per-run budget every other refine-triggering gate in this file shares. `refine_followup`'s own action (`--auto --gap-analysis`) is additive-only and safe to invoke standalone; the gap is budget visibility, not correctness of the call itself.
 
 ## Implementation Steps
 
@@ -256,6 +304,8 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:decide-issue` - 2026-08-18T20:26:10 - `1c813b5d-37f0-4a50-81e2-6e9078893ccd.jsonl`
+- `/ll:refine-issue` - 2026-08-18T20:21:06 - `c090f4bd-e3d2-4c82-bae4-0b85177735d3.jsonl`
 - `/ll:refine-issue` - 2026-08-18T14:52:51 - `1b75a5d5-cd19-4f54-9db4-f0438e3206cc.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-17T20:25:53 - `fe71c380-6bd8-44e2-9c73-d0617456c6e4.jsonl`
 - `/ll:capture-issue` - 2026-08-17T20:04:12 - `86ab77f1-d20d-487b-9f55-2f4d8abf9a06.jsonl`

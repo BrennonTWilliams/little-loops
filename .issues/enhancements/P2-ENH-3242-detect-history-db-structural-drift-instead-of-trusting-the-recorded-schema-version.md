@@ -15,13 +15,15 @@ labels:
 relates_to:
 - BUG-3236
 - BUG-3241
-confidence_score: 90
-outcome_confidence: 78
+- BUG-3255
+confidence_score: 98
+outcome_confidence: 81
 score_complexity: 18
 score_test_coverage: 25
-score_ambiguity: 10
-score_change_surface: 25
+score_ambiguity: 14
+score_change_surface: 24
 decision_needed: false
+reconcile_attempted: true
 ---
 
 # ENH-3242: Detect `history.db` structural drift instead of trusting `schema_version`
@@ -85,8 +87,14 @@ Acceptance Criteria bullet 4, which requires a working detector. Piece 2 ships._
 - **In scope, piece 2**: the report-only `ll-doctor` structural check (Option A, decided
   below). This *ships*, not merely a recorded decision — it is what satisfies AC bullet 4,
   which piece 1's fresh-database test structurally cannot (a fresh DB is never the drifted
-  one). It reuses piece 1's `_schema_manifest()` and the same checked-in manifest file;
-  the two must not fork into separate manifests.
+  one). It reuses piece 1's `_schema_manifest()` — the one *generator* must not fork — but
+  builds its comparison reference by replaying `_MIGRATIONS[:recorded]` rather than loading the
+  checked-in manifest (revised 2026-08-18; see Program Design > Call Path). The two pieces
+  answer different questions: piece 1 asks "did a migration edit change structure without the
+  manifest being regenerated", piece 2 asks "does this real database match what its own
+  recorded version's migrations produce". Replay cannot answer the first (it derives from the
+  same edited source) and a fixed-version manifest cannot answer the second (no real database
+  is at the manifest's version).
 - **Out of scope**: any *repair* path (`--fix`, self-healing, a migration that rewrites
   drifted objects) — detection only, repair deferred to a follow-up issue; any change to
   `_apply_migrations()`'s fast-path short-circuit (Option A deliberately avoids the
@@ -156,6 +164,61 @@ _Added by pre-implementation review — 2026-08-17 — verified against the work
   `issue_effort()` (`:2127`, `logger.error` at `:2149`), `doctor.py` `_run_registered_checks()`
   (`:116`), `_print_report()` (`:936`), `main_doctor()` (`:988`).
 
+_Added by `/ll:refine-issue` — 2026-08-18 — based on codebase analysis:_
+
+- **Staleness flag resolved**: research-triage flagged `scripts/little_loops/cli/history.py` as changed after the last refine pass. Re-read in full (579 lines, current subcommand set: `summary`, `analyze`, `export`, `rework`, `sessions`, `audit-issue-collisions`, `root`) — it carries no `doctor` subcommand, no `--fix` flag, and no structural-check plumbing of any kind. The recent change is unrelated to this issue; it does not affect the Option A vs Option B tradeoff already decided in favor of Option A.
+- **All previously-cited line anchors re-confirmed exact against the current working tree**: `session_store/schema.py` (`SCHEMA_VERSION` `:21`, `_MIGRATIONS` `:111`, `_current_version()` `:1197`, `_apply_migrations()` `:1214`/fast-path `:1229`, `ensure_db()` `:1253`, `connect()` `:1294`); `cli/doctor.py` (`CheckResult` `:54-73`, `_CHECKS`/`register_check` `:81-87`, `_run_registered_checks()` `:116`, `_history_db_data()`/`_history_db_check()` `:353-395`, `_FULL_CHECKS`/`register_full_check` `:484-490`, `_print_report()` `:936`, `main_doctor()` `:988`, ordered print calls `:1072-1079`); `history_reader.py` (62 `except sqlite3.Error:` sites confirmed by exact grep count, `logger.error` sites at `:2117`/`:2149` confirmed); `package_data.py` (`PACKAGE_DATA_ASSETS` `:28-48`, 19 current entries, `check_asset_accessible()` `:61-69`, `list_missing_assets()` `:72-75`); `queue_store.py` (`_current_version()` `:154-162`, fast-path `:172-173`, `ensure_db()` `:196-210`). Nothing has shifted since the 2026-08-17T19:48:59Z refine pass.
+- **`_connect_readonly()` (`history_reader.py:422-446`) calls `ensure_db(db_path)` first** (`:435`, inside its own `try/except sqlite3.Error`) before opening the read-only connection — confirming a new schema-drift check must NOT reuse this helper (it would migrate away the drift it's inspecting) and must instead follow `_history_db_data()`'s `Path.exists()` + raw `sqlite3.connect(f"file:{db}?mode=ro", uri=True)` pattern, which never calls `ensure_db()`/`connect()`.
+
+_Added by pre-implementation review — 2026-08-18 — measured empirically, not inferred:_
+
+- **The version guard as specified leaves the detector near-inert.** Surveyed every
+  `.ll/history.db` under `~/AIProjects` (13 databases): recorded versions are
+  `13, 14, 14, 14, 37, 37, 37, 38, 38, 39, 39, 40, 45`. **Zero are at 43.** Under the
+  four-branch guard below, twelve take the "behind → informational, do not compare" branch and
+  one takes "ahead → informational" — the structural comparison runs on *none* of them. The
+  guard is correct that comparing a behind-database against the v43 manifest is a false-positive
+  generator; it is wrong that "behind" is a rare transient. It is the steady state. Resolved
+  below: the runtime check builds its reference by **replaying `_MIGRATIONS[:recorded]`**
+  instead of loading a fixed-version manifest, so it compares at every version.
+- **Replay cost measured**: replaying all 43 migrations into `sqlite3.connect(":memory:")`
+  takes **5.0 ms** (this machine, SQLite 3.49.2) — the same class as the `SELECT 1` that
+  `_history_db_data()` already runs from `_CHECKS`, and well inside `ll-doctor`'s budget.
+  This is a measurement, not an estimate; it removes the last cost objection to `_CHECKS`
+  registration.
+- **This repo's own `history.db` records `schema_version = 45` against `SCHEMA_VERSION = 43`
+  (`len(_MIGRATIONS) = 43`).** `git log -S'SCHEMA_VERSION = 45'` returns no commits, so it was
+  stamped by an uncommitted working-tree state run against the live database — precisely the
+  mechanism this issue's Motivation describes, producing a *version-ahead* database rather than
+  a structurally-drifted one. Consequence: `_apply_migrations()`'s fast path short-circuits on
+  `45 >= 44`, so **migrations 44 and 45 will never apply to this database** when they land,
+  silently and permanently. See BUG-3255 (filed 2026-08-18) for the repair; the guard branch
+  below is re-rated from `informational` to a real finding as a result.
+- **Structure on that v45 database is currently clean**: its full PRAGMA-derived manifest was
+  diffed against a fresh `ensure_db()` build at v43 — zero object, column, or index differences
+  in either direction. So the v45 stamp is a version-accounting defect, not live structural drift.
+- **FTS5 shadow tables are in scope under the enumeration rule as written, and should not be.**
+  `search_index` is `CREATE VIRTUAL TABLE ... USING fts5` (`schema.py:155`), so a fresh database
+  carries five shadow tables that `sqlite_master` reports as `type='table'`:
+  `search_index_config`, `search_index_content`, `search_index_data`, `search_index_docsize`,
+  `search_index_idx`. The stated exclusions (`sqlite_autoindex_*`, `sqlite_stat*`) do not match
+  them, so they and their internals land in the manifest — `search_index_content` is
+  `id, c0, c1, c2, c3, c4`, an FTS5 implementation detail that can change between SQLite builds.
+  A manifest generated on 3.49.2 could then false-positive against a user on a different build.
+- **`sqlite_sequence` also slips through**: auto-created by `AUTOINCREMENT`, present on a fresh
+  database, and matching neither named exclusion prefix.
+- **View column *types* are inferred, not declared.** `PRAGMA table_info(issue_sessions)` returns
+  `issue_id` as `BLOB` and `first_message_ts`/`last_message_ts` with an *empty* type string —
+  SQLite derives these from the view's expressions, and that inference has changed across
+  versions. AC bullet 1's "table **and view** column entries (name/type/notnull/pk)" therefore
+  over-specifies views: the BUG-3236 object is a view, making the detector that matters most the
+  one most exposed to cross-build noise.
+- **No fresh-vs-migrated divergence exists** (checked, since it would have invalidated piece 1
+  outright): `_MIGRATIONS` is a replayed ordered list and `ensure_db()` on a fresh database runs
+  the identical sequence an old database completes incrementally, so there is no
+  bootstrap-vs-migration column-order skew of the kind an `ALTER TABLE ADD COLUMN` bootstrap
+  shortcut would create.
+
 ### Files to Modify
 
 _Wiring pass added by `/ll:wire-issue`; line anchors corrected by the 2026-08-17 review pass:_
@@ -168,8 +231,9 @@ struck (2 sites use `logger.error`).
 
 - `scripts/little_loops/session_store/schema.py` — `SCHEMA_VERSION` (`:21`), `_MIGRATIONS`
   (`:111`), `_current_version()` (`:1197`), `_apply_migrations()` (`:1214`, fast-path
-  short-circuit at `:1229`), `ensure_db()` (`:1253`). Piece 1's `_schema_manifest()` lands
-  here; **no change to the fast path** (Option A avoids it).
+  short-circuit at `:1229`), `ensure_db()` (`:1253`). Piece 1's `_schema_manifest()` and piece
+  2's `_reference_manifest_at()` both land here; **no change to the fast path** (Option A
+  avoids it — the `>=` defect at `:1229` is BUG-3255's, not this issue's).
 - `scripts/little_loops/session_store/schema_manifest.json` (new) — the checked-in
   PRAGMA-derived manifest, as package data so both the test and the `ll-doctor` check read
   the same file.
@@ -303,6 +367,17 @@ _Wiring pass added by `/ll:wire-issue`:_
   idx_assistant_messages_dedup` (BUG-3241 missing-index shape); (c) drop and recreate that
   same index **without** `UNIQUE` — the degraded-attribute case a name-only manifest passes,
   and the reason the manifest type was revised.
+- New version-branch tests (added 2026-08-18, matching the revised version guard): (d) a v41
+  database built via `_bootstrap_schema_at(41)`, unmutated → reported behind, **no drift
+  claim**; (e) the same v41 database with an object dropped → **drift claim at v41**, proving
+  the check is not confined to the current version (the whole point of the replay reference —
+  0 of 13 real databases surveyed are at 43); (f) a database stamped `meta.schema_version = 45`
+  → version-ahead finding naming both numbers, not `informational` (BUG-3255 shape).
+- New exclusion test (added 2026-08-18): assert `_schema_manifest()` on a fresh database
+  contains no `sqlite_%` name and none of the five `search_index_*` FTS5 shadow tables, while
+  `search_index` itself *is* present with its five declared columns. Without this the manifest
+  silently carries SQLite-build-dependent internals and the first cross-build comparison
+  false-positives.
 
 ## Program Design
 
@@ -325,6 +400,12 @@ predicate — i.e. it would not have caught the bug this AC names._
     as an ordered list of `{name, type, notnull, pk}` (a column losing NOT NULL or PK is
     drift worth catching; `dflt_value` is included only if it proves stable across SQLite
     builds — decide during implementation and record the call in a code comment).
+    **Views record `name` and ordinal position only** (revised 2026-08-18): a view's
+    `type`/`notnull`/`pk` are *inferred* by SQLite from the underlying expressions, not
+    declared — `issue_sessions` reports `issue_id` as `BLOB` and both timestamp columns with
+    an empty type string, and that inference has changed across SQLite versions. Recording
+    them would make the BUG-3236 object the one most prone to cross-build false positives.
+    Column presence and order is the part that actually encodes the BUG-3236 drift.
   - `"indexes": dict[str, dict]` — one entry per index, keyed by name, each holding
     `{unique, partial, origin, columns}` from `PRAGMA index_list` + `PRAGMA index_info`.
 
@@ -335,7 +416,20 @@ predicate — i.e. it would not have caught the bug this AC names._
   verbatim in the deferred follow-up.
 - `_load_schema_manifest() -> SchemaManifest` (new) — reads
   `session_store/schema_manifest.json` via `importlib.resources`, matching
-  `package_data.check_asset_accessible()`'s access pattern.
+  `package_data.check_asset_accessible()`'s access pattern. **Used by piece 1's test only**
+  (revised 2026-08-18 — see `_reference_manifest_at()` below); the manifest stays package data
+  regardless, so a future repair path and the deferred `queue_store.py` reuse do not have to
+  relocate it, and so the settled "not a test fixture" decision is not reopened.
+- `_reference_manifest_at(version: int) -> SchemaManifest` (new, `session_store/schema.py`) —
+  replays `_MIGRATIONS[:version]` into `sqlite3.connect(":memory:")` and returns
+  `_schema_manifest()` of the result: the structure a database at *that* recorded version is
+  supposed to have. This is what piece 2 compares against, so the check works at every version
+  rather than only at `SCHEMA_VERSION`. Measured at 5.0 ms for the full 43-migration replay.
+  It shares the `_MIGRATIONS[:version]` replay idea with the tests' `_bootstrap_schema_at()`
+  (`test_session_store_schema.py:1134-1154`) but is not the same function — that helper writes
+  a real file for fixture use; this one is in-memory and returns a manifest. Prefer making the
+  test helper delegate to this over adding a third replay copy (BUG-3241 already flagged the
+  two existing copies as unshared).
 - `test_schema_manifest_matches_checked_in_file() -> None` (new pytest test)
 - `_schema_drift_data() -> dict` / `_schema_drift_check() -> list[CheckResult]` (new,
   `cli/doctor.py`)
@@ -344,10 +438,22 @@ predicate — i.e. it would not have caught the bug this AC names._
 
 - Enumerate objects from `sqlite_master`, not from a hardcoded name list, or the manifest
   cannot detect an object that was *added* out of band.
-- Exclude `sqlite_autoindex_*` and `sqlite_stat*`: auto-indexes are SQLite-generated from
-  UNIQUE/PK constraints and their names are positional, so they churn on unrelated DDL
-  edits and would make the manifest unstable. The UNIQUE constraints they represent are
-  already captured via the owning table's column entries.
+- Exclude **every `sqlite_%` name**, not the two named prefixes (revised 2026-08-18). The
+  original rule named only `sqlite_autoindex_*` and `sqlite_stat*` and therefore admitted
+  `sqlite_sequence`, which `AUTOINCREMENT` auto-creates and which is present on a fresh
+  database. The auto-index rationale still holds: their names are positional, so they churn on
+  unrelated DDL edits, and the UNIQUE constraints they represent are already captured via the
+  owning table's column entries.
+- **Exclude FTS5 shadow tables** (added 2026-08-18). `search_index` is
+  `CREATE VIRTUAL TABLE ... USING fts5` (`schema.py:155`), and SQLite materialises five backing
+  tables that `sqlite_master` reports as ordinary `type='table'` rows:
+  `search_index_config`, `search_index_content`, `search_index_data`, `search_index_docsize`,
+  `search_index_idx`. Their internals are FTS5 version detail — `search_index_content` is
+  `id, c0, c1, c2, c3, c4` — so including them makes the manifest a hostage to the generating
+  machine's SQLite build. Record the `search_index` virtual table's own declared columns and
+  drop the shadows. Derive the exclusion from the virtual tables actually present
+  (`sqlite_master.sql LIKE 'CREATE VIRTUAL TABLE%'` → skip `<name>_%`), not a hardcoded list of
+  five suffixes, so a second FTS table added later is handled without editing this rule.
 - Sort every collection by name before serializing; the manifest is diffed by humans in
   review, so ordering must be stable across runs and SQLite builds.
 - `PRAGMA index_list`'s `partial` column is a 0/1 flag — the predicate *text* exists only in
@@ -362,10 +468,19 @@ fails when a migration changes structure without regenerating the file.
 
 Piece 2 (runtime): `ll-doctor` -> `_run_registered_checks()` (`doctor.py:116`) ->
 `_schema_drift_check()` -> `_schema_drift_data()` -> `Path.exists()` guard -> read-only
-`sqlite3.connect(f"file:{db}?mode=ro", uri=True)` -> **version guard (below)** ->
-`_schema_manifest(conn)` compared against `_load_schema_manifest()` -> `CheckResult` naming
-the differing objects. Never calls `ensure_db()`/`connect()` — those would create and migrate
-the DB, erasing the drift.
+`sqlite3.connect(f"file:{db}?mode=ro", uri=True)` -> read recorded `meta.schema_version` ->
+**version guard (below)** -> `_schema_manifest(conn)` compared against
+`_reference_manifest_at(recorded)` -> `CheckResult` naming the differing objects. Never calls
+`ensure_db()`/`connect()` — those would create and migrate the DB, erasing the drift.
+
+_Revised 2026-08-18: the reference is built by replaying `_MIGRATIONS[:recorded]`, **not** by
+loading the checked-in manifest. Comparing against a fixed v43 manifest would have restricted
+the check to databases at exactly v43, of which there are currently **none** on this machine
+(13 surveyed: versions 13–40 and one 45) — see the empirical block under Integration Map. The
+checked-in manifest remains piece 1's authoring-time guard, which replay structurally cannot
+replace: replay derives from the same `_MIGRATIONS` source an edit would have changed, so it is
+self-consistent and blind to "someone edited migration 12's `CREATE TABLE` body". The two
+mechanisms are complementary, and both are needed._
 
 #### Version guard — required before any structural comparison
 
@@ -374,28 +489,42 @@ previously went straight from "open read-only" to "compare", which produces a fa
 on the first real database that is merely behind._
 
 Because the check deliberately never migrates, it will encounter databases whose recorded
-`schema_version` is **below** the manifest's. Such a database is not drifted — it is behind,
+`schema_version` is **below** the current one. Such a database is not drifted — it is behind,
 and `_apply_migrations()` will bring it to v43 correctly on the next `connect()`. Comparing
-its structure against the v43 manifest reports every object added since its version as drift.
+its structure against the *v43* reference reports every object added since its version as drift.
+
+_Revised 2026-08-18: the original guard resolved this by refusing to compare anything but a v43
+database. Measured against reality that silences the check almost entirely — 12 of the 13
+databases on this machine are behind and the 13th is ahead, so the comparison branch would never
+execute. Replaying `_MIGRATIONS[:recorded]` (`_reference_manifest_at()`) instead lets the behind
+case be **compared, not skipped**: a v37 database is checked against what v37's own migrations
+produce, which is exactly the "stamped a version it does not structurally match" question this
+issue exists to answer, and answering it at v37 is as valuable as at v43._
 
 The check therefore reads `meta.schema_version` (same query shape as `_current_version()`,
 `schema.py:1197`, but on the read-only connection) and branches:
 
-- **`recorded < manifest["schema_version"]`** — report `status: partial`, severity
-  `informational`, note naming both versions and stating it will migrate on next use. **Do
-  not compare structure**; a stale-but-honest database is the expected steady state for any
-  project that has not run an `ll-*` command since the upgrade.
-- **`recorded == manifest["schema_version"]`** — compare structure. This is the only branch
-  where a difference means drift, and it is exactly the BUG-3236 / BUG-3241 condition:
-  stamped current, structurally not.
-- **`recorded > manifest["schema_version"]`** — report `informational`, note that the
-  installed little-loops is older than the database (a downgrade or a mixed install), and do
-  not compare. The manifest cannot describe a future version.
+- **`0 < recorded <= len(_MIGRATIONS)`** — compare structure against
+  `_reference_manifest_at(recorded)`. Covers both the current-version case (the BUG-3236 /
+  BUG-3241 condition: stamped current, structurally not) and every behind-but-honest database.
+  When `recorded < len(_MIGRATIONS)`, the `note` also states the database is behind and will
+  migrate on next use — informational context alongside the structural verdict, not instead
+  of it.
+- **`recorded > len(_MIGRATIONS)`** — **a finding, not `informational`** (re-rated 2026-08-18).
+  The original wording assumed this meant "the installed little-loops is older than the
+  database (a downgrade or a mixed install)", which is benign. This repo's own `history.db` is
+  in exactly this state — `schema_version = 45` against `len(_MIGRATIONS) = 43`, stamped by an
+  uncommitted working tree, with no commit ever setting 45 — and it is not benign: the fast
+  path short-circuits on `45 >= 44`, so migrations 44 and 45 will never apply to it. The note
+  must say so, naming both numbers, because the database is permanently unreachable by future
+  migrations until repaired. Do not compare structure (no reference exists for a version the
+  installed code does not have). See BUG-3255.
 - **`meta` table missing entirely** — `_current_version()` treats this as version 0; report
   `informational` (uninitialized), not drift.
 
-This is what makes the manifest's `"schema_version"` key load-bearing at *runtime*, not only
-in piece 1's test.
+The manifest's `"schema_version"` key stays load-bearing in piece 1's test (a manifest left
+un-regenerated after a migration must fail loudly); at runtime, `len(_MIGRATIONS)` is the
+authority, since that is what `_apply_migrations()` itself compares against.
 
 **Comparison direction, when the versions match**: an object or index present in the manifest
 but missing from the database is drift (BUG-3236 / BUG-3241's shape); an object present in the
@@ -415,6 +544,12 @@ the review-pass block under Integration Map. Retained for their reasoning, not t
 - `ensure_db()` (now `schema.py:1253`) delegates entirely to `_apply_migrations()` for verification; `connect()` (now `:1294`) calls `ensure_db()` first, so any structural drift is invisible through every `connect()` caller, not just direct `ensure_db()` callers. **This is also why the `ll-doctor` check must open the DB read-only itself rather than going through either function** — both would migrate the drifted database out from under the check.
 - `queue_store.py:154-210` duplicates this exact fast-path shape independently (see Integration Map) — the same gap exists in the queue database. **Explicitly deferred**: `_schema_manifest(conn)` takes only a connection precisely so a follow-up can point it at `queue.db` with no refactor.
 
+_Added by `/ll:refine-issue` — 2026-08-18 — based on codebase analysis:_
+
+- **A concrete precedent exists for the AC's "distinguish objects/indexes missing from the database from those present but absent from the manifest" requirement**: `cli/doctor.py:653-676` `_full_package_data_data()` is the only check in the file that distinguishes more than one finding category in a single note — it builds `parts: list[str]` conditionally per category (each a count + noun), then joins with `"; "`. Every other check in the file (`_history_db_data()` `:353`, `_decisions_store_data()` `:280`, `_loop_validity_data()` `:398` — the latter's `f"{len(invalid)}/{len(paths)} invalid: {', '.join(invalid)}"` shape is a count plus a name list, but only one category) produces a single-category note. The new `_schema_drift_data()`'s two-directional note (missing-from-db vs missing-from-manifest) should follow the `_full_package_data_data()` two-`parts`-entries shape, not the single-category shape the file otherwise uses uniformly.
+- **No shared deterministic-JSON-writer utility exists anywhere in the codebase**; every serialization site is an inline `json.dumps(..., sort_keys=True, ...)` call at the write site (e.g. `session_store/writers.py:387,2401,2545,2669`, `prompts/fragment_store.py:31`). The one existing precedent for a *checked-in* JSON artifact writer, `verify_private_refs.py:473`, deliberately deviates: it pre-sorts the dict itself (`dict(sorted(counts_by_file(findings).items()))`, `:471`) and dumps with `sort_keys=False, indent=2` to preserve that pre-sorted insertion order rather than re-sorting at dump time. The manifest serializer this issue adds should pick one of these two shapes explicitly rather than assume `sort_keys=True` alone is "the" convention.
+- **`PRAGMA index_list`/`PRAGMA index_info` produce zero matches anywhere in `scripts/`** — confirmed via search. Unlike the table-column manifest (which has `TestSchemaGuard`'s `PRAGMA table_info` shape as a loose ad hoc precedent, `test_codequery_codegraph.py:224-234`, a subset check only, not exact-match), the index half of `_schema_manifest()` has no existing code in the repository to model after at all — it is genuinely new introspection, not an adaptation of an existing pattern.
+
 ## Proposed Solution
 
 Three pieces, roughly in order of cost and value. The first is worth doing alone.
@@ -429,8 +564,11 @@ file keeps it maintainable — the manifest diff becomes a required, reviewable 
 migration PR.
 
 **2. A report-only structural check in `ll-doctor`** (Option A, decided below). Compares the
-*live* `.ll/history.db`'s manifest against the same checked-in file piece 1 asserts against,
-read-only, and reports differing objects. This is the piece that satisfies AC bullet 4:
+*live* `.ll/history.db`'s manifest, read-only, against the structure its own recorded version's
+migrations produce (`_reference_manifest_at(recorded)`, a 5.0 ms in-memory replay — revised
+2026-08-18 from "the same checked-in file piece 1 asserts against", which would have confined
+the check to v43 databases, of which none currently exist), and reports differing objects.
+This is the piece that satisfies AC bullet 4:
 piece 1's fresh-database test can only catch drift introduced by a migration edit, never
 drift already present in a real database — which is exactly what BUG-3236 and BUG-3241 were.
 
@@ -496,6 +634,12 @@ _Added by `/ll:refine-issue` — 2026-08-17 — based on codebase analysis:_
 **Option B**: Add a per-command `--fix` flag on a new/extended `ll-history` `doctor` subcommand (`cli/history.py`) that both diagnoses and repairs the structural drift in one surface, following `cli/docs.py --fix` and `cli/issues/epic_consistency.py --fix` precedent (self-describes its subject as "drift" throughout; `--fix` diagnoses, repairs, then re-diagnoses to report post-fix state). Self-healing, but a larger surface — new argument parsing, a repair code path, and re-diagnose-after-fix logic that Option A's registry does not need.
 
 Both options can detect drift; only Option B repairs it in the same invocation. Neither has prior precedent combining a PRAGMA-based structural check with its shape — this is a genuinely open choice, not a coin-flip: it hinges on whether piece 2 should stop at detection (matching the issue's Scope Boundaries, which asks only for "a recorded decision... not full implementation") or extend to self-healing (which Acceptance Criteria bullet 4 arguably already requires — see the Confidence Check Notes' flagged inconsistency).
+
+_Added by `/ll:refine-issue` — 2026-08-18 — based on codebase analysis:_
+
+- **`importlib.resources` API shape, confirmed consistent across every existing caller**: `importlib.resources.files("little_loops")`, then `.joinpath(...)` per path segment (never a single multi-segment string), then either `.read_text(encoding="utf-8")` or `.is_file()`. Concrete model for the Program Design's `_load_schema_manifest()`: `scripts/little_loops/init/core.py:27-36` `_load_schema()` — single `.joinpath("config-schema.json")` then `.read_text(encoding="utf-8")` fed to `json.loads()`, wrapped in `@lru_cache(maxsize=1)`. `package_data.py:61-69`'s `check_asset_accessible()` uses the same `.joinpath()`-per-segment shape but does not cache (called once per asset in a sweep, not a hot path) — `_load_schema_manifest()` should decide caching on its own call frequency, not copy either precedent blindly.
+- **A concrete precedent exists for the Wiring Phase's open "regeneration path" item**, resolving it from "no precedent" to "one clear model": `scripts/little_loops/generate_schemas.py:639-644` is the only `if __name__ == "__main__":` block in `scripts/little_loops/` shaped as "regenerate a checked-in artifact" — `python -m little_loops.generate_schemas [--output OUTPUT_DIR]`, also wired as a real console-script (`scripts/pyproject.toml:103`: `ll-generate-schemas = "little_loops.cli:main_generate_schemas"`, with an inline comment `# internal: dev tooling`). The other 12 `__main__` blocks in the package are ordinary CLI/debug entry points, not artifact-regeneration hooks.
+- **The "regenerate with: ..." failure-message convention exists in two disagreeing shapes**, neither of which is a standalone `--dump-manifest`-style flag: (a) the instruction lives only in the test assertion string, e.g. `scripts/tests/test_wiring_skills_and_commands.py:395-398` (`f"{mirror_rel} is stale ... Regenerate with: ll-adapt --host gemini --apply && ..."`); (b) the instruction is embedded as a `_comment` field inside the checked-in JSON artifact itself, e.g. `scripts/little_loops/cli/verify_private_refs.py:461-474` `write_baseline()` writes `.ll/private-refs-baseline.json` with `"_comment": "Regenerate with ll-verify-private-refs --all --update-baseline. ..."`, and its regeneration is a flag (`--update-baseline`) on the same verifier CLI, not a separate dump command.
 
 ### Decision Rationale
 
@@ -573,17 +717,34 @@ _Revised by the 2026-08-17 review pass: bullet 3 demanded a startup-cost measure
 fast-path check that the Option A decision means nobody is building, and bullet 4's "whichever
 ships" was ambiguous about whether anything ships at all. Both are now concrete._
 
+_Revised again 2026-08-18 (pre-implementation review, empirically verified): the runtime check
+compares against a replayed per-version reference rather than the fixed-version manifest; view
+columns drop inferred type/notnull/pk; the exclusion rule widens to all `sqlite_%` plus FTS5
+shadow tables; the version-ahead branch is re-rated from informational to a finding._
+
 - [ ] A test asserts the full PRAGMA-derived structure of a fresh database at the current
       `SCHEMA_VERSION` against a checked-in manifest, and fails when a migration changes
-      structure without regenerating it. The manifest covers: table **and view** column
-      entries (name/type/notnull/pk), and per-index `unique`, `partial`, `origin`, and
-      ordered column list — **not index names alone**.
+      structure without regenerating it. The manifest covers: **table** column entries
+      (name/type/notnull/pk), **view** column names and ordinal position only (their
+      type/notnull/pk are SQLite-inferred and vary across builds — see Program Design > Types),
+      and per-index `unique`, `partial`, `origin`, and ordered column list — **not index names
+      alone**.
+- [ ] The manifest excludes every `sqlite_%` object (not just `sqlite_autoindex_*` /
+      `sqlite_stat*` — `sqlite_sequence` exists on a fresh database and would otherwise be
+      included) and excludes the FTS5 shadow tables backing `search_index`
+      (`search_index_config`/`_content`/`_data`/`_docsize`/`_idx`), whose internals are
+      SQLite-build-dependent. The shadow exclusion is derived from the virtual tables present,
+      not a hardcoded suffix list. A test asserts none of these names appear in the manifest.
 - [ ] The manifest records the `SCHEMA_VERSION` it was generated at, and the test fails if
       that value differs from the live `SCHEMA_VERSION`.
 - [ ] The manifest ships as package data at
       `scripts/little_loops/session_store/schema_manifest.json`, is registered in
-      `PACKAGE_DATA_ASSETS` (`package_data.py`), and `ll-verify-package-data` exits 0. The
-      test and the `ll-doctor` check load the *same* file — there is exactly one manifest.
+      `PACKAGE_DATA_ASSETS` (`package_data.py`), and `ll-verify-package-data` exits 0. There
+      is exactly one manifest file in the repository. (Revised 2026-08-18: the `ll-doctor`
+      check no longer *reads* it — it replays `_MIGRATIONS[:recorded]` instead — but the
+      manifest stays package data so a future repair path and the deferred `queue_store.py`
+      reuse need not relocate it, and so the settled "not a test fixture" decision is not
+      reopened.)
 - [ ] The test compares PRAGMA output, never whole `sqlite_master.sql` text; a comment-only
       edit to a `CREATE TABLE` body does not fail it. (Any narrow partial-index predicate
       extraction, if chosen, is scoped to index `WHERE` tails and documented in a comment.)
@@ -595,12 +756,19 @@ ships" was ambiguous about whether anything ships at all. Both are now concrete.
 - [ ] The check never creates or migrates `.ll/history.db`: it guards on `Path.exists()` and
       opens read-only, per `_history_db_data()`'s existing constraint. A test asserts running
       it in a directory with no `.ll/history.db` leaves none behind.
-- [ ] The check compares structure **only** when the database's recorded `meta.schema_version`
-      equals the manifest's. A database at an older version is reported as behind-and-will-
-      migrate (`informational`), **not** as drift; a newer version and a missing `meta` table
-      are likewise informational. Tests cover a v41 database (behind → informational, no drift
-      claim) alongside the healthy and drifted cases — without this the check's first
-      real-world output on any un-upgraded project is a false positive.
+- [ ] The check compares each database against the structure **its own recorded version**
+      produces (`_reference_manifest_at(recorded)`), for any `0 < recorded <= len(_MIGRATIONS)`.
+      A behind-but-structurally-correct database is reported as behind-and-will-migrate and
+      **not** as drift; a behind *and* drifted database is still reported as drifted. Tests
+      cover a v41 database in both conditions (clean → no drift claim; mutated → drift claim),
+      alongside the current-version healthy and drifted cases. (Revised 2026-08-18: comparing
+      only at `SCHEMA_VERSION` would have made the check inert — 0 of the 13 databases surveyed
+      on this machine are at 43.)
+- [ ] A database whose recorded version **exceeds** `len(_MIGRATIONS)` is reported as a finding
+      — not `informational` — with a note naming both numbers and stating that pending
+      migrations will never apply to it, because `_apply_migrations()`'s fast path
+      short-circuits. A test covers this branch. (This repo's own `history.db` is at 45 against
+      `len(_MIGRATIONS) = 43`; see BUG-3255.) A missing `meta` table remains `informational`.
 - [ ] The drift `note` distinguishes objects/indexes missing from the database from those
       present but absent from the manifest, rather than reporting an undifferentiated count.
 - [ ] The check is registered in `_CHECKS` (runs on every `ll-doctor`), not `_FULL_CHECKS` —
@@ -673,8 +841,44 @@ Three changes, all recorded in place above rather than as a separate plan:
 Also confirmed: BUG-3236 and BUG-3241 are both `done`, so the Impact > Sequencing constraint
 is satisfied and nothing blocks implementation.
 
+### Third Review Pass — 2026-08-18 (assumptions verified empirically, not by reading)
+
+Five changes. The design was sound on every question it had already asked; what it had not done
+was run its own premises against real databases.
+
+1. **The version guard, correct in isolation, made the detector nearly inert.** Surveying all 13
+   `.ll/history.db` files under `~/AIProjects` found versions 13–40 and one 45 — **none at 43**.
+   The "compare only at `SCHEMA_VERSION`" rule would therefore have executed its comparison
+   branch on zero real databases while passing all its own tests. Resolved by replaying
+   `_MIGRATIONS[:recorded]` as the reference (`_reference_manifest_at()`, measured at 5.0 ms for
+   the full 43-migration replay), which compares at every version. The checked-in manifest stays
+   as piece 1's authoring-time guard, which replay structurally cannot replace. This is the
+   finding most likely to have shipped as a no-op feature.
+2. **The version-ahead branch is a live defect, not a benign edge case.** This repo's own
+   database is at 45 against `len(_MIGRATIONS) = 43`, stamped by an uncommitted working tree
+   (`git log -S` finds no commit), and will silently skip migrations 44 and 45. Filed as
+   BUG-3255; the guard branch is re-rated from `informational` to a finding.
+3. **FTS5 shadow tables and `sqlite_sequence` were in scope under the exclusion rule as
+   written.** `search_index` is an fts5 virtual table, so five shadow tables report as ordinary
+   tables in `sqlite_master`; their internals (`search_index_content` = `id, c0..c4`) are
+   SQLite-version detail. Exclusion widened to all `sqlite_%` plus virtual-table shadows.
+4. **View column types are inferred, not declared** — `issue_sessions` reports `issue_id` as
+   `BLOB` and its timestamp columns with empty type strings. AC bullet 1 over-specified views,
+   making the BUG-3236 object the one most exposed to cross-build false positives. Views now
+   record names and ordinal position only.
+5. **Checked and found sound** (recorded so a later pass does not re-litigate): there is no
+   fresh-vs-migrated structural divergence — `ensure_db()` replays the same `_MIGRATIONS`
+   sequence an old database completes incrementally, so piece 1's fresh-database premise holds;
+   `_connect_readonly()` does call `ensure_db()` at `history_reader.py:435` as claimed, confirming
+   it must not be reused; and the 62 `except sqlite3.Error:` / 2 `logger.error` counts are
+   accurate.
+
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-18T20:26:47 - `d31a43c6-df20-4b44-8f4b-1800e5b2fd9f.jsonl`
+- `/ll:confidence-check` - 2026-08-18T20:00:14 - `a6a80ad6-5605-4f34-ad7e-747b40989e95.jsonl`
+- `/ll:reconcile-issue` - 2026-08-18T19:49:34 - `06995e01-0c99-42f0-82c2-6ada1ee575ad.jsonl`
+- `/ll:refine-issue` - 2026-08-18T19:14:07 - `83fc2c85-7489-49a3-809c-acf74625afa6.jsonl`
 - `/ll:format-issue` - 2026-08-17T21:42:04 - `878d0e98-a6e4-41e7-80a9-53a56e3db6f7.jsonl`
 - `/ll:confidence-check` - 2026-08-17T20:20:09 - `fe71c380-6bd8-44e2-9c73-d0617456c6e4.jsonl`
 - `/ll:confidence-check` - 2026-08-17T20:06:56 - `86ab77f1-d20d-487b-9f55-2f4d8abf9a06.jsonl`

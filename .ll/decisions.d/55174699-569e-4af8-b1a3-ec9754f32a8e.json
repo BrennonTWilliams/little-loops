@@ -1,0 +1,12 @@
+{
+  "id": "ade135aa-3659-4b77-a7be-587e01b00436",
+  "type": "decision",
+  "timestamp": "2026-08-18T20:26:04Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Matches all 5 existing refine-triggering gates in refine-to-ready-issue.yaml, which route through check_refine_limit; zero precedent for bypassing that counter to reach refine_followup directly, and doing so would break the file's max_steps budget accounting.",
+  "rule": "Option B \u2014 check_design.on_no routes to check_refine_limit",
+  "scope": "issue",
+  "alternatives_rejected": "Option A \u2014 direct on_no to refine_followup, bypassing the refine-count budget",
+  "issue": "BUG-3249"
+}
