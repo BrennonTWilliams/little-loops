@@ -30,7 +30,7 @@ score_change_surface: 18
 ## Summary
 
 `_apply_migrations()` short-circuits on `_current_version(conn) >= len(_MIGRATIONS)`
-(`session_store/schema.py:1229`). The comparison is `>=`, not `==`, so a database whose
+(`session_store/schema.py:1233`). The comparison is `>=`, not `==`, so a database whose
 recorded `meta.schema_version` is *greater* than the number of migrations the installed code
 carries is treated as current forever — including after new migrations are added, because
 `45 >= 44` is still true.
@@ -62,6 +62,22 @@ rather than a structural change.
 Structurally the database is currently fine — its full PRAGMA-derived manifest diffs clean
 against a fresh `ensure_db()` build at v43, in both directions. The defect is the version
 accounting, and its consequence is future.
+
+### The over-stamp is routine, not exotic
+
+The uncommitted-working-tree mechanism above produced *this* database's state, but it is not
+the common way to reach `recorded > len(_MIGRATIONS)`. The ordinary trigger is **checking out
+a commit older than the database** — `git bisect`, verifying a release tag, or working on a
+branch that predates a migration. In that state the installed `_MIGRATIONS` is legitimately
+shorter than what the database has genuinely applied, and the database genuinely carries the
+newer structure.
+
+Today this is harmless in both directions: `45 >= 43` no-ops on the old checkout, and `45 >=
+45` no-ops on return to HEAD. **Any resolution must preserve that**, because an unconditional
+stamp rewrite would make the old checkout destroy the version accounting and cause migrations
+44–45 to re-run against a database that already has them on return to HEAD — turning a
+currently-benign situation into a breaking one. This is why the chosen fix is guarded on a
+structural check rather than clamping unconditionally (see Fix).
 
 ## Steps to Reproduce
 
@@ -96,7 +112,7 @@ skip it on such a database.
 
 Two independent contributors:
 
-1. **`>=` in the fast path** (`schema.py:1229`). `>` is the "impossible" case and is not
+1. **`>=` in the fast path** (`schema.py:1233`). `>` is the "impossible" case and is not
    distinguished from `==`. The loop body is equally permissive: `range(version,
    len(_MIGRATIONS))` is empty when `version > len(_MIGRATIONS)`, so even past the fast path
    nothing would apply.
@@ -106,48 +122,111 @@ Two independent contributors:
 
 ## Fix
 
-**Decided 2026-08-18: self-healing stamp clamp in the fast path, plus ENH-3242 detection for
-visibility. The repair-migration option is rejected.**
+**Decided 2026-08-18: self-healing stamp clamp in the fast path, *guarded by a structural
+manifest check*, plus ENH-3242 detection for visibility. The repair-migration option is
+rejected.**
 
 ### Chosen resolution
 
-On `recorded > len(_MIGRATIONS)`, log a WARNING and rewrite `meta.schema_version` *down* to
-`len(_MIGRATIONS)`, then proceed normally. Nothing is re-run: the clamp corrects the version
-accounting only, and the next `ensure_db()` after migration 44 lands applies it through the
-ordinary loop.
+On `recorded > len(_MIGRATIONS)`, compare the database's actual structure against what
+`len(_MIGRATIONS)` is supposed to produce. Only if they match is the stamp rewritten *down* to
+`len(_MIGRATIONS)`; otherwise the stamp is left alone and the condition is logged. Nothing is
+ever re-run: the clamp corrects version accounting only, and the next `ensure_db()` after
+migration 44 lands applies it through the ordinary loop.
+
+The guard is what separates the two populations that both present as `recorded >
+len(_MIGRATIONS)`:
+
+- **Over-stamped but structurally at `len(_MIGRATIONS)`** (this repo's database, and the
+  working-tree drift mechanism generally) — manifest matches, clamp is safe and correct.
+- **Legitimately ahead** (older checkout / downgraded install, per Current Behavior) — the
+  database really does carry v44/v45 objects, the manifest does *not* match, and the stamp must
+  be preserved so returning to HEAD stays a no-op.
 
 ```python
-recorded = _current_version(conn)
 if recorded > len(_MIGRATIONS):
-    logger.warning(
-        "session_store: history.db records schema_version=%d but installed code "
-        "carries %d migrations; resetting stamp to %d",
-        recorded, len(_MIGRATIONS), len(_MIGRATIONS),
-    )
-    # fall through to the write lock and clamp the stamp before the loop
+    # Compare objects/indexes only — NOT the whole manifest dict, whose
+    # "schema_version" key is _current_version(conn) and so always differs here.
+    live = _schema_manifest(conn)
+    reference = _reference_manifest_at(len(_MIGRATIONS))
+    if (live["objects"], live["indexes"]) == (reference["objects"], reference["indexes"]):
+        logger.warning(
+            "session_store: history.db records schema_version=%d but installed code "
+            "carries %d migrations; structure matches %d, resetting stamp",
+            recorded, len(_MIGRATIONS), len(_MIGRATIONS),
+        )
+        # fall through to the write lock and clamp the stamp before the loop
+    else:
+        logger.warning(
+            "session_store: history.db records schema_version=%d, ahead of this install's "
+            "%d migrations, and its structure does not match %d; leaving the stamp intact "
+            "(run `ll-doctor` for the structural diff)",
+            recorded, len(_MIGRATIONS), len(_MIGRATIONS),
+        )
+        return
 elif recorded == len(_MIGRATIONS):
     return
 ```
 
-The clamp is written inside the existing `BEGIN IMMEDIATE` transaction, before the migration
-loop. Steady-state behavior is unchanged — the `==` branch still returns lock-free, so the
-~52-caller hot path pays nothing.
+**Both manifest helpers already exist** — `_schema_manifest()` and `_reference_manifest_at()`
+(`schema.py:1417`), landed by ENH-3242 and used by `cli/doctor.py:449-455`. This is new
+composition, not new machinery: `doctor.py`'s drift check returns early on `recorded >
+len(_MIGRATIONS)` and never performs this particular comparison itself.
+
+**Two mandatory implementation details:**
+
+1. **Compare `objects`/`indexes` only.** `_schema_manifest()` returns
+   `{"schema_version": _current_version(conn), "objects": …, "indexes": …}`. A whole-dict `==`
+   would compare `45` against `43` and *always* report a mismatch, silently disabling the clamp
+   in exactly the case it exists for.
+2. **Clamp inside the lock, not just in the fast path.** The existing code deliberately re-reads
+   `version = _current_version(conn)` inside `BEGIN IMMEDIATE` (`schema.py:1240`) to close the
+   fresh-database race. That in-lock read must *also* be clamped before it reaches
+   `range(version, len(_MIGRATIONS))`, and the `meta.schema_version` write must happen inside
+   the same transaction. Patching only the pre-lock fast path leaves the stamp unwritten.
+
+**Cost.** `_reference_manifest_at()` replays the full migration sequence into an in-memory
+database, measured at ~5.0ms (its own docstring). This is paid only on the `recorded >
+len(_MIGRATIONS)` branch — never in steady state, where the `==` branch still returns lock-free
+and the ~52-caller hot path pays nothing.
 
 **Log, do not raise.** `hooks/session_start.py:132-135` wraps `ensure_db()` in
 `contextlib.suppress(Exception)`, so a raise is invisible exactly where it would first fire and
 only surfaces later via `writers.py:521` — as a hard failure on every `ll-*` invocation, for a
-database that is structurally fine. That is the worst of both behaviors.
+database that is structurally fine. That is the worst of both behaviors. This applies to both
+guard branches: the mismatch branch returns, it does not raise.
 
-**Accepted risk.** The clamp asserts the database is structurally at `len(_MIGRATIONS)`. That
-holds for the known case (verified clean manifest diff in both directions against a fresh v43
-build). It is not guaranteed in general: a database over-stamped by a working-tree migration
-that *did* make structural changes would claim v43 while carrying v44-shaped objects, and the
-real migration 44 could then collide. That collision is a loud `table already exists` error —
-strictly preferable to today's permanent silence — and ENH-3242's manifest diff covers the
-structural half independently.
+**Residual risk (small, and no longer the main one).** With the guard, a wrongly-clamped
+database requires a structural coincidence: over-stamped *and* structurally identical to
+`len(_MIGRATIONS)` *and* a future migration that collides. Worth recording explicitly, because
+the original framing of this risk was wrong: re-applying a migration is **not** reliably a loud
+`table already exists` error. Measured across `_MIGRATIONS`, 29 of 31 `CREATE TABLE` and all
+108 `CREATE INDEX` statements use `IF NOT EXISTS`, so they re-run silently. Re-application is
+loud only for the 28 `ALTER TABLE … ADD COLUMN` statements — and a migration shaped
+`CREATE TABLE IF NOT EXISTS` + `DELETE FROM … dedup` (four such blocks exist, e.g.
+`schema.py:864-883`) would re-run silently and **delete rows accumulated since**. The migration
+loop's `BEGIN IMMEDIATE` / `ROLLBACK` contains the damage when *some* statement in the script
+raises, but that is not guaranteed for an all-idempotent script. The structural guard is what
+makes this residual rather than accepted.
+
+### Out of scope: `last_rebuild_version`
+
+`hooks/session_start.py:191` gates its rebuild on `if _last_rebuild_version < SCHEMA_VERSION:`
+— the same silent-skip shape, fed by the same drift producer (`lifecycle.py:985` writes the
+working tree's `SCHEMA_VERSION`). This repo's database reads `last_rebuild_version = 43`, equal
+to `SCHEMA_VERSION`, so it is benign today.
+
+**This fix rewrites `meta.schema_version` only and must not touch `last_rebuild_version`.**
+Recorded here so the adjacency does not have to be rediscovered; a forward-stamped
+`last_rebuild_version` is a separate issue if it is ever observed.
 
 ### Why not the alternatives
 
+- **Unconditional clamp (no manifest guard)** — the originally decided shape, rejected on
+  review. It is correct for this repo's database but wrong for the more common trigger: an
+  older checkout would rewrite a legitimately-ahead stamp down, and returning to HEAD would
+  re-run migrations the database already has (see Current Behavior). The guard costs ~5.0ms on
+  a branch that is never taken in steady state.
 - **Detect-only (`ll-doctor`)** — kept, but as visibility, not as the resolution. It is a pull
   mechanism against a push failure: nobody runs `ll-doctor` on a schedule, and the failure
   window opens the moment migration 44 is written, likely in the same session. It also does not
@@ -168,9 +247,17 @@ structural half independently.
 
 ### Port to `queue_store.py`
 
-The clamp is a ~6-line patch shape that ports directly to the duplicated fast path at
-`queue_store.py:172-173`. Still out of this issue's Program Design scope, but the chosen
-resolution is the one of the three that transfers at all — a repair migration would not have.
+The guarded clamp ports to the duplicated fast path at `queue_store.py:172-173` in shape, but
+not verbatim: `queue_store.py` has no manifest machinery of its own (`_schema_manifest()` /
+`_reference_manifest_at()` are `session_store`-only, and ENH-3242's drift check covers
+`history.db` alone), so the port needs either an equivalent manifest pair for `queue.db` or a
+deliberate decision to clamp unconditionally there on a smaller, lower-risk schema.
+
+Still out of this issue's Program Design scope, but the chosen resolution is the one of the
+three that transfers at all — a repair migration would not have. **No follow-up issue exists
+yet**; ENH-3242's Integration Map already flags that a fix here "needs a parallel decision for
+`queue_store.py` to be complete." File one when this ships, or the two schema systems diverge
+on drift coverage silently.
 
 ## Integration Map
 
@@ -181,7 +268,7 @@ _Added by `/ll:refine-issue` — 2026-08-18 — based on codebase analysis:_
 The fix is scoped to `schema.py`; `writers.py`, `session_start.py`, and `lifecycle.py` are call sites whose current behavior constrains which resolution is safe, and `queue_store.py` carries the identical defect but is out of scope.
 
 ### Files to Modify
-- `scripts/little_loops/session_store/schema.py` — fast-path comparison at `:1229` (`_apply_migrations()`); whichever resolution is chosen (detect-only / clamp / repair) is scoped to this file, per Program Design.
+- `scripts/little_loops/session_store/schema.py` — fast-path comparison at `:1233` (`_apply_migrations()`), plus the in-lock version re-read at `:1240`. The whole change is scoped to this file, per Program Design; the manifest helpers the guard calls (`_schema_manifest()`, `_reference_manifest_at()` at `:1417`) already live here.
 
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/session_store/writers.py:521` — `cli_event_context()` (`:483`) calls `_pkg.connect()`, which calls `ensure_db()` -> `_apply_migrations()`; this is the hot path for all ~52 `ll-*` CLI callers.
@@ -204,6 +291,13 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_cli_doctor_install_checks.py:389-415` — `TestSchemaDrift.test_version_ahead_is_a_finding_not_informational` (ENH-3242, already implemented) already builds the exact over-stamped fixture (`ensure_db()` then `UPDATE meta SET value = SCHEMA_VERSION + 2`) for the read-only detection path. The new AC #4 test should mirror this fixture-construction shape but call `ensure_db()` a second time (instead of `_schema_drift_data()`) and assert the clamp + a WARNING log, rather than reinventing fixture setup.
+_Review pass added 2026-08-18 (manifest guard):_
+- The AC #4 mismatch fixture ("stamped ahead **and** structurally different") has no existing
+  analog — `_bootstrap_schema_at()` + `_stamp_version()` always produce a structure matching
+  some real migration index. Build it by bootstrapping at `len(_MIGRATIONS)`, stamping ahead,
+  then executing one extra DDL statement directly on the connection (e.g.
+  `CREATE TABLE ahead_probe (id INTEGER);`) so the live manifest's `objects` gains an entry the
+  reference lacks. That is the shape a genuinely-ahead database has.
 - No existing test in `test_session_store_schema.py` uses `caplog`; the WARNING-log assertion required by Acceptance Criteria #3 has a directly reusable pattern in `scripts/tests/test_session_store_writers.py:703-716` and `:718-739` (`caplog.at_level(logging.WARNING, logger="little_loops.session_store.writers")` around a `record_issue_snapshot()` call) — same shape applies with `logger="little_loops.session_store.schema"` (the module's `logging.getLogger(__name__)`, `schema.py:23`), which already has a precedent WARNING call site at `schema.py:1282-1286` for the legacy session.db rename fallback.
 
 ## Program Design
@@ -212,18 +306,25 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 No new symbols required; the change is confined to existing functions.
 
-- `_apply_migrations(conn: sqlite3.Connection) -> None` — `session_store/schema.py:1214`;
-  fast-path comparison at `:1229` splits `recorded > len(_MIGRATIONS)` out of the `>=` branch.
-  That branch logs at WARNING and falls through to clamp the stamp down to `len(_MIGRATIONS)`
-  inside the existing transaction (decided — see Fix). It does not raise.
-- `_current_version(conn: sqlite3.Connection) -> int` — `session_store/schema.py:1197`;
+- `_apply_migrations(conn: sqlite3.Connection) -> None` — `session_store/schema.py:1218`;
+  fast-path comparison at `:1233` splits `recorded > len(_MIGRATIONS)` out of the `>=` branch.
+  That branch compares `objects`/`indexes` against `_reference_manifest_at(len(_MIGRATIONS))`
+  and either falls through to clamp the stamp inside the existing transaction (match) or logs
+  and returns (mismatch). Both paths log at WARNING; neither raises (decided — see Fix). The
+  in-lock re-read at `:1240` is clamped in the same change.
+- `_current_version(conn: sqlite3.Connection) -> int` — `session_store/schema.py:1201`;
   unchanged, it faithfully reports what is stamped, and the defect is in how the caller
   interprets an over-large value.
+- `_schema_manifest(conn: sqlite3.Connection) -> SchemaManifest` and
+  `_reference_manifest_at(version: int) -> SchemaManifest` — `session_store/schema.py:1417` and
+  just above it; both unchanged and already in this module (ENH-3242). Called by the new guard.
+  Their return dicts carry a `schema_version` key that must be excluded from the comparison —
+  see Fix's mandatory implementation detail #1.
 
 ### Call Path
 
-`ensure_db()` (`:1253`) -> `_apply_migrations()` (`:1214`) -> `_current_version()` (`:1197`)
--> fast-path comparison (`:1229`). Every `ll-*` invocation reaches this via
+`ensure_db()` (`:1257`) -> `_apply_migrations()` (`:1218`) -> `_current_version()` (`:1201`)
+-> fast-path comparison (`:1233`). Every `ll-*` invocation reaches this via
 `cli_event_context()` (`session_store/writers.py:483`) and `hooks/session_start.py:132-135`,
 so any behavior change here has the ~52-caller blast radius ENH-3242's Option A deliberately
 avoided. The chosen clamp keeps that radius at zero in steady state: the `==` branch still
@@ -247,8 +348,9 @@ _Added by `/ll:refine-issue` — 2026-08-18 — based on codebase analysis:_
 
 - **Priority**: P2 — no symptom today (the affected database is structurally correct and the
   next migration has not been written), but the failure is silent, permanent, and lands the
-  moment migration 44 is added. The chosen clamp is a ~10-line change to one function with no
-  steady-state cost; ENH-3242's detection ships alongside it at no additional work.
+  moment migration 44 is added. The chosen guarded clamp is a ~25-line change to one function,
+  reusing ENH-3242's existing manifest helpers, with no steady-state cost; ENH-3242's detection
+  ships alongside it at no additional work.
 - **Scope**: at least one database (this repo's). The other 12 surveyed under `~/AIProjects`
   record 13–40, all legitimately behind, none ahead — so the blast radius today is small, but
   the mechanism that produced it is routine for this repo's development model.
@@ -259,20 +361,46 @@ _Added by `/ll:refine-issue` — 2026-08-18 — based on codebase analysis:_
 - [ ] The fast path distinguishes `recorded > len(_MIGRATIONS)` from `recorded ==
       len(_MIGRATIONS)` rather than collapsing both into `>=`; the `==` branch still returns
       without taking the write lock.
-- [ ] On `recorded > len(_MIGRATIONS)`, `_apply_migrations()` rewrites `meta.schema_version`
-      down to `len(_MIGRATIONS)` inside the existing `BEGIN IMMEDIATE` transaction, and does
-      **not** re-run any already-applied migration.
-- [ ] That branch logs at WARNING and does not raise — verified by a test asserting
-      `ensure_db()` returns normally on an over-stamped database (a raise would be swallowed by
+- [ ] On `recorded > len(_MIGRATIONS)` **and** a structural match, `_apply_migrations()`
+      rewrites `meta.schema_version` down to `len(_MIGRATIONS)` inside the existing
+      `BEGIN IMMEDIATE` transaction, and does **not** re-run any already-applied migration. The
+      in-lock `version` re-read (`schema.py:1240`) is clamped too, so the stamp write and the
+      `range(version, len(_MIGRATIONS))` bound agree.
+- [ ] The structural match compares `objects` and `indexes` only, **not** the whole
+      `_schema_manifest()` dict — whose `schema_version` key would always differ on precisely
+      the databases the clamp exists for. (AC #4 fails if this is got wrong.)
+- [ ] On `recorded > len(_MIGRATIONS)` **and** a structural mismatch — the
+      legitimately-ahead / older-checkout case — `meta.schema_version` is left **unchanged**,
+      verified by a test that stamps ahead *and* adds a structural difference, calls
+      `ensure_db()`, and asserts the stamp still reads the higher value.
+- [ ] Both branches log at WARNING and neither raises — verified by a test asserting
+      `ensure_db()` returns normally in each case (a raise would be swallowed by
       `hooks/session_start.py:132-135`'s `contextlib.suppress(Exception)`).
 - [ ] A test builds a "structurally-correct-at-N, stamped-above-N" fixture via
-      `_bootstrap_schema_at(db, 43)` + `_stamp_version(conn, 45)`, appends a probe migration
-      (`CREATE TABLE probe (id INTEGER);`), calls `ensure_db()`, and asserts the probe table
-      exists and `meta.schema_version` reads 44 — i.e. the clamp unblocks the *next* migration.
+      `_bootstrap_schema_at(db, 43)` + `_stamp_version(conn, 45)` (with `_MIGRATIONS` still at
+      43), calls `ensure_db()` once, and asserts the stamp is clamped down to 43 (a single call
+      cannot both clamp and apply a migration that didn't exist yet when the clamp ran — see
+      Fix's "nothing is re-run" design). The test then appends a probe migration
+      (`CREATE TABLE probe (id INTEGER);`) and calls `ensure_db()` a second time, asserting the
+      probe table now exists and `meta.schema_version` reads 44 — i.e. the clamp unblocks the
+      *next* migration on a subsequent call, not the same one.
 - [ ] A test asserts the clamp is a no-op for `recorded == len(_MIGRATIONS)` and
-      `recorded < len(_MIGRATIONS)`, so normal and behind-by-N databases are unaffected.
-- [ ] This repo's `.ll/history.db` reads `schema_version = 43` after a single `ll-*` invocation
-      against the fixed code — repaired by the clamp itself, with no manual step.
+      `recorded < len(_MIGRATIONS)`, so normal and behind-by-N databases are unaffected. For
+      the `==` case, assert the manifest guard is not reached at all (it must not cost ~5.0ms
+      on the hot path) — e.g. by monkeypatching `_reference_manifest_at` to raise.
+- [ ] `meta.last_rebuild_version` is untouched by this change (see Fix's out-of-scope note) —
+      asserted in the clamp test.
+- [ ] `cli/doctor.py`'s `_schema_drift_data()` error note no longer reads as pointing at an
+      open bug: replace the `(see BUG-3255)` fragment with text describing the surviving
+      mismatch case (a database genuinely ahead of this install), since the match case now
+      self-heals on the next `ensure_db()`. No test asserts the literal substring.
+- [ ] **Manual, one-shot:** this repo's `.ll/history.db` reads `schema_version = 43` after an
+      `ll-*` invocation against the fixed code, repaired by the clamp with no manual step. Not a
+      test, and it cannot be re-verified once it fires — because every project here is
+      `local-editable`, the database will self-heal incidentally as soon as the fix exists in
+      the working tree. The pre-fix state is captured at
+      `postmortems/bug-3255-history-db-meta-before.json` (`schema_version=45`,
+      `last_rebuild_version=43`, recorded 2026-08-18); diff against it to evidence the repair.
 - [ ] `python -m pytest scripts/tests/` exits 0.
 
 ## Notes
@@ -286,6 +414,7 @@ this state via its `ll-doctor` version guard; the repair decision is this issue.
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-18T23:24:55 - `7d37dca4-85e0-44bd-98a3-f5245bba41c6.jsonl`
 - `/ll:confidence-check` - 2026-08-18T21:14:54 - `f6640f14-422f-4dbe-8922-f925a192302f.jsonl`
 - `/ll:wire-issue` - 2026-08-18T20:46:21 - `44a85abf-b40c-4da8-961d-a5effae2f301.jsonl`
 - `/ll:refine-issue` - 2026-08-18T20:29:15 - `6cc83876-f03b-40a3-88c3-eca5f080de05.jsonl`

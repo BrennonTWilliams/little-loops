@@ -78,25 +78,77 @@ Phase 1.8 keys, the pattern to follow).
 
 ## Current Behavior
 
-[If applicable - describe what currently happens]
+Phase 1.6 captures the full `format-check` payload into `$FC_JSON` and Phase 1.8
+reuses it, but between them only four keys are read
+(`program_design_nonspecific`, `missing_behavior_parity`, `stale_symbol_ref`,
+`stale_cli_flag`). `template_placeholders`, `boilerplate`, and `missing` are
+fetched and discarded, so an issue full of unfilled template debris can score
+`confidence_score: 100`.
 
 ## Expected Behavior
 
-[What should happen instead]
+Phase 1.8 extracts the structural-debris keys from the same `$FC_JSON` into a
+`STRUCT_GAP` variable and `rubric.md` Criterion 4 caps at 10 when it is
+non-empty — a ceiling, never a floor, never a Phase 3 `STOP` escalation. Only
+directive-section `missing` entries participate (see Proposed Solution ›
+Narrowing).
 
 ## Motivation
 
-[Why this issue matters - business value, user impact, technical debt cost]
+The data is already in memory; not reading it is a pure miss. `/ll:confidence-check`
+is the gate before implementation, and an issue whose Acceptance Criteria section
+does not exist should not be able to score full marks on "Issue Well-Specified."
+The loop already bounces one of these signals (ENH-3248's `check_placeholders`),
+so a standalone skill run is currently weaker than the same check inside a loop.
 
 ## Proposed Solution
 
 Mirror the existing `CLAIM_GAP` idiom exactly (`skills/confidence-check/SKILL.md:187-207`,
-`rubric.md:241-256`): extract `template_placeholders`, `boilerplate`, and
-`missing` from the already-captured `$FC_JSON` in Phase 1.6 (no second
-`format-check` call), combine them into one joined advisory variable the
-same way `CLAIM_GAP` concatenates `stale_symbol_ref` + `stale_cli_flag`, and
-feed it into the Criterion 4 cap in `rubric.md` alongside `PARITY_GAP`/
-`CLAIM_GAP` — a ceiling on Criterion 4, never a Phase 3 `STOP` escalation.
+`rubric.md:241-256`): extract the structural-debris keys from the already-captured
+`$FC_JSON` in Phase 1.8 (no second `format-check` call), combine them into one
+joined advisory variable — **named `STRUCT_GAP`** — the same way `CLAIM_GAP`
+concatenates `stale_symbol_ref` + `stale_cli_flag`, and feed it into the
+Criterion 4 cap in `rubric.md` alongside `PARITY_GAP`/`CLAIM_GAP` — a ceiling on
+Criterion 4, never a Phase 3 `STOP` escalation.
+
+### Narrowing: `missing` is filtered, not taken raw
+
+Measured across all 173 open issues in this repo (via `check_format_gaps()`):
+
+| key | issues firing |
+|---|---|
+| `template_placeholders` | 6 (3%) |
+| `boilerplate` | 4 (2%) |
+| `missing` (raw) | **102 (58%)** |
+| any of the three | 106 (61%) |
+
+Raw `missing` is dominated by ceremonial sections whose absence says nothing
+about how well-specified an issue is — `Status` (63), `Current Behavior` (55),
+`Impact` (39), `Scope Boundaries` (33), `Expected Behavior` (33), `Use Case` (23)
+— versus the directive sections that actually gate implementation:
+`Program Design` (10), `Acceptance Criteria` (5), `Summary` (5).
+
+Taking `missing` raw would pin Criterion 4 at 10 for ~58% of the backlog because
+an `## Impact` heading is absent, making the cap near-permanently on and
+therefore uninformative. So `missing` is filtered to a directive allowlist:
+
+```
+_CRITERION4_DIRECTIVE_SECTIONS = {"Summary", "Acceptance Criteria",
+                                  "Program Design", "Implementation Steps"}
+```
+
+`template_placeholders` and `boilerplate` are taken unfiltered — at 3% and 2%
+they are already rare and unambiguously mean "template debris left in place."
+
+### Remedy differs per key
+
+`ll-issues format-check --fix` (ENH-3247, completed) repairs `boilerplate` and
+can insert `missing` sections structurally, but `template_placeholders` is
+explicitly not auto-fixable — the CLI itself annotates those entries
+`(literal template debris; no --fix, needs content)`. The `STRUCT_GAP` advisory
+text under **Gaps to Address** should therefore say which entries `--fix`
+resolves and which need authored content, rather than recommending `--fix`
+uniformly.
 
 All three fields are `list[str]` (`FormatGaps.to_dict()`,
 `scripts/little_loops/issue_parser.py:546-573`), matching the shape the
@@ -106,8 +158,8 @@ so no new parsing shape is needed.
 ## Integration Map
 
 ### Files to Modify
-- `skills/confidence-check/SKILL.md:187-207` (Phase 1.8) — add extraction of `template_placeholders`, `boilerplate`, `missing` from the already-captured `$FC_JSON`, using the same `<!-- ll-prose-ok: mirrors the pre-existing PD_GAP idiom -->`-annotated one-liner convention used for `PARITY_GAP`/`CLAIM_GAP`
-- `skills/confidence-check/rubric.md:241-256` — extend the Criterion 4 "Parity/Claim Cap" row and its prose note to also apply when the new combined variable is non-empty
+- `skills/confidence-check/SKILL.md:187-207` (Phase 1.8) — add the `STRUCT_GAP` extraction one-liner off the already-captured `$FC_JSON`, using the same `<!-- ll-prose-ok: mirrors the pre-existing PD_GAP idiom -->`-annotated convention used for `PARITY_GAP`/`CLAIM_GAP`; the `missing` allowlist filter lives inside this one-liner as a set intersection, so no `issue_parser.py` change is needed
+- `skills/confidence-check/rubric.md:241-256` — extend the Criterion 4 "Parity/Claim Cap" row and its prose note to also apply when `STRUCT_GAP` is non-empty; rename the row to cover all three signals (e.g. "Parity/Claim/Structure Cap")
 
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/cli/issues/format_check.py` — `cmd_format_check()` already produces all three keys; no changes needed, confirmed no schema gap
@@ -125,7 +177,7 @@ so no new parsing shape is needed.
 - `scripts/tests/test_ll_issues_format_check.py` — tests the JSON payload shape for all gap keys including the three currently unread ones
 
 _Wiring pass added by `/ll:wire-issue`:_
-- `scripts/tests/test_confidence_check_skill.py:502-550` `TestConfidenceCheckClaimParityPrefetch` — the exact test class to extend: `test_phase_1_8_names_all_three_gap_keys` (add the new combined key), `test_phase_1_8_does_not_reissue_format_check`, `test_phase_1_8_marks_claim_gap_advisory`, `test_phase_3_does_not_name_claim_gap` (mirror as `test_phase_3_does_not_name_<new_var>`) — all pure text-slice assertions against `SKILL.md`, no fixtures or subprocess calls
+- `scripts/tests/test_confidence_check_skill.py:502-550` `TestConfidenceCheckClaimParityPrefetch` — the exact test class to extend: `test_phase_1_8_names_all_three_gap_keys` (add `STRUCT_GAP`'s three source keys), `test_phase_1_8_does_not_reissue_format_check`, `test_phase_1_8_marks_claim_gap_advisory`, `test_phase_3_does_not_name_claim_gap` (mirror as `test_phase_3_does_not_name_struct_gap`), plus a new `test_phase_1_8_filters_missing_to_directive_sections` asserting the allowlist appears — all pure text-slice assertions against `SKILL.md`, no fixtures or subprocess calls
 - `scripts/tests/test_confidence_check_skill.py:553-578` `TestConfidenceCheckRubricClaimParityCap` — parallel rubric.md test class to extend the same way (`test_cap_row_present`, `test_cap_documented_as_ceiling`, `test_cap_documented_as_not_a_hard_override`)
 - Note: `test_feat3048_symbol_cli_claim_gaps.py` tests `check_format_gaps()` in `issue_parser.py` directly (a different layer — the gap-population sites, not the skill prose); confirmed out of scope since Program Design states no `issue_parser.py` changes are needed
 
@@ -139,7 +191,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 - N/A
 
 _Wiring pass added by `/ll:wire-issue`:_
-- Phase 3's hard-override list (`skills/confidence-check/SKILL.md:357-365`) must NOT gain an entry for the new combined variable — confirmed only Learning Test, Program Design (`PD_FAIL`), and Dependencies (`DEP_FAIL`) are named there; `CLAIM_GAP`/`PARITY_GAP` are deliberately absent, and the new variable follows the same cap-only discipline
+- Phase 3's hard-override list (`skills/confidence-check/SKILL.md:357-365`) must NOT gain an entry for `STRUCT_GAP` — confirmed only Learning Test, Program Design (`PD_FAIL`), and Dependencies (`DEP_FAIL`) are named there; `CLAIM_GAP`/`PARITY_GAP` are deliberately absent, and `STRUCT_GAP` follows the same cap-only discipline
 
 ## Program Design
 
@@ -150,23 +202,82 @@ _Wiring pass added by `/ll:wire-issue`:_
 `cmd_format_check` produces the JSON payload via `FormatGaps.to_dict` (both defined above) -> captured once into `$FC_JSON` (`skills/confidence-check/SKILL.md:138`) -> Phase 1.8 extraction one-liners extend to add the new combined variable (`SKILL.md:187-207`) -> Criterion 4 cap row extends (`rubric.md:241-256`) -> Criterion 4 score only, never Phase 3 STOP overrides (`SKILL.md:357-365`)
 
 ### Decision Rules
-N/A — no new gap kind or threshold; this issue extends an existing cap
-mechanism (Criterion 4's Parity/Claim Cap) to three additional pre-existing
-gap keys using the identical mechanism already in place for `PARITY_GAP`/
-`CLAIM_GAP`.
+
+**Variable name:** `STRUCT_GAP` (the earlier draft left it unnamed as
+`<new_var>`, which made its Implementation Steps and prescribed tests
+unwriteable).
+
+**Composition:**
+```
+STRUCT_GAP = '; '.join(
+    d.get('template_placeholders', [])
+    + d.get('boilerplate', [])
+    + [m for m in d.get('missing', []) if m in _CRITERION4_DIRECTIVE_SECTIONS]
+)
+```
+where `_CRITERION4_DIRECTIVE_SECTIONS = {"Summary", "Acceptance Criteria",
+"Program Design", "Implementation Steps"}`. The filter is inlined in the skill's
+`python3 -c` one-liner (the `CLAIM_GAP` named-dict variant, `SKILL.md:196`), not
+added to `issue_parser.py` — the allowlist is a confidence-check scoring policy,
+not a property of the gap key itself, and `format-check` must keep reporting all
+`missing` sections to its other consumers.
+
+**Cap semantics:** non-empty `STRUCT_GAP` caps Criterion 4 at 10 regardless of
+which other row would otherwise apply — a ceiling, never a floor. It is
+cap-only: no Phase 3 hard-override paragraph, matching `PARITY_GAP`/`CLAIM_GAP`.
+
+**Interaction with the sibling cap:** ENH-3256's `DECISION_GAP` caps Criterion C
+(Ambiguity); `STRUCT_GAP` caps Criterion 4 (Well-Specified). Different criteria,
+so the caps compose additively with no ordering dependency. If both land
+together, `rubric.md` gains one cap row per criterion, not a merged row.
+
+**Inert cases:** all three keys empty, or only non-directive `missing` entries
+present (e.g. just `Status`/`Impact`) — `STRUCT_GAP` is the empty string and
+Criterion 4 scoring is untouched.
 
 ## Implementation Steps
 
-1. Phase 1.8 in `skills/confidence-check/SKILL.md` extracts `template_placeholders`, `boilerplate`, and `missing` from the already-captured `$FC_JSON` — no second `format-check` invocation, matching the explicit "do not issue a second format-check call" comment already present for `PARITY_GAP`/`CLAIM_GAP` (`SKILL.md:189-190`).
-2. `rubric.md`'s Criterion 4 "Parity/Claim Cap" row and prose note extend to cover the new combined signal, staying a cap (never a Phase 3 STOP escalation) — consistent with `SKILL.md:204-207`'s explicit statement that `CLAIM_GAP` "must not be escalated to a STOP verdict."
-3. `python -m pytest scripts/tests/test_confidence_check_skill.py scripts/tests/test_feat3048_symbol_cli_claim_gaps.py -v` passes, and a new test exercises an issue with a non-empty `template_placeholders`/`boilerplate`/`missing` gap to confirm Criterion 4 is capped without triggering a STOP verdict.
+1. Add the `STRUCT_GAP` extraction to Phase 1.8 in
+   `skills/confidence-check/SKILL.md` per Decision Rules above, off the
+   already-captured `$FC_JSON` — no second `format-check` invocation, matching
+   the explicit "do not issue a second format-check call" comment already
+   present for `PARITY_GAP`/`CLAIM_GAP` (`SKILL.md:189-190`).
+2. Add the prose paragraph describing `STRUCT_GAP` beside the existing
+   `PARITY_GAP`/`CLAIM_GAP` paragraph, stating the directive-section allowlist,
+   the cap-not-STOP discipline, and the per-key remedy split (`--fix` repairs
+   `boilerplate`/`missing`; `template_placeholders` needs authored content).
+3. Extend `rubric.md`'s Criterion 4 cap row and prose note to cover
+   `STRUCT_GAP`, staying a cap — consistent with `SKILL.md:204-207`'s statement
+   that `CLAIM_GAP` "must not be escalated to a STOP verdict."
+4. Confirm Phase 3's hard-override list (`SKILL.md:357-365`) gains no
+   `STRUCT_GAP` entry.
+5. Run `ll-adapt --host gemini --apply && ll-adapt --host kimi-code --apply &&
+   ll-adapt --host qwen --apply` to refresh the three verbatim skill mirrors.
+
+## Acceptance Criteria
+
+- [ ] Phase 1.8 of `skills/confidence-check/SKILL.md` names `STRUCT_GAP` and all
+      three source keys (`template_placeholders`, `boilerplate`, `missing`).
+- [ ] Phase 1.8 issues no second `format-check` call — `$FC_JSON` is still
+      fetched exactly once, in Phase 1.6.
+- [ ] The `missing` contribution is filtered to the directive allowlist; an issue
+      whose only `missing` entries are `Status` and `Impact` leaves `STRUCT_GAP`
+      empty.
+- [ ] An issue with a non-empty `template_placeholders` list caps Criterion 4 at
+      10 and does **not** produce a `STOP — ADDRESS GAPS` verdict.
+- [ ] `rubric.md`'s Criterion 4 cap row names `STRUCT_GAP` and is documented as a
+      ceiling and explicitly not a hard override.
+- [ ] `STRUCT_GAP` does not appear in Phase 3's hard-override paragraphs
+      (`test_phase_3_does_not_name_struct_gap`).
+- [ ] The three host skill mirrors match `skills/confidence-check/` byte-for-byte.
+- [ ] `python -m pytest scripts/tests/` exits 0.
 
 ## Impact
 
-- **Priority**: [P0-P5] - [Justification]
-- **Effort**: [Small/Medium/Large] - [Justification]
-- **Risk**: [Low/Medium/High] - [Justification]
-- **Breaking Change**: [Yes/No]
+- **Priority**: P2 - Weakens the pre-implementation gate, but the loop-side `check_placeholders` already covers the highest-value signal in automated runs.
+- **Effort**: Small - Two prose files, one extraction one-liner and one rubric row; no Python change.
+- **Risk**: Low - Cap-only semantics with a measured allowlist; the narrowing keeps the trigger rate at ~3-5% of open issues rather than 58%.
+- **Breaking Change**: No - Scores can drop for issues carrying real debris, which is the intent; no interface changes.
 
 ## Related Key Documentation
 
@@ -174,20 +285,54 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ## Status
 
-**Open** | Created: [YYYY-MM-DD] | Priority: [P0-P5]
-
-## Current Pain Point
+**Open** | Created: 2026-08-18 | Priority: P2
 
 ## Success Metrics
 
+- A re-run of `/ll:confidence-check` on ENH-3256/ENH-3257 in their pre-cleanup
+  state (10 `template_placeholders`, 4 `boilerplate`) caps Criterion 4 at 10.
+- `STRUCT_GAP` fires on ≤ 10% of open issues, not the 58% raw `missing` would
+  produce — verifiable by re-running the measurement in Proposed Solution ›
+  Narrowing after implementation.
+
 ## Scope Boundaries
+
+**In scope:** reading three already-fetched keys in Phase 1.8 and the Criterion 4
+cap row in `rubric.md`.
+
+**Out of scope:**
+- Any change to `scripts/little_loops/issue_parser.py` or
+  `cli/issues/format_check.py` — all three keys already exist and serialize
+  correctly; the allowlist is a scoring policy local to confidence-check.
+- `refine-to-ready-issue.yaml`'s `check_placeholders` state (ENH-3248). It
+  re-invokes `format-check` independently and gates on a count rather than a
+  joined string — a separate consumer, deliberately not unified here.
+- Auto-remediation. `STRUCT_GAP` is advisory; running `format-check --fix` or
+  authoring the missing content stays the user's action.
+- Criterion C (Ambiguity), which ENH-3256 covers.
 
 ## Backwards Compatibility
 
+No interface change. `$FC_JSON` is already fetched; this reads three more keys
+from it. Issues carrying real structural debris will score up to 10 points lower
+on Criterion 4 than before, which is the intended correction — previously scored
+issues keep their frontmatter until re-run. The cap cannot lower an issue below
+its existing row (ceiling, never floor) and cannot produce a `STOP` verdict.
+
 ## API/Interface
 
-```python
-# Example interface/signature
+```bash
+# skills/confidence-check/SKILL.md Phase 1.8 — reuses $FC_JSON from Phase 1.6
+# <!-- ll-prose-ok: mirrors the pre-existing PD_GAP idiom (SKILL.md Phase 1.6) -->
+STRUCT_GAP=$(echo "$FC_JSON" | python3 -c "
+import json,sys
+d = json.load(sys.stdin)
+DIRECTIVE = {'Summary', 'Acceptance Criteria', 'Program Design', 'Implementation Steps'}
+print('; '.join(
+    d.get('template_placeholders', [])
+    + d.get('boilerplate', [])
+    + [m for m in d.get('missing', []) if m in DIRECTIVE]
+))" 2>/dev/null || true)
 ```
 
 
