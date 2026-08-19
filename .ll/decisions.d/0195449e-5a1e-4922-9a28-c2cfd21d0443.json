@@ -1,0 +1,17 @@
+{
+  "id": "62cfaf00-02aa-4380-bfa3-f4fbc64a8fef",
+  "type": "decision",
+  "timestamp": "2026-08-19T15:25:17Z",
+  "category": "validation",
+  "labels": [
+    "fsm",
+    "validation",
+    "warnings"
+  ],
+  "rationale": "The recursion at structural_rules.py:281 exists solely to cross-validate with: bindings against the child's parameters. Its except Exception: continue already swallows child ERRORs, so propagating child WARNINGs would surface the mild findings while the severe ones stay silent. ValidationError also has no provenance field, so a propagated child violation would be recorded as the parent's - replacing one misattribution with another. Per-loop scope coverage is already enforced independently by ll-doctor's _loop_validity_data and TestValidatorWarningBudget, which iterate every loop file directly, so nothing is lost by suppression.",
+  "rule": "Recursive load_and_validate() calls into child loops pass raise_on_error=False and discard the returned violations. A loop's validation reports only that loop's own findings; a child's warnings are reported when the child is itself validated.",
+  "scope": "project",
+  "alternatives_rejected": "Option B (propagate): fold child warnings into the parent's returned errors list so they reach --json violations. Rejected - it would require adding a source-loop field to ValidationError and threading it through every rule and consumer, would give every parent loop referencing one of the 11 unscoped loops/oracles/*.yaml new violations entries, would shift TestValidatorWarningBudget, and could flip workflow-generator.yaml's baseline/candidate regression gate for reasons unrelated to the artifact under test. Only viable bundled with a scope backfill across those 11 oracles.",
+  "issue": "BUG-3239",
+  "source_issue_id": "BUG-3239"
+}

@@ -1,0 +1,17 @@
+{
+  "id": "e1ef1618-a454-4fab-bbd0-a207220e80f0",
+  "type": "decision",
+  "timestamp": "2026-08-19T15:25:26Z",
+  "category": "cli-output",
+  "labels": [
+    "fsm",
+    "validation",
+    "warnings"
+  ],
+  "rationale": "load_and_validate's logger.warning is what all eight other call sites rely on for warning visibility - removing it would silence warnings across ll-loop run, ll-loop edit and others, a behavior change far beyond this bug. cmd_validate's loop is local and purely duplicative. Dropping it also keeps both warning channels on stderr rather than splitting them across stderr and stdout.",
+  "rule": "cmd_validate's duplicate warning print loop (config_cmds.py:93-94) is removed; load_and_validate's logger.warning emission (structural_rules.py:1769-1770) is the single warning channel.",
+  "scope": "issue",
+  "alternatives_rejected": "Removing load_and_validate's logger.warning loop instead - rejected because it silences warnings for every other caller.",
+  "issue": "BUG-3239",
+  "source_issue_id": "BUG-3239"
+}
