@@ -1,0 +1,11 @@
+{
+  "id": "14936b88-599a-44ee-82e8-5e5ea7cf208c",
+  "type": "decision",
+  "timestamp": "2026-08-19T21:26:24Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "confirm-before-map verifies a hit exists at path:line but not that it is the right change target; ENH-3000 instance threaded config into if-index-is-None fallbacks in a config-free module when the seam was one hop up",
+  "rule": "wire-issue must classify callers-of hits by production-path reachability and existing injection seams before mapping them as change targets",
+  "scope": "issue",
+  "issue": "ENH-3258"
+}

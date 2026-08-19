@@ -15,12 +15,12 @@ labels:
 - issues
 - cli
 verify_verdict: VALID
-confidence_score: 98
-outcome_confidence: 75
-score_complexity: 18
-score_test_coverage: 23
-score_ambiguity: 18
-score_change_surface: 16
+confidence_score: 100
+outcome_confidence: 67
+score_complexity: 14
+score_test_coverage: 18
+score_ambiguity: 10
+score_change_surface: 25
 ---
 
 # ENH-2966: `testable` keyword inference fires on 88% of the issues it evaluates
@@ -126,16 +126,27 @@ the **40 scanned** issues (70 active minus 30 exempt via an explicit
 | **B** | whole body, 8 keywords, substring, ≥2 | **6** | ≥5 |
 | **A + B** | title + `## Summary`, 8 keywords, substring, ≥2 | **0** | 0 |
 | **C** | whole body, 11 keywords, substring, ≥3 | **30** | ~29 |
-| **A + F** | title + `## Summary`, 11 keywords, **word-boundary**, ≥2 | **1** | **1** |
+| **A + F** *(guard `(?<![a-z0-9])`)* | title + `## Summary`, 11 keywords, **word-boundary**, ≥2 | **1** | **1** |
+| **A + F′** *(adopted; guard `(?<![a-z0-9_])`)* | as above, `_` added to the leading guard | **0** | **0** |
 | *(A, bare `doc` dropped)* | title + `## Summary`, 10 keywords, substring, ≥2 | 1 | 1 |
 | *(A, threshold 3)* | title + `## Summary`, 11 keywords, substring, ≥3 | 1 | 1 |
 
 **The fire count alone is the wrong criterion — see the hand-check below.** A
 hits the single-digit target but 5 of its 6 fires are false positives; C barely
-moves (35 → 30); A + B overshoots to zero. The three bottom rows all collapse
+moves (35 → 30); A + B overshoots to zero. The three `1`-fire rows all collapse
 to the same single survivor (`EPIC-3217`, itself a false positive), which
 identifies the residual driver precisely: **bare `doc` matching as a substring**,
 not the scan surface.
+
+**A + F′ reaching 0 is not the same failure as A + B reaching 0.** A + B zeroes
+the count while still scoring `documentation` as two hits and still scanning the
+whole body — it removes data, not the defect. A + F′ removes the defect, and the
+residual `EPIC-3217` it clears was itself a false positive (its two hits are
+`docs` and `guide`, both from one `docs/guides/…` citation ending in
+`_GUIDE.md`). Since
+the backlog's one genuine doc-only issue fires under no precise variant at all
+(see "The metric has no true positives"), 0 here is the expected reading of a
+smoke measurement, not a signal to revert. Acceptance is the labeled fixture set.
 
 Because A and B tie on raw fire count, **the choice between them was never a
 metric argument** — it rests on implementation fit (A reuses `_section_body`,
@@ -224,7 +235,9 @@ other tooling consumes. It can be adopted alongside any of A–D, or on its own.
 inside `documentation`, `docs`, or a `docs/guides/…` path fragment. **Added
 2026-08-19**, after the hand-check above showed A's residual false positives
 are driven entirely by that artifact — not by the scan surface. Measured
-**A + F = 1 fire** (from A's 6). Orthogonal to A–E in the same way E is: it
+**A + F = 1 fire** (from A's 6), and **A + F′ = 0** once the leading guard also
+excludes `_` — the corrected form adopted by the fourth review; see Program
+Design. Orthogonal to A–E in the same way E is: it
 changes *how* a keyword matches, not *what is scanned* or *whether the class
 gates*.
 
@@ -244,7 +257,8 @@ keyword added.
 
 **Recommended**: **Option A + Option F + Option E.** A narrows the surface and
 reuses the helper `check_format_gaps` already calls; F removes the substring
-artifact that A alone leaves behind (6 fires → 1); E fixes the gate-failure
+artifact that A alone leaves behind (6 fires → 0 with the corrected `_` guard,
+1 without it); E fixes the gate-failure
 complaint independently of how precise the keyword rule becomes. B is **no
 longer held as a contingent alternative** — the hand-check that would have
 triggered it has been run, and B's own survivors are equally imprecise.
@@ -291,7 +305,9 @@ any of them.
 **Option F**: Word-boundary matching in `_count_testable_keyword_matches`
 (`issue_parser.py:1844-1847`) instead of bare substring containment, so `doc`
 stops matching inside `documentation` / `docs` / `docs/guides/…`. Measured
-**A + F = 1 fire** (from A's 6). Orthogonal to the scan-surface choice.
+**A + F = 1 fire** (from A's 6); **A + F′ = 0** with the corrected
+`(?<![a-z0-9_])` leading guard, which is the adopted form (fourth review).
+Orthogonal to the scan-surface choice.
 
 > **Selected:** Option A + Option F + Option E — A narrows the scan surface via
 > `_section_body` (the helper `check_format_gaps` already calls); F removes the
@@ -320,20 +336,32 @@ an unguarded f-string interpolates the literal text `None` into the scan
 surface. Whichever branch is chosen must write the fallback explicitly
 (`_section_body(content, "Summary") or ""` for A1).
 
-Decide explicitly between:
 - **A1** — title-only is fine (a doc-only issue announces itself in the title);
-  simplest. *Suggested default.*
+  simplest.
 - **A2** — fall back to the whole body when `## Summary` is missing, preserving
   today's behavior for those issues.
 
-**Measured argument for A1 (2026-08-19):** under A1 none of the 5 fires. Under
-A2 three of them — `EPIC-2087`, `EPIC-2149`, `FEAT-2379` — immediately refire,
-so A2 reintroduces 3 of the 35 false positives this issue exists to remove, in
-exchange for preserving behavior nobody wants. This replaces the original
-rationale ("EPICs are never doc-only in practice"), which sits awkwardly beside
-the hand-check finding that **4 of Option A's 6 false positives are EPICs**.
+> **Resolved 2026-08-19 (fifth review): A1.**
 
-Whichever is chosen must be pinned by a test; today nothing covers it.
+**Measured argument for A1, re-measured against the adopted A + F1c rule:**
+under A1 none of the 5 fires (**A1 + F1c = 0/40**); under A2 three of them —
+`EPIC-2087`, `EPIC-2149`, `FEAT-2379` — immediately refire (**A2 + F1c =
+3/40**). So A2 reintroduces 3 of the 35 false positives this issue exists to
+remove, in exchange for preserving behavior nobody wants. This replaces the
+original rationale ("EPICs are never doc-only in practice"), which sits
+awkwardly beside the hand-check finding that **4 of Option A's 6 false
+positives are EPICs**.
+
+**Note on the provenance of the "3" (fifth review).** The third review recorded
+this number while measuring with the *old substring* matcher, where A2 actually
+refires **4** — `FEAT-3036` as well. The recorded three IDs are correct for the
+**adopted** F1c rule and wrong for the matcher they were measured with; F1c
+drops `FEAT-3036` back below threshold. The conclusion is unchanged and in fact
+strengthened (A1 lands at 0 either way), but do not reuse the "3" as evidence
+about any pre-F1c variant.
+
+A1 must be pinned by a test; today nothing covers it (see Implementation Steps
+step 8).
 
 **Decision 2 — delete `infer_testable` rather than keep it in lockstep.**
 `infer_testable` (`issue_parser.py:1850-1862`) has **zero production callers** —
@@ -342,10 +370,36 @@ a repo-wide search finds only its own tests (`test_issue_parser.py:4098-4136`),
 `docs/reference/CLI.md:2069` naming it in prose. The Call Path section below
 frets that its two entry points are "kept in sync only by convention"; deleting
 the unused one collapses that risk to nothing and removes a second surface to
-update. Decide between:
+update. The two branches considered:
 - **D1** — delete `infer_testable` and its tests; `check_format_gaps` becomes
-  the single call site. *Suggested default.*
+  the single call site.
 - **D2** — keep it, and change both entry points in lockstep.
+
+> **Resolved 2026-08-19 (fifth review): D1.**
+
+**Zero production callers re-confirmed by full `git grep`.** Every reference is
+either the definition, its own tests, or prose. The complete reference set —
+larger than the three this section previously listed, and every item is an edit
+target or explicitly cleared:
+
+| Reference | Disposition |
+|---|---|
+| `scripts/little_loops/issue_parser.py:1850` | the definition itself — goes away under D1 |
+| `scripts/tests/test_issue_parser.py:4098-4136` (`TestInferTestable`) | the whole class goes away with it |
+| `scripts/tests/test_issue_parser.py:4140-4146` (sibling class docstring) | **rewrite** — see Dependent Files |
+| `skills/format-issue/SKILL.md:176` + its 3 mirrors (`.gemini/`, `.kimi-code/`, `.qwen/` `:175`) | **update + regenerate** |
+| `docs/reference/CLI.md:2069` | **update** |
+| `.issues/…/P2-ENH-2946-*.md:60,176,211,221` | **cleared** — ENH-2946 is `done` |
+| `.issues/…/P3-ENH-2971-*.md:123` | **cleared** — ENH-2971 is `done` |
+| `.ll/decisions.d/7920ac07-*.json:7` | **cleared** — historical decision rationale, append-only; never edit |
+
+The two sibling *issue* files are the reason this was worth re-checking: had
+either been open, deleting `infer_testable` would have stranded an active
+issue's Program Design on a function that no longer exists. **Both are `done`,
+so their references are historical records and need no coordination** — but note
+that ENH-2946 is this issue's `relates_to` target and its `:221` paragraph is
+written entirely on the two-call-path premise D1 removes. Leave it; it documents
+what was true when that issue shipped.
 
 ## Integration Map
 
@@ -431,6 +485,18 @@ _Second pre-implementation review, 2026-08-19 — three more edit targets:_
 - `scripts/tests/test_issue_parser.py:4097-4136` — `TestInferTestable`'s
   true/false unit tests. Under Decision D1 these are deleted with the function;
   under D2 both fixtures need revisiting.
+- `scripts/tests/test_issue_parser.py:4140-4146` — **added by the fourth
+  pre-implementation review; a missed D1 edit target.**
+  `TestCheckFormatGapsTestablePopulation`'s class docstring is written entirely
+  around the two-entry-point premise: *"Distinct code path from TestInferTestable
+  above: check_format_gaps re-derives its own scan_text and threshold check
+  inline rather than calling infer_testable() (issue_parser.py:489-498 vs
+  :528-540) — the two call sites share only the keyword tuple and threshold
+  constant."* Under D1 there is no second call site and no `TestInferTestable`
+  class to be distinct from, so the whole paragraph becomes false; its line
+  citations (`:489-498`, `:528-540`) are already stale besides. Rewrite it —
+  deleting `TestInferTestable` without touching this docstring leaves a dangling
+  reference to a class that no longer exists.
 - `scripts/tests/test_ll_issues_format_check.py:2590-2674`
   (`_DOC_ONLY_BODY` / `TestFormatCheckTestableRendering`) — the regression
   anchor. **Verified to survive every option**, including A+B and A+F: its
@@ -611,7 +677,8 @@ this decision:
 2. **Option F (word-boundary matching) is added and adopted alongside A and
    E.** A's residual false positives are driven by bare-substring `doc`
    matching inside `documentation` / `docs` / `docs/guides/…`, not by the scan
-   surface; A + F measures **1 fire**. F was previously excluded by Scope
+   surface; A + F measures **1 fire** (**0** with the corrected `_` guard the
+   fourth review adopted). F was previously excluded by Scope
    Boundaries on the premise "narrowing the surface is sufficient," which the
    hand-check disproves. F is orthogonal to A in the same way E is — it changes
    *how* a keyword matches, not what is scanned or whether the class gates.
@@ -637,7 +704,7 @@ survivors (`ENH-2923`, `EPIC-1463`, `EPIC-2178`, `EPIC-3154`, `FEAT-2186`,
 scanned issues, not the full active corpus):
 - A: `_section_body` reuse score 3/3 — two existing gap classes (`_behavior_parity_scope_text`, `_symbol_claim_scope_text`) already implement the identical section-allowlist pattern; measured **6/40** fires, of which **5 are false positives** (hand-checked 2026-08-19) — hits the count target, misses precision.
 - B: pure data-tuple edit (reuse score 3/3), measured **6/40** — ties A on fire count, but does not narrow the scan surface, so the template-heading false positive survives structurally; combined with A over-corrects to 0/40. **Rejected** after the hand-check (previously held as a contingent alternative).
-- F: single-regex edit inside `_count_testable_keyword_matches`, no change to the keyword tuple, threshold, or call graph; measured **A + F = 1/40**. Risk 2/3 rather than 3/3 because the trailing `(?![a-z])` guard also drops plural forms (`guides`, `typos`) — recorded as sub-decision F1.
+- F: single-regex edit inside `_count_testable_keyword_matches`, no change to the keyword tuple, threshold, or call graph; measured **A + F = 1/40**, and **A + F′ = 0/40** with the corrected `(?<![a-z0-9_])` leading guard (fourth review — the lone survivor was a false positive produced by the guard's `_` hole). Risk 2/3 rather than 3/3 because the trailing `(?![a-z])` guard also drops plural forms (`guides`, `typos`) — recorded as sub-decision F1.
 - C: cheapest mechanical edit but simulation shows it barely moves the fire rate (**35→30/40**) because the false positives are structural to the scan surface, not the threshold.
 - D: no existing `_has_code_signals`-shaped helper; the closest prior art (`grade_program_design`) requires a git-grep resolver a flat-text signature can't supply — highest effort, unmeasured.
 - E: no existing gating/non-gating split inside `FormatGaps` to copy. Scoped at decision time as "a single self-contained `has_gaps` edit"; the wiring pass showed that is insufficient (it makes `testable` invisible, not just non-gating), so the adopted shape is a `has_gaps` / `has_blocking_gaps` split — still small and self-contained, but touching **six** call sites in `format_check.py` (`:589`, `:593`, `:606`, `:660`, `:662`, `:668`) rather than one property; **corrected 2026-08-19** from "five", and two of the exit-code sites turn out not to be `has_gaps` expressions at all (see Program Design). Existing tests to update: the **three** `== 1` assertions in `TestFormatCheckTestableRendering`, plus `test_doc_only_issue_reports_testable_gap`'s `has_gaps is True`.
@@ -677,37 +744,120 @@ keeps its shape. What changes is what it is fed:
 return sum(
     1
     for kw in _TESTABLE_SIGNAL_KEYWORDS
-    if re.search(rf"(?<![a-z0-9]){re.escape(kw)}(?![a-z])", lowered)
+    if re.search(rf"(?<![a-z0-9_]){re.escape(kw)}(?![a-z])", lowered)
 )
 ```
 
-Both guards are load-bearing, and this exact expression is the one the
-**A + F = 1 fire** measurement used:
+**Corrected 2026-08-19 (fourth pre-implementation review) — the leading guard
+must exclude `_`.** The previously recorded expression used `(?<![a-z0-9])`,
+which is the variant behind the "A + F = 1 fire" number. That variant is wrong,
+and its single survivor is the proof: `EPIC-3217`'s two hits are `docs` **and
+`guide`**, both drawn from one path citation —
 
-- Leading `(?<![a-z0-9])` — blocks matches inside an identifier (`subdoc`,
-  `ll_doc2`).
+```
+docs  →  ' the documented copy-paste examples in `docs/guid…'
+guide →  '…AUTOMATIC_HARNESSING_GUIDE.md` — so the shape '
+```
+
+(Both hits come from `EPIC-3217`'s single citation of
+`docs/guides/AUTOMATIC_HARNESSING_GUIDE.md`, lowercased by the matcher.)
+
+`_` is not in `[a-z0-9]` and `.` is not in `[a-z]`, so `guide` matches inside
+`..._GUIDE.md`. Two statements in the previous revision of this section were
+therefore false and are corrected below: the path fragment scores **2**, not 1,
+and `ll_doc2` is **not** blocked (`subdoc` is). Adding `_` to the class closes
+both holes. **Re-measured with the corrected guard: A + F = 0 fires of 40** (see
+Implementation Steps step 5 for why 0 is the expected, correct outcome here and
+not the A + B over-correction).
+
+Both guards are load-bearing:
+
+- Leading `(?<![a-z0-9_])` — blocks matches inside an identifier or an
+  underscore-separated filename (`subdoc`, `ll_doc2`,
+  `HARNESS_OPTIMIZATION_GUIDE.md`). **The `_` is the load-bearing character**:
+  without it, every `*_GUIDE.md` / `*_README.md` citation still scores a hit.
 - Trailing `(?![a-z])` — blocks a keyword matching the head of a longer word.
-  This is the fix: `doc` no longer matches `documentation` or `docs`, so the
-  single word `documentation` scores **1**, not 2.
-- `/`, `.`, and `-` are not letters, so `docs` still matches inside the path
-  `docs/guides/…`. The path fragment therefore contributes **1**
-  (`docs` alone — `doc` is blocked by the trailing guard, `guide` by it too,
-  since the path says `guides`), not the 3 it contributes today. That single
-  change is the whole 6 → 1 reduction.
-- Keywords containing a space (`broken link`, `fix link`) are unaffected.
+  `doc` no longer matches `documentation` or `docs`, so the single word
+  `documentation` scores **1**, not 2.
+- `/`, `.`, and `-` are still not letters, so `docs` alone still matches inside
+  the path `docs/guides/…`. The path fragment therefore contributes **1**
+  (`docs` only — `doc` blocked by the trailing guard, `guide` by the leading
+  one in `_GUIDE.md` and by the trailing one in `guides`), not the 3 it
+  contributes today.
+- **Corrected 2026-08-19 (fifth review): keywords containing a space are
+  _not_ unaffected.** The previous revision claimed `broken link` / `fix link`
+  are untouched. That is true of the *leading* guard only — the *trailing*
+  `(?![a-z])` blocks their plurals exactly as it blocks single-word plurals,
+  because `s` is in `[a-z]`. `broken links` scores 0 against the `broken link`
+  keyword. See sub-decision F1, where this is now load-bearing.
 
-**Sub-decision F1 — plural handling.** The trailing `(?![a-z])` also means
-`guide` misses `guides`, `typo` misses `typos`, and `readme` misses `readmes`.
-For `doc`/`docs` this is harmless (both are keywords). Two branches:
-- **F1a** — accept it as measured. *Suggested default*; the measured 1-fire
-  number is this variant, and every plural loss is a low-signal keyword.
-- **F1b** — allow an optional trailing `s` (`(?:s)?(?![a-z])`). Restores plural
-  matching but **must be re-measured** — it is not the variant behind the
-  numbers in this issue.
+Precompile the 11 patterns into a module-level tuple beside
+`_TESTABLE_SIGNAL_KEYWORDS` rather than calling `re.search` with an f-string
+pattern per keyword per call — an `--all` sweep otherwise recompiles 11 patterns
+per issue. The function stays four lines.
+
+**Sub-decision F1 — plural handling. Rewritten 2026-08-19 (fifth review): both
+previously recorded branches are wrong, and a third is added and adopted.**
+
+The trailing `(?![a-z])` means `guide` misses `guides`, `typo` misses `typos`,
+`readme` misses `readmes` — **and `broken link` misses `broken links`, `fix
+link` misses `fix links`, `broken anchor` misses `broken anchors`.** The
+multi-word keywords are the *highest*-signal members of the tuple, so calling
+every plural loss "a low-signal keyword" (the F1a rationale) was false.
+
+Measured consequence — a textbook doc-only title, scored against title +
+`## Summary`:
+
+| Fixture | F1a | F1b | F1c |
+|---|---|---|---|
+| *(pos)* "Fix typos and broken links in the guides" | **0 — misses** | 3 | **2 ✓** |
+| *(pos)* "Update the READMEs and fix broken links" | **0 — misses** | 2 | **2 ✓** |
+| *(pos)* "Update the CHANGELOG and README for the 2.x release" | 2 ✓ | 2 ✓ | 2 ✓ |
+| *(pos)* `_DOC_ONLY_BODY` | 6 ✓ | 7 ✓ | 6 ✓ |
+| *(neg)* code issue citing `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` | 1 ✓ | **3 — fires** | 1 ✓ |
+| *(neg)* code issue whose Summary says `documentation` once | 1 ✓ | 1 ✓ | 1 ✓ |
+
+- **F1a** — accept the plural loss as measured. **Rejected.** It silently
+  false-negatives on plural phrasings of the three highest-signal keywords, and
+  plural phrasing ("fix broken links", "fix typos") is at least as common in
+  issue titles as the singular. Its 0-fire backlog number is unaffected only
+  because the backlog contains no such issue today.
+- **F1b** — optional trailing `s` on every keyword (`(?:s)?(?![a-z])`).
+  **Rejected.** It re-opens the exact hole the `_` guard was added to close:
+  `guides` becomes a `guide` hit again, so a `docs/guides/` path ending in
+  `_GUIDE.md` scores 3 and the step-3 negative fails. F1b is not a safe toggle
+  away from F1a.
+- **F1c — optional trailing `s` on the high-signal keywords only**, never on
+  `doc`/`docs`/`guide`/`documentation`. *Adopted.*
+
+```python
+_PLURAL_SAFE = frozenset(
+    {"broken link", "broken anchor", "fix link", "typo", "readme", "changelog"}
+)
+_TESTABLE_PATTERNS: tuple[re.Pattern[str], ...] = tuple(
+    re.compile(
+        rf"(?<![a-z0-9_]){re.escape(kw)}"
+        rf"{'s?' if kw in _PLURAL_SAFE else ''}(?![a-z])"
+    )
+    for kw in _TESTABLE_SIGNAL_KEYWORDS
+)
+```
+
+`guide` stays plural-blocked deliberately — `guides` is overwhelmingly a path
+fragment (`docs/guides/`), not a doc-only signal, which is precisely why F1b
+regresses. **Re-measured: A + F1c = 0 fires of 40** (same as F1a), so the
+adopted variant costs nothing on the backlog and recovers both plural true
+positives on the fixture set.
 
 Pin the chosen variant with fixture tests in both directions: the word
 `documentation` alone scores 1 (not 2), and a citation of
-`docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` scores 1 (not 3).
+`docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` scores 1 (not 3). **This second
+assertion only holds with the corrected `(?<![a-z0-9_])` guard** — under the
+previously recorded `(?<![a-z0-9])` it scores 2 and the test fails, which is
+exactly the defect the fourth review found. **Under F1b it scores 3 and the
+same test fails again** — which is why F1b is rejected rather than offered as a
+toggle. Add the two plural positives from the F1 table as assertions too;
+they are what distinguishes F1c from the rejected F1a.
 
 **Option E — a two-property split, not a one-line deletion.** Simply dropping
 `or self.testable` from `has_gaps` (`L517-544`) makes `testable` *invisible*,
@@ -731,9 +881,9 @@ written. Verified against live code:
 
 | Site | Current code | Change |
 |---|---|---|
-| `:589-590` sweep accumulation | `if gaps.has_gaps: results[...] = gaps` | **unchanged** (inclusion) |
-| `:593-594` sweep JSON return | `return 1 if results else 0` | → `return 1 if any(g.has_blocking_gaps for g in results.values()) else 0` |
-| `:606` sweep text return | bare `return 1` | → same `any(...)` expression |
+| `:590` sweep accumulation | `if gaps.has_gaps: results[...] = gaps` | **unchanged** (inclusion) |
+| `:595` sweep JSON return | `return 1 if results else 0` | → `return 1 if any(g.has_blocking_gaps for g in results.values()) else 0` |
+| `:607` sweep text return | bare `return 1` | → same `any(...)` expression |
 | `:660` single-ID JSON return | `return 1 if gaps.has_gaps else 0` | → `gaps.has_blocking_gaps` |
 | `:662` single-ID text early return | `if not gaps.has_gaps:` | **unchanged** (inclusion) |
 | `:668` single-ID text final return | bare `return 1` | → `return 1 if gaps.has_blocking_gaps else 0` |
@@ -774,14 +924,14 @@ require `count >= threshold and not _has_code_signals(...)`.
 
 ### Call Path
 
-Under Decision D1 there is a **single** call path:
+**D1 is adopted**, so there is a **single** call path:
 `check_format_gaps` → `_count_testable_keyword_matches` → `gaps.testable`,
 and (Option E) `gaps.testable` still feeds `has_gaps` → *rendering*, but no
 longer feeds `has_blocking_gaps` → exit code.
 
-Under D2 the second entry point `infer_testable` → same counter survives, and
-both call sites must see the same rule — they are kept in sync only by
-convention, which is the reason D1 is the suggested default.
+(Under the rejected D2 the second entry point `infer_testable` → same counter
+would survive, and both call sites would have to see the same rule — kept in
+sync only by convention. That standing risk is what D1 removes.)
 
 ## Implementation Steps
 
@@ -793,31 +943,110 @@ backlog count._
 1. Baseline: record the current fire count
    (`ll-issues format-check --all --format json`, count non-empty `testable`).
    Expected: **35** (of 40 scanned / 70 active).
-2. Resolve Decision 1 (no-`## Summary` fallback), Decision 2 (`infer_testable`
-   deletion), and sub-decision F1 (plural handling) before writing code.
+2. **No decisions remain open.** All four are resolved as of the fifth review:
+   **Decision 1 = A1** (title-only when `## Summary` is absent), **Decision 2 =
+   D1** (delete `infer_testable`), **sub-decision F1 = F1c** (selective plural
+   matching — see Program Design), **sub-decision N = N1** (pin the two
+   ≥2-scoring code-issue negatives as known-fires — see step 3). Implement
+   directly; do not re-open these without new measurement.
 3. **Build the labeled fixture set first** — this is the acceptance gate, not
    the backlog count (see "The metric has no true positives"). Positives that
    **must** fire: `_DOC_ONLY_BODY` plus at least two more doc-only shapes
-   ("Update CHANGELOG for the 2.x release", "Fix typo and broken anchor in
-   README"). Negatives that **must not** fire: a code issue citing
+   ("Update the CHANGELOG and README for the 2.x release", "Fix typo and broken
+   anchor in README"). **Score every positive fixture against the threshold
+   before writing it down** — the fourth review found the previously recorded
+   first positive ("Update CHANGELOG for the 2.x release") hits exactly **one**
+   keyword (`changelog`) against `_TESTABLE_KEYWORD_THRESHOLD = 2`, so it can
+   never fire under *any* option in this issue; adding `README` brings it to 2.
+   The second positive scores 3 (`typo`, `broken anchor`, `readme`) and is
+   correct as written. Negatives that **must not** fire: a code issue citing
    `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` in its Summary; a code issue
    whose Summary contains the word `documentation` once; an issue carrying the
    standard `## Related Key Documentation` heading and nothing else doc-shaped.
    Every negative here is a real shape drawn from the 35 current fires.
+
+   **Added 2026-08-19 (fifth review) — the negative set as listed does not
+   exercise the rule.** All three negatives above score **≤ 1** under
+   A + F1c, so every one of them is cleared by the *regex and scan surface
+   alone*; `_TESTABLE_KEYWORD_THRESHOLD = 2` and the 11-keyword tuple are never
+   tested in the negative direction. That is the same "the metric measures
+   something other than precision" failure this issue's third review already
+   caught once. Add at least one **discriminating negative** — a code issue
+   that legitimately scores ≥ 2 and must still be judged. Two measured shapes:
+
+   - *"The CLI docs and the README drift when the command signature changes"* —
+     scores **2** (`docs`, `readme`) → **fires**.
+   - *"Add a changelog entry and update the migration guide when the flag
+     lands"* — scores **2** (`changelog`, `guide`) → **fires**.
+
+   Both are code work. Neither is fixable by A, F, or F1c: they are threshold /
+   keyword-tuple failures, not surface or matcher failures.
+
+   **Resolved 2026-08-19 (fifth review): N1 — accept them as fires and pin them
+   as _known-fires_ in the fixture set.** The three branches, measured:
+
+   | Fixture | Score | thr 2 (N1) | thr 3 (N2) |
+   |---|---|---|---|
+   | *(pos)* "Update the CHANGELOG and README for the 2.x release" | 2 | fires ✓ | **misses** |
+   | *(pos)* "Fix typo and broken anchor in README" | 3 | fires ✓ | fires ✓ |
+   | *(pos)* `_DOC_ONLY_BODY` | 6 | fires ✓ | fires ✓ |
+   | *(pos)* "Fix typos and broken links in the guides" | 2 | fires ✓ | **misses** |
+   | *(pos)* "Update the READMEs and fix broken links" | 2 | fires ✓ | **misses** |
+   | *(neg)* "The CLI docs and the README drift when the command signature changes" | 2 | fires ✗ | suppressed |
+   | *(neg)* "Add a changelog entry and update the migration guide when the flag lands" | 2 | fires ✗ | suppressed |
+
+   **N2 (threshold 3) is rejected on measurement: it loses 3 of 5 positives to
+   suppress 2 negatives.** The two negatives score *identically* to three of the
+   positives, so no threshold can separate them — at 2 hits the keyword signal
+   is genuinely ambiguous, and raising the bar only trades false positives for
+   false negatives at a worse ratio. **N3 (Option D negative signals) is the
+   only branch that could separate them**, since the discriminator is "does this
+   issue name code artifacts," not "how many doc words." It stays out of scope
+   (see Scope Boundaries); capture as a follow-up.
+
+   **Why accepting these fires is cheap: Option E already removes their cost.**
+   The two harms Motivation names are (a) the advisory fires on 88% of what it
+   evaluates, and (b) every false positive fails a gate other tooling consumes.
+   A + F1c takes the backlog from 35 fires to **0**, retiring (a); E makes the
+   class non-gating, retiring (b) outright. What remains is a rare, non-gating,
+   single-line advisory on an issue whose Summary genuinely does discuss two
+   distinct documentation artifacts — which is a defensible thing to surface for
+   a human to judge, and is the residual this rule is *supposed* to have.
+
+   Pin both negatives as **known-fires** (asserting they *do* fire, with a
+   comment naming them as accepted residual imprecision), not as must-not-fires.
+   The assertion is a guard against over-correction: it fails loudly if a future
+   change tightens the rule into the false-negative regime — the failure mode
+   this issue has already flirted with twice (A + B → 0 fires, and F1a/F1b).
 4. Apply Option A — narrow the scan surface to title + `## Summary`, reusing
    `_section_body` with an explicit `or ""` for its `None` return. Re-measure;
    expect **6**. The fixture set will still show false positives at this point;
    that is expected and is why step 5 exists.
 5. Apply Option F — word-boundary matching in
    `_count_testable_keyword_matches` (see Program Design for the exact regex
-   and its two guards). Re-measure; expect **1** (`EPIC-3217`). The fixture
-   negatives must now all pass. ~~Hand-check A's 6 survivors and, if they are
+   and its two guards, including the `_` in the leading guard). Re-measure;
+   expect **0** — and **0 is the correct outcome here, not the A + B
+   over-correction the table at the top of Proposed Solution rejects.** Do not
+   revert on seeing it. The two are different situations: A + B lands at 0 while
+   still counting `documentation` as two hits and still scanning the whole body,
+   i.e. it zeroes the count by trimming data rather than by fixing the matcher;
+   A + F′ lands at 0 because the backlog's *only* genuinely doc-only issue
+   (`ENH-2191`) has never fired under any precise variant — see "The metric has
+   no true positives", which already demoted the backlog count to a smoke
+   measurement and made the labeled fixture set the acceptance gate. Judge this
+   step by step 3's fixtures, which must now all pass in both directions.
+   (`EPIC-3217` was A + F's lone survivor under the *uncorrected* guard and is
+   itself a false positive; it disappears once `_` is added.) ~~Re-measure;
+   expect **1** (`EPIC-3217`)~~ — superseded by the fourth review.
+   ~~Hand-check A's 6 survivors and, if they are
    still false positives, apply Option B instead of A~~ — **performed
    2026-08-19; 5 of 6 were false positives and Option B was rejected rather
    than substituted.** Do not re-run this branch.
 6. Apply Option E — add `_ADVISORY_GAP_CLASSES` and `has_blocking_gaps`, leave
    `has_gaps` alone, and update the **four** exit-code sites in
-   `format_check.py`: `:593-594` and `:606` (sweep — these are
+   `format_check.py`: `:595` and `:607` (sweep — **line numbers corrected by
+   the fifth review from `:593-594`/`:606`, which are off by one to two lines
+   against live code; verify by content, not by number** — these are
    `return 1 if results else 0` / bare `return 1`, so they need an
    `any(g.has_blocking_gaps for g in results.values())` expression, **not** a
    property rename), `:660` (single-ID JSON, a real `has_gaps` swap), and
@@ -931,6 +1160,16 @@ _Second pre-implementation review, 2026-08-19 — added:_
   a single `re.search` in one 4-line function, with the keyword tuple,
   threshold, and call graph untouched. `documentation` scoring 2 on its own is
   a defect in the matcher that no scan-surface change can reach.
+- **Option D (negative signals) — confirmed out of scope 2026-08-19 (fifth
+  review), with a follow-up owed.** Sub-decision N established that two
+  realistic code-issue shapes score 2 under the adopted A + F1c and fire, that
+  no threshold separates them from genuine doc-only issues at the same score,
+  and that Option D's "does this issue name code artifacts" discriminator is
+  the only thing that would. N1 accepts those fires as pinned known-fires
+  because Option E makes them non-gating. **If the advisory later proves noisy
+  again in practice, Option D is the next move — open a follow-up ENH rather
+  than reaching for the threshold or the keyword tuple, both of which are now
+  measured dead ends.**
 - Other `format-check` gap classes.
 - ENH-2946's outstanding work (`set-flags`, `format-check --next`, skill
   slimming).
@@ -969,6 +1208,104 @@ _Added by `/ll:verify-issues`:_ Core behavior and premise still accurate —
 (`scan_text = f"{title}\n{_strip_fm(content)}"`) all still match verbatim.
 Line-number citations are stale: the constants and functions now live around
 `issue_parser.py:550-716`, not the originally cited `L489-528`.
+
+**2026-08-19** (fifth pre-implementation review): Every metric from the fourth
+review independently reproduced against live code — 70 active, 40 scanned, 35
+current fires, A = 6 (**the same six IDs**), A + F with the old `(?<![a-z0-9])`
+guard = 1 (`EPIC-3217`), A + F′ with the corrected `(?<![a-z0-9_])` guard = 0,
+and the 5 no-`## Summary` issues. Two structural claims also cleared: `Summary`
+is a `common_sections` member of **all four** type templates (bug/enh/epic/feat),
+so Option A's surface does not silently degrade for any issue type; and
+`_REPAIR_DISPATCH` (`format_check.py:358-364`) has **no `testable` fixer**, so
+`--fix`/`--apply` — including `refine-to-ready-issue.yaml:316` — is untouched by
+this issue. `_count_testable_keyword_matches` has exactly the two callers the
+issue names. Four changes made:
+
+- **Option F's stated rationale is wrong about multi-word keywords, and the
+  error changes the adopted sub-decision.** Program Design claimed *"keywords
+  containing a space (`broken link`, `fix link`) are unaffected."* The trailing
+  `(?![a-z])` blocks their plurals identically — `broken links` scores 0
+  against `broken link`. So F1a's rationale ("every plural loss is a
+  low-signal keyword") is false: it loses the three *highest*-signal keywords
+  in plural form. Measured — "Fix typos and broken links in the guides", a
+  textbook doc-only title, scores **0 under the adopted F1a and would not
+  fire.**
+- **F1b is not a safe toggle away from F1a.** An unrestricted optional `s`
+  makes `guides` a `guide` hit again, so a `docs/guides/` path ending in
+  `_GUIDE.md` scores **3** and step 3's own negative fixture fails — reopening
+  the exact hole the `_`
+  guard was added to close by the fourth review.
+- **Sub-decision F1c added and adopted**: optional trailing `s` on the
+  high-signal keywords only (`broken link`, `broken anchor`, `fix link`,
+  `typo`, `readme`, `changelog`), never on `doc`/`docs`/`guide`/
+  `documentation`. Recovers both plural true positives, holds every negative at
+  ≤ 1, and re-measures at **A + F1c = 0 fires of 40** — identical backlog cost
+  to F1a.
+- **Step 3's negative set does not exercise the rule.** All three listed
+  negatives score **≤ 1** under A + F1c, so each is cleared by the regex and
+  scan surface alone — the threshold and the keyword tuple are never tested in
+  the negative direction, which is the same "measuring something other than
+  precision" failure the third review caught. Added **sub-decision N** with two
+  measured ≥2-scoring code-issue negatives ("The CLI docs and the README
+  drift…", "Add a changelog entry and update the migration guide…", both
+  scoring 2 and firing) that no option in this issue can fix. **Sub-decision N
+  resolved to N1** (pin both as *known-fires*): N2 (threshold 3) measures out
+  at **3 of 5 positives lost to suppress 2 negatives** — the negatives score
+  identically to three positives, so no threshold separates them — and N3
+  (Option D) is the only real discriminator but stays out of scope. Accepting
+  the fires is cheap because Option E already makes the class non-gating, which
+  was the actual harm Motivation named. Also corrected two sweep line citations
+  (`:593-594`→`:595`, `:606`→`:607`).
+- **Decisions 1 and 2 pinned; the issue now has no open decisions.**
+  **Decision 1 = A1**, re-measured against the *adopted* F1c rule rather than
+  the substring matcher its rationale was written from: **A1 + F1c = 0/40**,
+  **A2 + F1c = 3/40**. Provenance correction — the third review's "three refire
+  under A2" was measured with substring matching, where the true count is
+  **4** (`FEAT-3036` as well); the three recorded IDs are right for F1c and
+  wrong for the variant they were measured on. Conclusion unchanged and
+  strengthened. **Decision 2 = D1**, with zero production callers re-confirmed
+  by full `git grep` and the reference set expanded from the three previously
+  listed to eight, each dispositioned. The two *issue-file* references
+  (ENH-2946, ENH-2971) were the live risk — an open sibling would have been
+  stranded on a deleted function — but **both are `done`**, so they need no
+  coordination.
+
+**2026-08-19** (fourth pre-implementation review): Every metric from the third
+review independently reproduced against live code — 70 active, 40 scanned, 35
+current fires, A = 6 (**the same six IDs**), A + F = 1 (`EPIC-3217`),
+`_section_body` semantics, and every `issue_parser.py` / `format_check.py` line
+citation including the six Option E call sites. Four changes made:
+
+- **Option F's regex is wrong and the error is load-bearing.** The recorded
+  `(?<![a-z0-9])` leading guard does not exclude `_`, so `guide` still matches
+  inside `HARNESS_OPTIMIZATION_GUIDE.md`. Verified: `EPIC-3217`, A + F's lone
+  survivor, scores 2 entirely from one path citation (`docs` + `guide` from
+  `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md`, lowercased by the matcher). Two
+  consequences the previous
+  revision got backwards — Program Design claimed that path scores **1** and
+  told the implementer to pin it with a fixture, and step 3 listed that exact
+  shape as a must-**not**-fire negative; both would have **failed at step 5**.
+  The stated rationale was also wrong on its own example: `ll_doc2` is *not*
+  blocked by `(?<![a-z0-9])` (`subdoc` is). Corrected to `(?<![a-z0-9_])`
+  throughout; re-measured **A + F′ = 0/40**.
+- **Step 3's first positive fixture could never fire.** "Update CHANGELOG for
+  the 2.x release" hits exactly one keyword (`changelog`) against a threshold of
+  2 — unfireable under every option in this issue. Replaced with "Update the
+  CHANGELOG and README for the 2.x release" (2 hits). The second positive
+  scores 3 and was already correct.
+- **Step 5's expected value restated 1 → 0, with the reversion trap called
+  out.** An implementer landing on 0 would otherwise read the option table's
+  "A + B overshoots to zero" and revert a correct change. The two zeros are
+  different: A + B removes data (still scores `documentation` as 2, still scans
+  the whole body), A + F′ removes the defect, and the backlog's one genuine
+  doc-only issue (`ENH-2191`) fires under no precise variant regardless — which
+  the third review already established when it made the fixture set the
+  acceptance gate.
+- **One missed D1 edit target added**: `test_issue_parser.py:4140-4146`,
+  `TestCheckFormatGapsTestablePopulation`'s class docstring, is written entirely
+  around the two-entry-point premise and names `TestInferTestable` — the class
+  D1 deletes. Also noted: precompile F's 11 patterns at module level rather than
+  rebuilding them per keyword per call.
 
 **2026-08-19** (third pre-implementation review): Every metric from the second
 review independently reproduced against live code — 35 fires / 40 scanned / 3
@@ -1106,6 +1443,10 @@ ENH-3247 is `done`, so there is no longer an ordering constraint against it.
 The ENH-3000 note above still stands (ENH-3000 is `open`).
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-19T21:37:55 - `cf3e2d12-3055-4e63-9084-0c161f05830e.jsonl`
+- `/ll:decide-issue` - 2026-08-19T21:28:42 - `52d05086-bbdc-462a-bb68-03d6d46c8ec9.jsonl`
+- `/ll:confidence-check` - 2026-08-19T21:27:27 - `5c491ecb-85ee-4e96-982b-ddd1e098374d.jsonl`
+- `/ll:confidence-check` - 2026-08-19T21:11:46 - `269b3d16-be6a-4a46-ae97-70118282e5d4.jsonl`
 - `/ll:confidence-check` - 2026-08-19T20:49:56 - `eb8a877e-7bde-4104-acd7-9d002765976f.jsonl`
 - `/ll:confidence-check` - 2026-08-19T20:13:52 - `0d2916d2-f9ec-408b-ba0e-bbe68b7d2760.jsonl`
 - `/ll:confidence-check` - 2026-08-19T19:57:26 - `bd3f0a41-ce07-4c04-acd5-8a401b968303.jsonl`

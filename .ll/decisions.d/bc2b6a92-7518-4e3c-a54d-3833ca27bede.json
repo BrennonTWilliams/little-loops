@@ -1,0 +1,11 @@
+{
+  "id": "ae77cf16-2c47-4d0a-88b9-d06f79a2c995",
+  "type": "decision",
+  "timestamp": "2026-08-19T21:37:13Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Follows the verify-issues carve-out precedent at GRAPH_DISCOVERY_GUIDE.md:19-27. Shared rule 2 (Confirm-before-use) is a trust rule and worked correctly on ENH-3000; wire-issue's confirm-before-map rename repurposed it as target-selection, which is the defect. Consumers differ by what a confirmed hit becomes: lead (refine) / verdict input (verify) / executed change target (wire). refine-issue inherits nothing.",
+  "rule": "wire-issue's reachability/seam rule is a consumer-local stricter rule in graph-discovery-layer.md, not an amendment to GRAPH_DISCOVERY_GUIDE.md's three shared safety rules",
+  "scope": "issue",
+  "issue": "ENH-3258"
+}
