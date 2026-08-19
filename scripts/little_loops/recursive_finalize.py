@@ -6,8 +6,9 @@ EPIC, its children must be re-linked into that EPIC so they do not silently fall
 out of the EPIC's ``relates_to:``/``## Children`` rollup (ENH-1977, GAP F).
 
 This module is the tested core behind ``ll-issues finalize-decomposition``. It is
-deliberately filesystem-only (no git, no Logger, no BRConfig) so it can be unit
-tested against a temporary ``.issues`` tree.
+deliberately filesystem-only (no BRConfig) so it can be unit tested against a
+temporary ``.issues`` tree; ``_git_mv`` shells out to ``git`` on a best-effort
+basis and falls back to a plain filesystem move when that fails.
 
 Field-collision decision (ENH-1977 Fix 4): ``parent:`` is canonically used for
 *both* decomposition lineage and EPIC membership. A child cannot carry two
@@ -19,6 +20,7 @@ that ``issue-size-review`` already emits.
 
 from __future__ import annotations
 
+import logging
 import re
 import shutil
 import subprocess
@@ -27,6 +29,8 @@ from pathlib import Path
 from typing import Any
 
 from little_loops.frontmatter import parse_frontmatter, update_frontmatter
+
+logger = logging.getLogger(__name__)
 
 _EPIC_RE = re.compile(r"^EPIC-\d+$", re.IGNORECASE)
 
@@ -74,17 +78,22 @@ def _dedup(seq: list[str]) -> list[str]:
 def _git_mv(src: Path, dst: Path) -> None:
     """Move ``src`` to ``dst`` using ``git mv`` when possible, else a plain move."""
     dst.parent.mkdir(parents=True, exist_ok=True)
+    abs_src = src.resolve()
+    abs_dst = dst.resolve()
+    stderr = ""
     try:
         result = subprocess.run(
-            ["git", "mv", str(src), str(dst)],
+            ["git", "mv", str(abs_src), str(abs_dst)],
             capture_output=True,
             text=True,
-            cwd=src.parent,
+            cwd=abs_src.parent,
         )
         if result.returncode == 0:
             return
-    except (OSError, subprocess.SubprocessError):
-        pass
+        stderr = result.stderr
+    except (OSError, subprocess.SubprocessError) as exc:
+        stderr = str(exc)
+    logger.debug("git mv failed, falling back to shutil.move: %s", stderr)
     shutil.move(str(src), str(dst))
 
 

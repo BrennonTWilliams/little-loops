@@ -2,10 +2,21 @@
 
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 
+import pytest
+
 from little_loops.frontmatter import parse_frontmatter
-from little_loops.recursive_finalize import finalize_decomposed_parent
+from little_loops.recursive_finalize import _git_mv, finalize_decomposed_parent
+
+
+def _git_repo(tmp_path: Path) -> Path:
+    """Init a throwaway repo under tmp_path (BUG-3251 regression fixture)."""
+    subprocess.run(["git", "init", "-q", "."], cwd=tmp_path, check=True)
+    subprocess.run(["git", "config", "user.email", "t@t"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "config", "user.name", "t"], cwd=tmp_path, check=True)
+    return tmp_path
 
 
 def _write(path: Path, fm: str, body: str = "Body.\n") -> None:
@@ -179,3 +190,61 @@ def test_no_new_files_under_completed_after_decomposition_closure(tmp_path: Path
     finalize_decomposed_parent("ENH-200", ["ENH-201", "ENH-202"], issues)
 
     assert list(issues.glob("completed/*.md")) == []
+
+
+class TestGitMvPathFormIndependence:
+    """BUG-3251 regression: _git_mv must stage a rename regardless of path form."""
+
+    def test_relative_paths_stage_a_rename(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        repo = _git_repo(tmp_path)
+        src = repo / "epics" / "a.md"
+        src.parent.mkdir(parents=True)
+        src.write_text("hi\n")
+        subprocess.run(["git", "add", "epics/a.md"], cwd=repo, check=True)
+        subprocess.run(["git", "commit", "-qm", "init"], cwd=repo, check=True)
+
+        monkeypatch.chdir(repo)
+        dst = repo / "completed" / "a.md"
+        _git_mv(Path("epics/a.md"), Path("completed/a.md"))
+
+        assert dst.exists()
+        assert not src.exists()
+        status = subprocess.run(
+            ["git", "status", "--porcelain"], cwd=repo, capture_output=True, text=True, check=True
+        ).stdout
+        assert "R  epics/a.md -> completed/a.md" in status
+
+    def test_absolute_paths_stage_a_rename(self, tmp_path: Path) -> None:
+        repo = _git_repo(tmp_path)
+        src = repo / "epics" / "a.md"
+        src.parent.mkdir(parents=True)
+        src.write_text("hi\n")
+        subprocess.run(["git", "add", "epics/a.md"], cwd=repo, check=True)
+        subprocess.run(["git", "commit", "-qm", "init"], cwd=repo, check=True)
+
+        dst = repo / "completed" / "a.md"
+        _git_mv(src.resolve(), dst.resolve())
+
+        assert dst.exists()
+        assert not src.exists()
+        status = subprocess.run(
+            ["git", "status", "--porcelain"], cwd=repo, capture_output=True, text=True, check=True
+        ).stdout
+        assert "R  epics/a.md -> completed/a.md" in status
+
+    def test_fallback_logs_debug_line_when_not_a_git_repo(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        src = tmp_path / "epics" / "a.md"
+        src.parent.mkdir(parents=True)
+        src.write_text("hi\n")
+        dst = tmp_path / "completed" / "a.md"
+
+        with caplog.at_level("DEBUG", logger="little_loops.recursive_finalize"):
+            _git_mv(src, dst)
+
+        assert dst.exists()
+        assert not src.exists()
+        assert "git mv failed" in caplog.text

@@ -4,13 +4,14 @@ type: BUG
 title: _git_mv passes a relative pathspec with cwd=src.parent, silently losing git
   rename tracking
 priority: P4
-status: open
+status: done
 testable: true
 relates_to:
 - BUG-3243
 discovered_by: ll-issues-create
 discovered_date: '2026-08-17'
 captured_at: '2026-08-17T20:04:02Z'
+completed_at: '2026-08-19T02:08:56Z'
 confidence_score: 100
 outcome_confidence: 82
 score_complexity: 21
@@ -330,22 +331,46 @@ Also confirmed: in every currently-wired production call path (`rn-decompose.yam
 
 ## Acceptance Criteria
 
-- [ ] `_git_mv` produces a git-tracked rename for a tracked file whether the
+- [x] `_git_mv` produces a git-tracked rename for a tracked file whether the
       caller passes relative or absolute paths.
-- [ ] The `shutil.move` fallback still runs when git is genuinely unavailable
+- [x] The `shutil.move` fallback still runs when git is genuinely unavailable
       or the file is untracked, and emits a **`debug`-level** log line on
       logger `little_loops.recursive_finalize` naming git's captured stderr.
-- [ ] `cwd=src.parent` is retained (the fix is absolute pathspecs, not removing
+- [x] `cwd=src.parent` is retained (the fix is absolute pathspecs, not removing
       `cwd`), so `_git_mv` still resolves the repo containing `src` rather than
       whatever repo the process cwd happens to sit in.
-- [ ] A regression test in a real temp git repo asserts the rename is staged
+- [x] A regression test in a real temp git repo asserts the rename is staged
       (`git status --porcelain` shows `R`) for both path forms, with `src` and
       `dst` in different directories.
-- [ ] `finalize_decomposed_parent()`'s summary dict is unchanged (still
+- [x] `finalize_decomposed_parent()`'s summary dict is unchanged (still
       `{"parent", "epic", "children", "moved", "warnings"}`), and
       `cli/issues/finalize_decomposition.py`, `cli/issues/normalize.py`, and
       `cli/issues/prioritize.py` are untouched.
-- [ ] `python -m pytest scripts/tests/` exits 0.
+- [x] `python -m pytest scripts/tests/` exits 0.
+
+## Resolution
+
+- **Action**: fix
+- **Completed**: 2026-08-19
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/recursive_finalize.py`: `_git_mv` now resolves `src`/`dst`
+  to absolute paths before calling `git mv` (keeping `cwd=src.parent`), so the
+  pathspec and `cwd` always agree regardless of the caller's path form. Added a
+  module-scope `logger` and a `debug`-level log line naming git's stderr when the
+  `shutil.move` fallback fires. Corrected the module docstring's stale
+  "no git, no Logger" claim.
+- `scripts/tests/test_recursive_finalize.py`: added `TestGitMvPathFormIndependence`
+  with a real temp-git-repo fixture (`_git_repo`) covering relative paths,
+  absolute paths, and the non-git fallback's debug log line — all with `src`/`dst`
+  in different directories.
+
+### Verification Results
+- Tests: PASS (19887 passed, 46 skipped)
+- Lint: PASS (`ruff check`)
+- Format: PASS (`ruff format`)
+- Type check: PASS (`mypy`)
 
 ## Notes
 
@@ -368,6 +393,8 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-19T02:07:52 - `cca486d0-e752-4a03-836e-d8cc081b0215.jsonl`
+- `/ll:ready-issue` - 2026-08-19T02:00:43 - `2fed5898-ed26-4c25-8faf-32e9a3c3743b.jsonl`
 - `/ll:confidence-check` - 2026-08-19T00:33:37 - `26f37145-f571-418d-9662-3d9a889e94ea.jsonl`
 - `/ll:wire-issue` - 2026-08-19T00:25:55 - `f3fa68b7-2bba-49c2-bc92-65b2f7b84de6.jsonl`
 - `/ll:refine-issue` - 2026-08-18T14:51:52 - `1b75a5d5-cd19-4f54-9db4-f0438e3206cc.jsonl`
