@@ -111,9 +111,11 @@ states:
     def test_validate_with_unreachable_state_prints_warning(
         self,
         tmp_path: Path,
-        capsys: pytest.CaptureFixture[str],
+        caplog: pytest.LogCaptureFixture,
     ) -> None:
-        """Loop with unreachable state is valid but prints ⚠ warning to stdout."""
+        """Loop with unreachable state is valid but logs a warning (BUG-3239:
+        the plain-text path warns via logger.warning only, not a duplicate
+        stdout print)."""
         from little_loops.cli.loop.config_cmds import cmd_validate
         from little_loops.logger import Logger
 
@@ -136,18 +138,19 @@ states:
         )
 
         logger = Logger(use_color=False)
-        result = cmd_validate("test-loop", argparse.Namespace(), loops_dir, logger)
+        with caplog.at_level("WARNING"):
+            result = cmd_validate("test-loop", argparse.Namespace(), loops_dir, logger)
 
         assert result == 0
-        captured = capsys.readouterr()
-        assert "⚠" in captured.out
+        assert "not reachable" in caplog.text
 
     def test_validate_warns_when_description_missing(
         self,
         tmp_path: Path,
-        capsys: pytest.CaptureFixture[str],
+        caplog: pytest.LogCaptureFixture,
     ) -> None:
-        """ENH-1331: cmd_validate prints ⚠ warning when description: field is absent."""
+        """ENH-1331: cmd_validate logs a warning when description: field is absent
+        (BUG-3239: via logger.warning only, not a duplicate stdout print)."""
         from little_loops.cli.loop.config_cmds import cmd_validate
         from little_loops.logger import Logger
 
@@ -159,12 +162,11 @@ states:
         )
 
         logger = Logger(use_color=False)
-        result = cmd_validate("no-desc", argparse.Namespace(), loops_dir, logger)
+        with caplog.at_level("WARNING"):
+            result = cmd_validate("no-desc", argparse.Namespace(), loops_dir, logger)
 
         assert result == 0
-        captured = capsys.readouterr()
-        assert "⚠" in captured.out
-        assert "description" in captured.out
+        assert "description" in caplog.text
 
     def test_validate_with_custom_on_routing_no_false_positive(
         self,
@@ -249,10 +251,82 @@ states:
         assert all("severity" in v and "path" in v and "message" in v for v in data["violations"])
         assert any(v["severity"] == "error" for v in data["violations"])
 
+    def test_validate_scope_warning_not_leaked_from_with_bindings_child(
+        self,
+        tmp_path: Path,
+        caplog: pytest.LogCaptureFixture,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """BUG-3239: a scoped parent that dispatches into an unscoped child via
+        loop: + with: reports zero scope warnings on its own validation — in
+        both plain-text and --json modes. The child's own validation still
+        warns exactly once (BUG-3107 preserved), on both channels."""
+        from little_loops.cli.loop.config_cmds import cmd_validate
+        from little_loops.logger import Logger
+
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        (loops_dir / "child-loop.yaml").write_text(
+            "name: child-loop\n"
+            "description: Child\n"
+            "initial: check\n"
+            "parameters:\n"
+            "  issue_id:\n"
+            "    type: string\n"
+            "    required: true\n"
+            "states:\n"
+            "  check:\n"
+            "    terminal: true\n"
+        )
+        (loops_dir / "parent-loop.yaml").write_text(
+            "name: parent-loop\n"
+            "description: Parent\n"
+            "initial: run\n"
+            'scope:\n  - "."\n'
+            "states:\n"
+            "  run:\n"
+            "    loop: child-loop\n"
+            "    with:\n"
+            "      issue_id: '${context.target}'\n"
+            "    on_yes: done\n"
+            "    on_no: done\n"
+            "  done:\n"
+            "    terminal: true\n"
+        )
+
+        logger = Logger(use_color=False)
+
+        # Parent, plain-text: no scope warning logged at all.
+        with caplog.at_level("WARNING"):
+            result = cmd_validate("parent-loop", argparse.Namespace(), loops_dir, logger)
+        assert result == 0
+        assert "no 'scope:'" not in caplog.text
+        caplog.clear()
+        capsys.readouterr()
+
+        # Parent, --json: violations list has no scope entry either.
+        args = argparse.Namespace(json=True)
+        cmd_validate("parent-loop", args, loops_dir, logger)
+        data = json.loads(capsys.readouterr().out)
+        assert not any(v["path"] == "scope" for v in data["violations"])
+
+        # Child, plain-text: warns exactly once (BUG-3107 behavior preserved).
+        with caplog.at_level("WARNING"):
+            cmd_validate("child-loop", argparse.Namespace(), loops_dir, logger)
+        assert caplog.text.count("no 'scope:'") == 1
+        caplog.clear()
+        capsys.readouterr()
+
+        # Child, --json: exactly one scope violation.
+        cmd_validate("child-loop", args, loops_dir, logger)
+        child_data = json.loads(capsys.readouterr().out)
+        scope_violations = [v for v in child_data["violations"] if v["path"] == "scope"]
+        assert len(scope_violations) == 1
+
     def test_validate_no_json_still_warns_mr12_check3_under_config_sdk(
         self,
         tmp_path: Path,
-        capsys: pytest.CaptureFixture[str],
+        caplog: pytest.LogCaptureFixture,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """BUG-2831: orchestration.request_path: sdk in ll-config.json no longer
@@ -286,11 +360,11 @@ states:
 
         monkeypatch.chdir(tmp_path)
         logger = Logger(use_color=False)
-        result = cmd_validate("skill-loop", argparse.Namespace(), loops_dir, logger)
+        with caplog.at_level("WARNING"):
+            result = cmd_validate("skill-loop", argparse.Namespace(), loops_dir, logger)
 
         assert result == 0
-        captured = capsys.readouterr()
-        assert "ENH-2805" in captured.out
+        assert "ENH-2805" in caplog.text
 
     def test_validate_json_still_warns_mr12_check3_under_config_cli(
         self,
@@ -333,7 +407,7 @@ states:
     def test_validate_no_json_warns_mr13_hardcoded_success_verdict(
         self,
         tmp_path: Path,
-        capsys: pytest.CaptureFixture[str],
+        caplog: pytest.LogCaptureFixture,
     ) -> None:
         """ENH-2860: ll-loop validate surfaces the MR-13 warning (non-JSON path)
         for a shell action that hardcodes "verdict":"success" with no
@@ -355,11 +429,11 @@ states:
         )
 
         logger = Logger(use_color=False)
-        result = cmd_validate("mr13-loop", argparse.Namespace(), loops_dir, logger)
+        with caplog.at_level("WARNING"):
+            result = cmd_validate("mr13-loop", argparse.Namespace(), loops_dir, logger)
 
         assert result == 0
-        captured = capsys.readouterr()
-        assert "MR-13" in captured.out
+        assert "MR-13" in caplog.text
 
     def test_validate_json_warns_mr13_hardcoded_success_verdict(
         self,

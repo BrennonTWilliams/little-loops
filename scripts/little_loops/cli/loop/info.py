@@ -1499,7 +1499,7 @@ def cmd_show(
                 if "loop" in state:
                     try:
                         child_path = resolve_loop_path(state["loop"], loops_dir)
-                        child_fsm, _ = load_and_validate(child_path)
+                        child_fsm, _ = load_and_validate(child_path, raise_on_error=False)
                         state["_subloop"] = child_fsm.to_dict().get("states", {})
                     except (FileNotFoundError, ValueError):
                         pass

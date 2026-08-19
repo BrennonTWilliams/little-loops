@@ -867,7 +867,7 @@ class FSMExecutor:
 
         loop_name = interpolate(state.loop, ctx)
         loop_path = resolve_loop_path(loop_name, self.loops_dir or Path(".loops"))
-        child_fsm, _ = load_and_validate(loop_path)
+        child_fsm, _ = load_and_validate(loop_path, raise_on_error=False)
 
         # Bind child context: explicit with: bindings take precedence over legacy passthrough
         if state.with_:

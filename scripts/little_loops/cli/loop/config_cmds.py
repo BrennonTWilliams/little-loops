@@ -83,15 +83,12 @@ def cmd_validate(
         )
         return 1 if has_errors else 0
 
-    warnings = violations_or_warnings
     logger.success(f"{loop_name} is valid")
     print(f"  States: {', '.join(fsm.states.keys())}")
     print(f"  Initial: {fsm.initial}")
     print(f"  Max steps: {fsm.max_steps}")
     if fsm.max_iterations is not None:
         print(f"  Max iterations: {fsm.max_iterations}")
-    for w in warnings:
-        print(f"  ⚠ {w}")
     return 0
 
 

@@ -854,7 +854,7 @@ MR-1, MR-2, and the multimodal evaluator blind-spot rule are suppressed by setti
 
 | Flag | Short | Description |
 |------|-------|-------------|
-| `--json` | `-j` | Output validation result as JSON. On success: `{"valid": true, "loop": "<name>", "warnings": [...]}`. On failure: `{"valid": false, "loop": "<name>", "error": "<message>", "warnings": [...]}`. Exit code is unchanged (1 for ERROR, 0 for clean/warnings-only). (ENH-2090) |
+| `--json` | `-j` | Output validation result as JSON. Both success and failure emit `{"valid": <bool>, "loop": "<name>", "violations": [{"severity": "error"\|"warning", "path": "<path>", "message": "<text>"}, ...]}` — there is no `warnings` key, and a load-time failure (e.g. bad YAML) is carried as a single `violations` entry with `severity: "error"` and `path: "<root>"` rather than a separate `error` key. Exit code is unchanged (1 for ERROR, 0 for clean/warnings-only). (ENH-2090) |
 
 #### `ll-loop list` / `ll-loop l`
 

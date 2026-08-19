@@ -278,7 +278,7 @@ def _validate_with_bindings(fsm: FSMLoop, loop_dir: Path) -> list[ValidationErro
         # Try to resolve and load the child loop; skip if unavailable
         try:
             loop_path = resolve_loop_path(state.loop, loop_dir)
-            child_fsm, _ = load_and_validate(loop_path)
+            child_fsm, _ = load_and_validate(loop_path, raise_on_error=False)
         except Exception:
             continue
 

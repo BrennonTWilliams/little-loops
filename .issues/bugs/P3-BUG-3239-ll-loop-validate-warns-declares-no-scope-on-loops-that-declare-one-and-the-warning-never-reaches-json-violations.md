@@ -4,11 +4,12 @@ type: BUG
 title: ll-loop validate warns declares no scope on loops that declare one, and the
   warning never reaches --json violations
 priority: P3
-status: open
+status: done
 testable: true
 discovered_by: ll-issues-create
 discovered_date: '2026-08-17'
 captured_at: '2026-08-17T18:23:20Z'
+completed_at: '2026-08-19T15:50:25Z'
 confidence_score: 100
 outcome_confidence: 78
 score_complexity: 20
@@ -372,21 +373,21 @@ splitting them across stderr and stdout.
 
 ## Acceptance Criteria
 
-- [ ] `ll-loop validate refine-to-ready-issue` emits no scope warning on stderr, in both
+- [x] `ll-loop validate refine-to-ready-issue` emits no scope warning on stderr, in both
       plain-text and `--json` modes.
-- [ ] A loop that genuinely declares no `scope:` still warns (BUG-3107's behavior preserved),
+- [x] A loop that genuinely declares no `scope:` still warns (BUG-3107's behavior preserved),
       and in plain-text mode emits that warning **exactly once** (currently twice).
-- [ ] For the same loop validated twice — once plain-text, once `--json` — the set of
+- [x] For the same loop validated twice — once plain-text, once `--json` — the set of
       WARNING-severity findings on stderr equals the set of WARNING-severity entries in
       `--json` `violations`. (Asserted across two invocations: in `--json` mode
       `raise_on_error=False`, so no warning is logged during that call by construction.)
-- [ ] `ll-loop run` on a loop that dispatches into an unscoped child no longer prints that
+- [x] `ll-loop run` on a loop that dispatches into an unscoped child no longer prints that
       child's scope warning at run time (`executor.py:870`).
-- [ ] A regression test covers a two-file on-disk fixture — parent declaring `scope:`, child
+- [x] A regression test covers a two-file on-disk fixture — parent declaring `scope:`, child
       declaring none, wired by `loop:` + `with:` — asserting zero scope warnings on the
       parent's validation in both modes, and exactly one on the child's own validation in
       both modes.
-- [ ] `python -m pytest scripts/tests/` exits 0, including `TestValidatorWarningBudget`
+- [x] `python -m pytest scripts/tests/` exits 0, including `TestValidatorWarningBudget`
       unchanged (no allowlist edits should be required under Decision 1).
 
 ## Notes
@@ -407,6 +408,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-19T15:50:10 - `26efdaf5-1644-47d9-8da6-2ce07fa4e6bd.jsonl`
 - `/ll:confidence-check` - 2026-08-19T15:19:58 - `a39a8786-2c1d-40b0-b8ec-3fc565838927.jsonl`
 - `/ll:wire-issue` - 2026-08-19T15:17:34 - `6f435684-155f-4724-92e1-2b56419366c1.jsonl`
 - `/ll:refine-issue` - 2026-08-18T14:49:23 - `1b75a5d5-cd19-4f54-9db4-f0438e3206cc.jsonl`

@@ -6249,20 +6249,35 @@ print(f"Found {len(error_list)} errors")
 #### load_and_validate
 
 ```python
-def load_and_validate(path: Path) -> FSMLoop
+def load_and_validate(
+    path: Path,
+    raise_on_error: bool = True,
+    orchestration_request_path: Path | None = None,
+) -> tuple[FSMLoop, list[ValidationError]]
 ```
 
 Load YAML file and validate FSM structure.
 
 **Parameters:**
 - `path` - Path to YAML file
+- `raise_on_error` - When `True` (default) and there are no ERROR-severity findings, every
+  WARNING-severity `ValidationError` is also logged via `logger.warning(str(warning))` as a
+  load-time side effect, independent of what the caller does with the returned list. When
+  `False`, nothing is logged and both errors and warnings are returned for the caller to
+  handle (used by `--json` output paths and by recursive child-loop loads, e.g.
+  `_validate_with_bindings`, so a child's warnings don't leak to stderr through a parent's
+  validation — see BUG-3239).
+- `orchestration_request_path` - Optional path passed through to request-path-sensitive
+  validation rules (e.g. MR-12 Check 3)
 
-**Returns:** Validated `FSMLoop` instance
+**Returns:** `(fsm, violations)` — the parsed `FSMLoop` and a list of `ValidationError`. When
+`raise_on_error=True`, ERROR-severity findings raise `ValueError` instead of being returned, so
+the returned list contains only warnings.
 
 **Raises:**
 - `FileNotFoundError` - If file doesn't exist
 - `yaml.YAMLError` - If invalid YAML
-- `ValueError` - If validation fails
+- `ValueError` - If validation fails with ERROR-severity findings and `raise_on_error=True`
 
 **Example:**
 ```python
@@ -6270,7 +6285,7 @@ from pathlib import Path
 from little_loops.fsm import load_and_validate
 
 try:
-    fsm = load_and_validate(Path(".loops/my-loop.yaml"))
+    fsm, warnings = load_and_validate(Path(".loops/my-loop.yaml"))
     print(f"Loaded loop: {fsm.name}")
 except ValueError as e:
     print(f"Validation error: {e}")
