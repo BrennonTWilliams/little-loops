@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import json
 from pathlib import Path
 from typing import Any
@@ -4094,55 +4095,14 @@ class TestDesignGateFailed:
         assert design_gate_failed(gaps) is True
 
 
-class TestInferTestable:
-    """infer_testable() doc-only keyword inference (ENH-2946)."""
-
-    def test_doc_only_title_returns_true(self, tmp_path: Path) -> None:
-        from little_loops.issue_parser import IssueInfo, infer_testable
-
-        issue_file = tmp_path / "P3-BUG-9010-test-bug.md"
-        issue_file.write_text(
-            "---\nid: BUG-9010\nstatus: open\n---\n"
-            "# BUG-9010: Fix broken link in README documentation\n\n"
-            "## Summary\nA link is broken.\n"
-        )
-        info = IssueInfo(
-            path=issue_file,
-            issue_type="bugs",
-            priority="P3",
-            issue_id="BUG-9010",
-            title="Fix broken link in README documentation",
-        )
-
-        assert infer_testable(info) is True
-
-    def test_normal_code_issue_returns_false(self, tmp_path: Path) -> None:
-        from little_loops.issue_parser import IssueInfo, infer_testable
-
-        issue_file = tmp_path / "P3-BUG-9011-test-bug.md"
-        issue_file.write_text(
-            "---\nid: BUG-9011\nstatus: open\n---\n"
-            "# BUG-9011: Fix off-by-one error in the retry loop\n\n"
-            "## Summary\nThe retry loop miscounts.\n"
-        )
-        info = IssueInfo(
-            path=issue_file,
-            issue_type="bugs",
-            priority="P3",
-            issue_id="BUG-9011",
-            title="Fix off-by-one error in the retry loop",
-        )
-
-        assert infer_testable(info) is False
-
-
 class TestCheckFormatGapsTestablePopulation:
-    """check_format_gaps()'s own `testable` gap population (ENH-2946).
+    """check_format_gaps()'s own `testable` gap population (ENH-2946, ENH-2966).
 
-    Distinct code path from TestInferTestable above: check_format_gaps
-    re-derives its own scan_text and threshold check inline rather than
-    calling infer_testable() (issue_parser.py:489-498 vs :528-540) — the two
-    call sites share only the keyword tuple and threshold constant.
+    `check_format_gaps` is the single call site for the doc-only keyword
+    inference (ENH-2966 Decision D1 deleted the unused `infer_testable`
+    entry point, which had zero production callers). The scan surface is
+    title + `## Summary` (Option A), matched with word-boundary regexes
+    (Option F1c) rather than bare substring containment.
     """
 
     def test_doc_only_issue_reports_testable_gap(self, tmp_path: Path) -> None:
@@ -4161,6 +4121,15 @@ class TestCheckFormatGapsTestablePopulation:
 
         assert issue_file.name in gaps.testable
         assert gaps.has_gaps is True
+
+    def test_testable_only_gap_is_advisory_not_blocking(self, tmp_path: Path) -> None:
+        """ENH-2966 Option E: a testable-only FormatGaps reports but doesn't block."""
+        from little_loops.issue_parser import FormatGaps
+
+        gaps = FormatGaps(testable=["P3-BUG-9012-test-bug.md"])
+
+        assert gaps.has_gaps is True
+        assert gaps.has_blocking_gaps is False
 
     def test_code_issue_reports_no_testable_gap(self, tmp_path: Path) -> None:
         from little_loops.issue_parser import check_format_gaps
@@ -4194,6 +4163,136 @@ class TestCheckFormatGapsTestablePopulation:
         gaps = check_format_gaps(issue_file)
 
         assert gaps.testable == []
+
+
+class TestTestableKeywordMatchPrecision:
+    """ENH-2966 Option F1c: word-boundary matching precision, pinned as fixtures.
+
+    Acceptance gate is this labeled fixture set, not the backlog fire count
+    (see ENH-2966 "The metric has no true positives") — the backlog has ~1
+    genuine doc-only issue, and it doesn't fire under any precise variant.
+    """
+
+    @staticmethod
+    def _count(text: str) -> int:
+        from little_loops.issue_parser import _count_testable_keyword_matches
+
+        return _count_testable_keyword_matches(text)
+
+    def test_documentation_alone_scores_one_not_two(self) -> None:
+        """`documentation` must not double-count as `doc` + `documentation`."""
+        assert self._count("documentation") == 1
+
+    def test_docs_guides_path_citation_scores_one_not_three(self) -> None:
+        """A `docs/guides/…_GUIDE.md` citation must not score doc+docs+guide."""
+        assert self._count("docs/guides/HARNESS_OPTIMIZATION_GUIDE.md") == 1
+
+    def test_plural_high_signal_keywords_still_match(self) -> None:
+        """F1c: `broken link`/`typo`/`readme` plurals must still score (not F1a's loss)."""
+        assert self._count("Fix typos and broken links in the guides") == 2
+        assert self._count("Update the READMEs and fix broken links") == 2
+
+    def test_guide_plural_does_not_reopen_the_path_hole(self) -> None:
+        """F1c deliberately leaves `guide` plural-blocked (F1b reopens the path hole)."""
+        assert self._count("guides") == 0
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "Update the CHANGELOG and README for the 2.x release",
+            "Fix typo and broken anchor in README",
+            "Fix typos and broken links in the guides",
+            "Update the READMEs and fix broken links",
+        ],
+    )
+    def test_positive_fixtures_meet_threshold(self, text: str) -> None:
+        from little_loops.issue_parser import _TESTABLE_KEYWORD_THRESHOLD
+
+        assert self._count(text) >= _TESTABLE_KEYWORD_THRESHOLD
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "docs/guides/HARNESS_OPTIMIZATION_GUIDE.md",
+            "This issue's Summary mentions documentation once.",
+        ],
+    )
+    def test_negative_fixtures_stay_below_threshold(self, text: str) -> None:
+        from little_loops.issue_parser import _TESTABLE_KEYWORD_THRESHOLD
+
+        assert self._count(text) < _TESTABLE_KEYWORD_THRESHOLD
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "The CLI docs and the README drift when the command signature changes",
+            "Add a changelog entry and update the migration guide when the flag lands",
+        ],
+    )
+    def test_known_fires_pinned_as_accepted_residual_imprecision(self, text: str) -> None:
+        """N1: these two code-issue shapes score >=2 and are accepted as fires.
+
+        No threshold separates them from genuine doc-only issues at the same
+        score (see ENH-2966 sub-decision N) — Option E makes the cost of
+        accepting them cheap by making `testable` non-gating. This assertion
+        guards against a future change over-tightening the rule into the
+        false-negative regime the issue's own A+B and F1a/F1b attempts hit.
+        """
+        from little_loops.issue_parser import _TESTABLE_KEYWORD_THRESHOLD
+
+        assert self._count(text) >= _TESTABLE_KEYWORD_THRESHOLD
+
+
+class TestCheckFormatGapsTestableScanSurface:
+    """ENH-2966 Option A: scan surface is title + `## Summary` only."""
+
+    def test_keyword_hits_outside_title_and_summary_do_not_fire(self, tmp_path: Path) -> None:
+        """Keywords only in a later section (e.g. Impact) must not trip the gap."""
+        from little_loops.issue_parser import check_format_gaps
+
+        bugs_dir = tmp_path / "bugs"
+        bugs_dir.mkdir()
+        issue_file = bugs_dir / "P3-BUG-9015-test-bug.md"
+        issue_file.write_text(
+            "---\nid: BUG-9015\nstatus: open\n---\n"
+            "# BUG-9015: Fix off-by-one error in the retry loop\n\n"
+            "## Summary\nThe retry loop miscounts.\n\n"
+            "## Impact\nSee docs/guides/HARNESS_OPTIMIZATION_GUIDE.md — "
+            "the changelog, readme, and typo history there explain why.\n"
+        )
+
+        gaps = check_format_gaps(issue_file)
+
+        assert gaps.testable == []
+
+    def test_no_summary_section_falls_back_to_title_only(self, tmp_path: Path) -> None:
+        """Decision 1 = A1: no `## Summary` degrades to title-only, not whole body."""
+        from little_loops.issue_parser import check_format_gaps
+
+        bugs_dir = tmp_path / "bugs"
+        bugs_dir.mkdir()
+        issue_file = bugs_dir / "P3-BUG-9016-test-bug.md"
+        issue_file.write_text(
+            "---\nid: BUG-9016\nstatus: open\n---\n"
+            "# BUG-9016: Fix off-by-one error in the retry loop\n\n"
+            "## Current Behavior\nThe docs guide and changelog readme explain "
+            "this typo history in detail.\n"
+        )
+
+        gaps = check_format_gaps(issue_file)
+
+        assert gaps.testable == []
+
+
+class TestAdvisoryGapClasses:
+    """ENH-2966 Option E: `_ADVISORY_GAP_CLASSES` must name real fields."""
+
+    def test_advisory_gap_classes_are_real_format_gaps_fields(self) -> None:
+        """A typo'd member would silently make Option E a no-op (ENH-2966 wiring pass)."""
+        from little_loops.issue_parser import _ADVISORY_GAP_CLASSES, FormatGaps
+
+        field_names = {f.name for f in dataclasses.fields(FormatGaps)}
+        assert _ADVISORY_GAP_CLASSES <= field_names
 
 
 # Frozen at `5186d1d5^` (FEAT-2942, before the same-commit human repair) — the

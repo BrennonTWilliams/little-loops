@@ -8,7 +8,7 @@ from __future__ import annotations
 import logging
 import re
 from collections.abc import Iterable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -480,6 +480,13 @@ def _normalize_whitespace(text: str) -> str:
     return " ".join(text.split())
 
 
+# ENH-2966 Option E: gap classes that are advisory-only — reported (they still
+# feed FormatGaps.has_gaps, so they render in every output surface) but must
+# not fail format-check's exit code. `testable`'s false-positive rate made a
+# hard gate out of what is meant to be a "maybe set testable: false" nudge.
+_ADVISORY_GAP_CLASSES: frozenset[str] = frozenset({"testable"})
+
+
 @dataclass
 class FormatGaps:
     """Graded structural format gaps for an issue (ENH-2426).
@@ -543,6 +550,18 @@ class FormatGaps:
             or self.empty_provenance_stub
             or self.template_placeholders
             or self.unapplied_decision
+        )
+
+    @property
+    def has_blocking_gaps(self) -> bool:
+        """True when any *non-advisory* gap category is non-empty (ENH-2966).
+
+        Exit-code predicate — narrower than :attr:`has_gaps`, which stays the
+        reporting predicate so advisory classes (`_ADVISORY_GAP_CLASSES`) still
+        render everywhere but no longer fail `format-check`'s exit code.
+        """
+        return any(
+            getattr(self, f.name) for f in fields(self) if f.name not in _ADVISORY_GAP_CLASSES
         )
 
     def to_dict(self) -> dict[str, list[str]]:
@@ -990,13 +1009,12 @@ def check_format_gaps(
             gaps.soft_dep_hard_edge.extend(sorted(soft_edges))
 
     if "testable" not in fm:
-        from little_loops.frontmatter import strip_frontmatter as _strip_fm
-
         title = str(fm.get("title") or "").strip()
         if not title:
             title_match = re.search(r"^#\s+(.+)$", content, re.MULTILINE)
             title = title_match.group(1) if title_match else ""
-        scan_text = f"{title}\n{_strip_fm(content)}"
+        summary = _section_body(content, "Summary") or ""
+        scan_text = f"{title}\n{summary}"
         if _count_testable_keyword_matches(scan_text) >= _TESTABLE_KEYWORD_THRESHOLD:
             gaps.testable.append(issue_path.name)
 
@@ -1840,26 +1858,28 @@ _TESTABLE_SIGNAL_KEYWORDS: tuple[str, ...] = (
 )
 _TESTABLE_KEYWORD_THRESHOLD = 2
 
+# ENH-2966 Option F1c: optional trailing plural "s" only on the high-signal
+# multi-word/rare keywords, never on doc/docs/guide/documentation — an
+# unrestricted plural (F1b) reopens the `docs/guides/…_GUIDE.md` false-positive
+# hole the leading `_` guard below was added to close.
+_PLURAL_SAFE = frozenset(
+    {"broken link", "broken anchor", "fix link", "typo", "readme", "changelog"}
+)
+# Word-boundary match: the leading guard excludes `[a-z0-9_]` so a keyword
+# doesn't match inside an identifier or underscore-separated filename
+# (`subdoc`, `HARNESS_OPTIMIZATION_GUIDE.md`); the trailing guard excludes
+# `[a-z]` so `doc` doesn't match the head of `documentation`/`docs`. Precompiled
+# once at module load so an `--all` sweep doesn't recompile 11 patterns per issue.
+_TESTABLE_PATTERNS: tuple[re.Pattern[str], ...] = tuple(
+    re.compile(rf"(?<![a-z0-9_]){re.escape(kw)}{'s?' if kw in _PLURAL_SAFE else ''}(?![a-z])")
+    for kw in _TESTABLE_SIGNAL_KEYWORDS
+)
+
 
 def _count_testable_keyword_matches(text: str) -> int:
-    """Count distinct `_TESTABLE_SIGNAL_KEYWORDS` present (case-insensitive) in *text*."""
+    """Count distinct `_TESTABLE_SIGNAL_KEYWORDS` present (word-boundary, case-insensitive) in *text*."""
     lowered = text.lower()
-    return sum(1 for kw in _TESTABLE_SIGNAL_KEYWORDS if kw in lowered)
-
-
-def infer_testable(issue: IssueInfo) -> bool:
-    """Doc-only keyword inference: True when the issue looks documentation-only.
-
-    Opt-in helper a caller can use to decide whether to write `testable: false`
-    via `frontmatter.update_frontmatter` — not invoked automatically by
-    `check_format_gaps`, which is a pure read-only linter. Mirrors the same
-    2+-distinct-keyword-match rule as `check_format_gaps`'s `testable` gap.
-    """
-    from little_loops.frontmatter import strip_frontmatter as _strip
-
-    body = issue.path.read_text(encoding="utf-8")
-    scan_text = f"{issue.title}\n{_strip(body)}"
-    return _count_testable_keyword_matches(scan_text) >= _TESTABLE_KEYWORD_THRESHOLD
+    return sum(1 for pattern in _TESTABLE_PATTERNS if pattern.search(lowered))
 
 
 # ENH-2443: deterministic (non-LLM) re-implementation of skills/decide-issue/SKILL.md

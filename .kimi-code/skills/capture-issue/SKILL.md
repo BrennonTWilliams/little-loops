@@ -229,9 +229,9 @@ Proceed directly to issue creation without user confirmation.
      TEMPLATE_STYLE = "full"
    ```
 
-2. **Infer `testable: false`** — scan the issue title and description for doc-only signal keywords before creating the file:
-   - **Signal keywords**: "doc", "docs", "documentation", "broken link", "broken anchor", "readme", "changelog", "spelling", "typo", "guide", "fix link"
-   - **Threshold**: 2+ keyword matches (case-insensitive) in the combined title + description text
+2. **Infer `testable: false`** — scan the issue title and description for doc-only signal keywords before creating the file (ENH-2966: this mirrors `check_format_gaps`'s title + `## Summary` scan surface, word-boundary matched — not the pre-ENH-2966 whole-body substring scan):
+   - **Signal keywords**: "doc", "docs", "documentation", "broken link"/"broken links", "broken anchor"/"broken anchors", "readme"/"readmes", "changelog"/"changelogs", "spelling", "typo"/"typos", "guide", "fix link"/"fix links" — word-boundary matches only (e.g. `doc` does not match inside `documentation` or `docs`)
+   - **Threshold**: 2+ distinct keyword matches (case-insensitive) in the combined title + description text
    - If threshold met: after `ll-issues create` writes the file (step 3), use `Edit` to add `testable: false` to its frontmatter and log `ℹ️ Set testable: false (inferred: documentation-only issue)`
    - If threshold not met: leave `testable` unset (absence means testable)
 

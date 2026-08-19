@@ -2629,6 +2629,11 @@ class TestFormatCheckTestableRendering:
     `testable` exited 1 with a header and no body — undiagnosable for a human
     or a shell-out caller. Landed via a fallback commit for FEAT-2948; the
     class belongs to ENH-2946.
+
+    ENH-2966 Option E demoted `testable` to an advisory (non-blocking) gap
+    class: it still renders in every output surface (has_gaps, unaffected),
+    but a testable-only issue now exits 0 (has_blocking_gaps, false) instead
+    of 1 — that's what changed in the three exit-code assertions below.
     """
 
     def test_testable_gap_is_printed_in_text_mode(
@@ -2644,7 +2649,7 @@ class TestFormatCheckTestableRendering:
         )
         out, _ = capsys.readouterr()
 
-        assert result == 1
+        assert result == 0
         assert "testable:" in out
         assert "P3-BUG-9801-fix-docs-link.md" in out
 
@@ -2660,19 +2665,43 @@ class TestFormatCheckTestableRendering:
         weaker form passes vacuously whenever the fixture happens to trip a
         second, rendered class, which is exactly how the regression survived.
         """
-        _write_issue(format_check_dir, "P3-BUG-9802-fix-docs-link.md", _DOC_ONLY_BODY)
+        _write_issue(
+            format_check_dir,
+            "P3-BUG-9802-fix-docs-link.md",
+            _DOC_ONLY_BODY.replace("9801", "9802"),
+        )
         argv = ["ll-issues", "format-check", "BUG-9802", "--config", str(temp_project_dir)]
 
-        assert _invoke([*argv, "--format", "json"]) == 1
+        assert _invoke([*argv, "--format", "json"]) == 0
         payload = json.loads(capsys.readouterr()[0])
         reported = {name for name, entries in payload.items() if entries}
         assert "testable" in reported, "fixture no longer trips the testable gap"
 
-        assert _invoke(argv) == 1
+        assert _invoke(argv) == 0
         out, _ = capsys.readouterr()
 
         unrendered = [name for name in reported if f"{name}:" not in out]
         assert not unrendered, f"classes in JSON but absent from text report: {unrendered}"
+
+    def test_testable_only_issue_stays_visible_in_all_sweep_but_exits_zero(
+        self,
+        temp_project_dir: Path,
+        format_check_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """ENH-2966 Option E: advisory-only ≠ invisible — sweep still lists it."""
+        _write_issue(
+            format_check_dir,
+            "P3-BUG-9803-fix-docs-link.md",
+            _DOC_ONLY_BODY.replace("9801", "9803"),
+        )
+
+        result = _invoke(["ll-issues", "format-check", "--all", "--config", str(temp_project_dir)])
+        out, _ = capsys.readouterr()
+
+        assert result == 0
+        assert "BUG-9803" in out
+        assert "testable:" in out
 
     def test_every_format_gaps_field_is_rendered(
         self,

@@ -399,6 +399,13 @@ def _apply_fix_dispatch(
     return ran
 
 
+# Every class in FormatGaps must have a matching loop below; a class counted
+# by has_gaps but not rendered here exits 1 (or, for an advisory class, gets
+# silently dropped from the report) with the reader unable to tell why
+# (the `testable` regression, ENH-2946). ENH-2966: has_gaps (not
+# has_blocking_gaps) is the render-parity contract this comment states — an
+# advisory-only class must still print, even though it no longer drives the
+# exit code.
 def _print_gaps(gaps: FormatGaps) -> None:
     for name in gaps.missing:
         print(f"  missing: {name}")
@@ -482,8 +489,11 @@ def cmd_format_check(config: BRConfig, args: argparse.Namespace) -> int:
     exits 1 with an empty report (the `testable` regression, ENH-2946).
 
     Returns:
-        0 when structurally compliant (all issues, in --all mode), 1 when gaps
-        were found (any issue, in --all mode) or the issue is not found.
+        0 when structurally compliant, or when the only gaps found are
+        advisory-only (`_ADVISORY_GAP_CLASSES`, e.g. `testable` — ENH-2966);
+        1 when a *blocking* gap (``has_blocking_gaps``) was found (any issue,
+        in --all mode) or the issue is not found. Advisory-only gaps are still
+        reported in every output surface, just non-gating.
     """
     from little_loops.cli.output import print_json
     from little_loops.issue_parser import (
@@ -590,21 +600,36 @@ def cmd_format_check(config: BRConfig, args: argparse.Namespace) -> int:
             if gaps.has_gaps:
                 results[info.issue_id] = gaps
 
+        # ENH-2966 Option E: has_gaps still drives inclusion in `results` (so
+        # advisory-only issues, e.g. testable, are still reported), but the
+        # exit code is driven by has_blocking_gaps so an advisory-only sweep
+        # doesn't fail the gate.
+        blocking_count = sum(1 for gaps in results.values() if gaps.has_blocking_gaps)
+
         if fmt == "json":
             print_json({issue_id: gaps.to_dict() for issue_id, gaps in results.items()})
-            return 1 if results else 0
+            return 1 if blocking_count else 0
 
         if not results:
             print(f"Formatted: all {len(active_issues)} issue(s) are structurally compliant")
             return 0
 
-        print(
-            f"Needs formatting — structural gaps in {len(results)}/{len(active_issues)} issue(s):"
-        )
+        if blocking_count:
+            advisory_only = len(results) - blocking_count
+            suffix = f" ({advisory_only} more with advisory-only gaps)" if advisory_only else ""
+            print(
+                f"Needs formatting — structural gaps in {blocking_count}/"
+                f"{len(active_issues)} issue(s){suffix}:"
+            )
+        else:
+            print(
+                f"Advisory-only gaps in {len(results)}/{len(active_issues)} issue(s) "
+                "(non-blocking):"
+            )
         for gapped_id, gaps in results.items():
             print(f"{gapped_id}:")
             _print_gaps(gaps)
-        return 1
+        return 1 if blocking_count else 0
 
     assert issue_id is not None
     assert path is not None
@@ -657,7 +682,7 @@ def cmd_format_check(config: BRConfig, args: argparse.Namespace) -> int:
         payload: dict[str, object] = dict(gaps.to_dict())
         payload["superseded_marker_count"] = superseded_marker_count(path)
         print_json(payload)
-        return 1 if gaps.has_gaps else 0
+        return 1 if gaps.has_blocking_gaps else 0
 
     if not gaps.has_gaps:
         print(f"Formatted: {issue_id} is structurally compliant")
@@ -665,4 +690,4 @@ def cmd_format_check(config: BRConfig, args: argparse.Namespace) -> int:
 
     print(f"Needs formatting — structural gaps for {issue_id}:")
     _print_gaps(gaps)
-    return 1
+    return 1 if gaps.has_blocking_gaps else 0

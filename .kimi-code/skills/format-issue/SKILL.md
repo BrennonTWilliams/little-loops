@@ -172,10 +172,10 @@ done
 
 ### 2.5a. Testable Inference (doc-only detection)
 
-`ll-issues format-check` already runs this inference (`infer_testable` /
-`check_format_gaps`, ENH-2946) — do not re-scan for keywords here. For each
-processed issue that does **not** already have a `testable` field, check its
-gap report:
+`ll-issues format-check` already runs this inference (`check_format_gaps`,
+ENH-2946/ENH-2966) — do not re-scan for keywords here. For each processed
+issue that does **not** already have a `testable` field, check its gap
+report:
 
 ```bash
 ll-issues format-check "${ISSUE_ID}"
@@ -183,13 +183,15 @@ ll-issues format-check "${ISSUE_ID}"
 
 If the report includes a `testable: ID (doc-only signals; set an explicit
 \`testable:\` key)` line, the issue looks documentation-only (2+ distinct
-signal-keyword matches against title + body). Use the Edit tool to add
-`testable: false` to its frontmatter, and include in the gap report output:
-`Frontmatter — testable: false added (inferred: documentation-only issue)`.
-If the `testable` gap is absent from the report, take no action — absence
-means testable. If `testable` is already present in frontmatter (any value),
-`check_format_gaps` never reports the gap in the first place, so this step is
-naturally a no-op for it.
+signal-keyword matches, word-boundary, against title + `## Summary` only —
+ENH-2966). Use the Edit tool to add `testable: false` to its frontmatter, and
+include in the gap report output: `Frontmatter — testable: false added
+(inferred: documentation-only issue)`. If the `testable` gap is absent from
+the report, take no action — absence means testable. If `testable` is already
+present in frontmatter (any value), `check_format_gaps` never reports the gap
+in the first place, so this step is naturally a no-op for it. `testable` is
+advisory-only (ENH-2966 Option E): it does not affect `format-check`'s exit
+code, only whether it appears in the report.
 
 ### 2.5. Template v2.0 Section Alignment
 

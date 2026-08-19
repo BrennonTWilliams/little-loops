@@ -2066,10 +2066,14 @@ Deterministic (no-LLM) structural linter for issue formatting (ENH-2426). Grades
 
 A single-ID run still parses the whole corpus internally (needed to classify `prose_dep_drift` vs `stale_prose_dep` against every other issue's status), but suppresses *other* issues' `deprecated frontmatter key` warnings rather than printing one line per offending file — the targeted issue's own warnings (if any) still surface normally. When other issues were suppressed, a one-line stderr tally follows the verdict: `(N other issue(s) have deprecated frontmatter keys — run \`ll-issues format-check\` to list)`. The full `--all` sweep is unaffected — it still reports every file's deprecated keys (ENH-2961).
 
-Also reports `testable` (ENH-2946): a doc-only keyword inference (`infer_testable`'s
-signal-keyword tuple, 2+ distinct matches) advising that the issue looks
-documentation-only — advisory only, never auto-written; a caller uses it to decide
-whether to add `testable: false`.
+Also reports `testable` (ENH-2946, precision-tuned by ENH-2966): a doc-only
+keyword inference (signal-keyword tuple, 2+ distinct word-boundary matches
+against title + `## Summary` only) advising that the issue looks
+documentation-only — advisory only, never auto-written; a caller uses it to
+decide whether to add `testable: false`. It is also non-gating (ENH-2966
+Option E): a `testable`-only gap is still reported in every output surface,
+but does not fail `format-check`'s exit code (`FormatGaps.has_blocking_gaps`,
+narrower than the reporting predicate `has_gaps`).
 
 Also reports `stale_file_ref` (ENH-2983; reworded BUG-3194): a file path
 reference extracted from the body classifies as `stale` — a `/`-qualified

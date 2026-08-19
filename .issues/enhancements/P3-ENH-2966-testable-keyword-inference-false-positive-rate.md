@@ -3,8 +3,9 @@ id: ENH-2966
 title: '`testable` keyword inference fires on 88% of the issues it evaluates'
 type: ENH
 priority: P3
-status: open
+status: done
 captured_at: '2026-08-01T16:02:14Z'
+completed_at: '2026-08-19T22:03:40Z'
 discovered_date: 2026-08-01
 discovered_by: capture-issue
 relates_to:
@@ -1443,6 +1444,8 @@ ENH-3247 is `done`, so there is no longer an ordering constraint against it.
 The ENH-3000 note above still stands (ENH-3000 is `open`).
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-19T22:03:18 - `ac27929f-43c9-47be-b364-678589842113.jsonl`
+- `/ll:ready-issue` - 2026-08-19T21:44:38 - `1967eabe-f63b-47bc-93eb-c06111beb611.jsonl`
 - `/ll:confidence-check` - 2026-08-19T21:37:55 - `cf3e2d12-3055-4e63-9084-0c161f05830e.jsonl`
 - `/ll:decide-issue` - 2026-08-19T21:28:42 - `52d05086-bbdc-462a-bb68-03d6d46c8ec9.jsonl`
 - `/ll:confidence-check` - 2026-08-19T21:27:27 - `5c491ecb-85ee-4e96-982b-ddd1e098374d.jsonl`
