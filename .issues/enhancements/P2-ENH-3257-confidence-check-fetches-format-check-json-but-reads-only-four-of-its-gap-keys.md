@@ -3,10 +3,11 @@ id: ENH-3257
 type: ENH
 title: confidence-check fetches format-check JSON but reads only four of its gap keys
 priority: P2
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-08-18'
 captured_at: '2026-08-18T20:48:37Z'
+completed_at: '2026-08-19T03:34:31Z'
 parent: EPIC-2856
 testable: true
 relates_to:
@@ -492,6 +493,7 @@ STRUCT_GAP=$(echo "$FC_JSON" | python -c "import json,sys; d=json.load(sys.stdin
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-19T03:34:09 - `47b33c1f-0be6-43ba-8a7e-c08b78b7dd7e.jsonl`
 - `/ll:confidence-check` - 2026-08-19T02:26:16 - `3ac46c0e-24a3-4309-88b6-5d1bfb5b7a78.jsonl`
 - `/ll:verify-issues` - 2026-08-18T23:42:05 - `5babd785-d270-4764-90c8-5811c9188fb7.jsonl`
 - `/ll:confidence-check` - 2026-08-18T22:04:27 - `bb66018c-ab8d-4e0a-a8d9-81ae552f7d58.jsonl`

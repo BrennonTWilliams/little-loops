@@ -242,18 +242,21 @@ Use the table matching the issue type.
 
 | Finding | Score |
 |---------|-------|
-| Clear acceptance criteria, specific files, defined scope; no parity or claim gaps | 20 |
-| Most details present, 1-2 minor gaps fillable from context; no parity or claim gaps | 15 |
-| Any `missing_behavior_parity`, `stale_symbol_ref`, or `stale_cli_flag` gap (cap — apply regardless of otherwise-higher row) | 10 |
+| Clear acceptance criteria, specific files, defined scope; no parity, claim, or structure gaps | 20 |
+| Most details present, 1-2 minor gaps fillable from context; no parity, claim, or structure gaps | 15 |
+| Any `missing_behavior_parity`, `stale_symbol_ref`, `stale_cli_flag` gap, or `template_placeholders`/`boilerplate`/directive-section `missing` (`Summary`/`Acceptance Criteria` only) gap (cap — apply regardless of otherwise-higher row) | 10 |
 | Key details missing but inferrable from codebase research | 10 |
 | Vague requirements, significant guesswork needed | 0 |
 
-**Parity/Claim Cap** (ENH-3047): if Phase 1.8 set `PARITY_GAP` or `CLAIM_GAP` to a non-empty
-value, cap Criterion 4 at 10 regardless of which other row would otherwise apply — a ceiling,
-never a floor (an issue that would score 0 on "vague requirements" still scores 0). List the
-gap reason strings under **Gaps to Address** as advisory detail. This is a Criterion 4 cap
-only; unlike the Learning Test, Program Design, and Dependencies hard overrides, it does
-**not** force a `STOP — ADDRESS GAPS` verdict (see SKILL.md Phase 1.8).
+**Parity/Claim/Structure Cap** (ENH-3047/ENH-3257): if Phase 1.8 set `PARITY_GAP`, `CLAIM_GAP`,
+or `STRUCT_GAP` to a non-empty value, cap Criterion 4 at 10 regardless of which other row would
+otherwise apply — a ceiling, never a floor (an issue that would score 0 on "vague requirements"
+still scores 0). List the gap reason strings under **Gaps to Address** as advisory detail.
+`STRUCT_GAP` combines `template_placeholders` and `boilerplate` (unfiltered) with `missing`
+narrowed to the directive-section allowlist (`Summary`/`Acceptance Criteria` only) — a bare
+`missing` entry for a ceremonial section like `Status` or `Impact` does not contribute. This is
+a Criterion 4 cap only; unlike the Learning Test, Program Design, and Dependencies hard
+overrides, it does **not** force a `STOP — ADDRESS GAPS` verdict (see SKILL.md Phase 1.8).
 
 ### Criterion 5: Dependencies Satisfied
 

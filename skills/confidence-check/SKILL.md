@@ -196,6 +196,8 @@ PARITY_GAP=$(echo "$FC_JSON" | python -c "import json,sys; print('; '.join(json.
 CLAIM_GAP=$(echo "$FC_JSON" | python -c "import json,sys; d=json.load(sys.stdin); print('; '.join(d.get('stale_symbol_ref', []) + d.get('stale_cli_flag', [])))" 2>/dev/null || true)
 # <!-- ll-prose-ok: mirrors the pre-existing PD_GAP idiom (SKILL.md Phase 1.6) for a one-off JSON field extraction, not a reimplemented algorithm -->
 DECISION_GAP=$(echo "$FC_JSON" | python -c "import json,sys; print('; '.join(json.load(sys.stdin).get('unapplied_decision', [])))" 2>/dev/null || true)
+# <!-- ll-prose-ok: mirrors the pre-existing PD_GAP idiom (SKILL.md Phase 1.6) for a one-off JSON field extraction, not a reimplemented algorithm -->
+STRUCT_GAP=$(echo "$FC_JSON" | python -c "import json,sys; d=json.load(sys.stdin); D={'Summary','Acceptance Criteria'}; print('; '.join(d.get('template_placeholders', []) + d.get('boilerplate', []) + [m for m in d.get('missing', []) if m in D]))" 2>/dev/null || true)
 ```
 
 `PARITY_GAP` is non-empty when the issue is missing a `### Behavior Parity` subsection
@@ -204,7 +206,7 @@ flag against the codebase that did not resolve (`stale_symbol_ref` + `stale_cli_
 combined). `DECISION_GAP` (ENH-3256) is non-empty when the issue records a `> **Selected:**`
 decision while a rejected option's discriminating identifier still appears, unmarked, in a
 directive section (`unapplied_decision`) — a decision *record* that was never actually
-*applied*. All three are empty/inert on the present-but-empty case — an issue with no gaps
+*applied*. All four are empty/inert on the present-but-empty case — an issue with no gaps
 leaves Criterion 4/Criterion C's scoring untouched. Do **not** re-judge either signal yourself;
 the CLI is the single source of truth for whether a reference resolves or a decision was
 applied. `CLAIM_GAP` is **advisory input to Criterion 4 only** — it caps the criterion (see
@@ -212,6 +214,17 @@ applied. `CLAIM_GAP` is **advisory input to Criterion 4 only** — it caps the c
 forward-looking design/planning claims legitimately do not resolve yet. `DECISION_GAP` is
 **advisory input to Criterion C only** — it caps the criterion (see [rubric.md](rubric.md)
 Criterion C) and, like `CLAIM_GAP`, must never be escalated to a `STOP` verdict.
+
+`STRUCT_GAP` (ENH-3257) is **advisory input to Criterion 4 only** — it caps the criterion (see
+[rubric.md](rubric.md) Criterion 4) and, like `CLAIM_GAP`, must never be escalated to a `STOP`
+verdict. It combines `template_placeholders` and `boilerplate` (taken unfiltered) with
+`missing`, filtered to the directive allowlist `{Summary, Acceptance Criteria}` — ceremonial
+`missing` entries (`Status`, `Impact`, etc.) do not contribute, since a structural-section
+absence covered by a stronger hard override elsewhere carries no additional signal here, and
+the rest carry no signal about specification quality. Remedy differs by key: `format-check
+--fix` repairs `boilerplate` and structurally inserts `missing` sections, but
+`template_placeholders` has no `--fix` — it is literal template debris that needs authored
+content.
 
 ### Phase 2: Five-Point Assessment
 

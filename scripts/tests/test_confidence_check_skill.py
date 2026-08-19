@@ -646,6 +646,103 @@ class TestConfidenceCheckRubricDecisionCap:
         )
 
 
+class TestConfidenceCheckStructGapPrefetch:
+    """Phase 1.8 must pre-fetch structural-debris keys as a Criterion 4 cap, not a STOP (ENH-3257)."""
+
+    def _phase_text(self, heading: str) -> str:
+        content = SKILL_FILE.read_text()
+        start = content.index(heading)
+        next_heading = content.find("\n###", start + 1)
+        end = next_heading if next_heading != -1 else len(content)
+        return content[start:end]
+
+    def test_phase_1_8_names_struct_gap_and_source_keys(self) -> None:
+        phase_text = self._phase_text("### Phase 1.8: Pre-Fetch Claim and Parity Gaps")
+        assert "STRUCT_GAP" in phase_text, (
+            "Phase 1.8 must extract a STRUCT_GAP variable (ENH-3257)"
+        )
+        for key in ("template_placeholders", "boilerplate", "missing"):
+            assert key in phase_text, (
+                f"Phase 1.8 must reference the '{key}' format-check gap key (ENH-3257)"
+            )
+
+    def test_phase_1_8_does_not_reissue_format_check(self) -> None:
+        phase_text = self._phase_text("### Phase 1.8: Pre-Fetch Claim and Parity Gaps")
+        assert phase_text.count("ll-issues format-check") == 0, (
+            "Phase 1.8 must reuse $FC_JSON from Phase 1.6, not call format-check again (ENH-3257)"
+        )
+
+    def test_phase_1_8_marks_struct_gap_advisory(self) -> None:
+        phase_text = self._phase_text("### Phase 1.8: Pre-Fetch Claim and Parity Gaps")
+        struct_gap_start = phase_text.index("STRUCT_GAP` (ENH-3257)")
+        assert "advisory" in phase_text[struct_gap_start : struct_gap_start + 400].lower(), (
+            "Phase 1.8 must document STRUCT_GAP as advisory input to Criterion 4 only (ENH-3257)"
+        )
+
+    def test_phase_1_8_filters_missing_to_directive_sections(self) -> None:
+        phase_text = self._phase_text("### Phase 1.8: Pre-Fetch Claim and Parity Gaps")
+        assert "Summary" in phase_text and "Acceptance Criteria" in phase_text, (
+            "Phase 1.8 must name the directive allowlist (Summary, Acceptance Criteria) (ENH-3257)"
+        )
+        assert "Program Design" not in phase_text, (
+            "Phase 1.8's STRUCT_GAP allowlist must not include Program Design (ENH-3257)"
+        )
+        assert "Implementation Steps" not in phase_text, (
+            "Phase 1.8's STRUCT_GAP allowlist must not include Implementation Steps (ENH-3257)"
+        )
+
+    def test_phase_1_8_documents_remedy_split(self) -> None:
+        phase_text = self._phase_text("### Phase 1.8: Pre-Fetch Claim and Parity Gaps")
+        assert "--fix" in phase_text, (
+            "Phase 1.8 must document that format-check --fix repairs boilerplate/missing (ENH-3257)"
+        )
+        assert "template_placeholders" in phase_text and "no `--fix`" in phase_text, (
+            "Phase 1.8 must document that template_placeholders has no --fix remedy (ENH-3257)"
+        )
+
+    def test_phase_3_does_not_name_struct_gap(self) -> None:
+        phase_text = self._phase_text("### Phase 3:")
+        assert "STRUCT_GAP" not in phase_text, (
+            "Phase 3 must not escalate STRUCT_GAP to a hard override/STOP verdict (ENH-3257)"
+        )
+
+
+class TestConfidenceCheckRubricStructCap:
+    """rubric.md Criterion 4 must document the structure cap row (ENH-3257)."""
+
+    def _criterion_4_text(self) -> str:
+        content = RUBRIC_FILE.read_text()
+        start = content.index("### Criterion 4: Issue Well-Specified")
+        next_heading = content.find("\n###", start + 1)
+        end = next_heading if next_heading != -1 else len(content)
+        return content[start:end]
+
+    def test_cap_row_present(self) -> None:
+        section = self._criterion_4_text()
+        assert "STRUCT_GAP" in section, "Criterion 4 must reference STRUCT_GAP (ENH-3257)"
+        for key in ("template_placeholders", "boilerplate"):
+            assert key in section, f"Criterion 4 table/notes must reference '{key}' (ENH-3257)"
+
+    def test_cap_documented_as_ceiling(self) -> None:
+        section = self._criterion_4_text()
+        assert "cap" in section.lower(), (
+            "Criterion 4 section must document the structure cap (ENH-3257)"
+        )
+
+    def test_cap_documented_as_not_a_hard_override(self) -> None:
+        section = self._criterion_4_text()
+        assert "not" in section.lower() and "STOP" in section, (
+            "Criterion 4's structure cap must explicitly document that it does not force STOP (ENH-3257)"
+        )
+
+    def test_cap_row_qualifies_missing_as_directive_only(self) -> None:
+        section = self._criterion_4_text()
+        assert "Summary" in section and "Acceptance Criteria" in section, (
+            "Criterion 4's cap row must qualify 'missing' as directive-section-only "
+            "(Summary/Acceptance Criteria), not the bare key (ENH-3257)"
+        )
+
+
 class TestVerdictJsonTrailer:
     """rubric.md's single-issue output format must emit VERDICT_JSON (ENH-2949)."""
 
