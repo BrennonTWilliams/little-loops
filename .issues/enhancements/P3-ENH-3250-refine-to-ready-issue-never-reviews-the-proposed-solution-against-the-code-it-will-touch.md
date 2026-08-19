@@ -4,7 +4,7 @@ type: ENH
 title: refine-to-ready-issue never reviews the Proposed Solution against the code
   it will touch
 priority: P3
-status: in_progress
+status: done
 testable: true
 relates_to:
 - BUG-3249
@@ -13,6 +13,7 @@ relates_to:
 discovered_by: ll-issues-create
 discovered_date: '2026-08-17'
 captured_at: '2026-08-17T20:04:02Z'
+completed_at: '2026-08-19T00:00:00Z'
 blocked_by: []
 confidence_score: 100
 outcome_confidence: 76
