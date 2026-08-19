@@ -1,0 +1,171 @@
+# little-loops CI — self-hosted runner on Thinky.
+#
+# Security posture: push-only (no `pull_request`). This repo is PUBLIC and the
+# runner executes whatever it checks out, so a fork-PR trigger would be a
+# remote-code-execution surface on Thinky. If PR coverage is added later, gate
+# it on approval / trusted-branch labels — never on fork events.
+#
+# Design constraints baked in here (QA guardrails, Buzz #ci-cd 2026-08-17):
+#   G1 clean-env-per-job — fresh venv each run (checkout clean + `python -m venv`).
+#   G2 [dev] exercise     — `pip install -e ".[dev]"` + `pip check` + an explicit
+#                           import assertion, so a missing test dep can't silently
+#                           skip (the hermes pytest-asyncio gap class).
+#   G3 history parity     — `.ll/history.db` is gitignored + mutated in place and
+#                           wiped by checkout's `git clean -ffdx`; ci-history.sh
+#                           restores the last snapshot before tests and re-snapshots
+#                           after, with two-tier retention (see script).
+#   Persistent runner     — the host-conformance matrix needs host CLIs
+#                           (claude/codex/gemini/…) pre-installed on Thinky; an
+#                           ephemeral runner would drop them every job. Clean-env
+#                           is therefore achieved via fresh venv, not ephemerality.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  # upload-artifact needs the `actions: write` scope. Because `permissions` is
+  # set explicitly here, every *other* scope (including `actions`) defaults to
+  # `none` — without this line the failure-upload step 403s with "Resource not
+  # accessible by integration" and the paper trail silently never uploads.
+  actions: write
+
+jobs:
+  unit-tests:
+    name: Unit tests (Thinky)
+    runs-on: [self-hosted, Linux, X64, thinky]
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Restore .ll/history.db snapshot
+        run: bash .github/scripts/ci-history.sh restore
+
+      - name: Clean venv + install [dev] (with exercise assertion)
+        run: |
+          python -m venv .venv
+          .venv/bin/python -m pip install --upgrade pip
+          .venv/bin/python -m pip install -e "./scripts[dev]"
+          .venv/bin/python -m pip check
+          # G2: prove the dev extras actually landed — a missing plugin here is
+          # exactly the silent-skip class we must not let through.
+          .venv/bin/python -c "import pytest, pytest_cov, xdist, pytest_timeout, syrupy, hypothesis; print('dev deps verified')"
+
+      - name: Run unit tests (exclude integration + conformance)
+        # `tee` mirrors pytest output to `pytest.log` for upload without
+        # buffering the streamed CI log (which would break live-progress in
+        # the GH Actions UI). `--junit-xml` writes a structured report that
+        # GH Actions parses for the test summary table; also machine-readable
+        # for triage scripts. `set -o pipefail` is required: without it the
+        # pipeline's exit code is tee's (always 0), masking pytest's actual
+        # failure status from the GH Actions summary and from any
+        # `if: <status>` step conditions. Both files are uploaded on every
+        # CI outcome below (success, failure, or cancellation). Rebased onto
+        # main: pytest now runs under `.venv/bin/python` (G1 fresh venv)
+        # instead of the bare `python`.
+        run: |
+          set -o pipefail
+          .venv/bin/python -m pytest scripts/tests/ \
+            -m "not integration and not conformance" \
+            --junit-xml=pytest-junit.xml \
+            | tee pytest.log
+
+      - name: Upload unit-test artifacts
+        # `if: always()` is the data-collection gate — green runs need to
+        # upload too, because the clean-finish signal (junit pass, no busy-spin
+        # tail) is exactly the verification surface we need for the BUG-3208
+        # stack and would otherwise collapse to "no data on green." `if-no-files-
+        # found: warn` is deliberate: if pytest hangs at 98-99% (the BUG-3208
+        # failure mode) junit XML never gets written, and the upload step
+        # should not turn a hung run into a *double* failure. Retention 7d is
+        # enough to triage a recent failure or confirm a recent green, short
+        # enough to not pile up on the artifact service. `run_id + run_attempt`
+        # prevents clobbering on retry. Rebased onto main: artifact name
+        # scoped to the unit job (`pytest-unit-*`) so the unit and conformance
+        # jobs don't collide on the artifact store.
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-unit-failures-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            pytest.log
+            pytest-junit.xml
+          retention-days: 7
+          if-no-files-found: warn
+
+      - name: Snapshot .ll/history.db (two-tier retention)
+        if: always()
+        run: bash .github/scripts/ci-history.sh snapshot
+
+  conformance:
+    name: Host conformance (Thinky)
+    runs-on: [self-hosted, Linux, X64, thinky]
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Restore .ll/history.db snapshot
+        run: bash .github/scripts/ci-history.sh restore
+
+      - name: Clean venv + install [dev]
+        run: |
+          python -m venv .venv
+          .venv/bin/python -m pip install --upgrade pip
+          .venv/bin/python -m pip install -e "./scripts[dev]"
+
+      - name: Run host conformance matrix
+        # Same pipefail + tee + junit pattern as the unit job. Without
+        # `set -o pipefail` the pipeline's exit code is tee's (always 0),
+        # masking pytest's actual failure status from the GH Actions summary
+        # and from any `if: <status>` step conditions. `--junit-xml` produces
+        # a structured report GH Actions parses for the test summary table.
+        run: |
+          set -o pipefail
+          .venv/bin/python -m pytest scripts/tests/ \
+            -m conformance \
+            -ra --tb=short \
+            --junit-xml=pytest-conformance-junit.xml \
+            2>&1 | tee /tmp/conformance.log
+
+      - name: Upload conformance artifacts
+        # Mirrors the unit job's upload shape. Separate artifact name
+        # (`pytest-conformance-failures-*`) so the two jobs' artifacts don't
+        # collide on the artifact store. `if: always()` so a clean green
+        # conformance produces a junit-paper-trail alongside failure capture;
+        # `if-no-files-found: warn` handles the FEAT-992 host-CLI stub case
+        # where junit XML may be written but pytest exits non-zero purely on
+        # unexpected skip behavior — we still want the log, not a double-failure.
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-conformance-failures-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            /tmp/conformance.log
+            pytest-conformance-junit.xml
+          retention-days: 7
+          if-no-files-found: warn
+
+      - name: Surface conformance summary
+        if: always()
+        run: |
+          grep -E "passed|failed|skipped|deselected|error" /tmp/conformance.log | tail -8 || true
+          echo "::notice::Conformance SKIPs are host-CLI stubs (FEAT-992) — expected, not a regression signal."
+
+      - name: Snapshot .ll/history.db (two-tier retention)
+        if: always()
+        run: bash .github/scripts/ci-history.sh snapshot
