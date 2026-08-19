@@ -34,12 +34,29 @@ def add_check_verify_verdict_parser(
     )
     p.set_defaults(command="check-verify-verdict")
     p.add_argument("issue_id", help="Issue ID (e.g., 3031, ENH-3031, P2-ENH-3031)")
+    p.add_argument(
+        "--proposal-unsound",
+        action="store_true",
+        help=(
+            "Query mode (ENH-3250): exit 0 if verify_verdict == PROPOSAL_UNSOUND, "
+            "1 otherwise. Used by refine-to-ready-issue.yaml's check_proposal_unsound "
+            "gate to route that failure kind to reconcile_issue instead of "
+            "refine_followup. Does not affect the default VALID/NON_VALID behavior."
+        ),
+    )
     add_config_arg(p)
     return p
 
 
 def cmd_check_verify_verdict(config: BRConfig, args: argparse.Namespace) -> int:
     """Exit 0 unless the issue's frontmatter records verify_verdict: NON_VALID (ENH-3031).
+
+    With ``--proposal-unsound`` (ENH-3250), behaves as a distinct query mode
+    instead: exit 0 if ``verify_verdict == PROPOSAL_UNSOUND``, 1 otherwise
+    (including when the field is absent) — a plain ``fragment: shell_exit``
+    binary probe for ``refine-to-ready-issue.yaml``'s ``check_proposal_unsound``
+    gate. ``PROPOSAL_UNSOUND`` still falls through the default mode below as
+    non-VALID → exit 1, so the default contract is unchanged.
 
     Returns:
         0 when ``verify_verdict`` is ``VALID`` or absent (fail-open, matching
@@ -57,6 +74,16 @@ def cmd_check_verify_verdict(config: BRConfig, args: argparse.Namespace) -> int:
 
     fm = parse_frontmatter(path.read_text(), coerce_types=True)
     verdict = fm.get("verify_verdict")
+
+    if getattr(args, "proposal_unsound", False):
+        if verdict is not None and str(verdict).upper() == "PROPOSAL_UNSOUND":
+            print(f"Verified: {args.issue_id} verify_verdict={verdict!r}")
+            return 0
+        print(
+            f"NOT_PROPOSAL_UNSOUND: {args.issue_id} — verify_verdict={verdict!r}",
+            file=sys.stderr,
+        )
+        return 1
 
     if verdict is None or str(verdict).upper() == "VALID":
         print(f"Verified: {args.issue_id} verify_verdict={verdict!r}")

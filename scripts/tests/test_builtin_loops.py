@@ -1510,8 +1510,9 @@ class TestRefineToReadyIssueSubLoop:
         assert state.get("on_yes") == "check_hedges", (
             f"check_verify_verdict.on_yes should be 'check_hedges', got {state.get('on_yes')!r}"
         )
-        assert state.get("on_no") == "check_refine_limit", (
-            f"check_verify_verdict.on_no should be 'check_refine_limit', got {state.get('on_no')!r}"
+        assert state.get("on_no") == "check_proposal_unsound", (
+            f"check_verify_verdict.on_no should be 'check_proposal_unsound' "
+            f"(ENH-3250: triage before forcing refine), got {state.get('on_no')!r}"
         )
         assert state.get("on_error") == "check_hedges", (
             f"check_verify_verdict.on_error should be 'check_hedges' (fail-open), "
@@ -2447,13 +2448,15 @@ class TestRefineToReadyIssueSubLoop:
             f"check_missing_artifacts.on_no should be 'breakdown_issue', got {state.get('on_no')!r}"
         )
 
-    def test_check_decision_needed_on_no_routes_to_check_missing_artifacts(
+    def test_check_decision_needed_on_no_routes_to_check_spike_needed(
         self, data: dict
     ) -> None:
-        """check_decision_needed.on_no must route to check_missing_artifacts, not breakdown_issue (BUG-1490)."""
+        """check_decision_needed.on_no must route to check_spike_needed (ENH-3250:
+        spliced in before check_missing_artifacts), not directly to
+        check_missing_artifacts or breakdown_issue (BUG-1490)."""
         state = data["states"].get("check_decision_needed", {})
-        assert state.get("on_no") == "check_missing_artifacts", (
-            f"check_decision_needed.on_no should be 'check_missing_artifacts', got {state.get('on_no')!r}"
+        assert state.get("on_no") == "check_spike_needed", (
+            f"check_decision_needed.on_no should be 'check_spike_needed', got {state.get('on_no')!r}"
         )
 
     def test_check_decision_needed_on_yes_routes_to_resolve_decision_pre_breakdown(
@@ -2557,6 +2560,157 @@ class TestRefineToReadyIssueSubLoop:
         cycle through confidence_check no longer fits in the old budget of 30)."""
         assert data.get("max_steps", 0) >= 40, (
             f"max_steps should be >= 40, got {data.get('max_steps')!r}"
+        )
+
+    # --- ENH-3250: check_proposal_unsound (B2) ---
+
+    def test_check_proposal_unsound_state_exists(self, data: dict) -> None:
+        """check_proposal_unsound state must exist to triage verify_issue's
+        non-VALID verdict by failure kind (ENH-3250)."""
+        assert "check_proposal_unsound" in data["states"], (
+            "State 'check_proposal_unsound' not found in refine-to-ready-issue.yaml"
+        )
+
+    def test_check_proposal_unsound_uses_shell_exit_fragment(self, data: dict) -> None:
+        """check_proposal_unsound must use shell_exit fragment to route on exit code."""
+        state = data["states"].get("check_proposal_unsound", {})
+        assert state.get("fragment") == "shell_exit", (
+            f"check_proposal_unsound.fragment should be 'shell_exit', got {state.get('fragment')!r}"
+        )
+
+    def test_check_proposal_unsound_action_uses_proposal_unsound_flag(self, data: dict) -> None:
+        """check_proposal_unsound's action must call check-verify-verdict with
+        --proposal-unsound, not the default VALID/NON_VALID query."""
+        state = data["states"].get("check_proposal_unsound", {})
+        action = state.get("action", "")
+        assert "check-verify-verdict" in action and "--proposal-unsound" in action, (
+            f"check_proposal_unsound.action should call "
+            f"'ll-issues check-verify-verdict ... --proposal-unsound', got {action!r}"
+        )
+
+    def test_check_proposal_unsound_on_yes_routes_to_check_reconcile_limit(
+        self, data: dict
+    ) -> None:
+        """check_proposal_unsound.on_yes (verdict == PROPOSAL_UNSOUND) must route to
+        check_reconcile_limit -> reconcile_issue, not check_refine_limit ->
+        refine_followup — refining cannot repair an unsound proposal (ENH-3250)."""
+        state = data["states"].get("check_proposal_unsound", {})
+        assert state.get("on_yes") == "check_reconcile_limit", (
+            f"check_proposal_unsound.on_yes should be 'check_reconcile_limit', "
+            f"got {state.get('on_yes')!r}"
+        )
+
+    def test_check_proposal_unsound_on_no_and_on_error_route_to_check_refine_limit(
+        self, data: dict
+    ) -> None:
+        """check_proposal_unsound.on_no/.on_error must preserve today's behaviour
+        (route to check_refine_limit) for every other non-VALID verdict and for a
+        probe failure (fail-open, matching this file's convention)."""
+        state = data["states"].get("check_proposal_unsound", {})
+        assert state.get("on_no") == "check_refine_limit", (
+            f"check_proposal_unsound.on_no should be 'check_refine_limit', got {state.get('on_no')!r}"
+        )
+        assert state.get("on_error") == "check_refine_limit", (
+            f"check_proposal_unsound.on_error should be 'check_refine_limit', "
+            f"got {state.get('on_error')!r}"
+        )
+
+    def test_check_verify_verdict_on_no_routes_to_check_proposal_unsound(
+        self, data: dict
+    ) -> None:
+        """check_verify_verdict.on_no must route to check_proposal_unsound (the new
+        triage gate), not straight to check_refine_limit (ENH-3250)."""
+        state = data["states"].get("check_verify_verdict", {})
+        assert state.get("on_no") == "check_proposal_unsound", (
+            f"check_verify_verdict.on_no should be 'check_proposal_unsound', "
+            f"got {state.get('on_no')!r}"
+        )
+
+    # --- ENH-3250: check_spike_needed / run_spike (B3) ---
+
+    def test_check_spike_needed_state_exists(self, data: dict) -> None:
+        """check_spike_needed state must exist to route the spike_needed flag,
+        which set_flags.py already writes but no gate previously consumed
+        in this loop (ENH-3250)."""
+        assert "check_spike_needed" in data["states"], (
+            "State 'check_spike_needed' not found in refine-to-ready-issue.yaml"
+        )
+
+    def test_check_spike_needed_uses_shell_exit_fragment(self, data: dict) -> None:
+        """check_spike_needed must use shell_exit fragment to route on exit code."""
+        state = data["states"].get("check_spike_needed", {})
+        assert state.get("fragment") == "shell_exit", (
+            f"check_spike_needed.fragment should be 'shell_exit', got {state.get('fragment')!r}"
+        )
+
+    def test_check_spike_needed_predicate_reads_both_flags(self, data: dict) -> None:
+        """check_spike_needed's action must be a two-field one-shot guard
+        (spike_needed AND NOT spike_attempted), not a plain single-field
+        'll-issues check-flag' call — mirrors autodev.yaml's check_spike_needed
+        (ENH-3250)."""
+        state = data["states"].get("check_spike_needed", {})
+        action = state.get("action", "")
+        assert "spike_needed" in action and "spike_attempted" in action, (
+            f"check_spike_needed.action should read both spike_needed and "
+            f"spike_attempted, got {action!r}"
+        )
+        assert "ll-issues check-flag" not in action, (
+            "check_spike_needed.action should not be a plain 'll-issues check-flag' "
+            "call — the predicate is two-field and check-flag cannot express that "
+            "in one call"
+        )
+
+    def test_check_spike_needed_on_yes_routes_to_run_spike(self, data: dict) -> None:
+        """check_spike_needed.on_yes must route to run_spike."""
+        state = data["states"].get("check_spike_needed", {})
+        assert state.get("on_yes") == "run_spike", (
+            f"check_spike_needed.on_yes should be 'run_spike', got {state.get('on_yes')!r}"
+        )
+
+    def test_check_spike_needed_on_no_and_on_error_route_to_check_missing_artifacts(
+        self, data: dict
+    ) -> None:
+        """check_spike_needed.on_no/.on_error must preserve the existing chain,
+        falling through to check_missing_artifacts (fail-open, matching
+        check_decision_needed's convention)."""
+        state = data["states"].get("check_spike_needed", {})
+        assert state.get("on_no") == "check_missing_artifacts", (
+            f"check_spike_needed.on_no should be 'check_missing_artifacts', "
+            f"got {state.get('on_no')!r}"
+        )
+        assert state.get("on_error") == "check_missing_artifacts", (
+            f"check_spike_needed.on_error should be 'check_missing_artifacts', "
+            f"got {state.get('on_error')!r}"
+        )
+
+    def test_run_spike_state_exists_and_calls_spike_skill(self, data: dict) -> None:
+        """run_spike must exist and invoke /ll:spike --auto, mirroring
+        autodev.yaml's run_spike (ENH-3250)."""
+        state = data["states"].get("run_spike", {})
+        assert state, "State 'run_spike' not found in refine-to-ready-issue.yaml"
+        action = state.get("action", "")
+        assert "/ll:spike" in action and "--auto" in action, (
+            f"run_spike.action should call '/ll:spike ... --auto', got {action!r}"
+        )
+
+    def test_run_spike_reenters_confidence_check(self, data: dict) -> None:
+        """run_spike.next and .on_error must both re-enter confidence_check so the
+        score reflects the post-spike state (fail-open on error, like
+        wire_issue/reconcile_issue elsewhere in this file)."""
+        state = data["states"].get("run_spike", {})
+        assert state.get("next") == "confidence_check", (
+            f"run_spike.next should be 'confidence_check', got {state.get('next')!r}"
+        )
+        assert state.get("on_error") == "confidence_check", (
+            f"run_spike.on_error should be 'confidence_check', got {state.get('on_error')!r}"
+        )
+
+    def test_max_steps_at_least_60(self, data: dict) -> None:
+        """max_steps must be >= 60 (ENH-3250: check_proposal_unsound and
+        check_spike_needed/run_spike add worst-case steps beyond BUG-3065's
+        budget of 40)."""
+        assert data.get("max_steps", 0) >= 60, (
+            f"max_steps should be >= 60, got {data.get('max_steps')!r}"
         )
 
     def test_no_loop_call_state_declares_on_rate_limit_exhausted(self, data: dict) -> None:

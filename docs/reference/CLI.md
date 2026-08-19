@@ -1926,6 +1926,18 @@ Read-side counterpart to `ll-issues set-flags` (ENH-2946), which writes
 `decision_needed`/`missing_artifacts`/`implementation_order_risk`/`spike_needed`
 from confidence-check findings — this command is the gate that reads them back.
 
+**Which gate states consume which flag (ENH-3250):** `decision_needed` is read
+by `check_decision_mid_refine`/`check_decision_mid_wire`/`check_decision_needed`
+in `refine-to-ready-issue.yaml` and by `check_decision_before_size_review` in
+`autodev.yaml`. `missing_artifacts` is read by `check_missing_artifacts` in both
+loops. `spike_needed` is read by `check_spike_needed` in both loops (paired with
+a `spike_attempted` re-check via an inline `show --json` predicate, not a plain
+`check-flag` call, since the gate is a two-field one-shot guard).
+`implementation_order_risk` is written by `set-flags` but **consumed by no gate
+state anywhere in the repo** — it remains a recorded-but-unrouted flag; wiring it
+needs its own issue that first defines the remedy an `on_yes` branch would route
+to.
+
 ---
 
 #### `ll-issues check-decidable`
@@ -1995,11 +2007,13 @@ Exit 0 if the issue's persisted `verify_verdict` is `VALID` **or absent** (fail-
 | Flag | Description |
 |------|-------------|
 | `--config` | Path to `ll-config.json` |
+| `--proposal-unsound` | Query mode (ENH-3250): exit 0 if `verify_verdict == PROPOSAL_UNSOUND`, 1 otherwise (including when the field is absent). Does not change the default flag's VALID/NON_VALID contract — `PROPOSAL_UNSOUND` still exits 1 without this flag. Used by `refine-to-ready-issue.yaml`'s `check_proposal_unsound` gate to route that failure kind to `reconcile_issue` instead of `refine_followup`. |
 
 **Examples:**
 ```bash
 ll-issues check-verify-verdict ENH-3031   # Exit 0 — verdict VALID, or never recorded
 ll-issues check-verify-verdict BUG-9999   # Exit 1 — verdict NON_VALID (stderr: VERIFY_VERDICT_NON_VALID)
+ll-issues check-verify-verdict ENH-3250 --proposal-unsound  # Exit 0 only if verdict is PROPOSAL_UNSOUND
 ```
 
 ---

@@ -106,6 +106,71 @@ class TestCheckVerifyVerdictNonValid:
         assert "FEAT-9203" in result.stderr
 
 
+class TestCheckVerifyVerdictProposalUnsound:
+    """ENH-3250: --proposal-unsound is a distinct query mode."""
+
+    def test_proposal_unsound_verdict_exits_zero_with_flag(
+        self, temp_project_dir: Path
+    ) -> None:
+        body = _feature("FEAT-9204", "verify_verdict: PROPOSAL_UNSOUND\n")
+        _write_issue(temp_project_dir, body)
+        result = _invoke(
+            temp_project_dir, "check-verify-verdict", "FEAT-9204", "--proposal-unsound"
+        )
+        assert result.returncode == 0, (
+            f"PROPOSAL_UNSOUND verdict with --proposal-unsound must exit 0, "
+            f"got {result.returncode}: stdout={result.stdout!r} stderr={result.stderr!r}"
+        )
+
+    def test_proposal_unsound_verdict_exits_one_without_flag(
+        self, temp_project_dir: Path
+    ) -> None:
+        """Default mode must still treat PROPOSAL_UNSOUND as non-VALID (exit 1) —
+        the widened check_verify_verdict.on_no still fires so check_proposal_unsound
+        gets a chance to triage it; the default contract is unchanged."""
+        body = _feature("FEAT-9205", "verify_verdict: PROPOSAL_UNSOUND\n")
+        _write_issue(temp_project_dir, body)
+        result = _invoke(temp_project_dir, "check-verify-verdict", "FEAT-9205")
+        assert result.returncode == 1, (
+            f"PROPOSAL_UNSOUND without --proposal-unsound must still exit 1 "
+            f"(default VALID/NON_VALID contract unchanged), got {result.returncode}"
+        )
+
+    def test_other_non_valid_verdict_exits_one_with_flag(self, temp_project_dir: Path) -> None:
+        body = _feature("FEAT-9206", "verify_verdict: NON_VALID\n")
+        _write_issue(temp_project_dir, body)
+        result = _invoke(
+            temp_project_dir, "check-verify-verdict", "FEAT-9206", "--proposal-unsound"
+        )
+        assert result.returncode == 1, (
+            f"NON_VALID verdict with --proposal-unsound must exit 1 (not the "
+            f"proposal-unsound verdict), got {result.returncode}"
+        )
+
+    def test_absent_field_exits_one_with_flag(self, temp_project_dir: Path) -> None:
+        body = _feature("FEAT-9207")
+        _write_issue(temp_project_dir, body)
+        result = _invoke(
+            temp_project_dir, "check-verify-verdict", "FEAT-9207", "--proposal-unsound"
+        )
+        assert result.returncode == 1, (
+            f"Absent verify_verdict with --proposal-unsound must exit 1 (no "
+            f"fail-open in query mode — there is nothing to default to VALID), "
+            f"got {result.returncode}"
+        )
+
+    def test_valid_verdict_exits_one_with_flag(self, temp_project_dir: Path) -> None:
+        body = _feature("FEAT-9208", "verify_verdict: VALID\n")
+        _write_issue(temp_project_dir, body)
+        result = _invoke(
+            temp_project_dir, "check-verify-verdict", "FEAT-9208", "--proposal-unsound"
+        )
+        assert result.returncode == 1, (
+            f"VALID verdict with --proposal-unsound must exit 1 (VALID is not "
+            f"PROPOSAL_UNSOUND), got {result.returncode}"
+        )
+
+
 class TestCheckVerifyVerdictErrorHandling:
     def test_missing_issue_exits_one(self, temp_project_dir: Path) -> None:
         result = _invoke(temp_project_dir, "check-verify-verdict", "FEAT-9999")

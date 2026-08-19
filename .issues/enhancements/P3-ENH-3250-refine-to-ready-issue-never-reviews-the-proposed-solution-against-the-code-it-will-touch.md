@@ -4,7 +4,7 @@ type: ENH
 title: refine-to-ready-issue never reviews the Proposed Solution against the code
   it will touch
 priority: P3
-status: open
+status: in_progress
 testable: true
 relates_to:
 - BUG-3249
@@ -554,25 +554,45 @@ there is not detection but that a recorded risk factor routes nowhere.
 
 - [x] Design decision recorded for the three Open Questions above before any
       implementation.
-- [ ] An issue whose Proposed Solution contradicts the code it names (e.g. the
-      `TimeoutExpired` case above) does not reach `done` unflagged.
-- [ ] That failure is remedied by `reconcile_issue`, not `refine_followup`:
+- [x] An issue whose Proposed Solution contradicts the code it names (e.g. the
+      `TimeoutExpired` case above) does not reach `done` unflagged. Implemented:
+      `commands/verify-issues.md` §B6 (proposal-vs-code consequence check) traces
+      exception-handler compatibility, test-fixture invalidation, and AC coverage;
+      a match assigns `PROPOSAL_UNSOUND`, which `check_verify_verdict`'s widened
+      `on_no` no longer lets fall straight through to `done`-reachable states
+      unflagged. Not empirically re-verified against a live LLM run on the
+      original `TimeoutExpired` case (see note on the unmeasured AC below) — this
+      is structural/prompt-level verification, not a live behavioral test.
+- [x] That failure is remedied by `reconcile_issue`, not `refine_followup`:
       `verify_verdict: PROPOSAL_UNSOUND` routes through `check_proposal_unsound`
       to `check_reconcile_limit`, asserted by a test in
-      `TestRefineToReadyIssueSubLoop`.
-- [ ] Acceptance criteria are checked for coverage of the integration points
-      `wire_issue` identified.
-- [ ] The widened §B sub-check is a no-op on issues with an absent or
+      `TestRefineToReadyIssueSubLoop` (`test_check_proposal_unsound_on_yes_routes_to_check_reconcile_limit`,
+      `test_check_verify_verdict_on_no_routes_to_check_proposal_unsound`).
+- [x] Acceptance criteria are checked for coverage of the integration points
+      `wire_issue` identified. Implemented as the third named defect class in
+      §B6 ("AC coverage of identified integration points").
+- [x] The widened §B sub-check is a no-op on issues with an absent or
       boilerplate `## Proposed Solution` (batch `/ll:verify-issues` does not pay
-      for it on non-prescriptive issues).
-- [ ] Added cost is measured as a before/after delta on the *same* issue: a
-      baseline `ll-loop run refine-to-ready-issue` captured before any edit and
-      a comparable post-change run, both reported with LLM-call count, wall
-      time, and cost from the runs' own artifacts. (The previously cited
-      "4 LLM calls, 17m49s, ~$1.47/run" figures have no backing artifact — see
-      Codebase Research Findings — and are not a valid comparison point.)
-- [ ] `ll-loop validate refine-to-ready-issue` exits 0.
-- [ ] `python -m pytest scripts/tests/` exits 0.
+      for it on non-prescriptive issues). Implemented as an explicit precondition
+      in §B6's prompt text, asserted by
+      `test_rule_has_skip_precondition` in
+      `test_enh3250_verify_issues_proposal_vs_code.py`.
+- [ ] **Not done.** Added cost is measured as a before/after delta on the *same*
+      issue: a baseline `ll-loop run refine-to-ready-issue` captured before any
+      edit and a comparable post-change run, both reported with LLM-call count,
+      wall time, and cost from the runs' own artifacts. This requires two live
+      `ll-loop run` invocations against a real issue (the original baseline
+      alone was reported as ~18 minutes); running both live LLM-driving loop
+      invocations was deliberately not done autonomously in this session —
+      spending real API budget on an uncontrolled ~30-40 minute two-run
+      measurement is exactly the kind of costly, hard-to-bound action this
+      project's operating guidance says to confirm first rather than run
+      unilaterally. **Follow-up required**: run
+      `ll-loop run refine-to-ready-issue <untouched-issue-id>` on a comparable
+      issue and report the LLM-call-count/wall-time/cost delta against this
+      change to close this AC.
+- [x] `ll-loop validate refine-to-ready-issue` exits 0.
+- [x] `python -m pytest scripts/tests/` exits 0. (19924 passed, 46 skipped.)
 
 ## Notes
 
@@ -632,6 +652,8 @@ _Added by `/ll:confidence-check` on 2026-08-17 — superseded, retained for hist
   dependency resolved 2026-08-18 when ENH-3248 reached `done`.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-19T14:13:09 - `105361e4-7a8e-4239-bc56-4d61420d21ae.jsonl`
+- `/ll:ready-issue` - 2026-08-19T13:56:32 - `81b0242e-0d86-4141-b923-d945df205d55.jsonl`
 - `/ll:confidence-check` - 2026-08-19T13:49:57 - `641db8d3-2f9b-4cc7-95b8-2e05825e9301.jsonl`
 - `/ll:confidence-check` - 2026-08-19T04:01:30 - `8d3838d8-fc35-4284-8dd8-4eaeaef2f5fd.jsonl`
 - `/ll:wire-issue` - 2026-08-19T03:55:08 - `7bf6aa72-5505-4742-b30d-0fcc3999794b.jsonl`

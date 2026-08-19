@@ -154,6 +154,41 @@ Program Design gate's arming.
    (`rule_ref` = rule ID) exists. Assign verdict `DECISIONS_VIOLATION` if a
    non-suppressed violation is found. An absent decisions log (no `.ll/decisions.yaml`
 **and** no `.ll/decisions.d/`) is a graceful skip.
+6. **Proposal-vs-code consequence check (ENH-3250)** — a separate sub-check from
+   checks 1-4 above. Those are retrospective: they test whether the issue's claims
+   about the *current* state of the code are true. This check is prospective: it
+   asks what happens if the `## Proposed Solution` is implemented *as written*,
+   read against the code it names.
+
+   **Precondition — skip entirely if `## Proposed Solution` is absent, `TBD`, or
+   still template boilerplate.** Do not run this check on issues with nothing
+   prescriptive to evaluate; this keeps the added cost off batch `/ll:verify-issues`
+   runs over issues that never proposed anything.
+
+   When the precondition is met, trace the proposal against the code it touches for:
+   - **Exception-handler compatibility**: does the proposed change raise, or route
+     through, an exception type not covered by an `except` clause it now passes
+     through (e.g. adding `timeout=` to a call whose handler does not catch the
+     resulting timeout exception's actual type/MRO)?
+   - **Test-fixture invalidation**: does the proposal add a call, branch, or code
+     path that an existing test's mock/fixture does not account for (e.g. a second
+     call landing on a single-`return_value` mock intended for the first)?
+   - **AC coverage of identified integration points**: do the issue's Acceptance
+     Criteria cover every integration point already listed in its Integration Map
+     (including points `wire_issue` found)? A point with no corresponding AC is a
+     gap this check must surface.
+
+   This is judgment over consequences, not a claim to corroborate — read the
+   Proposed Solution's diff-shape against the current code the same way an
+   implementer would before writing it, not the way checks 1-4 read the issue's
+   prose against the code.
+
+   **Verdict**: any finding above → `PROPOSAL_UNSOUND` (§C). If checks 1-4 *also*
+   find a claim about current state to be false, the claim-verdict wins
+   (`OUTDATED`/`INVALID`/`NEEDS_UPDATE`/etc.) — the existing `refine_followup`
+   remedy repairs the research the proposal check itself depends on, so it must
+   run first. Only assign `PROPOSAL_UNSOUND` when every claim about current state
+   holds and the defect is purely in the proposal's consequences.
 
 **Causal / identity claims (method for check 4, unconditional — runs regardless of
 `ll-code` availability or index freshness; not part of §2B.0):** for issue text
@@ -186,6 +221,7 @@ verification output.
 | POSSIBLE_REGRESSION | Matches completed issue, but can't confirm regression |
 | DEP_ISSUES | Dependency references have problems (broken refs, missing backlinks, cycles) |
 | DECISIONS_VIOLATION | Issue violates an active required rule in the decisions log |
+| PROPOSAL_UNSOUND | The Proposed Solution, implemented as written, contradicts the code it names (check B6) — a claim-verification defect, not a claim, so it is not remedied by `refine_followup` |
 
 #### E. Validate Dependency References
 
@@ -238,6 +274,12 @@ instead. For **each** issue checked in this mode, use the `Edit` tool to write
 or update a `verify_verdict:` line in that issue's YAML frontmatter block:
 
 - `VALID` verdict → `verify_verdict: VALID`
+- `PROPOSAL_UNSOUND` verdict (ENH-3250, check B6) → `verify_verdict:
+  PROPOSAL_UNSOUND` — persisted as its own value, **not** collapsed into
+  `NON_VALID`, so `check_proposal_unsound` in `refine-to-ready-issue.yaml` can
+  route it to `reconcile_issue` instead of `refine_followup`. It still counts
+  as a non-VALID, `exit 1` outcome in `--check` mode below — the split is in
+  the persisted value, not the exit-code contract.
 - Any other verdict (`OUTDATED`, `RESOLVED`, `INVALID`, `NEEDS_UPDATE`,
   `REGRESSION_LIKELY`, `POSSIBLE_REGRESSION`, `DEP_ISSUES`,
   `DECISIONS_VIOLATION`) → `verify_verdict: NON_VALID`

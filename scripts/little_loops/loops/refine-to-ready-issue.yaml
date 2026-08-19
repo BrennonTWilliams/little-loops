@@ -13,7 +13,9 @@ category: issue-management
 #   every downstream gate reads a post-normalize file.
 #   verify_issue (/ll:verify-issues --check, non-fatal) → check_verify_verdict
 #     check_verify_verdict (reads persisted verify_verdict) → (on_yes) check_hedges
-#                                                            → (on_no)  check_refine_limit
+#                                                            → (on_no)  check_proposal_unsound (ENH-3250)
+#     check_proposal_unsound (ll-issues check-verify-verdict --proposal-unsound) → (on_yes) check_reconcile_limit
+#                                                                                 → (on_no)  check_refine_limit
 #     check_hedges (ll-issues check-open-questions)          → (on_yes) check_placeholders
 #                                                            → (on_no)  check_hedge_attempts
 #     check_hedge_attempts (BUG-3170: one hedge-forced refine per run) → (on_yes, 1st) check_refine_limit
@@ -31,7 +33,10 @@ category: issue-management
 #                                                       → (on_failure) diagnose
 #                      check_readiness         → (on_no)  check_refine_limit → refine_followup (additive --gap-analysis)
 #                      check_outcome           → (on_no)  check_decision_needed → (on_yes) resolve_decision_pre_breakdown
-#                                                                               → (on_no)  check_missing_artifacts
+#                                                                               → (on_no)  check_spike_needed (ENH-3250)
+#                      check_spike_needed (spike_needed AND NOT spike_attempted, autodev.yaml's
+#                      two-field one-shot guard) → (on_yes) run_spike → confidence_check
+#                                                → (on_no)  check_missing_artifacts
 #   check_scores_from_file (error fallback) → (on_yes) done | (on_no) breakdown_issue
 #   BUG-3065: the three decision_needed gates (check_decision_mid_refine,
 #   check_decision_mid_wire, check_decision_needed) no longer exit via done on
@@ -70,7 +75,16 @@ scope:
 # through to check_refine_limit once exhausted, never back to itself. 55
 # preserves roughly the same worst-case-to-budget headroom the ENH-3031 and
 # BUG-3065 blocks left.
-max_steps: 55
+# ENH-3250: 55 -> 60. Two new gate states: check_proposal_unsound adds 1 step
+# on every pass through check_verify_verdict's on_no branch (already budgeted
+# via check_refine_limit's existing traversal, so this is +1, not a new
+# cycle). check_spike_needed/run_spike is a one-shot (spike_attempted guards
+# re-entry, mirroring autodev.yaml's check_spike_needed) that costs ~4 more
+# on the branch it fires (check_spike_needed -> run_spike ->
+# confidence_check -> check_readiness -> check_outcome, re-entering the
+# existing check_outcome -> check_decision_needed cycle already in budget) ->
+# 5 more worst case, rounded up to preserve headroom.
+max_steps: 60
 on_handoff: spawn
 context:
   # readiness_threshold / outcome_threshold are seeded at launch from
@@ -332,9 +346,25 @@ states:
     # throughout this file (decision_needed / check-flag).
     action: "ll-issues check-verify-verdict ${captured.issue_id.output}"
     fragment: shell_exit
-    on_yes: check_hedges           # exit 0 = verdict VALID (or absent, fail-open)
-    on_no: check_refine_limit      # exit 1 = VERIFY_VERDICT_NON_VALID → force refine
+    on_yes: check_hedges              # exit 0 = verdict VALID (or absent, fail-open)
+    on_no: check_proposal_unsound     # exit 1 = VERIFY_VERDICT_NON_VALID → ENH-3250: triage before forcing refine
     on_error: check_hedges
+
+  check_proposal_unsound:
+    # ENH-3250: check_verify_verdict's on_no bucket previously always went to
+    # check_refine_limit → refine_followup, which repairs *research* — no fix
+    # for a failure kind where the Proposed Solution itself, implemented as
+    # written, contradicts the code it names (widened §B6 of
+    # commands/verify-issues.md). That failure kind is remedied by rewriting
+    # the directive section, which is reconcile_issue's (ENH-3248) documented
+    # scope, not refine_issue's. Every other non-VALID verdict (a false claim
+    # about current state) is unaffected and still falls through on_no to
+    # today's check_refine_limit target.
+    action: "ll-issues check-verify-verdict ${captured.issue_id.output} --proposal-unsound"
+    fragment: shell_exit
+    on_yes: check_reconcile_limit  # verify_verdict == PROPOSAL_UNSOUND → reconcile, not refine
+    on_no: check_refine_limit      # any other non-VALID verdict → today's behaviour, unchanged
+    on_error: check_refine_limit   # fail-open, matching this file's convention
 
   check_hedges:
     # Score-independent gate: forces a refine pass on unresolved hedges/open
@@ -565,8 +595,46 @@ states:
     action: "ll-issues check-flag ${captured.issue_id.output} decision_needed"
     fragment: shell_exit
     on_yes: resolve_decision_pre_breakdown
+    on_no: check_spike_needed
+    on_error: check_spike_needed
+
+  check_spike_needed:
+    # ENH-3250 (B3): mirrors autodev.yaml:1315-1391's check_spike_needed exactly
+    # — spike_needed is a FlagRule written by apply_flags_from_notes()
+    # (set_flags.py) on the same sub-threshold-outcome precondition as
+    # decision_needed/missing_artifacts, so it belongs in this gate band. The
+    # predicate is a two-field condition (spike_needed AND NOT spike_attempted)
+    # `ll-issues check-flag` cannot express in one call, hence the inline-python
+    # idiom over `show --json` rather than a literal check-flag invocation. The
+    # spike_attempted guard makes this one-shot: a completed-or-attempted spike
+    # never re-fires this gate on a later pass.
+    action: |
+      ll-issues show ${captured.issue_id.output} --json | python3 -c "
+      import json, sys
+      d = json.load(sys.stdin)
+      sys.exit(0 if (d.get('spike_needed') == 'true' and d.get('spike_attempted') != 'true') else 1)"
+    fragment: shell_exit
+    on_yes: run_spike
     on_no: check_missing_artifacts
     on_error: check_missing_artifacts
+
+  run_spike:
+    # ENH-3250 (B3): mirrors autodev.yaml:1345-1391's run_spike — proves the
+    # unproven internal mechanism via /ll:spike --auto, which writes
+    # spike_attempted/spike_completed to frontmatter (arming check_spike_needed's
+    # one-shot guard), then re-enters confidence_check so the score reflects the
+    # post-spike state rather than the pre-spike ambiguity that produced it.
+    # Non-fatal on error, like wire_issue/reconcile_issue: this gate band's
+    # convention is to re-enter the chain rather than dead-end on a repair
+    # state's own failure.
+    action: "/ll:spike ${captured.issue_id.output} --auto"
+    action_type: slash_command
+    pruning_profile:
+      enabled: true
+      name: spike-auto
+      suppress_claude_md: true
+    next: confidence_check
+    on_error: confidence_check
 
   resolve_decision_pre_breakdown:
     # BUG-3065: resolves the decision_needed flag that drove the outcome-score
