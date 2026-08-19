@@ -83,9 +83,56 @@ logged, so a lost rename is discoverable.
   in a **different** directory (`completed/`) from `src` (`epics/`), which is
   why the `file_path.name` remedy used in BUG-3243 does not transfer here.
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/cli/issues/finalize_decomposition.py:38-46,56-60` --
+  `cmd_finalize_decomposition()`, the sole caller of
+  `finalize_decomposed_parent()`. Destructures `result["moved"]` into a stdout
+  print and `result["warnings"]` into stderr; if the fix adds a distinct
+  "moved via git vs. shutil fallback" signal to the summary dict, this is
+  the one place deciding whether to surface it.
+- (Conditional -- only if the optional git-mv-helper consolidation named in
+  Codebase Research Findings is taken) `scripts/little_loops/cli/issues/normalize.py:463`
+  and `scripts/little_loops/cli/issues/prioritize.py:143` -- both call
+  `issue_lifecycle.py`'s `git_mv_with_fallback()`, the second existing git-mv
+  implementation. Consolidating onto one shared helper would make these two
+  callers part of the change surface; leaving `_git_mv` fixed in isolation
+  (the default reading of the issue) does not touch them.
+
 ### Tests
 - Model the fixture on `_git_repo(tmp_path)` in
   `scripts/tests/test_verify_private_refs.py:250-259`.
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_recursive_finalize.py` -- `test_parent_moved_when_explicitly_requested`
+  (lines 62-73) and `test_cli_move_flag_uses_legacy_completed_dir` (lines
+  152-173) both drive `_git_mv` through a `tmp_path` that is **not** a git
+  repo, and today only assert `moved is True` / file-exists-at-destination --
+  never `git status --porcelain` rename tracking. Post-fix, both tests will
+  hit `_git_mv`'s `git mv` failure + `shutil.move` fallback (and the new
+  warning log line) on every run as-is; update them (e.g. via a
+  `_git_repo`-style fixture) to exercise the git-success path, or add
+  assertions distinguishing fallback from success. No test in this file
+  calls `_git_mv` directly today.
+- New test needed: `_git_mv` asserted directly (not just through
+  `finalize_decomposed_parent`) in a real temp git repo, covering both
+  relative/absolute path forms and src/dst in different directories --
+  pattern to follow is `TestGitCompletionDatePathFormIndependence` in
+  `scripts/tests/test_issue_history_parsing.py:264-302`
+  (`monkeypatch.chdir(tmp_path)` + `f.resolve()` vs `Path(f.name)`).
+- New test needed: `caplog`-based assertion that the `shutil.move` fallback
+  logs git's stderr, modeled on
+  `test_git_log_fallback_none_but_debug_logged_when_tracked`
+  (`scripts/tests/test_issue_history_parsing.py:224-239`), keyed on logger
+  name `little_loops.recursive_finalize` once added.
+
+### Documentation
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/CLI.md:1555-1573` -- `ll-issues finalize-decomposition`
+  reference. Confirms `_git_mv` is reachable only behind the already-deprecated
+  `--move` flag (`move_to_completed` guard at `recursive_finalize.py:171`);
+  no textual change required for the fix itself, but this is the doc a user
+  would consult if git-rename-tracking behavior becomes newly documented.
 
 ### Related Issues
 - BUG-3243 -- same defect shape in `_parse_completion_date`, explicitly scoped
@@ -141,6 +188,28 @@ _Added by `/ll:refine-issue` — 2026-08-18 — based on codebase analysis:_
 1. `_git_mv(src, dst)` produces a git-tracked rename (`git status --porcelain` shows `R`) for a tracked file, regardless of whether the caller passes relative or absolute `src`/`dst`, and regardless of whether `src` and `dst` are in different directories (`recursive_finalize.py:170-176` guarantees they always are, when `_git_mv` is invoked from `finalize_decomposed_parent`).
 2. When the `git mv` invocation fails (non-zero exit, or `OSError`/`SubprocessError`) and the `shutil.move` fallback runs, a log line names git's captured `stderr` — matching the existing precedent at `scripts/little_loops/issue_discovery/search.py:415-418` (`logger.warning(f"git mv failed, using manual copy: {result.stderr}")`). `recursive_finalize.py` currently has no logger in scope (module docstring, line 9); decide deliberately whether to add one or route the notice through the caller instead of leaving the fallback silent.
 3. `python -m pytest scripts/tests/` passes, including new regression coverage in a real temp git repo (model on `_git_repo(tmp_path)`, `scripts/tests/test_verify_private_refs.py:250-259`, or the path-form-independence shape in `TestGitCompletionDatePathFormIndependence`, `scripts/tests/test_issue_history_parsing.py:264-289`) asserting the rename stages correctly for both relative and absolute path forms, and that `src`/`dst` in different directories is handled (the case `.name`-only remedies from BUG-3243 do not cover).
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Add `logger = logging.getLogger(__name__)` to `recursive_finalize.py` following
+  the repo convention at `scripts/little_loops/subprocess_utils.py:10,28`
+  (module-scope, immediately after imports) -- this is the first `logging`
+  import in this module, which contradicts the module docstring's "no
+  Logger" claim (line 9); update that docstring line to match.
+- Update `scripts/tests/test_recursive_finalize.py` --
+  `test_parent_moved_when_explicitly_requested` and
+  `test_cli_move_flag_uses_legacy_completed_dir` currently run against a
+  non-git `tmp_path` and will silently exercise the fallback path post-fix;
+  give them a `_git_repo`-style fixture or add assertions that distinguish
+  git-success from fallback.
+- Add a direct `_git_mv` unit test (relative/absolute path forms,
+  cross-directory src/dst) and a `caplog` test for the fallback warning line,
+  per the Tests subsection of the Integration Map above.
+- No `docs/reference/CLI.md` or `docs/reference/API.md` text change is
+  required for the fix itself (confirmed by wiring pass) -- `_git_mv` is
+  reachable only behind the already-deprecated `--move` flag.
 
 ## Impact
 
@@ -220,5 +289,6 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-08-19T00:25:55 - `f3fa68b7-2bba-49c2-bc92-65b2f7b84de6.jsonl`
 - `/ll:refine-issue` - 2026-08-18T14:51:52 - `1b75a5d5-cd19-4f54-9db4-f0438e3206cc.jsonl`
 - `/ll:capture-issue` - 2026-08-17T20:04:13 - `86ab77f1-d20d-487b-9f55-2f4d8abf9a06.jsonl`

@@ -18,10 +18,10 @@ relates_to:
 - ENH-2852
 confidence_score: 95
 outcome_confidence: 77
-score_complexity: 20
-score_test_coverage: 22
-score_ambiguity: 15
-score_change_surface: 20
+score_complexity: 15
+score_test_coverage: 23
+score_ambiguity: 22
+score_change_surface: 17
 ---
 
 # ENH-3256: confidence-check Criterion C credits a decision record without verifying the decision was applied
@@ -85,9 +85,11 @@ specify the rejected one scores the top 25 for "No ambiguity".
 
 `check_format_gaps()` populates a new `unapplied_decision` gap key when the
 rejected option's discriminating identifiers still appear, unmarked, in the
-directive sections. `/ll:confidence-check` Phase 1.6 reads that key from the
-already-captured `$FC_JSON` as `DECISION_GAP` and caps Criterion C at 10 — a
-ceiling, never a floor, and never a Phase 3 `STOP` escalation.
+directive sections. `/ll:confidence-check` **Phase 1.8** (the existing cap-gap
+pre-fetch phase, alongside `PARITY_GAP`/`CLAIM_GAP` — *not* Phase 1.6, which is
+the Program Design gate) reads that key from the already-captured `$FC_JSON` as
+`DECISION_GAP` and caps Criterion C at 10 — a ceiling, never a floor, and never a
+Phase 3 `STOP` escalation.
 
 ## Motivation
 
@@ -153,7 +155,7 @@ _Parser layer (the detection — see Proposed Solution › Layer):_
 - `scripts/little_loops/cli/issues/format_check.py:66,472` and `scripts/little_loops/cli/issues/__init__.py:148` — three slash-delimited gap-key help strings that enumerate every key; all three drift if not updated together
 
 _Skill layer (the cap only — reads the key, does not re-derive it):_
-- `skills/confidence-check/SKILL.md:136-140` (Phase 1.6) — add a `DECISION_GAP` extraction one-liner off the already-captured `$FC_JSON`, using the same `<!-- ll-prose-ok: mirrors the pre-existing PD_GAP idiom -->` annotation convention; **no second `format-check` call**
+- `skills/confidence-check/SKILL.md:187-207` (**Phase 1.8**, "Pre-Fetch Claim and Parity Gaps") — add a `DECISION_GAP` extraction one-liner off the `$FC_JSON` Phase 1.6 already captured, using the same `<!-- ll-prose-ok: mirrors the pre-existing PD_GAP idiom -->` annotation convention; **no second `format-check` call**. Phase 1.8 is the correct home, not Phase 1.6: 1.6 is the Program Design *gate*, while 1.8 exists precisely for cap-gap extractions and already hosts the `PARITY_GAP`/`CLAIM_GAP` precedent this issue cites
 - `skills/confidence-check/rubric.md:307-314` — Criterion C scoring table; add a cap row + prose note modelled on Criterion 4's Parity/Claim Cap (`rubric.md:245-256`)
 
 ### Dependent Files (Callers/Importers)
@@ -162,7 +164,8 @@ _Skill layer (the cap only — reads the key, does not re-derive it):_
 - `scripts/little_loops/issues/program_design.py:348-387` `grade_program_design()` — grades `## Program Design` as `is_specific` iff it has a signature-shaped line and a resolvable Call Path anchor; per its own docstring "Known limit" (`:22-31`), any repo-resolvable symbol satisfies it regardless of relevance to the issue's actual decision
 
 _Wiring pass added by `/ll:wire-issue`:_
-- `scripts/little_loops/issue_parser.py:1942-1975` `_RESOLVED_OPTION_MARKER_RE`, `_is_option_resolved(block_body)` — reused to identify *which* option block carries the selection marker. Scope caveat: these are presence predicates returning `bool`; they do not extract the selected option's identity or its identifiers, so the extraction in Program Design › Decision Rules is new code (an earlier draft of this line claimed "no new regex needed", which was wrong)
+- `scripts/little_loops/issue_parser.py:1942-1975` `_RESOLVED_OPTION_MARKER_RE`, `_is_option_resolved(block_body)` — `_RESOLVED_OPTION_MARKER_RE` is the pattern source for the new `_selected_option_title`; `_is_option_resolved` is **not** reused. These are presence predicates returning `bool`: they answer "does this block carry a marker?", not "which option won", and they misidentify the winner in the three real cases enumerated in Program Design › Decision Rules › Selected-option identity. Identity extraction and identifier extraction are both new code (an earlier draft claimed "no new regex needed"; a later draft still routed the selected/rejected split through `_is_option_resolved` — both were wrong)
+- `scripts/little_loops/issue_parser.py:1996-2001` `locate_unresolved_options` — the precedent for scoping `_iter_option_blocks` to `_section_body(content, "Proposed Solution")`. `_unapplied_decision` must follow it; see Decision Rules › Extraction scope
 - `scripts/little_loops/loops/autodev.yaml:653,1296-1309,2169-2172` — reads `score_ambiguity` as a decidability proxy (`<= 10 OR decision_needed` routes to `resolve_decision_direct`; a separate remedy classifier at `:2169` compares `amb` against other subscores to pick `spike` vs `reconcile`). A cap that lowers Criterion C for decision-drift issues changes which branch autodev takes here — no code change required, but the routing behavior shifts and should be verified post-fix
 - `scripts/little_loops/loops/rn-remediate.yaml:68,367,384-389` — `AMBIGUITY=$(... jq -r '.score_ambiguity // 0')`; `diagnose_ambiguity_threshold: 15` gates a `WIRE`-token route to `/ll:wire-issue`. Same downstream-consumer risk as autodev.yaml above
 - `skills/issue-workflow/SKILL.md:84-85` — prose duplicate of the `score_ambiguity ≤ 10` / `> 10` escalation thresholds Criterion C's rubric row encodes; not a `{{...}}` include, so a semantic change to what the top score means needs a matching prose edit here too
@@ -178,7 +181,8 @@ _Wiring pass added by `/ll:wire-issue`:_
 _Parser layer (the bulk of the new coverage — added by the layer resolution):_
 - `scripts/tests/test_ll_issues_format_check.py:1219-1310` `unmarked_superseded_directive` test class — the closest structural template for a new gap-key class: fixture issue on disk, human-output assertion (`"unapplied_decision: <file>.md" in out`), a `--format json` assertion, and negative cases asserting the key is absent
 - `scripts/tests/test_ll_issues_format_check.py:339` — the full-key-set JSON assertion dict; **must** gain `"unapplied_decision": []` or it fails on the new key
-- `scripts/tests/test_issue_parser.py:4576` — existing tests for the `unmarked_superseded_directive` inverse; the sibling location for `_unapplied_decision` unit tests (identifier extraction, `REJ - SEL` discrimination, paragraph-scoped exemption, the four inert cases)
+- `scripts/tests/test_issue_parser.py:4576` — existing tests for the `unmarked_superseded_directive` inverse; the sibling location for `_unapplied_decision` unit tests. Required cases: identifier extraction (incl. the ≥3-char floor), `REJ - SEL` discrimination, paragraph-scoped exemption, the five inert cases, and the three scoping regressions — selected option not last, all blocks carrying a `> **Selected:**` line, and a full-document body proving `REJ` does not absorb post-Proposed-Solution sections
+- `scripts/tests/test_issue_parser.py` (new) — a corpus test asserting the key is empty for every consistent issue under `.issues/`; the fixture-only tests above pass even when all three scoping rules are omitted
 - `scripts/tests/test_issue_parser_unresolved.py:157-235` `TestCountUnresolvedOptions` — existing coverage of `_iter_option_blocks` / `_is_option_resolved`; confirms the reused primitives' behavior but does **not** cover identifier extraction
 
 _Skill layer (the cap):_
@@ -192,8 +196,9 @@ _Regression guards (no shape change expected, re-run to confirm):_
 
 Not N/A — a new `FormatGaps` key appears in enumerated gap-class lists in both
 reference docs, each of which also carries a written-out count:
-- `docs/reference/API.md:895` — the "twenty-one gap classes" sentence and its inline key list; add a per-key bullet beside `unmarked_superseded_directive` (`:909`)
-- `docs/reference/CLI.md:2051` — the "twenty-four classes" sentence and inline key list
+- `dataclasses.fields(FormatGaps)` is **24** today, so the post-change count is **twenty-five** in both docs
+- `docs/reference/API.md:895` — says "twenty-one gap classes" and is already stale by three: its inline list omits `duplicate_heading`, `empty_provenance_stub`, and `template_placeholders`. Correct to twenty-five and add all four missing keys, not a naive bump to twenty-two. Also add a per-key bullet beside `unmarked_superseded_directive` (`:909`)
+- `docs/reference/CLI.md:2051` — "twenty-four classes" is currently accurate; bump to twenty-five and extend the inline key list
 - `docs/reference/CLI.md:2236` — the `--format json` example payload, which spells out every key
 - Both counts are self-described as "re-derive from `dataclasses.fields(FormatGaps)` rather than trusting the number written here" — but the prose numbers still need bumping
 
@@ -208,6 +213,20 @@ _Wiring pass added by `/ll:wire-issue`:_
 Option A was selected because it composes existing, proven patterns in the `issue_parser` module (`unmarked_superseded_directive`, `_heading_bodies`, `_iter_option_blocks`, `_SUPERSEDED_MARKER_PREFIX`) with the established Criterion 4 gap-cap approach (SKILL.md:187-207, rubric.md:241-256). The implementation is low-risk (additive gap key, cap-never-STOP semantics, `design_gate_failed()` untouched) and testable (deterministic text scanning, no judgment component).
 
 **Scope correction (post-decision):** an earlier draft of this rationale claimed "~20 lines of new code" and an Integration Map listing only `SKILL.md` + `rubric.md`. Both understated the work. The detection lands in the parser layer (see Proposed Solution › Layer), which carries the standard new-gap-key wiring — dataclass field, `has_gaps`, `to_dict`, docstring glossary, CLI printer, and three enumerated help strings — plus genuinely new identifier-extraction logic. `_RESOLVED_OPTION_MARKER_RE` / `_is_option_resolved` are presence predicates; they answer "was something selected?", not "which option, and with what identifiers?" — so the extraction rules in Program Design › Decision Rules are new code, not a reuse. Effort is Medium, not Small.
+
+**Detection correction (post-wiring review):** the Decision Rules as first written
+would have fired on essentially every decided issue in the corpus, for three
+independent reasons now fixed in place: (1) `_iter_option_blocks` was to be handed
+full document content, whose last-block-runs-to-EOF boundary makes `REJ` absorb
+the rest of the issue; (2) `"Proposed Solution"` was both the identifier source
+and a scan target, so `REJ - SEL` members were present in the scanned body by
+construction; (3) the selected/rejected split ran through `_is_option_resolved`,
+which picks the wrong block whenever `### Decision Rationale` trails a
+non-winning option — as it does in this very issue. None of these is visible in a
+hand-built two-option fixture, which is why a live-corpus run is now an
+acceptance criterion rather than a success metric. The selected option is now
+identified by callout *title*, via a new `_selected_option_title` helper. Effort
+stays Medium; the added logic is bounded and deterministic.
 
 Option B fails on two fronts: (1) it replicates the structural problem BUG-3002 already identified and rejected (routing a detection to a remedy command whose contract excludes the target section), and (2) the alternative of widening reconcile-issue's scope explicitly violates reconcile's stated non-goal (do not re-research / re-synthesize content; that is refine-issue's job — `commands/reconcile-issue.md:104-108`). BUG-3002's Decision Rationale (scored Option B at 5/12) applies identically here.
 
@@ -227,12 +246,14 @@ Option B fails on two fronts: (1) it replicates the structural problem BUG-3002 
 
 _New:_
 - `_unapplied_decision(content: str) -> list[str]` — module-private detector in `scripts/little_loops/issue_parser.py`, returning one reason string per drifted directive section (empty list = no gap). Modelled on `_template_placeholders(content, issue_type, templates_dir) -> list[str]` (`:1449`) and the inline `unmarked_superseded_directive` block (`:1062-1074`).
-- `_DECISION_DIRECTIVE_SECTIONS: tuple[str, ...]` — `("Proposed Solution", "Program Design", "Implementation Steps", "Files to Modify", "Acceptance Criteria")`. Superset of `_SUPERSEDED_DIRECTIVE_SECTIONS` (`:1254`), which omits the first two.
+- `_selected_option_title(section_body: str) -> str | None` — extracts the option title text from the first `> **Selected:** <title>` callout in the `## Proposed Solution` body, so the selected block can be identified by name rather than by marker presence (see Decision Rules › Selected-option identity). Returns `None` when no callout exists.
+- `_DECISION_DIRECTIVE_SECTIONS: tuple[str, ...]` — `("Proposed Solution", "Program Design", "Implementation Steps", "Files to Modify", "Acceptance Criteria")`. Superset of `_SUPERSEDED_DIRECTIVE_SECTIONS` (`:1254`), which omits the first two. Note `"Proposed Solution"` is scanned with the self-scan subtraction in Decision Rules applied, not raw.
 - `FormatGaps.unapplied_decision: list[str]` — new dataclass field (`:494-573`).
 
 _Existing, reused unchanged:_
-- `_iter_option_blocks(text: str) -> list[tuple[str, str]]` (`:1955`) — yields `(heading_line, block_body)` per option block; supplies both the selected and rejected block bodies.
-- `_is_option_resolved(block_body: str) -> bool` (`:1973`) and `_RESOLVED_OPTION_MARKER_RE` (`:1942`) — identify *which* block carries the `> **Selected:**` / `### Decision Rationale` marker. Note: these are presence predicates only; identifier extraction (below) is new code, not a reuse.
+- `_section_body(content: str, heading: str) -> str | None` — scopes option enumeration to `## Proposed Solution`, exactly as `locate_unresolved_options` (`:1996-2001`) does. **Required**; see Decision Rules › Extraction scope for what breaks without it.
+- `_iter_option_blocks(text: str) -> list[tuple[str, str]]` (`:1955`) — yields `(heading_line, block_body)` per option block; supplies both the selected and rejected block bodies. Boundary caveat: the final block runs to end-of-input, hence the mandatory scoping and `### Decision Rationale` clamp.
+- `_RESOLVED_OPTION_MARKER_RE` (`:1942`) — pattern source for the callout the new `_selected_option_title` parses. `_is_option_resolved(block_body) -> bool` (`:1973`) is **not** used: it answers "does this block carry a marker?", which is not the same as "is this the selected option", and it misidentifies the winner in all three cases listed in Decision Rules.
 - `_heading_bodies(content: str, heading: str) -> list[str]` (`:1564`) — H2/H3-aware section body lookup, required because `### Files to Modify` is an H3 while the rest are H2.
 - `_SUPERSEDED_MARKER_PREFIX = "⚠ Superseded"` (`:1255`) — reused verbatim as the exemption marker.
 
@@ -241,9 +262,43 @@ _Existing, unchanged and NOT extended (recorded to close the earlier ambiguity):
 - `grade_program_design(body, resolver) -> DesignVerdict` (`scripts/little_loops/issues/program_design.py:348`) — untouched.
 
 ### Call Path
-`decide_issue` writes `> **Selected:**` + `### Decision Rationale` scoped only to `## Proposed Solution` (`skills/decide-issue/SKILL.md:388-409`) -> `check_format_gaps` (`issue_parser.py:1062`) calls `_unapplied_decision` (defined above), which uses `_iter_option_blocks` + `_is_option_resolved` to split selected/rejected blocks and `_heading_bodies` to scan `_DECISION_DIRECTIVE_SECTIONS` (all defined above) -> populates `FormatGaps.unapplied_decision` -> `FormatGaps.to_dict` (`:546`) -> `cmd_format_check` `--format json` -> captured once into `$FC_JSON` (`skills/confidence-check/SKILL.md:138`) -> Phase 1.6 extracts `DECISION_GAP` -> `rubric.md` Criterion C cap row -> Criterion C score only, never a Phase 3 STOP override (`SKILL.md:357-365`)
+`decide_issue` writes `> **Selected:**` + `### Decision Rationale` scoped only to `## Proposed Solution` (`skills/decide-issue/SKILL.md:388-409`) -> `check_format_gaps` (`issue_parser.py:1062`) calls `_unapplied_decision` (defined above), which uses `_section_body` to scope to `## Proposed Solution`, `_iter_option_blocks` + `_selected_option_title` to split selected/rejected blocks, and `_heading_bodies` to scan `_DECISION_DIRECTIVE_SECTIONS` (all defined above) -> populates `FormatGaps.unapplied_decision` -> `FormatGaps.to_dict` (`:546`) -> `cmd_format_check` `--format json` -> captured once into `$FC_JSON` by Phase 1.6 (`skills/confidence-check/SKILL.md:138`) -> **Phase 1.8** extracts `DECISION_GAP` off that same payload (`SKILL.md:187-207`) -> `rubric.md` Criterion C cap row -> Criterion C score only, never a Phase 3 STOP override (`SKILL.md:357-365`)
 
 ### Decision Rules
+
+**Extraction scope (mandatory — do not pass full document content).** Option
+blocks are enumerated from `_section_body(content, "Proposed Solution")` only,
+mirroring `locate_unresolved_options` (`:1996-2001`), which already scopes the
+same primitives this way. Passing full `content` to `_iter_option_blocks` is
+incorrect: its block boundary is *the next option heading* (`:1967`), so on a
+whole-document scan the final option block's body runs to end-of-input and
+swallows Integration Map, Program Design, Implementation Steps, and Acceptance
+Criteria. `REJ` would then absorb nearly every backticked identifier in the issue
+and `REJ - SEL` would fire on everything.
+
+Within that scoped body, the **final option block is additionally clamped** at the
+first `### Decision Rationale` heading, because `/ll:decide-issue` appends that
+subsection to the *end* of `## Proposed Solution`
+(`skills/decide-issue/SKILL.md:407`) — it is not part of any option's body.
+
+**Selected-option identity.** Do **not** infer the selected block from
+`_is_option_resolved`. That predicate is wrong here in three independent ways,
+each observable in real issues:
+
+1. `### Decision Rationale` lands inside the *last* option block (see clamp
+   above), so `_is_option_resolved` returns True for the last option regardless of
+   which won. This issue is an instance: Option A was selected, Option B is last.
+2. Rejected options in practice also carry a `> **Selected:** Option A, not this
+   one` callout (this file, `## Proposed Solution` Option B) — both blocks then
+   read as resolved.
+3. The `### Decision Rationale` subsection is sometimes written outside
+   `## Proposed Solution` (this issue's own copy sits under `## Integration Map`),
+   leaving no marker in any block.
+
+Instead, extract the selected option's *title text* from the callout —
+`> **Selected:** <title>` — via a new `_selected_option_title(section_body) -> str
+| None`, and match that title against the option heading lines returned by
+`_iter_option_blocks`. The matched block is `SEL`; every other block is `REJ`.
 
 **Identifier extraction.** An *identifier* is a backticked code span (`` `foo` ``)
 of length ≥ 3. Extract the set `SEL` from the selected option block's body and
@@ -257,16 +312,38 @@ fires when a member of `REJ - SEL` appears in that section's body. One reason
 string per (section, identifier) pair: `"<Section> still specifies `<id>`
 (rejected option)"`.
 
+**Self-scan subtraction (mandatory).** `"Proposed Solution"` is both the
+extraction *source* and a scan *target*, so a naive scan self-fires on every
+decided issue: `REJ - SEL` members are by construction present in the rejected
+option block, which lives inside Proposed Solution. The Proposed Solution scan
+therefore runs against **section body minus every option block minus the
+`### Decision Rationale` subsection**. The Decision Rationale exclusion is
+required independently — that subsection exists to explain why the rejected
+option lost and legitimately names its identifiers (this issue's own rationale
+cites `commands/reconcile-issue.md`). Dropping `"Proposed Solution"` from
+`_DECISION_DIRECTIVE_SECTIONS` outright is *not* an acceptable simplification:
+BUG-3249's motivating drift line lived there.
+
 **Exemption.** A mention is exempt when `_SUPERSEDED_MARKER_PREFIX`
 (`⚠ Superseded`) appears in the same blank-line-delimited paragraph — the same
-escape hatch and marker vocabulary `unmarked_superseded_directive` already uses.
+escape hatch and marker vocabulary `unmarked_superseded_directive` already uses,
+and it is sanctioned in **all five** scanned sections, not just the three
+`_SUPERSEDED_DIRECTIVE_SECTIONS` covers.
+
 Negated mentions (`` not `refine_followup` ``) are **not** exempt: a directive
 section that still argues against the selected option is drift, and BUG-3249's
-Proposed Solution line `:99` was exactly that form.
+Proposed Solution line `:99` was exactly that form. Accept the known cost — text
+alone cannot separate that from a legitimate scope record, and this issue's own
+Program Design carries one (`design_gate_failed()` "must **not** be added here").
+The `⚠ Superseded` annotation is the sanctioned remedy for such lines; if an
+implementer finds that marker semantically wrong for a scope record, extending
+the exemption vocabulary with a second prefix is in scope, but a *second*
+detection heuristic for negation is not.
 
 **Inert cases** (return `[]`, no gap):
-- No `> **Selected:**` / `### Decision Rationale` marker anywhere — nothing was decided.
+- No `> **Selected:**` callout in `## Proposed Solution` — nothing was decided. (A bare `### Decision Rationale` with no callout is also inert: identity is unrecoverable.)
 - Fewer than two option blocks — nothing to contradict.
+- The callout title matches zero option headings, or matches more than one — identity is ambiguous; fail open rather than guess.
 - `REJ - SEL` is empty — the options share all identifiers, so no deterministic discrimination is possible; fail open rather than guess.
 - The gate is unarmed / issue grandfathered — inherited from `check_format_gaps` as with every other key.
 
@@ -280,9 +357,14 @@ deliberately not added to that list.
 ## Implementation Steps
 
 1. Add `_DECISION_DIRECTIVE_SECTIONS` beside `_SUPERSEDED_DIRECTIVE_SECTIONS`
-   (`issue_parser.py:1254`) and implement `_unapplied_decision(content)` per
-   Decision Rules above, reusing `_iter_option_blocks`, `_is_option_resolved`,
-   `_heading_bodies`, and `_SUPERSEDED_MARKER_PREFIX`.
+   (`issue_parser.py:1254`), add `_selected_option_title()`, and implement
+   `_unapplied_decision(content)` per Decision Rules above, reusing
+   `_section_body`, `_iter_option_blocks`, `_heading_bodies`, and
+   `_SUPERSEDED_MARKER_PREFIX`. The three rules that are easy to skip and each
+   produce corpus-wide false positives: scope option enumeration to
+   `## Proposed Solution`; clamp the final option block at `### Decision
+   Rationale`; subtract option blocks + Decision Rationale from the Proposed
+   Solution scan.
 2. Wire the gap key through the three mechanical `FormatGaps` sites — dataclass
    field (`:494-518`), `has_gaps` OR-chain (`:520-545`), `to_dict()`
    (`:546-573`) — and call `_unapplied_decision` from `check_format_gaps()`
@@ -291,14 +373,19 @@ deliberately not added to that list.
 3. Add the printer stanza in `cli/issues/format_check.py:430` and update all
    three enumerated gap-key help strings (`format_check.py:66,472`,
    `cli/issues/__init__.py:148`).
-4. Add `DECISION_GAP` extraction to `skills/confidence-check/SKILL.md` Phase 1.6
-   off the existing `$FC_JSON` (no second CLI call), and add the Criterion C cap
-   row + prose note to `rubric.md:307-314` modelled on Criterion 4's cap
+4. Add `DECISION_GAP` extraction to `skills/confidence-check/SKILL.md` **Phase
+   1.8** off the existing `$FC_JSON` (no second CLI call), and add the Criterion C
+   cap row + prose note to `rubric.md:307-314` modelled on Criterion 4's cap
    (`rubric.md:245-256`). Do **not** add an entry to Phase 3's hard-override list.
-5. Run `ll-adapt --host gemini --apply && ll-adapt --host kimi-code --apply &&
+5. Run `ll-issues format-check` across the live `.issues/` corpus and inspect
+   every firing by hand before proceeding. 307 issues currently carry a
+   `> **Selected:**` callout, so this is the check that actually exercises the
+   Decision Rules; each of the three scoping rules in step 1 fails loudly here and
+   silently in a hand-built fixture.
+6. Run `ll-adapt --host gemini --apply && ll-adapt --host kimi-code --apply &&
    ll-adapt --host qwen --apply` to refresh the three verbatim skill mirrors, or
    `test_skill_mirrors_carry_companions` fails on drift.
-6. Re-run the `score_ambiguity` consumer tests named under Tests below to confirm
+7. Re-run the `score_ambiguity` consumer tests named under Tests below to confirm
    the routing-behavior shift in `autodev.yaml` / `rn-remediate.yaml` is inert.
 
 ## Acceptance Criteria
@@ -312,12 +399,34 @@ deliberately not added to that list.
       `refine_followup` present in Proposed Solution, Program Design,
       Implementation Steps, Files to Modify, Acceptance Criteria) fires the gap
       for each of those sections.
-- [ ] Each inert case in Decision Rules returns an empty list: no marker, one
-      option block, empty `REJ - SEL`, and a mention carrying `⚠ Superseded` in
-      the same paragraph.
+- [ ] Each inert case in Decision Rules returns an empty list: no `> **Selected:**`
+      callout, one option block, a callout title matching zero or multiple option
+      headings, empty `REJ - SEL`, and a mention carrying `⚠ Superseded` in the
+      same paragraph.
+- [ ] An issue whose selected option is **not** the last option block — and whose
+      `### Decision Rationale` therefore falls inside the *rejected* block — is
+      still scored against the correct `SEL`/`REJ` split. (Regression guard for
+      the `_is_option_resolved` misidentification; ENH-3256 itself is such an
+      issue.)
+- [ ] An issue where every option block carries a `> **Selected:**` line (winner
+      plus `> **Selected:** Option A, not this one` on the loser) resolves to a
+      single `SEL` via the callout title, not to two resolved blocks.
+- [ ] A decided issue whose directive sections are fully consistent produces an
+      **empty** `unapplied_decision` — specifically, the rejected option block's
+      own identifiers inside `## Proposed Solution` and inside
+      `### Decision Rationale` do not fire the gap (self-scan subtraction).
+- [ ] `_unapplied_decision` enumerates options only from the `## Proposed
+      Solution` body, and the final option block does not absorb `## Integration
+      Map` / `## Program Design` / `## Implementation Steps` / `## Acceptance
+      Criteria` content into `REJ`.
+- [ ] Running `ll-issues format-check` over the full live `.issues/` corpus fires
+      `unapplied_decision` only on issues whose directive sections genuinely
+      contradict their recorded decision — every firing hand-verified, zero false
+      positives across the 307 issues carrying a `> **Selected:**` callout.
+- [ ] Identifiers shorter than 3 characters are never extracted into `SEL`/`REJ`.
 - [ ] `design_gate_failed()` return values are unchanged for all existing
       fixtures — the new key does not participate in the design gate.
-- [ ] `skills/confidence-check/SKILL.md` Phase 1.6 names `unapplied_decision`
+- [ ] `skills/confidence-check/SKILL.md` **Phase 1.8** names `unapplied_decision`
       and issues no second `format-check` call; `rubric.md` Criterion C carries a
       cap row documented as a ceiling and explicitly not a hard override.
 - [ ] `DECISION_GAP` does not appear in Phase 3's hard-override paragraphs.
@@ -342,8 +451,13 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 ## Success Metrics
 
 - A reconstruction of BUG-3249 at its 20:38 state scores Criterion C at 10, not 25.
+- Zero unexplained gap firings across the **live `.issues/` corpus** (307 issues
+  currently carry a `> **Selected:**` callout) — this, not the `scripts/tests/`
+  fixture set, is the meaningful false-positive floor, because every scoping
+  defect in Decision Rules manifests as a corpus-wide firing while staying
+  invisible in a hand-built two-option fixture.
 - Zero new gap firings across the existing `scripts/tests/` issue fixtures that
-  carry a single option block or no `> **Selected:**` marker (false-positive floor).
+  carry a single option block or no `> **Selected:**` marker.
 
 ## Scope Boundaries
 
@@ -380,8 +494,19 @@ _DECISION_DIRECTIVE_SECTIONS: tuple[str, ...] = (
     "Acceptance Criteria",
 )
 
+def _selected_option_title(section_body: str) -> str | None:
+    """Option title from the first `> **Selected:** <title>` callout, or None."""
+
+
 def _unapplied_decision(content: str) -> list[str]:
-    """Reason strings for rejected-option identifiers left in directive sections."""
+    """Reason strings for rejected-option identifiers left in directive sections.
+
+    Options are enumerated from ``_section_body(content, "Proposed Solution")``
+    only — never full ``content`` — and the final block is clamped at
+    ``### Decision Rationale``. The Proposed Solution scan subtracts the option
+    blocks and the Decision Rationale subsection. See Program Design ›
+    Decision Rules for why each of those is load-bearing.
+    """
 
 @dataclass
 class FormatGaps:
@@ -390,6 +515,8 @@ class FormatGaps:
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-19T00:25:28 - `7c6d718f-002c-439a-9bff-6cc0a6855d4d.jsonl`
+- `/ll:verify-issues` - 2026-08-18T23:42:05 - `5babd785-d270-4764-90c8-5811c9188fb7.jsonl`
 - `/ll:confidence-check` - 2026-08-18T22:04:27 - `bb66018c-ab8d-4e0a-a8d9-81ae552f7d58.jsonl`
 - `/ll:wire-issue` - 2026-08-18T22:00:39 - `b37bf726-239f-4f1a-b2e3-9f5b456cd984.jsonl`
 - `/ll:decide-issue` - 2026-08-18T21:54:55 - `566f5be8-a458-4a02-9f56-cd168a320037.jsonl`

@@ -337,6 +337,7 @@ print('; '.join(
 
 
 ## Session Log
+- `/ll:verify-issues` - 2026-08-18T23:42:05 - `5babd785-d270-4764-90c8-5811c9188fb7.jsonl`
 - `/ll:confidence-check` - 2026-08-18T22:04:27 - `bb66018c-ab8d-4e0a-a8d9-81ae552f7d58.jsonl`
 - `/ll:wire-issue` - 2026-08-18T22:00:40 - `b37bf726-239f-4f1a-b2e3-9f5b456cd984.jsonl`
 - `/ll:refine-issue` - 2026-08-18T21:39:54 - `1598a616-9bb3-45c4-9fb9-f9f87bed73c9.jsonl`
