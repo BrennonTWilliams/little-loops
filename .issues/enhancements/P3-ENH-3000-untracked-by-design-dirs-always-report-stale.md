@@ -25,21 +25,23 @@ score_change_surface: 18
 
 ## Summary
 
-`build_ref_index()` indexes `git ls-files` output, so a reference into a
-directory that is gitignored *by design* — `thoughts/`, `postmortems/`,
-`.loops/` run artifacts, `logs/` — cannot resolve and is reported as drift.
-**184 unique refs** across `.issues/`, **5.7% of the 3,227 `stale_file_ref`
-findings** (re-measured 2026-08-19; see Corpus Measurement below). This is
-structural for the untracked subset: the index cannot see those paths by
-construction.
+`build_ref_index()` indexes `git ls-files` output, so a reference to a path that
+is gitignored *by design* — `thoughts/`, `postmortems/`, `.loops/` run
+artifacts, `logs/`, and `.ll/` runtime-state files — cannot resolve and is
+reported as drift. **267 refs** across `.issues/`, **8.3% of the 3,231
+`stale_file_ref` findings** (simulated against the exact shipped default on
+2026-08-19; see Corpus Measurement below). This is structural for the untracked
+subset: the index cannot see those paths by construction.
 
 **Important qualifier, measured 2026-08-19**: these directories are *partially*
 tracked, not wholly untracked. `thoughts/` holds **461 git-tracked files**
 (tracked before the ignore rule landed) and `.loops/` holds 11; `.gitignore`
 ignores only specific `.loops/` subdirectories (`runs/`, `tmp/`, `queue/`,
-`.history/`, …), not `.loops/` itself. 63 refs under these prefixes resolve
-correctly today. Any fix that suppresses the whole prefix unconditionally
-destroys those resolutions — see Program Design § Check Ordering.
+`.history/`, …), not `.loops/` itself, and `.ll/` is ignored **per-file**
+(`.ll/ll-context-state.json`, `.ll/ll.local.md`, …) with `.ll/decisions.d/` and
+`.ll/ll-config.json` tracked. 65 refs under these prefixes resolve correctly
+today. Any fix that suppresses a whole prefix unconditionally destroys those
+resolutions — see Program Design § Check Ordering.
 
 ## Current Behavior
 
@@ -47,9 +49,11 @@ destroys those resolutions — see Program Design § Check Ordering.
 thoughts/research/pi-headless-cli.md      -> stale   (untracked, exists on disk)
 .loops/runs/<run>/diagnosis.md            -> stale   (run artifact, by design untracked)
 postmortems/<run>.md                      -> stale   (source-repo-only, gitignored)
+.ll/ll-context-state.json                 -> stale   (runtime state, gitignored per-file)
 
 thoughts/FEAT-670-layout-engine-research.md -> resolved  (tracked — must stay resolved)
 .loops/rl-rlhf.yaml                         -> resolved  (tracked — must stay resolved)
+.ll/standards.md                            -> stale     (proposed by ENH-2023, not yet built — must stay reported)
 ```
 
 These are exactly the directories `.claude/CLAUDE.md` § Key Directories
@@ -71,26 +75,83 @@ new status depends on which design below is chosen.
 
 ## Motivation
 
-184 findings is a predictable, mechanically-identifiable false-positive class:
+267 findings is a predictable, mechanically-identifiable false-positive class:
 every one of them trains the reader to skim past `stale_file_ref` output. A
 check that is right most of the time but noisy in a *predictable, ignorable*
 way is worse than one with a narrower, trusted scope — and this class is
 suppressible with zero judgment calls, which is what makes it worth fixing
-even at 5.7%.
+even at 8.3%.
 
 **Corrected sizing** (the original capture claimed "315 instances, ~9%, the
-single largest false-positive class remaining" — all three are wrong as of
-2026-08-19, measured after the three narrow fixes landed):
+single largest false-positive class remaining"; a 2026-08-19 pass narrowed that
+to 184/5.7% before the `.ll/` slice was found):
 
-- 184 unique stale refs under these prefixes, not 315.
-- 5.7% of stale findings, not 9%.
+- 267 stale refs suppressed by the shipped default, spanning five prefix
+  families — not 315, and not the 184 measured before `.ll/` was included.
+- 8.3% of stale findings.
 - **Not** the largest class. Stale refs by leading path component:
   `scripts/` 1525, `commands/` 219, `skills/` 216, `docs/` 178, `.claude/` 151,
-  `.ll/` 142, `thoughts/` 99, `.loops/` 69, `hooks/` 66. This is the 7th
-  largest, and the 6 above it are mostly genuine drift.
+  `.ll/` 142, `thoughts/` 99, `.loops/` 71, `hooks/` 66. Even aggregated this
+  sits behind `scripts/`, and the components above it are mostly genuine drift.
 
 This keeps ENH-3000 at P3 rather than promoting it: it is a clean, cheap,
 zero-judgment suppression, not the dominant noise source.
+
+### The `.ll/` slice — same class, different shape
+
+`.ll/` contributes **109 of the 267** (14 unique paths), every one confirmed
+via `git check-ignore`:
+
+| ref | count | | ref | count |
+|---|---|---|---|---|
+| `.ll/ll-context-state.json` | 28 | | `.ll/ll-precompact-state.json` | 14 |
+| `.ll/ll-continue-prompt.md` | 24 | | `.ll/ll-edit-batch-state.json` | 6 |
+| `.ll/ll.local.md` | 19 | | `.ll/ll-sync-state.json` | 5 |
+
+plus 8 more (`.ll/ll-session-state.json`, `.ll/ll-state.json`,
+`.ll/ll-auto-state.json`, `.ll/ll-sprint-state.json`,
+`.ll/ll-doc-drift-state.json`, `.ll/.auto-manage-state.json`,
+`.ll/context-pressure-state.json`, `.ll/workflow-analysis/…`).
+
+The other **35 `.ll/` stale refs (26 unique paths) must keep reporting**, but
+*not* because they are drift — investigated 2026-08-19, and essentially none of
+them are. All 26 are confirmed never-tracked, never-deleted, never-on-disk via
+`git log --diff-filter=A/D`. They fall into three classes:
+
+| class | refs | what they are |
+|---|---|---|
+| **Proposed-but-unbuilt** | 19 | `.ll/rubrics/*.md` (14), `.ll/standards.md` (4), `.ll/commands/publish.md` (1) — cited by open issues that *propose creating them*: ENH-1053/1057/1067/1068/1069 (rubric externalization), ENH-2023 (whose title is literally "Extract loop-authoring standards into `.ll/standards.md`"), ENH-1034 |
+| **Runtime-created by design** | 10 | `.ll/learning-tests/*` (5) — `_DEFAULT_BASE_DIR = Path(".ll") / "learning-tests"` (`scripts/little_loops/learning_tests/__init__.py:23`); plus `.ll/ll-ctx-stats.json`, `.ll/doctor-full-cache.json`, `.ll/loop-suggester-dismissals.json`, `.ll/ll-session-events.json`, `.ll/sprints/epic-1234.yaml` |
+| **Documented-optional, user-authored** | 6 | `.ll/program.md` (4) — `docs/reference/program-md.md`: *"The file is **optional**. If absent, affected loops fall back to their existing defaults"*; `.ll/prompts/rn-plan-planning.md` (2), documented at `docs/guides/LOOPS_REFERENCE.md:3039` |
+
+**This is why a bare `.ll/` prefix is wrong** — not because it would suppress
+drift, but because it would suppress the 19 proposed-but-unbuilt refs, which are
+real signal: they point at artifacts open issues have committed to building and
+should stay visible until built. They are `planned_new` in substance; the
+`_PLANNED_NEW_RE` marker misses them because they are cited in prose and tables
+rather than with a `(new)` marker. **That is ENH-2971's problem, not this
+issue's** — do not try to fix it here, and do not add these paths to the
+suppression list to make the number go down.
+
+### `git check-ignore` is an incomplete oracle
+
+The 10 runtime-created refs above are the *same by-design class* as the 109 in
+the shipped default — they are excluded only because nobody added them to
+`.gitignore`. Mirroring `.gitignore` therefore inherits `.gitignore`'s gaps.
+
+Do **not** widen the default to close this: leaving them reported is the safer
+error, and a ref like `.ll/ll-session-events.json` is a near-miss typo for the
+real `.ll/ll-session-events.jsonl` (`scripts/little_loops/init/writers.py:64`)
+that `stale_file_ref` is correctly catching. Recorded here so a later reader
+does not mistake the residual for an implementation shortfall.
+
+Reproduce the ignored-vs-rest split with (note this classifies *ignore status*,
+not drift — the rest of the split above required reading the citing issues):
+
+```python
+import subprocess
+ignored = [r for r in ll_refs if subprocess.run(["git","check-ignore","-q",r]).returncode == 0]
+```
 
 ### Corpus Measurement
 
@@ -103,7 +164,7 @@ from collections import Counter
 from little_loops.text_utils import build_ref_index, classify_issue_refs
 
 index = build_ref_index(Path("."))
-PREFIXES = ("thoughts/", "postmortems/", ".loops/", "logs/")
+PREFIXES = ("thoughts/", "postmortems/", ".loops/", "logs/", ".ll/")
 by_prefix, overall = Counter(), Counter()
 for p in sorted(Path(".issues").rglob("*.md")):
     for ref, status in classify_issue_refs(p.read_text(errors="replace"), index).items():
@@ -112,18 +173,23 @@ for p in sorted(Path(".issues").rglob("*.md")):
             by_prefix[(ref.split("/")[0], status)] += 1
 ```
 
-Baseline at 2026-08-19 — `overall`: `resolved` 26728, `unresolvable_form`
-17577, `stale` 3227, `planned_new` 407, `ambiguous` 44. `by_prefix`:
+Baseline at 2026-08-19 — `overall`: `resolved` 26745, `unresolvable_form`
+17600, `stale` 3231, `planned_new` 407, `ambiguous` 44. `by_prefix`:
 
 | prefix | resolved | stale | unresolvable_form | planned_new |
 |---|---|---|---|---|
-| `thoughts/` | **51** | 99 | 5 | 2 |
-| `.loops/` | **12** | 69 | 98 | 1 |
+| `thoughts/` | **52** | 99 | 5 | 2 |
+| `.loops/` | **13** | 71 | 99 | 1 |
+| `.ll/` | (many) | 144 (109 gitignored / 35 must keep reporting) | — | — |
 | `postmortems/` | 0 | 9 | 0 | 0 |
 | `logs/` | 0 | 7 | 0 | 0 |
 
-The bolded 63 `resolved` entries are the regression risk this issue must not
+The bolded 65 `resolved` entries are the regression risk this issue must not
 trip; see Program Design § Check Ordering.
+
+**These absolute numbers drift daily** — they moved between two runs three days
+apart with no code change. Treat them as illustrative only; Implementation
+Step 4 gates on same-tree *deltas*, never on a number copied out of this file.
 
 ## Proposed Solution
 
@@ -221,7 +287,7 @@ own Integration Map (`config-schema.json — if Option B is config-driven`).
 _Added by `/ll:refine-issue` — 2026-08-16 — based on codebase analysis:_
 
 - **Verdict wiring precedent**: new `classify_file_ref()` verdicts are added as a member of the `RefStatus` `Literal` (`scripts/little_loops/text_utils.py:161`), slotted into the explicitly non-commutative "Resolution order" checks documented in the function's docstring (`text_utils.py:272-299`). The most recent additions (`ambiguous` for ENH-2999, `planned_new`) both followed this shape.
-- **Two wiring depths exist, and precedent does not settle which ENH-3000's new verdict needs**: `check_format_gaps()` only branches on verdicts it wants reported as drift — `resolved`/`planned_new`/`unresolvable_form` pass through with no `FormatGaps` field, no `has_gaps` change, no `to_dict()` change (`scripts/little_loops/issue_parser.py:766-774`). A verdict meant to be *reported* (e.g. `ambiguous_file_ref` for ENH-2999) instead gets 5 coordinated sites: new `FormatGaps` field, OR'd into `has_gaps`, added to `to_dict()`, a docstring "Gap classes:" bullet, and rendering in `_print_gaps()`/CLI help (`issue_parser.py:315-559`; `scripts/little_loops/cli/issues/format_check.py:61-199`). Whether `untracked_by_design` is a suppressing verdict (shallow) or a reported one (all 5 sites) is an open call the design doesn't currently pin down. _(Resolved by the 2026-08-19 research pass below: suppressing verdict, shallow treatment.)_
+- **Two wiring depths exist, and precedent does not settle which ENH-3000's new verdict needs**: `check_format_gaps()` only branches on verdicts it wants reported as drift — `resolved`/`planned_new`/`unresolvable_form` pass through with no `FormatGaps` field, no `has_gaps` change, no `to_dict()` change (`scripts/little_loops/issue_parser.py`, the `if ref_index is not None:` block at ~:1022-1040 — the `:766-774` cited here originally no longer matches). A verdict meant to be *reported* (e.g. `ambiguous_file_ref` for ENH-2999) instead gets 5 coordinated sites: new `FormatGaps` field, OR'd into `has_gaps`, added to `to_dict()`, a docstring "Gap classes:" bullet, and rendering in `_print_gaps()`/CLI help (`issue_parser.py:315-559`; `scripts/little_loops/cli/issues/format_check.py:61-199`). Whether `untracked_by_design` is a suppressing verdict (shallow) or a reported one (all 5 sites) is an open call the design doesn't currently pin down. _(Resolved by the 2026-08-19 research pass below: suppressing verdict, shallow treatment.)_
 - **A hardcoded, name-based directory-exclusion list already exists for these exact four directories**, and it disagrees with `scan.exclude_patterns`' shape — directly relevant to Option B's "config-driven" framing:
   ```python
   _EXCLUDED_DIRS = frozenset({..., "postmortems", ".loops", "thoughts", "logs"})
@@ -319,30 +385,101 @@ its disposition:
 ### Prefix Matching Semantics
 
 Copy `_mirror_prefixes()` (`scripts/little_loops/text_utils.py:198-214`) — the
-closest same-file precedent: a `tuple[str, ...]` of directory prefixes, each
-with a trailing `/`, matched with plain `ref.startswith(prefixes)`.
+closest same-file precedent: a `tuple[str, ...]` matched with plain
+`ref.startswith(prefixes)`.
 
-- **Trailing slash is required and normalized in.** A config entry `thoughts`
-  must be coerced to `thoughts/` at load, or it would match `thoughts-archive/`
-  and `thoughtstream.py`. Normalize in `IssuesConfig.from_dict()`, not at each
-  match site.
+**Entries may be directories *or* individual files.** `_mirror_prefixes()` is
+directory-only, but the `.ll/` slice (109 of the 267 refs) is gitignored
+per-file, and a bare `.ll/` prefix would swallow 35 refs that must keep
+reporting — chiefly artifacts open issues have committed to building. Since
+`startswith` is verbatim string matching, a full file path is already a valid
+entry; the only thing that has to change is the trailing-slash rule.
+
+- **Trailing slash is appended to *directory-shaped* entries only.** A config
+  entry `thoughts` must be coerced to `thoughts/` at load, or it would match
+  `thoughts-archive/` and `thoughtstream.py`. But `.ll/ll.local.md` must be left
+  alone — slashing it would match nothing. Normalize in
+  `IssuesConfig.from_dict()`, not at each match site:
+
+  ```python
+  def _normalize_untracked_prefix(entry: str) -> str | None:
+      entry = entry.strip()
+      if not entry or entry == "/":
+          return None                      # see "Reject empty entries" below
+      if entry.endswith("/"):
+          return entry                     # explicit directory — always honored
+      final = entry.rsplit("/", 1)[-1]
+      return entry if "." in final[1:] else entry + "/"
+  ```
+
+  `final[1:]` rather than `final` so a dotfile like `.ll/.auto-manage-state.json`
+  is recognized as a file (its only `.` at position 0 is the dotfile marker, not
+  an extension). This is the same distinction
+  `_EXTENSION_LIKE_COMPONENT_RE` (`text_utils.py:177`) makes with its `^[^.]`
+  anchor, but that regex is *not* reusable here: it rejects dotfiles outright,
+  which is exactly the case this list needs to accept. **Escape hatch**: a
+  directory whose own name contains a dot (`.ll/decisions.d`) must be written
+  with an explicit trailing `/` in config, since the heuristic would otherwise
+  classify it as a file.
+
+- **Reject empty and root entries.** `ref.startswith(("",))` is `True` for
+  *every* ref, so a single empty string in the list silently reclassifies the
+  entire `stale` corpus as `untracked_by_design` with no error. This is not
+  hypothetical: `ll.local.md` merge semantics **replace arrays rather than
+  append** (`.claude/CLAUDE.md` § Local Settings Override), so a project
+  overriding this key writes the whole list by hand. Drop empty/whitespace-only
+  entries and `"/"` during normalization, and cover it with a test.
 - **No leading-`./` handling needed.** `classify_file_ref` step 1 already
   returns `unresolvable_form` for anything the extractor emits with a `.`-led or
   `/`-led form before step 5 is reached; refs arrive repo-relative.
 - **No glob semantics.** These are literal string prefixes, deliberately not
-  `file_matches_pattern()`'s gitignore globs — the values are directory
-  prefixes, and `startswith` keeps the check allocation-free on a path that runs
-  once per unresolved ref across a ~30k-ref corpus.
+  `file_matches_pattern()`'s gitignore globs — `startswith` keeps the check
+  allocation-free on a path that runs once per unresolved ref across a ~30k-ref
+  corpus. Consequence: the glob-shaped `.gitignore` entries under `.ll/`
+  (`.ll/*.lock`, `.ll/user-messages-*.jsonl`, `.ll/export*.jsonl`,
+  `.ll/stray-quarantine-*/`) are **not expressible** and are deliberately out of
+  scope — none of them appears in the measured corpus.
+
+### Why an over-broad entry is safe
+
+Because the check runs at step 5, **after** index lookup, an over-broad prefix
+can only ever hide genuine drift — it can never break a resolution. A ref to a
+*tracked* file resolves at step 3/4 and never reaches the prefix test, whatever
+the list says.
+
+This is the property that makes the shipped default's little-loops-shaped
+entries (`thoughts/`, `logs/`) acceptable in a consuming project that happens to
+track those directories: worst case there, a few real stale refs go unreported;
+no correct resolution is lost. It is also why file-level `.ll/` entries carry no
+risk of colliding with tracked siblings like `.ll/ll-config.json`. § Shipped
+Default's "it's a *default*, overridable" framing is the weaker version of this
+argument — this is the actual guarantee.
 
 ### Prefix Granularity — mirror `.gitignore`, do not coarsen
 
-`.loops/` must **not** appear as a bare prefix. `.gitignore:77-85` ignores only
-`.loops/.running/`, `.loops/.history/`, `.loops/.queue/`, `.loops/tmp/`,
-`.loops/runs/`, `.loops/diagnostics/`, `.loops/reviews/`, `.loops/generated/`,
-and `.loops/cli-anything/` — the 11 tracked files at `.loops/*.yaml` and under
+Neither `.loops/` nor `.ll/` may appear as a bare prefix.
+
+**`.loops/`** — `.gitignore:77-85` ignores only `.loops/.running/`,
+`.loops/.history/`, `.loops/.queue/`, `.loops/tmp/`, `.loops/runs/`,
+`.loops/diagnostics/`, `.loops/reviews/`, `.loops/generated/`, and
+`.loops/cli-anything/` — the tracked files at `.loops/*.yaml` and under
 `.loops/plans/`, `.loops/research/` are real, and a deleted loop YAML like
 `.loops/rl-rlhf.yaml` **should** keep reporting `stale`. The shipped default
 therefore enumerates the ignored subdirectories, not the parent.
+
+**`.ll/`** — ignored per-*file* (`.gitignore:53-57, 100-116, 132`), not per
+directory: `.ll/decisions.d/` and `.ll/ll-config.json` are tracked, and 35 of
+the 144 `.ll/` stale refs point at never-tracked paths that must keep
+reporting — chiefly 19 refs to artifacts open issues have *committed to
+building* (`.ll/rubrics/…`, `.ll/standards.md`). See Motivation § The `.ll/`
+Slice for the full three-class breakdown; those 35 are not drift, but
+suppressing them would still destroy real signal.
+
+The default therefore enumerates the 13 ignored state files individually plus
+the one ignored subdirectory `.ll/workflow-analysis/`. Tempting shortcuts that
+are wrong: `.ll/` (swallows all 35) and `.ll/ll-` (would suppress a ref to a
+deleted-but-formerly-tracked `.ll/ll-config.json`, and violates the
+directory-shaped normalization rule).
 
 ### Shipped Default
 
@@ -353,9 +490,11 @@ ships a populated `field(default_factory=...)`:
 
 ```python
 DEFAULT_UNTRACKED_BY_DESIGN: tuple[str, ...] = (
+    # Wholly-ignored directories (.gitignore:21, 122, 127)
     "thoughts/",
     "postmortems/",
     "logs/",
+    # .loops/ is ignored per-subdirectory, not wholesale (.gitignore:77-85)
     ".loops/.running/",
     ".loops/.history/",
     ".loops/.queue/",
@@ -365,24 +504,50 @@ DEFAULT_UNTRACKED_BY_DESIGN: tuple[str, ...] = (
     ".loops/reviews/",
     ".loops/generated/",
     ".loops/cli-anything/",
+    # .ll/ is ignored per-*file* (.gitignore:53, 100-116); .ll/decisions.d/ and
+    # .ll/ll-config.json are tracked, and .ll/standards.md, .ll/program.md,
+    # .ll/prompts/, .ll/rubrics/ must keep reporting -- they are artifacts open
+    # issues propose to create, not drift. See Motivation § The .ll/ Slice.
+    ".ll/.auto-manage-state.json",
+    ".ll/context-pressure-state.json",
+    ".ll/ll-auto-state.json",
+    ".ll/ll-context-state.json",
+    ".ll/ll-continue-prompt.md",
+    ".ll/ll-doc-drift-state.json",
+    ".ll/ll-edit-batch-state.json",
+    ".ll/ll-precompact-state.json",
+    ".ll/ll-session-state.json",
+    ".ll/ll-sprint-state.json",
+    ".ll/ll-state.json",
+    ".ll/ll-sync-state.json",
+    ".ll/ll.local.md",
+    ".ll/workflow-analysis/",
 )
 ```
+
+This list is **normalization-idempotent** under the rule in § Prefix Matching
+Semantics — every entry either already ends in `/` or is file-shaped, so
+`from_dict()` passes it through unchanged. Assert that in a test; it is the
+cheapest guard against someone later adding a bare `.ll/decisions.d` and having
+it silently coerced to a non-matching form.
 
 Declare the same list as the `default` in `config-schema.json` and as the
 dataclass `field(default_factory=...)`; an absent config key falls through
 `data.get(key, DEFAULT)` to the dataclass default, so a project that never
 opts in still gets the fix.
 
-Note this default is little-loops-shaped (`thoughts/`, `postmortems/` are this
-repo's conventions). That is acceptable — it is a *default*, overridable per
-project, which is exactly the config-driven property Option B was selected for.
+Note this default is little-loops-shaped (`thoughts/`, `postmortems/`, and the
+whole `.ll/` block are this repo's conventions). That is acceptable on two
+counts: it is a *default*, overridable per project; and per § Why an Over-Broad
+Entry Is Safe, a prefix that does not apply to a consuming project can only
+under-report drift there, never break a resolution.
 
 ### Config Placement — `issues.`, not `scan.`
 
 Put the key at `issues.untracked_by_design`, not `scan.untracked_by_design`.
 
 - **Consumer proximity**: all three production `build_ref_index()` call sites
-  are issues-domain (`cli/issues/format_check.py:553`,
+  are issues-domain (`cli/issues/format_check.py:563`,
   `issues/research_triage.py:212`, `:317`). `scan.*` governs codebase scanning
   for `/ll:scan-codebase`, a different subsystem; `scan.focus_dirs` and
   `scan.exclude_patterns` have effectively no runtime readers outside
@@ -431,7 +596,7 @@ The correct wiring is therefore **zero new plumbing in the core module**:
   )
   coverages = triage_research_axes(path, config.project_root, index=index)
   ```
-- `cli/issues/format_check.py:553` — already has `config` in scope; pass the
+- `cli/issues/format_check.py:563` — already has `config` in scope; pass the
   keyword directly.
 - The two in-module `build_ref_index()` fallbacks stay as they are and pick up
   `DEFAULT_UNTRACKED_BY_DESIGN` via the keyword default. That is the intended
@@ -472,7 +637,7 @@ The design decision is closed (Option B, recorded in Decision Rationale above);
 
 _Added by `/ll:refine-issue` — 2026-08-19 — based on codebase analysis:_
 
-- **Verdict wiring depth resolved**: `check_format_gaps()` (`scripts/little_loops/issue_parser.py:1011-1019`) only branches on `stale` and `ambiguous` today; `resolved`, `unresolvable_form`, and `planned_new` pass through the loop with no `FormatGaps` field, no `has_gaps` change, no `to_dict()` entry — they are silently non-gaps. Since `untracked_by_design` is a suppressing verdict (its purpose is to stop being reported as `stale`, not to be reported under a new category), it needs only the shallow treatment: a new `RefStatus` Literal member plus the step-5 fallback branch in `classify_file_ref` (this bullet originally said "form check"; superseded by Program Design § Check Ordering). It does not need the 5-site `FormatGaps`/`has_gaps`/`to_dict`/docstring/`_print_gaps()` treatment that `ambiguous_file_ref` (ENH-2999) required — that treatment is only for verdicts meant to be *surfaced* as a gap category.
+- **Verdict wiring depth resolved**: `check_format_gaps()` (`scripts/little_loops/issue_parser.py`, defined at :638; the ref-classification loop is the `if ref_index is not None:` block at ~:1022-1040) only branches on `stale` and `ambiguous` today; `resolved`, `unresolvable_form`, and `planned_new` pass through the loop with no `FormatGaps` field, no `has_gaps` change, no `to_dict()` entry — they are silently non-gaps. Since `untracked_by_design` is a suppressing verdict (its purpose is to stop being reported as `stale`, not to be reported under a new category), it needs only the shallow treatment: a new `RefStatus` Literal member plus the step-5 fallback branch in `classify_file_ref` (this bullet originally said "form check"; superseded by Program Design § Check Ordering). It does not need the 5-site `FormatGaps`/`has_gaps`/`to_dict`/docstring/`_print_gaps()` treatment that `ambiguous_file_ref` (ENH-2999) required — that treatment is only for verdicts meant to be *surfaced* as a gap category.
 - **Denominator eligibility resolved**: `qualified_ref_count()` (`research_triage.py:215`) and `_triage_axis()` (`research_triage.py:410`) both gate on the literal tuple `("resolved", "stale", "ambiguous")` — duplicated independently at each site, no shared constant. Per `qualified_ref_count`'s own docstring, eligibility means "survived the form filter"; only `unresolvable_form` and `planned_new` are excluded, both decided at the form-check stage before index lookup. `untracked_by_design` only fires where there is no git-tracked target at all — it replaces a would-be `stale`, so nothing exists to compare against for the staleness check (`research_triage.py:431-442`). It therefore belongs in the same excluded category as `unresolvable_form`/`planned_new`, not added to the eligible tuple. (This bullet originally justified the exclusion by "it is a form check that runs before index lookup" — that framing is superseded by Program Design § Check Ordering; the exclusion conclusion is unchanged, and its denominator consequence is spelled out in § Denominator Side Effect.) Both call sites' literal tuples need updating independently (or reconciled with ENH-2990's `AxisCoverage` reason-code work per this issue's own trailing Scope Boundary note).
 - **No shared prefix-matching helper exists** — three independent, shape-incompatible mechanisms already do adjacent things: (1) `_EXCLUDED_DIRS` (`verify_private_refs.py:75-90`) — hardcoded `frozenset` of bare directory *names*, matched via `any(part in _EXCLUDED_DIRS for part in rel_path.parts)`; (2) `file_matches_pattern()` (`git_operations.py:296+`) — full gitignore-glob semantics, the natural pairing for `scan.exclude_patterns` but currently has zero production callers for that config key (grep for `.scan.exclude_patterns` / `.scan.focus_dirs` returns nothing anywhere in `scripts/little_loops/`); (3) `_mirror_prefixes()` (`text_utils.py:198-214`) — a `@cache`d `tuple[str, ...]` of directory-prefix strings matched via plain `str.startswith(tuple)`, already used inside `classify_file_ref`'s own call chain (`suffix_match_candidates`, `text_utils.py:364`), though sourced from the host-capability registry rather than project config. This last one is the closest same-file precedent for "a cached tuple of directory prefixes consulted inside `text_utils.py`'s own classification logic."
 - **Config-location caveat**: `scan` is explicitly excluded from the schema-vs-code value parity walk — `_SCHEMA_PARITY_EXCLUDED_SECTIONS = {"$schema", "project", "issues", "scan"}` (`test_config_schema.py:1191`). A new key added under `scan` therefore would not get the cross-check other config sections get for free; the schema-vs-default drift that guard exists to catch would go undetected there specifically.
@@ -502,7 +667,7 @@ _Added by `/ll:refine-issue` — 2026-08-19 — based on codebase analysis:_
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/little_loops/cli/issues/format_check.py` — `cmd_format_check()` line
-  553 calls `build_ref_index(config.project_root)` with no config-sourced arg;
+  563 calls `build_ref_index(config.project_root)` with no config-sourced arg;
   confirmed via `ll-code callers-of build_ref_index` this is the third
   production call site (alongside `research_triage.py:212,317`) and is not
   currently in this list — without threading the new prefix list through here
@@ -553,8 +718,23 @@ _Wiring pass added by `/ll:wire-issue`:_
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_config.py` — `IssuesConfig` cases: `from_dict()` default
   (absent key yields the shipped non-empty tuple), explicit-override
-  round-trip, and trailing-slash normalization (`"thoughts"` → `"thoughts/"`).
-  Since `issues` is inside `_SCHEMA_PARITY_EXCLUDED_SECTIONS`, add an explicit
+  round-trip, and the normalization rule from § Prefix Matching Semantics:
+  - `"thoughts"` → `"thoughts/"` (directory-shaped gets slashed)
+  - `".ll/ll.local.md"` → unchanged (file-shaped does not)
+  - `".ll/.auto-manage-state.json"` → unchanged (dotfile is file-shaped — the
+    `final[1:]` case; a naive `"." in final` or a reuse of
+    `_EXTENSION_LIKE_COMPONENT_RE` gets this wrong)
+  - `".ll/decisions.d/"` → unchanged (explicit trailing slash always honored,
+    the documented escape hatch for dotted directory names)
+  - **`DEFAULT_UNTRACKED_BY_DESIGN` is normalization-idempotent** — normalizing
+    the shipped default returns it unchanged, element for element
+- **Empty-entry guard** — `from_dict()` with `[""]`, `["  "]`, and `["/"]` drops
+  those entries. Pair it with a `classify_file_ref` assertion that an ordinary
+  drift ref still returns `stale` under such a config: `ref.startswith(("",))`
+  is `True` for every ref, so the un-guarded failure mode is silent
+  whole-corpus suppression, and a config-layer-only test would not prove the
+  classifier is safe
+- Since `issues` is inside `_SCHEMA_PARITY_EXCLUDED_SECTIONS`, add an explicit
   assertion that the `config-schema.json` `default` array equals
   `DEFAULT_UNTRACKED_BY_DESIGN` — the parity walk will not catch that drift
 - **Regression guard for the 63 resolved refs** — a test asserting a ref to a
@@ -564,17 +744,32 @@ _Wiring pass added by `/ll:wire-issue`:_
   single most important test in this issue; mirror the
   `test_does_not_exist_marker_stays_stale` negative-control pattern
   (`test_text_utils.py:295-315`)
-- **Granularity guard** — a ref to a deleted `.loops/*.yaml` at the top level
-  still returns `stale` (not `untracked_by_design`), pinning that the default
-  enumerates ignored subdirectories rather than the bare `.loops/` parent
+- **Granularity guards** — two, one per family, pinning that the default
+  enumerates precisely rather than reaching for the parent:
+  - a ref to a deleted `.loops/*.yaml` at the top level still returns `stale`
+    (not `untracked_by_design`), pinning the ignored-subdirectory enumeration
+    over a bare `.loops/`
+  - a ref to `.ll/rubrics/confidence-check.md` still returns `stale`, pinning
+    the per-file enumeration over a bare `.ll/`. This is the guard for the 35
+    must-keep-reporting `.ll/` refs; without it a later "simplification" to
+    `.ll/` would look like a 35-finding improvement while hiding 19 refs to
+    artifacts open issues have committed to building. Use a `.ll/rubrics/`
+    path rather than `.ll/standards.md` — the latter is what ENH-2023 exists to
+    create, so the test would start failing the day that issue lands
+- **`.ll/` file-entry coverage** — a ref to `.ll/ll-context-state.json` (the
+  single highest-count entry at 28 refs) returns `untracked_by_design`, proving
+  a full file path works as a `startswith` entry and that normalization left it
+  unslashed
 - `scripts/tests/test_research_triage.py::TestReferenceFiltering` (~lines
   227-287) — new test mirroring
   `test_ambiguous_ref_is_denominator_eligible_but_not_covering` (lines
   262-287), asserting `qualified_ref_count(...) == 0` for an issue whose only
   ref is under an untracked-by-design prefix
 - `scripts/tests/test_text_utils.py::TestClassifyFileRef` (lines 210-315) —
-  new parametrized case(s), one per configured prefix, each asserting
-  `classify_file_ref(...) == "untracked_by_design"`
+  new parametrized sweep, one case per entry in `DEFAULT_UNTRACKED_BY_DESIGN`
+  (directory *and* file entries), each asserting
+  `classify_file_ref(...) == "untracked_by_design"`. Parametrizing off the
+  constant itself keeps the sweep honest when the list grows
 - `scripts/tests/test_text_utils.py::TestBuildRefIndex` (lines 513-542) — new
   real-git-repo test with a file under an untracked-by-design prefix left
   uncommitted, confirming `classify_file_ref` still returns
@@ -621,18 +816,26 @@ _Added by `/ll:refine-issue` — 2026-08-19 — based on codebase analysis:_
    spuriously.
 
    Gates, expressed as deltas on one tree:
-   - **`stale` drops by ~158**, simulated against the exact
+   - **`stale` drops by ~267**, simulated against the exact
      `DEFAULT_UNTRACKED_BY_DESIGN` list above on 2026-08-19: `thoughts/` 99,
-     `.loops/` 43, `postmortems/` 9, `logs/` 7. (The Summary's 184 counts the
-     bare-`.loops/` prefix; narrowing to the nine ignored subdirectories per
-     § Prefix Granularity leaves 26 `.loops/` refs correctly `stale` across 12
-     unique paths — deleted top-level loop YAMLs like `.loops/general-task.yaml`
-     and `.loops/issue-refinement-git.yaml`, plus never-tracked `.loops/audits/`
-     and `.loops/lib/`, both confirmed *not* gitignored via `git check-ignore`.
-     That residual is the granularity guard working, not a shortfall.)
+     `.ll/` 109, `.loops/` 43, `postmortems/` 9, `logs/` 7.
+   - **`untracked_by_design` rises by the same ~267**, and every other verdict's
+     delta is 0 — i.e. the change is a pure `stale` → `untracked_by_design`
+     reclassification with no collateral movement. Verified by simulation.
    - **`resolved` delta is exactly 0** — the in-prefix tracked refs must not
      move. This is the hard gate.
    - `unresolvable_form`, `planned_new`, and `ambiguous` deltas are 0.
+
+   **Expected residuals — these are the granularity guards working, not
+   shortfalls.** Do not "fix" them by broadening a prefix:
+   - **28 `.loops/` refs across 12 unique paths stay `stale`** — deleted
+     top-level loop YAMLs (`.loops/general-task.yaml`,
+     `.loops/issue-refinement-git.yaml`) plus never-tracked `.loops/audits/`
+     and `.loops/lib/`, all confirmed *not* gitignored via `git check-ignore`.
+   - **35 `.ll/` refs across 26 unique paths stay `stale`** — 19 proposed-but-
+     unbuilt (`.ll/rubrics/…`, `.ll/standards.md`), 10 runtime-created but
+     missing from `.gitignore`, 6 documented-optional user-authored. None are
+     drift, but all must keep reporting; see Motivation § The `.ll/` Slice.
 5. `python -m pytest scripts/tests/` passes.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
@@ -673,12 +876,19 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 - **Effort**: Small — one branch in `classify_file_ref`, one config field, and
   the plumbing through three call sites. The design is now settled.
-- **Risk**: Low under Option B **as ordered here**. The one real hazard is
-  ordering: placing the check before index lookup silently regresses 63
-  currently-`resolved` refs, which the corpus gate in Implementation Step 4 and
-  the negative-control test in Tests both exist to catch. Option A's risk
-  (working-tree-dependent verdicts leaking into `research_triage`'s gate) does
-  not apply.
+- **Risk**: Low under Option B **as ordered here**. Two hazards, both with a
+  dedicated gate:
+  1. *Ordering* — placing the check before index lookup silently regresses 65
+     currently-`resolved` refs. Caught by the `resolved`-delta-is-0 corpus gate
+     (Step 4) and the negative-control test in Tests.
+  2. *An empty config entry* — `startswith("")` matches everything, silently
+     suppressing the whole `stale` corpus. Caught by the empty-entry guard in
+     Tests. This is the only way the change can fail loudly-wrong rather than
+     quietly-incomplete.
+
+  Option A's risk (working-tree-dependent verdicts leaking into
+  `research_triage`'s gate) does not apply. Note that over-broad *non-empty*
+  entries are structurally safe — see § Why an Over-Broad Entry Is Safe.
 - **Breaking Change**: No.
 
 ## Scope Boundaries
@@ -695,7 +905,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 |----------|-----------|
 | `.claude/CLAUDE.md` | § Key Directories documents these dirs as real and gitignored |
 | `scripts/little_loops/text_utils.py` | `build_ref_index`'s tracked-files-only contract |
-| `.gitignore` | lines 21, 77-85, 122, 127 — the authoritative granularity the default prefix list must mirror; `.loops/` is ignored only per-subdirectory |
+| `.gitignore` | lines 21, 53-57, 77-85, 100-116, 122, 127, 132 — the authoritative granularity the default prefix list must mirror; `.loops/` is ignored only per-subdirectory and `.ll/` only per-file |
 
 ---
 
@@ -704,6 +914,33 @@ _These touchpoints were identified by wiring analysis and must be included in th
 **Note** (added by `/ll:audit-issue-conflicts`): This issue and ENH-2966 both modify `check_format_gaps` in `scripts/little_loops/issue_parser.py` for unrelated gap classes (a new `stale_file_ref` verdict branch vs. the testable-keyword scan surface). Coordinate implementation order to avoid a merge collision in the same function.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-19T22:36:34 - `783bfe67-e43b-4aa3-9685-9db5e496d2c0.jsonl`
+- `/ll:confidence-check` - 2026-08-19T22:18:20 - `0e6d0c6a-b043-41cd-9b71-7ebe3558528f.jsonl`
+- pre-implementation review (correction) - 2026-08-19 - investigated the
+  residual `.ll/` refs the entry below had labelled "genuine drift". That label
+  was **wrong**: all 26 unique paths are never-tracked/never-deleted per
+  `git log --diff-filter=A/D`, and split into 19 proposed-but-unbuilt (cited by
+  ENH-1053/1057/1067/1068/1069/2023/1034, which propose *creating* them), 10
+  runtime-created-by-design but absent from `.gitignore`, and 6
+  documented-optional user-authored (`.ll/program.md` has its own reference
+  doc). The "no bare `.ll/` prefix" conclusion is unchanged but re-justified:
+  suppression would hide committed-to-build artifacts, not drift. Also recorded
+  that `git check-ignore` is an incomplete oracle for this class, and changed
+  the granularity-guard test fixture from `.ll/standards.md` to
+  `.ll/rubrics/confidence-check.md` — the former is exactly what ENH-2023 will
+  create, which would have made the test fail the day that issue landed.
+- pre-implementation review - 2026-08-19 - found the `.ll/` slice (109 refs /
+  14 paths of the same gitignored-by-design class, vs. 35 `.ll/`
+  refs that must keep reporting) and extended the shipped default with
+  file-level entries, raising the suppressed total 158 → 267; relaxed the
+  "trailing slash always required" normalization rule to directory-shaped
+  entries only (with a `final[1:]` dotfile carve-out and an explicit-slash
+  escape hatch for dotted directory names); added an empty-entry guard
+  (`startswith("")` matches every ref, and `ll.local.md` array-replace
+  semantics make a hand-written list likely); stated the post-lookup safety
+  property explicitly; corrected `format_check.py:553` → `:563` and the stale
+  `issue_parser.py:766-774` citation. Delta re-simulated on the live tree:
+  `stale` −267, `untracked_by_design` +267, every other verdict 0.
 - `/ll:confidence-check` - 2026-08-19T21:28:41 - `52d05086-bbdc-462a-bb68-03d6d46c8ec9.jsonl`
 - pre-implementation review - 2026-08-19 - corrected the config-threading
   instruction (`research_triage.py` has no config access; inject via the
