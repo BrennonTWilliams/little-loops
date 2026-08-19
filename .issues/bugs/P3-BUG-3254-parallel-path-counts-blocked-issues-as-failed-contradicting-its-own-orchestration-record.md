@@ -91,8 +91,8 @@ dispatch does not.
 
 **Corrections attached on success only.** `worker_pool.py:743-744` passes
 `corrections=corrections` on the success return — grep confirms `corrections`
-appears nowhere else in the file except its source read at `:549-551`. The
-orchestrator's rate (`orchestrator.py:1646-1653`) divides
+appears nowhere else in the file except its source read at `:550-551`. The
+orchestrator's rate (`orchestrator.py:1647-1653`) divides
 `len(corrections_snapshot)` by `queue.completed_count + queue.failed_count`
 (`priority_queue.py:167,173`), so a corrected-then-blocked issue sits in the
 denominator with its corrections discarded.
@@ -103,10 +103,13 @@ above it.** `_run_issue`'s twelve `_stamped_result(...)` returns
 `corrections=` everywhere except the success return at `:731`. They divide into
 two groups, and **the fix must cover both**:
 
-*Above the read (`:462,477,493,509,537`)* — these return before `:549-551` reads
+*Above the read (`:462,477,493,509,537`)* — these return before `:550-551` reads
 `ready_parsed`, the positional cause the third review pass identified: interrupted
 (`:462`), ready-issue returncode ≠ 0 (`:477`), CLOSE (`:493`), BLOCKED (`:509`),
-NOT_READY (`:537`).
+NOT_READY (`:537`). All five are nonetheless *below* the parse itself
+(`ready_parsed, ready_result = run_ready_issue_with_retry(...)` at `:450`), so the
+values are available to them — hoisting the read to `:450` is what unlocks them,
+and no default can substitute for it.
 
 *Below the read (`:558,622,680,695,717,748`)* — these have `corrections` **already
 in scope** and simply never pass it: proof-first gate failure (`:558`),
@@ -129,7 +132,7 @@ pass, not manage-issue validation — and `ready_parsed` is already in scope at
 `:507`.
 
 **The orchestrator drops corrections on any non-success path regardless.**
-`state.corrections` is written only at `orchestrator.py:1135-1137`, inside
+`state.corrections` is written only at `orchestrator.py:1133-1135`, inside
 `if result.was_corrected:`, which is itself inside `elif result.success:`
 (`:1124`). A BLOCKED result can never reach it. Attaching `corrections=` in
 `worker_pool.py` is therefore a **no-op on its own** — the new skipped arm must
@@ -139,7 +142,7 @@ corrections defect that is easy to miss.
 **The CLOSE and NOT_READY verdicts have the identical defect, already live in the
 denominator.** The `should_close` return (`worker_pool.py:491-505`) and the
 NOT_READY return (`:522-547`) omit `corrections=` for the same reason the BLOCKED
-return does — all three return before `:549-551` reads `ready_parsed`. But
+return does — all three return before `:550-551` reads `ready_parsed`. But
 `should_close` routes to `queue.mark_completed()` (`orchestrator.py:1114`) and
 NOT_READY routes to `queue.mark_failed()` (`:1232`), so a corrected-then-closed
 or corrected-then-not-ready issue is *already* in the denominator with its
@@ -203,21 +206,35 @@ The queue-side gap makes this larger than the sequential fix it mirrors.
    `_worker_errors` note for why.
 3. Fix the corrections defect **at its cause, once on each side** (see decision
    **D2**) rather than arm by arm:
-   - `worker_pool.py` — make `corrections` **opt-out instead of opt-in** by
-     injecting it through the existing `_stamped_result` closure (`:390-396`).
-     Declare `was_corrected = False` / `corrections: list[str] = []` above the
-     `try` (`:398`), have `_stamped_result` `setdefault` both onto its kwargs, and
-     leave the assignment where `:549-551` reads `ready_parsed` today. **No hoist
-     is needed**: returns below the assignment pick up the real values, returns
-     above it pick up the `False`/`[]` defaults, which is correct for them. All
-     twelve returns are covered by one edit and no future return can regress.
-   - `orchestrator.py` — replace the arm-local write at `:1135-1137` with a single
-     write beside the already-unconditional timing write at `:1242-1246`, after
-     the whole dispatch chain. **Keep the `if result.corrections:` truthiness
-     guard** — the numerator is `len(corrections_snapshot)` (`:1646`), which counts
+   - `worker_pool.py` — **two edits, not one; they cover disjoint sets of returns
+     and neither is sufficient alone.** (a) **Hoist** the `was_corrected` /
+     `corrections` read from `:550-551` to immediately after the ready-issue parse
+     at `:450`, above the interrupted check at `:462` — this is what gives the
+     CLOSE (`:493`), BLOCKED (`:509`), and NOT_READY (`:537`) returns their *real*
+     values, and it puts all twelve returns below the assignment. (b) Make
+     `corrections` **opt-out instead of opt-in** by declaring
+     `was_corrected = False` / `corrections: list[str] = []` above the `try`
+     (`:398`) and having the existing `_stamped_result` closure (`:390-396`)
+     `setdefault` both onto its kwargs. (b) is not merely belt-and-braces: the
+     exception handler at `:748` is reachable from a failure *before* `:450`
+     (worktree creation, branch setup), where a hoisted-but-undeclared
+     `corrections` raises `NameError` inside the closure. It also makes a
+     thirteenth return added later regression-proof. Pass `list(corrections)` so
+     the twelve results do not alias one shared list.
+   - `orchestrator.py` — replace the arm-local write at `:1133-1135` with a single
+     write beside the already-unconditional timing write at `:1242-1245`, after
+     the whole dispatch chain. **Write it *inside* that block's existing
+     `with self._state_lock:`** — the current write holds the lock (`:1134`) and
+     `_on_worker_complete` runs on worker threads, so a write placed after the
+     block silently drops it. **Keep the `if result.corrections:` truthiness
+     guard** — the numerator is `len(corrections_snapshot)` (`:1648`), which counts
      *keys*, so writing `[]` for every result pins the rate at 100%. Unconditional
-     in *position*, guarded on non-empty.
-   - `orchestrator.py:1647` — include `skipped_count` in the denominator.
+     in *position*, guarded on non-empty. **Move the logging with it**: the
+     `if result.was_corrected:` announcement and the per-correction `logger.info`
+     loop (`:1128-1132`) sit inside `elif result.success:`, so leaving them there
+     puts corrected-then-blocked and corrected-then-failed issues into the
+     numerator with no log line anywhere — this issue's own defect, one layer down.
+   - `orchestrator.py:1649` — include `skipped_count` in the denominator.
 4. Render the skip count on **both** output surfaces, not just the final summary:
    - `_report_results` (`:1585-1706`) — a `Skipped: {count}` line beside
      `Failed:` (`:1604`) and a `Skipped issues:` block mirroring the existing
@@ -272,27 +289,39 @@ pre-upgrade files (see Non-Goals) and must **not** be wired into `skip_ids`.
 
 **D2 — Corrections: fix at the cause on both sides, and widen the denominator.**
 Resolve the open question rather than deferring it. Widen the denominator at
-`orchestrator.py:1647` from `completed_count + failed_count` to
+`orchestrator.py:1649` from `completed_count + failed_count` to
 `completed_count + failed_count + skipped_count`, keeping numerator and
 denominator filtered on the same predicate per the invariant in Expected
 Behavior #3 — and fix the numerator at its cause rather than arm by arm.
 
-**The worker-side cause is that `corrections=` is opt-in on twelve return sites.**
-An earlier draft of this decision diagnosed it as purely *positional* — "they all
-return before `worker_pool.py:549-551` reads `ready_parsed`" — and prescribed
-hoisting that read above the CLOSE check at `:491`. That diagnosis covers only
-five of the eleven defective returns. Six more (`:558,622,680,695,717,748`) sit
-*below* the read with `corrections` already in scope and simply never pass it, and
-five of those six route to `mark_failed` — they are in the denominator today. See
-Current Behavior for the full table. A hoist cannot fix them.
+**The worker-side cause is two-part, and a fix addressing either part alone is
+incomplete.** The *positional* part is real: CLOSE (`:493`), BLOCKED (`:509`), and
+NOT_READY (`:537`) return between the ready-issue parse at `:450` and the
+corrections read at `:550-551`, so they cannot see values that do not exist yet.
+The *opt-in* part is equally real and was missed by the second and third passes:
+six further returns (`:558,622,680,695,717,748`) sit *below* the read with
+`corrections` already in scope and simply never pass the kwarg — five of those six
+route to `mark_failed` and are in the denominator today. See Current Behavior for
+the full table.
 
-**So make it opt-out.** `_stamped_result` (`worker_pool.py:390-396`) is a closure
+**So do both. (a) Hoist, (b) make it opt-out.** The fourth pass replaced the hoist
+with default-injection; that was an over-correction and it silently drops the
+headline fix. Without the hoist, the BLOCKED return picks up the `[]` default —
+a corrected-then-blocked issue still never reaches the numerator, which is the
+defect this issue exists to fix, and the three `ready_parsed`-carry-through tests
+in the Wiring Phase fail. The two mechanisms cover **disjoint** sets of returns:
+
+*(a) Hoist* the two-line read from `:550-551` to immediately after
+`ready_parsed, ready_result = run_ready_issue_with_retry(...)` at `:450`, above the
+interrupted check at `:462`. `ready_parsed` is fully populated there, so all twelve
+`_stamped_result(...)` sites end up below the assignment and carry real values.
+
+*(b) Default-inject.* `_stamped_result` (`worker_pool.py:390-396`) is a closure
 every return path already funnels through, and its docstring states this exact
 principle for `base_sha`: *"Every return path inside this method uses it — a
 failed worker's base state is as worth recording as a successful one."*
 Corrections have the same property. Declare the two locals above the `try`,
-`setdefault` them inside `_stamped_result`, and leave the assignment at
-`:549-551`:
+`setdefault` them inside the closure:
 
 ```python
 was_corrected: bool = False
@@ -300,24 +329,40 @@ corrections: list[str] = []
 
 def _stamped_result(**kwargs: Any) -> WorkerResult:
     kwargs.setdefault("was_corrected", was_corrected)
-    kwargs.setdefault("corrections", corrections)
+    kwargs.setdefault("corrections", list(corrections))
     return WorkerResult(base_sha=base_sha, base_dirty=base_dirty, **kwargs)
 ```
 
-One edit, twelve sites covered, no hoist, and a thirteenth return added later
-cannot regress it. This is what makes the Decision Rule "do not fix this arm by
-arm" actually achievable.
+With the hoist in place, (b) is **not** redundant belt-and-braces. The exception
+handler at `:748` is reachable from a failure *before* `:450` — worktree creation,
+branch setup, the ready-issue invocation itself — and there a hoisted-but-
+undeclared `corrections` raises `NameError` inside the closure, converting a
+recoverable worker failure into a crash. The declaration is what makes the hoist
+safe. It also means a thirteenth return added later cannot regress this, which is
+what makes the Decision Rule "do not fix this arm by arm" achievable. `list(...)`
+so the twelve results do not alias one shared list.
 
-**On the orchestrator side, move the write but keep its guard.**
-`state.corrections` is written at one point only (`:1135-1137`), nested inside
+**On the orchestrator side, move the write, keep its guard, and keep its lock.**
+`state.corrections` is written at one point only (`:1133-1135`), nested inside
 `elif result.success:` → `if result.was_corrected:`; move it beside the timing
-write at `:1242-1246`, below the entire dispatch chain. **Retain
+write at `:1242-1245`, below the entire dispatch chain. **Retain
 `if result.corrections:`.** The numerator is `total_corrected =
-len(corrections_snapshot)` (`:1646`) — it counts *keys*, not corrections — so a
+len(corrections_snapshot)` (`:1648`) — it counts *keys*, not corrections — so a
 genuinely unconditional `state.corrections[id] = result.corrections` writes an
 empty list for every issue and pins the reported rate at 100% on every run. The
 correct reading of "unconditional" here is *positional*: outside the if/elif
-chain, still guarded on a non-empty list.
+chain, still guarded on a non-empty list. **Keep it under `self._state_lock`** —
+the existing write holds it (`:1134`) and the timing write has its own
+`with self._state_lock:` block, so put the corrections write *inside* that block
+rather than after it; `_on_worker_complete` runs on worker threads.
+
+**Move the corrections logging with the write.** The
+`if result.was_corrected:` announcement and the per-correction `logger.info` loop
+(`:1128-1132`) are nested in the same `elif result.success:` arm. Leaving them
+there while the state write moves out means a corrected-then-blocked or
+corrected-then-failed issue enters the numerator with no log line on any surface —
+one outcome, two contradictory presentations, which is precisely the shape of the
+defect this issue reports.
 
 **Why moving it below the chain is safe, and why per-arm is not.** Once the
 denominator is `completed + failed + skipped`, every result that reaches `:1242`
@@ -428,9 +473,9 @@ untouched.
 _Added by `/ll:refine-issue` — 2026-08-18 — based on codebase analysis:_
 
 **Files to Modify**
-- `scripts/little_loops/parallel/orchestrator.py` — `ParallelOrchestrator._on_worker_complete` (1071-1263): queue-counter dispatch (1096-1232, terminal `else` -> `mark_failed` at 1229-1232) and orchestration-record classification (1248-1263, `if result.was_blocked: orchestration_status = "skipped"`). Correction-rate calculation at 1646-1654.
+- `scripts/little_loops/parallel/orchestrator.py` — `ParallelOrchestrator._on_worker_complete` (1071-1263): queue-counter dispatch (1096-1232, terminal `else` -> `mark_failed` at 1229-1232) and orchestration-record classification (1248-1263, `if result.was_blocked: orchestration_status = "skipped"`). Correction-rate calculation at 1647-1653 (numerator `total_corrected` at 1648, denominator at 1649); the arm-local `state.corrections` write at 1133-1135 with its `logger.info` loop at 1128-1132.
 - `scripts/little_loops/parallel/priority_queue.py` — `IssuePriorityQueue` (22-233). Has `_completed`/`_failed` sets, `mark_completed`/`mark_failed` (110-128), `completed_count`/`failed_count` properties (166-176), `completed_ids`/`failed_ids` properties (184-194), `load_completed`/`load_failed` (196-212). No skip bucket in any form (`_skipped`, `mark_skipped`, `skipped_count`, `skipped_ids`, `load_skipped` — none exist).
-- `scripts/little_loops/parallel/worker_pool.py` — BLOCKED return (507-520, `was_blocked=True`, `success=False`, no `corrections=` passed); CLOSE return (491-505, `success=True`, `should_close=True`, no `corrections=`); NOT_READY return (522-547, no `corrections=`); success return (731-745, the only return path that populates `corrections`). The `was_corrected`/`corrections` reads live at `:549-551`. **Superseded in part by the fourth review pass:** the reads being below CLOSE/BLOCKED/NOT_READY is only half the cause — six further returns (`:558,622,680,695,717,748`) sit *below* the reads and omit `corrections=` anyway, so D2 fixes it by default-injection through the `_stamped_result` closure (`:390-396`), not by hoisting.
+- `scripts/little_loops/parallel/worker_pool.py` — BLOCKED return (507-520, `was_blocked=True`, `success=False`, no `corrections=` passed); CLOSE return (491-505, `success=True`, `should_close=True`, no `corrections=`); NOT_READY return (522-547, no `corrections=`); success return (731-745, the only return path that populates `corrections`). The `was_corrected`/`corrections` reads live at `:550-551`, and `ready_parsed` itself is assigned at `:450`. **Superseded in part by the fourth and fifth review passes:** the reads being below CLOSE/BLOCKED/NOT_READY is only half the cause — six further returns (`:558,622,680,695,717,748`) sit *below* the reads and omit `corrections=` anyway — so D2 fixes it with **both** a hoist of `:550-551` to `:450` *and* default-injection through the `_stamped_result` closure (`:390-396`). The fourth pass dropped the hoist; that leaves CLOSE/BLOCKED/NOT_READY on the `[]` default and does not fix this issue's headline defect.
 
 _Added by `/ll:refine-issue` — 2026-08-19 — based on codebase analysis:_
 
@@ -448,7 +493,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/little_loops/parallel/orchestrator.py` `_load_state`/`_save_state` (`:709-765`) — **per D1, no `load_skipped()` is added.** Note `_load_state` is called unconditionally from the constructor (`:235`), gated only on `clean_start` — there is **no `--resume` flag**, so anything persisted-and-reloaded here suppresses issues on *every* later run, not just an explicit resume. That is the fact that reverses D1. If `_save_state` (`:745-752`) grows a `state.skipped_issues = {...}` block mirroring its `failed_issues` build, it is observability only and must have no reader in `_scan_issues` or the queue. The `_load_state` resume log line (`:727-731`, `"N completed, N failed"`) needs a third clause if and only if the field is persisted.
 - `scripts/little_loops/parallel/priority_queue.py` `requeue` (`:130-149`) — discards from `_in_progress` and `_failed`; needs a `_skipped` discard too, or a requeued issue is permanently stuck in the skip set.
 - `scripts/little_loops/parallel/priority_queue.py` `add` (`:60-66`) — the `_completed`/`_failed` re-add guard; `_skipped` **does not** join it, per **D1**.
-- `scripts/little_loops/parallel/orchestrator.py` `_maybe_report_status` (`:820-884`, counters read at `:842-844`) — the 5-second live progress line, emitting `Failed: {n}` from `queue.failed_count` at `:849-850`. Distinct edit site from `_report_results`, and previously missing from this map entirely: without a `Skipped: {n}` part, a blocked issue disappears from live progress once it stops incrementing `failed_count`.
+- `scripts/little_loops/parallel/orchestrator.py` `_maybe_report_status` (`:821-884`, counters read at `:843-844`) — the 5-second live progress line, emitting `Failed: {n}` from `queue.failed_count` at `:849-850`. Distinct edit site from `_report_results`, and previously missing from this map entirely: without a `Skipped: {n}` part, a blocked issue disappears from live progress once it stops incrementing `failed_count`.
 - `scripts/little_loops/parallel/orchestrator.py` `_maybe_complete_epic` (`:1355-1450`, gate at `:1426`) — `failed_here = epic_child_ids & (set(self.queue.failed_ids) | set(self.state.failed_issues))` reads `failed_ids` directly, so a BLOCKED child moving out of `failed_ids` no longer trips it. **Low risk in practice**: the `all_done` check at `:1417-1420` requires `done_count == total`, and a ready-issue-BLOCKED child is still `open` on disk, so the function returns early well before `failed_here` is evaluated. Union the new skip-id set in as a defensive one-liner for consistency with the docstring at `:1364-1370` ("Any child failed/blocked → the epic branch is held open"), but this is not a behavioral fork requiring its own design decision.
 - `scripts/little_loops/parallel/orchestrator.py:956,959` — gates `_cleanup_state()` and the process exit code purely on `self.queue.failed_count == 0`. **Unchanged by this fix** (see **D3**), but its behavior shifts: once BLOCKED issues stop incrementing `failed_count`, a run containing only BLOCKED issues newly exits `0` and has its state file cleaned up. Both are the desired outcome under D1 — the cleanup is precisely what makes a blocked issue eligible again next run. No existing test pins the old exit-code-1-on-blocked-only behavior, so this needs new coverage despite being a zero-line change.
 - `scripts/little_loops/sprint.py:103,115,129` — `SprintState.skipped_blocked_issues` is a **third**, independently-named precedent for "blocked, not failed" state (alongside `ProcessingState.skipped_issues` and the planned `IssuePriorityQueue` skip bucket). The naming choice for the new parallel-side field should be made consciously against both existing precedents, not just `ProcessingState`.
@@ -476,11 +521,13 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ## Program Design
 
-_Verified against the tree during the 2026-08-19 pre-implementation reviews (four
+_Verified against the tree during the 2026-08-19 pre-implementation reviews (five
 passes). All three decisions (D1, D2, D3) are now **resolved** in the Proposed
-Solution — D1 and D3 were reversed by the third pass; D2's mechanism was replaced
-by the fourth (hoist → `_stamped_result` default-injection) and its "unconditional
-write" corrected to keep the non-empty guard. Nothing remains open; implementation
+Solution — D1 and D3 were reversed by the third pass; D2's mechanism was corrected
+twice: the fourth pass added `_stamped_result` default-injection and kept the
+non-empty guard on the state write, and the fifth restored the hoist the fourth
+had dropped (both are required, they cover disjoint return sets) plus the
+`_state_lock` and corrections-logging details. Nothing remains open; implementation
 can proceed directly._
 
 ### Types
@@ -489,19 +536,20 @@ can proceed directly._
 
 ### Signatures
 - `ParallelOrchestrator._on_worker_complete(self, result: WorkerResult) -> None` — `scripts/little_loops/parallel/orchestrator.py:1071` — contains both halves of the contradiction: the queue-counter dispatch (`1096-1232`, terminal `else` → `mark_failed` at `1229-1232`) and the orchestration-record classification (`1250-1252`, `if result.was_blocked` → `"skipped"`).
-- `_stamped_result(**kwargs: Any) -> WorkerResult` — `scripts/little_loops/parallel/worker_pool.py:390-396` — a per-worker closure that all twelve of `_run_issue`'s returns already funnel through, existing precisely to make `base_sha`/`base_dirty` opt-out rather than opt-in: *"Every return path inside this method uses it — a failed worker's base state is as worth recording as a successful one."* D2 extends the same mechanism to `was_corrected`/`corrections`.
+- `_stamped_result(**kwargs: Any) -> WorkerResult` — `scripts/little_loops/parallel/worker_pool.py:390-396` — a per-worker closure that all twelve of `_run_issue`'s returns already funnel through, existing precisely to make `base_sha`/`base_dirty` opt-out rather than opt-in: *"Every return path inside this method uses it — a failed worker's base state is as worth recording as a successful one."* D2 extends the same mechanism to `was_corrected`/`corrections` — as the *second* of its two worker-side edits, paired with hoisting the `:550-551` read to `:450` so the injected values are real rather than empty for CLOSE/BLOCKED/NOT_READY.
 - `IssuePriorityQueue.mark_failed(self, issue_id: str) -> None` — `scripts/little_loops/parallel/priority_queue.py:120` — where BLOCKED results wrongly land today.
 - `StateManager.mark_skipped(issue_id: str, reason: str) -> None` — `scripts/little_loops/state.py:221-232` — the sequential path's reference implementation, for shape only; it operates on `ProcessingState`, not the queue.
 
 ### Call Path
-`ll-parallel` worker finishes -> `ParallelOrchestrator._on_worker_complete(result)` (`orchestrator.py:1071`) -> dispatch falls past `should_close` (`:1096`) and `success` (`:1124`) to the terminal `else` (`:1229`) -> `self.queue.mark_failed(result.issue_id)` (`:1232`) -> `queue.failed_count` (`priority_queue.py:173`) -> the run summary's failed tally and the correction-rate denominator at `orchestrator.py:1647`.
+`ll-parallel` worker finishes -> `ParallelOrchestrator._on_worker_complete(result)` (`orchestrator.py:1071`) -> dispatch falls past `should_close` (`:1096`) and `success` (`:1124`) to the terminal `else` (`:1229`) -> `self.queue.mark_failed(result.issue_id)` (`:1232`) -> `queue.failed_count` (`priority_queue.py:173`) -> the run summary's failed tally and the correction-rate denominator at `orchestrator.py:1649`.
 
 The same `result` then reaches `:1249`, where `if result.was_blocked` sets `orchestration_status = "skipped"` for `_record_orchestration_result()` — the divergence this issue reports.
 
 ### Decision Rules
 - **Fix the queue half and the corrections half together, or neither.** They move the denominator and the numerator of the same rate in opposite directions; changing one alone can push it above 100% or produce `N/0`. Inherited from BUG-3252 Part 4's symmetry invariant. Resolved as decision **D2**: attach + store + widen the denominator to `completed + failed + skipped`.
-- **The corrections fix has two sides, and neither is a hoist.** `worker_pool.py` must attach it (`setdefault` inside the `_stamped_result` closure, `:390-396`) and the orchestrator must store it (one write below the dispatch chain, replacing `:1135-1137`). Changing only `worker_pool.py` is a no-op, because `state.corrections` is written solely under `elif result.success:` (`orchestrator.py:1124,1135-1137`). **Do not fix this arm by arm, and do not fix it by hoisting the `:549-551` read** — the defect spans twelve return sites on *both* sides of that read (see Current Behavior's table), and the `should_close` arm itself forks to `mark_failed` at `:1116-1120`, so even a careful per-arm implementation drops corrections for closes that fail to close.
-- **An empty corrections list is not a correction.** The numerator is `total_corrected = len(corrections_snapshot)` (`orchestrator.py:1646`), which counts *keys*. Any write of `state.corrections[id]` must stay guarded on a non-empty list, or the reported rate is 100% on every run. "Unconditional write" in D2 means *unconditional in position* (outside the if/elif chain), never unguarded.
+- **The corrections fix has two sides, and the worker side needs two edits.** `worker_pool.py` must attach it — **both** hoisting the `:550-551` read to just after the parse at `:450` (the only thing that gives the CLOSE/BLOCKED/NOT_READY returns real values) **and** `setdefault`-ing inside the `_stamped_result` closure (`:390-396`) with the locals declared above the `try` (which covers the six below-read returns and keeps the pre-`:450` exception path from raising `NameError`). The orchestrator must store it (one write below the dispatch chain, replacing `:1133-1135`). Changing only `worker_pool.py` is a no-op, because `state.corrections` is written solely under `elif result.success:` (`orchestrator.py:1124,1133-1135`). **Do not fix this arm by arm**, and do not treat either worker-side edit as sufficient alone — the defect spans twelve return sites on *both* sides of that read (see Current Behavior's table), and the `should_close` arm itself forks to `mark_failed` at `:1116-1120`, so even a careful per-arm implementation drops corrections for closes that fail to close.
+- **An empty corrections list is not a correction.** The numerator is `total_corrected = len(corrections_snapshot)` (`orchestrator.py:1648`), which counts *keys*. Any write of `state.corrections[id]` must stay guarded on a non-empty list, or the reported rate is 100% on every run. "Unconditional write" in D2 means *unconditional in position* (outside the if/elif chain), never unguarded — and never outside `self._state_lock`.
+- **Corrections logging follows the corrections write.** The `was_corrected` announcement and per-correction `logger.info` loop (`orchestrator.py:1128-1132`) live inside the `elif result.success:` arm. Moving the state write out without them re-creates this issue's own defect: a single outcome presented two contradictory ways, here as "counted in the rate, announced nowhere".
 - **Reuse `result.was_blocked`, do not introduce a new signal.** The field already exists, is already set by `worker_pool.py:513`, and is already consulted forty lines below the dispatch that ignores it.
 - **The sequential path is the reference for routing only.** `issue_manager.py:2132-2135` establishes the intended `was_blocked` → skip routing; its `mark_skipped`/`skipped_issues` mechanism operates on `ProcessingState` and cannot be lifted into `IssuePriorityQueue` unchanged. Its **corrections/denominator handling must not be copied** — see D2.
 - **Only `was_blocked` is in scope** *for routing*. NOT_READY stays a failure; `was_gated` has no parallel-path equivalent. See Non-Goals. The corrections half of D2 is deliberately wider — it also covers `should_close` and NOT_READY, which are routing non-goals but the same corrections defect.
@@ -528,11 +576,11 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - **Do NOT** add `load_skipped(...)` to `scripts/little_loops/parallel/orchestrator.py` `_load_state` (`:724-725`), per **D1**.
 - Update `scripts/little_loops/parallel/priority_queue.py` `requeue` (`:130-149`) — add a `_skipped` discard alongside the existing `_failed` discard.
 - **Do NOT** add `_skipped` to `scripts/little_loops/parallel/priority_queue.py` `add`'s re-add guard (`:60-66`), per **D1**. A previously-skipped id is re-addable by design.
-- Update `scripts/little_loops/parallel/worker_pool.py` — declare `was_corrected = False` / `corrections: list[str] = []` above the `try` (`:398`) and `setdefault` both inside the `_stamped_result` closure (`:390-396`), leaving the assignment where it already is at `:549-551`. **Do not hoist the read** and do not add `corrections=` to individual returns: the defect spans all twelve `_stamped_result(...)` sites (`:462,477,493,509,537,558,622,680,695,717,731,748`), six of them *below* the read, and only default-injection covers them all — see **D2**.
-- Update `scripts/little_loops/parallel/orchestrator.py` `_on_worker_complete` — delete the arm-local `state.corrections` write at `:1135-1137` and replace it with a single write beside the timing write at `:1242-1246`, below the whole dispatch chain (decision **D2**). **Carry the `if result.corrections:` guard with it** — an unguarded write makes the rate 100% always. Keep the per-correction `logger.info` loop wherever it reads best; only the state write must move.
-- Update `scripts/little_loops/parallel/orchestrator.py:1647` — widen the correction-rate denominator to `completed_count + failed_count + skipped_count`.
+- Update `scripts/little_loops/parallel/worker_pool.py` — **two edits** (see **D2**): (a) **hoist** the `was_corrected`/`corrections` read from `:550-551` to immediately after the parse at `:450`, above the interrupted check at `:462`; (b) declare `was_corrected = False` / `corrections: list[str] = []` above the `try` (`:398`) and `setdefault` both inside the `_stamped_result` closure (`:390-396`), passing `list(corrections)`. Do not add `corrections=` to individual returns: the defect spans all twelve `_stamped_result(...)` sites (`:462,477,493,509,537,558,622,680,695,717,731,748`). Neither edit alone suffices — without (a) the CLOSE/BLOCKED/NOT_READY returns still get `[]`, which is the headline defect; without (b) the exception handler at `:748` raises `NameError` when the failure precedes `:450`.
+- Update `scripts/little_loops/parallel/orchestrator.py` `_on_worker_complete` — delete the arm-local `state.corrections` write at `:1133-1135` and replace it with a single write *inside* the existing `with self._state_lock:` block that holds the timing write at `:1242-1245`, below the whole dispatch chain (decision **D2**). **Carry the `if result.corrections:` guard with it** — an unguarded write makes the rate 100% always — and **move the `if result.was_corrected:` announcement and the per-correction `logger.info` loop (`:1128-1132`) with it**, or corrected-then-blocked/failed issues enter the numerator with no log line anywhere.
+- Update `scripts/little_loops/parallel/orchestrator.py:1649` — widen the correction-rate denominator to `completed_count + failed_count + skipped_count`.
 - Update `scripts/little_loops/parallel/orchestrator.py` `_report_results` (`:1585-1706`) — render a `Skipped: {count}` line beside `Failed:` (`:1604`) and a `Skipped issues:` block mirroring the existing `Failed issues:` block (`:1618-1622`) and `issue_manager.py:1981-1984`. Note the corrections-rate block (`:1645-1660`) lives in this same function, so the D2 denominator change and the summary rendering are one edit site, not two.
-- Update `scripts/little_loops/parallel/orchestrator.py` `_maybe_report_status` (`:820-884`) — add a `Skipped: {n}` part beside the `Failed: {n}` part built at `:842-850` from `queue.failed_count`. This is the **live 5-second progress line**, a separate surface from `_report_results` and previously absent from this list; without it a blocked issue silently disappears from in-run progress.
+- Update `scripts/little_loops/parallel/orchestrator.py` `_maybe_report_status` (`:821-884`) — add a `Skipped: {n}` part beside the `Failed: {n}` part built at `:842-850` from `queue.failed_count`. This is the **live 5-second progress line**, a separate surface from `_report_results` and previously absent from this list; without it a blocked issue silently disappears from in-run progress.
 - **Do NOT** change `scripts/little_loops/parallel/orchestrator.py:956,959`, per **D3** — cleanup and exit code both stay gated on `failed_count == 0`. The resulting exit-`0`-and-clean-state on a blocked-only run is the intended outcome and is what keeps blocked issues retryable.
 - **Do NOT** union `state.skipped_issues` into `_scan_issues`'s `skip_ids` (`:968`), per **D1**.
 - **Conditional:** if the optional `OrchestratorState.skipped_issues` field is added, `from_dict` (`parallel/types.py:281+`) must read it with `.get(...)` so pre-upgrade state files still load.
@@ -545,7 +593,8 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - Add `scripts/tests/test_orchestrator.py` coverage pinning **D1**'s resume semantics end-to-end: after a run that skips an issue, a fresh orchestrator over the same repo **does** queue that issue again. This is the behavior the earlier draft would have inverted, and it is currently unpinned in either direction.
 - Add `scripts/tests/test_orchestrator.py` coverage for **D3**: a blocked-only run exits `0` **and** removes its state file. Both halves need asserting; today neither is pinned, and the pairing is what keeps D1's retry reachable.
 - Add `scripts/tests/test_worker_pool.py` coverage that the CLOSE-verdict return (`:491-505`) **and** the NOT_READY return (`:522-547`) carry `corrections` through from `ready_parsed`, mirroring the BLOCKED-return test — and `scripts/tests/test_orchestrator.py` coverage that a corrected-then-closed and a corrected-then-not-ready issue both reach `state.corrections`. Include the `close_issue()`-returns-false sub-case (`orchestrator.py:1116-1120`), which a per-arm implementation would drop.
-- Add `scripts/tests/test_worker_pool.py` coverage for **at least one return below the `:549-551` read** — `work_verified` false (`:695`) is the cheapest — asserting `corrections` is carried through. These are the returns a hoist-only fix silently misses, and they are the common real-world case (corrected during ready-issue, then failed verification). Ideally assert the invariant structurally instead of per-site: a test that every `_stamped_result` call in `_run_issue` yields a `WorkerResult` whose `corrections` matches the locals at that point, or at minimum a defaults test proving `_stamped_result()` with no corrections kwarg still carries them.
+- Add `scripts/tests/test_worker_pool.py` coverage for **at least one return below the `:550-551` read** — `work_verified` false (`:695`) is the cheapest — asserting `corrections` is carried through. These are the returns a hoist-only fix silently misses, and they are the common real-world case (corrected during ready-issue, then failed verification). Ideally assert the invariant structurally instead of per-site: a test that every `_stamped_result` call in `_run_issue` yields a `WorkerResult` whose `corrections` matches the locals at that point, or at minimum a defaults test proving `_stamped_result()` with no corrections kwarg still carries them.
+- Add `scripts/tests/test_worker_pool.py` coverage for the **pre-`:450` failure path**: an exception (or early exit) raised before the ready-issue parse must still produce a `WorkerResult`, not a `NameError` from the closure reading an unbound `corrections`. This is the test that pins why the declaration above the `try` is required *in addition to* the hoist; without it, a later "the hoist makes the defaults redundant" cleanup re-introduces a crash on the worktree-creation failure path.
 - Add `scripts/tests/test_orchestrator.py` coverage that an issue with **no** corrections does **not** get a `state.corrections` entry, pinning the non-empty guard — without it the moved write silently reports a 100% correction rate and every existing rate assertion still passes.
 - Add `scripts/tests/test_orchestrator.py` coverage that the live status line (`_maybe_report_status`) reports a skipped issue rather than omitting it.
 - **Conditional (only if the optional persisted field is added):** back-compat coverage that `OrchestratorState.from_dict` loads a state dict with no skip key without raising, plus a `_save_state` → `_load_state` round-trip using a real `IssuePriorityQueue` rather than a `MagicMock` — a mocked queue cannot catch the "field persisted empty" failure mode. Also assert the field does **not** suppress re-queueing, guarding the D1 boundary.
@@ -587,12 +636,14 @@ _These touchpoints were identified by wiring analysis and must be included in th
 **Open** | Created: 2026-08-18 | Priority: P3
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-19T17:51:31 - `6b3a312e-0fdb-41dc-856b-e3f75318411c.jsonl`
+- fifth pre-implementation review - 2026-08-19 - re-verified every load-bearing claim against the tree (all held: twelve `_stamped_result` sites at the cited lines; `_record_orchestration_result` reads neither `corrections` nor `was_corrected`, so default-injection has no side effect on the persisted record; no test in `test_orchestrator.py`/`test_worker_pool.py` constructs `was_blocked=True`; eleven `MockQueue` classes in `test_sprint_integration.py`; `cli/sprint/run.py:821-822` still the only external consumer of the queue id lists). **One blocking correction plus three smaller ones.** (1) **D2's "no hoist is needed" would have shipped the issue without its headline fix.** `ready_parsed` is assigned at `worker_pool.py:450`; the corrections read is at `:550-551`; CLOSE (`:493`), BLOCKED (`:509`), and NOT_READY (`:537`) return *between* them. Under default-injection alone those three pick up the `[]` default, so a corrected-then-blocked issue still never reaches the numerator — the defect this issue exists to fix — and the three `ready_parsed`-carry-through tests in the Wiring Phase would fail. The fourth pass was right that a hoist alone misses the six below-read returns, but over-corrected into dropping it. Restored as **both** edits, covering disjoint sets: hoist `:550-551` → `:450` for the five above-read returns, `setdefault` in the closure for the six below-read ones. The declaration above the `try` remains independently necessary: the exception handler at `:748` is reachable from failures *before* `:450` (worktree creation), where a hoisted-but-undeclared `corrections` raises `NameError` inside the closure — added a test for exactly that, so a future "the hoist makes the defaults redundant" cleanup cannot re-introduce the crash. (2) **The moved `state.corrections` write must stay under `self._state_lock`** — the current write holds it (`:1134`) and `_on_worker_complete` runs on worker threads; merge it into the timing write's existing `with` block rather than placing it after. (3) **The corrections logging must move with the write.** `if result.was_corrected:` and the per-correction `logger.info` loop (`:1128-1132`) are inside `elif result.success:`; leaving them there puts corrected-then-blocked/failed issues in the numerator with no log line anywhere — this issue's own defect one layer down. (4) Corrected citation drift the fourth pass introduced or missed: `state.corrections` write is `:1133-1135` (not `:1135-1137` — the fourth pass moved it the wrong way), numerator `:1648` / denominator `:1649` (not `:1646`/`:1647`), corrections read `:550-551` (not `:549-551`), `_maybe_report_status` at `:821` with counters at `:843-844`. Nit folded in: pass `list(corrections)` so the twelve results do not alias one shared list.
 - `/ll:confidence-check` - 2026-08-19T17:39:29 - `0ef4b20b-7464-4211-a563-1f2c1146071b.jsonl`
 - fourth pre-implementation review - 2026-08-19 - re-verified every claim against the tree (all held). Four changes, one of which prevented a new defect being shipped. (1) **D2's "single unconditional write" would have broken the correction rate.** The numerator is `total_corrected = len(corrections_snapshot)` (`orchestrator.py:1646`) — it counts *keys* — so dropping the existing `if result.corrections:` guard at `:1135-1137` writes `[]` for every result and pins the reported rate at 100% on every run. "Unconditional" now explicitly means *positional*; the guard stays. (2) **The corrections defect is roughly twice the size D2 described.** Six returns (`worker_pool.py:558,622,680,695,717,748`) sit *below* the `:549-551` read with `corrections` already in scope and still omit the kwarg; five of the six route to `mark_failed` and are in the denominator today. Corrected-then-failed-verification is a far more common run than corrected-then-blocked. A hoist above `:491` — the third pass's prescription — fixes none of them. (3) **Replaced the hoist with default-injection through `_stamped_result`** (`:390-396`), the closure every return already funnels through and whose docstring states this exact principle for `base_sha`. Declare the locals above the `try`, `setdefault` in the closure, leave the assignment at `:549-551`: one edit, all twelve sites, and a thirteenth return added later cannot regress it. This is what makes the standing "do not fix this arm by arm" rule achievable. (4) **Corrected the Non-Goals' pre-upgrade-state rationale**, which claimed the misclassification "self-clears as soon as the state file is cleaned." It never clears: `load_failed` (`:725`) keeps `failed_count > 0`, which keeps `_cleanup_state()` (`:956`) from firing, while `_save_state` re-persists and `_scan_issues` re-filters — the same self-sustaining loop D1 was reversed over, arriving via the pre-existing failed bucket. Accepted, but recorded accurately, and filed as a follow-up (it affects genuine failures too). Minor: decided the new blocked arm sets `_worker_errors` like every other arm; noted `_maybe_report_status` emits at `logger.debug` (`:884`) and truthy-guards its `Failed:` part (`:849`), so it is a lower-visibility surface than the issue's Impact section implies; corrected drifted citations (`:1133-1135`→`:1135-1137`, `:1649`→`:1647`, `:1249-1251`→`:1250-1252`). Confirmed unchanged: `cli/sprint/run.py:821-822` is still the only external consumer of the queue's id lists.
 - `/ll:confidence-check` - 2026-08-19T16:45:01 - `0c784620-0a71-45d7-8ef9-9adabdcddd95.jsonl`
 - `/ll:decide-issue` - 2026-08-19T16:41:48 - `0c784620-0a71-45d7-8ef9-9adabdcddd95.jsonl`
 - `/ll:refine-issue` - 2026-08-19T16:40:46 - `0c784620-0a71-45d7-8ef9-9adabdcddd95.jsonl`
-- third pre-implementation review - 2026-08-19 - re-verified all prior claims against the tree (all held). **Reversed D1 and D3.** (1) `_load_state` is called unconditionally from the constructor (`orchestrator.py:235`), gated only on `clean_start` — there is no `--resume` flag — so old-D1's three suppression paths combined with old-D3's `skipped_count` cleanup gate would have filtered blocked issues out of *every* future run, permanently, in a self-sustaining loop (state kept → issues skipped → `load_skipped` → state kept). Old-D1 also did not preserve today's behavior: a blocked-only run today exits `0`, deletes its state, and *does* retry. Resolved D1 as "no suppression at all — the skip bucket is a within-run counter", with `_interrupted_issues` (`:1085-1092`) as the structural precedent; D3 dissolves into a no-op. (2) Widened D2's corrections fix from per-arm to positional: NOT_READY (`worker_pool.py:522-547`) has the identical defect as CLOSE for the identical reason (returns before `:549-551`) and is likewise already in the denominator via `mark_failed` — fixed by hoisting the reads above `:491` and replacing the arm-local `state.corrections` write at `:1133-1135` with one unconditional write at `:1242-1246`, which also covers the `close_issue()`-returns-false fork at `:1116-1120`. (3) Added `_maybe_report_status` (`:820-884`, counters at `:842-850`) — the live 5-second progress line, a second `Failed:` surface absent from every prior pass. (4) Minor: the `_load_state` resume log (`:727-731`) needs a third clause if a skip field is persisted. Also confirmed non-issues: loop termination is `queue.empty()`/`active_count`-based (`:914-916`), not counter-based, so no hang risk; the parallel queue has no dependency gating.
+- third pre-implementation review - 2026-08-19 - re-verified all prior claims against the tree (all held). **Reversed D1 and D3.** (1) `_load_state` is called unconditionally from the constructor (`orchestrator.py:235`), gated only on `clean_start` — there is no `--resume` flag — so old-D1's three suppression paths combined with old-D3's `skipped_count` cleanup gate would have filtered blocked issues out of *every* future run, permanently, in a self-sustaining loop (state kept → issues skipped → `load_skipped` → state kept). Old-D1 also did not preserve today's behavior: a blocked-only run today exits `0`, deletes its state, and *does* retry. Resolved D1 as "no suppression at all — the skip bucket is a within-run counter", with `_interrupted_issues` (`:1085-1092`) as the structural precedent; D3 dissolves into a no-op. (2) Widened D2's corrections fix from per-arm to positional: NOT_READY (`worker_pool.py:522-547`) has the identical defect as CLOSE for the identical reason (returns before `:549-551`) and is likewise already in the denominator via `mark_failed` — fixed by hoisting the reads above `:491` and replacing the arm-local `state.corrections` write at `:1133-1135` with one unconditional write at `:1242-1246`, which also covers the `close_issue()`-returns-false fork at `:1116-1120`. (3) Added `_maybe_report_status` (`:821-884`, counters at `:842-850`) — the live 5-second progress line, a second `Failed:` surface absent from every prior pass. (4) Minor: the `_load_state` resume log (`:727-731`) needs a third clause if a skip field is persisted. Also confirmed non-issues: loop termination is `queue.empty()`/`active_count`-based (`:914-916`), not counter-based, so no hang risk; the parallel queue has no dependency gating.
 - `/ll:confidence-check` - 2026-08-19T16:14:30 - `7236fc75-b7eb-4e7a-8230-e4a5ff490bc3.jsonl`
 - `/ll:decide-issue` - 2026-08-19T16:11:30 - `0e5a9808-01c3-4717-8181-00e110ebacbc.jsonl`
 - second pre-implementation review - 2026-08-19 - re-verified every prior claim against the tree (all held). Added five gaps: (1) `_scan_issues:968` as a third, previously-unnamed resume-suppression path, which makes D1-as-written unachievable on its own; (2) new decision **D3** — `_cleanup_state()`/exit code both gate on `failed_count == 0` (`:956,959`), so a blocked-only run deletes the very state D1's guard reads, recommending cleanup gate on both counters and exit code on `failed_count` alone; (3) the CLOSE-verdict return (`worker_pool.py:491-505`) drops `corrections` identically to BLOCKED but already sits in the denominator via `mark_completed` (`:1114`) — folded into D2; (4) the `cli/sprint/run.py` change removes an ENH-308 retry rather than merely re-bucketing, and needs `completed.add()` or it produces a third behavior via the trailing `else`; (5) `OrchestratorState.from_dict` reads keys explicitly, so the new field needs `.get()` for pre-upgrade state files. Settled the skip-bucket naming against all three precedents; corrected the `_report_results` citation to `:1585-1706`.
