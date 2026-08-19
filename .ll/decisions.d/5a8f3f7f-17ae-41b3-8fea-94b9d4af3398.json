@@ -1,0 +1,12 @@
+{
+  "id": "06ce01a1-c888-45d2-a0c8-1db6acbccdc7",
+  "type": "decision",
+  "timestamp": "2026-08-19T03:46:20Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Option C adds zero new FSM states/LLM calls and reuses code verify_issue already loads, containing cost per AC4; Option A requires a new VERDICT_JSON verdict shape and a new failure-resolution sub-loop. Option B alone can't satisfy AC2 since confidence_check's risk factors never contain code-level consequence reasoning, so it's additive to C, not a substitute.",
+  "rule": "Widen verify-issues' mandate (Option C) to cover proposal-vs-code consequences, plus route confidence_check's implementation_order_risk/spike_needed flags (Option B) as a low-cost addition; do not add a new adversarial FSM state (Option A)",
+  "scope": "issue",
+  "alternatives_rejected": "Option A (new adversarial FSM state modeled on go-no-go, with a new VERDICT_JSON verdict shape and a new resolve-decision-style failure path) \u2014 rejected outright due to added LLM-call cost against the AC4 baseline. Option B used as the sole fix (with no Option C) \u2014 rejected as insufficient on its own, since confidence_check's risk factors never contain code-level consequence reasoning; Option B itself is adopted, as an addition alongside Option C, not rejected.",
+  "issue": "ENH-3250"
+}
