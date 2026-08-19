@@ -13,6 +13,13 @@ relates_to:
 - ENH-3045
 - ENH-3000
 testable: true
+program_design_not_applicable: true
+confidence_score: 100
+outcome_confidence: 77
+score_complexity: 17
+score_test_coverage: 20
+score_ambiguity: 20
+score_change_surface: 20
 ---
 
 # ENH-3258: wire-issue maps callers-of hits as change targets without checking production-path reachability or existing injection seams
@@ -349,6 +356,7 @@ _Added by `/ll:refine-issue` — 2026-08-19 — based on codebase analysis:_
 | `.claude/CLAUDE.md` | § Development Preferences — skills over agents; this is a skill-doctrine change |
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-19T21:42:28 - `f937caf1-9ab2-43cc-9ff4-a31b61f43564.jsonl`
 - scope decision - 2026-08-19 - resolved Implementation Step 1: the new requirement lands as
   a wire-issue-local stricter rule, not an amendment to the shared safety rules, following the
   `/ll:verify-issues` carve-out precedent at `GRAPH_DISCOVERY_GUIDE.md:19-27`. Shared rule 2
