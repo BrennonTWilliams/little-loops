@@ -4006,12 +4006,16 @@ class WorkerResult:
     error: str | None = None
     stdout: str = ""
     stderr: str = ""
-    was_corrected: bool = False
+    was_corrected: bool = False  # populated on every return path from
+                                  # WorkerPool._process_issue, not only success
+                                  # (BUG-3254): defaults to False/[] on returns
+                                  # before the ready-issue parse, and carries the
+                                  # real value on every return after it
     corrections: list[str] = field(default_factory=list)
     should_close: bool = False
     close_reason: str | None = None
     close_status: str | None = None
-    was_blocked: bool = False
+    was_blocked: bool = False  # ready-issue verdict BLOCKED (open dependency)
     interrupted: bool = False
     epic_branch: str | None = None  # EPIC integration branch this worker forked
                                     # from / merges into (FEAT-2452); None for
@@ -4031,6 +4035,7 @@ added = queue.add_many(issues)
 queued_issue = queue.get(block=False)
 queue.mark_completed(issue_id)
 queue.mark_failed(issue_id)
+queue.mark_skipped(issue_id)
 ```
 
 #### Methods
@@ -4042,10 +4047,23 @@ queue.mark_failed(issue_id)
 | `get(block=True, timeout=None)` | Get next issue from queue |
 | `mark_completed(issue_id)` | Mark issue as completed |
 | `mark_failed(issue_id)` | Mark issue as failed |
+| `mark_skipped(issue_id)` | Mark issue as skipped, e.g. BLOCKED on an open dependency (BUG-3254) |
+| `requeue(issue_info, demote_priority=False)` | Requeue an issue; clears it from the failed and skipped buckets |
 | `qsize() -> int` | Count of issues currently in queue |
 | `in_progress_count() -> int` | Count of issues currently being processed |
 | `completed_count() -> int` | Count of completed issues |
 | `failed_count() -> int` | Count of failed issues |
+| `skipped_count() -> int` | Count of skipped issues |
+| `completed_ids() -> list[str]` | IDs of completed issues |
+| `failed_ids() -> list[str]` | IDs of failed issues |
+| `skipped_ids() -> list[str]` | IDs of skipped issues |
+| `load_completed(ids)` | Restore previously completed IDs (resume) |
+| `load_failed(ids)` | Restore previously failed IDs (resume); also blocks re-`add()` of those IDs |
+
+**No `load_skipped()`, and `add()` does not reject a previously-skipped id.**
+This asymmetry with `load_completed`/`load_failed` is deliberate (BUG-3254 D1):
+the skip bucket is a within-run counter, not resume-suppression state, so a
+BLOCKED issue is eligible for re-attempt on the very next run.
 
 ### Additional Types
 

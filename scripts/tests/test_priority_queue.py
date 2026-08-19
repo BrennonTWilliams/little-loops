@@ -448,6 +448,56 @@ class TestIssuePriorityQueueStateTransitions:
         queue.requeue(sample_issue)
         assert sample_issue.issue_id not in queue.failed_ids
 
+    def test_mark_skipped_removes_from_in_progress(
+        self, queue: IssuePriorityQueue, sample_issue: IssueInfo
+    ) -> None:
+        """Issue removed from in_progress set (BUG-3254)."""
+        queue.add(sample_issue)
+        queue.get()
+        queue.mark_skipped(sample_issue.issue_id)
+        assert queue.in_progress_count == 0
+
+    def test_mark_skipped_adds_to_skipped(
+        self, queue: IssuePriorityQueue, sample_issue: IssueInfo
+    ) -> None:
+        """Issue added to skipped set, not failed (BUG-3254)."""
+        queue.add(sample_issue)
+        queue.get()
+        queue.mark_skipped(sample_issue.issue_id)
+        assert sample_issue.issue_id in queue.skipped_ids
+        assert sample_issue.issue_id not in queue.failed_ids
+
+    def test_mark_skipped_increments_count(
+        self, queue: IssuePriorityQueue, sample_issue: IssueInfo
+    ) -> None:
+        """skipped_count increases, failed_count does not (BUG-3254)."""
+        queue.add(sample_issue)
+        queue.get()
+        queue.mark_skipped(sample_issue.issue_id)
+        assert queue.skipped_count == 1
+        assert queue.failed_count == 0
+
+    def test_requeue_clears_skipped(
+        self, queue: IssuePriorityQueue, sample_issue: IssueInfo
+    ) -> None:
+        """Requeued issue removed from skipped set, or it is stuck forever (BUG-3254)."""
+        queue.add(sample_issue)
+        queue.get()
+        queue.mark_skipped(sample_issue.issue_id)
+        assert sample_issue.issue_id in queue.skipped_ids
+        queue.requeue(sample_issue)
+        assert sample_issue.issue_id not in queue.skipped_ids
+
+    def test_add_accepts_previously_skipped_id(
+        self, queue: IssuePriorityQueue, sample_issue: IssueInfo
+    ) -> None:
+        """A skipped id is re-addable — the skip bucket carries no resume
+        suppression (BUG-3254 D1), unlike ``_completed``/``_failed``."""
+        queue.add(sample_issue)
+        queue.get()
+        queue.mark_skipped(sample_issue.issue_id)
+        assert queue.add(sample_issue) is True
+
 
 # =============================================================================
 # TestIssuePriorityQueueProperties

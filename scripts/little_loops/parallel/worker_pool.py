@@ -387,12 +387,20 @@ class WorkerPool:
         # on the same (run_id, issue_id) row and COALESCEs the stamp through.
         self._record_dequeue_stamp(issue.issue_id, base_sha, base_dirty)
 
+        was_corrected: bool = False
+        corrections: list[str] = []
+
         def _stamped_result(**kwargs: Any) -> WorkerResult:
             """Build a WorkerResult carrying this worker's base-state stamp.
 
             Every return path inside this method uses it — a failed worker's
-            base state is as worth recording as a successful one.
+            base state is as worth recording as a successful one. Corrections
+            are opt-out rather than opt-in for the same reason: a blocked or
+            failed worker's corrections are as worth recording as a
+            successful one's.
             """
+            kwargs.setdefault("was_corrected", was_corrected)
+            kwargs.setdefault("corrections", list(corrections))
             return WorkerResult(base_sha=base_sha, base_dirty=base_dirty, **kwargs)
 
         try:
@@ -455,6 +463,14 @@ class WorkerPool:
                 retries=self.br_config.automation.ready_issue_unknown_retries,
                 log=self.logger.warning,
             )
+
+            # Track if issue was corrected (corrections stay in worktree).
+            # Hoisted here (rather than after the CLOSE/BLOCKED/NOT_READY
+            # verdict checks below) so every return path below this point,
+            # not just the success path, carries the real values via the
+            # _stamped_result closure's opt-out defaults.
+            was_corrected = ready_parsed.get("was_corrected", False)
+            corrections = ready_parsed.get("corrections", [])
 
             # Check if worker was terminated during shutdown (ENH-036)
             if issue.issue_id in self._terminated_during_shutdown:
@@ -545,10 +561,6 @@ class WorkerPool:
                     stdout=ready_result.stdout,
                     stderr=ready_result.stderr,
                 )
-
-            # Track if issue was corrected (corrections stay in worktree)
-            was_corrected = ready_parsed.get("was_corrected", False)
-            corrections = ready_parsed.get("corrections", [])
 
             # Learning test gate: per-worktree proof-first-task wrapper (ENH-2219)
             self.set_worker_stage(issue.issue_id, WorkerStage.PROVING)
@@ -740,8 +752,6 @@ class WorkerPool:
                 error=None,
                 stdout=manage_result.stdout,
                 stderr=manage_result.stderr,
-                was_corrected=was_corrected,
-                corrections=corrections,
             )
 
         except Exception as e:

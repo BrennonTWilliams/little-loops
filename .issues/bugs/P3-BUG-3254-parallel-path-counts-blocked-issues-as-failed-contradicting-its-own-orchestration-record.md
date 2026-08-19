@@ -4,11 +4,12 @@ type: BUG
 title: ll-parallel counts BLOCKED issues as failed in the queue while recording them
   as skipped, diverging from the sequential path
 priority: P3
-status: open
+status: done
 testable: true
 discovered_by: review
 discovered_date: '2026-08-18'
 discovered_source: pre-implementation review of BUG-3252/BUG-3253, 2026-08-18
+completed_at: '2026-08-19T20:06:40Z'
 relates_to:
 - BUG-3252
 - BUG-3253
@@ -636,6 +637,8 @@ _These touchpoints were identified by wiring analysis and must be included in th
 **Open** | Created: 2026-08-18 | Priority: P3
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-19T20:06:21 - `bd3f0a41-ce07-4c04-acd5-8a401b968303.jsonl`
+- `/ll:ready-issue` - 2026-08-19T19:50:33 - `8d1df40d-f6f0-4941-853a-9c9473eb726c.jsonl`
 - `/ll:confidence-check` - 2026-08-19T17:51:31 - `6b3a312e-0fdb-41dc-856b-e3f75318411c.jsonl`
 - fifth pre-implementation review - 2026-08-19 - re-verified every load-bearing claim against the tree (all held: twelve `_stamped_result` sites at the cited lines; `_record_orchestration_result` reads neither `corrections` nor `was_corrected`, so default-injection has no side effect on the persisted record; no test in `test_orchestrator.py`/`test_worker_pool.py` constructs `was_blocked=True`; eleven `MockQueue` classes in `test_sprint_integration.py`; `cli/sprint/run.py:821-822` still the only external consumer of the queue id lists). **One blocking correction plus three smaller ones.** (1) **D2's "no hoist is needed" would have shipped the issue without its headline fix.** `ready_parsed` is assigned at `worker_pool.py:450`; the corrections read is at `:550-551`; CLOSE (`:493`), BLOCKED (`:509`), and NOT_READY (`:537`) return *between* them. Under default-injection alone those three pick up the `[]` default, so a corrected-then-blocked issue still never reaches the numerator — the defect this issue exists to fix — and the three `ready_parsed`-carry-through tests in the Wiring Phase would fail. The fourth pass was right that a hoist alone misses the six below-read returns, but over-corrected into dropping it. Restored as **both** edits, covering disjoint sets: hoist `:550-551` → `:450` for the five above-read returns, `setdefault` in the closure for the six below-read ones. The declaration above the `try` remains independently necessary: the exception handler at `:748` is reachable from failures *before* `:450` (worktree creation), where a hoisted-but-undeclared `corrections` raises `NameError` inside the closure — added a test for exactly that, so a future "the hoist makes the defaults redundant" cleanup cannot re-introduce the crash. (2) **The moved `state.corrections` write must stay under `self._state_lock`** — the current write holds it (`:1134`) and `_on_worker_complete` runs on worker threads; merge it into the timing write's existing `with` block rather than placing it after. (3) **The corrections logging must move with the write.** `if result.was_corrected:` and the per-correction `logger.info` loop (`:1128-1132`) are inside `elif result.success:`; leaving them there puts corrected-then-blocked/failed issues in the numerator with no log line anywhere — this issue's own defect one layer down. (4) Corrected citation drift the fourth pass introduced or missed: `state.corrections` write is `:1133-1135` (not `:1135-1137` — the fourth pass moved it the wrong way), numerator `:1648` / denominator `:1649` (not `:1646`/`:1647`), corrections read `:550-551` (not `:549-551`), `_maybe_report_status` at `:821` with counters at `:843-844`. Nit folded in: pass `list(corrections)` so the twelve results do not alias one shared list.
 - `/ll:confidence-check` - 2026-08-19T17:39:29 - `0ef4b20b-7464-4211-a563-1f2c1146071b.jsonl`

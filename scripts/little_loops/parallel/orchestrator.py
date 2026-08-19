@@ -842,12 +842,15 @@ class ParallelOrchestrator:
         in_progress = len(self.queue.in_progress_ids)
         completed = self.queue.completed_count
         failed = self.queue.failed_count
+        skipped = self.queue.skipped_count
         pending_merge = self.merge_coordinator.pending_count
 
         parts.append(f"Active: {in_progress}")
         parts.append(f"Done: {completed}")
         if failed > 0:
             parts.append(f"Failed: {failed}")
+        if skipped > 0:
+            parts.append(f"Skipped: {skipped}")
         if pending_merge > 0:
             parts.append(f"Merging: {pending_merge}")
 
@@ -1125,14 +1128,6 @@ class ParallelOrchestrator:
             self.logger.success(
                 f"{result.issue_id} completed in {format_duration(result.duration)}"
             )
-            if result.was_corrected:
-                self.logger.info(f"{result.issue_id} was auto-corrected during validation")
-                # Log and store corrections for pattern analysis (ENH-010)
-                for correction in result.corrections:
-                    self.logger.info(f"  Correction: {correction}")
-                if result.corrections:
-                    with self._state_lock:
-                        self.state.corrections[result.issue_id] = result.corrections
             if self.parallel_config.use_feature_branches:
                 # Feature branch mode: skip auto-merge, branch stays alive (ENH-665, BUG-2172)
                 # Hold issue at in_progress until PR is merged; ll-sync reconcile promotes to done (ENH-2182)
@@ -1226,6 +1221,10 @@ class ParallelOrchestrator:
                         f"Merge failed: {result.error or 'merge error'}"
                     )
                     self.queue.mark_failed(result.issue_id)
+        elif result.was_blocked:
+            self.logger.info(f"{result.issue_id} skipped: {result.error or 'Blocked'}")
+            self._worker_errors[result.issue_id] = result.error or "Blocked"
+            self.queue.mark_skipped(result.issue_id)
         else:
             self.logger.error(f"{result.issue_id} failed: {result.error}")
             self._worker_errors[result.issue_id] = result.error or "Failed"
@@ -1239,11 +1238,23 @@ class ParallelOrchestrator:
         if self.parallel_config.epic_branches.enabled and result.epic_branch:
             self._maybe_complete_epic(result.issue_id, result.epic_branch)
 
+        # Log and store corrections for pattern analysis (ENH-010). Unconditional
+        # in position (every outcome reaches this point, not just success), but
+        # still guarded on a non-empty list — the correction-rate numerator
+        # counts keys, so writing `[]` unconditionally would pin the rate at
+        # 100% (BUG-3254).
+        if result.was_corrected:
+            self.logger.info(f"{result.issue_id} was auto-corrected during validation")
+            for correction in result.corrections:
+                self.logger.info(f"  Correction: {correction}")
+
         # Update timing
         with self._state_lock:
             self.state.timing[result.issue_id] = {
                 "total": result.duration,
             }
+            if result.corrections:
+                self.state.corrections[result.issue_id] = result.corrections
 
         # Record the authoritative result after merge/PR and timing state are final.
         recorded_error = self._worker_errors.get(result.issue_id)
@@ -1423,7 +1434,9 @@ class ParallelOrchestrator:
         # a child that failed/blocked in THIS run holds the branch open. Scope
         # the flat run-level failure sets to this EPIC's child IDs (FEAT-2561).
         epic_child_ids = {c.issue_id for c in prog.children}
-        failed_here = epic_child_ids & (set(self.queue.failed_ids) | set(self.state.failed_issues))
+        failed_here = epic_child_ids & (
+            set(self.queue.failed_ids) | set(self.state.failed_issues) | set(self.queue.skipped_ids)
+        )
         if failed_here:
             self.logger.info(
                 f"EPIC {epic_id} integration branch held open — "
@@ -1602,6 +1615,7 @@ class ParallelOrchestrator:
         self.logger.timing(f"Total time: {format_duration(total_time)}")
         self.logger.info(f"Completed: {self.queue.completed_count}")
         self.logger.info(f"Failed: {self.queue.failed_count}")
+        self.logger.info(f"Skipped: {self.queue.skipped_count}")
         if self._interrupted_issues:
             self.logger.info(f"Interrupted: {len(self._interrupted_issues)}")
 
@@ -1620,6 +1634,12 @@ class ParallelOrchestrator:
             self.logger.warning("Failed issues:")
             for issue_id in self.queue.failed_ids:
                 self.logger.warning(f"  - {issue_id}")
+
+        if self.queue.skipped_ids:
+            self.logger.info("")
+            self.logger.info("Skipped issues:")
+            for issue_id in self.queue.skipped_ids:
+                self.logger.info(f"  - {issue_id}")
 
         # Report interrupted issues separately (ENH-036)
         if self._interrupted_issues:
@@ -1646,7 +1666,9 @@ class ParallelOrchestrator:
         # Report correction statistics for quality tracking (ENH-010)
         if corrections_snapshot:
             total_corrected = len(corrections_snapshot)
-            total_issues = self.queue.completed_count + self.queue.failed_count
+            total_issues = (
+                self.queue.completed_count + self.queue.failed_count + self.queue.skipped_count
+            )
             correction_rate = (total_corrected / total_issues * 100) if total_issues > 0 else 0
             self.logger.info("")
             self.logger.info(

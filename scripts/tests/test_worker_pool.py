@@ -2626,6 +2626,64 @@ CORRECTED
         assert "Updated line 42 -> 45 in src/module.py reference" in result.corrections
         assert "Added missing ## Expected Behavior section" in result.corrections
 
+    def test_process_issue_blocked_carries_corrections(
+        self,
+        worker_pool: WorkerPool,
+        mock_issue: MagicMock,
+        temp_repo_with_config: Path,
+    ) -> None:
+        """A BLOCKED verdict still carries corrections through (BUG-3254 D2).
+
+        The BLOCKED return sits between ready_parsed's assignment and the
+        (now-hoisted) corrections read, so a corrected-then-blocked issue's
+        corrections would previously default to [] and never reach the
+        correction-rate numerator.
+        """
+        ready_output = """## VERDICT
+BLOCKED
+
+## CORRECTIONS_MADE
+- Normalized frontmatter status field
+"""
+
+        def mock_run_command(
+            cmd: str, path: Path, **kwargs: Any
+        ) -> subprocess.CompletedProcess[str]:
+            return subprocess.CompletedProcess([], 0, ready_output, "")
+
+        with patch.object(worker_pool, "_setup_worktree"):
+            with patch.object(worker_pool, "_get_main_repo_baseline", return_value=set()):
+                with patch.object(worker_pool, "_run_claude_command", side_effect=mock_run_command):
+                    result = worker_pool._process_issue(mock_issue)
+
+        assert result.was_blocked is True
+        assert result.success is False
+        assert result.was_corrected is True
+        assert result.corrections == ["Normalized frontmatter status field"]
+
+    def test_process_issue_pre_parse_failure_does_not_raise(
+        self,
+        worker_pool: WorkerPool,
+        mock_issue: MagicMock,
+        temp_repo_with_config: Path,
+    ) -> None:
+        """A failure before the ready-issue parse still returns a WorkerResult.
+
+        Pins why `was_corrected`/`corrections` must be declared above the
+        `try` (not just hoisted) — a failure in worktree setup happens before
+        `ready_parsed` exists, and the `_stamped_result` closure reads these
+        locals on every return path (BUG-3254 D2).
+        """
+        with patch.object(
+            worker_pool, "_setup_worktree", side_effect=RuntimeError("worktree setup failed")
+        ):
+            result = worker_pool._process_issue(mock_issue)
+
+        assert result.success is False
+        assert "worktree setup failed" in (result.error or "")
+        assert result.was_corrected is False
+        assert result.corrections == []
+
     def test_process_issue_recovers_committed_leaks(
         self,
         worker_pool: WorkerPool,

@@ -140,9 +140,11 @@ def orchestrator(
         # Set up mock queue default values for state saving
         orch.queue.completed_ids = []  # type: ignore[misc]
         orch.queue.failed_ids = []  # type: ignore[misc]
+        orch.queue.skipped_ids = []  # type: ignore[misc]
         orch.queue.in_progress_ids = []  # type: ignore[misc]
         orch.queue.completed_count = 0  # type: ignore[misc]
         orch.queue.failed_count = 0  # type: ignore[misc]
+        orch.queue.skipped_count = 0  # type: ignore[misc]
         return orch
 
 
@@ -5108,6 +5110,69 @@ class TestDispatchRouting:
 
         orchestrator.queue.mark_failed.assert_not_called()  # type: ignore[attr-defined]
         assert "BUG-005" in orchestrator._interrupted_issues
+
+    def test_on_worker_complete_blocked_marks_skipped(
+        self,
+        orchestrator: ParallelOrchestrator,
+    ) -> None:
+        """A BLOCKED worker result is routed to mark_skipped, not mark_failed (BUG-3254)."""
+        result = WorkerResult(
+            issue_id="BUG-006",
+            success=False,
+            was_blocked=True,
+            branch_name="parallel/bug-006",
+            worktree_path=Path("/tmp/wt-test"),
+            duration=1.0,
+            error="ready-issue verdict: BLOCKED - open dependency detected",
+        )
+
+        orchestrator._on_worker_complete(result)
+
+        orchestrator.queue.mark_skipped.assert_called_once_with("BUG-006")  # type: ignore[attr-defined]
+        orchestrator.queue.mark_failed.assert_not_called()  # type: ignore[attr-defined]
+        assert orchestrator._worker_errors["BUG-006"] == (
+            "ready-issue verdict: BLOCKED - open dependency detected"
+        )
+
+    def test_on_worker_complete_blocked_corrections_reach_state(
+        self,
+        orchestrator: ParallelOrchestrator,
+    ) -> None:
+        """A corrected-then-blocked issue's corrections reach state.corrections (BUG-3254 D2)."""
+        result = WorkerResult(
+            issue_id="BUG-007",
+            success=False,
+            was_blocked=True,
+            branch_name="parallel/bug-007",
+            worktree_path=Path("/tmp/wt-test"),
+            duration=1.0,
+            error="ready-issue verdict: BLOCKED - open dependency detected",
+            was_corrected=True,
+            corrections=["fixed frontmatter"],
+        )
+
+        orchestrator._on_worker_complete(result)
+
+        assert orchestrator.state.corrections["BUG-007"] == ["fixed frontmatter"]
+
+    def test_on_worker_complete_no_corrections_no_state_entry(
+        self,
+        orchestrator: ParallelOrchestrator,
+    ) -> None:
+        """An issue with no corrections gets no state.corrections entry (BUG-3254)."""
+        result = WorkerResult(
+            issue_id="BUG-008",
+            success=True,
+            branch_name="parallel/bug-008",
+            worktree_path=Path("/tmp/wt-test"),
+            duration=1.0,
+        )
+        orchestrator._issue_info_by_id["BUG-008"] = MagicMock(spec=IssueInfo)
+
+        with patch.object(orchestrator, "_complete_issue_lifecycle_if_needed"):
+            orchestrator._on_worker_complete(result)
+
+        assert "BUG-008" not in orchestrator.state.corrections
 
     def test_on_worker_complete_stores_error_in_worker_errors(
         self,

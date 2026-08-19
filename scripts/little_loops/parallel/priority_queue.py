@@ -45,6 +45,7 @@ class IssuePriorityQueue:
         self._in_progress: set[str] = set()
         self._completed: set[str] = set()
         self._failed: set[str] = set()
+        self._skipped: set[str] = set()
 
     def add(self, issue: IssueInfo) -> bool:
         """Add an issue to the queue if not already processed.
@@ -127,6 +128,21 @@ class IssuePriorityQueue:
             self._in_progress.discard(issue_id)
             self._failed.add(issue_id)
 
+    def mark_skipped(self, issue_id: str) -> None:
+        """Mark an issue as skipped (e.g., blocked on an open dependency).
+
+        Unlike ``mark_failed``, a skipped issue is not permanently suppressed:
+        ``add()`` does not reject a previously-skipped id, and there is no
+        ``load_skipped()`` to restore this bucket on resume. The skip bucket
+        is a within-run counter only.
+
+        Args:
+            issue_id: ID of the skipped issue
+        """
+        with self._lock:
+            self._in_progress.discard(issue_id)
+            self._skipped.add(issue_id)
+
     def requeue(self, issue: IssueInfo, demote_priority: bool = False) -> None:
         """Requeue an issue (e.g., after merge conflict).
 
@@ -137,6 +153,7 @@ class IssuePriorityQueue:
         with self._lock:
             self._in_progress.discard(issue.issue_id)
             self._failed.discard(issue.issue_id)
+            self._skipped.discard(issue.issue_id)
 
             priority = issue.priority_int
             if demote_priority and priority < 5:
@@ -176,6 +193,12 @@ class IssuePriorityQueue:
             return len(self._failed)
 
     @property
+    def skipped_count(self) -> int:
+        """Number of skipped issues."""
+        with self._lock:
+            return len(self._skipped)
+
+    @property
     def in_progress_ids(self) -> list[str]:
         """List of issue IDs currently being processed."""
         with self._lock:
@@ -192,6 +215,12 @@ class IssuePriorityQueue:
         """List of failed issue IDs."""
         with self._lock:
             return list(self._failed)
+
+    @property
+    def skipped_ids(self) -> list[str]:
+        """List of skipped issue IDs."""
+        with self._lock:
+            return list(self._skipped)
 
     def load_completed(self, completed: Iterable[str]) -> None:
         """Load previously completed issues (for resume).

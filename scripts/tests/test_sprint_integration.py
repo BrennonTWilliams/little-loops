@@ -306,6 +306,10 @@ issues:
             def failed_ids(self) -> list[str]:
                 return []
 
+            @property
+            def skipped_ids(self) -> list[str]:
+                return []
+
         class MockOrchestrator:
             execution_duration = 2.0
 
@@ -386,6 +390,10 @@ issues:
             def failed_ids(self) -> list[str]:
                 return []
 
+            @property
+            def skipped_ids(self) -> list[str]:
+                return []
+
         class MockOrchestrator:
             execution_duration = 2.0
 
@@ -457,6 +465,10 @@ issues:
             def failed_ids(self) -> list[str]:
                 return []
 
+            @property
+            def skipped_ids(self) -> list[str]:
+                return []
+
         class MockOrchestrator:
             execution_duration = 2.0
 
@@ -523,6 +535,10 @@ issues:
 
             @property
             def failed_ids(self) -> list[str]:
+                return []
+
+            @property
+            def skipped_ids(self) -> list[str]:
                 return []
 
         class MockOrchestrator:
@@ -593,6 +609,10 @@ issues:
 
             @property
             def failed_ids(self) -> list[str]:
+                return []
+
+            @property
+            def skipped_ids(self) -> list[str]:
                 return []
 
         class MockOrchestrator:
@@ -714,6 +734,10 @@ issues:
             @property
             def failed_ids(self) -> list[str]:
                 return ["BUG-001", "BUG-002", "BUG-003"]
+
+            @property
+            def skipped_ids(self) -> list[str]:
+                return []
 
         class MockOrchestrator:
             execution_duration = 2.0
@@ -989,6 +1013,10 @@ issues:
             def failed_ids(self) -> list[str]:
                 return ["BUG-002"]
 
+            @property
+            def skipped_ids(self) -> list[str]:
+                return []
+
         class MockOrchestrator:
             execution_duration = 3.0
 
@@ -1059,6 +1087,10 @@ issues:
             def failed_ids(self) -> list[str]:
                 return ["BUG-002"]  # Only 1 of 3 failed
                 # BUG-003 is stranded (not in either list)
+
+            @property
+            def skipped_ids(self) -> list[str]:
+                return []
 
         class MockOrchestrator:
             execution_duration = 3.0
@@ -1137,6 +1169,10 @@ issues:
             def failed_ids(self) -> list[str]:
                 return ["BUG-002", "BUG-003"]
 
+            @property
+            def skipped_ids(self) -> list[str]:
+                return []
+
         class MockOrchestrator:
             execution_duration = 3.0
 
@@ -1206,6 +1242,10 @@ issues:
             @property
             def failed_ids(self) -> list[str]:
                 return ["BUG-002", "BUG-003"]
+
+            @property
+            def skipped_ids(self) -> list[str]:
+                return []
 
         class MockOrchestrator:
             execution_duration = 3.0
@@ -1480,6 +1520,10 @@ issues:
 
             @property
             def failed_ids(self) -> list[str]:
+                return []
+
+            @property
+            def skipped_ids(self) -> list[str]:
                 return []
 
         class MockOrchestrator:

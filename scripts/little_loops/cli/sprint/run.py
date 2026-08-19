@@ -817,9 +817,10 @@ def _cmd_sprint_run(
                 result = orchestrator.run()
                 total_duration += orchestrator.execution_duration
 
-                # Track completed/failed from this wave using per-issue results
+                # Track completed/failed/skipped from this wave using per-issue results
                 actually_completed = set(orchestrator.queue.completed_ids)
                 actually_failed = set(orchestrator.queue.failed_ids)
+                actually_skipped = set(orchestrator.queue.skipped_ids)
 
                 for issue_id in wave_ids:
                     if issue_id in actually_completed:
@@ -831,8 +832,16 @@ def _cmd_sprint_run(
                     elif issue_id in actually_failed:
                         completed.add(issue_id)
                         state.failed_issues[issue_id] = "Issue failed during wave execution"
-                    # else: issue was neither completed nor failed (interrupted/stranded)
-                    # — leave untracked so it can be retried on resume
+                    elif issue_id in actually_skipped:
+                        # BUG-3254: a BLOCKED issue is a skip, not a failure — do
+                        # not feed it into the sequential retry loop below.
+                        completed.add(issue_id)
+                        state.skipped_blocked_issues[issue_id] = (
+                            "Issue blocked during wave execution"
+                        )
+                    # else: issue was neither completed, failed, nor skipped
+                    # (interrupted/stranded) — leave untracked so it can be
+                    # retried on resume
 
                 # Sequential retry for failed issues (ENH-308)
                 if actually_failed:
