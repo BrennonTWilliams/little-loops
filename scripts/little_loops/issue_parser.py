@@ -512,6 +512,7 @@ class FormatGaps:
     duplicate_heading: list[str] = field(default_factory=list)
     empty_provenance_stub: list[str] = field(default_factory=list)
     template_placeholders: list[str] = field(default_factory=list)
+    unapplied_decision: list[str] = field(default_factory=list)
 
     @property
     def has_gaps(self) -> bool:
@@ -541,6 +542,7 @@ class FormatGaps:
             or self.duplicate_heading
             or self.empty_provenance_stub
             or self.template_placeholders
+            or self.unapplied_decision
         )
 
     def to_dict(self) -> dict[str, list[str]]:
@@ -570,6 +572,7 @@ class FormatGaps:
             "duplicate_heading": self.duplicate_heading,
             "empty_provenance_stub": self.empty_provenance_stub,
             "template_placeholders": self.template_placeholders,
+            "unapplied_decision": self.unapplied_decision,
         }
 
 
@@ -782,6 +785,23 @@ def check_format_gaps(
             them anyway, and its residue is already caught by
             ``boilerplate``/``program_design_nonspecific``. Detection only —
             no ``--fix`` handler is registered.
+        unapplied_decision: a ``> **Selected:**`` callout names a winning
+            option in ``## Proposed Solution`` (ENH-3256) while a backticked
+            identifier unique to a *rejected* option
+            (:func:`_unapplied_decision`) still appears, unmarked, in one of
+            :data:`_DECISION_DIRECTIVE_SECTIONS`. A decision *record* is not
+            proof the decision was *applied* -- the rejected option's
+            discriminating identifiers (``REJ - SEL``, where ``SEL``/``REJ``
+            are the backticked identifiers in the selected/rejected option
+            blocks) must not survive into the directive sections. Options are
+            enumerated from ``## Proposed Solution`` only, never full document
+            content; the selected block is identified by matching the
+            callout's option title against each option heading, not by
+            :func:`_is_option_resolved`, which cannot distinguish selected
+            from rejected. Exempt when ``⚠ Superseded``
+            (:data:`_SUPERSEDED_MARKER_PREFIX`) appears in the same paragraph.
+            Report-only; caps ``/ll:confidence-check`` Criterion C, never a
+            hard override.
 
     Args:
         issue_path: Path to the issue markdown file.
@@ -1073,6 +1093,8 @@ def check_format_gaps(
         if not any(_SUPERSEDED_MARKER_PREFIX in body for body in directive_bodies):
             gaps.unmarked_superseded_directive.append(issue_path.name)
 
+    gaps.unapplied_decision.extend(_unapplied_decision(content))
+
     gaps.duplicate_findings_block.extend(_duplicate_findings_blocks(content))
     gaps.duplicate_heading.extend(_duplicate_headings(content))
     gaps.empty_provenance_stub.extend(_empty_provenance_stubs(content))
@@ -1253,6 +1275,226 @@ _SUPERSEDED_CORRECTION_PHRASES = (
 )
 _SUPERSEDED_DIRECTIVE_SECTIONS = ("Implementation Steps", "Files to Modify", "Acceptance Criteria")
 _SUPERSEDED_MARKER_PREFIX = "⚠ Superseded"
+
+# ENH-3256: superset of _SUPERSEDED_DIRECTIVE_SECTIONS -- "Proposed Solution"
+# and "Program Design" also carry decision-drift risk, since /ll:decide-issue
+# only ever annotates ## Proposed Solution. "Files to Modify" is an H3 nested
+# under ## Integration Map, so it must be read via _heading_bodies, not
+# _section_body.
+_DECISION_DIRECTIVE_SECTIONS = (
+    "Proposed Solution",
+    "Program Design",
+    "Implementation Steps",
+    "Files to Modify",
+    "Acceptance Criteria",
+)
+
+# ENH-3256: the callout /ll:decide-issue writes -- `> **Selected:** <title>`.
+_SELECTED_CALLOUT_RE = re.compile(r"^\s*>\s+\*\*Selected:\*\*\s*(.+)$", re.MULTILINE)
+# An "Option X" label, used to match a selected-callout title against option
+# heading lines without depending on the surrounding markdown decoration
+# (### Option A vs **Option A**: ...).
+_OPTION_LABEL_RE = re.compile(r"Option\s+[A-Za-z0-9]+", re.IGNORECASE)
+_DECISION_RATIONALE_HEADING_RE = re.compile(r"^###\s+Decision Rationale\s*$", re.MULTILINE)
+# A backticked code span of length >= 3 -- the identifier unit both SEL and
+# REJ are built from (Program Design § Decision Rules, Identifier extraction).
+_DECISION_IDENTIFIER_RE = re.compile(r"`([^`\n]{3,})`")
+
+
+def _selected_option_title(section_body: str) -> str | None:
+    """Option title text from the first `> **Selected:** <title>` callout, or None.
+
+    First-occurrence is intentional (ENH-3256): whether the matched callout
+    lives in the winning option's own block or a rejected block's
+    "Selected: Option A, not this one" cross-reference, both name the winner
+    by the same label, so the first match always resolves to the correct
+    title regardless of physical block order.
+    """
+    match = _SELECTED_CALLOUT_RE.search(section_body)
+    return match.group(1).strip() if match else None
+
+
+def _option_label(text: str) -> str | None:
+    """Lowercased "option x" label extracted from *text*, or None."""
+    match = _OPTION_LABEL_RE.search(text)
+    return match.group(0).lower() if match else None
+
+
+def _decision_identifiers(text: str) -> set[str]:
+    """Backticked identifiers of length >= 3 in *text*."""
+    return {m.group(1) for m in _DECISION_IDENTIFIER_RE.finditer(text)}
+
+
+def _strip_codebase_research_findings(body: str) -> str:
+    """Drop every ``### Codebase Research Findings`` block from *body*.
+
+    ENH-3256 corpus finding: /ll:refine-issue commonly appends per-option
+    comparison notes ("Step 2 (pytest option A): ...", "Step 2 (CLI option
+    B): ...") under this heading, nested inside directive sections like
+    ``## Implementation Steps``. That is deliberate research documentation of
+    the rejected alternative, not a directive telling the implementer to
+    build it -- scanning it produced 128 corpus-wide false-positive firings
+    (live-corpus run required by Implementation Steps, step 5) before this
+    strip was added.
+    """
+    matches = list(_FINDINGS_H3_RE.finditer(body))
+    if not matches:
+        return body
+    kept: list[str] = []
+    cursor = 0
+    for m in matches:
+        kept.append(body[cursor : m.start()])
+        next_heading = re.search(r"^#{1,3}\s", body[m.end() :], re.MULTILINE)
+        cursor = m.end() + next_heading.start() if next_heading else len(body)
+    kept.append(body[cursor:])
+    return "".join(kept)
+
+
+def _option_block_spans(text: str) -> list[tuple[int, int, str]]:
+    """``(start, end, heading_line)`` for each option block in *text*.
+
+    Offset-carrying sibling of :func:`_iter_option_blocks`, built on the same
+    :data:`_OPTION_HEADING_RE` boundary rule, needed here because
+    :func:`_unapplied_decision` must clamp and scrub option-block spans
+    in-place rather than just read their text.
+    """
+    matches = list(_OPTION_HEADING_RE.finditer(text))
+    spans: list[tuple[int, int, str]] = []
+    for i, m in enumerate(matches):
+        start = m.start()
+        end = matches[i + 1].start() if i + 1 < len(matches) else len(text)
+        line_end = text.find("\n", start)
+        if line_end == -1:
+            line_end = len(text)
+        heading_line = text[start:line_end].strip()
+        spans.append((start, end, heading_line))
+    return spans
+
+
+def _unapplied_decision(content: str) -> list[str]:
+    """Reason strings for rejected-option identifiers left in directive sections.
+
+    Options are enumerated from ``_section_body(content, "Proposed Solution")``
+    only -- never full ``content`` -- and the final block is clamped at
+    ``### Decision Rationale``. The Proposed Solution scan subtracts the option
+    blocks and the Decision Rationale subsection. See Program Design ›
+    Decision Rules (ENH-3256) for why each of those is load-bearing.
+    """
+    proposed_body = _section_body(content, "Proposed Solution")
+    if not proposed_body:
+        return []
+
+    spans = _option_block_spans(proposed_body)
+    if len(spans) < 2:
+        return []
+
+    dr_match = _DECISION_RATIONALE_HEADING_RE.search(proposed_body)
+    dr_start = dr_match.start() if dr_match else len(proposed_body)
+
+    # Clamp the final option block at the Decision Rationale boundary -- it is
+    # appended to the end of Proposed Solution by /ll:decide-issue, not to
+    # any option's own body, and its block would otherwise run to end-of-input.
+    last_start, last_end, last_heading = spans[-1]
+    if last_end > dr_start:
+        spans[-1] = (last_start, max(last_start, dr_start), last_heading)
+
+    # The final block is additionally trimmed at the end of its own callout
+    # line, if it carries one, dropping any further unheaded prose before the
+    # section end. Only the *last* block risks this "runs to end-of-section"
+    # absorption (every other block is naturally bounded by the next option
+    # heading), and only when it is itself the callout-carrying (selected)
+    # block -- a trailing callout there marks "the option's own description is
+    # done; what follows is free-form rationale", which legitimately
+    # re-mentions other sections/identifiers by name for narrative reasons
+    # (observed on this issue's own corpus firing).
+    last_start, last_end, last_heading = spans[-1]
+    last_callout = _SELECTED_CALLOUT_RE.search(proposed_body, last_start, last_end)
+    if last_callout:
+        line_end = proposed_body.find("\n", last_callout.end())
+        line_end = len(proposed_body) if line_end == -1 else line_end
+        spans[-1] = (last_start, min(last_end, line_end), last_heading)
+
+    # Every block's identifiers are read with its own `> **Selected:**`
+    # callout LINE masked out (not the rest of the block): the callout is
+    # meta-commentary about the decision, and a rejected option's callout
+    # routinely names the *winner's* identifiers in prose ("not this one --
+    # `foo`'s scope excludes `bar`"), which would otherwise leak the winner's
+    # own vocabulary into REJ. The callout's position within a block is not
+    # reliable (some conventions place it right after the option heading,
+    # others at the end), so masking only that one line -- not "everything
+    # before/after it" -- is the only positionally-safe exclusion.
+    block_texts: list[str] = []
+    for start, end, _heading in spans:
+        block_text = proposed_body[start:end]
+        callout = _SELECTED_CALLOUT_RE.search(block_text)
+        if callout:
+            line_end = block_text.find("\n", callout.end())
+            line_end = len(block_text) if line_end == -1 else line_end
+            block_text = block_text[: callout.start()] + block_text[line_end:]
+        block_texts.append(block_text)
+
+    title = _selected_option_title(proposed_body)
+    if title is None:
+        return []
+    label = _option_label(title)
+    if label is None:
+        return []
+
+    matching = [i for i, (_, _, heading) in enumerate(spans) if _option_label(heading) == label]
+    if len(matching) != 1:
+        return []
+    selected_index = matching[0]
+
+    sel_ids = _decision_identifiers(block_texts[selected_index])
+    rej_ids: set[str] = set()
+    for i, block_text in enumerate(block_texts):
+        if i != selected_index:
+            rej_ids |= _decision_identifiers(block_text)
+
+    discriminating = rej_ids - sel_ids
+    if not discriminating:
+        return []
+
+    # Self-scan subtraction (mandatory): "Proposed Solution" is both the
+    # extraction source and a scan target, so REJ members -- present by
+    # construction inside the rejected option block, itself inside Proposed
+    # Solution -- would otherwise self-fire on every decided issue. Also caps
+    # at the final block's own (already-trimmed) end: unheaded rationale
+    # prose past that point re-mentions rejected-option identifiers for
+    # narrative reasons, same as the headed Decision Rationale form.
+    scrub_start = min(dr_start, spans[-1][1])
+    scrubbed_proposed = proposed_body[:scrub_start]
+    for start, end, _ in sorted(spans, key=lambda s: s[0], reverse=True):
+        end = min(end, scrub_start)
+        if start < end:
+            scrubbed_proposed = scrubbed_proposed[:start] + scrubbed_proposed[end:]
+
+    reasons: list[str] = []
+    for section_name in _DECISION_DIRECTIVE_SECTIONS:
+        if section_name == "Proposed Solution":
+            bodies = [scrubbed_proposed]
+        elif section_name == "Files to Modify":
+            bodies = _heading_bodies(content, section_name)
+        else:
+            body = _section_body(content, section_name)
+            bodies = [body] if body else []
+        bodies = [_strip_codebase_research_findings(body) for body in bodies]
+
+        for identifier in sorted(discriminating):
+            needle = f"`{identifier}`"
+            fired = False
+            for body in bodies:
+                for p_start, p_end in _paragraph_spans(body):
+                    paragraph = body[p_start:p_end]
+                    if needle in paragraph and _SUPERSEDED_MARKER_PREFIX not in paragraph:
+                        fired = True
+                        break
+                if fired:
+                    break
+            if fired:
+                reasons.append(f"{section_name} still specifies `{identifier}` (rejected option)")
+    return reasons
+
 
 # BUG-3059: a well-formed dependency entry. The optional `P<n>-` prefix is the
 # filename form and is tolerated here; anything else (bare number, typo'd type,

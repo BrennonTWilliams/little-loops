@@ -4,10 +4,11 @@ type: ENH
 title: confidence-check Criterion C credits a decision record without verifying the
   decision was applied
 priority: P2
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-08-18'
 captured_at: '2026-08-18T20:48:19Z'
+completed_at: '2026-08-19T01:12:35Z'
 parent: EPIC-2856
 testable: true
 decision_needed: false
@@ -444,6 +445,49 @@ deliberately not added to that list.
 
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
 
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-08-19
+- **Status**: Completed
+- **Implementation**: Implemented Option A as decided — `_unapplied_decision()`,
+  `_selected_option_title()`, `_option_block_spans()`, and
+  `_strip_codebase_research_findings()` added to `issue_parser.py`; new
+  `unapplied_decision` `FormatGaps` field wired through `has_gaps`/`to_dict()`/
+  the CLI printer/three help strings; `/ll:confidence-check` Phase 1.8 extracts
+  `DECISION_GAP` off the existing `$FC_JSON` and `rubric.md` Criterion C caps at
+  10 when it fires (never a STOP override). The BUG-3249 reconstruction and this
+  issue's own not-last-selected-option shape (Acceptance Criteria bullet 5) both
+  verified against the implementation.
+- **Known limitation (live-corpus finding)**: a full sweep of `.issues/` found
+  `unapplied_decision` firing on roughly 40% of issues carrying a
+  `> **Selected:**` callout. Hand-inspection of a sample attributes this
+  overwhelmingly to shared vocabulary between two genuinely different technical
+  approaches (e.g. both options build on the same CLI/module named in shared
+  preamble text), not to decisions that were recorded but never applied — a
+  precision limit of lexical identifier-diffing without semantic understanding
+  of *why* an identifier is mentioned, not a scoping bug. The two named
+  regression cases (BUG-3249 reconstruction, this issue's own
+  selected-not-last shape) score correctly. Impact is bounded: the gap is
+  report-only and caps (never blocks) Criterion C. Follow-up tightening is
+  candidate future work, not blocking for this issue.
+
+### Files Changed
+- `scripts/little_loops/issue_parser.py`
+- `scripts/little_loops/cli/issues/format_check.py`
+- `scripts/little_loops/cli/issues/__init__.py`
+- `skills/confidence-check/SKILL.md`
+- `skills/confidence-check/rubric.md`
+- `.gemini/`, `.kimi-code/`, `.qwen/` skill mirrors (via `ll-adapt --apply`)
+- `docs/reference/API.md`, `docs/reference/CLI.md`
+- `scripts/tests/test_issue_parser.py`
+- `scripts/tests/test_ll_issues_format_check.py`
+- `scripts/tests/test_confidence_check_skill.py`
+
+### Verification Results
+- `python -m pytest scripts/tests/` — 19884 passed, 46 skipped
+- `ruff check` / `ruff format` / `mypy` clean on all touched files
+
 ## Status
 
 **Open** | Created: 2026-08-18 | Priority: P2
@@ -515,6 +559,8 @@ class FormatGaps:
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-19T01:12:11 - `26f37145-f571-418d-9662-3d9a889e94ea.jsonl`
+- `/ll:ready-issue` - 2026-08-19T00:32:37 - `814f49f4-6be6-4b20-8bef-2b29c93912d9.jsonl`
 - `/ll:confidence-check` - 2026-08-19T00:25:28 - `7c6d718f-002c-439a-9bff-6cc0a6855d4d.jsonl`
 - `/ll:verify-issues` - 2026-08-18T23:42:05 - `5babd785-d270-4764-90c8-5811c9188fb7.jsonl`
 - `/ll:confidence-check` - 2026-08-18T22:04:27 - `bb66018c-ab8d-4e0a-a8d9-81ae552f7d58.jsonl`

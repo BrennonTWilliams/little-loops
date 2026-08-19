@@ -6,10 +6,17 @@ title: _git_mv passes a relative pathspec with cwd=src.parent, silently losing g
 priority: P4
 status: open
 testable: true
-relates_to: [BUG-3243]
+relates_to:
+- BUG-3243
 discovered_by: ll-issues-create
 discovered_date: '2026-08-17'
 captured_at: '2026-08-17T20:04:02Z'
+confidence_score: 100
+outcome_confidence: 82
+score_complexity: 21
+score_test_coverage: 18
+score_ambiguity: 18
+score_change_surface: 25
 ---
 
 # BUG-3251: _git_mv passes a relative pathspec with cwd=src.parent, silently losing git rename tracking

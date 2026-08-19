@@ -67,7 +67,7 @@ def add_format_check_parser(subs: argparse._SubParsersAction) -> argparse.Argume
         "duplicate_findings_block/ambiguous_file_ref/missing_behavior_parity/"
         "soft_dep_hard_edge/malformed_dep_id/stale_symbol_ref/mislocated_symbol_ref/"
         "stale_cli_flag/duplicate_heading/empty_provenance_stub/"
-        "template_placeholders)",
+        "template_placeholders/unapplied_decision)",
     )
     p.set_defaults(command="format-check")
     p.add_argument(
@@ -462,6 +462,8 @@ def _print_gaps(gaps: FormatGaps) -> None:
         print(
             f"  template_placeholders: {entry} (literal template debris; no --fix, needs content)"
         )
+    for entry in gaps.unapplied_decision:
+        print(f"  unapplied_decision: {entry}")
 
 
 def cmd_format_check(config: BRConfig, args: argparse.Namespace) -> int:
@@ -473,7 +475,7 @@ def cmd_format_check(config: BRConfig, args: argparse.Namespace) -> int:
     duplicate_findings_block/ambiguous_file_ref/missing_behavior_parity/
     soft_dep_hard_edge/malformed_dep_id/stale_symbol_ref/mislocated_symbol_ref/
     stale_cli_flag/duplicate_heading/empty_provenance_stub/
-    template_placeholders.
+    template_placeholders/unapplied_decision.
 
     Every class in :class:`FormatGaps` must have a matching loop in
     :func:`_print_gaps`; a class counted by ``has_gaps`` but not rendered

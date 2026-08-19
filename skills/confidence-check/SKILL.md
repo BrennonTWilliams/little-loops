@@ -194,17 +194,24 @@ captured — do **not** issue a second `format-check` call:
 PARITY_GAP=$(echo "$FC_JSON" | python -c "import json,sys; print('; '.join(json.load(sys.stdin).get('missing_behavior_parity', [])))" 2>/dev/null || true)
 # <!-- ll-prose-ok: mirrors the pre-existing PD_GAP idiom (SKILL.md Phase 1.6) for a one-off JSON field extraction, not a reimplemented algorithm -->
 CLAIM_GAP=$(echo "$FC_JSON" | python -c "import json,sys; d=json.load(sys.stdin); print('; '.join(d.get('stale_symbol_ref', []) + d.get('stale_cli_flag', [])))" 2>/dev/null || true)
+# <!-- ll-prose-ok: mirrors the pre-existing PD_GAP idiom (SKILL.md Phase 1.6) for a one-off JSON field extraction, not a reimplemented algorithm -->
+DECISION_GAP=$(echo "$FC_JSON" | python -c "import json,sys; print('; '.join(json.load(sys.stdin).get('unapplied_decision', [])))" 2>/dev/null || true)
 ```
 
 `PARITY_GAP` is non-empty when the issue is missing a `### Behavior Parity` subsection
 describing what it replaces. `CLAIM_GAP` is non-empty when the issue asserts a symbol or CLI
 flag against the codebase that did not resolve (`stale_symbol_ref` + `stale_cli_flag`
-combined). Both are empty/inert on the present-but-empty case — an issue with no gaps leaves
-Criterion 4's scoring untouched. Do **not** re-judge either signal yourself; the CLI is the
-single source of truth for whether a reference resolves. `CLAIM_GAP` is **advisory input to
-Criterion 4 only** — it caps the criterion (see [rubric.md](rubric.md) Criterion 4) and must
-not be escalated to a `STOP` verdict, because forward-looking design/planning claims
-legitimately do not resolve yet.
+combined). `DECISION_GAP` (ENH-3256) is non-empty when the issue records a `> **Selected:**`
+decision while a rejected option's discriminating identifier still appears, unmarked, in a
+directive section (`unapplied_decision`) — a decision *record* that was never actually
+*applied*. All three are empty/inert on the present-but-empty case — an issue with no gaps
+leaves Criterion 4/Criterion C's scoring untouched. Do **not** re-judge either signal yourself;
+the CLI is the single source of truth for whether a reference resolves or a decision was
+applied. `CLAIM_GAP` is **advisory input to Criterion 4 only** — it caps the criterion (see
+[rubric.md](rubric.md) Criterion 4) and must not be escalated to a `STOP` verdict, because
+forward-looking design/planning claims legitimately do not resolve yet. `DECISION_GAP` is
+**advisory input to Criterion C only** — it caps the criterion (see [rubric.md](rubric.md)
+Criterion C) and, like `CLAIM_GAP`, must never be escalated to a `STOP` verdict.
 
 ### Phase 2: Five-Point Assessment
 

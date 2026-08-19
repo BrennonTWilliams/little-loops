@@ -578,6 +578,74 @@ class TestConfidenceCheckRubricClaimParityCap:
         )
 
 
+class TestConfidenceCheckDecisionGapPrefetch:
+    """Phase 1.8 must pre-fetch unapplied_decision as a Criterion C cap, not a STOP (ENH-3256)."""
+
+    def _phase_text(self, heading: str) -> str:
+        content = SKILL_FILE.read_text()
+        start = content.index(heading)
+        next_heading = content.find("\n###", start + 1)
+        end = next_heading if next_heading != -1 else len(content)
+        return content[start:end]
+
+    def test_phase_1_8_names_decision_gap_key(self) -> None:
+        phase_text = self._phase_text("### Phase 1.8: Pre-Fetch Claim and Parity Gaps")
+        assert "unapplied_decision" in phase_text, (
+            "Phase 1.8 must reference the 'unapplied_decision' format-check gap key (ENH-3256)"
+        )
+        assert "DECISION_GAP" in phase_text, (
+            "Phase 1.8 must extract a DECISION_GAP variable (ENH-3256)"
+        )
+
+    def test_phase_1_8_decision_gap_does_not_reissue_format_check(self) -> None:
+        phase_text = self._phase_text("### Phase 1.8: Pre-Fetch Claim and Parity Gaps")
+        assert phase_text.count("ll-issues format-check") == 0, (
+            "Phase 1.8 must reuse $FC_JSON from Phase 1.6, not call format-check again (ENH-3256)"
+        )
+
+    def test_phase_1_8_marks_decision_gap_advisory(self) -> None:
+        phase_text = self._phase_text("### Phase 1.8: Pre-Fetch Claim and Parity Gaps")
+        decision_gap_start = phase_text.index("DECISION_GAP` is")
+        assert "advisory" in phase_text[decision_gap_start : decision_gap_start + 200].lower(), (
+            "Phase 1.8 must document DECISION_GAP as advisory input to Criterion C only (ENH-3256)"
+        )
+
+    def test_phase_3_does_not_name_decision_gap(self) -> None:
+        phase_text = self._phase_text("### Phase 3:")
+        assert "DECISION_GAP" not in phase_text, (
+            "Phase 3 must not escalate DECISION_GAP to a hard override/STOP verdict (ENH-3256)"
+        )
+
+
+class TestConfidenceCheckRubricDecisionCap:
+    """rubric.md Criterion C must document the decision cap row (ENH-3256)."""
+
+    def _criterion_c_text(self) -> str:
+        content = RUBRIC_FILE.read_text()
+        start = content.index("### Criterion C: Ambiguity")
+        next_heading = content.find("\n###", start + 1)
+        end = next_heading if next_heading != -1 else len(content)
+        return content[start:end]
+
+    def test_cap_row_present(self) -> None:
+        section = self._criterion_c_text()
+        assert "unapplied_decision" in section, (
+            "Criterion C table/notes must reference 'unapplied_decision' (ENH-3256)"
+        )
+
+    def test_cap_documented_as_ceiling(self) -> None:
+        section = self._criterion_c_text()
+        assert "cap" in section.lower(), (
+            "Criterion C section must document the decision cap (ENH-3256)"
+        )
+
+    def test_cap_documented_as_not_a_hard_override(self) -> None:
+        section = self._criterion_c_text()
+        assert "not" in section.lower() and "STOP" in section, (
+            "Criterion C's decision cap must explicitly document that it does not force STOP (ENH-3256)"
+        )
+
+
 class TestVerdictJsonTrailer:
     """rubric.md's single-issue output format must emit VERDICT_JSON (ENH-2949)."""
 

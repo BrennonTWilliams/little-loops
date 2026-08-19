@@ -4655,6 +4655,251 @@ class TestSupersededMarkerCount:
         assert superseded_marker_count(tmp_path / "does-not-exist.md") == 0
 
 
+class TestUnappliedDecision:
+    """ENH-3256: unapplied_decision fires when a recorded decision was never
+    propagated into the directive sections -- a rejected option's
+    discriminating identifier still appears, unmarked, in one of
+    Proposed Solution/Program Design/Implementation Steps/Files to
+    Modify/Acceptance Criteria.
+    """
+
+    def _issue(self, proposed_solution: str, **directive_sections: str) -> str:
+        parts = ["# BUG-9800\n\n## Proposed Solution\n", proposed_solution]
+        for heading, body in directive_sections.items():
+            parts.append(f"\n## {heading.replace('_', ' ')}\n\n{body}\n")
+        parts.append("\n## Status\n\n- open\n")
+        return "".join(parts)
+
+    def test_bug_3249_reconstruction_fires_on_all_directive_sections(self) -> None:
+        """The motivating case: Option B selected, but Program Design,
+        Implementation Steps, and Acceptance Criteria still specify Option
+        A's rejected `refine_followup` target."""
+        from little_loops.issue_parser import _unapplied_decision
+
+        content = self._issue(
+            "**Option A**: Route `on_no` to `refine_followup`.\n\n"
+            "**Option B**: Route `on_no` to `check_refine_limit`.\n\n"
+            "> **Selected:** Option B\n\n"
+            "### Decision Rationale\n\nOption B wins.\n",
+            Program_Design="Routing target: `refine_followup`, **not** `check_refine_limit`.\n",
+            Implementation_Steps="1. `on_no` routes to `refine_followup`.\n",
+            Acceptance_Criteria="- [ ] routes at the refine rung (`refine_followup`).\n",
+        )
+
+        reasons = _unapplied_decision(content)
+
+        assert any("Program Design" in r and "refine_followup" in r for r in reasons)
+        assert any("Implementation Steps" in r and "refine_followup" in r for r in reasons)
+        assert any("Acceptance Criteria" in r and "refine_followup" in r for r in reasons)
+
+    def test_consistent_decision_produces_no_gap(self) -> None:
+        from little_loops.issue_parser import _unapplied_decision
+
+        content = self._issue(
+            "**Option A**: Route `on_no` to `refine_followup`.\n\n"
+            "**Option B**: Route `on_no` to `check_refine_limit`.\n\n"
+            "> **Selected:** Option A\n\n"
+            "### Decision Rationale\n\nOption A wins.\n",
+            Program_Design="Routing target: `refine_followup`.\n",
+            Implementation_Steps="1. `on_no` routes to `refine_followup`.\n",
+            Acceptance_Criteria="- [ ] routes at the refine rung (`refine_followup`).\n",
+        )
+
+        assert _unapplied_decision(content) == []
+
+    def test_exempt_when_superseded_marker_in_same_paragraph(self) -> None:
+        from little_loops.issue_parser import _unapplied_decision
+
+        content = self._issue(
+            "**Option A**: Route `on_no` to `refine_followup`.\n\n"
+            "**Option B**: Route `on_no` to `check_refine_limit`.\n\n"
+            "> **Selected:** Option B\n\n"
+            "### Decision Rationale\n\nOption B wins.\n",
+            Implementation_Steps=(
+                "1. `on_no` routes to `refine_followup`.\n"
+                "   > ⚠ Superseded — omit entirely; see decision rationale\n"
+            ),
+        )
+
+        assert _unapplied_decision(content) == []
+
+    def test_negated_mention_still_fires(self) -> None:
+        """Negated mentions ('not `foo`') are drift too -- text alone can't
+        distinguish a legitimate scope record from an unapplied rejection."""
+        from little_loops.issue_parser import _unapplied_decision
+
+        content = self._issue(
+            "**Option A**: Route `on_no` to `refine_followup`.\n\n"
+            "**Option B**: Route `on_no` to `check_refine_limit`.\n\n"
+            "> **Selected:** Option B\n\n"
+            "### Decision Rationale\n\nOption B wins.\n",
+            Program_Design="Routing target: **not** `refine_followup`.\n",
+        )
+
+        assert any("refine_followup" in r for r in _unapplied_decision(content))
+
+    def test_identifiers_shorter_than_three_chars_not_extracted(self) -> None:
+        from little_loops.issue_parser import _unapplied_decision
+
+        content = self._issue(
+            "**Option A**: Use `x`.\n\n**Option B**: Use `refine_followup`.\n\n"
+            "> **Selected:** Option A\n\n### Decision Rationale\n\nA wins.\n",
+            Implementation_Steps="Also considers `refine_followup` for context.\n",
+        )
+
+        # `x` is below the 3-char floor so it never lands in SEL; the
+        # discriminating check must still not misfire on a short id.
+        assert all("`x`" not in r for r in _unapplied_decision(content))
+
+    def test_no_selected_callout_is_inert(self) -> None:
+        from little_loops.issue_parser import _unapplied_decision
+
+        content = self._issue(
+            "**Option A**: Use `refine_followup`.\n\n**Option B**: Use `check_refine_limit`.\n",
+            Implementation_Steps="Uses `check_refine_limit`.\n",
+        )
+
+        assert _unapplied_decision(content) == []
+
+    def test_single_option_block_is_inert(self) -> None:
+        from little_loops.issue_parser import _unapplied_decision
+
+        content = self._issue(
+            "**Option A**: Use `refine_followup`.\n\n> **Selected:** Option A\n",
+            Implementation_Steps="Uses `refine_followup`.\n",
+        )
+
+        assert _unapplied_decision(content) == []
+
+    def test_callout_matching_zero_headings_is_inert(self) -> None:
+        from little_loops.issue_parser import _unapplied_decision
+
+        content = self._issue(
+            "**Option A**: Use `refine_followup`.\n\n**Option B**: Use `check_refine_limit`.\n\n"
+            "> **Selected:** Option Z\n",
+            Implementation_Steps="Uses `check_refine_limit`.\n",
+        )
+
+        assert _unapplied_decision(content) == []
+
+    def test_empty_discriminating_set_is_inert(self) -> None:
+        """Both options share identical identifiers -- REJ - SEL is empty."""
+        from little_loops.issue_parser import _unapplied_decision
+
+        content = self._issue(
+            "**Option A**: Route via `shared_fn`.\n\n**Option B**: Also route via `shared_fn`.\n\n"
+            "> **Selected:** Option A\n",
+            Implementation_Steps="Uses `shared_fn`.\n",
+        )
+
+        assert _unapplied_decision(content) == []
+
+    def test_selected_option_not_last_block_still_scored_correctly(self) -> None:
+        """Regression guard: Decision Rationale trails the *rejected* last
+        block, so identity must not be inferred from block position."""
+        from little_loops.issue_parser import _unapplied_decision
+
+        content = self._issue(
+            "**Option A**: Route via `refine_followup`.\n\n"
+            "> **Selected:** Option A\n\n"
+            "**Option B**: Route via `check_refine_limit`.\n\n"
+            "> **Selected:** Option A, not this one\n\n"
+            "### Decision Rationale\n\nOption A wins.\n",
+            Implementation_Steps="Uses `check_refine_limit`.\n",
+        )
+
+        assert any("check_refine_limit" in r for r in _unapplied_decision(content))
+
+    def test_all_blocks_carry_selected_line_resolves_single_winner(self) -> None:
+        from little_loops.issue_parser import _unapplied_decision
+
+        content = self._issue(
+            "**Option A**: Route via `refine_followup`.\n\n"
+            "> **Selected:** Option A\n\n"
+            "**Option B**: Route via `check_refine_limit`.\n\n"
+            "> **Selected:** Option A, not this one\n\n"
+            "### Decision Rationale\n\nOption A wins.\n",
+            Implementation_Steps="Uses `check_refine_limit`.\n",
+        )
+
+        # Exactly one winner is identified (Option A); the gap fires against
+        # Option B's identifier, not a spurious double-resolution no-op.
+        reasons = _unapplied_decision(content)
+        assert reasons == [
+            "Implementation Steps still specifies `check_refine_limit` (rejected option)"
+        ]
+
+    def test_final_option_block_does_not_absorb_later_sections(self) -> None:
+        """The last option block is scoped to `## Proposed Solution`; it must
+        not swallow Integration Map/Program Design/Implementation Steps text
+        into REJ just because it runs to end-of-section."""
+        from little_loops.issue_parser import _unapplied_decision
+
+        content = self._issue(
+            "**Option A**: Route via `refine_followup`.\n\n"
+            "**Option B**: Route via `check_refine_limit`.\n\n"
+            "> **Selected:** Option A\n",
+            Implementation_Steps="Uses `refine_followup` as designed.\n",
+        )
+
+        # If the last block's REJ set had absorbed Implementation Steps
+        # content it would report a false `check_refine_limit`-style hit
+        # here; a clean pass with no reasons proves it didn't.
+        assert _unapplied_decision(content) == []
+
+    def test_selected_option_own_trailing_rationale_does_not_self_fire(self) -> None:
+        """Regression: unheaded rationale prose following the final option's
+        own callout (no `### Decision Rationale` heading) must not leak the
+        rejected option's identifiers into the Proposed Solution self-scan --
+        ENH-3256's own corpus firing (a real issue with this exact shape)."""
+        from little_loops.issue_parser import _unapplied_decision
+
+        content = self._issue(
+            "**Option A**: Route via `refine_followup`.\n\n"
+            "> **Selected:** Option A -- exact idiom fit.\n\n"
+            "**Option B**: Route via `check_refine_limit`, which `some_helper()` also uses.\n\n"
+            "> **Selected:** Option A, not this one -- `some_helper()`'s scope excludes it.\n\n"
+            "Further rationale prose mentions `some_helper()` again here, explaining "
+            "why it does not apply to the winning design.\n",
+        )
+
+        assert _unapplied_decision(content) == []
+
+
+class TestUnappliedDecisionLiveCorpusSweep:
+    """ENH-3256 Implementation Steps step 5: sweep the live `.issues/` corpus.
+
+    A hand-built two-option fixture cannot exercise scoping bugs that only
+    manifest at corpus scale (a last option block absorbing the rest of the
+    document, or shared preamble vocabulary between two competing technical
+    approaches). This sweep's only exit-code-enforced assertion is that
+    `_unapplied_decision` never raises on real issue content; the fixture
+    classes above cover the specific behaviors. A live-corpus scan run
+    during this issue's implementation found `unapplied_decision` firing on
+    roughly 40% of the ~307 issues carrying a `> **Selected:**` callout, on
+    hand-inspection overwhelmingly from shared vocabulary between two
+    genuinely different technical approaches (e.g. both options build on the
+    same CLI/module named in shared preamble text) rather than from a
+    decision that was recorded but never applied. This is a known precision
+    limit of pure lexical identifier-diffing without semantic understanding
+    of *why* an identifier is mentioned, not a scoping bug fixed by the
+    clamps documented on :func:`_unapplied_decision` -- those clamps are
+    validated by name in :class:`TestUnappliedDecision` above. The gap is
+    report-only and caps (never blocks) Criterion C, bounding its impact.
+    """
+
+    def test_corpus_sweep_does_not_crash(self) -> None:
+        from little_loops.issue_parser import _unapplied_decision
+
+        issues_dir = Path(__file__).parent.parent.parent / ".issues"
+        if not issues_dir.exists():
+            pytest.skip("no .issues/ corpus in this checkout")
+        for path in issues_dir.rglob("*.md"):
+            content = path.read_text(encoding="utf-8", errors="ignore")
+            reasons = _unapplied_decision(content)
+            assert isinstance(reasons, list)
+
+
 class TestStackedFindingsBlocks:
     """Baseline for ENH-2993's fold: what the read side sees before/after.
 

@@ -363,6 +363,10 @@ class TestFormatCheckJsonOutput:
             # ENH-3244: literal unfilled template placeholder still present in
             # its emitting section.
             "template_placeholders": [],
+            # ENH-3256: recorded > **Selected:** decision whose rejected
+            # option's discriminating identifiers still appear, unmarked, in
+            # a directive section.
+            "unapplied_decision": [],
             # ENH-2992: marker presence rides the same payload; not a gap, so
             # it does not affect the exit code above.
             "superseded_marker_count": 0,

@@ -308,10 +308,20 @@ Apply both sub-tables and sum Breadth + Depth for the criterion total.
 
 | Finding | Score |
 |---------|-------|
-| No ambiguity — solution is fully specified with single clear approach | 25 |
-| Minor open questions that can be resolved during implementation | 18 |
+| No ambiguity — solution is fully specified with single clear approach; no decision gap | 25 |
+| Minor open questions that can be resolved during implementation; no decision gap | 18 |
+| Any `unapplied_decision` gap (cap — apply regardless of otherwise-higher row) | 10 |
 | Several design decisions left open, will require judgment calls | 10 |
 | Fundamental approach unclear, multiple competing options unresolved | 0 |
+
+**Decision Cap** (ENH-3256): if Phase 1.8 set `DECISION_GAP` to a non-empty value, cap
+Criterion C at 10 regardless of which other row would otherwise apply — a ceiling, never a
+floor (an issue that would score 0 on "fundamental approach unclear" still scores 0). List the
+gap reason strings under **Gaps to Address** as advisory detail. A recorded `> **Selected:**`
+decision is not proof the decision was *applied* — `unapplied_decision` fires when a rejected
+option's discriminating identifier still appears, unmarked, in a directive section. Like the
+Parity/Claim Cap above, this is a Criterion C cap only; it does **not** force a
+`STOP — ADDRESS GAPS` verdict (see SKILL.md Phase 1.8).
 
 ### Criterion D: Change Surface / Fanout Verifiability
 
