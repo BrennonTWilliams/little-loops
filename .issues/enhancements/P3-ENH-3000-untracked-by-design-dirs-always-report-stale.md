@@ -2,14 +2,23 @@
 id: ENH-3000
 status: open
 priority: P3
-captured_at: "2026-08-02T14:06:00Z"
+captured_at: '2026-08-02T14:06:00Z'
 discovered_date: 2026-08-02
 discovered_by: capture-issue
 parent: EPIC-3023
-relates_to: [ENH-2983, ENH-2971, ENH-2999]
+relates_to:
+- ENH-2983
+- ENH-2971
+- ENH-2999
 decision_needed: false
 testable: true
 verify_verdict: VALID
+confidence_score: 100
+outcome_confidence: 82
+score_complexity: 14
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 18
 ---
 
 # References into untracked-by-design directories always report `stale`
@@ -84,6 +93,9 @@ known set of prefixes as `unresolvable_form` (or a new `untracked_by_design`).
   to be config-driven (`scan.exclude_patterns` is the nearest existing surface)
   rather than hardcoded, since little-loops ships into other projects whose
   untracked-by-design directories differ.
+- *Implementation surface*: `build_ref_index` and `classify_file_ref` both
+  change under this option too — the prefix list rides on `RefIndex` and is
+  checked as a form check inside `classify_file_ref` (see Program Design).
 
 **Recommendation**: Option B, config-driven, on the determinism argument — but
 weigh it properly rather than treating this as settled. Note that Option A's
@@ -193,6 +205,16 @@ resolvable repo reference regardless of index contents.
 Resolve the option with `/ll:decide-issue` before implementation.
 `decision_needed: true` is set for that reason.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-19 — based on codebase analysis:_
+
+- **Verdict wiring depth resolved**: `check_format_gaps()` (`scripts/little_loops/issue_parser.py:1011-1019`) only branches on `stale` and `ambiguous` today; `resolved`, `unresolvable_form`, and `planned_new` pass through the loop with no `FormatGaps` field, no `has_gaps` change, no `to_dict()` entry — they are silently non-gaps. Since `untracked_by_design` is a suppressing verdict (its purpose is to stop being reported as `stale`, not to be reported under a new category), it needs only the shallow treatment: a new `RefStatus` Literal member plus the form check in `classify_file_ref`. It does not need the 5-site `FormatGaps`/`has_gaps`/`to_dict`/docstring/`_print_gaps()` treatment that `ambiguous_file_ref` (ENH-2999) required — that treatment is only for verdicts meant to be *surfaced* as a gap category.
+- **Denominator eligibility resolved**: `qualified_ref_count()` (`research_triage.py:215`) and `_triage_axis()` (`research_triage.py:410`) both gate on the literal tuple `("resolved", "stale", "ambiguous")` — duplicated independently at each site, no shared constant. Per `qualified_ref_count`'s own docstring, eligibility means "survived the form filter"; only `unresolvable_form` and `planned_new` are excluded, both decided at the form-check stage before index lookup. `untracked_by_design` is also a form check that runs before index lookup, and there is no git-tracked target to compare against for the staleness check (`research_triage.py:431-442`) — it therefore belongs in the same excluded category as `unresolvable_form`/`planned_new`, not added to the eligible tuple. Both call sites' literal tuples need updating independently (or reconciled with ENH-2990's `AxisCoverage` reason-code work per this issue's own trailing Scope Boundary note).
+- **No shared prefix-matching helper exists** — three independent, shape-incompatible mechanisms already do adjacent things: (1) `_EXCLUDED_DIRS` (`verify_private_refs.py:75-90`) — hardcoded `frozenset` of bare directory *names*, matched via `any(part in _EXCLUDED_DIRS for part in rel_path.parts)`; (2) `file_matches_pattern()` (`git_operations.py:296+`) — full gitignore-glob semantics, the natural pairing for `scan.exclude_patterns` but currently has zero production callers for that config key (grep for `.scan.exclude_patterns` / `.scan.focus_dirs` returns nothing anywhere in `scripts/little_loops/`); (3) `_mirror_prefixes()` (`text_utils.py:198-214`) — a `@cache`d `tuple[str, ...]` of directory-prefix strings matched via plain `str.startswith(tuple)`, already used inside `classify_file_ref`'s own call chain (`suffix_match_candidates`, `text_utils.py:364`), though sourced from the host-capability registry rather than project config. This last one is the closest same-file precedent for "a cached tuple of directory prefixes consulted inside `text_utils.py`'s own classification logic."
+- **Config-location caveat**: `scan` is explicitly excluded from the schema-vs-code value parity walk — `_SCHEMA_PARITY_EXCLUDED_SECTIONS = {"$schema", "project", "issues", "scan"}` (`test_config_schema.py:1191`). A new key added under `scan` therefore would not get the cross-check other config sections get for free; the schema-vs-default drift that guard exists to catch would go undetected there specifically.
+- **The stale "Resolve the option..." sentence at the end of this section predates the decision recorded above in Decision Rationale** — Option B was selected on 2026-08-16 (Session Log, `/ll:decide-issue`) and `decision_needed` is `false` in frontmatter; that closing sentence describes a still-open decision that no longer exists.
+
 ## Integration Map
 
 ### Files to Modify
@@ -202,10 +224,77 @@ Resolve the option with `/ll:decide-issue` before implementation.
 - `scripts/little_loops/issues/research_triage.py` — denominator membership for
   the new verdict, same question as ENH-2999 raises
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/cli/issues/format_check.py` — `cmd_format_check()` line
+  553 calls `build_ref_index(config.project_root)` with no config-sourced arg;
+  confirmed via `ll-code callers-of build_ref_index` this is the third
+  production call site (alongside `research_triage.py:212,317`) and is not
+  currently in this list — without threading the new prefix list through here
+  the verdict never reaches production `format-check` output
+- `scripts/little_loops/config/features.py` — `ScanConfig` (lines 304-324)
+  needs a new field (e.g. `untracked_by_design: tuple[str, ...]`) plus a
+  `from_dict()` update; `config-schema.json`'s `additionalProperties: false`
+  on `scan` requires the key to be pre-declared there too
+- `scripts/little_loops/config/core.py` — `BRConfig.to_dict()`'s hardcoded
+  `"scan"` block (lines 807-811) enumerates keys by name; the new field is
+  invisible outside `ScanConfig` itself until a line is added there
+
 ### Dependent Files
 
 - `scripts/tests/test_text_utils.py`
 - `scripts/tests/test_ll_issues_format_check.py`
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/issues/research_triage.py:212` and `:317` — two
+  independent `build_ref_index()` call sites; both need the config-sourced
+  prefix list threaded in, not just one, or `/ll:refine-issue`'s coverage
+  gate only gets the fix on one code path
+- `scripts/tests/test_symbol_cli_claim_sweep.py:34` — a fifth `build_ref_index()`
+  call site (corpus sweep pinning a real hit-count ceiling on
+  `stale_symbol_ref`/`mislocated_symbol_ref`/`stale_cli_flag`, not
+  `stale_file_ref`); should stay inert under the new verdict but worth
+  confirming rather than assuming
+
+### Documentation
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/API.md` — `RefStatus` literal block (~line 7452), the
+  `build_ref_index`/`RefIndex` signature blocks (~lines 7454-7464), and
+  `classify_file_ref`'s prose description + `**Returns:**` line (~lines 7480,
+  7487) all restate the closed five-member verdict set and need the new
+  member appended
+- `docs/reference/CLI.md` — `ll-issues research-triage`'s denominator prose
+  (~line 1800: "`resolved`, `stale`, and `ambiguous`... stay
+  denominator-eligible") is the doc mirror of the two Python literal tuples
+  this issue changes; `ll-issues format-check`'s `stale_file_ref` prose
+  (~lines 2074-2087) enumerates the non-reported verdicts and should gain a
+  clause for `untracked_by_design`
+- `docs/reference/CONFIGURATION.md` — the full-config example's `"scan"`
+  section (~lines 96-99) should show the new key if it's added there
+
+### Tests
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_config.py::TestScanConfig` (lines 605-623) — new case
+  for the new `ScanConfig` field's `from_dict()` default/round-trip
+- `scripts/tests/test_research_triage.py::TestReferenceFiltering` (~lines
+  227-287) — new test mirroring
+  `test_ambiguous_ref_is_denominator_eligible_but_not_covering` (lines
+  262-287), asserting `qualified_ref_count(...) == 0` for an issue whose only
+  ref is under an untracked-by-design prefix
+- `scripts/tests/test_text_utils.py::TestClassifyFileRef` (lines 210-315) —
+  new parametrized case(s), one per configured prefix, each asserting
+  `classify_file_ref(...) == "untracked_by_design"`
+- `scripts/tests/test_text_utils.py::TestBuildRefIndex` (lines 513-542) — new
+  real-git-repo test with a file under an untracked-by-design prefix left
+  uncommitted, confirming `classify_file_ref` still returns
+  `"untracked_by_design"` despite the path being absent from
+  `index.by_basename`
+- `scripts/tests/test_ll_issues_format_check.py::TestStaleFileRef` (lines
+  568-761) — new integration test mirroring
+  `test_all_does_not_report_for_basenames_and_globs_only` (lines 631-650),
+  asserting `stale_file_ref` is not reported for a ref under an
+  untracked-by-design prefix
 
 ### Conventions in Force
 
@@ -214,6 +303,13 @@ Resolve the option with `/ll:decide-issue` before implementation.
 - little-loops ships into consuming projects, so anything project-shaped belongs
   in config, not a module constant — evidence: `.claude/CLAUDE.md` § Distribution
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-19 — based on codebase analysis:_
+
+- **Config-plumbing path is longer than the current Files-to-Modify list**: a new `config-schema.json` key alone does not reach consumers. The established path for every existing config section is schema entry → dataclass `from_dict()` (`ScanConfig` lives in `scripts/little_loops/config/features.py:304-324`) → assignment in `BRConfig._parse_config()` and a `to_dict()` entry (`scripts/little_loops/config/core.py:306, 375-377, 808-810`) → a completeness-guard registration in `scripts/tests/test_config_schema.py` (`_DATACLASS_SECTION_MAP`, `TestDataclassSectionMapCompleteness`, `TestToDictSchemaParity`). If Option B's config surface is added as a new `ScanConfig` field (or a new dataclass), `config/features.py` and `config/core.py` belong in Files to Modify alongside `config-schema.json`, and `scripts/tests/test_config_schema.py` belongs in Dependent Files alongside the two test files already listed.
+- **`scan` is excluded from the schema-vs-code parity guard** (`_SCHEMA_PARITY_EXCLUDED_SECTIONS` in `test_config_schema.py:1191` includes `"scan"`), and `scan.exclude_patterns`/`scan.focus_dirs` currently have zero runtime consumers anywhere in `scripts/little_loops/` — only `scan.exclude_patterns` reaches one consumer, `codequery/codegraph.py:_is_scan_relevant()`, for scan/touch relevance, not reference classification. A key added under `scan` inherits neither the parity check nor an existing reader; this is a fact for whichever design lands the config key, not a recommendation for where to put it.
+
 ## Implementation Steps
 
 1. The design decision above is made and recorded (`/ll:decide-issue`).
@@ -221,6 +317,33 @@ Resolve the option with `/ll:decide-issue` before implementation.
 3. Corpus re-measurement shows ~315 findings leaving `stale` and no ref moving
    `resolved` → anything else.
 4. `python -m pytest scripts/tests/` passes.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Thread the config-sourced `untracked_by_design` prefix list through all
+  three production `build_ref_index()` call sites — `research_triage.py:212`,
+  `research_triage.py:317`, and `format_check.py:553` — not just the
+  function's own definition in `text_utils.py`
+- Add the new `ScanConfig` field (`config/features.py:304-324`) plus its
+  `from_dict()` update, and add the matching key to `BRConfig.to_dict()`'s
+  hardcoded `"scan"` block (`config/core.py:807-811`), since neither happens
+  automatically from a `config-schema.json` entry alone
+- Update both independent denominator tuples in `research_triage.py`
+  (`qualified_ref_count()` line 215, `_triage_axis()` line 410) to exclude
+  `untracked_by_design` — no shared constant exists between them today, so
+  each literal tuple needs editing separately
+- Update `classify_file_ref`'s "Resolution order" docstring
+  (`text_utils.py:272-299`) to add the new form-check step; the ordering
+  described there is explicitly non-commutative and authoritative, not just
+  descriptive
+- Update `docs/reference/API.md`, `docs/reference/CLI.md`, and
+  `docs/reference/CONFIGURATION.md` per the Documentation subsection above
+- Confirm `scripts/tests/test_symbol_cli_claim_sweep.py`'s corpus-pinned
+  `build_ref_index()` call stays inert under the new verdict — it only
+  asserts on `stale_symbol_ref`/`mislocated_symbol_ref`/`stale_cli_flag`, not
+  `stale_file_ref`
 
 ## Impact
 
@@ -251,6 +374,9 @@ Resolve the option with `/ll:decide-issue` before implementation.
 **Note** (added by `/ll:audit-issue-conflicts`): This issue and ENH-2966 both modify `check_format_gaps` in `scripts/little_loops/issue_parser.py` for unrelated gap classes (a new `stale_file_ref` verdict branch vs. the testable-keyword scan surface). Coordinate implementation order to avoid a merge collision in the same function.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-19T20:40:45 - `bcacfe91-5c56-4df7-84f7-9ce41b394975.jsonl`
+- `/ll:wire-issue` - 2026-08-19T20:38:04 - `6e6a91fc-ee4b-4b69-a901-52cc2ea54f9e.jsonl`
+- `/ll:refine-issue` - 2026-08-19T20:15:03 - `0d2916d2-f9ec-408b-ba0e-bbe68b7d2760.jsonl`
 - `/ll:decide-issue` - 2026-08-16T19:52:58 - `a441e649-6a94-4074-a117-b8df44bd2807.jsonl`
 - `/ll:refine-issue` - 2026-08-16T19:42:17 - `658492bc-e02e-4d03-829a-fae819b3a566.jsonl`
 - `/ll:verify-issues` - 2026-08-13T03:04:58 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`

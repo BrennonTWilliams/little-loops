@@ -1,0 +1,12 @@
+{
+  "id": "9e09ff96-8e92-4c2c-afd4-262b93320115",
+  "type": "decision",
+  "timestamp": "2026-08-19T18:53:02Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Option A is the only option measured to hit the single-digit fire-count target alone (80 to 9 of 125), reusing the existing _section_body allowlist pattern already used by two other gap classes; Option E is orthogonal and fixes the gate-failure harm independently.",
+  "rule": "Option A (narrow testable scan surface to title + Summary) paired with Option E (demote testable to non-gating advisory)",
+  "scope": "issue",
+  "alternatives_rejected": "B (tighten keyword list, 14 fires alone / 0 combined with A - over-corrects), C (raise threshold, barely moves 80->70), D (negative signals, unmeasured, no fitting existing helper)",
+  "issue": "ENH-2966"
+}
