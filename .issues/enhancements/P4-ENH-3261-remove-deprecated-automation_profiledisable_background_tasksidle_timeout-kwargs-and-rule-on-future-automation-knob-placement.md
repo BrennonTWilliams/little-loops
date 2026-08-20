@@ -113,6 +113,17 @@ pre-collapse world anyway.
 ### Documentation
 - `docs/reference/API.md` mirrors (see Files to Modify)
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-20 — based on codebase analysis:_
+
+- Confirmed anchors for the three declaring functions and their `resolve_automation()` folding: `subprocess_utils.py:348` (`run_claude_command()` def) with the fold at `subprocess_utils.py:458-464`; `issue_manager.py:140` (`run_claude_command()` wrapper def) with the fold at `issue_manager.py:227-233`; `issue_manager.py:280` (`run_with_continuation()` def) with the fold at `issue_manager.py:375-381`.
+- `resolve_automation()` itself is defined at `host_runner.py:1886` and is **not** deleted by this issue — it stays shared, still called by `runner_spec.py:146` (`_run_skill()`) and by the 6 `HostRunner` implementations' own `build_streaming()` legacy shim (ENH-3095, out of scope here). Only the three declaring functions' call sites of it are removed.
+- `runner_spec.py:128-132` already carries an in-code comment (tagged ENH-3097) stating the exact rationale for Decision Rules item 1 ("no in-tree producer sets either key; consumers are out-of-tree ll-harness/ll-action/extension runners") — this is effectively a pre-existing draft of the AC2 ruling, not a fresh decision to derive from scratch.
+- Test correction: `test_issue_manager.py` has no `Test*AutomationShim` class. The actual legacy-kwarg-forwarding tests there are two standalone functions: `test_forwards_automation_profile_to_subprocess` (`test_issue_manager.py:1390`) and `test_automation_profile_defaults_to_none` (`test_issue_manager.py:1468`).
+- `test_fsm_runners.py::TestActionRunnerAutomationShim` (line 650) is an automation-shim test class but targets `DefaultActionRunner.run()` (`fsm/runners.py:117`), not one of the three declaring functions in scope — it is unaffected by this issue's kwarg removal and should not be touched.
+- `test_subprocess_utils.py::TestRunClaudeCommandAutomationShim` (line 2461) confirmed in scope; its legacy-kwarg tests (`test_legacy_kwargs_construct_context_internally`, `test_legacy_kwarg_alone_is_silent`, `test_explicit_context_wins_and_warns_on_conflict`, `test_explicit_context_wins_and_warns_on_disable_background_tasks_conflict`, `test_idle_timeout_zero_and_unset_both_resolve_automation_to_none`, `test_explicit_automation_discards_legacy_idle_timeout`, plus the legacy-kwarg comparisons inside `test_empty_context_equivalent_to_none`) all call `run_claude_command()` directly with the legacy kwargs and become call-site `TypeError`s once those kwargs are removed.
+
 ## Implementation Steps
 
 1. Remove the three legacy kwargs and their `resolve_automation()` folding
@@ -191,6 +202,14 @@ exactly as it does today when `automation=` is already the incoming value.
    as the deciding factor for whether host-specific knobs are categorically
    exempt from `AutomationContext` collapse.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-20 — based on codebase analysis:_
+
+- `resolve_automation()` (`host_runner.py:1886-1934`) confirmed semantics: when `automation` is given together with any legacy value, it emits a `DeprecationWarning` and returns `automation` unchanged — the legacy values (including `idle_timeout`) are **discarded, not merged**. When only legacy values are given, it constructs a fresh `AutomationContext(profile=automation_profile, disable_background_tasks=disable_background_tasks, idle_timeout=idle_timeout)`. When neither is given, it returns `None`. This confirms the issue's "explicit `automation=` wins, legacy kwargs still work" framing exactly.
+- Evidence for Decision Rules item 2 (`timeout_kill_grace_seconds` / `sandbox_mode` placement): `timeout_kill_grace_seconds` is a bare `float` parameter at every layer today (`subprocess_utils.py:367`, `issue_manager.py:155`, `issue_manager.py:299`, `fsm/runners.py:133`, `runner_spec.py:156` via `spec.args`, `parallel/worker_pool.py:963`) — it has **no** `AutomationContext` field, and `subprocess_utils.run_claude_command()` never forwards it past its own local `_kill_process_group(process, grace_seconds=timeout_kill_grace_seconds)` call (`subprocess_utils.py:538,549`); it never reaches the host-runner/`build_streaming()` layer where `AutomationContext` actually flows. This is evidence toward "keep as bare parameter," not retrofit.
+- `sandbox_mode` exists concretely only as a `CodexRunner`-private bare parameter (`host_runner.py:664`, `sandbox_mode: str | None = None`) — it is not on the shared `HostRunner` Protocol (`host_runner.py:242-255`), not on any of the other 7 `build_streaming()` implementations, and not an `AutomationContext` field. Its host-specificity (a `CodexRunner._VALID_SANDBOX_MODES` mapping to Codex-only CLI flags, `host_runner.py:600-614`) is direct evidence for the issue's proposed "host-specific knobs are categorically exempt from `AutomationContext` collapse" framing.
+
 ## Out of Scope
 
 - Actually retrofitting `timeout_kill_grace_seconds`/`sandbox_mode` onto
@@ -231,4 +250,5 @@ exactly as it does today when `automation=` is already the incoming value.
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-08-20T18:02:20 - `c26819fc-4c17-46b0-bed5-ff46e41ae3e1.jsonl`
 - `/ll:format-issue` - 2026-08-20T16:39:21 - `131da9b9-fc52-4bdb-a155-4ddc01aec740.jsonl`
