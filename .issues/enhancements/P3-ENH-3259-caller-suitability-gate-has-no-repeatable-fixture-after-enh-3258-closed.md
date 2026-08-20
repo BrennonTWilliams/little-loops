@@ -9,6 +9,7 @@ discovered_date: '2026-08-20'
 captured_at: '2026-08-20T00:19:48Z'
 testable: true
 program_design_not_applicable: true
+behavior_parity_not_applicable: true
 relates_to:
 - ENH-3258
 confidence_score: 90
@@ -203,6 +204,13 @@ _Superseded by the mechanism decision (2026-08-19) — no longer in scope:_
   block; add the file-path bypass flag~~
 - ~~`docs/reference/CLI.md` — `ll-loop scaffold-verify` (~1043-1049) flag table; add a row
   for the new flag~~
+  > **`behavior_parity_not_applicable: true` (set 2026-08-19, second review round).**
+  > `ll-issues format-check` flagged `missing_behavior_parity: docs/reference/CLI.md`,
+  > tripped by the Proposed Solution line "its `docs/reference/CLI.md` row are all
+  > **dropped** — see the superseded decision". That is a false positive: "dropped" means
+  > dropped *from this issue's scope*, not a file or documented behavior being removed.
+  > `docs/reference/CLI.md` is untouched by this issue, so there is no old-vs-new behavior
+  > to establish parity for. Flag set by human decision per `issue_parser.py:727-730`
 
 ### Dependent Files (Callers/Importers)
 - `skills/wire-issue/SKILL.md` § 8b and
@@ -534,7 +542,11 @@ _Revised 2026-08-19:_
   `get_next_issue_number()` (`issue_parser.py:2461`) will allocate 3300 to real work.
   Also decided: loop location `scripts/tests/fixtures/loops/` (per `resolve_loop_path()`
   `fsm/loop_paths.py:21-23`), dropping the conditional README row; and `.gitignore` added to
-  Files to Modify as a required mitigation, not an optional one.
+  Files to Modify as a required mitigation, not an optional one. Separately,
+  `behavior_parity_not_applicable: true` was set (human decision) to clear a
+  `missing_behavior_parity: docs/reference/CLI.md` false positive — rationale recorded
+  inline under Files to Modify — and a pre-existing `stale_file_ref` was fixed by spelling
+  out the elided ENH-3258 filename. `ll-issues format-check` is now clean.
 - `/ll:confidence-check` - 2026-08-20T04:11:29 - `b253f9ca-7946-4d68-ac63-fe6e2061f212.jsonl`
 - review round - 2026-08-19 - **mechanism reselected; three verified corrections.** (1)
   `/ll:verify-issue-loop` rejected: `scaffold_verify.py:111-150` generates
