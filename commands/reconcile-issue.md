@@ -1,6 +1,6 @@
 ---
 description: Rewrite an issue's Implementation Steps, Acceptance Criteria, and Integration Map (Files to Modify, Dependent Files, Similar Patterns, Tests, Documentation) in place from its own accumulated research findings — plus, conditionally, a Scope Boundaries claim contradicted by those findings — without appending or bulldozing human prose
-argument-hint: "[issue-id]"
+argument-hint: "ISSUE_ID"
 allowed-tools:
   - Read
   - Glob
@@ -9,6 +9,8 @@ allowed-tools:
   - Bash(ll-issues:*)
   - Bash(git:*)
 disable-model-invocation: true
+metadata:
+  short-description: Reconcile an issue's directive sections against its own research findings
 arguments:
   - name: issue_id
     description: Issue ID to reconcile (e.g., FEAT-2672, BUG-004)
