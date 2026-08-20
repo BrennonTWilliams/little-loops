@@ -447,9 +447,10 @@ Skill invocation frequency ranked by usage or correction rate. Tells you which s
 ```bash
 ll-logs scan-failures --project .
 ll-logs scan-failures --project . --capture --window-days 14
+ll-logs scan-failures --project . --skill review-epic --json
 ```
 
-Finds failed `ll-*` CLI invocations in session logs, clusters by error signature, and optionally creates BUG issue files (`--capture`).
+Finds failed `ll-*` CLI invocations in session logs, clusters by error signature, and optionally creates BUG issue files (`--capture`). `--skill NAME` scopes clusters to `ll-*` CLI failures that occurred while NAME was the enclosing skill.
 
 ### Identify unused skills
 

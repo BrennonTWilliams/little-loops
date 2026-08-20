@@ -3327,7 +3327,8 @@ Discover and extract ll-relevant JSONL entries from Claude Code session logs. Al
 | `--capture` | | Create BUG issue files for each failure cluster. When combined with `--all`, scopes capture to `Path.cwd()` by default — foreign-project clusters are reported but not filed. Use `--capture-foreign` to also create issues for clusters from other projects |
 | `--capture-foreign` | | When `--capture --all` is active, also create BUG issues for failure clusters from projects outside the current working directory |
 | `--limit N` | | Cap output to top N clusters by count (0 = unlimited, default) |
-| `--json` | `-j` | Output as JSON: `[{"tool": str, "count": int, "normalized_sig": str, "sample_error": str, "session_ids": [...]}]` |
+| `--skill NAME` | | Limit clusters to `ll-*` CLI failures that occurred while NAME was the enclosing skill (`<command-name>` marker or `Skill` tool_use block); `ll:` prefix optional. Does not filter failures of NAME's own `Read`/`Edit`/`Grep` calls — this subcommand never sees those. Attribution is heuristic |
+| `--json` | `-j` | Output as JSON: `[{"tool": str, "count": int, "normalized_sig": str, "sample_error": str, "session_ids": [...], "skills": [...]}]` |
 
 **`diff` flags:**
 
@@ -3389,6 +3390,7 @@ ll-logs scan-failures --project /path --json        # JSON failure clusters for 
 ll-logs scan-failures --all --window-days 30        # Only failures from last 30 days
 ll-logs scan-failures --all --limit 10              # Top 10 failure clusters by count
 ll-logs scan-failures --all --capture               # Create BUG issues for each failure cluster
+ll-logs scan-failures --project . --skill review-epic --json  # Failures attributed to one skill
 ll-logs loop-fleet --all                            # Loop success-rate table, worst-first
 ll-logs loop-fleet --project . --sort name          # Alphabetical instead of success-rate order
 ll-logs loop-fleet --all --json --limit 50          # Most recent 50 per-run JSON rows

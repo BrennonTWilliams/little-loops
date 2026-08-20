@@ -12,7 +12,7 @@ program_design_not_applicable: true
 behavior_parity_not_applicable: true
 relates_to:
 - ENH-3258
-confidence_score: 90
+confidence_score: 96
 outcome_confidence: 50
 score_complexity: 14
 score_test_coverage: 0
@@ -463,13 +463,13 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 _Updated by `/ll:confidence-check` on 2026-08-19_
 
-**Readiness Score**: 90/100 → PROCEED
+**Readiness Score**: 96/100 → PROCEED
 **Outcome Confidence**: 50/100 → LOW
 
 ### Outcome Risk Factors (current run)
 - Change surface is mixed rather than a clean isolated change or a pure mechanical
-  sweep: ~9 distinct sites (fixture file, hand-written loop YAML, conditional README
-  row, `caller-suitability-gate.md` correction, 6 host-mirror files) span new-artifact
+  sweep: ~9 distinct sites (fixture file, hand-written loop YAML, `.gitignore` entry,
+  `caller-suitability-gate.md` correction, 6 host-mirror files) span new-artifact
   authoring plus a small enumerated fanout — Criterion D scored 18/25, not the 25/25 an
   isolated or fully-verified sweep would earn.
 - No `scripts/tests/` coverage exists or is planned for this deliverable by design (the
@@ -479,6 +479,16 @@ _Updated by `/ll:confidence-check` on 2026-08-19_
   loop; step 4 requires pinning the gate substrings against a real run before the loop
   can be trusted — residual execution-verification risk, not a design-decision gap
   (`unapplied_decision` check is clean).
+
+_Reassessment note (2026-08-19, this run): all findings above are unchanged from the
+prior run — re-verified independently against the current tree (format-check clean,
+Program Design gate clean, no unresolved `blocked_by`, git_operations.py:412-413 and
+cli/gitignore.py:55 citations both confirmed by direct read). Readiness raised 90→96:
+on independent scoring the only deduction found was Criterion 4 (2 points) for step 4's
+observed-not-assumed gate substrings, which is an execution-order safeguard already
+built into Implementation Steps rather than an open spec gap. Outcome Confidence
+unchanged at 50 — the three risk factors above are structural to the chosen mechanism,
+not resolvable by further issue refinement._
 
 _Prior note (2026-08-19, superseded above): Readiness 85/100 → PROCEED WITH CAUTION;
 Outcome 49/100 → LOW._
@@ -524,6 +534,7 @@ _Revised 2026-08-19:_
   scoped in Scope Boundaries; option (a) under Proposed Solution is the upgrade path.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-20T04:29:30 - `d25c66c3-4afe-428a-ae85-77939fc798a9.jsonl`
 - review round (second) - 2026-08-19 - **six corrections, all verified against the tree.**
   (1) *Prompt contamination*: the fixture scenario is `caller-suitability-gate.md:52-90`'s
   own worked example, and the (then-)step-4 correction puts the injection gate's expected

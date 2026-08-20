@@ -163,32 +163,32 @@ that existing surface rather than waiting on it.
 
 ## Acceptance Criteria
 
-- [ ] `ll-logs scan-failures --skill review-epic` reports only clusters whose
+- [x] `ll-logs scan-failures --skill review-epic` reports only clusters whose
       failures occurred while `review-epic` (via `<command-name>` marker or
       `Skill` tool_use) was the enclosing skill; `ll:review-epic` is accepted
       as an equivalent spelling.
-- [ ] Unfiltered **clustering is unchanged**: same cluster count, same
+- [x] Unfiltered **clustering is unchanged**: same cluster count, same
       ordering, same `--limit` top-N, same `FAILURES_FOUND` count for
       `.loops/ll-logs-telemetry-digest.yaml`. The cluster key is not extended.
       A regression test pins this. (Unfiltered *plain-text* output is
       byte-identical; unfiltered `--json` output gains exactly one additive
       key, `skills`, and is otherwise unchanged — see the next bullet. The
       digest consumer reads `len(items)` only, so it is unaffected.)
-- [ ] `--capture` without `--skill` creates exactly the same set of bug issues
+- [x] `--capture` without `--skill` creates exactly the same set of bug issues
       as before the change (no per-skill duplicates).
-- [ ] `--json` rows include a `skills` array (sorted attributed skill names,
+- [x] `--json` rows include a `skills` array (sorted attributed skill names,
       unattributed excluded, `[]` when none).
-- [ ] Under `--skill NAME`, each surviving cluster's `count` and `session_ids`
+- [x] Under `--skill NAME`, each surviving cluster's `count` and `session_ids`
       reflect only that skill's failures, not the cluster total.
-- [ ] `--skill` composes with `--window-days`/`--since`/`--until` and
+- [x] `--skill` composes with `--window-days`/`--since`/`--until` and
       `--limit`. Specifically: under `--skill X --limit N`, the top-N is
       ranked by each cluster's **re-projected** (skill-X) count, not its total
       count. A test pins this with a fixture where the two orderings differ.
-- [ ] `--help` for `scan-failures` states the scope clarification (`--skill`
+- [x] `--help` for `scan-failures` states the scope clarification (`--skill`
       means "`ll-*` CLI failures while NAME was the enclosing skill", not
       failures of NAME's own `Read`/`Edit`/`Grep` calls) and the heuristic
       limitations listed in Proposed Solution.
-- [ ] Tests cover: marker-based attribution, `Skill` tool_use attribution
+- [x] Tests cover: marker-based attribution, `Skill` tool_use attribution
       (including `ll:` prefix stripping **and a bare, unprefixed
       `input.skill` such as `analyze_log` — must not raise and must attribute
       under its bare name**), **both spellings of one skill
@@ -199,7 +199,7 @@ that existing surface rather than waiting on it.
       under `--skill`, per-skill count re-projection, and the
       prefix-equivalence acceptance — using synthetic JSONL fixtures (no live
       session logs).
-- [ ] `python -m pytest scripts/tests/` exits 0.
+- [x] `python -m pytest scripts/tests/` exits 0.
 
 ## Scope Boundaries
 
@@ -322,11 +322,45 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - **Risk**: Low - additive, optional flag
 - **Breaking Change**: No
 
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-08-20
+- **Implementation**: Added `--skill NAME` to `ll-logs scan-failures`. `_FailureCluster` gained
+  `skill_counts`/`skill_sessions` fields; a new `_RawCluster` accumulator tracks them during the
+  streaming pass without splitting the `(cwd_path, tool_name, normalized_sig)` cluster key.
+  Attribution tracks `current_skill` per JSONL file from two sources: `<command-name>` markers on
+  `str`-content user records (reset to `None` on no match) and `Skill` tool_use blocks (`ll:`
+  prefix stripped via `removeprefix`). `list`-content user records (tool_result carriers) never
+  touch `current_skill`. `--skill NAME` filters clusters, re-projects `count`/`session_ids` to the
+  named skill's subset, then re-sorts before `--limit` is applied. `--json` gained an additive
+  `skills` array. Implementation matched the issue's Program Design exactly — no deviations.
+
+### Files Changed
+- `scripts/little_loops/cli/logs.py` — `_FailureCluster`, new `_RawCluster`, `_cmd_scan_failures`
+  attribution tracking and `--skill` filter/reprojection, `--skill` argparse flag, `--json` schema
+- `scripts/tests/test_ll_logs.py` — 19 new tests covering marker/Skill-tool_use attribution,
+  prefix normalization, reset semantics, unattributed exclusion, count re-projection, and
+  `--skill`+`--limit` reordering; updated `test_scan_failures_json_output_schema`
+- `docs/reference/API.md`, `docs/reference/CLI.md`, `docs/guides/HISTORY_SESSION_GUIDE.md` —
+  documented `--skill` and the `skills` JSON field
+
+### Verification Results
+- `python -m pytest scripts/tests/` — 19987 passed, 46 skipped
+- `ruff check` / `mypy` clean on changed files
+- Confirmed unfiltered cluster count is byte-identical before/after against this project's real
+  session corpus (452 clusters both runs)
+
+### Commits
+- See git log for details
+
 ## Related Key Documentation
 
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-20T04:43:52 - `2768e842-48b3-4e1e-a794-4ea32e6534b7.jsonl`
+- `/ll:ready-issue` - 2026-08-20T04:28:36 - `fd4224d4-6311-4f68-b2b0-63712be1c780.jsonl`
 - `/ll:confidence-check` - 2026-08-20T04:15:03 - `bc783ddd-7686-4216-8c7b-f8960149f7f4.jsonl`
 - `/ll:confidence-check` - 2026-08-20T04:05:04 - `126a5f56-c9e2-4e46-a250-6fd8dd7c821f.jsonl`
 - `/ll:wire-issue` - 2026-08-20T04:01:41 - `aaf0ea2a-841b-4c50-a0ca-6a58028f4f0d.jsonl`
