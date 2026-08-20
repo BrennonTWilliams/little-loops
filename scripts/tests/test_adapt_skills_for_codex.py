@@ -533,12 +533,16 @@ class TestSynthesizedSkillMd:
 
     def test_allowed_tools_and_argument_hint_pass_through(self) -> None:
         fm = {"allowed-tools": ["Read", "Bash(git:*)"], "argument-hint": "ISSUE_ID"}
-        result = _synthesized_skill_md("ready-issue", "Validate an issue.", fm, "Validate an issue.")
+        result = _synthesized_skill_md(
+            "ready-issue", "Validate an issue.", fm, "Validate an issue."
+        )
         assert 'argument-hint: "ISSUE_ID"\n' in result
         assert "allowed-tools:\n  - Read\n  - Bash(git:*)\n" in result
 
     def test_missing_pass_through_fields_omitted_not_null(self) -> None:
-        result = _synthesized_skill_md("check-code", "Run code quality checks.", {}, "Run code quality checks.")
+        result = _synthesized_skill_md(
+            "check-code", "Run code quality checks.", {}, "Run code quality checks."
+        )
         assert "argument-hint" not in result
         assert "allowed-tools" not in result
         assert "null" not in result

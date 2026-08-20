@@ -3,11 +3,12 @@ id: ENH-3265
 type: ENH
 title: Codex bridge emitters are presence-only and lossy, hiding 11 drifted files
 priority: P3
-status: open
+status: done
 testable: true
 discovered_by: ll-issues-create
 discovered_date: '2026-08-20'
 captured_at: '2026-08-20T20:45:06Z'
+completed_at: '2026-08-20T22:00:00Z'
 relates_to:
 - ENH-3062
 - FEAT-2274
@@ -522,9 +523,15 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ## Status
 
-**Open**
+**Done**
 
 ## Session Log
+- implementation - 2026-08-20 - landed in `2e3e2f57` (emitter fidelity: word-boundary
+  truncation, `metadata.short-description` preference, `allowed-tools`/
+  `argument-hint` pass-through, content-comparison drift detection) and
+  `08e61fec` (source-side metadata standardization across skills). Full suite
+  green (20024 passed, 46 skipped). `ll-adapt --host codex --apply` confirmed
+  idempotent: `0 adapted, 108 skipped, 0 errors`, clean `git status`.
 - `/ll:ready-issue` - 2026-08-20T21:21:10 - `808309be-a34d-4062-88b6-0559b0aadd01.jsonl`
 - `/ll:confidence-check` - 2026-08-20T21:17:53 - `d602ac2a-3cb0-45fc-863c-88e93035a6e5.jsonl`
 - pre-implementation review - 2026-08-20 - verified claims against HEAD. Five

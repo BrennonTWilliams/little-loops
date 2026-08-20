@@ -459,7 +459,9 @@ class TestCodexEmitterEmitSkill:
         meta = self._meta(tmp_path, "my-skill", description="Original description.")
         CodexEmitter().emit_skill(meta)
         openai_yaml = meta["skill_path"].parent / "agents" / "openai.yaml"
-        openai_yaml.write_text('interface:\n  display_name: "My Skill"\n  short_description: "Stale"\n')
+        openai_yaml.write_text(
+            'interface:\n  display_name: "My Skill"\n  short_description: "Stale"\n'
+        )
 
         content2 = meta["skill_path"].read_text()
         meta2 = {**meta, "content": content2, "fm": _read_frontmatter(content2) or {}}
