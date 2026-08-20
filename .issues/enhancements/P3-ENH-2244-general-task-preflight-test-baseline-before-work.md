@@ -19,6 +19,8 @@ score_test_coverage: 22
 score_ambiguity: 24
 score_change_surface: 22
 decision_needed: false
+relates_to:
+- BUG-3269
 ---
 
 # ENH-2244: Add pre-flight test baseline state to general-task loop

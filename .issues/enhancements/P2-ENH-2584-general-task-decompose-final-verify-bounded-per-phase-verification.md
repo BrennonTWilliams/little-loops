@@ -15,6 +15,7 @@ labels:
 decision_needed: false
 relates_to:
 - ENH-2583
+- BUG-3271
 confidence_score: 100
 outcome_confidence: 74
 score_complexity: 14

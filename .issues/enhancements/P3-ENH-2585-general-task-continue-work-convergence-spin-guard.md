@@ -18,6 +18,7 @@ relates_to:
 - FEAT-1637
 - BUG-1674
 - ENH-2583
+- BUG-3270
 decision_needed: false
 confidence_score: 100
 outcome_confidence: 86
