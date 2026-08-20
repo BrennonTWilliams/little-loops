@@ -116,18 +116,48 @@ No generator change needed; these are correct once content comparison exists.
 | `ll-create-sprint/SKILL.md` | `allowed-tools:` (1) | **yes, but source has 3** |
 | `ll-loop-suggester/SKILL.md` | `argument-hint:` | **yes, byte-identical** |
 
-Most of this is not unrecoverable hand-authored content — it is a manual
-back-port of frontmatter the source command already carries. The fix is
-**pass-through in `_synthesized_skill_md`**: emit `allowed-tools` and
-`argument-hint` from the source command's frontmatter when present.
+None of this is unrecoverable hand-authored content — it is a manual back-port
+of content the source command already carries, or content that can be moved
+into the source. The fix is **pass-through in `_synthesized_skill_md`**: emit
+`allowed-tools` and `argument-hint` from the source command's frontmatter when
+present.
 
-Two residuals genuinely are not derivable and need preservation-on-merge rather
-than pass-through:
+**There is no preservation-on-merge requirement.** Both apparent residuals
+resolve at the source:
 
-- `args:` (3 files) — a hand-invented field; the source carries
-  `argument-hint:` plus a structured `arguments:` list, neither of which
-  reproduces the `args:` string.
-- The Status-enum footnote in the body (3 files).
+- `args:` (3 files) — **not a hand-invented field.** It is read by three
+  consumers, each with an `argument-hint` fallback:
+  `scripts/little_loops/tool_catalog.py:101,118`, `scripts/little_loops/cli/help.py:198`,
+  and `scripts/little_loops/mcp_server/prompts.py:89`, all
+  `fm.get("args") or fm.get("argument-hint")`. Because the fallback exists,
+  dropping `args:` does not break anything — but it **degrades** output, since
+  the stub's `args:` is strictly richer than the source's `argument-hint:`
+  (measured 2026-08-20):
+
+  | Command | source `argument-hint:` | stub `args:` |
+  |---|---|---|
+  | `refine-issue` | `"[issue-id]"` | `"ISSUE_ID [--auto] [--dry-run] [--gap-analysis] [--full-rewrite]"` |
+  | `ready-issue` | `"[issue-id]"` | `"ISSUE_ID"` |
+  | `reconcile-issue` | `"[issue-id]"` | `"ISSUE_ID"` |
+
+  Fix: **promote the richer string into the source command's `argument-hint:`**,
+  then let pass-through emit it. The stub's `args:` key disappears; the
+  consumers pick up `argument-hint` via their existing fallback with equal or
+  better content.
+- The Status-enum footnote in the body (3 files) — **already in the source**,
+  verbatim, at `commands/refine-issue.md:67`. The stub body is a fixed
+  four-line pointer ("See the source command file for the full prompt body"),
+  so the footnote is a redundant back-port. Fix: drop it from the stubs.
+
+**Consequence — keep the generator a pure function of its source.** With both
+residuals resolved at the source, `_synthesized_skill_md` needs no `existing`
+parameter and no merge path. This is worth holding as a design constraint
+rather than an incidental simplification: ENH-3062's gate asserts `adapted == 0`,
+and a generator whose output is partly a function of what is already on disk
+makes that assertion substantially weaker — any hand-added content would be
+self-ratifying. It also means the emitter never has to parse an existing stub,
+which retires the malformed-stub-tolerance concern recorded in Codebase
+Research Findings below.
 
 One asymmetry to decide explicitly: `create-sprint`'s source declares 3
 `allowed-tools` entries (`mkdir`, `ll-issues`, `ll-history-context`) while the
@@ -146,8 +176,20 @@ rediscover and pursue it.
 
 ### Class C — the generator is worse than what is on disk (4 files)
 
-`_extract_skill_short_desc` (`codex.py:43-62`) truncates the source
-`description` at `_MAX_SHORT_DESC = 80` chars, mid-word:
+Truncation is implemented **twice**, and both copies have the defect:
+
+1. `_extract_skill_short_desc` (`codex.py:43-62`) — feeds `agents/openai.yaml`.
+2. `_synthesized_skill_md` (`codex.py:92-96`) — an independent inline
+   `stripped[:_MAX_SHORT_DESC]` loop that feeds `SKILL.md`'s
+   `metadata.short-description`. It does not call `_extract_skill_short_desc`.
+
+Fixing only the first repairs `openai.yaml` while leaving `SKILL.md` mid-word
+truncated. `emit_command` already computes `short_desc` at `:349`; the fix is to
+pass that value into `_synthesized_skill_md` and delete the duplicate loop, so
+there is one truncation path.
+
+Both truncate the source `description` at `_MAX_SHORT_DESC = 80` chars,
+mid-word:
 
 ```
 ll-loop-suggester   on-disk:   "Suggest FSM loops from message history, command catalog, or sequences."
@@ -160,6 +202,13 @@ ll-reconcile-issue  on-disk:   "Reconcile an issue's directive sections against 
 Affects `ll-loop-suggester/SKILL.md` + `agents/openai.yaml` and
 `ll-reconcile-issue/SKILL.md` + `agents/openai.yaml` (the latter two overlap
 Class B).
+
+**On-disk truncation damage is broader than these 4 files.**
+`ll-refine-issue/SKILL.md` already carries
+`short-description: Refine issue files with codebase-driven research to fill knowledge gaps needed f`
+— a mid-word cut that is on disk *today*. It is not Class C (regeneration
+improves it rather than degrading it), but it is evidence the defect has already
+shipped into the tree, and it belongs in AC1's spot-check.
 
 **Word-boundary truncation alone is not sufficient.** The on-disk values are
 hand-written summaries, not prefixes of the source description — no truncation
@@ -177,9 +226,11 @@ strategy reproduces them. The fix has two parts:
 ## Scope Boundaries
 
 **In scope**: `CodexEmitter.emit_command` and `emit_skill`'s `openai.yaml`
-companion check; `_synthesized_skill_md` field pass-through and merge;
-`_extract_skill_short_desc` truncation; short-description frontmatter on the
-affected source commands; repairing the 11 drifted files.
+companion check; `_synthesized_skill_md` field pass-through (no merge);
+`_extract_skill_short_desc` truncation and the removal of its duplicate in
+`_synthesized_skill_md`; short-description frontmatter and widened
+`argument-hint:` on the affected source commands; repairing the 11 drifted
+files.
 
 **Out of scope**: the suite gate itself (ENH-3062), other hosts' emitters,
 adding new hosts, the `.gemini`/`.kimi-code`/`.codex` tree layouts, and the
@@ -192,11 +243,27 @@ see ENH-3062's resolved decisions).
 - `scripts/little_loops/adapters/codex.py` — `emit_command()` (`:333-377`,
   `.exists()` checks at `:359`, `:366`, `:368`, no `read_text()` anywhere);
   `emit_skill()`'s `yaml_exists = openai_yaml.exists()` (`:310`) gating the skip
-  at `:312` and the write at `:320`; `_synthesized_skill_md()` (`:88-119`);
+  at `:312` and the write at `:320`; `_synthesized_skill_md()` (`:88-119`,
+  including its duplicate truncation loop at `:92-96`);
   `_extract_skill_short_desc()` (`:43-62`) and `_MAX_SHORT_DESC` (`:25`).
 - `commands/loop-suggester.md`, `commands/reconcile-issue.md` (and any other
   command whose description exceeds 80 chars) — add the short-description
   frontmatter field.
+- `commands/refine-issue.md`, `commands/ready-issue.md`,
+  `commands/reconcile-issue.md` — widen `argument-hint:` from `"[issue-id]"` to
+  the richer string currently carried as the stub's `args:` (see Class B), so
+  pass-through preserves rather than degrades `/ll:help` and MCP prompt output.
+
+**Attribution correction — all 11 drifted files flow through `emit_command`,
+not `emit_skill`.** All 8 affected `skills/ll-*/SKILL.md` carry
+`disable-model-invocation: true`, and `process_commands`/`process_skills`
+(`core.py:438-443`) filters those out before `emit_skill` is ever called — the
+issue's own Program Design note. All 4 drifted `agents/openai.yaml` files are
+likewise under bridged `ll-*` directories. Measured 2026-08-20: only 18 of 69
+`skills/*/SKILL.md` reach `emit_skill` at all, and **none of them are among the
+11 drifted files.** The `emit_skill` companion fix (AC6) is therefore
+prophylactic — a real latent bug on the 18 non-bridged skills — and repairs
+zero drift. Do not plan the `openai.yaml` repairs around it.
 - `skills/ll-cleanup-worktrees/`, `skills/ll-commit/`, `skills/ll-create-sprint/`,
   `skills/ll-loop-suggester/`, `skills/ll-ready-issue/`, `skills/ll-reconcile-issue/`,
   `skills/ll-refine-issue/`, `skills/ll-verify-issues/` — the 11 drifted files.
@@ -314,8 +381,8 @@ _Added by `/ll:refine-issue` — 2026-08-20 — based on codebase analysis:_
 
 ### Signatures
 
-- `_extract_skill_short_desc(text: str) -> str` — existing, `adapters/codex.py:43`. Currently returns `desc.splitlines()[0][:_MAX_SHORT_DESC]`. Gains an explicit-field preference and word-boundary truncation. Signature unchanged.
-- `_synthesized_skill_md(stem: str, description: str) -> str` — existing, `adapters/codex.py:88`. Must widen to see the source command's full frontmatter and any existing on-disk stub, e.g. `_synthesized_skill_md(stem: str, description: str, fm: dict, existing: str | None = None) -> str`. `fm` supplies `allowed-tools`/`argument-hint` for pass-through; `existing` supplies `args:` and body content for preservation. Callers: `CodexEmitter.emit_command` only (`:366`).
+- `_extract_skill_short_desc(text: str) -> str` — existing, `adapters/codex.py:43`. Currently returns `desc.splitlines()[0][:_MAX_SHORT_DESC]`. Gains an explicit-field preference and word-boundary truncation. Signature unchanged. **Becomes the single truncation path** — `_synthesized_skill_md`'s duplicate inline loop (`:92-96`) is deleted rather than fixed in parallel.
+- `_synthesized_skill_md(stem: str, description: str, fm: dict, short_desc: str) -> str` — existing, `adapters/codex.py:88`. Widens to see the source command's frontmatter and the already-computed short description. `fm` supplies `allowed-tools`/`argument-hint` for pass-through; `short_desc` is the value `emit_command` already computes at `:349` via `_extract_skill_short_desc`, passed in so the inline truncation loop can go. **No `existing` parameter** — per Class B, both apparent residuals (`args:`, the Status footnote) resolve at the source, so the function stays a pure function of its inputs and never reads the on-disk stub. Callers: `CodexEmitter.emit_command` only (`:366`).
 - `_make_openai_yaml_content(display_name: str, short_desc: str) -> str` — existing, `adapters/codex.py:83`. Unchanged; its output becomes content-compared rather than presence-checked.
 - `CodexEmitter.emit_command(self, cmd_meta: dict) -> str` — existing, `adapters/codex.py:333`. The `.exists()` skip at `:359-362` becomes an `existing == new_content` comparison, and the per-file write guards at `:366`/`:368` drop their `if not ...exists()` conditions.
 - `CodexEmitter.emit_skill(self, skill_meta: dict) -> str` — existing, `adapters/codex.py:294`. `yaml_exists = openai_yaml.exists()` (`:310`) becomes a content comparison feeding the same `skill_changed`-style boolean; the `:320` write guard drops its existence condition.
@@ -335,22 +402,32 @@ _Added by `/ll:refine-issue` — 2026-08-20 — based on codebase analysis:_
 - Confirmed exact current body of `_synthesized_skill_md` (codex.py:88-119): a pure `(stem: str, description: str) -> str` builder — it accepts no `fm`/`existing` parameter today, so `allowed-tools`/`argument-hint`/hand-added `args:` are structurally unreachable from inside it, not merely unused.
 - `fm` (the source command's parsed frontmatter dict) is already in scope inside `emit_command` as `cmd_meta["fm"]` (codex.py:338) but is never forwarded to `_synthesized_skill_md` (:367) or to `_extract_skill_short_desc` (:349) — the latter instead independently re-parses raw `content` via its own internal `yaml.safe_load` (codex.py:43-62), rather than reusing the already-parsed `fm` dict sitting in the caller's scope. Pass-through is therefore a signature-widening + dict-lookup change (`fm.get("allowed-tools")` / `fm.get("argument-hint")`), not new parsing.
 - `_read_frontmatter` (core.py:89-100) plus the upstream skip in `process_commands` (core.py:504-509, `fm is None` → skip before `emit_command` is ever called) together guarantee `fm` is always a `dict` (possibly missing specific keys, never `None`) by the time `emit_command` runs — so `fm.get("allowed-tools")` returning `None` when absent is the only case pass-through code needs to handle; it must be treated as "omit the field," not emitted as a literal `null` line.
-- No malformed-on-disk-stub handling exists anywhere in `emit_command` today: presence-only checks never call `.read_text()` on the existing file, so an existing-but-unparseable `out_skill_md`/`out_openai_yaml` is currently unreachable code. Introducing content comparison is the first point this method would need to read and (if pass-through/merge parses it) tolerate a malformed existing stub.
+- No malformed-on-disk-stub handling exists anywhere in `emit_command` today: presence-only checks never call `.read_text()` on the existing file, so an existing-but-unparseable `out_skill_md`/`out_openai_yaml` is currently unreachable code. Introducing content comparison is the first point this method would need to read and (if pass-through/merge parses it) tolerate a malformed existing stub. **Superseded by the Class B revision:** with no merge path, the existing stub is only ever `read_text()`-compared as an opaque string, never parsed, so a malformed stub simply compares unequal and gets overwritten. No tolerance logic is required.
 
 ## Implementation Steps
 
 1. Fix `_extract_skill_short_desc`: prefer an explicit source short-description
    field; fall back to word-boundary truncation with ellipsis. Add the field to
-   the affected source commands.
-2. Teach `_synthesized_skill_md` to pass `allowed-tools` and `argument-hint`
-   through from source frontmatter, and to preserve an existing `args:` field
-   and body content below the generated stub body on regeneration.
-3. Switch `emit_command`'s presence-only check and `emit_skill`'s `openai.yaml`
+   the affected source commands. Delete `_synthesized_skill_md`'s duplicate
+   inline truncation loop (`codex.py:92-96`) and pass `emit_command`'s
+   already-computed `short_desc` (`:349`) in instead, so one path feeds both
+   `SKILL.md` and `openai.yaml`.
+2. Move the two non-derivable Class B residuals into the source, so no merge
+   path is needed: widen `argument-hint:` in `commands/refine-issue.md`,
+   `ready-issue.md`, and `reconcile-issue.md` to the richer strings the stubs
+   carry as `args:`, and drop the Status-enum footnote from the stubs (it is
+   already at `commands/refine-issue.md:67`).
+3. Teach `_synthesized_skill_md` to pass `allowed-tools` and `argument-hint`
+   through from source frontmatter. Treat a missing key as "omit the field,"
+   never as a literal `null` line. No `existing`/merge handling.
+4. Switch `emit_command`'s presence-only check and `emit_skill`'s `openai.yaml`
    companion check to content comparison, and drop the per-file `.exists()`
-   write guards so `--apply` actually rewrites.
-4. Regenerate; verify the diff against the Class A/B/C triage file-by-file
+   write guards so `--apply` actually rewrites. Note the `emit_skill` half
+   repairs none of the 11 files — it is prophylactic cover for the 18
+   non-bridged skills.
+5. Regenerate; verify the diff against the Class A/B/C triage file-by-file
    rather than accepting it wholesale.
-5. Add the drift/idempotency tests; run the full suite.
+6. Add the drift/idempotency tests; run the full suite.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
@@ -358,7 +435,12 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 - Update the 6 `TestSynthesizedSkillMd` call sites in
   `scripts/tests/test_adapt_skills_for_codex.py` (`:477,482,486,491,502,507`) to
-  pass an `fm=` argument once `_synthesized_skill_md`'s signature widens.
+  pass `fm=` and `short_desc=` arguments once `_synthesized_skill_md`'s
+  signature widens. Note `test_short_description_truncated_to_80` (`:491`)
+  changes character: with truncation moved out of `_synthesized_skill_md`
+  entirely, that function no longer truncates — the test either moves to
+  `TestExtractShortDesc` or becomes a pass-through assertion on the injected
+  `short_desc`.
 - Add `metadata.short-description` frontmatter to all 11 commands whose
   description exceeds 80 chars, not just `loop-suggester.md`/`reconcile-issue.md`:
   `commands/scan-codebase.md`, `commands/refine-issue.md`,
@@ -371,22 +453,34 @@ _These touchpoints were identified by wiring analysis and must be included in th
   word-boundary truncation fallback behavior chosen in Step 1; update if the
   no-boundary case no longer hard-truncates at exactly 80 chars.
 - Build a new `_make_bridged_skill_md`-style fixture helper for AC2's
-  preservation test (seed `allowed-tools:`/`args:`/`argument-hint:` on a
-  bridged `SKILL.md`, run `emit_command` with `apply=True`, assert survival).
+  pass-through test. **Revised scope:** with the merge path dropped, the test
+  seeds `allowed-tools:`/`argument-hint:` on the *source command*, runs
+  `emit_command` with `apply=True`, and asserts they appear in the generated
+  stub — a pass-through assertion, not a survive-regeneration assertion. No
+  fixture needs to seed a pre-existing on-disk stub with hand-added fields.
 
 ## Acceptance Criteria
 
-1. **Truncation defect fixed.** `_extract_skill_short_desc` no longer emits
-   mid-word truncation. Regenerating `ll-loop-suggester` and
-   `ll-reconcile-issue` produces a readable short-description, not
-   `"...automatically. U"`. A unit test pins a >80-char description to a
-   word-boundary result.
-2. **Hand-added fields survive.** After the change,
-   `ll-adapt --host codex --apply` leaves `args:`, `allowed-tools:`,
-   `argument-hint:`, and the Status-enum footnote intact in all six affected
-   `skills/ll-*/SKILL.md` files. A test pins this: seed a bridged SKILL.md with
-   an `allowed-tools:` block and an `args:` field, run `emit_command` with
-   `apply=True`, assert both survive.
+1. **Truncation defect fixed, in one place.** `_extract_skill_short_desc` no
+   longer emits mid-word truncation, and `_synthesized_skill_md` no longer
+   truncates at all — it receives the computed value. Regenerating
+   `ll-loop-suggester`, `ll-reconcile-issue`, and `ll-refine-issue` produces a
+   readable short-description in **both** `SKILL.md`'s
+   `metadata.short-description` and `agents/openai.yaml` — not
+   `"...automatically. U"` or `"...knowledge gaps needed f"`. A unit test pins a
+   >80-char description to a word-boundary result. A second test asserts the two
+   files carry the same short-description for the same command, which is what
+   makes the de-duplication load-bearing rather than cosmetic.
+2. **Source-derived fields pass through; nothing is lost.** After the change,
+   `ll-adapt --host codex --apply` emits `allowed-tools:` and `argument-hint:`
+   from source frontmatter into all six affected `skills/ll-*/SKILL.md` files.
+   A test pins this: give a source command an `allowed-tools:` block and an
+   `argument-hint:`, run `emit_command` with `apply=True`, assert both appear in
+   the generated stub, and assert a command lacking them emits no empty or
+   `null` field. Separately, confirm no information is lost in the transition:
+   the three `args:` strings now reach `/ll:help`, `tool_catalog`, and the MCP
+   prompt surface via those consumers' existing `argument-hint` fallback, at
+   equal or better fidelity than before (see Class B table).
 3. **`create-sprint`'s `allowed-tools` widening is deliberate.** The file gains
    the two source entries it is missing, and the diff is reviewed rather than
    auto-accepted.
@@ -397,7 +491,11 @@ _These touchpoints were identified by wiring analysis and must be included in th
    `"skipped"`); a third unchanged call returns `"skipped"`. Under `apply=True`
    the stale-but-present file is actually rewritten.
 6. **`emit_skill`'s `agents/openai.yaml` companion content-compares**, with the
-   same three-call assertion as AC5.
+   same three-call assertion as AC5. **Prophylactic — this repairs none of the
+   11 drifted files**, all of which route through `emit_command`. It covers the
+   18 non-bridged skills that actually reach `emit_skill`. Verify by unit test,
+   not by expecting tree changes; a clean `git status` after this AC is the
+   correct outcome, not a sign the fix did nothing.
 7. **End-to-end idempotency.** `ll-adapt --host codex --apply` run twice leaves
    `git status` clean and reports `0 adapted` on the second run. This is the
    proof that generator and tree agree; per-emitter unit tests can pass while
@@ -427,6 +525,20 @@ _These touchpoints were identified by wiring analysis and must be included in th
 **Open**
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-20T21:17:53 - `d602ac2a-3cb0-45fc-863c-88e93035a6e5.jsonl`
+- pre-implementation review - 2026-08-20 - verified claims against HEAD. Five
+  corrections: (1) `args:` is a *read* field with an `argument-hint` fallback
+  (`tool_catalog.py:101,118`, `cli/help.py:198`, `mcp_server/prompts.py:89`), not
+  hand-invented; (2) the Status footnote is already at
+  `commands/refine-issue.md:67`; (1)+(2) resolve at the source, so the
+  preservation-on-merge design and the `existing=` parameter are dropped and the
+  generator stays a pure function of source — which is what ENH-3062's gate
+  needs; (3) all 11 drifted files route through `emit_command`, so the
+  `emit_skill` fix (AC6) is prophylactic and repairs zero drift (only 18 of 69
+  skills reach `emit_skill`, none drifted); (4) truncation is implemented twice
+  — `_synthesized_skill_md:92-96` duplicates `_extract_skill_short_desc`, so
+  fixing one leaves `SKILL.md` broken; (5) `ll-refine-issue`'s stub already
+  carries mid-word truncation on disk, widening Class C's spot-check.
 - `/ll:confidence-check` - 2026-08-20T21:05:24 - `5922ca54-43fc-4aae-89e3-42687aa4c77e.jsonl`
 - `/ll:wire-issue` - 2026-08-20T21:03:01 - `614e5ae4-ac51-444e-af33-4f7587a7e3d6.jsonl`
 - `/ll:refine-issue` - 2026-08-20T20:55:41 - `03a7dd78-7b4c-4c1b-84cc-861a0bac0ea0.jsonl`
