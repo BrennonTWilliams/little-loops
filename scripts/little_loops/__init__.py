@@ -20,6 +20,7 @@ from little_loops.fsm import RouteContext, RouteDecision
 from little_loops.git_operations import check_git_status
 from little_loops.hooks.types import LLHookEvent, LLHookResult
 from little_loops.host_runner import (
+    AutomationContext,
     CapabilityEntry,
     CapabilityNotSupported,
     CapabilityReport,
@@ -80,6 +81,7 @@ __all__ = [
     "LLHookEvent",
     "LLHookResult",
     # host runner
+    "AutomationContext",
     "CapabilityEntry",
     "CapabilityNotSupported",
     "CapabilityReport",

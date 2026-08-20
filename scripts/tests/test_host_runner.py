@@ -22,6 +22,7 @@ from pathlib import Path
 import pytest
 
 from little_loops.host_runner import (
+    AutomationContext,
     CapabilityEntry,
     CapabilityNotSupported,
     CapabilityReport,
@@ -74,14 +75,16 @@ class TestAutomationProfileEnvAcrossRunners:
 
     def test_none_profile_neutralizes_inherited_env(self, runner_cls: type[HostRunner]) -> None:
         runner = runner_cls()
-        invocation = runner.build_streaming(prompt="hi", automation_profile=None)
+        invocation = runner.build_streaming(prompt="hi", automation=None)
         # Present-but-empty, not absent: absence means "inherit" at every merge site.
         assert invocation.env["LL_AUTOMATION"] == ""
         assert invocation.env["LL_AUTOMATION_PROFILE"] == ""
 
     def test_non_none_profile_injects_signal(self, runner_cls: type[HostRunner]) -> None:
         runner = runner_cls()
-        invocation = runner.build_streaming(prompt="hi", automation_profile="autodev")
+        invocation = runner.build_streaming(
+            prompt="hi", automation=AutomationContext(profile="autodev")
+        )
         assert invocation.env["LL_AUTOMATION"] == "1"
         assert invocation.env["LL_AUTOMATION_PROFILE"] == "autodev"
 
@@ -1158,7 +1161,9 @@ class TestKimiRunner:
 
     def test_automation_profile_env(self) -> None:
         runner = KimiRunner()
-        invocation = runner.build_streaming(prompt="hi", automation_profile="autodev")
+        invocation = runner.build_streaming(
+            prompt="hi", automation=AutomationContext(profile="autodev")
+        )
         assert invocation.env["LL_AUTOMATION"] == "1"
         assert invocation.env["LL_AUTOMATION_PROFILE"] == "autodev"
 
@@ -1347,7 +1352,9 @@ class TestQwenRunner:
 
     def test_automation_profile_env(self) -> None:
         runner = QwenRunner()
-        invocation = runner.build_streaming(prompt="hi", automation_profile="autodev")
+        invocation = runner.build_streaming(
+            prompt="hi", automation=AutomationContext(profile="autodev")
+        )
         assert invocation.env["LL_AUTOMATION"] == "1"
         assert invocation.env["LL_AUTOMATION_PROFILE"] == "autodev"
 
@@ -1575,6 +1582,84 @@ class TestHostInvocation:
     def test_cleanup_paths_defaults_to_empty_tuple(self) -> None:
         invocation = HostInvocation(binary="x", args=[])
         assert invocation.cleanup_paths == ()
+
+
+class TestAutomationContext:
+    """ENH-3095: AutomationContext dataclass and its deprecated-kwarg shim."""
+
+    def test_is_frozen(self) -> None:
+        context = AutomationContext(profile="autodev")
+        with pytest.raises(dataclasses.FrozenInstanceError):
+            context.profile = "other"  # type: ignore[misc]
+
+    def test_defaults(self) -> None:
+        context = AutomationContext()
+        assert context.profile is None
+        assert context.idle_timeout is None
+        assert context.disable_background_tasks is False
+
+    def test_legacy_kwargs_construct_context_internally(self) -> None:
+        """AC3: automation_profile alone still works, folded via the shim."""
+        runner = ClaudeCodeRunner()
+        invocation = runner.build_streaming(
+            prompt="hi", automation_profile="autodev", disable_background_tasks=True
+        )
+        assert invocation.env["LL_AUTOMATION"] == "1"
+        assert invocation.env["LL_AUTOMATION_PROFILE"] == "autodev"
+        assert invocation.env["CLAUDE_CODE_DISABLE_BACKGROUND_TASKS"] == "1"
+
+    def test_legacy_kwarg_alone_is_silent(self) -> None:
+        """AC3: bare legacy use (no explicit automation=) emits no warning."""
+        runner = ClaudeCodeRunner()
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            runner.build_streaming(prompt="hi", automation_profile="autodev")
+
+    def test_explicit_context_wins_and_warns_on_conflict(self) -> None:
+        """AC3: automation= alongside a legacy kwarg emits DeprecationWarning
+        and the explicit context wins."""
+        runner = ClaudeCodeRunner()
+        with pytest.warns(DeprecationWarning, match="automation"):
+            invocation = runner.build_streaming(
+                prompt="hi",
+                automation=AutomationContext(profile="context-profile"),
+                automation_profile="legacy-profile",
+            )
+        assert invocation.env["LL_AUTOMATION_PROFILE"] == "context-profile"
+
+    def test_explicit_context_wins_and_warns_on_disable_background_tasks_conflict(self) -> None:
+        runner = ClaudeCodeRunner()
+        with pytest.warns(DeprecationWarning, match="automation"):
+            invocation = runner.build_streaming(
+                prompt="hi",
+                automation=AutomationContext(profile="p", disable_background_tasks=False),
+                disable_background_tasks=True,
+            )
+        assert invocation.env["CLAUDE_CODE_DISABLE_BACKGROUND_TASKS"] == ""
+
+    @pytest.mark.parametrize(
+        "runner_cls",
+        [ClaudeCodeRunner, CodexRunner, GeminiRunner, OmpRunner, KimiRunner, QwenRunner],
+    )
+    def test_empty_context_equivalent_to_none(self, runner_cls: type[HostRunner]) -> None:
+        """AC7: automation=AutomationContext() must be byte-identical to
+        automation=None for LL_AUTOMATION/LL_AUTOMATION_PROFILE (and
+        CLAUDE_CODE_DISABLE_BACKGROUND_TASKS on ClaudeCodeRunner)."""
+        runner = runner_cls()
+        invocation_none = runner.build_streaming(prompt="hi", automation=None)
+        invocation_empty = runner.build_streaming(prompt="hi", automation=AutomationContext())
+        assert invocation_none.env["LL_AUTOMATION"] == invocation_empty.env["LL_AUTOMATION"] == ""
+        assert (
+            invocation_none.env["LL_AUTOMATION_PROFILE"]
+            == invocation_empty.env["LL_AUTOMATION_PROFILE"]
+            == ""
+        )
+        if runner_cls is ClaudeCodeRunner:
+            assert (
+                invocation_none.env["CLAUDE_CODE_DISABLE_BACKGROUND_TASKS"]
+                == invocation_empty.env["CLAUDE_CODE_DISABLE_BACKGROUND_TASKS"]
+                == ""
+            )
 
 
 class TestCapabilityWarning:

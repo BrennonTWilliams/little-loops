@@ -460,7 +460,7 @@ class PruningProfileConfig:
     states) or state level (overrides the loop default) sets
     ``LL_AUTOMATION=1`` / ``LL_AUTOMATION_PROFILE=<name>`` in the child
     process environment (``host_runner.py`` ``build_streaming(...,
-    automation_profile=...)``), which automation-aware hooks
+    automation=AutomationContext(profile=...))``), which automation-aware hooks
     (``session_start.py``, ``history_context.py``) check to suppress their
     static-prefix output. Default is unset (``None`` on both loop and state)
     — full unpruned behavior.
@@ -478,7 +478,7 @@ class PruningProfileConfig:
        ``claude_md_suppression`` as supported — the claude CLI has no flag to
        skip CLAUDE.md. Treat both fields as forward-declarations.
 
-    A second, unconditional env var shares this profile's ``automation_profile
+    A second, unconditional env var shares this profile's ``automation.profile
     is not None`` gate but has a distinct config origin: ``CLAUDE_CODE_DISABLE_BACKGROUND_TASKS``
     (FEAT-3078) is sourced from the global ``orchestration.disable_background_tasks``
     config (default ``False``), not from this dataclass or any per-loop/per-state

@@ -42,6 +42,7 @@ if TYPE_CHECKING:
     from little_loops.subprocess_utils import TokenUsage
 
 __all__ = [
+    "AutomationContext",
     "CapabilityEntry",
     "CapabilityNotSupported",
     "CapabilityReport",
@@ -56,6 +57,7 @@ __all__ = [
     "OmpRunner",
     "OpenCodeRunner",
     "PiRunner",
+    "QwenRunner",
     "apply_host_cli_from_config",
     "build_anthropic_request",
     "build_batch_request",
@@ -167,6 +169,28 @@ class HostInvocation:
 
 
 @dataclass(frozen=True)
+class AutomationContext:
+    """Per-call automation signal threaded through ``build_streaming()`` (ENH-3095).
+
+    Collapses the ``automation_profile``/``disable_background_tasks`` pair (and
+    the caller-side ``idle_timeout``) into a single value object so each new
+    automation knob doesn't need its own parameter on the ``HostRunner``
+    Protocol and all 8 implementations. Distinct from
+    :class:`little_loops.config.automation.AutomationConfig`, which holds
+    project-level automation settings — this is a per-invocation runtime
+    value with no relation to that type.
+
+    ``idle_timeout`` is carried here for signature uniformity with the
+    ``ActionRunner`` boundary (ENH-3096) but is never read at the
+    ``build_streaming()``/``_apply_automation_env()`` boundary.
+    """
+
+    profile: str | None = None
+    idle_timeout: float | None = None
+    disable_background_tasks: bool = False
+
+
+@dataclass(frozen=True)
 class CapabilityEntry:
     """A single host capability with its support status.
 
@@ -224,6 +248,7 @@ class HostRunner(Protocol):
         agent: str | None = None,
         tools: list[str] | None = None,
         model: str | None = None,
+        automation: AutomationContext | None = None,
         automation_profile: str | None = None,
         disable_background_tasks: bool = False,
         workspace_root: Path | None = None,
@@ -233,25 +258,34 @@ class HostRunner(Protocol):
         Used by the long-running orchestration paths (``ll-auto``, ``ll-parallel``,
         ``fsm.runners``) that need to consume turn-by-turn JSON events.
 
-        ``automation_profile`` (ENH-2714), when set, injects ``LL_AUTOMATION=1``
-        and ``LL_AUTOMATION_PROFILE=<profile>`` into the child environment so
+        ``automation`` (ENH-3095), when set, carries the per-call automation
+        signal as a single :class:`AutomationContext`. ``automation.profile``
+        (ENH-2714), when not ``None``, injects ``LL_AUTOMATION=1`` and
+        ``LL_AUTOMATION_PROFILE=<profile>`` into the child environment so
         automation-aware hooks (SessionStart digest, history-context CLI) can
-        suppress their static-prefix output. ``None`` (the default) is an active
-        opt-out: it clears any inherited ``LL_AUTOMATION`` to ``""`` (ENH-3081)
-        rather than passing the parent's value through, so a non-automation
-        invocation never silently carries the signal.
+        suppress their static-prefix output. ``automation=None`` (the default)
+        is an active opt-out: it clears any inherited ``LL_AUTOMATION`` to
+        ``""`` (ENH-3081) rather than passing the parent's value through, so a
+        non-automation invocation never silently carries the signal.
 
-        ``disable_background_tasks`` (FEAT-3078), when True and
-        ``automation_profile`` is set, injects
+        ``automation.disable_background_tasks`` (FEAT-3078), when True and
+        ``automation.profile`` is set, injects
         ``CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1`` into the child environment
         so a spawned Claude Code child cannot silently discard completed work
         via tool-level backgrounding — e.g. ``Bash run_in_background: true``
         or an ``Agent``/``Task`` tool spawn left to its background-by-default
         behavior (BUG-3209) — whose result the parent never retrieves. When
-        ``automation_profile`` is ``None``, the variable is explicitly
+        ``automation.profile`` is ``None``, the variable is explicitly
         neutralized to ``""`` rather than omitted, for the same leak reason as
-        ``automation_profile`` above. Claude-Code-only: the other seven
-        runners accept and ignore this parameter (no-op).
+        ``automation.profile`` above. Claude-Code-only: the other seven
+        runners accept and ignore this field (no-op).
+
+        ``automation_profile`` and ``disable_background_tasks`` remain as
+        deprecated keywords: when ``automation`` is not supplied, they are
+        folded into an ``AutomationContext`` internally via
+        :func:`_resolve_automation`. Supplying either alongside an explicit
+        ``automation`` emits a ``DeprecationWarning`` and the explicit context
+        wins.
 
         ``workspace_root`` (FEAT-2878), when set, requests that tool access be
         confined to that directory for a trace-assertion eval run. Only
@@ -320,10 +354,12 @@ class ClaudeCodeRunner:
         agent: str | None = None,
         tools: list[str] | None = None,
         model: str | None = None,
+        automation: AutomationContext | None = None,
         automation_profile: str | None = None,
         disable_background_tasks: bool = False,
         workspace_root: Path | None = None,
     ) -> HostInvocation:
+        automation = _resolve_automation(automation, automation_profile, disable_background_tasks)
         if workspace_root is not None:
             # FEAT-2878: trace-assertion runs opt out of the blanket
             # --dangerously-skip-permissions bypass so the CLI's own
@@ -366,14 +402,18 @@ class ClaudeCodeRunner:
         }
         if workspace_root is None:
             env["DANGEROUSLY_SKIP_PERMISSIONS"] = "1"
-        _apply_automation_env(env, automation_profile)
+        _apply_automation_env(env, automation)
         # FEAT-3078: host-scoped (claude CLI only), so this lives directly in
         # ClaudeCodeRunner rather than _apply_automation_env() — mirrors the
         # CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR precedent above. Neutralize
         # with "" (not omit) on the non-automation path so an inherited value
         # never leaks into an interactive/non-automation child (AC2); "" was
         # empirically confirmed to restore backgrounding (postmortems/feat-3078-verify/).
-        if disable_background_tasks and automation_profile is not None:
+        if (
+            automation is not None
+            and automation.disable_background_tasks
+            and automation.profile is not None
+        ):
             env["CLAUDE_CODE_DISABLE_BACKGROUND_TASKS"] = "1"
         else:
             env["CLAUDE_CODE_DISABLE_BACKGROUND_TASKS"] = ""
@@ -623,12 +663,13 @@ class CodexRunner:
         tools: list[str] | None = None,
         sandbox_mode: str | None = None,
         model: str | None = None,
+        automation: AutomationContext | None = None,
         automation_profile: str | None = None,
         disable_background_tasks: bool = False,
         workspace_root: Path | None = None,
     ) -> HostInvocation:
+        automation = _resolve_automation(automation, automation_profile, disable_background_tasks)
         del model  # codex does not support --model in streaming mode
-        del disable_background_tasks  # FEAT-3078: CLAUDE_CODE_* var, no-op on non-Claude hosts
         if workspace_root is not None:
             warnings.warn(
                 "codex host_runner has no workspace-sandboxing implementation "
@@ -669,7 +710,7 @@ class CodexRunner:
             "LL_NON_INTERACTIVE": "1",
             "DANGEROUSLY_SKIP_PERMISSIONS": "1",
         }
-        _apply_automation_env(env, automation_profile)
+        _apply_automation_env(env, automation)
         if working_dir is not None:
             git_path = Path(working_dir) / ".git"
             if git_path.is_file():
@@ -831,6 +872,7 @@ class OpenCodeRunner:
         agent: str | None = None,
         tools: list[str] | None = None,
         model: str | None = None,
+        automation: AutomationContext | None = None,
         automation_profile: str | None = None,
         disable_background_tasks: bool = False,
         workspace_root: Path | None = None,
@@ -906,6 +948,7 @@ class PiRunner:
         agent: str | None = None,
         tools: list[str] | None = None,
         model: str | None = None,
+        automation: AutomationContext | None = None,
         automation_profile: str | None = None,
         disable_background_tasks: bool = False,
         workspace_root: Path | None = None,
@@ -1018,11 +1061,12 @@ class GeminiRunner:
         agent: str | None = None,
         tools: list[str] | None = None,
         model: str | None = None,
+        automation: AutomationContext | None = None,
         automation_profile: str | None = None,
         disable_background_tasks: bool = False,
         workspace_root: Path | None = None,
     ) -> HostInvocation:
-        del disable_background_tasks  # FEAT-3078: CLAUDE_CODE_* var, no-op on non-Claude hosts
+        automation = _resolve_automation(automation, automation_profile, disable_background_tasks)
         if agent:
             warnings.warn(
                 "gemini has no CLI-flag agent selection; skills activate "
@@ -1063,7 +1107,7 @@ class GeminiRunner:
             "LL_NON_INTERACTIVE": "1",
             "DANGEROUSLY_SKIP_PERMISSIONS": "1",
         }
-        _apply_automation_env(env, automation_profile)
+        _apply_automation_env(env, automation)
         env.update(self._worktree_env(working_dir))
 
         return HostInvocation(
@@ -1215,11 +1259,12 @@ class OmpRunner:
         agent: str | None = None,
         tools: list[str] | None = None,
         model: str | None = None,
+        automation: AutomationContext | None = None,
         automation_profile: str | None = None,
         disable_background_tasks: bool = False,
         workspace_root: Path | None = None,
     ) -> HostInvocation:
-        del disable_background_tasks  # FEAT-3078: CLAUDE_CODE_* var, no-op on non-Claude hosts
+        automation = _resolve_automation(automation, automation_profile, disable_background_tasks)
         if agent:
             warnings.warn(
                 "omp has no CLI-flag agent selection; subagents are spawned "
@@ -1250,7 +1295,7 @@ class OmpRunner:
             "LL_NON_INTERACTIVE": "1",
             "DANGEROUSLY_SKIP_PERMISSIONS": "1",
         }
-        _apply_automation_env(env, automation_profile)
+        _apply_automation_env(env, automation)
         env.update(GeminiRunner._worktree_env(working_dir))
 
         return HostInvocation(
@@ -1403,11 +1448,12 @@ class KimiRunner:
         agent: str | None = None,
         tools: list[str] | None = None,
         model: str | None = None,
+        automation: AutomationContext | None = None,
         automation_profile: str | None = None,
         disable_background_tasks: bool = False,
         workspace_root: Path | None = None,
     ) -> HostInvocation:
-        del disable_background_tasks  # FEAT-3078: CLAUDE_CODE_* var, no-op on non-Claude hosts
+        automation = _resolve_automation(automation, automation_profile, disable_background_tasks)
         if tools:
             warnings.warn(
                 "kimi has no tool-allowlist CLI flag; tool policy lives in "
@@ -1445,7 +1491,7 @@ class KimiRunner:
             "LL_NON_INTERACTIVE": "1",
             "DANGEROUSLY_SKIP_PERMISSIONS": "1",
         }
-        _apply_automation_env(env, automation_profile)
+        _apply_automation_env(env, automation)
         env.update(GeminiRunner._worktree_env(working_dir))
 
         return HostInvocation(
@@ -1609,11 +1655,12 @@ class QwenRunner:
         agent: str | None = None,
         tools: list[str] | None = None,
         model: str | None = None,
+        automation: AutomationContext | None = None,
         automation_profile: str | None = None,
         disable_background_tasks: bool = False,
         workspace_root: Path | None = None,
     ) -> HostInvocation:
-        del disable_background_tasks  # FEAT-3078: CLAUDE_CODE_* var, no-op on non-Claude hosts
+        automation = _resolve_automation(automation, automation_profile, disable_background_tasks)
         if agent:
             warnings.warn(
                 "qwen has no --agent CLI flag (documented upstream as planned "
@@ -1644,7 +1691,7 @@ class QwenRunner:
             "DANGEROUSLY_SKIP_PERMISSIONS": "1",
             "QWEN_CODE_SUPPRESS_YOLO_WARNING": "1",
         }
-        _apply_automation_env(env, automation_profile)
+        _apply_automation_env(env, automation)
         env.update(GeminiRunner._worktree_env(working_dir))
 
         return HostInvocation(
@@ -1816,22 +1863,61 @@ def project_child_env(
     return env
 
 
-def _apply_automation_env(env: dict[str, str], automation_profile: str | None) -> None:
-    """Set LL_AUTOMATION / LL_AUTOMATION_PROFILE on *env* (ENH-3081).
+def _apply_automation_env(env: dict[str, str], automation: AutomationContext | None) -> None:
+    """Set LL_AUTOMATION / LL_AUTOMATION_PROFILE on *env* (ENH-3081, ENH-3095).
 
     ``env`` is merged over ``os.environ`` at every spawn site, so an absent
-    key means "inherit the parent's value", never "clear". A ``None`` profile
-    is an explicit opt-out: neutralize any inherited value with ``""`` —
+    key means "inherit the parent's value", never "clear". ``automation is
+    None`` and ``automation.profile is None`` both take the same explicit
+    opt-out path: neutralize any inherited value with ``""`` —
     present-but-falsy, which the runtime consumers (``hooks/session_start.py``,
     ``cli/history_context.py``) already treat as "not under automation".
     ``LL_AUTOMATION_PROFILE`` has zero runtime readers; it is informational.
     """
-    if automation_profile is not None:
+    profile = automation.profile if automation is not None else None
+    if profile is not None:
         env["LL_AUTOMATION"] = "1"
-        env["LL_AUTOMATION_PROFILE"] = automation_profile
+        env["LL_AUTOMATION_PROFILE"] = profile
     else:
         env["LL_AUTOMATION"] = ""
         env["LL_AUTOMATION_PROFILE"] = ""
+
+
+def _resolve_automation(
+    automation: AutomationContext | None,
+    automation_profile: str | None,
+    disable_background_tasks: bool,
+) -> AutomationContext | None:
+    """Resolve the ``automation``/legacy-kwarg trio into one context (ENH-3095).
+
+    Returns ``None`` when neither an explicit context nor either legacy kwarg
+    is supplied, preserving today's ``automation=None`` opt-out path.
+    Otherwise returns the explicit ``automation`` if given (emitting a
+    ``DeprecationWarning`` when a legacy kwarg was *also* supplied — that
+    combination is a parameter conflict, not merely deprecated use), else
+    constructs ``AutomationContext(profile=automation_profile,
+    disable_background_tasks=disable_background_tasks)`` from the legacy
+    kwargs alone. Bare legacy-kwarg use (no explicit ``automation``) is
+    silent by design — every in-tree caller does exactly that until ENH-3097
+    migrates them, and warning there would flood every ``ll-auto`` run.
+    """
+    legacy_used = automation_profile is not None or disable_background_tasks
+    if automation is not None:
+        if legacy_used:
+            warnings.warn(
+                "build_streaming() received both automation= and a legacy "
+                "automation_profile/disable_background_tasks kwarg; the "
+                "explicit automation context wins.",
+                DeprecationWarning,
+                stacklevel=3,
+            )
+        return automation
+    if legacy_used:
+        return AutomationContext(
+            profile=automation_profile,
+            disable_background_tasks=disable_background_tasks,
+        )
+    return None
 
 
 def _remediation_hint() -> str:

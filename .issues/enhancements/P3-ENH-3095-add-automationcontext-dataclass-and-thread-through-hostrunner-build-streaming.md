@@ -3,13 +3,14 @@ id: ENH-3095
 type: ENH
 title: Add AutomationContext dataclass and thread it through HostRunner.build_streaming()
 priority: P3
-status: open
+status: done
 parent: ENH-3094
 blocked_by:
 - FEAT-3078
 - BUG-3112
 discovered_date: 2026-08-07
 discovered_by: /ll:issue-size-review
+completed_at: '2026-08-20T01:21:14Z'
 labels:
 - automation
 - host-runner
@@ -281,7 +282,8 @@ need no edit — but they name the kwarg, so confirm rather than assume.
 
 ### Codebase Research Findings
 
-_Added by `/ll:refine-issue` — 2026-08-07 — based on codebase analysis:_
+_Added by `/ll:refine-issue` — 2026-08-07 — based on codebase analysis. Findings
+folded into `### Additional Research Findings` and `### Dependent Files` below._
 
 ### Additional Research Findings
 - `scripts/little_loops/config/automation.py` already defines an unrelated `AutomationConfig` (and `ParallelAutomationConfig`) dataclass family for project-level automation settings. The new `AutomationContext` in `host_runner.py` is a distinct, per-call runtime value with no relation to those — worth a docstring note on `AutomationContext` to prevent readers conflating the two similarly-named types.
@@ -296,7 +298,9 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ### Codebase Research Findings
 
-_Added by `/ll:refine-issue` — 2026-08-07 — based on codebase analysis:_
+_Added by `/ll:refine-issue` — 2026-08-07 — based on codebase analysis. Findings
+folded into `### Types`, `### Signatures`, `### Call Path`, and
+`### Decision Rules` below._
 
 ### Types
 `AutomationContext(profile: str | None = None, idle_timeout: float | None = None, disable_background_tasks: bool = False)`
@@ -428,7 +432,35 @@ ENH-3097 confirmed present. One drift found and fixed: Dependent Files cited
 `disable_background_tasks` (the prior note said "only `automation_profile`").
 Corrected in place. Verdict: `NEEDS_UPDATE` (now resolved).
 
+## Resolution
+
+**2026-08-20** (`/ll:manage-issue`): Implemented as designed — `AutomationContext`
+(frozen dataclass: `profile`, `idle_timeout`, `disable_background_tasks`) added
+alongside `HostInvocation`; `HostRunner.build_streaming()` Protocol and all 8
+concrete runners now accept `automation: AutomationContext | None = None`,
+resolved via the new shared `_resolve_automation()` helper. Legacy
+`automation_profile`/`disable_background_tasks` kwargs remain as deprecated
+pass-throughs — bare legacy use stays silent (every in-tree caller does this
+until ENH-3097), while supplying both `automation=` and a legacy kwarg emits a
+`DeprecationWarning` and the explicit context wins. `_apply_automation_env()`
+now reads `AutomationContext` fields; `ClaudeCodeRunner`'s
+`CLAUDE_CODE_DISABLE_BACKGROUND_TASKS` gate reads `automation.disable_background_tasks`/
+`automation.profile`. `QwenRunner` and `AutomationContext` both added to
+`host_runner.__all__` (drive-by fix for the pre-existing missing-`QwenRunner`
+gap). `AutomationContext` exported from `scripts/little_loops/__init__.py`.
+Doc mirrors updated: `fsm/schema.py`, `docs/reference/API.md`,
+`docs/ARCHITECTURE.md`, `docs/guides/LOOPS_GUIDE.md`, plus the two advisory
+mentions in `docs/reference/HOST_COMPATIBILITY.md` and
+`docs/reference/CONFIGURATION.md`. New `TestAutomationContext` test class
+covers the frozen dataclass, the deprecated-shim conflict/silent-legacy
+behavior, and AC7's empty-context-equals-`None` equivalence across all 6 real
+runners. `python -m pytest scripts/tests/` passes (19965 passed, 46 skipped);
+`ruff check`/`ruff format --check`/`mypy` all clean. `run_claude_command()`
+and its callers (ENH-3097) intentionally left untouched — out of scope here.
+
 ## Session Log
+- `/ll:manage-issue` - 2026-08-20T01:20:37 - `7c5918db-2e8e-422d-967e-5576de75148c.jsonl`
+- `/ll:ready-issue` - 2026-08-20T01:06:35 - `abe99432-4d8e-48ff-8fca-3080bcf1aa08.jsonl`
 - `/ll:verify-issues` - 2026-08-20T00:50:31 - `0c36abcb-97ca-4d1b-a837-bc5e77cc1b2c.jsonl`
 - `/ll:confidence-check` - 2026-08-20T00:35:51 - `319ac0b1-cd90-4d0c-9495-41a3d1945bec.jsonl`
 - `/ll:reconcile-issue` - 2026-08-20T00:29:25 - `202a6ed4-bed9-4c2b-b275-e850f1beb7fe.jsonl`
