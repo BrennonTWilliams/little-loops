@@ -2,8 +2,9 @@
 id: ENH-2923
 type: ENH
 priority: P3
-status: open
+status: done
 captured_at: '2026-07-30T02:14:15Z'
+completed_at: '2026-08-20T04:44:16Z'
 discovered_date: 2026-07-29
 discovered_by: capture-issue
 relates_to:
