@@ -12,12 +12,12 @@ program_design_not_applicable: true
 behavior_parity_not_applicable: true
 relates_to:
 - ENH-3258
-confidence_score: 98
-outcome_confidence: 65
-score_complexity: 18
-score_test_coverage: 5
-score_ambiguity: 20
-score_change_surface: 22
+confidence_score: 100
+outcome_confidence: 75
+score_complexity: 19
+score_test_coverage: 8
+score_ambiguity: 25
+score_change_surface: 23
 ---
 
 # ENH-3259: Caller suitability gate has no repeatable fixture after ENH-3258 closed
@@ -63,10 +63,13 @@ any edit to § 8b or its companion. Concretely:
 - The **injection half** is asserted deterministically: the captured output contains an
   `Inject at` bullet naming `scripts/little_loops/cli/gitignore.py:55`.
 - All three gates are evaluated on every run; none short-circuits the others, and the run
-  reports which gate(s) failed.
+  reports which gate(s) failed. When `gate-record` fails the run reports `RUN_INVALID`
+  rather than a per-gate tally — see the aggregate-semantics decision below.
 - The fixture leaves no residue in `.issues/` after the run, including on failure — and any
-  residue that a hard kill does leave is gitignored and cleared idempotently by the next
-  run's staging state.
+  residue that a hard kill does leave is cleared idempotently by the next run's staging
+  state, and is detected by a pytest residue guard rather than by `git status` (the
+  `.gitignore` entry hides it from `git status` by construction — see the residue-detection
+  decision under Implementation Steps step 3).
 
 ## Motivation
 
@@ -160,6 +163,51 @@ to accept a file path.
 > suppression from a bare negation into a positively-verified claim and supplies the run's
 > liveness precondition at no extra cost.
 
+> **`gate-record` must invalidate the run, not merely count as one failure (decided
+> 2026-08-20, fourth review round).** The vacuous-pass decision above adds `gate-record` as
+> the run's liveness precondition, but the step-5 aggregate as previously specified only
+> "names whichever gate(s) failed" under ENH-3200 no-short-circuit routing. Under that
+> spec a wholly dead run — empty capture, errored wire-issue, no Wiring Phase emitted —
+> reports **"1 of 3 gates failed" with `gate-suppression` showing PASS**, which is exactly
+> the false signal `gate-record` exists to prevent. The mitigation is present but inert
+> unless the aggregate distinguishes the two cases.
+>
+> **Selected:** the aggregate emits `RUN_INVALID` (not a per-gate tally) whenever
+> `gate-record` fails, and reports the suppression and injection verdicts as *unevaluated*
+> in that case. No-short-circuit routing still holds — all three gates run — but the
+> aggregate's *reporting* is precedence-ordered, not flat.
+>
+> Reinforcing why `gate-record` is the only liveness signal available:
+> `evaluate_output_contains()` skips `error_patterns` routing entirely when negating
+> (`fsm/evaluators.py:481` — `if verdict == "no" and not negate and error_patterns`). So
+> `gate-suppression`, which is the negated gate, **structurally cannot** route an errored
+> run to `on_error`; it can only return yes/no. There is no alternative liveness path.
+
+> **Staging `ENH-9999` perturbs global issue numbering while staged (decided 2026-08-20,
+> fourth review round).** `get_next_issue_number()` (`issue_parser.py:2461-2510`) returns
+> **max + 1** by filename regex across all category dirs — it does not count, it takes the
+> maximum. Consequence: for as long as the fixture is staged in `.issues/enhancements/`,
+> any issue creation (a concurrent `ll-auto`/`ll-parallel` run, or a human running
+> `/ll:capture-issue`) allocates **10000**, and every subsequent issue continues from there.
+> If a hard kill leaves residue, the skew is permanent until the residue is deleted.
+>
+> The reserved-high-ID decision above correctly avoids a *collision* with a future real
+> `3300`, but it trades that collision for this blowout, which was previously unstated.
+> There is no naming dodge: `resolve_issue_path()` (`issue_parser.py:92`) keys on the same
+> `TYPE-NNN` shape `get_next_issue_number()`'s prefix regex matches, so any name wire-issue
+> can resolve is also a name that participates in numbering.
+>
+> **Selected: bound the window rather than change the ID.** Two mitigations, both already
+> cheap and both landing in Implementation Steps:
+> 1. `scope: [".issues/enhancements/"]` on the loop (step 5) takes the run lock over the
+>    staged directory, closing the *concurrent-allocation* half — another loop cannot
+>    allocate an issue while the fixture is staged.
+> 2. The pytest residue guard (step 3) bounds the *crash-residue* half to "until the next
+>    test run", and makes it visible despite the `.gitignore` entry.
+>
+> Residual accepted risk: a human creating an issue by hand, in the seconds a staged run is
+> live, still gets `10000`. Acceptable — the fixture is run on demand, not on a schedule.
+
 ### Codebase Research Findings
 
 _Added by `/ll:refine-issue` — 2026-08-20 — based on codebase analysis:_
@@ -203,6 +251,11 @@ _Added by `/ll:refine-issue` — 2026-08-20 — based on codebase analysis:_
   (`.issues/enhancements/*ENH-9999-*`). Required, not optional: FSM `on_failure`/`on_error`
   routing cannot cover SIGINT, a timeout kill, or `max_steps` exhaustion, so in-loop
   cleanup alone cannot deliver the "no residue" criterion. See Implementation Steps step 3
+- `scripts/tests/test_caller_suitability_gate.py` — add the **residue guard** (a ~5-line
+  test asserting no `.issues/enhancements/*ENH-9999-*` exists). Added 2026-08-20 (fourth
+  review round) as the detection mechanism the `.gitignore` entry removes; see the
+  residue-detection decision under Implementation Steps step 3. Change surface is now
+  **4 sites**, not 3
 
 _Superseded by the mechanism decision (2026-08-19) — no longer in scope:_
 - ~~`scripts/little_loops/cli/loop/__init__.py` (~972-1019) — `scaffold-verify` argparse
@@ -319,9 +372,16 @@ _Wiring pass added by `/ll:wire-issue`:_
 >   for. This is the honest scope of the remaining work.
 
 - `scripts/tests/test_caller_suitability_gate.py` — **landed**; the deterministic
-  presence half. Not part of this issue's remaining work
-- The fixture loop's completion gate remains the loop running and reproducing the
-  recorded verdict, not a further addition to `scripts/tests/`
+  presence half. The presence assertions are not part of this issue's remaining work, but
+  the file gains one new test in this issue: the **residue guard** (see below)
+- **New (2026-08-20, fourth review round): a residue guard IS in scope.**
+  `assert not list((project_root / ".issues/enhancements").glob("*ENH-9999-*"))`. This is
+  not a prose-compliance check — it is a filesystem invariant, and it is the *only*
+  mechanism that can see the staged fixture once step 3 gitignores the path. It also bounds
+  the numbering perturbation (see the `get_next_issue_number()` decision under Proposed
+  Solution) to one test-run interval. ~5 lines
+- Beyond that guard, the fixture loop's completion gate remains the loop running and
+  reproducing the recorded verdict, not a further addition to `scripts/tests/`
 
 _Wiring pass added by `/ll:wire-issue` — closest existing pattern to model the fixture's
 harness after, not a required pytest change:_
@@ -394,7 +454,20 @@ _Added by `/ll:refine-issue` — 2026-08-20 — based on codebase analysis:_
      unverified. The three `caller-suitability-gate.md` pairs are now in that list;
      mutation-verified against an appended-line drift.
 3. Add the staged-path ignore entry (`.issues/enhancements/*ENH-9999-*`) to `.gitignore`
-   **before** the first staged run, so a crashed run cannot dirty the working tree.
+   **before** the first staged run, so a crashed run cannot dirty the working tree. In the
+   same step, add the residue guard to `scripts/tests/test_caller_suitability_gate.py`.
+   > **Residue detection: the `.gitignore` entry destroys the obvious check (decided
+   > 2026-08-20, fourth review round).** Once the staged path is gitignored, `git status`
+   > reports clean **whether or not residue exists** — so the previously-written step 6
+   > verification ("confirm `git status` is clean — no staged fixture residue") was vacuous
+   > by construction, and Expected Behavior conflated *hiding* residue with *clearing* it.
+   > The two goals are in direct tension: ignoring the path is required so a crash cannot
+   > dirty the tree, and it is precisely what blinds the check.
+   > **Selected:** keep the `.gitignore` entry and add a filesystem-level pytest residue
+   > guard alongside it (Tests section). It runs on every `python -m pytest scripts/tests/`,
+   > costs ~5 lines, converts invisible residue into a red suite, and gives step 6 a real
+   > assertion. Both landing in the same step is deliberate — the ignore entry must never
+   > exist without the guard.
 4. Run `/ll:wire-issue ENH-9999 --dry-run` manually once — against the tree **as corrected
    by step 2** — and record the literal shape of its emitted Wiring Phase and Dependent
    Files bullets. No existing loop dry-runs wire-issue, so the gate substrings must be
@@ -407,9 +480,29 @@ _Added by `/ll:refine-issue` — 2026-08-20 — based on codebase analysis:_
    `git_operations.py:413`) → `gate-suppression` (`output_contains` with `negate: true`,
    fails if an `Update` bullet cites `git_operations.py`) → `gate-injection`
    (`output_contains`, requires an `Inject at` bullet citing `cli/gitignore.py:55`) →
-   `aggregate` (names whichever gate(s) failed) → `unstage-fixture`. All three gates run on
-   every path (ENH-3200 no-short-circuit routing); `unstage-fixture` is wired onto success,
-   failure and error exits.
+   `aggregate` (names whichever gate(s) failed, or `RUN_INVALID` if `gate-record` failed —
+   see the aggregate-semantics decision under Proposed Solution) → `unstage-fixture`. All
+   three gates run on every path (ENH-3200 no-short-circuit routing); `unstage-fixture` is
+   wired onto success, failure and error exits.
+   > **Declare `scope: [".issues/enhancements/"]` (added 2026-08-20, fourth review round).**
+   > `_validate_missing_scope()` (`fsm/validation/structural_rules.py:1226-1245`) warns on
+   > any loop with no `scope:`, and an empty scope falls back to a repo-root lock
+   > (`resolve_scope(fsm.scope or ["."], ...)` in `cli/loop/run.py`) that false-conflicts
+   > with every concurrently running loop. Declaring the staged directory is both the
+   > correct narrow scope and a useful side effect: the run lock closes the
+   > concurrent-allocation half of the `get_next_issue_number()` hazard (see its decision
+   > under Proposed Solution). `${context.run_dir}/` needs no scope entry — it is
+   > runner-managed.
+   > **Pin how each gate reads the capture (added 2026-08-20, fourth review round).**
+   > `evaluate.source` (`fsm/schema.py:114`, documented at `:72` as "Override default
+   > source (current action output)") is an **interpolated string, not a file reader** —
+   > writing `source: "${context.run_dir}/wiring.txt"` would gate on the literal *path
+   > text*, not the file's contents, and `gate-suppression` would then pass vacuously
+   > forever. Each of the three gates must instead use
+   > `source: "${captured.<wire_issue_state_capture>.output}"`. Consequence:
+   > `${context.run_dir}/wiring.txt` is **archival only** — it exists for post-run forensics
+   > and to satisfy this issue's own artifact-isolation practice, and is not what the gates
+   > read. Decide this here rather than at implementation time; all three gates need it.
    > **Escape the gate patterns as regex.** `evaluate_output_contains()`
    > (`fsm/evaluators.py:470-473`) tries `re.search` **first** and falls back to substring
    > matching only when the pattern fails to *compile* — never on a no-match. So `.` in
@@ -418,7 +511,11 @@ _Added by `/ll:refine-issue` — 2026-08-20 — based on codebase analysis:_
    > yielding a permanently-true gate. Write every gate pattern as escaped regex and keep
    > bare parens out of them.
 6. Run the loop once against the current tree and confirm it reproduces the recorded PASS,
-   then confirm `git status` is clean — no staged fixture residue in `.issues/`.
+   then confirm no staged fixture residue remains — by globbing
+   `.issues/enhancements/*ENH-9999-*` directly, **not** by `git status`, which is clean by
+   construction once step 3's ignore entry exists (see the residue-detection decision under
+   step 3). Running `python -m pytest scripts/tests/test_caller_suitability_gate.py` is the
+   equivalent check and is what CI will enforce thereafter.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
@@ -475,9 +572,13 @@ the fixture's recorded ground truth, stated in Implementation Steps step 1.
 - **Risk**: Low - the deliverable is a fixture plus a loop YAML and touches no production
   path. Two live hazards, both mitigated in Implementation Steps: (1) ephemeral `.issues/`
   staging leaving residue if a run is hard-killed before its cleanup state — mitigated by
-  unconditional cleanup routing **plus** the `.gitignore` entry and the `rm -f` pre-clean in
-  `stage-fixture`, since FSM error routing cannot cover SIGINT or a timeout kill; (2) a
-  silently vacuous suppression gate — mitigated by the added positive `gate-record`. The
+  unconditional cleanup routing **plus** the `.gitignore` entry, the `rm -f` pre-clean in
+  `stage-fixture`, and the pytest residue guard, since FSM error routing cannot cover SIGINT
+  or a timeout kill and the ignore entry blinds `git status`; (2) a
+  silently vacuous suppression gate — mitigated by the added positive `gate-record`, whose
+  precedence in the aggregate is now specified (`RUN_INVALID`) rather than left as a flat
+  tally; (3) staged-fixture perturbation of `get_next_issue_number()` — mitigated by the
+  loop's `scope:` lock and the residue guard, with a small accepted residual. The
   residual, accepted limitation is evidential rather than operational: the fixture is a
   deletion detector, not a generalization probe (see Scope Boundaries). The real risk is
   doing nothing: the gate's only validation to date is one manual run
@@ -581,6 +682,35 @@ _Revised 2026-08-19:_
   scoped in Scope Boundaries; option (a) under Proposed Solution is the upgrade path.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-20T14:36:58 - `b65e97ff-c048-4f0b-8912-71924070aaa4.jsonl`
+- review round (fourth) - 2026-08-20 - **five findings, all verified against the tree
+  before writing.** (1) *Numbering perturbation*: `get_next_issue_number()`
+  (`issue_parser.py:2461-2510`) returns **max + 1** by filename regex, not a count — so a
+  staged `ENH-9999` makes the next allocation `10000`, permanently if a crash leaves
+  residue. The reserved-high-ID decision avoided a collision but introduced this, unstated.
+  Mitigated by the loop `scope:` lock plus the residue guard; residual accepted.
+  (2) *Step 3 defeats step 6*: once the staged path is gitignored, `git status` is clean
+  regardless of residue, so step 6's verification was vacuous by construction and Expected
+  Behavior conflated hiding with clearing. Replaced with a direct glob plus a ~5-line pytest
+  residue guard in `test_caller_suitability_gate.py`. (3) *`gate-record` was inert*: under
+  flat no-short-circuit aggregation a wholly dead run reports "1 of 3 failed" with
+  suppression PASSing — the exact false signal `gate-record` was added to prevent. Aggregate
+  now emits `RUN_INVALID` on a `gate-record` failure. Reinforced by
+  `evaluate_output_contains()` skipping `error_patterns` when negating
+  (`fsm/evaluators.py:481`), which means the suppression gate structurally cannot route an
+  errored run to `on_error` — `gate-record` is the only liveness path there is.
+  (4) *Gate `source` was underspecified*: `evaluate.source` (`fsm/schema.py:114`) is an
+  interpolated string, not a file reader, so gating on `${context.run_dir}/wiring.txt` would
+  match the literal path text and pass vacuously forever. Gates now pinned to
+  `${captured.<state>.output}`; `wiring.txt` is archival only. (5) *No `scope:`*:
+  `_validate_missing_scope()` (`structural_rules.py:1226-1245`) warns, and the empty-scope
+  fallback is a repo-root lock. Declared `scope: [".issues/enhancements/"]`.
+  Re-verified and unchanged: `_is_meta_loop()` (`meta_rules.py:48-70`) will not classify
+  this loop; `BUILTIN_LOOPS_DIR` sweeps only `scripts/little_loops/loops/`, so
+  `scripts/tests/fixtures/loops/` stays out of `test_builtin_loops.py`; the regex-first
+  evaluator and `negate` semantics are as previously recorded. Change surface 3 → 4 sites.
+  **`/ll:confidence-check` should be re-run** — Criterion B moves again with the residue
+  guard, and three of these five were live correctness defects in the spec.
 - `/ll:confidence-check` - 2026-08-20T04:59:12 - `8a861a8f-cdf6-4be8-84e8-9d4a036b13d9.jsonl`
 - review round (third) - 2026-08-19 - **root-cause pass on persistent LOW outcome
   confidence (50/100 across four runs while readiness climbed 85→96).** Diagnosis: every
