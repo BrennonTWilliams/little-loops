@@ -250,6 +250,11 @@ DOC_STRINGS_PRESENT: list[tuple[str, str, str]] = [
     # consequence merely consistent with a stated cause is not accepted as
     # sufficient to confirm it.
     ("commands/verify-issues.md", "Causal / identity claims", "ENH-3238"),
+    # BUG-3260: codebase-locator (Layer A) must require a per-path evidence
+    # citation, and wire-issue's evidence-confirmation.md (Layer B) must grep
+    # that citation before a path enters MISSING_WIRING or the Integration Map.
+    ("agents/codebase-locator.md", "cite the symbol or pattern your Grep matched", "BUG-3260"),
+    ("skills/wire-issue/evidence-confirmation.md", "one targeted Grep for the match string", "BUG-3260"),
 ]
 
 
@@ -550,7 +555,7 @@ SPAWN_SITE_INVENTORY: frozenset[tuple[str, int]] = frozenset(
         ("skills/audit-claude-config/wave1-prompts.md", 9),
         ("skills/audit-issue-conflicts/SKILL.md", 205),
         ("skills/audit-issue-conflicts/SKILL.md", 252),
-        ("skills/wire-issue/SKILL.md", 149),
+        ("skills/wire-issue/SKILL.md", 148),
         ("skills/manage-issue/SKILL.md", 110),
         ("skills/go-no-go/SKILL.md", 174),
         ("skills/go-no-go/SKILL.md", 274),

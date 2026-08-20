@@ -12107,7 +12107,7 @@ Specialized sub-agents live in `agents/*.md` and are registered in `.claude-plug
 | Agent | Model | Tools | Purpose |
 |-------|-------|-------|---------|
 | [`codebase-analyzer`](../../agents/codebase-analyzer.md) | sonnet | Read, Glob, Grep, WebFetch, WebSearch | Trace HOW code works — implementation details, data flows, integration points, anchor-based references. |
-| [`codebase-locator`](../../agents/codebase-locator.md) | sonnet | Read, Glob, Grep, WebFetch, WebSearch | Find WHERE code lives — file paths grouped by purpose without reading contents. |
+| [`codebase-locator`](../../agents/codebase-locator.md) | sonnet | Read, Glob, Grep, WebFetch, WebSearch | Find WHERE code lives — file paths grouped by purpose, each citing its Grep match; no reading for analysis. |
 | [`codebase-pattern-finder`](../../agents/codebase-pattern-finder.md) | sonnet | Read, Glob, Grep, WebFetch, WebSearch | Extract concrete code examples of patterns and conventions to model new work after. |
 | [`consistency-checker`](../../agents/consistency-checker.md) | sonnet | Read, Glob, Grep, WebFetch, WebSearch | Validate cross-component references between CLAUDE.md, agents, skills, commands, hooks, and MCP config. |
 | [`loop-specialist`](../../agents/loop-specialist.md) | sonnet | Bash, Read, Edit, Write | Monitor, diagnose, refine, and verify FSM loops; classifies failures against the seven-mode taxonomy (including `evaluator-trivial`) and writes diagnosis artifacts to `.loops/diagnostics/`. |

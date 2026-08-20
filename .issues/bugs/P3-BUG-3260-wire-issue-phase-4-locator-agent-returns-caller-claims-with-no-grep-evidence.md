@@ -3,7 +3,7 @@ id: BUG-3260
 type: BUG
 title: wire-issue Phase 4 locator agent returns caller claims with no grep evidence
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-08-20'
 testable: true
@@ -12,6 +12,7 @@ relates_to:
 - ENH-3258
 - ENH-2578
 captured_at: '2026-08-20T00:20:11Z'
+completed_at: '2026-08-20T03:29:14Z'
 confidence_score: 100
 outcome_confidence: 72
 score_complexity: 18
@@ -200,7 +201,7 @@ loss and no new inconsistency. Any equivalent formatting reclaim is fine; the po
 ## Integration Map
 
 ### Files to Modify
-- `skills/wire-issue/evidence-confirmation.md` — **new companion file, Layer B.** Holds the
+- `skills/wire-issue/evidence-confirmation.md` (new file) — **new companion file, Layer B.** Holds the
   caller-side Grep confirmation rule for Agent 1's returned paths. New file rather than
   inline Phase 5 text because `SKILL.md` is at the 500-line cap
 - `skills/wire-issue/SKILL.md` Phase 5 — **Layer B, required.** One-line pointer to the
@@ -552,6 +553,8 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-20T03:28:45 - `b53bcbd5-a74b-4728-8b8d-3d8652663576.jsonl`
+- `/ll:ready-issue` - 2026-08-20T03:18:07 - `4793e2e4-b77c-4e97-b189-22309d7a9634.jsonl`
 - `/ll:confidence-check` - 2026-08-20T03:14:21 - `fba7d942-77f7-49f6-95c3-8eb3b5d9922d.jsonl`
 - `/ll:confidence-check` - 2026-08-20T02:01:25 - `76b0acab-555b-45f1-82d8-192edcfbe30a.jsonl`
 - `/ll:confidence-check` - 2026-08-20T00:54:45 - `91e7e492-9dd3-4528-be48-070fc252ab93.jsonl`
