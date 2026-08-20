@@ -2858,35 +2858,32 @@ def run_claude_command(
     logger: Logger,
     timeout: int = 3600,
     stream_output: bool = True,
-    idle_timeout: int = 0,
     on_model_detected: Callable[[str], None] | None = None,
     on_usage: Callable[[int, int], None] | None = None,
     on_usage_detailed: Callable[[TokenUsage], None] | None = None,
     preview_full: bool = False,
     resume_session: bool = False,
+    *,
     automation: AutomationContext | None = None,
-    automation_profile: str | None = None,
-    disable_background_tasks: bool = False,
     timeout_kill_grace_seconds: float = 0.0,
 ) -> subprocess.CompletedProcess[str]
 ```
 
 Preview and invoke a Claude CLI command with output streaming. This is the `issue_manager`-local wrapper that logs and truncates the command before delegating to `subprocess_utils.run_claude_command`.
 
+> **Breaking change (ENH-3261):** the `automation_profile`/`disable_background_tasks`/`idle_timeout` legacy kwargs were removed from this signature. Callers must pass `automation=AutomationContext(profile=..., disable_background_tasks=..., idle_timeout=...)` instead. `automation` and every parameter after it are now keyword-only.
+
 **Parameters:**
 - `command` - Command to pass to Claude CLI
 - `logger` - Logger for output
 - `timeout` - Timeout in seconds
 - `stream_output` - Whether to stream output to console
-- `idle_timeout` - Kill process if no output for this many seconds (0 to disable). **Deprecated** — prefer `automation=` (read off `automation.idle_timeout`).
 - `on_model_detected` - Optional callback invoked with the model name from the stream-json system/init event. This is the **requested alias** (e.g. `"sonnet"`), not the resolved model the CLI actually ran.
 - `on_usage` - Optional callback invoked with `(input_tokens, output_tokens)` from the stream-json result event
 - `on_usage_detailed` - Optional callback invoked with a `TokenUsage` dataclass from the stream-json result event. `TokenUsage.model` carries the **resolved** model ID (e.g. `"claude-sonnet-5"`), unlike `on_model_detected` (BUG-2757).
 - `preview_full` - If `True`, display the full command without truncation (for `--verbose`)
 - `resume_session` - If `True`, passes `--continue` to the Claude CLI to continue the most recent conversation
-- `automation` (ENH-3097) - Collapsed automation signal (`profile`, `disable_background_tasks`, `idle_timeout`), forwarded as-is to `subprocess_utils.run_claude_command`. `None` preserves the legacy per-kwarg behavior below. Explicit `automation=` wins over the legacy kwargs when both are supplied (warns via `DeprecationWarning`), and discards a legacy `idle_timeout=` rather than merging it.
-- `automation_profile` - Optional automation profile name (e.g. `"ll-auto"`) forwarded to the child env as `LL_AUTOMATION`/`LL_AUTOMATION_PROFILE`; `None` leaves those vars cleared rather than inherited (see `_apply_automation_env`, BUG-3093). **Deprecated** — prefer `automation=`.
-- `disable_background_tasks` (FEAT-3078) - When `True` and `automation_profile` is set, forwarded to the child env as `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1`, hard-disabling tool-level background tasks (e.g. `Bash run_in_background: true`); otherwise the variable is explicitly neutralized to `""`. **Deprecated** — prefer `automation=`.
+- `automation` (ENH-3097) - Collapsed automation signal (`profile`, `disable_background_tasks`, `idle_timeout`), forwarded as-is to `subprocess_utils.run_claude_command`. `None` disables automation entirely.
 - `timeout_kill_grace_seconds` (ENH-3130) - Grace period (seconds) given to the process group after a wall-clock or idle timeout fires before escalating from `SIGTERM` to `SIGKILL`. `0` (default) preserves the historical immediate-`SIGKILL` behavior.
 
 **Returns:** `CompletedProcess` with stdout/stderr captured. When a `result` event with `is_error=True` is present in the stream-json output, `CompletedProcess.stderr` will include a `[result] <error>` line containing the error text from the result event's `error` field (falling back to the `result` field).
@@ -11662,7 +11659,7 @@ def run_claude_command(
     stream_callback: OutputCallback | None = None,
     on_process_start: ProcessCallback | None = None,
     on_process_end: ProcessCallback | None = None,
-    idle_timeout: int = 0,
+    *,
     on_model_detected: ModelCallback | None = None,
     on_usage: UsageCallback | None = None,
     on_usage_detailed: DetailedUsageCallback | None = None,
@@ -11671,8 +11668,6 @@ def run_claude_command(
     resume_session: bool = False,
     model: str | None = None,
     automation: AutomationContext | None = None,
-    automation_profile: str | None = None,
-    disable_background_tasks: bool = False,
     post_stream_close_grace_seconds: int = 300,
     timeout_kill_grace_seconds: float = 0.0,
     on_result_seen: ResultSeenCallback | None = None,
@@ -11684,6 +11679,8 @@ def run_claude_command(
 
 Invokes the Claude CLI command with real-time output streaming.
 
+> **Breaking change (ENH-3261):** the `automation_profile`/`disable_background_tasks`/`idle_timeout` legacy kwargs were removed from this signature. Callers must pass `automation=AutomationContext(profile=..., disable_background_tasks=..., idle_timeout=...)` instead. Every parameter from `on_model_detected` onward is now keyword-only.
+
 **Parameters:**
 - `command` — Command to pass to the Claude CLI.
 - `timeout` — Wall-clock timeout in seconds (`0` for no timeout). Default `3600`.
@@ -11691,7 +11688,6 @@ Invokes the Claude CLI command with real-time output streaming.
 - `stream_callback` — Called with `(line, is_stderr)` for each line of output.
 - `on_process_start` — Invoked after the process starts, receiving the `Popen` object.
 - `on_process_end` — Invoked after the process completes (in a `finally` block), receiving the `Popen` object.
-- `idle_timeout` — Kill the process if no output arrives for this many seconds (`0` disables). Default `0`. **Deprecated** — prefer `automation=` (read off `automation.idle_timeout`). Discarded, not merged, when `automation=` is also supplied.
 - `on_model_detected` — Invoked at most once with the model name from the stream-json `system`/`init` event.
 - `on_usage` — Invoked with `(input_tokens, output_tokens)` from the stream-json `result` event; `input_tokens` includes `cache_read_input_tokens`. Kept for back-compat with `issue_manager.py` and `worker_pool.py` callers.
 - `on_usage_detailed` — Invoked with a `TokenUsage` carrying all four token fields plus the model ID from the `result` event.
@@ -11699,9 +11695,7 @@ Invokes the Claude CLI command with real-time output streaming.
 - `tools` — Optional tool allowlist forwarded to `build_streaming()`.
 - `resume_session` — If `True`, passes `--continue` (via `build_streaming(resume=...)`) to continue the most recent conversation. Used for the Option E explicit-handoff path.
 - `model` — Optional model override forwarded to `build_streaming()`.
-- `automation` (ENH-3097) — Collapsed automation signal (`profile`, `disable_background_tasks`, `idle_timeout`), resolved against the legacy kwargs below via `resolve_automation()` and forwarded as `automation=` alone into `build_streaming()`. `None` preserves the legacy per-kwarg behavior. Explicit `automation=` wins over the legacy kwargs when both are supplied (warns via `DeprecationWarning`).
-- `automation_profile` — ENH-2714 opt-in automation-context static-prefix pruning profile name. When set, forwarded to `build_streaming()` so `LL_AUTOMATION`/`LL_AUTOMATION_PROFILE` are injected into the child environment. `None` (default) is an active opt-out: it clears any inherited `LL_AUTOMATION` to `""` (ENH-3081) rather than passing the parent's value through. **Deprecated** — prefer `automation=`.
-- `disable_background_tasks` — FEAT-3078 opt-in to hard-disable tool-level background tasks in the spawned child. When `True` and `automation_profile` is set, forwarded so `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1` is injected; otherwise the variable is explicitly neutralized to `""`. **Deprecated** — prefer `automation=`.
+- `automation` (ENH-3097) — Collapsed automation signal (`profile`, `disable_background_tasks`, `idle_timeout`), forwarded as `automation=` alone into `build_streaming()`. `None` disables automation entirely.
 - `post_stream_close_grace_seconds` — Grace period (seconds) to wait for the process to exit on its own after stdout/stderr streams close before force-killing the process group. Must accommodate synchronous parallel Agent tool calls (`run_in_background: false`) that can still be running when the parent's own streams close (BUG-2718). Default `300`.
 - `timeout_kill_grace_seconds` — Grace period (seconds) given to the process group after a wall-clock or idle timeout fires: SIGTERM is sent first, and SIGKILL only follows if the group is still alive after this many seconds. `0` (default) preserves the historical immediate-SIGKILL behavior (ENH-3130).
 - `on_result_seen` — Invoked once, right before return, with whether a stream-json `result` event was observed (BUG-2731). Lets callers distinguish an exit-143-after-result infra teardown (re-runnable) from a genuine mid-turn crash, without widening this function's `CompletedProcess` return type.

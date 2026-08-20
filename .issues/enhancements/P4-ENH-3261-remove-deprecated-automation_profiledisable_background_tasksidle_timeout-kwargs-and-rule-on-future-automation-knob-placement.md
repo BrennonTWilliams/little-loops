@@ -4,12 +4,13 @@ type: ENH
 title: Remove deprecated automation_profile/disable_background_tasks/idle_timeout
   kwargs and rule on future automation-knob placement
 priority: P4
-status: open
+status: done
 blocked_by:
 - ENH-3097
 discovered_by: ll-issues-create
 discovered_date: '2026-08-20'
 captured_at: '2026-08-20T16:33:59Z'
+completed_at: '2026-08-20T19:58:33Z'
 labels:
 - automation
 - refactor
@@ -515,6 +516,8 @@ _Added by `/ll:wire-issue` — 2026-08-20 — based on codebase analysis:_
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-20T19:58:03 - `ec728862-173d-4fdf-85c5-0f68ffbf8e20.jsonl`
+- `/ll:ready-issue` - 2026-08-20T19:39:02 - `1b7f174f-b8b2-4a50-a0a1-d3642c95ce7a.jsonl`
 - `/ll:confidence-check` - 2026-08-20T19:34:58 - `2c4b1f13-5fb0-471a-b37b-bbb8b476e566.jsonl`
 - `/ll:confidence-check` - 2026-08-20T19:14:26 - `ef903645-d040-4ca1-8c8f-c324b6f98449.jsonl`
 - `/ll:wire-issue` - 2026-08-20T19:10:35 - `9cb5f76e-23d6-4a1b-9819-6a1e9a11c010.jsonl`

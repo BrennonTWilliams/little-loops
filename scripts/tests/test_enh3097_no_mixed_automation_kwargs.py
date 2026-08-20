@@ -1,98 +1,62 @@
-"""ENH-3097 AC12: static guard against forwarding automation= alongside a
-legacy automation_profile=/disable_background_tasks=/idle_timeout= kwarg.
+"""ENH-3261: signature guard against the three legacy automation kwargs
+reappearing on the functions ENH-3097/ENH-3261 removed them from.
 
-resolve_automation() treats that combination as a conflict (DeprecationWarning,
-explicit automation= wins and the legacy value — critically idle_timeout — is
-discarded, not merged). Nothing else in the suite catches every call site
-mechanically: AC 9's no-spurious-warning test only exercises the paths it
-happens to call. This test walks every ``.py`` file under
-``scripts/little_loops/`` and fails on any ``ast.Call`` to
-``run_claude_command`` / ``run_with_continuation`` (matched by callee name —
-covers both the ``subprocess_utils`` and ``issue_manager`` symbols, and the
-``_run_claude_base`` import aliases at ``issue_manager.py:66`` and
-``worker_pool.py:39``) that passes ``automation=`` together with any of the
-three legacy kwargs.
+ENH-3097 originally shimmed ``automation_profile``/``disable_background_tasks``/
+``idle_timeout`` alongside ``automation=`` on three concrete functions
+(``subprocess_utils.run_claude_command()``, ``issue_manager.run_claude_command()``,
+``issue_manager.run_with_continuation()``), with a static AST guard here
+preventing any call site from mixing ``automation=`` with a legacy kwarg.
+ENH-3261 removed the shim once every in-tree caller had migrated to
+``automation=`` — but a written rule alone does not hold: ENH-3130 already
+landed a brand-new bare kwarg (``timeout_kill_grace_seconds``) on these same
+signatures after ``AutomationContext`` existed, shaped like the pre-collapse
+world anyway. This test is repurposed (not deleted) into the mechanical
+enforcement of "these three names never reappear on these three signatures" —
+an ``inspect.signature`` assertion, since there is no longer a legacy kwarg
+for a call site to mix with.
 """
 
 from __future__ import annotations
 
-import ast
-from pathlib import Path
+import inspect
 
-import pytest
+from little_loops import issue_manager, subprocess_utils
 
-_TARGET_NAMES = {
-    "run_claude_command",
-    "run_with_continuation",
-    "_run_claude_base",
-}
 _LEGACY_KWARGS = {"automation_profile", "disable_background_tasks", "idle_timeout"}
 
-
-def _callee_name(func: ast.AST) -> str | None:
-    if isinstance(func, ast.Name):
-        return func.id
-    if isinstance(func, ast.Attribute):
-        return func.attr
-    return None
-
-
-def _find_violations(source: str, relpath: str) -> list[str]:
-    tree = ast.parse(source, filename=relpath)
-    violations: list[str] = []
-
-    class _Visitor(ast.NodeVisitor):
-        def visit_Call(self, node: ast.Call) -> None:
-            name = _callee_name(node.func)
-            if name in _TARGET_NAMES:
-                kwarg_names = {kw.arg for kw in node.keywords if kw.arg is not None}
-                if "automation" in kwarg_names and kwarg_names & _LEGACY_KWARGS:
-                    mixed = sorted(kwarg_names & _LEGACY_KWARGS)
-                    violations.append(f"{relpath}:{node.lineno}: {name}(automation=, {mixed})")
-            self.generic_visit(node)
-
-    _Visitor().visit(tree)
-    return violations
-
-
-def _scripts_root() -> Path:
-    return Path(__file__).parent.parent / "little_loops"
-
-
-def _all_py_files() -> list[Path]:
-    return sorted(_scripts_root().rglob("*.py"))
+_TARGET_FUNCTIONS = {
+    "subprocess_utils.run_claude_command": subprocess_utils.run_claude_command,
+    "issue_manager.run_claude_command": issue_manager.run_claude_command,
+    "issue_manager.run_with_continuation": issue_manager.run_with_continuation,
+}
 
 
 class TestNoMixedAutomationKwargs:
-    def test_no_call_site_mixes_automation_with_legacy_kwargs(self) -> None:
-        all_violations: list[str] = []
-        for path in _all_py_files():
-            source = path.read_text(encoding="utf-8")
-            relpath = str(path.relative_to(_scripts_root().parent))
-            all_violations.extend(_find_violations(source, relpath))
+    def test_legacy_kwargs_absent_from_target_signatures(self) -> None:
+        violations: list[str] = []
+        for qualname, func in _TARGET_FUNCTIONS.items():
+            params = set(inspect.signature(func).parameters)
+            reintroduced = sorted(params & _LEGACY_KWARGS)
+            if reintroduced:
+                violations.append(f"{qualname}: {reintroduced}")
 
-        assert not all_violations, (
-            "Found call site(s) passing automation= alongside a legacy "
-            "automation_profile=/disable_background_tasks=/idle_timeout= kwarg "
-            "(ENH-3097 Decision Rules — each layer forwards only automation= "
-            f"onward): {all_violations}"
+        assert not violations, (
+            "Found removed legacy kwarg(s) reintroduced on a signature ENH-3261 "
+            f"stripped them from (Decision Rules item 2): {violations}"
         )
 
-    @pytest.mark.parametrize(
-        "snippet",
-        [
-            'run_claude_command(automation=x, automation_profile="p")',
-            "run_claude_command(automation=x, disable_background_tasks=True)",
-            "run_claude_command(automation=x, idle_timeout=30)",
-            "run_with_continuation(automation=x, idle_timeout=30)",
-            "_run_claude_base(automation=x, idle_timeout=30)",
-        ],
-    )
-    def test_guard_detects_synthetic_violation(self, snippet: str) -> None:
-        """Self-test: the guard actually fires on the shape it's meant to catch."""
-        violations = _find_violations(f"{snippet}\n", "synthetic.py")
-        assert violations, f"guard failed to flag: {snippet}"
+    def test_guard_detects_synthetic_reintroduction(self) -> None:
+        """Self-test: the guard actually fires if a legacy kwarg comes back."""
 
-    def test_guard_allows_automation_alone(self) -> None:
-        violations = _find_violations("run_claude_command(automation=x)\n", "synthetic.py")
-        assert not violations
+        def fake_run_claude_command(
+            command: str, *, automation: object = None, idle_timeout: int = 0
+        ) -> None:
+            raise NotImplementedError
+
+        params = set(inspect.signature(fake_run_claude_command).parameters)
+        assert params & _LEGACY_KWARGS
+
+    def test_automation_kwarg_still_present(self) -> None:
+        """The one automation parameter that survives must still be there."""
+        for func in _TARGET_FUNCTIONS.values():
+            assert "automation" in inspect.signature(func).parameters

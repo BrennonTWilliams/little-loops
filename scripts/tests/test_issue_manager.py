@@ -1387,62 +1387,9 @@ class TestRunWithContinuation:
 
         assert seen == [True]
 
-    def test_forwards_automation_profile_to_subprocess(self, temp_project_dir: Path) -> None:
-        """BUG-3058: LL_AUTOMATION must reach the child, or the headless
-        stay-in-turn contract is never injected into the implement phase."""
-        from little_loops.issue_manager import run_with_continuation
-
-        mock_result = MagicMock()
-        mock_result.returncode = 0
-        mock_result.stdout = "Normal output"
-        mock_result.stderr = ""
-
-        captured: list[object] = []
-
-        def fake_run_claude_command(*args: object, **kwargs: object) -> MagicMock:
-            automation = kwargs.get("automation")
-            captured.append(automation.profile if automation else None)
-            return mock_result
-
-        with patch(
-            "little_loops.issue_manager.run_claude_command", side_effect=fake_run_claude_command
-        ):
-            with patch("little_loops.issue_manager.detect_context_handoff", return_value=False):
-                run_with_continuation("test command", MagicMock(), automation_profile="ll-auto")
-
-        assert captured == ["ll-auto"]
-
-    def test_forwards_disable_background_tasks_to_subprocess(self, temp_project_dir: Path) -> None:
-        """FEAT-3078: disable_background_tasks must reach every round's subprocess."""
-        from little_loops.issue_manager import run_with_continuation
-
-        mock_result = MagicMock()
-        mock_result.returncode = 0
-        mock_result.stdout = "Normal output"
-        mock_result.stderr = ""
-
-        captured: list[object] = []
-
-        def fake_run_claude_command(*args: object, **kwargs: object) -> MagicMock:
-            automation = kwargs.get("automation")
-            captured.append(automation.disable_background_tasks if automation else None)
-            return mock_result
-
-        with patch(
-            "little_loops.issue_manager.run_claude_command", side_effect=fake_run_claude_command
-        ):
-            with patch("little_loops.issue_manager.detect_context_handoff", return_value=False):
-                run_with_continuation(
-                    "test command",
-                    MagicMock(),
-                    automation_profile="ll-auto",
-                    disable_background_tasks=True,
-                )
-
-        assert captured == [True]
-
     def test_disable_background_tasks_defaults_to_false(self, temp_project_dir: Path) -> None:
-        """Unset means unset -- callers that never opted in are unaffected."""
+        """ENH-3261: with no automation= supplied, disable_background_tasks
+        reads as falsy -- callers that never opted in are unaffected."""
         from little_loops.issue_manager import run_with_continuation
 
         mock_result = MagicMock()
@@ -1466,7 +1413,8 @@ class TestRunWithContinuation:
         assert captured == [False]
 
     def test_automation_profile_defaults_to_none(self, temp_project_dir: Path) -> None:
-        """Unset means unset -- callers that never opted in are unaffected."""
+        """ENH-3261: with no automation= supplied, profile reads as None --
+        callers that never opted in are unaffected."""
         from little_loops.issue_manager import run_with_continuation
 
         mock_result = MagicMock()
@@ -5771,9 +5719,7 @@ class TestConfidenceGatePreCheck:
         )
         return temp_project_dir
 
-    def test_gated_issue_routes_to_skipped_not_failed(
-        self, gate_routing_project: Path
-    ) -> None:
+    def test_gated_issue_routes_to_skipped_not_failed(self, gate_routing_project: Path) -> None:
         """BUG-3252 Part 3: a confidence-gate skip must land in
         state.skipped_issues, not state.failed_issues — it was never attempted."""
         from little_loops.config import BRConfig
@@ -5807,9 +5753,7 @@ class TestConfidenceGatePreCheck:
         assert "BUG-001" in manager.state_manager.state.skipped_issues
         assert "BUG-001" not in manager.state_manager.state.failed_issues
 
-    def test_auto_corrections_annotates_gated_exclusion(
-        self, gate_routing_project: Path
-    ) -> None:
+    def test_auto_corrections_annotates_gated_exclusion(self, gate_routing_project: Path) -> None:
         """BUG-3252 Part 4: the Auto-corrections line discloses how many
         gated (never-attempted) issues were excluded from its denominator,
         and the rate itself reflects only issues that reached Phase 1."""
@@ -5831,9 +5775,7 @@ class TestConfidenceGatePreCheck:
         manager.state_manager.mark_completed("BUG-001", {"total": 1.0})
         manager.state_manager.record_corrections("BUG-001", ["fixed frontmatter"])
         # One issue never reached Phase 1 — gated before it.
-        manager.state_manager.mark_skipped(
-            "BUG-002", "no_confidence_score (never assessed)"
-        )
+        manager.state_manager.mark_skipped("BUG-002", "no_confidence_score (never assessed)")
         manager._gated_issue_ids.add("BUG-002")
 
         manager._log_timing_summary(time_module.time())

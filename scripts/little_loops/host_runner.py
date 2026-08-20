@@ -1901,9 +1901,18 @@ def resolve_automation(
     deprecated use), else constructs ``AutomationContext(profile=
     automation_profile, disable_background_tasks=disable_background_tasks,
     idle_timeout=idle_timeout)`` from the legacy kwargs alone. Bare
-    legacy-kwarg use (no explicit ``automation``) is silent by design — every
-    in-tree caller does exactly that until ENH-3097 migrates them, and
-    warning there would flood every ``ll-auto`` run.
+    legacy-kwarg use (no explicit ``automation``) is silent by design: this
+    stays quiet for ``build_streaming()``'s own legacy pair (ENH-3095) and
+    ``ActionRunner.run()``'s (ENH-3096), the two Protocol boundaries that
+    keep their shims indefinitely (ENH-3261 Decision Rules item 3) — warning
+    there would flood every ``ll-auto`` run. ENH-3261 removed the legacy
+    kwargs from the three concrete-function callers this docstring used to
+    cite (``subprocess_utils.run_claude_command()``,
+    ``issue_manager.run_claude_command()``,
+    ``issue_manager.run_with_continuation()``); this function itself is
+    unchanged and still serves the two Protocol boundaries above plus
+    ``runner_spec._run_skill()``'s ``spec.args`` legacy dict keys (kept
+    indefinitely, Decision Rules item 1).
 
     ``idle_timeout`` is ``None`` by default because ``build_streaming()``
     never receives one; the ``ActionRunner`` boundary (ENH-3096) is the only

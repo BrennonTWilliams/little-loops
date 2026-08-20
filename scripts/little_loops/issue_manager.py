@@ -33,7 +33,7 @@ from little_loops.git_operations import (
     snapshot_dirty_paths,
     verify_work_was_done,
 )
-from little_loops.host_runner import AutomationContext, resolve_automation
+from little_loops.host_runner import AutomationContext
 from little_loops.issue_lifecycle import (
     FailureType,
     classify_failure,
@@ -142,7 +142,7 @@ def run_claude_command(
     logger: Logger,
     timeout: int = 7200,
     stream_output: bool = True,
-    idle_timeout: int = 0,
+    *,
     on_model_detected: Callable[[str], None] | None = None,
     on_usage: Callable[[int, int], None] | None = None,
     on_usage_detailed: Callable[[TokenUsage], None] | None = None,
@@ -150,8 +150,6 @@ def run_claude_command(
     resume_session: bool = False,
     on_result_seen: ResultSeenCallback | None = None,
     automation: AutomationContext | None = None,
-    automation_profile: str | None = None,
-    disable_background_tasks: bool = False,
     timeout_kill_grace_seconds: float = 0.0,
 ) -> subprocess.CompletedProcess[str]:
     """Invoke Claude CLI command with real-time output streaming.
@@ -161,8 +159,6 @@ def run_claude_command(
         logger: Logger for output
         timeout: Timeout in seconds
         stream_output: Whether to stream output to console
-        idle_timeout: Kill process if no output for this many seconds (0 to disable).
-            Deprecated — prefer automation= (read off automation.idle_timeout).
         on_model_detected: Optional callback invoked with the model name from the
             stream-json system/init event. This is the requested alias
             (e.g. "sonnet"), not the resolved model ID the CLI actually ran.
@@ -176,18 +172,8 @@ def run_claude_command(
             whether a stream-json "result" event was observed (BUG-2731/BUG-3026).
         automation: ENH-3097 collapsed automation signal (profile,
             disable_background_tasks, idle_timeout), forwarded as-is to
-            ``subprocess_utils.run_claude_command()``. None preserves the
-            legacy per-kwarg behavior below. Explicit automation= wins over
-            the legacy kwargs when both are supplied, emitting a
-            DeprecationWarning.
-        automation_profile: ENH-2714 pruning profile name, forwarded to the host
-            runner so ``LL_AUTOMATION``/``LL_AUTOMATION_PROFILE`` reach the child.
-            BUG-3058: without it the SessionStart hook's headless "stay in turn"
-            contract is never injected, so a subagent can end its turn awaiting a
-            background task that will never report. Deprecated — prefer automation=.
-        disable_background_tasks: FEAT-3078 opt-in to hard-disable tool-level
-            background tasks in the spawned child, forwarded to the host runner.
-            Deprecated — prefer automation=.
+            ``subprocess_utils.run_claude_command()``. ``None`` disables
+            automation entirely.
         timeout_kill_grace_seconds: Grace period (seconds) before escalating a
             timeout SIGTERM to SIGKILL, forwarded to the host runner (ENH-3130).
 
@@ -220,18 +206,6 @@ def run_claude_command(
             else:
                 print(f"  {line}")
 
-    # ENH-3097: resolve once at this layer and forward only automation=
-    # onward — never automation= plus a legacy kwarg, which would make
-    # subprocess_utils.run_claude_command()'s own resolve_automation() warn
-    # on every call (Decision Rules).
-    resolved_automation = resolve_automation(
-        automation,
-        automation_profile,
-        disable_background_tasks,
-        float(idle_timeout) if idle_timeout else None,
-        caller="issue_manager.run_claude_command()",
-    )
-
     return _run_claude_base(
         command=command,
         timeout=timeout,
@@ -241,7 +215,7 @@ def run_claude_command(
         on_usage_detailed=on_usage_detailed,
         resume_session=resume_session,
         on_result_seen=on_result_seen,
-        automation=resolved_automation,
+        automation=automation,
         timeout_kill_grace_seconds=timeout_kill_grace_seconds,
     )
 
@@ -284,7 +258,7 @@ def run_with_continuation(
     stream_output: bool = True,
     max_continuations: int = 3,
     repo_path: Path | None = None,
-    idle_timeout: int = 0,
+    *,
     resume_command: str | None = None,
     on_usage: Callable[[int, int], None] | None = None,
     preview_full: bool = False,
@@ -294,8 +268,6 @@ def run_with_continuation(
     sprint_context: SprintWorkerContext | None = None,
     on_result_seen: ResultSeenCallback | None = None,
     automation: AutomationContext | None = None,
-    automation_profile: str | None = None,
-    disable_background_tasks: bool = False,
     timeout_kill_grace_seconds: float = 0.0,
 ) -> subprocess.CompletedProcess[str]:
     """Run a Claude command with automatic continuation on context handoff.
@@ -319,7 +291,6 @@ def run_with_continuation(
         stream_output: Whether to stream output
         max_continuations: Maximum number of continuation attempts
         repo_path: Repository root path
-        idle_timeout: Kill process if no output for this many seconds (0 to disable)
         resume_command: Command to use for continuation rounds instead of appending
             ``--resume`` to ``initial_command``.
         on_usage: Optional external usage callback; wrapped internally for tracking.
@@ -330,16 +301,7 @@ def run_with_continuation(
             when the issue's lifecycle wasn't finalized despite returncode 0.
         automation: ENH-3097 collapsed automation signal (profile,
             disable_background_tasks, idle_timeout), forwarded as-is to every
-            round's subprocess. None preserves the legacy per-kwarg behavior
-            below. Explicit automation= wins over the legacy kwargs when both
-            are supplied, emitting a DeprecationWarning.
-        automation_profile: ENH-2714 pruning profile name forwarded to every
-            round's subprocess (BUG-3058), so the headless "stay in turn"
-            contract is injected on continuations too, not just the first round.
-            Deprecated — prefer automation=.
-        disable_background_tasks: FEAT-3078 opt-in to hard-disable tool-level
-            background tasks, forwarded to every round's subprocess. Deprecated
-            — prefer automation=.
+            round's subprocess. ``None`` disables automation entirely.
         timeout_kill_grace_seconds: Grace period (seconds) before escalating a
             timeout SIGTERM to SIGKILL, forwarded to every round's subprocess
             (ENH-3130).
@@ -368,18 +330,6 @@ def run_with_continuation(
     # knows to consume the sentinel without attempting --continue.
     _just_ran_fresh_session = False
 
-    # ENH-3097: resolve once at this layer and forward only automation= to
-    # every round below — never automation= plus a legacy kwarg (Decision
-    # Rules), which would make the wrapper's own resolve_automation() warn on
-    # every ll-auto round.
-    resolved_automation = resolve_automation(
-        automation,
-        automation_profile,
-        disable_background_tasks,
-        float(idle_timeout) if idle_timeout else None,
-        caller="issue_manager.run_with_continuation()",
-    )
-
     def _tracking_usage(input_tokens: int, output_tokens: int) -> None:
         _last_input[0] = input_tokens
         _last_output[0] = output_tokens
@@ -400,7 +350,7 @@ def run_with_continuation(
             on_usage=_tracking_usage,
             preview_full=preview_full,
             on_result_seen=_tracking_result_seen,
-            automation=resolved_automation,
+            automation=automation,
             timeout_kill_grace_seconds=timeout_kill_grace_seconds,
         )
 
@@ -581,7 +531,7 @@ def run_with_continuation(
                 preview_full=preview_full,
                 resume_session=True,
                 on_result_seen=_tracking_result_seen,
-                automation=resolved_automation,
+                automation=automation,
                 timeout_kill_grace_seconds=timeout_kill_grace_seconds,
             )
             all_stdout.append(result.stdout)

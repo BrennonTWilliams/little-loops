@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.157.0] - 2026-08-20
+
+### Changed
+
+- **Removed deprecated `automation_profile`/`disable_background_tasks`/`idle_timeout` kwargs from `run_claude_command()`/`run_with_continuation()` (ENH-3261)** — `subprocess_utils.run_claude_command()`, the `issue_manager.py` wrapper of the same name, and `issue_manager.run_with_continuation()` no longer accept the three legacy per-call automation kwargs; each now reads `automation` directly with no internal fallback resolution. A `*` keyword-only marker was inserted at each removal point so a stale positional caller fails loudly with a `TypeError` instead of silently rebinding a later positional argument. **Breaking change**: callers passing `automation_profile=`/`disable_background_tasks=`/`idle_timeout=` directly to any of these three functions must migrate to `automation=AutomationContext(profile=..., disable_background_tasks=..., idle_timeout=...)`. `HostRunner.build_streaming()`'s own legacy kwargs (ENH-3095) and `ActionRunner.run()`'s (ENH-3096) are unaffected — both are kept indefinitely as Protocol-boundary shims.
+
 ## [1.156.0] - 2026-08-16
 
 A hardening release: `ll-mcp` gains a full **tier-2/tier-3 mutation surface**
