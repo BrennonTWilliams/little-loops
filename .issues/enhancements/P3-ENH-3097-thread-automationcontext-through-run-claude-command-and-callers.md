@@ -21,7 +21,7 @@ relates_to:
 - FEAT-3033
 - ENH-2714
 - BUG-3093
-verify_verdict: VALID
+verify_verdict: NON_VALID
 ---
 
 # ENH-3097: Thread AutomationContext through run_claude_command() and its callers
@@ -196,6 +196,13 @@ further at the two fastest-moving sites, structure otherwise unchanged:
   `disable_background_tasks`, corroborated by ENH-3095's own Codebase
   Research Findings flagging this exact sibling gap. Does not conflict with
   the proposed collapse — the param carries through unchanged.
+
+**Verdict persisted 2026-08-19:** the pass above ran without `--check`, which
+is the mode that writes `verify_verdict:` to frontmatter, so the field was
+left at its stale `VALID`. Applied the documented `OUTDATED → NON_VALID`
+mapping (`commands/verify-issues.md:265-289`) by hand — the verification did
+run and did return `OUTDATED`; only the persist step was skipped by mode.
+Re-verify with `--check` after ENH-3095 lands.
 
 ## Session Log
 - `/ll:verify-issues` - 2026-08-20T00:59:29 - `e89696fe-140c-45df-a34b-1cf937e9f43c.jsonl`

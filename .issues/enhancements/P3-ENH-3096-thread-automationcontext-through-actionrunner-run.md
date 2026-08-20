@@ -20,7 +20,7 @@ relates_to:
 - FEAT-3078
 - FEAT-3033
 - ENH-2714
-verify_verdict: VALID
+verify_verdict: NON_VALID
 ---
 
 # ENH-3096: Thread AutomationContext through ActionRunner.run() and fsm/executor.py
@@ -197,6 +197,14 @@ still sound; verdict `OUTDATED` on line numbers and one stale claim:
   signatures documented in Program Design should show them so an implementer
   isn't misled into dropping them. Corroborated independently by ENH-3095's
   own Codebase Research Findings, which flag this exact gap.
+
+**Verdict persisted 2026-08-19:** the pass above ran without `--check`, which
+is the mode that writes `verify_verdict:` to frontmatter, so the field was
+left at its stale `VALID`. Applied the documented `OUTDATED → NON_VALID`
+mapping (`commands/verify-issues.md:265-289`) by hand — the verification did
+run and did return `OUTDATED`; only the persist step was skipped by mode.
+Re-verify with `--check` after ENH-3095 lands, which is also when the two
+missing params above and the stale `del`-asymmetry claim should be folded in.
 
 ## Session Log
 - `/ll:verify-issues` - 2026-08-20T00:59:29 - `e89696fe-140c-45df-a34b-1cf937e9f43c.jsonl`
