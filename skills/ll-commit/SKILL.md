@@ -1,6 +1,8 @@
 ---
 name: ll-commit
 description: Create git commits with user approval and no assistant attribution
+allowed-tools:
+  - Bash(git:*)
 disable-model-invocation: true
 metadata:
   short-description: Create git commits with user approval and no assistant attribution

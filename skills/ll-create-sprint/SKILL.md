@@ -1,7 +1,10 @@
 ---
 name: ll-create-sprint
 description: Create a sprint definition with a curated list of issues
+argument-hint: "[sprint-name]"
 allowed-tools:
+  - Bash(mkdir:*)
+  - Bash(ll-issues:*)
   - Bash(ll-history-context:*)
 disable-model-invocation: true
 metadata:

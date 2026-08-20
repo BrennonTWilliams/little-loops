@@ -1,6 +1,12 @@
 ---
 name: ll-iterate-plan
 description: Iterate on existing implementation plans with thorough research and updates
+argument-hint: "[plan-path]"
+allowed-tools:
+  - Read
+  - Edit
+  - Task
+  - Bash(ls:*)
 disable-model-invocation: true
 metadata:
   short-description: Iterate on existing implementation plans with thorough research and updates

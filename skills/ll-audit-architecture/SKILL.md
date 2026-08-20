@@ -1,6 +1,15 @@
 ---
 name: ll-audit-architecture
 description: Analyze codebase architecture for patterns, organization, and improvements
+argument-hint: "[focus-area] [flags]"
+allowed-tools:
+  - Read
+  - Glob
+  - Grep
+  - Write
+  - Edit
+  - Bash(ruff:*, wc:*, git:*)
+  - Task
 disable-model-invocation: true
 metadata:
   short-description: Analyze codebase architecture for patterns, organization, and improvements

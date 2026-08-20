@@ -1,6 +1,10 @@
 ---
 name: ll-describe-pr
 description: Generate comprehensive PR descriptions following repository templates
+argument-hint: "[base-branch]"
+allowed-tools:
+  - Read
+  - Bash(git:*, gh:*)
 disable-model-invocation: true
 metadata:
   short-description: Generate comprehensive PR descriptions following repository templates

@@ -5,9 +5,17 @@ description: |
   Integrates with Issue Management to include completed issues in release notes.
 
   Trigger keywords: "manage release", "create release", "new release", "tag release", "publish release", "make release", "bump version"
+argument-hint: "[action] [version]"
+allowed-tools:
+  - Bash(gh:*, git:*)
+  - AskUserQuestion
+  - Task
+  - Read
+  - Glob
+  - Grep
 disable-model-invocation: true
 metadata:
-  short-description: Manage releases - create git tags, generate changelogs, and manage GitHub releas
+  short-description: Manage releases - create git tags, generate changelogs, and manage GitHub...
 ---
 
 # Manage Release

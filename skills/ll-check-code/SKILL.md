@@ -1,6 +1,9 @@
 ---
 name: ll-check-code
 description: Run code quality checks (lint, format, types, build)
+argument-hint: "[mode]"
+allowed-tools:
+  - Bash(ruff:*, mypy:*, python:*, npm:*, cargo:*, go:*, dotnet:*, mvn:*, ./gradlew:*, make:*)
 disable-model-invocation: true
 metadata:
   short-description: Run code quality checks (lint, format, types, build)

@@ -4,9 +4,17 @@ description: |
   Evaluate active issues for utility vs complexity trade-offs and recommend which to implement, update, or close. Use this skill to sense-check your backlog before implementation, prune low-value issues, or during sprint planning to focus on high-value work.
 
   Trigger keywords: "tradeoff review", "review issues", "utility review", "prune backlog", "issue tradeoff", "sense check issues", "evaluate issues", "backlog review", "worth implementing", "low value issues"
+argument-hint: "[issue-ids]"
+allowed-tools:
+  - Read
+  - Glob
+  - Edit
+  - Task
+  - Bash(git:*)
+  - Bash(ll-issues:*)
 disable-model-invocation: true
 metadata:
-  short-description: Evaluate active issues for utility vs complexity trade-offs and recommend which 
+  short-description: Evaluate active issues for utility vs complexity trade-offs and recommend...
 ---
 
 # Tradeoff Review Issues

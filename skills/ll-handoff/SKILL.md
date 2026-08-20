@@ -1,6 +1,11 @@
 ---
 name: ll-handoff
 description: Generate continuation prompt for session handoff
+argument-hint: "[context]"
+allowed-tools:
+  - Read
+  - Write
+  - Bash(git:*)
 disable-model-invocation: true
 metadata:
   short-description: Generate continuation prompt for session handoff

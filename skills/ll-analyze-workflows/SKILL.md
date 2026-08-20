@@ -1,9 +1,17 @@
 ---
 name: ll-analyze-workflows
 description: Analyze user message history to identify patterns, workflows, and automation opportunities
+argument-hint: "[messages.jsonl]"
+allowed-tools:
+  - Read
+  - Write
+  - Glob
+  - Task
+  - Bash
+  - TodoWrite
 disable-model-invocation: true
 metadata:
-  short-description: Analyze user message history to identify patterns, workflows, and automation opp
+  short-description: Analyze user message history to identify patterns, workflows, and automation...
 ---
 
 # Analyze Workflows

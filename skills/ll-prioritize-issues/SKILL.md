@@ -1,6 +1,9 @@
 ---
 name: ll-prioritize-issues
 description: Analyze issues and prepend priority levels (P0-P5) to filenames
+allowed-tools:
+  - Read
+  - Bash(ll-issues:*)
 disable-model-invocation: true
 metadata:
   short-description: Analyze issues and prepend priority levels (P0-P5) to filenames

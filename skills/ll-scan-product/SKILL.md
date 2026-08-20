@@ -1,6 +1,10 @@
 ---
 name: ll-scan-product
 description: Scan codebase for product-focused issues based on goals document
+allowed-tools:
+  - Bash(git:*, gh:*)
+  - Skill
+  - TodoWrite
 disable-model-invocation: true
 metadata:
   short-description: Scan codebase for product-focused issues based on goals document

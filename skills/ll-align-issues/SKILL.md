@@ -1,6 +1,14 @@
 ---
 name: ll-align-issues
 description: Validate active issues against key documents for relevance and alignment
+argument-hint: "[category] [--issues ID,...]"
+allowed-tools:
+  - Read
+  - Glob
+  - Grep
+  - Edit
+  - Bash(git:*)
+  - Bash(ll-issues:*)
 disable-model-invocation: true
 metadata:
   short-description: Validate active issues against key documents for relevance and alignment

@@ -4,6 +4,10 @@ description: |
   Sync local issues with GitHub Issues (push/pull/status).
 
   Trigger keywords: "sync issues", "push to github", "pull from github", "github sync", "sync with github", "export issues", "import issues from github"
+argument-hint: "[action] [issue-id]"
+allowed-tools:
+  - Bash(gh:*)
+  - Bash(git:*)
 disable-model-invocation: true
 metadata:
   short-description: Sync local issues with GitHub Issues (push/pull/status).

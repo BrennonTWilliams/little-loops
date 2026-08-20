@@ -1,6 +1,10 @@
 ---
 name: ll-toggle-autoprompt
 description: Toggle automatic prompt optimization settings
+argument-hint: "[setting]"
+allowed-tools:
+  - Read
+  - Edit
 disable-model-invocation: true
 metadata:
   short-description: Toggle automatic prompt optimization settings

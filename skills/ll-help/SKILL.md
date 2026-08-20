@@ -1,6 +1,8 @@
 ---
 name: ll-help
 description: List all available little-loops commands with descriptions
+allowed-tools:
+  - Bash(ll-help:*)
 disable-model-invocation: true
 metadata:
   short-description: List all available little-loops commands with descriptions

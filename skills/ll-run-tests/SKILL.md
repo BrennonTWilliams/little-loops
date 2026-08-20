@@ -1,6 +1,9 @@
 ---
 name: ll-run-tests
 description: Run test suites with common patterns
+argument-hint: "[scope]"
+allowed-tools:
+  - Bash(python:*, pytest:*, npm:*, cargo:*, go:*, make:*, git:*)
 disable-model-invocation: true
 metadata:
   short-description: Run test suites with common patterns
