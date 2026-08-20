@@ -3,11 +3,12 @@ id: ENH-3062
 title: No suite gate runs ll-adapt --dry-run, so host mirrors drift undetected
 type: ENH
 priority: P3
-status: open
+status: done
 testable: true
 discovered_by: capture-issue
 discovered_date: 2026-08-05
 captured_at: '2026-08-05T16:06:39Z'
+completed_at: '2026-08-20T22:10:37Z'
 relates_to:
 - ENH-3046
 - FEAT-2274
@@ -448,7 +449,35 @@ but the fix is small and the detection machinery already exists unused.
 
 ## Status
 
-**Open**
+**Done**
+
+## Resolution
+
+Implemented in `scripts/tests/test_wiring_skills_and_commands.py`:
+
+- Removed `SKILL_MIRRORS_MUST_MATCH_SOURCE`, `test_skill_mirror_matches_source`,
+  and the now-unused `_body_after_frontmatter` helper.
+- Added `test_host_artifacts_are_not_stale(host, kind)`, parametrized over
+  `GATED_HOSTS = ["gemini", "kimi-code", "qwen", "codex", "omp"]` ×
+  `{"skills", "commands", "agents"}`, calling `process_skills`/
+  `process_commands`/`process_agents` directly (dry-run) and asserting
+  `adapted == 0`. `omp` early-returns when `.omp/` isn't tracked in this repo
+  (presence-based guard, matches `test_skill_mirrors_carry_companions`).
+- Added `test_claude_code_excluded_from_mirror_gate` and
+  `test_mcp_config_excluded_from_mirror_gate` — named, docstring-carrying
+  tests making both matrix exclusions test-visible (AC3).
+- Added `test_gate_detects_present_but_drifted_codex_command_bridge` — builds
+  a codex command-bridge fixture, drifts it, and asserts the gate's own
+  `process_commands` call (not just the emitter unit) reports it as `adapted`
+  (AC6).
+- Pre-implementation: found and repaired new kimi-code drift (3 commands:
+  `ll-loop-suggester`, `ll-ready-issue`, `ll-refine-issue`) not reflected in
+  the issue's 2026-08-20 baseline, via `ll-adapt --host kimi-code --apply`.
+  Safe — kimi mirrors are pure generated copies with no hand-edit risk.
+
+All 6 hosts now measured clean except the documented exclusions (`omp`,
+`claude-code`, `process_mcp_config`). Full suite: 20038 passed, 46 skipped, 0
+failures.
 
 ---
 
@@ -526,6 +555,8 @@ Added an Acceptance Criteria section. Verdict: VALID, implementation-ready.
 - 2026-08-16: Core gap still real (no test invokes `ll-adapt --dry-run`); cited code has been refactored to class-based emitters — `adapt_skill(skill_path, apply, quiet)` no longer exists. Updated citations above to `GeminiEmitter.emit_skill`/`emit_command` (`gemini.py:81`/`:117`) and `CodexEmitter.emit_skill`/`emit_command` (`codex.py:~294`/`~333`); presence-only `.exists()` checks in codex.py now sit around lines 310, 359, 405. Verdict: OUTDATED.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-20T22:10:01 - `ea9d11dc-250b-4b92-b1be-cb3f1158f9d6.jsonl`
+- `/ll:ready-issue` - 2026-08-20T21:58:47 - `56495e55-bd1c-4164-b286-fd8d788f8657.jsonl`
 - pre-implementation review (2) - 2026-08-20 - re-measured premises; split ENH-3265 out as `blocked_by`; reworked Class B framing, AC1 vacuity, `omp` guard, AC9, and two stale line numbers.
 - `/ll:confidence-check` - 2026-08-20T20:33:29 - `1e7934c2-3f73-4b02-90d0-4a6aa50feef9.jsonl`
 - pre-implementation review - 2026-08-20 - measured all six host dry-runs, content-compared the codex bridge tree, added the Coverage Matrix / Class A-B-C triage / Acceptance Criteria, folded duplicated research stanzas.

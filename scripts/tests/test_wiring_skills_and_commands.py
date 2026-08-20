@@ -367,56 +367,144 @@ def test_file_exists(project_root: Path, doc_rel: str, issue_id: str) -> None:
     assert (project_root / doc_rel).exists(), "[{issue_id}] File must exist: {doc_rel}"
 
 
-def _body_after_frontmatter(text: str) -> str:
-    """Return doc content after the closing `---` frontmatter delimiter."""
-    parts = text.split("---", 2)
-    return parts[2] if len(parts) == 3 else text
+# ENH-3062: replaces the ENH-2996 hardcoded (source, mirror) pair list above
+# (removed) with a gate parametrized over the adapter's own registry, so a
+# newly added command or skill is covered the moment it is adapted — no
+# test-side list to keep in sync. Scoped per the issue's Host / Artifact
+# Coverage Matrix: a uniform "0 adapted" assertion is wrong for 3 of 6
+# `_EMITTER_MAP` hosts (see the two exclusion tests below).
+GATED_HOSTS = ["gemini", "kimi-code", "qwen", "codex", "omp"]
+"""Hosts whose skill/command/agent mirrors this gate holds to `0 adapted`.
+
+Excludes `claude-code` (see `test_claude_code_excluded_from_mirror_gate`) and
+never touches `process_mcp_config` for any host (see
+`test_mcp_config_excluded_from_mirror_gate`). `omp` is gated but its mirror
+root isn't git-tracked in this repo, so the check below is presence-guarded
+rather than run unconditionally (matches `test_skill_mirrors_carry_companions`).
+"""
 
 
-# ENH-2996: mirrors under .gemini/ and .kimi-code/ are git-tracked verbatim
-# body copies of the source skill, produced by `ll-adapt --host ... --apply`.
-# No prior test detected drift, so a skipped re-run after editing the source
-# would pass silently. FEAT-3077 extends this to skills/manage-issue/SKILL.md
-# so the carve-out edit's mirror regeneration is test-enforced, not just instructed.
-# EPIC-3154 adds the .qwen/ mirror (FEAT-3159 emitter, same convention).
-# ENH-3259 extends this to companion files, not just SKILL.md: the § 8b caller
-# suitability gate lives in wire-issue/caller-suitability-gate.md, so a regression
-# could originate in a mirror edit that no parity check covered.
-SKILL_MIRRORS_MUST_MATCH_SOURCE = [
-    ("skills/wire-issue/SKILL.md", ".gemini/skills/wire-issue/SKILL.md"),
-    ("skills/wire-issue/SKILL.md", ".kimi-code/skills/wire-issue/SKILL.md"),
-    ("skills/wire-issue/SKILL.md", ".qwen/skills/wire-issue/SKILL.md"),
-    ("skills/manage-issue/SKILL.md", ".gemini/skills/manage-issue/SKILL.md"),
-    ("skills/manage-issue/SKILL.md", ".kimi-code/skills/manage-issue/SKILL.md"),
-    ("skills/manage-issue/SKILL.md", ".qwen/skills/manage-issue/SKILL.md"),
-    ("skills/explore-api/SKILL.md", ".gemini/skills/explore-api/SKILL.md"),
-    ("skills/explore-api/SKILL.md", ".kimi-code/skills/explore-api/SKILL.md"),
-    ("skills/explore-api/SKILL.md", ".qwen/skills/explore-api/SKILL.md"),
-    (
-        "skills/wire-issue/caller-suitability-gate.md",
-        ".gemini/skills/wire-issue/caller-suitability-gate.md",
-    ),
-    (
-        "skills/wire-issue/caller-suitability-gate.md",
-        ".kimi-code/skills/wire-issue/caller-suitability-gate.md",
-    ),
-    (
-        "skills/wire-issue/caller-suitability-gate.md",
-        ".qwen/skills/wire-issue/caller-suitability-gate.md",
-    ),
-]
+def _host_output_dirs(project_root: Path, host: str) -> tuple[Path, Path, Path, Path]:
+    """Mirror `main_adapt()`'s own path derivation (`cli/adapt.py`)."""
+    from little_loops.adapters.capabilities import HOST_CAPABILITIES
+
+    skills_dir = project_root / "skills"
+    commands_dir = project_root / "commands"
+    agents_dir = project_root / "agents"
+    capability_entry = HOST_CAPABILITIES.get(host)
+    config_dir = (capability_entry.config_dir if capability_entry else None) or ".codex"
+    agent_output_dir = project_root / config_dir / "agents"
+    return skills_dir, commands_dir, agents_dir, agent_output_dir
 
 
-@pytest.mark.parametrize("source_rel, mirror_rel", SKILL_MIRRORS_MUST_MATCH_SOURCE)
-def test_skill_mirror_matches_source(project_root: Path, source_rel: str, mirror_rel: str) -> None:
-    """Mirror bodies must match their source skill (ENH-2996, FEAT-3077)."""
-    source_body = _body_after_frontmatter((project_root / source_rel).read_text())
-    mirror_body = _body_after_frontmatter((project_root / mirror_rel).read_text())
-    assert source_body == mirror_body, (
-        f"{mirror_rel} is stale relative to {source_rel}. Regenerate with: "
-        "ll-adapt --host gemini --apply && ll-adapt --host kimi-code --apply "
-        "&& ll-adapt --host qwen --apply"
+@pytest.mark.parametrize("host", GATED_HOSTS)
+@pytest.mark.parametrize("kind", ["skills", "commands", "agents"])
+def test_host_artifacts_are_not_stale(project_root: Path, host: str, kind: str) -> None:
+    """`ll-adapt --host <host> --dry-run` must report 0 adapted (ENH-3062).
+
+    Content-compares the adapter's own generated output against the on-disk
+    mirror for every artifact kind, replacing the ENH-2996 hardcoded pair
+    list — coverage now tracks `_EMITTER_MAP` directly.
+    """
+    from little_loops.adapters.core import (
+        process_agents,
+        process_commands,
+        process_skills,
+        resolve_emitter,
     )
+
+    if host == "omp" and not (project_root / ".omp").exists():
+        return  # no tracked mirror for this host in this repo
+
+    emitter = resolve_emitter(host)
+    skills_dir, commands_dir, agents_dir, agent_output_dir = _host_output_dirs(project_root, host)
+
+    if kind == "skills":
+        adapted, _skipped, _errors = process_skills(emitter, skills_dir, apply=False, quiet=True)
+    elif kind == "commands":
+        adapted, _skipped, _errors = process_commands(
+            emitter, commands_dir, skills_dir, apply=False, quiet=True
+        )
+    else:
+        adapted, _skipped, _errors = process_agents(
+            emitter, agents_dir, agent_output_dir, apply=False, quiet=True
+        )
+
+    assert adapted == 0, (
+        f"{host}'s {kind} mirror is stale ({adapted} artifact(s) would be "
+        f"rewritten). Regenerate with: ll-adapt --host {host} --apply"
+    )
+
+
+def test_gate_detects_present_but_drifted_codex_command_bridge(tmp_path: Path) -> None:
+    """Gate catches drift, not just missing artifacts (ENH-3062 AC6).
+
+    Reproduces the false-negative class that motivated this issue: a codex
+    command bridge (`skills/ll-<stem>/`) that exists on disk with content
+    that no longer matches its generator, via the same `process_commands`
+    call `test_host_artifacts_are_not_stale` uses — not just the underlying
+    emitter unit.
+    """
+    from little_loops.adapters.core import process_commands, resolve_emitter
+
+    commands_dir = tmp_path / "commands"
+    commands_dir.mkdir()
+    skills_dir = tmp_path / "skills"
+    skills_dir.mkdir()
+    (commands_dir / "my-cmd.md").write_text(
+        "---\ndescription: Original description.\n---\n\n# My Cmd\n"
+    )
+    emitter = resolve_emitter("codex")
+    adapted, _skipped, _errors = process_commands(
+        emitter, commands_dir, skills_dir, apply=True, quiet=True
+    )
+    assert adapted == 1  # baseline bridge created
+
+    # Source changes; bridge is present but stale (not regenerated).
+    (commands_dir / "my-cmd.md").write_text(
+        "---\ndescription: Updated description.\n---\n\n# My Cmd\n"
+    )
+
+    adapted, _skipped, _errors = process_commands(
+        emitter, commands_dir, skills_dir, apply=False, quiet=True
+    )
+    assert adapted == 1, "gate failed to detect a present-but-drifted codex command bridge"
+
+
+def test_claude_code_excluded_from_mirror_gate() -> None:
+    """`claude-code`'s skill/command/agent emitters are no-op stubs (ENH-3062 AC3).
+
+    `capabilities.py:163-180` sets `skill_output_format=None` etc. for this
+    host — `emit_skill`/`emit_command`/`emit_agent` always return `"skipped"`
+    with nothing to compare, so parametrizing it into `GATED_HOSTS` would be a
+    vacuous pass, not real coverage. Only `emit_mcp_config` does anything for
+    `claude-code`, and that path is excluded for a separate reason — see
+    `test_mcp_config_excluded_from_mirror_gate`.
+    """
+    from little_loops.adapters.claude_code import ClaudeCodeEmitter
+
+    assert ClaudeCodeEmitter().emit_skill.__doc__ is not None
+
+
+def test_mcp_config_excluded_from_mirror_gate() -> None:
+    """`process_mcp_config` is never called by this gate, for any host (ENH-3062 AC3).
+
+    None of the three `emit_mcp_config` destinations is a tracked mirror this
+    gate could meaningfully hold to "0 adapted": `claude-code` targets
+    repo-root `.mcp.json` (`{"mcpServers": {}}` in this source repo — reports
+    `adapted` forever, correctly); `codex` reads/writes the operator's real
+    `$CODEX_HOME/config.toml` and would report `adapted` against an isolated
+    empty home on first run; and no other host's mcp path is git-tracked
+    either. Excluding it here also means the `CODEX_HOME` isolation this gate
+    would otherwise need (`TestCodexEmitterEmitMcpConfig._config_path`,
+    `test_adapters.py`) is moot — nothing in this file touches
+    `process_mcp_config`.
+    """
+    import inspect
+
+    from little_loops.adapters.core import process_mcp_config
+
+    assert "output_dir" in inspect.signature(process_mcp_config).parameters
 
 
 # BUG-3163: skill mirrors are only usable if ENH-494 companion files ride

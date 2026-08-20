@@ -1,7 +1,7 @@
 ---
 name: ll-refine-issue
 description: Refine issue files with codebase-driven research to fill knowledge gaps needed for implementation
-argument-hint: "[issue-id]"
+argument-hint: "ISSUE_ID [--auto] [--dry-run] [--gap-analysis] [--full-rewrite]"
 allowed-tools:
   - Read
   - Glob

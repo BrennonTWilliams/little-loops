@@ -11,6 +11,7 @@ allowed-tools:
   - Glob
   - Bash(ll-messages:*)
   - Bash(ll-logs:*)
+metadata:
 arguments:
   - name: input
     description: Path to JSONL file from ll-messages, or --from-commands to suggest loops from the command/skill catalog (no message history required), or --from-sequences to suggest loops from ll-logs sequences n-gram output
