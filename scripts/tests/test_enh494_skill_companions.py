@@ -32,6 +32,7 @@ EXPECTED_COMPANIONS = [
     SKILLS_DIR / "wire-issue" / "learning-targets.md",
     SKILLS_DIR / "wire-issue" / "static-coupling-layer.md",
     SKILLS_DIR / "wire-issue" / "graph-discovery-layer.md",
+    SKILLS_DIR / "wire-issue" / "caller-suitability-gate.md",
 ]
 
 

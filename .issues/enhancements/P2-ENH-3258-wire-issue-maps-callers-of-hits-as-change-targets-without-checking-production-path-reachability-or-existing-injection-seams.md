@@ -4,10 +4,11 @@ type: ENH
 title: wire-issue maps callers-of hits as change targets without checking production-path
   reachability or existing injection seams
 priority: P2
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-08-19'
 captured_at: '2026-08-19T21:25:08Z'
+status_note: shipped 2026-08-19; validated on a clean fixture, one clause added
 relates_to:
 - ENH-2578
 - ENH-3045
@@ -72,8 +73,8 @@ $ ll-code callers-of build_ref_index
   scripts/little_loops/cli/issues/format_check.py:553 cmd_format_check       (exact, call)
 ```
 
-Note the shape: **five of the eight hits are test callers** — see § Test-path prefilter
-under Proposed Solution.
+Note the shape: **five of the eight hits are test callers.** A test caller is never a change
+target, so the rule's enclosing-function read only ever applies to the production remainder.
 
 The tool is correct and each `path:line` Grep confirms. The *instruction* is still wrong:
 
@@ -95,20 +96,14 @@ Following the instruction literally yields a larger, worse change than the corre
 
 ## Expected Behavior
 
-Before a `callers-of` hit enters the Integration Map as a **change target** (as opposed to an
-impact-only entry), the confirmation step answers two additional questions:
+Before the Wiring Phase emits an `Update <path>` instruction for a caller hit, the enclosing
+function of the call site is read. If the call sits in a guard branch, or the enclosing function
+already accepts the value as a parameter, no change instruction is emitted — the path is recorded
+with the guard line or signature quoted, and with the reason stated.
 
-- **Reachability**: is this call on the production path at all? Test-file callers are
-  separated by path up front; of what remains, calls inside a fallback / guard / `except`
-  branch are recorded as such, not as targets.
-- **Seam**: does the enclosing function already expose a parameter that carries the value,
-  making injection from above the smaller change? If so, walk one hop up (`callers-of` on the
-  *enclosing* function) and evaluate that caller as the target instead.
-
-The Integration Map distinguishes "this call site changes" from "this call site is affected" —
-and, decisively, the **Wiring Phase appended to `## Implementation Steps` (Phase 8b) emits an
-`Update <path>` instruction only for hits classified `target`.** That is the surface
-`/ll:manage-issue` and the `rn-*` loops actually execute.
+The Integration Map keeps its current routing. The change is narrow and lands on one surface:
+Phase 8b, which writes the `## Implementation Steps` bullets that `/ll:manage-issue` and the
+`rn-*` loops actually execute.
 
 ## Motivation
 
@@ -125,508 +120,113 @@ ENH-3045's claim-grounding half addresses for *assertions about* symbols; this i
 
 ## Proposed Solution
 
-**The shared safety rules are not amended.** The new requirement lands as a wire-issue-local
-stricter rule, following the precedent the canonical guide already sets for
-`/ll:verify-issues` — see § Decision Rationale immediately below, which resolves
-Implementation Step 1.
+**Scope decision — 2026-08-19: implement the simple version.** Six review rounds each found a
+carrier/plumbing defect one hop further upstream than the last, and each round's correction
+enlarged the surface for the next. That is one question answered incrementally, not six
+discoveries. Root cause: this is a typed data-flow change specified in an untyped prose system
+(skills are markdown prompts; `callers_to_add` is a bullet, not a schema), verified only by
+inspection — which does not converge. More doctrine in an already-493-line prompt also does not
+reliably increase LLM compliance.
 
-### Where the rule lives — Phase 5 / 8a / **8b**, not Phase 3.6 (decided 2026-08-19; 8b added 2026-08-19)
+**The change, verbatim. This is the whole of it:**
 
-**The classification must be applied where all caller hits converge, which is not Phase 3.6.**
-Verified against the current skill:
+> Before emitting an `Update <path>` bullet in the Wiring Phase, read the enclosing function of
+> the call site. If the call sits in a guard branch (`if x is None:`, `except`, a
+> `--dry-run`-style guard), or the enclosing function already accepts the value as a parameter,
+> do not emit the change instruction — record the path with the guard line or signature quoted,
+> and say why instead. **When a parameter is the seam, emit an `Inject at <path>` Wiring Phase
+> bullet naming it — redirect the touchpoint, never drop it.**
 
-- Phase 3.6's confirmed candidates never enter the Integration Map directly. They feed
-  **Phase 4 Agent 1's seed slots** (`SKILL.md:142`; `graph-discovery-layer.md:29-31`).
-- The Integration Map is written in **Phase 8a** (`SKILL.md:342-398`) from `MISSING_WIRING`,
-  computed in **Phase 5** (`SKILL.md:260-279`) by merging all three agents' findings.
-- The **Wiring Phase appended to `## Implementation Steps`** is written in **Phase 8b**
-  (`SKILL.md:400-416`) from `MISSING_WIRING.new_impl_steps` (`SKILL.md:278`).
-- A classification assigned at 3.6 has no carrier through Phase 4/5 to reach any of them.
+The bolded second sentence was **added 2026-08-19 after the step-4 fixture**, per § Deferred's
+"one element for one observed failure" rule. Rationale in § Session Log; full procedure and worked
+example in the companion.
 
-#### 8b is the surface that actually emits the harmful instruction (corrected 2026-08-19)
+It lands in one place: `skills/wire-issue/SKILL.md` § 8b, gating the `Update <path>` bullet, with
+the procedure extracted to `skills/wire-issue/caller-suitability-gate.md` (the line budget in
+§ Files to Modify forced the extraction — the inline rule sits at 6 lines and the file at exactly
+500).
 
-**An earlier draft of this issue located the fix at "the *Files to Modify* vs *Dependent Files*
-routing at `SKILL.md:346-361`". That premise is wrong, verified against the current skill:**
+**The shared safety rules are not amended.** `docs/guides/GRAPH_DISCOVERY_GUIDE.md:82-92` stays
+byte-unchanged. The three rules there govern *trust* — is this hit real? — and on the worked
+example they worked correctly: the call really was at
+`scripts/little_loops/issues/research_triage.py:212`. This is a *suitability* rule, and it belongs
+to wire-issue alone: `/ll:refine-issue` consumes hits as research leads, where a hit sitting in a
+fallback branch is still a perfectly good lead. The guide already sets that precedent with the
+`/ll:verify-issues` carve-out at `:19-27`.
 
-- `SKILL.md:346` routes **all** `callers_to_add` / `importers_to_add` hits to *Dependent Files*,
-  unconditionally. `:356`'s *Files to Modify* path is for **registration / manifest files only**.
-  A caller hit therefore never becomes a *Files to Modify* entry today, and 8a already draws the
-  "changes vs affected" line this issue's § Expected Behavior asks for.
-- The executed instruction comes from **8b's Wiring Phase template** (`SKILL.md:400-416`), whose
-  bullet form is literally `- Update `<caller>` — adjust calls to `changed_function()``.
-  ENH-3000's harmful text — "Thread the config-sourced list through all three production
-  `build_ref_index()` call sites" — is that shape, not an Integration Map bullet.
-- `/ll:manage-issue` and the `rn-*` loops execute `## Implementation Steps`. A classification
-  that reaches 8a but not 8b relabels a Dependent-Files bullet while still emitting
-  "Update `scripts/little_loops/issues/research_triage.py`" into the Wiring Phase — i.e. **it
-  would not fix this issue's own worked example.**
+### Deferred — the elaborate mechanism
 
-So 8b is the **primary** edit. The 8a edit remains in scope but for a smaller reason: it
-adds the classification label and justifying quote to the Dependent-Files bullets, and skips the
-enclosing-function read for `test-only`.
+Rounds 2–6 specified a four-value classification enum (`test-only` / `target` / `fallback` /
+`seam-above`), a capped one-hop `seam-above` walk with `Class::method` stripping and an
+unresolved-fails-to-impact-only rule, a test-path prefilter, a file-level collapse rule, an
+empty-suppression announcement, a Phase 4 Agent 1 return-contract widening, a Phase 5 carrier
+widening, a Phase 7 count qualifier, `output-report.md` format growth, a `## Consumers` paragraph
+in the shared guide, and a marker-phrase sync test. **All of it is deferred.** The research behind
+it is preserved in § Codebase Research Findings and § Session Log.
 
-##### `new_impl_steps` is a gate, not a per-hit carrier (corrected 2026-08-19)
+Reopen it only on a concrete miss from the regression fixture (§ Implementation Steps step 4) —
+and then add *one* element for *one* observed failure, not the whole enum.
 
-**An earlier draft named `new_impl_steps` (`:278`) a "second required carrier" alongside
-`callers_to_add` (`:268`). That is a mechanism error, verified against the current skill:**
-
-- Phase 5 defines the bucket as `[phases that should be added to Implementation Steps based on
-  missing files]` (`:278`) — a list of *phases*, not of hits. It has no per-hit slot to carry a
-  classification on.
-- 8b uses it only as an emptiness gate: "If `new_impl_steps` is non-empty, append a
-  wiring-specific phase" (`:400`). The `- Update <path>` bullets that follow are rendered from
-  the **file** buckets — `callers_to_add`, `tests_to_add`, `registrations_to_add`, `docs_to_add`
-  — which is why the template shows a caller, a test, a `plugin.json`, and a doc bullet.
-
-So the classification has exactly **one** carrier, `callers_to_add`, and 8b's rule reads: *render
-an `Update <path>` bullet only for `callers_to_add` entries classified `target`.* No change to
-`new_impl_steps` is needed or possible. An implementer told to "carry the classification on
-`new_impl_steps`" will look for a per-hit field that does not exist.
-
-##### The carrier is file-granular today — Agent 1 must be widened first (added 2026-08-19)
-
-**`callers_to_add` cannot carry a per-hit classification as currently defined, and Phase 5 has
-no data to classify from.** Verified against the current skill:
-
-- Phase 5 defines the bucket as `[files from Agent 1 callers not in known_callers]`
-  (`SKILL.md:268`) — a list of **files**, not of `path:line` hits.
-- Phase 4 Agent 1's prompt ends with "**Return file paths grouped by:** Direct importers /
-  Callers / consumers / Test files / …" (`SKILL.md:174-180`). It returns **paths only** — no
-  line, no enclosing symbol, no guard or signature evidence.
-- 8a's and 8b's bullets are per-file (`- Update \`path/to/caller.py\``), so whatever
-  classification exists must collapse to file granularity to be emitted.
-
-This is the same class of error as the retracted `new_impl_steps` carrier: a per-hit field
-attached to a bucket that has no per-hit slot. Two consequences, both required:
-
-1. **Phase 4 Agent 1 (`SKILL.md:151-190`) is a fifth edit surface**, not previously listed.
-   Its "Callers / consumers" return contract must additionally yield, per call site,
-   `path:line`, the enclosing function signature, and the enclosing guard/branch line if any —
-   otherwise Phase 5 is classifying files it has never seen the interior of. Graph-seeded hits
-   already carry `path`/`line`/`symbol` from `ll-code`; this closes the gap for the
-   Agent-1-discovered and `available: false` paths the issue claims to cover.
-2. **A file-level collapse rule is required**, because one file can hold hits of different
-   classes (`research_triage.py` holds two, both non-`target`). The rule: a file is emitted as a
-   `target` in 8b **iff at least one of its hits classifies `target`**; the suppression and the
-   empty-suppression announcement apply only when **every** hit in the file is `fallback` /
-   `test-only` / `seam-above (unresolved)`. Without this, an implementer must invent the
-   collapse and will plausibly invert it (suppress if *any* hit is non-target), which
-   over-suppresses.
-
-#### Mechanical precedent — follow ENH-3050
-
-`SKILL.md:346` already reads: "`gate_consumers` and `conditional_branches` (ENH-3050) also route
-here, not to a new heading." That is exactly this change's shape — a new Phase 5 bucket carried
-to 8a and routed without inventing a heading. Follow it rather than designing a new carrier.
-
-Two further consequences of a 3.6-only placement, both fatal:
-
-1. **Safety rule 1 deletes the rule.** On `available: false` or exit `2`, Phase 3.6 is skipped
-   *entirely* and the normal Phase 4 flow runs — taking the reachability/seam requirement with
-   it. The rule would be absent exactly where no graph provider exists.
-2. **Agent-discovered callers bypass it.** Agent 1 traces callers by Grep regardless of
-   `ll-code`. Those hits never pass through 3.6 at all. The ENH-3000 failure mode is a property
-   of *any* caller hit becoming a change target, not of graph-seeded ones.
-
-So the split is:
-
-| Lives in | What |
-|---|---|
-| `SKILL.md` § Phase 4 Agent 1 | **Prerequisite.** Widen the "Callers / consumers" return contract from bare paths to `path:line` + enclosing signature + enclosing guard line, so Phase 5 has something to classify (see § The carrier is file-granular today) |
-| `SKILL.md` § Phase 5 | The four-value classification carried on `callers_to_add` (`:268`) — the sole carrier — applied to **every** caller hit in `MISSING_WIRING`, whatever discovered it. `importers_to_add` is **not** classified (see § Importers below) |
-| `SKILL.md` § 8b | **Primary.** Emit an `Update <path>` Wiring Phase bullet only for `target`; suppress for `fallback` / `test-only`, or emit with the classification and justifying quote attached |
-| `SKILL.md` § 8a | The classification label and justifying quote on Dependent-Files bullets; `test-only` reuses existing Tests routing |
-| `skills/wire-issue/graph-discovery-layer.md` | The graph-specific parts only: the test-path prefilter over `results[]`, and the one-hop `seam-above` walk keyed off `results[].symbol` |
-
-This keeps the change consumer-local (no shared-contract amendment) at the same edit budget,
-while covering the fallback and agent-discovery paths that a 3.6-only rule leaves open.
-
-### The classification
-
-Every positive caller hit is confirmed by reading its enclosing function — not just its line —
-and classified before it enters the Integration Map:
-
-- `test-only` — the hit's `path` is under a test root (`scripts/tests/`, `**/test_*.py`,
-  `**/*_test.py`, `**/tests/**`). Record under the Integration Map's **Tests** subsection;
-  never Files to Modify. Assigned by the prefilter below, without an enclosing-function read.
-  **Note the routing here is not new** — Phase 5 already funnels test files to the Tests
-  subsection via `tests_to_add` (`SKILL.md:270`). The genuinely new behavior is *skipping the
-  enclosing-function read* for these hits. Do not build a second routing path alongside
-  `tests_to_add`; reuse it.
-- `target` — on the production path, no upstream seam; wire it here.
-- `fallback` — inside `if x is None:` / `except` / a `--dry-run`-style guard. Record under
-  Dependent Files with the branch quoted; do not instruct a change.
-- `seam-above` — the enclosing function already takes the value as a parameter. Run
-  `ll-code callers-of <enclosing symbol>` and evaluate *those* as targets. Cap the walk at
-  one extra hop to bound cost; if it does not resolve in one hop, emit `target` with a
-  flagged note rather than recursing. **The hop's results are themselves classified by the
-  same rules, with `seam-above` disabled** — a one-hop result is `test-only`, `fallback`, or
-  `target`, never a second hop. This matters on the worked example: `callers-of
-  triage_research_axes` returns test callers alongside the real production one, and the test
-  callers must land as `test-only`, not as targets promoted by the hop.
-
-**The enclosing symbol is already in the payload — do not re-derive it.** Each
-`ll-code --json callers-of` result carries `results[].symbol`, which *is* the enclosing
-function/method of the call site (`qualified_ref_count`, `triage_research_axes`,
-`cmd_format_check` in the output above; verified 2026-08-19). The `seam-above` hop is
-therefore literally `ll-code callers-of <results[].symbol>` — no lookup, no parsing, no
-"identify the enclosing function" step. The enclosing-function *read* is still required, but
-only to inspect the signature and guard branches, not to find the name.
-
-##### …except for methods, where `symbol` does not round-trip as a query (added 2026-08-19)
-
-**The "no parsing" claim holds only for module-level functions.** When the call site sits in a
-method, `results[].symbol` is the qualified form `Class::method`
-(`TestBuildRefIndex::test_indexes_tracked_files_by_basename` in the output above), and
-`ll-code callers-of "Class::method"` returns **`results: []` — an empty success, not an
-error** (verified 2026-08-19). So the hop must strip the `Class::` prefix before querying.
-
-This makes the hop's failure mode dangerous: an empty result is indistinguishable from a
-genuine "no callers", and **safety rule 3 forbids trusting a negative anyway**. The rule is
-therefore: split `symbol` on `::` and query the bare method name; and an empty or
-never-run hop is `seam-above (unresolved)` → impact-only per the fail-safe below. It is never
-read as "no callers exist, so this hit is a `target`" — that inversion re-emits the
-instruction this issue suppresses.
-
-#### The hop needs a no-graph path — and unresolved must fail to impact-only (added 2026-08-19)
-
-The `seam-above` hop is *literally* `ll-code callers-of <symbol>`. It therefore cannot run in the
-two cases this issue elsewhere claims to cover:
-
-1. **`available: false` / exit `2`** (safety rule 1). The classification itself survives — it is a
-   Phase 5 rule over hits, not a graph rule — but its `seam-above` *resolution* does not.
-2. **Agent-1-discovered hits**, which have no `results[].symbol` payload at all.
-
-In both cases: read the enclosing function (already required), and if its signature exposes the
-value as a parameter, classify `seam-above` and **stop there** — do not attempt a Grep
-reconstruction of the caller set, which is the exhaustive search ENH-2578 exists to avoid.
-
-**An unresolved `seam-above` fails to impact-only, not to `target`.** An earlier draft had the
-hop cap emit "`target` with a flagged note"; that default re-emits the exact instruction this
-issue exists to suppress — on the worked example it would have produced "Update
-`scripts/little_loops/issues/research_triage.py`" again. The correct fail-safe: an unresolved
-`seam-above` hit gets its Dependent-Files bullet with the enclosing signature quoted and a
-`seam-above (unresolved)` label, and **no `Update <path>` bullet in 8b**. The seam is known to
-exist; where to inject from is not. Emitting nothing is recoverable, emitting the wrong target is
-not.
-
-#### Suppression must be announced, never silent (added 2026-08-19)
-
-If suppression removes *every* caller bullet from 8b's Wiring Phase — all hits `fallback`,
-`test-only`, or unresolved `seam-above` — the Wiring Phase must still emit one line:
-
-```markdown
-- **No direct caller change target identified** — N caller hits classified
-  `fallback` / `seam-above (unresolved)`; the value must be injected from above.
-  Verify manually before implementing.
-```
-
-Without this, the fix converts a confidently-wrong instruction into a *silently absent* one, and
-`/ll:manage-issue` proceeds as though wiring found nothing to do. That is a different failure with
-the same root cause — credible output where none was verified.
-
-#### Importers are out of scope for classification (added 2026-08-19)
-
-The four values are exhaustive over **caller** hits only. `importers_to_add` (`SKILL.md:269`) is
-not classified: an import is module-level, so it has no enclosing guard branch and no parameter
-seam — the two conditions the classification tests for do not apply. Importer hits keep their
-current unconditional Dependent-Files routing at `:346`. Stated explicitly because § The
-classification calls the value set "exhaustive", which otherwise reads as covering both buckets.
-
-**Output contract**: a change-target entry must quote the enclosing signature or branch line
-that justifies its classification, mirroring ENH-3045's "quote the line that makes it true".
-An entry that cannot be justified that way is downgraded to impact-only.
-
-### Test-path prefilter (the cost control)
-
-Classify `test-only` **first, by path, before any enclosing-function read.** This is what pays
-for the rest of the rule: on the `build_ref_index` fixture above it removes 5 of 8 hits, so
-the enclosing-function reads drop from 8 to 3 — a ~60% reduction against the naive
-"read one function per confirmed hit" cost. The residual cost is a read of one function per
-*production* hit, replacing a one-line Grep. ENH-2578's premise is that graph seeding buys
-enough budget to spend it on confirmation; this spends some of that surplus on the half that
-was skipped, and the prefilter keeps the spend proportional to the production surface rather
-than the total caller count. Measure against ENH-2578's own before/after token methodology.
-
-### Decision Rationale — consumer-local rule, not a shared-contract amendment
-
-**Resolves Implementation Step 1 (decided 2026-08-19).** The three shared safety rules in
-`docs/guides/GRAPH_DISCOVERY_GUIDE.md:82-92` are left **byte-unchanged**. The new requirement
-is added as a wire-issue-local stricter rule.
-
-**The guide already solved this exact problem one consumer over.**
-`GRAPH_DISCOVERY_GUIDE.md:19-27` carries a per-consumer carve-out:
-
-> `/ll:verify-issues` follows the same procedure and safety rules as the other two consumers,
-> **but under a stricter local rule**: it mutates issue state (verdicts, `status`), so a graph
-> result there may only corroborate or correct a verdict, never originate one.
-
-ENH-3258 is the same shape. The three consumers differ not in how much they trust a hit, but
-in **what they do with a confirmed one**:
-
-| Consumer | A confirmed hit becomes | Local rule |
-|---|---|---|
-| `/ll:refine-issue` § 3.05 | a research lead | none — shared rules suffice |
-| `/ll:verify-issues` § 2B.0 | a verdict input | may corroborate, never originate (exists today) |
-| `/ll:wire-issue` § 3.6 | **an executed change target** | may nominate, never designate without reachability + seam justification (**new, this issue**) |
-
-**Shared rule 2 is not the rule that failed.** Canonically it is named
-**"Confirm-before-use"** (`GRAPH_DISCOVERY_GUIDE.md:87-89`) — "every positive hit is a lead,
-not a verdict. Confirm it with one Grep at its `path:line` before it is written down or handed
-to an agent as an established fact." That is a **trust** rule, and on the ENH-3000 instance it
-worked correctly: the call really was at
-`scripts/little_loops/issues/research_triage.py:212`. Wire-issue's local gloss renames it
-**"confirm-before-map"** (`graph-discovery-layer.md:26-28`), silently re-purposing a trust
-rule as a target-selection rule. **That rename is the actual defect.** Rule 2 needs no change;
-wire-issue needs a *second* rule it never had.
-
-**Why not amend the shared rule anyway:**
-
-- The rules are marked "encode verbatim" (`GRAPH_DISCOVERY_GUIDE.md:82`) and are mirrored into
-  `.qwen/`, `.gemini/`, and `.kimi-code/`. Amending them churns three consumers and every host
-  mirror to fix a defect only one consumer has.
-- `/ll:refine-issue` should inherit nothing here. A lead that turns out to sit in a fallback
-  branch is still a perfectly good research lead — suitability only matters when the output is
-  an *instruction*. Widening the rule would impose per-hit enclosing-function reads on a phase
-  that gains nothing from them, which is precisely the ENH-2578 token surplus this issue is
-  already spending down.
-- The guide's own structure mandates this split: "Consumers keep only their own phase-specific
-  procedure and link here — one place to fix when the contract moves"
-  (`GRAPH_DISCOVERY_GUIDE.md:7-10`). Target selection *is* wire-issue's phase-specific
-  procedure.
-
-**Consequences for this issue's scope:**
-
-- `docs/guides/GRAPH_DISCOVERY_GUIDE.md` moves from a rule-2 edit to a **`## Consumers`
-  addition only** — one short paragraph for wire-issue mirroring the verify-issues one at
-  :19-27. It stays in Files to Modify, but for a different and much smaller edit.
-- `/ll:refine-issue` § 3.05 and `commands/refine-issue.md` drop out of scope entirely.
-- The mechanism splits per § *Where the rule lives* above: the classification, routing, and
-  justifying quote land in `skills/wire-issue/SKILL.md` §§ Phase 5 / 8a (where every caller hit
-  converges); the test-path prefilter and the one-hop `seam-above` walk land in
-  `skills/wire-issue/graph-discovery-layer.md` (they operate on the `ll-code` payload and only
-  exist when a provider does).
-
-**Do not add a fifth restatement.** Per the research finding above, rule 2 already exists in
-four independently-worded, non-byte-identical copies. The wire-issue-local rule is *new text*
-about a *different* question, so it does not add to that pile — but the sync test in
-Implementation Step 4 should pin canonical → wire-issue-layer to stop the existing drift
-widening.
+**Exercised once, 2026-08-19.** The fixture surfaced exactly one failure: the rule was purely
+subtractive. It suppressed the wrong `Update` bullet and emitted nothing in its place, leaving a
+Wiring Phase with no injection touchpoint at all for an issue whose Implementation Steps said
+"thread the config-sourced list from production call paths." One element was added — the
+`Inject at <path>` clause in § Proposed Solution. The enum stays deferred; none of its other nine
+elements were reopened.
 
 ## Program Design
 
-### Types
-N/A — this is a skill-doctrine (markdown instruction) change, not a Python code change; no new data types.
+N/A — `program_design_not_applicable: true`. This is a skill-doctrine (markdown prompt) change: no
+types, no signatures, no runtime call path.
 
-### Signatures
-N/A — no new Python function/class signatures.
-
-### Call Path
-No runtime call path — this is a skill-doctrine change. The **candidate-flow path** the rule
-must attach to (verified 2026-08-19) is what determines placement:
-
-```
-Phase 3.6  SKILL.md:142 / graph-discovery-layer.md
-             ll-code --json callers-of -> confirm at path:line
-             -> [prefilter + seam-above hop land HERE]
-             -> written into Phase 4 Agent 1 seed slots (NOT the Integration Map)
-Phase 4    SKILL.md:147-259  three agents; Agent 1 also finds callers by Grep
-             independently of ll-code. Its return contract (:174-180) is
-             "Return file paths grouped by:" — PATHS ONLY, no line/symbol/guard.
-             -> [PREREQUISITE: widen to path:line + enclosing signature + guard line]
-Phase 5    SKILL.md:260-287  MISSING_WIRING buckets — all three agents' findings merge.
-             callers_to_add (:268) is defined as "[files ...]" — FILE-granular.
-             -> [classification + justifying quote land HERE, on callers_to_add only,
-                 plus the file-level collapse rule (any hit `target` => file is a target)]
-Phase 7    SKILL.md:302-316  interactive per-category counts shown before approval
-             -> [counts must not silently include fallback/test-only hits]
-Phase 8a   SKILL.md:342-398  Integration Map written. NOTE: :346 routes ALL callers to
-             "Dependent Files" unconditionally; :356's "Files to Modify" is
-             registrations/manifests only — callers never land there today.
-             -> [classification label + justifying quote on the bullets]
-Phase 8b   SKILL.md:400-416  Wiring Phase appended to ## Implementation Steps from
-             new_impl_steps. Template bullet: "- Update `<caller>` — ...".
-             THIS is the instruction /ll:manage-issue and the rn-* loops execute.
-             -> [PRIMARY: emit `Update <path>` only for `target`]
-Phase 10   output-report.md:32-42  terminal run report only — emitted verbatim,
-             mirrors what 8a/8b already wrote; not the writer
-```
-
-The doctrine-read path an implementing agent follows is:
-`skills/wire-issue/SKILL.md:142` (Phase 3.6 compressed restatement) ->
-`skills/wire-issue/graph-discovery-layer.md:26-28` (`confirm-before-map`, the rule whose scope
-is being corrected) -> `SKILL.md:260-279` + `:342-398` (Phase 5/8a, where the classification
-and routing are added) -> `skills/wire-issue/output-report.md:32-42` (report format the
-classification/quote fields must extend) -> `docs/guides/GRAPH_DISCOVERY_GUIDE.md:87-89`
-(canonical rule 2, shared with `/ll:refine-issue` Step 3.05 per
-`graph-discovery-layer.md:5-8`).
-
-### Decision Rules
-
-- **Input**: any caller hit reaching Phase 5's `callers_to_add` (`path`, `line`, and — when it came from `ll-code` — `symbol`) plus, for non-test hits only, a read of its enclosing function body. **Not restricted to graph-seeded hits**: Agent-1-discovered callers and every hit on the `available: false` path are classified by the same rules. When `symbol` is absent (agent-discovered hit), the enclosing function is read from the file rather than taken from the payload — the read is required either way, so only the `seam-above` hop's zero-derivation shortcut is lost.
-- **Values**: exactly one of `test-only` / `target` / `fallback` / `seam-above`. The set is exhaustive **over caller hits**; `importers_to_add` is not classified (see § Importers are out of scope).
-- **Carrier**: `callers_to_add` (`SKILL.md:268`) only. `new_impl_steps` (`:278`) is a list of phases and an emptiness gate for 8b, not a per-hit carrier — do not attach the classification to it.
-- **Carrier granularity**: `callers_to_add` is defined today as a list of **files** (`:268`) and Agent 1 returns **paths only** (`:174-180`). Both must be widened to per-call-site records (`path`, `line`, enclosing signature, enclosing guard line) before any classification is possible — see § The carrier is file-granular today.
-- **File-level collapse**: 8a/8b bullets are per-file. A file is emitted as a `target` **iff at least one of its hits classifies `target`**; suppression (and the empty-suppression announcement) applies only when *every* hit in that file is `fallback` / `test-only` / `seam-above (unresolved)`. Do not invert this — suppressing whenever *any* hit is non-target over-suppresses.
-- **Method symbols**: `results[].symbol` may be `Class::method`; `ll-code callers-of "Class::method"` returns an empty success, not an error (verified 2026-08-19). Strip the `Class::` prefix before running the `seam-above` hop, and treat an empty hop result as `seam-above (unresolved)` per safety rule 3 — never as "no callers, therefore `target`".
-- **Order**: `test-only` is decided first, by path alone. The remaining three are decided from the enclosing-function read, in the order `fallback` → `seam-above` → `target`.
-- **`test-only`**: the hit's `path` matches a test root (`scripts/tests/`, `**/tests/**`, `**/test_*.py`, `**/*_test.py`) — record under the Integration Map's Tests subsection. No enclosing-function read is performed, and it is never a change target.
-- **`fallback`**: the hit sits inside an `if x is None:` / `except` / `--dry-run`-style guard branch — record under Dependent Files with the guarding branch line quoted; never emit as a change instruction.
-- **`seam-above`**: the enclosing function already accepts the value as a parameter — run `ll-code callers-of <symbol>` (the hit's own `results[].symbol`, which is the enclosing function) and evaluate *that* hit instead of the original.
-- **`target`**: the hit is not `test-only`, is on the production path (not `fallback`), and the enclosing function does not already expose the value as a parameter (not `seam-above`).
-- **Hop cap**: the `seam-above` walk is capped at exactly one extra hop and does not recurse. If it does not resolve to a clean `target`/`fallback`, the hit is labelled `seam-above (unresolved)` and emitted **impact-only** — Dependent-Files bullet with the enclosing signature quoted, **no `Update <path>` bullet in 8b**. It is never promoted to `target`; that default would re-emit the instruction this issue exists to suppress.
-- **No-graph degradation**: the hop cannot run when `ll-code` reports `available: false` / exits `2`, or when the hit is agent-discovered and carries no `symbol`. In both cases classify `seam-above` from the enclosing signature and stop — do **not** reconstruct the caller set by Grep. The result is `seam-above (unresolved)` and follows the impact-only rule above.
-- **Empty-suppression announcement**: if suppression leaves 8b's Wiring Phase with no caller bullet at all, emit the "No direct caller change target identified — N hits classified …" line instead. Silent absence is not an acceptable output.
-- **Hop-result classification**: the one-hop walk's own results are classified by these same rules with `seam-above` disabled — each resolves to `test-only`, `fallback`, or `target`, never a second hop. The `test-only` prefilter applies to them first, as it does to the original hits.
-- **Output/escape hatch**: a `target` entry must quote the enclosing signature or guard line that justifies the classification. An entry that cannot be justified that way is downgraded to impact-only — it keeps its Dependent Files bullet but **does not get an `Update <path>` bullet in 8b's Wiring Phase**. (Downgrading "to Dependent Files, not Files to Modify" is a no-op at 8a, where callers already route to Dependent Files unconditionally; the effective downgrade is the suppressed 8b instruction.)
+The one placement fact that matters (verified 2026-08-19): **Phase 8b (`SKILL.md:400-416`) is the
+surface that emits the harmful instruction**, via the template bullet
+``- Update `<caller>` — adjust calls to `changed_function()` ``. Phase 8a (`:346`) already routes
+all callers to *Dependent Files* unconditionally — and `:356`'s *Files to Modify* path is for
+registration/manifest files only — so there is no caller mis-routing to fix there.
 
 ## Integration Map
 
 ### Files to Modify
-- `skills/wire-issue/SKILL.md` § **8b** (`:400-416`) — **the primary edit.** The Wiring Phase
-  template emits `- Update `<caller>` — adjust calls to `changed_function()`` for every
-  entry in `new_impl_steps`, with no notion of suitability. Gate the `Update <path>` form on
-  `target`; `fallback` and `test-only` hits must not produce a change instruction here. This is
-  the surface `/ll:manage-issue` and the `rn-*` loops execute — see § *8b is the surface that
-  actually emits the harmful instruction*
-- `skills/wire-issue/SKILL.md` § **Phase 4 Agent 1** (`:151-190`) — **prerequisite edit, previously
-  unlisted.** The prompt's closing "Return file paths grouped by:" contract (`:174-180`) yields
-  paths only; widen the *Callers / consumers* group to per-call-site records (`path:line`,
-  enclosing function signature, enclosing guard/branch line). Without this, Phase 5 is asked to
-  classify files whose interiors it has never seen, and the coverage this issue claims for
-  Agent-1-discovered and `available: false` hits does not exist
-- `skills/wire-issue/SKILL.md` § **Phase 5** (`:260-287`) — `callers_to_add` (`:268`) carries the
-  classification. **It is the sole carrier** — `new_impl_steps` (`:278`) is a list of phases and
-  8b's emptiness gate, with no per-hit slot (see § `new_impl_steps` is a gate, not a per-hit
-  carrier). This is where every caller hit converges — graph-seeded, agent-discovered, and
-  `available: false` alike. Follow the ENH-3050 `gate_consumers` / `conditional_branches`
-  precedent for adding a carried bucket. `importers_to_add` (`:269`) is left unclassified
-- `skills/wire-issue/SKILL.md` § **8a** (`:342-398`) — the Integration Map writer. **Correction:
-  `:346` already routes all callers to `Dependent Files` unconditionally and `:356`'s `Files to
-  Modify` is registrations-only**, so there is no caller mis-routing to fix here. The 8a edit is
-  the smaller one: add the classification label and the justifying-quote field to the bullet
-  formats; `test-only` reuses the existing Tests routing at `:373-382`
-- `skills/wire-issue/SKILL.md` § **Phase 7** (`:302-316`) — the interactive pre-approval summary
-  prints "Callers/importers missing from Integration Map: N". Post-change that N includes
-  `fallback` / `test-only` hits, so the user approves a change list larger than what 8b will
-  instruct. Split or qualify the count (one line)
-- **`SKILL.md` line budget**: the file is at **493 of the 500-line cap**
+- `skills/wire-issue/SKILL.md` § **8b** (`:400-416`) — **the only edit.** Gate the `Update <path>`
+  bullet on the enclosing-function check in § Proposed Solution.
+- **Line budget**: `SKILL.md` is at **493 of the 500-line cap**
   (`scripts/tests/test_enh494_skill_companions.py:21`, `SKILL_LINE_LIMIT = 500`) — 7 lines of
-  headroom. Editing `:142` in place is safe (it is a single long line), but the Phase 5/8a
-  additions will not fit. Use the ENH-494 companion-file pattern: put the classification
-  procedure in a flat companion under `skills/wire-issue/` (e.g. `caller-classification.md`)
-  and link to it from Phase 5/8a in one line each, exactly as `behavior-parity.md` is linked
-  from `:384-388`. Register the companion so `test_enh494_skill_companions.py` sees it.
-  **Budget the edits concretely: net `SKILL.md` growth must be ≤ 7 lines.** Even with the
-  companion, **five** sections each need at least a link or a gating clause (Phase 4 Agent 1
-  return-contract widening, Phase 5 bucket annotation, 8b `target` gate + the empty-suppression
-  line, 8a label/quote fields, Phase 7 count split) — realistically 8–12 lines, so the budget is
-  now expected to be **exceeded, not merely at risk**. Treat the extraction as planned work
-  rather than a contingency: **extract rather than trim the rule** — the four fenced markdown
-  templates in 8a (`:346-398`) are the obvious donor —
-  they are pure format examples, the exact category ENH-494 companions exist for. Do not shrink
-  the new rule to fit; a truncated rule is the defect this issue is fixing
-- `skills/wire-issue/graph-discovery-layer.md` — the **graph-specific half only**: the
-  test-path prefilter over `results[]` and the one-hop `seam-above` walk keyed off
-  `results[].symbol`. Correct the `confirm-before-map` gloss (:26-28) to stop reading as a
-  target-selection rule, and point it at the Phase 5/8a classification. Also amend :15-16,
-  which currently disclaims exactly the output change this issue makes ("The written output
-  (Integration Map) is format-identical to today; only how candidates are found changes").
-  **Existing test constraint on this file**:
-  `test_enh3098_refine_issue_graph_seeding.py::test_wire_issue_layer_delegates_rather_than_duplicates`
-  (`:136-144`) asserts `"Exit codes" not in text`. The new prose about the degraded (`available:
-  false` / exit `2`) hop must therefore reference the shared guide rather than restating the
-  exit-code contract — describe the *behavior* ("when the graph is unavailable, classify from the
-  signature and stop") and link out for the codes
-- `docs/guides/GRAPH_DISCOVERY_GUIDE.md` — **`## Consumers` section only** (per § Decision
-  Rationale). Add one wire-issue paragraph mirroring the verify-issues carve-out at :19-27.
-  The three safety rules at :82-92 stay byte-unchanged. **Also update the `## Consumers` table
-  row** (`:16`): it points wire-issue's consumer doc at `graph-discovery-layer.md` alone, but
-  the local rule's primary home is `SKILL.md` §§ Phase 5/8b plus the new companion. Point the
-  carve-out paragraph at the companion so the guide does not send a reader to the file holding
-  only the graph-specific half
-- `scripts/tests/test_enh494_skill_companions.py` — add the new companion to
-  `EXPECTED_COMPANIONS` (`:24-35`). This is an edit to a test file, not just a gate to satisfy;
-  `test_companion_exists` / `test_companion_non_empty` / `test_skill_links_to_companion` are all
-  parametrized off that hardcoded list, so an unregistered companion is silently uncovered
-- `skills/wire-issue/SKILL.md:142` — the compressed three-safety-rules restatement, which is
-  marked "verbatim" and so must stay in sync with the file above
-- `skills/wire-issue/output-report.md:32-42` — the **terminal run report** (emitted verbatim
-  per `:3`), which mirrors what 8a wrote; it is not the writer, so it follows 8a rather than
-  defining the format. Its `## INTEGRATION MAP CHANGES` block is four fixed subsections of flat
-  `` `path` — description `` bullets with no field for a classification or a justifying quote;
-  that format must grow both. Note the four existing subsections already
-  supply the routing targets for three of the four classification values — `target` →
-  *Added to Files to Modify*, `fallback` → *Added to Dependent Files*, `test-only` →
-  *Added to Tests* — so only the classification label and justifying quote are genuinely new
-  fields. `seam-above` is not itself an output value: it re-points the walk, and the resolved
-  one-hop result is what gets emitted. Also: the `## MISSING WIRING FOUND` table (`:22-30`) has
-  fixed category rows and no home for a `fallback`-classified hit — either add a row or fold
-  them into `Callers/Importers` with the count qualified
+  headroom. If the rule does not fit, **extract rather than trim it**: 8a's four fenced markdown
+  templates (`:346-398`) are the obvious donor, moved to an ENH-494 companion under
+  `skills/wire-issue/` and linked back in one line, exactly as `behavior-parity.md` is linked from
+  `:384-388`. A companion must be registered in `EXPECTED_COMPANIONS`
+  (`scripts/tests/test_enh494_skill_companions.py:24-35`) and linked from `SKILL.md`
+  (`test_skill_links_to_companion:61`). Do not shrink the rule to fit; a truncated rule is the
+  defect this issue is fixing.
 
 ### Dependent Files (Callers/Importers)
-- **Nine** `ll-adapt`-generated host mirrors, not three — every file under Files to Modify that
-  lives in `skills/wire-issue/` is mirrored into all three hosts, and this issue edits three of
-  them (`graph-discovery-layer.md`, `SKILL.md`, `output-report.md`). All nine paths confirmed
-  present 2026-08-19:
-  - `.qwen/skills/wire-issue/{graph-discovery-layer,SKILL,output-report}.md`
-  - `.gemini/skills/wire-issue/{graph-discovery-layer,SKILL,output-report}.md`
-  - `.kimi-code/skills/wire-issue/{graph-discovery-layer,SKILL,output-report}.md`
-
-  **Plus three more if the ENH-494 companion file is added** (see the `SKILL.md` line-budget
-  entry under Files to Modify): a new companion under `skills/wire-issue/` is mirrored
-  into all three hosts too, taking the total to **twelve**. Regenerate all of them after the edits;
-  `scripts/tests/test_adapters.py::test_companion_drift_is_repaired` (:1943) covers the repair
-  path, but confirm rather than assume
-- ~~`commands/refine-issue.md` § 3.05~~ — **out of scope** per § Decision Rationale.
-  refine-issue consumes hits as research leads, not change targets, and inherits no local rule
+- `ll-adapt`-generated host mirrors — `.qwen/`, `.gemini/`, and `.kimi-code/` each mirror every
+  file under `skills/wire-issue/` (all confirmed present 2026-08-19). Three hosts × each edited
+  file, plus three more if a companion is created. Regenerate after the edits;
+  `scripts/tests/test_adapters.py::test_companion_drift_is_repaired` (`:1943`) covers the repair
+  path, but confirm rather than assume.
 
 ### Similar Patterns
-- `skills/wire-issue/prose-dependency-gate.md`, `static-coupling-layer.md` — sibling
-  confirmation layers; check whether either already reads enclosing context and can be
-  reused rather than duplicating the rule
+- `skills/wire-issue/prose-dependency-gate.md`, `static-coupling-layer.md` — sibling confirmation
+  layers. Neither reads enclosing function context today (see § Codebase Research Findings), so
+  this is new logic rather than reuse of an established pattern.
 
 ### Tests
-- `scripts/tests/test_enh3098_refine_issue_graph_seeding.py` — assert the `SKILL.md:142`
-  block still carries rule 2 in sync with `graph-discovery-layer.md`, since drift between the
-  two is what would silently un-fix this. This file already holds the adjacent
-  `test_wire_issue_layer_delegates_rather_than_duplicates` (:136-144) and
-  `test_states_safety_rule` (:119-127), so the sync test belongs beside them.
-  (An earlier draft of this issue named a skills-structure test module that does not exist in
-  this repo — do not create one; use the file named above.)
-
-  **This is a substring assertion, not a byte-equality one — decided 2026-08-19.** Per the
-  Codebase Research Findings below, the four restatements of rule 2 are *already*
-  non-byte-identical and always have been; a byte-sync test would fail on the first commit and
-  reconciling all four is scope this issue does not budget. Follow the existing
-  `test_states_safety_rule` (:119-127) style: assert that each of the required marker phrases
-  is **present in** each file's text, not that the surrounding prose matches. Concretely,
-  assert `"confirm-before-map"` and each classification value (`test-only`, `target`,
-  `fallback`, `seam-above`) appear in both `skills/wire-issue/SKILL.md` and
-  `skills/wire-issue/graph-discovery-layer.md`. That pins the contract's *content* against
-  silent removal — the actual failure mode — while tolerating the wording drift that already
-  exists
-- Same file — assert `GRAPH_DISCOVERY_GUIDE.md`'s three safety rules (:82-92) are unchanged by
-  this issue, pinning the § Decision Rationale boundary so a later pass does not "simplify"
-  the wire-issue-local rule back into the shared contract
-- Assert `skills/wire-issue/SKILL.md` stays **at or under the 500-line cap** — already covered
-  by `scripts/tests/test_enh494_skill_companions.py:72-81`, so no new test is needed; it is
-  named here so the implementer treats it as a gate rather than discovering it at commit time.
-  If a companion file is added, its registration assertion in the same module applies too
-- **Not assertable from `scripts/tests/`** — the two entries below exercise an LLM skill end to
-  end and cannot be checked by pytest. They belong in `/ll:verify-issue-loop` or
-  `/ll:create-eval-from-issues`. **Implementation Step 8 (`pytest` passes) does not gate on
-  them**, and Step 7 is not a pytest step:
-- Regression fixture: a symbol whose production `callers-of` hits are inside `if x is None:`
-  branches of functions that already expose the value as a parameter — assert the pass emits
-  `seam-above` / `fallback`, not `target`, and that its five test-file hits land as
-  `test-only`. `build_ref_index` is the natural fixture; it is a real, stable instance of
-  exactly this shape, and its 8-hit / 5-test-hit split (quoted verbatim under § Worked example)
-  exercises the prefilter and the classifier in one case
+- The 500-line cap and companion registration are already covered by
+  `scripts/tests/test_enh494_skill_companions.py:72-81`. **No new pytest is added by this issue** —
+  a prompt-gating rule is not pytest-assertable. Treat the cap as a gate to satisfy rather than
+  discovering it at commit time.
+- **Regression fixture — not assertable from `scripts/tests/`.** `build_ref_index` is the natural
+  case: 8 caller hits, 5 of them test files, and its two production hits
+  (`scripts/little_loops/issues/research_triage.py:212` and `:317`) are both inside
+  `if index is None:` guards, in functions that already accept `index: RefIndex | None`
+  (`:191-195`, `:279-283`). Expected: the pass emits no `Update` instruction for that file, and
+  says why instead. This requires executing an LLM skill; author it via `/ll:verify-issue-loop` or
+  `/ll:create-eval-from-issues` if it needs to be repeatable.
 
 ### Documentation
-- `docs/guides/GRAPH_DISCOVERY_GUIDE.md` — `## Consumers` carve-out paragraph (listed under
-  Files to Modify above). Safety rule 2's definition is **not** touched
+- None. `docs/guides/GRAPH_DISCOVERY_GUIDE.md` is **not** modified — see § Proposed Solution.
 
 ### Configuration
 - N/A
@@ -648,111 +248,46 @@ _Added by `/ll:refine-issue` — 2026-08-19 — based on codebase analysis:_
 
 ## Implementation Steps
 
-1. ~~Decide the scope question first~~ — **done** (2026-08-19): consumer-local rule, shared
-   safety rules unchanged. See § Decision Rationale.
-1b. **Widen Phase 4 Agent 1's return contract first** (`SKILL.md:151-190`, closing "Return file
-   paths grouped by:" at `:174-180`). The *Callers / consumers* group must yield per-call-site
-   records — `path:line`, enclosing function signature, enclosing guard/branch line — not bare
-   paths. Nothing downstream can be classified until this lands; do it before step 2.
-2. Add the wire-issue-local classification rule (four values: `test-only` / `fallback` /
-   `seam-above` / `target`, decided in that order, with `test-only` assigned by path before any
-   enclosing-function read) and the justifying-quote requirement to **`SKILL.md` §§ Phase 5, 8b,
-   and 8a** — not to `graph-discovery-layer.md` — so it covers agent-discovered hits and the
-   `available: false` path. Carry the classification on `callers_to_add` (`:268`) **only** —
-   `new_impl_steps` (`:278`) is a phase list and 8b's emptiness gate, not a per-hit carrier —
-   following the ENH-3050 `gate_consumers` precedent noted at `:346`. Leave `importers_to_add`
-   (`:269`) unclassified. **Widen `callers_to_add` from a list of files to a list of call-site
-   records, and state the file-level collapse rule** (a file is a `target` iff any of its hits
-   is `target`) — 8a/8b bullets are per-file and one file can hold hits of different classes.
-   Include the `Class::method` strip rule for the `seam-above` hop.
-   Include the two fail-safe rules: an unresolved `seam-above` is **impact-only, never promoted
-   to `target`**, and the degraded no-graph path classifies from the signature and stops.
-   **Check the 500-line cap first** (`SKILL.md` is at 493): put the procedure in an ENH-494
-   companion file and link it from Phase 5/8a/8b in one line each, following the
-   `behavior-parity.md` precedent at `:384-388`. Registration means adding the companion path to
-   `EXPECTED_COMPANIONS` (`scripts/tests/test_enh494_skill_companions.py:24`); note
-   `test_skill_links_to_companion` (`:61`) additionally requires a link from `SKILL.md`.
-2b. **Gate 8b's `Update <path>` bullet on `target`** (`SKILL.md:400-416`). This is the step that
-   actually fixes the worked example — a `fallback`, `test-only`, or `seam-above (unresolved)` hit
-   must not produce a Wiring Phase change instruction. Mechanically: 8b already renders its bullets
-   from the file buckets, so this is a filter on `callers_to_add`, not a change to
-   `new_impl_steps`'s non-empty gate at `:400`. **Add the empty-suppression line** so that
-   suppressing every caller bullet emits "No direct caller change target identified — N hits
-   classified …" rather than nothing. Do this before the 8a and output-report edits, which follow
-   it.
-2c. Qualify Phase 7's caller count (`SKILL.md:302-316`) so the interactive approval prompt does
-   not present `fallback` / `test-only` hits as pending changes.
-3. Add the **graph-specific half** to `graph-discovery-layer.md`: the test-path prefilter over
-   `results[]` and the one-hop `seam-above` walk with its explicit hop cap, keyed off the hit's
-   own `results[].symbol` (already the enclosing function — no derivation step). Classify the
-   hop's own results by the same rules with `seam-above` disabled. Correct the
-   `confirm-before-map` gloss (:26-28) so it stops reading as a target-selection rule, and
-   amend :15-16's "format-identical to today" disclaimer.
-4. Grow `output-report.md:32-42`'s entry format to carry the classification label and the
-   justifying quote, and give `fallback` a home in the `## MISSING WIRING FOUND` table
-   (`:22-30`). This mirrors what 8a writes; do it after step 2, not before.
-5. Add the wire-issue carve-out paragraph to `GRAPH_DISCOVERY_GUIDE.md`'s `## Consumers`,
-   mirroring the verify-issues one at :19-27, and update the table row at `:16` so wire-issue's
-   consumer doc is not `graph-discovery-layer.md` alone (the local rule lives in `SKILL.md` §§
-   Phase 5/8b plus the new companion). Verify the three safety rules at :82-92 are
-   byte-unchanged.
-6. Add the sync test pinning canonical rule 2 → `graph-discovery-layer.md` →
-   `SKILL.md:142`. Put it in
-   `scripts/tests/test_enh3098_refine_issue_graph_seeding.py` (alongside
-   `test_wire_issue_layer_delegates_rather_than_duplicates`) — **not** in a
-   a skills-structure test module, which does not exist in this repo.
-   Write it as a **substring/marker-phrase assertion** in the style of the adjacent
-   `test_states_safety_rule` (:119-127) — never byte-equality. See the Tests section for the
-   exact markers and the rationale; the four restatements are already non-byte-identical, so a
-   byte-sync test fails immediately and reconciling them is out of scope here.
-7. Regenerate the `.qwen/`/`.gemini/`/`.kimi-code/` mirrors via `ll-adapt` — three hosts ×
-   every edited file under `skills/wire-issue/` (`graph-discovery-layer.md`, `SKILL.md`,
-   `output-report.md`, **plus the new companion file if step 2 adds one**), not just
-   `graph-discovery-layer.md`. Nine files, or twelve with the companion.
-8. `python -m pytest scripts/tests/` passes. **This is the completion gate.** It covers the
-   sync test (step 6), the 500-line cap and companion registration
-   (`test_enh494_skill_companions.py`), and the mirror-drift repair
-   (`test_adapters.py::test_companion_drift_is_repaired`). It does **not** cover step 9, which
-   is not a pytest step.
-9. *(Post-merge validation, not a pytest gate.)* Re-run wire-issue against ENH-3000 as an
-   end-to-end check: it should classify `scripts/little_loops/issues/research_triage.py:212`/
-   `:317` as `fallback` + `seam-above`, route the five `scripts/tests/` hits to `test-only`,
-   and surface `scripts/little_loops/cli/issues/research_triage.py:61` as the target.
-   (Use the full disambiguated paths — bare `research_triage.py` resolves to two files.)
-   This and the `build_ref_index` regression fixture require executing an LLM skill; author
-   them via `/ll:verify-issue-loop` or `/ll:create-eval-from-issues`, not in `scripts/tests/`.
+1. Add the rule to `skills/wire-issue/SKILL.md` § 8b (`:400-416`), gating the `Update <path>`
+   bullet. Watch the 7-line budget; extract 8a's fenced templates to an ENH-494 companion rather
+   than trimming the rule if it does not fit (see § Files to Modify).
+2. Regenerate the `.qwen/` / `.gemini/` / `.kimi-code/` mirrors via `ll-adapt` — three hosts ×
+   each edited file under `skills/wire-issue/`.
+3. `python -m pytest scripts/tests/` passes. **This is the completion gate.** It covers the
+   500-line cap, companion registration, and the mirror-drift repair. It does **not** cover
+   step 4, which is not a pytest step.
+4. *(Post-merge validation, not a pytest gate.)* Run wire-issue against ENH-3000. Expected: it
+   does **not** emit "Update `scripts/little_loops/issues/research_triage.py`" for the `:212` /
+   `:317` hits. (Use full disambiguated paths — bare `research_triage.py` resolves to two files in
+   this repo.)
+5. If the fixture passes, close ENH-3258. Reopen the deferred mechanism only on a concrete miss —
+   one element for one observed failure.
 
 ## Impact
 
 - **Priority**: P2 — wiring output is executed unquestioned by `/ll:manage-issue` and the
   `rn-*` loops, and the defect is silent (the wrong change works). Matches the P2 of its
   doctrine siblings ENH-3045/3049/3050.
-- **Effort**: Small-Medium — skill-doctrine edits plus one sync test and a nine-to-twelve-file
-  mirror regen. No Python behavior change. Revised up from Small: the rule now lands in
-  `SKILL.md` §§ Phase 5/8a rather than only `graph-discovery-layer.md`, and `SKILL.md` is at
-  493/500 lines, so an ENH-494 companion file is almost certainly required (one more file, one
-  more registration, three more mirrors), and the rule now also lands in §§ 8b and Phase 7 — four
-  sections of `SKILL.md`, not two. The step-1 scope decision is closed, and it shrank the
-  blast radius: the shared contract takes a `## Consumers` paragraph rather than a rule amendment,
-  and refine-issue drops out of scope.
-- **Risk**: Low-Medium. The real risk is cost: a per-hit enclosing-function read is strictly
-  more expensive than a per-hit line Grep, partially eroding what ENH-2578 bought. The
-  test-path prefilter is the mitigation — it drops the read count to the production callers
-  only (8 → 3 on the `build_ref_index` fixture, ~60%). **The 8 → 3 figure is the prefilter in
-  isolation and understates the true cost**: each `seam-above` hit adds one more `ll-code`
-  query plus an enclosing-function read per non-test result of that hop. On the worked example
-  the two `seam-above` hits at `:212`/`:317` add a `callers-of triage_research_axes` query whose
-  production result needs its own read, so the realistic count is 3 reads + 1–2 hop queries +
-  1–2 hop reads — still well under the naive 8, but not 60% off. Measure with ENH-2578's own
-  before/after token methodology rather than quoting the prefilter figure as the net.
+- **Effort**: Small — one gating rule in one section of one skill file, plus a mirror regen. No
+  Python behavior change and no new test. Revised down from Small-Medium on 2026-08-19 when the
+  elaborate mechanism was deferred.
+- **Risk**: Low. The rule costs one enclosing-function read per caller hit that would otherwise
+  have produced an `Update` bullet — strictly more than the per-hit line Grep it follows, so it
+  partially erodes what ENH-2578 bought, but it is bounded by only firing on hits already headed
+  for a change instruction. The opposite risk — an LLM under-applying a prose rule inside a
+  493-line prompt — is exactly what the regression fixture checks.
 - **Breaking Change**: No.
 
 ## Scope Boundaries
 
-- **In scope**: how caller hits are classified before they become change instructions — at
-  Phase 5 (both carriers), **8b** (the emitting surface), 8a, and Phase 7, covering graph-seeded
-  hits, Agent-1-discovered hits, and the `available: false` path alike (per § Where the rule
-  lives).
+- **In scope**: gating the `Update <path>` Wiring Phase bullet at **8b** — the surface that emits
+  the executed instruction — on a read of the call site's enclosing function. Applies to every
+  caller hit reaching 8b, whatever discovered it (graph-seeded, Agent-1-discovered, or on the
+  `available: false` path).
+- **Out of scope (deferred)**: the four-value classification enum and its machinery — see
+  § Deferred under Proposed Solution. Nothing outside `skills/wire-issue/SKILL.md` § 8b is edited;
+  Phases 4/5/7, 8a, `graph-discovery-layer.md`, `output-report.md`, and
+  `docs/guides/GRAPH_DISCOVERY_GUIDE.md` are all untouched by this issue.
 - **Out of scope**: the accuracy of `ll-code callers-of` itself — it was correct in the
   worked example. See BUG-3091 for a genuine `codegraph` resolution defect.
 - **Out of scope**: assertions *about* cited symbols (reusable / unchanged / behaves-thus) —
@@ -763,11 +298,55 @@ _Added by `/ll:refine-issue` — 2026-08-19 — based on codebase analysis:_
 
 | Document | Relevance |
 |----------|-----------|
-| `docs/guides/GRAPH_DISCOVERY_GUIDE.md` | Canonical `ll-code` contract and the three safety rules being amended; shared with refine-issue |
-| `skills/wire-issue/graph-discovery-layer.md` | The confirm-before-map rule this issue changes |
+| `docs/guides/GRAPH_DISCOVERY_GUIDE.md` | Canonical `ll-code` contract and the three safety rules. **Not modified** — they govern trust, this issue adds a suitability rule one consumer over |
+| `skills/wire-issue/graph-discovery-layer.md` | Wire-issue's `confirm-before-map` gloss on those rules. **Not modified** — context for why 8b needed a second, different rule |
 | `.claude/CLAUDE.md` | § Development Preferences — skills over agents; this is a skill-doctrine change |
 
 ## Session Log
+- fixture validation (step 4) - 2026-08-19 - **ran in a fresh session, cold, as designed.** Two
+  fixtures, because the first was contaminated:
+  - **ENH-3000 (the specified fixture) — PASS, but weak evidence.** No `Update
+    ...issues/research_triage.py` bullet was emitted for the `:212` / `:317` hits; both were
+    recorded under Dependent Files with the `if index is None:` guard and the
+    `index: RefIndex | None = None` signature quoted. **However the fixture is contaminated**: the
+    ENH-3000 issue file already carries a `§ Config Threading` section and a struck-through Wiring
+    Phase bullet stating verbatim that `:212`/`:317` are fallbacks and naming the `index=` seam.
+    The correct answer was in the input, so this shows "did not regress", not "the rule fired".
+    Step 4 as written did not anticipate that the fixture issue had been pre-corrected by the
+    review round that discovered the defect.
+  - **ENH-3300 (synthetic clean fixture) — PASS, and it fired on its own.** Constructed over real
+    code: `get_untracked_files()` has exactly one production caller,
+    `git_operations.py:413`, inside `if untracked_files is None:` (`:412`), whose enclosing
+    `suggest_gitignore_patterns()` already accepts `untracked_files: list[str] | None = None` —
+    both halves fire. The issue text said nothing about guards, fallbacks or seams. Run by a fresh
+    agent with no access to this issue. It suppressed the `Update` bullet and quoted the guard
+    line unprompted.
+  - **The clean fixture also found the one failure** recorded in § Deferred: the Wiring Phase came
+    back with only test and doc bullets and **no injection touchpoint at all**. Fix applied, then
+    re-run on the same fixture: the cold agent emitted `Inject at
+    scripts/little_loops/cli/gitignore.py:55 (main_gitignore())` — walking one hop up to the sole
+    production caller of `suggest_gitignore_patterns()`, which never supplies `untracked_files` and
+    so always falls through to the unfiltered call. Verified independently by grep; the claim is
+    accurate.
+  - Also observed: the Phase 4 locator agent returned four unconfirmed claims on the ENH-3000 run
+    (`hooks/sweep_stale_refs.py` calling `classify_file_ref`, `issue_parser.py` reading the
+    not-yet-existent config key, an `IssuesConfig.__post_init__`, `test_issue_parser.py` as a
+    `RefStatus` consumer) — all four zero-hit on grep. The confirm-before-map rule caught every
+    one. Noted as evidence that rule is load-bearing, not as a defect of this issue.
+  - `python -m pytest scripts/tests/` → **19950 passed, 46 skipped**, exit 0.
+- scope decision - 2026-08-19 - **descoped to the simple version; issue file reconciled from 880
+  to ~395 lines.** After six review rounds each surfaced a carrier/plumbing defect one hop further
+  upstream than the last (3.6 → Phase 5/8a → 8b → `new_impl_steps` retracted → `callers_to_add` is
+  file-granular → Agent 1 returns paths only), the pattern was diagnosed as one question answered
+  incrementally rather than six discoveries: a typed data-flow change specified in an untyped
+  prose system, verified only by inspection. Another review round was explicitly rejected — each
+  round added ~30 lines of correction that enlarged the surface for the next, and 15
+  "corrected/retracted/an earlier draft" markers had accumulated. § Proposed Solution, § Program
+  Design, § Integration Map, § Implementation Steps, § Impact and § Scope Boundaries were rewritten
+  to the single 8b gating rule; the four-value enum and all its machinery moved to § Deferred. The
+  prior rounds' findings below and § Codebase Research Findings are preserved verbatim as the
+  record — **note they describe the deferred design, not the change now specified above.** Judged
+  by the ENH-3000 / `build_ref_index` regression fixture rather than by another inspection pass.
 - pre-implementation review - 2026-08-19 - **the carrier has no per-hit slot either, and the
   hop query does not round-trip method symbols.** Five changes, all verified against the current
   skill and against live `ll-code` output: (a) **`callers_to_add` is file-granular** — `:268`
@@ -877,4 +456,4 @@ _Added by `/ll:refine-issue` — 2026-08-19 — based on codebase analysis:_
 
 ## Status
 
-- **Status**: open
+- **Status**: done

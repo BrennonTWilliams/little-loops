@@ -414,6 +414,13 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - Update `docs/relevant.md` — reflect changed behavior in documentation
 ```
 
+**Caller suitability gate** (ENH-3258) — before emitting an `Update <path>` bullet for a caller
+hit, read its enclosing function. If the call sits in a guard branch (`if x is None:`, `except`,
+a `--dry-run` guard) or that function already accepts the value as a parameter, do not emit it:
+record the path under Dependent Files with the guard line or signature quoted and say why, **and**
+— when a parameter is the seam — emit an `Inject at <path>` Wiring Phase bullet naming it.
+Redirect the touchpoint, never drop it: [caller-suitability-gate.md](caller-suitability-gate.md).
+
 ### 8c: Preservation Rule & Contradiction Carve-Out
 
 **Do NOT overwrite** any existing content. Only append. Mark all wiring additions with:
