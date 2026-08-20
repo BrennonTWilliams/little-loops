@@ -34,7 +34,12 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
-from little_loops.host_runner import project_child_env, resolve_host
+from little_loops.host_runner import (
+    AutomationContext,
+    project_child_env,
+    resolve_automation,
+    resolve_host,
+)
 from little_loops.mcp_call import call_mcp_tool
 from little_loops.subprocess_utils import _kill_process_group
 
@@ -120,15 +125,30 @@ def _run_skill(spec: ActionSpec) -> RunnerResult:
     stream_callback: Callable[[str, bool], None] | None = spec.args.get("stream_callback")
     trace_mode: bool = bool(spec.args.get("trace_mode"))
 
+    # ENH-3097: automation= is the collapsed value, but the two legacy
+    # spec.args keys stay live — this is the issue's only externally-facing
+    # compatibility surface (no in-tree producer sets either key; consumers
+    # are out-of-tree ll-harness/ll-action/extension runners). Fold via the
+    # shared shim rather than reimplementing the merge inline.
+    automation_arg: AutomationContext | None = spec.args.get("automation")
+
     # ENH-2714: opt-in automation-context static-prefix pruning profile, threaded
     # through from the caller (ll-harness/ll-action/ll-loop) so those CLIs don't
     # silently bypass pruning outside the FSM executor path. None (default)
-    # preserves full unpruned behavior.
+    # preserves full unpruned behavior. Deprecated — prefer spec.args["automation"].
     automation_profile: str | None = spec.args.get("automation_profile")
 
     # FEAT-3078: opt-in hard-disable of tool-level background tasks, threaded
     # through the same args-dict origination as automation_profile above.
+    # Deprecated — prefer spec.args["automation"].
     disable_background_tasks: bool = bool(spec.args.get("disable_background_tasks", False))
+
+    automation = resolve_automation(
+        automation_arg,
+        automation_profile,
+        disable_background_tasks,
+        caller="_run_skill()",
+    )
 
     # ENH-3130: grace period before escalating a timeout SIGTERM to SIGKILL,
     # threaded through the same args-dict origination as automation_profile
@@ -150,8 +170,7 @@ def _run_skill(spec: ActionSpec) -> RunnerResult:
                 timeout=spec.timeout,
                 working_dir=workspace_root,
                 stream_callback=stream_callback,
-                automation_profile=automation_profile,
-                disable_background_tasks=disable_background_tasks,
+                automation=automation,
                 tools=spec.args.get("tools"),
                 on_tool_call=trace.append,
                 workspace_root=workspace_root,
@@ -183,8 +202,7 @@ def _run_skill(spec: ActionSpec) -> RunnerResult:
                 command=command,
                 timeout=spec.timeout,
                 stream_callback=stream_callback,
-                automation_profile=automation_profile,
-                disable_background_tasks=disable_background_tasks,
+                automation=automation,
                 timeout_kill_grace_seconds=timeout_kill_grace_seconds,
             )
             return RunnerResult(stdout="", stderr="", exit_code=proc.returncode)
@@ -193,8 +211,7 @@ def _run_skill(spec: ActionSpec) -> RunnerResult:
 
     inv = resolve_host().build_streaming(
         prompt=prompt,
-        automation_profile=automation_profile,
-        disable_background_tasks=disable_background_tasks,
+        automation=automation,
     )
     try:
         proc = subprocess.run(

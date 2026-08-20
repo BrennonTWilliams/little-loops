@@ -78,8 +78,9 @@ class ActionRunner(Protocol):
                 unpruned behavior. Deprecated — prefer automation=.
             disable_background_tasks: FEAT-3078 opt-in to hard-disable
                 tool-level background tasks in the spawned child (prompt-mode
-                only). Forwarded to run_claude_command() when
-                automation_profile is also set. Deprecated — prefer automation=.
+                only). Folded into the resolved automation context and
+                forwarded as automation= to run_claude_command() (ENH-3097).
+                Deprecated — prefer automation=.
             idle_timeout: FEAT-3033 — kill the action if it emits no output for
                 this many seconds (0 disables idle detection, the default).
                 Deprecated — prefer automation=.
@@ -155,8 +156,9 @@ class DefaultActionRunner:
                 unpruned behavior. Deprecated — prefer automation=.
             disable_background_tasks: FEAT-3078 opt-in to hard-disable
                 tool-level background tasks in the spawned child (prompt-mode
-                only). Forwarded to run_claude_command() when
-                automation_profile is also set. Deprecated — prefer automation=.
+                only). Folded into the resolved automation context and
+                forwarded as automation= to run_claude_command() (ENH-3097).
+                Deprecated — prefer automation=.
             idle_timeout: FEAT-3033 — kill the action if it emits no output for
                 this many seconds (0 disables idle detection, the default).
                 Deprecated — prefer automation=.
@@ -181,13 +183,10 @@ class DefaultActionRunner:
             float(idle_timeout) if idle_timeout else None,
             caller="ActionRunner.run()",
         )
-        # run_claude_command() has no automation= parameter until ENH-3097,
-        # so decompose the resolved context back into legacy kwargs for that
-        # forwarding call and for this method's own shell-branch reads below.
-        resolved_automation_profile = automation.profile if automation else None
-        resolved_disable_background_tasks = (
-            automation.disable_background_tasks if automation else False
-        )
+        # ENH-3097: run_claude_command() now accepts automation= directly, so
+        # forward the resolved context as-is (see the call below). Only the
+        # idle timeout survives decomposition here — it's also read by this
+        # method's own shell-branch below, which has no automation= of its own.
         resolved_idle_timeout = int(automation.idle_timeout or 0) if automation else 0
 
         if is_slash_command:
@@ -243,9 +242,7 @@ class DefaultActionRunner:
                     on_usage_detailed=_collect_usage,
                     model=model,
                     working_dir=working_dir,
-                    automation_profile=resolved_automation_profile,
-                    disable_background_tasks=resolved_disable_background_tasks,
-                    idle_timeout=resolved_idle_timeout,
+                    automation=automation,
                     on_result_seen=_on_result_seen,
                     on_session_id_detected=_on_session_id,
                     timeout_kill_grace_seconds=timeout_kill_grace_seconds,

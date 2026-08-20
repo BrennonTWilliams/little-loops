@@ -626,7 +626,9 @@ class TestDefaultActionRunnerSlashPath:
                 disable_background_tasks=True,
             )
 
-        assert captured_kwargs.get("disable_background_tasks") is True
+        captured_automation = captured_kwargs.get("automation")
+        assert captured_automation is not None
+        assert captured_automation.disable_background_tasks is True
 
 
 class TestDefaultActionRunnerWorkingDir:
@@ -662,14 +664,23 @@ class TestActionRunnerAutomationShim:
             runner.run("/ll:skill", 60, True, **run_kwargs)
         return captured_kwargs
 
+    @staticmethod
+    def _effective(automation: AutomationContext | None) -> tuple:
+        """(profile, disable_background_tasks, idle_timeout), None-safe."""
+        if automation is None:
+            return (None, False, None)
+        return (automation.profile, automation.disable_background_tasks, automation.idle_timeout)
+
     def test_legacy_kwargs_construct_context_internally(self) -> None:
         """Legacy-alone still works, folded via the shim."""
         runner = DefaultActionRunner()
         captured = self._run_and_capture(
             runner, automation_profile="autodev", disable_background_tasks=True
         )
-        assert captured.get("automation_profile") == "autodev"
-        assert captured.get("disable_background_tasks") is True
+        automation = captured.get("automation")
+        assert automation is not None
+        assert automation.profile == "autodev"
+        assert automation.disable_background_tasks is True
 
     def test_legacy_kwarg_alone_is_silent(self) -> None:
         """Bare legacy use (no explicit automation=) emits no warning."""
@@ -688,7 +699,9 @@ class TestActionRunnerAutomationShim:
                 automation=AutomationContext(profile="context-profile"),
                 automation_profile="legacy-profile",
             )
-        assert captured.get("automation_profile") == "context-profile"
+        automation = captured.get("automation")
+        assert automation is not None
+        assert automation.profile == "context-profile"
 
     def test_explicit_context_wins_and_warns_on_disable_background_tasks_conflict(self) -> None:
         runner = DefaultActionRunner()
@@ -698,22 +711,22 @@ class TestActionRunnerAutomationShim:
                 automation=AutomationContext(profile="p", disable_background_tasks=False),
                 disable_background_tasks=True,
             )
-        assert captured.get("disable_background_tasks") is False
+        automation = captured.get("automation")
+        assert automation is not None
+        assert automation.disable_background_tasks is False
 
     def test_empty_context_equivalent_to_none(self) -> None:
         runner = DefaultActionRunner()
         captured_none = self._run_and_capture(runner, automation=None)
         captured_empty = self._run_and_capture(runner, automation=AutomationContext())
-        assert captured_none.get("automation_profile") == captured_empty.get("automation_profile")
-        assert captured_none.get("disable_background_tasks") == captured_empty.get(
-            "disable_background_tasks"
+        assert self._effective(captured_none.get("automation")) == self._effective(
+            captured_empty.get("automation")
         )
-        assert captured_none.get("idle_timeout") == captured_empty.get("idle_timeout") == 0
 
     def test_explicit_automation_discards_legacy_idle_timeout(self) -> None:
         """AC #6(b): automation= alongside legacy idle_timeout= warns and the
         legacy idle_timeout is discarded (not merged) — the resolved context
-        forwards idle_timeout=0 (unset), per the uniform "explicit wins" rule
+        carries idle_timeout=None (unset), per the uniform "explicit wins" rule
         (ENH-3096 Program Design § The Shim)."""
         runner = DefaultActionRunner()
         with pytest.warns(DeprecationWarning, match="ActionRunner.run()"):
@@ -722,5 +735,6 @@ class TestActionRunnerAutomationShim:
                 automation=AutomationContext(profile="x"),
                 idle_timeout=60,
             )
-        assert captured.get("idle_timeout") == 0
-        assert captured.get("automation_profile") == "x"
+        automation = captured.get("automation")
+        assert automation is not None
+        assert automation.idle_timeout is None

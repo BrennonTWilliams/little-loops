@@ -1400,7 +1400,8 @@ class TestRunWithContinuation:
         captured: list[object] = []
 
         def fake_run_claude_command(*args: object, **kwargs: object) -> MagicMock:
-            captured.append(kwargs.get("automation_profile"))
+            automation = kwargs.get("automation")
+            captured.append(automation.profile if automation else None)
             return mock_result
 
         with patch(
@@ -1423,7 +1424,8 @@ class TestRunWithContinuation:
         captured: list[object] = []
 
         def fake_run_claude_command(*args: object, **kwargs: object) -> MagicMock:
-            captured.append(kwargs.get("disable_background_tasks"))
+            automation = kwargs.get("automation")
+            captured.append(automation.disable_background_tasks if automation else None)
             return mock_result
 
         with patch(
@@ -1451,7 +1453,8 @@ class TestRunWithContinuation:
         captured: list[object] = []
 
         def fake_run_claude_command(*args: object, **kwargs: object) -> MagicMock:
-            captured.append(kwargs.get("disable_background_tasks"))
+            automation = kwargs.get("automation")
+            captured.append(automation.disable_background_tasks if automation else False)
             return mock_result
 
         with patch(
@@ -1474,7 +1477,8 @@ class TestRunWithContinuation:
         captured: list[object] = []
 
         def fake_run_claude_command(*args: object, **kwargs: object) -> MagicMock:
-            captured.append(kwargs.get("automation_profile"))
+            automation = kwargs.get("automation")
+            captured.append(automation.profile if automation else None)
             return mock_result
 
         with patch(
@@ -2268,7 +2272,7 @@ class TestReadyIssueErrorHandling:
         assert mock_run.call_args.kwargs["on_usage_detailed"] is on_usage_detailed
         # BUG-3093: Phase 1's ready-issue subprocess must declare itself
         # under automation like implement/finalize-retry already do.
-        assert mock_run.call_args.kwargs["automation_profile"] == "ll-auto"
+        assert mock_run.call_args.kwargs["automation"].profile == "ll-auto"
 
     def test_fallback_ready_issue_failure_returns_error(
         self, mock_config: BRConfig, sample_issue: IssueInfo
@@ -2301,7 +2305,8 @@ READY
 
         def mock_run(*args, **kwargs):
             call_count[0] += 1
-            captured_profiles.append(kwargs.get("automation_profile"))
+            automation = kwargs.get("automation")
+            captured_profiles.append(automation.profile if automation else None)
             if call_count[0] == 1:
                 return first_result
             return fallback_result
@@ -4898,7 +4903,9 @@ class TestDecisionNeededGate:
         # BUG-3093: both Phase 1 (ready-issue) and the decide-issue gate
         # subprocesses must declare automation_profile="ll-auto".
         assert all(
-            call.kwargs.get("automation_profile") == "ll-auto" for call in mock_cmd.call_args_list
+            call.kwargs.get("automation") is not None
+            and call.kwargs["automation"].profile == "ll-auto"
+            for call in mock_cmd.call_args_list
         )
 
     def test_decide_issue_skipped_when_decision_not_needed(

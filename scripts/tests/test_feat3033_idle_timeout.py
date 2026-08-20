@@ -102,7 +102,9 @@ class TestPromptPathTimeoutKind:
         with patch("little_loops.fsm.runners.run_claude_command", side_effect=fake_run):
             runner.run("/ll:fast-skill", 60, True, idle_timeout=42)
 
-        assert received["idle_timeout"] == 42
+        automation = received["automation"]
+        assert automation is not None
+        assert automation.idle_timeout == 42
 
     def test_duration_ms_reflects_elapsed_not_budget(self) -> None:
         """AC-7: a timeout firing quickly must not report the full budget."""
@@ -369,7 +371,32 @@ class TestBaselineArmIdle:
         with patch("little_loops.fsm.executor.run_claude_command", side_effect=fake_run):
             executor._run_baseline_arm("/ll:baseline", state)
 
-        assert received["idle_timeout"] == 7  # state override wins over fsm default (20)
+        automation = received["automation"]
+        assert automation is not None
+        assert automation.idle_timeout == 7  # state override wins over fsm default (20)
+
+    def test_baseline_arm_omits_automation_when_idle_unset(self) -> None:
+        """AC-11: with no state.idle_timeout and no fsm.default_idle_timeout,
+        the baseline arm forwards automation=None rather than an all-default
+        AutomationContext — resolve_automation() supplies the conditional
+        for free (Decision Rules)."""
+        fsm = FSMLoop(name="test", initial="s", states={"s": StateConfig(terminal=True)})
+        executor = FSMExecutor(fsm, action_runner=MockActionRunner())
+        state = StateConfig(action="/ll:baseline")
+        received: dict = {}
+
+        def fake_run(**kwargs: object) -> MagicMock:
+            received.update(kwargs)
+            completed = MagicMock()
+            completed.stdout = ""
+            completed.stderr = ""
+            completed.returncode = 0
+            return completed
+
+        with patch("little_loops.fsm.executor.run_claude_command", side_effect=fake_run):
+            executor._run_baseline_arm("/ll:baseline", state)
+
+        assert received["automation"] is None
 
     def test_baseline_arm_timeout_duration_ms_elapsed(self) -> None:
         fsm = FSMLoop(name="test", initial="s", states={"s": StateConfig(terminal=True)})

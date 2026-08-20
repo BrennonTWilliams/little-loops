@@ -3,13 +3,14 @@ id: ENH-3097
 type: ENH
 title: Thread AutomationContext through run_claude_command() and its callers
 priority: P3
-status: open
+status: done
 parent: ENH-3094
 blocked_by:
 - ENH-3095
 - BUG-3112
 discovered_date: 2026-08-07
 discovered_by: /ll:issue-size-review
+completed_at: '2026-08-20T16:57:52Z'
 labels:
 - automation
 - refactor
@@ -1008,7 +1009,29 @@ Four corrections applied, plus one condensation:
 approach; three of the four are gaps that would have surfaced as a failing or
 vacuous test during implementation rather than as a design error.
 
+## Resolution
+
+Implemented per the fully-specified plan in this issue's own body (Files to
+Modify / Acceptance Criteria / Program Design). `automation:
+AutomationContext | None = None` now threads through `run_claude_command()`
+(`subprocess_utils.py` and the `issue_manager.py` wrapper),
+`run_with_continuation()`, `runner_spec.py`'s three forwarding sites,
+`fsm/executor.py`'s baseline arm, `worker_pool.py`'s forward, and
+`fsm/runners.py`'s `DefaultActionRunner.run()` (decompose/recompose round
+trip replaced with a direct `automation=automation` forward). Legacy kwargs
+remain as a deprecated shim resolved via `resolve_automation()`. All 14
+acceptance criteria satisfied, including the AC 12 AST guard
+(`test_enh3097_no_mixed_automation_kwargs.py`) and the AC 14 follow-up issue.
+`python -m pytest scripts/tests/` (20022 passed, 46 skipped),
+`python -m mypy scripts/little_loops/`, and `ruff check scripts/` all clean.
+
+Follow-up filed: **ENH-3261** (removes the legacy shim once no in-tree caller
+uses it, and rules on future-knob placement). Parent `ENH-3094` was already
+`status: done` (all three of its children complete).
+
 ## Session Log
+- `/ll:manage-issue` - 2026-08-20T16:57:47 - `b5988a7b-3684-4065-b92c-8993dafa21da.jsonl`
+- `/ll:ready-issue` - 2026-08-20T16:06:30 - `b86e649a-acb3-4bb8-822a-9936f10eb39d.jsonl`
 - `/ll:confidence-check` - 2026-08-20T16:03:12 - `c1d60b1e-2aff-473c-94de-fc05a94c0cc0.jsonl`
 - `/ll:confidence-check` - 2026-08-20T15:37:55 - `bd57d7f3-a955-4773-baa1-4d369765bf41.jsonl`
 - `/ll:confidence-check` - 2026-08-20T15:10:46 - `d1a0a529-4a4a-4956-8bd6-268fc1152f27.jsonl`

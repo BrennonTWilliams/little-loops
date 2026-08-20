@@ -2906,10 +2906,9 @@ class TestWorkerPoolRunClaudeCommand:
             stream_callback: Any,
             on_process_start: Any,
             on_process_end: Any,
-            idle_timeout: int = 0,
+            automation: Any = None,
             on_usage: Any = None,
             resume_session: bool = False,
-            disable_background_tasks: bool = False,
             timeout_kill_grace_seconds: float = 0.0,
         ) -> subprocess.CompletedProcess[str]:
             mock_proc = Mock(spec=subprocess.Popen)
@@ -2929,6 +2928,56 @@ class TestWorkerPoolRunClaudeCommand:
 
         assert len(started_processes) == 1
         assert len(ended_processes) == 1
+
+    def test_run_claude_command_omits_automation_when_all_default(
+        self,
+        worker_pool: WorkerPool,
+        temp_repo_with_config: Path,
+    ) -> None:
+        """AC-3/AC-11: idle_timeout_per_issue=0 and disable_background_tasks=False
+        (the common path) forward automation=None, not an all-default
+        AutomationContext — resolve_automation() supplies the conditional."""
+        worktree_path = temp_repo_with_config / ".worktrees" / "worker"
+        worker_pool.parallel_config.idle_timeout_per_issue = 0
+        received: dict = {}
+
+        def mock_run_claude(**kwargs: Any) -> subprocess.CompletedProcess[str]:
+            received.update(kwargs)
+            return subprocess.CompletedProcess([], 0, "output", "")
+
+        with patch(
+            "little_loops.parallel.worker_pool._run_claude_base",
+            side_effect=mock_run_claude,
+        ):
+            worker_pool._run_claude_command(
+                "/ll:test", worktree_path, disable_background_tasks=False
+            )
+
+        assert received["automation"] is None
+
+    def test_run_claude_command_forwards_automation_when_idle_set(
+        self,
+        worker_pool: WorkerPool,
+        temp_repo_with_config: Path,
+    ) -> None:
+        """AC-3/AC-11: idle_timeout_per_issue > 0 forwards a populated context."""
+        worktree_path = temp_repo_with_config / ".worktrees" / "worker"
+        worker_pool.parallel_config.idle_timeout_per_issue = 30
+        received: dict = {}
+
+        def mock_run_claude(**kwargs: Any) -> subprocess.CompletedProcess[str]:
+            received.update(kwargs)
+            return subprocess.CompletedProcess([], 0, "output", "")
+
+        with patch(
+            "little_loops.parallel.worker_pool._run_claude_base",
+            side_effect=mock_run_claude,
+        ):
+            worker_pool._run_claude_command("/ll:test", worktree_path)
+
+        automation = received["automation"]
+        assert automation is not None
+        assert automation.idle_timeout == 30
 
 
 class TestWorkerPoolStageTracking:

@@ -18,6 +18,7 @@ import signal
 import subprocess
 import sys
 import time
+import warnings
 from collections.abc import Generator
 from pathlib import Path
 from typing import Any
@@ -2364,8 +2365,7 @@ class TestRunClaudeCommandHostRunner:
             agent=None,
             tools=None,
             model=None,
-            automation_profile=None,
-            disable_background_tasks=False,
+            automation=None,
             workspace_root=None,
         )
         assert captured_args[0][0] == "myhost"
@@ -2456,6 +2456,142 @@ class TestRunClaudeCommandHostRunner:
         ):
             with pytest.raises(HostNotConfigured):
                 run_claude_command("test")
+
+
+class TestRunClaudeCommandAutomationShim:
+    """ENH-3097: the run_claude_command() automation shim (mirrors
+    test_host_runner.py:TestAutomationContext / test_fsm_runners.py:
+    TestActionRunnerAutomationShim, applied at this boundary)."""
+
+    def _capture_automation(self, **run_kwargs: object) -> Any:
+        from little_loops.host_runner import HostInvocation
+
+        mock_invocation = HostInvocation(binary="claude", args=["-p", "test"], env={})
+        mock_runner = Mock()
+        mock_runner.build_streaming.return_value = mock_invocation
+
+        mock_process = Mock()
+        mock_process.stdout = io.StringIO("")
+        mock_process.stderr = io.StringIO("")
+        mock_process.returncode = 0
+        mock_process.wait.return_value = None
+
+        with patch("little_loops.subprocess_utils.resolve_host", return_value=mock_runner):
+            with patch("subprocess.Popen", return_value=mock_process):
+                with patch("selectors.DefaultSelector") as mock_selector:
+                    _patch_selector_cm(mock_selector)
+                    mock_selector.return_value.get_map.return_value = {}
+                    run_claude_command("test", **run_kwargs)
+
+        return mock_runner.build_streaming.call_args.kwargs.get("automation")
+
+    @staticmethod
+    def _effective(automation: Any) -> tuple:
+        if automation is None:
+            return (None, False, None)
+        return (automation.profile, automation.disable_background_tasks, automation.idle_timeout)
+
+    def test_legacy_kwargs_construct_context_internally(self) -> None:
+        automation = self._capture_automation(
+            automation_profile="autodev", disable_background_tasks=True
+        )
+        assert automation is not None
+        assert automation.profile == "autodev"
+        assert automation.disable_background_tasks is True
+
+    def test_legacy_kwarg_alone_is_silent(self) -> None:
+        """Bare legacy use (no explicit automation=) emits no warning."""
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            self._capture_automation(automation_profile="autodev")
+
+    def test_explicit_context_wins_and_warns_on_conflict(self) -> None:
+        from little_loops.host_runner import AutomationContext
+
+        with pytest.warns(DeprecationWarning, match="run_claude_command()"):
+            automation = self._capture_automation(
+                automation=AutomationContext(profile="context-profile"),
+                automation_profile="legacy-profile",
+            )
+        assert automation is not None
+        assert automation.profile == "context-profile"
+
+    def test_explicit_context_wins_and_warns_on_disable_background_tasks_conflict(self) -> None:
+        from little_loops.host_runner import AutomationContext
+
+        with pytest.warns(DeprecationWarning, match="run_claude_command()"):
+            automation = self._capture_automation(
+                automation=AutomationContext(profile="p", disable_background_tasks=False),
+                disable_background_tasks=True,
+            )
+        assert automation is not None
+        assert automation.disable_background_tasks is False
+
+    def test_empty_context_equivalent_to_none(self) -> None:
+        from little_loops.host_runner import AutomationContext
+
+        automation_none = self._capture_automation(automation=None)
+        automation_empty = self._capture_automation(automation=AutomationContext())
+        assert self._effective(automation_none) == self._effective(automation_empty)
+
+    def test_idle_timeout_zero_and_unset_both_resolve_automation_to_none(self) -> None:
+        """0-vs-None idle regression guard: a bare idle_timeout=0 and no idle
+        kwarg at all both resolve to automation is None (Decision Rules —
+        resolve_automation() treats a falsy idle_timeout as "not supplied")."""
+        automation_zero = self._capture_automation(idle_timeout=0)
+        automation_unset = self._capture_automation()
+        assert automation_zero is None
+        assert automation_unset is None
+
+    def test_explicit_automation_discards_legacy_idle_timeout(self) -> None:
+        """AC 12: automation= alongside a legacy idle_timeout= leaves the
+        selector loop's idle branch dead — idle detection is off, not armed
+        at the legacy value — because resolve_automation() discards rather
+        than merges it. Simulated by advancing time past the legacy
+        idle_timeout (1800s) in a single loop iteration and confirming no
+        TimeoutExpired is raised."""
+        from little_loops.host_runner import AutomationContext
+
+        mock_process = Mock()
+        mock_process.stdout = io.StringIO("")
+        mock_process.stderr = io.StringIO("")
+        mock_process.returncode = 0
+        mock_process.wait.return_value = None
+
+        with patch("subprocess.Popen", return_value=mock_process):
+            with patch("selectors.DefaultSelector") as mock_selector:
+                _patch_selector_cm(mock_selector)
+                selector_instance = mock_selector.return_value
+                call_count = [0]
+
+                def get_map_side_effect() -> dict[Any, Any]:
+                    call_count[0] += 1
+                    return {"stdout": True} if call_count[0] <= 1 else {}
+
+                selector_instance.get_map.side_effect = get_map_side_effect
+                selector_instance.select.return_value = []
+                selector_instance.register = Mock()
+                selector_instance.unregister = Mock()
+
+                start_time = 1000.0
+                time_values = [start_time, start_time + 2000.0]
+                time_index = [0]
+
+                def mock_time() -> float:
+                    result = time_values[min(time_index[0], len(time_values) - 1)]
+                    time_index[0] += 1
+                    return result
+
+                with patch("time.time", side_effect=mock_time):
+                    result = run_claude_command(
+                        "test",
+                        timeout=3600,
+                        automation=AutomationContext(profile="ll-auto"),
+                        idle_timeout=1800,
+                    )
+
+        assert result is not None
+        assert result.returncode == 0
 
 
 class _NeverEOFStdout:

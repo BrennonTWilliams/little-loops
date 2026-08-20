@@ -33,6 +33,7 @@ from little_loops.git_operations import (
     snapshot_dirty_paths,
     verify_work_was_done,
 )
+from little_loops.host_runner import AutomationContext, resolve_automation
 from little_loops.issue_lifecycle import (
     FailureType,
     classify_failure,
@@ -148,6 +149,7 @@ def run_claude_command(
     preview_full: bool = False,
     resume_session: bool = False,
     on_result_seen: ResultSeenCallback | None = None,
+    automation: AutomationContext | None = None,
     automation_profile: str | None = None,
     disable_background_tasks: bool = False,
     timeout_kill_grace_seconds: float = 0.0,
@@ -159,7 +161,8 @@ def run_claude_command(
         logger: Logger for output
         timeout: Timeout in seconds
         stream_output: Whether to stream output to console
-        idle_timeout: Kill process if no output for this many seconds (0 to disable)
+        idle_timeout: Kill process if no output for this many seconds (0 to disable).
+            Deprecated — prefer automation= (read off automation.idle_timeout).
         on_model_detected: Optional callback invoked with the model name from the
             stream-json system/init event. This is the requested alias
             (e.g. "sonnet"), not the resolved model ID the CLI actually ran.
@@ -171,13 +174,20 @@ def run_claude_command(
             most recent conversation (used for Option E explicit-handoff path).
         on_result_seen: Optional callback invoked once, right before return, with
             whether a stream-json "result" event was observed (BUG-2731/BUG-3026).
+        automation: ENH-3097 collapsed automation signal (profile,
+            disable_background_tasks, idle_timeout), forwarded as-is to
+            ``subprocess_utils.run_claude_command()``. None preserves the
+            legacy per-kwarg behavior below. Explicit automation= wins over
+            the legacy kwargs when both are supplied, emitting a
+            DeprecationWarning.
         automation_profile: ENH-2714 pruning profile name, forwarded to the host
             runner so ``LL_AUTOMATION``/``LL_AUTOMATION_PROFILE`` reach the child.
             BUG-3058: without it the SessionStart hook's headless "stay in turn"
             contract is never injected, so a subagent can end its turn awaiting a
-            background task that will never report.
+            background task that will never report. Deprecated — prefer automation=.
         disable_background_tasks: FEAT-3078 opt-in to hard-disable tool-level
             background tasks in the spawned child, forwarded to the host runner.
+            Deprecated — prefer automation=.
         timeout_kill_grace_seconds: Grace period (seconds) before escalating a
             timeout SIGTERM to SIGKILL, forwarded to the host runner (ENH-3130).
 
@@ -210,18 +220,28 @@ def run_claude_command(
             else:
                 print(f"  {line}")
 
+    # ENH-3097: resolve once at this layer and forward only automation=
+    # onward — never automation= plus a legacy kwarg, which would make
+    # subprocess_utils.run_claude_command()'s own resolve_automation() warn
+    # on every call (Decision Rules).
+    resolved_automation = resolve_automation(
+        automation,
+        automation_profile,
+        disable_background_tasks,
+        float(idle_timeout) if idle_timeout else None,
+        caller="issue_manager.run_claude_command()",
+    )
+
     return _run_claude_base(
         command=command,
         timeout=timeout,
         stream_callback=stream_callback if stream_output else None,
-        idle_timeout=idle_timeout,
         on_model_detected=on_model_detected,
         on_usage=on_usage,
         on_usage_detailed=on_usage_detailed,
         resume_session=resume_session,
         on_result_seen=on_result_seen,
-        automation_profile=automation_profile,
-        disable_background_tasks=disable_background_tasks,
+        automation=resolved_automation,
         timeout_kill_grace_seconds=timeout_kill_grace_seconds,
     )
 
@@ -273,6 +293,7 @@ def run_with_continuation(
     run_dir: str | None = None,
     sprint_context: SprintWorkerContext | None = None,
     on_result_seen: ResultSeenCallback | None = None,
+    automation: AutomationContext | None = None,
     automation_profile: str | None = None,
     disable_background_tasks: bool = False,
     timeout_kill_grace_seconds: float = 0.0,
@@ -307,11 +328,18 @@ def run_with_continuation(
             whether the last stream-json "result" event was observed (BUG-3026) —
             lets callers distinguish a clean turn completion from a truncated one
             when the issue's lifecycle wasn't finalized despite returncode 0.
+        automation: ENH-3097 collapsed automation signal (profile,
+            disable_background_tasks, idle_timeout), forwarded as-is to every
+            round's subprocess. None preserves the legacy per-kwarg behavior
+            below. Explicit automation= wins over the legacy kwargs when both
+            are supplied, emitting a DeprecationWarning.
         automation_profile: ENH-2714 pruning profile name forwarded to every
             round's subprocess (BUG-3058), so the headless "stay in turn"
             contract is injected on continuations too, not just the first round.
+            Deprecated — prefer automation=.
         disable_background_tasks: FEAT-3078 opt-in to hard-disable tool-level
-            background tasks, forwarded to every round's subprocess.
+            background tasks, forwarded to every round's subprocess. Deprecated
+            — prefer automation=.
         timeout_kill_grace_seconds: Grace period (seconds) before escalating a
             timeout SIGTERM to SIGKILL, forwarded to every round's subprocess
             (ENH-3130).
@@ -340,6 +368,18 @@ def run_with_continuation(
     # knows to consume the sentinel without attempting --continue.
     _just_ran_fresh_session = False
 
+    # ENH-3097: resolve once at this layer and forward only automation= to
+    # every round below — never automation= plus a legacy kwarg (Decision
+    # Rules), which would make the wrapper's own resolve_automation() warn on
+    # every ll-auto round.
+    resolved_automation = resolve_automation(
+        automation,
+        automation_profile,
+        disable_background_tasks,
+        float(idle_timeout) if idle_timeout else None,
+        caller="issue_manager.run_with_continuation()",
+    )
+
     def _tracking_usage(input_tokens: int, output_tokens: int) -> None:
         _last_input[0] = input_tokens
         _last_output[0] = output_tokens
@@ -357,12 +397,10 @@ def run_with_continuation(
             logger,
             timeout=timeout,
             stream_output=stream_output,
-            idle_timeout=idle_timeout,
             on_usage=_tracking_usage,
             preview_full=preview_full,
             on_result_seen=_tracking_result_seen,
-            automation_profile=automation_profile,
-            disable_background_tasks=disable_background_tasks,
+            automation=resolved_automation,
             timeout_kill_grace_seconds=timeout_kill_grace_seconds,
         )
 
@@ -539,13 +577,11 @@ def run_with_continuation(
                 logger,
                 timeout=timeout,
                 stream_output=stream_output,
-                idle_timeout=idle_timeout,
                 on_usage=_tracking_usage,
                 preview_full=preview_full,
                 resume_session=True,
                 on_result_seen=_tracking_result_seen,
-                automation_profile=automation_profile,
-                disable_background_tasks=disable_background_tasks,
+                automation=resolved_automation,
                 timeout_kill_grace_seconds=timeout_kill_grace_seconds,
             )
             all_stdout.append(result.stdout)
@@ -855,7 +891,6 @@ def process_issue_inplace(
                     logger,
                     timeout=config.automation.timeout_seconds,
                     stream_output=config.automation.stream_output,
-                    idle_timeout=config.automation.idle_timeout_seconds,
                     on_model_detected=on_model_detected,
                     on_usage_detailed=on_usage_detailed,
                     preview_full=preview_full,
@@ -863,8 +898,11 @@ def process_issue_inplace(
                     # automation" as implement/finalize-retry; an omitted
                     # profile now writes LL_AUTOMATION="" (ENH-3081), an
                     # explicit false rather than "unspecified".
-                    automation_profile="ll-auto",
-                    disable_background_tasks=config.orchestration.disable_background_tasks,
+                    automation=AutomationContext(
+                        profile="ll-auto",
+                        disable_background_tasks=config.orchestration.disable_background_tasks,
+                        idle_timeout=config.automation.idle_timeout_seconds,
+                    ),
                     timeout_kill_grace_seconds=config.automation.timeout_kill_grace_seconds,
                 )
 
@@ -929,14 +967,18 @@ def process_issue_inplace(
                                 logger,
                                 timeout=config.automation.timeout_seconds,
                                 stream_output=config.automation.stream_output,
-                                idle_timeout=config.automation.idle_timeout_seconds,
                                 on_model_detected=on_model_detected,
                                 on_usage_detailed=on_usage_detailed,
                                 preview_full=preview_full,
                                 # BUG-3093: same Phase 1 automation context as
                                 # _run_ready above.
-                                automation_profile="ll-auto",
-                                disable_background_tasks=config.orchestration.disable_background_tasks,
+                                automation=AutomationContext(
+                                    profile="ll-auto",
+                                    disable_background_tasks=(
+                                        config.orchestration.disable_background_tasks
+                                    ),
+                                    idle_timeout=config.automation.idle_timeout_seconds,
+                                ),
                                 timeout_kill_grace_seconds=config.automation.timeout_kill_grace_seconds,
                             )
 
@@ -1130,14 +1172,16 @@ def process_issue_inplace(
             logger,
             timeout=config.automation.timeout_seconds,
             stream_output=config.automation.stream_output,
-            idle_timeout=config.automation.idle_timeout_seconds,
             on_model_detected=on_model_detected,
             on_usage_detailed=on_usage_detailed,
             preview_full=preview_full,
             # BUG-3093: decide-issue is the same ll-auto run as implement /
             # finalize-retry, which already declare this profile.
-            automation_profile="ll-auto",
-            disable_background_tasks=config.orchestration.disable_background_tasks,
+            automation=AutomationContext(
+                profile="ll-auto",
+                disable_background_tasks=config.orchestration.disable_background_tasks,
+                idle_timeout=config.automation.idle_timeout_seconds,
+            ),
             timeout_kill_grace_seconds=config.automation.timeout_kill_grace_seconds,
         )
         if decide_result.returncode != 0:
@@ -1263,7 +1307,6 @@ def process_issue_inplace(
                 stream_output=config.automation.stream_output,
                 max_continuations=config.automation.max_continuations,
                 repo_path=config.repo_path,
-                idle_timeout=config.automation.idle_timeout_seconds,
                 resume_command=_slash_cmd,
                 on_usage=_on_usage_writer,
                 preview_full=preview_full,
@@ -1278,8 +1321,11 @@ def process_issue_inplace(
                 # backgrounded its final test suite, ended the turn awaiting a
                 # notification that cannot fire under `claude -p`, and Phase 5
                 # (status flip + commit) never ran.
-                automation_profile="ll-auto",
-                disable_background_tasks=config.orchestration.disable_background_tasks,
+                automation=AutomationContext(
+                    profile="ll-auto",
+                    disable_background_tasks=config.orchestration.disable_background_tasks,
+                    idle_timeout=config.automation.idle_timeout_seconds,
+                ),
                 timeout_kill_grace_seconds=config.automation.timeout_kill_grace_seconds,
             )
         else:
@@ -1467,10 +1513,12 @@ def process_issue_inplace(
                         logger,
                         timeout=config.automation.timeout_seconds,
                         stream_output=config.automation.stream_output,
-                        idle_timeout=config.automation.idle_timeout_seconds,
                         preview_full=preview_full,
-                        automation_profile="ll-auto",
-                        disable_background_tasks=config.orchestration.disable_background_tasks,
+                        automation=AutomationContext(
+                            profile="ll-auto",
+                            disable_background_tasks=config.orchestration.disable_background_tasks,
+                            idle_timeout=config.automation.idle_timeout_seconds,
+                        ),
                         timeout_kill_grace_seconds=config.automation.timeout_kill_grace_seconds,
                     )
                     if _finalize_result.returncode == 0:

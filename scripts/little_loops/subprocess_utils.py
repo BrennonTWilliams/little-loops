@@ -20,7 +20,12 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from little_loops.context_window import context_window_for
-from little_loops.host_runner import project_child_env, resolve_host
+from little_loops.host_runner import (
+    AutomationContext,
+    project_child_env,
+    resolve_automation,
+    resolve_host,
+)
 
 if TYPE_CHECKING:
     from little_loops.parallel.types import SprintWorkerContext
@@ -355,6 +360,7 @@ def run_claude_command(
     tools: list[str] | None = None,
     resume_session: bool = False,
     model: str | None = None,
+    automation: AutomationContext | None = None,
     automation_profile: str | None = None,
     disable_background_tasks: bool = False,
     post_stream_close_grace_seconds: int = 300,
@@ -377,6 +383,8 @@ def run_claude_command(
         on_process_end: Optional callback invoked after process completes.
             Receives the Popen object. Called in finally block.
         idle_timeout: Kill process if no output for this many seconds (0 to disable).
+            Deprecated — prefer automation= (read off automation.idle_timeout).
+            Discarded, not merged, when automation= is also supplied.
         on_model_detected: Optional callback invoked with the model name from the
             stream-json system/init event. Called at most once per invocation.
         on_usage: Optional callback invoked with (input_tokens, output_tokens) from
@@ -386,17 +394,26 @@ def run_claude_command(
             plus the model ID from the stream-json result event.
         resume_session: If True, passes --continue to the Claude CLI to continue the
             most recent conversation. Used for the Option E explicit-handoff path.
+        automation: ENH-3097 collapsed automation signal (profile,
+            disable_background_tasks, idle_timeout), forwarded as-is to
+            ``build_streaming()`` and read locally for the selector loop's
+            idle threshold. ``None`` preserves the legacy per-kwarg behavior
+            below. Explicit ``automation=`` wins over the legacy kwargs when
+            both are supplied, emitting a ``DeprecationWarning`` — and
+            discards a legacy ``idle_timeout=`` rather than merging it (see
+            ``resolve_automation()``'s docstring).
         automation_profile: ENH-2714 opt-in automation-context static-prefix pruning
             profile name. When set, forwarded to ``build_streaming()`` so
             ``LL_AUTOMATION``/``LL_AUTOMATION_PROFILE`` are injected into the child
             environment. ``None`` (default) is an active opt-out: it clears any
             inherited ``LL_AUTOMATION`` to ``""`` (ENH-3081) rather than passing the
-            parent's value through.
+            parent's value through. Deprecated — prefer automation=.
         disable_background_tasks: FEAT-3078 opt-in to hard-disable tool-level
             background tasks in the spawned child. When True and
             automation_profile is set, forwarded to ``build_streaming()`` so
             ``CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1`` is injected; otherwise
-            the variable is explicitly neutralized to ``""``.
+            the variable is explicitly neutralized to ``""``. Deprecated —
+            prefer automation=.
         post_stream_close_grace_seconds: Grace period (seconds) to wait for the
             process to exit on its own after stdout/stderr streams close before
             force-killing the process group. Must accommodate synchronous
@@ -433,6 +450,25 @@ def run_claude_command(
         subprocess.TimeoutExpired: If command exceeds timeout or idle timeout.
             When triggered by idle timeout, the output field is set to "idle_timeout".
     """
+    # ENH-3097: resolve the automation/legacy-kwarg trio into one context
+    # (explicit automation= wins and warns on conflict; bare legacy kwargs are
+    # silent). Forward only automation= onward — never automation= plus a
+    # legacy kwarg (see resolve_automation()'s docstring and this issue's
+    # Decision Rules).
+    resolved_automation = resolve_automation(
+        automation,
+        automation_profile,
+        disable_background_tasks,
+        float(idle_timeout) if idle_timeout else None,
+        caller="run_claude_command()",
+    )
+    # AutomationContext.idle_timeout is float | None; idle_timeout above stays
+    # int for legacy-kwarg compat, so bind a new local rather than rebind it
+    # (mypy rejects assigning float | None into an int parameter).
+    effective_idle_timeout: float = (
+        (resolved_automation.idle_timeout or 0) if resolved_automation else idle_timeout
+    )
+
     runner = resolve_host()
     invocation = runner.build_streaming(
         prompt=command,
@@ -441,8 +477,7 @@ def run_claude_command(
         agent=agent,
         tools=tools,
         model=model,
-        automation_profile=automation_profile,
-        disable_background_tasks=disable_background_tasks,
+        automation=resolved_automation,
         workspace_root=workspace_root,
     )
     cmd_args = [invocation.binary, *invocation.args]
@@ -510,7 +545,7 @@ def run_claude_command(
                         )
                     raise subprocess.TimeoutExpired(cmd_args, timeout)
 
-                if idle_timeout and (now - last_output_time) > idle_timeout:
+                if effective_idle_timeout and (now - last_output_time) > effective_idle_timeout:
                     _kill_process_group(process, grace_seconds=timeout_kill_grace_seconds)
                     try:
                         process.wait(timeout=10)
@@ -519,7 +554,9 @@ def run_claude_command(
                             "Process %s did not terminate within 10s after kill",
                             process.pid,
                         )
-                    raise subprocess.TimeoutExpired(cmd_args, idle_timeout, output="idle_timeout")
+                    raise subprocess.TimeoutExpired(
+                        cmd_args, effective_idle_timeout, output="idle_timeout"
+                    )
 
                 ready = sel.select(timeout=1.0)
                 for key, _ in ready:

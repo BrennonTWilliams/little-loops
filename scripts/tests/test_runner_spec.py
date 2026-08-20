@@ -20,7 +20,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from little_loops.host_runner import HostInvocation
+from little_loops.host_runner import AutomationContext, HostInvocation
 from little_loops.runner_spec import ActionSpec, RunnerResult, RunnerType, run_action
 
 
@@ -35,6 +35,23 @@ class FakeRunner:
         return HostInvocation(binary="claude", args=["-p", prompt])
 
     def build_blocking_json(self, *, prompt: str, model: str | None = None) -> HostInvocation:
+        return HostInvocation(binary="claude", args=["-p", prompt])
+
+
+class CapturingRunner:
+    """A FakeRunner whose build_streaming() records the kwargs it received.
+
+    ENH-3097 AC 13: the plain ``FakeRunner`` above absorbs automation= into
+    ``**_: object`` without a signature change, so it keeps existing tests
+    green — but it discards the value, making it unusable for asserting what
+    the resolved automation context carries. This variant captures it.
+    """
+
+    def __init__(self) -> None:
+        self.build_streaming_calls: list[dict] = []
+
+    def build_streaming(self, *, prompt: str, **kwargs: object) -> HostInvocation:
+        self.build_streaming_calls.append(kwargs)
         return HostInvocation(binary="claude", args=["-p", prompt])
 
 
@@ -206,3 +223,73 @@ class TestRunActionDispatch:
         assert result.timed_out is True
         assert result.exit_code == 2
         mock_killpg.assert_called_once_with(proc)
+
+
+class TestRunSkillAutomationCompat:
+    """ENH-3097 AC 2/AC 13: _run_skill()'s spec.args automation compat surface.
+
+    The only externally-facing compatibility surface in ENH-3097 — no
+    in-tree producer sets spec.args["automation_profile"]/
+    ["disable_background_tasks"] (every consumer is out-of-tree
+    ll-harness/ll-action/extension runners), so nothing else in the suite
+    covers a key rename here.
+    """
+
+    def test_legacy_dict_keys_still_work(self) -> None:
+        spec = ActionSpec(
+            name="x",
+            runner=RunnerType.SKILL,
+            target="x",
+            args={"automation_profile": "ll-auto", "disable_background_tasks": True},
+        )
+        runner = CapturingRunner()
+        with (
+            patch("little_loops.runner_spec.resolve_host", return_value=runner),
+            patch("subprocess.run", return_value=_make_completed()),
+        ):
+            run_action(spec)
+
+        automation = runner.build_streaming_calls[0]["automation"]
+        assert automation is not None
+        assert automation.profile == "ll-auto"
+        assert automation.disable_background_tasks is True
+
+    def test_automation_key_works(self) -> None:
+        spec = ActionSpec(
+            name="x",
+            runner=RunnerType.SKILL,
+            target="x",
+            args={"automation": AutomationContext(profile="ctx-profile")},
+        )
+        runner = CapturingRunner()
+        with (
+            patch("little_loops.runner_spec.resolve_host", return_value=runner),
+            patch("subprocess.run", return_value=_make_completed()),
+        ):
+            run_action(spec)
+
+        automation = runner.build_streaming_calls[0]["automation"]
+        assert automation is not None
+        assert automation.profile == "ctx-profile"
+
+    def test_conflict_explicit_automation_wins_and_warns(self) -> None:
+        spec = ActionSpec(
+            name="x",
+            runner=RunnerType.SKILL,
+            target="x",
+            args={
+                "automation": AutomationContext(profile="explicit"),
+                "automation_profile": "legacy",
+            },
+        )
+        runner = CapturingRunner()
+        with (
+            patch("little_loops.runner_spec.resolve_host", return_value=runner),
+            patch("subprocess.run", return_value=_make_completed()),
+            pytest.warns(DeprecationWarning, match="_run_skill()"),
+        ):
+            run_action(spec)
+
+        automation = runner.build_streaming_calls[0]["automation"]
+        assert automation is not None
+        assert automation.profile == "explicit"

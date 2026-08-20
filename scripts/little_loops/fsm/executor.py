@@ -65,7 +65,7 @@ from little_loops.fsm.stall_detector import Stall, StallDetector
 from little_loops.fsm.types import ActionResult, Evaluator, EventCallback, ExecutionResult
 from little_loops.fsm.validation import _SKILL_INVOKE_RE, _effective_session_mode
 from little_loops.fsm.verdicts import is_abstention_verdict
-from little_loops.host_runner import AutomationContext
+from little_loops.host_runner import AutomationContext, resolve_automation
 from little_loops.issue_lifecycle import FailureType, classify_failure
 from little_loops.prompts import FragmentStore, fragment_key
 from little_loops.session_log import (
@@ -3214,11 +3214,23 @@ class FSMExecutor:
         def _on_result_seen(seen: bool) -> None:
             result_seen[0] = seen
 
+        # ENH-3097: resolve_automation() returns None when idle_timeout (the
+        # only knob this call site carries) resolves falsy, preserving
+        # today's automation=None on the common path rather than turning it
+        # into an all-default AutomationContext (Decision Rules).
+        automation = resolve_automation(
+            None,
+            None,
+            False,
+            float(idle_timeout) if idle_timeout else None,
+            caller="_run_baseline_arm()",
+        )
+
         try:
             completed = run_claude_command(
                 command=skill_command,
                 timeout=timeout,
-                idle_timeout=idle_timeout,
+                automation=automation,
                 on_usage=on_usage,
                 on_usage_detailed=_collect_usage,
                 on_result_seen=_on_result_seen,

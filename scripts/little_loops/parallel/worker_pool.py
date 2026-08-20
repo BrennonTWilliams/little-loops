@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
 from little_loops.context_window import context_window_for
-from little_loops.host_runner import project_child_env, resolve_host
+from little_loops.host_runner import project_child_env, resolve_automation, resolve_host
 from little_loops.parallel.git_lock import GitLock
 from little_loops.parallel.types import ParallelConfig, WorkerResult, WorkerStage
 from little_loops.ready_issue import run_ready_issue_with_retry
@@ -937,6 +937,19 @@ class WorkerPool:
                 with self._process_lock:
                     self._active_processes.pop(issue_id, None)
 
+        # ENH-3097: this site has no automation_profile= kwarg of its own
+        # (pre-existing asymmetry, preserved not fixed) — profile stays None.
+        # resolve_automation() returns None for all-default input, preserving
+        # today's automation=None on the common path (Decision Rules).
+        idle_timeout = self.parallel_config.idle_timeout_per_issue
+        automation = resolve_automation(
+            None,
+            None,
+            disable_background_tasks,
+            float(idle_timeout) if idle_timeout else None,
+            caller="WorkerPool._run_claude_command()",
+        )
+
         return _run_claude_base(
             command=command,
             timeout=self.parallel_config.timeout_per_issue,
@@ -944,10 +957,9 @@ class WorkerPool:
             stream_callback=stream_callback if stream_output else None,
             on_process_start=on_start if issue_id else None,
             on_process_end=on_end if issue_id else None,
-            idle_timeout=self.parallel_config.idle_timeout_per_issue,
+            automation=automation,
             on_usage=on_usage,
             resume_session=resume_session,
-            disable_background_tasks=disable_background_tasks,
             timeout_kill_grace_seconds=self.parallel_config.timeout_kill_grace_seconds,
         )
 
