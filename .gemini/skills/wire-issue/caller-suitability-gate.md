@@ -77,9 +77,11 @@ Both conditions fire. Correct output:
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
-- Inject at `suggest_gitignore_patterns()`'s existing `untracked_files=` parameter — the
-  production callers of *that* function are where the filtered list must be supplied; the
-  in-function fallback keeps the empty-tuple default for library callers
+- Inject at `scripts/little_loops/cli/gitignore.py:55` — `main_gitignore()` is the sole
+  production caller of `suggest_gitignore_patterns()` and passes no `untracked_files=`, so it
+  always falls through to the unfiltered call. Supply the filtered list there, via the existing
+  `untracked_files=` parameter; the in-function fallback keeps current behaviour for library
+  callers
 ```
 
 The failure this prevents: `- Update scripts/little_loops/git_operations.py:413 — adjust call to

@@ -379,6 +379,9 @@ def _body_after_frontmatter(text: str) -> str:
 # would pass silently. FEAT-3077 extends this to skills/manage-issue/SKILL.md
 # so the carve-out edit's mirror regeneration is test-enforced, not just instructed.
 # EPIC-3154 adds the .qwen/ mirror (FEAT-3159 emitter, same convention).
+# ENH-3259 extends this to companion files, not just SKILL.md: the § 8b caller
+# suitability gate lives in wire-issue/caller-suitability-gate.md, so a regression
+# could originate in a mirror edit that no parity check covered.
 SKILL_MIRRORS_MUST_MATCH_SOURCE = [
     ("skills/wire-issue/SKILL.md", ".gemini/skills/wire-issue/SKILL.md"),
     ("skills/wire-issue/SKILL.md", ".kimi-code/skills/wire-issue/SKILL.md"),
@@ -389,6 +392,18 @@ SKILL_MIRRORS_MUST_MATCH_SOURCE = [
     ("skills/explore-api/SKILL.md", ".gemini/skills/explore-api/SKILL.md"),
     ("skills/explore-api/SKILL.md", ".kimi-code/skills/explore-api/SKILL.md"),
     ("skills/explore-api/SKILL.md", ".qwen/skills/explore-api/SKILL.md"),
+    (
+        "skills/wire-issue/caller-suitability-gate.md",
+        ".gemini/skills/wire-issue/caller-suitability-gate.md",
+    ),
+    (
+        "skills/wire-issue/caller-suitability-gate.md",
+        ".kimi-code/skills/wire-issue/caller-suitability-gate.md",
+    ),
+    (
+        "skills/wire-issue/caller-suitability-gate.md",
+        ".qwen/skills/wire-issue/caller-suitability-gate.md",
+    ),
 ]
 
 

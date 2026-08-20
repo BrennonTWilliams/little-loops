@@ -12,12 +12,12 @@ program_design_not_applicable: true
 behavior_parity_not_applicable: true
 relates_to:
 - ENH-3258
-confidence_score: 96
-outcome_confidence: 50
-score_complexity: 14
-score_test_coverage: 0
-score_ambiguity: 18
-score_change_surface: 18
+confidence_score: 98
+outcome_confidence: 65
+score_complexity: 18
+score_test_coverage: 5
+score_ambiguity: 20
+score_change_surface: 22
 ---
 
 # ENH-3259: Caller suitability gate has no repeatable fixture after ENH-3258 closed
@@ -194,6 +194,11 @@ _Added by `/ll:refine-issue` — 2026-08-20 — based on codebase analysis:_
   > path. Rationale: this is a fixture, not a shipped loop — a fixtures location keeps it
   > out of `test_builtin_loops.py`'s validation sweep over
   > `scripts/little_loops/loops/`, and drops the conditional README row entirely
+> **Descoped 2026-08-19 (third review round):** `skills/wire-issue/caller-suitability-gate.md`
+> and its six host mirrors are **no longer modified by this issue** — the worked-example
+> correction shipped separately (Implementation Steps step 2). What remains is three sites:
+> the fixture body, the loop YAML, and the `.gitignore` entry.
+
 - `.gitignore` — add an ignore entry for the staged fixture path
   (`.issues/enhancements/*ENH-9999-*`). Required, not optional: FSM `on_failure`/`on_error`
   routing cannot cover SIGINT, a timeout kill, or `max_steps` exhaustion, so in-loop
@@ -244,6 +249,14 @@ _Wiring pass added by `/ll:wire-issue`:_
   host mirrors of the gate under test; `scripts/tests/test_wiring_skills_and_commands.py:376-391`
   enforces content parity against the canonical files, so a § 8b regression could
   originate in a mirror edit, not only the canonical `skills/wire-issue/` copy.
+  > **Corrected 2026-08-19 (third review round) — the parity claim above was false when
+  > written, and is now true.** `SKILL_MIRRORS_MUST_MATCH_SOURCE` covered `SKILL.md` pairs
+  > only; no companion file appeared in it, so these six mirrors had **no** drift check.
+  > `test_enh494_skill_companions.py` covers only the canonical companion's existence,
+  > non-emptiness and linkage — not mirror content. The three
+  > `caller-suitability-gate.md` pairs were added to the list
+  > (`test_wiring_skills_and_commands.py:386-396`) and the mirrors are in sync. These files
+  > remain *dependent* on this issue's subject matter but are no longer *modified* by it.
   > **Selected:** `cli/gitignore.py:55` is the ground-truth seam, not
   > `suggest_gitignore_patterns()`'s own `untracked_files=` parameter. Rationale: this
   > issue's Codebase Research Findings confirm via `ll-code callers-of`/`callees-of`
@@ -285,8 +298,30 @@ _Wiring pass added by `/ll:wire-issue`:_
   the first
 
 ### Tests
-- Not pytest-assertable by design. The completion gate is the fixture running and
-  reproducing the recorded verdict, not a new test in `scripts/tests/`
+
+> **Corrected 2026-08-19 (third review round) — "not pytest-assertable" was too broad,
+> and it was pinning Outcome Confidence Criterion B at 0/25 permanently.** The second
+> review round narrowed the threat model to *deletion / gross regression* (see the
+> prompt-contamination decision). Deletion of a clause from a markdown file **is**
+> pytest-assertable, and this repo does it routinely
+> (`test_capture_issue_skill.py:22-39`, `test_enh494_skill_companions.py:44-70`).
+> The claim splits in two:
+>
+> - **Presence is deterministically gated in pytest** — `scripts/tests/test_caller_suitability_gate.py`
+>   (landed 2026-08-19) asserts the "Always emit both halves" mandate, the literal
+>   `` `Inject at <path>` `` clause, its contrast against `Update <path>`, both skip
+>   conditions, § 8b's inline copy in `SKILL.md`, the companion link, and that the worked
+>   example cites a real path whose line still calls `suggest_gitignore_patterns()`.
+>   Mutation-verified: deleting the clause from either the companion or `SKILL.md`
+>   fails 3 tests. This covers the Summary's stated threat in full, with no LLM.
+> - **Application is not** — whether an LLM running `/ll:wire-issue` *applies* a rule
+>   that is demonstrably present is the residual, and that is what the fixture loop is
+>   for. This is the honest scope of the remaining work.
+
+- `scripts/tests/test_caller_suitability_gate.py` — **landed**; the deterministic
+  presence half. Not part of this issue's remaining work
+- The fixture loop's completion gate remains the loop running and reproducing the
+  recorded verdict, not a further addition to `scripts/tests/`
 
 _Wiring pass added by `/ll:wire-issue` — closest existing pattern to model the fixture's
 harness after, not a required pytest change:_
@@ -324,11 +359,17 @@ _Added by `/ll:refine-issue` — 2026-08-20 — based on codebase analysis:_
 
 ## Implementation Steps
 
-> **Step order matters (corrected 2026-08-19, second review round).** The worked-example
-> correction now runs **before** the output-pinning step. In the prior ordering, pinning ran
-> first and the correction then edited the very prompt text the model reads, changing the
-> output the gate substrings had just been pinned against. Do not restore the old order; if
-> `caller-suitability-gate.md` is touched for any reason after pinning, re-pin.
+> **Steps 2 and 3 landed 2026-08-19 (third review round) and are struck below.** The
+> worked-example correction was descoped from this issue and shipped directly — it is a
+> live defect in doctrine the model reads on every run, independent of whether this
+> fixture is ever built. Removing it drops ~7 of this issue's ~9 change sites (the
+> correction plus 6 host mirrors), which is what was holding Criterion A at 14/25 and
+> Criterion D at 18/25.
+>
+> The prior "step order matters" note is now **moot**: the correction no longer sits in
+> this issue, so it cannot invalidate the output-pinning step. The underlying hazard
+> stands as a standing rule — **if `caller-suitability-gate.md` is touched for any reason
+> after pinning, re-pin the gate substrings.**
 
 1. **Author** the fixture body as `ENH-9999` under `scripts/tests/fixtures/issues/`,
    faithful to the ground truth recorded in ENH-3258's Session Log (the body itself is not
@@ -340,12 +381,18 @@ _Added by `/ll:refine-issue` — 2026-08-20 — based on codebase analysis:_
    must say **nothing** about guards, fallbacks or seams — that contamination is exactly
    what invalidated the ENH-3000 run. (Contamination via the *companion doc* is a separate,
    accepted limitation — see the prompt-contamination decision under Proposed Solution.)
-2. Correct `caller-suitability-gate.md`'s worked-example `Inject at` bullet to name
-   `scripts/little_loops/cli/gitignore.py:55` — a format violation of its own
-   `Inject at <path>` rule at `:45-50`, not merely a stale reference (see the sharpened
-   decision above). Leave the surrounding prose alone. Then propagate to the
-   `.gemini`/`.kimi-code`/`.qwen` mirrors per
-   `test_wiring_skills_and_commands.py:376-391`'s parity check and re-run that test.
+2. ~~Correct `caller-suitability-gate.md`'s worked-example `Inject at` bullet~~ —
+   **DONE 2026-08-19, descoped from this issue.** The bullet now reads
+   ``Inject at `scripts/little_loops/cli/gitignore.py:55` `` in the canonical file and all
+   three host mirrors. Two follow-on findings, both landed with it:
+   - `scripts/tests/test_caller_suitability_gate.py` — the deterministic presence gate
+     (see the Tests correction above).
+   - **The parity claim in this issue was wrong.**
+     `SKILL_MIRRORS_MUST_MATCH_SOURCE` (`test_wiring_skills_and_commands.py:386-396`)
+     listed only `SKILL.md` pairs — **no companion file was covered**, so the six mirror
+     copies of the gate had zero drift protection and step 2's propagation would have been
+     unverified. The three `caller-suitability-gate.md` pairs are now in that list;
+     mutation-verified against an appended-line drift.
 3. Add the staged-path ignore entry (`.issues/enhancements/*ENH-9999-*`) to `.gitignore`
    **before** the first staged run, so a crashed run cannot dirty the working tree.
 4. Run `/ll:wire-issue ENH-9999 --dry-run` manually once — against the tree **as corrected
@@ -534,6 +581,29 @@ _Revised 2026-08-19:_
   scoped in Scope Boundaries; option (a) under Proposed Solution is the upgrade path.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-20T04:59:12 - `8a861a8f-cdf6-4be8-84e8-9d4a036b13d9.jsonl`
+- review round (third) - 2026-08-19 - **root-cause pass on persistent LOW outcome
+  confidence (50/100 across four runs while readiness climbed 85→96).** Diagnosis: every
+  remaining deduction was an *action*, not a specification gap, so further refinement could
+  not move any of them. Three causes, two now resolved:
+  (1) *Criterion B pinned at 0/25 by a false axiom.* "Not pytest-assertable by design" was
+  asserted as given and re-affirmed every run. But the second round had already narrowed the
+  threat to deletion/gross-regression, which is exactly what a content-assertion test covers.
+  Landed `scripts/tests/test_caller_suitability_gate.py` (11 tests, mutation-verified: 3 fail
+  when the `Inject at <path>` clause is deleted from either the companion or `SKILL.md`).
+  (2) *Criteria A/D depressed by scope bundling.* The worked-example correction plus its six
+  mirror propagations were ~7 of ~9 change sites. Descoped and shipped separately — it is a
+  live doctrine defect regardless of this fixture. Residual surface is 3 sites. This also
+  dissolved the step-order hazard.
+  (3) *Criterion C's residual is an unperformed observation* — step 4's dry-run output
+  pinning. Not resolvable by refinement (correctly noted in the prior run), but resolvable by
+  one execution. Still outstanding; it is now the only thing standing between this issue and
+  a HIGH score.
+  Also found and fixed a **live gap this issue had mis-stated**: the mirror parity test
+  covered `SKILL.md` only, so the six host-mirror copies of the gate had no drift protection
+  at all. Three companion pairs added to `SKILL_MIRRORS_MUST_MATCH_SOURCE`. Full suite green
+  (19273 passed). **`/ll:confidence-check` should be re-run** — scores in frontmatter are
+  stale and understate the issue.
 - `/ll:confidence-check` - 2026-08-20T04:29:30 - `d25c66c3-4afe-428a-ae85-77939fc798a9.jsonl`
 - review round (second) - 2026-08-19 - **six corrections, all verified against the tree.**
   (1) *Prompt contamination*: the fixture scenario is `caller-suitability-gate.md:52-90`'s
