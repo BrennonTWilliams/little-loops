@@ -12,7 +12,7 @@ description: |
 
   Trigger keywords: "where are", "find all", "locate files", "which files", "show me all", "list all", "directory structure", "files containing", "where is"
 
-model: haiku
+model: sonnet
 tools: ["Read", "Glob", "Grep", "WebFetch", "WebSearch"]
 ---
 

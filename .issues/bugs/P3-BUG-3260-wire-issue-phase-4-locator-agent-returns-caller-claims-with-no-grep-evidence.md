@@ -90,23 +90,70 @@ One run is not a rate. This issue records a concrete observation, not a measurem
 
 ## Proposed Solution
 
-Amend the Agent 1 prompt in `skills/wire-issue/SKILL.md` Phase 4 to require evidence per
-returned path — the matched line or symbol — and to state explicitly that a path may not
-be returned on the basis of what the issue proposes to build. Consider a separate
-"inferred, unconfirmed" group so the agent has somewhere to put a genuine hunch.
+Two layers, in priority order. The prompt amendment alone is **not** the fix — see the
+BUG-2726 caution in Codebase Research Findings and the model note below.
 
-Before changing the prompt, check whether `agents/codebase-locator.md` or the shared
-agent definition is the better place, since `/ll:refine-issue` shares it.
+**Layer 1 (primary, deterministic): extend confirm-before-map to Agent 1's own output.**
+Phase 3.6's confirm-before-map today covers only `ll-code`-seeded candidates fed *into*
+Agent 1's "Already-known callers"/"Key symbols" slots — it does not touch Agent 1's
+free-form findings. That is an uncovered input, not a working rule. What actually caught
+the four fabrications in the observed run was a human running greps by hand. Add a
+caller-side confirmation step in Phase 5: every path Agent 1 returns gets one targeted
+Grep for the symbol it was returned under, executed by the wire-issue skill on the main
+model, before that path may enter `MISSING_WIRING` or the Integration Map. This does not
+depend on the sub-agent's honesty and is checkable without an LLM.
+
+**Layer 2 (defense-in-depth): amend the return contract.** Require evidence per returned
+path — the matched symbol or pattern — state explicitly that a path may not be returned
+on the basis of what the issue *proposes* to build, and add a separate "inferred,
+unconfirmed" group so a genuine hunch has a home.
+
+Two constraints on Layer 2 that must be honored or it makes output worse, not better:
+
+- **Grep output is the evidence; `Read` stays forbidden.** `agents/codebase-locator.md`'s
+  Important Guidelines and What NOT to Do sections say "Don't read file contents" and
+  "Don't read files to understand implementation". An unqualified "cite the matched line"
+  requirement directly contradicts that charter (the agent's `tools` list does include
+  `Read`, so the contradiction is live, not theoretical). The amendment must say the
+  citation comes from the Grep match, and must leave the no-Read rule intact.
+- **Citation format is decided here, not at implement time.** Agent 1 returns the path
+  plus **the symbol or pattern that matched**, not a line number. This satisfies
+  ENH-1299's anchor-based-reference policy, avoids the literal `file:line` substring that
+  `DOC_STRINGS_ABSENT` already forbids in `skills/wire-issue/SKILL.md`, and does not rot
+  as files shift. See the unresolved-convention note in Codebase Research Findings.
+
+**Model pin (resolved 2026-08-19).** `agents/codebase-locator.md` ran on `model: haiku` —
+the only agent in `agents/` not on `sonnet`. That is a plausible proximate cause of the
+four confabulations, and it made Layer 2 alone a poor bet: more prompt words instructing a
+Haiku agent to self-verify is close to the approach BUG-2726 explicitly rejected. The pin
+has been changed to `sonnet` ahead of this issue's implementation, with
+`docs/reference/API.md`'s agent table and the `.qwen/`, `.kimi-code/`, `.codex/` mirrors
+regenerated. Treat the model as a controlled variable when measuring this fix: the pin
+change alone may move the rate, so a before/after comparison must not attribute its effect
+to the prompt change.
+
+Placement for Layer 2: check whether `agents/codebase-locator.md` (shared definition) or
+`skills/wire-issue/SKILL.md`'s Phase 4 block is the better place, since `/ll:refine-issue`
+and `/ll:manage-issue` share the definition. Layer 1 is wire-issue-only by construction.
 
 ## Integration Map
 
 ### Files to Modify
+- `skills/wire-issue/SKILL.md` Phase 5 — **Layer 1, required.** Caller-side Grep
+  confirmation of Agent 1's returned paths before they may enter `MISSING_WIRING` or the
+  Integration Map
 - `skills/wire-issue/SKILL.md` Phase 4 Agent 1 prompt — **or**
-  `agents/codebase-locator.md`, depending on where the fix belongs. Decide first: the
-  shared agent definition is also used by `/ll:refine-issue`, where the same
+  `agents/codebase-locator.md`, for Layer 2, depending on where the fix belongs. Decide
+  first: the shared agent definition is also used by `/ll:refine-issue`, where the same
   extrapolation is less harmful because hits are consumed as leads
-- Host mirrors under `.qwen/`, `.gemini/`, `.kimi-code/` regenerate via `ll-adapt` for
-  whichever file changes
+- Host mirrors under `.qwen/`, `.gemini/`, `.kimi-code/`, `.codex/` regenerate via
+  `ll-adapt --host <host> --apply` for whichever file changes
+
+_Already landed (2026-08-19, ahead of implementation):_
+- `agents/codebase-locator.md` frontmatter — `model: haiku` → `model: sonnet`
+- `docs/reference/API.md` agent reference table — model column for `codebase-locator`
+- `.qwen/`, `.kimi-code/`, `.codex/` locator mirrors regenerated (`.gemini`'s adapter
+  emits no model field, so it is unchanged)
 
 ### Dependent Files (Callers/Importers)
 - `skills/wire-issue/graph-discovery-layer.md` — states the confirm-before-map rule that
@@ -123,8 +170,10 @@ _Wiring pass added by `/ll:wire-issue`:_
   in `agents/codebase-locator.md` (shared definition) this caller inherits it automatically;
   if the fix lands only in `skills/wire-issue/SKILL.md`'s Phase 4 prompt block, this caller
   does not and needs its own amendment.
-- `commands/iterate-plan.md` — references the locator agent in its planning-research flow;
-  another shared-definition caller to check if the fix is scoped narrowly to wire-issue.
+- `commands/iterate-plan.md:60` — a single prose bullet in an agent-selection list
+  ("**codebase-locator** - To find relevant files and directories"). No prompt block, no
+  return-contract handling, nothing to parse. Mentioned only so the inventory of
+  shared-definition references is complete; no work is expected here.
 
 ### Similar Patterns
 - Phase 4 Agents 2 and 3 use the same anchor-based-reference convention; check whether
@@ -150,7 +199,9 @@ _Wiring pass added by `/ll:wire-issue`:_
   (and a matching row for `skills/wire-issue/SKILL.md`'s Phase 4 Agent 1 block, if amended
   there too). This only asserts the instruction text demands a citation — no runtime
   harness exists to check an agent's actual output, which the issue's own Tests section
-  already anticipates.
+  already anticipates. Add a **second** row for Layer 1 asserting the Phase 5 confirmation
+  rule's phrase is present in `skills/wire-issue/SKILL.md` — same constraint applies, the
+  phrase must not contain the literal substring `"file:line"`.
 - Same file's `DOC_STRINGS_ABSENT` (line 275) already contains rows forbidding the literal
   string `"file:line"` in `agents/codebase-analyzer.md`, `agents/codebase-pattern-finder.md`,
   and `skills/wire-issue/SKILL.md` (ENH-1299, anchor-based-reference policy). Whatever
@@ -182,11 +233,25 @@ _Added by `/ll:refine-issue` — 2026-08-20 — based on codebase analysis:_
   parity clause) requires "State what was searched" but only for that narrow capability-
   search-negative branch, not for the general caller/importer claims that produced this
   bug's fabrications.
-- **`agents/codebase-locator.md`** (134 lines, shared definition) has no evidence-citation
-  clause anywhere: its Output Format section (lines 75-105) shows example groupings with
-  one-line descriptions and no match-location field, and its "Important Guidelines"/"What
-  NOT to Do" sections (107-127) forbid reading file contents, analyzing implementation, or
-  critiquing organization — none forbid an unverified claim.
+- **`agents/codebase-locator.md`** (153 lines, shared definition) has no evidence-citation
+  clause anywhere: its Output Format section (`## Output Format`, lines 75-105) shows
+  example groupings with one-line descriptions and no match-location field, and its
+  `## Important Guidelines` / `## What NOT to Do` sections (107-127) forbid reading file
+  contents, analyzing implementation, or critiquing organization — none forbid an
+  unverified claim. Those same two sections are the source of the no-`Read` contradiction
+  flagged in Proposed Solution: "Don't read file contents" and "Don't read files to
+  understand implementation" sit directly against an unqualified cite-the-matched-line
+  requirement, while the frontmatter `tools` list does grant `Read`.
+- **Model pin was `haiku`** — `agents/codebase-locator.md` frontmatter, the only agent in
+  `agents/` not pinned to `sonnet` (all 8 others: analyzer, pattern-finder,
+  consistency-checker, loop-specialist, plugin-config-auditor, prompt-optimizer,
+  web-search-researcher, workflow-pattern-analyzer). Changed to `sonnet` on 2026-08-19
+  ahead of implementing this issue; `docs/reference/API.md`'s agent table and the
+  `.qwen/`, `.kimi-code/`, `.codex/` mirrors were regenerated with it. This is the most
+  likely proximate cause of the four fabrications and the reason Layer 2 alone was judged
+  insufficient — see the BUG-2726 prior-art caution below, which rejected exactly the
+  shape of "instruct the model to self-verify" that a prompt-only fix on a Haiku agent
+  would have been.
 - **Other invocation sites for `subagent_type="ll:codebase-locator"`**, relevant if the fix
   is applied per-call-site rather than in the shared agent definition:
   - `commands/refine-issue.md:256` — structurally the same caller-tracing task as wire-
@@ -249,31 +314,67 @@ _Added by `/ll:refine-issue` — 2026-08-20 — based on codebase analysis:_
 
 ## Implementation Steps
 
-1. Decide placement — wire-issue's Phase 4 prompt block vs. the shared
+1. **Layer 1** — add caller-side confirmation of Agent 1's returned paths to
+   `skills/wire-issue/SKILL.md` Phase 5: one targeted Grep per returned path, for the
+   symbol it was returned under, before the path may enter `MISSING_WIRING` or the
+   Integration Map. Unconfirmed paths are dropped or demoted, never silently mapped.
+   State plainly that this extends Phase 3.6's confirm-before-map to a previously
+   uncovered input; it does not modify or weaken the existing rule.
+2. Decide Layer 2 placement — wire-issue's Phase 4 prompt block vs. the shared
    `agents/codebase-locator.md` definition.
-2. Amend the return contract to require a matched line or symbol per returned path, and
-   to forbid returning a path on the basis of what the issue *proposes* to build.
-3. Add a separate "inferred, unconfirmed" group so genuine hunches have a home and the
+3. **Layer 2** — amend the return contract to require the matched symbol or pattern per
+   returned path (from Grep output; the no-`Read` rule stays intact and must be restated
+   so the two instructions do not read as contradictory), and to forbid returning a path
+   on the basis of what the issue *proposes* to build.
+4. Add a separate "inferred, unconfirmed" group so genuine hunches have a home and the
    tightening does not suppress real callers.
-4. Re-run the ENH-3000 wiring pass and confirm the four recorded fabrications do not
-   recur, and that the real hits still do.
+5. Verify — see Verification below. Note that the `sonnet` pin already landed, so any
+   observed improvement is the pin *and* the prompt change together unless separated.
+
+### Verification
+
+Step 4 of the original plan ("re-run the ENH-3000 wiring pass and confirm the four
+fabrications do not recur") is not a test: this issue's own Steps to Reproduce states the
+output is non-deterministic and that one run is not a rate. A single clean re-run is
+consistent with no change at all. Replace it with:
+
+- **Gate (deterministic, blocking)** — the `DOC_STRINGS_PRESENT` row described under
+  Tests. This asserts only that the instruction text exists, and is the sole automated
+  gate available. Do not describe it as verifying agent behavior.
+- **Gate (deterministic, blocking)** — Layer 1's confirmation step is ordinary skill logic
+  and should be asserted the same way: a `DOC_STRINGS_PRESENT` row for the Phase 5
+  confirmation rule.
+- **Measurement (advisory, non-blocking)** — 3 wiring re-runs across 2 issues (ENH-3000
+  plus one other with a comparable symbol count), counting per run: paths returned,
+  paths surviving confirmation, paths in the "inferred, unconfirmed" bucket. The
+  reportable number is the share of returned paths that fail confirmation, before vs.
+  after. With n=6 runs this is directional, not significant — record it as an observation
+  in the same spirit as the original one-run report, and do not gate the merge on it.
+- Confirm in the same runs that the real hits from the original pass still appear, so the
+  tightening has not traded fabrications for misses.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
 _These touchpoints were identified by wiring analysis and must be included in the implementation:_
 
-- Update `skills/wire-issue/SKILL.md` Phase 5 ("Diff — Find Missing Wiring") — add a rule
-  for whether the new "inferred, unconfirmed" bucket flows into `MISSING_WIRING` at all, or
-  is held back/flagged separately from confirmed callers.
+- Update `skills/wire-issue/SKILL.md` Phase 5 ("Diff — Find Missing Wiring") — this is
+  where Layer 1 lives. Two rules to add: (a) every path Agent 1 returns is confirmed by one
+  targeted Grep for the symbol it was returned under before it may enter `MISSING_WIRING`;
+  (b) whether the new "inferred, unconfirmed" bucket flows into `MISSING_WIRING` at all, or
+  is held back/flagged separately from confirmed callers. Rule (a) is the deterministic
+  gate and does not depend on rule (b) or on Layer 2 landing.
 - Update `skills/wire-issue/SKILL.md` Phase 8a ("Integration Map Updates") — decide whether
   the evidence citation is inlined into the Dependent Files write template alongside the
   `[Agent 1 finding]` marker, and whether "inferred, unconfirmed" entries get a distinct
   marker so a reader of the issue file can tell confirmed callers from inferred ones.
-- If the fix lands in `agents/codebase-locator.md` (shared definition) rather than only
-  wire-issue's Phase 4 block: `commands/refine-issue.md:256`, `skills/manage-issue/
-  SKILL.md:111-119`, and `commands/iterate-plan.md` all inherit the new contract
-  automatically — verify each still parses/handles the new evidence field and bucket
-  correctly, since none of them have wire-issue's Phase 5/8a diff-and-write logic.
+- If Layer 2 lands in `agents/codebase-locator.md` (shared definition) rather than only
+  wire-issue's Phase 4 block: `commands/refine-issue.md:256` and
+  `skills/manage-issue/SKILL.md:111-119` inherit the new contract automatically — verify
+  each still handles the new evidence field and the "inferred, unconfirmed" bucket
+  correctly, since neither has wire-issue's Phase 5/8a diff-and-write logic.
+  (`commands/iterate-plan.md:60` is a prose mention with no prompt block — nothing to
+  verify there.) Note that neither inherits Layer 1, which is wire-issue Phase 5 logic;
+  the shared-definition change is the only protection they get.
 - Add a `DOC_STRINGS_PRESENT` row to `scripts/tests/test_wiring_skills_and_commands.py`
   (line 27 / `test_string_present_in_doc` at line 264) asserting the chosen
   evidence-citation phrase appears in `agents/codebase-locator.md` (and in
@@ -296,22 +397,36 @@ covered in Implementation Steps step 1.
 
 ## Impact
 
-- **Priority**: P3 - confirm-before-map contains the damage, so no bad wiring is reaching
-  issue files today; the cost is wasted confirmation greps and an undocumented dependence
-  on that rule
-- **Effort**: Small - a prompt amendment, though placement needs deciding first
-  (wire-issue's Phase 4 block vs. the shared `agents/` definition that `/ll:refine-issue`
-  also uses)
-- **Risk**: Low - a stricter return contract can only narrow what the agent reports. The
-  cost of over-tightening is a missed real caller, which confirm-before-map does *not*
-  protect against, so the prompt should still permit inferred paths in a separate group
+- **Priority**: P3 - manual greps caught the damage in the observed run, so no bad wiring
+  reached the issue file; the cost is wasted confirmation greps and an undocumented
+  dependence on whoever is running the pass noticing. Kept at P3, but note the containment
+  is a human habit, not the automated rule the original write-up credited
+- **Effort**: Small-Medium - Layer 2 is a prompt amendment (placement to decide first:
+  wire-issue's Phase 4 block vs. the shared `agents/` definition that `/ll:refine-issue`
+  also uses); Layer 1 adds a confirmation step to Phase 5, which is new skill logic rather
+  than wording. Two `DOC_STRINGS_PRESENT` rows. The model pin is already done
+- **Risk**: Low - a stricter return contract can only narrow what the agent reports, and
+  Layer 1 only drops paths that fail a Grep. The cost of over-tightening is a missed real
+  caller, which nothing else protects against, so the prompt must still permit inferred
+  paths in a separate group and Layer 1 must demote rather than silently discard
 - **Breaking Change**: No
 
 ## Scope Boundaries
 
 - **In scope**: Agent 1's return contract and the evidence it must carry.
-- **Out of scope**: the confirm-before-map rule itself, which worked correctly.
+- **In scope**: extending confirm-before-map's *coverage* to Agent 1's free-form findings
+  (Layer 1). An earlier revision of this issue put confirm-before-map wholly out of scope
+  on the grounds that it "worked correctly"; that reading was wrong. Phase 3.6's rule was
+  never applied to this input at all, so there is nothing here that worked — the greps
+  that caught the fabrications were manual. Extending coverage is not weakening the rule.
+- **Out of scope**: changing confirm-before-map's existing semantics for `ll-code`-seeded
+  candidates, which do work correctly.
 - **Out of scope**: `ll-code` accuracy — the graph results in this run were all correct.
+- **Out of scope**: the missing `ll:` prefix on `subagent_type="codebase-locator"` in
+  `skills/audit-claude-config/wave1-prompts.md:134` and `skills/audit-claude-config/
+  SKILL.md:148`. Every other call site uses the `ll:`-prefixed form, so this may be a live
+  agent-resolution bug, but it is unrelated to evidence citation and belongs in its own
+  issue rather than being absorbed here.
 
 ## Related Key Documentation
 
@@ -323,6 +438,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-20T02:01:25 - `76b0acab-555b-45f1-82d8-192edcfbe30a.jsonl`
 - `/ll:confidence-check` - 2026-08-20T00:54:45 - `91e7e492-9dd3-4528-be48-070fc252ab93.jsonl`
 - `/ll:wire-issue` - 2026-08-20T00:45:46 - `4761f525-f803-4f98-9c12-b34258391e30.jsonl`
 - `/ll:refine-issue` - 2026-08-20T00:39:34 - `319ac0b1-cd90-4d0c-9495-41a3d1945bec.jsonl`

@@ -5,8 +5,7 @@ title: Thread AutomationContext through ActionRunner.run() and fsm/executor.py
 priority: P3
 status: open
 parent: ENH-3094
-blocked_by:
-- ENH-3095
+blocked_by: []
 discovered_date: 2026-08-07
 discovered_by: /ll:issue-size-review
 labels:
@@ -20,6 +19,7 @@ relates_to:
 - FEAT-3078
 - FEAT-3033
 - ENH-2714
+- ENH-3095
 verify_verdict: NON_VALID
 ---
 
@@ -34,12 +34,13 @@ Second of three children decomposed from ENH-3094. This child threads the
 largest cluster of hand-written test mocks that currently raise `TypeError`
 on any new kwarg.
 
-**Blocked by ENH-3095**: this child imports `AutomationContext` from
-`host_runner.py`, which ENH-3095 defines. Can proceed in parallel with
-ENH-3097 once ENH-3095 lands — they touch disjoint files except for a shared
-edit to `fsm/executor.py` (different line ranges: this child touches the
-`extra_kwargs` assembly at `:1886-1910`; ENH-3097 touches the baseline arm's
-direct call at `:2771-2774`).
+**ENH-3095 has landed** (commit `c7804788`): this child's `blocked_by:
+[ENH-3095]` is resolved — `AutomationContext` is now defined in
+`host_runner.py` and can be imported. Can proceed in parallel with ENH-3097
+— they touch disjoint files except for a shared edit to `fsm/executor.py`
+(different line ranges: this child touches the `extra_kwargs` assembly, now
+at `:2229-2267`; ENH-3097 touches the baseline arm's direct call, line range
+to be reconfirmed against current `main` when that issue is worked).
 
 ## Parent Issue
 
@@ -119,6 +120,116 @@ deprecated pass-throughs per the parent's Decision Rules (explicit
 - `scripts/tests/test_learning_state.py:46` — `_MockRunner.run()` explicit, no
   `**kwargs`; safe only if `automation=` stays kwarg-gated
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_fsm_runners.py:606-626` — `test_disable_background_tasks_kwarg_forwarded`,
+  calls `runner.run(..., automation_profile="ll-auto", disable_background_tasks=True)` directly on
+  `DefaultActionRunner` with both legacy kwargs together, past the issue's already-cited `435-600`
+  range; existing test to update or confirm passes unchanged through the new shim [Agent 1/3 finding]
+- `scripts/tests/test_feat3033_idle_timeout.py:73,103,135,167,211,262` — bare `idle_timeout=N`
+  calls directly on the real `DefaultActionRunner` (legacy-kwarg-alone shape), outside the issue's
+  cited `390-467` template range; verify unaffected under kwarg gating [Agent 3 finding]
+- `scripts/tests/test_host_guard.py:582-590` — instantiates `DefaultActionRunner` and calls
+  `.run("sleep 0.05; echo hi", timeout=10, is_slash_command=False)` / `.run("echo hi", ...)` with no
+  automation kwargs; real caller not previously in this list, verify unaffected [Agent 1/3 finding]
+- `scripts/tests/test_cli_loop_testing.py` — exercises `cli/loop/testing.py`'s `cmd_test()`
+  (see Dependent Files below), which calls `SimulationActionRunner.run()`/`DefaultActionRunner.run()`
+  with no automation kwargs; verify unaffected [Agent 3 finding]
+- New test class mirroring `TestAutomationContext` (`test_host_runner.py:1587-1662`) for the
+  `ActionRunner`-side shim — frozen-ness of `AutomationContext` is already covered by ENH-3095 and
+  needn't be re-tested; focus on legacy-alone-silent, explicit-wins-and-warns (both `profile` and
+  `disable_background_tasks` fields), and empty-context-equivalent-to-`None`, applied against
+  `DefaultActionRunner.run()`/`SimulationActionRunner.run()` instead of `HostRunner.build_streaming()`
+  [Agent 3 finding]
+
+### Dependent Files (Callers/Importers)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/extension.py:28,87-88` — imports `ActionRunner` only as a `TYPE_CHECKING`
+  return-type annotation on `ActionProviderExtension.provided_actions() -> dict[str, ActionRunner]`;
+  no direct `run()` call site, informational only [Agent 1 finding]
+- `scripts/little_loops/fsm/__init__.py:108,173` — re-exports `ActionRunner`; the name is unaffected
+  by the parameter collapse, no edit needed but confirm the re-export still resolves [Agent 1 finding]
+- `scripts/little_loops/cli/loop/testing.py:72-87` (`cmd_test()`) — instantiates
+  `SimulationActionRunner()`/`DefaultActionRunner()` and calls
+  `.run(action, timeout=..., is_slash_command=...)` with no automation kwargs; must keep working
+  unmodified under kwarg-gating [Agent 1 finding]
+- `scripts/little_loops/runner_spec.py:127-136` — extracts `automation_profile`,
+  `disable_background_tasks`, `timeout_kill_grace_seconds` from an args dict for its own
+  `run_claude_command()` call path, parallel to (not through) `ActionRunner.run()`; out of this
+  issue's scope but shares the same legacy-kwarg names — confirm no accidental coupling
+  [Agent 1 finding]
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-20 — based on codebase analysis:_
+
+- **Line numbers corrected against current `main`** (ENH-3095 has landed —
+  commit `c7804788`): `ActionRunner` Protocol `run()` now
+  `fsm/runners.py:38-56` (signature `:38-53`, full incl. docstring `:38-83`);
+  `DefaultActionRunner.run()` now `fsm/runners.py:109-...` (`run_claude_command()`
+  forwarding call at `:200-218`; direct `idle_timeout` selector-loop reads now
+  at `:311` and `:337`, not `:287,313`); `SimulationActionRunner.run()` now
+  `fsm/runners.py:394-410` (signature) with its `del` no-op list now at
+  `:432-444`; `extra_kwargs` assembly in `fsm/executor.py` now `:2229-2267`
+  (call-site `**extra_kwargs` spread at `:2278-2288`); `docs/reference/API.md`
+  ActionRunner Protocol mirror now `:6072-6100` (code block `:6075-6091`).
+- **The shim pattern to mirror now exists and is concrete**: ENH-3095 landed
+  `AutomationContext` (`host_runner.py:171-190`, `frozen=True`, fields
+  `profile: str | None`, `idle_timeout: float | None`, `disable_background_tasks:
+  bool = False`) plus a module-level `_resolve_automation(automation,
+  automation_profile, disable_background_tasks) -> AutomationContext | None`
+  shim (`host_runner.py:1886-1920`), called identically at all 7
+  `build_streaming()` implementations (e.g. `host_runner.py:362`). Its
+  contract: explicit `automation=` always wins; a `DeprecationWarning`
+  (`stacklevel=3`) fires only when `automation=` AND a legacy kwarg are both
+  supplied; bare legacy-kwarg-only use is silent by design (every in-tree
+  caller still uses legacy kwargs until ENH-3097 migrates them — warning
+  there would flood every `ll-auto` run); `automation=None` with no legacy
+  kwargs returns `None`, preserving today's opt-out path. This is the exact
+  function/warning shape this issue's `ActionRunner`-side shim should mirror
+  — same helper-function structure, same precedence rule, same silent-legacy
+  behavior — not just "a shim pattern" in the abstract.
+- **`AutomationContext.idle_timeout` is `float | None`**, already reserved
+  for this issue's use (its own docstring at `host_runner.py:183-186` names
+  ENH-3096 as the second consumer) — but `ActionRunner.run()`'s current
+  `idle_timeout: int = 0` is a different shape (non-Optional int, `0` means
+  disabled). The shim must decide how `0` (today's default/"disabled") maps
+  onto `float | None` (`None` means unset) without conflating the two.
+- **Two new parameters have joined the signature since this issue was
+  written**: `disable_background_tasks: bool = False` (FEAT-3078) and
+  `timeout_kill_grace_seconds: float = 0.0` (ENH-3130) now sit in all three
+  `run()` signatures, between `automation_profile` and `idle_timeout`.
+  `disable_background_tasks` is also a field on `AutomationContext` already
+  (see above) and should fold into the same collapsed `automation=`
+  parameter alongside `profile`/`idle_timeout`; `timeout_kill_grace_seconds`
+  has no `AutomationContext` field and stays a separate parameter — out of
+  this issue's collapse.
+- **A second, out-of-scope kwarg-gated dict exists at `executor.py:2203-2222`**
+  (the `contributed`-action branch's `_contrib_extra` dict, `idle_timeout`-only,
+  independently maintained from the `extra_kwargs` block this issue targets)
+  — confirms the issue's existing "do not fold it into this change" scope note
+  against current line numbers.
+
+_Wiring pass added by `/ll:wire-issue`:_
+- **`fsm/executor.py:2210-2222`'s `_contrib_extra` block is confirmed unaffected**:
+  it is only exercised by `scripts/tests/test_fsm_executor.py` and, being
+  structurally independent from `extra_kwargs`, needs no edit for this issue
+  [Agent 2 finding].
+- **`docs/development/TESTING.md`'s `MockActionRunner` example (`:635-643`)
+  already predates `automation_profile`/`disable_background_tasks`/
+  `idle_timeout` entirely** — pre-existing drift, not caused by this issue; no
+  forced edit, flagged for awareness only [Agent 2 finding].
+- **No JSON schema, `--format json` output, or logging inspects `extra_kwargs`
+  directly** — it is an internal local dict, never serialized; no gate-consumer
+  coupling found [Agent 2 finding].
+- **No integration/e2e test currently exercises the full `extra_kwargs` →
+  `ActionRunner.run()` path** (`test_ll_loop_execution.py`,
+  `test_builtin_loops.py`, `integration/test_loop_run_e2e.py` all have zero
+  matches for `automation_profile`/`idle_timeout`/`AutomationContext`) — an
+  optional coverage gap, not a required addition, since unit-level coverage
+  via `MockActionRunner` and `test_feat3033_idle_timeout.py` already exercises
+  the contract [Agent 3 finding].
+
 ## Acceptance Criteria
 
 1. `ActionRunner.run()` Protocol, `DefaultActionRunner`, and
@@ -140,8 +251,42 @@ deprecated pass-throughs per the parent's Decision Rules (explicit
 
 _Added by `/ll:refine-issue` — 2026-08-07 — based on codebase analysis:_
 
+_Added by `/ll:refine-issue` — 2026-08-20 — based on codebase analysis:_
+
+- **Current full `run()` signature** (`fsm/runners.py:38-53`, identical shape
+  in `ActionRunner` Protocol, `DefaultActionRunner`, and
+  `SimulationActionRunner`) now includes two params added since this issue
+  was drafted:
+  `run(self, action: str, timeout: int, is_slash_command: bool, on_output_line: Callable[[str], None] | None = None, agent: str | None = None, tools: list[str] | None = None, on_usage: UsageCallback | None = None, on_usage_detailed: DetailedUsageCallback | None = None, model: str | None = None, working_dir: Path | None = None, automation_profile: str | None = None, disable_background_tasks: bool = False, idle_timeout: int = 0, timeout_kill_grace_seconds: float = 0.0) -> ActionResult`
+  The collapse target is `automation_profile`, `disable_background_tasks`,
+  and `idle_timeout` → one `automation: AutomationContext | None = None`;
+  `timeout_kill_grace_seconds` has no `AutomationContext` field and is
+  unaffected — the "New" signature in this section's earlier draft omitted
+  both `disable_background_tasks` and `timeout_kill_grace_seconds` and should
+  read: `run(self, action: str, timeout: int, is_slash_command: bool, on_output_line: Callable[[str], None] | None = None, agent: str | None = None, tools: list[str] | None = None, on_usage: UsageCallback | None = None, on_usage_detailed: DetailedUsageCallback | None = None, model: str | None = None, working_dir: Path | None = None, automation: AutomationContext | None = None, timeout_kill_grace_seconds: float = 0.0) -> ActionResult`
+- **The `_resolve_automation()` shim (`host_runner.py:1886-1920`) is the
+  concrete reference implementation for this issue's own shim**, not just an
+  analogous pattern: same helper-function shape (`AutomationContext | None,
+  str | None, bool -> AutomationContext | None`), same precedence
+  (explicit `automation=` wins), same `DeprecationWarning` conditions (fires
+  only on simultaneous `automation=` + legacy kwarg; `stacklevel=3` since the
+  shim is one frame below the public `run()` call), same silent-legacy-alone
+  behavior, same `None`-when-nothing-supplied return. `TestAutomationContext`
+  in `scripts/tests/test_host_runner.py:1587-1661` is the corresponding test
+  template (frozen-ness, defaults, legacy-alone-silent, explicit-wins-and-warns,
+  empty-context-equivalent-to-None) this issue's own new test class for the
+  `ActionRunner` shim should follow.
+- **`SimulationActionRunner`'s current `del` no-op list** (`fsm/runners.py:432-444`)
+  already includes `idle_timeout`, `automation_profile`, and
+  `disable_background_tasks` as three separate names — confirms the earlier
+  Verification Notes finding that the historical asymmetry (AC #3) no longer
+  exists; the only remaining change here is collapsing those three `del`
+  entries into one `automation` entry.
+
 ### Types
-- Imports `AutomationContext` from `host_runner.py` (defined by ENH-3095, not yet landed — this issue is `blocked_by: [ENH-3095]`).
+- Imports `AutomationContext` from `host_runner.py` (defined by ENH-3095,
+  landed in commit `c7804788` — this issue's `blocked_by: [ENH-3095]` is now
+  resolved).
 
 ### Signatures
 Old — `ActionRunner.run()` Protocol, `DefaultActionRunner.run()`, `SimulationActionRunner.run()`:
@@ -207,6 +352,8 @@ Re-verify with `--check` after ENH-3095 lands, which is also when the two
 missing params above and the stale `del`-asymmetry claim should be folded in.
 
 ## Session Log
+- `/ll:wire-issue` - 2026-08-20T01:45:51 - `af1a453c-65d0-4b3c-bc6b-b8e4bf055010.jsonl`
+- `/ll:refine-issue` - 2026-08-20T01:35:05 - `f61456ba-aec2-43f2-8c6e-c3a8655726d7.jsonl`
 - `/ll:verify-issues` - 2026-08-20T00:59:29 - `e89696fe-140c-45df-a34b-1cf937e9f43c.jsonl`
 - `/ll:verify-issues` - 2026-08-13T03:05:10 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
 - `/ll:refine-issue` - 2026-08-07T22:51:22 - `596f76ed-c393-479b-9539-adbce5a6a72b.jsonl`
