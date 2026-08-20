@@ -18,7 +18,7 @@ labels:
 - design-tokens
 - loops
 - config
-confidence_score: 90
+confidence_score: 100
 outcome_confidence: 63
 score_complexity: 10
 score_test_coverage: 25
@@ -365,19 +365,25 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 _Added by `/ll:confidence-check` on 2026-08-20_
 
-> **STALE — re-run `/ll:confidence-check`.** These scores were computed before the four-way split; the
-> risk factors below enumerate modify sites and lockstep clusters that have since moved to BUG-3266,
-> ENH-3267, and ENH-3268. `outcome_confidence: 63` in particular reflects the pre-split scope.
+Re-run post four-way split (ENH-3264/BUG-3266/ENH-3267/ENH-3268). All `format-check`
+gap signals (`missing_behavior_parity`, `stale_symbol_ref`/`stale_cli_flag`,
+`unapplied_decision`, `template_placeholders`/`boilerplate`) are empty, the Program
+Design gate passes, and there is no unresolved `blocked_by` entry — readiness scores
+max on all five criteria. Outcome confidence is unchanged from the pre-split score:
+the split reduced actively-*modified* sites (~9 → ~6) but not the breadth bracket
+(6-15) or the dependent-surface bracket (6-10 callers that must keep working
+unchanged), so the arithmetic nets to the same total.
 
-**Readiness Score**: 90/100 → PROCEED
+**Readiness Score**: 100/100 → PROCEED
 **Outcome Confidence**: 63/100 → MODERATE
 
 ### Outcome Risk Factors
-- Broad enumeration across ~9 modify sites (design_tokens.py, config-schema.json, config/features.py, config/core.py, cli/loop/run.py, cli/loop/lifecycle.py, cli/artifact.py, loops/html-website-generator.yaml, hooks/session_start.py) with cross-module consistency requirements — the two-guard `test_config_schema.py` gate, the duplicated `design_guidance_context` injection between `run.py`/`lifecycle.py`, and the independently re-implemented degradation check in `session_start.py` all need to move in lockstep or drift silently.
-- Moderate depth from shared-state coordination rather than pure mechanical edits — the `load_design_tokens()` source branch and theme-degradation warning touch existing fallback logic, not isolated new code.
-- Broad dependent surface (~6-10 call sites of `load_design_tokens()`/renderers — `artifact.py`, `doctor.py`, `verify_design_tokens.py`, `init/*.py`, `session_start.py`, `lifecycle.py`) that must keep working unchanged; verify each at implementation time rather than assuming pass-through safety.
+- Broad enumeration across ~6 actively-modified sites (design_tokens.py, config-schema.json, config/features.py, config/core.py, cli/artifact.py, hooks/session_start.py) with cross-module consistency requirements — the two-guard `test_config_schema.py` gate must see `source` land in the dataclass, schema, and `core.py`'s `to_dict()` echo simultaneously or it hard-fails.
+- Moderate depth from shared-state coordination rather than pure mechanical edits — the `load_design_tokens()` source branch, the namespace-rename + alias-rewrite table, the nested-`semantic` construction for the prompt-context gate, and the residual-bucket addition to `render_as_prompt_context()` (which changes output for **profile** sources too) all touch existing logic rather than adding isolated new code.
+- Broad dependent surface (~6-10 call sites/consumers of `load_design_tokens()`/renderers — `artifact.py`, `doctor.py`, `verify_design_tokens.py`, `init/*.py`, `session_start.py`, plus 15 built-in loop YAMLs that must keep receiving `design_tokens_context` unaffected) that must keep working unchanged; verify each at implementation time rather than assuming pass-through safety.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-20T21:20:10 - `258d49d0-ba4c-49f3-a1e8-6f2e12d7799a.jsonl`
 - `/ll:confidence-check` - 2026-08-20T21:01:05 - `0d64dd59-9207-4726-a40b-813a377a1fec.jsonl`
 - `/ll:confidence-check` - 2026-08-20T20:53:03 - `0ffa5e40-eabf-4e3f-9ddd-d1fd94489393.jsonl`
 - `/ll:confidence-check` - 2026-08-20T20:33:22 - `1e7934c2-3f73-4b02-90d0-4a6aa50feef9.jsonl`

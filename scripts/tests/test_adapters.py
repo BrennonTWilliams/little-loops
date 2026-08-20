@@ -453,6 +453,26 @@ class TestCodexEmitterEmitSkill:
         assert content1 == content2
         assert content2.count("name: my-skill") == 1
 
+    # --- openai.yaml companion content-drift (ENH-3265 AC6, prophylactic) ---
+
+    def test_openai_yaml_drift_detected_and_rewritten(self, tmp_path: Path) -> None:
+        meta = self._meta(tmp_path, "my-skill", description="Original description.")
+        CodexEmitter().emit_skill(meta)
+        openai_yaml = meta["skill_path"].parent / "agents" / "openai.yaml"
+        openai_yaml.write_text('interface:\n  display_name: "My Skill"\n  short_description: "Stale"\n')
+
+        content2 = meta["skill_path"].read_text()
+        meta2 = {**meta, "content": content2, "fm": _read_frontmatter(content2) or {}}
+        assert CodexEmitter().emit_skill(meta2) == "adapted"
+        assert "Stale" not in openai_yaml.read_text()
+
+    def test_openai_yaml_up_to_date_returns_skipped(self, tmp_path: Path) -> None:
+        meta = self._meta(tmp_path, "my-skill")
+        CodexEmitter().emit_skill(meta)
+        content2 = meta["skill_path"].read_text()
+        meta2 = {**meta, "content": content2, "fm": _read_frontmatter(content2) or {}}
+        assert CodexEmitter().emit_skill(meta2) == "skipped"
+
 
 # =============================================================================
 # CodexEmitter.emit_command
@@ -509,6 +529,55 @@ class TestCodexEmitterEmitCommand:
     def test_no_description_returns_skipped(self, tmp_path: Path) -> None:
         meta = self._meta(tmp_path, "no-desc", description="")
         assert CodexEmitter().emit_command(meta) == "skipped"
+
+    # --- content-drift / idempotency (ENH-3265 AC5) ---
+
+    def test_content_drift_detected_and_rewritten(self, tmp_path: Path) -> None:
+        meta = self._meta(tmp_path, "my-cmd", description="Original description.")
+        CodexEmitter().emit_command(meta)
+
+        meta_v2 = self._meta(tmp_path, "my-cmd", description="Updated description.")
+        assert CodexEmitter().emit_command(meta_v2) == "adapted"
+        content = (meta_v2["output_dir"] / "ll-my-cmd" / "SKILL.md").read_text()
+        assert "Updated description." in content
+        assert "Original description." not in content
+
+    def test_third_unchanged_call_returns_skipped(self, tmp_path: Path) -> None:
+        meta = self._meta(tmp_path, "my-cmd")
+        CodexEmitter().emit_command(meta)
+        CodexEmitter().emit_command(meta)
+        assert CodexEmitter().emit_command(meta) == "skipped"
+
+    def test_apply_rewrites_stale_present_file(self, tmp_path: Path) -> None:
+        meta = self._meta(tmp_path, "my-cmd", description="Original description.")
+        CodexEmitter().emit_command(meta)
+
+        meta_v2 = self._meta(tmp_path, "my-cmd", description="Updated description.")
+        skill_md = meta_v2["output_dir"] / "ll-my-cmd" / "SKILL.md"
+        before = skill_md.read_text()
+        CodexEmitter().emit_command(meta_v2)
+        assert skill_md.read_text() != before
+
+    # --- source-derived field pass-through (ENH-3265 AC2) ---
+
+    def test_allowed_tools_and_argument_hint_pass_through(self, tmp_path: Path) -> None:
+        meta = self._meta(
+            tmp_path,
+            "my-cmd",
+            extra_fm='argument-hint: "ISSUE_ID"\nallowed-tools:\n  - Read\n  - Bash(git:*)\n',
+        )
+        CodexEmitter().emit_command(meta)
+        content = (meta["output_dir"] / "ll-my-cmd" / "SKILL.md").read_text()
+        assert 'argument-hint: "ISSUE_ID"' in content
+        assert "allowed-tools:\n  - Read\n  - Bash(git:*)" in content
+
+    def test_missing_pass_through_fields_omit_not_null(self, tmp_path: Path) -> None:
+        meta = self._meta(tmp_path, "my-cmd")
+        CodexEmitter().emit_command(meta)
+        content = (meta["output_dir"] / "ll-my-cmd" / "SKILL.md").read_text()
+        assert "argument-hint" not in content
+        assert "allowed-tools" not in content
+        assert "null" not in content
 
 
 # =============================================================================

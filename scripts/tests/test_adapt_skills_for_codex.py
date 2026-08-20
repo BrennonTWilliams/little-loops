@@ -89,6 +89,28 @@ class TestExtractShortDesc:
         text = "---\nname: my-skill\n---\n# Body"
         assert _extract_short_desc(text) == ""
 
+    def test_truncates_on_word_boundary_with_ellipsis(self) -> None:
+        long_desc = (
+            "Analyze user message history to suggest FSM loop configurations "
+            "automatically, using several data sources."
+        )
+        text = f"---\ndescription: {long_desc}\n---\n# Body"
+        result = _extract_short_desc(text)
+        assert len(result) <= 80
+        assert result.endswith("...")
+        prefix = result[: -len("...")]
+        assert long_desc.startswith(prefix)
+        # cut lands exactly at a word boundary in the source text
+        assert long_desc[len(prefix)] == " "
+
+    def test_prefers_explicit_metadata_short_description(self) -> None:
+        long_desc = "A" * 200
+        text = (
+            f"---\ndescription: {long_desc}\n"
+            "metadata:\n  short-description: A hand-written summary.\n---\n# Body"
+        )
+        assert _extract_short_desc(text) == "A hand-written summary."
+
 
 # =============================================================================
 # _insert_fields
@@ -222,14 +244,10 @@ class TestProcessSkills:
         assert "short_description:" in content
 
     def test_skips_already_adapted_skill(self, tmp_path: Path) -> None:
-        skill_dir = tmp_path / "skills" / "adapted-skill"
-        skill_dir.mkdir(parents=True)
-        (skill_dir / "SKILL.md").write_text(
-            "---\nname: adapted-skill\ndescription: Use when stuff.\n"
-            "metadata:\n  short-description: Use when stuff.\n---\n# Body\n"
-        )
-        (skill_dir / "agents").mkdir()
-        (skill_dir / "agents" / "openai.yaml").write_text("interface:\n  display_name: x\n")
+        # ENH-3265: emitters content-compare now, so "already adapted" means the
+        # on-disk stub matches the generator's own output, not just present.
+        _make_skill(tmp_path, "adapted-skill", description="Use when stuff.")
+        _process_skills(tmp_path / "skills", apply=True, quiet=True)
 
         adapted, skipped, errors = _process_skills(tmp_path / "skills", apply=True, quiet=True)
         assert adapted == 0
@@ -474,41 +492,56 @@ class TestRealSkillsIntegrationGuard:
 
 class TestSynthesizedSkillMd:
     def test_contains_namespaced_name(self) -> None:
-        result = _synthesized_skill_md("check-code", "Run code quality checks.")
+        result = _synthesized_skill_md(
+            "check-code", "Run code quality checks.", {}, "Run code quality checks."
+        )
         assert "name: ll-check-code\n" in result
 
     def test_contains_description_verbatim(self) -> None:
         desc = "Run code quality checks (lint, format, types, build)"
-        result = _synthesized_skill_md("check-code", desc)
+        result = _synthesized_skill_md("check-code", desc, {}, desc)
         assert f"description: {desc}\n" in result
 
     def test_contains_metadata_short_description(self) -> None:
-        result = _synthesized_skill_md("check-code", "Run code quality checks.")
+        result = _synthesized_skill_md(
+            "check-code", "Run code quality checks.", {}, "Run code quality checks."
+        )
         assert "metadata:\n  short-description: Run code quality checks.\n" in result
 
-    def test_short_description_truncated_to_80(self) -> None:
-        long_desc = "A" * 200
-        result = _synthesized_skill_md("foo", long_desc)
-        # extract the short-description line
-        for line in result.splitlines():
-            if line.strip().startswith("short-description:"):
-                short = line.split("short-description:", 1)[1].strip()
-                assert len(short) == 80
-                break
-        else:
-            raise AssertionError("short-description line missing")
+    def test_short_description_passed_through_verbatim(self) -> None:
+        """ENH-3265: truncation moved to `_extract_skill_short_desc`; this function
+        no longer truncates, it emits the caller-supplied value as-is."""
+        short_desc = "A" * 80
+        result = _synthesized_skill_md("foo", "A" * 200, {}, short_desc)
+        assert f"short-description: {short_desc}\n" in result
 
     def test_body_references_source_command(self) -> None:
-        result = _synthesized_skill_md("check-code", "Run code quality checks.")
+        result = _synthesized_skill_md(
+            "check-code", "Run code quality checks.", {}, "Run code quality checks."
+        )
         assert "commands/check-code.md" in result
 
     def test_contains_disable_model_invocation(self) -> None:
         """Bridge stubs are Codex-discovery-only; hide from listing budget (ENH-1615)."""
-        result = _synthesized_skill_md("check-code", "Run code quality checks.")
+        result = _synthesized_skill_md(
+            "check-code", "Run code quality checks.", {}, "Run code quality checks."
+        )
         assert "disable-model-invocation: true\n" in result
         # the field must live inside the frontmatter block
         frontmatter = result.split("---")[1]
         assert "disable-model-invocation: true" in frontmatter
+
+    def test_allowed_tools_and_argument_hint_pass_through(self) -> None:
+        fm = {"allowed-tools": ["Read", "Bash(git:*)"], "argument-hint": "ISSUE_ID"}
+        result = _synthesized_skill_md("ready-issue", "Validate an issue.", fm, "Validate an issue.")
+        assert 'argument-hint: "ISSUE_ID"\n' in result
+        assert "allowed-tools:\n  - Read\n  - Bash(git:*)\n" in result
+
+    def test_missing_pass_through_fields_omitted_not_null(self) -> None:
+        result = _synthesized_skill_md("check-code", "Run code quality checks.", {}, "Run code quality checks.")
+        assert "argument-hint" not in result
+        assert "allowed-tools" not in result
+        assert "null" not in result
 
     def test_all_bridge_skills_on_disk_disable_model_invocation(self) -> None:
         """Every skills/ll-*/SKILL.md must carry disable-model-invocation: true (ENH-1615)."""
@@ -600,14 +633,10 @@ class TestProcessCommands:
         assert "name: ll-scan-codebase" in content
 
     def test_skips_already_adapted_command(self, tmp_path: Path) -> None:
+        # ENH-3265: emitters content-compare now, so "already adapted" means the
+        # on-disk stub matches the generator's own output, not just present.
         _make_command(tmp_path, "check-code", description="Run quality checks.")
-        out_dir = tmp_path / "skills" / "ll-check-code"
-        out_dir.mkdir(parents=True)
-        (out_dir / "SKILL.md").write_text(
-            "---\nname: ll-check-code\ndescription: existing\n---\n# Body\n"
-        )
-        (out_dir / "agents").mkdir()
-        (out_dir / "agents" / "openai.yaml").write_text("interface:\n  display_name: x\n")
+        _process_commands(tmp_path / "commands", tmp_path / "skills", apply=True, quiet=True)
 
         adapted, skipped, errors = _process_commands(
             tmp_path / "commands", tmp_path / "skills", apply=True, quiet=True

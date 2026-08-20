@@ -40,8 +40,30 @@ _WRITE_TOOLS = frozenset({"Edit", "Write", "Bash", "NotebookEdit"})
 # ---------------------------------------------------------------------------
 
 
+def _truncate_short_desc(text: str, limit: int = _MAX_SHORT_DESC) -> str:
+    """Truncate *text* to *limit* chars, preferring a word boundary + ellipsis.
+
+    Falls back to a hard cutoff at *limit* when no word boundary is found
+    within the truncation window (e.g. a single long token).
+    """
+    if len(text) <= limit:
+        return text
+    ellipsis = "..."
+    cut_limit = limit - len(ellipsis)
+    truncated = text[:cut_limit]
+    boundary = truncated.rfind(" ")
+    if boundary > 0:
+        return truncated[:boundary].rstrip() + ellipsis
+    return text[:limit]
+
+
 def _extract_skill_short_desc(text: str) -> str:
-    """Parse skill/command content and return first non-empty description line, ≤80 chars."""
+    """Parse skill/command content and return a short description, ≤80 chars.
+
+    Prefers an explicit ``metadata.short-description`` frontmatter field when
+    present; otherwise falls back to the first non-empty line of
+    ``description``, truncated at a word boundary with an ellipsis.
+    """
     if not text.startswith("---"):
         return ""
     end = text.find("---", 3)
@@ -52,13 +74,20 @@ def _extract_skill_short_desc(text: str) -> str:
         fm = yaml.safe_load(fm_raw) or {}
     except yaml.YAMLError:
         return ""
+
+    metadata = fm.get("metadata")
+    if isinstance(metadata, dict):
+        explicit = metadata.get("short-description")
+        if isinstance(explicit, str) and explicit.strip():
+            return explicit.strip()[:_MAX_SHORT_DESC]
+
     desc = fm.get("description", "") or ""
     if not isinstance(desc, str):
         return ""
     for line in desc.splitlines():
         stripped = line.strip()
         if stripped:
-            return stripped[:_MAX_SHORT_DESC]
+            return _truncate_short_desc(stripped)
     return ""
 
 
@@ -85,25 +114,39 @@ def _make_openai_yaml_content(display_name: str, short_desc: str) -> str:
     return f'interface:\n  display_name: "{display_name}"\n  short_description: "{short_desc}"\n'
 
 
-def _synthesized_skill_md(stem: str, description: str) -> str:
-    """Build a minimal synthesized SKILL.md for a bridged command."""
-    short_desc = ""
-    for line in description.splitlines():
-        stripped = line.strip()
-        if stripped:
-            short_desc = stripped[:_MAX_SHORT_DESC]
-            break
+def _synthesized_skill_md(stem: str, description: str, fm: dict, short_desc: str) -> str:
+    """Build a minimal synthesized SKILL.md for a bridged command.
 
+    Pass-through only: ``allowed-tools`` and ``argument-hint`` are emitted
+    from *fm* (the source command's parsed frontmatter) when present, omitted
+    (never emitted as a literal ``null``) when absent. *short_desc* is the
+    caller's already-computed value (see ``_extract_skill_short_desc``) — this
+    function does not truncate. There is no merge with an existing on-disk
+    stub; the output is a pure function of *stem*/*description*/*fm*/
+    *short_desc* (ENH-3265).
+    """
     if "\n" in description.strip():
         indented = "\n".join(f"  {line}" if line else "" for line in description.splitlines())
         desc_block = f"description: |\n{indented}"
     else:
         desc_block = f"description: {description.strip()}"
 
+    extra_fields = ""
+    argument_hint = fm.get("argument-hint")
+    if isinstance(argument_hint, str) and argument_hint.strip():
+        escaped = argument_hint.replace("\\", "\\\\").replace('"', '\\"')
+        extra_fields += f'argument-hint: "{escaped}"\n'
+
+    allowed_tools = fm.get("allowed-tools")
+    if isinstance(allowed_tools, list) and allowed_tools:
+        items = "\n".join(f"  - {tool}" for tool in allowed_tools)
+        extra_fields += f"allowed-tools:\n{items}\n"
+
     return (
         f"---\n"
         f"name: ll-{stem}\n"
         f"{desc_block}\n"
+        f"{extra_fields}"
         # Bridge stubs exist only for Codex Skills API discovery (which reads the
         # agents/openai.yaml sidecar); hide them from the Claude Code skill
         # listing budget — users invoke the /ll:<stem> slash command (ENH-1615).
@@ -307,9 +350,11 @@ class CodexEmitter:
 
         new_text, skill_changed = _insert_skill_fields(content, skill_name, short_desc)
         openai_yaml = skill_path.parent / "agents" / "openai.yaml"
-        yaml_exists = openai_yaml.exists()
+        new_yaml_content = _make_openai_yaml_content(_title_case(skill_name), short_desc)
+        existing_yaml = openai_yaml.read_text() if openai_yaml.exists() else None
+        yaml_changed = existing_yaml != new_yaml_content
 
-        if not skill_changed and yaml_exists:
+        if not skill_changed and not yaml_changed:
             if not quiet:
                 print(f"  SKIP   {skill_name}: already adapted")
             return "skipped"
@@ -317,11 +362,9 @@ class CodexEmitter:
         if apply:
             if skill_changed:
                 skill_path.write_text(new_text)
-            if not yaml_exists:
+            if yaml_changed:
                 openai_yaml.parent.mkdir(exist_ok=True)
-                openai_yaml.write_text(
-                    _make_openai_yaml_content(_title_case(skill_name), short_desc)
-                )
+                openai_yaml.write_text(new_yaml_content)
             if not quiet:
                 print(f"  APPLY  {skill_name}: {short_desc[:50]}")
         else:
@@ -356,18 +399,25 @@ class CodexEmitter:
         out_skill_md = out_dir / "SKILL.md"
         out_openai_yaml = out_dir / "agents" / "openai.yaml"
 
-        if out_skill_md.exists() and out_openai_yaml.exists():
+        new_skill_md = _synthesized_skill_md(stem, description, fm, short_desc)
+        new_openai_yaml = _make_openai_yaml_content(_title_case(stem), short_desc)
+        existing_skill_md = out_skill_md.read_text() if out_skill_md.exists() else None
+        existing_openai_yaml = out_openai_yaml.read_text() if out_openai_yaml.exists() else None
+        skill_md_changed = existing_skill_md != new_skill_md
+        openai_yaml_changed = existing_openai_yaml != new_openai_yaml
+
+        if not skill_md_changed and not openai_yaml_changed:
             if not quiet:
                 print(f"  SKIP   {label}: already adapted")
             return "skipped"
 
         if apply:
             out_dir.mkdir(parents=True, exist_ok=True)
-            if not out_skill_md.exists():
-                out_skill_md.write_text(_synthesized_skill_md(stem, description))
-            if not out_openai_yaml.exists():
+            if skill_md_changed:
+                out_skill_md.write_text(new_skill_md)
+            if openai_yaml_changed:
                 out_openai_yaml.parent.mkdir(exist_ok=True)
-                out_openai_yaml.write_text(_make_openai_yaml_content(_title_case(stem), short_desc))
+                out_openai_yaml.write_text(new_openai_yaml)
             if not quiet:
                 print(f"  APPLY  {label}: {short_desc[:50]}")
         else:
