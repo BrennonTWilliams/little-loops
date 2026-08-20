@@ -171,8 +171,35 @@ New:
 | `.issues/enhancements/P3-ENH-3095-add-automationcontext-dataclass-and-thread-through-hostrunner-build-streaming.md` | Dependency — defines `AutomationContext` |
 | `scripts/tests/test_feat3033_idle_timeout.py:390-467` | Kwarg-gating compatibility template |
 
+## Verification Notes
+
+**2026-08-19** (`/ll:verify-issues`): Structure of the proposed refactor is
+still sound; verdict `OUTDATED` on line numbers and one stale claim:
+
+- Corrected line numbers: `ActionRunner.run()` Protocol now `:40-56` (was
+  `:39-53`); `DefaultActionRunner.run()` now `:109-125` (was `:98-112`);
+  `SimulationActionRunner.run()` now `:394-410` (was `:370-384`);
+  `extra_kwargs` assembly in `fsm/executor.py` now `:2229-2267` (was
+  `:1886-1910`); `docs/reference/API.md` ActionRunner Protocol mirror now
+  `:6072-6091` (was `:5769-5785` — that mirror is also already missing
+  `timeout_kill_grace_seconds`, a pre-existing gap unrelated to this issue).
+- **The `del` no-op asymmetry claim is stale.** `SimulationActionRunner.run`'s
+  `del` list (now `:432-444`) already includes both `idle_timeout` and
+  `automation_profile` — the described omission no longer exists. AC #3's
+  "fixes the pre-existing `automation_profile` omission as a side effect"
+  should be dropped or reworded; there is nothing left to fix there, only the
+  mechanical `automation_profile`/`idle_timeout` → `automation` collapse.
+- Two new params, `disable_background_tasks: bool = False` and
+  `timeout_kill_grace_seconds: float = 0.0`, now sit between
+  `automation_profile` and `idle_timeout` in all three `run()` signatures
+  (added since this issue was written). They don't conflict with the
+  proposed collapse — they carry through unchanged — but the "Old"/"New"
+  signatures documented in Program Design should show them so an implementer
+  isn't misled into dropping them. Corroborated independently by ENH-3095's
+  own Codebase Research Findings, which flag this exact gap.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-08-20T00:59:29 - `e89696fe-140c-45df-a34b-1cf937e9f43c.jsonl`
 - `/ll:verify-issues` - 2026-08-13T03:05:10 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
 - `/ll:refine-issue` - 2026-08-07T22:51:22 - `596f76ed-c393-479b-9539-adbce5a6a72b.jsonl`
 - `/ll:issue-size-review` - 2026-08-07T22:09:43 - `dec986a1-15de-4376-b5dd-5868a8d3e188.jsonl`

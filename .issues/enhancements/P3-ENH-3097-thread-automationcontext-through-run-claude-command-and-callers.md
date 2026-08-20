@@ -171,7 +171,34 @@ numbers drifted ~20-60 lines (e.g. fsm/executor.py call now ~2801 not
 subprocess_utils.run_claude_command now at :343 not :320-341).
 Structure/shape of the refactor is unchanged.
 
+**2026-08-19** (`/ll:verify-issues`): Still `OUTDATED` — drift has grown
+further at the two fastest-moving sites, structure otherwise unchanged:
+
+- `subprocess_utils.run_claude_command()` def now `:343-362+` (was
+  `:320-341`).
+- `issue_manager.py` wrapper `run_claude_command()` still accurate at
+  `:139-152` — unchanged since original filing.
+- `issue_manager.run_with_continuation()` now `:260-...` (was `:252-269`).
+- `runner_spec.py` `automation_profile` read now `:127` (was `:128`,
+  negligible); forwarding sites now `:153,186,196` (was `:145,176,182`).
+- `fsm/executor.py` baseline arm: def `_run_baseline_arm` now at `:3175`,
+  the `run_claude_command()` call now at `:3215-3221` — was `:2771-2774`
+  at filing, `~2801` at the last verify pass; drift has grown by ~400 more
+  lines since then and is trending upward each pass, not stabilizing.
+- `worker_pool.py` `_run_claude_base` forward now `:940-949` — was
+  `:924-934` at filing, `~929-936` at the last verify pass; same
+  still-growing pattern.
+- `docs/reference/API.md` `issue_manager.run_claude_command()` mirror now
+  at `:2856-2890` (was `:2626-2655`).
+- `BUG-3112` (`blocked_by`) is now `status: done` — satisfied, informational
+  only, does not change the remaining `blocked_by: ENH-3095` (still open).
+- Same missing-param gap as ENH-3096: neither issue mentions
+  `disable_background_tasks`, corroborated by ENH-3095's own Codebase
+  Research Findings flagging this exact sibling gap. Does not conflict with
+  the proposed collapse — the param carries through unchanged.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-08-20T00:59:29 - `e89696fe-140c-45df-a34b-1cf937e9f43c.jsonl`
 - `/ll:verify-issues` - 2026-08-13T03:05:10 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
 - `/ll:verify-issues` - 2026-08-10T16:26:27 - `50b69f30-8ca9-4ab9-8b06-6ee21c203b10.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-09T03:26:27 - `39a3fd52-4ea1-4f7e-83e9-1871820dfe65.jsonl`
