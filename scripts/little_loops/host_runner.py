@@ -283,7 +283,7 @@ class HostRunner(Protocol):
         ``automation_profile`` and ``disable_background_tasks`` remain as
         deprecated keywords: when ``automation`` is not supplied, they are
         folded into an ``AutomationContext`` internally via
-        :func:`_resolve_automation`. Supplying either alongside an explicit
+        :func:`resolve_automation`. Supplying either alongside an explicit
         ``automation`` emits a ``DeprecationWarning`` and the explicit context
         wins.
 
@@ -359,7 +359,7 @@ class ClaudeCodeRunner:
         disable_background_tasks: bool = False,
         workspace_root: Path | None = None,
     ) -> HostInvocation:
-        automation = _resolve_automation(automation, automation_profile, disable_background_tasks)
+        automation = resolve_automation(automation, automation_profile, disable_background_tasks)
         if workspace_root is not None:
             # FEAT-2878: trace-assertion runs opt out of the blanket
             # --dangerously-skip-permissions bypass so the CLI's own
@@ -668,7 +668,7 @@ class CodexRunner:
         disable_background_tasks: bool = False,
         workspace_root: Path | None = None,
     ) -> HostInvocation:
-        automation = _resolve_automation(automation, automation_profile, disable_background_tasks)
+        automation = resolve_automation(automation, automation_profile, disable_background_tasks)
         del model  # codex does not support --model in streaming mode
         if workspace_root is not None:
             warnings.warn(
@@ -1066,7 +1066,7 @@ class GeminiRunner:
         disable_background_tasks: bool = False,
         workspace_root: Path | None = None,
     ) -> HostInvocation:
-        automation = _resolve_automation(automation, automation_profile, disable_background_tasks)
+        automation = resolve_automation(automation, automation_profile, disable_background_tasks)
         if agent:
             warnings.warn(
                 "gemini has no CLI-flag agent selection; skills activate "
@@ -1264,7 +1264,7 @@ class OmpRunner:
         disable_background_tasks: bool = False,
         workspace_root: Path | None = None,
     ) -> HostInvocation:
-        automation = _resolve_automation(automation, automation_profile, disable_background_tasks)
+        automation = resolve_automation(automation, automation_profile, disable_background_tasks)
         if agent:
             warnings.warn(
                 "omp has no CLI-flag agent selection; subagents are spawned "
@@ -1453,7 +1453,7 @@ class KimiRunner:
         disable_background_tasks: bool = False,
         workspace_root: Path | None = None,
     ) -> HostInvocation:
-        automation = _resolve_automation(automation, automation_profile, disable_background_tasks)
+        automation = resolve_automation(automation, automation_profile, disable_background_tasks)
         if tools:
             warnings.warn(
                 "kimi has no tool-allowlist CLI flag; tool policy lives in "
@@ -1660,7 +1660,7 @@ class QwenRunner:
         disable_background_tasks: bool = False,
         workspace_root: Path | None = None,
     ) -> HostInvocation:
-        automation = _resolve_automation(automation, automation_profile, disable_background_tasks)
+        automation = resolve_automation(automation, automation_profile, disable_background_tasks)
         if agent:
             warnings.warn(
                 "qwen has no --agent CLI flag (documented upstream as planned "
@@ -1883,31 +1883,44 @@ def _apply_automation_env(env: dict[str, str], automation: AutomationContext | N
         env["LL_AUTOMATION_PROFILE"] = ""
 
 
-def _resolve_automation(
+def resolve_automation(
     automation: AutomationContext | None,
     automation_profile: str | None,
     disable_background_tasks: bool,
+    idle_timeout: float | None = None,
+    *,
+    caller: str = "build_streaming()",
 ) -> AutomationContext | None:
-    """Resolve the ``automation``/legacy-kwarg trio into one context (ENH-3095).
+    """Resolve the ``automation``/legacy-kwarg quartet into one context (ENH-3095/ENH-3096).
 
-    Returns ``None`` when neither an explicit context nor either legacy kwarg
-    is supplied, preserving today's ``automation=None`` opt-out path.
-    Otherwise returns the explicit ``automation`` if given (emitting a
-    ``DeprecationWarning`` when a legacy kwarg was *also* supplied — that
-    combination is a parameter conflict, not merely deprecated use), else
-    constructs ``AutomationContext(profile=automation_profile,
-    disable_background_tasks=disable_background_tasks)`` from the legacy
-    kwargs alone. Bare legacy-kwarg use (no explicit ``automation``) is
-    silent by design — every in-tree caller does exactly that until ENH-3097
-    migrates them, and warning there would flood every ``ll-auto`` run.
+    Returns ``None`` when neither an explicit context nor any legacy kwarg is
+    supplied, preserving today's ``automation=None`` opt-out path. Otherwise
+    returns the explicit ``automation`` if given (emitting a
+    ``DeprecationWarning`` naming ``caller`` when a legacy kwarg was *also*
+    supplied — that combination is a parameter conflict, not merely
+    deprecated use), else constructs ``AutomationContext(profile=
+    automation_profile, disable_background_tasks=disable_background_tasks,
+    idle_timeout=idle_timeout)`` from the legacy kwargs alone. Bare
+    legacy-kwarg use (no explicit ``automation``) is silent by design — every
+    in-tree caller does exactly that until ENH-3097 migrates them, and
+    warning there would flood every ``ll-auto`` run.
+
+    ``idle_timeout`` is ``None`` by default because ``build_streaming()``
+    never receives one; the ``ActionRunner`` boundary (ENH-3096) is the only
+    caller that passes a non-``None`` value. When an explicit ``automation``
+    wins over legacy kwargs, a legacy ``idle_timeout`` is deliberately
+    discarded (folded into the ``legacy_used`` conflict check, never merged
+    into the returned context) — one uniform "explicit wins" rule across
+    both boundaries rather than a per-field fallback (ENH-3096 Program
+    Design § The Shim).
     """
-    legacy_used = automation_profile is not None or disable_background_tasks
+    legacy_used = automation_profile is not None or disable_background_tasks or bool(idle_timeout)
     if automation is not None:
         if legacy_used:
             warnings.warn(
-                "build_streaming() received both automation= and a legacy "
-                "automation_profile/disable_background_tasks kwarg; the "
-                "explicit automation context wins.",
+                f"{caller} received both automation= and a legacy "
+                "automation_profile/disable_background_tasks/idle_timeout kwarg; "
+                "the explicit automation context wins.",
                 DeprecationWarning,
                 stacklevel=3,
             )
@@ -1916,6 +1929,7 @@ def _resolve_automation(
         return AutomationContext(
             profile=automation_profile,
             disable_background_tasks=disable_background_tasks,
+            idle_timeout=idle_timeout,
         )
     return None
 

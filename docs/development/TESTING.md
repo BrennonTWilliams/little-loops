@@ -640,6 +640,7 @@ class MockActionRunner:
         on_output_line: Callable[[str], None] | None = None,
         agent: str | None = None,
         tools: list[str] | None = None,
+        **kwargs: Any,  # absorbs on_usage, model, working_dir, automation, and future knobs (ENH-3096)
     ) -> ActionResult:
         """Return configured result for action."""
         self.calls.append(action)

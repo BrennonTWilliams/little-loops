@@ -3,11 +3,12 @@ id: ENH-3096
 type: ENH
 title: Thread AutomationContext through ActionRunner.run() and fsm/executor.py
 priority: P3
-status: open
+status: done
 parent: ENH-3094
 blocked_by: []
 discovered_date: 2026-08-07
 discovered_by: /ll:issue-size-review
+completed_at: '2026-08-20T04:17:35Z'
 labels:
 - automation
 - fsm
@@ -47,6 +48,51 @@ cleared. Can proceed in parallel with ENH-3097
 (different line ranges: this child touches the `extra_kwargs` assembly, now
 at `:2229-2267`; ENH-3097 touches the baseline arm's direct call, line range
 to be reconfirmed against current `main` when that issue is worked).
+
+## Current Behavior
+
+`ActionRunner.run()`'s Protocol and both concrete implementations
+(`DefaultActionRunner`, `SimulationActionRunner`) accept three independent
+bare automation keywords — `automation_profile: str | None = None`,
+`disable_background_tasks: bool = False`, and `idle_timeout: int = 0` — each
+gated separately. `fsm/executor.py`'s `extra_kwargs` assembly
+(`:2229-2267`) builds a per-knob dict, adding each key only when its own
+condition resolves (prompt-mode pruning profile, `orchestration
+.disable_background_tasks`, or a truthy resolved idle value), so any test
+double or caller with an explicit `run()` signature and no `**kwargs` breaks
+the moment a new knob is added — the ~11 hand-written `ActionRunner` fakes in
+`test_fsm_executor.py` (and others across 19 test files) currently raise
+`TypeError` under exactly that condition.
+
+## Expected Behavior
+
+`ActionRunner.run()`'s Protocol and both implementations additionally accept
+`automation: AutomationContext | None = None` (from ENH-3095), resolved
+against the three legacy kwargs through a shim mirroring
+`host_runner._resolve_automation()`. `fsm/executor.py`'s `extra_kwargs`
+assembly constructs one `AutomationContext` instead of a per-knob dict.
+`DefaultActionRunner` decomposes the resolved context back into legacy
+kwargs when forwarding to `run_claude_command()` (which has no `automation`
+parameter until ENH-3097). The three legacy kwargs remain as deprecated,
+silently-working pass-throughs; explicit `automation=` wins over them and
+emits a `DeprecationWarning` when both are supplied. See Program Design for
+the full signature and precedence rules.
+
+## Impact
+
+- **Priority**: P3 — internal refactor with no user-facing behavior change;
+  scoped to unblock the parent ENH-3094 collapse and reduce ongoing
+  maintenance cost on `ActionRunner` test doubles.
+- **Effort**: Medium — touches a `Protocol` and two implementations, a shared
+  cross-module shim, one call-site collapse in `fsm/executor.py`, and ~15+
+  test doubles across `scripts/tests/`, but each edit follows an established
+  pattern (ENH-3095's `build_streaming()` precedent) rather than novel design.
+- **Risk**: Low — additive signature change (AC #1, #4); the three legacy
+  kwargs keep working standalone and silently, and the mechanical `**kwargs`
+  fix on test fakes (see Tests) retires this class of churn rather than
+  auditing each fake individually. Extension/plugin `ActionRunner`s do not
+  flow through the widened gate (see Decision Rules § blast radius).
+- **Breaking Change**: No.
 
 ## Parent Issue
 
@@ -344,8 +390,6 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ### Codebase Research Findings
 
-_Added by `/ll:refine-issue` — 2026-08-07 — based on codebase analysis:_
-
 _Added by `/ll:refine-issue` — 2026-08-20 — based on codebase analysis:_
 
 - **Current full `run()` signature** (`fsm/runners.py:38-53`, identical shape
@@ -495,6 +539,48 @@ uses `0` as "disabled". The shim must not conflate `0` with `None`:
 - **The gate widens — this is the main compatibility risk.** Today there are three independent per-knob gates; collapsed, there is one: `automation` is added to `extra_kwargs` when *any* of profile / `disable_background_tasks` / idle resolves non-default. So a state that configures only `idle_timeout` now sends `automation=` where it previously sent `idle_timeout=`. Old runners are still safe when nothing resolves — that is the contract `test_feat3033_idle_timeout.py:390-467`'s `test_idle_disabled_omits_kwarg_for_old_runners` proves, and it must stay green — but every in-tree fake reached with automation active needs an `automation` parameter or `**kwargs` (see Tests).
 - **But the blast radius is narrower than it looks — verified.** Third-party / extension `ActionRunner`s do **not** flow through `extra_kwargs`: `extension.py`'s `ActionProviderExtension.provided_actions() -> dict[str, ActionRunner]` feeds `self._contributed_actions`, which is dispatched by the **contributed** branch and its separate `_contrib_extra` dict (`executor.py:2211-2222`) — explicitly out of scope here. The main `action_runner` has exactly one injection point, `FSMExecutor(action_runner=...)` (`executor.py:187`, whose own docstring says *"for testing"*), used in-tree only by `cli/loop/testing.py:263`. So the widened gate reaches in-tree fakes and direct-API users, **not the plugin ecosystem**. Size the compatibility work accordingly — this is what makes the mechanical `**kwargs` fix in Tests safe rather than reckless.
 - The `contributed`-action branch's separate, adjacent kwarg-gating in `fsm/executor.py:2210-2222` (its own `_contrib_extra` dict, `idle_timeout`-only, no `automation_profile` today) is out of this issue's stated scope (`ActionRunner.run()` and `:2229-2267` only) — do not fold it into this change.
+
+## Resolution
+
+Implemented per Program Design with no deviations:
+
+- `host_runner.py`: promoted `_resolve_automation()` to public `resolve_automation()`,
+  added `idle_timeout: float | None = None` and `caller: str = "build_streaming()"`
+  parameters; the 6 existing `build_streaming()` call sites keep the default caller.
+- `fsm/runners.py`: added `automation: AutomationContext | None = None` to the
+  `ActionRunner` Protocol, `DefaultActionRunner.run()`, and
+  `SimulationActionRunner.run()` (alongside the three legacy kwargs, which remain).
+  `DefaultActionRunner.run()` resolves via `resolve_automation(..., caller="ActionRunner.run()")`
+  at the top of the method, then decomposes the resolved context back into
+  `automation_profile=`/`disable_background_tasks=`/`idle_timeout=` for the
+  `run_claude_command()` forwarding call and the shell-branch selector-loop reads.
+  `SimulationActionRunner`'s `del` no-op list gained `automation`.
+- `fsm/executor.py`: the `extra_kwargs` assembly now constructs one
+  `AutomationContext` and adds it as `automation=` when any of the three knobs
+  resolves non-default (still kwarg-gated); the `_wall_fallback`/BUG-3032
+  computation still reads the `_idle_timeout` local, unchanged.
+- `docs/reference/API.md` (`ActionRunner` Protocol mirror + kwarg-gating prose,
+  plus the previously-missing `timeout_kill_grace_seconds`) and
+  `docs/development/TESTING.md` (`MockActionRunner` example) updated.
+- Tests: the primary `MockActionRunner` in `test_fsm_executor.py` gained
+  `**kwargs: Any` and now decomposes `automation.idle_timeout` when present (the
+  ~11 other inline fakes already carried `**kwargs`, confirmed by grep, so no
+  further mechanical fix was needed). Added `TestActionRunnerAutomationShim` to
+  `test_fsm_runners.py` mirroring `TestAutomationContext`, covering
+  legacy-alone-silent, explicit-wins-and-warns (profile and
+  disable_background_tasks), empty-context-equivalent-to-None, the warning
+  naming `ActionRunner.run()` (AC #7), and the AC #6(b) case where an explicit
+  `automation=` alongside a legacy `idle_timeout=` warns and discards the legacy
+  value.
+- Verification: `python -m pytest scripts/tests/` (19975 passed, 46 skipped; the
+  one failure, `test_prose_dep_sweep_gate.py::test_no_prose_dependency_drift_in_repo`
+  on ENH-3097/ENH-3095, reproduces identically on `main` before this change —
+  pre-existing and unrelated), `python -m mypy scripts/little_loops/` (clean on
+  touched files), and `ruff check`/`ruff format` (clean) all pass.
+
+## Status
+
+Done. Implemented, tested, and verified per Program Design.
 
 ## Related Key Documentation
 
@@ -701,6 +787,9 @@ three `run()` signatures. No `DECISIONS_VIOLATION`.
 Structure, signatures, and Program Design remain sound.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-20T04:16:44 - `b253f9ca-7946-4d68-ac63-fe6e2061f212.jsonl`
+- `/ll:ready-issue` - 2026-08-20T03:54:30 - `489ba302-3b3c-40b2-ba12-109061f1ec75.jsonl`
+- `/ll:ready-issue` - 2026-08-20T03:54:11 - `489ba302-3b3c-40b2-ba12-109061f1ec75.jsonl`
 - `/ll:confidence-check` - 2026-08-20T03:49:46 - `519404c3-823a-450e-a451-9ef539f0b512.jsonl`
 - `/ll:verify-issues` - 2026-08-20T03:47:11 - `74be4b45-e2a8-44ac-9a2a-7d8bd9d187b2.jsonl`
 - `/ll:verify-issues` - 2026-08-20T03:41:18 - `231c8ac3-c9af-42c5-a42e-ca8e5ae3effb.jsonl`

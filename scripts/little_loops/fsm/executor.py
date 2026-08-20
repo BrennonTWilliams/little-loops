@@ -65,6 +65,7 @@ from little_loops.fsm.stall_detector import Stall, StallDetector
 from little_loops.fsm.types import ActionResult, Evaluator, EventCallback, ExecutionResult
 from little_loops.fsm.validation import _SKILL_INVOKE_RE, _effective_session_mode
 from little_loops.fsm.verdicts import is_abstention_verdict
+from little_loops.host_runner import AutomationContext
 from little_loops.issue_lifecycle import FailureType, classify_failure
 from little_loops.prompts import FragmentStore, fragment_key
 from little_loops.session_log import (
@@ -2233,38 +2234,40 @@ class FSMExecutor:
             # falls through to the loop-level default; None (unset either place)
             # preserves full unpruned behavior. Only meaningful in prompt mode
             # (host CLI invocations); shell/mcp actions don't consult it.
-            # Kwarg-gated (only passed when set), same as working_dir above, so
-            # ActionRunner implementations predating ENH-2714 — including
-            # third-party extension runners and test doubles — keep working.
             _pruning_profile_cfg = state.pruning_profile or self.fsm.pruning_profile
+            _automation_profile: str | None = None
             if (
                 action_mode == "prompt"
                 and _pruning_profile_cfg is not None
                 and _pruning_profile_cfg.enabled
             ):
-                extra_kwargs["automation_profile"] = _pruning_profile_cfg.name
+                _automation_profile = _pruning_profile_cfg.name
 
             # FEAT-3078: disable_background_tasks is sourced from
             # OrchestrationConfig (a global config object), a structurally
             # different origin than automation_profile above (per-loop
             # PruningProfileConfig) — read via the memoized _get_br_config()
             # already used elsewhere in this method, not a copy of the
-            # PruningProfileConfig pattern. Kwarg-gated (only passed when
-            # True), same as working_dir/automation_profile above, so
-            # ActionRunner implementations predating this change keep working.
-            if (
+            # PruningProfileConfig pattern.
+            _disable_background_tasks = bool(
                 action_mode == "prompt"
                 and self._get_br_config().orchestration.disable_background_tasks
-            ):
-                extra_kwargs["disable_background_tasks"] = True
+            )
 
-            # FEAT-3033: kwarg-gated, same pattern as working_dir/
-            # automation_profile above — omitted when disabled so
-            # ActionRunner implementations predating this change keep
-            # working unchanged.
+            # FEAT-3033
             _idle_timeout = state.idle_timeout or self.fsm.default_idle_timeout or 0
-            if _idle_timeout:
-                extra_kwargs["idle_timeout"] = _idle_timeout
+
+            # ENH-3096: collapse the three knobs above into one AutomationContext,
+            # kept kwarg-gated (only added to extra_kwargs when non-empty) so
+            # ActionRunner implementations predating this change — including
+            # third-party extension runners and test doubles — keep working
+            # unchanged.
+            if _automation_profile is not None or _disable_background_tasks or _idle_timeout:
+                extra_kwargs["automation"] = AutomationContext(
+                    profile=_automation_profile,
+                    disable_background_tasks=_disable_background_tasks,
+                    idle_timeout=float(_idle_timeout) if _idle_timeout else None,
+                )
 
             # BUG-3032: a prompt state that opts into idle detection relies on
             # FEAT-3033's idle sensor to catch hangs, so the undeclared 3600s

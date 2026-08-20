@@ -6085,15 +6085,19 @@ class ActionRunner(Protocol):
         on_usage_detailed: DetailedUsageCallback | None = None,
         model: str | None = None,
         working_dir: Path | None = None,
-        automation_profile: str | None = None,
-        disable_background_tasks: bool = False,  # Hard-disable tool-level background tasks (FEAT-3078)
-        idle_timeout: int = 0,  # Kill if no output for this many seconds; 0 disables (FEAT-3033)
+        automation: AutomationContext | None = None,  # ENH-3096 collapsed automation signal
+        automation_profile: str | None = None,  # Deprecated — prefer automation=
+        disable_background_tasks: bool = False,  # Hard-disable tool-level background tasks (FEAT-3078); deprecated — prefer automation=
+        idle_timeout: int = 0,  # Kill if no output for this many seconds; 0 disables (FEAT-3033); deprecated — prefer automation=
+        timeout_kill_grace_seconds: float = 0.0,  # Grace period before escalating SIGTERM to SIGKILL (ENH-3130)
     ) -> ActionResult: ...
 ```
 
 Implement this protocol to customize action execution (useful for testing). In the extension system, `ActionRunner` is also the contributed-actions runtime dispatch interface — extension plugins register runners against custom `action_type` strings via `ActionProviderExtension.provided_actions()`, and `FSMExecutor` dispatches to them through the `_contributed_actions` registry at runtime.
 
-`idle_timeout` is kwarg-gated at every executor call site (like `working_dir`/`automation_profile`): it's only passed when resolved to a non-zero value, so `ActionRunner` implementations predating FEAT-3033 keep working unchanged as long as idle detection isn't configured for the states they run.
+`automation` (ENH-3096) collapses `automation_profile`/`disable_background_tasks`/`idle_timeout` into a single `AutomationContext`, mirroring `HostRunner.build_streaming()` (ENH-3095). `fsm/executor.py`'s `extra_kwargs` assembly builds one `AutomationContext` and passes it as `automation=` when any of the three knobs resolves non-default; the three legacy kwargs remain as deprecated pass-throughs on the Protocol and both implementations, resolved internally via `resolve_automation()` (`host_runner.py`) — the same shim `build_streaming()` uses, with a `caller="ActionRunner.run()"` override so its `DeprecationWarning` names the right function. Explicit `automation=` wins over any legacy kwarg supplied alongside it (warns); bare legacy-kwarg use stays silent. `DefaultActionRunner` decomposes the resolved context back into `automation_profile=`/`disable_background_tasks=`/`idle_timeout=` when forwarding to `run_claude_command()`, which has no `automation` parameter until ENH-3097.
+
+`idle_timeout` is kwarg-gated at every executor call site (like `working_dir`/`automation_profile`): it's only passed when resolved to a non-zero value, so `ActionRunner` implementations predating FEAT-3033 keep working unchanged as long as idle detection isn't configured for the states they run. Note: when an explicit `automation=` is supplied alongside a legacy `idle_timeout=`, the legacy value is discarded (not merged) — `resolve_automation()`'s "explicit wins" rule is uniform across all three legacy fields.
 
 `disable_background_tasks` (FEAT-3078) is likewise kwarg-gated: it's only passed (as `True`) when `orchestration.disable_background_tasks` is enabled in config (opt-in; default `false`), so `ActionRunner` implementations predating this change keep working unless they read `**kwargs`. Only meaningful in prompt mode (host CLI invocations); `SimulationActionRunner` accepts and ignores it.
 

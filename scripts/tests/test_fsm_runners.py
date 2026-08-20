@@ -9,11 +9,15 @@ from __future__ import annotations
 
 import subprocess
 import tempfile
+import warnings
 from io import StringIO
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from little_loops.fsm.executor import ActionResult, DefaultActionRunner, SimulationActionRunner
+from little_loops.host_runner import AutomationContext
 
 
 class _MockFileObj:
@@ -639,3 +643,84 @@ class TestDefaultActionRunnerWorkingDir:
         result = runner.run("pwd", 10, False)
         assert result.exit_code == 0
         assert Path(result.output.strip()).resolve() == Path.cwd().resolve()
+
+
+class TestActionRunnerAutomationShim:
+    """ENH-3096: the ActionRunner-side automation shim (mirrors
+    test_host_runner.py:TestAutomationContext, applied to DefaultActionRunner.run()
+    instead of HostRunner.build_streaming())."""
+
+    def _run_and_capture(self, runner: DefaultActionRunner, **run_kwargs: object) -> dict:
+        completed = subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
+        captured_kwargs: dict = {}
+
+        def capture(**kwargs: object) -> subprocess.CompletedProcess[str]:
+            captured_kwargs.update(kwargs)
+            return completed
+
+        with patch("little_loops.fsm.runners.run_claude_command", side_effect=capture):
+            runner.run("/ll:skill", 60, True, **run_kwargs)
+        return captured_kwargs
+
+    def test_legacy_kwargs_construct_context_internally(self) -> None:
+        """Legacy-alone still works, folded via the shim."""
+        runner = DefaultActionRunner()
+        captured = self._run_and_capture(
+            runner, automation_profile="autodev", disable_background_tasks=True
+        )
+        assert captured.get("automation_profile") == "autodev"
+        assert captured.get("disable_background_tasks") is True
+
+    def test_legacy_kwarg_alone_is_silent(self) -> None:
+        """Bare legacy use (no explicit automation=) emits no warning."""
+        runner = DefaultActionRunner()
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            self._run_and_capture(runner, automation_profile="autodev")
+
+    def test_explicit_context_wins_and_warns_on_conflict(self) -> None:
+        """automation= alongside a legacy kwarg emits a DeprecationWarning
+        naming ActionRunner.run() (AC #7), and the explicit context wins."""
+        runner = DefaultActionRunner()
+        with pytest.warns(DeprecationWarning, match="ActionRunner.run()"):
+            captured = self._run_and_capture(
+                runner,
+                automation=AutomationContext(profile="context-profile"),
+                automation_profile="legacy-profile",
+            )
+        assert captured.get("automation_profile") == "context-profile"
+
+    def test_explicit_context_wins_and_warns_on_disable_background_tasks_conflict(self) -> None:
+        runner = DefaultActionRunner()
+        with pytest.warns(DeprecationWarning, match="ActionRunner.run()"):
+            captured = self._run_and_capture(
+                runner,
+                automation=AutomationContext(profile="p", disable_background_tasks=False),
+                disable_background_tasks=True,
+            )
+        assert captured.get("disable_background_tasks") is False
+
+    def test_empty_context_equivalent_to_none(self) -> None:
+        runner = DefaultActionRunner()
+        captured_none = self._run_and_capture(runner, automation=None)
+        captured_empty = self._run_and_capture(runner, automation=AutomationContext())
+        assert captured_none.get("automation_profile") == captured_empty.get("automation_profile")
+        assert captured_none.get("disable_background_tasks") == captured_empty.get(
+            "disable_background_tasks"
+        )
+        assert captured_none.get("idle_timeout") == captured_empty.get("idle_timeout") == 0
+
+    def test_explicit_automation_discards_legacy_idle_timeout(self) -> None:
+        """AC #6(b): automation= alongside legacy idle_timeout= warns and the
+        legacy idle_timeout is discarded (not merged) — the resolved context
+        forwards idle_timeout=0 (unset), per the uniform "explicit wins" rule
+        (ENH-3096 Program Design § The Shim)."""
+        runner = DefaultActionRunner()
+        with pytest.warns(DeprecationWarning, match="ActionRunner.run()"):
+            captured = self._run_and_capture(
+                runner,
+                automation=AutomationContext(profile="x"),
+                idle_timeout=60,
+            )
+        assert captured.get("idle_timeout") == 0
+        assert captured.get("automation_profile") == "x"

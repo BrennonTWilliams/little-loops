@@ -30,6 +30,7 @@ from little_loops.fsm.schema import (
     StateConfig,
 )
 from little_loops.fsm.validation import load_and_validate
+from little_loops.host_runner import AutomationContext
 from little_loops.subprocess_utils import TokenUsage
 
 
@@ -61,9 +62,11 @@ class MockActionRunner:
         on_usage_detailed: Any = None,
         model: str | None = None,
         working_dir: Any = None,
+        automation: AutomationContext | None = None,
         automation_profile: str | None = None,
         disable_background_tasks: bool = False,
         idle_timeout: int = 0,
+        **kwargs: Any,  # absorbs future knobs
     ) -> ActionResult:
         """Return configured result for action."""
         # Suppress unused variable warnings - these match the Protocol signature
@@ -77,9 +80,13 @@ class MockActionRunner:
             model,
             automation_profile,
             disable_background_tasks,
+            kwargs,
         )
         self.working_dirs.append(working_dir)
-        self.idle_timeouts.append(idle_timeout)
+        # ENH-3096: the executor now folds idle_timeout into automation= when
+        # any automation knob resolves non-default; fall back to the legacy
+        # idle_timeout kwarg for direct callers that don't pass automation=.
+        self.idle_timeouts.append(int(automation.idle_timeout or 0) if automation else idle_timeout)
         self.timeouts.append(timeout)
         self.calls.append(action)
 

@@ -19,7 +19,7 @@ from typing import Protocol
 
 from little_loops.fsm.host_guard import RssSampler
 from little_loops.fsm.types import ActionResult
-from little_loops.host_runner import project_child_env
+from little_loops.host_runner import AutomationContext, project_child_env, resolve_automation
 from little_loops.subprocess_utils import (
     DetailedUsageCallback,
     TokenUsage,
@@ -49,6 +49,7 @@ class ActionRunner(Protocol):
         on_usage_detailed: DetailedUsageCallback | None = None,
         model: str | None = None,
         working_dir: Path | None = None,
+        automation: AutomationContext | None = None,
         automation_profile: str | None = None,
         disable_background_tasks: bool = False,
         idle_timeout: int = 0,
@@ -67,15 +68,21 @@ class ActionRunner(Protocol):
             on_usage_detailed: Optional callback invoked with a TokenUsage dataclass on completion
             working_dir: Optional cwd for the spawned subprocess (ENH-2609). None
                 inherits the parent process's cwd (existing behavior).
+            automation: ENH-3096 collapsed automation signal (profile,
+                disable_background_tasks, idle_timeout). None preserves the
+                legacy per-kwarg behavior below. Explicit automation= wins
+                over the legacy kwargs when both are supplied, emitting a
+                DeprecationWarning.
             automation_profile: ENH-2714 opt-in automation-context static-prefix
                 pruning profile name (prompt-mode only). None preserves full
-                unpruned behavior.
+                unpruned behavior. Deprecated — prefer automation=.
             disable_background_tasks: FEAT-3078 opt-in to hard-disable
                 tool-level background tasks in the spawned child (prompt-mode
                 only). Forwarded to run_claude_command() when
-                automation_profile is also set.
+                automation_profile is also set. Deprecated — prefer automation=.
             idle_timeout: FEAT-3033 — kill the action if it emits no output for
                 this many seconds (0 disables idle detection, the default).
+                Deprecated — prefer automation=.
             timeout_kill_grace_seconds: ENH-3130 — grace period (seconds)
                 given to the process group after a timeout fires before
                 escalating SIGTERM to SIGKILL. 0 (default) preserves the
@@ -118,6 +125,7 @@ class DefaultActionRunner:
         on_usage_detailed: DetailedUsageCallback | None = None,
         model: str | None = None,
         working_dir: Path | None = None,
+        automation: AutomationContext | None = None,
         automation_profile: str | None = None,
         disable_background_tasks: bool = False,
         idle_timeout: int = 0,
@@ -137,15 +145,21 @@ class DefaultActionRunner:
             model: Optional model override to pass as --model to Claude CLI (prompt-mode only)
             working_dir: Optional cwd for the spawned subprocess (ENH-2609). None
                 inherits the parent process's cwd.
+            automation: ENH-3096 collapsed automation signal (profile,
+                disable_background_tasks, idle_timeout). None preserves the
+                legacy per-kwarg behavior below. Explicit automation= wins
+                over the legacy kwargs when both are supplied, emitting a
+                DeprecationWarning.
             automation_profile: ENH-2714 opt-in automation-context static-prefix
                 pruning profile name (prompt-mode only). None preserves full
-                unpruned behavior.
+                unpruned behavior. Deprecated — prefer automation=.
             disable_background_tasks: FEAT-3078 opt-in to hard-disable
                 tool-level background tasks in the spawned child (prompt-mode
                 only). Forwarded to run_claude_command() when
-                automation_profile is also set.
+                automation_profile is also set. Deprecated — prefer automation=.
             idle_timeout: FEAT-3033 — kill the action if it emits no output for
                 this many seconds (0 disables idle detection, the default).
+                Deprecated — prefer automation=.
             timeout_kill_grace_seconds: ENH-3130 — grace period (seconds)
                 given to the process group after a timeout fires before
                 escalating SIGTERM to SIGKILL. 0 (default) preserves the
@@ -155,6 +169,26 @@ class DefaultActionRunner:
             ActionResult with execution details
         """
         start = _now_ms()
+
+        # ENH-3096: resolve the automation/legacy-kwarg quartet into one
+        # context. 0 is idle_timeout's "disabled" default, treated as "not
+        # supplied" for legacy-use detection (see resolve_automation's
+        # docstring and ENH-3096 Program Design § The Shim's type mapping).
+        automation = resolve_automation(
+            automation,
+            automation_profile,
+            disable_background_tasks,
+            float(idle_timeout) if idle_timeout else None,
+            caller="ActionRunner.run()",
+        )
+        # run_claude_command() has no automation= parameter until ENH-3097,
+        # so decompose the resolved context back into legacy kwargs for that
+        # forwarding call and for this method's own shell-branch reads below.
+        resolved_automation_profile = automation.profile if automation else None
+        resolved_disable_background_tasks = (
+            automation.disable_background_tasks if automation else False
+        )
+        resolved_idle_timeout = int(automation.idle_timeout or 0) if automation else 0
 
         if is_slash_command:
             # Execute via Claude CLI using run_claude_command() so that the
@@ -209,9 +243,9 @@ class DefaultActionRunner:
                     on_usage_detailed=_collect_usage,
                     model=model,
                     working_dir=working_dir,
-                    automation_profile=automation_profile,
-                    disable_background_tasks=disable_background_tasks,
-                    idle_timeout=idle_timeout,
+                    automation_profile=resolved_automation_profile,
+                    disable_background_tasks=resolved_disable_background_tasks,
+                    idle_timeout=resolved_idle_timeout,
                     on_result_seen=_on_result_seen,
                     on_session_id_detected=_on_session_id,
                     timeout_kill_grace_seconds=timeout_kill_grace_seconds,
@@ -308,7 +342,10 @@ class DefaultActionRunner:
                 ready = sel.select(timeout=poll_timeout)
                 if not ready:
                     # No pipes ready within poll window — loop re-checks deadline/idle
-                    if idle_timeout and (time.time() - last_output_at) > idle_timeout:
+                    if (
+                        resolved_idle_timeout
+                        and (time.time() - last_output_at) > resolved_idle_timeout
+                    ):
                         idled_out = True
                         break
                     continue
@@ -334,7 +371,7 @@ class DefaultActionRunner:
                     else:
                         # EOF on this pipe — unregister it
                         sel.unregister(key.fileobj)
-                if idle_timeout and (time.time() - last_output_at) > idle_timeout:
+                if resolved_idle_timeout and (time.time() - last_output_at) > resolved_idle_timeout:
                     idled_out = True
                     break
         finally:
@@ -403,6 +440,7 @@ class SimulationActionRunner:
         on_usage_detailed: DetailedUsageCallback | None = None,
         model: str | None = None,
         working_dir: Path | None = None,
+        automation: AutomationContext | None = None,
         automation_profile: str | None = None,
         disable_background_tasks: bool = False,
         idle_timeout: int = 0,
@@ -421,8 +459,10 @@ class SimulationActionRunner:
             on_usage_detailed: Ignored in simulation
             model: Ignored in simulation
             working_dir: Ignored in simulation
+            automation: Ignored in simulation
             automation_profile: Ignored in simulation
             disable_background_tasks: Ignored in simulation
+            idle_timeout: Ignored in simulation
             timeout_kill_grace_seconds: Ignored in simulation
 
         Returns:
@@ -438,6 +478,7 @@ class SimulationActionRunner:
             model,
             working_dir,
             idle_timeout,
+            automation,
             automation_profile,
             disable_background_tasks,
             timeout_kill_grace_seconds,
