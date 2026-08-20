@@ -458,6 +458,107 @@ class TestRealRepoResolution:
         assert git_grep_resolver("ProposedThing", tmp_path) is False
 
 
+_LOOP_YAML = """\
+name: sample-loop
+context:
+  timeout: 60
+  final_verify: not-a-state-definition
+states:
+  final_verify:
+    action_type: shell
+    action: echo hi
+    timeout: 30
+    on_yes: run_final_tests
+  run_final_tests:
+    action_type: shell
+    action: echo bye
+"""
+
+_FRAGMENT_YAML = """\
+fragments:
+  retry_counter:
+    action_type: shell
+    action: echo 1
+"""
+
+
+class TestLoopYamlStateResolution:
+    """FSM state names defined in loop YAML resolve like a Python `def` (BUG-3273).
+
+    `_resolve_short_symbol` only ever accepted `def`/`async def`/`class` openers, so a
+    Call Path naming the states a loop change actually touches could never resolve — the
+    natural, correct anchors for loop work. The rule is deliberately narrow: a *direct
+    child key of a top-level `states:`/`fragments:` block*, not any indented YAML key.
+    """
+
+    def test_state_under_states_block_resolves(self, tmp_path: Path) -> None:
+        from little_loops.issues.program_design import git_grep_resolver
+
+        _init_repo(tmp_path)
+        (tmp_path / "loops").mkdir()
+        (tmp_path / "loops" / "sample.yaml").write_text(_LOOP_YAML, encoding="utf-8")
+        _commit_all(tmp_path)
+
+        assert git_grep_resolver("final_verify", tmp_path) is True
+        assert git_grep_resolver("run_final_tests", tmp_path) is True
+
+    def test_fragment_key_resolves(self, tmp_path: Path) -> None:
+        """`loops/lib/*.yaml` fragments are reusable state definitions, not loops."""
+        from little_loops.issues.program_design import git_grep_resolver
+
+        _init_repo(tmp_path)
+        (tmp_path / "lib.yaml").write_text(_FRAGMENT_YAML, encoding="utf-8")
+        _commit_all(tmp_path)
+
+        assert git_grep_resolver("retry_counter", tmp_path) is True
+
+    def test_generic_key_outside_states_block_does_not_resolve(self, tmp_path: Path) -> None:
+        """`  timeout:` sits at 2-space indent under `context:` — a key, not a definition.
+
+        Without the parent-block requirement, generic words present in every loop YAML
+        (`timeout`, `action`, `description`) would resolve everywhere and gut the gate.
+        """
+        from little_loops.issues.program_design import git_grep_resolver
+
+        _init_repo(tmp_path)
+        (tmp_path / "sample.yaml").write_text(_LOOP_YAML, encoding="utf-8")
+        _commit_all(tmp_path)
+
+        assert git_grep_resolver("timeout", tmp_path) is False
+        assert git_grep_resolver("context", tmp_path) is False
+
+    def test_transition_reference_alone_does_not_resolve(self, tmp_path: Path) -> None:
+        """`on_yes: missing_state` is a reference; a dangling edge must not define a state."""
+        from little_loops.issues.program_design import git_grep_resolver
+
+        _init_repo(tmp_path)
+        (tmp_path / "sample.yaml").write_text(
+            "states:\n  only_state:\n    on_yes: missing_state\n", encoding="utf-8"
+        )
+        _commit_all(tmp_path)
+
+        assert git_grep_resolver("only_state", tmp_path) is True
+        assert git_grep_resolver("missing_state", tmp_path) is False
+
+    def test_state_named_only_in_markdown_does_not_resolve(self, tmp_path: Path) -> None:
+        """The anti-self-resolution property holds for the YAML branch too.
+
+        An issue proposing a new state writes the same `  new_state:` shape inside a
+        fenced block in its own markdown. `*.md` is excluded at the `git grep` layer,
+        upstream of both filters, so the new branch cannot see it.
+        """
+        from little_loops.issues.program_design import git_grep_resolver
+
+        _init_repo(tmp_path)
+        (tmp_path / "issue.md").write_text(
+            "## Program Design\n\n```yaml\nstates:\n  proposed_state:\n    action: x\n```\n",
+            encoding="utf-8",
+        )
+        _commit_all(tmp_path)
+
+        assert git_grep_resolver("proposed_state", tmp_path) is False
+
+
 class TestFindProjectRoot:
     """`find_project_root` prefers a `.git` ancestor over the nearest `.ll` (ENH-2924)."""
 

@@ -291,6 +291,14 @@ def git_grep_resolver(symbol: str, root: Path | None = None) -> bool:
     a word-boundary ``git grep`` filtered to lines that actually open a definition.
     Returns False (never raises) when git is unavailable or *root* is not a repo.
 
+    Two definition shapes are accepted. A Python opener (``def``/``async def``/``class``),
+    and — since BUG-3273 — an FSM state or fragment name, meaning a direct child key of a
+    top-level ``states:``/``fragments:`` block in a YAML file. Loop-authoring issues name
+    states in their Call Path because that is what the change touches; there is often no
+    Python symbol to name at all, and the Python-only filter graded every such issue
+    nonspecific. See :func:`_yaml_defines` for why the YAML rule is parent-scoped rather
+    than any indented key.
+
     Markdown is excluded from the search (``:!*.md``). A ``## Program Design``
     signature line strips to exactly the ``def foo(`` / ``class Foo`` shape the
     opener filter below accepts, so an unscoped grep let an issue resolve the
@@ -328,10 +336,48 @@ def _resolve_short_symbol(short: str, cwd: Path) -> bool:
     if proc.returncode != 0:
         return False
     openers = (f"def {short}(", f"async def {short}(", f"class {short}")
+    yaml_hits: list[str] = []
     for line in proc.stdout.splitlines():
-        _, _, text = line.partition(":")
+        path, _, text = line.partition(":")
         _, _, text = text.partition(":")
         if text.strip().startswith(openers):
+            return True
+        if path.endswith((".yaml", ".yml")):
+            yaml_hits.append(path)
+
+    # An FSM state name is a definition too, and for loop-authoring work it is the only
+    # anchor there is (BUG-3273). Checked only after the Python openers miss, so no symbol
+    # that resolves today can stop resolving.
+    return any(_yaml_defines(cwd / path, short) for path in dict.fromkeys(yaml_hits))
+
+
+_YAML_DEF_PARENTS = ("states:", "fragments:")
+
+
+def _yaml_defines(path: Path, short: str) -> bool:
+    """True when *short* is a direct child key of a top-level ``states:``/``fragments:`` block.
+
+    Deliberately narrower than "an indented YAML key". Generic words (``timeout``,
+    ``action``, ``description``) sit at two-space indent throughout every loop YAML, under
+    ``context:`` or inside a state body — accepting those would resolve half the English
+    language against the loop corpus and gut the gate. The parent-block requirement is what
+    keeps the rule to actual definitions, and it also excludes transition *references*
+    (``on_yes: final_verify``), so a dangling edge never defines the state it points at.
+    """
+    try:
+        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return False
+
+    inside = False
+    for line in lines:
+        if line[:1] not in (" ", "\t") and line.strip():
+            inside = line.strip() in _YAML_DEF_PARENTS
+            continue
+        if not inside or not line.startswith("  ") or line.startswith("   "):
+            continue
+        key, sep, _ = line.strip().partition(":")
+        if sep and key.strip() == short:
             return True
     return False
 

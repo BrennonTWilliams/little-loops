@@ -19,7 +19,7 @@ labels:
 - loops
 - config
 confidence_score: 100
-outcome_confidence: 63
+outcome_confidence: 66
 score_complexity: 10
 score_test_coverage: 25
 score_ambiguity: 18
@@ -84,6 +84,8 @@ Precedent: **ENH-1769** already absorbed a second input format (W3C DTCG `$value
    **`components` is excluded from the token dict in this cut.** An earlier draft said it is "expected verbatim in prompt context" while Open Questions simultaneously asked whether it maps usefully at all — those contradicted, and the answer is neither. `components:` is structural guidance, not tokens: routing it through the flatten path would flood the generator prompt with `components.button.radius`-style leaves *and* emit them as `--components-button-radius` custom properties from `render_as_css_vars()`. It belongs to the prose channel ENH-3267 already owns. Drop the key before mapping; the residual bucket (below) is therefore *not* a `components` dumping ground.
 
    **Do not pass `coerce_types=True`.** `parse_frontmatter` loads with `yaml.BaseLoader`, so every scalar arrives as a `str` regardless; `coerce_types` would only turn a bare `4` into an `int` while `"4px"` stays a string, introducing a type split for no gain. Resolved token values are stringified downstream (`_resolve_value` returns `str`) anyway.
+
+   **Unitless numerics are a real authoring hazard, and neither setting fixes them.** A hand-authored `rounded: {sm: 4}` or `spacing: {md: 8}` arrives as `"4"` / `"8"` and is emitted verbatim as `--radius-sm: 4;` — *invalid CSS*, silently. Profile JSON never hits this because its authors write `"4px"`. This is a plausible shape for a hand-written DESIGN.md, which is the whole target user. **Do not add unit inference** (guessing `px` is wrong for unitless-by-design tokens like `line-height` and `font-weight`); document in Step 8 that DESIGN.md numeric values must carry their units, and treat it as an authoring contract rather than a code path.
 2. **`load_design_tokens()` gains a source branch**, still returning the same `DesignTokens` dataclass, so every downstream consumer (`run.py`, `artifact.py`, `hooks/session_start.py:303`) is untouched. **The branch must sit above the `if not base_path.exists(): return None` guard at `design_tokens.py:180`** — see "Branch placement" below.
 3. **Config knob `design_tokens.source: auto | profile | design_md`** (schema: `scripts/little_loops/config-schema.json`). `auto` is defined in **filesystem** terms, not config terms — see "The `auto` rule" below.
 4. **Theme degradation.** DESIGN.md source ⇒ single theme; `active_theme` is ignored with a stderr warning, matching the existing degradation style at `design_tokens.py:149`. Projects needing light/dark keep profiles. Do not invent a non-spec `themes:` key.
@@ -251,6 +253,22 @@ Note this probe is *only* for the `auto` decision — it does not change `source
 
 So the `auto` materialization probe must not call `_resolve_token_root()` in its warning-emitting form. Either add a keyword-only `quiet: bool = False` parameter that gates the `sys.stderr.write` (default `False` preserves every existing caller byte-for-byte), or factor the resolution out into a silent `_probe_token_root()` that `_resolve_token_root()` wraps with the warning. Either is fine; the constraint is that **the `auto` probe emits nothing** when it is about to fall through to DESIGN.md. Covered by AC 2c.
 
+### Why this repo has no materialized profile — and why that makes it a live fixture
+
+Investigated 2026-08-20 while reviewing this issue. **little-loops itself currently resolves to no design tokens at all**, which is directly relevant because the repo is the most convenient real-world fixture for AC 2b and will become a DESIGN.md-sourced project the moment ENH-3267/3268 land one at the root.
+
+Confirmed at runtime: `BRConfig.design_tokens` reports `enabled=True, active='warm-paper'`, yet `load_design_tokens(config)` returns **`None`** — `.ll/design-tokens/` does not exist and never has (`git log --all -- .ll/design-tokens` is empty; it is not gitignored, `!/.ll/` un-ignores the tree). So every `ll-loop run` in this repo injects an **empty** `design_tokens_context`, and all 15 design-consuming built-in loops run here unstyled, silently.
+
+Root cause — the same raw-dict-vs-dataclass-default trap as AC 9b:
+
+1. Commit `a5d15112` (ENH-1836, 2026-05-31) hand-wrote the config block that `/ll:configure` had selected but never persisted: `{"active": "warm-paper", "active_theme": "dark"}` — **no `enabled` key**.
+2. All three scaffolding call sites gate on the **raw dict**: `config.get("design_tokens", {}).get("enabled")` (`init/cli.py:637`, `init/cli.py:845`, `init/tui.py:871`). The `DesignTokensConfig.enabled = True` default does not apply there, so the gate is falsy and `deploy_design_tokens()` (`init/writers.py:478`) — which mirrors `templates/design-tokens/profiles/` into `.ll/design-tokens/profiles/` — has never run here.
+
+Two consequences for this issue:
+
+- **The `auto` rule's fall-through is exercised by this repo on day one.** Under `auto`, little-loops is an unmaterialized-profile project, so it would resolve to a root `DESIGN.md` the moment one exists — while `active: warm-paper` remains in config, silently inert. This is precisely the AC 2c sub-case that must emit the *accurate* replacement warning rather than nothing.
+- **Remediating the repo is a separate change, not part of this issue.** Because `!/.ll/` un-ignores the tree, running the deploy would add ~3 profiles × 5 JSON files as *tracked* files duplicating `templates/design-tokens/profiles/`. Whether little-loops wants that mirror checked in, versus setting `design_tokens.enabled: false` to make the current no-token state explicit, is its own decision — file it separately rather than folding it in here.
+
 ### Branch placement — above the `base_path.exists()` guard
 
 `load_design_tokens()` returns `None` at `design_tokens.py:180` on `if not base_path.exists()`, **before `_resolve_token_root()` is ever called** (`:184`). A DESIGN.md-only project — precisely the target user in Expected Behavior #1 — has no `.ll/design-tokens/` directory at all, so putting the source branch inside or alongside `_resolve_token_root()` means the feature never fires and the primary use case silently returns `None`.
@@ -294,13 +312,18 @@ _Wiring pass added by `/ll:wire-issue`:_
   **BUG-3266 has since landed**, so the duplication this bullet originally described is gone: the two `cmd_run`/`cmd_resume` copies were merged into this one helper, which now carries the `use_design_tokens` gate (the ENH-3099 defect on `ll-loop resume`) for both entry points. Earlier drafts of this issue cited `cli/loop/run.py:249` and `cli/loop/lifecycle.py:707-717` throughout; those line references are stale — read every one of them as `inject_design_context()`. ENH-3267 extends this same helper for `design_guidance_context`.
 
 ### Dependent Files (Callers/Importers)
-All consume `load_design_tokens()` / the renderers and must keep working unchanged:
+
+**There are exactly two production callers of `load_design_tokens()` / the renderers.** Verified by grep across `scripts/little_loops/`; an earlier draft listed six under the header "All consume `load_design_tokens()` / the renderers", which is false — `doctor.py`, `verify_design_tokens.py`, `init/*.py`, and `lifecycle.py` never call them. They touch the config dataclass and the filesystem directly. The distinction matters for sequencing: only the two real callers can break from a change to the loader's return contract.
+
+_True callers — must keep working unchanged:_
 - `scripts/little_loops/cli/artifact.py:66-74` — `render_as_css_vars_themed(light, dark)`; the theme-degradation path must not crash here when the source is DESIGN.md
 - `scripts/little_loops/cli/loop/_helpers.py:1421-1422` (`inject_design_context()`) — `load_design_tokens` + `render_as_prompt_context`; reached from `run.py:244` and `lifecycle.py:717`
-- `scripts/little_loops/hooks/session_start.py:303-325` — validates `design_tokens.path` / `active` at session start; needs a DESIGN.md-source branch or it will warn spuriously
-- `scripts/little_loops/init/{core,writers,summary,tui,cli}.py` — profile picker; add the DESIGN.md option
-- `scripts/little_loops/cli/doctor.py` — token health check
-- `scripts/little_loops/cli/loop/lifecycle.py`
+
+_Config/filesystem consumers — independent of the loader, but need their own DESIGN.md branch or confirmation:_
+- `scripts/little_loops/hooks/session_start.py:303-325` — validates the raw `design_tokens` config dict at session start; needs a DESIGN.md-source branch or it will warn spuriously (AC 9b)
+- `scripts/little_loops/init/{core,writers,summary,tui,cli}.py` — profile picker; add the DESIGN.md source option (Step 5a)
+- `scripts/little_loops/cli/doctor.py`, `scripts/little_loops/cli/verify_design_tokens.py` — token health check / lint; both walk `profiles/` on disk (AC 9)
+- `scripts/little_loops/cli/loop/lifecycle.py:891-896` — config-echo dict only
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/little_loops/hooks/session_start.py:303-325` — re-implements the degradation check against the raw config dict independently of `_resolve_token_root()`/`load_design_tokens()` (its own warning strings at `:311-314` and `:321-324`, not shared code); a DESIGN.md-source degradation warning needs a matching branch added here to stay stylistically consistent, since this runs before `load_design_tokens()` is ever called.
@@ -419,6 +442,8 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - Populating `DesignTokens.guidance` from the parsed prose body (consumed by ENH-3267).
 - **Vendoring the spec's example DESIGN.md as a test fixture.** Acceptance Criterion 4 tests against it and the suite has no network access, so the file must be checked in (under `scripts/tests/fixtures/`, or inline in the test module following whatever `test_design_tokens.py` already does for JSON fixtures). Record the spec revision it was copied from — the spec is `alpha` and will churn.
 
+  **Attribution, not just a revision stamp.** DESIGN.md is Apache-2.0 licensed third-party material. The vendored copy carries an attribution header (upstream repo URL, Apache-2.0, the commit/revision it was taken from) alongside the revision note; a bare revision comment is not sufficient for a redistributed Apache-2.0 file. Check whether the repo already has a convention for vendored third-party fixtures and follow it if so.
+
 **Out of scope**
 
 - Replacing or deprecating the profile format. Profiles stay the canonical internal model; nothing about the existing five-file layout changes.
@@ -457,7 +482,14 @@ Each is individually testable.
 1. A project whose only design artifact is a root `DESIGN.md` (no `.ll/design-tokens/` directory at all) gets a non-`None` `DesignTokens` from `load_design_tokens()`, and `ll-loop run` injects a non-empty `design_tokens_context`. *(Guards the `base_path.exists()` short-circuit at `design_tokens.py:180`.)*
 2. A project with **both** a materialized profile and a root `DESIGN.md`, under `source: auto`, resolves to the profile — including when `active` is left at its `"default"` value.
 2b. A project with an **empty (or token-file-less) `.ll/design-tokens/` directory** and a root `DESIGN.md`, under `source: auto`, resolves to **DESIGN.md** — not to a hollow profile yielding an empty `design_tokens_context`. *(Guards the weak `_resolve_token_root() is not None` materialization test; see "'Materialized' must mean token files exist".)* Same project under `source: profile` keeps today's behavior exactly.
-2c. That same fall-through is **silent**: a project with a `profiles/` directory that does not contain `active`, plus a root `DESIGN.md`, under `source: auto` resolves to DESIGN.md and writes **nothing** to stderr — in particular not `_resolve_token_root()`'s "*degrading to no tokens*" line (`design_tokens.py:149-152`), which would be factually false. *(Guards the warning-as-side-effect described in "The probe must be silent".)* Under `source: profile` the same project still emits that warning and returns `None`, unchanged.
+2c. **The fall-through replaces the false warning with an accurate one — it is not unconditionally silent.** Two sub-cases, and they differ:
+
+  - **Nothing was misconfigured → silent.** No `.ll/design-tokens/` at all, or a token-file-less directory with no `profiles/` subdir, plus a root `DESIGN.md`, under `source: auto`: resolves to DESIGN.md and writes **nothing** to stderr.
+  - **A profile was explicitly requested and is missing → warn, accurately.** A `profiles/` directory that does not contain `active`, plus a root `DESIGN.md`, under `source: auto`: resolves to DESIGN.md and emits a *replacement* line naming the real outcome, e.g. `design_tokens.active='warm-paper' not found; using root DESIGN.md instead.` It must **not** emit `_resolve_token_root()`'s "*degrading to no tokens*" line (`design_tokens.py:149-152`), which is factually false once DESIGN.md succeeds.
+
+  *(An earlier draft made both sub-cases silent. That is wrong: in the second, the user has a broken profile config and `active` silently becomes a no-op — today they are at least told something is missing. Trading a false warning for no diagnostic reproduces the exact silent-degradation shape this issue exists to eliminate elsewhere. The `quiet=` mechanism in "The probe must be silent" is still the right plumbing; the `auto` branch just emits its own accurate line afterward instead of nothing.)*
+
+  Under `source: profile` both sub-cases keep today's behavior exactly — the "*degrading to no tokens*" warning and `None`.
 2d. **Neither source present still returns `None`.** A project with no token files (no `.ll/design-tokens/` at all, or an empty one) *and* no root `DESIGN.md`, under `source: auto`, returns `None` — today's exact behavior. It must **not** return the token-empty `DesignTokens` this issue introduces, which is reserved for "a DESIGN.md was found and read but yielded no tokens" (AC 5). *(Guards a leak from the widened non-`None` return: the `auto` probe falls through to the design_md branch for every unmaterialized project, and that branch must distinguish no-file from empty-file.)*
 3. `source: profile` ignores a root `DESIGN.md` entirely; `source: design_md` with no root `DESIGN.md` returns `None` and writes a stderr warning. A lowercase `design.md` is **not** discovered under any source setting — and this assertion must hold **on macOS**, where `Path.exists()` is case-insensitive and would pass a `design.md` file as `DESIGN.md`. The test creates a real lowercase `design.md` and asserts `load_design_tokens()` returns `None` under `source: design_md`; it fails against a `Path.exists()`-based probe on APFS. *(See "Discovery" for the directory-listing mechanism this requires.)*
 4. The spec's own example DESIGN.md (vendored as a test fixture — see below) parses, and its `{colors.primary}`-style aliases resolve to concrete values. `_resolve_references()` / `_resolve_value()` are **not** modified; the alias rewrite happens inside `_load_design_md()` alongside the key rename. *(Guards the namespace contradiction described in "Alias rewriting".)*
@@ -470,11 +502,15 @@ Each is individually testable.
 7. `render_as_prompt_context()` output for a DESIGN.md source contains the contrast-guardrail paragraph, which requires the design_md branch to populate the **nested** `DesignTokens.semantic` dict — the gate at `design_tokens.py:234-239` reads `tokens.semantic["color"]`, not `tokens.resolved`. *(Fails today's flat-list fallback — this is the test for Implementation Step 6(i).)*
 7b. Non-color tokens survive into the prompt: a DESIGN.md with `typography`, `spacing`, and `rounded` blocks produces a `render_as_prompt_context()` output whose Typography and Layout groups are non-empty (guards the `font.`/`space.`/`radius.` renames), and a token in no known namespace appears in the new residual group rather than being silently dropped by the bucket loop at `:274-290`. A `components:` block contributes **nothing** to `resolved` — it appears in neither the residual group nor `render_as_css_vars()` output.
 7c. A list-valued frontmatter entry (e.g. a font stack) renders as a joined string — no `['Inter', 'sans-serif']` Python repr in either `render_as_prompt_context()` or `render_as_css_vars()` output.
+
+  *Note when writing this test:* the two CSS renderers disagree about metadata keys. `render_as_css_vars_themed()` skips `_`-prefixed names (`design_tokens.py:344`); plain `render_as_css_vars()` does **not** (`:320-328`) and will emit `--_wcag-spot-check: …`. Pre-existing and out of scope to fix here, but it means the two renderers are not interchangeable in assertions, and `render_as_css_vars()` has no production caller — only `render_as_css_vars_themed()` is reached, via `cli/artifact.py:74`.
 7d. A DESIGN.md whose `colors:` block contains groups named `accent`, `success`, `warning`, `danger`, `brand`, or `neutral` gets those colors into `render_as_prompt_context()` output — they are **not** swallowed by the `_PRIMITIVE_COLOR_PREFIXES` suppression at `design_tokens.py:289`, which must be gated on `tokens.primitives` being non-empty. The three built-in profiles' `render_as_prompt_context()` output is **byte-identical** before and after this change (each ships a populated `primitives.json`, so the gate is a no-op for them; all three also pass the `has_semantic_colors` gate, so 7e's flat-fallback change does not disturb the assertion either). *(Pairs with 7b — the residual bucket alone does not close this; see "The primitive-suppression branch is source-blind".)*
 7e. **The contrast guardrail is vocabulary-independent.** A DESIGN.md whose `colors:` block uses names the role mapping does not recognize (e.g. `ink` / `paper` / `rule`) — so `render_as_prompt_context()` takes the flat-fallback branch at `design_tokens.py:241-248` — still contains the contrast-guardrail paragraph. *(Guards option (a)-only, which makes the guardrail contingent on the author's color vocabulary; AC 7 alone misses this because it tests the vendored spec fixture, whose names (a) does recognize. See "Prompt-context quality under a DESIGN.md source".)*
 8. `DesignTokens.guidance` holds the DESIGN.md prose body (frontmatter stripped) for a DESIGN.md source, and `""` for a profile source. It is populated **even on the degraded paths** of AC 5 and 5b — that is the whole reason those return a token-empty object rather than `None`. For a DESIGN.md with no frontmatter block at all, `guidance` is the entire file (`strip_frontmatter` returns unchanged content when no block is present, `frontmatter.py:428-431`). *(ENH-3267 asserts what happens to it downstream; this issue only asserts it is populated.)*
 9. `ll-verify-design-tokens` and `ll-doctor` report the existing informational "profiles directory not found" status for a DESIGN.md-sourced project — not an error, not a false positive.
-9b. `hooks/session_start.py`'s config validation emits **no** warning for a DESIGN.md-only project (no `.ll/design-tokens/` directory, `design_tokens.enabled` at its `True` default). *(Today this unconditionally appends "design_tokens.enabled is true but path '.ll/design-tokens' does not exist" at `session_start.py:309-313` — it would fire on every session start for exactly the user in Expected Behavior #1.)*
+9b. `hooks/session_start.py`'s config validation emits **no** warning for a DESIGN.md-only project (no `.ll/design-tokens/` directory) **whose `.ll/ll-config.json` explicitly contains `"design_tokens": {"enabled": true, ...}`**.
+
+  **The explicit-`true` qualifier is load-bearing — do not write the fixture without it.** `session_start.py:308` gates on `design_tokens.get("enabled") is True` against the **raw config dict**, not `DesignTokensConfig`. The dataclass default `enabled: bool = True` (`config/features.py:341`) never applies on this path, so a config that *omits* the key emits nothing today and a test built on one would pass vacuously, proving nothing. (This repo's own `.ll/ll-config.json` is exactly that shape — see "Why this repo has no materialized profile" below.) The warning is nonetheless real for `ll-init`-created projects, which write the key explicitly: `init/core.py:279` and `init/tui.py:746` both emit `{"enabled": True, "active": ...}`. *(Today that path unconditionally appends "design_tokens.enabled is true but path '.ll/design-tokens' does not exist" at `session_start.py:309-313` — it fires on every session start for exactly the user in Expected Behavior #1.)*
 9c. `design_tokens.source` is reachable from configuration: `/ll:configure design_tokens` offers it as a question and `--show` renders its current value. Covered by the `TestConfigureWiringForProfiles` mirror named in the Tests section. **`ll-init` is satisfied either way** — if the picker offers DESIGN.md it must write only `source: design_md` and create no files (Implementation Step 5a); if the picker option is dropped, this AC is met by the `/ll:configure` surface alone. What is *not* acceptable is a picker entry that scaffolds a DESIGN.md, which Out of scope bars.
 10. All 15 built-in loops still receive `design_tokens_context` unchanged under a DESIGN.md source.
 11. `python -m pytest scripts/tests/` exits 0 — in particular `test_config_schema.py`'s two-guard gate, with `source` landing in the dataclass, `config-schema.json`, and `core.py:888-897`'s echo dict together.
@@ -548,6 +584,21 @@ Four corrections applied after re-verifying every cited line against the working
 4. **The both-absent `auto` case was uncovered** — must still return `None`, not the newly-widened token-empty `DesignTokens`. New AC 2d.
 
 Outcome confidence is unchanged: (1) and (3) remove latent implementation traps rather than reducing enumeration breadth, and (2) is a citation refresh. The `render_as_prompt_context()` change surface grew by one branch (the flat-fallback guardrail), which is offset by BUG-3266 having removed a duplicated call site.
+
+### Fourth review pass — 2026-08-20
+
+Six corrections, each verified against the working tree (the prior passes' claims re-checked and confirmed: the `has_semantic_colors` gate at `:234-239`, the silent-drop bucket loop, the `_PRIMITIVE_COLOR_PREFIXES` suppression, `additionalProperties: false` on the `design_tokens` schema object, and the `_themed_css_vars` two-call shape all hold).
+
+1. **AC 9b's premise was factually wrong and its test would have passed vacuously.** `session_start.py:308` gates on the **raw config dict** (`design_tokens.get("enabled") is True`), so the dataclass `True` default never applies; a config omitting the key warns about nothing today. Qualifier added, with the `ll-init` call sites that *do* write it explicitly.
+2. **AC 2c traded a false warning for no diagnostic at all.** Split into two sub-cases: silent when nothing was misconfigured, and an *accurate replacement* warning when an explicitly-requested profile is missing. Full silence there would have made `active` a silent no-op — the same failure shape this issue exists to eliminate.
+3. **"Dependent Files" overstated the caller surface 3×.** Grep confirms exactly two production callers of the loader/renderers (`cli/artifact.py`, `cli/loop/_helpers.py`); `doctor.py`, `verify_design_tokens.py`, `init/*.py`, `lifecycle.py` never call them. Section restructured into true callers vs. config/filesystem consumers.
+4. **Vendored fixture needs Apache-2.0 attribution**, not only a revision stamp.
+5. **The two CSS renderers disagree about `_`-prefixed metadata keys** (`:344` skips, `:320-328` does not), so they are not interchangeable in AC 7c assertions. Pre-existing; noted, not fixed here.
+6. **Unitless numerics** (`rounded: {sm: 4}` → `--radius-sm: 4;`) are invalid CSS and are not addressed by either `coerce_types` setting. Documented as an authoring contract; unit inference explicitly rejected.
+
+Also added "Why this repo has no materialized profile" — little-loops itself resolves to `None` tokens today (root-caused to the same raw-dict/dataclass-default trap as #1), making it a live fixture for the `auto` fall-through and for AC 2c's warning sub-case.
+
+Outcome confidence: **63 → 66**. (3) is a genuine reduction in the dependent-surface bracket — the "6-10 callers that must keep working unchanged" risk factor was double-counting config consumers as loader callers, and the real number is 2. (1), (2), and (6) remove implementation traps without changing breadth; (4) and (5) are notes.
 
 ### Outcome Risk Factors
 - Broad enumeration across ~6 actively-modified sites (design_tokens.py, config-schema.json, config/features.py, config/core.py, cli/artifact.py, hooks/session_start.py) with cross-module consistency requirements — the two-guard `test_config_schema.py` gate must see `source` land in the dataclass, schema, and `core.py`'s `to_dict()` echo simultaneously or it hard-fails.
