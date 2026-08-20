@@ -30,6 +30,7 @@ from little_loops.host_runner import project_child_env
 from little_loops.logger import Logger
 
 if TYPE_CHECKING:
+    from little_loops.config import BRConfig
     from little_loops.fsm.schema import FSMLoop
 
 
@@ -1391,6 +1392,38 @@ def seed_confidence_thresholds(context: dict[str, Any], config: Any = None) -> N
         context["readiness_threshold"] = gate.readiness_threshold
     if "outcome_threshold" not in context:
         context["outcome_threshold"] = gate.outcome_threshold
+
+
+def inject_design_context(context: dict[str, Any], config: BRConfig | None = None) -> None:
+    """Inject ``design_tokens_context``, honoring the ``use_design_tokens`` opt-out (BUG-3266).
+
+    A loop can set ``context.use_design_tokens=false`` (YAML boolean or
+    ``--context use_design_tokens=false`` string) to skip token injection
+    entirely. Defaults to True for backward compatibility with all existing
+    loops. Shared by ``cmd_run`` and ``cmd_resume`` so the gate cannot diverge
+    between the two entry points again.
+
+    Args:
+        context: The FSM context dict, mutated in place.
+        config: An optional pre-built ``BRConfig``; loaded from the cwd if omitted.
+    """
+    if config is None:
+        from little_loops.config import BRConfig
+
+        config = BRConfig(Path.cwd())
+
+    from little_loops.design_tokens import load_design_tokens, render_as_prompt_context
+
+    _use_tokens = context.get("use_design_tokens", True)
+    if isinstance(_use_tokens, str):
+        _use_tokens = _use_tokens.strip().lower() not in ("", "0", "false", "no", "off")
+    if _use_tokens and not context.get("design_tokens_context"):
+        _tokens = load_design_tokens(config)
+        context["design_tokens_context"] = render_as_prompt_context(_tokens) if _tokens else ""
+    else:
+        # Ensure the key exists ("" when excluded) so `${context.design_tokens_context}`
+        # interpolates without error in prompts that reference it.
+        context.setdefault("design_tokens_context", "")
 
 
 def derive_input_hash(context: dict[str, Any]) -> None:

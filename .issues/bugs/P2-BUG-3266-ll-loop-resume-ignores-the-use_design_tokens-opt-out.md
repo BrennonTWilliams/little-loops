@@ -3,13 +3,14 @@ id: BUG-3266
 type: BUG
 title: ll-loop resume ignores the use_design_tokens opt-out
 priority: P2
-status: open
+status: done
 relates_to:
 - ENH-3264
 - ENH-3267
 discovered_by: ll-issues-create
 discovered_date: '2026-08-20'
 captured_at: '2026-08-20T21:10:34Z'
+completed_at: '2026-08-20T21:56:53Z'
 verify_verdict: VALID
 labels:
 - bug
@@ -61,6 +62,13 @@ So `use_design_tokens: false` is honored on `ll-loop run` and silently ignored o
 ## Expected Behavior
 
 `use_design_tokens: false` suppresses `design_tokens_context` identically on both `ll-loop run` and `ll-loop resume`, including via `--context use_design_tokens=false` (string coercion). The key still exists as `""` in both paths so `${context.design_tokens_context}` interpolates without error.
+
+## Steps to Reproduce
+
+1. Create a loop YAML with `context: {use_design_tokens: false}`.
+2. Run `ll-loop run <loop.yaml>` and let it reach a state that persists context (e.g. an `on_handoff: pause` state), then inspect the persisted state — `design_tokens_context` is `""`, confirming the opt-out was honored.
+3. Run `ll-loop resume <run-id>` to continue the paused loop.
+4. Observe: `fsm.context["design_tokens_context"]` is now populated with real token content (`lifecycle.py:715-717`'s `not fsm.context.get("design_tokens_context")` check treats the persisted `""` as falsy and reloads), even though `use_design_tokens: false` is still present in the restored context.
 
 ## Motivation
 
@@ -183,7 +191,24 @@ _Added by `/ll:refine-issue` — 2026-08-20 — based on codebase analysis:_
 - **Cause**: `cmd_resume`'s only guard is `not fsm.context.get("design_tokens_context")` (`lifecycle.py:715`) — it never reads `fsm.context.get("use_design_tokens", ...)`. On an opted-out original run, `design_tokens_context` was persisted as `""` (falsy), so on resume `not ""` evaluates `True` and `load_design_tokens(config)` / `render_as_prompt_context(...)` fire again, overwriting the empty placeholder with real token content. `cmd_run`'s parallel block (`run.py:242-254`) reads and coerces `use_design_tokens` before that same falsy-check — the gate `cmd_resume` lacks entirely.
 
 
+## Resolution
+
+Extracted the gate + injection into `inject_design_context(context, config=None)` in
+`scripts/little_loops/cli/loop/_helpers.py`, mirroring the `seed_confidence_thresholds`
+precedent (lazy `BRConfig` load, `little_loops.design_tokens` import kept inside the
+function body so existing tests' source-module patches keep intercepting the call).
+`cmd_run` (`run.py:242-254`) and `cmd_resume` (`lifecycle.py:707-717`) now both call the
+shared helper; both inline blocks were deleted. Added `cmd_resume` counterparts
+(`test_resume_default_loads_design_tokens`,
+`test_resume_use_design_tokens_false_skips_loading`,
+`test_resume_use_design_tokens_string_falsy_values_skip_loading`) to the renamed
+`TestDesignTokensOptOut` class in `test_cli_loop_lifecycle.py`, alongside the existing
+`cmd_run` tests. Full suite (`python -m pytest scripts/tests/`) passes: 20032 passed, 46
+skipped. `ruff check` and `mypy` clean on all touched files.
+
 ## Session Log
+- `/ll:manage-issue` - 2026-08-20T21:56:47 - `70741069-5b7e-48c7-8a7e-6c5be33778e0.jsonl`
+- `/ll:ready-issue` - 2026-08-20T21:48:05 - `44cb2c1c-6875-4d21-b339-ce3e105a2ef4.jsonl`
 - `/ll:confidence-check` - 2026-08-20T21:40:55 - `d6d6772b-3466-4177-b443-81b8082d8c60.jsonl`
 - `/ll:confidence-check` - 2026-08-20T21:34:25 - `ff90fea6-905c-4a3b-9ca3-a82cdf5d6ffd.jsonl`
 - `/ll:verify-issues` - 2026-08-20T21:32:15 - `8801f712-ba12-4901-ad8c-405f7261e477.jsonl`

@@ -18,6 +18,7 @@ from little_loops.cli.loop._helpers import (
     _is_earliest_waiter,
     _make_instance_id,
     get_builtin_loops_dir,
+    inject_design_context,
     print_execution_plan,
     register_loop_signal_handlers,
     resolve_loop_path,
@@ -226,7 +227,6 @@ def cmd_run(
         os.environ["LL_CONTEXT_LIMIT"] = str(args.context_limit)
 
     from little_loops.config import BRConfig
-    from little_loops.design_tokens import load_design_tokens, render_as_prompt_context
 
     _config = BRConfig(Path.cwd())
 
@@ -239,19 +239,9 @@ def cmd_run(
     # --context / loop YAML context: values (already applied above) take precedence.
     seed_confidence_thresholds(fsm.context, _config)
 
-    # Per-loop design-token opt-out: a loop can set context.use_design_tokens=false
-    # (YAML boolean or `--context use_design_tokens=false`) to skip token injection
-    # entirely. Defaults to True for backward compatibility with all existing loops.
-    _use_tokens = fsm.context.get("use_design_tokens", True)
-    if isinstance(_use_tokens, str):
-        _use_tokens = _use_tokens.strip().lower() not in ("", "0", "false", "no", "off")
-    if _use_tokens and not fsm.context.get("design_tokens_context"):
-        _tokens = load_design_tokens(_config)
-        fsm.context["design_tokens_context"] = render_as_prompt_context(_tokens) if _tokens else ""
-    else:
-        # Ensure the key exists ("" when excluded) so `${context.design_tokens_context}`
-        # interpolates without error in prompts that reference it.
-        fsm.context.setdefault("design_tokens_context", "")
+    # Per-loop design-token opt-out (BUG-3266): shared with cmd_resume so the gate
+    # cannot diverge between the two entry points again.
+    inject_design_context(fsm.context, _config)
 
     _edge_label_colors = _config.cli.colors.fsm_edge_labels.to_dict()
     _highlight_color = _config.cli.colors.fsm_active_state

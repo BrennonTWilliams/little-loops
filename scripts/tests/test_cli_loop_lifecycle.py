@@ -1393,8 +1393,8 @@ class TestCmdRunHandoffThreshold:
             cmd_run("test-loop", self._make_args(handoff_threshold=101), loops_dir, logger)
 
 
-class TestCmdRunDesignTokensOptOut:
-    """Tests for context.use_design_tokens opt-out in cmd_run (ENH-3099)."""
+class TestDesignTokensOptOut:
+    """Tests for context.use_design_tokens opt-out, cmd_run and cmd_resume (ENH-3099, BUG-3266)."""
 
     def _make_loop(self, tmp_path: Path, context_block: str = "") -> Path:
         loops_dir = tmp_path / ".loops"
@@ -1479,6 +1479,93 @@ class TestCmdRunDesignTokensOptOut:
                 loops_dir,
                 logger,
             )
+
+        assert result == 0
+        mock_load.assert_not_called()
+
+    def test_resume_default_loads_design_tokens(self, tmp_path: Path) -> None:
+        """Without use_design_tokens, tokens are loaded on cmd_resume (BUG-3266)."""
+        logger = MagicMock()
+        args = argparse.Namespace()
+        mock_fsm = MagicMock()
+        mock_fsm.context = {}
+
+        mock_result = MagicMock()
+        mock_result.final_state = "done"
+        mock_result.iterations = 1
+        mock_result.duration_ms = 1000
+        mock_result.terminated_by = "terminal"
+        mock_result.failure_terminal = False
+
+        with (
+            patch("little_loops.cli.loop.lifecycle.load_loop", return_value=mock_fsm),
+            patch("little_loops.fsm.persistence.StatePersistence") as mock_persist_cls,
+            patch("little_loops.fsm.persistence.PersistentExecutor") as mock_exec_cls,
+            patch("little_loops.design_tokens.load_design_tokens", return_value=None) as mock_load,
+        ):
+            mock_persist_cls.return_value.load_state.return_value = None
+            mock_exec_cls.return_value.resume.return_value = mock_result
+            result = cmd_resume("test-loop", args, tmp_path, logger)
+
+        assert result == 0
+        mock_load.assert_called_once()
+
+    def test_resume_use_design_tokens_false_skips_loading(self, tmp_path: Path) -> None:
+        """context.use_design_tokens: false (restored from persisted state) is honored
+        on cmd_resume (BUG-3266) — regression guard for the ungated resume path."""
+        logger = MagicMock()
+        args = argparse.Namespace()
+        mock_fsm = MagicMock()
+        mock_fsm.context = {"use_design_tokens": False}
+
+        mock_result = MagicMock()
+        mock_result.final_state = "done"
+        mock_result.iterations = 1
+        mock_result.duration_ms = 1000
+        mock_result.terminated_by = "terminal"
+        mock_result.failure_terminal = False
+
+        with (
+            patch("little_loops.cli.loop.lifecycle.load_loop", return_value=mock_fsm),
+            patch("little_loops.fsm.persistence.StatePersistence") as mock_persist_cls,
+            patch("little_loops.fsm.persistence.PersistentExecutor") as mock_exec_cls,
+            patch("little_loops.design_tokens.load_design_tokens", return_value=None) as mock_load,
+        ):
+            mock_persist_cls.return_value.load_state.return_value = None
+            mock_exec_cls.return_value.resume.return_value = mock_result
+            result = cmd_resume("test-loop", args, tmp_path, logger)
+
+        assert result == 0
+        mock_load.assert_not_called()
+        assert mock_fsm.context["design_tokens_context"] == ""
+
+    @pytest.mark.parametrize("falsy", ["false", "False", "no", "off", "0", ""])
+    def test_resume_use_design_tokens_string_falsy_values_skip_loading(
+        self, tmp_path: Path, falsy: str
+    ) -> None:
+        """String falsy values restored from persisted state (or re-passed via
+        --context) are case-insensitively honored on cmd_resume (BUG-3266)."""
+        logger = MagicMock()
+        args = argparse.Namespace()
+        mock_fsm = MagicMock()
+        mock_fsm.context = {"use_design_tokens": falsy}
+
+        mock_result = MagicMock()
+        mock_result.final_state = "done"
+        mock_result.iterations = 1
+        mock_result.duration_ms = 1000
+        mock_result.terminated_by = "terminal"
+        mock_result.failure_terminal = False
+
+        with (
+            patch("little_loops.cli.loop.lifecycle.load_loop", return_value=mock_fsm),
+            patch("little_loops.fsm.persistence.StatePersistence") as mock_persist_cls,
+            patch("little_loops.fsm.persistence.PersistentExecutor") as mock_exec_cls,
+            patch("little_loops.design_tokens.load_design_tokens", return_value=None) as mock_load,
+        ):
+            mock_persist_cls.return_value.load_state.return_value = None
+            mock_exec_cls.return_value.resume.return_value = mock_result
+            result = cmd_resume("test-loop", args, tmp_path, logger)
 
         assert result == 0
         mock_load.assert_not_called()

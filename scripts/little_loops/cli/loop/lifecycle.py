@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from little_loops.cli.loop._helpers import (
+    inject_design_context,
     load_loop,
     register_loop_signal_handlers,
     resolve_loop_path,
@@ -705,16 +706,15 @@ def cmd_resume(
             print()
 
     from little_loops.config import BRConfig
-    from little_loops.design_tokens import load_design_tokens, render_as_prompt_context
     from little_loops.extension import wire_extensions
     from little_loops.fsm.rate_limit_circuit import RateLimitCircuit
     from little_loops.transport import wire_transports
 
     config = BRConfig(Path.cwd())
 
-    if not fsm.context.get("design_tokens_context"):
-        _tokens = load_design_tokens(config)
-        fsm.context["design_tokens_context"] = render_as_prompt_context(_tokens) if _tokens else ""
+    # Per-loop design-token opt-out (BUG-3266): shared with cmd_run so the gate
+    # cannot diverge between the two entry points again.
+    inject_design_context(fsm.context, config)
 
     circuit = (
         RateLimitCircuit(Path(config.commands.rate_limits.circuit_breaker_path))
