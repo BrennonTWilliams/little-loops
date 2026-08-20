@@ -15,6 +15,12 @@ labels:
 - host-adapters
 - drift
 - codex
+confidence_score: 100
+outcome_confidence: 85
+score_complexity: 19
+score_test_coverage: 22
+score_ambiguity: 22
+score_change_surface: 22
 ---
 
 # ENH-3265: Codex bridge emitters are presence-only and lossy, hiding 11 drifted files
@@ -196,6 +202,18 @@ see ENH-3062's resolved decisions).
   `skills/ll-refine-issue/`, `skills/ll-verify-issues/` — the 11 drifted files.
   Handling differs per class; **do not bulk-regenerate**.
 
+_Wiring pass added by `/ll:wire-issue`:_
+- Full enumeration of "any other command whose description exceeds 80 chars"
+  (measured 2026-08-20; single-line `description:` field): `commands/scan-codebase.md`
+  (83 chars), `commands/refine-issue.md` (97), `commands/analyze-workflows.md` (90),
+  `commands/verify-issues.md` (98), `commands/normalize-issues.md` (100),
+  `commands/ready-issue.md` (142). Block-scalar (`description: |`, multi-paragraph)
+  descriptions, also over 80 chars in total: `commands/tradeoff-review-issues.md`,
+  `commands/open-pr.md`, `commands/manage-release.md`, `commands/review-sprint.md`,
+  `commands/sync-issues.md`. 11 commands total beyond the two named examples — all
+  need the `metadata.short-description` frontmatter field for AC1 to be
+  comprehensive, not just the two cited in Class C. [Agent 1 finding]
+
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/cli/adapt_skills_for_codex.py:20,23,26` imports from
   `adapters/codex.py` and imports `_insert_skill_fields` directly.
@@ -206,6 +224,22 @@ see ENH-3062's resolved decisions).
   `adapters/core.py`'s `process_skills()` (`:414`) / `process_commands()`
   (`:471`); `process_commands` passes the plugin `skills/` dir as `output_dir`
   for every host, and only `CodexEmitter.emit_command` consumes it.
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/adapters/core.py:54` — dispatch-table entry
+  `"codex": ("little_loops.adapters.codex", "CodexEmitter")`; the module-level
+  registration point that resolves `CodexEmitter`, in addition to the
+  `process_skills`/`process_commands` call sites already cited above.
+  Awareness only — not modified by this issue. [Agent 1 finding]
+- `scripts/little_loops/adapters/capabilities.py:75` — defines
+  `HOST_CAPABILITIES["codex"].frontmatter_fields_read`, which `codex.py:74`
+  reads. Out of scope per this issue's own Codebase Research Findings below;
+  confirm no incidental widening. [Agent 1/2 finding]
+- `scripts/little_loops/cli/verify_host_map.py` and
+  `scripts/little_loops/text_utils.py:212-214` — cross-validate / consume the
+  shared `HOST_CAPABILITIES` structure. Neither calls `codex.py` directly;
+  awareness only, unaffected since this issue does not touch
+  `HOST_CAPABILITIES` itself. [Agent 1 finding]
 
 ### Similar Patterns
 - `emit_agent` (`codex.py:405-414`) and `emit_mcp_config` (`:457`) already do
@@ -231,9 +265,50 @@ see ENH-3062's resolved decisions).
   `scripts/tests/test_adapt_golden_corpus.py` — golden-corpus expectations will
   move when the generators change.
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_adapt_skills_for_codex.py::TestSynthesizedSkillMd` — six
+  methods call `_synthesized_skill_md(stem, description)` with exactly two
+  positional args: `test_contains_namespaced_name` (`:477`),
+  `test_contains_description_verbatim` (`:482`),
+  `test_contains_metadata_short_description` (`:486`),
+  `test_short_description_truncated_to_80` (`:491`),
+  `test_body_references_source_command` (`:502`),
+  `test_contains_disable_model_invocation` (`:507`). Once the Program Design's
+  signature widening to `_synthesized_skill_md(stem, description, fm, existing=None)`
+  lands, all six raise `TypeError: missing required positional argument` unless
+  `fm` gets a default — **will break**, needs an `fm=` argument added at each
+  call site regardless. [Agent 2/3 finding]
+- `scripts/tests/test_adapt_skills_for_codex.py::TestExtractShortDesc.test_truncates_to_80_chars`
+  — pins the current hard-cutoff-at-80 behavior with `"A" * 100` (no word
+  boundary to violate). Passes unmodified only if the new word-boundary+ellipsis
+  logic falls back to hard truncation when no boundary is found; otherwise
+  needs updating to expect an ellipsis or shorter cutoff. [Agent 3 finding]
+- `scripts/tests/test_adapt_skills_for_codex.py::TestRealSkillsIntegrationGuard`
+  (`:379-467`) / `TestRealCommandsIntegrationGuard` (`:677-761`) — walk the real
+  `skills/*/SKILL.md` and `commands/*.md` trees on disk and assert structural
+  invariants, including `test_all_real_skills_have_metadata_short_description`
+  (`:437-439`) and `test_every_bridged_skill_has_required_frontmatter` (`:747`)
+  requiring `len(short_desc) <= 80`. AC1's truncation output must stay within
+  this bound for these to remain green. [Agent 3 finding]
+- `scripts/tests/test_adapters.py::TestCodexEmitterEmitAgent.test_up_to_date_returns_skipped`
+  / `test_idempotent` (`:594-604`) — the literal pattern to copy for the new
+  `emit_command`/`emit_skill` drift tests required by AC5/AC6. [Agent 3 finding]
+- No existing fixture seeds a bridged `SKILL.md` with `allowed-tools:`/`args:`/
+  `argument-hint:` plus an `openai.yaml` companion the way the 6 Class-B files
+  actually look (`test_adapters.py:1857` and `:2027-2044` cover unrelated
+  hosts/paths). AC2's preservation test needs a new fixture helper, e.g. a
+  `_make_bridged_skill_md(tmp_path, stem, extra_fields=...)` sibling to
+  `TestCodexEmitterEmitCommand`'s existing `_make_command`. [Agent 3 finding]
+
 ### Documentation
 - `docs/reference/CLI.md` § ll-adapt
 - `docs/reference/HOST_COMPATIBILITY.md`
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-20 — based on codebase analysis:_
+
+- `scripts/little_loops/adapters/capabilities.py:75` — `HOST_CAPABILITIES["codex"].frontmatter_fields_read` = `("description", "name", "metadata.short-description", "tools")`. This data-driven policy governs `emit_skill`'s `_insert_skill_fields`/`_select_frontmatter_fields` path only, not `_synthesized_skill_md`/`emit_command`. Adding `allowed-tools`/`argument-hint` pass-through to `_synthesized_skill_md` is a separate code path and does not require widening this policy — but the scope boundary is worth confirming explicitly rather than assuming, since the two mechanisms read overlapping frontmatter keys through different code.
 
 ## Program Design
 
@@ -253,6 +328,15 @@ The skill path is `main_adapt()` → `process_skills(emitter, skills_dir, apply,
 
 Note `process_skills` filters `disable-model-invocation: true` skills before `emit_skill` is called (`core.py:438-443`) — all 64 bridged stubs carry that flag, so they are reached only through `emit_command`, never `emit_skill`. Verified against HEAD 2026-08-20.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-20 — based on codebase analysis:_
+
+- Confirmed exact current body of `_synthesized_skill_md` (codex.py:88-119): a pure `(stem: str, description: str) -> str` builder — it accepts no `fm`/`existing` parameter today, so `allowed-tools`/`argument-hint`/hand-added `args:` are structurally unreachable from inside it, not merely unused.
+- `fm` (the source command's parsed frontmatter dict) is already in scope inside `emit_command` as `cmd_meta["fm"]` (codex.py:338) but is never forwarded to `_synthesized_skill_md` (:367) or to `_extract_skill_short_desc` (:349) — the latter instead independently re-parses raw `content` via its own internal `yaml.safe_load` (codex.py:43-62), rather than reusing the already-parsed `fm` dict sitting in the caller's scope. Pass-through is therefore a signature-widening + dict-lookup change (`fm.get("allowed-tools")` / `fm.get("argument-hint")`), not new parsing.
+- `_read_frontmatter` (core.py:89-100) plus the upstream skip in `process_commands` (core.py:504-509, `fm is None` → skip before `emit_command` is ever called) together guarantee `fm` is always a `dict` (possibly missing specific keys, never `None`) by the time `emit_command` runs — so `fm.get("allowed-tools")` returning `None` when absent is the only case pass-through code needs to handle; it must be treated as "omit the field," not emitted as a literal `null` line.
+- No malformed-on-disk-stub handling exists anywhere in `emit_command` today: presence-only checks never call `.read_text()` on the existing file, so an existing-but-unparseable `out_skill_md`/`out_openai_yaml` is currently unreachable code. Introducing content comparison is the first point this method would need to read and (if pass-through/merge parses it) tolerate a malformed existing stub.
+
 ## Implementation Steps
 
 1. Fix `_extract_skill_short_desc`: prefer an explicit source short-description
@@ -267,6 +351,28 @@ Note `process_skills` filters `disable-model-invocation: true` skills before `em
 4. Regenerate; verify the diff against the Class A/B/C triage file-by-file
    rather than accepting it wholesale.
 5. Add the drift/idempotency tests; run the full suite.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Update the 6 `TestSynthesizedSkillMd` call sites in
+  `scripts/tests/test_adapt_skills_for_codex.py` (`:477,482,486,491,502,507`) to
+  pass an `fm=` argument once `_synthesized_skill_md`'s signature widens.
+- Add `metadata.short-description` frontmatter to all 11 commands whose
+  description exceeds 80 chars, not just `loop-suggester.md`/`reconcile-issue.md`:
+  `commands/scan-codebase.md`, `commands/refine-issue.md`,
+  `commands/analyze-workflows.md`, `commands/verify-issues.md`,
+  `commands/normalize-issues.md`, `commands/ready-issue.md`,
+  `commands/tradeoff-review-issues.md`, `commands/open-pr.md`,
+  `commands/manage-release.md`, `commands/review-sprint.md`,
+  `commands/sync-issues.md`.
+- Re-verify `TestExtractShortDesc.test_truncates_to_80_chars` against the
+  word-boundary truncation fallback behavior chosen in Step 1; update if the
+  no-boundary case no longer hard-truncates at exactly 80 chars.
+- Build a new `_make_bridged_skill_md`-style fixture helper for AC2's
+  preservation test (seed `allowed-tools:`/`args:`/`argument-hint:` on a
+  bridged `SKILL.md`, run `emit_command` with `apply=True`, assert survival).
 
 ## Acceptance Criteria
 
@@ -321,6 +427,9 @@ Note `process_skills` filters `disable-model-invocation: true` skills before `em
 **Open**
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-20T21:05:24 - `5922ca54-43fc-4aae-89e3-42687aa4c77e.jsonl`
+- `/ll:wire-issue` - 2026-08-20T21:03:01 - `614e5ae4-ac51-444e-af33-4f7587a7e3d6.jsonl`
+- `/ll:refine-issue` - 2026-08-20T20:55:41 - `03a7dd78-7b4c-4c1b-84cc-861a0bac0ea0.jsonl`
 - split from ENH-3062 - 2026-08-20 - pre-implementation review found the
   prerequisite work (generator fidelity + content comparison + drift repair) was
   fused into the gate issue while its own resolved decisions said it should land
