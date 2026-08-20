@@ -3306,6 +3306,8 @@ class TestScanFailures:
         assert "normalized_sig" in entry
         assert "sample_error" in entry
         assert "session_ids" in entry
+        assert "skills" in entry
+        assert isinstance(entry["skills"], list)
 
     def test_scan_failures_no_failures_returns_0(self, capsys) -> None:
         """scan-failures returns 0 with 'no failures' message when corpus is clean."""
@@ -3476,6 +3478,462 @@ class TestScanFailures:
         assert result == 0
         assert len(captured_errors) == 1
         assert "current_project_key" in captured_errors[0]
+
+    def _user_command_name_record(
+        self,
+        skill_name: str,
+        session_id: str = "sess-1",
+        timestamp: str = "2026-01-01T00:00:00Z",
+    ) -> dict:
+        """A real user turn carrying a <command-name> marker (str content)."""
+        return {
+            "type": "user",
+            "message": {
+                "role": "user",
+                "content": f"<command-message>{skill_name}</command-message>\n"
+                f"<command-name>/ll:{skill_name}</command-name>",
+            },
+            "sessionId": session_id,
+            "timestamp": timestamp,
+        }
+
+    def _user_plain_text_record(
+        self,
+        text: str = "please continue",
+        session_id: str = "sess-1",
+        timestamp: str = "2026-01-01T00:00:00Z",
+    ) -> dict:
+        """A real user turn with no <command-name> marker (str content)."""
+        return {
+            "type": "user",
+            "message": {"role": "user", "content": text},
+            "sessionId": session_id,
+            "timestamp": timestamp,
+        }
+
+    def _assistant_skill_tool_use_record(
+        self,
+        skill: str,
+        tool_use_id: str = "toolu_skill_001",
+        session_id: str = "sess-1",
+        timestamp: str = "2026-01-01T00:00:00Z",
+    ) -> dict:
+        return {
+            "type": "assistant",
+            "message": {
+                "role": "assistant",
+                "content": [
+                    {
+                        "type": "tool_use",
+                        "id": tool_use_id,
+                        "name": "Skill",
+                        "input": {"skill": skill},
+                    }
+                ],
+            },
+            "sessionId": session_id,
+            "timestamp": timestamp,
+        }
+
+    def _run_scan_failures(
+        self, project_path: Path, home: Path, extra_args: list[str] | None = None
+    ) -> tuple[int, list[dict]]:
+        captured_lines: list[str] = []
+        argv = ["ll-logs", "scan-failures", "--project", str(project_path), "--json"]
+        argv.extend(extra_args or [])
+        with (
+            patch("sys.argv", argv),
+            patch("pathlib.Path.home", return_value=home),
+            patch(
+                "builtins.print",
+                side_effect=lambda *a, **kw: captured_lines.append(str(a[0]) if a else ""),
+            ),
+        ):
+            result = main_logs()
+        data = json.loads("\n".join(captured_lines)) if captured_lines else []
+        return result, data
+
+    def test_scan_failures_skill_flag_parsed(self) -> None:
+        """--skill is accepted."""
+        with patch(
+            "sys.argv", ["ll-logs", "scan-failures", "--all", "--skill", "review-epic"]
+        ):
+            args = _parse_args()
+        assert args.skill == "review-epic"
+
+    def test_scan_failures_marker_attribution(self) -> None:
+        """A <command-name> marker attributes subsequent Bash failures to that skill."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            home = Path(tmpdir) / "home"
+            claude_projects = home / ".claude" / "projects"
+            claude_projects.mkdir(parents=True, exist_ok=True)
+
+            project_path = self._make_project_dir(
+                claude_projects,
+                home,
+                "myproject",
+                [
+                    self._user_command_name_record("review-epic"),
+                    self._assistant_bash_record("ll-issues list", tool_use_id="t1"),
+                    self._user_tool_result_record("t1", "KeyError: 'x'", is_error=True),
+                ],
+            )
+
+            result, data = self._run_scan_failures(
+                project_path, home, ["--skill", "review-epic"]
+            )
+
+        assert result == 0
+        assert len(data) == 1
+        assert data[0]["count"] == 1
+
+    def test_scan_failures_skill_tool_use_attribution_with_prefix_strip(self) -> None:
+        """A Skill tool_use block with an 'll:' prefix attributes and strips the prefix."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            home = Path(tmpdir) / "home"
+            claude_projects = home / ".claude" / "projects"
+            claude_projects.mkdir(parents=True, exist_ok=True)
+
+            project_path = self._make_project_dir(
+                claude_projects,
+                home,
+                "myproject",
+                [
+                    self._assistant_skill_tool_use_record("ll:explore-api"),
+                    self._assistant_bash_record("ll-issues list", tool_use_id="t1"),
+                    self._user_tool_result_record("t1", "KeyError: 'x'", is_error=True),
+                ],
+            )
+
+            result, data = self._run_scan_failures(
+                project_path, home, ["--skill", "explore-api"]
+            )
+
+        assert result == 0
+        assert len(data) == 1
+        assert data[0]["skills"] == ["explore-api"]
+
+    def test_scan_failures_skill_tool_use_attribution_bare_name(self) -> None:
+        """A Skill tool_use block with a bare (unprefixed) name attributes correctly."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            home = Path(tmpdir) / "home"
+            claude_projects = home / ".claude" / "projects"
+            claude_projects.mkdir(parents=True, exist_ok=True)
+
+            project_path = self._make_project_dir(
+                claude_projects,
+                home,
+                "myproject",
+                [
+                    self._assistant_skill_tool_use_record("analyze_log"),
+                    self._assistant_bash_record("ll-issues list", tool_use_id="t1"),
+                    self._user_tool_result_record("t1", "KeyError: 'x'", is_error=True),
+                ],
+            )
+
+            result, data = self._run_scan_failures(
+                project_path, home, ["--skill", "analyze_log"]
+            )
+
+        assert result == 0
+        assert len(data) == 1
+        assert data[0]["skills"] == ["analyze_log"]
+
+    def test_scan_failures_both_spellings_collapse_into_one_bucket(self) -> None:
+        """'ll:explore-api' and 'explore-api' attribute to the same bucket."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            home = Path(tmpdir) / "home"
+            claude_projects = home / ".claude" / "projects"
+            claude_projects.mkdir(parents=True, exist_ok=True)
+
+            project_path = self._make_project_dir(
+                claude_projects,
+                home,
+                "myproject",
+                [
+                    self._assistant_skill_tool_use_record(
+                        "ll:explore-api", tool_use_id="skill1", session_id="s1"
+                    ),
+                    self._assistant_bash_record(
+                        "ll-issues list", tool_use_id="t1", session_id="s1"
+                    ),
+                    self._user_tool_result_record(
+                        "t1", "KeyError: 'x'", is_error=True, session_id="s1"
+                    ),
+                    self._assistant_skill_tool_use_record(
+                        "explore-api", tool_use_id="skill2", session_id="s2"
+                    ),
+                    self._assistant_bash_record(
+                        "ll-issues list", tool_use_id="t2", session_id="s2"
+                    ),
+                    self._user_tool_result_record(
+                        "t2", "KeyError: 'x'", is_error=True, session_id="s2"
+                    ),
+                ],
+            )
+
+            result, data = self._run_scan_failures(
+                project_path, home, ["--skill", "explore-api"]
+            )
+
+        assert result == 0
+        assert len(data) == 1
+        assert data[0]["count"] == 2
+        assert data[0]["skills"] == ["explore-api"]
+
+    def test_scan_failures_reset_on_plain_user_message(self) -> None:
+        """A plain user message with no marker resets current_skill to None."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            home = Path(tmpdir) / "home"
+            claude_projects = home / ".claude" / "projects"
+            claude_projects.mkdir(parents=True, exist_ok=True)
+
+            project_path = self._make_project_dir(
+                claude_projects,
+                home,
+                "myproject",
+                [
+                    self._user_command_name_record("review-epic"),
+                    self._user_plain_text_record("some follow-up text"),
+                    self._assistant_bash_record("ll-issues list", tool_use_id="t1"),
+                    self._user_tool_result_record("t1", "KeyError: 'x'", is_error=True),
+                ],
+            )
+
+            result, data = self._run_scan_failures(
+                project_path, home, ["--skill", "review-epic"]
+            )
+
+        assert result == 0
+        assert data == []
+
+    def test_scan_failures_no_reset_from_interleaved_tool_result(self) -> None:
+        """A tool_result user record (list content) never resets current_skill."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            home = Path(tmpdir) / "home"
+            claude_projects = home / ".claude" / "projects"
+            claude_projects.mkdir(parents=True, exist_ok=True)
+
+            project_path = self._make_project_dir(
+                claude_projects,
+                home,
+                "myproject",
+                [
+                    self._user_command_name_record("review-epic"),
+                    # An interleaved (successful) tool_result must not reset attribution.
+                    self._assistant_bash_record("ll-history list", tool_use_id="t0"),
+                    self._user_tool_result_record("t0", "ok", is_error=False),
+                    self._assistant_bash_record("ll-issues list", tool_use_id="t1"),
+                    self._user_tool_result_record("t1", "KeyError: 'x'", is_error=True),
+                ],
+            )
+
+            result, data = self._run_scan_failures(
+                project_path, home, ["--skill", "review-epic"]
+            )
+
+        assert result == 0
+        assert len(data) == 1
+        assert data[0]["count"] == 1
+
+    def test_scan_failures_reset_on_non_ll_marker(self) -> None:
+        """A non-'ll:' <command-name> marker (e.g. /clear) resets current_skill to None."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            home = Path(tmpdir) / "home"
+            claude_projects = home / ".claude" / "projects"
+            claude_projects.mkdir(parents=True, exist_ok=True)
+
+            clear_record = {
+                "type": "user",
+                "message": {
+                    "role": "user",
+                    "content": "<command-name>/clear</command-name>",
+                },
+                "sessionId": "sess-1",
+                "timestamp": "2026-01-01T00:00:00Z",
+            }
+
+            project_path = self._make_project_dir(
+                claude_projects,
+                home,
+                "myproject",
+                [
+                    self._user_command_name_record("review-epic"),
+                    clear_record,
+                    self._assistant_bash_record("ll-issues list", tool_use_id="t1"),
+                    self._user_tool_result_record("t1", "KeyError: 'x'", is_error=True),
+                ],
+            )
+
+            result, data = self._run_scan_failures(
+                project_path, home, ["--skill", "review-epic"]
+            )
+
+        assert result == 0
+        assert data == []
+
+    def test_scan_failures_unattributed_excluded_under_skill_filter(self) -> None:
+        """Failures with no enclosing skill (None) never survive a --skill filter."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            home = Path(tmpdir) / "home"
+            claude_projects = home / ".claude" / "projects"
+            claude_projects.mkdir(parents=True, exist_ok=True)
+
+            project_path = self._make_project_dir(
+                claude_projects,
+                home,
+                "myproject",
+                [
+                    self._assistant_bash_record("ll-issues list", tool_use_id="t1"),
+                    self._user_tool_result_record("t1", "KeyError: 'x'", is_error=True),
+                ],
+            )
+
+            result, data = self._run_scan_failures(
+                project_path, home, ["--skill", "review-epic"]
+            )
+
+        assert result == 0
+        assert data == []
+
+    def test_scan_failures_skill_count_reprojection(self) -> None:
+        """Under --skill, count/session_ids reflect only that skill's subset, not the total."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            home = Path(tmpdir) / "home"
+            claude_projects = home / ".claude" / "projects"
+            claude_projects.mkdir(parents=True, exist_ok=True)
+
+            project_path = self._make_project_dir(
+                claude_projects,
+                home,
+                "myproject",
+                [
+                    self._user_command_name_record("review-epic", session_id="s1"),
+                    self._assistant_bash_record(
+                        "ll-issues list", tool_use_id="t1", session_id="s1"
+                    ),
+                    self._user_tool_result_record(
+                        "t1", "KeyError: 'x'", is_error=True, session_id="s1"
+                    ),
+                    self._user_command_name_record("wire-issue", session_id="s2"),
+                    self._assistant_bash_record(
+                        "ll-issues list", tool_use_id="t2", session_id="s2"
+                    ),
+                    self._user_tool_result_record(
+                        "t2", "KeyError: 'x'", is_error=True, session_id="s2"
+                    ),
+                    self._user_command_name_record("wire-issue", session_id="s3"),
+                    self._assistant_bash_record(
+                        "ll-issues list", tool_use_id="t3", session_id="s3"
+                    ),
+                    self._user_tool_result_record(
+                        "t3", "KeyError: 'x'", is_error=True, session_id="s3"
+                    ),
+                ],
+            )
+
+            # Unfiltered: one cluster with total count 3.
+            result, unfiltered = self._run_scan_failures(project_path, home)
+            assert result == 0
+            assert len(unfiltered) == 1
+            assert unfiltered[0]["count"] == 3
+            assert unfiltered[0]["skills"] == ["review-epic", "wire-issue"]
+
+            # Filtered: same cluster, re-projected to review-epic's subset (1).
+            result, filtered = self._run_scan_failures(
+                project_path, home, ["--skill", "review-epic"]
+            )
+            assert result == 0
+            assert len(filtered) == 1
+            assert filtered[0]["count"] == 1
+            assert filtered[0]["session_ids"] == ["s1"]
+
+    def test_scan_failures_skill_prefix_equivalence(self) -> None:
+        """--skill ll:NAME and --skill NAME are equivalent filters."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            home = Path(tmpdir) / "home"
+            claude_projects = home / ".claude" / "projects"
+            claude_projects.mkdir(parents=True, exist_ok=True)
+
+            project_path = self._make_project_dir(
+                claude_projects,
+                home,
+                "myproject",
+                [
+                    self._user_command_name_record("review-epic"),
+                    self._assistant_bash_record("ll-issues list", tool_use_id="t1"),
+                    self._user_tool_result_record("t1", "KeyError: 'x'", is_error=True),
+                ],
+            )
+
+            _, bare = self._run_scan_failures(project_path, home, ["--skill", "review-epic"])
+            _, prefixed = self._run_scan_failures(
+                project_path, home, ["--skill", "ll:review-epic"]
+            )
+
+        assert bare == prefixed
+        assert len(bare) == 1
+
+    def test_scan_failures_skill_limit_ranks_by_reprojected_count(self) -> None:
+        """--skill X --limit N ranks by the re-projected (skill-X) count, not the total."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            home = Path(tmpdir) / "home"
+            claude_projects = home / ".claude" / "projects"
+            claude_projects.mkdir(parents=True, exist_ok=True)
+
+            records = [
+                # Cluster "ll-issues": high total (3), but only 1 under review-epic.
+                self._user_command_name_record("wire-issue", session_id="s1"),
+                self._assistant_bash_record("ll-issues list", tool_use_id="t1", session_id="s1"),
+                self._user_tool_result_record(
+                    "t1", "KeyError: 'issues-sig'", is_error=True, session_id="s1"
+                ),
+                self._user_command_name_record("wire-issue", session_id="s2"),
+                self._assistant_bash_record("ll-issues list", tool_use_id="t2", session_id="s2"),
+                self._user_tool_result_record(
+                    "t2", "KeyError: 'issues-sig'", is_error=True, session_id="s2"
+                ),
+                self._user_command_name_record("review-epic", session_id="s3"),
+                self._assistant_bash_record("ll-issues list", tool_use_id="t3", session_id="s3"),
+                self._user_tool_result_record(
+                    "t3", "KeyError: 'issues-sig'", is_error=True, session_id="s3"
+                ),
+                # Cluster "ll-history": low total (2), but both under review-epic.
+                self._user_command_name_record("review-epic", session_id="s4"),
+                self._assistant_bash_record(
+                    "ll-history summary", tool_use_id="t4", session_id="s4"
+                ),
+                self._user_tool_result_record(
+                    "t4", "ValueError: history-sig", is_error=True, session_id="s4"
+                ),
+                self._user_command_name_record("review-epic", session_id="s5"),
+                self._assistant_bash_record(
+                    "ll-history summary", tool_use_id="t5", session_id="s5"
+                ),
+                self._user_tool_result_record(
+                    "t5", "ValueError: history-sig", is_error=True, session_id="s5"
+                ),
+            ]
+
+            project_path = self._make_project_dir(
+                claude_projects, home, "myproject", records
+            )
+
+            # Unfiltered: ll-issues (3) outranks ll-history (2).
+            _, unfiltered = self._run_scan_failures(project_path, home)
+            assert unfiltered[0]["tool"] == "ll-issues"
+            assert unfiltered[0]["count"] == 3
+            assert unfiltered[1]["tool"] == "ll-history"
+            assert unfiltered[1]["count"] == 2
+
+            # Filtered + limited to top 1: ll-history wins under review-epic (2 > 1),
+            # even though it trailed ll-issues in the unfiltered total-count ordering.
+            _, filtered = self._run_scan_failures(
+                project_path, home, ["--skill", "review-epic", "--limit", "1"]
+            )
+            assert len(filtered) == 1
+            assert filtered[0]["tool"] == "ll-history"
+            assert filtered[0]["count"] == 2
 
 
 class TestDiff:

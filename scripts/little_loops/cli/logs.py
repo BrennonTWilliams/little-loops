@@ -1107,6 +1107,20 @@ class _FailureCluster:
     sample_error: str
     session_ids: list[str]
     cwd_path: Path = field(default_factory=lambda: Path("."))
+    skill_counts: dict[str | None, int] = field(default_factory=dict)
+    skill_sessions: dict[str | None, list[str]] = field(default_factory=dict)
+
+
+@dataclass
+class _RawCluster:
+    """Mutable accumulator for a (cwd_path, tool_name, normalized_sig) key while streaming."""
+
+    count: int
+    sample_error: str
+    session_ids: list[str]
+    latest_ts: str
+    skill_counts: dict[str | None, int] = field(default_factory=dict)
+    skill_sessions: dict[str | None, list[str]] = field(default_factory=dict)
 
 
 def _cmd_scan_failures(args: argparse.Namespace, logger: Logger) -> int:
@@ -1130,15 +1144,17 @@ def _cmd_scan_failures(args: argparse.Namespace, logger: Logger) -> int:
             if folder is not None:
                 project_items.append((decoded_path, folder))
 
-    # raw_clusters maps (cwd_path, tool_name, normalized_sig) -> (count, sample_error, session_ids, latest_ts)
-    raw_clusters: dict[tuple[Path, str, str], tuple[int, str, list[str], str]] = {}
+    # raw_clusters maps (cwd_path, tool_name, normalized_sig) -> _RawCluster
+    raw_clusters: dict[tuple[Path, str, str], _RawCluster] = {}
 
     for _cwd_path, project_folder in project_items:
         jsonl_files = [f for f in project_folder.glob("*.jsonl") if not f.name.startswith("agent-")]
 
         for jsonl_file in jsonl_files:
-            # pending maps tool_use_id -> (ll_tool_name, timestamp)
-            pending: dict[str, tuple[str, str]] = {}
+            # pending maps tool_use_id -> (ll_tool_name, timestamp, enclosing_skill)
+            pending: dict[str, tuple[str, str, str | None]] = {}
+            # current_skill tracks the enclosing skill as records stream by (reset per file)
+            current_skill: str | None = None
 
             try:
                 with open(jsonl_file, encoding="utf-8") as f:
@@ -1163,23 +1179,43 @@ def _cmd_scan_failures(args: argparse.Namespace, logger: Logger) -> int:
                             for block in content:
                                 if not isinstance(block, dict):
                                     continue
-                                if block.get("type") != "tool_use" or block.get("name") != "Bash":
+                                if block.get("type") != "tool_use":
+                                    continue
+                                if block.get("name") == "Skill":
+                                    skill_input = block.get("input", {}).get("skill", "")
+                                    if skill_input:
+                                        current_skill = skill_input.removeprefix("ll:")
+                                    continue
+                                if block.get("name") != "Bash":
                                     continue
                                 cmd = block.get("input", {}).get("command", "")
                                 m = _LL_BASH_RE.search(cmd)
                                 if not m:
                                     continue
                                 tool_name = m.group(1)
-                                # Skip tokens that are not real ll CLIs (e.g. ll-labs, ll-marketing)
+                                # Skip tokens that are not real ll CLIs (e.g. sample-a, sample-b)
                                 if _cli_allowlist and tool_name not in _cli_allowlist:
                                     continue
                                 block_id = block.get("id", "")
                                 if block_id:
-                                    pending[block_id] = (tool_name, ts)
+                                    pending[block_id] = (tool_name, ts, current_skill)
 
                         elif record_type == "user":
                             message = record.get("message", {})
                             content = message.get("content", [])
+                            if isinstance(content, str):
+                                # Real user turn (not a tool_result carrier): re-derive
+                                # current_skill from a <command-name> marker, resetting
+                                # to None on no match (e.g. /clear, /model).
+                                m2 = _COMMAND_NAME_SKILL_RE.search(content)
+                                if m2:
+                                    name = m2.group(1)
+                                    if name.endswith("</command-name>"):
+                                        name = name[: -len("</command-name>")]
+                                    current_skill = name
+                                else:
+                                    current_skill = None
+                                continue
                             if not isinstance(content, list) or not content:
                                 continue
                             for block in content:
@@ -1190,7 +1226,7 @@ def _cmd_scan_failures(args: argparse.Namespace, logger: Logger) -> int:
                                 tool_use_id = block.get("tool_use_id", "")
                                 if tool_use_id not in pending:
                                     continue
-                                tool_name, _invoke_ts = pending.pop(tool_use_id)
+                                tool_name, _invoke_ts, skill = pending.pop(tool_use_id)
 
                                 # Skip ll-verify-* tools — exit 1 is expected gate behavior
                                 if _LL_VERIFY_RE.match(tool_name):
@@ -1217,12 +1253,24 @@ def _cmd_scan_failures(args: argparse.Namespace, logger: Logger) -> int:
                                 key = (_cwd_path, tool_name, normalized_sig)
 
                                 if key in raw_clusters:
-                                    cnt, sample, sids, _lts = raw_clusters[key]
-                                    if session_id not in sids:
-                                        sids.append(session_id)
-                                    raw_clusters[key] = (cnt + 1, sample, sids, ts)
+                                    rc = raw_clusters[key]
+                                    if session_id not in rc.session_ids:
+                                        rc.session_ids.append(session_id)
+                                    rc.count += 1
+                                    rc.latest_ts = ts
                                 else:
-                                    raw_clusters[key] = (1, error_text[:500], [session_id], ts)
+                                    rc = _RawCluster(
+                                        count=1,
+                                        sample_error=error_text[:500],
+                                        session_ids=[session_id],
+                                        latest_ts=ts,
+                                    )
+                                    raw_clusters[key] = rc
+
+                                rc.skill_counts[skill] = rc.skill_counts.get(skill, 0) + 1
+                                skill_sids = rc.skill_sessions.setdefault(skill, [])
+                                if session_id not in skill_sids:
+                                    skill_sids.append(session_id)
             except OSError:
                 continue
 
@@ -1230,31 +1278,45 @@ def _cmd_scan_failures(args: argparse.Namespace, logger: Logger) -> int:
     cutoff, until = _resolve_window(args)
     if cutoff is not None:
         raw_clusters = {
-            k: v for k, v in raw_clusters.items() if _parse_iso_timestamp(v[3]) >= cutoff
+            k: v for k, v in raw_clusters.items() if _parse_iso_timestamp(v.latest_ts) >= cutoff
         }
     if until is not None:
         raw_clusters = {
-            k: v for k, v in raw_clusters.items() if _parse_iso_timestamp(v[3]) <= until
+            k: v for k, v in raw_clusters.items() if _parse_iso_timestamp(v.latest_ts) <= until
         }
 
     # Drop content-free clusters (bare "Exit code N" with no error body)
-    raw_clusters = {k: v for k, v in raw_clusters.items() if not _is_content_free_error(v[1])}
+    raw_clusters = {
+        k: v for k, v in raw_clusters.items() if not _is_content_free_error(v.sample_error)
+    }
 
-    clusters: list[_FailureCluster] = sorted(
-        [
-            _FailureCluster(
-                tool_name=k[1],
-                normalized_sig=k[2],
-                count=v[0],
-                sample_error=v[1],
-                session_ids=v[2],
-                cwd_path=k[0],
-            )
-            for k, v in raw_clusters.items()
-        ],
-        key=lambda c: c.count,
-        reverse=True,
-    )
+    clusters: list[_FailureCluster] = [
+        _FailureCluster(
+            tool_name=k[1],
+            normalized_sig=k[2],
+            count=v.count,
+            sample_error=v.sample_error,
+            session_ids=v.session_ids,
+            cwd_path=k[0],
+            skill_counts=v.skill_counts,
+            skill_sessions=v.skill_sessions,
+        )
+        for k, v in raw_clusters.items()
+    ]
+
+    skill_filter = getattr(args, "skill", None)
+    if skill_filter:
+        normalized_filter = skill_filter.removeprefix("ll:")
+        reprojected: list[_FailureCluster] = []
+        for c in clusters:
+            if normalized_filter not in c.skill_counts:
+                continue
+            c.count = c.skill_counts[normalized_filter]
+            c.session_ids = c.skill_sessions.get(normalized_filter, [])
+            reprojected.append(c)
+        clusters = reprojected
+
+    clusters.sort(key=lambda c: c.count, reverse=True)
 
     limit = getattr(args, "limit", 0) or 0
     if limit:
@@ -1280,6 +1342,7 @@ def _cmd_scan_failures(args: argparse.Namespace, logger: Logger) -> int:
                     "normalized_sig": c.normalized_sig,
                     "sample_error": c.sample_error,
                     "session_ids": c.session_ids,
+                    "skills": sorted(s for s in c.skill_counts if s is not None),
                 }
                 for c in clusters
             ]
@@ -2176,6 +2239,20 @@ Examples:
         default=0,
         metavar="N",
         help="Cap output to top N clusters by count (0 = unlimited)",
+    )
+    scan_failures_parser.add_argument(
+        "--skill",
+        metavar="NAME",
+        default=None,
+        help=(
+            "Limit reported clusters to ll-* CLI failures that occurred while NAME "
+            "was the enclosing skill (via a <command-name> marker or a Skill tool_use "
+            "block); does NOT filter failures of NAME's own Read/Edit/Grep calls, "
+            "which this subcommand never sees. The 'll:' prefix is optional on "
+            "either side. Attribution is heuristic: a tool call issued after a "
+            "skill's turn completes but before the next user message may be "
+            "mis-attributed to that skill."
+        ),
     )
     add_json_arg(scan_failures_parser)
 

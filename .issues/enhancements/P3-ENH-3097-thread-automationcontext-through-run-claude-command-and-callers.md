@@ -16,12 +16,19 @@ labels:
 - tech-debt
 testable: true
 decision_needed: false
+reconcile_attempted: true
 relates_to:
 - FEAT-3078
 - FEAT-3033
 - ENH-2714
 - BUG-3093
 verify_verdict: NON_VALID
+confidence_score: 90
+outcome_confidence: 74
+score_complexity: 14
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 10
 ---
 
 # ENH-3097: Thread AutomationContext through run_claude_command() and its callers
@@ -37,12 +44,13 @@ forwarding sites, and the two remaining direct-call sites
 <!-- ll-prose-ok: _run_claude_base is a local import alias (`run_claude_command as _run_claude_base`), not a def-site symbol -->
 `worker_pool.py:_run_claude_base`).
 
-**Blocked by ENH-3095**: this child imports `AutomationContext` from
-`host_runner.py`, which ENH-3095 defines. Can proceed in parallel with
-ENH-3096 once ENH-3095 lands — they touch disjoint files except for a shared
-edit to `fsm/executor.py` (different line ranges: this child touches the
-baseline arm's direct call at `:2771-2774`; ENH-3096 touches the
-`extra_kwargs` assembly at `:1886-1910`).
+**Dependency status**: ENH-3095 (`status: done`) defined `AutomationContext`
+in `host_runner.py`, which this child imports. ENH-3096 (`status: done`) has
+also since landed, threading `AutomationContext` through `ActionRunner.run()`
+— its completed work is what surfaces the sixth call site this pass found at
+`fsm/runners.py:177-191` (see Proposed Solution → Codebase Research
+Findings). The dependency chain is fully satisfied; nothing external still
+gates this issue.
 
 ## Parent Issue
 
@@ -60,8 +68,13 @@ sites; `fsm/executor.py:2771-2774` (baseline arm direct call); the bare
 `docs/reference/API.md` `issue_manager.run_claude_command()` mirror.
 
 **Out of scope:** `HostRunner.build_streaming()` (ENH-3095, a dependency);
-`ActionRunner.run()` and `fsm/executor.py`'s `extra_kwargs` assembly
-(ENH-3096). Fixing the BUG-3093 `idle_timeout`-only asymmetry at
+`ActionRunner.run()`'s `resolve_automation()` call and `fsm/executor.py`'s
+`extra_kwargs` assembly (ENH-3096). **In scope despite living inside
+`ActionRunner.run()`:** `fsm/runners.py:187-252` — the decomposition of the
+already-resolved `AutomationContext` back into legacy kwargs before calling
+`run_claude_command()`, which exists only because `run_claude_command()` had
+no `automation=` parameter until this issue closes that seam (see Codebase
+Research Findings). Fixing the BUG-3093 `idle_timeout`-only asymmetry at
 `issue_manager.py:826,893,1089` is explicitly **not** this issue's job (per
 parent's Codebase Research Findings) — this child only changes the parameter
 shape those call sites use, it does not add the missing `automation_profile`
@@ -79,29 +92,132 @@ logged).
 
 ### Files to Modify
 - `scripts/little_loops/subprocess_utils.py` — replace per-knob kwargs with
-  `automation` in `run_claude_command()` (`:320-341`); `idle_timeout` is
-  consumed locally at `:478` (selector loop), unaffected by this shape change
-- `scripts/little_loops/issue_manager.py` — same in wrapper
-  `run_claude_command()` (`:139-152`) and `run_with_continuation()` (`:252-269`)
+  `automation` in `run_claude_command()` def (`:343-366`); call `resolve_host().build_streaming()`
+  at `:436-447`; `idle_timeout` is consumed locally by the selector loop at
+  `:513` and the `TimeoutExpired` it raises at `:522`, unaffected by this
+  shape change beyond reading it off `automation.idle_timeout`
+- `scripts/little_loops/issue_manager.py` — wrapper `run_claude_command()`
+  (def `:139-154`, forwards to `_run_claude_base` at `:213-226`) and
+  `run_with_continuation()` (def `:260-279`, calls the wrapper at `:355-367`
+  and `:537-550`)
 - `scripts/little_loops/runner_spec.py` — update `automation_profile` read
-  (`:128`) and forwarding sites (`:145,176,182`)
-- `scripts/little_loops/fsm/executor.py:2771-2774` — baseline arm's direct
-  `run_claude_command(idle_timeout=...)` call; becomes
-  `automation=AutomationContext(idle_timeout=...)`
-- `scripts/little_loops/parallel/worker_pool.py:924-934` — replace the bare
-  `idle_timeout=` forward with `automation=AutomationContext(idle_timeout=...)`
-- `docs/reference/API.md:2626-2655` — `issue_manager.run_claude_command()`
-  wrapper mirror (already stale today — lists `idle_timeout`, omits the
-  `automation_profile` param that exists at `issue_manager.py:151`; gains
-  `automation`)
+  (`:127`), `disable_background_tasks` read (`:131`), and the three forwarding
+  sites (trace mode `:153-154`; stream_callback mode `:186-187`;
+  blocking/default mode `:194-198`, which calls `resolve_host().build_streaming()`
+  directly, bypassing `run_claude_command()`)
+- `scripts/little_loops/fsm/executor.py` `_run_baseline_arm()` (`:3178-3243`) —
+  the `run_claude_command()` call at `:3218-3225`; becomes
+  `automation=AutomationContext(idle_timeout=idle_timeout)`
+- `scripts/little_loops/parallel/worker_pool.py` `_run_claude_base` forward
+  (method `:895-952`, call at `:940-952`) — replace the bare `idle_timeout=`
+  forward with `automation=AutomationContext(idle_timeout=...)`; preserve the
+  existing asymmetry that this site has no `automation_profile=` kwarg today
+- `scripts/little_loops/fsm/runners.py:187-252` — `DefaultActionRunner.run()`
+  already resolves an `AutomationContext` via `resolve_automation()` at
+  `:177-183` (`caller="ActionRunner.run()"`, out of scope — ENH-3096); it then
+  decomposes that context back into legacy kwargs at `:187-191` purely
+  because `run_claude_command()` had no `automation=` parameter. Replace the
+  decomposition with a direct `automation=automation` forward at the
+  `run_claude_command()` call spanning `:234-252`.
+- Every call site above also folds `disable_background_tasks: bool = False`
+  (an `AutomationContext` field alongside `profile`/`idle_timeout`,
+  `host_runner.py:172-190`) into `automation=`, not just the
+  `automation_profile`/`idle_timeout` pair.
+- Each new call site should invoke the existing `resolve_automation()` shim
+  (`host_runner.py:1886-1934`) rather than reimplementing the legacy-kwarg
+  fold inline, passing its own identifying `caller=` string (asserted
+  verbatim in tests, e.g. `pytest.warns(DeprecationWarning, match=<caller>)`).
+- `docs/reference/API.md` — `issue_manager.run_claude_command()` mirror
+  (`:2853-2894`) and `subprocess_utils.run_claude_command()` mirror
+  (`:11653-11680`); both confirmed byte-for-byte in sync with current code as
+  of 2026-08-20 — update alongside the signature change.
+
+### Dependent Files (Callers/Importers)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/API.md:6072-6104` — the `#### ActionRunner Protocol` section
+  is a third, previously-unlisted mirror location: its prose at `:6098`
+  reads "`DefaultActionRunner` decomposes the resolved context back into
+  `automation_profile=`/`disable_background_tasks=`/`idle_timeout=` when
+  forwarding to `run_claude_command()`, which has no `automation` parameter
+  until ENH-3097." — this sentence describes exactly the pre-ENH-3097
+  decomposition behavior this issue removes (`fsm/runners.py:187-191`) and
+  must be rewritten once that decomposition is replaced with a direct
+  `automation=automation` forward [Agent 2 finding, confirmed by direct read]
+- `scripts/little_loops/workflow_sequence/__init__.py:285` — calls
+  `run_claude_command(command=skill_cmd, timeout=300)` with no
+  `automation_profile`/`idle_timeout` kwargs; unaffected by the signature
+  change (legacy-kwarg shim is additive), no code change needed, listed for
+  completeness [Agent 1 finding, confirmed by direct read]
+- `scripts/little_loops/cli/generate_skill_descriptions.py:119` — calls
+  `run_claude_command(command=prompt, timeout=60)` with no
+  `automation_profile`/`idle_timeout` kwargs; same as above, no code change
+  needed [Agent 1 finding, confirmed by direct read]
 
 ### Tests
-- `scripts/tests/test_issue_manager.py:1390-1435` — `automation_profile`
-  forwarding tests
+- `scripts/tests/test_issue_manager.py:1402-1483` — patches
+  `little_loops.issue_manager.run_claude_command` and asserts
+  `kwargs.get("automation_profile")` / `kwargs.get("disable_background_tasks")`
+  on the forwarded call; update these assertions (or add a parallel shim-test
+  class) once `run_with_continuation()` forwards `automation=` instead of the
+  bare trio
 - `scripts/tests/test_worker_pool.py:2833` — `mock_run_claude` has an explicit
   signature (`idle_timeout: int = 0`, no `**kwargs`); gains `automation`
 - `scripts/tests/test_runner_spec.py:33-38` — `FakeRunner.build_streaming(**_: object)`;
   verify this stays resilient with no signature change needed
+- Each of this issue's call sites gains a parallel `Test*AutomationShim`
+  class with the five-test shape used by the ENH-3095/ENH-3096 precedent:
+  `test_legacy_kwargs_construct_context_internally`,
+  `test_legacy_kwarg_alone_is_silent` (`warnings.simplefilter("error")` +
+  bare legacy kwarg must not raise),
+  `test_explicit_context_wins_and_warns_on_conflict`
+  (`pytest.warns(DeprecationWarning, match=<caller>)`),
+  `test_explicit_context_wins_and_warns_on_disable_background_tasks_conflict`,
+  `test_empty_context_equivalent_to_none` — see `test_host_runner.py:1587-1660+`
+  (`TestAutomationContext`, ENH-3095) and `test_fsm_runners.py:648-727`
+  (`TestActionRunnerAutomationShim`, ENH-3096) as the shape to mirror.
+
+### Tests (wiring gaps)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_fsm_runners.py::TestActionRunnerAutomationShim` — six
+  assertions inspect the mock-captured *decomposed* legacy kwargs, the exact
+  behavior `runners.py:187-191` loses when it starts forwarding
+  `automation=automation` directly; each must switch to inspecting a
+  captured `"automation"` key (an `AutomationContext`) instead:
+  `test_legacy_kwargs_construct_context_internally` (`:671-672`,
+  `captured.get("automation_profile")` / `.get("disable_background_tasks")`),
+  `test_explicit_context_wins_and_warns_on_conflict` (`:691`,
+  `captured.get("automation_profile")`),
+  `test_explicit_context_wins_and_warns_on_disable_background_tasks_conflict`
+  (`:701`, `captured.get("disable_background_tasks")`),
+  `test_empty_context_equivalent_to_none` (`:707-711`, compares
+  `.get("automation_profile")`/`.get("disable_background_tasks")`/
+  `.get("idle_timeout")` between two calls),
+  `test_explicit_automation_discards_legacy_idle_timeout` (`:725-726`,
+  `captured.get("idle_timeout")` / `.get("automation_profile")`)
+  [Agent 3 finding, confirmed by direct read of `runners.py:187-191`'s role]
+- `scripts/tests/test_feat3033_idle_timeout.py` — two assertions on the same
+  decomposed-kwarg pattern, same failure mode:
+  `test_idle_timeout_forwarded_to_run_claude_command` (`:90-105`, patches
+  `little_loops.fsm.runners.run_claude_command`, asserts
+  `received["idle_timeout"] == 42`) and
+  `test_baseline_arm_forwards_idle_timeout` (`:350-372`, patches
+  `little_loops.fsm.executor.run_claude_command`, asserts
+  `received["idle_timeout"] == 7`) — the second exercises
+  `fsm/executor.py`'s `_run_baseline_arm()`, one of this issue's own primary
+  call sites, so this assertion breaks directly from this issue's own change
+  to that site, not just the `runners.py` decomposition removal
+  [Agent 3 finding]
+- `scripts/tests/test_subprocess_utils.py` — has zero `AutomationContext`
+  coverage today; its existing `idle_timeout=` calls (`TestRunClaudeCommandIdleTimeout`/
+  `TestRunClaudeCommandWaitTimeout`, e.g. `:1085,1104,1136,1172,1212-1213,2694`)
+  exercise the real function via the legacy-kwarg shim path and are expected
+  to keep passing unchanged (backward-compat is additive, not a
+  breaking case) — but this file is where the new `Test*AutomationShim`
+  class for `run_claude_command()` itself belongs, since it's the only
+  primary call site with no existing shim-test class of any kind
+  [Agent 3 finding]
 
 ### Codebase Research Findings
 
@@ -122,17 +238,22 @@ _Added by `/ll:refine-issue` — 2026-08-20 — based on codebase analysis:_
    `issue_manager.py`, plus `run_with_continuation()`, accept
    `automation: AutomationContext | None = None` in place of
    `automation_profile`/`idle_timeout`.
-2. `runner_spec.py`'s read (`:128`) and forwarding sites (`:145,176,182`)
-   updated to the collapsed parameter.
-   > ⚠ Superseded — line refs stale; see § Codebase Research Findings under Program Design (now `:127`, `:153-154,186-187,194-198`)
-3. `fsm/executor.py:2771-2774` and `worker_pool.py:924-934` construct and
+2. `runner_spec.py`'s `automation_profile` read (`:127`) and forwarding sites
+   (`:153-154,186-187,194-198`) updated to the collapsed parameter.
+3. `fsm/executor.py:3218-3225` and `worker_pool.py:940-952` construct and
    forward an `AutomationContext` instead of a bare `idle_timeout=` kwarg.
-   > ⚠ Superseded — line refs stale; see § Codebase Research Findings under Program Design (now `:3218-3225` and `:940-952`)
 4. The `automation_profile`/`idle_timeout` keywords still work, constructing
    an `AutomationContext` internally, per the ENH-3095 shim pattern.
 5. `docs/reference/API.md` `issue_manager.run_claude_command()` mirror
    updated.
 6. `python -m pytest scripts/tests/` passes.
+7. `fsm/runners.py`'s `DefaultActionRunner.run()` forwards `automation=automation`
+   directly to `run_claude_command()` (`:234-252`) instead of decomposing it
+   back into legacy kwargs.
+8. `docs/reference/API.md:6072-6104`'s `#### ActionRunner Protocol` section
+   prose no longer says `run_claude_command()` "has no `automation` parameter
+   until ENH-3097" (`/ll:wire-issue` finding — a third mirror location beyond
+   criterion 5's).
 
 ### Codebase Research Findings
 
@@ -240,6 +361,8 @@ run and did return `OUTDATED`; only the persist step was skipped by mode.
 Re-verify with `--check` after ENH-3095 lands.
 
 ## Session Log
+- `/ll:wire-issue` - 2026-08-20T04:38:44 - `4ee98805-cd89-4657-9e66-10a84d755f40.jsonl`
+- `/ll:reconcile-issue` - 2026-08-20T04:31:02 - `c922381f-76e0-40bc-8b49-424300556cf1.jsonl`
 - `/ll:refine-issue` - 2026-08-20T04:26:31 - `bc783ddd-7686-4216-8c7b-f8960149f7f4.jsonl`
 - `/ll:verify-issues` - 2026-08-20T00:59:29 - `e89696fe-140c-45df-a34b-1cf937e9f43c.jsonl`
 - `/ll:verify-issues` - 2026-08-13T03:05:10 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
