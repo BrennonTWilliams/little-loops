@@ -23,6 +23,8 @@ Follows the structural-test pattern from test_enh494_skill_companions.py.
 
 from __future__ import annotations
 
+import json
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -30,6 +32,24 @@ import pytest
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 GATE_DOC = PROJECT_ROOT / "skills" / "wire-issue" / "caller-suitability-gate.md"
 WIRE_ISSUE_SKILL = PROJECT_ROOT / "skills" / "wire-issue" / "SKILL.md"
+
+# ENH-3259 fixture loop artifacts.
+FIXTURE_ISSUE = (
+    PROJECT_ROOT
+    / "scripts"
+    / "tests"
+    / "fixtures"
+    / "issues"
+    / "ENH-288-fixture-caller-suitability-gate.md"
+)
+FIXTURE_LOOP = (
+    PROJECT_ROOT
+    / "scripts"
+    / "tests"
+    / "fixtures"
+    / "loops"
+    / "caller-suitability-gate-fixture.yaml"
+)
 
 # The seam the worked example must cite: the sole production caller of
 # suggest_gitignore_patterns(), which passes no untracked_files= and so always
@@ -156,4 +176,101 @@ class TestWorkedExampleObeysItsOwnRule:
         assert "`scripts/little_loops/git_operations.py:413`" in gate_text, (
             "The worked example no longer records the suppressed call site under "
             "Dependent Files. That entry is the positive half the gate mandates."
+        )
+
+
+def _fixture_loop_is_running() -> bool:
+    """Skip-condition for the residue guard: is the fixture loop mid-run right now?
+
+    Locks live at .loops/.running/<instance_id>.lock (fsm/concurrency.py), named by
+    instance_id rather than loop name, with loop_name carried inside the JSON payload —
+    so this must glob-and-parse rather than check a fixed path. An env-var check
+    (LL_AUTOMATION) does not work here: conftest.py's autouse _restore_cmd_run_env_vars
+    fixture delenvs it for every test, so it always reads unset (ENH-3259 seventh
+    review round).
+    """
+    running_dir = PROJECT_ROOT / ".loops" / ".running"
+    if not running_dir.is_dir():
+        return False
+    for lock_file in running_dir.glob("*.lock"):
+        try:
+            payload = json.loads(lock_file.read_text())
+        except (OSError, json.JSONDecodeError):
+            continue
+        if payload.get("loop_name") == "caller-suitability-gate-fixture":
+            return True
+    return False
+
+
+class TestFixtureLoopResidue:
+    """ENH-3259: the staged fixture must leave no residue in `.issues/`.
+
+    The staged copy is gitignored (see .gitignore), which blinds `git status` to
+    residue by construction — this filesystem-level glob is the only mechanism that
+    can see it once that ignore entry exists. It doubles as the ID-reservation guard:
+    the same assertion proves nobody has hand-allocated 288 to real work.
+    """
+
+    def test_no_staged_fixture_residue(self) -> None:
+        if _fixture_loop_is_running():
+            pytest.skip("caller-suitability-gate-fixture loop is currently running")
+        residue = list((PROJECT_ROOT / ".issues").glob("*/*-288-*.md"))
+        assert not residue, (
+            f"Staged ENH-288 fixture residue found: {residue}. Either a fixture loop "
+            "run was interrupted before its unstage-fixture state, or ID 288 has been "
+            "hand-allocated to real work — both are invalid states."
+        )
+
+
+class TestFixtureNonVacuity:
+    """ENH-3259 seventh review round: gate-record must not be satisfiable by the
+    pristine (unmodified) fixture body.
+
+    All three gates `grep` the archived file, which is the fixture body plus
+    whatever wire-issue appended — `grep` cannot tell the two apart. If the
+    checked-in fixture body happened to already contain one of the gate substrings,
+    a dead run (wire-issue never wrote) could pass that gate anyway, defeating the
+    RUN_INVALID liveness design. This converts "the gates are non-vacuous" from an
+    authoring convention into a suite-enforced invariant.
+    """
+
+    def test_fixture_body_carries_none_of_the_gate_substrings(self) -> None:
+        assert FIXTURE_ISSUE.exists(), (
+            f"Fixture issue missing: {FIXTURE_ISSUE.relative_to(PROJECT_ROOT)}"
+        )
+        body = FIXTURE_ISSUE.read_text()
+        forbidden = [
+            "git_operations.py:413",
+            "Update `scripts/little_loops/git_operations.py",
+            "Inject at `scripts/little_loops/cli/gitignore.py:55`",
+        ]
+        for substring in forbidden:
+            assert substring not in body, (
+                f"Fixture body already contains gate substring {substring!r} before "
+                "wire-issue ever runs — this would let the gate pass vacuously on a "
+                "dead run, defeating the RUN_INVALID liveness check."
+            )
+
+
+class TestFixtureLoopValidates:
+    """ENH-3259 sixth review round: the loop under scripts/tests/fixtures/loops/ sits
+    outside every BUILTIN_LOOPS_DIR sweep, so nothing else in the suite validates its
+    schema. Wrapped as a subprocess-shelling pytest per the repo's Testing & CI Policy
+    (precedent: test_policy_builder_node_gate.py).
+    """
+
+    def test_ll_loop_validate_exits_zero(self) -> None:
+        assert FIXTURE_LOOP.exists(), (
+            f"Fixture loop missing: {FIXTURE_LOOP.relative_to(PROJECT_ROOT)}"
+        )
+        result = subprocess.run(
+            ["ll-loop", "validate", str(FIXTURE_LOOP)],
+            cwd=PROJECT_ROOT,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        assert result.returncode == 0, (
+            f"ll-loop validate failed on {FIXTURE_LOOP.relative_to(PROJECT_ROOT)}:\n"
+            f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
         )

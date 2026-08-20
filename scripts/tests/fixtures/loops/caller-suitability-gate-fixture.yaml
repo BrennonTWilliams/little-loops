@@ -1,0 +1,107 @@
+name: caller-suitability-gate-fixture
+category: evaluation
+description: |
+  ENH-3259 fixture loop. Stages the ENH-288 fixture into .issues/enhancements/,
+  runs /ll:wire-issue --auto against it, and asserts the § 8b caller
+  suitability gate (ENH-3258) fired on the recorded ground truth: no `Update`
+  bullet for git_operations.py:413 (suppression), an `Inject at` bullet
+  naming cli/gitignore.py:55 (injection), and a `### Dependent Files` entry
+  recording the suppressed call site (record — also the run's liveness
+  precondition). Not a generalization probe; see ENH-3259 Scope Boundaries.
+initial: stage-fixture
+scope:
+  - ".issues/enhancements/"
+max_steps: 20
+timeout: 3600
+context:
+  fixture_source: scripts/tests/fixtures/issues/ENH-288-fixture-caller-suitability-gate.md
+  staged_path: .issues/enhancements/P3-ENH-288-fixture-caller-suitability-gate.md
+states:
+  stage-fixture:
+    action_type: shell
+    action: |
+      rm -f .issues/enhancements/P3-ENH-288-fixture-caller-suitability-gate.md
+      cp scripts/tests/fixtures/issues/ENH-288-fixture-caller-suitability-gate.md .issues/enhancements/P3-ENH-288-fixture-caller-suitability-gate.md
+    next: run-wire-issue
+
+  run-wire-issue:
+    action_type: slash_command
+    action: "/ll:wire-issue ENH-288 --auto"
+    capture: wiring_output
+    next: archive-wiring
+    on_error: archive-wiring
+
+  archive-wiring:
+    action_type: shell
+    action: |
+      mkdir -p ${context.run_dir}
+      cp .issues/enhancements/P3-ENH-288-fixture-caller-suitability-gate.md ${context.run_dir}/wired-fixture.md 2>/dev/null || true
+    next: gate-record
+
+  gate-record:
+    action_type: shell
+    action: |
+      if grep -qF "git_operations.py:413" ${context.run_dir}/wired-fixture.md 2>/dev/null; then echo GATE_PASS; else echo GATE_FAIL; fi
+    capture: gate_record
+    evaluate:
+      type: output_contains
+      pattern: "GATE_PASS"
+    on_yes: gate-suppression
+    on_no: gate-suppression
+    on_error: gate-suppression
+
+  gate-suppression:
+    action_type: shell
+    action: |
+      SLICE=$(sed -n '/### Wiring Phase/,$p' ${context.run_dir}/wired-fixture.md 2>/dev/null)
+      if echo "$SLICE" | grep -qF "Update \`scripts/little_loops/git_operations.py"; then echo GATE_FAIL; else echo GATE_PASS; fi
+    capture: gate_suppression
+    evaluate:
+      type: output_contains
+      pattern: "GATE_PASS"
+    on_yes: gate-injection
+    on_no: gate-injection
+    on_error: gate-injection
+
+  gate-injection:
+    action_type: shell
+    action: |
+      if grep -qF "Inject at \`scripts/little_loops/cli/gitignore.py:55\`" ${context.run_dir}/wired-fixture.md 2>/dev/null; then echo GATE_PASS; else echo GATE_FAIL; fi
+    capture: gate_injection
+    evaluate:
+      type: output_contains
+      pattern: "GATE_PASS"
+    on_yes: aggregate
+    on_no: aggregate
+    on_error: aggregate
+
+  aggregate:
+    action_type: shell
+    action: |
+      RECORD="${captured.gate_record.output:default=unknown}"
+      SUPPRESSION="${captured.gate_suppression.output:default=unknown}"
+      INJECTION="${captured.gate_injection.output:default=unknown}"
+      if ! echo "$RECORD" | grep -qF "GATE_PASS"; then
+        echo "RUN_INVALID — gate-record failed (no liveness signal; suppression=unevaluated injection=unevaluated)"
+      else
+        FAILED=""
+        echo "$SUPPRESSION" | grep -qF "GATE_PASS" || FAILED="$FAILED gate-suppression"
+        echo "$INJECTION" | grep -qF "GATE_PASS" || FAILED="$FAILED gate-injection"
+        if [ -z "$FAILED" ]; then
+          echo "ALL_PASSED"
+        else
+          echo "NOT_PASSED —$FAILED"
+        fi
+      fi
+    capture: aggregate_result
+    next: unstage-fixture
+
+  unstage-fixture:
+    action_type: shell
+    action: |
+      git reset -- .issues/enhancements/P3-ENH-288-fixture-caller-suitability-gate.md 2>/dev/null || true
+      rm -f .issues/enhancements/P3-ENH-288-fixture-caller-suitability-gate.md
+    next: done
+
+  done:
+    terminal: true

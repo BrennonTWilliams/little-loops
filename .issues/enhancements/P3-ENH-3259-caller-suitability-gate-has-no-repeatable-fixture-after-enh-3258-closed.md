@@ -3,10 +3,11 @@ id: ENH-3259
 type: ENH
 title: Caller suitability gate has no repeatable fixture after ENH-3258 closed
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-08-20'
 captured_at: '2026-08-20T00:19:48Z'
+completed_at: '2026-08-20T18:07:54Z'
 testable: true
 program_design_not_applicable: true
 behavior_parity_not_applicable: true
@@ -993,6 +994,7 @@ _Revised 2026-08-19:_
   scoped in Scope Boundaries; option (a) under Proposed Solution is the upgrade path.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-20T18:07:37 - `09b5da8e-06b2-4253-b10e-e6b525a551bb.jsonl`
 - `/ll:confidence-check` - 2026-08-20T16:03:25 - `e75df641-36ca-46da-9aea-944d012bb21b.jsonl`
 - review round (seventh) - 2026-08-20 - **five findings, three of them defects that would
   have disabled a stated mitigation; all verified against the tree before writing.** First

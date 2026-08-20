@@ -48,6 +48,10 @@ temp/
 **/.*.lock
 **/.*.lock.lock
 
+# ENH-3259 staged caller-suitability-gate fixture (ephemeral, staged for the
+# duration of a fixture loop run and removed on every exit path)
+.issues/enhancements/*ENH-288-*
+
 # Claude Code
 .claude/settings.local.json
 .ll/ll.local.md
