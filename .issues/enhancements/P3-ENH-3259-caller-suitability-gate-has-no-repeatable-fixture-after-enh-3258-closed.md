@@ -51,20 +51,24 @@ any edit to § 8b or its companion. Concretely:
 
 - A checked-in fixture issue body exists outside `.issues/` and is not visible to the
   backlog in steady state.
-- A single command runs `/ll:wire-issue <fixture> --dry-run` against the current tree and
-  captures its emitted Wiring Phase to a run-scoped artifact.
-- The **record half** is asserted deterministically: the captured output contains a
+- A single command runs `/ll:wire-issue <fixture> --auto` against the current tree, letting
+  it write its findings into the ephemeral staged copy, and archives that written copy to a
+  run-scoped artifact. The assertions are made against the **written fixture file**, not
+  against wire-issue's stdout — see the dry-run decision under Proposed Solution.
+- The **record half** is asserted deterministically: the written fixture contains a
   `### Dependent Files` entry citing `scripts/little_loops/git_operations.py:413`. This is
   the positive half of the gate's own "always emit both halves" rule
   (`caller-suitability-gate.md:40-50`) and doubles as the run's liveness precondition —
   see the vacuous-pass decision under Proposed Solution.
-- The **suppression half** is asserted deterministically: the captured output contains no
+- The **suppression half** is asserted deterministically: the written fixture contains no
   `Update` bullet for `scripts/little_loops/git_operations.py`.
-- The **injection half** is asserted deterministically: the captured output contains an
+- The **injection half** is asserted deterministically: the written fixture contains an
   `Inject at` bullet naming `scripts/little_loops/cli/gitignore.py:55`.
 - All three gates are evaluated on every run; none short-circuits the others, and the run
   reports which gate(s) failed. When `gate-record` fails the run reports `RUN_INVALID`
   rather than a per-gate tally — see the aggregate-semantics decision below.
+- All three gates are shell greps over that written file, not `output_contains` matches over
+  LLM-formatted prose.
 - The fixture leaves no residue in `.issues/` after the run, including on failure — and any
   residue that a hard kill does leave is cleared idempotently by the next run's staging
   state, and is detected by a pytest residue guard rather than by `git status` (the
@@ -87,17 +91,59 @@ Both halves need coverage, and they fail differently:
 
 ## Proposed Solution
 
-Check the fixture body in (as `ENH-9999`) under `scripts/tests/fixtures/issues/` (it is not
+Check the fixture body in (as `ENH-288`) under `scripts/tests/fixtures/issues/` (it is not
 real work and must not appear in the backlog), and drive it from a **hand-written FSM loop**
 in the `loops/prompt-regression-test.yaml` shape: an execute state that runs
-`/ll:wire-issue ENH-9999 --dry-run` and captures its output to `${context.run_dir}/`,
-followed by three deterministic `output_contains` gates — record, suppression, injection —
-and an aggregate state that names whichever gate(s) failed.
+`/ll:wire-issue ENH-288 --auto` against the staged copy, followed by three deterministic
+gates — record, suppression, injection — each a shell `grep` over the file wire-issue just
+wrote, and an aggregate state that names whichever gate(s) failed.
 
 Because wire-issue resolves its argument through `ll-issues path` (see the resolver
 constraint below), the loop **stages the fixture into `.issues/enhancements/` for the
 duration of the run and removes it on every exit path**, rather than teaching any resolver
 to accept a file path.
+
+> **`--dry-run` is dropped; the loop wires the staged copy for real and greps the written
+> file (decided 2026-08-20, fifth review round). This resolves a defect that made the
+> injection gate unpassable by construction.** Three findings, all verified against the tree:
+>
+> 1. **`--dry-run` never prints the `Inject at` bullet.** `--dry-run` skips Phase 8
+>    (`skills/wire-issue/SKILL.md:338`) and `--auto` skips Phase 7, so the only output an
+>    auto+dry-run invocation emits is the Phase 10 report
+>    (`skills/wire-issue/output-report.md`). That template prints Integration Map additions
+>    as bullets (`### Added to Dependent Files`) but renders Implementation Steps changes as
+>    a bare count — `- [N] wiring touchpoints added`. `Inject at` bullets are Wiring Phase
+>    entries, i.e. Implementation Steps, so they are **never printed under `--dry-run`**.
+>    `gate-injection` — the half this issue calls "the newer and less-exercised of the two"
+>    — could therefore never match, permanently. The old step 4 would have discovered this
+>    only after the loop was written.
+> 2. **Bare `--dry-run` hangs a headless run.** Without `--auto`, Phase 7 reaches
+>    `AskUserQuestion` (`SKILL.md:308-330`), which has no answer source under `ll-loop run`.
+>    Any dry-run variant would have had to be `--auto --dry-run` — precisely the combination
+>    that emits nothing but the summary report.
+> 3. **Writing for real is free here.** The staged fixture is ephemeral and deleted on every
+>    exit path, so there is nothing to protect from mutation — `--dry-run` was guarding a
+>    file that gets `rm`'d seconds later. Letting Phase 8 write gives the gates the *actual
+>    emitted markdown* instead of an LLM-formatted summary of it.
+>
+> **Selected:** run `/ll:wire-issue ENH-288 --auto` (no `--dry-run`) and gate with `grep`
+> over the staged file. Consequences, all improvements:
+> - All three gates become shell `grep` states over a file on disk — fully deterministic,
+>   with no dependence on how the host formats stdout and no `output_contains`
+>   regex-vs-substring hazard.
+> - The old step 4 ("run it once manually and pin the substrings against observed dry-run
+>   output") **collapses**: the assertion targets are the Integration Map and Wiring Phase
+>   bullet formats, specified verbatim in `SKILL.md:344-403` and
+>   `caller-suitability-gate.md:40-50`, not discovered empirically. Step 4 is retained in
+>   reduced form as a single confirming run.
+> - The fixture must set `testable: false` in its frontmatter so Phase 9's learning-target
+>   extraction is skipped (`SKILL.md:471`) — that skip is conditioned on `testable: false`
+>   **or** `--dry-run`, and only the former is still available.
+> - Phase 9 runs `ll-issues append-log` and `git add "<staged path>"` **unguarded by
+>   `DRY_RUN`** (`SKILL.md:456-470`) — the "skip all file modifications" rule at `:338` is
+>   scoped to Phase 8's heading only. `git add` on an explicitly-named gitignored path fails
+>   without `-f` and stages nothing, so this is noise rather than a leak; `unstage-fixture`
+>   nonetheless runs `git reset -- <path>` before `rm -f` as a defensive measure.
 
 > **Selected (supersedes the 2026-08-20 `/ll:confidence-check` selection of
 > `/ll:verify-issue-loop`):** a hand-written loop in the `prompt-regression-test.yaml`
@@ -117,9 +163,11 @@ to accept a file path.
 >    processes, not the two-halves assertion. One file cannot be both stimulus and
 >    assertion spec; a hand-written loop keeps the assertion in the YAML where it belongs.
 > 3. **The assertion does not need an LLM evaluator.** Both halves are literal-substring
->    checks over captured text, so `output_contains` gates them deterministically. This
->    strengthens the issue's "not pytest-assertable" framing to "not pytest-assertable,
->    but deterministically gated" — only the stimulus is non-deterministic.
+>    checks over emitted Markdown, so they gate deterministically. This strengthens the
+>    issue's "not pytest-assertable" framing to "not pytest-assertable, but deterministically
+>    gated" — only the stimulus is non-deterministic. *(Refined in the fifth review round:
+>    the checks are shell `grep`s over the file wire-issue writes, not `output_contains` over
+>    its stdout — see the `--dry-run` decision below.)*
 >
 > Consequence: the scaffold-local bypass flag, its `cli/loop/__init__.py` argparse row, and
 > its `docs/reference/CLI.md` row are all **dropped** — see the superseded decision under
@@ -177,36 +225,58 @@ to accept a file path.
 > in that case. No-short-circuit routing still holds — all three gates run — but the
 > aggregate's *reporting* is precedence-ordered, not flat.
 >
-> Reinforcing why `gate-record` is the only liveness signal available:
-> `evaluate_output_contains()` skips `error_patterns` routing entirely when negating
-> (`fsm/evaluators.py:481` — `if verdict == "no" and not negate and error_patterns`). So
-> `gate-suppression`, which is the negated gate, **structurally cannot** route an errored
-> run to `on_error`; it can only return yes/no. There is no alternative liveness path.
+> Why `gate-record` remains the only liveness signal, restated for the fifth round's gate
+> shape: the gates now `grep` a file rather than negate an `output_contains` match, so the
+> fourth round's specific reasoning — that `evaluate_output_contains()` skips
+> `error_patterns` routing when negating (`fsm/evaluators.py:481`, `if verdict == "no" and
+> not negate and error_patterns`), leaving the negated suppression gate structurally unable
+> to reach `on_error` — no longer applies. The conclusion is unchanged and now simpler:
+> `grep` finding nothing is indistinguishable from `grep` running against an empty or
+> never-written file. `gate-suppression` passing means "the bad bullet is absent", which is
+> trivially true of a file wire-issue never wrote. Only `gate-record` asserts that
+> wire-issue produced output at all.
+>
+> The fifth round *strengthens* this: `archive-wiring` `cp`s the written staged file before
+> any gate runs, so if wire-issue never wrote — or never ran — the copy is of the unmodified
+> fixture body, which contains no `### Dependent Files` entry. `gate-record` fails and the
+> aggregate emits `RUN_INVALID`, exactly as intended.
 
-> **Staging `ENH-9999` perturbs global issue numbering while staged (decided 2026-08-20,
-> fourth review round).** `get_next_issue_number()` (`issue_parser.py:2461-2510`) returns
-> **max + 1** by filename regex across all category dirs — it does not count, it takes the
-> maximum. Consequence: for as long as the fixture is staged in `.issues/enhancements/`,
-> any issue creation (a concurrent `ll-auto`/`ll-parallel` run, or a human running
-> `/ll:capture-issue`) allocates **10000**, and every subsequent issue continues from there.
-> If a hard kill leaves residue, the skew is permanent until the residue is deleted.
+> **Fixture ID is a never-allocated *gap* number, `ENH-288` — not a reserved high number
+> (decided 2026-08-20, fifth review round; supersedes both the `ENH-3300` and `ENH-9999`
+> selections).** The fourth round correctly identified that staging a high ID perturbs
+> global numbering — `get_next_issue_number()` (`issue_parser.py:2461-2510`) returns
+> **max + 1** by filename regex across all category dirs, so a staged `ENH-9999` makes the
+> next allocation `10000`, permanently if a crash leaves residue — but it accepted that as a
+> bounded residual rather than eliminating it.
 >
-> The reserved-high-ID decision above correctly avoids a *collision* with a future real
-> `3300`, but it trades that collision for this blowout, which was previously unstated.
-> There is no naming dodge: `resolve_issue_path()` (`issue_parser.py:92`) keys on the same
-> `TYPE-NNN` shape `get_next_issue_number()`'s prefix regex matches, so any name wire-issue
-> can resolve is also a name that participates in numbering.
+> It is eliminable at zero cost. Because the allocator takes **max + 1**, every number
+> *below* the current max is permanently unallocatable: the allocator can never hand one
+> out, no matter how many issues are created. That is the same collision-freedom guarantee
+> the reserved-high-ID was chosen for, but with **no perturbation at all** — staging a
+> below-max ID cannot move the maximum. The tree currently has 96 such gaps (max is 3260);
+> `281`–`295` is a contiguous 15-wide block, and `git log --all --diff-filter=D` shows no
+> issue file with any of those numbers ever existed, so the block is an allocation skip
+> rather than a set of deletions that might be restored.
 >
-> **Selected: bound the window rather than change the ID.** Two mitigations, both already
-> cheap and both landing in Implementation Steps:
-> 1. `scope: [".issues/enhancements/"]` on the loop (step 5) takes the run lock over the
->    staged directory, closing the *concurrent-allocation* half — another loop cannot
->    allocate an issue while the fixture is staged.
-> 2. The pytest residue guard (step 3) bounds the *crash-residue* half to "until the next
->    test run", and makes it visible despite the `.gitignore` entry.
+> **Selected: `ENH-288`.** Consequences:
+> - The numbering hazard is **gone**, not bounded. The fourth round's residual accepted risk
+>   ("a human creating an issue by hand, in the seconds a staged run is live, still gets
+>   `10000`") no longer exists.
+> - `scope: [".issues/enhancements/"]` on the loop (step 5) is **retained on its own merits**
+>   — a correct narrow scope that avoids the repo-root-lock fallback — but it is no longer
+>   justified as a numbering mitigation. Note that justification was weak regardless:
+>   `LockManager` is taken only by `ll-loop run` (`cli/loop/run.py:372`,
+>   `_helpers.py:1545`), and `ll-issues create` takes no lock, so an `ll-auto` session
+>   running `/ll:capture-issue` was never blocked by it.
+> - The pytest residue guard (step 3) is likewise retained on its own merits, as the only
+>   thing that can see residue once the path is gitignored.
+> - **New guard required:** the residue guard's file asserts `ENH-288` is still absent from
+>   `.issues/` in steady state, which doubles as a reservation check — if a human ever
+>   hand-allocates `288`, the suite goes red instead of the fixture silently colliding with
+>   live backlog work.
 >
-> Residual accepted risk: a human creating an issue by hand, in the seconds a staged run is
-> live, still gets `10000`. Acceptable — the fixture is run on demand, not on a schedule.
+> The one property the high ID had that this one lacks is self-evident sentinel-ness. Recover
+> it in the slug, not the number: stage as `P3-ENH-288-fixture-caller-suitability-gate.md`.
 
 ### Codebase Research Findings
 
@@ -223,18 +293,18 @@ _Added by `/ll:refine-issue` — 2026-08-20 — based on codebase analysis:_
   `scripts/tests/fixtures/issues/` (matching the existing convention — see "Existing
   fixture-issue storage convention" below). It must not live in `.issues/` in steady
   state, since it is not real work and would pollute the backlog.
-  > **Selected: the fixture carries a reserved high ID, `ENH-9999`, not `ENH-3300`
-  > (decided 2026-08-19, second review round).** `get_next_issue_number()`
-  > (`issue_parser.py:2461`) allocates sequentially and will hand `3300` to a real issue
-  > eventually; ephemeral staging would then collide with live backlog work — silently, at
-  > whichever run happens to follow that allocation. `resolve_issue_path()`
-  > (`issue_parser.py:92`) keys only on the `TYPE-NNN` shape, so a reserved high number
-  > costs nothing and nothing else changes. `ENH-3300` remains the correct name for the
+  > **Selected: the fixture carries the never-allocated gap ID `ENH-288`** — see the
+  > fixture-ID decision under Proposed Solution for the full rationale. Short form:
+  > `get_next_issue_number()` (`issue_parser.py:2461`) takes **max + 1**, so any below-max
+  > number is permanently unallocatable and staging it perturbs nothing.
+  > `resolve_issue_path()` (`issue_parser.py:92`) keys only on the `TYPE-NNN` shape, so the
+  > choice of number is otherwise free. `ENH-3300` remains the correct name for the
   > *historical* one-shot run recorded in ENH-3258's Session Log; it is not the fixture's ID
-  > going forward
+  > going forward. `ENH-9999` (fourth-round selection) is superseded — it avoided collision
+  > but blew the allocator's maximum out to `10000` while staged
 - A new hand-written FSM loop YAML (mechanism locked — see Proposed Solution decision):
-  stage fixture → `/ll:wire-issue --dry-run` → three `output_contains` gates (record,
-  suppression, injection) → aggregate → unstage
+  stage fixture → `/ll:wire-issue --auto` → three shell `grep` gates (record, suppression,
+  injection) → aggregate → unstage
   > **Selected: the loop lives at `scripts/tests/fixtures/loops/`, not in the built-in
   > catalog (decided 2026-08-19, second review round).** `resolve_loop_path()`
   > (`fsm/loop_paths.py:21-23`) returns any path that exists *before* consulting any loops
@@ -242,20 +312,29 @@ _Added by `/ll:refine-issue` — 2026-08-20 — based on codebase analysis:_
   > path. Rationale: this is a fixture, not a shipped loop — a fixtures location keeps it
   > out of `test_builtin_loops.py`'s validation sweep over
   > `scripts/little_loops/loops/`, and drops the conditional README row entirely
+  > > **Why not the existing `scripts/tests/fixtures/fsm/` (noted 2026-08-20, fifth review
+  > > round).** That directory already holds ~20 loop YAMLs, so a reviewer will ask. It is
+  > > the *validator*-fixture directory — many of its files (`incomplete-loop.yaml`,
+  > > `loop-with-unreachable-state.yaml`, `broken-verify-loop.yaml`) are deliberately
+  > > invalid and exist to be rejected. This loop is the opposite: a runnable artifact that
+  > > must stay `ll-loop validate`-clean. Keeping them apart prevents a future
+  > > "validate everything under `fixtures/fsm/`" sweep from being impossible to write.
+  > > Create `scripts/tests/fixtures/loops/` new
 > **Descoped 2026-08-19 (third review round):** `skills/wire-issue/caller-suitability-gate.md`
 > and its six host mirrors are **no longer modified by this issue** — the worked-example
 > correction shipped separately (Implementation Steps step 2). What remains is three sites:
 > the fixture body, the loop YAML, and the `.gitignore` entry.
 
 - `.gitignore` — add an ignore entry for the staged fixture path
-  (`.issues/enhancements/*ENH-9999-*`). Required, not optional: FSM `on_failure`/`on_error`
+  (`.issues/enhancements/*ENH-288-*`). Required, not optional: FSM `on_failure`/`on_error`
   routing cannot cover SIGINT, a timeout kill, or `max_steps` exhaustion, so in-loop
   cleanup alone cannot deliver the "no residue" criterion. See Implementation Steps step 3
 - `scripts/tests/test_caller_suitability_gate.py` — add the **residue guard** (a ~5-line
-  test asserting no `.issues/enhancements/*ENH-9999-*` exists). Added 2026-08-20 (fourth
+  test asserting no `.issues/enhancements/*ENH-288-*` exists). Added 2026-08-20 (fourth
   review round) as the detection mechanism the `.gitignore` entry removes; see the
-  residue-detection decision under Implementation Steps step 3. Change surface is now
-  **4 sites**, not 3
+  residue-detection decision under Implementation Steps step 3. It doubles as the
+  **ID-reservation guard** under the fifth round's gap-number decision: the same assertion
+  proves nobody has hand-allocated `288`. Change surface is **4 sites**, not 3
 
 _Superseded by the mechanism decision (2026-08-19) — no longer in scope:_
 - ~~`scripts/little_loops/cli/loop/__init__.py` (~972-1019) — `scaffold-verify` argparse
@@ -346,9 +425,13 @@ _Wiring pass added by `/ll:wire-issue`:_
   (`TestCriteriaModeNoShortCircuit`, `TestAggregateExecutionEndToEnd`, lines 227-397)
 - `scripts/little_loops/loops/rn-remediate.yaml:616`, `autodev.yaml:795,1753`,
   `recursive-refine.yaml:624`, `refine-to-ready-issue.yaml:268` — five existing loops
-  invoke `/ll:wire-issue ... --auto` today; none invoke `--dry-run`. No prior art exists
-  for a loop that dry-runs wire-issue and asserts on its output — this fixture would be
-  the first
+  invoke `/ll:wire-issue ... --auto` today; none invoke `--dry-run`.
+  > **Re-read 2026-08-20 (fifth review round): this finding now cuts the other way.** It was
+  > recorded as a risk ("no prior art for dry-running wire-issue in a loop, so the output
+  > format is unobserved"). Under the `--dry-run` decision the fixture joins the existing
+  > `--auto` cohort instead of pioneering an unexercised invocation mode, so the five loops
+  > above are **precedent**, not a gap. What remains novel is only that this loop *asserts*
+  > on wire-issue's written output rather than consuming it
 
 ### Tests
 
@@ -375,11 +458,21 @@ _Wiring pass added by `/ll:wire-issue`:_
   presence half. The presence assertions are not part of this issue's remaining work, but
   the file gains one new test in this issue: the **residue guard** (see below)
 - **New (2026-08-20, fourth review round): a residue guard IS in scope.**
-  `assert not list((project_root / ".issues/enhancements").glob("*ENH-9999-*"))`. This is
+  `assert not list((project_root / ".issues/enhancements").glob("*ENH-288-*"))`. This is
   not a prose-compliance check — it is a filesystem invariant, and it is the *only*
-  mechanism that can see the staged fixture once step 3 gitignores the path. It also bounds
-  the numbering perturbation (see the `get_next_issue_number()` decision under Proposed
-  Solution) to one test-run interval. ~5 lines
+  mechanism that can see the staged fixture once step 3 gitignores the path. ~5 lines.
+  > **Two amendments, fifth review round (2026-08-20).**
+  > 1. **It must not race a live run.** The assertion fails spuriously if the suite runs
+  >    while a staged loop run is in flight — the fixture is *supposed* to be there for
+  >    those seconds. Skip the guard when `LL_AUTOMATION` is set, or when the loop's lock
+  >    file is present under the loops dir. Without this it is a flake generator, and a
+  >    flaky invariant guard gets deleted rather than fixed.
+  > 2. **It also serves as the ID-reservation guard.** Under the gap-number decision the
+  >    same glob proves nobody has hand-allocated `288` to real work — the one property a
+  >    below-max ID does not get for free from the allocator. Assert the absence for the
+  >    whole of `.issues/`, not just `enhancements/`, so a `BUG-288` or `FEAT-288` is caught
+  >    too; `get_next_issue_number()` treats the numeric space as global across prefixes
+  >    (`issue_parser.py:2488-2496`), and so must this guard.
 - Beyond that guard, the fixture loop's completion gate remains the loop running and
   reproducing the recorded verdict, not a further addition to `scripts/tests/`
 
@@ -431,7 +524,7 @@ _Added by `/ll:refine-issue` — 2026-08-20 — based on codebase analysis:_
 > stands as a standing rule — **if `caller-suitability-gate.md` is touched for any reason
 > after pinning, re-pin the gate substrings.**
 
-1. **Author** the fixture body as `ENH-9999` under `scripts/tests/fixtures/issues/`,
+1. **Author** the fixture body as `ENH-288` under `scripts/tests/fixtures/issues/`,
    faithful to the ground truth recorded in ENH-3258's Session Log (the body itself is not
    recorded there — see the corrected finding above). Ground truth: the fixture asks to
    thread a config-sourced `exclude_patterns` list into `get_untracked_files()`, whose sole
@@ -441,6 +534,15 @@ _Added by `/ll:refine-issue` — 2026-08-20 — based on codebase analysis:_
    must say **nothing** about guards, fallbacks or seams — that contamination is exactly
    what invalidated the ENH-3000 run. (Contamination via the *companion doc* is a separate,
    accepted limitation — see the prompt-contamination decision under Proposed Solution.)
+   The frontmatter must set **`testable: false`**, which is what suppresses Phase 9's
+   learning-target extraction now that `--dry-run` is gone (`skills/wire-issue/SKILL.md:471`
+   skips on `testable: false` **or** `--dry-run`); and it must carry a
+   `program_design_not_applicable: true` / `behavior_parity_not_applicable: true` pair so
+   wire-issue's own gates do not fire on the stimulus. File name when staged:
+   `P3-ENH-288-fixture-caller-suitability-gate.md`, placed in the `.issues/enhancements/`
+   directory. (That staged path is deliberately transient and gitignored, so it will never
+   be git-tracked — `ll-issues format-check` reports it as a `stale_file_ref`, which is a
+   false positive by construction here.)
 2. ~~Correct `caller-suitability-gate.md`'s worked-example `Inject at` bullet~~ —
    **DONE 2026-08-19, descoped from this issue.** The bullet now reads
    ``Inject at `scripts/little_loops/cli/gitignore.py:55` `` in the canonical file and all
@@ -453,7 +555,7 @@ _Added by `/ll:refine-issue` — 2026-08-20 — based on codebase analysis:_
      copies of the gate had zero drift protection and step 2's propagation would have been
      unverified. The three `caller-suitability-gate.md` pairs are now in that list;
      mutation-verified against an appended-line drift.
-3. Add the staged-path ignore entry (`.issues/enhancements/*ENH-9999-*`) to `.gitignore`
+3. Add the staged-path ignore entry (`.issues/enhancements/*ENH-288-*`) to `.gitignore`
    **before** the first staged run, so a crashed run cannot dirty the working tree. In the
    same step, add the residue guard to `scripts/tests/test_caller_suitability_gate.py`.
    > **Residue detection: the `.gitignore` entry destroys the obvious check (decided
@@ -468,54 +570,93 @@ _Added by `/ll:refine-issue` — 2026-08-20 — based on codebase analysis:_
    > costs ~5 lines, converts invisible residue into a red suite, and gives step 6 a real
    > assertion. Both landing in the same step is deliberate — the ignore entry must never
    > exist without the guard.
-4. Run `/ll:wire-issue ENH-9999 --dry-run` manually once — against the tree **as corrected
-   by step 2** — and record the literal shape of its emitted Wiring Phase and Dependent
-   Files bullets. No existing loop dry-runs wire-issue, so the gate substrings must be
-   derived from observed output, not assumed.
-5. Hand-write the FSM loop under `scripts/tests/fixtures/loops/`: `stage-fixture` (shell;
-   `rm -f` the staged path first, then copy the fixture into `.issues/enhancements/` — the
-   pre-clean is what makes staging idempotent after a hard kill) → `run-wire-issue`
-   (capture dry-run output to `${context.run_dir}/wiring.txt`) → `gate-record`
-   (`output_contains`, requires a `### Dependent Files` entry citing
-   `git_operations.py:413`) → `gate-suppression` (`output_contains` with `negate: true`,
-   fails if an `Update` bullet cites `git_operations.py`) → `gate-injection`
-   (`output_contains`, requires an `Inject at` bullet citing `cli/gitignore.py:55`) →
-   `aggregate` (names whichever gate(s) failed, or `RUN_INVALID` if `gate-record` failed —
-   see the aggregate-semantics decision under Proposed Solution) → `unstage-fixture`. All
-   three gates run on every path (ENH-3200 no-short-circuit routing); `unstage-fixture` is
-   wired onto success, failure and error exits.
-   > **Declare `scope: [".issues/enhancements/"]` (added 2026-08-20, fourth review round).**
-   > `_validate_missing_scope()` (`fsm/validation/structural_rules.py:1226-1245`) warns on
-   > any loop with no `scope:`, and an empty scope falls back to a repo-root lock
-   > (`resolve_scope(fsm.scope or ["."], ...)` in `cli/loop/run.py`) that false-conflicts
-   > with every concurrently running loop. Declaring the staged directory is both the
-   > correct narrow scope and a useful side effect: the run lock closes the
-   > concurrent-allocation half of the `get_next_issue_number()` hazard (see its decision
-   > under Proposed Solution). `${context.run_dir}/` needs no scope entry — it is
-   > runner-managed.
-   > **Pin how each gate reads the capture (added 2026-08-20, fourth review round).**
-   > `evaluate.source` (`fsm/schema.py:114`, documented at `:72` as "Override default
-   > source (current action output)") is an **interpolated string, not a file reader** —
-   > writing `source: "${context.run_dir}/wiring.txt"` would gate on the literal *path
-   > text*, not the file's contents, and `gate-suppression` would then pass vacuously
-   > forever. Each of the three gates must instead use
-   > `source: "${captured.<wire_issue_state_capture>.output}"`. Consequence:
-   > `${context.run_dir}/wiring.txt` is **archival only** — it exists for post-run forensics
-   > and to satisfy this issue's own artifact-isolation practice, and is not what the gates
-   > read. Decide this here rather than at implementation time; all three gates need it.
-   > **Escape the gate patterns as regex.** `evaluate_output_contains()`
-   > (`fsm/evaluators.py:470-473`) tries `re.search` **first** and falls back to substring
-   > matching only when the pattern fails to *compile* — never on a no-match. So `.` in
-   > `git_operations.py` is a wildcard, and any pattern containing `()` (e.g.
-   > `suggest_gitignore_patterns()`) compiles as an empty group that matches everything,
-   > yielding a permanently-true gate. Write every gate pattern as escaped regex and keep
-   > bare parens out of them.
-6. Run the loop once against the current tree and confirm it reproduces the recorded PASS,
-   then confirm no staged fixture residue remains — by globbing
-   `.issues/enhancements/*ENH-9999-*` directly, **not** by `git status`, which is clean by
-   construction once step 3's ignore entry exists (see the residue-detection decision under
-   step 3). Running `python -m pytest scripts/tests/test_caller_suitability_gate.py` is the
-   equivalent check and is what CI will enforce thereafter.
+4. **Confirm the emitted bullet formats with one manual run** of
+   `/ll:wire-issue ENH-288 --auto` against a hand-staged copy, and read the written file.
+   This step was formerly "derive the gate substrings from observed dry-run output, since
+   they cannot be assumed"; under the `--dry-run` decision it is reduced to a confirmation.
+   The formats are **specified**, not discovered: `### Dependent Files` and its bullet shape
+   at `skills/wire-issue/SKILL.md:344-352`, the Wiring Phase `Update <path>` bullet shape at
+   `:404-417`, and the `Inject at <path>` form mandated by
+   `caller-suitability-gate.md:40-50`. Write the gate patterns from those citations; use the
+   run to confirm them, and to confirm that Phase 8 wrote into the staged copy at all.
+5. Hand-write the FSM loop under `scripts/tests/fixtures/loops/`. States:
+   - `stage-fixture` (shell) — `rm -f` the staged path first, then copy the fixture from
+     `scripts/tests/fixtures/issues/` into the `.issues/enhancements/` directory as
+     `P3-ENH-288-fixture-caller-suitability-gate.md`. The pre-clean is what makes staging
+     idempotent after a hard kill.
+   - `run-wire-issue` (`action_type: prompt`) — `/ll:wire-issue ENH-288 --auto`. No
+     `--dry-run`; Phase 8 writes its findings into the staged copy, which is what the gates
+     read. `capture:` is declared for forensics, but **the gates do not read the capture**.
+   - `archive-wiring` (shell) — `cp` the written staged file to
+     `${context.run_dir}/wired-fixture.md` before any gate runs, so a failing run leaves the
+     evidence behind after `unstage-fixture` deletes the original.
+   - `gate-record`, `gate-suppression`, `gate-injection` — each `action_type: shell`,
+     each a `grep` over `${context.run_dir}/wired-fixture.md`, each with `capture:` set and
+     `evaluate: {type: output_contains, pattern: "GATE_PASS"}` over its own action output.
+     Record: a `### Dependent Files` bullet citing `git_operations.py:413`. Suppression: no
+     Wiring Phase `Update` bullet citing `git_operations.py` (`grep -v`/`! grep`, echoing
+     `GATE_PASS` on absence). Injection: an `Inject at` bullet citing `cli/gitignore.py:55`.
+   - `aggregate` (shell) — names whichever gate(s) failed, or emits `RUN_INVALID` if
+     `gate-record` failed (see the aggregate-semantics decision under Proposed Solution).
+   - `unstage-fixture` — `git reset -- <staged path>` (defensive; see the Phase 9 note in
+     the `--dry-run` decision), then `rm -f` the staged path.
+
+   All three gates run on every path (ENH-3200 no-short-circuit routing: every gate's
+   `on_yes`/`on_no`/`on_error` routes to the *next* gate, not to a shared failure terminal);
+   `unstage-fixture` is wired onto success, failure and error exits.
+   > **Each gate must be an *action* state, not an evaluate-only state (decided 2026-08-20,
+   > fifth review round). The previously-specified shape produced a permanent, silent
+   > FAIL.** The fourth round specified the gates as evaluate-only states with an
+   > `evaluate.source` override, and step 5 borrows `scaffold_verify.py`'s aggregate, which
+   > reads each gate's verdict as `${captured.<key>.verdict:default=unknown}`
+   > (`scaffold_verify.py:88-90`). Those two do not compose. The verdict write-back is
+   > guarded by `if state.capture and state.capture in self.captured`
+   > (`fsm/executor.py:1922`), and the capture dict is only *created* by the action-result
+   > block (`:2370`), which lives inside the action-execution path — an evaluate-only state
+   > never populates it. So the write-back is a no-op, all three gates read back `unknown`,
+   > and the aggregate reports `NOT_PASSED` on **every** run, forever.
+   >
+   > `ll-loop validate` cannot catch this: `_validate_capture_reachability()`
+   > (`fsm/validation/reachability.py:376-378`) builds its capture map from *declared*
+   > `capture:` keys, so a declared-but-never-written capture lints clean. And the
+   > aggregate's `:default=unknown` guard converts the missing value into a wrong answer
+   > rather than a crash. This is the exact mirror of the vacuous-pass hazard the fourth
+   > round fixed — a silent permanent-fail instead of a silent permanent-pass, and equally
+   > invisible.
+   >
+   > **Selected:** every gate is `action_type: shell` with a real `grep` action and a
+   > `capture:` key, evaluated by `output_contains` over its **own** action output. The
+   > capture dict is then populated by the action, the ENH-3200 write-back lands, and the
+   > aggregate reads real verdicts. This also removes the need for any `evaluate.source`
+   > override at all.
+   > **Consequently the fourth round's `source:` pinning note is moot**, and its underlying
+   > hazard is retired rather than mitigated: `evaluate.source` (`fsm/schema.py:114`) is an
+   > interpolated string, not a file reader, so `source: "${context.run_dir}/wiring.txt"`
+   > would have gated on the literal *path text* and passed vacuously forever. No gate now
+   > declares `source:`, so the trap is unreachable. `${context.run_dir}/wired-fixture.md`
+   > is read by `grep` inside the action — where a path *is* a path.
+   > **Regex-vs-substring escaping is likewise retired for the gates** — they are `grep`
+   > invocations now, so use `grep -F` for literal patterns and the hazard is gone. The
+   > underlying evaluator behavior still stands and still applies to the `GATE_PASS` /
+   > `ALL_PASSED` sentinels: `evaluate_output_contains()` (`fsm/evaluators.py:470-473`)
+   > tries `re.search` **first** and falls back to substring matching only when the pattern
+   > fails to *compile* — never on a no-match. Keep bare `.` and `()` out of every sentinel.
+   > **Declare `scope: [".issues/enhancements/"]` (added 2026-08-20, fourth review round;
+   > rationale narrowed in the fifth).** `_validate_missing_scope()`
+   > (`fsm/validation/structural_rules.py:1226-1245`) warns on any loop with no `scope:`,
+   > and an empty scope falls back to a repo-root lock (`resolve_scope(fsm.scope or ["."],
+   > ...)` in `cli/loop/run.py`) that false-conflicts with every concurrently running loop.
+   > Declaring the staged directory is the correct narrow scope, and that alone is the
+   > justification — the fourth round's secondary claim that the lock closes a
+   > numbering-allocation hazard no longer applies (the hazard is gone under the gap-number
+   > decision, and the lock never covered `ll-issues create` anyway). `${context.run_dir}/`
+   > needs no scope entry — it is runner-managed.
+6. Run the loop once against the current tree and confirm it reports `ALL_PASSED`, then
+   confirm no staged fixture residue remains — by globbing `.issues/enhancements/*ENH-288-*`
+   directly, **not** by `git status`, which is clean by construction once step 3's ignore
+   entry exists (see the residue-detection decision under step 3). Running
+   `python -m pytest scripts/tests/test_caller_suitability_gate.py` is the equivalent check
+   and is what the suite enforces thereafter.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
@@ -531,9 +672,15 @@ _These touchpoints were identified by wiring analysis and must be included in th
   to add
 - Borrow `scaffold_verify.py`'s `_criteria_states()` **routing** shape by hand — ENH-3200
   no-short-circuit routing plus a final aggregate shell state with `output_contains` —
-  rather than inventing a new aggregation shape or generating the YAML from a scaffold
-- Since no existing loop invokes `/ll:wire-issue --dry-run`, verify the dry-run output
-  format directly against a manual run before wiring the gates against it (step 4)
+  rather than inventing a new aggregation shape or generating the YAML from a scaffold.
+  **Borrow its state shape too, not just its routing:** every criterion state there is an
+  *action* state with `capture:` declared, and that is load-bearing, not incidental — see
+  the action-state decision under step 5
+- ~~Since no existing loop invokes `/ll:wire-issue --dry-run`, verify the dry-run output
+  format directly against a manual run before wiring the gates against it (step 4)~~ —
+  **superseded 2026-08-20 (fifth review round).** `--dry-run` is dropped; the gates read the
+  file wire-issue writes, whose bullet formats are specified at `SKILL.md:344-403` and
+  `caller-suitability-gate.md:40-50`. Step 4 is now a confirmation, not a discovery
 - `ll-loop validate` must pass on the new YAML.
   > **Corrected 2026-08-19 (second review round).** The prior claim — "this loop targets a
   > *skill* (wire-issue), so per-run artifact isolation is mandatory and the
@@ -542,7 +689,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
   > **action-string** regex (`skills/[\w-]+/SKILL\.md`, `loops/[\w-]+\.yaml`,
   > `agents/[\w-]+\.md`, `commands/[\w-]+\.md`, `\.claude/(CLAUDE\.md|settings)`) plus the
   > tokens `yaml_state_editor` / `replace_action`. This loop's actions — a `cp` of a fixture
-  > and `/ll:wire-issue ENH-9999 --dry-run` — match none of them, so the loop is **not**
+  > and `/ll:wire-issue ENH-288 --auto` — match none of them, so the loop is **not**
   > classified as a meta-loop and MR-1/MR-2 never fire. Separately, MR-3 is not meta-gated
   > at all: `_validate_artifact_isolation()` (`:191-222`) runs on every loop and fires only
   > on hardcoded `.loops/tmp/` paths (`_SHARED_TMP_PATH_RE`, `:36`). Writing artifacts under
@@ -577,8 +724,11 @@ the fixture's recorded ground truth, stated in Implementation Steps step 1.
   or a timeout kill and the ignore entry blinds `git status`; (2) a
   silently vacuous suppression gate — mitigated by the added positive `gate-record`, whose
   precedence in the aggregate is now specified (`RUN_INVALID`) rather than left as a flat
-  tally; (3) staged-fixture perturbation of `get_next_issue_number()` — mitigated by the
-  loop's `scope:` lock and the residue guard, with a small accepted residual. The
+  tally; (3) ~~staged-fixture perturbation of `get_next_issue_number()`~~ — **eliminated**
+  in the fifth review round by moving the fixture to a below-max gap ID, which the allocator
+  can never hand out and which cannot move the maximum; (4) a silently permanent-failing
+  aggregate, from gates that declare `capture:` but never populate it — **eliminated** in
+  the fifth review round by making every gate an action state. The
   residual, accepted limitation is evidential rather than operational: the fixture is a
   deletion detector, not a generalization probe (see Scope Boundaries). The real risk is
   doing nothing: the gate's only validation to date is one manual run
@@ -623,10 +773,13 @@ _Updated by `/ll:confidence-check` on 2026-08-19_
 - No `scripts/tests/` coverage exists or is planned for this deliverable by design (the
   gate is prose-driven, not pytest-assertable) — Criterion B is 0/25. The loop's
   `output_contains` gates are deterministic but live outside the pytest suite.
-- The dry-run output format of `/ll:wire-issue --dry-run` is unobserved by any existing
+- ~~The dry-run output format of `/ll:wire-issue --dry-run` is unobserved by any existing
   loop; step 4 requires pinning the gate substrings against a real run before the loop
-  can be trusted — residual execution-verification risk, not a design-decision gap
-  (`unapplied_decision` check is clean).
+  can be trusted~~ — **materially reduced 2026-08-20 (fifth review round).** `--dry-run` is
+  dropped, so the gates read the file wire-issue writes, whose bullet formats are specified
+  verbatim in `SKILL.md:344-403` and `caller-suitability-gate.md:40-50`. Step 4 is a
+  confirming run, not a discovery run. Some execution-verification residual remains (the
+  loop has still never been run), but it is no longer a format unknown.
 
 _Reassessment note (2026-08-19, this run): all findings above are unchanged from the
 prior run — re-verified independently against the current tree (format-check clean,
@@ -675,18 +828,56 @@ _Revised 2026-08-19:_
   not recorded anywhere), and it must be *uncontaminated* — any mention of guards,
   fallbacks or seams in the body reproduces the ENH-3000 failure where the answer was in
   the input.
-- **New:** the dry-run output format is unobserved by any existing loop, so the gate
-  substrings are guesswork until step 4 pins them against a real run.
+- ~~**New:** the dry-run output format is unobserved by any existing loop, so the gate
+  substrings are guesswork until step 4 pins them against a real run.~~ → **Largely
+  resolved** in the fifth review round by dropping `--dry-run`; the gate patterns now derive
+  from specified bullet formats rather than observed stdout.
 - **New (second review round):** the fixture reuses the gate companion's own worked-example
   scenario, so a PASS proves presence-and-application, not generalization. Accepted and
   scoped in Scope Boundaries; option (a) under Proposed Solution is the upgrade path.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-20T15:11:30 - `d1a0a529-4a4a-4956-8bd6-268fc1152f27.jsonl`
+- review round (fifth) - 2026-08-20 - **four findings, two of them defects that would have
+  made the loop fail or lie on its first run; all verified against the tree before writing.**
+  (1) *`gate-injection` was unpassable by construction*: `--dry-run` skips Phase 8
+  (`SKILL.md:338`) and `--auto` skips Phase 7, so the only auto+dry-run output is the Phase
+  10 report (`output-report.md`), which prints Integration Map additions as bullets but
+  Implementation Steps changes as a bare count (`- [N] wiring touchpoints added`). `Inject
+  at` bullets are Wiring Phase entries, so they are never printed under `--dry-run`.
+  Separately, bare `--dry-run` reaches `AskUserQuestion` and hangs a headless run. Resolved
+  by dropping `--dry-run` entirely: the staged copy is ephemeral, so wire-issue writes for
+  real and the gates `grep` the written file. This also collapses the old step 4 from
+  discovery to confirmation and retires the `evaluate.source` and regex-escaping hazards.
+  (2) *The aggregate would have read `unknown` for all three gates, forever*: the gates were
+  specified as evaluate-only states, but the ENH-3200 verdict write-back requires
+  `state.capture in self.captured` (`executor.py:1922`) and that dict is only created by the
+  action-result block (`:2370`) inside the action path. `_validate_capture_reachability()`
+  (`reachability.py:376-378`) lints on *declared* captures, so `ll-loop validate` cannot
+  catch it, and the aggregate's `:default=unknown` turns the miss into a wrong answer rather
+  than a crash — a silent permanent-FAIL, the mirror of the fourth round's vacuous-pass.
+  Resolved by making every gate an `action_type: shell` state with a real action and
+  `capture:`. (3) *The numbering perturbation was eliminable, not merely boundable*: because
+  `get_next_issue_number()` takes **max + 1**, every below-max number is permanently
+  unallocatable, so a never-allocated gap ID has the high ID's collision-freedom with none
+  of its blowout. Moved `ENH-9999` → `ENH-288` (in the never-used 281–295 block; no such
+  file exists anywhere in `git log --all --diff-filter=D`). Also corrected the fourth
+  round's claim that the `scope:` lock closed the concurrent-allocation half — `LockManager`
+  is taken only by `ll-loop run` (`cli/loop/run.py:372`, `_helpers.py:1545`) and
+  `ll-issues create` takes no lock, so an `ll-auto` session running `/ll:capture-issue` was
+  never blocked by it. `scope:` is retained on its own merits. (4) *The residue guard would
+  flake*: it fails spuriously while a staged run is live; now skipped under `LL_AUTOMATION`
+  or a present lock file, and widened to all of `.issues/` so it doubles as the ID
+  reservation guard. Also noted why the new loop goes in `scripts/tests/fixtures/loops/`
+  rather than the existing `scripts/tests/fixtures/fsm/` (the latter is the validator-fixture
+  dir, deliberately full of invalid YAML). Change surface unchanged at 4 sites.
+  **`/ll:confidence-check` should be re-run** — two live correctness defects were removed
+  from the spec and step 4's outstanding execution risk is materially reduced.
 - `/ll:confidence-check` - 2026-08-20T14:36:58 - `b65e97ff-c048-4f0b-8912-71924070aaa4.jsonl`
 - review round (fourth) - 2026-08-20 - **five findings, all verified against the tree
   before writing.** (1) *Numbering perturbation*: `get_next_issue_number()`
   (`issue_parser.py:2461-2510`) returns **max + 1** by filename regex, not a count — so a
-  staged `ENH-9999` makes the next allocation `10000`, permanently if a crash leaves
+  staged `ENH-288` makes the next allocation `10000`, permanently if a crash leaves
   residue. The reserved-high-ID decision avoided a collision but introduced this, unstated.
   Mitigated by the loop `scope:` lock plus the residue guard; residual accepted.
   (2) *Step 3 defeats step 6*: once the staged path is gitignored, `git status` is clean
@@ -749,7 +940,7 @@ _Revised 2026-08-19:_
   rationale was false*: `_is_meta_loop()` (`meta_rules.py:48-70`) is action-string based and
   will not classify this loop; MR-1/MR-2 never fire and MR-3 is not meta-gated. (5) *Step
   order*: the worked-example correction now precedes output-pinning, which it previously
-  invalidated. (6) *Fixture ID*: `ENH-3300` → reserved `ENH-9999`, since
+  invalidated. (6) *Fixture ID*: `ENH-3300` → reserved `ENH-288`, since
   `get_next_issue_number()` (`issue_parser.py:2461`) will allocate 3300 to real work.
   Also decided: loop location `scripts/tests/fixtures/loops/` (per `resolve_loop_path()`
   `fsm/loop_paths.py:21-23`), dropping the conditional README row; and `.gitignore` added to

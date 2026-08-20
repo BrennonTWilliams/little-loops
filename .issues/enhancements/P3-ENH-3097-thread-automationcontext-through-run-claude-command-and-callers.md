@@ -118,9 +118,12 @@ these are the behaviors that must survive them unchanged:
 | `subprocess_utils.py` — the `automation_profile=`/`disable_background_tasks=` forward into `build_streaming()` | The invocation argv `build_streaming()` returns is byte-identical for the same effective profile and background-task setting. The collapsed `automation=` carries the same two values it did as separate kwargs. | `test_host_runner.py::test_claude_runner_matches_legacy_args` (existing argv snapshot); new `Test*AutomationShim` in `test_subprocess_utils.py` |
 | `subprocess_utils.py` — the selector loop's `idle_timeout` read (`:513`, `:522`) | Idle detection fires at the same threshold, `0` still disables it, and the kill still raises `TimeoutExpired(..., output="idle_timeout")` (the sentinel `fsm/runners.py:254` and `ActionResult.timeout_kind` depend on). Only the *source* of the value changes. | `TestRunClaudeCommandIdleTimeout` / `TestRunClaudeCommandWaitTimeout` (existing, expected to pass unchanged); `test_feat3033_idle_timeout.py` |
 | `fsm/runners.py:187-191` — the decompose-then-forward of the resolved context | The three values `run_claude_command()` receives are the same ones `resolve_automation()` resolved, so precedence (explicit `automation=` wins over legacy kwargs, warning names `ActionRunner.run()`) is unchanged. The `int(automation.idle_timeout or 0)` conversion disappears — harmless because `0` and `None` are equivalent at the consumer (Decision Rules). | `test_fsm_runners.py::TestActionRunnerAutomationShim` (assertions retargeted from decomposed kwargs to the captured `automation` object) |
-| `fsm/runners.py` — the shell-branch reads below `:191` | **Not replaced.** The decomposed locals stay for the shell branch; only the `run_claude_command()` kwargs collapse. | existing shell-branch tests |
+| `fsm/runners.py` — the shell-branch reads below `:191` | **Partially replaced.** Only `resolved_idle_timeout` survives (read at `:346-347` and `:374`); `resolved_automation_profile` and `resolved_disable_background_tasks` were read *only* by the `run_claude_command()` call at `:246-247` and become dead code — see AC 7. | existing shell-branch tests; `ruff check scripts/` (F841) |
+| `subprocess_utils.py` — idle detection when a caller passes `automation=` **and** a legacy `idle_timeout=` | **Deliberately not preserved — this is the one real behavior change.** See § Decision Rules → "Explicit `automation=` discards a legacy `idle_timeout`". | new `test_explicit_automation_discards_legacy_idle_timeout` in `test_subprocess_utils.py` (AC 12) |
 
-No user-visible behavior, CLI surface, config key, or log line changes. The one
+No user-visible behavior, CLI surface, config key, or log line changes, with the
+single exception of the `automation=` + legacy-`idle_timeout=` combination noted
+in the last table row (no in-tree caller produces it after this issue). The one
 new observable is a `DeprecationWarning` when a caller supplies both
 `automation=` and a legacy kwarg — intended, and AC 9 asserts it does *not* fire
 for in-tree forwarding.
@@ -140,8 +143,8 @@ AC 9, which exists to catch exactly that).
 ## Status
 
 `open` — unblocked. `blocked_by: [ENH-3095, BUG-3112]` are both `status: done`,
-and ENH-3096 has landed since filing. Ready to implement once the corrections
-in Verification Notes (2026-08-19) are reviewed.
+and ENH-3096 has landed since filing. Ready to implement — the fifth-round
+corrections in Verification Notes (2026-08-20) are applied and reviewed.
 
 ## Scope Boundaries
 
@@ -194,7 +197,14 @@ logged).
   `automation` in `run_claude_command()` def (`:343-366`); call `resolve_host().build_streaming()`
   at `:436-447`; `idle_timeout` is consumed locally by the selector loop at
   `:513` and the `TimeoutExpired` it raises at `:522`, unaffected by this
-  shape change beyond reading it off `automation.idle_timeout`
+  shape change beyond reading it off `automation.idle_timeout`.
+  **Typing**: `AutomationContext.idle_timeout` is `float | None` while the
+  retained legacy parameter is `int = 0`, so do **not** rebind the parameter —
+  mypy rejects assigning `float | None` into it. Bind a new local, e.g.
+  `effective_idle_timeout: float = (automation.idle_timeout or 0) if automation
+  else 0`, and point `:513`/`:522` at that.
+  (`subprocess.TimeoutExpired`'s `timeout` field accepts a float, so the
+  `:522` raise needs no other change.)
 - `scripts/little_loops/issue_manager.py` — wrapper `run_claude_command()`
   (def `:139-154`, forwards to `_run_claude_base` at `:213-226`) and
   `run_with_continuation()` (def `:260-279`, calls the wrapper at `:355-367`
@@ -213,33 +223,61 @@ logged).
   (`:127`), `disable_background_tasks` read (`:131`), and the three forwarding
   sites (trace mode `:153-154`; stream_callback mode `:186-187`;
   blocking/default mode `:194-198`, which calls `resolve_host().build_streaming()`
-  directly, bypassing `run_claude_command()`)
+  directly, bypassing `run_claude_command()`).
+  **This site's compatibility surface is a dict, not a signature, and it is the
+  only externally-facing one in this issue.** The values arrive via
+  `spec.args.get("automation_profile")` / `.get("disable_background_tasks")` out
+  of an untyped `spec.args: dict[str, Any]`, and **no in-tree producer sets
+  either key** — a repo-wide grep for `"automation_profile"` across
+  `scripts/little_loops/` hits only the read at `:127` itself. The keys exist for
+  out-of-tree callers (`ll-harness`/`ll-action`/extension runners), which is
+  precisely where a silent key rename breaks people with no test to catch it.
+  So the contract must be stated, not left to the implementer: read a new
+  `spec.args.get("automation")` (an `AutomationContext`) **and** keep honoring
+  both legacy keys, folding them via `resolve_automation(..., caller="run_skill()")`.
+  Do not rename or drop the legacy keys here. AC 2 and AC 13 cover this.
 - `scripts/little_loops/fsm/executor.py` `_run_baseline_arm()` (`:3178-3243`) —
-  the `run_claude_command()` call at `:3218-3225`; becomes
-  `automation=AutomationContext(idle_timeout=idle_timeout)`, **constructed
-  conditionally**. `idle_timeout` here resolves as
+  the `run_claude_command()` call at `:3218-3225`; becomes a forward of
+  `resolve_automation(None, None, False, float(idle_timeout) if idle_timeout
+  else None, caller="_run_baseline_arm()")`. `idle_timeout` here resolves as
   `state.idle_timeout or self.fsm.default_idle_timeout or 0` (`:3199`) and is
-  `0` on the common path, so unconditional construction would turn today's
-  `automation=None` into an all-default `AutomationContext` on most runs.
-  Follow ENH-3096's landed precedent for `fsm/executor.py`'s `extra_kwargs`
-  assembly — documented at `docs/reference/API.md:6098` as passing `automation=`
-  only "when any of the three knobs resolves non-default" — i.e. pass
-  `automation=` only when `idle_timeout` is truthy, else omit it entirely.
+  `0` on the common path, so unconditionally *constructing* an
+  `AutomationContext` would turn today's `automation=None` into an all-default
+  context on most runs. The shim already returns `None` in exactly that case,
+  so it supplies the conditional without a hand-written `if` (see Decision
+  Rules). This matches ENH-3096's landed precedent for `fsm/executor.py`'s
+  `extra_kwargs` assembly — documented at `docs/reference/API.md:6098` as
+  passing `automation=` only "when any of the three knobs resolves non-default".
 - `scripts/little_loops/parallel/worker_pool.py` `_run_claude_base` forward
-  (method `:895-952`, call at `:940-952`) — replace the bare `idle_timeout=`
-  forward with `automation=AutomationContext(idle_timeout=...)`; preserve the
+  (method `:895-952`, call at `:940-952`) — replace the bare `idle_timeout=` /
+  `disable_background_tasks=` forwards with a single `automation=`, built by
+  `resolve_automation(None, None, disable_background_tasks,
+  float(idle) if idle else None, caller="WorkerPool._run_claude_command()")`
+  where `idle = self.parallel_config.idle_timeout_per_issue`. Preserve the
   existing asymmetry that this site has no `automation_profile=` kwarg today
+  (the shim leaves `profile=None`).
+  **This site carries the same all-default hazard as the baseline arm above** —
+  `idle_timeout_per_issue` may be `0` and `disable_background_tasks` `False`,
+  so unconditional construction would replace today's `automation=None` with an
+  all-default context. An earlier revision of this issue told the baseline arm
+  to construct conditionally and this site to construct unconditionally, which
+  were two contradictory rules for one hazard; routing both through the shim
+  resolves it (see Decision Rules).
 - `scripts/little_loops/fsm/runners.py:187-252` — `DefaultActionRunner.run()`
   already resolves an `AutomationContext` via `resolve_automation()` at
   `:177-183` (`caller="ActionRunner.run()"`, out of scope — ENH-3096); it then
   decomposes that context back into legacy kwargs at `:187-191` purely
   because `run_claude_command()` had no `automation=` parameter. Replace the
   decomposition with a direct `automation=automation` forward at the
-  `run_claude_command()` call spanning `:234-252`. Note the shell-branch reads
-  below `:187-191` also consume the decomposed locals — those stay (they are
-  not `run_claude_command()` forwards), so the decomposition shrinks rather
-  than disappearing; only the three kwargs on the `run_claude_command()` call
-  collapse.
+  `run_claude_command()` call spanning `:234-252`. The decomposition shrinks
+  rather than disappearing — but **only one of the three locals survives**, and
+  the split is exact (verified by full-file usage grep):
+  - `resolved_idle_timeout` (`:191`) — also read by the shell branch at
+    `:346-347` and `:374`. **Keep.**
+  - `resolved_automation_profile` (`:187`) and
+    `resolved_disable_background_tasks` (`:188-190`) — read *only* at
+    `:246-247`, the `run_claude_command()` call this issue collapses. **Delete
+    both**; leaving them is dead code and `ruff check scripts/` flags it (F841).
 - `scripts/little_loops/fsm/runners.py` prose — three comment/docstring sites
   describe the behavior being removed and must be rewritten alongside it: the
   ENH-3097 comment at `:184-186` ("`run_claude_command()` has no `automation=`
@@ -412,6 +450,30 @@ AC 10**, not from a sibling's change:_
   `test_issue_manager.py` assertions that capture `kwargs.get("automation_profile")`
   switch to capturing `kwargs["automation"].profile`.
 
+### Tests (new, from the 2026-08-20 pre-implementation review)
+
+- **Idle-discard contract test** (AC 12, the highest-value new test in this
+  round): assert that `run_claude_command(automation=AutomationContext(
+  profile="ll-auto"), idle_timeout=1800)` leaves the selector loop's idle
+  branch dead — idle detection is **off**, not armed at 1800 — because
+  `resolve_automation()` drops the legacy value rather than merging it. Pair it
+  with the AC 12 assertion that no in-tree site passes the combination. Home:
+  the new `Test*AutomationShim` class in `test_subprocess_utils.py`.
+- **`runner_spec` legacy-dict-key test** (AC 13): drive `_run_skill` with
+  `spec.args = {"automation_profile": "ll-auto", "disable_background_tasks":
+  True}` (no `"automation"` key) and assert the resolved context reaching
+  `build_streaming()` carries both values — the out-of-tree compatibility
+  guarantee, currently untested because no in-tree producer sets those keys.
+  Add the mirror case for a `spec.args["automation"]` context, and the conflict
+  case (both present → explicit context wins, `DeprecationWarning` matching
+  `run_skill()`).
+- **`worker_pool` all-default omission** (AC 3/AC 11): assert
+  `_run_claude_command()` forwards `automation=None` when
+  `idle_timeout_per_issue` is `0` and `disable_background_tasks` is `False`,
+  and a populated context otherwise — the same shape AC 11 already requires of
+  the baseline arm. `test_worker_pool.py:2902-2914`'s `mock_run_claude` is the
+  natural capture point (it gains `automation` per § Tests above).
+
 ### Codebase Research Findings
 
 _Added by `/ll:refine-issue` — 2026-08-20 — based on codebase analysis:_
@@ -431,18 +493,31 @@ _Added by `/ll:refine-issue` — 2026-08-20 — based on codebase analysis:_
    `issue_manager.py`, plus `run_with_continuation()`, accept
    `automation: AutomationContext | None = None` in place of
    `automation_profile`/`idle_timeout`.
-2. `runner_spec.py`'s `automation_profile` read (`:127`) and forwarding sites
-   (`:153-154,186-187,194-198`) updated to the collapsed parameter.
-3. `fsm/executor.py:3218-3225` and `worker_pool.py:940-952` construct and
-   forward an `AutomationContext` instead of a bare `idle_timeout=` kwarg.
+2. `runner_spec.py`'s `automation_profile` read (`:127`), its
+   `disable_background_tasks` read (`:131`), and its three forwarding sites
+   (`:153-154,186-187,194-198`) updated to the collapsed parameter. `_run_skill`
+   reads a new `spec.args.get("automation")` key and folds it with the two
+   legacy `spec.args` keys via `resolve_automation(..., caller="run_skill()")`.
+3. `fsm/executor.py:3218-3225` and `worker_pool.py:940-952` forward a single
+   `automation=` instead of bare `idle_timeout=`/`disable_background_tasks=`
+   kwargs, obtaining it from `resolve_automation()` (not a hand-rolled
+   conditional) so both sites still pass `None` when every knob is default.
 4. The `automation_profile`/`idle_timeout` keywords still work, constructing
    an `AutomationContext` internally, per the ENH-3095 shim pattern.
 5. `docs/reference/API.md` `issue_manager.run_claude_command()` mirror
    updated.
-6. `python -m pytest scripts/tests/` passes.
+6. `python -m pytest scripts/tests/` passes, **and** `python -m mypy
+   scripts/little_loops/` and `ruff check scripts/` are clean. The two static
+   gates are load-bearing here, not boilerplate: mypy is what catches the
+   `float | None` → `int` rebind at `subprocess_utils.py` (see Files to Modify),
+   and ruff F841 is what catches the two `fsm/runners.py` locals that go dead
+   under AC 7. Both are project gates per `.claude/CLAUDE.md` § Development.
 7. `fsm/runners.py`'s `DefaultActionRunner.run()` forwards `automation=automation`
    directly to `run_claude_command()` (`:234-252`) instead of decomposing it
-   back into legacy kwargs.
+   back into legacy kwargs, and the now-unused `resolved_automation_profile` /
+   `resolved_disable_background_tasks` locals (`:187-190`) are deleted.
+   `resolved_idle_timeout` (`:191`) stays — the shell branch reads it at
+   `:346-347` and `:374`.
 8. `docs/reference/API.md:6072-6104`'s `#### ActionRunner Protocol` section
    prose no longer says `run_claude_command()` "has no `automation` parameter
    until ENH-3097" (`/ll:wire-issue` finding — a third mirror location beyond
@@ -466,9 +541,34 @@ _Added by `/ll:refine-issue` — 2026-08-20 — based on codebase analysis:_
     must survive the parameter-shape change. Likewise
     `test_fsm_runners.py:629` (FEAT-3078) retargets to
     `kwargs["automation"].disable_background_tasks` under AC 7.
-11. `fsm/executor.py`'s baseline arm passes `automation=` only when
+11. `fsm/executor.py`'s baseline arm passes a non-`None` `automation=` only when
     `idle_timeout` resolves truthy, preserving today's `automation=None` on the
-    common path (matching ENH-3096's `extra_kwargs` precedent).
+    common path (matching ENH-3096's `extra_kwargs` precedent). The same holds
+    at `worker_pool.py:940-952`, which carries the identical hazard. Both get
+    this from `resolve_automation()` returning `None` for an all-default input
+    rather than from a hand-written `if` (AC 3, Decision Rules).
+12. A test pins that an explicit `automation=` **discards** a legacy
+    `idle_timeout=` at `subprocess_utils.run_claude_command()` — i.e. that
+    `automation=AutomationContext(profile="ll-auto"), idle_timeout=N` runs with
+    idle detection **off**, not at threshold `N`. This is the one intended
+    behavior change in the issue (Behavior Parity, last row) and the one place
+    where the shim's uniform "explicit wins" rule has a live consequence
+    instead of an inert one. Mirror
+    `test_fsm_runners.py::test_explicit_automation_discards_legacy_idle_timeout`.
+    No in-tree call site may produce this combination.
+13. `runner_spec._run_skill`'s legacy `spec.args` keys (`"automation_profile"`,
+    `"disable_background_tasks"`) still work unchanged, with a test asserting
+    it. This is the only compatibility surface in the issue that is a **dict
+    rather than a function signature**, and it has no in-tree producer — every
+    consumer is out-of-tree (`ll-harness`/`ll-action`/extension runners), so
+    nothing else in the suite would catch a key rename.
+14. A follow-up issue is filed for removing the legacy
+    `automation_profile`/`disable_background_tasks`/`idle_timeout` kwargs from
+    all three declaring sites, and `ENH-3094` (parent) is closed. After this
+    issue every in-tree caller is migrated, which is the precondition
+    § Program Design → Signatures names for that removal — so the successor is
+    actionable the moment this lands. Without it the compatibility shim becomes
+    permanent by default, which inverts the parent's whole purpose.
 
 ## Program Design
 
@@ -510,7 +610,11 @@ automation. The change to each is exactly:
   `disable_background_tasks: bool = False`, and `idle_timeout: int = 0` as
   deprecated pass-throughs, resolved internally via `resolve_automation()` per
   AC 4 and the Decision Rules. They are **not** removed by this issue; removing
-  them is a follow-up once no in-tree caller uses them.
+  them is a follow-up once no in-tree caller uses them — a precondition this
+  issue itself satisfies, since AC 10 and AC 3 migrate every in-tree caller.
+  **File that successor issue as part of closing this one (AC 14)**; there is no
+  fourth child under ENH-3094 today, so an unfiled follow-up means the shim ships
+  as the permanent shape.
 - **Leave every other parameter untouched** (`timeout`, `working_dir`,
   `stream_callback`, the `on_*` callbacks, `agent`, `tools`, `model`,
   `resume_session`, `post_stream_close_grace_seconds`,
@@ -549,7 +653,47 @@ live in **one** place now: § Program Design → Codebase Research Findings
 ### Decision Rules
 - Same shim pattern as ENH-3095/ENH-3096: legacy `automation_profile`/`disable_background_tasks`/`idle_timeout` keywords still work, constructing an `AutomationContext` internally; explicit `automation` wins when both given; deprecation warning logged.
 - **Each layer forwards only `automation=`, never `automation=` plus a legacy kwarg.** This is the likeliest implementation bug in the issue, because the call chain now has *three* nested `resolve_automation()` points: `issue_manager.run_claude_command()` (new) → `subprocess_utils.run_claude_command()` (new) → `HostRunner.build_streaming()` (`host_runner.py:362`, landed in ENH-3095). `resolve_automation()` treats "explicit context **and** any legacy kwarg" as a *conflict*, not merely deprecated use, and emits a `DeprecationWarning` (`host_runner.py:1918-1927`). So a wrapper that resolves its own inputs into a context and then forwards `automation=ctx, automation_profile="ll-auto"` down one level makes the inner layer warn on **every** `ll-auto` round — a log flood with no real conflict behind it. Resolve once per layer, drop the legacy kwargs at the forward.
+- **Explicit `automation=` discards a legacy `idle_timeout` — and at this layer
+  that silently disables idle detection.** `resolve_automation()` folds a legacy
+  `idle_timeout` into its `legacy_used` conflict check and then *drops* it when an
+  explicit context wins; it is never merged field-wise into the returned context
+  (`host_runner.py:1917-1930`, and the shim's own docstring says so). At the
+  `build_streaming()` boundary that discard is inert, because `idle_timeout` is
+  never read there (`AutomationContext` docstring, `host_runner.py:182-185`). At
+  **`run_claude_command()` it is not inert**: `idle_timeout` gates the selector
+  loop's idle kill at `subprocess_utils.py:513`. So after this issue,
+  `run_claude_command(automation=AutomationContext(profile="ll-auto"), idle_timeout=1800)`
+  runs with **idle detection off**, emitting only a `DeprecationWarning`. That is
+  exactly the shape of a half-migrated caller — context built for the profile,
+  idle left behind as a kwarg.
+  **Rule: a caller that passes `automation=` must carry `idle_timeout` inside the
+  context. It is not merged from the legacy kwarg, and no site may pass both.**
+  Do not add a field-wise merge to the shim to paper over this — that would fork
+  the "explicit wins" rule ENH-3096 deliberately made uniform across both
+  boundaries. Pin the discard with a test instead (AC 12) so it is a documented
+  contract rather than a latent hang-detector outage.
+- **Use `resolve_automation()` to get the "omit when all-default" conditional —
+  do not hand-roll an `if`.** Two sites (`fsm/executor.py`'s baseline arm,
+  `worker_pool.py`'s `_run_claude_base` forward) construct a context from values
+  that are commonly all-default, where unconditional construction would turn
+  today's `automation=None` into an all-default `AutomationContext`. Calling
+  `resolve_automation(None, None, disable_background_tasks, idle_timeout,
+  caller=...)` returns `None` in exactly that case, so the conditional falls out
+  for free and both sites obey the "call the shim, don't reimplement the fold"
+  rule below. A hand-written `if idle_timeout:` quietly violates it and produces
+  two different rules for one hazard (see AC 3 and AC 11).
+  For the record the all-default context is *behaviorally* benign —
+  `_apply_automation_env()` and the FEAT-3078 background-task gate
+  (`host_runner.py:412-419`) both key off `profile is not None` — so this is a
+  uniformity rule, not a correctness one. It is still the rule.
 - `AutomationContext.idle_timeout` is `float | None` (ENH-3095) versus the `int = 0` parameters across this issue's call sites, so the `0`-vs-`None` distinction needs a decision. **Do not fork or reimplement `resolve_automation()` to preserve it.** The shim's `legacy_used = automation_profile is not None or disable_background_tasks or bool(idle_timeout)` (`host_runner.py:1917`) deliberately treats a bare `idle_timeout=0` as "not supplied" and returns `None` rather than `AutomationContext(idle_timeout=0)`. That is already correct for every consumer in scope, because none of them distinguishes the two: `subprocess_utils.py:513` reads `if idle_timeout and (now - last_output_time) > idle_timeout`, and `fsm/runners.py:191` reads `int(automation.idle_timeout or 0)` — `0` and `None` are both falsy and both mean "idle detection disabled". Call the shim as-is. (An earlier revision of this issue carried a rule requiring `0` be preserved as distinct from `None`; following it literally would mean forking the shared shim to no behavioral end. It is superseded by this bullet.)
+
+- **Nit, non-blocking:** `resolve_automation()` warns with `stacklevel=3`
+  (`host_runner.py:1918-1927`), tuned when there were at most two resolve points.
+  With three nested points the reported source line lands on an intermediate
+  little-loops frame rather than the originating caller. Nothing breaks — the
+  tests match on the `caller=` string, not the location — so do not adjust it
+  here; noted only so a future reader doesn't mistake it for a regression.
 
 ## Related Key Documentation
 
@@ -660,7 +804,49 @@ accounting was incomplete — and the corrections were applied in the same pass:
 corrections, since the sole defect the pass found is the one it repaired. A
 future pass that changes nothing should reproduce `VALID`.
 
+**2026-08-20** (pre-implementation review, fifth round): all line numbers in
+§ Program Design → Codebase Research Findings re-verified against `main` by
+direct read and **all still hold**. Six corrections applied — none invalidate
+the approach, all sharpen under-specified instructions or close a gap:
+
+1. **New behavior hazard documented** (Behavior Parity last row, new Decision
+   Rule, AC 12): `resolve_automation()` discards a legacy `idle_timeout` when an
+   explicit `automation=` also arrives. Inert at `build_streaming()` (idle is
+   never read there), but **not** inert at `run_claude_command()`, where it gates
+   the selector-loop idle kill at `subprocess_utils.py:513` — the combination
+   silently disables idle detection. Pinned by test rather than "fixed" by
+   forking the shim, which would break ENH-3096's uniform explicit-wins rule.
+2. **`fsm/runners.py` dead-local split corrected** (Behavior Parity row 4, AC 7):
+   the file said all three decomposed locals survive for the shell branch. Usage
+   grep shows only `resolved_idle_timeout` does (`:346-347`, `:374`);
+   `resolved_automation_profile` and `resolved_disable_background_tasks` are read
+   only at `:246-247` and must be deleted.
+3. **Contradictory conditional-construction rules reconciled** (AC 3, AC 11, new
+   Decision Rule): AC 11 required a conditional at `fsm/executor.py`'s baseline
+   arm while Files to Modify told `worker_pool.py` to construct unconditionally —
+   two rules for one hazard. Both now route through `resolve_automation()`, which
+   returns `None` for all-default input, supplying the conditional for free.
+4. **`runner_spec` dict-key contract specified** (AC 2, AC 13): the automation
+   values arrive via untyped `spec.args` lookups with **no in-tree producer** (a
+   repo-wide grep for `"automation_profile"` in `scripts/little_loops/` hits only
+   the read at `:127`), making it the issue's only externally-facing compat
+   surface and the only one no existing test covers. Now specified: add an
+   `"automation"` key, keep both legacy keys, fold via
+   `resolve_automation(caller="run_skill()")`.
+5. **Static gates added to AC 6**: mypy is what catches the `float | None` → `int`
+   rebind at `subprocess_utils.py` (correction 1's territory) and ruff F841 is
+   what catches correction 2's dead locals — both load-bearing for this change,
+   not boilerplate.
+6. **Shim-removal follow-up made an AC** (AC 14): § Signatures deferred removal
+   to "a follow-up once no in-tree caller uses them", a precondition this issue
+   itself satisfies, but no such issue exists and ENH-3094 has only three
+   children — so the shim would ship as the permanent shape by default.
+
+`verify_verdict` left at `VALID`; the corrections above are refinements to an
+approach that re-verified clean, not defects in it.
+
 ## Session Log
+- `/ll:confidence-check` - 2026-08-20T15:10:46 - `d1a0a529-4a4a-4956-8bd6-268fc1152f27.jsonl`
 - `/ll:confidence-check` - 2026-08-20T14:31:22 - `8f4849c7-f264-45db-90d2-abcbcb8ba804.jsonl`
 - `/ll:reconcile-issue` - 2026-08-20T05:03:08 - `1087295a-4b0c-427d-ae4c-467e8ea34d7c.jsonl`
 - `/ll:verify-issues` - 2026-08-20T04:57:41 - `1087295a-4b0c-427d-ae4c-467e8ea34d7c.jsonl`
