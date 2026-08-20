@@ -81,11 +81,27 @@ Precedent: **ENH-1769** already absorbed a second input format (W3C DTCG `$value
 
 1. **`_load_design_md(path) -> tuple[dict, str]`** in `design_tokens.py` — returns `(flat_token_dict, prose_body)`. **Reuse the house frontmatter helpers, do not hand-roll a YAML reader:** `little_loops.frontmatter.parse_frontmatter(content)` (`frontmatter.py:255`) for the token block and `strip_frontmatter(content)` (`:416`) for the prose body. That is the entire body-extraction step — no separate parser needed, and no new dependency (this is why `learning_tests_required: [pyyaml]` was dropped from this issue's frontmatter). The spec's `{colors.primary}` alias syntax is the same `{dotted.path}` form as our `{color.paper.0}`, so the resolver itself needs no change — but the *namespace rename* does, see "The rename is not just `colors`→`color`" and "Alias rewriting" below. Map `colors`→`color`, `typography`→`font`, `spacing`→`space`, `rounded`→`radius` via a single mapping table, normalize list values, and build the nested `semantic` dict; `components` is expected verbatim in prompt context (see Open Questions).
 
+   **`components` is excluded from the token dict in this cut.** An earlier draft said it is "expected verbatim in prompt context" while Open Questions simultaneously asked whether it maps usefully at all — those contradicted, and the answer is neither. `components:` is structural guidance, not tokens: routing it through the flatten path would flood the generator prompt with `components.button.radius`-style leaves *and* emit them as `--components-button-radius` custom properties from `render_as_css_vars()`. It belongs to the prose channel ENH-3267 already owns. Drop the key before mapping; the residual bucket (below) is therefore *not* a `components` dumping ground.
+
    **Do not pass `coerce_types=True`.** `parse_frontmatter` loads with `yaml.BaseLoader`, so every scalar arrives as a `str` regardless; `coerce_types` would only turn a bare `4` into an `int` while `"4px"` stays a string, introducing a type split for no gain. Resolved token values are stringified downstream (`_resolve_value` returns `str`) anyway.
 2. **`load_design_tokens()` gains a source branch**, still returning the same `DesignTokens` dataclass, so every downstream consumer (`run.py`, `artifact.py`, `hooks/session_start.py:303`) is untouched. **The branch must sit above the `if not base_path.exists(): return None` guard at `design_tokens.py:180`** — see "Branch placement" below.
 3. **Config knob `design_tokens.source: auto | profile | design_md`** (schema: `scripts/little_loops/config-schema.json`). `auto` is defined in **filesystem** terms, not config terms — see "The `auto` rule" below.
 4. **Theme degradation.** DESIGN.md source ⇒ single theme; `active_theme` is ignored with a stderr warning, matching the existing degradation style at `design_tokens.py:149`. Projects needing light/dark keep profiles. Do not invent a non-spec `themes:` key.
+
+   **The warning fires only when a caller passes an explicit `theme=`.** `cmd_run` (`cli/loop/run.py:249`) calls `load_design_tokens(config)` with `theme=None`, so the single-theme nature of DESIGN.md is not a degradation from its point of view and it must stay silent — otherwise every `ll-loop run` in a DESIGN.md project prints a warning it can do nothing about. `_themed_css_vars()` (`cli/artifact.py:66-67`) is the only caller that passes an explicit theme and therefore the only site that warns. Read "DESIGN.md ⇒ single theme, warned" with that qualifier throughout this issue.
 5. **Prose body capture.** `strip_frontmatter()` yields the markdown body; store it on `DesignTokens.guidance`. **Injection into prompts is ENH-3267**, not this issue — but the field is populated here, since it falls out of the same parse.
+
+### Discovery: exactly one filename, exactly one location, not configurable
+
+The issue text says "root `DESIGN.md`" throughout but never pinned what that resolves to. Specify it once, as a module-level constant in `design_tokens.py`:
+
+```python
+DESIGN_MD_FILENAME = "DESIGN.md"   # spec-mandated; project root only
+```
+
+- **Exact case.** The spec names the file `DESIGN.md`. Do **not** fall back to `design.md` / `Design.md`: macOS and the default Windows filesystem are case-insensitive while Linux and containers are not, so a case-tolerant probe passes on the author's machine and fails in CI or a devcontainer — the worst failure shape for a feature whose whole value is "it just works from one file."
+- **Project root only.** `config.project_root / DESIGN_MD_FILENAME`. No recursive search.
+- **No config knob.** Deliberately: `design_tokens.source` selects *whether* DESIGN.md is used; a second `design_md_path` setting would reintroduce the configuration burden this feature exists to remove. If a project needs the file elsewhere, it wants a profile.
 
 ### The rename is not just `colors`→`color` — every namespace must be renamed
 
@@ -141,9 +157,27 @@ An earlier draft of this issue defined `auto` as "root `DESIGN.md` wins when `ac
 Two ways out; **take the second**:
 
 - Change `active`'s default to `None`. Rejected: it ripples into the two-guard `test_config_schema.py` gate, `core.py:888-897`'s echo dict, and `_resolve_token_root()`'s warning f-string, for no user-visible gain.
-- **Define `auto` by what is materialized on disk** (chosen): a root `DESIGN.md` wins only when no profile is materialized — i.e. `<project_root>/<design_tokens.path>` does not exist, or `_resolve_token_root()` would return `None`. A materialized profile always wins. This needs zero config-dataclass churn and slots directly into the existing degradation ladder this issue already says to mirror.
+- **Define `auto` by what is materialized on disk** (chosen): a root `DESIGN.md` wins only when no profile is materialized. A materialized profile always wins. This needs zero config-dataclass churn and slots directly into the existing degradation ladder this issue already says to mirror.
 
 `source: profile` and `source: design_md` remain explicit overrides that skip the probe entirely; `source: design_md` with no root `DESIGN.md` warns and returns `None`.
+
+#### "Materialized" must mean *token files exist*, not *the root resolves*
+
+An earlier phrasing of the chosen rule defined it as "`<project_root>/<design_tokens.path>` does not exist, or `_resolve_token_root()` would return `None`." **That test is too weak and silently defeats the feature.**
+
+`_resolve_token_root()` returns `base_path` **unconditionally** whenever `profiles/` is not a directory (`design_tokens.py:155-157` — the legacy-flat fallback). It never inspects whether any token file is actually present. So an **empty or partially-populated `.ll/design-tokens/` directory** satisfies both halves of the weak test: it counts as a materialized profile, wins over a root `DESIGN.md`, all five `_load_json()` calls return `{}` (`_load_json` returns `{}` for a missing path, `:37-39`), and the project gets a `DesignTokens` whose `resolved` is empty — so `ll-loop run` injects an **empty `design_tokens_context`** with no warning and the DESIGN.md is ignored.
+
+This is not hypothetical. Both of these produce it: a leftover directory after a profile is deleted, and `ll-init` scaffolding `.ll/design-tokens/` before the user has selected a profile.
+
+**Correct test — the profile branch wins only if it would yield tokens.** After resolving the token root, require that at least one of the four token files exists under it:
+
+```
+dt_cfg.primitives_file, dt_cfg.semantic_file, "typography.json", "spacing.json"
+```
+
+(Themes alone do not count: a `themes/` dir with no base layer resolves to a theme-override-only token set, which is not a usable profile.) If none exist, the profile is not materialized and `auto` falls through to DESIGN.md. Covered by AC 2b.
+
+Note this probe is *only* for the `auto` decision — it does not change `source: profile`, which keeps today's exact behavior including the empty-but-present case, so no existing project's resolution changes.
 
 ### Branch placement — above the `base_path.exists()` guard
 
@@ -206,7 +240,9 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ### Tests
 - `scripts/tests/test_design_tokens.py` — add DESIGN.md parse cases (spec example, alias resolution, namespace renames, list-value normalization, missing/malformed frontmatter), `source` precedence, and the theme-degradation warning. *(The round-trip export test over the three built-in profiles moves to ENH-3268.)* **Two cases specifically guard the defects corrected in this issue:** (i) a project with *no* `.ll/design-tokens/` directory still resolves tokens from a root `DESIGN.md` (catches a regression to the `base_path.exists()` short-circuit); (ii) `auto` with both sources materialized picks the profile *while `active` is at its `"default"` value* (catches a regression to the undecidable `active`-is-unset rule).
+  Two further cases guard the defects corrected in this review pass: (iii) an **empty** `.ll/design-tokens/` directory plus a root `DESIGN.md` under `auto` resolves to DESIGN.md, not to a hollow profile with empty `resolved` (AC 2b — catches a regression to the `_resolve_token_root() is not None` materialization test); (iv) `load_design_tokens(config)` with `theme=None` under a DESIGN.md source writes nothing to stderr, while `theme="dark"` warns (AC 6b).
 - `scripts/tests/test_verify_design_tokens.py` — assert the lint still skips cleanly (does not false-positive) when the project source is DESIGN.md
+- `scripts/tests/` (session-start hook coverage) — a DESIGN.md-only project produces an empty `warnings_out` from `hooks/session_start.py`'s design-token validation (AC 9b)
 - `scripts/tests/test_builtin_loops.py` — all 15 built-in loops still receive `design_tokens_context` unchanged under a DESIGN.md source *(the `design_guidance_context` coverage moves to ENH-3267)*
 
 _Wiring pass added by `/ll:wire-issue`:_
@@ -260,17 +296,21 @@ Second call path, single call site with two invocations: `_themed_css_vars()` (`
 - **Source-format selection** (`design_tokens.source: auto | profile | design_md`): `auto` prefers a **materialized profile** and falls back to a root `DESIGN.md` — keyed on what exists on disk, *not* on whether `active` is set, which is undecidable because `active` defaults to `"default"` in both the dataclass (`config/features.py:346`) and `from_dict` (`:356`). See "The `auto` rule" under Proposed Solution.
   - **Placement:** this decision sits in `load_design_tokens()` at `:178-179`, *not* inside `_resolve_token_root()` (`:129-157`). `_resolve_token_root()` runs after the `if not base_path.exists(): return None` guard at `:180`, and a DESIGN.md-only project has no `.ll/design-tokens/` directory — branching there would short-circuit the primary use case to `None`. `_resolve_token_root()`'s 3-branch fallback shape (prefer A → degrade-with-warning → fall back to B) is still the *stylistic* model to copy; it is not the host function.
 - **Theme degradation**: when the active source is DESIGN.md and a caller requests a specific `theme=` (as `_themed_css_vars` does for both `"light"` and `"dark"`), the resolver must not silently return divergent or empty output — it must emit the existing stderr-warning idiom (matching `design_tokens.py:149`'s degradation branch) and fall back to a single-theme result. Escape hatch: none — this only fires when the resolved source is DESIGN.md; profile-sourced projects are unaffected.
-  - **Where the "warn once" lives.** `_themed_css_vars()` (`cli/artifact.py:66-67`) makes two *fully independent* `load_design_tokens()` calls sharing no state. "Exactly one warning across both calls" therefore has no mechanism inside the loader short of module-level `_warned` state — which leaks across calls in a long-lived process and makes any test of it order-dependent. **Chosen: dedupe at the call site.** `load_design_tokens()` warns at most once *per call*; `_themed_css_vars()` detects the DESIGN.md source, calls the loader once, and reuses the single `DesignTokens` for both the `:root` and `[data-theme=dark]` blocks — so exactly one warning is emitted because the loader is only entered once. Do not add module-level warning state.
+  - **Where the "warn once" lives.** `_themed_css_vars()` (`cli/artifact.py:66-67`) makes two *fully independent* `load_design_tokens()` calls sharing no state. "Exactly one warning across both calls" therefore has no mechanism inside the loader short of module-level `_warned` state — which leaks across calls in a long-lived process and makes any test of it order-dependent. **Chosen: dedupe at the call site.** `load_design_tokens()` warns at most once *per call*; `_themed_css_vars()` calls the loader once for a DESIGN.md source and reuses the single `DesignTokens` for both the `:root` and `[data-theme=dark]` blocks — so exactly one warning is emitted because the loader is only entered once. Do not add module-level warning state.
+  - **How the call site detects the source — it must call first.** "Enter the loader once *for a DESIGN.md source*" is circular as stated: `_themed_css_vars()` cannot know the source before it calls, and re-probing the filesystem there would duplicate the `auto` rule in a second place where it can drift. **Mechanism:** call `load_design_tokens(config, theme="light")` once, then branch on the returned object's `source` discriminator — reuse it for both blocks when it is `"design_md"`, and only make the second `theme="dark"` call when it is `"profile"`. The `None` guard at `artifact.py:70-73` is checked before the branch, unchanged.
+
+    This makes the `source` field on `DesignTokens` **load-bearing rather than informational** — it is the only supported way a consumer learns which branch produced its tokens, so it must be set on both branches (`"profile"` / `"design_md"`), not just defaulted. AC 6 asserts it.
 
 - **Unresolvable-reference handling is source-dependent**: profile sources raise `ValueError` (unchanged); DESIGN.md sources warn and return `None`. See "Unresolvable references degrade, they do not raise".
 
 ## Implementation Steps
 
-1. Extend `DesignTokens` with a `guidance: str` field (default `""`) and a source discriminator.
+1. Extend `DesignTokens` with a `guidance: str` field (default `""`) and a `source: str` discriminator (default `"profile"`), **set explicitly on both branches** — `cli/artifact.py` reads it (see Decision Rules).
 2. Vendor the spec's example DESIGN.md as a checked-in test fixture (no network in the suite), recording the spec revision.
-3. Implement `_load_design_md()` on top of `frontmatter.parse_frontmatter` (no `coerce_types`) / `strip_frontmatter`. One namespace-mapping table drives all four renames (`colors`→`color`, `typography`→`font`, `spacing`→`space`, `rounded`→`radius`) **and** the matching `{ref}` alias rewrite. Normalize list values before flattening. Return the *nested* mapped dict so the branch can both `_flatten()` it and hand it to `DesignTokens.semantic`. Test against the vendored fixture.
-4. Branch `load_design_tokens()` on `design_tokens.source` **at `:178-179`, above the `base_path.exists()` guard at `:180`**; implement the filesystem-based `auto` rule, the theme-degradation warning, and the DESIGN.md-only `try`/`except ValueError` → warn-and-return-`None` path.
-5. Add `design_tokens.source` to `config-schema.json` and to `/ll:configure` + `ll-init` surfaces.
+3. Implement `_load_design_md()` on top of `frontmatter.parse_frontmatter` (no `coerce_types`) / `strip_frontmatter`, keyed off the `DESIGN_MD_FILENAME` constant. One namespace-mapping table drives all four renames (`colors`→`color`, `typography`→`font`, `spacing`→`space`, `rounded`→`radius`) **and** the matching `{ref}` alias rewrite. Drop `components` before mapping. Normalize list values before flattening. Return the *nested* mapped dict so the branch can both `_flatten()` it and hand it to `DesignTokens.semantic`. Test against the vendored fixture.
+4. Branch `load_design_tokens()` on `design_tokens.source` **at `:178-179`, above the `base_path.exists()` guard at `:180`**; implement the filesystem-based `auto` rule — using the *token-files-exist* materialization test, not `_resolve_token_root() is not None` — the theme-degradation warning (explicit-`theme=` callers only), and the DESIGN.md-only `try`/`except ValueError` → warn-and-return-`None` path.
+5. Add `design_tokens.source` to `config-schema.json` and to the `/ll:configure` (`skills/configure/areas.md:1107-1255`, `show-output.md:186-198`) + `ll-init` (`init/{core,writers,summary,tui,cli}.py` profile picker) surfaces.
+5b. Add a DESIGN.md branch to `hooks/session_start.py:303-325` so a DESIGN.md-only project stops emitting the spurious *"design_tokens.enabled is true but path … does not exist"* warning on **every session start** (`session_start.py:309-313`). This runs before `load_design_tokens()` is ever called and re-implements the check against the raw config dict, so it needs its own copy of the discovery + materialization logic — keep the two consistent.
 6. Resolve the `render_as_prompt_context()` semantic-role gap — option **(a)** from "Prompt-context quality under a DESIGN.md source". Two parts: (i) map well-known spec color names onto `surface`/`text`/`border`/`action` in the *nested* dict so the gate at `:234-239` fires; (ii) add the residual bucket + its `_emit_group` call at `:310-315` so unmapped names stop being silently dropped. Do not leave the bare flat-list fallback in place.
 7. Update `_themed_css_vars()` (`cli/artifact.py:59-74`) to enter `load_design_tokens()` once for a DESIGN.md source and reuse the result for both theme blocks.
 8. Docs: `docs/reference/CONFIGURATION.md`, `docs/reference/API.md` — including the namespace mapping table and the "only whole-value `{ref}` aliases resolve" limitation.
@@ -306,6 +346,12 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - **The `cmd_resume` opt-out gap and the shared-helper extraction.** BUG-3266.
 - Tracking `alpha`-spec churn. Pinning to the 2026-04-21 draft is acceptable for the first cut.
 - Any change to `_resolve_references()` / `_resolve_value()`. The DESIGN.md adapter produces the flat dotted-key shape those already consume — if it needs them modified, the mapping is wrong.
+- **`components:` as tokens.** Dropped before mapping; it reaches the model via ENH-3267's prose channel. See Resolved Questions.
+- **A configurable DESIGN.md location.** Case-exact `DESIGN.md` at the project root, no knob. See "Discovery".
+
+**Optional de-risking (implementer's call)**
+
+The residual-bucket half of AC 7b — adding a seventh bucket + `_emit_group("Other", …)` to `render_as_prompt_context()` — is the one change here that alters output for **profile** sources too, and it is independent of everything DESIGN.md. Landing it as its own small commit *ahead* of the import work is a legitimate sequencing choice: it lets the "three built-in profiles' output is unchanged" assertion be verified in isolation, and shrinks this issue's blast radius to the import edge. Not a split — same issue, just a suggested commit boundary.
 
 ## Acceptance Criteria
 
@@ -313,16 +359,20 @@ Each is individually testable.
 
 1. A project whose only design artifact is a root `DESIGN.md` (no `.ll/design-tokens/` directory at all) gets a non-`None` `DesignTokens` from `load_design_tokens()`, and `ll-loop run` injects a non-empty `design_tokens_context`. *(Guards the `base_path.exists()` short-circuit at `design_tokens.py:180`.)*
 2. A project with **both** a materialized profile and a root `DESIGN.md`, under `source: auto`, resolves to the profile — including when `active` is left at its `"default"` value.
-3. `source: profile` ignores a root `DESIGN.md` entirely; `source: design_md` with no root `DESIGN.md` returns `None` and writes a stderr warning.
+2b. A project with an **empty (or token-file-less) `.ll/design-tokens/` directory** and a root `DESIGN.md`, under `source: auto`, resolves to **DESIGN.md** — not to a hollow profile yielding an empty `design_tokens_context`. *(Guards the weak `_resolve_token_root() is not None` materialization test; see "'Materialized' must mean token files exist".)* Same project under `source: profile` keeps today's behavior exactly.
+3. `source: profile` ignores a root `DESIGN.md` entirely; `source: design_md` with no root `DESIGN.md` returns `None` and writes a stderr warning. A lowercase `design.md` is **not** discovered under any source setting (case-exact match on `DESIGN_MD_FILENAME`).
 4. The spec's own example DESIGN.md (vendored as a test fixture — see below) parses, and its `{colors.primary}`-style aliases resolve to concrete values. `_resolve_references()` / `_resolve_value()` are **not** modified; the `{colors.*}`→`{color.*}` rewrite happens inside `_load_design_md()` alongside the key rename. *(Guards the namespace contradiction described in "Alias rewriting".)*
 5. Malformed / absent frontmatter degrades to `None` with a stderr warning — no traceback.
 5b. A **well-formed** DESIGN.md containing an unresolvable `{ref}` degrades to `None` with a stderr warning naming the offending reference — no traceback out of `ll-loop run`. Profile-sourced projects still raise `ValueError` for the same defect (behavior unchanged).
-6. `_themed_css_vars()` (`cli/artifact.py:59-74`) does not crash for a DESIGN.md-sourced project; the `:root` and `[data-theme=dark]` blocks are generated from a single `DesignTokens`, and exactly one degradation warning is emitted — achieved by entering `load_design_tokens()` once at that call site, not by module-level warning state.
+6. `_themed_css_vars()` (`cli/artifact.py:59-74`) does not crash for a DESIGN.md-sourced project; the `:root` and `[data-theme=dark]` blocks are generated from a single `DesignTokens`, and exactly one degradation warning is emitted — achieved by entering `load_design_tokens()` once at that call site, not by module-level warning state. The one-call path is driven by branching on the returned `DesignTokens.source`, so this AC also pins that `source` is set to `"design_md"` / `"profile"` on the respective branches rather than left at its default.
+6b. `ll-loop run` in a DESIGN.md-sourced project emits **no** theme-degradation warning (it calls `load_design_tokens()` with `theme=None`); only the explicit-`theme=` caller warns.
 7. `render_as_prompt_context()` output for a DESIGN.md source contains the contrast-guardrail paragraph, which requires the design_md branch to populate the **nested** `DesignTokens.semantic` dict — the gate at `design_tokens.py:234-239` reads `tokens.semantic["color"]`, not `tokens.resolved`. *(Fails today's flat-list fallback — this is the test for Implementation Step 8.)*
-7b. Non-color tokens survive into the prompt: a DESIGN.md with `typography`, `spacing`, and `rounded` blocks produces a `render_as_prompt_context()` output whose Typography and Layout groups are non-empty (guards the `font.`/`space.`/`radius.` renames), and a token in no known namespace appears in the new residual group rather than being silently dropped by the bucket loop at `:274-290`.
+7b. Non-color tokens survive into the prompt: a DESIGN.md with `typography`, `spacing`, and `rounded` blocks produces a `render_as_prompt_context()` output whose Typography and Layout groups are non-empty (guards the `font.`/`space.`/`radius.` renames), and a token in no known namespace appears in the new residual group rather than being silently dropped by the bucket loop at `:274-290`. A `components:` block contributes **nothing** to `resolved` — it appears in neither the residual group nor `render_as_css_vars()` output.
 7c. A list-valued frontmatter entry (e.g. a font stack) renders as a joined string — no `['Inter', 'sans-serif']` Python repr in either `render_as_prompt_context()` or `render_as_css_vars()` output.
 8. `DesignTokens.guidance` holds the DESIGN.md prose body (frontmatter stripped) for a DESIGN.md source, and `""` for a profile source. *(ENH-3267 asserts what happens to it downstream; this issue only asserts it is populated.)*
 9. `ll-verify-design-tokens` and `ll-doctor` report the existing informational "profiles directory not found" status for a DESIGN.md-sourced project — not an error, not a false positive.
+9b. `hooks/session_start.py`'s config validation emits **no** warning for a DESIGN.md-only project (no `.ll/design-tokens/` directory, `design_tokens.enabled` at its `True` default). *(Today this unconditionally appends "design_tokens.enabled is true but path '.ll/design-tokens' does not exist" at `session_start.py:309-313` — it would fire on every session start for exactly the user in Expected Behavior #1.)*
+9c. `design_tokens.source` is reachable from both configuration surfaces: `/ll:configure design_tokens` offers it as a question and `--show` renders its current value, and `ll-init`'s profile picker offers DESIGN.md alongside the built-in profiles. Covered by the `TestConfigureWiringForProfiles` mirror named in the Tests section.
 10. All 15 built-in loops still receive `design_tokens_context` unchanged under a DESIGN.md source.
 11. `python -m pytest scripts/tests/` exits 0 — in particular `test_config_schema.py`'s two-guard gate, with `source` landing in the dataclass, `config-schema.json`, and `core.py:888-897`'s echo dict together.
 
@@ -337,15 +387,18 @@ Each is individually testable.
 - `little_loops.design_tokens._load_design_md(path: Path) -> tuple[dict[str, Any], str]` — new, private; returns `(nested_mapped_tokens, prose_body)`. **Nested, not flat** (revised — see "`DesignTokens.semantic` must be populated as a *nested* dict"): the caller runs the existing `_flatten()` over it for `resolved` and passes the same object as `DesignTokens.semantic`, which is what `render_as_prompt_context()`'s guardrail gate inspects. Built on `little_loops.frontmatter.parse_frontmatter` / `strip_frontmatter`, not a new YAML reader.
 - `little_loops.design_tokens.load_design_tokens(config, theme=None) -> DesignTokens | None` — signature unchanged; gains DESIGN.md source resolution at `:178-179`.
 - `little_loops.design_tokens.DesignTokens.guidance: str = ""` — new field, populated from the prose body. Consumed by ENH-3267.
+- `little_loops.design_tokens.DesignTokens.source: str = "profile"` — new field; `"profile" | "design_md"`, set explicitly on both branches. **Public, not informational**: `cli/artifact.py:_themed_css_vars()` branches on it to decide whether to make the second themed load (see Decision Rules → "How the call site detects the source").
+- `little_loops.design_tokens.DESIGN_MD_FILENAME: str = "DESIGN.md"` — new module constant; case-exact, project-root only, not configurable.
 - Config: `design_tokens.source` enum added to `config-schema.json`.
 - No CLI surface in this issue. `ll-artifact design-md export` is ENH-3268; `design_guidance_context` is ENH-3267.
 
 ## Open Questions
 
-- Does `components:` map usefully into prompt context, or is it out of scope for the first cut? *(Note this interacts with the residual bucket: whatever `components` flattens to will land there unless deliberately handled.)*
-- *(The two exporter questions — generated prose body, reversible key mapping — moved to ENH-3268.)*
+- *(None open. The two exporter questions — generated prose body, reversible key mapping — moved to ENH-3268.)*
 
 ### Resolved Questions
+
+- ~~Does `components:` map usefully into prompt context, or is it out of scope for the first cut?~~ **Resolved: excluded from the token dict in this cut.** It is structural guidance, not tokens; flattening it would both flood the generator prompt with `components.button.radius`-style leaves *and* emit them as `--components-button-radius` custom properties. It reaches the model through ENH-3267's prose channel instead. See Proposed Solution #1 and AC 7b.
 
 - ~~Where does `ll-design` live — a new entry point, or a subcommand of the existing `ll-artifact`?~~ **Resolved: `ll-artifact design-md export`** — carried forward to ENH-3268. No new console script, so `scripts/pyproject.toml` and `cli/__init__.py` drop out of the Integration Map for both issues.
 - ~~`auto` precedence keyed on whether `active` is set.~~ **Resolved: keyed on what is materialized on disk** — `active` defaults to `"default"` in both the dataclass and `from_dict`, so "unset" is not observable.

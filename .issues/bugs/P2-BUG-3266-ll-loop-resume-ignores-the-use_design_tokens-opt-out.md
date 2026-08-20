@@ -77,9 +77,48 @@ The helper owns: reading `use_design_tokens` (bool or string form), the string c
 - `scripts/tests/test_cli_loop_lifecycle.py:921-948` (`test_design_tokens_context_injected_via_cmd_resume`) — existing coverage of the resume injection path
 - `scripts/tests/test_cli_loop_lifecycle.py:1397-1480` (`TestUseDesignTokensOptOut`, ENH-3099) — currently exercises `cmd_run` only; add the `cmd_resume` counterpart, which fails before the fix
 
+### Dependent Files (Callers/Importers)
+- `scripts/little_loops/cli/loop/run.py:26` — top-level import of `little_loops.cli.loop._helpers` (already imports `seed_confidence_thresholds` from the module that is the natural home for the new shared helper)
+- `scripts/little_loops/cli/loop/lifecycle.py:20` — same top-level import from `_helpers.py`
+- `scripts/little_loops/cli/artifact.py:66-69` — separate, unrelated caller of `load_design_tokens` (for CSS-variable export via `render_as_css_vars_themed`); not affected by this fix, do not modify
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-20 — based on codebase analysis:_
+
+- Corrected block boundaries: `run.py:228-254` (not just 242-254) — the block starts with the local imports of `BRConfig`, `load_design_tokens`, `render_as_prompt_context` and includes the `seed_confidence_thresholds(fsm.context, _config)` call at line 240. `lifecycle.py:707-717` similarly opens with local imports of `BRConfig`, `load_design_tokens`, `render_as_prompt_context`, `wire_extensions`, `RateLimitCircuit`, `wire_transports`.
+- Natural home for the shared helper: `scripts/little_loops/cli/loop/_helpers.py` ("Shared helpers for ll-loop CLI subcommands", module docstring at line 1). Both `run.py` and `lifecycle.py` already import from it at module top-level (`run.py:26`, `lifecycle.py:20`). Existing precedent of the identical shape (gate + mutate `fsm.context` in place, optional pre-built config): `seed_confidence_thresholds(context: dict[str, Any], config: Any = None) -> None` (`_helpers.py:1367`), called as `seed_confidence_thresholds(fsm.context, _config)` in `run.py:240` and `seed_confidence_thresholds(fsm.context)` in `lifecycle.py:677`.
+- `load_design_tokens`/`render_as_prompt_context` are also called from `scripts/little_loops/cli/artifact.py:66-69`, but for CSS-variable export via a different renderer (`render_as_css_vars_themed`) — an unrelated, non-FSM-context code path with no `use_design_tokens` opt-out semantics. Not a candidate for the new helper; do not touch.
+- Test class naming correction: the actual class on disk is `TestCmdRunDesignTokensOptOut` (`test_cli_loop_lifecycle.py:1396`), not `TestUseDesignTokensOptOut` as currently written elsewhere in this issue.
+- Existing `cmd_resume`-side design-token coverage is a single test, `test_design_tokens_context_injected_via_cmd_resume` (`:921-948`), living inside the general `TestCmdResume` class (`:609`) — there is no dedicated `TestCmdResumeDesignTokensOptOut` class today; a new opt-out test can either extend `TestCmdResume` or start a new sibling class, matching this file's existing mixed convention (both styles coexist for `seed_confidence_thresholds` vs `derive_input_hash` imports).
+
+## Program Design
+
+### Types
+- No new data shape introduced; the fix operates on the existing `fsm.context: dict[str, Any]` field of `FSMLoop` (`@dataclass` at `scripts/little_loops/fsm/schema.py:1279`, `context` field at line 1305).
+
+### Signatures
+- New shared helper (name/placement is the implementer's call), mirroring the existing precedent `seed_confidence_thresholds(context: dict[str, Any], config: Any = None) -> None` (`scripts/little_loops/cli/loop/_helpers.py:1367`), which both `cmd_run` (`run.py:240`) and `cmd_resume` (`lifecycle.py:677`) already call in this exact shape:
+- `inject_design_context(context: dict[str, Any], config: BRConfig | None = None) -> None`
+- `load_design_tokens(config: BRConfig, theme: str | None = None) -> DesignTokens | None` — defined at `scripts/little_loops/design_tokens.py:160`
+- `render_as_prompt_context(tokens: DesignTokens) -> str` — defined at `scripts/little_loops/design_tokens.py:225`
+
+### Call Path
+`cmd_run` (`run.py:92`) / `cmd_resume` (`lifecycle.py:553`) -> shared helper in `little_loops.cli.loop._helpers` -> `load_design_tokens()` -> `render_as_prompt_context()` -> `fsm.context["design_tokens_context"]`
+
+### Decision Rules
+N/A — no new decision logic. This fix extracts existing gate logic verbatim; it does not add a new gap kind, threshold, or keyword list.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-20 — based on codebase analysis:_
+
+- Types/Signatures/Call Path above are derived from `codebase-analyzer` findings: `fsm.context` type from `scripts/little_loops/fsm/schema.py:1279-1305`; `load_design_tokens`/`render_as_prompt_context` signatures from `scripts/little_loops/design_tokens.py:160,225`; the `inject_design_context` name is illustrative only (matches Proposed Solution's example) — the implementer may choose a different name.
+
 ## Implementation Steps
 
 1. Add the `cmd_resume` opt-out test to `TestUseDesignTokensOptOut` (`test_cli_loop_lifecycle.py:1397-1480`) and confirm it fails against current `main` — this is the regression proof.
+   > ⚠ Superseded — actual class is `TestCmdRunDesignTokensOptOut`, see § Codebase Research Findings under Integration Map
 2. Extract `run.py:242-254`'s gate + injection wholesale into a shared helper, preserving the string-coercion branch and the `setdefault(..., "")` fallback exactly.
 3. Call the helper from `cmd_run` (`run.py:242-254`) and `cmd_resume` (`lifecycle.py:707-717`), deleting both inline blocks.
 4. Verify: the new test passes, `test_design_tokens_context_injected_via_cmd_resume` (`:921-948`) still passes, and `python -m pytest scripts/tests/` exits 0.
@@ -118,3 +157,17 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 ## Status
 
 **Open** | Created: 2026-08-20 | Priority: P2
+
+## Root Cause
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-20 — based on codebase analysis:_
+
+- **File**: `scripts/little_loops/cli/loop/lifecycle.py`
+- **Anchor**: `cmd_resume()` (signature at line 553), injection block at lines 707-717
+- **Cause**: `cmd_resume`'s only guard is `not fsm.context.get("design_tokens_context")` (`lifecycle.py:715`) — it never reads `fsm.context.get("use_design_tokens", ...)`. On an opted-out original run, `design_tokens_context` was persisted as `""` (falsy), so on resume `not ""` evaluates `True` and `load_design_tokens(config)` / `render_as_prompt_context(...)` fire again, overwriting the empty placeholder with real token content. `cmd_run`'s parallel block (`run.py:242-254`) reads and coerces `use_design_tokens` before that same falsy-check — the gate `cmd_resume` lacks entirely.
+
+
+## Session Log
+- `/ll:refine-issue` - 2026-08-20T21:22:46 - `d45eb280-8788-4b5e-9748-16d4c132c1ab.jsonl`

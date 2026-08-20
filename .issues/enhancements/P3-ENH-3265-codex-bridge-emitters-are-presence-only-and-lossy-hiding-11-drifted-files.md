@@ -525,6 +525,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 **Open**
 
 ## Session Log
+- `/ll:ready-issue` - 2026-08-20T21:21:10 - `808309be-a34d-4062-88b6-0559b0aadd01.jsonl`
 - `/ll:confidence-check` - 2026-08-20T21:17:53 - `d602ac2a-3cb0-45fc-863c-88e93035a6e5.jsonl`
 - pre-implementation review - 2026-08-20 - verified claims against HEAD. Five
   corrections: (1) `args:` is a *read* field with an `argument-hint` fallback
