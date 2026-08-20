@@ -696,6 +696,21 @@ _Wiring pass added by `/ll:wire-issue`:_
   `stale_file_ref`); should stay inert under the new verdict but worth
   confirming rather than assuming
 
+_Wiring pass added by `/ll:wire-issue` — 2026-08-19:_
+- `scripts/little_loops/issues/symbol_claims.py:23,198,204` — imports `RefIndex`
+  from `text_utils` for type annotations only (`_resolve_module_prefix`,
+  `extract_symbol_claims`); never constructs one and never reads a `RefStatus`.
+  Inert under the new verdict **provided** `untracked_by_design` is a defaulted
+  field, which Program Design § Signatures already specifies. No edit needed
+- `scripts/little_loops/issue_parser.py` (~`:1021-1037`, the `if ref_index is not
+  None:` block inside `check_format_gaps`) — **the runtime consumer whose output
+  changes without any line being edited.** The ref-classification loop is an
+  `if status == "stale": ... elif status == "ambiguous":` chain with no `else`,
+  so the new verdict falls through silently — which is exactly the shallow
+  treatment § Codebase Research Findings settles on. It is currently absent from
+  this Integration Map even though the ~267-finding drop is observed *here*.
+  Worth a regression assertion rather than an edit
+
 ### Documentation
 
 _Wiring pass added by `/ll:wire-issue`:_
@@ -712,6 +727,14 @@ _Wiring pass added by `/ll:wire-issue`:_
   clause for `untracked_by_design`
 - `docs/reference/CONFIGURATION.md` — the full-config example's `"issues"`
   section should show `untracked_by_design` with its shipped default
+
+_Wiring pass added by `/ll:wire-issue` — 2026-08-19:_
+- `docs/reference/API.md:907` and `:7401` — two further restatements of the
+  closed five-member verdict set beyond the ~7452/7454-7464/7480/7487 sites
+  already listed above: the `stale_file_ref` gap-class prose (`:907`, which
+  states the `stale` predicate directly) and the module-level function table row
+  for `classify_file_ref` (`:7401`). Both enumerate the verdicts inline and go
+  stale the moment a sixth member lands
 
 ### Tests
 
@@ -780,6 +803,20 @@ _Wiring pass added by `/ll:wire-issue`:_
   `test_all_does_not_report_for_basenames_and_globs_only` (lines 631-650),
   asserting `stale_file_ref` is not reported for a ref under an
   untracked-by-design prefix
+
+_Wiring pass added by `/ll:wire-issue` — 2026-08-19:_
+- `scripts/tests/test_symbol_claims.py:25` and
+  `scripts/tests/test_feat3048_symbol_cli_claim_gaps.py:134,392` — three
+  `RefIndex(by_basename={...})` fixture constructions outside the already-listed
+  test files. All three are **keyword**-constructed (verified by grep: no
+  positional `RefIndex(` call exists anywhere in `scripts/`), so the defaulted
+  `untracked_by_design` field leaves them compiling unchanged. Confirm inert
+  rather than edit
+- `scripts/tests/test_ll_issues_research_triage.py` — CLI-level coverage of
+  `cli/issues/research_triage.py`, whose line 61 changes to build and inject the
+  config-sourced index. It does **not** reference `build_ref_index` or `RefIndex`
+  directly, so it is a test of a changed file rather than a symbol consumer —
+  which is why the graph sweep missed it
 
 ### Conventions in Force
 
@@ -872,6 +909,21 @@ _These touchpoints were identified by wiring analysis and must be included in th
   asserts on `stale_symbol_ref`/`mislocated_symbol_ref`/`stale_cli_flag`, not
   `stale_file_ref`
 
+_Second wiring pass — 2026-08-19:_
+- Update `docs/reference/API.md` at `:907` and `:7401` as well — the Documentation
+  subsection above lists only the `:7452`-onward block; these two additional
+  restatements of the verdict set are separate edits in the same file
+- Add coverage in `scripts/tests/test_ll_issues_research_triage.py` for the
+  config-sourced index injection at `cli/issues/research_triage.py:61` — the CLI
+  test file is the only place that change is observable end-to-end
+- Add a regression assertion that an `untracked_by_design` verdict produces no
+  `stale_file_ref` entry from `check_format_gaps` (`issue_parser.py`
+  ~`:1021-1037`). No line in that file changes; its *output* does, and nothing
+  else in this issue's test list pins that
+- Confirm `test_symbol_claims.py` and `test_feat3048_symbol_cli_claim_gaps.py`
+  stay inert — both construct `RefIndex(by_basename=...)` by keyword, so the
+  defaulted field cannot break them
+
 ## Impact
 
 - **Effort**: Small — one branch in `classify_file_ref`, one config field, and
@@ -914,6 +966,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 **Note** (added by `/ll:audit-issue-conflicts`): This issue and ENH-2966 both modify `check_format_gaps` in `scripts/little_loops/issue_parser.py` for unrelated gap classes (a new `stale_file_ref` verdict branch vs. the testable-keyword scan surface). Coordinate implementation order to avoid a merge collision in the same function.
 
 ## Session Log
+- `/ll:wire-issue` - 2026-08-20T00:18:27 - `73ca1a58-7749-4732-a724-9e42d23243f7.jsonl`
 - `/ll:confidence-check` - 2026-08-19T22:36:34 - `783bfe67-e43b-4aa3-9685-9db5e496d2c0.jsonl`
 - `/ll:confidence-check` - 2026-08-19T22:18:20 - `0e6d0c6a-b043-41cd-9b71-7ebe3558528f.jsonl`
 - pre-implementation review (correction) - 2026-08-19 - investigated the
