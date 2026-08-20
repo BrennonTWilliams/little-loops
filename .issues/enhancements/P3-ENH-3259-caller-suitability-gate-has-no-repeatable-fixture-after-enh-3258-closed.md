@@ -68,7 +68,10 @@ any edit to § 8b or its companion. Concretely:
   reports which gate(s) failed. When `gate-record` fails the run reports `RUN_INVALID`
   rather than a per-gate tally — see the aggregate-semantics decision below.
 - All three gates are shell greps over that written file, not `output_contains` matches over
-  LLM-formatted prose.
+  LLM-formatted prose. Each gate action exits 0 unconditionally, carrying its verdict in a
+  `GATE_PASS`/`GATE_FAIL` sentinel rather than in its exit code.
+- The loop YAML itself stays `ll-loop validate`-clean under `python -m pytest scripts/tests/`,
+  not merely by convention — see the loop-validation test under Tests.
 - The fixture leaves no residue in `.issues/` after the run, including on failure — and any
   residue that a hard kill does leave is cleared idempotently by the next run's staging
   state, and is detected by a pytest residue guard rather than by `git status` (the
@@ -334,7 +337,10 @@ _Added by `/ll:refine-issue` — 2026-08-20 — based on codebase analysis:_
   review round) as the detection mechanism the `.gitignore` entry removes; see the
   residue-detection decision under Implementation Steps step 3. It doubles as the
   **ID-reservation guard** under the fifth round's gap-number decision: the same assertion
-  proves nobody has hand-allocated `288`. Change surface is **4 sites**, not 3
+  proves nobody has hand-allocated `288`. Added 2026-08-20 (sixth review round): the same
+  file also gains the **loop-validation test** (`ll-loop validate` on the fixture loop path,
+  exit 0) — see Tests. Change surface is **4 sites**, not 3; the sixth round's addition is a
+  second test in an already-counted file, so the count is unchanged
 
 _Superseded by the mechanism decision (2026-08-19) — no longer in scope:_
 - ~~`scripts/little_loops/cli/loop/__init__.py` (~972-1019) — `scaffold-verify` argparse
@@ -458,7 +464,7 @@ _Wiring pass added by `/ll:wire-issue`:_
   presence half. The presence assertions are not part of this issue's remaining work, but
   the file gains one new test in this issue: the **residue guard** (see below)
 - **New (2026-08-20, fourth review round): a residue guard IS in scope.**
-  `assert not list((project_root / ".issues/enhancements").glob("*ENH-288-*"))`. This is
+  `assert not list((project_root / ".issues").glob("*/*-288-*.md"))`. This is
   not a prose-compliance check — it is a filesystem invariant, and it is the *only*
   mechanism that can see the staged fixture once step 3 gitignores the path. ~5 lines.
   > **Two amendments, fifth review round (2026-08-20).**
@@ -473,7 +479,33 @@ _Wiring pass added by `/ll:wire-issue`:_
   >    whole of `.issues/`, not just `enhancements/`, so a `BUG-288` or `FEAT-288` is caught
   >    too; `get_next_issue_number()` treats the numeric space as global across prefixes
   >    (`issue_parser.py:2488-2496`), and so must this guard.
-- Beyond that guard, the fixture loop's completion gate remains the loop running and
+  > **Amendment, sixth review round (2026-08-20): the glob as written could not do what
+  > amendment 2 asks.** The specified pattern was `*ENH-288-*`, which matches no `BUG-288`
+  > or `FEAT-288` — the type-widening was stated in prose but absent from the assertion.
+  > Corrected above to `.issues/` + `*/*-288-*.md`, which matches the anchored
+  > `P?-TYPE-NNN-` filename shape across every category dir. Note the hyphen boundary is
+  > load-bearing and sufficient: it does **not** false-positive on the existing
+  > `P2-ENH-1288-*` and `P3-ENH-2288-*` files, matching `resolve_issue_path()`'s own
+  > anchored `_ANCHORED_FILENAME_RE` semantics (`issue_parser.py:117-125`).
+- **New (2026-08-20, sixth review round): a loop-validation test IS in scope.** ~5 lines in
+  the same file, shelling out to `ll-loop validate scripts/tests/fixtures/loops/<name>.yaml`
+  and asserting exit 0.
+  > **Nothing else will ever validate this loop.** The Files-to-Modify decision puts the
+  > YAML under `scripts/tests/fixtures/loops/` specifically to escape
+  > `test_builtin_loops.py`'s sweep, and the Wiring Phase states "`ll-loop validate` must
+  > pass on the new YAML" — but specifies no mechanism. Verified: every test file that
+  > validates loops defines `BUILTIN_LOOPS_DIR` as `little_loops/loops/`
+  > (`test_builtin_loops.py:28`, `test_bug_2816_cli_invocations.py:14`,
+  > `test_auto_refine_closure_accounting.py:26`), so the new path has **zero** schema
+  > coverage and a break surfaces only when a human next runs the loop by hand — which,
+  > this issue being a lapsed-fixture issue, may be never. This is the same failure mode
+  > ENH-3259 exists to fix, reproduced in the fix itself.
+  > **Selected:** wrap it as a pytest that shells out and asserts exit 0. That is this
+  > repo's documented pattern for enforcing a non-pytest gate inside
+  > `python -m pytest scripts/tests/` (`.claude/CLAUDE.md` § Testing & CI Policy; precedent
+  > `test_policy_builder_node_gate.py`). It adds no change site — it lands in
+  > `test_caller_suitability_gate.py` alongside the residue guard.
+- Beyond those two guards, the fixture loop's completion gate remains the loop running and
   reproducing the recorded verdict, not a further addition to `scripts/tests/`
 
 _Wiring pass added by `/ll:wire-issue` — closest existing pattern to model the fixture's
@@ -579,14 +611,22 @@ _Added by `/ll:refine-issue` — 2026-08-20 — based on codebase analysis:_
    `:404-417`, and the `Inject at <path>` form mandated by
    `caller-suitability-gate.md:40-50`. Write the gate patterns from those citations; use the
    run to confirm them, and to confirm that Phase 8 wrote into the staged copy at all.
-5. Hand-write the FSM loop under `scripts/tests/fixtures/loops/`. States:
+5. Hand-write the FSM loop under `scripts/tests/fixtures/loops/`. Top-level keys follow
+   `prompt-regression-test.yaml`: `initial: stage-fixture`, `max_steps: 10`,
+   `timeout: 3600`, plus the `scope:` declared below. States:
    - `stage-fixture` (shell) — `rm -f` the staged path first, then copy the fixture from
      `scripts/tests/fixtures/issues/` into the `.issues/enhancements/` directory as
      `P3-ENH-288-fixture-caller-suitability-gate.md`. The pre-clean is what makes staging
      idempotent after a hard kill.
-   - `run-wire-issue` (`action_type: prompt`) — `/ll:wire-issue ENH-288 --auto`. No
+   - `run-wire-issue` (`action_type: slash_command`) — `/ll:wire-issue ENH-288 --auto`. No
      `--dry-run`; Phase 8 writes its findings into the staged copy, which is what the gates
      read. `capture:` is declared for forensics, but **the gates do not read the capture**.
+     > **`slash_command`, not `prompt` (decided 2026-08-20, sixth review round).** Both are
+     > in `LLM_ACTION_TYPES` (`fsm/executor.py:125`) so either would likely execute, but all
+     > five existing `/ll:wire-issue ... --auto` call sites use `action_type: slash_command`
+     > (`rn-remediate.yaml:614-616`, and the four others listed under Similar Patterns).
+     > Under the fifth round's decision this loop *joins* that cohort, so there is no reason
+     > to diverge from it.
    - `archive-wiring` (shell) — `cp` the written staged file to
      `${context.run_dir}/wired-fixture.md` before any gate runs, so a failing run leaves the
      evidence behind after `unstage-fixture` deletes the original.
@@ -594,8 +634,8 @@ _Added by `/ll:refine-issue` — 2026-08-20 — based on codebase analysis:_
      each a `grep` over `${context.run_dir}/wired-fixture.md`, each with `capture:` set and
      `evaluate: {type: output_contains, pattern: "GATE_PASS"}` over its own action output.
      Record: a `### Dependent Files` bullet citing `git_operations.py:413`. Suppression: no
-     Wiring Phase `Update` bullet citing `git_operations.py` (`grep -v`/`! grep`, echoing
-     `GATE_PASS` on absence). Injection: an `Inject at` bullet citing `cli/gitignore.py:55`.
+     Wiring Phase `Update` bullet citing `git_operations.py`. Injection: an `Inject at`
+     bullet citing `cli/gitignore.py:55`.
    - `aggregate` (shell) — names whichever gate(s) failed, or emits `RUN_INVALID` if
      `gate-record` failed (see the aggregate-semantics decision under Proposed Solution).
    - `unstage-fixture` — `git reset -- <staged path>` (defensive; see the Phase 9 note in
@@ -604,6 +644,39 @@ _Added by `/ll:refine-issue` — 2026-08-20 — based on codebase analysis:_
    All three gates run on every path (ENH-3200 no-short-circuit routing: every gate's
    `on_yes`/`on_no`/`on_error` routes to the *next* gate, not to a shared failure terminal);
    `unstage-fixture` is wired onto success, failure and error exits.
+   > **`grep -v` must not be used for the suppression gate (decided 2026-08-20, sixth
+   > review round). The previously-offered form was a second permanent vacuous pass.** Step
+   > 5 formerly offered "(`grep -v`/`! grep`, echoing `GATE_PASS` on absence)" as an
+   > implementer's choice. `grep -v <pattern> <file>` prints the *non-matching lines* and
+   > exits 0 whenever **at least one line** fails to match — trivially true of any multi-line
+   > issue file, whatever it contains. A `grep -v`-based gate would therefore emit
+   > `GATE_PASS` unconditionally, forever, including on a file that *does* carry the
+   > forbidden `Update` bullet. That is the same class of defect as the fourth round's
+   > vacuous-pass and the fifth round's permanent-FAIL, and `gate-record` does **not** catch
+   > it — a live run passes `gate-record` and then lies on suppression.
+   > **Selected:** `! grep -qF ...` only. Strike `grep -v` from the spec rather than leaving
+   > the choice open.
+   > **Scope the suppression grep to the Wiring Phase section (same round).** `gate-record`
+   > requires a `### Dependent Files` bullet citing `git_operations.py:413` to be present in
+   > the *same file* `gate-suppression` reads, so a whole-file search for an `Update` bullet
+   > mentioning `git_operations.py` runs adjacent to a section that legitimately cites that
+   > path. Slice first — e.g. `sed -n '/### Wiring Phase/,$p' <file>` — then `! grep -qF`
+   > over the slice, so the two gates cannot interfere.
+   > **Every gate action must exit 0 unconditionally (same round).** Routing is *not* at
+   > risk — verified: a bare `grep` miss (exit 1) classifies as `FailureType.REAL`
+   > (`issue_lifecycle.classify_failure`), which falls through to normal verdict routing at
+   > `fsm/executor.py:2038-2041`; and the `on_error` early-return at `:1836` sits inside the
+   > `if state.next:` branch, which these gates do not use. But a non-zero exit still feeds
+   > the stall detector's `(state, exit_code, verdict)` triple (`:1935`) and lands in
+   > `${captured.<gate>.exit_code}`, so a legitimately-failing gate reads as an infra fault
+   > in forensics. Write each gate as
+   > `if grep -qF ...; then echo GATE_PASS; else echo GATE_FAIL; fi` — verdict carried by
+   > the sentinel, exit code always 0.
+   > **Escape bash braces in the gate actions (same round).** These are this loop's first
+   > shell states and they interpolate `${context.run_dir}`. FSM interpolates the whole
+   > action string before bash sees it, so any *bash* variable in the same action must be
+   > written `$${...}` or interpolation raises "expected namespace.path". Prefer literal
+   > paths over bash variables in these actions and the hazard does not arise.
    > **Each gate must be an *action* state, not an evaluate-only state (decided 2026-08-20,
    > fifth review round). The previously-specified shape produced a permanent, silent
    > FAIL.** The fourth round specified the gates as evaluate-only states with an
@@ -681,7 +754,11 @@ _These touchpoints were identified by wiring analysis and must be included in th
   **superseded 2026-08-20 (fifth review round).** `--dry-run` is dropped; the gates read the
   file wire-issue writes, whose bullet formats are specified at `SKILL.md:344-403` and
   `caller-suitability-gate.md:40-50`. Step 4 is now a confirmation, not a discovery
-- `ll-loop validate` must pass on the new YAML.
+- `ll-loop validate` must pass on the new YAML — and, per the sixth review round, that
+  requirement now has a **mechanism**: a subprocess-wrapping pytest in
+  `test_caller_suitability_gate.py` (see Tests). Stating it here without one left the loop
+  with no schema coverage at all, since every `BUILTIN_LOOPS_DIR` sweep points at
+  `little_loops/loops/`.
   > **Corrected 2026-08-19 (second review round).** The prior claim — "this loop targets a
   > *skill* (wire-issue), so per-run artifact isolation is mandatory and the
   > `output_contains` gates satisfy the non-LLM-evaluator rule" — is **false on the
@@ -728,7 +805,13 @@ the fixture's recorded ground truth, stated in Implementation Steps step 1.
   in the fifth review round by moving the fixture to a below-max gap ID, which the allocator
   can never hand out and which cannot move the maximum; (4) a silently permanent-failing
   aggregate, from gates that declare `capture:` but never populate it — **eliminated** in
-  the fifth review round by making every gate an action state. The
+  the fifth review round by making every gate an action state; (5) ~~a `grep -v`-based
+  suppression gate emitting `GATE_PASS` unconditionally~~ — **eliminated** in the sixth
+  review round by striking `grep -v` in favour of `! grep -qF` over a Wiring-Phase slice;
+  (6) ~~the loop YAML carrying no schema coverage at all, since
+  `scripts/tests/fixtures/loops/` sits outside every `BUILTIN_LOOPS_DIR` sweep~~ —
+  **eliminated** in the sixth review round by the subprocess-wrapping `ll-loop validate`
+  test. The
   residual, accepted limitation is evidential rather than operational: the fixture is a
   deletion detector, not a generalization probe (see Scope Boundaries). The real risk is
   doing nothing: the gate's only validation to date is one manual run
@@ -837,6 +920,50 @@ _Revised 2026-08-19:_
   scoped in Scope Boundaries; option (a) under Proposed Solution is the upgrade path.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-20T15:42:02 - `3a0f8a60-e129-4a2b-aaef-742b585ee623.jsonl`
+- review round (sixth) - 2026-08-20 - **six findings, two of them defects that would have
+  made a gate lie; all verified against the tree before writing.** First re-verified the
+  fifth round's load-bearing claims and they hold: the ENH-3200 write-back does require
+  `state.capture in self.captured` (`executor.py:1922`) against a dict only the action-result
+  block creates (`:2370`); `resolve_issue_path()`'s anchored `P?-TYPE-NNN-` match means
+  `ENH-288` cannot collide with the existing `P2-ENH-1288-*`/`P3-ENH-2288-*` files; and `288`
+  is genuinely unallocated, with no file of that number in
+  `git log --all --diff-filter=D`. Findings:
+  (1) *`grep -v` was a second permanent vacuous pass.* Step 5 offered `grep -v` as an
+  alternative to `! grep` for the suppression gate. `grep -v <pat> <file>` prints the
+  non-matching lines and exits 0 whenever any line fails to match — always true of a
+  multi-line issue file — so it would emit `GATE_PASS` even when the forbidden `Update`
+  bullet was present, and `gate-record` does not catch this (a live run passes record, then
+  lies on suppression). `grep -v` struck.
+  (2) *Nothing would ever validate the loop.* The Wiring Phase requires "`ll-loop validate`
+  must pass on the new YAML" but specifies no mechanism, and the fixtures location that
+  escapes `test_builtin_loops.py` escapes every other sweep too — all of them define
+  `BUILTIN_LOOPS_DIR` as `little_loops/loops/` (`test_builtin_loops.py:28`,
+  `test_bug_2816_cli_invocations.py:14`, `test_auto_refine_closure_accounting.py:26`). A
+  schema break would surface only on the next manual run, which for a lapsed-fixture issue
+  may be never — this issue's own failure mode, reproduced in its fix. Added a
+  subprocess-wrapping pytest per the repo's Testing & CI Policy (precedent
+  `test_policy_builder_node_gate.py`); no new change site.
+  (3) *The residue guard's glob contradicted its own amendment.* Specified as
+  `*ENH-288-*` while the fifth round's amendment 2 asks it to catch `BUG-288`/`FEAT-288`,
+  which that pattern cannot. Widened to `.issues/` + `*/*-288-*.md`.
+  (4) *Suppression grep needed section scoping.* `gate-record` requires a `### Dependent
+  Files` bullet citing `git_operations.py:413` in the same file `gate-suppression` reads, so
+  a whole-file search runs adjacent to a section that legitimately cites that path. Slice to
+  the Wiring Phase first.
+  (5) *Gates should exit 0.* Routing is **not** at risk — verified that a `grep` miss
+  classifies as `FailureType.REAL` (`issue_lifecycle.classify_failure`) and falls through to
+  normal verdict routing (`executor.py:2038-2041`), and that the `on_error` early-return at
+  `:1836` is inside the `if state.next:` branch these gates do not use. But exit 1 feeds the
+  stall detector's triple and pollutes `${captured.<gate>.exit_code}`, so a failing gate
+  reads as an infra fault. Gates now carry their verdict in the sentinel only.
+  (6) *`action_type: prompt` → `slash_command`*, matching all five existing
+  `/ll:wire-issue ... --auto` call sites; plus `initial`/`max_steps`/`timeout` specified
+  from `prompt-regression-test.yaml`, and a note that bash braces in the new shell states
+  need `$${...}`. Change surface unchanged at 4 sites.
+  Also confirmed the current implementation state: steps 2 and the presence-test half landed
+  in `15786dc4`; the fixture body, loop YAML, `.gitignore` entry and residue guard do not
+  exist yet.
 - `/ll:confidence-check` - 2026-08-20T15:11:30 - `d1a0a529-4a4a-4956-8bd6-268fc1152f27.jsonl`
 - review round (fifth) - 2026-08-20 - **four findings, two of them defects that would have
   made the loop fail or lie on its first run; all verified against the tree before writing.**
