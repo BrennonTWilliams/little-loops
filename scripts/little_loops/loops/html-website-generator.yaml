@@ -132,6 +132,12 @@ states:
     # input is unavailable.
     action_type: shell
     action: |
+      RUN_DIR="${context.run_dir}"
+      case "$RUN_DIR" in
+        /*) ABS_DIR="$RUN_DIR" ;;
+        *) ABS_DIR="$(pwd)/$RUN_DIR" ;;
+      esac
+      export ABS_DIR
       NODE_PATH="$(npm root -g)" node -e "
       const { chromium } = require('@playwright/test');
       (async () => {
@@ -139,21 +145,27 @@ states:
         const page = await browser.newPage();
         const errors = [];
         page.on('pageerror', e => errors.push(e.message));
-        await page.goto('file://' + process.cwd() + '/${context.run_dir}/index.html');
+        await page.goto('file://' + process.env.ABS_DIR + '/index.html');
         await page.waitForTimeout(1500);
         const textLen = await page.evaluate(() => document.body.innerText.trim().length);
-        if (textLen < 20) { console.log('FAIL:minimal_content'); process.exit(1); }
-        if (errors.length > 0) { console.log('FAIL:js_errors:', errors.join('; ')); process.exit(1); }
-        console.log('SMOKE_PASS');
         await browser.close();
+        // Artifact-quality failures exit 0 so the evaluator returns 'no' (regenerate).
+        // Only harness failures (below) exit non-zero -> 'error' -> failed.
+        if (textLen < 20) { console.log('FAIL:minimal_content'); process.exit(0); }
+        if (errors.length > 0) { console.log('FAIL:js_errors:', errors.join('; ')); process.exit(0); }
+        console.log('SMOKE_PASS');
       })().catch(e => { console.error('SMOKE_FAIL:', e.message); process.exit(1); });
       "
     evaluate:
       type: output_contains
       pattern: "SMOKE_PASS"
     on_yes: vision_gate
+    # A bad artifact is worth another generate pass...
     on_no: run_gen_eval
-    on_error: run_gen_eval
+    # ...but a harness fault (node/Playwright missing, unreadable path) means we could
+    # not test the artifact at all. Regenerating cannot fix that, and each retry burns a
+    # full generate+evaluate cycle, so fail loudly instead of spinning until timeout.
+    on_error: failed
 
   vision_gate:
     # HARNESS: Optional external-vision evaluator (ENH: VISION_* env wiring).
