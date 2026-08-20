@@ -21,13 +21,14 @@ relates_to:
 - FEAT-3078
 - FEAT-3033
 - ENH-2714
-confidence_score: 100
+confidence_score: 98
 outcome_confidence: 89
 score_complexity: 14
 score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 25
-verify_verdict: VALID
+verify_verdict: NON_VALID
+reconcile_attempted: true
 ---
 
 # ENH-3095: Add AutomationContext dataclass and thread it through HostRunner.build_streaming()
@@ -101,7 +102,8 @@ that design.
 ## Scope Boundaries
 
 **In scope:** the `AutomationContext` dataclass; `HostRunner.build_streaming()`
-Protocol and all 7 concrete implementations; `_apply_automation_env()`; the
+Protocol and all 8 concrete implementations (including `QwenRunner`, added
+after this issue was written by EPIC-3154); `_apply_automation_env()`; the
 deprecated `automation_profile` pass-through at this boundary; doc mirrors
 that describe `build_streaming()`'s signature.
 
@@ -132,19 +134,24 @@ in this codebase — see parent's Codebase Research Findings; the
 ### Files to Modify
 - `scripts/little_loops/host_runner.py` — add `AutomationContext` dataclass
   alongside `HostInvocation`; replace `automation_profile` with
-  `automation: AutomationContext | None` in `HostRunner` Protocol (`:216-248`)
-  and the 7 concrete `build_streaming()` signatures; update
-  `_apply_automation_env()` (`:1547`); register `AutomationContext` in
+  `automation: AutomationContext | None` in `HostRunner` Protocol
+  `build_streaming` (`:218`) and the 8 concrete `build_streaming()`
+  signatures: `ClaudeCodeRunner` (`:314`), `CodexRunner` (`:616`),
+  `OpenCodeRunner` (`:825`), `PiRunner` (`:900`), `GeminiRunner` (`:1012`),
+  `OmpRunner` (`:1209`), `KimiRunner` (`:1397`), `QwenRunner` (`:1555`,
+  added after this issue was written by EPIC-3154); update
+  `_apply_automation_env()` (`:1819`); register `AutomationContext` in
   `host_runner.py.__all__` (`:44-67`)
 - `scripts/little_loops/__init__.py` — export `AutomationContext` (`:71-90`)
   alongside `HostInvocation`
-- `scripts/little_loops/fsm/schema.py:449-450` — `PruningProfileConfig`
+- `scripts/little_loops/fsm/schema.py:463-481` — `PruningProfileConfig`
   docstring mirrors `build_streaming(..., automation_profile=...)`; update to
   cite `automation=`
-- `docs/reference/API.md:9173-9188` — `HostRunner` Protocol mirror
-- `docs/ARCHITECTURE.md:777` — `PruningProfileConfig` row citing
+- `docs/reference/API.md:9563` — `HostRunner` Protocol mirror
+- `docs/ARCHITECTURE.md:737-738` — `PruningProfileConfig`/
+  `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS` rows citing
   `build_streaming(..., automation_profile=...)`
-- `docs/guides/LOOPS_GUIDE.md:632` — advisory light-touch update; describes
+- `docs/guides/LOOPS_GUIDE.md:636-638` — advisory light-touch update; describes
   `automation_profile=None` env-signal clearing (ENH-3081), behavior
   unchanged but references the legacy kwarg name
 
@@ -170,9 +177,9 @@ in this codebase — see parent's Codebase Research Findings; the
 1. `AutomationContext` exists as a frozen dataclass (`profile`, `idle_timeout`,
    `disable_background_tasks`) in `scripts/little_loops/host_runner.py` and is
    exported from `host_runner.__all__` and `scripts/little_loops/__init__.py`.
-2. `HostRunner.build_streaming()` Protocol and all 7 concrete runners accept
-   `automation: AutomationContext | None = None` in place of
-   `automation_profile`.
+2. `HostRunner.build_streaming()` Protocol and all 8 concrete runners
+   (including `QwenRunner`) accept `automation: AutomationContext | None = None`
+   in place of `automation_profile`.
 3. The `automation_profile` keyword still works, constructing an
    `AutomationContext` internally; when both are supplied the explicit
    `automation` context wins and a deprecation warning is emitted.
@@ -236,15 +243,57 @@ New:
 
 ## Verification Notes
 
-**2026-08-10** (`/ll:verify-issues`): Verified 2026-08-10: AutomationContext
-still doesn't exist in host_runner.py; core claim holds. Cited line numbers
-are off by ~15-35 lines from newer commits (e.g. Protocol block now near line
-225, not 216-227; _apply_automation_env now near 1580, not 1547) — refresh
-anchors when implementing. Also note: parent ENH-3094's frontmatter says
-status: done but its own body '## Status' section still says open — a stale
-self-contradiction on the parent, doesn't affect this issue's validity.
+**2026-08-19** (`/ll:verify-issues`): `AutomationContext` still doesn't exist
+in `host_runner.py`; core claim holds. `blocked_by` (FEAT-3078, BUG-3112) and
+parent ENH-3094 all confirmed `status: done` — issue is genuinely unblocked.
+
+**Scope gap (OUTDATED):** EPIC-3154 (commit `2ac04c4a`, "feat(host): add Qwen
+Code host adapter") landed an **8th concrete `HostRunner` implementation**,
+`QwenRunner` (`host_runner.py:1555`), after this issue was written. It has
+the same `automation_profile: str | None = None` trailing parameter and the
+same `_apply_automation_env(env, automation_profile)` call
+(`host_runner.py:1647`) as the other 7 runners. `scripts/tests/test_host_runner.py`'s
+`TestAutomationProfileEnvAcrossRunners` table already includes `QwenRunner`
+alongside the other 5 real (non-`HostNotConfigured`) runners. This issue's
+Scope Boundaries, Files to Modify, Acceptance Criteria (1-2), Program Design
+Signatures, and Call Path sections all still enumerate only 7 runners and
+would need `QwenRunner` added throughout before implementation — a real
+content gap, not merely a citation drift.
+
+**Line-number drift (also needs refresh, secondary to the scope gap above):**
+every cited anchor in Files to Modify / Program Design has moved further
+since the 2026-08-10 pass (drift now up to ~270 lines, not ~15-35):
+- `host_runner.py` Protocol `build_streaming` now at `:218` (was cited
+  `:216-227`, consistent)
+- `ClaudeCodeRunner.build_streaming` now at `:314` (cited `:299-310`)
+- `CodexRunner.build_streaming` now at `:616` (cited `:590-602`)
+- `OpenCodeRunner.build_streaming` now at `:825` (cited `:797-808`)
+- `PiRunner.build_streaming` now at `:900` (cited `:871-882`)
+- `GeminiRunner.build_streaming` now at `:1012` (cited `:982-993`)
+- `OmpRunner.build_streaming` now at `:1209` (cited `:1177-1188`)
+- `KimiRunner.build_streaming` now at `:1397` (cited `:1363-1374`)
+- `_apply_automation_env` now at `:1819` (cited `:1547-1564`/`:1547`)
+- `docs/reference/API.md` HostRunner Protocol mirror now at `:9563` (cited
+  `:9173-9188`)
+- `docs/ARCHITECTURE.md` `PruningProfileConfig`/`CLAUDE_CODE_DISABLE_BACKGROUND_TASKS`
+  rows now at `:737-738` (cited `:777`)
+- `docs/guides/LOOPS_GUIDE.md` automation-profile prose now at `:636-638`
+  (cited `:632`)
+- `scripts/little_loops/fsm/schema.py` `PruningProfileConfig` docstring
+  mirror now at `:463-481` (cited `:449-450`)
+
+Also note: parent ENH-3094's frontmatter says `status: done` but its own body
+'## Status' section still says open — a stale self-contradiction on the
+parent, doesn't affect this issue's validity.
+
+Remedy: run `/ll:refine-issue` (or `/ll:reconcile-issue`) to add `QwenRunner`
+to Scope Boundaries, Files to Modify, Acceptance Criteria, Program Design,
+and Call Path, and to refresh all cited line numbers, before implementation.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-20T00:35:51 - `319ac0b1-cd90-4d0c-9495-41a3d1945bec.jsonl`
+- `/ll:reconcile-issue` - 2026-08-20T00:29:25 - `202a6ed4-bed9-4c2b-b275-e850f1beb7fe.jsonl`
+- `/ll:verify-issues` - 2026-08-20T00:22:49 - `edca6765-bded-4cd4-bbe9-b026c21cad5e.jsonl`
 - `/ll:verify-issues` - 2026-08-13T03:05:10 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
 - `/ll:verify-issues` - 2026-08-10T16:26:27 - `50b69f30-8ca9-4ab9-8b06-6ee21c203b10.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-09T03:26:27 - `39a3fd52-4ea1-4f7e-83e9-1871820dfe65.jsonl`
