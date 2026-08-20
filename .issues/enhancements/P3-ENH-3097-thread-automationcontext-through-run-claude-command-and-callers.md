@@ -234,7 +234,7 @@ logged).
   precisely where a silent key rename breaks people with no test to catch it.
   So the contract must be stated, not left to the implementer: read a new
   `spec.args.get("automation")` (an `AutomationContext`) **and** keep honoring
-  both legacy keys, folding them via `resolve_automation(..., caller="run_skill()")`.
+  both legacy keys, folding them via `resolve_automation(..., caller="_run_skill()")`.
   Do not rename or drop the legacy keys here. AC 2 and AC 13 cover this.
 - `scripts/little_loops/fsm/executor.py` `_run_baseline_arm()` (`:3178-3243`) —
   the `run_claude_command()` call at `:3218-3225`; becomes a forward of
@@ -362,8 +362,17 @@ _Wiring pass added by `/ll:wire-issue`:_
   explicit signature (`idle_timeout: int = 0`, `disable_background_tasks: bool
   = False`, no `**kwargs`), so it raises `TypeError` the moment the production
   forward starts passing `automation=`; gains `automation`
-- `scripts/tests/test_runner_spec.py:33-38` — `FakeRunner.build_streaming(**_: object)`;
-  verify this stays resilient with no signature change needed
+- `scripts/tests/test_runner_spec.py:33-38` — `FakeRunner.build_streaming(self,
+  *, prompt: str, **_: object)` absorbs a new `automation=` kwarg without a
+  signature change, so **existing** tests using it keep passing untouched.
+  **But it cannot serve AC 13's new test**: `**_: object` discards the kwargs,
+  and AC 13 requires asserting that the context reaching `build_streaming()`
+  carries both legacy `spec.args` values. AC 13 therefore needs a *capturing*
+  variant — a fake whose `build_streaming` appends its `kwargs` to a list the
+  test inspects — not the existing `FakeRunner`. Worth stating because AC 13 is
+  the issue's only externally-facing compatibility surface and has no in-tree
+  producer, so a test that silently asserts nothing would leave it uncovered
+  while appearing to cover it.
 - **Scoped to the three *declaring* sites only** — the ones that gain an
   `automation:` parameter: `subprocess_utils.run_claude_command()`, the
   `issue_manager.run_claude_command()` wrapper, and
@@ -511,7 +520,19 @@ AC 10**, not from a sibling's change:_
   guarantee, currently untested because no in-tree producer sets those keys.
   Add the mirror case for a `spec.args["automation"]` context, and the conflict
   case (both present → explicit context wins, `DeprecationWarning` matching
-  `run_skill()`).
+  `_run_skill()`).
+- **AST no-mixed-kwargs guard** (AC 12, added 2026-08-20 seventh round): a test
+  that `ast.parse`es every `.py` under `scripts/little_loops/` and fails on any
+  `ast.Call` to `run_claude_command` / `run_with_continuation` passing
+  `automation=` together with `automation_profile=` /
+  `disable_background_tasks=` / `idle_timeout=`. Match on the callee's
+  attribute/name only — the two `run_claude_command` symbols
+  (`subprocess_utils`, the `issue_manager` wrapper) and the `_run_claude_base`
+  import aliases (`issue_manager.py:66`, `worker_pool.py:39`) all need
+  covering, so include the alias names in the target set rather than trying to
+  resolve imports. This is the enforcement half of AC 12 and the only
+  mechanical check on the "forward only `automation=`" Decision Rule, which is
+  the issue's likeliest implementation bug by its own Impact section.
 - **`worker_pool` all-default omission** (AC 3/AC 11): assert
   `_run_claude_command()` forwards `automation=None` when
   `idle_timeout_per_issue` is `0` and `disable_background_tasks` is `False`,
@@ -542,7 +563,7 @@ _Added by `/ll:refine-issue` — 2026-08-20 — based on codebase analysis:_
    `disable_background_tasks` read (`:131`), and its three forwarding sites
    (`:153-154,186-187,194-198`) updated to the collapsed parameter. `_run_skill`
    reads a new `spec.args.get("automation")` key and folds it with the two
-   legacy `spec.args` keys via `resolve_automation(..., caller="run_skill()")`.
+   legacy `spec.args` keys via `resolve_automation(..., caller="_run_skill()")`.
 3. `fsm/executor.py:3218-3225` and `worker_pool.py:940-952` forward a single
    `automation=` instead of bare `idle_timeout=`/`disable_background_tasks=`
    kwargs, obtaining it from `resolve_automation()` (not a hand-rolled
@@ -605,7 +626,16 @@ _Added by `/ll:refine-issue` — 2026-08-20 — based on codebase analysis:_
     where the shim's uniform "explicit wins" rule has a live consequence
     instead of an inert one. Mirror
     `test_fsm_runners.py::test_explicit_automation_discards_legacy_idle_timeout`.
-    No in-tree call site may produce this combination.
+    **The "no in-tree call site produces this combination" half of this
+    criterion is enforced by a static guard, not by review** — an AST test that
+    walks `scripts/little_loops/` for `ast.Call` nodes whose func resolves to
+    `run_claude_command` / `run_with_continuation` and fails if any passes
+    `automation=` alongside any of `automation_profile=` /
+    `disable_background_tasks=` / `idle_timeout=`. As prose this clause was
+    unenforceable, and it guards the one combination that silently disables
+    idle detection. The same guard mechanically enforces the "each layer
+    forwards only `automation=`" Decision Rule, which AC 9 otherwise catches
+    only at runtime and only on the paths a test happens to exercise.
 13. `runner_spec._run_skill`'s legacy `spec.args` keys (`"automation_profile"`,
     `"disable_background_tasks"`) still work unchanged, with a test asserting
     it. This is the only compatibility surface in the issue that is a **dict
@@ -632,6 +662,16 @@ _Added by `/ll:refine-issue` — 2026-08-20 — based on codebase analysis:_
     retrofitted); otherwise "the next automation knob is a field on one frozen
     dataclass" stays aspirational. Not in scope here — this issue does not
     touch `timeout_kill_grace_seconds`.
+    **The ruling must also cover `sandbox_mode`** — a second per-call knob in
+    the same shape, declared only on `CodexRunner.build_streaming()`
+    (`host_runner.py:664`) and on no other implementation. It raises the case
+    `timeout_kill_grace_seconds` does not: a knob meaningful to *one* host.
+    Folding a host-specific field into a host-agnostic `AutomationContext`
+    trades a parameter that only one runner can accept for a field the other
+    seven must ignore, so the follow-up should rule explicitly on whether
+    host-specific knobs are exempt from the collapse rather than leaving the
+    question to be re-litigated the next time Codex support moves. Also not in
+    scope here — this issue does not touch `sandbox_mode`.
 
 ## Program Design
 
@@ -778,104 +818,35 @@ live in **one** place now: § Program Design → Codebase Research Findings
 
 ## Verification Notes
 
-**2026-08-10** (`/ll:verify-issues`): Verified 2026-08-10: AutomationContext
-still absent (ENH-3095 not landed) — dependency correct. Call-site line
-numbers drifted ~20-60 lines (e.g. fsm/executor.py call now ~2801 not
-2771-2774; worker_pool.py forward now ~929-936 not 924-934;
-subprocess_utils.run_claude_command now at :343 not :320-341).
-Structure/shape of the refactor is unchanged.
+**2026-08-10 through 2026-08-19** (four passes: two `/ll:verify-issues`, one
+pre-implementation review, one `/ll:verify-issues --check`) — **condensed
+2026-08-20, seventh round.** All four are fully superseded and their findings
+are already applied to the body above; the ~100 lines of narrative they
+occupied were re-litigating line numbers that § Program Design → Codebase
+Research Findings now owns authoritatively. What survives them:
 
-**2026-08-19** (`/ll:verify-issues`): Still `OUTDATED` — drift has grown
-further at the two fastest-moving sites, structure otherwise unchanged:
+- **Drift is corrected and re-verified.** The first two passes returned
+  `OUTDATED` on line-number drift only (structure never changed); the drift was
+  repaired and every anchor re-confirmed by the two later passes and again in
+  rounds five and six. Line numbers live in **one** place: § Program Design →
+  Codebase Research Findings (2026-08-20). Do not trust numbers quoted
+  elsewhere.
+- **Verdict history**: `VALID` → `NON_VALID` (hand-applied when an `OUTDATED`
+  pass ran without `--check` and so skipped the persist step) → `VALID`, set by
+  the 2026-08-19 `--check` pass. That pass returned `PROPOSAL_UNSOUND` on one
+  finding — incomplete test-impact accounting — and repaired it in the same
+  pass, so the `VALID` reflects the file *after* the repair.
+- **Structural changes those passes made**, all still live above: § Signatures
+  rewritten as a delta (the prior "New signature" deleted the legacy kwargs,
+  contradicting AC 4); the `0`-vs-`None` Decision Rule replaced with the
+  call-the-shim-as-is ruling; the forward-only-`automation=` Decision Rule
+  added; the BUG-3093 carve-out marked superseded; five in-`issue_manager.py`
+  call sites added to scope; ACs 9–11 added; four previously-unlisted breaking
+  test assertions added to § Tests (wiring gaps), with AC 10 extended to
+  require they be *retargeted*, not deleted.
 
-- `subprocess_utils.run_claude_command()` def now `:343-362+` (was
-  `:320-341`).
-- `issue_manager.py` wrapper `run_claude_command()` still accurate at
-  `:139-152` — unchanged since original filing.
-- `issue_manager.run_with_continuation()` now `:260-...` (was `:252-269`).
-- `runner_spec.py` `automation_profile` read now `:127` (was `:128`,
-  negligible); forwarding sites now `:153,186,196` (was `:145,176,182`).
-- `fsm/executor.py` baseline arm: def `_run_baseline_arm` now at `:3175`,
-  the `run_claude_command()` call now at `:3215-3221` — was `:2771-2774`
-  at filing, `~2801` at the last verify pass; drift has grown by ~400 more
-  lines since then and is trending upward each pass, not stabilizing.
-- `worker_pool.py` `_run_claude_base` forward now `:940-949` — was
-  `:924-934` at filing, `~929-936` at the last verify pass; same
-  still-growing pattern.
-- `docs/reference/API.md` `issue_manager.run_claude_command()` mirror now
-  at `:2856-2890` (was `:2626-2655`).
-- `BUG-3112` (`blocked_by`) is now `status: done` — satisfied, informational
-  only, does not change the remaining `blocked_by: ENH-3095` (still open).
-- Same missing-param gap as ENH-3096: neither issue mentions
-  `disable_background_tasks`, corroborated by ENH-3095's own Codebase
-  Research Findings flagging this exact sibling gap. Does not conflict with
-  the proposed collapse — the param carries through unchanged.
-
-**Verdict persisted 2026-08-19:** the pass above ran without `--check`, which
-is the mode that writes `verify_verdict:` to frontmatter, so the field was
-left at its stale `VALID`. Applied the documented `OUTDATED → NON_VALID`
-mapping (`commands/verify-issues.md:265-289`) by hand — the verification did
-run and did return `OUTDATED`; only the persist step was skipped by mode.
-Re-verify with `--check` after ENH-3095 lands.
-
-**2026-08-19** (pre-implementation review): re-verified every claim against
-`main` and applied seven corrections — see § Program Design → Codebase Research
-Findings (2026-08-19) for the evidence. Summary of what changed in this file:
-
-1. `Signatures` rewritten as a delta; the previous "New" signature deleted the
-   legacy kwargs, directly contradicting AC 4 and the Decision Rules.
-2. The `0`-vs-`None` Decision Rule was unsatisfiable via the shim this issue
-   also mandates calling; replaced with an explicit "call the shim as-is, and
-   here is why that's correct" ruling.
-3. Added the forward-only-`automation=` Decision Rule (three nested
-   `resolve_automation()` points now exist; forwarding both triggers a
-   spurious `DeprecationWarning` per `ll-auto` round).
-4. BUG-3093 carve-out marked superseded — that bug is `done` and the
-   asymmetry it described is closed.
-5. Five previously-unlisted in-`issue_manager.py` call sites added to scope.
-6. Stale line numbers removed from `Program Design → Call Path` (they
-   contradicted Files to Modify); `test_worker_pool.py:2833` corrected to
-   `:2902-2914`.
-7. Deleted the dead "Missing criterion for the sixth call site" block under
-   Acceptance Criteria — AC 7 already was that criterion.
-
-New ACs 9–11 and a new `Tests (new, from the 2026-08-19 review pass)` section
-were added. Frontmatter `verify_verdict` left at `NON_VALID` — re-run
-`/ll:verify-issues --check` to repersist now that ENH-3095/ENH-3096 have landed
-and the drift is corrected.
-
-**2026-08-19** (`/ll:verify-issues --check`): every claim about current state
-re-verified against `main` by direct read and **all hold** — the full line-number
-set in § Program Design → Codebase Research Findings (2026-08-20) is accurate
-(`subprocess_utils.py:343-366`/`:350`/`:358`/`:359`/`:437-447`/`:513`/`:522`;
-`issue_manager.py:139-154`/`:213-226`/`:260-279`/`:355`/`:537` and all five call
-sites `:853,:927,:1128,:1259,:1462`, each confirmed passing
-`automation_profile="ll-auto"`; `runner_spec.py:127`/`:131`/`:153-154`/
-`:186-187`/`:194-198`; `fsm/executor.py:3178-3243`/`:3199`/`:3218-3225`;
-`worker_pool.py:940-952`; `fsm/runners.py:81`/`:158`/`:177-183`/`:184-186`/
-`:187-191`/`:234-252`; `host_runner.py:172-190`/`:1886-1934`/`:1917`/`:1918-1927`;
-`docs/reference/API.md:2853`/`:6072`/`:6098`/`:11653`;
-`test_worker_pool.py:2902-2914`). No required decision rules are active.
-
-Verdict was `PROPOSAL_UNSOUND` on a single finding — the proposal's test-impact
-accounting was incomplete — and the corrections were applied in the same pass:
-
-1. Four previously-unlisted test assertions that the Proposed Solution breaks as
-   written, added to § Tests (wiring gaps) with the 2026-08-19 heading. Three
-   (`test_issue_manager.py:2271,:2304,:4901`) break from this issue's **own**
-   AC 10, and `:2271` is a `KeyError`, not a value mismatch; the fourth
-   (`test_fsm_runners.py:629`) sits outside `TestActionRunnerAutomationShim` and
-   so escaped the wiring pass's `:671-726` enumeration.
-2. AC 10 extended to require those guards be *retargeted* rather than deleted —
-   they encode the BUG-3093/FEAT-3078 guarantees, which must survive a pure
-   parameter-shape refactor.
-3. `subprocess_utils.run_claude_command()`'s parameter count corrected from 18
-   to 22 in Current Behavior and § Program Design → Signatures (incidental; the
-   signature delta never depended on the count).
-
-`verify_verdict` set to `VALID` — it reflects the file **after** these
-corrections, since the sole defect the pass found is the one it repaired. A
-future pass that changes nothing should reproduce `VALID`.
+Rounds five, six, and seven below are retained in full — they are the passes
+whose findings a reader still needs in narrative form.
 
 **2026-08-20** (pre-implementation review, fifth round): all line numbers in
 § Program Design → Codebase Research Findings re-verified against `main` by
@@ -905,7 +876,7 @@ the approach, all sharpen under-specified instructions or close a gap:
    the read at `:127`), making it the issue's only externally-facing compat
    surface and the only one no existing test covers. Now specified: add an
    `"automation"` key, keep both legacy keys, fold via
-   `resolve_automation(caller="run_skill()")`.
+   `resolve_automation(caller="_run_skill()")`.
 5. **Static gates added to AC 6**: mypy is what catches the `float | None` → `int`
    rebind at `subprocess_utils.py` (correction 1's territory) and ruff F841 is
    what catches correction 2's dead locals — both load-bearing for this change,
@@ -980,7 +951,65 @@ none altering the approach:
 `verify_verdict` left at `VALID` — as with the fifth round, every finding is a
 sharpening of an approach that re-verified clean.
 
+**2026-08-20** (pre-implementation review, seventh round): the load-bearing
+claims re-verified against `main` at `bcd70af1` (clean tree) by direct read and
+**all hold**. Two claims re-confirmed independently rather than taken from
+prior rounds:
+
+- **All eight `build_streaming()` implementations already accept
+  `automation: AutomationContext | None = None`** — `host_runner.py:242`
+  (Protocol), `:348`, `:656`, `:866`, `:942`, `:1055`, `:1253`, `:1442`,
+  `:1649`. Every `automation=` forward this issue adds has a live parameter to
+  land in on *every* host, not just Claude Code, so there is no
+  `LL_HOST_CLI=codex` TypeError hazard hiding behind the collapse.
+- **The "all-default context is behaviorally benign" claim is correct at both
+  consumers.** After this issue, a caller passing a bare legacy `idle_timeout=N`
+  will cause `build_streaming()` to receive a populated
+  `AutomationContext(profile=None, idle_timeout=N)` where it previously
+  received `None` — a real shape change at that boundary. It is inert because
+  both consumers key off `profile`, not the context's presence:
+  `_apply_automation_env()` reads `automation.profile if automation is not None
+  else None` (`host_runner.py:1877`) and takes the identical opt-out branch for
+  both, and the FEAT-3078 gate requires `automation.profile is not None` in its
+  conjunction (`host_runner.py:413-415`).
+
+Four corrections applied, plus one condensation:
+
+1. **AC 12's static half made enforceable** (AC 12, § Tests new-2026-08-20):
+   "No in-tree call site may produce this combination" was prose with no
+   enforcement, guarding the one combination that silently disables idle
+   detection. Now an AST guard over `scripts/little_loops/`, which also gives
+   the "forward only `automation=`" Decision Rule its first mechanical check —
+   AC 9 catches that rule only at runtime, only on exercised paths.
+2. **AC 13's test needs a capturing fake, not `FakeRunner`** (§ Tests):
+   `test_runner_spec.py:33-38`'s `build_streaming(self, *, prompt: str, **_:
+   object)` absorbs `automation=` — which keeps existing tests green, as the
+   sixth round noted — but `**_` discards it, so AC 13's required assertion on
+   the resolved context is unwritable against it. Left as-is, AC 13's test
+   would appear to cover the issue's only externally-facing compat surface
+   while asserting nothing.
+3. **`caller=` string corrected to `_run_skill()`** (AC 2, AC 13, Files to
+   Modify): the file specified `caller="run_skill()"`; the function is
+   `_run_skill` (`runner_spec.py:92`). Caller strings are asserted verbatim via
+   `pytest.warns(..., match=...)`, so the mismatch would have been a test
+   failure resolved by guessing which side was authoritative.
+4. **AC 14's ruling extended to `sandbox_mode`**: `CodexRunner.build_streaming()`
+   declares `sandbox_mode: str | None = None` (`host_runner.py:664`) and no
+   other implementation does. It poses the case `timeout_kill_grace_seconds`
+   does not — a knob meaningful to one host — so the follow-up must rule on
+   whether host-specific knobs are exempt from the collapse.
+5. **Verification Notes condensed**: rounds one through four (~100 lines,
+   entirely superseded, mostly re-litigating line numbers § Program Design now
+   owns) collapsed to a stub preserving the drift status, verdict history, and
+   the structural changes those passes made. At 998 lines the file's marginal
+   risk had flipped from underspecification to implementer context exhaustion.
+
+`verify_verdict` left at `VALID`. No finding in this round contradicts the
+approach; three of the four are gaps that would have surfaced as a failing or
+vacuous test during implementation rather than as a design error.
+
 ## Session Log
+- `/ll:confidence-check` - 2026-08-20T16:03:12 - `c1d60b1e-2aff-473c-94de-fc05a94c0cc0.jsonl`
 - `/ll:confidence-check` - 2026-08-20T15:37:55 - `bd57d7f3-a955-4773-baa1-4d369765bf41.jsonl`
 - `/ll:confidence-check` - 2026-08-20T15:10:46 - `d1a0a529-4a4a-4956-8bd6-268fc1152f27.jsonl`
 - `/ll:confidence-check` - 2026-08-20T14:31:22 - `8f4849c7-f264-45db-90d2-abcbcb8ba804.jsonl`

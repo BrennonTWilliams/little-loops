@@ -473,6 +473,21 @@ _Wiring pass added by `/ll:wire-issue`:_
   >    those seconds. Skip the guard when `LL_AUTOMATION` is set, or when the loop's lock
   >    file is present under the loops dir. Without this it is a flake generator, and a
   >    flaky invariant guard gets deleted rather than fixed.
+  >    > **Corrected 2026-08-20 (seventh review round) — the `LL_AUTOMATION` half of that
+  >    > skip condition is inert, and the lock-file half was underspecified.**
+  >    > `scripts/tests/conftest.py:736-742` (`_restore_cmd_run_env_vars`) is an **autouse**
+  >    > fixture that `monkeypatch.delenv`s `LL_AUTOMATION` and `LL_AUTOMATION_PROFILE` for
+  >    > the duration of **every** test — added deliberately for the leak-in hazard described
+  >    > at `conftest.py:715-719`. An `os.environ.get("LL_AUTOMATION")` check in the guard
+  >    > body therefore always reads unset, the guard never skips, and the flake this
+  >    > amendment exists to prevent survives intact.
+  >    > **Selected:** drop the env-var condition entirely; gate the skip on the lock file
+  >    > alone. That check is a **glob-and-parse, not a fixed-path existence test**: locks
+  >    > live at `.loops/.running/<instance_id>.lock` (`fsm/concurrency.py:126-127,186`),
+  >    > named by `instance_id` rather than by loop name, with `loop_name` carried inside the
+  >    > JSON payload. So: glob `.loops/.running/*.lock`, `json.load` each, skip if any
+  >    > `loop_name` matches the fixture loop. (`.acquire.lock` is a dotfile and is not
+  >    > matched by `*.lock` — `concurrency.py:171-173`.)
   > 2. **It also serves as the ID-reservation guard.** Under the gap-number decision the
   >    same glob proves nobody has hand-allocated `288` to real work — the one property a
   >    below-max ID does not get for free from the allocator. Assert the absence for the
@@ -487,6 +502,27 @@ _Wiring pass added by `/ll:wire-issue`:_
   > load-bearing and sufficient: it does **not** false-positive on the existing
   > `P2-ENH-1288-*` and `P3-ENH-2288-*` files, matching `resolve_issue_path()`'s own
   > anchored `_ANCHORED_FILENAME_RE` semantics (`issue_parser.py:117-125`).
+- **New (2026-08-20, seventh review round): a fixture non-vacuity guard IS in scope.** ~3
+  lines in the same file: read the checked-in fixture body at
+  `scripts/tests/fixtures/issues/` and assert it contains **none** of the three gate
+  substrings (`git_operations.py:413`, an `Update` bullet citing `git_operations.py`,
+  `cli/gitignore.py:55`).
+  > **`gate-record` is satisfiable by the pristine fixture body, which defeats the entire
+  > `RUN_INVALID` design.** All three gates `grep` the whole archived file, and that file is
+  > the fixture body *plus* whatever wire-issue appended — `grep` cannot tell the two apart.
+  > For `gate-suppression` the contamination direction is safe (pre-existing text makes it
+  > *fail*, not pass). For `gate-record` it is not: it is both positive **and** the run's
+  > sole liveness precondition, so if the authored body happens to cite
+  > `git_operations.py:413` anywhere, `gate-record` passes on a run where wire-issue wrote
+  > nothing and the aggregate never emits `RUN_INVALID`. Step 1's cleanliness rule bans
+  > guards, fallbacks and seams from the body — it does not ban that citation, and a
+  > naturally-written stimulus issue about `get_untracked_files()` may well carry it.
+  > **Selected:** the static assertion above. It converts "the gates are non-vacuous" from
+  > an authoring convention into a suite-enforced invariant, costs ~3 lines, adds no change
+  > site, and cannot drift out of sync with the gate patterns the way a prose rule can.
+  > Optionally reinforce by requiring the `_Wiring pass added by` provenance marker
+  > (mandated by `SKILL.md` § 8c, `:437-440`) in `gate-record`'s match — but the static
+  > assertion is the load-bearing half and is sufficient on its own.
 - **New (2026-08-20, sixth review round): a loop-validation test IS in scope.** ~5 lines in
   the same file, shelling out to `ll-loop validate scripts/tests/fixtures/loops/<name>.yaml`
   and asserting exit 0.
@@ -612,8 +648,21 @@ _Added by `/ll:refine-issue` — 2026-08-20 — based on codebase analysis:_
    `caller-suitability-gate.md:40-50`. Write the gate patterns from those citations; use the
    run to confirm them, and to confirm that Phase 8 wrote into the staged copy at all.
 5. Hand-write the FSM loop under `scripts/tests/fixtures/loops/`. Top-level keys follow
-   `prompt-regression-test.yaml`: `initial: stage-fixture`, `max_steps: 10`,
+   `prompt-regression-test.yaml`: `initial: stage-fixture`, `max_steps: 20`,
    `timeout: 3600`, plus the `scope:` declared below. States:
+   > **`max_steps` raised 10 → 20 (decided 2026-08-20, seventh review round).** The sixth
+   > round took `max_steps: 10` from `prompt-regression-test.yaml` without counting this
+   > loop's states. There are **eight** (`stage-fixture`, `run-wire-issue`,
+   > `archive-wiring`, three gates, `aggregate`, `unstage-fixture`), and under ENH-3200
+   > no-short-circuit routing *every one* executes on every run — so a clean run consumes 8
+   > of 10, leaving two steps of headroom. That margin is directly load-bearing for the
+   > "no residue" criterion: this issue already records that `max_steps` exhaustion is one
+   > of the exit paths FSM `on_failure`/`on_error` routing **cannot** cover (step 3,
+   > `.gitignore` rationale), so blowing the budget is precisely the case that skips
+   > `unstage-fixture`. And retries on the wire-issue state are not hypothetical —
+   > `rn-remediate.yaml:614-615` wraps its `/ll:wire-issue --auto` in
+   > `fragment: with_rate_limit_handling` for exactly that reason. Decide explicitly whether
+   > to adopt that fragment here; either way, 20 removes the cliff.
    - `stage-fixture` (shell) — `rm -f` the staged path first, then copy the fixture from
      `scripts/tests/fixtures/issues/` into the `.issues/enhancements/` directory as
      `P3-ENH-288-fixture-caller-suitability-gate.md`. The pre-clean is what makes staging
@@ -627,6 +676,22 @@ _Added by `/ll:refine-issue` — 2026-08-20 — based on codebase analysis:_
      > (`rn-remediate.yaml:614-616`, and the four others listed under Similar Patterns).
      > Under the fifth round's decision this loop *joins* that cohort, so there is no reason
      > to diverge from it.
+     > **Route `on_failure` and `on_error` to `archive-wiring` (decided 2026-08-20, seventh
+     > review round).** Step 5 pinned routing for the three gates and for `unstage-fixture`,
+     > but left this state's failure and error edges unspecified. If they terminate the
+     > loop, a failed or errored wire-issue run never reaches `aggregate` — so the run
+     > reports a bare loop failure instead of the `RUN_INVALID` verdict, which is *exactly*
+     > the dead-run case `gate-record` was added to name (see the aggregate-semantics
+     > decision under Proposed Solution). Routing both edges forward keeps the liveness
+     > mechanism reachable on the path it was designed for. Note `archive-wiring` must
+     > tolerate a missing or unmodified staged file for this to work (`cp` of the fixture as
+     > staged is the intended outcome there — `gate-record` then fails, as specified).
+     > **Do not copy `prompt-regression-test.yaml`'s per-state `timeout: 300` onto this
+     > state (same round).** Step 5 says top-level keys follow that file, and every state in
+     > it also carries `timeout: 300`. Applying that here would kill a ten-phase skill
+     > mid-Phase-8, leaving a half-written staged copy and a `gate-record` failure
+     > indistinguishable from a genuine rule regression. Leave the state `timeout` unset —
+     > `LLMConfig.timeout` defaults to 1800 (`fsm/schema.py:999`) — or set it explicitly.
    - `archive-wiring` (shell) — `cp` the written staged file to
      `${context.run_dir}/wired-fixture.md` before any gate runs, so a failing run leaves the
      evidence behind after `unstage-fixture` deletes the original.
@@ -811,7 +876,15 @@ the fixture's recorded ground truth, stated in Implementation Steps step 1.
   (6) ~~the loop YAML carrying no schema coverage at all, since
   `scripts/tests/fixtures/loops/` sits outside every `BUILTIN_LOOPS_DIR` sweep~~ —
   **eliminated** in the sixth review round by the subprocess-wrapping `ll-loop validate`
-  test. The
+  test; (7) ~~a residue guard whose race-skip never fires, because `conftest.py`'s autouse
+  fixture scrubs `LL_AUTOMATION` from every test~~ — **eliminated** in the seventh review
+  round by gating the skip on a `.loops/.running/*.lock` glob-and-parse instead;
+  (8) ~~`gate-record` passing on a dead run because the pristine fixture body already
+  carries its substring, bypassing `RUN_INVALID` entirely~~ — **eliminated** in the seventh
+  review round by a ~3-line static non-vacuity assertion over the checked-in fixture;
+  (9) ~~`max_steps: 10` leaving two steps of headroom over an eight-state loop, so one
+  rate-limit retry exhausts the budget on the single exit path that cannot run
+  `unstage-fixture`~~ — **eliminated** in the seventh review round by raising it to 20. The
   residual, accepted limitation is evidential rather than operational: the fixture is a
   deletion detector, not a generalization probe (see Scope Boundaries). The real risk is
   doing nothing: the gate's only validation to date is one manual run
@@ -920,6 +993,44 @@ _Revised 2026-08-19:_
   scoped in Scope Boundaries; option (a) under Proposed Solution is the upgrade path.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-20T16:03:25 - `e75df641-36ca-46da-9aea-944d012bb21b.jsonl`
+- review round (seventh) - 2026-08-20 - **five findings, three of them defects that would
+  have disabled a stated mitigation; all verified against the tree before writing.** First
+  re-verified the sixth round's load-bearing claims and they hold: `### Wiring Phase (added
+  by /ll:wire-issue)` exists verbatim (`SKILL.md:408`) so the `sed` slice works;
+  `### Dependent Files (Callers/Importers)` at `:349`; `288` is absent from `.issues/` and
+  from `git log --all --diff-filter=D`; `scripts/tests/fixtures/loops/` does not yet exist;
+  `test_caller_suitability_gate.py` has landed. Findings:
+  (1) *The residue guard's race-skip could never fire.* The fifth round specified "skip when
+  `LL_AUTOMATION` is set", but `conftest.py:736-742` is an **autouse** fixture that
+  `delenv`s `LL_AUTOMATION` for every test (leak-in hazard, `:715-719`) — so the check
+  always reads unset and the flake it prevents survives. Env condition dropped; the
+  lock-file condition is now specified as a `.loops/.running/*.lock` glob-and-parse, since
+  locks are named by `instance_id` with `loop_name` inside the JSON
+  (`fsm/concurrency.py:126-127,186`).
+  (2) *`gate-record` was satisfiable by the pristine fixture body.* All three gates `grep`
+  the whole archived file, which is the fixture body plus wire-issue's appendix; `grep`
+  cannot separate them. Suppression's contamination direction is safe, but `gate-record` is
+  positive **and** the sole liveness precondition, so a body citing `git_operations.py:413`
+  would pass it on a run where wire-issue wrote nothing — bypassing `RUN_INVALID`
+  altogether. Step 1's cleanliness rule does not ban that citation. Added a ~3-line static
+  non-vacuity assertion over the checked-in fixture; no new change site.
+  (3) *`max_steps: 10` was two steps from the residue cliff.* Eight states all execute under
+  no-short-circuit routing, and `max_steps` exhaustion is one of the exit paths this issue
+  already records as uncoverable by `on_failure`/`on_error` — i.e. the case that skips
+  `unstage-fixture`. Retries are not hypothetical: `rn-remediate.yaml:614-615` wraps its
+  `/ll:wire-issue --auto` in `fragment: with_rate_limit_handling`. Raised to 20.
+  (4) *`run-wire-issue`'s failure/error edges were unspecified*, so a dead wire-issue run
+  would terminate the loop before `aggregate` and report a bare loop failure instead of the
+  `RUN_INVALID` the fourth round designed for exactly that case. Both edges now route to
+  `archive-wiring`.
+  (5) *Timeout trap in the borrowed shape.* Step 5 says top-level keys follow
+  `prompt-regression-test.yaml`, which also sets `timeout: 300` on every state; applied to
+  `run-wire-issue` that kills a ten-phase skill mid-Phase-8 and produces a `gate-record`
+  failure indistinguishable from a real regression. Leave it unset (default 1800,
+  `fsm/schema.py:999`) or set it explicitly.
+  Change surface unchanged at 4 sites — findings 1 and 2 land in the already-counted
+  `test_caller_suitability_gate.py`; 3, 4 and 5 are loop-YAML details.
 - `/ll:confidence-check` - 2026-08-20T15:42:02 - `3a0f8a60-e129-4a2b-aaef-742b585ee623.jsonl`
 - review round (sixth) - 2026-08-20 - **six findings, two of them defects that would have
   made a gate lie; all verified against the tree before writing.** First re-verified the
