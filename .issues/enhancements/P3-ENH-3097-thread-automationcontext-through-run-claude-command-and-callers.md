@@ -124,13 +124,21 @@ _Added by `/ll:refine-issue` — 2026-08-20 — based on codebase analysis:_
    `automation_profile`/`idle_timeout`.
 2. `runner_spec.py`'s read (`:128`) and forwarding sites (`:145,176,182`)
    updated to the collapsed parameter.
+   > ⚠ Superseded — line refs stale; see § Codebase Research Findings under Program Design (now `:127`, `:153-154,186-187,194-198`)
 3. `fsm/executor.py:2771-2774` and `worker_pool.py:924-934` construct and
    forward an `AutomationContext` instead of a bare `idle_timeout=` kwarg.
+   > ⚠ Superseded — line refs stale; see § Codebase Research Findings under Program Design (now `:3218-3225` and `:940-952`)
 4. The `automation_profile`/`idle_timeout` keywords still work, constructing
    an `AutomationContext` internally, per the ENH-3095 shim pattern.
 5. `docs/reference/API.md` `issue_manager.run_claude_command()` mirror
    updated.
 6. `python -m pytest scripts/tests/` passes.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-20 — based on codebase analysis:_
+
+- **Missing criterion for the sixth call site**: none of the six listed criteria cover `fsm/runners.py`'s `DefaultActionRunner.run()` (`runners.py:177-252`), which already resolves an `AutomationContext` via `resolve_automation()` and currently decomposes it back into legacy kwargs before calling `run_claude_command()`, per a comment explicitly marking this "pending ENH-3097" (see § Codebase Research Findings under Proposed Solution). An implementer should add: "`fsm/runners.py`'s `DefaultActionRunner.run()` forwards `automation=automation` directly to `run_claude_command()` instead of decomposing it back into legacy kwargs."
 
 ## Program Design
 
@@ -232,6 +240,7 @@ run and did return `OUTDATED`; only the persist step was skipped by mode.
 Re-verify with `--check` after ENH-3095 lands.
 
 ## Session Log
+- `/ll:refine-issue` - 2026-08-20T04:26:31 - `bc783ddd-7686-4216-8c7b-f8960149f7f4.jsonl`
 - `/ll:verify-issues` - 2026-08-20T00:59:29 - `e89696fe-140c-45df-a34b-1cf937e9f43c.jsonl`
 - `/ll:verify-issues` - 2026-08-13T03:05:10 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
 - `/ll:verify-issues` - 2026-08-10T16:26:27 - `50b69f30-8ca9-4ab9-8b06-6ee21c203b10.jsonl`
