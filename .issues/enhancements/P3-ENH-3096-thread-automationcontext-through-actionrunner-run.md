@@ -21,6 +21,12 @@ relates_to:
 - ENH-2714
 - ENH-3095
 verify_verdict: NON_VALID
+confidence_score: 96
+outcome_confidence: 78
+score_complexity: 16
+score_test_coverage: 22
+score_ambiguity: 20
+score_change_surface: 20
 ---
 
 # ENH-3096: Thread AutomationContext through ActionRunner.run() and fsm/executor.py
@@ -352,6 +358,7 @@ Re-verify with `--check` after ENH-3095 lands, which is also when the two
 missing params above and the stale `del`-asymmetry claim should be folded in.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-20T02:04:14 - `833d1ad6-7285-4af9-88d5-083c9b946f51.jsonl`
 - `/ll:wire-issue` - 2026-08-20T01:45:51 - `af1a453c-65d0-4b3c-bc6b-b8e4bf055010.jsonl`
 - `/ll:refine-issue` - 2026-08-20T01:35:05 - `f61456ba-aec2-43f2-8c6e-c3a8655726d7.jsonl`
 - `/ll:verify-issues` - 2026-08-20T00:59:29 - `e89696fe-140c-45df-a34b-1cf937e9f43c.jsonl`
