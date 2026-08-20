@@ -1,0 +1,11 @@
+{
+  "id": "3d6acdf0-0b06-4133-9ff5-b3f06702b64c",
+  "type": "decision",
+  "timestamp": "2026-08-20T20:04:38Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Profiles carry themes, the primitives/semantic split, and the ll-verify-design-tokens lint axes that the alpha DESIGN.md spec cannot express. Precedent: ENH-1769 absorbed DTCG as a second source format in the same resolver.",
+  "rule": "DESIGN.md is an import/export edge on the design-token resolver, not a replacement for profiles and not a file-writing converter",
+  "scope": "issue",
+  "issue": "ENH-3264"
+}
