@@ -103,6 +103,14 @@ logged).
 - `scripts/tests/test_runner_spec.py:33-38` — `FakeRunner.build_streaming(**_: object)`;
   verify this stays resilient with no signature change needed
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-20 — based on codebase analysis:_
+
+- **Sixth call site not in original scope — `fsm/runners.py`'s `DefaultActionRunner.run()`** (ENH-3096's completed work): at `runners.py:177-183` it already calls the shared `resolve_automation()` helper (see below), then explicitly **decomposes the resolved context back into legacy kwargs** at `runners.py:187-191` before calling `run_claude_command()` at `runners.py:234-252`. A comment at `runners.py:184-186` reads: "`run_claude_command()` has no `automation=` parameter until ENH-3097, so decompose the resolved context back into legacy kwargs for that forwarding call ... below." This decomposition is the exact seam this issue closes — once `run_claude_command()` accepts `automation:`, this call site should pass `automation=automation` directly instead of decomposing. Add `fsm/runners.py:187-252` to Files to Modify.
+- **A reusable shim helper already exists and should be called, not reimplemented**: `resolve_automation(automation, automation_profile, disable_background_tasks, idle_timeout, *, caller="build_streaming()")` at `host_runner.py:1886-1934`. It implements exactly the Decision Rules behavior this issue specifies (explicit `automation=` wins and warns via `DeprecationWarning` naming `caller` when legacy kwargs are also present; legacy-alone builds `AutomationContext(...)` silently — no warning; neither given returns `None`). It is already consumed by `fsm/runners.py:177-183` (`caller="ActionRunner.run()"`) and should be the shim this issue's five/six call sites call, rather than each site reimplementing the fold inline.
+- **Third field also collapses into `automation=`**: `disable_background_tasks: bool = False` is a field on `AutomationContext` (`host_runner.py:172-190`) alongside `profile`/`idle_timeout`, and is present as a legacy kwarg at every in-scope call site — not just the `automation_profile`/`idle_timeout` pair this issue's Proposed Solution text names. Note: `worker_pool.py`'s `_run_claude_base` forward (`worker_pool.py:940-952`) already passes `disable_background_tasks=` but has no `automation_profile=` kwarg at all — a pre-existing asymmetry to preserve (not fix) when threading `automation=` through that site.
+
 ## Acceptance Criteria
 
 1. `run_claude_command()` in both `subprocess_utils.py` and
@@ -124,6 +132,20 @@ logged).
 ### Codebase Research Findings
 
 _Added by `/ll:refine-issue` — 2026-08-07 — based on codebase analysis:_
+
+_Added by `/ll:refine-issue` — 2026-08-20 — based on codebase analysis:_
+
+- **Current confirmed line numbers (2026-08-20)**, superseding the 2026-08-19 verify-pass estimates in Verification Notes:
+  - `subprocess_utils.run_claude_command()` def: `:343-366` (18 params, no `automation:`); forwards `automation_profile`/`disable_background_tasks` into `resolve_host().build_streaming()` at `:436-447`; `idle_timeout` consumed directly by the selector loop at `:513` (`if idle_timeout and (now - last_output_time) > idle_timeout:`) and the resulting `TimeoutExpired(..., output="idle_timeout")` raised at `:522`.
+  - `issue_manager.py` wrapper `run_claude_command()`: def `:139-154`; forwards to `_run_claude_base` (imported alias for `subprocess_utils.run_claude_command`, `issue_manager.py:66`) at `:213-226`.
+  - `issue_manager.run_with_continuation()`: def `:260-279`; calls the wrapper at two sites — `:355-367` (main loop) and `:537-550` (Option E `--continue` handoff branch).
+  - `runner_spec.py`: `automation_profile` read `:127`; `disable_background_tasks` read `:131`; `timeout_kill_grace_seconds` read `:136`; three forwarding sites — trace mode `:153-154`, stream_callback mode `:186-187`, blocking/default mode `:194-198` (calls `resolve_host().build_streaming()` directly, bypassing `run_claude_command()`).
+  - `fsm/executor.py` `_run_baseline_arm()`: def `:3178-3243`; `run_claude_command()` call `:3218-3225` — passes only `idle_timeout=idle_timeout` (resolved at `:3199`), no `automation_profile=`/`disable_background_tasks=` at all (a documented existing gap, comment at `:3204-3206`).
+  - `worker_pool.py` `_run_claude_base` forward: method spans `:895-952`, call at `:940-952`; import alias at `:39`.
+  - `docs/reference/API.md`: both mirrors confirmed byte-for-byte in sync with current code (no drift) — `issue_manager.run_claude_command()` mirror `:2853-2894`, `subprocess_utils.run_claude_command()` mirror `:11653-11680`.
+- **`resolve_automation()` full signature** (the shim to call, not reimplement): `resolve_automation(automation: AutomationContext | None, automation_profile: str | None, disable_background_tasks: bool, idle_timeout: float | None = None, *, caller: str = "build_streaming()") -> AutomationContext | None` — `host_runner.py:1886-1934`. `caller=` is asserted verbatim in tests (e.g. `pytest.warns(DeprecationWarning, match="ActionRunner.run()")`); each new call site in this issue's scope should pass its own identifying `caller=` string.
+- **`AutomationContext` has no alternate constructor** — plain `@dataclass(frozen=True)` at `host_runner.py:172-190` with `profile: str | None = None`, `idle_timeout: float | None = None`, `disable_background_tasks: bool = False`. No `from_legacy()` classmethod exists; construction is always `AutomationContext(profile=..., idle_timeout=..., disable_background_tasks=...)` or via `resolve_automation()`.
+- **`fsm/runners.py:177-191` (`DefaultActionRunner.run()`) is the seam this issue closes**: already calls `resolve_automation(automation, automation_profile, disable_background_tasks, float(idle_timeout) if idle_timeout else None, caller="ActionRunner.run()")` at `:177-183`, then decomposes the result back to `resolved_automation_profile`/`resolved_disable_background_tasks`/`resolved_idle_timeout` at `:187-191` (using `int(automation.idle_timeout or 0)` for the timeout — another `0`/`None` collapse point matching the pattern this issue's existing Decision Rules bullet already warns against at its own five sites) purely because `run_claude_command()` doesn't accept `automation=` yet. Once it does, this decomposition should be replaced with a direct `automation=automation` forward at the `run_claude_command()` call spanning `runners.py:234-252`.
 
 ### Types
 - Imports `AutomationContext` from `host_runner.py` (defined by ENH-3095, not yet landed — this issue is `blocked_by: [ENH-3095]`).
