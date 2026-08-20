@@ -150,6 +150,12 @@ _Archive/
 **/.ll/
 !/.ll/
 .ll/.fuse_hidden*
+# Local mirror of scripts/little_loops/templates/design-tokens/profiles/, written by
+# deploy_design_tokens(). Untracked deliberately (ENH-3275): committing it would
+# duplicate the packaged profiles byte-for-byte with no drift gate. Recreate with
+# `python -c "from pathlib import Path; from little_loops.init.writers import deploy_design_tokens;
+# deploy_design_tokens(Path('.ll'), Path('scripts/little_loops/templates'))"`.
+.ll/design-tokens/
 .codegraph/
 
 # Debug output logs

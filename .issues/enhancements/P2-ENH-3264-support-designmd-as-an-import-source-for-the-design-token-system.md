@@ -11,6 +11,8 @@ supersedes:
 - ENH-3263
 relates_to:
 - BUG-3266
+- BUG-3274
+- ENH-3275
 - ENH-3267
 - ENH-3268
 labels:
@@ -259,7 +261,7 @@ Investigated 2026-08-20 while reviewing this issue. **little-loops itself curren
 
 Confirmed at runtime: `BRConfig.design_tokens` reports `enabled=True, active='warm-paper'`, yet `load_design_tokens(config)` returns **`None`** — `.ll/design-tokens/` does not exist and never has (`git log --all -- .ll/design-tokens` is empty; it is not gitignored, `!/.ll/` un-ignores the tree). So every `ll-loop run` in this repo injects an **empty** `design_tokens_context`, and all 15 design-consuming built-in loops run here unstyled, silently.
 
-Root cause — the same raw-dict-vs-dataclass-default trap as AC 9b:
+Root cause — the same raw-dict-vs-dataclass-default trap as AC 9b, filed as **BUG-3274**; the repo-state decision is **ENH-3275**. Neither blocks this issue:
 
 1. Commit `a5d15112` (ENH-1836, 2026-05-31) hand-wrote the config block that `/ll:configure` had selected but never persisted: `{"active": "warm-paper", "active_theme": "dark"}` — **no `enabled` key**.
 2. All three scaffolding call sites gate on the **raw dict**: `config.get("design_tokens", {}).get("enabled")` (`init/cli.py:637`, `init/cli.py:845`, `init/tui.py:871`). The `DesignTokensConfig.enabled = True` default does not apply there, so the gate is falsy and `deploy_design_tokens()` (`init/writers.py:478`) — which mirrors `templates/design-tokens/profiles/` into `.ll/design-tokens/profiles/` — has never run here.
@@ -267,7 +269,7 @@ Root cause — the same raw-dict-vs-dataclass-default trap as AC 9b:
 Two consequences for this issue:
 
 - **The `auto` rule's fall-through is exercised by this repo on day one.** Under `auto`, little-loops is an unmaterialized-profile project, so it would resolve to a root `DESIGN.md` the moment one exists — while `active: warm-paper` remains in config, silently inert. This is precisely the AC 2c sub-case that must emit the *accurate* replacement warning rather than nothing.
-- **Remediating the repo is a separate change, not part of this issue.** Because `!/.ll/` un-ignores the tree, running the deploy would add ~3 profiles × 5 JSON files as *tracked* files duplicating `templates/design-tokens/profiles/`. Whether little-loops wants that mirror checked in, versus setting `design_tokens.enabled: false` to make the current no-token state explicit, is its own decision — file it separately rather than folding it in here.
+- **Remediating the repo is a separate change, not part of this issue.** Because `!/.ll/` un-ignores the tree, running the deploy would add ~3 profiles × 5 JSON files as *tracked* files duplicating `templates/design-tokens/profiles/`. Whether little-loops wants that mirror checked in, versus setting `design_tokens.enabled: false` to make the current no-token state explicit, is its own decision — tracked in **ENH-3275**, not folded in here.
 
 ### Branch placement — above the `base_path.exists()` guard
 
