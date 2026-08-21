@@ -41,9 +41,10 @@ returns the default only when the key is **absent** — when the key is present 
 shell then tries to execute.
 
 Exactly one copy (`fix-quality-and-tests.yaml:66-72`) implements the correct
-present-vs-absent semantics. This issue lifts that copy into a shared
-`lib/common.yaml` fragment, converts every site to it, and adds a mirror-drift gate so the
-eleventh copy cannot reintroduce the defect.
+present-vs-absent semantics — but the existing `ll-config get` CLI already implements those
+semantics *and* honors `.ll/ll.local.md`, which all 13 inline copies silently ignore. This
+issue deletes every inline snippet in favor of `ll-config get project.<key>` and adds a
+static mirror-drift gate so the fourteenth copy cannot reintroduce the defect.
 
 Discovered by forensic audit of `general-task` run `2026-08-20T121448` in
 an external docs-oriented project with `test_cmd: null`, which spun for
@@ -198,18 +199,94 @@ sites are one careless edit from the same failure, and `rl-coding-agent` already
 
 ## Proposed Solution
 
-### 1. Shared fragment in `lib/common.yaml`
+> **Revised 2026-08-20 after design review.** The original plan proposed a
+> `resolve_test_cmd` fragment in `lib/common.yaml`. That mechanism cannot express this
+> fix (see *Rejected approach* below), and it also missed an existing helper that already
+> implements the required semantics correctly. The plan now routes every site through
+> `ll-config get`.
 
-Add a `resolve_test_cmd` fragment implementing the `fix-quality-and-tests.yaml` semantics,
-parameterized so callers pick their own opt-out behavior:
+### 1. Delegate to the existing `ll-config get` CLI
 
-- `context_override` — optional `${context.test_cmd}`-style explicit override, checked first.
-- `absent_default` — command when the key is absent (default `pytest`).
-- `null_sentinel` — what to emit on explicit null; callers either get a
-  no-op command (`true`) or a sentinel string they branch on.
+`ll-config get project.test_cmd` (`scripts/little_loops/cli/config.py`) **already
+implements the exact three-way contract** from Expected Behavior. Verified empirically:
 
-Model it on the existing `shell_exit` / `retry_counter` fragments (`lib/common.yaml:15`,
-`:38`), which already use the `parameters:` + `${param.x}` convention.
+| `.ll/ll-config.json` | `ll-config get project.test_cmd` |
+|---|---|
+| `{"project":{"test_cmd":null}}` | *(empty)* — opt-out |
+| `{"project":{}}` | `pytest` |
+| `{"project":{"test_cmd":"make test"}}` | `make test` |
+| file absent entirely | `pytest` |
+
+`project.lint_cmd` behaves identically (absent-default `ruff check .`) — checked, **no
+gap**. So the same call serves `rl-coding-agent.yaml:68`.
+
+The three-way split arises because `ProjectConfig.from_dict` uses
+`data.get("test_cmd", "pytest")` (`config/core.py:215`) — absent yields the default
+string, present-and-null yields `None` — and `BRConfig.resolve_variable` returns `None`
+for a null value (`config/core.py:1056-1057`), which `main_config` prints as nothing
+(`cli/config.py:75-76`). This is correct but **load-bearing and unpinned**: the field is
+annotated `str` while holding `None`, exactly the BUG-3274 defect shape. A future
+type-correctness cleanup that coerces `None → "pytest"` would silently destroy the opt-out.
+Step 5 pins it with a regression test.
+
+**Each call site collapses to one line:**
+
+```bash
+CMD=$(ll-config get project.test_cmd)
+[ -z "$CMD" ] && { : "no test command configured — skip"; }
+```
+
+`ll-config` is on PATH by construction: the loop is being executed by `ll-loop` from the
+same installed package.
+
+### 1b. Second bug this closes: local overrides are ignored today
+
+All 13 inline snippets parse `.ll/ll-config.json` raw, bypassing `BRConfig`'s
+`.ll/ll.local.md` merge (`config/core.py:272-276`, BUG-3123) — the mechanism
+`.claude/CLAUDE.md` documents *specifically* for overriding `project.test_cmd`. Verified:
+
+```
+.ll/ll-config.json: "from-json"   .ll/ll.local.md: "from-local-md"
+ll-config get   → from-local-md
+inline snippet  → from-json          ← today's behavior in all 13 loops
+```
+
+A shared YAML fragment that still parsed raw JSON would have frozen this defect into a
+single blessed implementation. Delegating to `ll-config` fixes it everywhere at once.
+
+### 1c. Rejected approach: a `lib/common.yaml` fragment
+
+Recorded so it is not re-proposed. Fragments cannot express a *substring* of a shell
+action, for three independent reasons:
+
+1. **Fragments merge whole state-level keys, not fragments of an action.**
+   `resolve_fragments` deep-merges the fragment body into the state with **state keys
+   winning** (`fsm/fragments.py:139-147`). Every call site embeds the snippet *inside* a
+   larger action (resolve → `eval` → write artifacts); a fragment's `action:` would be
+   clobbered by the state's own `action:`. There is no splice primitive.
+2. **One `fragment:` key per state.** `run_final_tests` already declares
+   `fragment: shell_exit` (`general-task.yaml:605`) and cannot also declare
+   `resolve_test_cmd`.
+3. **Some states need two resolutions.** `rl-coding-agent.yaml`'s `observe` resolves
+   `test_cmd` *and* `lint_cmd` in one action; a parameterized fragment binds once per state.
+
+### 1d. Explicitly out of scope: `oracles/code-run-gate.yaml`
+
+Its `get_value()` convention (`:143-154`) reads the same file but is **not** convertible,
+and converting it would be a regression:
+
+- It resolves the config path from `${context.project_root}` (`:134`), whereas
+  `ll-config get` resolves from `Path.cwd()` with no upward walk
+  (`config/core.py:256`). Behavior would change whenever cwd ≠ project root.
+- It resolves **alias pairs** (`typecheck_cmd|type_cmd`, `start_cmd|run_cmd`, per
+  ARCHITECTURE-123). `ll-config get` has no alias support, and `typecheck_cmd`/`start_cmd`
+  are not `ProjectConfig` fields at all.
+- Its contract is deliberately *absent ≡ null ≡ skip, never guess*. Under `ll-config`,
+  absent `type_cmd` resolves to the dataclass default `mypy` and absent `lint_cmd` to
+  `ruff check .` — so a project that never configured them would suddenly start running
+  them. Verified: `ll-config get project.type_cmd` → `mypy` on `{"project":{}}`.
+
+Leave it as-is and register it as a documented exemption in the mirror-drift gate (§4).
 
 ### 2. Convert all call sites
 
@@ -230,38 +307,67 @@ Model it on the existing `shell_exit` / `retry_counter` fragments (`lib/common.y
 
 "correct-but-guessing" = null-safe (won't emit `None`) but still overrides an explicit
 `null` with a `pytest` guess. Those are not blockers, but they are the BUG-3269 behavior and
-should move to the shared fragment in the same pass.
+should move to `ll-config get` in the same pass. All of them additionally ignore
+`.ll/ll.local.md` today (§1b).
 
 Note `test-coverage-improvement.yaml` and `general-task.yaml` also carry a
-`${context.test_cmd}` shell-level override ahead of the python snippet; the fragment must
-preserve that precedence.
+`${context.test_cmd}` shell-level override ahead of the python snippet, and
+`rl-coding-agent.yaml` folds `${context.test_cmd}` / `${context.lint_cmd}` into the
+`dict.get` default. That precedence must be preserved explicitly in shell — `ll-config get`
+knows nothing about loop context:
+
+```bash
+if [ -n "${context.test_cmd}" ]; then CMD="${context.test_cmd}"; else CMD=$(ll-config get project.test_cmd); fi
+```
+
+Behavior change for `rl-coding-agent.yaml`: with the key **absent**, it resolves to
+`pytest` / `ruff check .` rather than the context override. The override now wins only when
+non-empty, which is the intended precedence.
 
 ### 3. Baseline sentinel in `general-task`
 
 `check_baseline_tests` writes `SKIP` instead of an exit code when the baseline is
-unrunnable; `run_final_tests` branches on `SKIP` before its numeric comparison.
+unrunnable; `run_final_tests` branches on `SKIP` before its numeric comparison. With
+`ll-config get`, the opt-out signal is an **empty string**, tested with `[ -z "$CMD" ]` —
+not a `SKIP` command string that could collide with a real command. `SKIP` remains the
+sentinel written to `baseline-exit.txt`, where it cannot collide with an exit code.
+
+This also removes the `rn-refine.yaml:988-994` conversion caveat: that site already
+branches on `[ -z "$TEST_CMD" ]`, so it becomes a drop-in.
 
 ### 4. Mirror-drift gate (regression test)
 
-A shared fragment alone does not stop the eleventh copy — nothing forces a new loop to use
-it. Add a parametrized test over every `scripts/little_loops/loops/**/*.yaml` that:
+Delegating to a CLI alone does not stop the fourteenth copy — nothing forces a new loop to
+use it. Because there is now a single canonical call, the gate becomes **static** rather
+than snippet-extracting-and-executing:
 
-- locates each `test_cmd` / `lint_cmd` resolution snippet,
-- executes it against `{"project": {"test_cmd": null}}` and against `{}`,
-- asserts neither yields the literal `None` and that the null case does not resolve to a
-  guessed `pytest`.
+- Scan every `scripts/little_loops/loops/**/*.yaml`; assert none contains an inline
+  `.ll/ll-config.json` read for `test_cmd` / `lint_cmd` (i.e. no `get('test_cmd'`-style
+  pattern) outside an explicit exemption list.
+- Exemption list: `oracles/code-run-gate.yaml` only, with the §1d rationale as a comment.
+- Pair it with behavioral tests on `ll-config get` itself (Implementation Step 5), which
+  are ordinary Python tests rather than bash-extraction gymnastics.
 
-Follow the parametrize-over-a-registry pattern from commit `fb747a60`
-(`test(adapters): parametrize mirror-drift gate over _EMITTER_MAP hosts`).
+This is strictly stronger than the originally-proposed execute-each-snippet gate: it also
+catches the `ll.local.md` bypass, which an execute-the-snippet check cannot see.
+
+Follow the registry-parametrize pattern from `scripts/tests/test_wiring_skills_and_commands.py:376-424`
+(a `GATED_*` constant plus `@pytest.mark.parametrize`) — see the correction in Codebase
+Research Findings; commit `fb747a60`'s pattern lives there, not in `test_builtin_loops.py`.
 
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/loops/lib/common.yaml` — add the `resolve_test_cmd` fragment
+
+_Revised: no `lib/common.yaml` fragment is added, and `scripts/little_loops/cli/config.py`
+needs no change — `ll-config get` already behaves correctly. The change is entirely in the
+loop YAMLs plus tests/docs._
+
 - `scripts/little_loops/loops/general-task.yaml:37` — **buggy site** (`check_baseline_tests`)
 - `scripts/little_loops/loops/general-task.yaml:617` — `run_final_tests`; also add `SKIP` handling
-- `scripts/little_loops/loops/rl-coding-agent.yaml:60,67` — **buggy sites** (`test_cmd` + `lint_cmd`)
-- `scripts/little_loops/loops/fix-quality-and-tests.yaml:66` — reference impl, collapses into the fragment
+- `scripts/little_loops/loops/rl-coding-agent.yaml:60,68` — **buggy sites** (`test_cmd` + `lint_cmd`)
+- `scripts/little_loops/loops/fix-quality-and-tests.yaml:58-78` — reference impl; the
+  three-way python body is deleted outright
 - `scripts/little_loops/loops/evaluation-quality.yaml:58`
 - `scripts/little_loops/loops/dead-code-cleanup.yaml:76`
 - `scripts/little_loops/loops/harness-plan-research-implement-report.yaml:126`
@@ -279,22 +385,26 @@ _Wiring pass added by `/ll:wire-issue`:_
   consistency with the shared fragment. [Agent 1 finding]
 
 ### Dependent Files (Callers/Importers)
-- `scripts/little_loops/fsm/` — fragment resolution (`fragment:` key handling); confirm
-  `parameters:`/`${param.x}` binding supports the new fragment's shape without executor changes
-- Any consuming project's `.ll/ll-config.json` supplying `project.test_cmd`
+- ~~`scripts/little_loops/fsm/` — fragment resolution~~ — **no longer touched**; no fragment
+  is added, so no executor or `${param.x}` binding concern
+- `scripts/little_loops/config/core.py` — `ProjectConfig` field defaults (`:188-195`) become
+  the single authority for absent-key defaults; `resolve_variable` (`:1044-1060`) is the
+  null→opt-out path. Read-only for this issue, but pinned by Step 1's tests
+- Any consuming project's `.ll/ll-config.json` and `.ll/ll.local.md` supplying
+  `project.test_cmd` / `project.lint_cmd`
 
-_Wiring pass added by `/ll:wire-issue`:_
-- `scripts/little_loops/cli/loop/info.py` — `cmd_fragments` (`ll-loop fragments` listing
-  command); imports `resolve_inheritance` from `fragments.py` — confirm the new
-  `resolve_test_cmd` fragment surfaces correctly in this listing [Agent 1 finding]
+_Wiring pass added by `/ll:wire-issue` — partly superseded by the design review:_
+- ~~`scripts/little_loops/cli/loop/info.py` — `cmd_fragments` listing~~ — **not applicable**;
+  no new fragment to surface
 - `.issues/enhancements/P2-ENH-2858-general-task-standing-dod-criteria-and-absolute-gates.md`
   — in-flight sibling issue plans a second capture (`baseline-ref.txt` via `git rev-parse HEAD`)
   inside the same `check_baseline_tests` action this issue widens with the `SKIP` sentinel;
   sequencing/contract-coexistence risk, not a code dependency [Agent 2 finding]
 
 ### Similar Patterns
-- `lib/common.yaml:15` `shell_exit` and `:38` `retry_counter` — the fragment + `parameters:`
-  convention to model on
+- ~~`lib/common.yaml:15` `shell_exit` / `:38` `retry_counter` — fragment `parameters:`
+  convention~~ — **not the model**; see Proposed Solution §1c for why fragments cannot
+  express this fix
 - `scripts/little_loops/loops/incremental-refactor.yaml:12,33` — uses a plain
   `${context.test_cmd}` with no config read; confirm it is genuinely out of scope
 
@@ -307,35 +417,34 @@ _Wiring pass added by `/ll:wire-issue`:_
   _EMITTER_MAP hosts`)
 
 _Wiring pass added by `/ll:wire-issue`:_
-- `scripts/tests/test_general_task_loop.py` — **will break**: `raw_data` fixture (`:26-31`)
-  and `_load_state_script()` (`:439-443`) load pre-fragment-resolution YAML via
-  `yaml.safe_load`, bypassing `resolve_fragments`. `TestENH2225FinalOnlyGate.test_run_final_tests_resolves_test_cmd`
-  (`:1430-1435`) asserts the literal substrings `${context.test_cmd}` / `ll-config.json` /
-  `pytest` are present in the raw `run_final_tests` action — once that logic moves into
-  `fragment: resolve_test_cmd`, none of those substrings survive in unresolved YAML. The
-  whole `TestRunFinalTestsShellAction` class (`:1447-1484`), including
-  `test_falls_back_to_config_test_cmd` (`:1477-1484`), depends on the resolution snippet
-  living inline in the action string for the same reason. Update these to load via
-  `resolve_fragments`/`load_and_validate` first, or retarget assertions at the fragment body.
-  [Agent 2 finding]
+- `scripts/tests/test_general_task_loop.py` — **assertions will break, but the structural
+  problem the wiring pass flagged does not arise.** Because no fragment is introduced, the
+  `raw_data` fixture (`:26-31`) and `_load_state_script()` (`:439-443`) keep working as-is —
+  no `resolve_fragments`/`load_and_validate` rewrite is needed.
+  `TestENH2225FinalOnlyGate.test_run_final_tests_resolves_test_cmd` (`:1430-1435`) asserts
+  the literal substrings `${context.test_cmd}` / `ll-config.json` / `pytest`; after
+  conversion `${context.test_cmd}` survives (override precedence is preserved) but
+  `ll-config.json` and `pytest` do not — retarget at `ll-config get project.test_cmd`.
+  Same for `TestRunFinalTestsShellAction` (`:1447-1484`), including
+  `test_falls_back_to_config_test_cmd` (`:1477-1484`). [Agent 2 finding, revised]
 - `scripts/tests/test_builtin_loops.py::TestGeneralTaskLoop` — `data` fixture (`:14650-14653`)
   has the same raw-YAML bypass backing `test_check_baseline_tests_writes_baseline_exit_to_run_dir`
   (`:14679-14685`), `test_run_final_tests_reads_baseline_exit` (`:14727-14733`), and
   `test_run_final_tests_compares_final_to_baseline` (`:14735-14744`). Lower risk than the
   file above — the `BASELINE_EXIT`/`FINAL_EXIT` substrings likely survive since that
   comparison logic stays inline — but verify after conversion. [Agent 2 finding]
-- `scripts/tests/test_fsm_fragments.py` — fragment-machinery unit tests.
-  `TestBuiltinLoopMigration.test_builtin_loops_load_after_migration`'s `migration_targets`
-  list (`:992`) needs extension to cover the newly-converted loops. `TestWithRateLimitHandling`
-  / `TestWithThrottleFragment` (`:615-781`) are the pattern to model new `resolve_test_cmd`
-  fragment unit tests after: existence check, description check, default-fields check, and a
-  `resolve_fragments()`-against-real-`common.yaml` integration test. [Agent 1 + Agent 3 findings]
+- ~~`scripts/tests/test_fsm_fragments.py`~~ — **drops out entirely.** No fragment is added,
+  so `migration_targets` (`:992`) needs no extension and `TestWithRateLimitHandling` /
+  `TestWithThrottleFragment` (`:615-781`) are not a pattern to copy. [Agent 1 + Agent 3
+  findings, superseded]
 - `scripts/tests/test_builtin_loops.py::TestVerifyStateConfigReadShell` (`:4938-5038`) — the
   closest existing shell-execution end-to-end pattern (writes a real `.ll/ll-config.json`,
   extracts the resolved action, runs it via `subprocess.run(["bash", "-c", ...])`). Its
-  `test_cmd=None` case covers only the key-**absent** path — new fragment tests must add the
+  `test_cmd=None` case covers only the key-**absent** path — Step 1's tests must add the
   key-**present-with-JSON-`null`** case explicitly, since that is the axis this bug is on.
   [Agent 3 finding]
+- `scripts/tests/` — locate the existing `ll-config` CLI tests (if any) and extend them
+  rather than starting a new module; Step 1's contract tests belong with them.
 - `scripts/tests/test_builtin_loops.py::TestCodeRunGateOptionalParams` (`~12270-12520`) —
   already exercises the "key present, value JSON null" scenario for `code-run-gate.yaml`
   (`commands.json` with `"test_cmd": null`); use as the reference for closing this gap
@@ -369,70 +478,80 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 _Added by `/ll:refine-issue` — 2026-08-20 — based on codebase analysis:_
 
-- **Newly discovered site, out of the issue's original ~12-site list but inside the mirror-drift gate's stated "every loop YAML" scope**: `scripts/little_loops/loops/oracles/code-run-gate.yaml:143-154` implements a *fifth*, distinct resolution convention — a `get_value()` bash function that treats an absent key and an explicit `null` identically (both print nothing, no `pytest` guess), feeding a `resolve_commands` state whose per-command consumers (`run_build`, etc.) self-skip and can emit `GATE_SKIP` (`:108-122`, comment `:114-115`, `:192-193`). This file should be added to the mirror-drift gate's coverage (Proposed Solution §4) and considered for conversion in the same pass, since the gate as specified ("every `scripts/little_loops/loops/**/*.yaml`") already covers it.
-- **No existing shared Python helper to delegate to**: `ProjectConfig` (`scripts/little_loops/config/core.py:184-230`, `test_cmd` field `:191`, populated via `data.get("test_cmd", "pytest")` at `:215`) is a structurally similar but architecturally separate implementation — it is correctly-behaving only because its sole consumer, `verify_epic_branch_before_merge` (`scripts/little_loops/worktree_utils.py:480-609`, param typed `test_cmd: str | None` at `:487`), treats `None` as skip (`if not cmd: continue`, `:592-593`) rather than stringifying it into a shell command. Wired from `ParallelOrchestrator._verify_epic_branch_before_merge` (`scripts/little_loops/parallel/orchestrator.py:1464-1492`) and `auto-refine-and-implement.yaml`'s `merge_epic_branch` state (`:679-680`). Confirms the Proposed Solution's implicit assumption: the new `resolve_test_cmd` fragment has no Python-side equivalent to delegate to and must reimplement the semantics in the YAML/shell layer, as designed.
+- **Newly discovered site — now scoped OUT of conversion by the design review; see Proposed
+  Solution §1d. It gets a mirror-drift-gate exemption, not a rewrite.**
+  `scripts/little_loops/loops/oracles/code-run-gate.yaml:143-154` implements a *fifth*, distinct resolution convention — a `get_value()` bash function that treats an absent key and an explicit `null` identically (both print nothing, no `pytest` guess), feeding a `resolve_commands` state whose per-command consumers (`run_build`, etc.) self-skip and can emit `GATE_SKIP` (`:108-122`, comment `:114-115`, `:192-193`). This file should be added to the mirror-drift gate's coverage (Proposed Solution §4) and considered for conversion in the same pass, since the gate as specified ("every `scripts/little_loops/loops/**/*.yaml`") already covers it.
+- ~~**No existing shared Python helper to delegate to**~~ — **RETRACTED 2026-08-20 by design
+  review; this finding was wrong and drove the rejected fragment design.** The research pass
+  examined `ProjectConfig` (`scripts/little_loops/config/core.py:184-230`, `test_cmd` field
+  `:191`, populated via `data.get("test_cmd", "pytest")` at `:215`) and its consumer
+  `verify_epic_branch_before_merge` (`scripts/little_loops/worktree_utils.py:480-609`), but
+  never checked for a **CLI wrapper**. `ll-config get` (`scripts/little_loops/cli/config.py`,
+  entry point `scripts/pyproject.toml:100`) exposes exactly this resolution to shell and
+  implements the required three-way semantics correctly today — verified empirically for both
+  `test_cmd` and `lint_cmd`. See Proposed Solution §1. The still-valid part of the original
+  finding: `ProjectConfig.test_cmd` is annotated `str` while holding `None` on the opt-out
+  path, which is load-bearing and must be pinned by a test (Implementation Step 5).
 
 ## Program Design
 
 ### Signatures
 
-- `resolve_test_cmd(config_key, absent_default, null_value) -> str` — new `lib/common.yaml`
-  fragment; the single resolution path replacing ~12 hand-rolled inline snippets.
+- `ll-config get project.<key> -> str` — **existing** CLI (`cli/config.py:54`
+  `main_config`); the single resolution path replacing 13 hand-rolled inline snippets. No
+  new code; prints the value, the absent-default, or nothing (opt-out). Always exits 0.
 - `check_baseline_tests() -> writes baseline-exit.txt: int | "SKIP"` — widened from
   `int` only; `SKIP` is the new no-runnable-baseline sentinel.
 - `run_final_tests(baseline_exit: int | "SKIP") -> bool` — gates on `FINAL_EXIT` alone when
   the baseline is `SKIP`, on the ENH-2244 equality comparison otherwise.
 
-Fragment parameters (following the `retry_counter` convention):
-
-- `config_key` (string, default `test_cmd`) — which `project.*` key to resolve, so the same
-  fragment serves `lint_cmd` for `rl-coding-agent.yaml:67`.
-- `absent_default` (string, default `pytest`) — emitted when the key is **absent**.
-- `null_value` (string, default `true`) — emitted when the key is present-and-null. Callers
-  that need to branch rather than run a no-op pass a sentinel (`general-task` passes `SKIP`).
+No fragment, no `parameters:` block, no executor change. The `config_key` /
+`absent_default` / `null_value` parameters from the original design are all subsumed: the
+key is the dot-path argument, and the absent-default comes from `ProjectConfig`'s field
+defaults (`config/core.py:188-195`), which is where a project-command default *should*
+live — one authority instead of a per-call-site literal.
 
 ### Call Path
 
-- `check_baseline_tests` → `resolve_test_cmd` — first resolution; writes `baseline-exit.txt`.
-  Currently the buggy site at `general-task.yaml:37`.
+- `check_baseline_tests` → `ll-config get project.test_cmd` — first resolution; writes
+  `baseline-exit.txt`. Currently the buggy site at `general-task.yaml:37`.
 - `check_baseline_tests` → `define_done` → `plan` → … → `final_verify` → `run_final_tests`
   — the poisoned `baseline-exit.txt` travels this far before anything reads it.
-- `run_final_tests` → `resolve_test_cmd` — second resolution of the same key; reads
-  `baseline-exit.txt` and must branch on `SKIP` before the numeric comparison.
+- `run_final_tests` → `ll-config get project.test_cmd` — second resolution of the same key;
+  reads `baseline-exit.txt` and must branch on `SKIP` before the numeric comparison.
 - `run_final_tests` → `count_final` — the opt-out path; taken directly, running nothing,
   when the key is explicitly null.
 - `run_final_tests` → `continue_work` — the gate-failed edge; the entry point of the
   infinite cycle when the baseline is garbage.
-- `observe` → `resolve_test_cmd` (in `rl-coding-agent.yaml`) — the second buggy site;
-  its result feeds `TEST_SCORE` in the composite reward.
-- `resolve_fragments` (`scripts/little_loops/fsm/fragments.py:66`) — the existing
-  fragment-resolution entry point that expands every `fragment: <name>` / `with:`
-  call site at load time, including the new `resolve_test_cmd` fragment once it is
-  added to `lib/common.yaml`. No executor change is required; this confirms the
-  fragment mechanism the fix depends on already exists and needs no modification.
+- `observe` → `ll-config get project.test_cmd` + `ll-config get project.lint_cmd` (in
+  `rl-coding-agent.yaml`) — the second and third buggy sites; the result feeds `TEST_SCORE`
+  in the composite reward. Two calls in one state, which the rejected fragment design could
+  not express.
+- Inside `ll-config get`: `main_config` (`cli/config.py:54`) → `BRConfig(Path.cwd())` →
+  `_load_config` (deep-merges `.ll/ll.local.md` frontmatter, `:265-280`) →
+  `ProjectConfig.from_dict` (`:208`) → `resolve_variable` (`:1044-1060`) → `print` only
+  when non-`None` (`:75-76`).
 
 ### Resolution contract
 
-**`lib/common.yaml` — new fragment `resolve_test_cmd`**
-
-Parameters (following the `retry_counter` convention at `lib/common.yaml:38`):
-
-- `config_key` (string, default `test_cmd`) — which `project.*` key to resolve, so the same
-  fragment serves `lint_cmd` for `rl-coding-agent.yaml:67`.
-- `absent_default` (string, default `pytest`) — emitted when the key is **absent**.
-- `null_value` (string, default `true`) — emitted when the key is present-and-null. Callers
-  that need to branch rather than run a no-op pass a sentinel (`general-task` passes `SKIP`).
-
-Resolution order, all three cases distinguished:
+**Resolution order at each call site** (shell, two lines):
 
 1. Non-empty `${context.<key>}` shell-level override → use it verbatim.
-2. `.ll/ll-config.json` missing, or `project` absent, or key absent → `absent_default`.
-3. Key present and falsy (`null` / `""`) → `null_value`.
-4. Key present and truthy → its value.
+2. Otherwise `ll-config get project.<key>`, which internally distinguishes:
+   - config file missing, or `project` absent, or key absent → the `ProjectConfig` field
+     default (`pytest` / `ruff check .`);
+   - key present and `null` → empty output (opt-out);
+   - key present and truthy → its value.
+3. Empty result → skip; the state must not run or gate on anything.
 
-The python snippet is the `fix-quality-and-tests.yaml:66-72` body, generalized — the
-present-vs-absent test is `'<key>' in cfg.get('project', {})`, never
-`dict.get(key, default)`.
+`ll-config get` never raises and always exits 0, so no call site needs `|| true` or a
+`try/except`. Note that per BUG-3274's family, resolution is **whole-dataclass**: an
+unrelated malformed key in `project` does not silently poison this read, but a future
+coercion of `ProjectConfig.test_cmd`'s `None` to satisfy its `str` annotation would.
+
+**Not needed:** the `fix-quality-and-tests.yaml:66-72` three-way python body. It stays the
+reference for *what the semantics are*, but it is deleted rather than generalized — the
+semantics now live in `ProjectConfig` + `resolve_variable`.
 
 **`general-task.yaml` — baseline sentinel contract**
 
@@ -468,20 +587,35 @@ _Added by `/ll:refine-issue` — 2026-08-20 — based on codebase analysis:_
 
 ## Implementation Steps
 
-1. **Add the fragment.** Write `resolve_test_cmd` in `lib/common.yaml` per Program Design.
-   Unit-test it standalone against all four resolution cases before touching any loop.
-2. **Fix the two blockers.** Convert `general-task.yaml:37` and `rl-coding-agent.yaml:60,67`
-   — these are the sites that emit literal `None` today.
-3. **Add the baseline sentinel.** Implement the `SKIP` contract in
-   `check_baseline_tests` + `run_final_tests`.
-4. **Convert the remaining sites.** The nine correct-but-guessing copies, one file at a
-   time, running `ll-loop validate` after each.
-5. **Land the mirror-drift gate.** Parametrized over every loop YAML; assert no snippet
-   yields literal `None` under `{"project": {"test_cmd": null}}` and that the null case does
-   not resolve to a guessed `pytest`. Confirm it fails before step 2's fix and passes after.
+1. **Pin the contract first — no production code yet.** Add tests for `ll-config get`
+   covering, for **both** `project.test_cmd` and `project.lint_cmd`: key present-and-null →
+   empty stdout; key absent → the `ProjectConfig` default; key present with a value → that
+   value; config file entirely absent → the default; and a `.ll/ll.local.md` frontmatter
+   value overriding `.ll/ll-config.json`. These pass today — they exist to stop a future
+   BUG-3274-style type cleanup from silently deleting the opt-out. Model the shell-execution
+   half on `TestVerifyStateConfigReadShell` (`test_builtin_loops.py:4938-5038`), which
+   currently covers only the key-**absent** path.
+   Also add the negative case: `test_cmd: null` in `ll.local.md` resolves to the
+   absent-default, **not** opt-out (documented asymmetry, see Expected Behavior).
+2. **Fix the three blockers.** Convert `general-task.yaml:37` and
+   `rl-coding-agent.yaml:60,68` to `ll-config get` — the sites that emit literal `None`
+   today. Preserve the `${context.*}` override precedence explicitly in shell.
+3. **Add the baseline sentinel.** Implement the `SKIP` contract in `check_baseline_tests` +
+   `run_final_tests`, with the opt-out detected as `[ -z "$CMD" ]`.
+4. **Convert the remaining sites.** The nine correct-but-guessing copies plus
+   `auto-refine-and-implement.yaml`, one file at a time, running `ll-loop validate` after
+   each. `fix-quality-and-tests.yaml:58-78`'s three-way python body is **deleted**, not
+   generalized. Skip `oracles/code-run-gate.yaml` (§1d).
+5. **Land the mirror-drift gate.** Static scan over every loop YAML asserting no inline
+   `.ll/ll-config.json` read for `test_cmd` / `lint_cmd`, with `oracles/code-run-gate.yaml`
+   as the sole documented exemption. Confirm it fails before step 2 and passes after step 4.
 6. **Verify.** `python -m pytest scripts/tests/` exits 0; `ll-loop validate` clean on every
    converted loop; manual smoke of `general-task` in a scratch project with
    `test_cmd: null` reaching a terminal state instead of cycling.
+
+**Rollback seam:** steps 2–4 are independent per-file edits behind a contract pinned in
+step 1. If a conversion misbehaves in a consuming project, revert that one file — there is
+no shared artifact to unwind, which is a further advantage over the fragment design.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
@@ -490,21 +624,22 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - Convert `scripts/little_loops/loops/auto-refine-and-implement.yaml:433-436,679-680` — the
   13th call site, not in the original ~12-site table; not currently buggy but in scope for
   the "convert all call sites" mandate
-- Update `scripts/tests/test_general_task_loop.py` — `TestENH2225FinalOnlyGate.test_run_final_tests_resolves_test_cmd`
-  and the `TestRunFinalTestsShellAction` class assert against pre-fragment-resolution raw
-  YAML; load via `resolve_fragments`/`load_and_validate` or retarget at the fragment body
+- Update `scripts/tests/test_general_task_loop.py` — retarget the `test_cmd` substring
+  assertions in `TestENH2225FinalOnlyGate` and `TestRunFinalTestsShellAction` at
+  `ll-config get project.test_cmd` (no load-path rewrite needed)
 - Update `scripts/tests/test_builtin_loops.py::TestGeneralTaskLoop` — verify the raw-YAML
   fixture's baseline/final-test substring assertions still hold after conversion
-- Extend `scripts/tests/test_fsm_fragments.py::TestBuiltinLoopMigration.test_builtin_loops_load_after_migration`'s
-  `migration_targets` list to include the newly-converted loops
-- Add fragment unit tests for `resolve_test_cmd` modeled on `TestWithRateLimitHandling`
-  (existence/description/default-fields/resolves-from-real-common.yaml), plus a
-  shell-execution case modeled on `TestVerifyStateConfigReadShell` that explicitly covers
-  key-present-with-JSON-`null` (not just key-absent)
-- Update `docs/guides/LOOPS_REFERENCE.md`, `scripts/little_loops/loops/README.md`,
-  `docs/reference/loops.md` (if `code-run-gate.yaml` converts), and
+- ~~Extend `test_fsm_fragments.py`'s `migration_targets`~~ — not applicable, no fragment
+- Add `ll-config get` contract tests per Implementation Step 1, covering
+  key-present-with-JSON-`null` for both `test_cmd` and `lint_cmd` (not just key-absent),
+  the `ll.local.md` override, and the `ll.local.md`-null asymmetry
+- Update `docs/guides/LOOPS_REFERENCE.md`, `scripts/little_loops/loops/README.md`, and
   `docs/reference/CONFIGURATION.md` to reflect the corrected absent/null/value semantics and
-  the `SKIP` sentinel
+  the `SKIP` sentinel. `docs/reference/loops.md:829-833` (`code-run-gate.yaml`) needs **no
+  change** — that loop is out of scope (§1d)
+- Document in `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` that `ll-config get` is the
+  required way to read a project command inside a loop, and that inline
+  `.ll/ll-config.json` parsing is prohibited (it bypasses `ll.local.md`)
 
 ## Impact
 
@@ -513,12 +648,16 @@ _These touchpoints were identified by wiring analysis and must be included in th
   second loop.
 - **Blast radius**: `general-task` is the most-used built-in loop and is live in every
   local-editable consuming project.
-- **Risk of the fix**: low-moderate. The fragment itself is small; the risk is in
-  converting 12 call sites across 10 loop files. Each conversion is mechanically checkable
-  by the new gate.
+- **Risk of the fix**: low. No new production code — `ll-config get` already exists and
+  behaves correctly. The risk is entirely in converting 13 call sites across 11 loop files,
+  each mechanically checkable by the new gate and independently revertible.
 - **Backward compatibility**: projects with a non-null `test_cmd` see no behavior change.
   Projects with `test_cmd: null` change from "guess pytest" to "no test gate" — that is
-  the intended fix, and matches what `fix-quality-and-tests.yaml` already does.
+  the intended fix, and matches what `fix-quality-and-tests.yaml` already does. Two smaller
+  intended changes: (a) `.ll/ll.local.md` overrides of `test_cmd`/`lint_cmd` now take effect
+  inside loops (they never did); (b) `rl-coding-agent.yaml` with the key **absent** resolves
+  to `pytest` / `ruff check .` instead of the context override, which now wins only when
+  non-empty.
 
 ## Related Key Documentation
 
@@ -532,7 +671,41 @@ _These touchpoints were identified by wiring analysis and must be included in th
 **Open** | Created: 2026-08-20 | Priority: P0
 
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-08-20_
+
+**Readiness Score**: 88/100 → PROCEED (blocked by hard override — see below)
+**Outcome Confidence**: 77/100 → Good
+
+### Gaps to Address
+- **Program Design gate (hard override, `ll-issues check-design` exits 1)**: none of the
+  three `### Signatures` bullets are regex-matchable as signature-shaped by
+  `scripts/little_loops/issues/program_design.py` (`_SIG_CALL`/`_SIG_FIELD`), even though a
+  human reader can see they are precise. Two distinct causes: (1) `` `ll-config get
+  project.<key> -> str` `` has no `(...)` call syntax, so `_SIG_CALL` never matches it; (2)
+  `` `check_baseline_tests() -> writes baseline-exit.txt: int | "SKIP"` `` and `` `run_final_tests(baseline_exit: int | "SKIP") -> bool` ``
+  both have return/param type text (`writes baseline-exit.txt: int | "SKIP"`,
+  `int | "SKIP"` with an embedded quoted string literal) that doesn't fit `_TYPE`'s
+  `[\w.]+` token grammar. Remedy: rephrase as strict `name(params: Type) -> Type` lines with
+  a bare token type — e.g. replace the `"SKIP"` string-literal type with a plain identifier
+  like `SkipSentinel` or `str` in the signature, and give the `ll-config get` line a
+  call-shaped form such as `` `get(key: str) -> str | None` `` — then move the CLI-invocation
+  prose after the em-dash description. Verify with `ll-issues format-check BUG-3269 --format
+  json` and confirm `program_design_nonspecific` is empty, then `ll-issues check-design
+  BUG-3269` exits 0, before implementation.
+
+### Outcome Risk Factors
+- Broad enumeration across ~13 call sites in 11 loop files — each conversion is mechanical
+  and independently revertible (per the issue's own rollback seam), but the sheer count
+  raises the odds that one site's precedence shell (`${context.*}` override before
+  `ll-config get`) gets pasted wrong. The mirror-drift gate (Implementation Step 5) is the
+  intended catch for this, but it lands *after* all conversions in Step 4 rather than
+  per-file — consider running `ll-loop validate` (already planned) plus a scoped `grep` for
+  the old `.get('test_cmd'` pattern after each file, not just at the end.
+
 ## Session Log
+- `/ll:confidence-check` - 2026-08-21T00:22:27 - `8fa51734-384b-46a2-a10c-bd13c601a684.jsonl`
 - `/ll:confidence-check` - 2026-08-20T23:39:55 - `bae4c657-9e53-457d-bcc4-db4ed042c8fb.jsonl`
 - `/ll:wire-issue` - 2026-08-20T23:37:01 - `f8d1ceb8-b964-4281-915c-bc7d008244e2.jsonl`
 - `/ll:refine-issue` - 2026-08-20T23:29:35 - `8838a661-0444-4cad-a5d2-117e364de078.jsonl`

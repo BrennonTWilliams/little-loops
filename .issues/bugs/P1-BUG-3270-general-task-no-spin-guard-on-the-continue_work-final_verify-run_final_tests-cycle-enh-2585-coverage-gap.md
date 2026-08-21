@@ -168,6 +168,16 @@ own evidence base.
 ### Dependent Files (Callers/Importers)
 - None. The change is internal to one loop's state graph; no Python or CLI surface moves.
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/fsm/validation/reachability.py` — `capture-reachability` rule enforces
+  that `${captured.*}` references (the new gate reads `${captured.done_counts.output}` /
+  `${captured.continue_result.output}`) are dominated by their capturing state. This is the
+  concrete validator that will fail the "Dominance check" already called out under State
+  contract if `final_verify_spin_gate` is wired to a path where those captures aren't
+  guaranteed set. [Agent 1 finding]
+- `scripts/little_loops/fsm/validation/__init__.py` — exports/registers `capture_reachability`
+  alongside the other structural rules `load_and_validate` runs. [Agent 1 finding]
+
 ### Similar Patterns
 - `general-task.yaml:296` `spin_gate` — the existing guard to model on (shell counter +
   `output_numeric` / `lt` evaluate)
@@ -182,13 +192,56 @@ own evidence base.
 - New: assert a run whose `run_final_tests` can never pass reaches a `partial` terminal
   within a bounded iteration count rather than running to `max_iterations`
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_general_task_loop.py::test_run_final_tests_routing` (`:1437-1441`) —
+  **will break**: hard-asserts `state["on_no"] == "continue_work"` for `run_final_tests`;
+  update to `"final_verify_spin_gate"`. [Agent 2/3 finding]
+- `scripts/tests/test_general_task_loop.py::test_count_final_routes_no_to_continue_work`
+  (`:1309-1310`, duplicated at `~:1660-1663`) — **will break**: hard-asserts
+  `raw_data["states"]["count_final"]["on_no"] == "continue_work"`; update both occurrences to
+  `"final_verify_spin_gate"`. [Agent 2/3 finding]
+- `scripts/tests/test_general_task_loop.py::test_spin_gate_routes_yes_to_check_done_no_to_summarize_partial`
+  (`:366-375`) and `test_check_step_halt_routes_yes_to_summarize_partial_no_to_spin_gate`
+  (`:356-362`) — existing spin-gate-shape precedent; clone as the model for new
+  `TestFinalVerifySpinGate*` routing/shape assertions (`on_yes`/`on_no`/`on_error`/
+  `evaluate.type`/`operator`/`target`). [Agent 2/3 finding]
+- `scripts/tests/test_builtin_loops.py` `_run_check_hedge_attempts` helper +
+  `test_check_hedge_attempts_counts_up_and_gates_at_two` (`:1592-1618`) — subprocess-execution
+  model for the new gate's counter shell action: interpolate `${context.run_dir}`, run via
+  `subprocess.run(["bash", "-c", ...])` twice against the same `run_dir`, assert progression
+  `"1"` then `"2"` and the cap-at-N gate. No existing precedent covers a *three*-condition
+  reset (`done_counts.total==0` and `continue_result==WORK_COMPLETE` and no file changed) —
+  new tests must exercise each reset condition independently against the new state's shell
+  script. [Agent 3 finding]
+- `scripts/tests/test_general_task_loop.py::test_validates_as_fsm` (`:43-47`) — runs
+  `load_and_validate` + `validate_fsm` against the real YAML and fails on any ERROR-severity
+  finding; safety net for a mis-wired `final_verify_spin_gate` (unreachable, missing
+  `on_yes`/`on_no`). No change needed, but will fail loudly on a mis-wire. [Agent 2/3 finding]
+
 ### Documentation
 - `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` — the spin-guard rule; note that a guard must
   cover every cycle back to a re-deliberation state, not just one path
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/guides/LOOPS_REFERENCE.md` (`:122`) — prose narrates the exact edges being redirected
+  ("On a passing exit it routes to `count_final`; on failure it routes to `continue_work`" /
+  "`count_final` ... any failures → `continue_work`"); goes stale once both `on_no` edges
+  point through `final_verify_spin_gate` instead. [Agent 2 finding]
+- `docs/reference/loops.md` (`:1066-1085`) — the `recurrent_window` circuit-breaker doc uses
+  this exact unguarded cycle (`run_final_tests(fail) → continue_work → select_step → do_work →
+  verify_step → run_final_tests(fail) → ...`) as its worked example; note or replace the
+  example since `general-task.yaml` now has a dedicated guard for this specific cycle
+  (`recurrent_window` itself remains valid as a generic mechanism). [Agent 2 finding]
+
 ### Configuration
 - Consider exposing the cap as a `context` value (alongside `max_step_attempts`) rather than
   hard-coding N, so a run can raise it without editing the loop.
+
+_Wiring pass added by `/ll:wire-issue`:_
+- Confirmed no `config-schema.json` change is needed for this: `max_step_attempts`-style caps
+  are FSM-loop `context:` block values, not project-config schema fields (zero matches for
+  such keys in `config-schema.json`). Exposing N as a context value, if done, is scoped
+  entirely to `general-task.yaml`. [Agent 2 finding]
 
 ## Program Design
 
@@ -287,6 +340,27 @@ _Added by `/ll:refine-issue` — 2026-08-20 — based on codebase analysis:_
    changes files resets the counter and is *not* cut off.
 6. **Verify.** `python -m pytest scripts/tests/` exits 0.
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Update `scripts/tests/test_general_task_loop.py::test_run_final_tests_routing` (`:1437-1441`)
+  — change `on_no` assertion from `"continue_work"` to `"final_verify_spin_gate"`
+- Update `scripts/tests/test_general_task_loop.py::test_count_final_routes_no_to_continue_work`
+  (`:1309-1310` and the duplicate at `~:1660-1663`) — change `on_no` assertion from
+  `"continue_work"` to `"final_verify_spin_gate"`
+- Add new routing/shape tests for `final_verify_spin_gate` in
+  `scripts/tests/test_general_task_loop.py`, cloned from
+  `test_spin_gate_routes_yes_to_check_done_no_to_summarize_partial` (`:366-375`)
+- Add a subprocess-driven counter test for the new state's shell action, cloned from
+  `_run_check_hedge_attempts` / `test_check_hedge_attempts_counts_up_and_gates_at_two`
+  (`scripts/tests/test_builtin_loops.py:1592-1618`); extend it to cover all three reset
+  conditions independently, since no existing precedent covers a multi-condition reset
+- Update `docs/guides/LOOPS_REFERENCE.md` (`:122`) — note the new `final_verify_spin_gate` hop
+  on the `run_final_tests`/`count_final` failure paths
+- Update `docs/reference/loops.md` (`:1066-1085`) — note or replace the `recurrent_window`
+  worked example, which now overlaps with this dedicated guard
+
 ## Impact
 
 - **Severity**: P1. Not a root cause, but it converts a bounded bug into an unbounded one.
@@ -310,4 +384,5 @@ _Added by `/ll:refine-issue` — 2026-08-20 — based on codebase analysis:_
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-08-20T23:48:54 - `d1c4118b-f3cb-4064-8e75-ddacc30681ce.jsonl`
 - `/ll:refine-issue` - 2026-08-20T23:06:40 - `eecdcf60-17f0-43fe-a3bb-f00297aad10d.jsonl`
