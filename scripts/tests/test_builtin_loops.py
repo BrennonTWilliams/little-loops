@@ -1665,9 +1665,7 @@ class TestRefineToReadyIssueSubLoop:
             f"got {state.get('on_error')!r}"
         )
 
-    def test_check_design_gate_blocks_design_less_issue(
-        self, data: dict, tmp_path: Path
-    ) -> None:
+    def test_check_design_gate_blocks_design_less_issue(self, data: dict, tmp_path: Path) -> None:
         """BUG-3249 regression: an issue with no `## Program Design` section must fail
         check_design's real `ll-issues check-design` subprocess call (returncode == 1),
         following the TestRecheckScoresDesignGateEndToEnd pattern (test_autodev_loop.py) —
@@ -1801,9 +1799,9 @@ class TestRefineToReadyIssueSubLoop:
             f"check_reconcile_limit.on_error should be 'check_refine_limit', "
             f"got {state.get('on_error')!r}"
         )
-        assert (
-            "${context.run_dir}/refine-to-ready-reconcile-attempts" in state.get("action", "")
-        ), "check_reconcile_limit.action should target the run-scoped counter file"
+        assert "${context.run_dir}/refine-to-ready-reconcile-attempts" in state.get("action", ""), (
+            "check_reconcile_limit.action should target the run-scoped counter file"
+        )
 
     def test_reconcile_issue_state_routing(self, data: dict) -> None:
         """reconcile_issue (ENH-3248) is a bare slash-command state — no rate-limit fragment,
@@ -2448,9 +2446,7 @@ class TestRefineToReadyIssueSubLoop:
             f"check_missing_artifacts.on_no should be 'breakdown_issue', got {state.get('on_no')!r}"
         )
 
-    def test_check_decision_needed_on_no_routes_to_check_spike_needed(
-        self, data: dict
-    ) -> None:
+    def test_check_decision_needed_on_no_routes_to_check_spike_needed(self, data: dict) -> None:
         """check_decision_needed.on_no must route to check_spike_needed (ENH-3250:
         spliced in before check_missing_artifacts), not directly to
         check_missing_artifacts or breakdown_issue (BUG-1490)."""
@@ -2615,9 +2611,7 @@ class TestRefineToReadyIssueSubLoop:
             f"got {state.get('on_error')!r}"
         )
 
-    def test_check_verify_verdict_on_no_routes_to_check_proposal_unsound(
-        self, data: dict
-    ) -> None:
+    def test_check_verify_verdict_on_no_routes_to_check_proposal_unsound(self, data: dict) -> None:
         """check_verify_verdict.on_no must route to check_proposal_unsound (the new
         triage gate), not straight to check_refine_limit (ENH-3250)."""
         state = data["states"].get("check_verify_verdict", {})
@@ -2998,9 +2992,7 @@ class TestGeneralTaskFinalVerifySpinGateShellAction:
             "a new untracked file must reset the counter to 0 (name-only diff misses this)"
         )
 
-    def test_untracked_file_content_edit_resets_counter(
-        self, data: dict, tmp_path: Path
-    ) -> None:
+    def test_untracked_file_content_edit_resets_counter(self, data: dict, tmp_path: Path) -> None:
         """A name-only untracked listing would miss this — the modal create-then-refine
         progress shape in this loop (Impact: 'primary risk, not residual')."""
         repo = tmp_path / "repo"
@@ -3551,6 +3543,7 @@ class TestOnCannotJudgeRoutes:
         ("assumption-firewall.yaml", "extract_assumptions", "parse_assumptions"),
         ("dataset-curation.yaml", "validate_schema", "failed"),
         ("incremental-refactor.yaml", "check_complete", "failed"),
+        ("incremental-refactor.yaml", "verify_tests", "failed"),
     ]
 
     @pytest.mark.parametrize("loop_file,state_name,expected", ROUTES)
@@ -3606,9 +3599,7 @@ class TestOnCannotJudgeRoutes:
 
         fix_item/execute_step would re-enter the same abstaining judge (BUG-3226).
         """
-        dataset_data = yaml.safe_load(
-            (BUILTIN_LOOPS_DIR / "dataset-curation.yaml").read_text()
-        )
+        dataset_data = yaml.safe_load((BUILTIN_LOOPS_DIR / "dataset-curation.yaml").read_text())
         validate_schema = dataset_data.get("states", {}).get("validate_schema", {})
         assert validate_schema.get("on_cannot_judge") != "fix_item"
 
@@ -11941,13 +11932,18 @@ class TestIncrementalRefactorLoop:
         assert self.LOOP_FILE.exists(), f"Loop file not found: {self.LOOP_FILE}"
         return yaml.safe_load(self.LOOP_FILE.read_text())
 
+    @pytest.fixture
+    def resolved(self, data: dict) -> dict:
+        return resolve_fragments(data, BUILTIN_LOOPS_DIR)
+
     def test_required_top_level_fields(self, data: dict) -> None:
         assert data.get("name") == "incremental-refactor"
-        assert data.get("initial") == "plan_steps"
+        assert data.get("initial") == "check_preconditions"
         assert isinstance(data.get("states"), dict)
 
     def test_required_states_exist(self, data: dict) -> None:
         required = {
+            "check_preconditions",
             "plan_steps",
             "execute_step",
             "verify_tests",
@@ -11967,6 +11963,74 @@ class TestIncrementalRefactorLoop:
 
     def test_done_state_is_terminal(self, data: dict) -> None:
         assert data["states"]["done"].get("terminal") is True
+
+    def test_context_test_cmd_has_no_hardcoded_literal(self, data: dict) -> None:
+        """BUG-3276: the context default must be an override slot, not this
+        repo's own test path (matches general-task.yaml/test-coverage-improvement.yaml)."""
+        assert data["context"]["test_cmd"] == ""
+
+    def test_no_state_hardcodes_this_repo_test_path(self, data: dict) -> None:
+        raw = yaml.dump(data)
+        assert "scripts/tests" not in raw, (
+            "no state action or context default may hardcode this repo's test path (BUG-3276)"
+        )
+
+    def test_verify_tests_resolves_context_first_then_ll_config(self, data: dict) -> None:
+        action = data["states"]["verify_tests"].get("action", "")
+        assert "${context.test_cmd}" in action
+        assert "ll-config get project.test_cmd" in action
+        assert "RC" in action, "must check the ll-config exit code (BUG-3269 §1f conflation)"
+
+    def test_verify_tests_uses_harness_exit_fragment(self, data: dict) -> None:
+        assert data["states"]["verify_tests"].get("fragment") == "harness_exit"
+
+    def test_verify_tests_resolved_abstain_on_exit_3(self, resolved: dict) -> None:
+        state = resolved["states"]["verify_tests"]
+        assert state.get("evaluate", {}).get("abstain_on_exit_3") is True
+
+    def test_verify_tests_on_cannot_judge_routes_to_failed(self, data: dict) -> None:
+        assert data["states"]["verify_tests"].get("on_cannot_judge") == "failed"
+
+    def test_verify_tests_on_error_routes_to_failed_not_revert(self, data: dict) -> None:
+        """BUG-3276 AC 3b: on_error must not alias revert -- a timeout or signal
+        kill carries no test signal, the same case abstain_on_exit_3 protects."""
+        assert data["states"]["verify_tests"].get("on_error") == "failed"
+
+    def test_revert_has_exactly_one_inbound_edge(self, data: dict) -> None:
+        """revert must only be reachable via verify_tests.on_no (BUG-3276 AC 3b)."""
+        inbound = []
+        for name, state in data["states"].items():
+            for key in ("on_yes", "on_no", "on_error", "on_cannot_judge", "next"):
+                if state.get(key) == "revert":
+                    inbound.append(f"{name}.{key}")
+        assert inbound == ["verify_tests.on_no"], inbound
+
+    def test_revert_scopes_out_loops_dir(self, data: dict) -> None:
+        """BUG-3276: git clean -fd must exclude .loops, or it deletes the active
+        run directory and persisted FSM state in a consuming project."""
+        action = data["states"]["revert"].get("action", "")
+        assert "git checkout -- ." in action
+        assert "git clean -fd" in action
+        assert "-e .loops" in action
+
+    def test_check_preconditions_is_initial(self, data: dict) -> None:
+        assert data.get("initial") == "check_preconditions"
+
+    def test_check_preconditions_gates_on_test_cmd_and_clean_tree(self, data: dict) -> None:
+        action = data["states"]["check_preconditions"].get("action", "")
+        assert "ll-config get project.test_cmd" in action
+        assert "git status --porcelain" in action
+        assert ":(exclude).loops" in action
+
+    def test_check_preconditions_failure_message_names_both_requirements(self, data: dict) -> None:
+        action = data["states"]["check_preconditions"].get("action", "")
+        assert "project.test_cmd" in action
+        assert "clean working tree" in action
+        assert "stash" in action
+
+    def test_check_preconditions_routes_no_to_failed(self, data: dict) -> None:
+        assert data["states"]["check_preconditions"].get("on_no") == "failed"
+        assert data["states"]["check_preconditions"].get("on_yes") == "plan_steps"
 
 
 class TestGeneratorEvaluatorOracle:
@@ -14584,7 +14648,9 @@ class TestCheckSubstrateOptionalState:
         """probe_substrate must be action_type: shell evaluated by output_contains, not an LLM judge."""
         content = self.RN_BUILD_FILE.read_text()
         block = self._slice_state(content, "probe_substrate:", "\n  check_substrate_probed:")
-        assert "action_type: shell" in block, "probe_substrate must be action_type: shell (BUG-3227)"
+        assert "action_type: shell" in block, (
+            "probe_substrate must be action_type: shell (BUG-3227)"
+        )
         assert "type: output_contains" in block, (
             "probe_substrate must be evaluated with output_contains, not llm_structured (BUG-3227)"
         )
@@ -14643,13 +14709,9 @@ class TestCheckSubstrateOptionalState:
         probed_pos = content.find("\n  check_substrate_probed:")
         unknown_pos = content.find("\n  substrate_unknown:")
         scope_project_pos = content.find("\n  scope_project:")
-        assert (
-            check_substrate_pos
-            < probe_pos
-            < probed_pos
-            < unknown_pos
-            < scope_project_pos
-        ), "probe_substrate/check_substrate_probed/substrate_unknown must sit between check_substrate and scope_project in rn-build.yaml"
+        assert check_substrate_pos < probe_pos < probed_pos < unknown_pos < scope_project_pos, (
+            "probe_substrate/check_substrate_probed/substrate_unknown must sit between check_substrate and scope_project in rn-build.yaml"
+        )
 
     def test_rn_plan_probe_substrate_positioned_between_check_substrate_and_research_iteration(
         self,
@@ -14662,12 +14724,10 @@ class TestCheckSubstrateOptionalState:
         unknown_pos = content.find("\n  substrate_unknown:")
         research_iteration_pos = content.find("\n  research_iteration:")
         assert (
-            check_substrate_pos
-            < probe_pos
-            < probed_pos
-            < unknown_pos
-            < research_iteration_pos
-        ), "probe_substrate/check_substrate_probed/substrate_unknown must sit between check_substrate and research_iteration in rn-plan.yaml"
+            check_substrate_pos < probe_pos < probed_pos < unknown_pos < research_iteration_pos
+        ), (
+            "probe_substrate/check_substrate_probed/substrate_unknown must sit between check_substrate and research_iteration in rn-plan.yaml"
+        )
 
     def test_rn_build_probe_substrate_uses_bare_var_not_brace_form(self) -> None:
         """probe_substrate bash must use $VAR, never ${VAR} (FSM pre-interpolates ${...})."""
@@ -14678,9 +14738,7 @@ class TestCheckSubstrateOptionalState:
         action_body = block[action_start:action_end]
         # The only permitted ${...} is the FSM interpolation ref assigned to RUN_DIR.
         stray = [
-            line
-            for line in action_body.splitlines()
-            if "${" in line and "RUN_DIR=" not in line
+            line for line in action_body.splitlines() if "${" in line and "RUN_DIR=" not in line
         ]
         assert not stray, f"probe_substrate action must not use bash ${{VAR}} form: {stray}"
 

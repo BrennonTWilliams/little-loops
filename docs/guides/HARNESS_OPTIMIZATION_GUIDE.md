@@ -568,6 +568,19 @@ exemption — it implements a different, deliberately non-guessing resolution co
 (alias pairs, `${context.project_root}`-relative) that predates and is incompatible with this
 one. A handful of other loops are a temporary exemption pending ENH-3277's conversion pass.
 
+**Never hardcode a project command literal in a loop action or context default.** A literal
+like `test_cmd: "python -m pytest scripts/tests/"` is this repository's own test path, not a
+general default — every loop shipped as a built-in runs unmodified against arbitrary
+consuming projects (`.claude/CLAUDE.md` § Distribution), and a hardcoded literal that happens
+to be correct here is silently wrong everywhere else. Worse, if the state gates a destructive
+edge (`on_no`/`on_error` routing to a revert, cleanup, or file-deletion action), the command
+failing in a consuming project doesn't just no-op — it fires the destructive edge on every
+lap. This was BUG-3276: `incremental-refactor.yaml` hardcoded `test_cmd` bare (no
+`.ll/ll-config.json` read at all, not even a divergent one), so `verify_tests` failed
+deterministically outside this repo and `on_no: revert` discarded uncommitted work every
+time. Resolve every project command through the context-first + `ll-config get` shapes above,
+with an empty context default (`test_cmd: ""`) as the override slot — never a bare literal.
+
 ---
 
 ## See Also

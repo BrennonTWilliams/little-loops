@@ -3250,3 +3250,52 @@ class TestListRunningLoopsCrossInstanceSuppression:
         assert names.count("myloop") == 1, (
             "Same-stem PID and state file must produce exactly one entry"
         )
+
+
+class TestIncrementalRefactorResumeSkipsPrecondition:
+    """BUG-3276 AC 9: incremental-refactor's new check_preconditions initial state must
+    not re-run on resume, or a resumed run refuses to continue against a legitimately
+    dirty tree (the previous step's uncommitted work)."""
+
+    def _load_fsm(self) -> FSMLoop:
+        from little_loops.fsm.validation import load_and_validate
+
+        loops_dir = (
+            Path(__file__).parent.parent / "little_loops" / "loops" / "incremental-refactor.yaml"
+        )
+        fsm, _warnings = load_and_validate(loops_dir)
+        assert fsm is not None
+        return fsm
+
+    def test_resume_restores_persisted_state_not_initial(self, tmp_path: Path) -> None:
+        fsm = self._load_fsm()
+        assert fsm.initial == "check_preconditions"
+
+        persistence = StatePersistence("incremental-refactor", tmp_path)
+        persistence.initialize()
+        persistence.save_state(
+            LoopState(
+                loop_name="incremental-refactor",
+                current_state="execute_step",
+                iteration=3,
+                captured={},
+                prev_result=None,
+                last_result=None,
+                started_at="2026-08-21T10:00:00Z",
+                updated_at="",
+                status="interrupted",
+            )
+        )
+
+        mock_runner = MockActionRunner()
+        executor = PersistentExecutor(fsm, persistence=persistence, action_runner=mock_runner)
+        result = executor.resume()
+
+        assert result is not None
+        assert not any("clean working tree" in call for call in mock_runner.calls), (
+            "resume() must not re-run check_preconditions's action -- it must restore "
+            "the persisted current_state (execute_step), not reset to fsm.initial"
+        )
+        assert any(
+            "Execute the next incomplete refactoring step" in call for call in mock_runner.calls
+        ), "resume() should have continued execution from the persisted execute_step state"

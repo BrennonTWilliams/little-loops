@@ -4,10 +4,11 @@ type: BUG
 title: "Built-in loops hardcode this-repo-specific project commands \u2014 incremental-refactor\
   \ reverts all work in consuming projects"
 priority: P1
-status: open
+status: done
 discovered_by: design-review
 discovered_date: '2026-08-20'
 captured_at: '2026-08-20T00:00:00Z'
+completed_at: '2026-08-21T13:44:37Z'
 relates_to:
 - BUG-3269
 labels:
@@ -243,7 +244,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - Update `docs/guides/LOOPS_REFERENCE.md:1305` — the "Key context variables" table's `test_cmd` row documents the old hardcoded literal; replace with the resolution/precondition behavior.
 - Add `scripts/tests/test_builtin_loops.py` — a `TestConfidenceGateThresholdsNotHardcoded`-style parametrized test asserting `incremental-refactor.yaml`'s `context.test_cmd == ""` (no hardcoded literal).
 - Add `scripts/tests/test_builtin_loops.py` — a `test_harness_optimize.py:145-149`-style test (`test_revert_uses_scoped_targets`) asserting `incremental-refactor.yaml`'s `revert` state scopes to a context variable, not bare `git checkout -- .`.
-- If option (c) is taken: update `scripts/tests/test_builtin_loops.py:11786-11789` (`test_required_top_level_fields`)'s `data.get("initial") == "plan_steps"` assertion to match the new initial state, and add a `TestPrePatchCheckReachability`-style precondition test.
+- If option (c) is taken: update `scripts/tests/test_builtin_loops.py:11944-11947` (`test_required_top_level_fields`)'s `data.get("initial") == "plan_steps"` assertion to match the new initial state, and add a `TestPrePatchCheckReachability`-style precondition test.
 - Sibling survey (step 4) is closed: no other loop hardcodes an unresolved project-command literal, and no other loop has an unscoped blanket `git checkout`/`reset`/`clean` beyond the four already-scoped precedents — see the new Sibling Loop Survey subsection of the Integration Map.
 
 3. **Guard `revert` with a clean-tree precondition — not by narrowing the checkout.**
@@ -347,7 +348,7 @@ committing with no signal). Option C's `initial: <precondition-state>` shape is 
 reused from `general-task.yaml`/`code-run-gate.yaml`/`spike-gate.yaml`, and Option B's
 route-into-an-existing-`failed`-terminal shape is reused from `incremental-refactor.yaml`'s
 own `check_complete.on_cannot_judge`/`replan.on_retry_exhausted` edges and the
-`TestOnCannotJudgeRoutes` convention (9 existing call sites) — both pieces compose known FSM
+`TestOnCannotJudgeRoutes` convention (11 existing call sites) — both pieces compose known FSM
 shapes even though the specific "empty precondition" trigger is new. `rl-coding-agent.yaml`'s
 `observe` state (scoring `0.0` rather than trusting an empty command) is corroborating
 evidence that this codebase does not treat "no test signal" as safe-to-pass uniformly.
@@ -363,7 +364,7 @@ evidence that this codebase does not treat "no test signal" as safe-to-pass unif
 
 **Key evidence**:
 - Option A: `fix-quality-and-tests.yaml:58-77` (`true` substitution), `general-task.yaml:677-685` (`run_final_tests` bare `exit 0`), `general-task.yaml:36-70` (`baseline-skip-reason.txt` marker) — but `rl-coding-agent.yaml:56-70` scores empty `test_cmd` as `0.0`, not a pass, showing the convention is contested.
-- Option B: `incremental-refactor.yaml:53` (`check_complete.on_cannot_judge: failed`) and `:64` (`replan.on_retry_exhausted: failed`) are same-file precedent for a new edge into the existing `failed` terminal; `TestOnCannotJudgeRoutes` (`test_builtin_loops.py:3376-3409`) pins 9 such edges codebase-wide. ~~No existing `action_type: shell` state branches "precondition empty" vs. "command failed" to two different targets — new wiring.~~ **Corrected 2026-08-21**: this was wrong, and it is why Option B scores 1/3 on Simplicity below. `evaluate_exit_code` (`evaluators.py:238-264`) already yields four verdicts from a shell exit code, and `abstain_on_exit_3` (`schema.py:113`) is schema-supported. The branch is a two-line change — see *Mechanism for the empty-`CMD` branch* above. The selection is unchanged; only B's cost estimate was inflated.
+- Option B: `incremental-refactor.yaml:53` (`check_complete.on_cannot_judge: failed`) and `:64` (`replan.on_retry_exhausted: failed`) are same-file precedent for a new edge into the existing `failed` terminal; `TestOnCannotJudgeRoutes` (`test_builtin_loops.py:3534-3555`) pins 11 such edges codebase-wide. ~~No existing `action_type: shell` state branches "precondition empty" vs. "command failed" to two different targets — new wiring.~~ **Corrected 2026-08-21**: this was wrong, and it is why Option B scores 1/3 on Simplicity below. `evaluate_exit_code` (`evaluators.py:238-264`) already yields four verdicts from a shell exit code, and `abstain_on_exit_3` (`schema.py:113`) is schema-supported. The branch is a two-line change — see *Mechanism for the empty-`CMD` branch* above. The selection is unchanged; only B's cost estimate was inflated.
 - Option C: `general-task.yaml:4,36-74` (`check_baseline_tests` as `initial`), `oracles/code-run-gate.yaml:24` (`resolve_commands` as `initial`) establish the `initial: <precondition-state>` shape — but every existing instance of it (including `general-task.yaml`'s identical `test_cmd`-resolution case) resolves an empty value by skipping forward, never by refusing to start; the "refuse" behavior itself has no precedent and is the one genuinely new piece of this decision.
 
 ## Integration Map
@@ -442,17 +443,17 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 _Added by `/ll:refine-issue` — 2026-08-21 — based on codebase analysis:_
 
-- `scripts/tests/test_general_task_loop.py:1560-1618` (`TestCheckBaselineTestsShellAction`) — closest existing test pattern for the empty-`CMD` branch: runs the extracted shell action script via `subprocess.run(["bash", "-c", script], ...)` against a `tmp_path` fixture with a controlled `.ll/ll-config.json`, asserting on sentinel files (`resolved-test-cmd.txt`, `baseline-exit.txt`). Covers `test_falls_back_to_config_test_cmd`, `test_explicit_null_test_cmd_writes_skip`, `test_unrunnable_command_writes_skip_not_127`, `test_writes_baseline_ref_regardless_of_skip`.
-- `scripts/tests/test_builtin_loops.py:10593-10634` (`TestRlCodingAgentObserveTestCmdResolution`) — `test_resolves_config_test_and_lint_cmd`, `test_null_test_cmd_resolves_to_empty_not_a_guessed_default`.
-- `scripts/tests/test_builtin_loops.py:11776-11811` (`TestIncrementalRefactorLoop`) — the only existing structural-test class for this loop file today; current assertions (`test_required_top_level_fields`, `test_required_states_exist`, `test_commit_step_uses_ll_commit_fragment`, `test_commit_step_keeps_slash_command_action_type`, `test_done_state_is_terminal`) do not inspect `context.test_cmd`, `verify_tests.action`, or `revert.action` — this is the class the new cases (Tests subsection above) land in.
-- No existing test in `test_builtin_loops.py` greps loop YAML source text for a hardcoded command literal (e.g. `"python -m pytest"`) as a structural check across loops; `test_builtin_loops.py:12508`'s `${context.min_pass_rate}`-not-literal assertion is the nearest existing shape but targets a different field/loop (`code-run-gate.yaml`).
+- `scripts/tests/test_general_task_loop.py:1802-1860` (`TestCheckBaselineTestsShellAction`) — closest existing test pattern for the empty-`CMD` branch: runs the extracted shell action script via `subprocess.run(["bash", "-c", script], ...)` against a `tmp_path` fixture with a controlled `.ll/ll-config.json`, asserting on sentinel files (`resolved-test-cmd.txt`, `baseline-exit.txt`). Covers `test_falls_back_to_config_test_cmd`, `test_explicit_null_test_cmd_writes_skip`, `test_unrunnable_command_writes_skip_not_127`, `test_writes_baseline_ref_regardless_of_skip`.
+- `scripts/tests/test_builtin_loops.py:10751-10806` (`TestRlCodingAgentObserveTestCmdResolution`) — `test_resolves_config_test_and_lint_cmd`, `test_null_test_cmd_resolves_to_empty_not_a_guessed_default`.
+- `scripts/tests/test_builtin_loops.py:11934-11969` (`TestIncrementalRefactorLoop`) — the only existing structural-test class for this loop file today; current assertions (`test_required_top_level_fields`, `test_required_states_exist`, `test_commit_step_uses_ll_commit_fragment`, `test_commit_step_keeps_slash_command_action_type`, `test_done_state_is_terminal`) do not inspect `context.test_cmd`, `verify_tests.action`, or `revert.action` — this is the class the new cases (Tests subsection above) land in.
+- No existing test in `test_builtin_loops.py` greps loop YAML source text for a hardcoded command literal (e.g. `"python -m pytest"`) as a structural check across loops; `test_builtin_loops.py:12674`'s `${context.min_pass_rate}`-not-literal assertion is the nearest existing shape but targets a different field/loop (`code-run-gate.yaml`).
 
 _Wiring pass added by `/ll:wire-issue`:_
-- **Best "no hardcoded literal" template — better fit than the `${context.min_pass_rate}` one already cited**: `scripts/tests/test_builtin_loops.py:16250-16298` (`TestConfidenceGateThresholdsNotHardcoded`), a `@pytest.mark.parametrize("loop_name", LOOPS)` class asserting a context key is absent/non-literal per loop. The equivalent for this issue: assert `data["context"]["test_cmd"] == ""` in `incremental-refactor.yaml`. New test, no update needed to the cited class itself.
+- **Best "no hardcoded literal" template — better fit than the `${context.min_pass_rate}` one already cited**: `scripts/tests/test_builtin_loops.py:16408-16452` (`TestConfidenceGateThresholdsNotHardcoded`), a `@pytest.mark.parametrize("loop_name", LOOPS)` class asserting a context key is absent/non-literal per loop. The equivalent for this issue: assert `data["context"]["test_cmd"] == ""` in `incremental-refactor.yaml`. New test, no update needed to the cited class itself.
 - **Scoped-revert template — direct precedent, copy this**: `scripts/tests/test_harness_optimize.py:145-149` (`test_revert_uses_scoped_targets`) already pins `harness-optimize.yaml`'s `revert_and_log` state scoping via `assert "context.targets" in action`. `incremental-refactor.yaml`'s `revert` state is `action_type: shell` — the same shape as `harness-optimize.yaml`'s — making this the exact template to copy (rename, retarget `incremental-refactor.yaml`'s `revert` state, assert against whatever scoped context var the fix introduces), unlike `dead-code-cleanup.yaml`/`test-coverage-improvement.yaml`'s revert states, which are free-text `action_type: prompt` instructions with no structural pytest coverage to model instead.
-- **No existing "refuse to start" / clean-tree precondition test or loop pattern exists** — confirmed via grep for `git status --porcelain`, `clean tree`, `working tree`, `precondition` across `loops/*.yaml` and `scripts/tests/`; only prose/comment hits unrelated to a tree-cleanliness gate. If Proposed Solution option (c) is taken, model the new test on `scripts/tests/test_builtin_loops.py:584` (`TestPrePatchCheckReachability`, a non-LLM shell-evaluated precondition gate with a frozen state-set) or `:10789`/`:10841-10846` (`TestReadyToImplementGateLoop.test_blocked_is_terminal`, template for asserting a new non-happy-path terminal). This is a new test to write, not an existing one to update.
-- **Will break, not a gap**: `scripts/tests/test_builtin_loops.py:11786-11789` (`test_required_top_level_fields`) hard-asserts `data.get("initial") == "plan_steps"`. If option (c) prepends a new precondition state ahead of `plan_steps` and changes the FSM's `initial`, this assertion must be updated. `test_required_states_exist` (`:11791-11802`) is a subset check and will NOT break from an added state.
-- **Confirmed not a new terminal**: `failed` is already declared `terminal: true`/`failure: true` in `incremental-refactor.yaml` (already reachable from `replan.on_retry_exhausted` and pinned by `TestOnCannotJudgeRoutes.ROUTES:3395` for `check_complete`). Option (b)'s "route to a terminal failed state" is a new *edge* into an existing terminal, not a new terminal — no `NEW_FAILURE_TERMINALS`-style test addition required for the terminal's own `failure: true` declaration.
+- **No existing "refuse to start" / clean-tree precondition test or loop pattern exists** — confirmed via grep for `git status --porcelain`, `clean tree`, `working tree`, `precondition` across `loops/*.yaml` and `scripts/tests/`; only prose/comment hits unrelated to a tree-cleanliness gate. If Proposed Solution option (c) is taken, model the new test on `scripts/tests/test_builtin_loops.py:584` (`TestPrePatchCheckReachability`, a non-LLM shell-evaluated precondition gate with a frozen state-set) or `:10947`/`:10999-11004` (`TestReadyToImplementGateLoop.test_blocked_is_terminal`, template for asserting a new non-happy-path terminal). This is a new test to write, not an existing one to update.
+- **Will break, not a gap**: `scripts/tests/test_builtin_loops.py:11944-11947` (`test_required_top_level_fields`) hard-asserts `data.get("initial") == "plan_steps"`. If option (c) prepends a new precondition state ahead of `plan_steps` and changes the FSM's `initial`, this assertion must be updated. `test_required_states_exist` (`:11949-11960`) is a subset check and will NOT break from an added state.
+- **Confirmed not a new terminal**: `failed` is already declared `terminal: true`/`failure: true` in `incremental-refactor.yaml` (already reachable from `replan.on_retry_exhausted` and pinned by `TestOnCannotJudgeRoutes.ROUTES:3553` for `check_complete`). Option (b)'s "route to a terminal failed state" is a new *edge* into an existing terminal, not a new terminal — no `NEW_FAILURE_TERMINALS`-style test addition required for the terminal's own `failure: true` declaration.
 
 ## Program Design
 
@@ -504,7 +505,7 @@ design; these are the checkable outcomes._
    directory and persisted FSM state in any consuming project.
 6. `ll-loop validate incremental-refactor` passes (MR-1..MR-14), and
    `python -m pytest scripts/tests/` exits 0 — including the updated
-   `test_required_top_level_fields` `initial` assertion (`test_builtin_loops.py:11786-11789`).
+   `test_required_top_level_fields` `initial` assertion (`test_builtin_loops.py:11944-11947`).
 7. Tests from the Tests subsection above exist and pass.
 8. `docs/guides/LOOPS_REFERENCE.md:1305`'s `test_cmd` row and
    `scripts/little_loops/loops/README.md:52` describe the new behavior; the "never hardcode a
@@ -570,12 +571,50 @@ anyway, since this invariant is what makes the precondition safe to add at all.
   and its §2/§2b document the precedence and empty-`CMD` shapes to reuse here
 - `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` — loop design rules
 
+## Resolution
+
+Implemented the selected Option C + Option B design exactly as specified in Proposed
+Solution / Acceptance Criteria:
+
+- `context.test_cmd` is now `""`; the hardcoded `python -m pytest scripts/tests/` literal is
+  gone from `incremental-refactor.yaml` entirely (context and every state action).
+- New `check_preconditions` state is the FSM's `initial`. It resolves `test_cmd`
+  context-first / `ll-config get project.test_cmd` (with the `RC` check) and requires a
+  clean working tree via `git status --porcelain -- ':(exclude).loops'` (untracked files
+  included); refuses to start (routes to `failed`) if either condition fails, with a failure
+  message naming both `project.test_cmd` and the clean-tree requirement plus the `git stash`
+  remedy.
+- `verify_tests` now resolves per step with the same context-first/`ll-config get` shape,
+  reuses the `harness_exit` fragment (`abstain_on_exit_3: true`) so it owns the exit-code
+  space (`3`=unresolvable → `on_cannot_judge: failed`, `1`=any real failure → `revert`,
+  `0`=pass → `commit_step`), and declares `on_error: failed` so no timeout/signal kill can
+  reach the destructive edge. `revert` now has exactly one inbound edge (`verify_tests.on_no`).
+- `revert` is `git checkout -- . && git clean -fd -e .loops` — correct under
+  `check_preconditions`' clean-tree invariant, and `-e .loops` keeps the active run directory
+  and persisted FSM state alive in consuming projects (`ll-init` does not gitignore `.loops/`).
+- Updated `docs/guides/LOOPS_REFERENCE.md`, `scripts/little_loops/loops/README.md`, and added
+  the "never hardcode a project command literal" rule to
+  `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md`.
+- Tests: structural assertions extended in `scripts/tests/test_builtin_loops.py`
+  (`TestIncrementalRefactorLoop`, plus a new `TestOnCannotJudgeRoutes.ROUTES` entry);
+  behavioural shell-execution coverage added in new
+  `scripts/tests/test_incremental_refactor_loop.py` (exit-code contract including the
+  exit-4→1 pytest-usage-error mapping, `.loops` exclusion on both the precondition gate and
+  revert, untracked-file rejection); a resume regression test added to
+  `scripts/tests/test_fsm_persistence.py` confirming a resumed run re-enters the persisted
+  `current_state` rather than `check_preconditions`.
+- `ll-loop validate incremental-refactor` passes; full suite green except a pre-existing,
+  unrelated failure (`test_prose_dep_sweep_gate.py::test_no_prose_dependency_drift_in_repo`,
+  confirmed present on `main` before this change via `git stash`).
+
 ## Status
 
 **Open** | Created: 2026-08-20 | Priority: P1
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-21T13:43:38 - `c8f7ebbd-0b99-4f71-bbc2-929d36ac69d8.jsonl`
+- `/ll:ready-issue` - 2026-08-21T13:24:05 - `1675a156-f682-4482-8218-3bd23d8895a6.jsonl`
 - `/ll:confidence-check` - 2026-08-21T13:15:17 - `0d521468-396a-40b1-8135-6a291b58af1a.jsonl`
 - `/ll:confidence-check` - 2026-08-21T05:03:13 - `21d9445e-396a-4f1c-8a38-86569c765496.jsonl`
 - `/ll:decide-issue` - 2026-08-21T04:57:58 - `89ddbdcc-e3df-48b0-a087-301d49597946.jsonl`

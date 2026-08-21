@@ -1293,6 +1293,14 @@ ll-loop run docs-sync
 
 **When to use**: When a refactoring goal is too large for a single pass — decomposes into atomic steps, each test-gated with automatic rollback on failure.
 
+**Preconditions (BUG-3276)**: refuses to start unless `project.test_cmd` resolves to a
+non-empty command (via `context.test_cmd` override, else `ll-config get project.test_cmd`)
+**and** the working tree is clean, untracked files included (`.loops/` excluded from the
+check). Both conditions must hold because the loop's revert is a blanket
+`git checkout -- . && git clean -fd -e .loops`: a clean tree at start is what makes every
+subsequent revert provably scoped to the failed step's own work, not unrelated changes.
+`git stash` or commit outstanding changes before running.
+
 **Usage:**
 ```bash
 ll-loop run incremental-refactor --context refactor_goal="extract auth middleware from request handler"
@@ -1302,7 +1310,7 @@ ll-loop run incremental-refactor --context refactor_goal="extract auth middlewar
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `refactor_goal` | — | Natural-language description of the refactoring goal |
-| `test_cmd` | `python -m pytest scripts/tests/` | Test command to gate each step |
+| `test_cmd` | — | Test command to gate each step; falls back to `project.test_cmd` (`ll-config get`) when empty, and the loop refuses to start if neither resolves |
 | `commit_message` | `refactor: apply incremental refactoring step` | Commit message template |
 
 ### `test-coverage-improvement` — Coverage Gap Closure

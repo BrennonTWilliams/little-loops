@@ -49,7 +49,7 @@ Install a loop into your project for customization: `ll-loop install <name>`
 | `fix-quality-and-tests` | Sequential quality gate: lint + format + types must be clean before tests run |
 | `dead-code-cleanup` | Find dead code, remove high-confidence items, and verify tests pass after each removal |
 | `test-coverage-improvement` | Measure coverage, identify highest-risk gaps, write tests, verify, and iterate until target is met |
-| `incremental-refactor` | Decompose a refactoring goal into safe atomic steps, execute each with test-gated commits, rollback and re-plan on failure |
+| `incremental-refactor` | Decompose a refactoring goal into safe atomic steps, execute each with test-gated commits, rollback and re-plan on failure; refuses to start unless a test command resolves and the tree is clean |
 | `docs-sync` | Verify documentation matches the codebase, auto-fix auto-severity count mismatches, and report the rest |
 
 ## Planning

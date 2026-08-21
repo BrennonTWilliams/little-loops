@@ -1,7 +1,7 @@
 name: "incremental-refactor"
 category: code-quality
 description: "Decompose a refactoring goal into safe atomic steps, execute each with test-gated commits, rollback and re-plan on failure"
-initial: plan_steps
+initial: check_preconditions
 scope:
   - "."
 max_steps: 30
@@ -9,7 +9,7 @@ on_handoff: spawn
 
 context:
   refactor_goal: ""
-  test_cmd: "python -m pytest scripts/tests/"
+  test_cmd: ""
   commit_message: "refactor: apply incremental refactoring step"
 
 import:
@@ -17,6 +17,40 @@ import:
   - lib/prompt-fragments.yaml
 
 states:
+  check_preconditions:
+    # BUG-3276: refuse to start rather than run test-gated commits with no
+    # test signal, or run the blanket revert below against a tree that
+    # isn't provably all-step-work. Resolves test_cmd with the same
+    # context-first + `ll-config get` shape as verify_tests (kept
+    # independent rather than shared, since verify_tests re-resolves every
+    # step -- see its own comment) and requires a clean working tree,
+    # untracked files included, so revert's `git checkout -- . && git clean
+    # -fd` is provably correct: every accepted step is committed by
+    # commit_step, so at any revert all uncommitted content is the failed
+    # step's own work. `.loops` is excluded from the gate -- `ll-init` does
+    # not gitignore it in consuming projects, so a bare
+    # `git status --porcelain` would refuse to start in every project but
+    # this one (the run dir is untracked by the time this state runs).
+    fragment: shell_exit
+    action: |
+      if [ -n "${context.test_cmd}" ]; then
+        CMD="${context.test_cmd}"
+      else
+        CMD=$(ll-config get project.test_cmd)
+        RC=$?
+        if [ "$RC" != "0" ]; then
+          CMD=""
+        fi
+      fi
+      DIRTY=$(git status --porcelain -- ':(exclude).loops')
+      if [ -z "$CMD" ] || [ -n "$DIRTY" ]; then
+        echo "incremental-refactor requires project.test_cmd to resolve to a non-empty command (configure it in .ll/ll-config.json, or pass context.test_cmd) and a clean working tree. git stash or commit your outstanding changes, then re-run." > "${context.run_dir}/precondition-failure.txt"
+        exit 1
+      fi
+      exit 0
+    on_yes: plan_steps
+    on_no: failed
+
   plan_steps:
     action: "Analyze the refactoring goal: '${context.refactor_goal}'. Decompose it into the smallest safe atomic steps that can each be independently tested. List each step clearly. Each step should be a single, focused change that keeps the codebase in a working state."
     action_type: prompt
@@ -30,11 +64,35 @@ states:
     on_no: replan
 
   verify_tests:
-    action: "${context.test_cmd}"
-    action_type: shell
+    # BUG-3276: resolve per step (context-first, else `ll-config get
+    # project.test_cmd` with the RC check -- general-task.yaml:49-58 shape),
+    # then own the exit-code space so a resolution failure can never land on
+    # the same edge as a real test failure: 3=unresolvable (abstain, routes
+    # to on_cannot_judge, never revert), 1=any real failure (revert, as
+    # today), 0=pass. check_preconditions above already guarantees test_cmd
+    # resolves at loop start; this is the mid-run defense if it stops
+    # resolving later (e.g. .ll/ll-config.json edited out from under the
+    # loop mid-run).
+    fragment: harness_exit
+    action: |
+      if [ -n "${context.test_cmd}" ]; then
+        CMD="${context.test_cmd}"
+      else
+        CMD=$(ll-config get project.test_cmd)
+        RC=$?
+        if [ "$RC" != "0" ]; then
+          CMD=""
+        fi
+      fi
+      [ -z "$CMD" ] && exit 3
+      sh -c "$CMD"
+      rc=$?
+      [ "$rc" = 0 ] && exit 0
+      exit 1
     on_yes: commit_step
     on_no: revert
-    on_error: revert
+    on_cannot_judge: failed
+    on_error: failed
 
   commit_step:
     fragment: ll_commit
@@ -53,7 +111,15 @@ states:
     on_cannot_judge: failed           # BUG-3226: not a funnel — fail closed, not into repair loop
 
   revert:
-    action: "git checkout -- ."
+    # BUG-3276: path-scoping isn't implementable here -- execute_step is
+    # action_type: prompt and nothing records touched paths into context --
+    # so this stays a blanket revert, made correct by check_preconditions'
+    # clean-tree invariant above. `git clean -fd` closes the untracked-file
+    # half of the defect (a step that creates a new file used to survive a
+    # bare `git checkout -- .`). `-e .loops` is mandatory: without it this
+    # deletes the active run directory and persisted FSM state mid-run in
+    # any consuming project (`ll-init` does not gitignore `.loops/`).
+    action: "git checkout -- . && git clean -fd -e .loops"
     action_type: shell
     next: replan
 
