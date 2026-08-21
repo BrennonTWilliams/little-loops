@@ -1167,6 +1167,32 @@ class TestCountDoneShellScript:
             "and the plan is complete, so total is 0"
         )
 
+    def test_failed_samples_foreign_heading_not_counted(self, tmp_path: Path) -> None:
+        # BUG-3271: FAILED_SAMPLES carries the same unreset-in_section defect as
+        # count_final's awk. Observability-only (excluded from the gate), but
+        # fixed for consistency across the file's section-scoped awks.
+        dod_with_foreign_heading = """\
+# Definition of Done
+## Verification Criteria
+- [x] Tests pass
+## Sample Verification
+- [ ] Tests pass: FAILED — pytest returned exit 1
+## Closing consistency sweep
+- FAILED y
+"""
+        run_dir = _setup_dod_plan(
+            tmp_path, dod_content=dod_with_foreign_heading, plan_content=_ALL_DONE_PLAN
+        )
+        script = _load_count_done_script(run_dir=run_dir)
+        result = _bash(script, cwd=tmp_path)
+        assert result.returncode == 0, f"Script failed: {result.stderr}"
+        import json
+
+        data = json.loads(result.stdout.strip())
+        assert data["failed_samples"] == 1, (
+            "FAILED_SAMPLES must be bounded to the ## Sample Verification section"
+        )
+
     def test_flipped_back_criterion_gates_total(self, tmp_path: Path) -> None:
         # The authoritative block for a genuine sample failure: check_done flips the
         # criterion back to [ ], which HARD/SOFT_UNCHECKED_DOD counts into total.
@@ -1286,6 +1312,19 @@ class TestChange8FinalVerifyGate:
         action = raw_data["states"]["final_verify"]["action"]
         assert "## Final Verification" in action
 
+    def test_final_verify_action_instructs_replace_not_append(self, raw_data: dict) -> None:
+        # BUG-3271: re-entering final_verify must not grow dod.md unboundedly.
+        action = raw_data["states"]["final_verify"]["action"]
+        assert "Replace the `## Final Verification` section" in action
+        assert "remove it entirely" in action
+
+    def test_final_verify_action_forbids_timestamp_in_header(self, raw_data: dict) -> None:
+        # BUG-3271: the model invented disambiguating timestamps because it kept
+        # colliding with its own prior section under append semantics. Replace
+        # semantics remove the collision, so the prompt must forbid them outright.
+        action = raw_data["states"]["final_verify"]["action"]
+        assert "NO timestamp" in action
+
     def test_count_final_action_type_is_shell(self, raw_data: dict) -> None:
         assert raw_data["states"]["count_final"]["action_type"] == "shell"
 
@@ -1351,6 +1390,18 @@ _TWO_SECTIONS_FINAL_DOD = """\
 """
 
 
+_FOREIGN_HEADING_AFTER_FINAL_DOD = """\
+# Definition of Done
+## Verification Criteria
+- [x] Tests pass
+- [x] File exists
+## Final Verification
+- [ ] Tests pass: FAILED — pytest returned exit 1
+## Closing consistency sweep
+- FAILED y
+"""
+
+
 class TestCountFinalShellScript:
     """Shell execution tests for the count_final action (ENH-1681)."""
 
@@ -1398,6 +1449,26 @@ class TestCountFinalShellScript:
         script = _load_count_final_script(run_dir=run_dir)
         result = _bash(script, cwd=tmp_path)
         assert result.returncode != 0, "Script must exit non-zero when DoD file is missing"
+
+    def test_foreign_heading_after_section_not_counted(self, tmp_path: Path) -> None:
+        # BUG-3271: in_section must clear on a subsequent non-matching `## `
+        # header, not scan to EOF. Without the fix, ## Closing consistency
+        # sweep's "FAILED y" (and any ## Sample Verification FAILEDs written by
+        # check_done on the same cycle) is swept into the tally too, pinning
+        # failed_finals above 0 indefinitely.
+        run_dir = _setup_dod_plan(
+            tmp_path, dod_content=_FOREIGN_HEADING_AFTER_FINAL_DOD, plan_content=_ALL_DONE_PLAN
+        )
+        script = _load_count_final_script(run_dir=run_dir)
+        result = _bash(script, cwd=tmp_path)
+        assert result.returncode == 0, f"Script failed: {result.stderr}"
+        import json
+
+        data = json.loads(result.stdout.strip())
+        assert data["failed_finals"] == 1, (
+            "tally must be bounded to the ## Final Verification section itself, "
+            "excluding FAILED lines from any heading that follows it"
+        )
 
 
 class TestENH2225FinalOnlyGate:
@@ -1555,6 +1626,112 @@ class TestRunFinalTestsShellAction:
         script = self._load(run_dir)
         result = _bash(script, cwd=tmp_path)
         assert result.returncode == 0, f"Script failed: {result.stderr}"
+
+
+class TestStripStaleFinalSections:
+    """BUG-3271: run_final_tests' head-of-state strip_stale_final_sections step.
+
+    The deterministic backstop for final_verify's advisory replace instruction —
+    keeps at most one ## Final Verification section (prefix match, so timestamped
+    variants strip too), so re-entering final_verify N times converges on the
+    same dod.md as entering it once. Uses an empty resolved-test-cmd.txt so the
+    script exits (opt-out) right after the strip, without running real tests —
+    isolating the strip for these assertions.
+    """
+
+    def _load(self, run_dir: Path) -> str:
+        with open(LOOP_FILE) as f:
+            data = yaml.safe_load(f)
+        script = data["states"]["run_final_tests"]["action"]
+        script = script.replace("${context.run_dir}", str(run_dir))
+        return script
+
+    def _run_strip(self, tmp_path: Path, run_dir: Path) -> str:
+        (run_dir / "resolved-test-cmd.txt").write_text("")
+        script = self._load(run_dir)
+        result = _bash(script, cwd=tmp_path)
+        assert result.returncode == 0, f"Script failed: {result.stderr}"
+        return (run_dir / "dod.md").read_text()
+
+    def test_keeps_only_last_final_verification_section(self, tmp_path: Path) -> None:
+        run_dir = _setup_dod_plan(
+            tmp_path, dod_content=_TWO_SECTIONS_FINAL_DOD, plan_content=_ALL_DONE_PLAN
+        )
+        stripped = self._run_strip(tmp_path, run_dir)
+        assert stripped.count("## Final Verification") == 1
+        assert "confirmed at expected path" in stripped
+        assert "old failure from prior pass" not in stripped
+
+    def test_preserves_headings_other_than_final_verification(self, tmp_path: Path) -> None:
+        dod = """\
+# Definition of Done
+## Verification Criteria
+- [x] Tests pass
+## Final Verification
+- [ ] Tests pass: FAILED — stale
+## Sample Verification
+- [x] Tests pass: ran pytest, all green
+## Final Verification
+- [x] Tests pass: ran pytest, all green
+## Closing consistency sweep
+- FAILED trailing
+"""
+        run_dir = _setup_dod_plan(tmp_path, dod_content=dod, plan_content=_ALL_DONE_PLAN)
+        stripped = self._run_strip(tmp_path, run_dir)
+        assert stripped.count("## Final Verification") == 1
+        assert "FAILED — stale" not in stripped
+        assert "## Sample Verification" in stripped
+        assert "## Closing consistency sweep" in stripped
+        assert "FAILED trailing" in stripped
+
+    def test_treats_timestamped_headers_as_final_verification(self, tmp_path: Path) -> None:
+        dod = """\
+# Definition of Done
+## Verification Criteria
+- [x] Tests pass
+## Final Verification (2026-08-20T20:14 -- fresh independent re-run)
+- [ ] Tests pass: FAILED — stale
+## Final Verification (2026-08-20T20:45 -- fresh independent re-run)
+- [x] Tests pass: ran pytest, all green
+"""
+        run_dir = _setup_dod_plan(tmp_path, dod_content=dod, plan_content=_ALL_DONE_PLAN)
+        stripped = self._run_strip(tmp_path, run_dir)
+        assert stripped.count("## Final Verification") == 1
+        assert "20:14" not in stripped
+        assert "20:45" in stripped
+
+    def test_noop_on_single_section(self, tmp_path: Path) -> None:
+        run_dir = _setup_dod_plan(
+            tmp_path, dod_content=_CLEAN_FINAL_DOD, plan_content=_ALL_DONE_PLAN
+        )
+        stripped = self._run_strip(tmp_path, run_dir)
+        assert stripped == _CLEAN_FINAL_DOD
+
+    def test_noop_when_no_final_verification_section(self, tmp_path: Path) -> None:
+        dod = """\
+# Definition of Done
+## Verification Criteria
+- [x] Tests pass
+"""
+        run_dir = _setup_dod_plan(tmp_path, dod_content=dod, plan_content=_ALL_DONE_PLAN)
+        stripped = self._run_strip(tmp_path, run_dir)
+        assert stripped == dod
+
+    def test_idempotent_across_two_applications(self, tmp_path: Path) -> None:
+        run_dir = _setup_dod_plan(
+            tmp_path, dod_content=_TWO_SECTIONS_FINAL_DOD, plan_content=_ALL_DONE_PLAN
+        )
+        once = self._run_strip(tmp_path, run_dir)
+        twice = self._run_strip(tmp_path, run_dir)
+        assert once == twice, "applying the strip twice must be byte-identical to applying it once"
+
+    def test_missing_dod_is_a_noop_not_an_error(self, tmp_path: Path) -> None:
+        run_dir = _setup_run_dir(tmp_path)
+        (run_dir / "resolved-test-cmd.txt").write_text("")
+        script = self._load(run_dir)
+        result = _bash(script, cwd=tmp_path)
+        assert result.returncode == 0, f"Script failed: {result.stderr}"
+        assert not (run_dir / "dod.md").exists()
 
 
 class TestCheckBaselineTestsShellAction:

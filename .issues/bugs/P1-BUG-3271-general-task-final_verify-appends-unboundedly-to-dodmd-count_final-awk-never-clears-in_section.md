@@ -4,10 +4,11 @@ type: BUG
 title: 'general-task: final_verify appends unboundedly to dod.md; count_final awk
   never clears in_section'
 priority: P1
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-08-20'
 captured_at: '2026-08-20T22:49:08Z'
+completed_at: '2026-08-21T04:07:14Z'
 labels:
 - bug
 - loops
@@ -535,12 +536,41 @@ Two independently landable commits. Commit 1 is the run-hanging fix and should g
 - ENH-2584 — deferred bounded-`final_verify` decomposition; this is a landable subset
 - ENH-2575 — `final_verify` `on_error: summarize_partial` routing, the degradation path
 
+## Resolution
+
+Implemented both commits from Implementation Steps:
+
+1. **Bounded scan**: added `/^## / { in_section=0 }` to `count_final`'s awk
+   (`general-task.yaml:676-681`) and to `count_done`'s `FAILED_SAMPLES` awk
+   (`:545-550`, observability-only, fixed for consistency).
+2. **Idempotent `final_verify`**: rewrote the `final_verify` prompt
+   (`:595-601`) for replace-not-append semantics with an explicit
+   no-timestamp rule; strengthened the sweep-append instruction (`:614-617`)
+   so sweep failures land inside the section; added a deterministic
+   `strip_stale_final_sections` shell step at the head of `run_final_tests`
+   (`:636-660`) that keeps only the last `## Final Verification` section
+   (prefix-matching timestamped variants), guarded so a strip failure cannot
+   affect the state's exit code.
+
+New tests: `TestStripStaleFinalSections` (idempotence, timestamped-header
+handling, no-op cases) and additions to `TestCountFinalShellScript` /
+`TestCountDoneShellScript` / `TestChange8FinalVerifyGate` in
+`scripts/tests/test_general_task_loop.py`, using the discriminating
+2-section-plus-foreign-heading fixture from the issue.
+
+`ll-loop validate general-task` clean; `python -m pytest scripts/tests/`
+exits with only one pre-existing, unrelated failure
+(`test_prose_dep_sweep_gate.py::test_no_prose_dependency_drift_in_repo`,
+confirmed present on `main` before this change via `git stash`).
+
 ## Status
 
-**Open** | Created: 2026-08-20 | Priority: P1
+**Done** | Created: 2026-08-20 | Priority: P1
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-21T04:07:14 - `d0214377-90ea-4261-b458-0b3aa6f7a0bc.jsonl`
+- `/ll:ready-issue` - 2026-08-21T03:50:53 - `3613fd7d-b24b-4ec3-811c-a882f801a706.jsonl`
 - `/ll:confidence-check` - 2026-08-21T03:39:27 - `e2bbe140-81de-4ea2-9df1-3998acd52ab8.jsonl`
 - `/ll:refine-issue` - 2026-08-21T02:42:50 - `9531ff26-6896-4f25-b550-1bb125e45484.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-21T02:37:32 - `c4d0cb49-2d47-43ee-bd0a-5286b5885739.jsonl`

@@ -544,6 +544,7 @@ states:
       UNCHECKED_PLAN=$(grep -c '^[[:space:]]*-[[:space:]]*\[[[:space:]]\]' "$PLAN" || true)
       FAILED_SAMPLES=$(awk '
         /^## Sample Verification/ { in_section=1; next }
+        /^## / { in_section=0 }
         in_section && /FAILED/ { count++ }
         END { print count+0 }
       ' "$DOD")
@@ -592,7 +593,12 @@ states:
       re-verify it now by reading files / running commands / checking filesystem
       state. Do NOT trust the existing [x] mark — verify from evidence.
 
-      Append a new section to the DoD file in this exact format:
+      Replace the `## Final Verification` section in the DoD file: if one already
+      exists (with or without a trailing timestamp or run label), remove it entirely
+      before writing the new one; if none exists, create it. Write exactly one
+      section in this exact format, using the bare header with NO timestamp, date,
+      or run identifier — there is never a prior section to disambiguate, since you
+      just removed it:
       ```
       ## Final Verification
       - [x] <criterion>: <evidence>
@@ -611,8 +617,10 @@ states:
       - For any module written before its corresponding verification doc landed, diff
         the code against that doc now and reconcile any mismatch (knowledge
         back-propagation — the stale-doc-vs-later-verified-facts class).
-      Append any failure found by this sweep to the `## Final Verification` section
-      above in the same `FAILED — <reason>` format.
+      Any failure found by this sweep MUST be added as a line INSIDE the
+      `## Final Verification` section above, in the same `FAILED — <reason>` format —
+      do not write it under a separate heading. A failure filed outside the
+      `## Final Verification` section will not be counted.
 
       Print the full DoD file to stdout.
     action_type: prompt
@@ -636,6 +644,36 @@ states:
     fragment: shell_exit
     timeout: 1800
     action: |
+      # BUG-3271: strip_stale_final_sections — final_verify (a prompt state) is
+      # instructed to REPLACE the `## Final Verification` section, but that
+      # instruction is advisory only. This deterministic backstop keeps at most
+      # one `## Final Verification` section (prefix match, so it also strips
+      # timestamped/labeled variants the model may invent), so re-entering
+      # final_verify N times converges on the same dod.md as entering it once.
+      # Placed here (not in count_final) because run_final_tests is
+      # final_verify's unconditional `next:` — it runs on every entry, on both
+      # of run_final_tests' own outcome branches, unlike count_final which is
+      # only reached via the on_yes branch and is skipped entirely on the spin
+      # cycle (final_verify -> run_final_tests -> on_no -> continue_work ->
+      # on_yes -> final_verify) that motivated this fix. No `set -e` is in
+      # effect for shell actions, and this step is guarded so a strip failure
+      # can never affect this state's exit code (the gate below is unaffected).
+      STRIP_DOD="${context.run_dir}/dod.md"
+      if [ -f "$STRIP_DOD" ]; then
+        LAST_START=$(awk '/^## Final Verification/ { line=NR } END { print line+0 }' "$STRIP_DOD" 2>/dev/null || echo 0)
+        if [ "$LAST_START" -gt 0 ] 2>/dev/null; then
+          awk -v last="$LAST_START" '
+            BEGIN { keep=1 }
+            /^## Final Verification/ {
+              if (NR == last) { keep=1; print }
+              else { keep=0 }
+              next
+            }
+            /^## / { keep=1 }
+            keep { print }
+          ' "$STRIP_DOD" > "$STRIP_DOD.tmp" 2>/dev/null && mv "$STRIP_DOD.tmp" "$STRIP_DOD" || rm -f "$STRIP_DOD.tmp"
+        fi
+      fi
       # BUG-3269 §3c: the command was already resolved once, in
       # check_baseline_tests — read it rather than re-resolving, so the
       # baseline and final gate can never disagree. Empty (or a state reached
@@ -675,6 +713,7 @@ states:
       fi
       FAILED=$(awk '
         /^## Final Verification/ { in_section=1; count=0; next }
+        /^## / { in_section=0 }
         in_section && /FAILED/ { count++ }
         END { print count+0 }
       ' "$DOD")
