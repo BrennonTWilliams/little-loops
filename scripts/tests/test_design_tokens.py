@@ -291,10 +291,71 @@ class TestRenderAsPromptContext:
         config = _make_config(tmp_path)
         tokens = load_design_tokens(config)
         assert tokens is not None
-        lines = render_as_prompt_context(tokens).splitlines()
+        output = render_as_prompt_context(tokens)
+        lines = output.splitlines()
         assert lines[0].startswith("**Design tokens**")
-        assert lines[1] == "```"
         assert lines[-1] == "```"
+        assert "```" in lines
+
+    def test_flat_fallback_includes_contrast_guardrail(self, tmp_path: Path) -> None:
+        """AC 7e-adjacent: flat-fallback output still carries the guardrail (Step 6(iv))."""
+        _write_tokens(tmp_path, primitives={"size": {"sm": "4px"}})
+        config = _make_config(tmp_path)
+        tokens = load_design_tokens(config)
+        assert tokens is not None
+        output = render_as_prompt_context(tokens)
+        assert "Contrast guardrail" in output
+
+    def test_residual_bucket_catches_unmapped_keys(self, tmp_path: Path) -> None:
+        """AC 7b: a token in no known namespace lands in the new 'Other' group, not dropped."""
+        _write_tokens(
+            tmp_path,
+            primitives={"color": {"brand": {"500": "#4F46E5"}}},
+            semantic={
+                "color": {"surface": {"bg": "#fff"}},
+                "custom": {"thing": "unmapped-value"},
+            },
+        )
+        config = _make_config(tmp_path)
+        tokens = load_design_tokens(config)
+        assert tokens is not None
+        output = render_as_prompt_context(tokens)
+        assert "custom.thing" in output
+        assert "unmapped-value" in output
+        assert "**Other**" in output
+
+    def test_primitive_suppression_gated_on_nonempty_primitives(self, tmp_path: Path) -> None:
+        """AC 7d: with empty primitives, a color.success.* group is NOT suppressed."""
+        _write_tokens(
+            tmp_path,
+            primitives={},
+            semantic={
+                "color": {
+                    "surface": {"bg": "#fff"},
+                    "success": {"100": "#0f0"},
+                }
+            },
+        )
+        config = _make_config(tmp_path)
+        tokens = load_design_tokens(config)
+        assert tokens is not None
+        output = render_as_prompt_context(tokens)
+        assert "color.success.100" in output
+
+    def test_primitive_suppression_still_applies_when_primitives_nonempty(
+        self, tmp_path: Path
+    ) -> None:
+        """Existing profile behavior unchanged: populated primitives still suppress raw groups."""
+        _write_tokens(
+            tmp_path,
+            primitives={"color": {"success": {"100": "#0f0"}}},
+            semantic={"color": {"surface": {"bg": "#fff"}}},
+        )
+        config = _make_config(tmp_path)
+        tokens = load_design_tokens(config)
+        assert tokens is not None
+        output = render_as_prompt_context(tokens)
+        assert "color.success.100" not in output
 
 
 # ---------------------------------------------------------------------------

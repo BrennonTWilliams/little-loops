@@ -239,7 +239,14 @@ def render_as_prompt_context(tokens: DesignTokens) -> str:
     )
 
     if not has_semantic_colors:
-        lines: list[str] = ["**Design tokens** (resolved values):", "```"]
+        lines: list[str] = [
+            "**Design tokens** (resolved values):",
+            "",
+            "Contrast guardrail: pair color.text.* tokens ON color.surface.* tokens. "
+            "Never use a surface color for text, or a text color for backgrounds.",
+            "",
+            "```",
+        ]
         for name, value in sorted(tokens.resolved.items()):
             if name.startswith("_"):
                 continue
@@ -253,6 +260,7 @@ def render_as_prompt_context(tokens: DesignTokens) -> str:
     actions: dict[str, str] = {}
     typography: dict[str, str] = {}
     layout: dict[str, str] = {}
+    residual: dict[str, str] = {}
 
     # Semantic color tokens are flattened as color.<role>.<name>.
     _SEMANTIC_ROLE_PREFIXES = {
@@ -286,8 +294,10 @@ def render_as_prompt_context(tokens: DesignTokens) -> str:
             typography[name] = value
         elif any(name.startswith(p) for p in ("space.", "radius.", "shadow.", "border.width.")):
             layout[name] = value
-        elif name.startswith(_PRIMITIVE_COLOR_PREFIXES):
+        elif tokens.primitives and name.startswith(_PRIMITIVE_COLOR_PREFIXES):
             continue  # raw primitive — covered by semantic tokens above
+        else:
+            residual[name] = value
 
     lines = [
         "**Design tokens** (semantic — each token's role is noted; use the token name, not a raw hex value)",
@@ -313,6 +323,7 @@ def render_as_prompt_context(tokens: DesignTokens) -> str:
     _emit_group("Actions (buttons, links, interactive)", actions)
     _emit_group("Typography", typography)
     _emit_group("Layout (spacing, radii, shadows)", layout)
+    _emit_group("Other", residual)
 
     return "\n".join(lines)
 
