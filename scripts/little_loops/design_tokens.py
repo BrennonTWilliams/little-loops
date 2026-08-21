@@ -31,7 +31,46 @@ class DesignTokens:
     semantic: dict[str, Any]
     theme: dict[str, Any]
     resolved: dict[str, str]  # flat dotted-name -> concrete value, post reference-resolution
+    # Token root directory for a profile source, or the DESIGN.md file itself
+    # when source == "design_md".
     source_path: Path
+    # Prose body (frontmatter stripped) for a design_md source; "" otherwise.
+    # Populated even on degraded design_md paths (ENH-3264/ENH-3267).
+    guidance: str = ""
+    # "profile" | "design_md" — public, not informational: cli/artifact.py's
+    # _themed_css_vars() branches on it to decide whether a second themed
+    # load is needed (DESIGN.md has no theme mechanism).
+    source: str = "profile"
+
+
+# DESIGN.md (https://github.com/google-labs-code/design.md, Apache-2.0) discovery
+# constant. Case-exact, project-root only — not configurable (ENH-3264).
+DESIGN_MD_FILENAME = "DESIGN.md"
+
+# One namespace-mapping table drives every DESIGN.md -> profile-namespace rename.
+_DESIGN_MD_NAMESPACE_MAP = {
+    "colors": "color",
+    "typography": "font",
+    "spacing": "space",
+    "rounded": "radius",
+}
+
+# Well-known DESIGN.md color names mapped onto the four semantic roles
+# render_as_prompt_context() groups by. Matches the naming conventions used
+# by the vendored spec example (Material-Design-style: on-*, surface*,
+# outline*, primary/secondary/tertiary/error). Names that don't match any
+# rule keep a plain color.<name> key (Resolved via the residual bucket).
+def _classify_design_md_color_role(name: str) -> str | None:
+    parts = name.split("-")
+    if "on" in parts or name in ("text", "foreground"):
+        return "text"
+    if name.startswith(("surface", "background", "inverse-surface")):
+        return "surface"
+    if name.startswith("outline") or name == "border":
+        return "border"
+    if name.startswith(("primary", "secondary", "tertiary", "accent", "error")):
+        return "action"
+    return None
 
 
 def _load_json(path: Path) -> dict[str, Any]:
@@ -126,7 +165,7 @@ def _resolve_value(
     raise ValueError(f"Unknown token reference '{ref_name}' in '{key}'")
 
 
-def _resolve_token_root(dt_cfg: Any, base_path: Path) -> Path | None:
+def _resolve_token_root(dt_cfg: Any, base_path: Path, *, quiet: bool = False) -> Path | None:
     """Resolve the directory that holds this project's active token files.
 
     Resolution order (ENH-1768):
@@ -135,7 +174,10 @@ def _resolve_token_root(dt_cfg: Any, base_path: Path) -> Path | None:
 
     Returns None when neither layout is materialized. When a profiles dir
     exists but the requested `active` profile is missing, emits a warning
-    to stderr and returns None (degrades cleanly, no crash).
+    to stderr (unless `quiet=True`) and returns None (degrades cleanly, no
+    crash). `quiet=True` is used by the `design_tokens.source: auto`
+    materialization probe (ENH-3264), which must not print "degrading to
+    no tokens" before it has even checked whether DESIGN.md can succeed.
     """
     profiles_subdir = dt_cfg.profiles_dir or "profiles"
     profiles_root = base_path / profiles_subdir
@@ -146,15 +188,167 @@ def _resolve_token_root(dt_cfg: Any, base_path: Path) -> Path | None:
 
     if profiles_root.is_dir():
         # Multi-profile layout installed but the requested profile is missing.
-        sys.stderr.write(
-            f"[little-loops] Warning: design_tokens.active='{dt_cfg.active}' "
-            f"but '{active_root}' does not exist; degrading to no tokens.\n"
-        )
+        if not quiet:
+            sys.stderr.write(
+                f"[little-loops] Warning: design_tokens.active='{dt_cfg.active}' "
+                f"but '{active_root}' does not exist; degrading to no tokens.\n"
+            )
         return None
 
     # Legacy flat layout (pre-ENH-1768): treat <base_path> itself as the
     # token root. Missing files are loaded as empty dicts by _load_json.
     return base_path
+
+
+def _find_design_md(project_root: Path) -> Path | None:
+    """Case-exact lookup for a root DESIGN.md.
+
+    Path.exists() is case-insensitive on APFS (macOS) and NTFS, so
+    `(project_root / "DESIGN.md").exists()` would incorrectly match a file
+    actually named `design.md`. Compare directory-listed names instead.
+    """
+    try:
+        names = {p.name for p in project_root.iterdir() if p.is_file()}
+    except OSError:
+        return None
+    if DESIGN_MD_FILENAME not in names:
+        return None
+    return project_root / DESIGN_MD_FILENAME
+
+
+def _normalize_design_md_leaf(value: Any, *, list_mode: str) -> Any:
+    """Normalize a DESIGN.md frontmatter leaf value before it reaches _flatten().
+
+    A raw list is not a valid _flatten() leaf: it would be stored verbatim
+    and str()'d into a Python repr downstream (`['Inter', 'sans-serif']`).
+    `list_mode="join"` collapses a font-stack-style list into a single
+    comma-separated string; `list_mode="index"` is handled by the caller
+    (it expands into multiple <key>.0, <key>.1, ... entries instead).
+    """
+    if isinstance(value, list) and list_mode == "join":
+        return ", ".join(str(v) for v in value)
+    return value
+
+
+def _rename_design_md_leaves(
+    obj: Any, old_prefix: str, new_prefix: str, *, list_mode: str
+) -> tuple[Any, dict[str, str]]:
+    """Recursively rename a nested DESIGN.md block onto its new namespace.
+
+    Returns the renamed structure plus a full old-dotted-key -> new-dotted-key
+    map for every leaf, which drives the `{ref}` alias rewrite (a
+    namespace-prefix-only rewrite is not sufficient once colors have been
+    role-mapped two levels deeper).
+    """
+    key_map: dict[str, str] = {}
+    if isinstance(obj, dict):
+        result: dict[str, Any] = {}
+        for key, value in obj.items():
+            old_key = f"{old_prefix}.{key}"
+            new_key = f"{new_prefix}.{key}"
+            sub_result, sub_map = _rename_design_md_leaves(
+                value, old_key, new_key, list_mode=list_mode
+            )
+            result[key] = sub_result
+            key_map.update(sub_map)
+        return result, key_map
+    if isinstance(obj, list) and list_mode == "index":
+        indexed: dict[str, Any] = {}
+        for i, item in enumerate(obj):
+            indexed[str(i)] = item
+            key_map[f"{old_prefix}.{i}"] = f"{new_prefix}.{i}"
+        return indexed, key_map
+    key_map[old_prefix] = new_prefix
+    return _normalize_design_md_leaf(obj, list_mode=list_mode), key_map
+
+
+def _map_design_md_namespaces(data: dict[str, Any]) -> tuple[dict[str, Any], dict[str, str]]:
+    """Rename DESIGN.md frontmatter namespaces onto profile namespaces.
+
+    Drops `components` (structural guidance, not tokens — reaches the model
+    via ENH-3267's prose channel instead). Applies the semantic-role mapping
+    to well-known color names so render_as_prompt_context()'s role-grouping
+    gate can fire for a DESIGN.md source. Returns the nested mapped dict —
+    the caller both `_flatten()`s it for `resolved` and hands it to
+    `DesignTokens.semantic` directly — plus the full old-key -> new-key map
+    used to rewrite `{ref}` alias strings in the same step.
+    """
+    mapped: dict[str, Any] = {}
+    key_map: dict[str, str] = {}
+
+    for namespace, block in data.items():
+        if namespace == "components":
+            continue
+        new_namespace = _DESIGN_MD_NAMESPACE_MAP.get(namespace, namespace)
+
+        if namespace == "colors" and isinstance(block, dict):
+            color_bucket: dict[str, Any] = {}
+            for name, value in block.items():
+                role = _classify_design_md_color_role(name)
+                normalized = _normalize_design_md_leaf(value, list_mode="join")
+                if role:
+                    color_bucket.setdefault(role, {})[name] = normalized
+                    key_map[f"{namespace}.{name}"] = f"{new_namespace}.{role}.{name}"
+                else:
+                    color_bucket[name] = normalized
+                    key_map[f"{namespace}.{name}"] = f"{new_namespace}.{name}"
+            mapped[new_namespace] = color_bucket
+            continue
+
+        list_mode = "join" if namespace == "typography" else "index"
+        if isinstance(block, dict):
+            renamed, sub_key_map = _rename_design_md_leaves(
+                block, namespace, new_namespace, list_mode=list_mode
+            )
+            mapped[new_namespace] = renamed
+            key_map.update(sub_key_map)
+        else:
+            mapped[new_namespace] = _normalize_design_md_leaf(block, list_mode="join")
+            key_map[namespace] = new_namespace
+
+    return mapped, key_map
+
+
+def _rewrite_design_md_aliases(obj: Any, key_map: dict[str, str]) -> Any:
+    """Rewrite `{ref}` alias strings using the post-mapping key map first,
+    falling back to a namespace-prefix rename for a reference naming
+    something that was never an individual leaf key. A prefix-only rewrite
+    is not sufficient on its own: role mapping relocates e.g.
+    `colors.primary` to `color.action.primary`, so `{colors.primary}` must
+    resolve via the key map, not a `{colors.X}` -> `{color.X}` swap.
+    """
+    if isinstance(obj, dict):
+        return {k: _rewrite_design_md_aliases(v, key_map) for k, v in obj.items()}
+    if isinstance(obj, str) and obj.startswith("{") and obj.endswith("}"):
+        ref = obj[1:-1]
+        if ref in key_map:
+            return "{" + key_map[ref] + "}"
+        for old_ns, new_ns in _DESIGN_MD_NAMESPACE_MAP.items():
+            if ref == old_ns or ref.startswith(old_ns + "."):
+                return "{" + new_ns + ref[len(old_ns) :] + "}"
+        return obj
+    return obj
+
+
+def _load_design_md(path: Path) -> tuple[dict[str, Any], str]:
+    """Parse a DESIGN.md file into (nested_mapped_tokens, prose_body).
+
+    Built on the house frontmatter helpers (`little_loops.frontmatter`) —
+    no new YAML dependency, no bespoke parser. `nested_mapped_tokens` may
+    legitimately be `{}` for a prose-only document (no frontmatter, or a
+    frontmatter block containing only `components:`); that is a supported
+    result, not an error — the caller constructs a token-empty
+    `DesignTokens` that still carries `guidance`, not `None`.
+    """
+    from little_loops.frontmatter import parse_frontmatter, strip_frontmatter
+
+    content = path.read_text()
+    raw = parse_frontmatter(content)
+    prose = strip_frontmatter(content)
+
+    mapped, key_map = _map_design_md_namespaces(raw)
+    mapped = _rewrite_design_md_aliases(mapped, key_map)
+    return mapped, prose
 
 
 def load_design_tokens(
@@ -177,49 +371,175 @@ def load_design_tokens(
     if not dt_cfg.enabled:
         return None
 
+    source = getattr(dt_cfg, "source", "auto")
     base_path = config.project_root / dt_cfg.path
-    if not base_path.exists():
+
+    def _load_profile(token_root: Path) -> DesignTokens:
+        primitives = _load_json(token_root / dt_cfg.primitives_file)
+        semantic = _load_json(token_root / dt_cfg.semantic_file)
+        typography = _load_json(token_root / "typography.json")
+        spacing = _load_json(token_root / "spacing.json")
+
+        active_theme = theme or dt_cfg.active_theme
+        theme_file = token_root / dt_cfg.themes_dir / f"{active_theme}.json"
+        theme_data = _load_json(theme_file)
+
+        primitives_flat = _flatten(primitives)
+        # Layer order: semantic → typography → spacing → theme override.
+        merged_flat: dict[str, Any] = {
+            **_flatten(semantic),
+            **_flatten(typography),
+            **_flatten(spacing),
+            **_flatten(theme_data),
+        }
+        resolved = _resolve_references(merged_flat, primitives_flat)
+        # Also include primitive leaf values in resolved
+        for k, v in primitives_flat.items():
+            if k not in resolved:
+                resolved[k] = str(v)
+
+        return DesignTokens(
+            primitives=primitives,
+            semantic=semantic,
+            theme=theme_data,
+            resolved=resolved,
+            source_path=token_root,
+            guidance="",
+            source="profile",
+        )
+
+    def _materialized_token_root() -> Path | None:
+        """Silent `auto` probe: the token root, if it would yield >=1 token file.
+
+        Deliberately stronger than "_resolve_token_root() is not None": an
+        empty or leftover `.ll/design-tokens/` directory resolves to a real
+        path (the legacy-flat fallback) but has no token files in it, and
+        must not win over a root DESIGN.md (ENH-3264 AC 2b).
+        """
+        if not base_path.exists():
+            return None
+        token_root = _resolve_token_root(dt_cfg, base_path, quiet=True)
+        if token_root is None:
+            return None
+        candidates = (
+            dt_cfg.primitives_file,
+            dt_cfg.semantic_file,
+            "typography.json",
+            "spacing.json",
+        )
+        if any((token_root / c).exists() for c in candidates):
+            return token_root
         return None
 
-    token_path = _resolve_token_root(dt_cfg, base_path)
-    if token_path is None:
+    def _load_from_design_md(design_md_path: Path) -> DesignTokens:
+        nested, prose = _load_design_md(design_md_path)
+        flat = _flatten(nested)
+
+        if theme is not None:
+            sys.stderr.write(
+                "[little-loops] Warning: design_tokens source is DESIGN.md, which "
+                "has no theme mechanism; active_theme is ignored.\n"
+            )
+
+        if not flat:
+            sys.stderr.write(
+                f"[little-loops] Warning: '{design_md_path}' yielded no usable "
+                "design tokens (empty/absent frontmatter, or only `components:`); "
+                "using its prose guidance only.\n"
+            )
+            return DesignTokens(
+                primitives={},
+                semantic={},
+                theme={},
+                resolved={},
+                source_path=design_md_path,
+                guidance=prose,
+                source="design_md",
+            )
+
+        try:
+            resolved = _resolve_references(flat, {})
+        except ValueError as exc:
+            sys.stderr.write(
+                f"[little-loops] Warning: {exc}; degrading '{design_md_path}' to "
+                "no tokens (prose guidance is preserved).\n"
+            )
+            return DesignTokens(
+                primitives={},
+                semantic={},
+                theme={},
+                resolved={},
+                source_path=design_md_path,
+                guidance=prose,
+                source="design_md",
+            )
+
+        return DesignTokens(
+            primitives={},
+            semantic=nested,
+            theme={},
+            resolved=resolved,
+            source_path=design_md_path,
+            guidance=prose,
+            source="design_md",
+        )
+
+    if source == "profile":
+        if not base_path.exists():
+            return None
+        token_root = _resolve_token_root(dt_cfg, base_path)
+        if token_root is None:
+            return None
+        return _load_profile(token_root)
+
+    if source == "design_md":
+        design_md_path = _find_design_md(config.project_root)
+        if design_md_path is None:
+            sys.stderr.write(
+                "[little-loops] Warning: design_tokens.source='design_md' but no "
+                f"root {DESIGN_MD_FILENAME} was found; degrading to no tokens.\n"
+            )
+            return None
+        return _load_from_design_md(design_md_path)
+
+    # source == "auto": prefer a materialized profile; fall back to a root
+    # DESIGN.md keyed on what's on disk, not on whether `active` is "set"
+    # (it defaults to "default" in both the dataclass and from_dict, so
+    # "unset" is not observable).
+    token_root = _materialized_token_root()
+    if token_root is not None:
+        return _load_profile(token_root)
+
+    # No materialized profile. Determine whether an explicit profile was
+    # requested and is missing (warn accurately on fall-through) or nothing
+    # was misconfigured (stay silent) — AC 2c.
+    active_missing_warning: str | None = None
+    active_root: Path | None = None
+    if base_path.exists():
+        profiles_subdir = dt_cfg.profiles_dir or "profiles"
+        profiles_root = base_path / profiles_subdir
+        active_root = profiles_root / dt_cfg.active
+        if profiles_root.is_dir() and not active_root.is_dir():
+            active_missing_warning = (
+                f"[little-loops] Warning: design_tokens.active='{dt_cfg.active}' "
+                f"not found; using root {DESIGN_MD_FILENAME} instead.\n"
+            )
+
+    design_md_path = _find_design_md(config.project_root)
+    if design_md_path is None:
+        if active_missing_warning is not None and active_root is not None:
+            # Explicit profile requested and missing, and no DESIGN.md to
+            # fall back to either: preserve today's exact degrade-to-None
+            # warning (unchanged behavior for this sub-case).
+            sys.stderr.write(
+                f"[little-loops] Warning: design_tokens.active='{dt_cfg.active}' "
+                f"but '{active_root}' does not exist; degrading to no tokens.\n"
+            )
         return None
 
-    primitives = _load_json(token_path / dt_cfg.primitives_file)
-    semantic = _load_json(token_path / dt_cfg.semantic_file)
-    typography = _load_json(token_path / "typography.json")
-    spacing = _load_json(token_path / "spacing.json")
-
-    active_theme = theme or dt_cfg.active_theme
-    theme_file = token_path / dt_cfg.themes_dir / f"{active_theme}.json"
-    theme_data = _load_json(theme_file)
-
-    primitives_flat = _flatten(primitives)
-    semantic_flat = _flatten(semantic)
-    typography_flat = _flatten(typography)
-    spacing_flat = _flatten(spacing)
-    theme_flat = _flatten(theme_data)
-
-    # Layer order: semantic → typography → spacing → theme override.
-    merged_flat: dict[str, Any] = {
-        **semantic_flat,
-        **typography_flat,
-        **spacing_flat,
-        **theme_flat,
-    }
-    resolved = _resolve_references(merged_flat, primitives_flat)
-    # Also include primitive leaf values in resolved
-    for k, v in primitives_flat.items():
-        if k not in resolved:
-            resolved[k] = str(v)
-
-    return DesignTokens(
-        primitives=primitives,
-        semantic=semantic,
-        theme=theme_data,
-        resolved=resolved,
-        source_path=token_path,
-    )
+    if active_missing_warning is not None:
+        sys.stderr.write(active_missing_warning)
+    return _load_from_design_md(design_md_path)
 
 
 def render_as_prompt_context(tokens: DesignTokens) -> str:

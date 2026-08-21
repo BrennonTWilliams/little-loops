@@ -48,7 +48,26 @@ def _make_config(project_root: Path, extra: dict | None = None):
     if extra:
         cfg["design_tokens"].update(extra)
     (config_dir / "ll-config.json").write_text(json.dumps(cfg))
-    return BRConfig(project_root)
+    config = BRConfig(project_root)
+    # `source` (ENH-3264) is set directly on the dataclass instance rather
+    # than relying on DesignTokensConfig.from_dict(): DesignTokensConfig is a
+    # plain (non-slotted) dataclass, so this works whether or not the formal
+    # `source` field has landed yet, and continues to work once it has.
+    if extra and "source" in extra:
+        config.design_tokens.source = extra["source"]
+    return config
+
+
+def _write_design_md(project_root: Path, content: str) -> Path:
+    """Write a root DESIGN.md and return its path (ENH-3264)."""
+    path = project_root / "DESIGN.md"
+    path.write_text(content)
+    return path
+
+
+_DESIGN_MD_FIXTURE = (
+    Path(__file__).parent / "fixtures" / "design_md" / "paws_and_paths_DESIGN.md"
+).read_text()
 
 
 # ---------------------------------------------------------------------------
@@ -264,6 +283,201 @@ class TestLoadDesignTokensErrors:
         config = _make_config(tmp_path)
         with pytest.raises(ValueError, match="Circular token reference"):
             load_design_tokens(config)
+
+
+class TestLoadDesignTokensDesignMdFormat:
+    """DESIGN.md import support (ENH-3264)."""
+
+    def test_no_materialized_profile_still_resolves_tokens(self, tmp_path: Path) -> None:
+        """AC 1: guards the base_path.exists() short-circuit."""
+        _write_design_md(tmp_path, _DESIGN_MD_FIXTURE)
+        config = _make_config(tmp_path)
+        result = load_design_tokens(config)
+        assert result is not None
+        assert result.source == "design_md"
+        assert result.resolved
+
+    def test_vendored_spec_fixture_parses_and_resolves_aliases(self, tmp_path: Path) -> None:
+        """AC 4/4b: the spec's own {colors.X} aliases resolve to concrete values,
+        including role-mapped names moved two levels (colors.primary -> color.action.primary)."""
+        _write_design_md(tmp_path, _DESIGN_MD_FIXTURE)
+        config = _make_config(tmp_path)
+        result = load_design_tokens(config)
+        assert result is not None
+        assert result.resolved["color.action.primary"] == "#855300"
+        assert result.resolved["color.text.on-primary"] == "#ffffff"
+        assert result.resolved["font.display.fontFamily"] == "Plus Jakarta Sans"
+        assert result.resolved["radius.lg"] == "1rem"
+        assert result.resolved["space.md"] == "24px"
+
+    def test_components_dropped_from_resolved(self, tmp_path: Path) -> None:
+        """AC 7b: `components:` contributes nothing to resolved."""
+        _write_design_md(tmp_path, _DESIGN_MD_FIXTURE)
+        config = _make_config(tmp_path)
+        result = load_design_tokens(config)
+        assert result is not None
+        assert not any(k.startswith("components") for k in result.resolved)
+
+    def test_guidance_populated_from_prose(self, tmp_path: Path) -> None:
+        """AC 8: guidance holds the frontmatter-stripped prose body."""
+        _write_design_md(tmp_path, _DESIGN_MD_FIXTURE)
+        config = _make_config(tmp_path)
+        result = load_design_tokens(config)
+        assert result is not None
+        assert "Brand & Style" in result.guidance
+        assert "colors:" not in result.guidance
+
+    def test_profile_source_guidance_empty(self, tmp_path: Path) -> None:
+        _write_tokens(tmp_path, primitives={"color": {"brand": {"500": "#4F46E5"}}})
+        config = _make_config(tmp_path)
+        result = load_design_tokens(config)
+        assert result is not None
+        assert result.guidance == ""
+        assert result.source == "profile"
+
+    def test_auto_prefers_materialized_profile_at_default_active(self, tmp_path: Path) -> None:
+        """AC 2: both present, `active` at its "default" value -> profile wins."""
+        _write_tokens(tmp_path, primitives={"color": {"brand": {"500": "#4F46E5"}}})
+        _write_design_md(tmp_path, _DESIGN_MD_FIXTURE)
+        config = _make_config(tmp_path, {"source": "auto"})
+        result = load_design_tokens(config)
+        assert result is not None
+        assert result.source == "profile"
+
+    def test_auto_falls_through_when_profile_dir_empty(self, tmp_path: Path) -> None:
+        """AC 2b: an empty/token-file-less directory does not win over DESIGN.md."""
+        (tmp_path / ".ll" / "design-tokens").mkdir(parents=True)
+        _write_design_md(tmp_path, _DESIGN_MD_FIXTURE)
+        config = _make_config(tmp_path, {"source": "auto"})
+        result = load_design_tokens(config)
+        assert result is not None
+        assert result.source == "design_md"
+
+    def test_profile_source_keeps_empty_dir_behavior(self, tmp_path: Path) -> None:
+        """Same empty-dir project under source: profile is unaffected."""
+        (tmp_path / ".ll" / "design-tokens").mkdir(parents=True)
+        _write_design_md(tmp_path, _DESIGN_MD_FIXTURE)
+        config = _make_config(tmp_path, {"source": "profile"})
+        result = load_design_tokens(config)
+        assert result is not None
+        assert result.source == "profile"
+        assert result.resolved == {}
+
+    def test_auto_neither_present_returns_none(self, tmp_path: Path) -> None:
+        """AC 2d: no fallback to a token-empty DesignTokens when nothing exists."""
+        config = _make_config(tmp_path, {"source": "auto"})
+        assert load_design_tokens(config) is None
+
+    def test_source_profile_ignores_root_design_md(self, tmp_path: Path) -> None:
+        """AC 3."""
+        _write_design_md(tmp_path, _DESIGN_MD_FIXTURE)
+        config = _make_config(tmp_path, {"source": "profile"})
+        assert load_design_tokens(config) is None
+
+    def test_source_design_md_with_no_file_returns_none(self, tmp_path: Path, capsys) -> None:
+        """AC 3."""
+        config = _make_config(tmp_path, {"source": "design_md"})
+        assert load_design_tokens(config) is None
+        assert "Warning" in capsys.readouterr().err
+
+    def test_lowercase_design_md_not_discovered(self, tmp_path: Path) -> None:
+        """AC 3: case-exact discovery — must hold on case-insensitive filesystems
+        (APFS/NTFS) where Path.exists() would incorrectly match design.md."""
+        (tmp_path / "design.md").write_text(_DESIGN_MD_FIXTURE)
+        config = _make_config(tmp_path, {"source": "design_md"})
+        assert load_design_tokens(config) is None
+
+    def test_no_frontmatter_returns_prose_not_none(self, tmp_path: Path, capsys) -> None:
+        """AC 5: a tokenless DESIGN.md still yields its prose, not None."""
+        _write_design_md(tmp_path, "# Just prose\n\nNo frontmatter here at all.\n")
+        config = _make_config(tmp_path, {"source": "design_md"})
+        result = load_design_tokens(config)
+        assert result is not None
+        assert result.resolved == {}
+        assert "Just prose" in result.guidance
+        assert "Warning" in capsys.readouterr().err
+
+    def test_components_only_frontmatter_yields_no_tokens_but_keeps_guidance(
+        self, tmp_path: Path
+    ) -> None:
+        """AC 5."""
+        content = (
+            "---\ncomponents:\n  button:\n    radius: '{rounded.lg}'\n---\n\nSome prose.\n"
+        )
+        _write_design_md(tmp_path, content)
+        config = _make_config(tmp_path, {"source": "design_md"})
+        result = load_design_tokens(config)
+        assert result is not None
+        assert result.resolved == {}
+        assert "Some prose" in result.guidance
+
+    def test_unresolvable_reference_degrades_not_raises(self, tmp_path: Path, capsys) -> None:
+        """AC 5b: DESIGN.md source degrades on ValueError instead of raising."""
+        content = '---\ncolors:\n  primary: "{colors.nonexistent}"\n---\n\nSome prose.\n'
+        _write_design_md(tmp_path, content)
+        config = _make_config(tmp_path, {"source": "design_md"})
+        result = load_design_tokens(config)
+        assert result is not None
+        assert result.resolved == {}
+        assert "Some prose" in result.guidance
+        assert "Warning" in capsys.readouterr().err
+
+    def test_profile_source_still_raises_on_unresolvable_reference(self, tmp_path: Path) -> None:
+        _write_tokens(
+            tmp_path,
+            primitives={},
+            semantic={"color": {"primary": "{color.nonexistent}"}},
+        )
+        config = _make_config(tmp_path, {"source": "profile"})
+        with pytest.raises(ValueError, match="Unknown token reference"):
+            load_design_tokens(config)
+
+    def test_theme_none_caller_no_warning(self, tmp_path: Path, capsys) -> None:
+        """AC 6b: inject_design_context()-style calls (theme=None) stay silent."""
+        _write_design_md(tmp_path, _DESIGN_MD_FIXTURE)
+        config = _make_config(tmp_path, {"source": "design_md"})
+        load_design_tokens(config, theme=None)
+        assert capsys.readouterr().err == ""
+
+    def test_explicit_theme_warns(self, tmp_path: Path, capsys) -> None:
+        """AC 6/6b: an explicit theme= caller (e.g. _themed_css_vars) warns."""
+        _write_design_md(tmp_path, _DESIGN_MD_FIXTURE)
+        config = _make_config(tmp_path, {"source": "design_md"})
+        load_design_tokens(config, theme="dark")
+        assert "theme" in capsys.readouterr().err.lower()
+
+    def test_list_valued_typography_joins_not_repr(self, tmp_path: Path) -> None:
+        """AC 7c: a list-valued frontmatter entry renders as a joined string."""
+        content = (
+            "---\n"
+            "typography:\n"
+            "  body:\n"
+            "    fontFamily:\n"
+            "      - Inter\n"
+            "      - sans-serif\n"
+            "---\n\nProse.\n"
+        )
+        _write_design_md(tmp_path, content)
+        config = _make_config(tmp_path, {"source": "design_md"})
+        result = load_design_tokens(config)
+        assert result is not None
+        assert result.resolved["font.body.fontFamily"] == "Inter, sans-serif"
+        assert "[" not in result.resolved["font.body.fontFamily"]
+
+    def test_unrecognized_color_names_land_in_residual_with_guardrail(
+        self, tmp_path: Path
+    ) -> None:
+        """AC 7e: vocabulary-independent guardrail — ink/paper/rule map to no role."""
+        content = (
+            "---\ncolors:\n  ink: '#111111'\n  paper: '#fefefe'\n  rule: '#cccccc'\n---\n\nProse.\n"
+        )
+        _write_design_md(tmp_path, content)
+        config = _make_config(tmp_path, {"source": "design_md"})
+        result = load_design_tokens(config)
+        assert result is not None
+        output = render_as_prompt_context(result)
+        assert "color.ink" in output
+        assert "Contrast guardrail" in output
 
 
 # ---------------------------------------------------------------------------

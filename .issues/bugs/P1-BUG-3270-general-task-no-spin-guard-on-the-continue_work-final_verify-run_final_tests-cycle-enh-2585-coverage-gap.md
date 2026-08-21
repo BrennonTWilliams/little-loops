@@ -79,6 +79,12 @@ every lap:
 means the model agrees. The loop had both, 45 times, and had no edge that could act on
 them.
 
+**These are evidence of the spin, not usable gate inputs.** Both values were *identical on
+every lap* precisely because neither is re-captured anywhere on this cycle — `done_counts`
+comes from `count_done`, `continue_result` from `continue_work`'s entry evaluation. That
+constancy is what makes them a legible symptom here and a useless (indeed dangerous) signal
+for the guard itself; see Expected Behavior for why the fix does not read them.
+
 ## Steps to Reproduce
 
 The guard gap is reachable by any defect that makes `run_final_tests` permanently
@@ -111,20 +117,41 @@ mutations.
 
 A consecutive-no-progress counter on the edges that return to `continue_work` from the
 verification tail — `run_final_tests → continue_work` and `count_final → continue_work`.
-When N consecutive laps satisfy **all three** of:
-
-1. `done_counts.total == 0`, and
-2. `continue_result == WORK_COMPLETE`, and
-3. no file under the baseline diff has changed since the previous lap,
-
-route to `diagnose` or a `partial` terminal — never back to `continue_work`.
+When N consecutive laps leave the working tree **byte-identical** — no change to the
+tracked-file diff content and no change to the untracked-file set since the previous lap —
+route to a `partial` terminal, never back to `continue_work`.
 
 **Suggested N = 2.** There is no scenario where a third byte-identical lap produces a
 different answer.
 
-The counter must be reset only by genuine forward progress (a file mutation or a change in
-`done_counts`), on the same principle as the `select_step` reset at `:253` — but it must
-not share the `select_step` counter file, or the two guards will clobber each other.
+The counter must be reset only by genuine forward progress (a working-tree mutation), on the
+same principle as the `select_step` reset at `:253` — but it must not share the `select_step`
+counter file, or the two guards will clobber each other.
+
+### Why the working-tree fingerprint is the *only* condition
+
+An earlier draft of this issue proposed a three-condition conjunction, adding
+`done_counts.total == 0` and `continue_result == WORK_COMPLETE`. Both were dropped after
+verification against the loop graph; keeping them would have ranged from useless to
+actively defeating the guard.
+
+**`done_counts.total == 0` is a frozen value that can permanently disable the gate.**
+`done_counts` is captured *only* by `count_done` (`general-task.yaml:470-551`) and is never
+re-captured by any state on the `continue_work → final_verify → run_final_tests →
+count_final` cycle. Its value is therefore constant across every lap — zero per-lap
+information. Worse, as an AND-term it is a live failure mode: `final_verify` has two
+entries, `count_done.on_yes` (where `total == 0` holds) and `continue_work.on_yes`
+(`WORK_COMPLETE`). On the second path `done_counts` is stale from a `count_done` that may
+have had `total > 0`, making the condition **permanently false**. The counter would then
+never increment and the new gate would fail open forever — reproducing the exact defect it
+exists to fix.
+
+**`continue_result == WORK_COMPLETE` is a tautology on the guarded cycle.** The only edge
+from `continue_work` to `final_verify` is `on_yes`, whose evaluate is
+`output_contains: WORK_COMPLETE` (`:838-841`). Every lap arriving by that path satisfies it
+by construction. On the other entry — `count_done.on_yes → final_verify → run_final_tests`
+on a first pass that never entered `continue_work` — `continue_result` is unset entirely,
+which is a dominance problem rather than a signal (see State contract).
 
 ## Motivation
 
@@ -146,11 +173,30 @@ Add a `final_verify_spin_gate` state modeled on the existing `spin_gate`
 
 Redirect `run_final_tests.on_no` and `count_final.on_no` through it rather than straight to
 `continue_work`. The gate increments, compares against N, and either falls through to
-`continue_work` (under the cap) or diverts to `summarize_partial` / `diagnose` (at the cap).
+`continue_work` (under the cap) or diverts to `summarize_partial` (at the cap).
 
-Fingerprinting for condition 3 can reuse the `baseline-ref.txt` machinery that
-`check_provisional_markers` (`general-task.yaml:657`) already uses for its
-`git diff --name-only "$BASELINE_REF"` check.
+**Fingerprinting must hash diff *content*, not file names.** The obvious move —
+reusing the `git diff --name-only "$BASELINE_REF"` machinery from
+`check_provisional_markers` (`general-task.yaml:653-676`) — is wrong twice over:
+
+1. `baseline-ref.txt` is written **once**, at run start, by `check_baseline_tests`. It is a
+   fixed run-start ref, not a per-lap one, so diffing against it says nothing about what
+   *this* lap did.
+2. Even compared per-lap, `--name-only` is the wrong fingerprint: a lap that re-edits a
+   file already present in the changed-name set produces an **identical name list**, which
+   the gate would read as "no progress" and count toward the cap.
+
+Use content instead, stored per-lap in its own file (e.g.
+`${context.run_dir}/final-verify-fingerprint.txt`) and compared against the previous lap's
+value:
+
+```sh
+FP=$( { git diff "$BASELINE_REF" -- . ; git ls-files -o --exclude-standard ; } \
+      | git hash-object --stdin )
+```
+
+The untracked-file listing matters: newly created files are the common shape of forward
+progress in this loop and never appear in a tracked-file diff.
 
 ### Explicitly out of scope
 
@@ -166,23 +212,31 @@ own evidence base.
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/loops/general-task.yaml` — one new state, two edge redirects:
+- `scripts/little_loops/loops/general-task.yaml` — one new state, two edge redirects, one
+  context value, one prompt-text update:
   - new `final_verify_spin_gate` state
-  - `run_final_tests.on_no` (`:653`) — currently `continue_work`
-  - `count_final.on_no` (`:648`) — currently `continue_work`
+  - `run_final_tests.on_no` (`:626`) — currently `continue_work`
+  - `count_final.on_no` (`:650`) — currently `continue_work`
+  - `context:` block (`:24`) — add `max_final_verify_spins: 2` alongside `max_step_attempts`
+  - `summarize_partial` prompt body (`:848-862`) — currently tells the model the run stopped
+    "either the step budget was exhausted, or final verification failed or timed out". The
+    gate adds a **third** stop reason (repeated no-progress final-verify laps); without this
+    edit every spin-cutoff run writes an operator-facing `summary.md` that mis-describes why
+    it stopped.
 
 ### Dependent Files (Callers/Importers)
 - None. The change is internal to one loop's state graph; no Python or CLI surface moves.
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/little_loops/fsm/validation/reachability.py` — `capture-reachability` rule enforces
-  that `${captured.*}` references (the new gate reads `${captured.done_counts.output}` /
-  `${captured.continue_result.output}`) are dominated by their capturing state. This is the
-  concrete validator that will fail the "Dominance check" already called out under State
-  contract if `final_verify_spin_gate` is wired to a path where those captures aren't
-  guaranteed set. [Agent 1 finding]
+  that `${captured.*}` references are dominated by their capturing state. **No longer a
+  concern under the revised design**: `final_verify_spin_gate` reads no captured variables,
+  so this rule has nothing to check. Retained here as a tripwire — if implementation
+  reintroduces a `${captured.*}` reference in the gate, this validator is what will fail, and
+  the ref needs `:default=`. [Agent 1 finding, superseded by design revision]
 - `scripts/little_loops/fsm/validation/__init__.py` — exports/registers `capture_reachability`
-  alongside the other structural rules `load_and_validate` runs. [Agent 1 finding]
+  alongside the other structural rules `load_and_validate` runs. No change needed.
+  [Agent 1 finding]
 
 ### Similar Patterns
 - `general-task.yaml:296` `spin_gate` — the existing guard to model on (shell counter +
@@ -190,8 +244,10 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `general-task.yaml:194` — counter increment on the `NO_UNCHECKED_STEPS` branch
 - `general-task.yaml:253` — `rm -f "$SPIN_COUNTER"` reset on genuine progress; the reason
   the existing counter cannot serve this cycle
-- `general-task.yaml:657` `check_provisional_markers` — the `baseline-ref.txt` +
-  `git diff --name-only` machinery to reuse for the "no file changed" condition
+- `general-task.yaml:653-676` `check_provisional_markers` — reads `baseline-ref.txt` and runs
+  `git diff --name-only "$BASELINE_REF" -- .`. Read it for the `BASELINE_REF` resolution +
+  not-a-git-repo guard, but **do not copy the `--name-only` form** as the progress
+  fingerprint (see Proposed Solution).
 
 ### Tests
 - `scripts/tests/test_builtin_loops.py` — reachability/graph assertions for built-in loops
@@ -215,10 +271,10 @@ _Wiring pass added by `/ll:wire-issue`:_
   `test_check_hedge_attempts_counts_up_and_gates_at_two` (`:1592-1618`) — subprocess-execution
   model for the new gate's counter shell action: interpolate `${context.run_dir}`, run via
   `subprocess.run(["bash", "-c", ...])` twice against the same `run_dir`, assert progression
-  `"1"` then `"2"` and the cap-at-N gate. No existing precedent covers a *three*-condition
-  reset (`done_counts.total==0` and `continue_result==WORK_COMPLETE` and no file changed) —
-  new tests must exercise each reset condition independently against the new state's shell
-  script. [Agent 3 finding]
+  `"1"` then `"2"` and the cap-at-N gate. Extend the pattern with a real temp git repo so the
+  fingerprint branch is exercised: same tree twice → `"1"` then `"2"`; tracked-file edit
+  between laps → reset to `"0"`; **new untracked file** between laps → reset to `"0"`; no git
+  repo at all → fail open at `"0"`. [Agent 3 finding, revised]
 - `scripts/tests/test_general_task_loop.py::test_validates_as_fsm` (`:43-47`) — runs
   `load_and_validate` + `validate_fsm` against the real YAML and fails on any ERROR-severity
   finding; safety net for a mis-wired `final_verify_spin_gate` (unreachable, missing
@@ -240,8 +296,10 @@ _Wiring pass added by `/ll:wire-issue`:_
   (`recurrent_window` itself remains valid as a generic mechanism). [Agent 2 finding]
 
 ### Configuration
-- Consider exposing the cap as a `context` value (alongside `max_step_attempts`) rather than
-  hard-coding N, so a run can raise it without editing the loop.
+- Expose the cap as `max_final_verify_spins: 2` in the loop's `context:` block, alongside
+  `max_step_attempts` (`general-task.yaml:24`), rather than hard-coding N. This is not
+  optional: it matches the existing convention, costs nothing, and lets the
+  bounded-termination test set the cap to `1` instead of burning two full laps per test run.
 
 _Wiring pass added by `/ll:wire-issue`:_
 - Confirmed no `config-schema.json` change is needed for this: `max_step_attempts`-style caps
@@ -253,10 +311,11 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ### Signatures
 
-- `final_verify_spin_gate(done_counts: json, continue_result: str, baseline_ref: str) -> bool`
-  — new shell state; true means "under the cap, allow another lap".
-- `final_verify_spin_gate.evaluate -> output_numeric(operator=lt, target=2)` — the cap
-  comparison, matching `spin_gate`'s shape.
+- `final_verify_spin_gate(baseline_ref: str, prev_fingerprint: str) -> int` — new shell
+  state; echoes the current consecutive-no-progress count. Takes no captured variables.
+- `final_verify_spin_gate.evaluate -> output_numeric(operator=lt, target=${context.max_final_verify_spins})`
+  — the cap comparison, matching `spin_gate`'s shape; true means "under the cap, allow
+  another lap".
 - `run_final_tests.on_no -> final_verify_spin_gate` — redirected edge, was `continue_work`.
 - `count_final.on_no -> final_verify_spin_gate` — redirected edge, was `continue_work`.
 
@@ -272,7 +331,11 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `select_step` → `rm -f continue-work-spin-counter.txt` — the reset at
   `general-task.yaml:253` that makes a shared counter file unusable for this guard.
 - `check_provisional_markers` → `git diff --name-only $BASELINE_REF` — the existing
-  `baseline-ref.txt` machinery the new gate reuses for its no-file-changed condition.
+  `baseline-ref.txt` resolution the new gate borrows; the gate substitutes a content hash
+  for the `--name-only` listing.
+- `final_verify_spin_gate` → `summarize_partial` → `write_partial_summary` → `partial` —
+  the ENH-2583/ENH-2575 partial-credit chain the at-cap path lands in. `summarize_partial`
+  is a `prompt` state whose body enumerates the stop reasons and must be amended.
 - `load_and_validate` (`scripts/little_loops/fsm/validation/structural_rules.py:1659`) —
   the validator every built-in loop, including `general-task.yaml`, is run through;
   it is what the `TestValidatorWarningBudget` reachability ratchet
@@ -287,30 +350,44 @@ _Wiring pass added by `/ll:wire-issue`:_
 - Counter file: `${context.run_dir}/final-verify-spin-counter.txt`. **Must be distinct from**
   `continue-work-spin-counter.txt` — sharing it makes the two guards clobber each other,
   since `select_step:253` unconditionally deletes that file on every genuine selection.
-- Increment-and-compare, `evaluate: output_numeric` / `operator: lt` / `target: 2`.
+- Fingerprint file: `${context.run_dir}/final-verify-fingerprint.txt`, holding the previous
+  lap's working-tree content hash.
+- Increment-and-compare, `evaluate: output_numeric` / `operator: lt` /
+  `target: ${context.max_final_verify_spins}`.
 - `on_yes` → `continue_work` (under the cap, allow another lap).
 - `on_no` → `summarize_partial` (at the cap, divert to the ENH-2583 partial-credit chain).
 - `on_error` → `continue_work`, matching `spin_gate`'s fail-open posture: a broken guard
   must not itself terminate a healthy run.
 
-**Reset condition — the part that makes N=2 safe.** The counter increments only when the
-lap made no progress; any progress resets it to zero. "Progress" is the conjunction from
-Expected Behavior, evaluated inside the gate's shell body:
+**Reset condition — the part that makes N=2 safe.** A single condition, evaluated entirely
+inside the gate's shell body from the working tree — no captured variables:
 
-1. `done_counts.total == 0` — read from the `${captured.done_counts.output}` JSON.
-2. `continue_result == WORK_COMPLETE` — read from `${captured.continue_result.output}`.
-3. No file changed since the previous lap — `git diff --name-only "$BASELINE_REF"` against
-   `baseline-ref.txt`, hashed and compared to the previous lap's stored hash.
+- Compute the current fingerprint (`git diff "$BASELINE_REF" -- .` content plus
+  `git ls-files -o --exclude-standard`, piped through `git hash-object --stdin`).
+- If it **differs** from the value stored in `final-verify-fingerprint.txt`, the lap made a
+  real change: `rm -f` the counter, store the new fingerprint, echo `0`.
+- If it **matches**, the lap was byte-identical: increment the counter, echo the new value.
+- On first entry the fingerprint file is absent — treat that as "changed", store, echo `0`.
+  The gate therefore never fires on the first pass through `run_final_tests`.
 
-All three true → increment. Any false → `rm -f` the counter and fall through to
-`continue_work`. A lap that legitimately fixed a failing final test therefore never counts
-toward the cap.
+A lap that legitimately fixed a failing final test changes the tree and so never counts
+toward the cap. This is what makes N=2 safe.
 
-**Dominance check**: both captured variables must be set on every path reaching the gate.
-`done_counts` is captured by `count_done`, `continue_result` by `continue_work` — both
-precede `final_verify` on the cycle. Verify this holds on the *first* entry to
-`run_final_tests` too (the path that arrives without having cycled), and default defensively
-if not.
+**Dominance: not applicable, by design.** The gate reads no `${captured.*}` variables, so
+the `capture-reachability` rule (`scripts/little_loops/fsm/validation/reachability.py`) has
+nothing to flag. This was a deliberate simplification — the earlier three-condition draft
+referenced `${captured.continue_result.output}`, which is **unset** on the
+`count_done.on_yes → final_verify → run_final_tests` path (a first pass that never entered
+`continue_work`), and would have required a `:default=` on the ref plus a dominance
+argument. Dropping the captured terms removes that class of problem outright. If a future
+revision reintroduces a `${captured.*}` reference here, it MUST carry `:default=` — an
+un-defaulted ref on an undominated path is a known interpolation failure mode.
+
+**Guard against a git-less run.** `check_provisional_markers` already handles this: if
+`baseline-ref.txt` is empty or `git rev-parse --git-dir` fails, it exits early with
+`skipped: true`. The gate needs the equivalent — with no git, there is no fingerprint, so
+it must fail open (echo `0`, allow the lap) rather than treating every lap as identical and
+cutting off a healthy non-git run at N.
 
 ### Codebase Research Findings
 
@@ -330,21 +407,48 @@ _Added by `/ll:refine-issue` — 2026-08-20 — based on codebase analysis:_
 - **Spin-guard shape precedent (codebase-wide, not just `spin_gate`)**: the same read-increment-write-echo + `output_numeric`/`lt` shape recurs at `refine-to-ready-issue.yaml:670-689` (`check_refine_limit`), `:453-474` (`check_reconcile_limit`), `:390-396` (`check_hedge_attempts`), `loop-composer.yaml:159-166`, `brainstorm.yaml:222-228`, `oracles/plan-node-refine.yaml:215-221`. A documented "Decision Rules › Counter shape" convention (referenced from `refine-to-ready-issue.yaml:454-458,682`) distinguishes this **independent, scoped counter** pattern (own file, own gate state) from `autodev.yaml`'s shared-counter-plus-consume-once-marker layering used for a different, multi-repair-class scenario — `final_verify_spin_gate` should follow the independent-counter convention, consistent with what the issue already proposes.
 - **Test-execution pattern for the new gate**: `test_builtin_loops.py:1592-1618` (`_run_check_hedge_attempts` helper + `test_check_hedge_attempts_counts_up_and_gates_at_two`) extracts a counter state's `action`, substitutes `${context.run_dir}`, and runs it via `subprocess.run(["bash", "-c", ...])` twice against the same `run_dir`, asserting the counter progresses `"1"` then `"2"` and gates correctly at the cap — the direct model for testing `final_verify_spin_gate`'s counter progression and cap behavior.
 
+### Design Revision — 2026-08-20 (pre-implementation review)
+
+Verified the refined design against `general-task.yaml` and the cited tests. All line
+citations held (`spin_gate:296-307`, `select_step:192-198`/`:253-254`,
+`run_final_tests.on_no:626`, `count_final.on_no:650`, `continue_work:837-846`,
+`check_provisional_markers:653-676`; test anchors `test_general_task_loop.py:366,1309,1437`
+and `test_builtin_loops.py:1593,1602`). Four changes to the design:
+
+1. **Three-condition reset → single fingerprint condition.** `done_counts.total == 0` is a
+   frozen value that can permanently disable the gate on the `continue_work.on_yes` entry
+   path; `continue_result == WORK_COMPLETE` is a tautology on the guarded cycle and unset on
+   the first-pass path. Both dropped. Rationale in Expected Behavior.
+2. **Fingerprint is a content hash, not `--name-only`.** A `--name-only` listing against a
+   fixed baseline is identical whether or not the current lap changed anything. Must hash
+   diff content plus the untracked-file set.
+3. **Cap promoted from "consider" to required**, as `context.max_final_verify_spins`.
+4. **`summarize_partial`'s prompt body added to the change set** — it enumerates stop
+   reasons and would otherwise mis-describe every spin-cutoff run.
+
 ## Implementation Steps
 
 1. **Confirm the diagnosis in the graph.** Re-derive that `spin_gate` is unreachable from
    `run_final_tests`/`count_final`, and that `select_step:253` deletes the counter. Both are
    asserted in Current Behavior; make them a test before changing anything.
-2. **Add the state.** Write `final_verify_spin_gate` with its own counter file, cap N=2, and
-   the three-condition reset.
-3. **Redirect the two edges.** `run_final_tests.on_no` and `count_final.on_no` →
+2. **Add the context value.** `max_final_verify_spins: 2` in the `context:` block
+   (`general-task.yaml:24`), next to `max_step_attempts`.
+3. **Add the state.** Write `final_verify_spin_gate` with its own counter file, its own
+   fingerprint file, the cap read from context, and the single fingerprint-based reset.
+   Include the no-git fail-open branch.
+4. **Redirect the two edges.** `run_final_tests.on_no` and `count_final.on_no` →
    `final_verify_spin_gate`.
-4. **Validate.** `ll-loop validate general-task` — confirm no MR-rule regressions and that
+5. **Amend `summarize_partial`'s prompt** (`:848-862`) to name the third stop reason:
+   repeated no-progress final-verify laps. Without this the operator-facing `summary.md`
+   mis-describes every spin-cutoff run.
+6. **Validate.** `ll-loop validate general-task` — confirm no MR-rule regressions and that
    the new state is reachable and has a terminating path.
-5. **Test the bound.** Assert a permanently-failing `run_final_tests` terminates at
+7. **Test the bound.** Assert a permanently-failing `run_final_tests` terminates at
    `partial` within a bounded iteration count. Assert the complementary case: a lap that
-   changes files resets the counter and is *not* cut off.
-6. **Verify.** `python -m pytest scripts/tests/` exits 0.
+   changes files resets the counter and is *not* cut off. Assert the untracked-file case
+   specifically — a lap that only creates a new file must reset the counter, which a
+   tracked-diff-only fingerprint would miss.
+8. **Verify.** `python -m pytest scripts/tests/` exits 0.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
@@ -372,10 +476,18 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - **Severity**: P1. Not a root cause, but it converts a bounded bug into an unbounded one.
 - **Scope**: one new state plus two edge redirects in `general-task.yaml`. Contained.
 - **Risk**: a too-aggressive N would cut off legitimate late-stage recovery — cases where
-  `continue_work` genuinely does fix a failing final test. Condition 3 (no file changed) is
-  what makes N=2 safe: a lap that changed files does not count toward the cap.
+  `continue_work` genuinely does fix a failing final test. The working-tree fingerprint is
+  what makes N=2 safe: a lap that changed anything does not count toward the cap. The
+  residual risk is a *false* no-progress reading — a lap that makes real progress the
+  fingerprint cannot see (work landing outside the repo, or a commit that leaves the diff
+  against the run-start baseline unchanged). Both are out-of-band for this loop's normal
+  operation, and the failure mode is a `partial` terminal with a written summary, not a lost
+  run.
 - **Test**: assert that a run whose `run_final_tests` can never pass terminates at
   `partial` within a bounded number of iterations rather than running to `max_iterations`.
+- **Design note**: the gate reads no captured variables. This is deliberate — see
+  Expected Behavior § "Why the working-tree fingerprint is the *only* condition" for why
+  the `done_counts` / `continue_result` terms in the original draft were dropped.
 
 ## Related Key Documentation
 
@@ -390,6 +502,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-21T00:37:10 - `aa6e5584-37de-4177-905b-eaadb9c97749.jsonl`
 - `/ll:confidence-check` - 2026-08-21T00:23:22 - `8fa51734-384b-46a2-a10c-bd13c601a684.jsonl`
 - `/ll:wire-issue` - 2026-08-20T23:48:54 - `d1c4118b-f3cb-4064-8e75-ddacc30681ce.jsonl`
 - `/ll:refine-issue` - 2026-08-20T23:06:40 - `eecdcf60-17f0-43fe-a3bb-f00297aad10d.jsonl`
