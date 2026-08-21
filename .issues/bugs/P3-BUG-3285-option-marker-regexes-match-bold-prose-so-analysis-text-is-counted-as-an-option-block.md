@@ -20,7 +20,7 @@ relates_to:
 - BUG-3287
 - BUG-3289
 size: Medium
-decision_needed: true
+decision_needed: false
 verify_verdict: VALID
 confidence_score: 100
 outcome_confidence: 71
@@ -245,6 +245,17 @@ why its defect recurred after ENH-3256. Worth deciding here whether the bold-mar
 becomes a shared module-level constant, following the existing hoisting convention
 (`_H3_HEADING_RE` `:1196`, `_OPTION_HEADING_RE` `:2210`, `_DECISION_RATIONALE_HEADING_RE` `:1316`).
 
+> **Decided 2026-08-21 (epic review): yes — hoist the bold-marker sub-pattern into one shared
+> module-level constant referenced by both `_OPTION_PATTERNS[1]` and `_OPTION_HEADING_RE`'s bold
+> alternative.** Rationale: the two regexes encode one rule, and BUG-3279's history shows
+> parallel encodings of one rule re-diverging (its defect recurred after ENH-3256 for exactly
+> that reason); `docs/guides/DECISIONS_LOG_GUIDE.md:198`'s "defined exactly once" claim — flagged
+> stale-in-spirit by this issue's own wiring pass if only one regex is fixed — is only true under
+> convergence. The research finding that no existing hoisted constant is shared between two
+> independently-matched regex sites makes this a *new instance* of the file's hoisting
+> convention, not a violation of it. `_OPTION_HEADING_RE` keeps its `### Option X` alternative;
+> only the bold-marker sub-pattern is shared.
+
 ### Codebase Research Findings
 
 _Added by `/ll:refine-issue` — 2026-08-21 — based on codebase analysis:_
@@ -420,27 +431,46 @@ identifier is prose and starts no block. No new gate, threshold, or keyword list
 **Two sub-rules the sketch encoding got wrong and any replacement must settle explicitly**
 (added 2026-08-21 from the corpus differential):
 
-> **`decision_needed: true` set 2026-08-21 — this is the design pass, and nothing scheduled it.**
-> EPIC-3290 describes this issue as *"**needs a design pass before implementation**"* while leaving
-> that pass unowned. The two sub-rules below are it: both explicitly refuse a default
-> (*"Neither is obviously right … Pin one and pin it by test"*), and the *Open question — should the
-> two regexes converge?* above is a third. Run `/ll:decide-issue 3285` — or `/ll:spike` the regex
-> encoding against the corpus — **before** scheduling implementation.
->
-> Note that `ll-issues check-decidable 3285` reports `OPTIONS_MISSING` (`count 0`, `pattern None`):
-> these decision points are **invisible to the locator**. That is BUG-3287's defect 2 reproduced on
-> this epic's own file, and it is why the flag had to be set by hand rather than surfacing from the
-> gate. Worth keeping as the epic's dogfood datapoint.
+> **Design pass resolved 2026-08-21 (epic review) — all three decisions made by hand;
+> `decision_needed` cleared.** `/ll:decide-issue 3285` could not make them: these decision points
+> are invisible to the locator (`ll-issues check-decidable 3285` → `OPTIONS_MISSING`, `count 0`) —
+> and **not**, as previously claimed here, as an instance of BUG-3287's defect 2. They are bold
+> *numbered* items in this section — a shape no `_OPTION_PATTERNS` tier matches even after
+> BUG-3287's part-2 widening (verified against the widened regex) — and `### Decision Rules` is
+> outside `_locate_directive_alternatives`' 4-section scan list, so Pattern E never sees them
+> either. The skill's interactive path exits "nothing to decide"; its auto path parks for human
+> review. The `> **Decided:**` callouts below stand in for that pass, each citing evidence
+> already recorded in this issue. Still the epic's dogfood datapoint — now for a **third**
+> invisibility shape.
 
 1. **Identifier shape.** The identifier is not `[A-Za-z0-9]+` alone — the corpus uses prime-marked
    variants (`Option A′`, `Option C′`) to denote a narrowed re-scoping of an earlier option, and
    both live instances are the *selected* option. The identifier pattern must admit a variant
    suffix, or the rule drops winners.
+
+   > **Decided 2026-08-21 (epic review): admit one optional variant-modifier character
+   > immediately after the alphanumeric identifier — at minimum U+2032 PRIME (`′`), plus the
+   > ASCII apostrophe (`'`) as its keyboard-typed stand-in — i.e. `[A-Za-z0-9]+[′']?` in place of
+   > bare `[A-Za-z0-9]+`.** Rationale: both live variant markers use `′` and both are the
+   > *selected* option (BUG-3177, BUG-3253 — § *Corpus differential*, defect 1); the sub-rule
+   > already mandates "must admit a variant suffix", so the open part was only the character
+   > class. Pinned by the two required variant-suffix fixtures under *Tests*; the corpus
+   > differential guards against the class being too narrow.
 2. **Title extent.** Whether a title may span more than one physical line is a **decision, not a
    detail**: `[^*]*` admits multi-line titles (gaining 3 corpus matches), `[^*\n]*` does not.
    Neither is obviously right — a two-line option title is legitimate markdown — but leaving it
    unstated is what turned a stated tightening into an unmeasured widening. Pin one and pin it by
    test.
+
+   > **Decided 2026-08-21 (epic review): single-line — `[^*\n]*` (or an equivalent line-bounded
+   > class); a title must not span physical lines.** Rationale: the current regex (`.*?\*\*`
+   > under `re.MULTILINE` without `re.DOTALL`) cannot cross a newline, so single-line
+   > *preserves* current behavior and keeps this change a pure tightening; the multi-line
+   > matches were measured as an undeclared widening (§ *Corpus differential*, defect 2), and
+   > this issue's whole failure history is undeclared behavior change. The BUG-2735 two-line
+   > shape stays unmatched — if wanted later, that is a deliberate, separately-measured
+   > extension. Pinned by the required single-line-title-bound fixture under *Tests*, whose
+   > docstring must name this choice.
 
 ### Codebase Research Findings
 
@@ -463,7 +493,9 @@ phantom-block reasons. Not a hard dependency in either direction.
 - **Effort**: Medium — two regexes and a corpus validation pass; the work is in proving the
   tightening doesn't drop real options, not in writing it. **Repriced upward 2026-08-21**: the
   sketch regex failed its own differential on four counts, so the encoding needs a design pass
-  before implementation, plus a corpus-differential test that does not exist yet
+  before implementation, plus a corpus-differential test that does not exist yet.
+  *(Design pass completed 2026-08-21 at epic review — see § Decision Rules; the
+  corpus-differential test remains owed.)*
 - **Risk**: Medium-High — over-tightening silently drops genuine options, which is worse than the
   current over-count, and the sketch **already does this** on two committed issues (`BUG-3177`,
   `BUG-3253` — both lose their *winning* option). The corpus differential is the control and must

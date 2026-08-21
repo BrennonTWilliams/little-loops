@@ -583,6 +583,16 @@ _Added by `/ll:refine-issue` — 2026-08-21 — based on codebase analysis:_
 
 ## Implementation Steps
 
+0. **Shared SKILL.md extraction — standalone preparatory commit (owned here; added 2026-08-21,
+   epic review).** Before any of this epic's `skills/decide-issue/SKILL.md` edits land, perform
+   the extraction pass from EPIC-3290 § *Shared constraint — the decide-issue SKILL.md line
+   budget*: move reference material from `SKILL.md` into `skills/decide-issue/reference.md`
+   until `SKILL.md` is at or under **460 lines** (493 today; the three children add roughly
+   ≤2 + ≤20 + ≤15 net lines against the 500-line cap). Land it as its own no-behavior-change
+   commit, verified by `test_enh494_skill_companions.py` (line limit + companion-pointer test).
+   Ownership sits here because this issue lands first — not because its own ≤2-line edit needs
+   the headroom; BUG-3278 and ENH-3280 inherit it.
+
 1. **Part 1 first.** Restructure `locate_enumerable_options` so `_locate_directive_alternatives`
    runs in addition to the tier scan; pin the return shape per *Decision Rules*. Add
    `TestDirectiveNotPreempted` and assert the six live corpus cases now surface their directive.
@@ -596,14 +606,23 @@ _Added by `/ll:refine-issue` — 2026-08-21 — based on codebase analysis:_
    with a `count 1 + residual_directive` document asserting the clear branch does **not** fire.
    > ⚠ **Part 1c (Phase 3 reporting prose) is deferred to BUG-3278** — see § *Proposed Solution →
    > Part 1c*. What remains in this step is the one-line branch guard, not a reporting rule.
-3. Land the corpus differential test (no `count` decreases, no `heading` changes) **before**
-   part 2, so it fails loudly if part 2 regresses a file.
+3. Land the corpus differential test (no `count` decreases, no `heading` changes, with the
+   pinned-exception list for BUG-3229 and ENH-3264 — see *Tests*) **before** part 2, so it fails
+   loudly if part 2 regresses a file.
 4. **Part 2.** Widen `_OPTION_PATTERNS[3]`. Add the 14-shape match matrix as a table-driven test.
 5. Add the `locate-options` and `check-decidable` cases pinning the newly-reachable
    `- **(a) …**` shape as `bullet`/decidable — these are behavior changes to existing consumers
    and must be pinned by test, not left implicit.
-6. Re-run the corpus differential; confirm BUG-3229 holds at `count 2` and ENH-3264's resolved
-   section is stable.
+6. Re-run the corpus differential; confirm the two pinned intended changes land exactly as
+   measured — BUG-3229 `count 2 / provisional_e` → `count 1 / bullet` with `residual_directive`
+   non-null, and ENH-3264's resolved section moving §`Confidence Check Notes` →
+   §`Proposed Solution` — and that no *unpinned* file's `count` decreases or resolved `heading`
+   changes.
+   > ⚠ **Corrected 2026-08-21 (epic review).** This step previously asserted BUG-3229 "holds at
+   > `count 2`" and ENH-3264's resolved section "is stable" — both contradict the amended
+   > *Expected Behavior*, § *Blast radius*, and the corpus differential's pinned-exception list,
+   > all of which declare exactly those two changes intended under Option B + part 2. The step
+   > predated those amendments and was never updated.
 7. Update the four documentation sites in *Integration Map → Documentation*. Under Option B,
    `docs/reference/CLI.md`'s `locate-options` section also gains the new top-level
    `residual_directive` key in its `--json` payload description.

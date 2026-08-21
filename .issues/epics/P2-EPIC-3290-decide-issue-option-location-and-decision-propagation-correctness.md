@@ -66,6 +66,13 @@ The first four are locator defects; the last two are consumer defects that inher
   Shared by BUG-3279, BUG-3285, BUG-3287, BUG-3289, and read by BUG-3278.
   > Anchors refreshed 2026-08-21 post-`f39a417e`, which shifted every anchor in this file by
   > +58 to +100 lines. The pre-refresh values (`:2134`, `:2062`, `:1530`-as-function) were stale.
+  >
+  > **Drift recurred the same day** — `93270c37` (BUG-3286, outside this epic) shifted
+  > `issue_parser.py` a further **+50** lines and `test_issue_parser.py` **+332**
+  > (`locate_enumerable_options` 2209→2259, `TestUnappliedDecision` 4757→5089). **Do not
+  > hand-refresh a third time.** Every citation in this epic and its children carries its symbol
+  > name; treat all line numbers as as-of `f39a417e` and re-resolve by symbol at implementation
+  > time.
 - `scripts/little_loops/cli/issues/check_decidable.py` — the `located.count >= 1` gate at `:36`
   (BUG-3287 part 1b; required under its recommended return shape).
 - `skills/decide-issue/SKILL.md` — Phases 2.5, 3, 3b, 4, 6, 7a, 7b (BUG-3278, BUG-3287, ENH-3280).
@@ -102,8 +109,8 @@ The first four are locator defects; the last two are consumer defects that inher
   input to every decision the issue pipeline makes, with measured live misparses (6 issues for
   BUG-3287, ~23 spurious reports for BUG-3289).
 - **Effort**: Large — five of six touch one file, which makes the chain serial. **Three** items are
-  substantial, not two: BUG-3278 (`size: Medium-to-Large` per its own Impact; no `size` frontmatter
-  — set it), ENH-3280 (`size: Large`), and **BUG-3287 (`size: Very Large`)** — two parser parts plus
+  substantial, not two: BUG-3278 (`size: Large` — frontmatter set, Impact aligned 2026-08-21),
+  ENH-3280 (`size: Large`), and **BUG-3287 (`size: Very Large`)** — two parser parts plus
   three mandatory consumer edits, a corpus differential, and five documentation sites.
   > Restated 2026-08-21. This bullet previously read *"each step small … BUG-3278 and ENH-3280 are
   > the two substantial items"*, which is contradicted by BUG-3287's own `size: Very Large`
@@ -126,9 +133,11 @@ Implementation order is bottom-up: locator primitives, then the decision model, 
   two real *selected* options (`**Option A′ (SELECTED)**` in BUG-3177, `**Option C′ (selected)**`
   in BUG-3253), gains 3 matches by crossing newlines, flips 2 tiers, and moves 1 resolved section.
   Its stated acceptance bar is also unachievable — 21 of 26 repeated-letter issues repeat for a
-  legitimate reason. See that issue's § *Corpus differential*. **Now carries
-  `decision_needed: true`** — its two sub-rules (identifier shape, title extent) are the design
-  pass, and nothing scheduled it. Run `/ll:decide-issue 3285` first.
+  legitimate reason. See that issue's § *Corpus differential*. **Design pass resolved 2026-08-21
+  (epic review)** — all three sub-decisions (identifier shape, title extent, regex convergence)
+  are recorded with rationale in that issue's § *Decision Rules* and `decision_needed` is
+  cleared. `/ll:decide-issue 3285` could not have made them — see § *Unscheduled work* below,
+  corrected.
 - **BUG-3287** (P2) — two defects in the shared precedence chain: a tier match anywhere preempts
   the Pattern E directive heuristic, and the `bullet` tier cannot see a bold-wrapped marker.
   **Sequence before BUG-3278** — BUG-3278 otherwise re-fixes both inside its own new group
@@ -140,7 +149,8 @@ Implementation order is bottom-up: locator primitives, then the decision model, 
   > BUG-3229. (ii) Part **1c** is dead on arrival if BUG-3278 lands next, because BUG-3278 part 5
   > re-points Phase 3 off `locate-options` entirely; part 1c is now **deferred to BUG-3278** while
   > parts 1a/1b stay required. Read that issue's *Decision Rules* before scheduling it.
-- **BUG-3289** (P3) — `_decision_identifiers` extracts every backticked span >= 3 chars as
+- **BUG-3289** (P2 — raised from P3 2026-08-21, epic review: hard blocker of P2 ENH-3280) —
+  `_decision_identifiers` extracts every backticked span >= 3 chars as
   option-discriminating, with no filter for the issue's shared vocabulary. Candidate rule already
   recorded: subtract identifiers appearing in the title/Summary or in any section preceding
   `## Proposed Solution`. **Now the `blocked_by` prerequisite for ENH-3280.** **Also carries
@@ -246,20 +256,30 @@ catalogues. `test_enh494_skill_companions.py::test_skill_links_to_companion` enf
 Each child must state its own line delta and, if it exceeds its share, name what it extracts.
 **Whichever lands first should perform the extraction pass**, so the two that follow inherit
 headroom rather than each re-litigating it. On current sequencing that is BUG-3287 — the smallest
-of the three edits, which makes it a poor place to absorb the refactor; consider doing the
-extraction as a standalone preparatory commit under this epic instead of inside any child.
+of the three edits, which makes it a poor place to absorb the refactor.
 
-### Unscheduled work — BUG-3285's design pass (added 2026-08-21)
+> **Ownership pinned 2026-08-21 (epic review):** the extraction lands as a **standalone
+> preparatory commit** owned by **BUG-3287 Implementation Step 0** (target: `SKILL.md` ≤ 460
+> lines, no behavior change, verified by `test_enh494_skill_companions.py`). It executes before
+> any child's SKILL.md edit; BUG-3278 and ENH-3280 then only need their budget checks. This
+> closes the same described-but-unscheduled gap this epic called out for BUG-3285's design pass.
 
-BUG-3285 is the only child the epic describes as *"**needs a design pass before implementation**"*
-with nothing scheduling that pass. Its sketch regex failed its own corpus differential on four
-counts, and its *Program Design → Decision Rules* names two sub-rules it explicitly refuses to
-default (identifier shape; title extent — *"Pin one and pin it by test"*), plus an unanswered
-*"should the two regexes converge?"* open question.
+### Unscheduled work — BUG-3285's design pass (added 2026-08-21; resolved same day)
 
-Resolved by setting `decision_needed: true` on BUG-3285 — see § *Undeclared decision points* below.
-Run `/ll:decide-issue 3285` (or `/ll:spike` the regex encoding) **before** scheduling it. Epic
-Success Criterion 4 is that pass's acceptance guard.
+BUG-3285's sketch regex failed its own corpus differential on four counts, and its *Program
+Design → Decision Rules* named two sub-rules it explicitly refused to default (identifier shape;
+title extent — *"Pin one and pin it by test"*), plus an unanswered *"should the two regexes
+converge?"* open question.
+
+**Resolved 2026-08-21 (epic review) by deciding all three by hand.** The `/ll:decide-issue 3285`
+route originally prescribed here was measured unworkable: the decision points live under
+`## Program Design → ### Decision Rules` as bold *numbered* items — a shape no `_OPTION_PATTERNS`
+tier matches even after BUG-3287's part-2 widening (verified against the widened regex), in a
+section outside `_locate_directive_alternatives`' 4-section scan list, so Pattern E never sees
+them either. The skill's interactive path exits "nothing to decide"; its auto path parks for
+human review without deciding. The decisions and their rationale are recorded in BUG-3285
+§ *Decision Rules*; Epic Success Criterion 5 (previously miscited here as Criterion 4) is their
+acceptance guard.
 
 ### Undeclared decision points on this epic's own children (added 2026-08-21)
 
@@ -272,15 +292,22 @@ ll-issues check-decidable 3287  →  Decidable: 2 enumerable option(s), bold_lab
 ll-issues check-decidable 3285  →  OPTIONS_MISSING: count 0, pattern None
 ```
 
-- **BUG-3285** and **BUG-3289** explicitly refuse a default (*"Pin one and pin it by test"*;
-  *"pick one scope per bullet, do not leave unaddressed"*). Both now carry `decision_needed: true`
-  and must go through `/ll:decide-issue` before implementation.
+- **BUG-3289** explicitly refuses a default (*"pick one scope per bullet, do not leave
+  unaddressed"*) and carries `decision_needed: true`. Its decision points **are** visible to the
+  gate (the live `provisional_e` pair above), so `/ll:decide-issue 3289` works and must run
+  before implementation.
+- **BUG-3285**'s refusals (*"Pin one and pin it by test"*) were decided by hand at epic review
+  (2026-08-21) and its `decision_needed` is cleared — see § *Unscheduled work* above for why
+  `/ll:decide-issue` could not reach them.
 - **BUG-3287** and **BUG-3278** record recommendations, so they are treated as settled — with the
   correction in BUG-3287's *Decision Rules* (its Option B does not, as written, prevent the
   false-clear it claims to; see that issue).
-- BUG-3285's two sub-rules are invisible to the locator entirely (`count 0`) — **this is BUG-3287's
-  defect 2, reproduced on this epic's own file.** Worth keeping as the epic's own dogfood
-  datapoint.
+- BUG-3285's sub-rules are invisible to the locator entirely (`count 0`) — but **not** as an
+  instance of BUG-3287's defect 2 (claim corrected 2026-08-21, epic review). They are bold
+  *numbered* items under `## Program Design → ### Decision Rules`: no tier matches that shape
+  even after BUG-3287's widening, and Pattern E never scans that section. A **third**
+  invisibility shape — still worth keeping as the epic's dogfood datapoint, and a candidate
+  follow-up alongside the divergence recorded in § *Accepted divergence*.
 
 ## Success Criteria
 
@@ -304,8 +331,11 @@ ll-issues check-decidable 3285  →  OPTIONS_MISSING: count 0, pattern None
 - [ ] An issue with two decision points retains `decision_needed: true` until both groups resolve,
       on **both** clearing paths — Phase 7b and Phase 3b step 4 (the `AUTO_MODE` path).
 - [ ] No real option is lost from the live corpus: `BUG-3177` and `BUG-3253` keep their current
-      `count`, and no file's resolved `heading` changes. *(BUG-3285's guard — the class of
-      regression its sketch regex was measured to produce.)*
+      `count`, and no file's resolved `heading` changes **except changes a child pins as
+      intended** (ENH-3264 moves to §`Proposed Solution` under BUG-3287's part 2). *(BUG-3285's
+      guard — the class of regression its sketch regex was measured to produce.)*
+      > Exception clause added 2026-08-21 (epic review): the unscoped form was falsified by
+      > BUG-3287's own pinned, declared-intended ENH-3264 heading move.
 - [ ] **A document whose only decision point is a preempted directive does not hit Phase 3's
       `count == 1` clear branch.** Measured on `BUG-3229`: today `count 2 / provisional_e`; with
       BUG-3287 part 2 applied, `count 1 / bullet`. Under BUG-3287's *recommended* Option B, part 1

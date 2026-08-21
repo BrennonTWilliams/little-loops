@@ -856,7 +856,8 @@ frontmatter-clearing logic and introduces no new gap kind, gate, keyword list, o
 
 - **Priority**: P2 — silent false-ready into the implementation pipeline, but it needs a
   multi-decision issue to trigger, so it is not a blanket break of the common path
-- **Effort**: Medium-to-Large — parser group model + new CLI + skill (**two** clearing sites, not
+- **Effort**: Large (aligned with frontmatter `size: Large` 2026-08-21) — parser group model +
+  new CLI + skill (**two** clearing sites, not
   one: Phase 7b and Phase 3b step 4) + one loop-oracle state.
   Decision-*group* detection is a new data model with its own grouping rules and test matrix, not a
   thin filter over existing blocks

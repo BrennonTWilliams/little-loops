@@ -3,7 +3,7 @@ id: BUG-3289
 type: BUG
 title: _decision_identifiers treats every backticked token in an option block as option-discriminating,
   firing unapplied_decision on shared vocabulary
-priority: P3
+priority: P2
 status: open
 parent: EPIC-3290
 discovered_by: ll-issues-create
@@ -131,6 +131,13 @@ unaddressed**:
 > (`count 2`, `pattern provisional_e`, §`Proposed Solution`) — the pipeline could see the decision
 > while the gate that routes to `/ll:decide-issue` could not. Run `/ll:decide-issue 3289` before
 > scheduling. Noted at EPIC-3290 § *Undeclared decision points on this epic's own children*.
+>
+> **Pre-scheduling passes owed (added 2026-08-21, epic review).** This issue has had no
+> `/ll:refine-issue`, `/ll:wire-issue`, or `/ll:verify-issues` pass (session log: capture +
+> conflict-audit only) despite now gating a P2. Run refine → wire → verify **before** the decide
+> pass, so the decision is made against verified claims. Its `issue_parser.py` anchors are also
+> on the stale pre-`93270c37` set (+50 lines — resolve by symbol name, per the epic's anchor
+> note).
 
 - **Scope of the subtraction corpus** — title + `## Summary` only (narrow, cheap, catches ENH-2692),
   or everything above `## Proposed Solution` (wider; catches more of ENH-3277's ~23 but risks
@@ -256,8 +263,10 @@ implementation; neither has a defensible default that survives the corpus measur
 
 ## Impact
 
-- **Priority**: P3 — report noise in an advisory check, not a correctness or pipeline defect. It
-  degrades signal rather than blocking anything
+- **Priority**: P2 — raised from P3 2026-08-21 (epic review). On its own merits this is report
+  noise in an advisory check, but it is now the hard `blocked_by` prerequisite of P2 ENH-3280
+  (whose Phase 7c rewrites prose against this detector's report list), so it inherits the
+  effective priority of the work it gates
 - **Effort**: Small-to-Medium — one subtraction plus a corpus measurement; the scope decisions are
   the real work
 - **Risk**: Low-Medium — a subtraction can only *remove* reports, so the failure mode is suppressing

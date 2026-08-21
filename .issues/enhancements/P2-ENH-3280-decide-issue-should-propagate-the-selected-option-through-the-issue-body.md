@@ -143,6 +143,14 @@ propagation implies a downstream change it cannot safely make (stale counts, an 
 loser-keyed prose remains, log `✓ Phase 7c: no unpropagated references — skipping` and write
 nothing.
 
+**Non-empty re-check (added 2026-08-21, epic review).** The post-pass `format-check` re-run may
+legitimately still report `unapplied_decision` entries — the bounded-scope rule above allows
+flag-not-edit dispositions. That outcome is **not a failure and must not retry**: Phase 7c
+carries the surviving reports into Phase 9's flagged-but-not-edited block and proceeds to
+Phase 8, mirroring Phase 7b's report-rather-than-loop discipline (BUG-3278). Without this branch
+the Call Path's "confirm `unapplied_decision` is now empty before proceeding" reads as a gate
+with no defined exit.
+
 ## Integration Map
 
 ### Files to Modify
@@ -310,8 +318,10 @@ shells out to `ll-issues format-check <ID> --format json` -> `cmd_format_check`
 (`issue_parser.py:1449`) -> JSON `unapplied_decision` list returned to the skill -> skill parses
 each `"<Section> still specifies \`<identifier>\` (rejected option)"` string to locate the
 identifier's occurrence in that section -> Edit tool rewrites/demotes/strikes the matched prose
-per the four categories in `## Proposed Solution` -> skill re-invokes `format-check` to confirm
-`unapplied_decision` is now empty before proceeding to Phase 8.
+per the four categories in `## Proposed Solution` -> skill re-invokes `format-check`: an empty
+`unapplied_decision` list confirms full propagation; a non-empty list (flag-not-edit residuals)
+is carried into Phase 9's flagged-but-not-edited block — either way flow proceeds to Phase 8,
+with no retry (see *Proposed Solution → Non-empty re-check*).
 
 ### Decision Rules
 
@@ -333,6 +343,13 @@ _Added by `/ll:refine-issue` — 2026-08-21 — based on codebase analysis:_
 - **Analyzer confirmation, no correction (2026-08-21):** all five points in this section and Codebase Research Findings above were independently re-verified against source and are accurate as stated, including the exact `⚠`/`✓` idempotency-marker distinction (`skills/decide-issue/SKILL.md:409` vs `:424`) and the `--fix`/`--apply` dispatch table exclusion (`scripts/little_loops/cli/issues/format_check.py:98-108`). One precedent is stronger than cited: `skills/confidence-check/SKILL.md:138` (`FC_JSON=$(ll-issues format-check {{issue_id}} --format json 2>/dev/null || true)`) is the same `--format json` + `2>/dev/null || true` shell-out idiom this issue's Call Path already assumes for Phase 7c, not merely an analogous one.
 
 ## Implementation Steps
+
+0. **Resolve `verify_verdict` first (see § *Verify Verdict Note*; added 2026-08-21, epic
+   review).** Author the hand-written reproducer fixture Step 4 already requires and re-run
+   `/ll:verify-issues 3280` so the verdict flips to `VALID` on real evidence **before this issue
+   enters any loop** — otherwise `check_verify_verdict` routes automation into refine cycles
+   against a false alarm about a deliberately absent reproducer. This is the Verify Verdict
+   Note's option 1, made the first act of implementation.
 
 1. **Land BUG-3289 first** — Phase 7c drives off `_unapplied_decision`, whose report list is still
    dominated by shared-subject false positives (~23 on ENH-3277, 2 on ENH-2692) even after
