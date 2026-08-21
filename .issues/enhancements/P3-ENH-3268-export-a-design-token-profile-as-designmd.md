@@ -130,7 +130,7 @@ A subcommand of the existing `ll-artifact`, **not** a new `ll-design` console sc
 
 ## Notes
 
-Split out of ENH-3264. Depends on ENH-3264 for the import side that AC 1's round-trip assertion needs.
+Split out of ENH-3264. ENH-3264 (the import side AC 1's round-trip assertion needs) is done as of 2026-08-21.
 
 ## Related Key Documentation
 
