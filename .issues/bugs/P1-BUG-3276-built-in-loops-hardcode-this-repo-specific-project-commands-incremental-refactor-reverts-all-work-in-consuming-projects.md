@@ -1,8 +1,8 @@
 ---
 id: BUG-3276
 type: BUG
-title: Built-in loops hardcode this-repo-specific project commands — incremental-refactor
-  reverts all work in consuming projects
+title: "Built-in loops hardcode this-repo-specific project commands \u2014 incremental-refactor\
+  \ reverts all work in consuming projects"
 priority: P1
 status: open
 discovered_by: design-review
@@ -15,6 +15,12 @@ labels:
 - loops
 - config
 - test-cmd
+confidence_score: 98
+outcome_confidence: 80
+score_complexity: 20
+score_test_coverage: 22
+score_ambiguity: 16
+score_change_surface: 22
 ---
 
 # BUG-3276: Built-in loops hardcode this-repo-specific project commands — incremental-refactor reverts all work in consuming projects

@@ -16,6 +16,12 @@ labels:
 - config
 - design-tokens
 - init
+confidence_score: 100
+outcome_confidence: 98
+score_complexity: 23
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # BUG-3274: Raw-dict config reads bypass dataclass defaults — design_tokens.enabled silently disables scaffolding
@@ -330,5 +336,6 @@ Independently: `SessionStart` hook -> `hooks/session_start.py:306` -> **[raw-dic
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-21T04:47:42 - `06825300-0005-4b1f-8a38-697787be5d20.jsonl`
 - `/ll:wire-issue` - 2026-08-21T04:45:06 - `ee8d0c92-9f75-42c4-9e2a-730c3d5d3cb0.jsonl`
 - `/ll:refine-issue` - 2026-08-21T04:32:54 - `a85e8b1c-5475-4885-a40b-302d5e096fc6.jsonl`
