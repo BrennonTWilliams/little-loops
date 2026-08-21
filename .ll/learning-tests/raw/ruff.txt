@@ -1,0 +1,110 @@
+=== check good.py (expect exit 0) ===
+All checks passed!
+exit: 0
+
+=== check bad.py (expect exit 1, has violations) ===
+F401 [*] `os` imported but unused
+ --> /var/folders/dg/j0h3vvbj20n6gd7077j8v5qr0000gn/T/tmp.NUX7eGwww1/proj/bad.py:1:8
+  |
+1 | import os
+  |        ^^
+2 | def add(a,b):
+3 |     x=1
+  |
+help: Remove unused import: `os`
+
+F841 Local variable `x` is assigned to but never used
+ --> /var/folders/dg/j0h3vvbj20n6gd7077j8v5qr0000gn/T/tmp.NUX7eGwww1/proj/bad.py:3:5
+  |
+1 | import os
+2 | def add(a,b):
+3 |     x=1
+  |     ^
+4 |     return a+b
+  |
+help: Remove assignment to unused variable `x`
+
+Found 2 errors.
+[*] 1 fixable with the `--fix` option (1 hidden fix can be enabled with the `--unsafe-fixes` option).
+exit: 1
+
+=== check bad.py --output-format=json ===
+[
+  {
+    "cell": null,
+    "code": "F401",
+    "end_location": {
+      "column": 10,
+      "row": 1
+    },
+    "filename": "/var/folders/dg/j0h3vvbj20n6gd7077j8v5qr0000gn/T/tmp.NUX7eGwww1/proj/bad.py",
+    "fix": {
+      "applicability": "safe",
+      "edits": [
+        {
+          "content": "",
+          "end_location": {
+            "column": 1,
+            "row": 2
+          },
+          "location": {
+            "column": 1,
+            "row": 1
+          }
+        }
+      ],
+      "message": "Remove unused import: `os`"
+    },
+    "location": {
+      "column": 8,
+      "row": 1
+    },
+    "message": "`os` imported but unused",
+    "noqa_row": 1,
+    "url": "https://docs.astral.sh/ruff/rules/unused-import"
+  },
+  {
+    "cell": null,
+    "code": "F841",
+    "end_location": {
+      "column": 6,
+      "row": 3
+    },
+    "filename": "/var/folders/dg/j0h3vvbj20n6gd7077j8v5qr0000gn/T/tmp.NUX7eGwww1/proj/bad.py",
+    "fix": {
+      "applicability": "unsafe",
+      "edits": [
+        {
+          "content": "",
+          "end_location": {
+            "column": 1,
+            "row": 4
+          },
+          "location": {
+            "column": 1,
+            "row": 3
+          }
+        }
+      ],
+      "message": "Remove assignment to unused variable `x`"
+    },
+    "location": {
+      "column": 5,
+      "row": 3
+    },
+    "message": "Local variable `x` is assigned to but never used",
+    "noqa_row": 3,
+    "url": "https://docs.astral.sh/ruff/rules/unused-variable"
+  }
+]exit: 1
+
+=== format --check good.py (expect exit 0) ===
+1 file already formatted
+exit: 0
+
+=== format --check bad.py (expect nonzero) ===
+Would reformat: /var/folders/dg/j0h3vvbj20n6gd7077j8v5qr0000gn/T/tmp.NUX7eGwww1/proj/bad_copy.py
+1 file would be reformatted
+exit: 1
+before: 8d837f1d51b4a469c83fdd220c215581
+after:  8d837f1d51b4a469c83fdd220c215581
