@@ -23,6 +23,11 @@ context:
   # threshold) is enforced at completion time, not after every step.
   test_cmd: ""
   max_step_attempts: 3 # max verify attempts per step before abandoning it (Fix #2)
+  # BUG-3270: cap on consecutive byte-identical run_final_tests/count_final
+  # laps before final_verify_spin_gate diverts to summarize_partial. 2 means
+  # the THIRD identical lap trips the gate (0, 1, 2 -> 2 lt 2 is false) — see
+  # final_verify_spin_gate's State contract for the off-by-one.
+  max_final_verify_spins: 2
 
 circuit:
   repeated_failure:
@@ -336,6 +341,78 @@ states:
     on_yes: check_done
     on_no: summarize_partial
     on_error: check_done
+
+  final_verify_spin_gate:
+    # BUG-3270: run_final_tests/count_final can cycle back to continue_work
+    # indefinitely if run_final_tests never passes (e.g. BUG-3269's poisoned
+    # test_cmd) — a closed 3-state cycle (continue_work -> final_verify ->
+    # run_final_tests -> continue_work) with no exit edge. spin_gate (above)
+    # only guards the select_step path and is unreachable from here; its
+    # counter is also rm -f'd by select_step on every genuine step selection
+    # (:285), so it cannot double as this cycle's guard either. This gate is
+    # independent and scoped — its own counter file, its own fingerprint
+    # file, never shared with continue-work-spin-counter.txt.
+    #
+    # Reset condition is a single working-tree content fingerprint, not the
+    # done_counts/continue_result terms an earlier draft proposed — both are
+    # frozen values on this cycle (never re-captured by any state on it) and
+    # would make the gate fail open forever if used as a condition. A lap
+    # that changes ANYTHING in the repo (tracked diff content, a new
+    # untracked file, or a content edit to an already-untracked file) resets
+    # the counter; a byte-identical lap increments it. ${context.run_dir}
+    # artifacts are excluded by explicit pathspec (':(exclude).loops/'), not
+    # just --exclude-standard, because ll-init does not ship a .loops/
+    # gitignore entry to consuming projects (init/writers.py:59-73) —
+    # without the explicit prune this gate's own counter/fingerprint churn
+    # would make every lap's fingerprint differ and the guard would silently
+    # never fire.
+    #
+    # No bash ${VAR} brace form for LOCAL shell variables anywhere below: the
+    # FSM interpolates the whole action string (comments included) before
+    # handing it to bash, so a bare ${FP} is parsed as a namespace path and
+    # raises "expected namespace.path" at runtime. Unbraced "$VAR" only for
+    # locals; ${context.*} refs are FSM interpolation targets and are fine.
+    action: |
+      COUNTER="${context.run_dir}/final-verify-spin-counter.txt"
+      FP_FILE="${context.run_dir}/final-verify-fingerprint.txt"
+      N=$(cat "$COUNTER" 2>/dev/null || echo 0)
+      BASELINE_REF=$(cat "${context.run_dir}/baseline-ref.txt" 2>/dev/null || echo "")
+      if [ -z "$BASELINE_REF" ] || ! git rev-parse --git-dir >/dev/null 2>&1; then
+        # No-git (or no-baseline) branch: no fingerprint is possible, so
+        # every lap counts unconditionally against a looser cap of
+        # max_final_verify_spins * 3 laps (State contract) rather than
+        # failing fully open. Scale the echoed count down by 3 (integer
+        # division) so the shared `lt ${context.max_final_verify_spins}`
+        # evaluate below enforces that looser bound without a second target.
+        N=$((N + 1))
+        printf '%s' "$N" > "$COUNTER"
+        echo $((N / 3))
+        exit 0
+      fi
+      untracked() { git ls-files -o --exclude-standard -z -- . ':(exclude).loops/'; }
+      FP=$( { git diff "$BASELINE_REF" -- . ':(exclude).loops/'
+              # paths, then their contents - two cheap passes, no temp file
+              untracked | sort -z | tr '\0' '\n'
+              untracked | sort -z | xargs -0 -r git hash-object
+            } | git hash-object --stdin )
+      PREV_FP=$(cat "$FP_FILE" 2>/dev/null || echo "")
+      if [ -z "$PREV_FP" ] || [ "$FP" != "$PREV_FP" ]; then
+        printf '%s' "$FP" > "$FP_FILE"
+        rm -f "$COUNTER"
+        echo 0
+      else
+        N=$((N + 1))
+        printf '%s' "$N" > "$COUNTER"
+        echo "$N"
+      fi
+    action_type: shell
+    evaluate:
+      type: output_numeric
+      operator: lt
+      target: ${context.max_final_verify_spins}
+    on_yes: continue_work
+    on_no: summarize_partial
+    on_error: continue_work
 
   do_work:
     action: |
@@ -701,7 +778,7 @@ states:
         [ "$FINAL_EXIT" = "0" ] || [ "$FINAL_EXIT" = "127" ] || [ "$FINAL_EXIT" = "$BASELINE_EXIT" ]
       fi
     on_yes: count_final
-    on_no: continue_work
+    on_no: final_verify_spin_gate
     on_error: diagnose
 
   count_final:
@@ -726,7 +803,7 @@ states:
       operator: eq
       target: 0
     on_yes: check_provisional_markers
-    on_no: continue_work
+    on_no: final_verify_spin_gate
     on_error: diagnose
 
   check_provisional_markers:
@@ -934,9 +1011,11 @@ states:
     action_type: prompt
     action: |
       The general-task loop has stopped before all Definition of Done criteria
-      were verified — either the step budget was exhausted, or final
-      verification failed or timed out. The work done so far is real; do not
-      discard it.
+      were verified — either the step budget was exhausted, final
+      verification failed or timed out, or repeated final-verification laps
+      made no working-tree progress (the same failure recurred with no code
+      change across consecutive attempts, so continuing would not help). The
+      work done so far is real; do not discard it.
 
       Read ${context.run_dir}/dod.md and
       ${context.run_dir}/plan.md (if they exist).

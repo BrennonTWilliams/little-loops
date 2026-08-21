@@ -2913,6 +2913,164 @@ class TestRefineToReadyIssueSubLoop:
         )
 
 
+class TestGeneralTaskFinalVerifySpinGateShellAction:
+    """BUG-3270: final_verify_spin_gate's counter/fingerprint shell action, executed
+    directly against a real temp git repo (subprocess model cloned from
+    TestRefineToReadyIssueSubLoop._run_check_hedge_attempts)."""
+
+    LOOP_FILE = BUILTIN_LOOPS_DIR / "general-task.yaml"
+
+    @pytest.fixture
+    def data(self) -> dict:
+        assert self.LOOP_FILE.exists(), f"Loop file not found: {self.LOOP_FILE}"
+        return yaml.safe_load(self.LOOP_FILE.read_text())
+
+    @staticmethod
+    def _init_repo(repo: Path, *, gitignore_loops: bool) -> str:
+        """Create a temp git repo, seed it with a baseline commit, and write
+        run_dir/baseline-ref.txt the way check_baseline_tests does. Returns the
+        baseline ref."""
+        repo.mkdir(parents=True, exist_ok=True)
+        subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+        subprocess.run(["git", "config", "user.email", "t@example.com"], cwd=repo, check=True)
+        subprocess.run(["git", "config", "user.name", "Test"], cwd=repo, check=True)
+        if gitignore_loops:
+            (repo / ".gitignore").write_text(".loops/\n")
+        (repo / "seed.txt").write_text("seed\n")
+        subprocess.run(["git", "add", "-A"], cwd=repo, check=True)
+        subprocess.run(["git", "commit", "-q", "-m", "seed"], cwd=repo, check=True)
+        baseline_ref = subprocess.run(
+            ["git", "rev-parse", "HEAD"], cwd=repo, check=True, capture_output=True, text=True
+        ).stdout.strip()
+        return baseline_ref
+
+    def _run_gate(self, data: dict, repo: Path, run_dir: Path) -> str:
+        """Execute final_verify_spin_gate's `action` against `run_dir`/`repo` and
+        return stdout."""
+        action = data["states"]["final_verify_spin_gate"]["action"]
+        script = action.replace("${context.run_dir}", str(run_dir))
+        result = subprocess.run(["bash", "-c", script], cwd=repo, capture_output=True, text=True)
+        assert result.returncode == 0, f"final_verify_spin_gate failed: {result.stderr}"
+        return result.stdout.strip()
+
+    def _make_run_dir(self, repo: Path, baseline_ref: str) -> Path:
+        run_dir = repo / ".loops" / "runs" / "test-run"
+        run_dir.mkdir(parents=True, exist_ok=True)
+        (run_dir / "baseline-ref.txt").write_text(baseline_ref)
+        return run_dir
+
+    def test_two_identical_laps_count_up_from_zero(self, data: dict, tmp_path: Path) -> None:
+        """First entry stores the fingerprint and echoes 0; a second, byte-identical
+        lap increments to 1 (State contract: cap trips on the THIRD identical lap)."""
+        repo = tmp_path / "repo"
+        baseline_ref = self._init_repo(repo, gitignore_loops=True)
+        run_dir = self._make_run_dir(repo, baseline_ref)
+
+        first = self._run_gate(data, repo, run_dir)
+        assert first == "0", f"first entry should emit '0', got {first!r}"
+
+        second = self._run_gate(data, repo, run_dir)
+        assert second == "1", f"second (identical) entry should emit '1', got {second!r}"
+
+    def test_tracked_file_edit_resets_counter(self, data: dict, tmp_path: Path) -> None:
+        repo = tmp_path / "repo"
+        baseline_ref = self._init_repo(repo, gitignore_loops=True)
+        run_dir = self._make_run_dir(repo, baseline_ref)
+
+        self._run_gate(data, repo, run_dir)
+        assert self._run_gate(data, repo, run_dir) == "1"
+
+        (repo / "seed.txt").write_text("changed\n")
+        assert self._run_gate(data, repo, run_dir) == "0", (
+            "a tracked-file content edit must reset the counter to 0"
+        )
+
+    def test_new_untracked_file_resets_counter(self, data: dict, tmp_path: Path) -> None:
+        repo = tmp_path / "repo"
+        baseline_ref = self._init_repo(repo, gitignore_loops=True)
+        run_dir = self._make_run_dir(repo, baseline_ref)
+
+        self._run_gate(data, repo, run_dir)
+        assert self._run_gate(data, repo, run_dir) == "1"
+
+        (repo / "new-file.txt").write_text("new\n")
+        assert self._run_gate(data, repo, run_dir) == "0", (
+            "a new untracked file must reset the counter to 0 (name-only diff misses this)"
+        )
+
+    def test_untracked_file_content_edit_resets_counter(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        """A name-only untracked listing would miss this — the modal create-then-refine
+        progress shape in this loop (Impact: 'primary risk, not residual')."""
+        repo = tmp_path / "repo"
+        baseline_ref = self._init_repo(repo, gitignore_loops=True)
+        run_dir = self._make_run_dir(repo, baseline_ref)
+
+        (repo / "draft.txt").write_text("v1\n")
+        self._run_gate(data, repo, run_dir)
+        assert self._run_gate(data, repo, run_dir) == "1"
+
+        (repo / "draft.txt").write_text("v2 - refined\n")
+        assert self._run_gate(data, repo, run_dir) == "0", (
+            "editing the CONTENT of an already-untracked file must reset the counter "
+            "(a name-only untracked listing would read this as no change)"
+        )
+
+    def test_run_dir_churn_does_not_reset_counter(self, data: dict, tmp_path: Path) -> None:
+        """Must use a repo whose .gitignore does NOT list .loops/ — ll-init ships no such
+        entry to consuming projects, so this is the realistic default (Proposed
+        Solution). Against a repo that ignores .loops/, this assertion would pass
+        vacuously."""
+        repo = tmp_path / "repo"
+        baseline_ref = self._init_repo(repo, gitignore_loops=False)
+        run_dir = self._make_run_dir(repo, baseline_ref)
+
+        first = self._run_gate(data, repo, run_dir)
+        assert first == "0"
+        # The gate's own counter/fingerprint files, plus other simulated run-dir
+        # churn, must not leak into the fingerprint.
+        (run_dir / ".events.jsonl").write_text("line1\n")
+        (run_dir / "dod.md").write_text("draft\n")
+        second = self._run_gate(data, repo, run_dir)
+        assert second == "1", (
+            f"run_dir churn under .loops/ must not reset the counter, got {second!r}"
+        )
+        (run_dir / ".events.jsonl").write_text("line1\nline2\n")
+        (run_dir / "dod.md").write_text("draft v2\n")
+        third = self._run_gate(data, repo, run_dir)
+        assert third == "2", (
+            f"further run_dir churn must still not reset the counter, got {third!r}"
+        )
+
+    def test_no_git_branch_counts_against_looser_cap(self, data: dict, tmp_path: Path) -> None:
+        """With no git repo there is no fingerprint, so every lap counts
+        unconditionally against a looser max_final_verify_spins * 3 bound rather
+        than pinning at 0 (State contract)."""
+        no_git_dir = tmp_path / "not-a-repo"
+        no_git_dir.mkdir(parents=True, exist_ok=True)
+        run_dir = no_git_dir / ".loops" / "runs" / "test-run"
+        run_dir.mkdir(parents=True, exist_ok=True)
+        # No baseline-ref.txt written either — matches a resume/handoff path
+        # that never ran check_baseline_tests.
+
+        action = data["states"]["final_verify_spin_gate"]["action"]
+        script = action.replace("${context.run_dir}", str(run_dir))
+
+        readings = []
+        for _ in range(6):
+            result = subprocess.run(
+                ["bash", "-c", script], cwd=no_git_dir, capture_output=True, text=True
+            )
+            assert result.returncode == 0, f"gate failed: {result.stderr}"
+            readings.append(int(result.stdout.strip()))
+
+        # target: 2 (max_final_verify_spins). On the no-git branch the echoed
+        # value is the raw lap count divided by 3 (integer division), so it
+        # takes 6 laps (2 * 3) to reach 2 and trip `2 lt 2 -> False`.
+        assert readings == [0, 0, 1, 1, 1, 2], readings
+
+
 class TestResolveDecisionOracle:
     """Tests for the oracles/resolve-decision.yaml sub-loop (BUG-3065): the
     decision cluster extracted from autodev.yaml's inline copy, adopted by

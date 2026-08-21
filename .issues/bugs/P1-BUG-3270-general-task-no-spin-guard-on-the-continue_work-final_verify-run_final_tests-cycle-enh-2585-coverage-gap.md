@@ -4,10 +4,11 @@ type: BUG
 title: 'general-task: no spin guard on the continue_work -> final_verify -> run_final_tests
   cycle (ENH-2585 coverage gap)'
 priority: P1
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-08-20'
 captured_at: '2026-08-20T22:49:08Z'
+completed_at: '2026-08-21T05:49:03Z'
 labels:
 - bug
 - loops
@@ -814,12 +815,33 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - ENH-2857 — `check_step_halt` blocker-detection, adjacent to the existing guard
 - ENH-2583 — the partial-credit chain this should divert into
 
+## Resolution
+
+- **Action**: fix
+- **Completed**: 2026-08-21
+- **Status**: Completed
+
+### Changes Made
+
+- `scripts/little_loops/loops/general-task.yaml`: added `context.max_final_verify_spins: 2`; added new `final_verify_spin_gate` shell state (own counter file `final-verify-spin-counter.txt`, own fingerprint file `final-verify-fingerprint.txt`, content-hash reset condition, explicit `':(exclude).loops/'` pathspec, no-git branch counting against a looser `max_final_verify_spins * 3` bound); redirected `run_final_tests.on_no` and `count_final.on_no` from `continue_work` to `final_verify_spin_gate`; amended `summarize_partial`'s prompt body to name the third stop reason (repeated no-progress final-verify laps).
+- `scripts/tests/test_general_task_loop.py`: updated `test_run_final_tests_routing` and renamed `test_count_final_routes_no_to_continue_work` → `test_count_final_routes_no_to_final_verify_spin_gate` to assert the new routing; added `TestBug3270FinalVerifySpinGate` with routing/shape/context-default/comment assertions.
+- `scripts/tests/test_builtin_loops.py`: added `TestGeneralTaskFinalVerifySpinGateShellAction`, executing the gate's real shell action against temp git repos to cover all reset conditions from the issue's test matrix (byte-identical laps count up; tracked-file edit resets; new untracked file resets; content edit to an already-untracked file resets; run-dir churn under an un-ignored `.loops/` does not reset; no-git branch counts against the looser cap).
+- `docs/guides/LOOPS_REFERENCE.md`: updated the `run_final_tests`/`count_final` narration to describe the new `final_verify_spin_gate` hop.
+- `docs/reference/loops.md`: added a note distinguishing this dedicated gate (narrow 3-state cycle, content-fingerprint reset) from `recurrent_window` (broader multi-state remediation cycle, which remains the right mechanism for it).
+
+### Verification Results
+
+- `ll-loop validate general-task`: valid, `final_verify_spin_gate` reachable.
+- `python -m pytest scripts/tests/`: 20356 passed, 56 skipped, 1 pre-existing unrelated failure (`test_prose_dep_sweep_gate.py::test_no_prose_dependency_drift_in_repo`, confirmed present on `main` before this change via `git stash`).
+
 ## Status
 
 **Open** | Created: 2026-08-20 | Priority: P1
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-21T05:48:44 - `764fe231-ace6-4b22-8370-d074864531cd.jsonl`
+- `/ll:ready-issue` - 2026-08-21T05:34:23 - `0d7e6663-a237-4898-9100-0f081fc1a3bc.jsonl`
 - `/ll:verify-issues` - 2026-08-21T04:59:42 - `a341924e-a8a7-4d9a-8ab5-d56e4e233347.jsonl`
 - `/ll:refine-issue` - 2026-08-21T04:35:09 - `f4215495-4bea-4ed7-8672-c75bc402ce45.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-21T02:37:31 - `c4d0cb49-2d47-43ee-bd0a-5286b5885739.jsonl`

@@ -1083,3 +1083,18 @@ circuit:
       - "${context.run_dir}/plan.md"
       - "${context.run_dir}/dod.md"
 ```
+
+**Note (BUG-3270):** `general-task.yaml` now carries a dedicated
+`final_verify_spin_gate` state for the narrower, undominated case above the
+worked example was originally written to catch — the direct
+`continue_work → final_verify → run_final_tests → continue_work` cycle where
+`continue_work` finds nothing left to remediate on every lap. That gate is a
+working-tree content fingerprint (not `recurrent_window`), because it needed
+to distinguish a byte-identical lap from one that legitimately re-attempts a
+fix; see `general-task.yaml`'s `final_verify_spin_gate` state and
+`.issues/bugs/` history for BUG-3270. `recurrent_window` remains the right
+mechanism for the broader, multi-state remediation cycle shown above
+(`run_final_tests → continue_work → select_step → do_work → verify_step →
+run_final_tests`) — a real code change between failures resets
+`final_verify_spin_gate`'s fingerprint even though the suite keeps failing,
+so only `recurrent_window`'s total-occurrence count catches that shape.

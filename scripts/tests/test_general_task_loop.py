@@ -378,6 +378,65 @@ class TestENH1732StateSplit:
     def test_select_step_routes_error_to_diagnose(self, raw_data: dict) -> None:
         assert raw_data["states"]["select_step"]["on_error"] == "diagnose"
 
+
+class TestBug3270FinalVerifySpinGate:
+    """BUG-3270: final_verify_spin_gate bounds the continue_work -> final_verify ->
+    run_final_tests -> continue_work cycle, which the existing spin_gate cannot
+    reach (it is only wired from select_step)."""
+
+    def test_final_verify_spin_gate_routing(self, raw_data: dict) -> None:
+        gate = raw_data["states"]["final_verify_spin_gate"]
+        assert gate["on_yes"] == "continue_work"
+        assert gate["on_no"] == "summarize_partial"
+        assert gate["on_error"] == "continue_work"
+        assert gate["evaluate"]["type"] == "output_numeric"
+        assert gate["evaluate"]["operator"] == "lt"
+        assert gate["evaluate"]["target"] == "${context.max_final_verify_spins}"
+        assert gate["action_type"] == "shell"
+
+    def test_run_final_tests_and_count_final_route_through_gate(self, raw_data: dict) -> None:
+        assert raw_data["states"]["run_final_tests"]["on_no"] == "final_verify_spin_gate"
+        assert raw_data["states"]["count_final"]["on_no"] == "final_verify_spin_gate"
+
+    def test_max_final_verify_spins_context_default(self, raw_data: dict) -> None:
+        assert raw_data["context"]["max_final_verify_spins"] == 2
+
+    def test_final_verify_spin_gate_uses_own_counter_and_fingerprint_files(
+        self, raw_data: dict
+    ) -> None:
+        action = raw_data["states"]["final_verify_spin_gate"]["action"]
+        assert "final-verify-spin-counter.txt" in action
+        assert "final-verify-fingerprint.txt" in action
+        # Must never collide with select_step's counter (:285's rm -f target).
+        assert "continue-work-spin-counter.txt" not in action
+
+    def test_final_verify_spin_gate_prunes_run_dir_by_explicit_pathspec(
+        self, raw_data: dict
+    ) -> None:
+        action = raw_data["states"]["final_verify_spin_gate"]["action"]
+        assert "':(exclude).loops/'" in action
+
+    def test_final_verify_spin_gate_hashes_untracked_content(self, raw_data: dict) -> None:
+        action = raw_data["states"]["final_verify_spin_gate"]["action"]
+        assert "git hash-object" in action
+        assert "ls-files -o --exclude-standard" in action
+
+    def test_final_verify_spin_gate_action_has_no_bare_brace_locals(
+        self, raw_data: dict
+    ) -> None:
+        # FSM interpolates the whole action string before bash sees it, so a
+        # bare ${FP} local-variable reference is a runtime failure, not a
+        # validation one (see the state's own comment).
+        action = raw_data["states"]["final_verify_spin_gate"]["action"]
+        assert "${FP}" not in action
+        assert "${PREV_FP}" not in action
+        assert "${N}" not in action
+        assert "${COUNTER}" not in action
+
+    def test_summarize_partial_mentions_no_progress_stop_reason(self, raw_data: dict) -> None:
+        action = raw_data["states"]["summarize_partial"]["action"]
+        assert "no progress" in action.lower() or "no working-tree progress" in action.lower()
+
     def test_do_work_routes_to_verify_step(self, raw_data: dict) -> None:
         assert raw_data["states"]["do_work"]["next"] == "verify_step"
 
@@ -1346,8 +1405,10 @@ class TestChange8FinalVerifyGate:
         # grep-gate before reaching summarize_success.
         assert raw_data["states"]["count_final"]["on_yes"] == "check_provisional_markers"
 
-    def test_count_final_routes_no_to_continue_work(self, raw_data: dict) -> None:
-        assert raw_data["states"]["count_final"]["on_no"] == "continue_work"
+    def test_count_final_routes_no_to_final_verify_spin_gate(self, raw_data: dict) -> None:
+        # BUG-3270: redirected through the spin gate rather than straight back
+        # to continue_work, so a permanently-FAILED dod.md can't cycle forever.
+        assert raw_data["states"]["count_final"]["on_no"] == "final_verify_spin_gate"
 
     def test_count_final_routes_error_to_diagnose(self, raw_data: dict) -> None:
         assert raw_data["states"]["count_final"]["on_error"] == "diagnose"
@@ -1516,9 +1577,13 @@ class TestENH2225FinalOnlyGate:
         assert "resolved-test-cmd.txt" in action
 
     def test_run_final_tests_routing(self, raw_data: dict) -> None:
+        # BUG-3270: on_no redirected through final_verify_spin_gate rather
+        # than straight back to continue_work, closing the unguarded
+        # continue_work -> final_verify -> run_final_tests -> continue_work
+        # cycle.
         state = raw_data["states"]["run_final_tests"]
         assert state["on_yes"] == "count_final"
-        assert state["on_no"] == "continue_work"
+        assert state["on_no"] == "final_verify_spin_gate"
         assert state["on_error"] == "diagnose"
 
     def test_final_verify_routes_to_run_final_tests(self, raw_data: dict) -> None:
