@@ -557,6 +557,67 @@ Then update `decision_needed` in the issue's YAML frontmatter using the Edit too
 **Idempotency**: skip the write if `decision_needed` already has the same value (follow `skills/format-issue/SKILL.md` in section "2.5a. Testable Inference (doc-only detection)").
 **Dry-run guard**: skip the frontmatter write in `--dry-run` mode; report what would have been set in the DRY RUN PREVIEW block.
 
+**Dependency Classification (ENH-3284)** — mode scope: this rule is **not**
+Auto-Mode-only, unlike the rest of Step 5a. It applies whenever a fresh
+finding is deposited, whether via this step (Auto Mode) or via Step 5b
+(Interactive Mode, which references this same rule rather than duplicating
+it).
+
+When a fresh finding names another open issue as affecting *how or whether*
+this issue's proposed mechanism works — not merely that it touches the same
+file or function — classify it as a hard dependency instead of leaving it as
+a hedged prose note:
+
+- **Discriminator**: "touches the same function" -> `relates_to`; "the
+  mechanism this issue proposes does not work until that issue lands" ->
+  `blocked_by`. Structurally the same shape as the `soft_dep_hard_edge` gate
+  below (§ 6.7), which states an explicit default when signals conflict.
+- **On hard-dependency classification**, promote the finding at deposit
+  time — do not rely on § 6.7's `prose_dep_drift` gate to catch it
+  reactively:
+  ```bash
+  ll-issues link [ISSUE-ID] blocked_by [BLOCKER-ID]
+  ```
+  If `[BLOCKER-ID]` is already listed under `relates_to`, use the move form
+  instead so the ID does not end up in both fields:
+  ```bash
+  ll-issues link [ISSUE-ID] blocked_by [BLOCKER-ID] --unlink [ISSUE-ID] relates_to [BLOCKER-ID]
+  ```
+- **Cycle refusal**: `_check_cycle()` (`link.py:212-214`, `:299-329`) exits
+  `1` when the edge would close a dependency cycle. Do not retry and do not
+  pass `--force` — leave frontmatter untouched, keep the finding as
+  `relates_to` plus the `Ordering check:` note below, and report the refused
+  edge in Step 8's output.
+- **Ambiguous middle ground — default to `relates_to`**: when the
+  classification is genuinely uncertain, do not promote. Record `relates_to`
+  and append a one-line `Ordering check: <what would break if the other
+  issue lands after this one>` note to the finding. This is the *opposite*
+  default from the `soft_dep_hard_edge` gate (§ 6.7), which resolves
+  conflicts toward the soft reading because it is looking at an edge that
+  already exists: a spurious `blocked_by` written in confident prose has no
+  detector and silently withholds the issue from readiness-ranked dequeue
+  (`ll-issues next-issue`/`next-issues`) and sprint scheduling, while a
+  missed edge stays recoverable via `ll-issues format-check --fix --apply`
+  and is surfaced by `ll-issues sequence`'s `⚠ prose dep …, not in
+  blocked_by` warning.
+- **Companion prose, not the mechanism**: phrase the finding in canonical
+  dependency language per Step 6's "Canonical dependency phrasing" rule
+  below (bare un-backticked blocker ID, dependency clause in its own
+  sentence with no other issue ID preceding it) *in addition to* the
+  frontmatter write, so § 6.7's `prose_dep_drift` gate, `ll-issues
+  sequence`, and `wire-issue`'s prose-dependency gate all agree with
+  frontmatter rather than contradicting it. The phrasing is a companion to
+  the write, not a substitute for it.
+- **Complements, does not replace, the reactive backfill**: `ll-issues
+  format-check --fix --apply` (`format_check.py:118-143`, ENH-3247) already
+  backfills `blocked_by` from `prose_dep_drift` reactively. This step is a
+  proactive, deposit-time promotion; `apply_link`'s `unchanged`-on-duplicate
+  idempotency (`link.py:208-209`) makes a later reactive sweep over an
+  already-written edge a harmless no-op.
+- **Dry-run guard**: skip the `ll-issues link` call entirely when
+  `--dry-run` is set; report the would-be edge in the DRY RUN PREVIEW block
+  instead.
+
 **Implementation Steps** — concrete references, outcome phrasing. Each entry
 names what must become true and how that is checked, not the edit to make (see
 § Register: Constraints, Not Recipes):
@@ -773,6 +834,12 @@ For **UNKNOWN** gaps (research didn't find enough), ask open-ended questions:
 
 After gathering answers, update the issue file with both research findings and user-provided context.
 
+**Dependency Classification applies here too**: when a finding gathered in
+this step names another open issue as affecting how or whether this issue's
+mechanism works, apply the Dependency Classification rule from Step 5a's
+Enrichment Rules above (ENH-3284) — that rule is not Auto-Mode-only, so
+interactive mode uses it unchanged rather than duplicating it here.
+
 ### 5c. Gap-Analysis Mode (Skip Unless `--gap-analysis`)
 
 **Skip this entire section if `GAP_ANALYSIS` is false.**
@@ -890,7 +957,7 @@ Run /ll:ready-issue [ISSUE-ID] to validate.
    "blocking dependency unmet: BUG-3028's decision has not landed" are invisible
    to `extract_prose_deps()`, so Step 6.7's gate never fires and the
    `blocked_by` edge is never written — the issue then reads as unblocked to
-   `ll-issues ready` and sprint scheduling.
+   `ll-issues next-issue`/`next-issues` and sprint scheduling.
 
 ### 6.5. Append Session Log
 

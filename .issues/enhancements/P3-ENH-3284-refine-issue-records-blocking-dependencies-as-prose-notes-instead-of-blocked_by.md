@@ -3,10 +3,11 @@ id: ENH-3284
 type: ENH
 title: refine-issue records blocking dependencies as prose notes instead of blocked_by
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-08-21'
 captured_at: '2026-08-21T17:30:43Z'
+completed_at: '2026-08-21T20:49:45Z'
 reconcile_attempted: true
 labels:
 - refine-issue
@@ -108,7 +109,7 @@ canonically, and let 6.7 do the write." **That design was considered and rejecte
 `extract_prose_deps()` (`scripts/little_loops/issues/prose_deps.py:87`) carries three independent
 suppression rules that a correctly-classified finding must clear simultaneously:
 
-1. **Backtick suppression** (`_BACKTICK_SPAN_RE`, `:41`, ENH-3061) — `` `Blocked by BUG-3279` ``
+1. **Backtick suppression** (`_BACKTICK_SPAN_RE`, `:42`, ENH-3061) — `` `Blocked by BUG-3279` ``
    inside an inline code span is ignored. Findings blocks backtick identifiers routinely.
 2. **Scope attribution** (`_scope_subject`, `:62-80`, BUG-3057) — if another issue ID appears
    earlier *in the same sentence or list item*, the phrase is attributed to that issue and
@@ -240,7 +241,7 @@ _Added by `/ll:refine-issue` — 2026-08-21 — based on codebase analysis:_
   the "Files to Modify" entry above already reflects that.
 - Exact insertion points in `commands/refine-issue.md`: Step 6 item 6 ("Canonical dependency phrasing", ~lines 885–892) already instructs writing prose canonically so `extract_prose_deps()` can detect it, but only Step 6.7's `prose_dep_drift` handling (~lines 922–928) actually calls `ll-issues link [ID] blocked_by [ID]` — and only reactively, after the drift gate fires. There is no step in Step 3–5a's research-to-enrichment path that classifies a fresh finding as a hard dependency and promotes it at write time; a new promotion step belongs in Step 5a, alongside the other Enrichment Rules.
 - `ll-issues link` (`scripts/little_loops/cli/issues/link.py`) is the only CLI that writes `blocked_by`: `apply_link()` (`:119-225`) reads existing `blocked_by`/`relates_to` (`:192-194`) and appends (`new_list = [*existing, target_id]`, `:219`) — it does not overwrite. Idempotent: re-adding an existing edge reports `unchanged` (`:208-209`). A cycle guard (`_check_cycle()`, `:299-329`) refuses an edge that would create a dependency cycle, raising and returning exit `1`. `ll-issues fold-findings` never touches frontmatter — the classification/promotion logic would be new skill-prose, with `ll-issues link` supplying only the mechanical write.
-- Confirmed dependency-resolution rule: `find_issues_for_graph()` (`issue_parser.py:3367-3386`) loads the non-terminal superset, so a `blocked_by` edge to a `deferred` issue stays unresolved — matches `.claude/CLAUDE.md`'s "only `done`/`cancelled` resolve `blocked_by`/`depends_on`" rule.
+- Confirmed dependency-resolution rule: `find_issues_for_graph()` (`issue_parser.py:3483-3497`) loads the non-terminal superset, so a `blocked_by` edge to a `deferred` issue stays unresolved — matches `.claude/CLAUDE.md`'s "only `done`/`cancelled` resolve `blocked_by`/`depends_on`" rule.
 - Closest existing precedent for "classify freshly-deposited content, then write a frontmatter field" is Step 5a's "Option-Count Detection" (~lines 538-557): count a structural signal, verify with a deterministic CLI probe (`ll-issues check-decidable`) before setting `decision_needed`, skip the write if the value is already correct (idempotency), and skip it entirely under `--dry-run`. A `blocked_by`-promotion step has a direct write-side analogue (`ll-issues link [ID] blocked_by [BLOCKER-ID]`, already used in Step 6.7) but no existing precedent for the *classification* judgment itself — that judgment is closer in kind to Step 6.7's `soft_dep_hard_edge` handling (~lines 965-974), which states its discriminator as a closed phrase list with an explicit default direction when signals conflict.
 
 ## Program Design
@@ -253,7 +254,7 @@ N/A — no new data shape; the promotion step operates on the `blocked_by`/`rela
 - `extract_prose_deps(body: str, host_id: str | None = None) -> set[str]` — the canonical-phrasing detector Step 6.7's `prose_dep_drift` gate already runs; its three suppression rules (backtick spans, sentence-scope attribution, conservative phrase list) are why this issue writes the edge directly instead of relying on the detector to catch it (`scripts/little_loops/issues/prose_deps.py:87`)
 
 ### Call Path
-`commands/refine-issue.md Step 5a` (Enrichment Rules — deposit a finding under `## Codebase Research Findings`) -> new classification step (this issue: hard-dependency vs relates_to) -> `apply_link` (`link.py:119`, invoked as `ll-issues link [ID] blocked_by [BLOCKER-ID]`) -> `find_issues_for_graph` (`issue_parser.py:3367`) -> `DependencyGraph.get_ready_issues` (`dependency_graph.py:154`)
+`commands/refine-issue.md Step 5a` (Enrichment Rules — deposit a finding under `## Codebase Research Findings`) -> new classification step (this issue: hard-dependency vs relates_to) -> `apply_link` (`link.py:119`, invoked as `ll-issues link [ID] blocked_by [BLOCKER-ID]`) -> `find_issues_for_graph` (`issue_parser.py:3483`) -> `DependencyGraph.get_ready_issues` (`dependency_graph.py:154`)
 
 ### Decision Rules
 - **Gap kind**: dependency-hardness classification — decides whether a freshly-deposited finding is promoted from prose-only to a `blocked_by:` frontmatter edge.
@@ -299,7 +300,7 @@ N/A — no new data shape; the promotion step operates on the `blocked_by`/`rela
    makes the later reactive sweep a harmless no-op.
 7. Verify: a finding matching the BUG-3278/BUG-3279 shape now sets `blocked_by` when the rule runs,
    rather than only being caught reactively by Step 6.7's `prose_dep_drift` gate; confirm
-   `find_issues_for_graph` (`issue_parser.py:3367`) still treats the edge as unresolved until the
+   `find_issues_for_graph` (`issue_parser.py:3483`) still treats the edge as unresolved until the
    blocker reaches `done`/`cancelled`.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
@@ -396,6 +397,8 @@ Explicitly **not** in scope:
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-21T20:49:24 - `d06c9128-4ee6-4f06-925c-39933c980b0a.jsonl`
+- `/ll:ready-issue` - 2026-08-21T20:32:44 - `a458e22b-0d75-42ff-afce-7b1dde09ba9a.jsonl`
 - `/ll:confidence-check` - 2026-08-21T20:28:41 - `f43edb41-c89c-4b7e-9e53-d33ec1f5029d.jsonl`
 - `/ll:confidence-check` - 2026-08-21T20:13:37 - `e2e1442c-6810-4106-ac77-209e0a6a894d.jsonl`
 - `/ll:wire-issue` - 2026-08-21T18:16:11 - `3f6ddaa1-8943-4e02-80c6-991ae42bf623.jsonl`

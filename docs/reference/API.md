@@ -898,7 +898,7 @@ Reports twenty-five gap classes on the returned `FormatGaps` dataclass (`missing
 - **empty** — a required section header is present but its body is whitespace-only.
 - **boilerplate** — a required section's body still equals its `creation_template` (whole-body match only, to avoid false positives on partially-filled sections).
 - **malformed_id** — frontmatter `id` is present but does not match the filename-derived `TYPE-NNN` (BUG-2769), e.g. a bare int (`id: 2756`) or quoted numeric (`id: "1294"`) instead of `id: BUG-2756`.
-- **prose_dep_drift** (FEAT-2849) — the body claims a dependency in prose (`extract_prose_deps()`, see below) on an **active** issue absent from `blocked_by`/`depends_on`.
+- **prose_dep_drift** (FEAT-2849) — the body claims a dependency in prose (`extract_prose_deps()`, see below) on an **active** issue absent from `blocked_by`/`depends_on`. Two write paths close this gap and they are layered, not mutually exclusive: `ll-issues format-check --fix --apply` backfills the edge reactively after the drift is detected (ENH-3247), while `/ll:refine-issue`'s Step 5a Dependency Classification rule (ENH-3284) can also write it proactively at deposit time, before this gap class would ever fire — `apply_link`'s idempotent, cycle-safe write makes either order safe.
 - **stale_prose_dep** (FEAT-2849) — the body's prose dependency claim names a `done`/`cancelled` issue — the remedy is deleting the stale text, not adding an edge.
 - **program_design_nonspecific** (ENH-2852) — the `## Program Design` section is present and non-boilerplate but not *specific*: it carries no signature-shaped line (`name(params) -> ret`, `field: type`), or names no `Call Path` anchor that resolves against the repo. Graded by `little_loops.issues.program_design.grade_program_design()`. **Opt-in per project and grandfathered**: the whole Program Design check — including the `missing`/`empty` entries for that section — is skipped unless the project has armed the gate by writing `.ll/program-design-cutover.json` (`{"sha": "<40-char SHA>", "date": "YYYY-MM-DD"}`), and is skipped per-issue when the issue's design timestamp (latest `/ll:refine-issue` Session Log entry, else `discovered_date`) is *strictly earlier* than the stamped date, or when frontmatter carries `program_design_not_applicable: true`. Only call-path anchors must resolve; new identifiers need only be signature-*shaped*, and a new identifier that happens to resolve never changes the verdict.
 - **deprecated_key** (ENH-2876) — frontmatter carries a retired key (e.g. hand-authored `superseded_by`) or a coerced status synonym (e.g. `status: completed`), each paired with a mandatory prose reason from `little_loops.frontmatter.DEPRECATED_FRONTMATTER_KEYS`/`DEPRECATED_STATUS_VALUES`.
@@ -946,7 +946,8 @@ code blocks. Deliberately conservative: recall matters less than not crying
 wolf — temporal/narrative phrasings ("after `<ID>`", "once `<ID>`", "pending
 `<ID>`", "needs `<ID>`") are **not** matched, since in real issue bodies they
 overwhelmingly describe history rather than a live edge, and a wrong
-`blocked_by` silently hides an issue from `ll-issues ready`. Callers pass the
+`blocked_by` silently hides an issue from `ll-issues next-issue`/`next-issues`.
+Callers pass the
 issue *body only* (post `strip_frontmatter()`) — this
 function does not parse frontmatter itself.
 

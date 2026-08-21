@@ -566,3 +566,90 @@ class TestSessionLogPrecedesProgramDesignGate:
         assert "program_design_gate_active" in text, (
             "Step 6.5 must explain why the Session Log append precedes the gate check"
         )
+
+
+class TestDependencyClassificationInStep5a:
+    """commands/refine-issue.md must document the blocked_by-vs-relates_to
+    dependency-classification/promotion rule (ENH-3284): a fresh finding that
+    names another open issue as affecting *how or whether* this issue's
+    mechanism works is promoted to `blocked_by` at deposit time via
+    `ll-issues link`, rather than left as prose for Step 6.7's reactive
+    `prose_dep_drift` gate to maybe catch.
+    """
+
+    def _step_5a_text(self) -> str:
+        content = COMMAND_FILE.read_text()
+        step_5a_start = content.index("### 5a. Fill Gaps with Research Findings")
+        step_5b_start = content.index("### 5b. Interactive Refinement")
+        return content[step_5a_start:step_5b_start]
+
+    def _dependency_classification_text(self) -> str:
+        text = self._step_5a_text()
+        start = text.index("Dependency Classification")
+        return text[start:]
+
+    def test_dependency_classification_block_present(self) -> None:
+        assert "Dependency Classification" in self._step_5a_text(), (
+            "Step 5a must contain a Dependency Classification block"
+        )
+
+    def test_discriminator_documented(self) -> None:
+        text = self._dependency_classification_text()
+        assert "relates_to" in text and "blocked_by" in text, (
+            "Dependency Classification block must name both `relates_to` and `blocked_by`"
+        )
+        assert "does not work until that issue lands" in text, (
+            "Dependency Classification block must state the correctness-based "
+            "blocked_by-vs-relates_to discriminator verbatim"
+        )
+
+    def test_link_promotion_call_documented(self) -> None:
+        text = self._dependency_classification_text()
+        assert "ll-issues link" in text and "blocked_by" in text, (
+            "Dependency Classification block must document promoting via "
+            "`ll-issues link [ID] blocked_by [BLOCKER-ID]`"
+        )
+        assert "--unlink" in text, (
+            "Dependency Classification block must document the --unlink move form "
+            "for a blocker ID already sitting in relates_to"
+        )
+
+    def test_cycle_refusal_branch_documented(self) -> None:
+        text = self._dependency_classification_text()
+        assert "cycle" in text.lower(), (
+            "Dependency Classification block must document the cycle-refusal branch"
+        )
+        assert "--force" in text, (
+            "Dependency Classification block must state that cycle refusal is not "
+            "retried and --force is not used"
+        )
+
+    def test_dry_run_guard_documented(self) -> None:
+        text = self._dependency_classification_text()
+        assert "--dry-run" in text, (
+            "Dependency Classification block must document the --dry-run skip"
+        )
+
+    def test_canonical_phrasing_companion_documented(self) -> None:
+        text = self._dependency_classification_text()
+        assert "companion" in text.lower(), (
+            "Dependency Classification block must state canonical prose phrasing is "
+            "a companion to the frontmatter write, not the promotion mechanism"
+        )
+
+    def test_ambiguous_default_to_relates_to_documented(self) -> None:
+        text = self._dependency_classification_text()
+        assert "Ordering check" in text, (
+            "Dependency Classification block must document the ambiguous-middle "
+            "default (relates_to plus an `Ordering check:` note)"
+        )
+
+    def test_reachable_from_interactive_mode(self) -> None:
+        content = COMMAND_FILE.read_text()
+        step_5b_start = content.index("### 5b. Interactive Refinement")
+        step_5c_start = content.index("### 5c. Gap-Analysis Mode")
+        step_5b_text = content[step_5b_start:step_5c_start]
+        assert "Dependency Classification" in step_5b_text, (
+            "Step 5b must reference the Dependency Classification rule so it is "
+            "reachable from interactive mode too, not only Auto Mode's Step 5a"
+        )

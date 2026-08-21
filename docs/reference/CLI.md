@@ -2224,7 +2224,10 @@ needs content the tool cannot invent and is left untouched.
 
 `--fix` runs every repair whose gap class fired, via a gap-class → repair
 function dispatch table: `prose_dep_drift` (backfill `blocked_by` via
-`ll-issues link`'s idempotent, cycle-safe write path — FEAT-2851),
+`ll-issues link`'s idempotent, cycle-safe write path — FEAT-2851; this is a
+reactive backfill, layered with `/ll:refine-issue`'s Step 5a Dependency
+Classification rule, ENH-3284, which can write the same edge proactively at
+deposit time — the idempotent write makes either order safe),
 `duplicate_findings_block` (collapse via the same transform
 `ll-issues fold-findings` uses), `duplicate_heading` (collapse duplicate
 headings, concatenating bodies in document order — never drops a body),
