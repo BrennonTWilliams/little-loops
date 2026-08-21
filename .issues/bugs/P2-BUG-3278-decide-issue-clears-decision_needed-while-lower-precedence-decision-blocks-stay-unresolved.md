@@ -18,12 +18,12 @@ relates_to:
 - ENH-3280
 - ENH-3277
 verify_verdict: VALID
-confidence_score: 98
-outcome_confidence: 77
-score_complexity: 18
-score_test_coverage: 22
-score_ambiguity: 15
-score_change_surface: 22
+confidence_score: 90
+outcome_confidence: 82
+score_complexity: 14
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 18
 ---
 
 # BUG-3278: decide-issue clears decision_needed while lower-precedence decision blocks stay unresolved
@@ -453,6 +453,7 @@ decision and clears it for all of them.
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-21T17:26:19 - `ce6fc8e8-cc01-4d82-ba15-c569a3c2657d.jsonl`
 - `/ll:confidence-check` - 2026-08-21T16:52:46 - `91b7dacc-e5dd-41ec-9252-2284552631e6.jsonl`
 - `/ll:verify-issues` - 2026-08-21T16:50:38 - `b6e0cd40-ff6f-484a-a070-a4c057b6b4f8.jsonl`
 - `/ll:refine-issue` - 2026-08-21T16:48:30 - `fb9d04b2-a23d-41ad-9b4a-d9a452640591.jsonl`

@@ -1,0 +1,11 @@
+{
+  "id": "c4c37c04-642b-439a-b142-475b6efa4ead",
+  "type": "decision",
+  "timestamp": "2026-08-21T17:31:11Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Hard ordering constraints filed as hedged prose are invisible to dependency resolution and loop dequeue.",
+  "rule": "Captured: refine-issue records blocking dependencies as prose notes instead of blocked_by",
+  "scope": "issue",
+  "issue": "ENH-3284"
+}

@@ -1,0 +1,11 @@
+{
+  "id": "5843a066-5bb8-4dbc-8352-b48472f73bb4",
+  "type": "decision",
+  "timestamp": "2026-08-21T17:31:11Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Write-time half of the evidence-verification gap; BUG-3282 is the verify-time backstop.",
+  "rule": "Captured: capture-issue writes evidence quotes without checking them against the cited artifact",
+  "scope": "issue",
+  "issue": "ENH-3283"
+}

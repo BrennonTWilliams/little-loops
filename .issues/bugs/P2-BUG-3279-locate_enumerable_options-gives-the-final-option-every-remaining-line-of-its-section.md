@@ -17,8 +17,14 @@ relates_to:
 - BUG-3278
 - ENH-3280
 - ENH-3277
-verify_verdict: NON_VALID
+- BUG-3285
 size: Large
+confidence_score: 96
+outcome_confidence: 76
+score_complexity: 17
+score_test_coverage: 20
+score_ambiguity: 20
+score_change_surface: 19
 ---
 
 # BUG-3279: locate_enumerable_options gives the final option every remaining line of its section
@@ -33,7 +39,7 @@ follows the option list — analysis subsections, research findings, tables, and
 
 ## Current Behavior
 
-`ll-issues locate-options ENH-3277 --json` (2026-08-21):
+`ll-issues locate-options ENH-3277 --json`, **as first captured at 2026-08-21T15:45Z**:
 
 ```
 count 3  pattern bold_label  heading "Proposed Solution"
@@ -47,6 +53,13 @@ description is roughly `172-188`. The remaining ~215 lines are unrelated content
 no option: the *Hard prerequisite* §2b table, *Dead site*, *Pinning `dead-code-cleanup`'s skip
 edge*, *The three `harness-*` sites*, *Precedence*, *Codebase Research Findings*, and the
 `### Decision Rationale` block.
+
+> **Line numbers here are a snapshot, not an invariant.** ENH-3277 is an actively-refined issue
+> and keeps growing, which is the *mechanism* of this bug — the absorbed span widens with every
+> refine pass. Re-measured at 2026-08-21T18:20Z, the same command reports Option C at **`200-667`
+> (467 lines)**, and `_unapplied_decision` emits **113** false reports rather than the ~40 recorded
+> below. Verify against *relative* facts (last option's `end_line` == section end; its `text`
+> contains `### Decision Rationale`), never against these absolute numbers.
 
 Two consequences:
 
@@ -64,8 +77,9 @@ Two consequences:
 1. Take any issue whose `## Proposed Solution` continues with `###` analysis subsections after the
    last option — ENH-3277 as it stood at commit-time is the live case.
 2. Run `ll-issues locate-options ENH-3277 --json`.
-3. Compare the last option's `end_line` (404) against the line where its prose actually stops
-   (~188) and against the next subheading (`### Hard prerequisite …`, line 205).
+3. Compare the last option's `end_line` against the line where its prose actually stops and
+   against the next `###` subheading. (Snapshot values at capture time were 404 / ~188 / 205; see
+   the drift note in Current Behavior — assert the *relation*, not the numbers.)
 4. Inspect `options[-1].text` — it contains the §2b table, *Dead site*, *Pinning*, *Precedence*,
    *Codebase Research Findings*, and `### Decision Rationale`, none of which describe that option.
 
@@ -93,10 +107,12 @@ callout line. Neither helps here — the last block is a *rejected* option (no c
 and the `### Decision Rationale` boundary still leaves every intervening `###` subsection inside
 the span.
 
-The fix proposed below — terminate at the next heading of any depth — subsumes both existing
-clamps and repairs this consumer too. **Fix both functions, or factor the boundary rule into one
-helper they share**; two independent span implementations with the same bug is the reason this
-recurred after ENH-3256 supposedly closed it.
+The fix proposed below — terminate at the next qualifying heading — subsumes the
+`### Decision Rationale` clamp and repairs this consumer too. It does **not** subsume the
+`> **Selected:**` callout trim, which handles *unheaded* rationale prose no heading boundary can
+see; see Implementation Step 3. **Fix both functions, or factor the boundary rule into one helper
+they share**; two independent span implementations with the same bug is the reason this recurred
+after ENH-3256 supposedly closed it.
 
 ## Expected Behavior
 
@@ -117,12 +133,166 @@ the ones whose decisions carry the most downstream weight.
 Terminate each option span at the earliest of:
 
 - the next extracted option's `start_line`
-- the next markdown heading at any depth after the option's start
+- the next **qualifying** markdown heading after the option's start (see the two rules below)
 - the section end (current behavior, now the fallback rather than the rule)
 
 The heading boundary is what resolves the observed case: the first `###` after Option C's start is
-`### Hard prerequisite — pick a §2b row per site before writing any shell` at line 205, bounding
-Option C to `172-204` instead of `172-404`.
+`### Hard prerequisite — pick a §2b row per site before writing any shell`, bounding Option C to
+end there instead of at the section end.
+
+### Rule 1 — the boundary must be fence-aware (mandatory, not optional)
+
+`^#{1,6}\s` matches **shell comments inside fenced code blocks**, and option blocks in this repo
+routinely contain fenced bash/python. A fence-blind boundary trades this bug for its mirror image:
+silently *over*-trimming short, unrefined options at a fake heading.
+
+Measured across all of `.issues/` (re-measured 2026-08-21, fence-aware): **36 live option blocks**
+have their first heading-like line inside a fence and would be truncated there by a fence-blind
+regex. (An earlier pass in this issue recorded 14; that undercounted — the correct figure is 36.)
+Live examples:
+
+| Issue | Option | Fake boundary the naive regex hits |
+| --- | --- | --- |
+| FEAT-1755 | Option A | `# Build the slash-command string exactly as l…` |
+| FEAT-949 | Option B | `# Default CLAUDE.md resolution…` |
+| FEAT-1452 | Option A / Option B | `# scripts/little_loops/extension.py…` |
+| FEAT-1466 | Option B | `# scripts/tests/test_feat1462_doc_wiring…` |
+| FEAT-1826 | Option B | `# in sft-corpus.yaml…` |
+| BUG-2069 | Option A | `# in main_issues(), before `args = par…` |
+| BUG-903 | Option A | `# scripts/little_loops/fsm/evaluators.py…` |
+| BUG-1760 | Option C | `# Option A — add to autodev.yaml…` |
+
+Use `little_loops.text_utils.fence_spans` / `in_fence` to skip heading matches inside fences —
+imported function-locally, matching the existing precedent in `_duplicate_heading_groups` (`:1215`)
+and `_empty_provenance_stub_matches` (`:1253`).
+
+### Rule 2 — heading depth is tier-dependent
+
+"Next heading at any depth" is wrong for the `section_header` tier, where the option **is itself**
+an `### Option X` heading: a `####` subheading that is legitimate option content would cut the
+span. The rule:
+
+- **`section_header` tier** — boundary is the next heading at depth **≤ the option's own heading
+  depth** (i.e. `###` or `##`, never its own `####` children).
+- **`bold_label` / `numbered` / `bullet` tiers** — the option marker is not a heading, so any
+  heading (`#{1,6}`) is a boundary.
+
+**"The option's own depth" is a constant — do not build machinery to compute it.** The
+`section_header` regex is `^###\s+Option\s+[A-Za-z0-9]` (`_OPTION_PATTERNS[0]`, `:1892`), anchored
+at exactly three hashes; it can never match an option at any other depth. So the rule is two static
+regexes, not a dynamic depth calculation:
+
+- heading-shaped option → boundary `r"^#{1,3}\s"`
+- non-heading-shaped option → boundary `r"^#{1,6}\s"`
+
+**Tier is not available in the two sibling functions — decide depth per match, not per function.**
+`_locate_options_in_text` picks exactly one `_OPTION_PATTERNS` tier per call, so "the option's own
+tier" is well-defined there. `_option_block_spans` (`:1371`) and `_iter_option_blocks` (`:2216`) do
+not have tiers: they share a single regex, `_OPTION_HEADING_RE` (`:2210`), whose alternation matches
+**both** shapes in one pass —
+
+```python
+r"^(?:###\s+Option\s+[A-Za-z0-9]|\*\*Option\s+[A-Za-z0-9]+)"
+```
+
+— so one document can yield `###`-shaped and `**`-shaped blocks in the same `matches` list. In those
+two functions the depth rule must be derived from each match's own text (heading-shaped match →
+boundary at depth ≤ 3; bold-shaped match → boundary at any depth), not chosen once for the call.
+Without this, Implementation Steps 3 and 4 have no implementable depth rule.
+
+Blast radius, measured across all of `.issues/`: only **22** non-final options would truncate at
+all under the naive any-depth rule, and all but ~3 of those truncations are *desired* (they cut at
+`### Decision Rationale` / `### Codebase Research Findings`). The ~3 genuine over-trims are
+`#### Decision 2 — …` subheadings inside an option body (FEAT-2478 Option B, FEAT-2598 Option B,
+FEAT-1712 Option B) — exactly the shape Rule 2 protects. The rule is cheap insurance, and it turns
+Implementation Step 2 from an exploratory "confirm nothing broke" into an assertable invariant.
+
+### Rule 3 — `_iter_option_blocks` needs `_is_option_resolved` changed with it (blocker)
+
+This is **not** a scope question to defer. Applying the boundary to `_iter_option_blocks` *without*
+this change is a regression.
+
+`_is_option_resolved` (`issue_parser.py:2242`) marks a block resolved if it contains
+`> **Selected:**` **or** `### Decision Rationale`. Bounding blocks at the next heading means
+`### Decision Rationale` can never fall inside a block again — the marker becomes dead code, and
+every option it used to resolve flips back to unresolved.
+
+Simulated across all of `.issues/` (2026-08-21) by substituting a heading-bounded
+`_iter_option_blocks` and re-running `locate_unresolved_options`:
+
+```
+151 issues change their unresolved-option count
+FEAT-2259  0 → 1     FEAT-1285  0 → 1     FEAT-1283  1 → 2
+FEAT-3078  1 → 3     FEAT-1540  0 → 1     FEAT-2338  0 → 1    ...
+```
+
+The `0 → 1` flips are **already-decided issues newly reported as still having unresolved options**.
+That flips the exit code of `ll-issues check-open-questions`, which is the *first* probe in
+`resolve-decision.yaml`'s gate (`:63`) — so the loop would re-enter `decide` on issues that are
+already decided.
+
+Required with the boundary change: move the `### Decision Rationale` test from **block scope to
+section scope** — if the section contains a `### Decision Rationale` heading anywhere, every option
+block in that section is resolved. The `> **Selected:**` callout stays per-block (it lives inside
+the winning option and is unaffected by the new boundary).
+
+#### Net corpus effect — Rule 3 also moves 119 issues the *other* way
+
+The 151-issue figure above is the boundary change **in isolation**. Simulating Rule 3 *as
+specified* (fence-aware boundary + section-scope rationale) across all of `.issues/` (2026-08-21):
+
+```
+boundary alone:              151 gain,   0 lose
+Rule 3 as specified:           0 gain, 119 lose
+```
+
+Rule 3 fully neutralizes the regression (0 gains — this is the invariant to assert). But it also
+drops **119 issues to 0 unresolved options**. Those are decided issues whose winning option was
+*not* the last one: today the appended `### Decision Rationale` only resolves the block that
+absorbed it, so the middle non-winning options read as unresolved. Section-scope resolution fixes
+that too.
+
+This is a **second real bug fixed for free**, but it is still a gate-behavior change: for those 119
+issues `ll-issues check-open-questions` flips nonzero → 0, so `resolve-decision.yaml` stops
+re-entering `decide` on them. Both directions must be asserted at verification time (see
+Implementation Step 5) — an implementer who sees a 119-issue diff and reads it as a regression will
+"fix" it back and reintroduce the absorption dependency.
+
+#### Known hazard — partially-decided multi-decision sections
+
+Section scope means one `### Decision Rationale` anywhere in `## Proposed Solution` resolves
+*every* option block in it. FEAT-2478 shows the shape at risk: two `#### Decision N` groups, four
+option blocks, two independent `> **Selected:**` callouts. Decide only Decision 1, and all four
+blocks read resolved — `check-open-questions` goes quiet on a genuinely open decision.
+
+Measured across `.issues/` (2026-08-21): only **2** issues have 2+ `#### Decision N` groups in
+Proposed Solution, and **0** are currently in the partially-decided state. Accept the rule as
+specified rather than narrowing scope to the decision group — but record the hazard in
+`_is_option_resolved`'s docstring and add the fixture named under Tests, so the next reader finds
+it deliberate rather than undiscovered.
+
+**Define "section" for both of `locate_unresolved_options`'s paths.** That function reaches
+`_iter_option_blocks` two different ways and the section-scope test must be evaluated against the
+same text the blocks came from, in each:
+
+- **Named-section path** (`:2255`) — blocks come from `_section_body(content, heading)` for
+  `Proposed Solution` then each `_OPTION_FALLBACK_SECTIONS` entry. Scope = that section body.
+  Note this path accumulates across *all* named sections, so the test is per-section, not once
+  per document.
+- **Whole-document fallback** (`:2272`) — blocks come from `content[start:end]` for each
+  `_iter_h2_sections` span. Scope = that H2 span, **not** the whole document.
+
+**Caveat — section scope is deliberately blunt.** A single section holding *two* option groups
+where only one is decided would be reported fully resolved. Measured across `.issues/`
+(2026-08-21): five issues have two option groups under one `### Decision Rationale` — FEAT-3078,
+FEAT-2878, BUG-1484, ENH-2888, ENH-2967 — and none is a live false negative (each is either fully
+decided, or its second "group" is phantom blocks from the `_OPTION_HEADING_RE` prose-matching
+defect tracked as **BUG-3285** — which also means the 151-issue flip measured above is computed
+over a block set containing phantoms, so treat that number as an upper bound on this change's own
+blast radius). Accepted as-is, because the alternative (associating a
+`### Decision Rationale` with a specific option group) needs grouping logic this issue does not
+introduce. Add a fixture pinning the shape so the trade-off is visible if it ever bites: two option
+groups + one `### Decision Rationale`, asserting the known-blunt result rather than the ideal one.
 
 ### Codebase Research Findings
 
@@ -152,7 +322,12 @@ _Added by `/ll:refine-issue` — 2026-08-21 — based on codebase analysis:_
   gate tries *before* `check-decidable` (see Dependent Files below). If left unfixed, the primary
   decidability probe keeps the old absorption behavior while the fallback probe gets the fix —
   decide explicitly whether this is in scope or an accepted gap; the shared-helper approach this
-  issue already proposes would naturally cover it. [Agent 2 finding]
+  issue already proposes would naturally cover it. [Agent 2 finding] **Resolved: in scope — see
+  Proposed Solution Rule 3, and note the coupled `_is_option_resolved` change below.**
+- `scripts/little_loops/issue_parser.py` — `_is_option_resolved` (`:2242`) and
+  `_RESOLVED_OPTION_MARKER_RE` (`:2204`). The `### Decision Rationale` alternative must move from
+  block scope to section scope in the same change as `_iter_option_blocks`, or 151 issues in this
+  repo alone gain phantom unresolved options (Rule 3)
 
 ### Dependent Files (Callers/Importers)
 
@@ -183,6 +358,37 @@ _Wiring pass added by `/ll:wire-issue`:_
   (fallback preserved)
 - A fixture containing a prior `### Decision Rationale` block: assert it appears in no option's
   `text`
+- **Fence-awareness (Rule 1)**: a fixture whose option body contains a fenced block with a `# shell
+  comment` first line — assert the span does **not** stop at it. Mirror the live FEAT-1755 Option A
+  shape (` ```bash ` + `# Build the slash-command string …`)
+- **Tier-dependent depth (Rule 2)**: a `section_header`-tier fixture (`### Option A`) whose body
+  contains a `#### Decision 2 — …` subheading — assert the `####` is retained; and a matching
+  `bold_label`-tier fixture where a `###` after the option marker *is* a boundary
+- **Section-scope resolution (Rule 3)**: a decided fixture (options + a trailing
+  `### Decision Rationale`) — assert `count_unresolved_options` is 0 both before and after the
+  boundary change. This is the regression guard for the 151-issue flip measured above
+- **Non-last winner (Rule 3, the 119-issue direction)**: a decided fixture whose `> **Selected:**`
+  callout sits on the **first** of three options, with `### Decision Rationale` trailing the third —
+  assert `count_unresolved_options` is 0 *after* the change (it is 2 today). This pins the
+  second bug Rule 3 fixes, and stops a later reader from "restoring" the old counts
+- **Mixed-shape depth (Rule 2, sibling functions)**: a fixture whose Proposed Solution holds both a
+  `### Option A` block and a `**Option B: …**` block — assert the `###` block keeps a `####`
+  subheading in its body while the `**`-shaped block terminates at a `###`. This is the direct test
+  of per-match (not per-call) depth in `_option_block_spans` / `_iter_option_blocks`
+- **Whole-document fallback scope (Rule 3)**: a fixture with no `## Proposed Solution` whose options
+  sit under an unrelated H2 alongside a `### Decision Rationale`, plus a *second* H2 carrying
+  undecided options — assert only the first H2's blocks are resolved, i.e. scope is the H2 span and
+  not the document
+- **Callout trim survives (Step 3)**: a fixture whose last option carries a `> **Selected:**`
+  callout followed by *unheaded* rationale prose naming other identifiers — assert
+  `_unapplied_decision` still reports nothing. Guards against deleting the trim as "redundant"
+- **Two-group bluntness (Rule 3 caveat)**: two option groups under one `### Decision Rationale` —
+  assert the known-blunt result (all resolved), pinning the accepted trade-off. Build it in the
+  **partially-decided** shape, mirroring FEAT-2478: `#### Decision 1` with its options and a
+  `> **Selected:**` callout, `#### Decision 2` with options and **no** callout, one trailing
+  `### Decision Rationale` covering only Decision 1. Assert `count_unresolved_options == 0` and
+  name in the test docstring that this is the accepted false negative — Decision 2 is open and the
+  gate will not say so. A both-decided fixture does not exercise the hazard
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_issues_locate_options.py` — no existing fixture places a trailing `###`
@@ -282,6 +488,13 @@ _Added by `/ll:refine-issue` — 2026-08-21 — based on codebase analysis:_
   `### Decision Rationale` heading) and the `> **Selected:**` callout trim (`:1419-1433`, fires
   only when that callout line is present). Neither clamp reacts to any other heading, table, or
   un-callout-marked prose.
+- `_is_option_resolved(block_body: str) -> bool` (`scripts/little_loops/issue_parser.py:2242`) —
+  returns `bool(_RESOLVED_OPTION_MARKER_RE.search(block_body))`, where the regex (`:2204`) is
+  `> **Selected:**` OR `### Decision Rationale`. Consumed by `locate_unresolved_options` (`:2249`)
+  → `count_unresolved_options` → `ll-issues check-open-questions`. The `### Decision Rationale`
+  alternative only ever matches today *because* of the absorption bug this issue fixes — it is
+  written at section end by `/ll:decide-issue` Phase 7a and lands inside the last option's block.
+  Bounding the block kills the marker; hence the section-scope change in Rule 3.
 - Existing "next heading at any depth" precedent (not currently reused by either option-span
   function): `_empty_provenance_stub_matches` (`scripts/little_loops/issue_parser.py:1241`) computes
   `heading_re = re.compile(r"^#{1,6}\s", re.MULTILINE)` and combines it with a sibling boundary via
@@ -306,22 +519,69 @@ keyword list, or threshold.
 
 ## Implementation Steps
 
-1. Add the heading boundary to span termination in `locate_enumerable_options`, keeping section
-   end as the fallback.
-2. Confirm the boundary does not truncate legitimately-subheaded options — a `### Option A`
-   (`section_header` tier) block whose body contains a `####` subheading must not stop there.
-   This is the one shape where the fix could over-trim.
-3. Verify: `ll-issues locate-options ENH-3277 --json` bounds Option C at `172-204` rather than
-   `172-404`, and no option's `text` contains `### Decision Rationale`.
+1. Add the heading boundary to span termination in **`_locate_options_in_text` (`:1967`)** — the
+   actual defect site; `locate_enumerable_options` (`:2134`) is the public wrapper and needs no
+   change. Keep section end as the fallback. The boundary must be **fence-aware** (Rule 1) —
+   heading matches inside `fence_spans` are skipped, not treated as boundaries. (This helper is
+   the one place tier *is* known per call, which is what makes Rule 2 directly implementable here;
+   see Rule 2's per-match note for the sibling functions.)
+2. Apply the tier-dependent depth rule (Rule 2): `section_header` options terminate only at a
+   heading of depth ≤ their own; the other three tiers terminate at any depth. Assert directly
+   that a `### Option A` block containing a `####` subheading keeps it.
+3. Fix `_option_block_spans` / `_unapplied_decision` with the same boundary — **fence-aware, same
+   as Step 1.** Rule 1 is written against `_locate_options_in_text`, but it applies identically
+   here, and with an extra wrinkle: `_OPTION_HEADING_RE` (`:2210`) is **not** fence-aware today, so
+   a `**Option A` line inside a fenced block already registers as an option marker. Apply
+   `fence_spans` / `in_fence` to *both* the option markers and the new heading boundary in these two
+   functions. The two ENH-3256
+   clamps are **not** equally redundant — treat them separately:
+   - `_DECISION_RATIONALE_HEADING_RE` clamp (`:1409-1417`) — subsumed, because
+     `### Decision Rationale` *is* a heading and the new boundary stops there anyway. Delete it.
+   - `> **Selected:**` callout trim (`:1419-1433`) — **keep it.** Its documented job (`:1424-1432`)
+     is dropping *unheaded* free-form rationale prose that follows the callout line before the
+     section end. No heading boundary can catch unheaded prose, so deleting this one reintroduces
+     the exact false reports ENH-3256 fixed.
+
+   Update the docstring either way. Leaving a docstring that advertises clamps as the mechanism is
+   how this bug recurred after ENH-3256; the next reader must see the boundary as the rule and the
+   callout trim as the one residual clamp.
+4. Fix `_iter_option_blocks` **together with** the section-scope `### Decision Rationale` change in
+   `_is_option_resolved` (Rule 3) — also fence-aware, per Step 3 (this function shares
+   `_OPTION_HEADING_RE`). These land in one commit — the boundary alone is a regression. Record the
+   partially-decided multi-decision hazard (Rule 3's second note) in `_is_option_resolved`'s
+   docstring while changing it.
+5. Verify, in order:
+   - `ll-issues locate-options ENH-3277 --json` bounds the last option at the first `###` after its
+     start rather than at the section end, and no option's `text` contains `### Decision Rationale`.
+     **State this as `end_line == boundary_line - 1`, not "ends at the heading."** `_locate_options_in_text`
+     sets `abs_end = block_end - 1` (`:1987`) while `text` is `rstrip`ped, so a bounded option's
+     `end_line` lands on the last line *before* the boundary heading — commonly a blank line, and
+     one line past the last line of `text`. This is existing behavior for every non-last option; the
+     fix makes the last option match it. Assert the relation, not "no trailing blank."
+   - `ll-issues format-check ENH-3277` no longer emits `unapplied_decision` reports for ordinary
+     analysis vocabulary (was 113 at 2026-08-21T18:20Z).
+   - **Corpus regression check — assert BOTH directions.** Re-run `locate_unresolved_options` over
+     all of `.issues/` before and after. The expected result is not "unchanged":
+
+     | Direction | Expected | Meaning |
+     | --- | --- | --- |
+     | issues *gaining* unresolved options | **0** | Rule 3's regression guard. Any gain = the section-scope change is missing or mis-scoped |
+     | issues *losing* unresolved options | **~119** | Expected and correct — decided issues whose winner wasn't the last option (see Rule 3's net-effect note) |
+
+     A one-directional check cannot distinguish success from regression here. In particular, do
+     **not** treat the ~119 drops as a defect and "fix" them back — doing so reintroduces the
+     dependency on the absorption bug this issue removes. The drop count is corpus-dependent; assert
+     `gains == 0` strictly and record the drop count as an observation.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
 _These touchpoints were identified by wiring analysis and must be included in the implementation:_
 
-- Decide explicitly whether `_iter_option_blocks` (`issue_parser.py:2216`) — the third sibling
-  span function backing `ll-issues check-open-questions`, tried before `check-decidable` in
-  `resolve-decision.yaml`'s gate — is in scope for this fix or an accepted gap; if in scope,
-  fold it into the shared boundary helper
+- ~~Decide explicitly whether `_iter_option_blocks` (`issue_parser.py:2216`) … is in scope for this
+  fix or an accepted gap~~ — **resolved: in scope, and it carries a blocker.** See Proposed
+  Solution Rule 3. It must be fixed together with a section-scope `### Decision Rationale` test in
+  `_is_option_resolved`; the boundary alone flips 151 issues' unresolved counts and makes
+  `resolve-decision.yaml`'s gate re-decide already-decided issues
 - Add a subprocess-level fixture to `scripts/tests/test_issues_locate_options.py` with a trailing
   `###` subsection after the last option, mirroring the ENH-3277 live case
 - No changes needed in `scripts/little_loops/cli/issues/check_decidable.py`,
@@ -332,16 +592,26 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 - **Priority**: P2 — degrades decision quality on the issues that matter most, but does not
   corrupt files or block the pipeline
-- **Effort**: Small — one span-termination rule plus fixtures
-- **Risk**: Medium — `locate_enumerable_options` is shared by `/ll:decide-issue`,
-  `ll-issues check-decidable`, and the FSM pre-`decide` gate, so a too-aggressive boundary
-  could shrink options that legitimately contain subheadings (see step 2)
-- **Breaking Change**: No — spans narrow, `count` and `pattern` are unaffected
+- **Effort**: Large (matches frontmatter `size`) — not "one span-termination rule." Three sibling
+  span functions, a coupled change to `_is_option_resolved`, fence-awareness, a tier-dependent
+  depth rule, and a corpus-level regression check
+- **Risk**: Medium-High — `locate_enumerable_options` is shared by `/ll:decide-issue`,
+  `ll-issues check-decidable`, and the FSM pre-`decide` gate. Two distinct over-trim hazards were
+  measured, not hypothesized: 36 option blocks truncatable at an in-fence `#` comment (Rule 1) and
+  ~3 at a legitimate `####` inside a `section_header` option (Rule 2). The gate-behavior change in
+  Rule 3 is the highest-consequence path
+- **Breaking Change**: Not for the span API — spans narrow, and `count` / `pattern` are unaffected.
+  **But `ll-issues check-open-questions` changes exit code for ~119 issues** (nonzero → 0), which
+  changes what `resolve-decision.yaml`'s gate does on each of them. That is intended (they are
+  decided issues that were falsely reported open — see Rule 3's net-effect note), and no consumer
+  reads anything but the exit code, so nothing downstream breaks. Called out here because "spans
+  only narrow" understates the blast radius: the resolution *semantics* change too
 
 ## Root Cause
 
-`scripts/little_loops/issue_parser.py`, `locate_enumerable_options` — the last option's
-`end_line` is set to the section end with no intervening boundary check. The bug is invisible for
+`scripts/little_loops/issue_parser.py`, `_locate_options_in_text` (`:1967`, reached via the
+`locate_enumerable_options` wrapper) — the last option's `block_end` is set to `len(body)`
+(`:1981-1984`), i.e. the section end, with no intervening boundary check. The bug is invisible for
 short unrefined issues (where the option list *is* the tail of the section) and grows with the
 amount of post-option analysis a refined issue accumulates, so it surfaces exactly on the issues
 where the decision matters most.
@@ -357,6 +627,7 @@ where the decision matters most.
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-21T17:30:27 - `08ddfd12-c4b5-4b15-9c96-41356558ea91.jsonl`
 - `/ll:verify-issues` - 2026-08-21T17:13:31 - `99f6c71e-f475-4121-a410-ed5319e99e15.jsonl`
 - `/ll:refine-issue` - 2026-08-21T17:11:12 - `125e158d-3f91-476d-a1f8-8948c119463c.jsonl`
 - `/ll:verify-issues` - 2026-08-21T17:08:09 - `30039977-bd37-407d-b1f7-a908c1d5229a.jsonl`
