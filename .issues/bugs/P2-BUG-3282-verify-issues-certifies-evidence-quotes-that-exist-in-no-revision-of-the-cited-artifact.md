@@ -81,6 +81,11 @@ The failure is silent by construction. Verification currently reports strongest 
 exactly where its coverage is weakest: an issue with dense, accurate code citations and one
 fabricated evidence quote scores higher than a vague but honest one.
 
+This issue is not exempt from its own subject. Its fixture spec originally asserted, without
+checking, that `**Option A**` "genuinely exists in ENH-3277" — a claim that is false in all 12
+revisions of that file, and that a reviewer caught only by grepping (2026-08-21 review pass). The
+first artifact `ll-verify-evidence` should be run against is BUG-3282.
+
 ## Proposed Solution
 
 Add an evidence-existence check to the verification pass. It is deterministic and cheap enough to
@@ -92,12 +97,13 @@ run as a Python gate rather than an LLM judgement:
    `## Integration Map`, and `## Program Design` are hard-excluded: they quote code that
    intentionally does not exist yet, so a presence check against a cited artifact is meaningless
    there. See Decision Rules for why this is load-bearing rather than an optimization.
-2. **Extract candidate spans, by attribution — not proximity.** Within those sections, fenced
-   blocks and inline-backtick runs whose **attribution appears on the same line or the immediately
-   preceding line**. Both forms matter: the BUG-3278 fabrications were inline-backtick runs, not
-   fenced blocks. A looser "within N lines of an issue ID" rule is not implementable as written and
-   is actively wrong — see Decision Rules → Attribution rule, which shows it false-positiving on
-   this issue's own flagship regression fixture.
+2. **Extract candidate spans, by attribution — nearest preceding mention, section-bounded.**
+   Within those sections, fenced blocks and inline-backtick runs that inherit the **nearest
+   preceding file-path or issue-ID mention in the same `##` section**, minus command-output blocks.
+   Both span forms matter: the BUG-3278 fabrications were inline-backtick runs, not fenced blocks.
+   A stricter same-line/preceding-line window is *not* sufficient — it has zero recall on this
+   issue's own flagship fixture and makes the command-output exclusion dead code. See Decision
+   Rules → Attribution rule, which works the fixture line by line.
 3. **Resolve the cited artifact.** Issue ID -> path via the existing resolver; file paths as
    given. An artifact that does not resolve, or resolves to an untracked path, is skipped with no
    finding (see Decision Rules → Fail-open).
@@ -105,7 +111,9 @@ run as a Python gate rather than an LLM judgement:
    revisions once, read each blob once, normalize once, then test every candidate span against
    that cached text — not span-major, which costs O(spans x revisions) blob reads. Short-circuit
    in order **working tree -> HEAD -> history**; the overwhelmingly common case resolves at the
-   first. Normalize whitespace before matching; skip spans below a minimum length.
+   first. Normalize span and artifact text identically before matching (Decision Rules →
+   Normalization: whitespace **and** markdown emphasis/decoration — whitespace alone is not enough,
+   and the fixture's flagship true-negative is the proof); skip spans below a minimum length.
 5. **Fail on zero hits**, naming the span and the artifact.
 6. **Baseline the full-scan mode, keyed on issue ID.** Changed-files mode is strict; `--all`
    reports only findings beyond a tracked baseline, with `--update-baseline` to regenerate. The
@@ -147,23 +155,34 @@ _Wiring pass added by `/ll:wire-issue`:_
 - **Real regression fixture (highest value — the motivating artifact is in git).** Run the checker
   against `baa553d9:.issues/bugs/P2-BUG-3278-decide-issue-clears-decision_needed-while-lower-precedence-decision-blocks-stay-unresolved.md`.
   Assert an **exact finding set**, not just "flags the fabrications" — this fixture is what pins
-  both precision and recall, and every clause below was verified against the blob:
-  - **Must flag** `- **(a) Make the documented override real.**` (`:39`) and
-    `**DECISION — pick one before step 4 touches this file:**`, attributed to ENH-3277.
+  both precision and recall, and every clause below was re-verified against the blob and against
+  all 12 revisions of ENH-3277 (both its pre- and post-rename paths) on 2026-08-21:
+  - **Must flag**, all three attributed to ENH-3277 and all three absent from *every* revision of
+    it — `- **(a) Make the documented override real.**` (`:38`),
+    `- **(b) Drop the knob.**` (`:38`, same line), and
+    `**DECISION — pick one before step 4 touches this file:**` (`:40`, `:60`).
   - **Count**: the `DECISION` span occurs **twice** in in-scope sections — `:40` in
-    `## Current Behavior` and `:60` in `## Steps to Reproduce`. Expected findings are therefore
-    **3 occurrences / 2 distinct spans**. Pick one and assert it: dedupe by normalized span text
-    (2 findings, each carrying its occurrence lines) — the report is more readable and the baseline
-    counts stay stable when an issue is reflowed.
+    `## Current Behavior` and `:60` in `## Steps to Reproduce`; the two `(a)`/`(b)` spans share
+    `:38`. Expected findings are therefore **4 occurrences / 3 distinct spans**. Pick one and
+    assert it: dedupe by normalized span text (3 findings, each carrying its occurrence lines) —
+    the report is more readable and the baseline counts stay stable when an issue is reflowed.
   - **Must not flag** `` `**Option A**` `` / `` `**Option B**` `` / `` `**Option C**` `` at `:37`.
     These sit in the same numbered list, in the same section, under the same ENH-3277 attribution
-    as the fabrications — and they genuinely exist in ENH-3277 (the `bold_label` tier that fired).
-    This is the true-negative that proves the checker is matching content rather than pattern-
-    matching the neighborhood.
-  - **Must not flag** the fenced block at `:43-49` (the `count 3  pattern bold_label …` listing).
-    It is *output of* `ll-issues locate-options ENH-3277 --json`, not a quote from ENH-3277, and it
-    appears in no revision of that file. See Decision Rules → Attribution rule; this is the case a
-    proximity-based extractor gets wrong.
+    as the fabrications. **This true-negative holds only under emphasis-normalized matching**
+    (Decision Rules → Normalization) and is the fixture clause that pins it: the literal
+    `**Option A**` appears in **zero** revisions of ENH-3277 — what actually fired the `bold_label`
+    tier is `**Option A — permanently exempt both. SELECTED.**`, which does not contain that
+    literal. Normalize emphasis away and `Option A` matches; match raw text and the checker flags
+    its own designated true-negative. (The character floor happens to exclude `**Option A**` at 12
+    chars, but resting the clause on the floor would make precision here an accident of length —
+    assert the normalized match, and cover the floor separately below.)
+  - **Must not flag** the fenced block at `:44-49` (the `count 3  pattern bold_label …` listing),
+    introduced by the invocation line at `:42`. It is *output of*
+    `ll-issues locate-options ENH-3277 --json`, not a quote from ENH-3277, and it appears in no
+    revision of that file. Under the nearest-preceding attribution rule this block **does** inherit
+    ENH-3277 (from `:35`), so the command-output exclusion is the only thing that saves it — this
+    clause is what proves that exclusion is live rather than decorative. See Decision Rules →
+    Attribution rule.
   The synthetic fixtures below cover the mechanics around it.
 - Fixture issue quoting a string present in the cited artifact -> passes
 - Fixture issue quoting a string absent from the cited artifact -> fails, names span + artifact
@@ -184,8 +203,14 @@ _Wiring pass added by `/ll:wire-issue`:_
 - Fixture citing an untracked/gitignored artifact path -> passes, no finding (fail-open guard)
 - Fixture with `<!-- ll-evidence-ok: reason -->` above an otherwise-failing span -> passes
 - Whitespace/line-wrap normalization: a quote reflowed across lines still matches
+- **Emphasis normalization**: a span quoted as `**Foo**` matches an artifact that writes
+  `**Foo — bar. SELECTED.**`, and a span quoted as `` `foo_bar()` `` matches unbackticked
+  `foo_bar()`. Direct unit-level twin of the `**Option A**` clause in the real fixture above; pins
+  the Decision Rules → Normalization contract independently of the char floor
 - Character-floor boundary: a span at and just below the minimum length, calibrated against
-  BUG-3278's shortest real span (`**(b) Drop the knob.**`)
+  BUG-3278's shortest real *fabricated* span (`**(b) Drop the knob.**`, 22 chars) with the floor
+  bounded below by the shortest designated true-negative (`**Option A**`, 12 chars) — i.e. the
+  floor lands in `(13, 22]`
 - Baseline behavior: `--all` exits 0 when findings equal the tracked baseline, 1 on any increase;
   `--update-baseline` rewrites it (mirror `test_verify_private_refs.py`'s baseline tests)
 - **Baseline survives a rename**: baseline an issue file, rename it (`P2-` -> `P1-`, or a title
@@ -281,8 +306,8 @@ N/A — no new data types. Findings would be ad hoc violation records analogous 
 `commands/verify-issues.md` §B check phase -> `ll-verify-evidence`, `main_verify_evidence(argv)`
 -> section filter (evidence-bearing sections only, per Decision Rules → Section scope) -> span
 extraction via `text_utils.py`'s `fence_spans()` / `in_fence()` (`:64`, `:97`), then the
-same-line/preceding-line attribution filter with the command-output exclusion (Decision Rules →
-Attribution rule) -> `resolve_issue_path()`
+nearest-preceding, section-bounded attribution filter with the command-output exclusion (Decision
+Rules → Attribution rule) -> `resolve_issue_path()`
 (`issue_parser.py:92`) to resolve the cited artifact -> **artifact-major** match: working tree,
 then HEAD, then `git log --all --follow -n 20` revision enumeration, reading each blob once via
 `git show <sha>:<path>` and testing all of that artifact's candidate spans against the cached
@@ -300,20 +325,37 @@ single-ref blob read). Per Decision Rules the `GitLock` question is settled in f
 - **Gap kind**: a quoted span (fenced block or inline-backtick run) **inside an evidence-bearing
   section** attributed to a named file path or issue ID that resolves to zero hits in that
   artifact's working tree, HEAD, or any `git log --all` revision.
-- **Attribution rule (load-bearing — proximity is not sufficient)**: a span is a candidate only if
-  its attribution — a file path or issue ID — appears **on the span's own line or the immediately
-  preceding line**, and that preceding line is not a *command invocation*. A line whose backtick
-  run is a shell command (starts with a known `ll-*` / `git` / `python` binary) and that ends in a
-  presentation verb (`returns:`, `outputs:`, `prints:`, `emits:`, `shows:`) attributes the block
-  below it to **the command's output**, not to the artifact the command names — so that block is
-  excluded.
-  The flagship fixture is the proof, and it cuts against the looser rule. In
-  `baa553d9:...BUG-3278...md`, `## Current Behavior` (in scope) contains at `:43-49`:
-  `` `ll-issues locate-options ENH-3277 --json` returns: `` followed by a fenced `count 3  pattern
-  bold_label …` listing. That listing appears in no revision of ENH-3277 — correctly, because it
-  was never claimed to. A "fenced block within N lines of an issue ID" rule flags it, so the
-  checker's own highest-value regression test fails on precision the day it is written. Section
-  scoping does not save it: the section is in scope by design.
+- **Attribution rule (load-bearing — nearest preceding mention, section-bounded)**: a span inherits
+  the **nearest file-path or issue-ID mention that precedes it within the same `##` section**.
+  Section-bounded, so an attribution never leaks across a heading. Two exclusions apply to the
+  inherited attribution:
+  - **Command output.** A line whose backtick run is a shell command (starts with a known `ll-*` /
+    `git` / `python` binary) and that ends in a presentation verb (`returns:`, `outputs:`,
+    `prints:`, `emits:`, `shows:`) attributes the block below it to **the command's output**, not
+    to the artifact the command names — so that block is excluded even though it inherits an
+    attribution.
+  - **Suppression.** `<!-- ll-evidence-ok: reason -->` on the span's own or preceding line.
+
+  A stricter **same-line-or-preceding-line window was tried and rejected**: it has *zero* recall on
+  the flagship fixture. In `baa553d9:...BUG-3278...md`, `ENH-3277` is named at `:35` and `:58`,
+  while every span it attributes sits at `:37`, `:38`, `:40`, and `:60` — `:36` is blank, `:39` is
+  `*Dead site — …*`, `:59` is prose. Not one span has an ID on its own or preceding line, so the
+  checker would flag nothing while the fixture asserts three. That window also makes the
+  command-output exclusion dead code: the `:44` fence's preceding line (`:43`) is blank, so the
+  fence is already unattributed and the exclusion never fires. Under the nearest-preceding rule
+  both halves work: `:37/:38/:40` and the `:44-49` fence inherit ENH-3277 from `:35`, `:60`
+  inherits from `:58`, and the command-output exclusion is what (correctly) drops the fence.
+  Section scoping does not substitute for either: `## Current Behavior` is in scope by design.
+- **Normalization (load-bearing — whitespace alone is insufficient)**: span text and artifact text
+  are normalized **identically** before matching, collapsing (a) whitespace and line wrapping and
+  (b) markdown emphasis and decoration — `**`, `*`, `_`, backticks — plus trailing sentence
+  punctuation. Matching is containment of the normalized span in the normalized artifact text.
+  Whitespace-only normalization breaks the fixture's own designated true-negative: the literal
+  `**Option A**` (BUG-3278 `:37`) appears in **zero** revisions of ENH-3277 — the `bold_label` tier
+  fired on `**Option A — permanently exempt both. SELECTED.**` — so raw matching flags a span the
+  fixture requires be left alone. Emphasis-normalized, `Option A` matches and the true-negative
+  holds for the reason it claims. Normalization is deliberately lossy in the direction of *fewer*
+  findings, consistent with fail-open.
 - **Section scope (load-bearing, not an optimization) — an allowlist, not a denylist**: in scope —
   `## Current Behavior`, `## Steps to Reproduce`, `## Root Cause`, `## Motivation`,
   `### Codebase Research Findings`. **A section in neither list is out of scope.** Named
@@ -330,14 +372,16 @@ single-ref blob read). Per Decision Rules the `GitLock` question is settled in f
   list, and several of them routinely carry attributed quotes (this issue's own `## Summary` quotes
   `commands/verify-issues.md:71`). A denylist default would flag them; it would also silently widen
   the checker every time the issue template grows a section.
-- **Inputs**: the whitespace-normalized span text and the resolved artifact path (via
-  `resolve_issue_path()` / `ll-issues path`).
+- **Inputs**: the normalized span text (per Normalization above) and the resolved artifact path
+  (via `resolve_issue_path()` / `ll-issues path`).
 - **Threshold**: minimum span length measured in **characters, not tokens**. The Proposed
   Solution's original "a 3-token quote is not evidence" floor is wrong in the direction that
   matters: BUG-3278's genuine fabricated span `**(b) Drop the knob.**` is 4 tokens and *is*
-  evidence. Calibrate the character floor against the real spans in
-  `baa553d9:.issues/bugs/P2-BUG-3278-*.md:38-40` — the shortest of them sets the ceiling on the
-  floor.
+  evidence. The floor is bounded on both sides by the flagship fixture: it must admit
+  `**(b) Drop the knob.**` (22 chars, must-flag) and it may not be raised so far that it becomes
+  the reason `**Option A**` (12 chars) is spared — that clause belongs to Normalization. **Floor
+  lands in `(13, 22]`**; measured against the spans at
+  `baa553d9:.issues/bugs/P2-BUG-3278-*.md:37-40`.
 - **Fail-open (mirrors §B.0's `ll-code` convention, `commands/verify-issues.md:74-120`)**: an
   artifact that does not resolve, or resolves to a path git does not track, is **skipped with no
   finding**. This is required, not merely lenient: Root Cause names logs and run directories as
@@ -372,9 +416,9 @@ single-ref blob read). Per Decision Rules the `GitLock` question is settled in f
    is what BUG-3278 needed.
 2. The checker filters to evidence-bearing sections (Decision Rules → Section scope — an
    **allowlist**; an unlisted section is out of scope) before extracting anything, then extracts
-   candidate spans (fenced blocks and inline-backtick runs whose attribution sits on the same or
-   immediately preceding line, minus command-output blocks — Decision Rules → Attribution rule)
-   using the existing fence-aware primitives in
+   candidate spans (fenced blocks and inline-backtick runs, each inheriting the nearest preceding
+   attribution within its `##` section, minus command-output blocks — Decision Rules → Attribution
+   rule) using the existing fence-aware primitives in
    `scripts/little_loops/text_utils.py` (`fence_spans()` `:64`, `in_fence()` `:97`) rather than new
    regex, resolves the cited artifact via `resolve_issue_path()`
    (`scripts/little_loops/issue_parser.py:92`), and reports zero-hit spans as findings in the same
@@ -445,13 +489,16 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - **Risk**: Medium — over-eager span extraction produces false failures on illustrative snippets
   that were never claimed to be verbatim quotes. Unmitigated this is the *default* outcome, not an
   edge case: forward-looking sections quote code that intentionally does not exist yet, so a
-  proximity-only rule flags nearly every refined issue (including this one). Four mitigations are
-  load-bearing and specified in Decision Rules — the same-line/preceding-line **attribution rule**
-  with its command-output exclusion, section scoping as an allowlist, a character-based minimum
-  span length, and fail-open on unresolvable artifacts — plus the `<!-- ll-evidence-ok: -->` escape
-  hatch for whatever survives them. The attribution rule is the one with a demonstrated failure
-  case rather than a hypothetical: the looser proximity reading false-positives on this issue's own
-  flagship fixture (Decision Rules → Attribution rule).
+  proximity-only rule flags nearly every refined issue (including this one). Five mitigations are
+  load-bearing and specified in Decision Rules — the nearest-preceding, section-bounded
+  **attribution rule** with its command-output exclusion, section scoping as an allowlist,
+  emphasis-aware **normalization**, a character-based minimum span length, and fail-open on
+  unresolvable artifacts — plus the `<!-- ll-evidence-ok: -->` escape hatch for whatever survives
+  them. Two of these have demonstrated failure cases rather than hypotheticals, both on this
+  issue's own flagship fixture: the attribution window governs whether the checker finds anything
+  at all (a same-line window scores zero recall), and normalization governs whether it spares
+  `**Option A**` (whitespace-only matching flags it). Both are worked through line by line in
+  Decision Rules.
 - **Breaking Change**: No
 
 ## Steps to Reproduce
@@ -502,7 +549,9 @@ against false positives rather than an optimization.
 
 _Update — 2026-08-21, pre-implementation review (claims re-verified against the repo):_ seven
 changes, three of which were blocking.
-1. **Attribution rule replaces proximity.** The "fenced block within N lines of an issue ID" rule
+1. **Attribution rule replaces proximity** _(the direction was right; the window this pass chose
+   was too narrow — superseded by the second review pass below)_. The "fenced block within N lines
+   of an issue ID" rule
    flags `baa553d9:...BUG-3278...md:43-49` — `ll-issues locate-options` output, not a quote — so
    the flagship regression fixture failed on precision as specified. Rule is now same-line /
    preceding-line attribution with a command-output exclusion (Decision Rules → Attribution rule).
@@ -513,7 +562,9 @@ changes, three of which were blocking.
    source files but not for `.issues/` — both rename flavors are live here (`R099` priority-prefix
    on `FEAT-3183`, `R074` title edit on `ENH-3264`), and each would fail CI on already-accepted
    findings.
-4. **Fixture expectation made exact**: 3 occurrences / 2 distinct spans, plus two named
+4. **Fixture expectation made exact** _(superseded by the second review pass below — the correct
+   count is 4 occurrences / 3 distinct spans, and the `**Option A**` rationale was wrong)_:
+   3 occurrences / 2 distinct spans, plus two named
    true-negatives (`**Option A**` at `:37`, which does exist in ENH-3277; the `:43-49` output
    block).
 5. **Section scope is an allowlist** — unlisted sections (`## Summary`, `## Impact`,
@@ -527,6 +578,34 @@ Also confirmed sound and left alone: `git log --all --follow` behaves correctly 
 paths and crosses renames, and every other cited anchor resolves (`issue_parser.py:92`,
 `text_utils.py:64/97/229`, `verify_private_refs.py:66/418/461/527`,
 `check_verify_verdict.py:22-44`, `refine-to-ready-issue.yaml:350`, the 10-row verdict table).
+
+_Update — 2026-08-21, second pre-implementation review (fixture spec re-verified against the
+`baa553d9` blob and all 12 ENH-3277 revisions):_ three corrections, two of which made the flagship
+fixture unsatisfiable as previously written.
+1. **Attribution window widened to nearest-preceding, section-bounded.** The same-line /
+   preceding-line rule from the prior pass has **zero recall** on the flagship fixture: `ENH-3277`
+   is named at `:35` and `:58`, every span it attributes is at `:37/:38/:40/:60`, and no span has
+   an ID on its own or preceding line. It also made the command-output exclusion dead code (the
+   `:44` fence's preceding line is blank, so the fence was already unattributed). The
+   nearest-preceding rule restores recall *and* gives that exclusion its stated job.
+2. **Normalization contract added, and it is load-bearing.** The prior pass's designated
+   true-negative was factually wrong: the literal `**Option A**` appears in **zero** revisions of
+   ENH-3277 (checked across both the pre- and post-rename paths); the `bold_label` tier fired on
+   `**Option A — permanently exempt both. SELECTED.**`. Under whitespace-only normalization the
+   checker flags its own must-not-flag span. Matching now normalizes markdown emphasis and
+   decoration on both sides. The char floor would incidentally spare `**Option A**` at 12 chars,
+   but resting the clause there would make precision an accident of length — the floor is now
+   bounded in `(13, 22]` and the true-negative rests on normalization.
+3. **Must-flag set corrected to 4 occurrences / 3 distinct spans.** `- **(b) Drop the knob.**` was
+   missing from the list despite being on the same line as `(a)`, equally absent from every
+   ENH-3277 revision, and already used elsewhere in this issue as the floor-calibration span. The
+   `(a)` span's line was also wrong — `:38`, not `:39`. Corrected occurrences: `:38` (×2), `:40`,
+   `:60`.
+Also re-confirmed: 3192 tracked `.issues/**/*.md` files today (issue says ~3190 — drift only),
+`regressions()`/`load_baseline()`/`write_baseline()`/`BASELINE_PATH` anchors, the
+`--proposal-unsound` flag shape, `refine-to-ready-issue.yaml:350,353-365`, and the
+`PROPOSAL_UNSOUND` verdict row (`verify-issues.md:223`) plus its distinct-persistence note
+(`:276-278`).
 
 ## Session Log
 - `/ll:confidence-check` - 2026-08-21T18:50:00 - `c9ef2e6f-97ff-48c5-ab63-1c421d2aa389.jsonl`

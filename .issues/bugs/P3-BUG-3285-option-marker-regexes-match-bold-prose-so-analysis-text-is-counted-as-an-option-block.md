@@ -223,3 +223,7 @@ marker.
 ## Status
 
 **Open** | Created: 2026-08-21 | Priority: P3
+
+
+## Session Log
+- `/ll:audit-issue-conflicts` - 2026-08-21T19:06:56 - `8c9f6596-f570-42d1-a2a2-c4e750b706f8.jsonl`

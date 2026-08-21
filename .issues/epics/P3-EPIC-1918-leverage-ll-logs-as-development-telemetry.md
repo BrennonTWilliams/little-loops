@@ -172,6 +172,7 @@ _Added by `/ll:verify-issues`._ Verdict: **NON_VALID (NEEDS_UPDATE)**. Confirmed
 - 2026-08-16: Primary 9 children's Completed statuses match; ENH-2070/2071/2072 correctly Deferred. ENH-2923, ENH-2926, and FEAT-2379 remain open children not reflected in the Implementation Status section (stale since 2026-06-19/20) — these three were separately verified in this same pass: ENH-2923 VALID, ENH-2926 OUTDATED, FEAT-2379 VALID per those issues' own files. Verdict: NEEDS_UPDATE.
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-08-21T19:06:55 - `8c9f6596-f570-42d1-a2a2-c4e750b706f8.jsonl`
 - `/ll:verify-issues` - 2026-08-16T16:40:25 - `688cfc38-322a-447f-94a0-315f2c2aee33.jsonl`
 - `/ll:verify-issues` - 2026-08-13T03:04:15 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
 - `/ll:verify-issues` - 2026-08-10T16:25:07 - `50b69f30-8ca9-4ab9-8b06-6ee21c203b10.jsonl`
@@ -179,3 +180,9 @@ _Added by `/ll:verify-issues`._ Verdict: **NON_VALID (NEEDS_UPDATE)**. Confirmed
 - `/ll:verify-issues` - 2026-06-17T00:00:00 - `7473c42a-1313-4587-925f-e177ac5fcc85.jsonl`
 - `/ll:verify-issues` - 2026-06-05T21:00:23 - `current-session.jsonl`
 - `/ll:capture-issue` - 2026-06-04T02:27:34Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a8bc5f2d-5c58-451d-9bc9-c722459e42b9.jsonl`
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): This epic's skill/tool success signal (ENH-1921's ll-logs stats: skill-frequency/error-rate/correction-rate telemetry) is sourced from the ll-logs JSONL corpus. EPIC-2457 independently adds a parallel success signal (`exit_code`/`success`/`duration_ms` on `skill_events` in history.db). No code dependency exists between them, but a future consumer should be aware both sources exist before building a third.

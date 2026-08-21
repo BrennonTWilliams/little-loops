@@ -4,11 +4,10 @@ type: BUG
 title: locate_enumerable_options gives the final option every remaining line of its
   section
 priority: P2
-status: done
+status: open
 discovered_by: ll-issues-create
 discovered_date: '2026-08-21'
 captured_at: '2026-08-21T15:45:38Z'
-completed_at: '2026-08-21T18:43:33Z'
 labels:
 - decide-issue
 - issue-parser
@@ -19,6 +18,7 @@ relates_to:
 - ENH-3280
 - ENH-3277
 - BUG-3285
+- BUG-3289
 size: Large
 confidence_score: 99
 outcome_confidence: 81
@@ -742,9 +742,68 @@ where the decision matters most.
 - `skills/decide-issue/SKILL.md` — Phase 3 (extraction contract), Phase 4 (consumer), Phase 7a
   (the appended block this bug re-consumes)
 
+## Residual Work (reopened 2026-08-21)
+
+The parser fix **landed as `f39a417e`** ("fix(issue-parser): stop last option span from absorbing
+trailing section prose") and is faithful to the spec above: the shared fence-aware
+`_option_span_boundary` (`issue_parser.py:1381`) applied to all three sibling span functions with
+per-match depth, `_RESOLVED_OPTION_MARKER_RE` deleted, section-scope resolution in
+`locate_unresolved_options`, the `### Decision Rationale` clamp dropped while `dr_start` is retained
+for the `scrub_start = min(dr_start, spans[-1][1])` cap. `python -m pytest scripts/tests/` is green.
+
+Reopened because three items this document names as required did not ship. None of them changes
+behavior; all three exist to stop the fix being un-done by a later reader.
+
+1. **The ENH-2692 "new-report direction" fixture was not written.** Every other fixture in
+   *Integration Map → Tests* has a corresponding test —
+   `test_last_option_stops_at_trailing_subsection`, `test_option_list_as_section_tail_still_runs_to_section_end`,
+   `test_prior_decision_rationale_excluded_from_last_option_text`,
+   `test_fence_aware_boundary_ignores_shell_comment_in_fence`,
+   `test_section_header_tier_keeps_own_subheading`, `test_bold_label_tier_terminates_at_any_depth_heading`,
+   `test_mixed_shape_depth_heading_and_bold_blocks_in_same_section`,
+   `test_two_option_groups_under_one_decision_rationale_is_blunt`,
+   `test_whole_document_fallback_scope_is_the_h2_span_not_the_document`,
+   `test_last_block_stops_at_trailing_subsection_not_just_callout_or_dr`,
+   `test_fence_aware_marker_inside_fence_not_counted`, the CLI-level
+   `test_last_option_excludes_trailing_subsection`, plus the pre-existing
+   `test_decision_rationale_marks_resolved` (covers the ~118-issue non-last-winner direction) and
+   `test_selected_option_own_trailing_rationale_does_not_self_fire` (covers the Step 3 callout trim).
+
+   Missing: the fixture from *Tests → "Winner's tail no longer suppresses a report"* — a **winning**
+   option whose description is followed by a `###` subheading, with a shared identifier named in the
+   *rejected* option, again in the winner's post-heading tail, and again in a directive section.
+   **Assert the report DOES fire**, and name in the docstring that this is the accepted pre-existing
+   `_decision_identifiers` defect, not the boundary misbehaving. This is the one direction in which
+   the fix makes `format-check` noisier; without the fixture, the next reader who meets a new
+   `unapplied_decision` report reads it as a regression and re-widens the winner's span —
+   reintroducing the absorption dependency this issue removed.
+
+2. **Neither corpus invariant is pinned as a test.** *Implementation Step 5* calls `gains == 0`
+   "the invariant to assert" and gives `new_reports == 0` its own bullet. Both were verified
+   manually and recorded only in `f39a417e`'s commit message, so nothing re-checks them. Add a
+   corpus sweep over `.issues/` asserting `gains == 0` strictly, plus `new_reports == 0` modulo the
+   one accepted ENH-2692 exception. Record the drop count (~118) and the report total (767 → 527)
+   as observations, not assertions — both are corpus-dependent. Follow
+   `test_corpus_sweep_does_not_crash` (`test_issue_parser.py`) for the sweep idiom, and skip
+   gracefully if `.issues/` is absent so the test survives outside this repo.
+
+3. **The `_decision_identifiers` follow-up — filed as BUG-3289 (2026-08-21).**
+   *Implementation Step 5* says "File **one** follow-up for that breadth problem."
+   `_decision_identifiers`
+   (`issue_parser.py`, reached from `_unapplied_decision`) treats **every** backticked token in an
+   option block as an option-discriminating identifier, so shared subject vocabulary fires whenever
+   the winner's own prose happens not to restate it. That single defect accounts for both the ~23
+   surviving ENH-3277 reports and the one new ENH-2692 report. Candidate rule already recorded
+   above: subtract identifiers appearing in the issue's title/Summary, or in any section preceding
+   `## Proposed Solution`, before computing `discriminating = rej_ids - sel_ids`. File it as a BUG
+   and add it to `relates_to` here.
+
+Item 3 is a separate issue; items 1–2 are test-only and close this one.
+
 ## Status
 
-**Open** | Created: 2026-08-21 | Priority: P2
+**Open** | Created: 2026-08-21 | Priority: P2 | Parser fix landed `f39a417e`; reopened for residual
+test coverage and one un-filed follow-up
 
 
 ## Session Log

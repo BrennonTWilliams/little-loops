@@ -24,10 +24,10 @@ relates_to:
 reconcile_attempted: true
 decision_needed: false
 confidence_score: 90
-outcome_confidence: 68
+outcome_confidence: 63
 score_complexity: 18
 score_test_coverage: 10
-score_ambiguity: 15
+score_ambiguity: 10
 score_change_surface: 25
 ---
 
@@ -228,21 +228,25 @@ consuming projects, which is the exact failure mode this issue family exists to 
 
 ### Hard prerequisite — pick a §2b row per site before writing any shell
 
-This is the reason for the split, not an afterthought to it. Under `fragment: shell_exit`,
+This is the reason the family was split, not an afterthought to it. Under `fragment: shell_exit`,
 `eval ""` exits **0**, so an empty `CMD` makes the gate silently **pass** against an empty
 artifact.
 
-**Two distinct hazards, not one — the sites split by state kind.** Only six of the eleven read
+**Two distinct hazards, not one — the sites split by state kind.** Four of this issue's five read
 sites sit in a `fragment: shell_exit` state where the false-pass applies:
-`fix-quality-and-tests.check-tests`, `dead-code-cleanup.verify_tests`,
-`test-coverage-improvement.verify_tests`, and the three `harness-*.check_concrete` states. The
-other sites — `evaluation-quality.evaluate_code` (`action_type: shell`, `capture: code_results`,
-`next: score`), `test-coverage-improvement.measure` (`action_type: shell`, `next:
-extract_percentage`), and `rn-refine`'s full-suite gate (`action_type: shell`, `next: finalize`)
-— have **no gate to falsely pass**. Their hazard is different and narrower: an empty `CMD`
-produces an empty *artifact* that a downstream scorer or LLM state consumes as if it were a real
-test signal. The §2b remedies below are unchanged by this; the rationale is. Do not go looking for
-an `on_yes` edge at the three ungated sites — there isn't one.
+`fix-quality-and-tests.check-tests` and the three `harness-*.check_concrete` states. All four are
+nonetheless **pass-on-empty**, because their `on_yes` leads either to `done` on an
+already-equivalent routing (`fix-quality-and-tests`, verified in the table below) or to a further
+LLM gate that still runs.
+
+The fifth — `evaluation-quality.evaluate_code` (`action_type: shell`, `capture: code_results`,
+`next: score`) — has **no gate to falsely pass**. Its hazard is different and narrower: an empty
+`CMD` produces an empty *artifact* that a downstream scorer consumes as if it were a real test
+signal. That is why it is this issue's one explicit-skip site. Do not go looking for an `on_yes`
+edge there — there isn't one.
+
+_(The sites where an empty `CMD` could reach an irreversible `commit` — `dead-code-cleanup` and
+`test-coverage-improvement` — are **ENH-3288's**. That asymmetry is the split.)_
 
 Per BUG-3269 §2b:
 
@@ -317,26 +321,28 @@ anti-pattern that BUG-3269's mirror-drift gate exists to stop from reaching a fo
 The comment rewrite at those three anchors is load-bearing, and it is a further argument for
 step 3's ordering (these convert first).
 
-### Precedence — config-first bare for seven of the eight live converted sites
+### Precedence — config-first bare at all five sites
 
 Only three loops declare a `context.test_cmd` key at all (`general-task.yaml:23`,
-`test-coverage-improvement.yaml:23`, `rl-coding-agent.yaml:17`). Of this issue's targets, only
-`test-coverage-improvement.yaml` does — and today that declaration reaches nothing but dead code
-(*Dead site* above), so context-first is legitimate at exactly one site: `verify_tests`, under the
-now-pinned decision (a). **Do not paste the context-first shape into the
-others** — an undeclared `${context.test_cmd}` raises `InterpolationError: Path 'test_cmd' not
-found in context` at interpolation time, turning a mechanical conversion into a hard loop
-breakage. BUG-3269's gate assertion (ii) now catches this statically.
+`test-coverage-improvement.yaml:23`, `rl-coding-agent.yaml:17`), and **none of them is a target
+of this issue** — `test-coverage-improvement` moved to ENH-3288. So every site here is
+config-first bare, with no exceptions. **Do not paste the context-first shape into any of them**
+— an undeclared `${context.test_cmd}` raises `InterpolationError: Path 'test_cmd' not found in
+context` at interpolation time, turning a mechanical conversion into a hard loop breakage.
+BUG-3269's gate assertion (ii), `test_context_references_are_declared`, catches this statically.
 
-Config-first bare — seven sites: `fix-quality-and-tests`, the three `harness-*`,
-`evaluation-quality`'s `test_cmd` **and** `lint_cmd`, and `dead-code-cleanup`:
+All five sites — `fix-quality-and-tests`, the three `harness-*`, and `evaluation-quality`'s
+`test_cmd` **and** `lint_cmd`:
 
 ```bash
 CMD=$(ll-config get project.test_cmd)
 ```
 
 **Do NOT add a `|| { ...; exit N; }` guard** — BUG-3269 §1f: at `evaluate: exit_code` states a
-non-zero exit routes to `on_no`, which is `revert_and_scan` for `dead-code-cleanup`.
+non-zero exit routes to `on_no`, and `ll-config get` exits 0 in every case anyway (verified
+empirically under *Codebase Research Findings*), so the guard is unreachable code that changes
+routing if it ever does fire.
+
 
 ### Codebase Research Findings
 
@@ -355,14 +361,15 @@ _Added by `/ll:refine-issue` — 2026-08-21 — based on codebase analysis:_
     forces `CMD=""` on a nonzero exit, rather than the `|| { ...; exit N; }` guard this issue's
     Proposed Solution says not to add — the two are different mechanisms with different routing
     consequences at an `evaluate: exit_code` state. `test-coverage-improvement.yaml` is this
-    issue's one target site that already declares `context.test_cmd` (line 23); its `measure`
-    state (context-first, lines 31-59) already uses the context-check half of this shape for one
-    branch, without the `RC` check on the `ll-config get` fallback. **Correction (2026-08-21):
-    that `measure` branch is dead — the resolved `CMD` is never used; only `$COV_CMD` is eval'd
-    (`:62`). It is not a model to copy and not a site to convert. See *Dead site* under
-    *Proposed Solution*.**
-- Skip-on-empty already has three coexisting variants in the codebase, disagreeing on mechanism
-  — relevant to picking a shape for the three explicit-skip sites this issue names:
+    issue's one target site that already declared `context.test_cmd` (line 23) — **but it moved
+    to ENH-3288**, and its `measure` branch is dead anyway (the resolved `CMD` is never used; only
+    `$COV_CMD` is eval'd at `:62`). Neither shape is a model to copy here: **no site in this issue
+    declares the key**, so context-first is unavailable at all five. Retained only as orientation
+    for the two coexisting precedents in the tree.
+- Skip-on-empty has four coexisting variants in the codebase, disagreeing on mechanism. Only the
+  first is relevant to this issue's one explicit-skip site (`evaluation-quality`, which has no
+  gate to route away from); the other three are **ENH-3288's** and are retained here only so the
+  precedent survey stays intact:
   - **Pass-through**: `rl-coding-agent.yaml:68-75,79-85` — empty `TEST_CMD`/`LINT_CMD` sets the
     corresponding score to `0.0` and continues in the same state, no transition.
   - **Route-away via exit code**: `incremental-refactor.yaml` `check_preconditions:46-49` —
@@ -374,12 +381,12 @@ _Added by `/ll:refine-issue` — 2026-08-21 — based on codebase analysis:_
     (2026-08-21):** the earlier `:87` citation is stale post-BUG-3276, and the routing works
     only because that state is **`fragment: harness_exit`** — `abstain_on_exit_3: true` is what
     turns `exit 3` into `cannot_judge`. Copying the shell body onto a `shell_exit` state without
-    the fragment switch silently routes `exit 3` to `on_error`. See *MECHANISM CORRECTION* under
-    *Pinning the two explicit-skip gate edges*.
+    the fragment switch silently routes `exit 3` to `on_error`. See ENH-3288's *MECHANISM
+    CORRECTION* — that hazard applies only to its two structural sites, not to anything here.
   - **Entry precondition (added 2026-08-21, post-BUG-3276)**: `incremental-refactor.yaml`
     `check_preconditions:20-86` also *refuses to start* when `test_cmd` is unresolvable,
     unrunnable (exit 127), or already red, writing `precondition-failure.txt` and `exit 1` →
-    `on_no: failed`. A fourth variant, and the recommended one for `dead-code-cleanup`.
+    `on_no: failed`. A fourth variant, and ENH-3288's pinned shape for `dead-code-cleanup`.
 - **`ll-config get`'s contract re-verified empirically (2026-08-21)**, in a scratch project
   outside this repo: `test_cmd: null` → rc 0, empty stdout; key absent → rc 0, `pytest`;
   value set → rc 0, the value; no `.ll/ll-config.json` at all → rc 0, `pytest`. **It exits 0 in
@@ -426,28 +433,20 @@ consistency, simplicity, and risk, despite the issue's own text recommending Opt
 - `scripts/little_loops/loops/fix-quality-and-tests.yaml:58-78` — three-way body deleted
 - `scripts/little_loops/loops/evaluation-quality.yaml:58` — and `:63`'s hardcoded
   `ruff check scripts/` → `ll-config get project.lint_cmd`
-- `scripts/little_loops/loops/dead-code-cleanup.yaml:76` — plus three edits outside the read
-  itself: **`:7` `initial: scan` → `initial: check_preconditions`** (without it the new entry gate
-  is never entered — see constraint 4 under *DECIDED — `dead-code-cleanup` gets a
-  `check_preconditions` entry gate*), **`:108` `max_steps: 15` → `18`** (*Step budget*), and the
-  two new states `revert_unverifiable` / `unverifiable` (*Terminality*)
 - `scripts/little_loops/loops/harness-plan-research-implement-report.yaml:126` — and its
   template comment at `:120` (load-bearing; see *The three `harness-*` sites are user-facing
   templates*)
 - `scripts/little_loops/loops/harness-multi-item.yaml:95` — and its template comment at `:88`
 - `scripts/little_loops/loops/harness-single-shot.yaml:66` — and its template comment at `:57-60`
-- `scripts/little_loops/loops/test-coverage-improvement.yaml:45,152` — `:45` (with its enclosing
-  `CMD` block, `:37-48`) is **deleted, not converted**; `:152` is the only live read. The
-  `test_cmd` declaration at `:23` **stays** and becomes functional per the pinned decision (a)
-  under *Dead site*
-- `scripts/little_loops/loops/rn-refine.yaml:991`
-- `scripts/little_loops/loops/auto-refine-and-implement.yaml:433-436` — **not** `:679-680`,
-  which reads `cfg.project.test_cmd` off a real `BRConfig` and is already correct and already
-  `ll.local.md`-aware
-- The `_PENDING_CONVERSION` constant landed by BUG-3269 — emptied, then deleted
+- The `_PENDING_CONVERSION` constant landed by BUG-3269
+  (`scripts/tests/test_bug3269_test_cmd_resolution_gate.py:55-65`) — **shrunk from nine entries
+  to four**, one per converted file. Not emptied and not deleted here: that is ENH-3288's step 6,
+  and `test_pending_conversion_sites_still_exist` keeps the remaining four honest in the meantime.
 
-Out of scope: `oracles/code-run-gate.yaml` (permanent exemption, BUG-3269 §1d);
-`incremental-refactor.yaml` (BUG-3276).
+Out of scope: `dead-code-cleanup.yaml` and `test-coverage-improvement.yaml` (**ENH-3288**);
+`rn-refine.yaml` and `auto-refine-and-implement.yaml` (permanently exempt, Option A — the
+constant move is ENH-3288's step 5); `oracles/code-run-gate.yaml` (permanent exemption, BUG-3269
+§1d); `incremental-refactor.yaml` (BUG-3276).
 
 ### Dependent Files (Callers/Importers)
 
@@ -467,119 +466,63 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ### Tests
 
-- Per-site regression tests for the three `[ -z "$CMD" ]` branches — in particular
-  `dead-code-cleanup.yaml` must **not** reach `commit` under `test_cmd: null`
-- BUG-3269's mirror-drift gate, with `_PENDING_CONVERSION` shrinking per file and finally
-  removed
-
-_Three test requirements added 2026-08-21 by the corrections above — each pins a hazard that
-every existing structural assertion passes straight through:_
-
-- **Exit-3 collision case at both `verify_tests` states.** With `test_cmd` set to a command that
-  exits 3 (e.g. `sh -c 'exit 3'`), the state must exit **1**, not 3 — proving the non-zero
-  collapse is present and that pytest's own internal-error code cannot reach
-  `on_cannot_judge` (*EXIT-CODE COLLISION*). Also assert `[ -z "$CMD" ]` still exits 3.
+- **Per-site subprocess resolution tests**, driven through **`bash -c`**
+  (`subprocess.run(["bash", "-c", body])`, matching `runners.py:297` — under `dash`,
+  `set -o pipefail` is unavailable and `rc=$?` becomes `tee`'s status, so an `sh`-driven test
+  reports a passing gate for a failing suite). Assert three cases each: present-and-set,
+  present-and-null (opts out, not literal `"None"`), and absent (falls back to `ll-config get`'s
+  own `ProjectConfig` default). Closest template:
+  `TestRlCodingAgentObserveTestCmdResolution` (`test_builtin_loops.py:10747-10799`) — extract the
+  `action` string, substitute `${context.run_dir}`, run against a scratch `.ll/ll-config.json`.
+  **No context-first fourth case applies at any site here** — none of the five declares
+  `context.test_cmd`. [Agent 3 finding]
 - **`evaluation-quality` skip markers must be asserted on captured stdout, not file contents.**
-  `score` reads `${captured.code_results.output}`; a test that opens
-  `eval-test-results.txt` passes against the broken `>`-redirect shape (*CAPTURE CORRECTION*).
-- **Dedicated assertions for the four new/changed states** — `unverifiable` in both loops plus
-  `dead-code-cleanup`'s `check_preconditions` and `revert_unverifiable` — since
-  `test_required_states_exist` at L11688 / L11722 are subset checks. Assert each state's
-  `terminal`/`failure` flags, its absence of a `next:`, and its inbound edge (the
-  `TestIncrementalRefactorLoop.test_revert_has_exactly_one_inbound_edge` shape, `:11999-12006`).
-- **Assert that neither `unverifiable` state carries an action**, and that
-  `revert_unverifiable` is non-terminal with `next: unverifiable`. This is the executable form of
-  the *TERMINAL-ACTION CORRECTION*: an `action` on a terminal state is silently dead
-  (`fsm/executor.py:601-636`), so nothing else in the suite would catch someone "simplifying" the
-  two states back into one.
-- **Assert `dead-code-cleanup`'s `initial == "check_preconditions"` and `max_steps == 18`.**
-  Both are one-line scalars that a future edit can revert without breaking any state-set or
-  edge-shape assertion, and either reversion silently disables the entry gate or silently cuts a
-  cleanup lap.
-- **Drive every new resolution test through `bash`, not `sh`** —
-  `subprocess.run(["bash", "-c", body])`, matching `runners.py:297`. Under `dash`,
-  `set -o pipefail` is unavailable and `rc=$?` becomes `tee`'s status (always 0), so an
-  `sh`-driven test would report a passing gate for a failing suite.
-
-_Wiring pass added by `/ll:wire-issue`:_
-- No existing test in `scripts/tests/` executes the shell/heredoc body of any of the nine sites
-  at the value-resolution level — every current test is structural only (state-set membership,
-  `fragment:` field, routing-edge shape via `test_builtin_loops.py`'s per-loop classes:
-  `TestDeadCodeCleanupLoop` L11688, `TestTestCoverageImprovementLoop` L11722,
-  `TestEvaluationQualityLoop` L884). None of these will break from the conversion (they check
-  supersets, not exact shell content), but none give resolution-level coverage today either —
-  each site needs a new subprocess-level test. [Agent 3 finding]
-- Closest template to follow per site: `TestRlCodingAgentObserveTestCmdResolution`
-  (`test_builtin_loops.py:10747-10799`) — extract the `action` string, substitute
-  `${context.run_dir}`/other refs, run via `subprocess.run(["bash","-c", ...])` against a scratch
-  `.ll/ll-config.json`, asserting three cases: present-and-set, present-and-null (opts out, not
-  literal `"None"`), and absent (falls back to `ll-config get`'s own `ProjectConfig` default).
-  For the two context-override branches (`test-coverage-improvement.yaml`'s `measure` state),
-  add a fourth case per `TestIncrementalRefactorLoop.test_verify_tests_resolves_context_first_then_ll_config`
-  (L11983): context wins over `ll-config get`. [Agent 3 finding]
-  **Correction (2026-08-21):** the fourth case does **not** belong at `measure` — that branch is
-  dead (*Dead site*). Per the pinned decision (a) it attaches to `verify_tests` (`:148-158`)
-  instead. Additionally, add a guard asserting no state in
-  `test-coverage-improvement.yaml` resolves a `CMD` it never evaluates — the defect that made
-  `:45` dead in the first place would otherwise be reintroducible.
-- The three near-identical `harness-*.yaml` `check_concrete` states have zero existing coverage
-  of their shell body (`grep check_concrete` only turns up unrelated eval-harness and
-  wizard-fixture tests) — a single parametrized test class over the three loop files, following
+  `score` reads `${captured.code_results.output}`; a test that opens `eval-test-results.txt`
+  passes against the broken `>`-redirect shape (*CAPTURE CORRECTION*).
+- **Parametrize the three `harness-*.yaml` `check_concrete` sites as one test class** rather than
+  triplicating one subprocess test, following
   `test_bug3269_test_cmd_resolution_gate.py`'s own `pytest.mark.parametrize`-over-file-list
-  pattern, avoids triplicating one subprocess test three times. [Agent 3 finding]
-- `rn-refine.yaml`'s only existing test, `TestFullSuiteGate.test_full_suite_gate_noops_when_stepwise_unset`
-  (`test_rn_refine.py:1951-1961`), exercises only the `stepwise=0` early-`exit 0` guard — it will
-  not break from the conversion but gives zero coverage of the resolution logic underneath; a new
-  test is needed for the actual `ll-config get` read. [Agent 3 finding]
-- `evaluation-quality.yaml`'s `evaluate_code` state and `auto-refine-and-implement.yaml`'s
-  `verify` heredoc (lines 430-437) both have zero resolution-level test coverage today — no test
-  matches `code_results`/`eval-test-results` or drives the `verify` state's Python body. A
-  structural guard mirroring `TestIncrementalRefactorLoop.test_no_state_hardcodes_this_repo_test_path`
-  (asserting `"ruff check scripts/" not in action` post-conversion) is the closest existing
-  pattern for pinning the hardcoded-`ruff` removal specifically. [Agent 3 finding]
-- If a new intermediate state is introduced for `dead-code-cleanup.yaml`'s or
-  `test-coverage-improvement.yaml`'s explicit-skip §2b handling, note that
-  `TestDeadCodeCleanupLoop.test_required_states_exist` (L11688) and
-  `TestTestCoverageImprovementLoop.test_required_states_exist` (L11722) use subset checks
-  (`required - actual`) — they will silently pass without validating the new state, so the new
-  state needs its own dedicated assertion rather than relying on these tests to catch it.
-  [Agent 2 finding]
+  pattern. They have zero existing coverage of their shell body today. [Agent 3 finding]
+- **Pin the hardcoded-`ruff` removal** with a structural guard mirroring
+  `TestIncrementalRefactorLoop.test_no_state_hardcodes_this_repo_test_path` — assert
+  `"ruff check scripts/" not in action` post-conversion. `evaluation-quality.yaml`'s
+  `evaluate_code` has zero resolution-level coverage today; no test matches
+  `code_results`/`eval-test-results`. [Agent 3 finding]
+- **BUG-3269's mirror-drift gate**, with `_PENDING_CONVERSION` shrinking by one entry per
+  converted file — nine down to four. `test_pending_conversion_sites_still_exist` (`:148-156`)
+  asserts every remaining listed filename exists on disk, so an entry cannot be removed without
+  the conversion actually landing. Deleting the constant is **ENH-3288's** step 6, not this
+  issue's.
+
+_Existing coverage, for orientation:_ every current test over these loops is structural only
+(state-set membership, `fragment:` field, routing-edge shape via `test_builtin_loops.py`'s
+per-loop classes — `TestEvaluationQualityLoop` L884). None will break from the conversion (they
+check supersets, not exact shell content); none gives resolution-level coverage either. Each site
+needs a new subprocess-level test. [Agent 3 finding]
 
 ### Documentation
 
-- `scripts/little_loops/loops/README.md:33` — `auto-refine-and-implement`'s
-  `test_cmd`/`lint_cmd` row
-- `docs/guides/LOOPS_REFERENCE.md:979,1305,1327` — the `project.test_cmd`/`lint_cmd` rows
-- `docs/guides/LOOPS_REFERENCE.md:1347` — `test-coverage-improvement`'s `test_cmd` context-variable
-  row, currently documenting an inert knob (*Dead site*). Per the pinned decision (a) it **stays**
-  and becomes true — no edit needed, but re-verify the wording matches `verify_tests`'s new
-  context-first behavior
-- `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md:569` — **required edit at step 6, previously
-  unlisted.** The sentence *"A handful of other loops are a temporary exemption pending
-  ENH-3277's conversion pass"* (inside the "Resolving a Project Command Inside a Loop" section,
-  `:516-569`) becomes false the moment `_PENDING_CONVERSION` is deleted. Rewrite it to name the
-  three **permanent** exemptions (`oracles/code-run-gate.yaml`, `rn-refine.yaml`,
-  `auto-refine-and-implement.yaml`) and their shared §1d rationale — absent ≡ null ≡ skip, never
-  guess. Cited under *Codebase Research Findings* below but omitted from this list until now;
-  leaving it stale would leave the guide pointing at a closed issue as pending work
-
-_Wiring pass added by `/ll:wire-issue`:_
+- `docs/guides/LOOPS_REFERENCE.md:979,1305,1327` — the `project.test_cmd`/`lint_cmd` rows;
+  re-verify against final behavior
 - `docs/guides/EVALUATION_GUIDE.md:393` — prose reads *"runs your configured `test_cmd` plus
-  `ruff`"*, describing exactly the hardcoded `ruff check scripts/` this issue converts to
-  `ll-config get project.lint_cmd`; becomes stale once step 5 of Implementation Steps lands and
-  needs updating to describe the configured `lint_cmd` instead. [Agent 2 finding, confirmed]
-- In-YAML comments inside three already-listed primary files — `harness-single-shot.yaml:58`,
+  `ruff`"*, describing exactly the hardcoded `ruff check scripts/` step 5 converts to
+  `ll-config get project.lint_cmd`; update to describe the configured `lint_cmd` instead.
+  [Agent 2 finding, confirmed]
+- In-YAML comments inside three already-listed primary files — `harness-single-shot.yaml:57-60`,
   `harness-multi-item.yaml:88`, `harness-plan-research-implement-report.yaml:120` — currently
   read "Reads test_cmd from .ll/ll-config.json; falls back to 'pytest' if absent" and describe
-  the exact fallback being removed; update alongside each state's action body (sibling edit
-  within files already in Files to Modify, not a new file). [Agent 2 finding]
-- `skills/audit-loop-run/SKILL.md:~277` — documents `verify_verdict: "skipped"` semantics for
-  `auto-refine-and-implement`'s post-implementation verify step; the issue's plan for
-  `auto-refine-and-implement.yaml:433-436`. **No edit needed under Option A** — the file is not
-  converted, so its `verify_verdict: "skipped"` semantics are preserved byte-for-byte and this doc
-  stays accurate as written. (It would have become a required edit under the rejected Option B,
-  which is why an earlier pass upgraded it from a sanity check to a decision input.)
-  [Agent 2 finding, resolved by the decision]
+  the exact fallback being removed. **Load-bearing, not cosmetic**: these are `# EXAMPLE:`
+  scaffolds users clone, so the comments propagate the inline-parse anti-pattern into new loops.
+  Update alongside each state's action body. [Agent 2 finding]
+
+_Deferred to ENH-3288 (they describe the exemption list or the structural loops):_
+`docs/guides/HARNESS_OPTIMIZATION_GUIDE.md:569`'s "temporary exemption pending ENH-3277's
+conversion pass" sentence (still true while `_PENDING_CONVERSION` survives this issue — it
+becomes false only when ENH-3288 deletes the constant); `LOOPS_REFERENCE.md:1347`
+(`test-coverage-improvement`'s `test_cmd` row); `scripts/little_loops/loops/README.md:33` and
+`skills/audit-loop-run/SKILL.md:~277` (both `auto-refine-and-implement`, permanently exempt —
+sanity check only, no edit expected under Option A).
+
 
 ### Codebase Research Findings
 
@@ -627,10 +570,10 @@ _Added by `/ll:refine-issue` — 2026-08-21 — based on codebase analysis:_
 
 ## Acceptance Criteria
 
-_Added 2026-08-21. Previously the done-condition lived only as prose inside step 6; this is that
-condition made checkable. Every row is verified by a named test or a named command._
+_Every row is verified by a named test or a named command. Structural-state, exit-collapse, and
+gate-teardown criteria live in **ENH-3288**._
 
-**Conversions (8)**
+**Conversions (6)**
 
 - [ ] `fix-quality-and-tests.yaml` `check-tests` reads `ll-config get project.test_cmd`; the
       three-way `python3 -c` body at `:58-78` is deleted, not generalized
@@ -641,63 +584,43 @@ condition made checkable. Every row is verified by a named test or a named comma
       **on stdout** (`| tee`, never a bare `>`)
 - [ ] `evaluation-quality.yaml:63`'s hardcoded `ruff check scripts/` → `ll-config get
       project.lint_cmd`, with a no-lint-signal marker on stdout
-- [ ] `test-coverage-improvement.yaml:37-48` (the dead `CMD` block in `measure`) **deleted**, and
-      `verify_tests` (`:148-158`) given the context-first shape so the `:23` `test_cmd`
-      declaration becomes live
-- [ ] `dead-code-cleanup.yaml:76` converted, config-first bare
+- [ ] All five sites use the **config-first bare** shape — no `${context.test_cmd}` reference
+      anywhere (none of the five declares the key; an undeclared reference is an
+      `InterpolationError` and fails gate assertion (ii))
+- [ ] No `|| { ...; exit N; }` guard added at any site (BUG-3269 §1f)
 
-**Structural changes**
+**Gate**
 
-- [ ] Both `verify_tests` states are `fragment: harness_exit` with a declared `on_cannot_judge:`
-- [ ] Both converted bodies collapse every non-zero exit to `1` (`rc=$?; [ "$rc" = 0 ] && exit 0;
-      exit 1`) and keep their `tee` log; `[ -z "$CMD" ] && exit 3` is the only path to exit 3
-- [ ] `unverifiable` exists in both loops as a **bare** `terminal: true` + `failure: true` state —
-      no `action`, no `next:`
-- [ ] `dead-code-cleanup.revert_unverifiable` exists as `action_type: prompt` with
-      `next: unverifiable`, and is `verify_tests.on_cannot_judge`'s only target
-- [ ] `dead-code-cleanup.check_preconditions` exists (config-first bare), and
-      `dead-code-cleanup.yaml:7` is `initial: check_preconditions`
-- [ ] `dead-code-cleanup.yaml:108` is `max_steps: 18`
+- [ ] `_PENDING_CONVERSION` shrinks from nine entries to exactly four
+      (`dead-code-cleanup.yaml`, `test-coverage-improvement.yaml`, `rn-refine.yaml`,
+      `auto-refine-and-implement.yaml`)
+- [ ] The constant, `test_pending_conversion_sites_still_exist`, and `_EXEMPT` all still exist —
+      deleting them is ENH-3288's step 6
+- [ ] `_PERMANENT_EXEMPTIONS` is **unchanged** at one entry — the Option A move is ENH-3288's
+      step 5
+- [ ] `test_no_inline_project_command_config_read`, `test_context_references_are_declared`, and
+      `test_general_task_and_rl_coding_agent_are_not_exempt` all remain and pass
 
-**Gate teardown**
+**Tests** (each is new; none exists today)
 
-- [ ] `_PERMANENT_EXEMPTIONS` holds exactly three entries (`oracles/code-run-gate.yaml`,
-      `rn-refine.yaml`, `auto-refine-and-implement.yaml`) with the §1d rationale in its comment
-- [ ] `_PENDING_CONVERSION` and `test_pending_conversion_sites_still_exist` are deleted;
-      `_EXEMPT = _PERMANENT_EXEMPTIONS`
-- [ ] `_INLINE_ACCESS_RE` matches the two-step `project = cfg.get('project', {})` /
-      `project.get('test_cmd')` binding shape, and the only hits across
-      `scripts/little_loops/loops/**` are the three permanent exemptions
-- [ ] `rn-refine.yaml` and `auto-refine-and-implement.yaml` are **byte-for-byte unchanged**
-
-**Tests** (each is a new test; none exists today)
-
-- [ ] Per-site subprocess resolution tests driven through **`bash -c`**, asserting all three
-      config cases (set / present-null / absent); the three `harness-*` sites parametrized as one
-      class
-- [ ] Exit-3 collision case at both `verify_tests` states: `test_cmd: "sh -c 'exit 3'"` → state
-      exits **1**; empty `CMD` → exits **3**
+- [ ] Per-site subprocess resolution tests driven through `bash -c`, all three config cases
+      (set / present-null / absent); the three `harness-*` sites parametrized as one class
 - [ ] `evaluation-quality` skip markers asserted on the state's **captured stdout**, not on
       `eval-test-results.txt` / `eval-lint-results.txt`
-- [ ] Dedicated assertions for all four new/changed states, plus `initial` and `max_steps`
-- [ ] Guard asserting no state in `test-coverage-improvement.yaml` resolves a `CMD` it never
-      evaluates (the defect that made `:45` dead)
+- [ ] Structural guard asserting `"ruff check scripts/" not in action` at
+      `evaluation-quality.evaluate_code`
 
 **Docs**
 
-- [ ] `HARNESS_OPTIMIZATION_GUIDE.md:569` no longer calls the exemptions "temporary pending
-      ENH-3277" and names the three permanent ones
 - [ ] `EVALUATION_GUIDE.md:393` describes the configured `lint_cmd`, not `ruff`
-- [ ] `loops/README.md:33` and `LOOPS_REFERENCE.md:979,1305,1327,1347` re-verified against final
-      behavior
+- [ ] The three `harness-*` in-YAML scaffold comments no longer describe a `'pytest'` fallback
+- [ ] `LOOPS_REFERENCE.md:979,1305,1327` re-verified against final behavior
 
 **Exit gates**
 
-- [ ] `ll-loop validate` passes for every touched loop
-- [ ] The scoped `grep` from step 7 (excluding the three permanent exemptions) returns empty
+- [ ] `ll-loop validate` passes for all five touched loops
+- [ ] The scoped grep from step 6 returns only the four still-pending / exempt files
 - [ ] `python -m pytest scripts/tests/` exits 0
-- [ ] Manual smoke: `dead-code-cleanup` in a scratch project with `test_cmd: null` does **not**
-      reach `commit`
 
 ## Implementation Steps
 
@@ -707,119 +630,50 @@ condition made checkable. Every row is verified by a named test or a named comma
    (`docs/guides/HARNESS_OPTIMIZATION_GUIDE.md:516-569`), and both mirror-drift gate assertions
    were BUG-3269's deliverables, not this one's.
 2. **Pick a §2b row for every site before writing any shell.** The table under *Proposed
-   Solution* is a hard prerequisite, not advisory. The three marked *explicit skip required*
-   (`dead-code-cleanup`, `test-coverage-improvement`, `evaluation-quality`) are the reason
-   this work was split out of a P0.
-3. **Convert the four unblocked pass-on-empty sites first** — `fix-quality-and-tests.yaml`
+   Solution* is a hard prerequisite, not advisory. Four of the five sites here are pass-on-empty;
+   `evaluation-quality` is the one that needs an explicit skip.
+3. **Convert the four pass-on-empty sites first** — `fix-quality-and-tests.yaml`
    (delete its three-way python body outright), `harness-single-shot.yaml`,
    `harness-plan-research-implement-report.yaml`, `harness-multi-item.yaml`. These are
-   drop-ins or route to a further gate. Config-first bare shape for all four — none declares a
+   drop-ins or route to a further gate. Config-first bare for all four — none declares a
    `context.test_cmd` key. Rewrite the three `harness-*` template comments (`:57-60`, `:88`,
    `:120`) in the same edit — they are copy-me scaffolds teaching the anti-pattern, not
-   incidental docs.
-3b. **`rn-refine.yaml` and `auto-refine-and-implement.yaml` are never converted** (Option A, see
-   *DECIDED* under *Proposed Solution*). Both YAMLs are left byte-for-byte unchanged. The only
-   edit is in `scripts/tests/test_bug3269_test_cmd_resolution_gate.py`: move both filenames from
-   `_PENDING_CONVERSION` into `_PERMANENT_EXEMPTIONS` (`:49`), which grows from one entry to
-   three, and extend that constant's comment to carry the §1d rationale (absent ≡ null ≡ skip,
-   never guess) for all three. Do **not** build `ll-config get --raw` — Option C was rejected.
-4. **Convert the explicit-skip sites, one at a time, each with its regression test.**
-   `evaluation-quality.yaml` first — its `:58` read (`test_cmd`) here, and its `:63` hardcode
-   (`lint_cmd`) in step 5; both branches of `evaluate_code` emit their own "no signal" marker
-   **on stdout** (`| tee`, never a bare `>`), because `score` reads
-   `${captured.code_results.output}` and not the files — see *CAPTURE CORRECTION*. Do **not**
-   reroute; `evaluate_code` has no `on_yes`/`on_no` edges.
-   Then `test-coverage-improvement.yaml` — **delete the dead `CMD` block at `:37-48` rather than
-   converting `:45`**, and apply *Dead site* decision **(a)**: `verify_tests` (`:148-158`) gets
-   the context-first shape, the `:23` declaration stays, `LOOPS_REFERENCE.md:1347` stays. Then
-   `dead-code-cleanup.yaml` last, since its `on_yes` commits deletions — and it carries the most
-   added surface: the `check_preconditions` entry gate plus the `unverifiable` terminal state.
-   Both `verify_tests` skip edges are pinned under *Pinning the two explicit-skip gate edges* —
-   apply them, **including the non-zero exit collapse** (*EXIT-CODE COLLISION*), before writing
-   any shell.
+   incidental docs. Remove each file's `_PENDING_CONVERSION` entry as it lands.
+4. **Convert `evaluation-quality.yaml:58`** (`test_cmd`), the one explicit-skip site here. Both
+   branches of `evaluate_code` emit their own "no signal" marker **on stdout** (`| tee`, never a
+   bare `>`), because `score` reads `${captured.code_results.output}` and not the files — see
+   *CAPTURE CORRECTION*. Do **not** reroute; `evaluate_code` has no `on_yes`/`on_no` edges.
 5. **Convert `evaluation-quality.yaml:63`'s hardcoded `ruff check scripts/`** to
-   `ll-config get project.lint_cmd` — the same defect, pre-inlined.
-6. **Empty `_PENDING_CONVERSION` and delete the constant.** Four coupled edits in
-   `scripts/tests/test_bug3269_test_cmd_resolution_gate.py`, not one — deleting the constant
-   alone is a `NameError`:
-   - grow `_PERMANENT_EXEMPTIONS` (`:49`) from one entry to three, adding `rn-refine.yaml` and
-     `auto-refine-and-implement.yaml` per step 3b (this must land *before* the set below is
-     deleted, or the gate fails on those two files);
-   - delete the `_PENDING_CONVERSION` set (`:55-65`);
-   - delete `test_pending_conversion_sites_still_exist` (`:148-156`), which dereferences it;
-   - collapse `_EXEMPT = _PERMANENT_EXEMPTIONS | _PENDING_CONVERSION` (`:67`) to
-     `_EXEMPT = _PERMANENT_EXEMPTIONS`.
-
-   Plus one doc edit in the same step: **`docs/guides/HARNESS_OPTIMIZATION_GUIDE.md:569`**'s
-   "temporary exemption pending ENH-3277's conversion pass" sentence must be rewritten to name
-   the three permanent exemptions — deleting the constant without it leaves the guide advertising
-   this issue as pending work forever.
-
-   Leave `test_no_inline_project_command_config_read`,
-   `test_context_references_are_declared`, and
-   `test_general_task_and_rl_coding_agent_are_not_exempt` in place. The inline-read assertion
-   then holds with exactly three permanent exemptions. This is the definition of done.
-
-   **Also widen `_INLINE_ACCESS_RE` (`:71-84`) — a verified blind spot.** The regex matches only
-   a *chained* access (`get('project', {}).get('test_cmd')` or `['project']['test_cmd']`). It does
-   **not** match the two-step binding shape:
-
-   ```python
-   project = cfg.get('project', {})
-   test_cmd = project.get('test_cmd')
-   ```
-
-   That is precisely `auto-refine-and-implement.yaml:432-434` — **both** keys, `test_cmd` at
-   `:433` and `lint_cmd` at `:434`; an earlier version of this step cited only `:432-433`. So its
-   `_PENDING_CONVERSION` entry has been vacuous all along — the gate never detected it.
-
-   **Why widen it at all, precisely.** Widening changes *nothing* for the two exempted files:
-   they sit in `_PERMANENT_EXEMPTIONS` and are skipped before the regex runs either way. The
-   value is entirely forward-looking — Option A leaves `auto-refine-and-implement.yaml` in the
-   tree permanently as a **copyable precedent for a shape the gate cannot see**, so the next loop
-   that clones it lands an undetected fourteenth inline read. Treat this as hardening the gate,
-   not as part of this issue's correctness.
-
-   Add an alternation for a `project`-bound local followed by `.get('<key>')`, then confirm the
-   exempted files are the only hits.
-
-   **Pre-verified (2026-08-21) — the confirmation step will pass.** Enumerated every loop YAML
-   under `scripts/little_loops/loops/**` containing `get('project'`: `auto-refine-and-implement`,
-   `dead-code-cleanup`, `evaluation-quality`, `fix-quality-and-tests`, the three `harness-*`,
-   `rn-refine`, `test-coverage-improvement` (all converted or exempt by then),
-   `oracles/code-run-gate.yaml` (permanently exempt), and **`lib/composer.yaml:133`** — the only
-   non-exempt survivor. That one is `catalog.get('project', []) + catalog.get('builtin', [])`
-   over a *loop catalog*, with no command key following, so the widened alternation does not
-   match it. No new exemption is needed. Recorded here so this is not re-derived at
-   implementation time.
-   *(Step 6b — generalizing BUG-3276's this-repo-hardcode gate over all built-in loops — was
-   **split out to ENH-3281**. It is a sibling defect class with its own exemption-discovery cost,
-   and this issue's estimate of that cost was wrong: a naive gate hits five files, not the two
-   claimed. Converting `evaluation-quality.yaml:63` stays here as step 5; generalizing the gate
-   does not.)*
-
-7. **Verify.** After each file: `ll-loop validate`, a scoped `grep` for the old
+   `ll-config get project.lint_cmd` — the same defect, pre-inlined. Then remove
+   `evaluation-quality.yaml` from `_PENDING_CONVERSION`, bringing it to four entries.
+6. **Verify.** After each file: `ll-loop validate`, a scoped `grep` for the old
    `.get('test_cmd'` / `.get('lint_cmd'` pattern, and the gate with one fewer entry.
 
-   **The grep must exclude `rn-refine.yaml` and `auto-refine-and-implement.yaml`** — under Option A
-   they keep their inline parse permanently, so they will match forever. An unscoped grep reads as
-   a failed conversion at every checkpoint:
+   The grep must exclude the files that legitimately still match — the two permanently exempt
+   under Option A, `oracles/code-run-gate.yaml`, and (until ENH-3288 lands) the two structural
+   loops:
 
    ```bash
    grep -rn "\.get('test_cmd'\|\.get('lint_cmd'" scripts/little_loops/loops/ \
      --include='*.yaml' \
-     | grep -v -e 'rn-refine.yaml' -e 'auto-refine-and-implement.yaml' -e 'oracles/code-run-gate.yaml'
+     | grep -v -e 'rn-refine.yaml' -e 'auto-refine-and-implement.yaml' \
+               -e 'oracles/code-run-gate.yaml' \
+               -e 'dead-code-cleanup.yaml' -e 'test-coverage-improvement.yaml'
    ```
 
-   Expected output at the end: empty.
+   Expected output at the end of this issue: empty. (ENH-3288 drops the last two exclusions and
+   expects empty again.)
 
-   At the end: `python -m pytest scripts/tests/` exits 0, and a manual smoke of
-   `dead-code-cleanup` in a scratch project with `test_cmd: null` confirming it does **not**
-   reach `commit`.
+   At the end: `python -m pytest scripts/tests/` exits 0.
+
+7. **Hand off to ENH-3288**, which converts the two structural loops, executes the Option A
+   exemption move, empties and deletes `_PENDING_CONVERSION`, widens `_INLINE_ACCESS_RE`, and
+   corrects `HARNESS_OPTIMIZATION_GUIDE.md:569`.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
-_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+_These touchpoints were identified by wiring analysis and must be included in the
+implementation. Structural-loop touchpoints moved to **ENH-3288**._
 
 - Update `docs/guides/EVALUATION_GUIDE.md:393` — replace "runs your configured `test_cmd` plus
   `ruff`" once step 5 converts `evaluation-quality.yaml:63`'s hardcoded `ruff check scripts/` to
@@ -829,101 +683,49 @@ _These touchpoints were identified by wiring analysis and must be included in th
   state's action body — they currently describe the guessed-`'pytest'` fallback being removed.
   **Load-bearing, not cosmetic**: these are `# EXAMPLE:` scaffolds users clone, so the comments
   propagate the inline-parse anti-pattern into new loops
-- Delete `test-coverage-improvement.yaml:37-48` (the dead `CMD` block in `measure`) rather than
-  converting `:45`, and apply the pinned *Dead site* decision (a) across `:23` + `:152` +
-  `LOOPS_REFERENCE.md:1347` together — they are one change, not three
-- Apply the pinned empty-`CMD` targets for **both** `verify_tests` gates before writing shell
-  (*Pinning the two explicit-skip gate edges*). `dead-code-cleanup`'s `on_error:
-  revert_and_scan` and `test-coverage-improvement`'s `on_no/on_error: fix_tests` are each
-  reachable but each mis-frames a no-signal skip as a test failure against an empty log
-- **Switch both `verify_tests` states from `fragment: shell_exit` to `fragment: harness_exit`**
-  as part of that edit — an `on_cannot_judge:` edge without the fragment switch is inert and
-  routes `exit 3` to `on_error` instead (*MECHANISM CORRECTION*). Add an assertion pinning
-  `evaluate.abstain_on_exit_3` / the `harness_exit` fragment at both states, so a future edit
-  that reverts the fragment to `shell_exit` while leaving the `exit 3` body in place fails
-  loudly rather than silently re-routing
-- **Collapse every non-zero exit to `1` in both converted bodies** — `rc=$?; [ "$rc" = 0 ] &&
-  exit 0; exit 1` after the `pipefail`/`tee` pipeline, so the state's own `[ -z "$CMD" ] && exit
-  3` is the only path to `on_cannot_judge`. **pytest itself exits 3** on internal error, and
-  without the collapse a real test failure is reported as "no signal" — deletions unreverted at
-  `dead-code-cleanup`, `fix_tests` skipped at `test-coverage-improvement`
-  (*EXIT-CODE COLLISION*). Keep the `tee`; `incremental-refactor`'s template omits it but both
-  downstream prompt states read the log
-- **A terminal state's action never executes** (`fsm/executor.py:601-636` returns
-  `_finish("terminal")` before dispatch; the only fall-through is the `on_max_steps` cap-handler
-  carve-out). So `unverifiable` is a **bare** `terminal: true` + `failure: true` marker with no
-  action and no `next:` in **both** loops, and any revert/report work must live in a preceding
-  non-terminal state. At `dead-code-cleanup` that is a new `action_type: prompt` state
-  **`revert_unverifiable`** (`verify_tests.on_cannot_judge:` → it, `next: unverifiable`) which
-  reverts the removal and writes `ll-dead-code-unverifiable.txt`; at
-  `test-coverage-improvement` there is nothing to do, so `on_cannot_judge: unverifiable` goes
-  straight to the bare terminal. **Never `next: scan`** on either — that re-deletes code every lap
-  to `max_steps`. Do not reuse either loop's existing `failed` state
-  (*TERMINAL-ACTION CORRECTION*, *Terminality of the two new states*, *State names*)
-- **Required (pinned, was "recommended"): add an `incremental-refactor`-style
-  `check_preconditions` entry gate to `dead-code-cleanup`** (`incremental-refactor.yaml:20-86`)
-  so the loop refuses to start rather than deleting code it cannot verify — **but config-first
-  bare, not the template's context-first shape**: `dead-code-cleanup`'s `context:` block
-  (`:13-14`) declares only `commit_message`, so `${context.test_cmd}` would raise
-  `InterpolationError` and fail gate assertion (ii). Routes `exit 1` → `on_no: unverifiable`
-  (the bare terminal, not `revert_unverifiable` — nothing is deleted yet at loop start)
-- **Move `dead-code-cleanup.yaml:7` from `initial: scan` to
-  `initial: check_preconditions`** in the same edit. Adding the gate state without moving
-  `initial` leaves it unreachable — `scan` still runs first, the gate never fires, and every
-  structural assertion still passes. Assert `fsm.initial` explicitly
-- **Raise `dead-code-cleanup.yaml:108` `max_steps: 15` → `18`** to absorb the entry gate and
-  `revert_unverifiable` without silently cutting the loop from three cleanup laps to two
-  (*Step budget*)
 - Write new subprocess-level resolution tests per site (no existing test exercises shell content
   at the value-resolution level for any of the converted sites) — model on
   `TestRlCodingAgentObserveTestCmdResolution` (`test_builtin_loops.py:10747-10799`); parametrize
-  the three `harness-*.yaml` `check_concrete` sites as one test class rather than tripling it
-- If a new intermediate state is introduced for `dead-code-cleanup.yaml` or
-  `test-coverage-improvement.yaml`'s explicit-skip handling, add a dedicated assertion for it —
-  `test_required_states_exist` in both loops' test classes uses a subset check and will not
-  catch a missing/misrouted new state
-- Post-edit sanity check `skills/audit-loop-run/SKILL.md:~277`'s `verify_verdict: "skipped"`
-  documentation against `auto-refine-and-implement.yaml:433-436`'s preserved skip semantics
+  the three `harness-*.yaml` `check_concrete` sites as one test class rather than tripling it,
+  and drive them through `bash -c`, not `sh`
+- Model the five conversions on the three **already-converted** precedent sites
+  (`rl-coding-agent.yaml:62-63`, `general-task.yaml:57`, `incremental-refactor.yaml:62-63`), not
+  on new shapes — specifically the **config-first bare** variant, since none of the five here
+  declares `context.test_cmd`
 
 **Rollback seam:** independent per-file edits. If one conversion misbehaves in a consuming
-project, revert that file and re-add its exemption — as a `_PENDING_CONVERSION` entry if step 6
-has not yet run, or as a `_PERMANENT_EXEMPTIONS` entry (with a rationale comment) if it has,
-since step 6 deletes the former.
+project, revert that file and re-add its `_PENDING_CONVERSION` entry — the constant still exists
+throughout this issue, so the seam is intact until ENH-3288 deletes it.
 
 ## Scope Boundaries
 
-### RECOMMENDED SPLIT (2026-08-21) — not yet actioned
+### SPLIT EXECUTED (2026-08-21) — ENH-3288 carries the structural half
 
-**This issue is EPIC-shaped at P2 and should probably ship as four.** As pinned it touches seven
-loop YAMLs, performs eight conversions, switches two fragments, adds four states, edits two
-one-line scalars, performs four coupled gate-constant edits, and requires roughly six new test
-classes plus five doc edits. `outcome_confidence: 68` reflects that spread.
+This issue originally covered all seven convertible files plus the gate teardown. It was split at
+the risk boundary: the six conversions here are pure find-and-replace, while
+`dead-code-cleanup` and `test-coverage-improvement` gate an `on_yes: commit` edge and need a
+`fragment: harness_exit` switch, an exit-code normalization, four new states, and
+`initial:`/`max_steps:` edits. Those, plus the `_PENDING_CONVERSION` teardown, are **ENH-3288**
+(`blocked_by: [ENH-3277]`).
 
-The seam already exists — the issue's own *Rollback seam* is per-file, and Implementation Steps
-are already ordered by risk. The natural split concentrates the risk instead of spreading it:
+The split puts exactly **one** handoff of the shared `_PENDING_CONVERSION` set literal between the
+two issues — this one shrinks it nine → four, ENH-3288 takes it four → zero and deletes it — and
+splits the cross-cutting corrections cleanly: *CAPTURE CORRECTION* stays here (it is
+`evaluation-quality`-only); MECHANISM / EXIT-CODE COLLISION / TERMINAL-ACTION / *Dead site* /
+*Terminality* / *Step budget* all moved wholesale. Nothing is duplicated across the two files.
 
-| | Content | Risk |
-|---|---|---|
-| **(a)** | the four pass-on-empty drop-ins (`fix-quality-and-tests`, three `harness-*`) + their scaffold comments + four `_PENDING_CONVERSION` entries removed | mechanical; lands immediately |
-| **(b)** | `evaluation-quality` — both branches, stdout markers, the `:63` hardcode | contained to one ungated state |
-| **(c)** | `test-coverage-improvement` + `dead-code-cleanup` — fragment switches, exit collapse, entry gate, four new states, `initial`/`max_steps` | **all of the irreversible-edge risk in the family** |
-| **(d)** | step 6 teardown + `_INLINE_ACCESS_RE` widening + the five doc edits | trivial once (a)–(c) land |
+**In scope:** the five mechanical inline resolution sites listed under *Files to Modify* — five
+files, five inline reads, all converted — plus `evaluation-quality.yaml:63`'s hardcoded lint
+command as the sixth conversion, shrinking `_PENDING_CONVERSION` from nine entries to four, and
+the doc rows describing those sites.
 
-Splitting also makes (c) reviewable on its own, which is the part that commits code deletions.
-**Left as a recommendation rather than executed** — the counts table, `_PENDING_CONVERSION`'s
-definition of done, and the step ordering all assume a single issue, so a split needs those
-rewritten across four files rather than one. Decide before starting implementation, not during.
-
-**In scope:** the correct-but-guessing inline resolution sites listed under *Files to Modify* —
-**seven files, eight inline reads, seven of them converted** per the counts table under *Summary*
-(`test-coverage-improvement.yaml` has two, `:45` and `:152`, of which `:45` is dead and deleted;
-`evaluation-quality.yaml` has one read at `:58`, not two) — plus
-`evaluation-quality.yaml:63`'s hardcoded lint command as the eighth conversion, plus the two new
-bare `unverifiable` terminal states, `dead-code-cleanup`'s `revert_unverifiable` prompt state and
-its `check_preconditions` entry gate (with the accompanying `initial:` and `max_steps:` edits),
-plus emptying and deleting
-`_PENDING_CONVERSION` (moving two entries to `_PERMANENT_EXEMPTIONS` and widening
-`_INLINE_ACCESS_RE`), plus the two doc files whose rows describe those sites.
+**Out of scope — belongs to ENH-3288:** `dead-code-cleanup.yaml` and
+`test-coverage-improvement.yaml` in full (both `verify_tests` states, the dead `measure` block,
+the `harness_exit` switches, the exit collapse, `check_preconditions`, `revert_unverifiable`,
+both `unverifiable` states, `initial:`/`max_steps:`); moving `rn-refine.yaml` and
+`auto-refine-and-implement.yaml` into `_PERMANENT_EXEMPTIONS`; emptying and deleting
+`_PENDING_CONVERSION`; widening `_INLINE_ACCESS_RE`; and
+`docs/guides/HARNESS_OPTIMIZATION_GUIDE.md:569`.
 
 **Out of scope — belongs to BUG-3269:** the three defective sites
 (`general-task.yaml:37`, `rl-coding-agent.yaml:60,68`); `general-task`'s `SKIP` sentinel,
@@ -939,19 +741,17 @@ its contract is deliberately *absent ≡ null ≡ skip, never guess* — convert
 project that never configured `type_cmd` start running `mypy`. Full rationale in BUG-3269
 §1d. It stays a documented gate exemption.
 
-**Out of scope — permanently (added by the Option A decision):** `rn-refine.yaml` and
+**Out of scope — permanently (the Option A decision):** `rn-refine.yaml` and
 `auto-refine-and-implement.yaml:433-436`. Same §1d rationale — an absent≡skip contract that
-`ll-config get` cannot express. Both keep their inline parse and join
-`oracles/code-run-gate.yaml` in `_PERMANENT_EXEMPTIONS`, bringing it to three entries. Accepted
-cost: both continue to bypass `.ll/ll.local.md`.
+`ll-config get` cannot express. Both keep their inline parse; **the constant move that records
+this is ENH-3288's step 5**, not this issue's. Accepted cost: both continue to bypass
+`.ll/ll.local.md`.
 
 **Out of scope — split separately:** generalizing BUG-3276's this-repo-hardcode gate over all
 built-in loops → **ENH-3281** (was step 6b). Converting `evaluation-quality.yaml:63`'s
 `ruff check scripts/` stays here as step 5; gating the *class* does not.
 
-**Out of scope — split separately:** `incremental-refactor.yaml:12,33` → BUG-3276. It
-performs no config read at all, so no gate covers it either way, and its destructive
-`on_no: revert` edge needs its own safety analysis.
+**Out of scope — split separately:** `incremental-refactor.yaml:12,33` → BUG-3276 (landed).
 
 **Explicitly not a call site:** `auto-refine-and-implement.yaml:679-680` reads
 `cfg.project.test_cmd` / `cfg.project.lint_cmd` off a real `BRConfig` instance inside an
@@ -961,6 +761,7 @@ embedded Python block. It already resolves through `ProjectConfig` **and** alrea
 **No new production code.** Settled by Option A — this issue touches loop YAMLs, tests, and docs
 only. `ll-config get`'s resolution is unchanged and no CLI surface is added. In particular
 `cli/config.py` is **not** modified: `--raw` belonged to the rejected Option C.
+
 
 ## Program Design
 
@@ -987,14 +788,13 @@ design; both are struck. `cli/config.py` is untouched by this issue.
 - each converted state → `ll-config get project.<key>` → `main_config` → `BRConfig(Path.cwd())`
   → `_load_config` (deep-merges `.ll/ll.local.md`, `:265-280`) → `ProjectConfig.from_dict`
   → `resolve_variable` → `print` only when non-`None`.
-- `[ -z "$CMD" ]` → that site's §2b branch: pass-on-empty (four sites —
-  `fix-quality-and-tests` plus the three `harness-*`) or an explicit skip (three sites —
-  `evaluation-quality`'s marker file, `test-coverage-improvement` and `dead-code-cleanup`
-  routing away from `commit`).
+- `[ -z "$CMD" ]` → that site's §2b branch: **pass-on-empty at four sites**
+  (`fix-quality-and-tests` plus the three `harness-*`), or an **explicit skip** at
+  `evaluation-quality` (a "no signal" marker on stdout — it has no gate to reroute).
 - non-empty `CMD` → `eval "$CMD"` → the site's existing gate, unchanged — a
-  `fragment: shell_exit` gate at six of the read sites, and a plain `next:` with a downstream
-  `capture:` consumer at `evaluation-quality.evaluate_code`, `test-coverage-improvement.measure`,
-  and `rn-refine`'s full-suite gate (see *Two distinct hazards* under *Proposed Solution*).
+  `fragment: shell_exit` gate at four of the five read sites, and a plain `next: score` with a
+  downstream `capture:` consumer at `evaluation-quality.evaluate_code` (see *Two distinct
+  hazards* under *Proposed Solution*).
 
 **Precondition — cwd must be the project root.** `main_config` constructs
 `BRConfig(Path.cwd())` with no upward walk, so a state invoked from a subdirectory loses the
@@ -1004,51 +804,44 @@ regression — the inline snippets open the same relative path — but not fixed
 
 ## Impact
 
-- **Behavior change under `test_cmd: null`**: these sites stop gating on a guessed `pytest`.
-  For four that is a clean opt-out; for `dead-code-cleanup`, `test-coverage-improvement`, and
-  `evaluation-quality` it means committing or scoring unverified work unless the §2b row is
-  applied.
-- **`test-coverage-improvement`'s `context.test_cmd` becomes functional** (pinned decision (a)) —
-  today it is declared, documented, and wired to nothing (*Dead site*). A user-visible change to a
-  documented knob: a loop invocation that passes `test_cmd` starts having an effect at
-  `verify_tests` where it previously had none.
+- **Behavior change under `test_cmd: null`**: these five sites stop gating on a guessed `pytest`.
+  For the four pass-on-empty sites that is a clean opt-out; for `evaluation-quality` it means
+  handing `score` an empty capture unless the §2b marker is applied.
 - **`.ll/ll.local.md` overrides of `test_cmd`/`lint_cmd` start taking effect** inside these
   loops (they never did).
 - **`evaluation-quality.yaml:63` lint scope widens**: `ruff check scripts/` →
   `ruff check .` in a project that never set `lint_cmd`. Already non-gating (`|| true`), so
   this affects the captured artifact, not control flow. No change in this repo, which sets
   `lint_cmd`.
+- **The three `harness-*` scaffolds stop teaching the anti-pattern.** Their `# EXAMPLE:` comments
+  are what users clone when authoring new loops, so this is the change that stops a fourteenth
+  inline read from being written in the first place.
 - **Risk accepted**: these gates join the three from BUG-3269 in depending on a single
   fail-open binary (§1e there). Unlike `general-task`, they have no §3c equivalent mapping
-  the malformed-config door to a sentinel — each falls back to its §2b row.
-- **`dead-code-cleanup` gains a startup cost and refuses to run in more cases** (pinned entry
-  gate): it now runs the test suite once before scanning, and a project with an unresolvable,
-  unrunnable, or already-red suite gets a terminal `unverifiable` instead of a scan. That is the
-  intended trade — the loop's `on_yes` deletes code and commits — but it is a user-visible
-  behavior change beyond the resolution refactor. Note it also makes an **already-red** suite a
-  refusal-to-start, which is a broader condition than "no `test_cmd` configured" and the main
-  source of surprise for existing users of this loop.
-- **`dead-code-cleanup`'s `max_steps` rises 15 → 18 and its `initial` moves to
-  `check_preconditions`.** The step bump is not a behavior change users asked for; it exists to
-  keep the loop at three cleanup laps after the entry gate and `revert_unverifiable` each claim a
-  step (*Step budget*). A run that previously exhausted its budget mid-lap will now get slightly
-  further.
-- **Both `verify_tests` states stop distinguishing a command's exit code beyond pass/fail.** The
-  mandated collapse to `exit 1` (*EXIT-CODE COLLISION*) means a runner that exits 2/3/5 now
-  routes identically to a plain test failure. That is deliberate — it is what keeps pytest's
-  internal-error code out of `on_cannot_judge` — but any future need to route on a specific
-  runner exit code must claim a code the state normalizes *before* the collapse.
-- **Rollback seam**: independent per-file edits; revert one file, nothing shared to unwind. The
-  two structural additions (`check_preconditions`, `unverifiable`) are confined to
-  `dead-code-cleanup.yaml` and `test-coverage-improvement.yaml` respectively.
+  the malformed-config door to a sentinel — each falls back to its §2b row. At the four
+  pass-on-empty sites a missing `ll-config` yields an empty `CMD` and the gate passes; three of
+  those four route to a further LLM gate, and the fourth (`fix-quality-and-tests`) routes to
+  `done`.
+- **`_PENDING_CONVERSION` shrinks but survives.** The gate keeps blocking new inline reads
+  throughout, and the four remaining entries stay honest via
+  `test_pending_conversion_sites_still_exist`. The list is not debt this issue closes — that is
+  ENH-3288.
+- **Rollback seam**: independent per-file edits; revert one file and re-add its
+  `_PENDING_CONVERSION` entry. Nothing shared to unwind — no new states, no fragment changes, no
+  control-flow edits anywhere in this issue.
 
 ## Related Key Documentation
 
-- **BUG-3269** — the P0 this splits from; all design analysis lives there (§1, §1b, §1d, §1f,
-  §2, §2b)
+- **ENH-3288** — the structural half split from this issue; owns both `verify_tests` redesigns,
+  the *Dead site* decision, the MECHANISM / EXIT-CODE COLLISION / TERMINAL-ACTION corrections,
+  and the `_PENDING_CONVERSION` teardown. `blocked_by: [ENH-3277]`
+- **BUG-3269** — the P0 this splits from; all baseline design analysis lives there (§1, §1b,
+  §1d, §1f, §2, §2b)
 - BUG-3276 — `incremental-refactor.yaml`'s hardcoded `test_cmd`, split out separately
+- ENH-3281 — the sibling hardcode defect class (generalizing the this-repo-hardcode gate)
 - `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` — the `ll-config get` convention, written up by
   BUG-3269
+
 
 ## Status
 
@@ -1056,18 +849,41 @@ regression — the inline snippets open the same relative path — but not fixed
 
 ## Confidence Check Notes
 
-_Added by `/ll:confidence-check` on 2026-08-21_
+_Added by `/ll:confidence-check` on 2026-08-21. Re-run against the trimmed six-conversion scope
+(this issue's own split) — supersedes the prior pre-split notes below._
 
 **Readiness Score**: 90/100 → PROCEED
-**Outcome Confidence**: 63/100 → MODERATE
+**Outcome Confidence**: 63/100 → MODERATE (below the 65 `outcome_threshold`)
+
+Readiness Criterion 4 (issue well-specified) is capped at 10/20 by `missing_behavior_parity`
+(`format-check`: no `### Behavior Parity` subsection describing what `.ll/ll-config.json`'s
+inline parse is replaced by) — advisory only, does not gate the PROCEED verdict. Outcome
+Criterion C (ambiguity) is capped at 10/25 by `unapplied_decision` — `format-check` flags ~19
+terms from the rejected Option B/C prose (`ll-config get`, `pytest`, `_raw_config`,
+`RECOVERY_NEEDED`, `oracles/code-run-gate.yaml`, etc.) as still present in directive sections.
+Direct read confirms these are all inside explicitly `REJECTED` option blocks or the
+deliberately-retained "documented fallback" rationale for Option C, not stray unresolved
+prose — a likely false positive against the same pattern the prior pre-split run already noted,
+but the cap is mechanical and doesn't distinguish structured-rejected-option text from genuine
+drift.
 
 ### Outcome Risk Factors
-- No execution-level test coverage exists today for any of the 9 target read sites — only structural checks (state-set membership, edge shape) cover them; a subprocess-level resolution test is needed per site (per Tests section) before/alongside each conversion to catch a bad `[ -z "$CMD" ]` routing choice.
-- Two of the sites (`dead-code-cleanup.verify_tests`, `test-coverage-improvement.verify_tests`) require a `fragment: shell_exit` → `fragment: harness_exit` switch plus a new terminal `failure: true` state — this is deeper than the mechanical config-first substitution at the other seven sites, so treat those two as the highest-risk steps in the sequence and land them last, per Implementation Steps' own ordering.
-- `format-check`'s `unapplied_decision` gate flagged a large number of terms from the issue's *rejected* Option B/C prose (e.g. `ll-config get`, `pytest`, `_raw_config`) as potentially unapplied — this reads as a likely false positive given the issue has an explicit `Decision Rationale` section scoring Option A as selected, but is worth a quick manual skim of the Proposed Solution/Program Design sections before implementing to confirm no genuinely-stale rejected-option text survives.
-- `format-check` also flagged `stale_cli_flag: "ll-config get --raw (no such flag)"` and a missing `Behavior Parity` subsection — both expected given Option C's `--raw` flag was explicitly rejected and never built; confirm `cli/config.py` still has zero optional flags before starting, since a code drift there would invalidate the "No new production code" scope boundary.
+
+- No execution-level test coverage exists today for any of the five target read sites — only
+  structural checks (state-set membership, edge shape) cover them. A subprocess-level resolution
+  test is needed per site (per *Tests*) before/alongside each conversion to catch a bad
+  `[ -z "$CMD" ]` routing choice.
+- `format-check`'s `unapplied_decision` gate (19 hits) drives the ambiguity cap above; worth one
+  skim of *Proposed Solution* / *Program Design* before starting to confirm no genuinely stale
+  rejected-option text survives outside the labeled `REJECTED` blocks.
+- `format-check` also flagged `missing_behavior_parity` on `.ll/ll-config.json` and
+  `unmarked_superseded_directive` on the issue's own filename (the "Rescoped 2026-08-21" note at
+  the top) — both read as false positives on direct inspection (the supersession is already
+  explicit in prose), but neither has been re-verified against the checker's exact matching
+  rules.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-21T18:59:48 - `de2bc4f7-6272-4f52-a9cb-998af08752f1.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-21T17:52:58 - `f27d8342-f3ba-42ea-95ca-41ad79008fbf.jsonl`
 - `/ll:confidence-check` - 2026-08-21T17:18:53 - `03a5de0d-b8b9-470c-a7c9-e3445c858ad8.jsonl`
 - `/ll:confidence-check` - 2026-08-21T16:27:41 - `e55ad46d-5b7e-43e8-8452-c0861f23904f.jsonl`

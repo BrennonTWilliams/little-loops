@@ -7,6 +7,8 @@ status: open
 discovered_by: ll-issues-create
 discovered_date: '2026-08-16'
 captured_at: '2026-08-16T23:26:39Z'
+depends_on:
+- EPIC-2789
 ---
 
 # EPIC-3217: Retrofit cannot_judge abstention handling across built-in FSM loops and tooling
@@ -180,4 +182,5 @@ Every LLM-judged gate in the built-in loops routes abstention deliberately, stat
 - `harness_eval_abstention_rate()` has at least one non-test consumer (currently zero).
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-08-21T19:06:54 - `8c9f6596-f570-42d1-a2a2-c4e750b706f8.jsonl`
 - `/ll:capture-issue` - 2026-08-16T23:29:36 - `501abea1-df2c-4fca-aa0c-5bb8bbb6d4ba.jsonl`

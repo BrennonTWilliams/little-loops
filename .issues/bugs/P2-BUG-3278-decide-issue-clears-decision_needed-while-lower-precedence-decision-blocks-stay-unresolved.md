@@ -20,11 +20,11 @@ relates_to:
 - ENH-3277
 verify_verdict: VALID
 confidence_score: 90
-outcome_confidence: 82
-score_complexity: 14
+outcome_confidence: 85
+score_complexity: 10
 score_test_coverage: 25
 score_ambiguity: 25
-score_change_surface: 18
+score_change_surface: 25
 ---
 
 # BUG-3278: decide-issue clears decision_needed while lower-precedence decision blocks stay unresolved
@@ -45,10 +45,18 @@ and gates Phase 7b's clear on a residual-group probe.
 `/ll:decide-issue` Phase 7b (`skills/decide-issue/SKILL.md:411-424`) sets `decision_needed: false`
 with only an idempotency guard. Nothing between Phase 3's extraction and Phase 7b's write asks
 whether the document still holds an undecided block. Phase 3 returns **at most one** block set —
-`locate_enumerable_options` (`issue_parser.py:2134`) resolves exactly one section, then
-`_locate_options_in_text` (`:1967`) returns on the **first** `_OPTION_PATTERNS` tier with a match
-(`section_header` > `bold_label` > `numbered` > `bullet`, `:1891`). Every other decision point in
+`locate_enumerable_options` (`issue_parser.py:2209`) resolves exactly one section, then
+`_locate_options_in_text` (`:2025`) returns on the **first** `_OPTION_PATTERNS` tier with a match
+(`section_header` > `bold_label` > `numbered` > `bullet`, `:1949`). Every other decision point in
 the file is invisible to the run that clears the flag.
+
+**Phase 7b is not the only clearing site.** Phase 3b's lock-in path (`SKILL.md:313-321`) performs an
+*independent* unconditional `decision_needed: false` write with its own inline `---` Edit, and its
+step 6 then **skips Phases 4–7 entirely** — so on that path Phase 7b never runs at all. That is the
+`AUTO_MODE`-only path taken by `ll-auto` / `autodev` / `resolve-decision.yaml`, i.e. the one most
+likely to meet a multi-decision issue unattended. `docs/reference/COMMANDS.md:256` documents both
+writes in a single "Frontmatter write-back" paragraph. Gating only Phase 7b leaves the defect fully
+intact on the automated path; part 5 therefore gates **both** sites.
 
 Three ways a second decision point survives the pass, all ending in a cleared flag:
 
@@ -60,14 +68,14 @@ Three ways a second decision point survives the pass, all ending in a cleared fl
    `_OPTION_PATTERNS[3]` widening on the shared precedence chain, with its own 22-file blast
    radius. This issue's group iterator picks case 2 up for free once BUG-3287 lands; until then,
    case 2 shapes remain invisible here too. Neither issue blocks the other.
-3. **Prose directives are preempted.** `_locate_directive_alternatives` (`:2062`) exists to catch a
+3. **Prose directives are preempted.** `_locate_directive_alternatives` (`:2137`) exists to catch a
    prose `pick one` / `must be decided` directive, but `locate_enumerable_options` reaches it only
    when tiers 1–4 **all** miss document-wide. **This issue fixes case 3 inside its own new group
    iterator** (part 3 below probes directives *in addition to* tiers). The same defect in the
    shared `locate_enumerable_options` chain — live on six committed issues — is BUG-3287.
 
-`locate_unresolved_options` (`:2240`) cannot serve as the missing detector as written: its block
-iterator `_iter_option_blocks` / `_OPTION_HEADING_RE` (`:2210-2232`) deliberately recognizes only
+`locate_unresolved_options` (`:2341`) cannot serve as the missing detector as written: its block
+iterator `_iter_option_blocks` / `_OPTION_HEADING_RE` (`:2281-2326`) deliberately recognizes only
 Patterns 1–2, so cases 1–3 are invisible to it and to its two consumers,
 `ll-issues check-open-questions` and `resolve-decision.yaml`'s `check_open_question_progress`.
 
@@ -149,8 +157,8 @@ the section-level fallback exists only for markerless legacy shapes (like this i
 whose `> **Selected:**` sits at the top of `## Proposed Solution`, attached to no option block,
 with no competing group) and must never fire when a section carries two or more groups.
 
-**Do not reuse BUG-3279's `_DECISION_RATIONALE_SECTION_MARKER_RE` semantics.** That in-flight fix
-adds a section-scope resolution rule to `locate_unresolved_options` — *"a section containing a
+**Do not reuse BUG-3279's `_DECISION_RATIONALE_SECTION_MARKER_RE` semantics.** That fix (landed
+2026-08-21 as `f39a417e`) adds a section-scope resolution rule to `locate_unresolved_options` — *"a section containing a
 `### Decision Rationale` heading anywhere counts every option block in that section as resolved"* —
 and its own docstring names the tradeoff: *"a section with two independent option groups where only
 one is decided reports fully resolved … corpus-measured as 0 live false negatives at fix time,
@@ -159,6 +167,12 @@ failure mode, knowingly accepted at the per-block layer. It is acceptable there 
 `check-open-questions` and the loop stall gate, both of which err conservative), and unacceptable
 here, because `is_group_resolved` gates the flag itself. The regex may be reused as a *heading
 matcher*; the unrestricted section-wide semantics must not be. Assertion (c2) is the guard.
+
+The regex to reuse is `_DECISION_RATIONALE_SECTION_MARKER_RE` (`issue_parser.py:1326`,
+`r"^\s*###\s+Decision Rationale\b"` — lenient, so decorated headings still match). Note that
+`f39a417e` **deleted `_RESOLVED_OPTION_MARKER_RE` entirely** and reduced `_is_option_resolved`
+(`:2328`) to a `> **Selected:**` callout test; any earlier reference in this document to that
+constant is stale.
 
 **Grouping rules.** A run breaks when the tier changes, when a Pattern E directive window
 intervenes, or at a section boundary. Two same-tier runs separated by a `**DECISION — pick one:**`
@@ -187,16 +201,65 @@ collapsing them would silently change the loop-gate counter.
 
 Under `include_approximate_tiers=True` the group iterator recognizes the `numbered` and `bullet`
 tiers, not only `_OPTION_HEADING_RE`'s Patterns 1–2, and calls `_locate_directive_alternatives`
-(`:2062`) **in addition to** the tier scan rather than as a last-resort fallback (case 3). The
+(`:2137`) **in addition to** the tier scan rather than as a last-resort fallback (case 3). The
 default stays `False` so `check-open-questions` and `check_open_question_progress` keep exactly
-today's conservatism — the ENH-2446 comment at `:2225` is a deliberate choice, and silently
+today's conservatism — the ENH-2446 comment at `:2271-2275` is a deliberate choice, and silently
 widening it would change loop-gate behavior out of scope.
 
-`_locate_directive_alternatives`'s existing `_PREFERENCE_MARKER_RE` / `_RESOLVED_QUESTION_MARKER_RE`
-suppressors make it resolution-aware — confirmed against ENH-3277's decided prose, which correctly
-returns `None`. Caveat: `_PREFERENCE_MARKER_RE` matches `> **selected:**` only when the callout
-falls inside the matched ±3-line window, which is why Phase 7a's placement rule for directive
-groups (part 5) puts the callout inside that window rather than relying on the suppressors alone.
+**At most one Pattern E group is detectable per document, and this is a hard limit of the existing
+function.** `_locate_directive_alternatives` `return`s from inside its scan loop on the **first**
+matching window, iterating `_DIRECTIVE_ALTERNATIVES_SECTIONS` in a fixed order (`Scope Boundaries`,
+`Proposed Change`, `Proposed Solution`, `Open Questions`). Consequences the group model cannot
+paper over:
+
+- two independent prose directives in the same section collapse into a single `provisional_e` group
+- a directive in `Proposed Solution` masks one in `Open Questions` entirely
+- a directive in any section outside that 4-entry list is invisible
+
+So part 1's *"one group per decision point"* contract holds for the four tier-based shapes but is
+**best-effort for Pattern E**.
+
+> **Selected:** accept the limitation. The group iterator emits **at most one `provisional_e`
+> group** per document. It still strictly improves on today (Pattern E is currently unreachable
+> whenever any tier matches), and the alternative — refactoring
+> `_locate_directive_alternatives`' scan loop to yield every non-overlapping window — is a change to
+> the shared precedence chain that `check-decidable` and `locate_enumerable_options` also traverse,
+> which is BUG-3287's blast radius, not this issue's.
+
+The limitation must be **stated, not left implicit** — silently shipping the group model with a
+Pattern E path that cannot express two decision points is how this issue's own failure mode returns.
+Document it in `locate_unresolved_decisions`' docstring and in the CLI reference (steps 14–15).
+Accepted residual risk: a second prose directive in the same document stays invisible and the flag
+clears.
+
+The rejected alternative, recorded for the follow-up: **`_iter_directive_alternatives(content) ->
+list[LocatedOptions]`** — refactor the scan loop to yield every non-overlapping matching window
+instead of returning the first, and reimplement `_locate_directive_alternatives` as
+`next(iter(...), None)` so its existing callers (`locate_enumerable_options`'s last-resort path,
+`check-decidable`) stay bit-identical. Delivers the stated contract; file as a follow-up on BUG-3287
+if a second-directive case is ever observed live.
+
+**The suppressors are per-window, not per-document — this is load-bearing for part 5.** Measured
+against live `_locate_directive_alternatives` (2026-08-21), with the directive on line `D`:
+
+| Marker placement | Result |
+| --- | --- |
+| `> **Selected:**` on the line **after** `D` | **still matches** `provisional_e`; the returned window does not contain the callout |
+| `> **Selected:**` on the line **before** `D` | **still matches**; window does not contain the callout |
+| directive reworded to `**DECIDED — (a); was: pick one …**` | **still matches** (`pick one` survives; there is no `DECIDED` alternative in `_RESOLVED_QUESTION_MARKER_RE`) |
+| `> **Selected:**` appended **to line `D` itself** | `None` ✓ |
+| `**RESOLVED**` prefixed **to line `D` itself** | `None` ✓ |
+
+The mechanism: the scan slides a window `lines[max(0, i-3) : min(len, i+4)]` over every `i` and
+suppresses only the windows that contain a marker. A marker on a *neighbouring* line always leaves
+at least one window (`i = D-3`, spanning `D-6..D`) that holds the imperative but not the marker, so
+the match survives — and because that surviving window is the first match, its span excludes the
+marker too, so a span-scoped `is_group_resolved` check fails as well. **Only a marker on the
+directive line itself is contained by every window that contains the imperative.** Part 5's
+placement rule is written against this measurement.
+
+Note also that ENH-3277's decided prose does correctly return `None`, but *not* because `DECIDED`
+is recognized — it dropped the `pick one` imperative outright. Do not generalize from it.
 
 **The group iterator must compute its own block boundaries** rather than reusing
 `_iter_option_blocks`: that iterator returns `(heading_line, block_body)` **strings with no
@@ -205,9 +268,25 @@ offsets**, so it cannot populate `DecisionGroup.start_line`/`end_line`. It shoul
 reimplementing the rule, so all three span consumers stay consistent. `_iter_option_blocks` itself
 stays as-is for its existing per-block callers.
 
+That helper is **not** a one-argument convenience wrapper; its landed signature
+(`issue_parser.py:1381`) is
+
+```python
+_option_span_boundary(
+    text: str, search_start: int, max_depth: int, fences: list[tuple[int, int]]
+) -> int | None
+```
+
+so the group iterator computes `fence_spans(text)` itself (function-local import from
+`little_loops.text_utils`, per the file's existing convention) and selects `max_depth` per match —
+**3** for a heading-shaped marker (`### Option X`, whose own `####` children must not cut the span)
+and **6** otherwise. It returns the offset of the first fence-excluded qualifying heading at or after
+`search_start`, or `None`. Callers combine it with the next-marker and end-of-text candidates via
+`min(...)`.
+
 **Boundary correctness is no longer the reason** (revised, round 4). Earlier revisions justified a
 bespoke iterator on the grounds that `_iter_option_blocks`' final block ran to end-of-section and
-swallowed the trailing `### Decision Rationale`. BUG-3279's in-flight fix resolves that: each block
+swallowed the trailing `### Decision Rationale`. BUG-3279 (landed `f39a417e`) resolves that: each block
 now ends at the next same-tier marker, the first qualifying fence-excluded heading, or the section
 end, whichever comes first. The round-2 empirical claim that a decided three-option section reports
 `1` unresolved rather than `2` no longer reproduces — under the BUG-3279 tree it reports `0`, for
@@ -222,7 +301,7 @@ the different reason in the note below. Offsets are the surviving justification.
 
 Passes `include_approximate_tiers=True`.
 
-The exit-2 case is a deliberate divergence from `check_open_questions.py:54`, which returns 1 for a
+The exit-2 case is a deliberate divergence from `check_open_questions.py:56`, which returns 1 for a
 missing issue: the FSM `exit_code` evaluator maps 0→`on_yes`, 1→`on_no`, 2+→`on_error`
 (`fsm/evaluators.py:255-259`), so reusing 1 for "not found" would make an unresolvable ID
 indistinguishable from a genuine residual and route it to `done` (part 6). The command must also
@@ -230,11 +309,16 @@ never exit **3** — `shell_exit` does not set `abstain_on_exit_3`, so 3 would l
 
 `--json` emits `{"id", "unresolved": [DecisionGroup...]}`. Each group serializes `heading`, `tier`,
 `start_line`, `end_line`, and its member options as **full `LocatedOption` dicts** (`label`, `text`,
-`start_line`, `end_line` — `LocatedOption.to_dict()` already exists at `issue_parser.py:1917`), so
-it is a drop-in substitute for the `locate-options --json` call Phase 3 makes today: Phase 4 scores
-options from their `text`, and Phase 3's Option Count Check branches on `pattern == "bullet"`
-(`SKILL.md:182`). A group's `tier` therefore uses the `_OPTION_PATTERN_NAMES` vocabulary
-(`issue_parser.py:1904` — `section_header`/`bold_label`/`numbered`/`bullet`) extended with
+`start_line`, `end_line` — `LocatedOption.to_dict()` already exists at `issue_parser.py:1974`).
+
+It is **not** a drop-in substitute for `locate-options --json`: that payload carries `count` and
+`pattern` at the top level, whereas these move *into* each group as `len(options)` and `tier`. Every
+Phase 3 read must be re-pointed accordingly — Phase 4 still scores options from their `text`, and
+Phase 3's Option Count Check still branches on the bullet tier, but now via the selected group's
+`tier` rather than a document-level `pattern` (`SKILL.md:183`).
+
+A group's `tier` uses the `_OPTION_PATTERN_NAMES` vocabulary
+(`issue_parser.py:1962` — `section_header`/`bold_label`/`numbered`/`bullet`) extended with
 `provisional_e` for a Pattern E window; `_OPTION_PATTERN_NAMES` is a 4-tuple today and
 `provisional_e` is a bare literal inside `_locate_directive_alternatives`, so either extend the
 tuple or document `tier` as a 5-value union.
@@ -259,28 +343,47 @@ clears the flag. Without this the fix stalls on the already-decided path.
 `locate_enumerable_options`'s raw winner, so already-resolved groups are skipped and repeated runs
 advance. The `count == 1` branch (`SKILL.md:187`) now reads the selected group's option count.
 
-**Phase 7a's idempotency rule becomes per-group.** `SKILL.md:401-407` today reads *"if the issue
+**Phase 3 selects the *first* unresolved group in document order** (`unresolved[0]` — the CLI emits
+groups sorted by `start_line`). State this explicitly in the skill prose. Without a pinned rule the
+selection is model-discretionary, so two runs over the same file can pick different groups, and the
+"one decision point per run, bounded" convergence argument below stops holding.
+
+**Phase 7a's idempotency rule becomes per-group.** `SKILL.md:409` today reads *"if the issue
 already contains a `### Decision Rationale` section, skip the annotation write"* — document-wide.
 Once Phase 3 can select a second group, that rule silently suppresses the annotation for it: run 2
 picks group B, writes no `> **Selected:**` callout, and B stays unresolved forever. Rephrase as:
 skip only when **the selected group** is already resolved per `is_group_resolved`. Rationale
 headings are disambiguated — `### Decision Rationale — <group heading or first option label>` —
 because two identical `### Decision Rationale` H3s in one section are ambiguous to a reader and
-extra noise for part 1's section-level fallback. (The `_RESOLVED_OPTION_MARKER_RE` at
-`issue_parser.py:2205` anchors on `###\s+Decision Rationale\b`, so the suffixed form still matches.)
+extra noise for part 1's section-level fallback. (`_DECISION_RATIONALE_SECTION_MARKER_RE` at
+`issue_parser.py:1326` anchors on `^\s*###\s+Decision Rationale\b`, so the suffixed form still
+matches. The older `_RESOLVED_OPTION_MARKER_RE` this bullet used to cite no longer exists —
+`f39a417e` deleted it.)
 
 **Phase 7a needs a marker placement rule for every tier.** Today it inserts the callout
 "immediately after the winning option's title line" — which is undefined for the two group shapes
 this fix newly reaches:
 
 - **`bullet` / `numbered` groups** — insert the callout immediately after the winning bullet's line,
-  and rely on part 1's span rule so the callout does not split the group.
-- **`provisional_e` groups** — a directive window has no option title line. Insert the callout
-  immediately after the directive line, **inside** the matched window, so
-  `_PREFERENCE_MARKER_RE`'s ±3-line suppressor also sees it. Without this rule a Pattern E group
-  co-located with any other group in the same section can never be marked resolved (the
-  section-level fallback is restricted to single-group sections) — a permanent stall, exactly what
-  the per-group idempotency rule above exists to prevent.
+  and rely on part 1's span rule so the callout does not split the group. (Phase 3b step 3's
+  Pattern D branch already does exactly this — *"add a `> **Selected:** (x) — per the stated
+  recommendation` callout on the recommended bullet"* — so the two paths agree by construction.)
+- **`provisional_e` groups** — a directive window has no option title line, and **a callout on a
+  neighbouring line does not work.** Per the measurement in part 3, `_locate_directive_alternatives`
+  suppresses per sliding window, so a marker on the line before or after the directive always leaves
+  the `i = D-3` window unsuppressed — the group re-emits forever, *and* the surviving window's span
+  excludes the marker, so a span-scoped `is_group_resolved` check fails too. The rule is therefore:
+  **append the callout to the directive line itself**, e.g.
+
+  ```markdown
+  **DECISION — pick one before step 4: use the shim or rewrite the caller.** > **Selected:** the shim.
+  ```
+
+  Verified to return `None`. A `**RESOLVED**` prefix on the same line works identically; a
+  `**DECIDED — …**` rewording does **not**, because the `pick one` imperative survives it.
+  Without this rule a Pattern E group co-located with any other group in the same section can never
+  be marked resolved (the section-level fallback is restricted to single-group sections) — a
+  permanent stall, exactly what the per-group idempotency rule above exists to prevent.
 
 **Phase 7b** runs `ll-issues check-unresolved-decisions` *after* 7a's annotation write. Exit 0 →
 clear as today. Exit 1 → leave `decision_needed: true`, make no frontmatter write, and carry the
@@ -290,6 +393,24 @@ applies Phase 3b-i's existing principle — *"automation cannot clear a flag it 
 the multi-decision case. Frontmatter writes keep decide-issue's existing inline Edit-tool `---`
 block convention (`SKILL.md:411-424`, reused at `:313-321`); do not introduce a CLI-mediated write
 for this field.
+
+**Phase 3b step 4 gets the same gate — this is not optional.** `SKILL.md:313-321` is a *second,
+independent* clearing site, and its step 6 (`:323`) routes to Phase 8/9 *"skipping Phases 4–7"*, so
+Phase 7b's new probe never executes on that path. It is `AUTO_MODE`-only, which makes it the path
+`ll-auto` / `autodev` / `resolve-decision.yaml` actually take — gating only Phase 7b would leave the
+reported defect fully live under automation while appearing fixed interactively. Rewrite step 4 as:
+
+1. run `ll-issues check-unresolved-decisions <ID>` **after** step 3's lock-in edit;
+2. **exit 0** → clear as today (unchanged wording, including the existing `Idempotency` line);
+3. **exit 1** → make no frontmatter write, log
+   `✗ Phase 3b: locked in [approach], but N unresolved decision point(s) remain — decision_needed remains true`,
+   and carry the surviving groups into Phase 9 exactly as Phase 7b does;
+4. **exit 2+** → treat as exit 1 (conservative: never clear on an unverifiable probe).
+
+Step 5's success log line stays on the exit-0 branch only. Note the interaction with step 3's
+Pattern D branch: it writes a `> **Selected:**` callout on the recommended bullet, which *is* a
+valid `bullet`-tier resolution marker under part 1, so a single-decision issue still clears in one
+pass and the common auto path is unchanged.
 
 ### Part 6 — loop integration (`loops/oracles/resolve-decision.yaml`)
 
@@ -322,9 +443,10 @@ flat and is not measuring the quantity being retried.
 ### Convergence is interactive-mode only
 
 In interactive mode: run 1 decides A/B/C, run 2 decides (a)/(b), run 3 finds nothing residual and
-clears — one decision point per run, bounded.
+clears — one decision point per run, bounded, and deterministic because Phase 3 always takes
+`unresolved[0]`.
 
-Under `--auto` this does **not** hold. Phase 3's existing auto-mode rule (`SKILL.md:182`) says that
+Under `--auto` this does **not** hold. Phase 3's existing auto-mode rule (`SKILL.md:183`) says that
 when `pattern == "bullet"` and `AUTO_MODE = true`, options are **not** routed to Phase 4 scoring —
 *"automation must not re-litigate an informal list the author may have already settled."* The
 newly-reachable bullet groups are exactly that tier, so an auto run cannot resolve the residual it
@@ -332,6 +454,14 @@ just detected. Accepted, not worked around: a residual bullet-tier group under `
 **human-review exit** — `decision_needed` stays `true`, Phase 9 names the group, and the run exits
 0. The auto path converges by *stopping*, not by deciding, and part 6's routing must not treat that
 as retryable. Widening the bullet-tier auto-mode exclusion is explicitly out of scope.
+
+**Verified: the caller already bounds re-entry, so `check_residual_decision → done` cannot spin.**
+`autodev.yaml`'s `decide_current` (`:611-628`) short-circuits on a write-once
+`${context.run_dir}/autodev-decide-ran` marker (*"the flag is cleared per-issue at dequeue_next"*),
+and the caller-side `record_decision_unresolved` state absorbs the still-set-flag outcome. So a
+multi-decision issue under autodev gets exactly **one** decide pass per dequeue and then routes to
+human review — which is the intended behavior, not an accident. Impact → Risk below asserts
+bounded-ness; this is the mechanism it rests on.
 
 ### Rejected alternatives
 
@@ -357,10 +487,11 @@ Both span-based alternatives are dropped, which removes this issue's dependency 
   iterator. `locate_unresolved_options`, `_iter_option_blocks`, and `_OPTION_PATTERNS` are left
   unchanged (the `_OPTION_PATTERNS[3]` widening is BUG-3287)
 - `scripts/little_loops/cli/issues/check_unresolved_decisions.py` (new) and `cli/issues/__init__.py`
-  (`:733-740` parser block, `:1015-1029` dispatch). `locate_options.py` is **not** touched
-- `skills/decide-issue/SKILL.md` — Phase 2.5→3 handoff, Phase 3 group sourcing, Phase 7a per-group
-  idempotency + marker placement, Phase 7b gate, Phase 9 report line
-- `skills/decide-issue/reference.md` — Phase 9 Output Report Template (line ~128)
+  (`:733-742` parser block, `:1021-1024` dispatch). `locate_options.py` is **not** touched
+- `skills/decide-issue/SKILL.md` — Phase 2.5→3 handoff, Phase 3 group sourcing + first-in-document
+  -order selection rule, **Phase 3b step 4 gate (`:313-321`)**, Phase 7a per-group idempotency +
+  per-tier marker placement, Phase 7b gate, Phase 9 report line
+- `skills/decide-issue/reference.md` — Phase 9 Output Report Template (`:94`)
 - `scripts/little_loops/loops/oracles/resolve-decision.yaml` — new `check_residual_decision` state
 
 ### Dependent Files (Callers/Importers)
@@ -438,9 +569,9 @@ N/A
 
 - `DecisionGroup` — new, `scripts/little_loops/issue_parser.py` — `heading: str | None`,
   `tier: str`, `options: list[LocatedOption]`, `start_line: int`, `end_line: int`
-- `LocatedOption` — `scripts/little_loops/issue_parser.py:1908` — `label: str`, `text: str`,
-  `start_line: int`, `end_line: int`; `to_dict()` at `:1917`
-- `LocatedOptions` — `scripts/little_loops/issue_parser.py:1926` — `count: int`,
+- `LocatedOption` — `scripts/little_loops/issue_parser.py:1966` — `label: str`, `text: str`,
+  `start_line: int`, `end_line: int`; `to_dict()` at `:1974`
+- `LocatedOptions` — `scripts/little_loops/issue_parser.py:1984` — `count: int`,
   `pattern: str | None`, `heading: str | None`, `options: list[LocatedOption]`
 
 ### Signatures
@@ -451,23 +582,32 @@ N/A
 - `cmd_check_unresolved_decisions(config: BRConfig, args: argparse.Namespace) -> int` — new,
   `scripts/little_loops/cli/issues/check_unresolved_decisions.py`
 - `locate_enumerable_options(content: str) -> LocatedOptions` —
-  `scripts/little_loops/issue_parser.py:2134` — unchanged; still the winner-take-all mechanism the
+  `scripts/little_loops/issue_parser.py:2209` — unchanged; still the winner-take-all mechanism the
   bug is about, and still what Phase 2.5 and `check-decidable` use
 - `locate_unresolved_options(content: str) -> tuple[int, str | None]` —
-  `scripts/little_loops/issue_parser.py:2240` — **unchanged**, per part 2
+  `scripts/little_loops/issue_parser.py:2341` — **unchanged**, per part 2
 - `_locate_directive_alternatives(content: str) -> LocatedOptions | None` —
-  `scripts/little_loops/issue_parser.py:2062` — unchanged; newly called from the group iterator
+  `scripts/little_loops/issue_parser.py:2137` — unchanged; newly called from the group iterator.
+  Returns on its **first** matching window, so it yields at most one Pattern E group per document
+  (part 3)
+- `_option_span_boundary(text: str, search_start: int, max_depth: int, fences: list[tuple[int, int]]) -> int | None` —
+  `scripts/little_loops/issue_parser.py:1381` — unchanged; reused by the group iterator (part 3)
+- `_is_option_resolved(block_body: str) -> bool` —
+  `scripts/little_loops/issue_parser.py:2328` — unchanged; post-`f39a417e` this is a
+  `> **Selected:**` callout test only, **not** a model for `is_group_resolved`
 
 ### Call Path
 
 Before: `/ll:decide-issue` Phase 7b (`SKILL.md:411-424`) -> `ll-issues locate-options ID --json` ->
 `cmd_locate_options` (`cli/issues/locate_options.py:19`) -> `locate_enumerable_options`
-(`issue_parser.py:2134`) -> `_locate_options_in_text` (`:1967`) -> first matching tier only ->
-Phase 7b writes `decision_needed: false` unconditionally.
+(`issue_parser.py:2209`) -> `_locate_options_in_text` (`:2025`) -> first matching tier only ->
+Phase 7b writes `decision_needed: false` unconditionally. Phase 3b step 4 (`SKILL.md:313-321`)
+writes it unconditionally too, on a path that never reaches Phase 7b at all.
 
-After: `/ll:decide-issue` Phase 7b -> `ll-issues check-unresolved-decisions ID` ->
+After: `/ll:decide-issue` Phase 7b **and Phase 3b step 4** ->
+`ll-issues check-unresolved-decisions ID` ->
 `cmd_check_unresolved_decisions` -> `locate_unresolved_decisions` -> `_iter_decision_groups` +
-`is_group_resolved` -> exit 0/1/2 -> Phase 7b writes only on exit 0.
+`is_group_resolved` -> exit 0/1/2 -> either site writes only on exit 0.
 `resolve-decision.yaml` `assert_decision_cleared` -> `check_residual_decision` -> same CLI ->
 `done` / `failed`.
 
@@ -503,7 +643,7 @@ frontmatter-clearing logic and introduces no new gap kind, gate, keyword list, o
 3. Under `include_approximate_tiers=True`, extend the group iterator to the `numbered` and `bullet`
    tiers and fold `_locate_directive_alternatives` in as an additional probe. Default `False` must
    reproduce today's group set over Patterns 1–2 only — the regression guard for the ENH-2446
-   conservatism comment at `:2225`.
+   conservatism comment at `:2271-2275`.
 
 **CLI layer**
 
@@ -527,7 +667,13 @@ frontmatter-clearing logic and introduces no new gap kind, gate, keyword list, o
    0; on exit 1 make no frontmatter write. Keep the literal `decision_needed: false` in the
    clearing branch and phrase the new branch as `decision_needed remains true`, matching
    `test_decision_needed_not_cleared_on_no_actionable` (line 310).
-10. `reference.md` Phase 9 Output Report Template (line ~128) gains the unresolved-decisions line;
+    **Same step, second clearing site — Phase 3b step 4 (`SKILL.md:313-321`).** Apply the identical
+    exit-0/1/2+ gate per part 5. Phase 3b's step 6 routes to Phase 8/9 *"skipping Phases 4–7"*, so
+    Phase 7b's probe never runs there; without this the fix is inert on the `--auto` path that
+    `ll-auto` / `autodev` actually take. Add a phase-text assertion that the Phase 3b slice contains
+    both `check-unresolved-decisions` and `decision_needed remains true`.
+
+10. `reference.md` Phase 9 Output Report Template (`:94`) gains the unresolved-decisions line;
     `SKILL.md` Phase 9 (line 463) continues to defer to it.
 
 **Loop integration**
@@ -590,14 +736,15 @@ frontmatter-clearing logic and introduces no new gap kind, gate, keyword list, o
 - Broadening `check_open_questions.py` / `check_decidable.py` to decision *groups* — neither passes
   `include_approximate_tiers`, and step 2 leaves `locate_unresolved_options` untouched. Separate
   change with its own loop-gate blast radius; file as a follow-up if wanted.
-- Widening Phase 3's auto-mode `bullet`-tier exclusion (`SKILL.md:182`). A residual bullet-tier
+- Widening Phase 3's auto-mode `bullet`-tier exclusion (`SKILL.md:183`). A residual bullet-tier
   group under `--auto` is a human-review exit by design.
 
 ## Impact
 
 - **Priority**: P2 — silent false-ready into the implementation pipeline, but it needs a
   multi-decision issue to trigger, so it is not a blanket break of the common path
-- **Effort**: Medium-to-Large — parser group model + new CLI + skill + one loop-oracle state.
+- **Effort**: Medium-to-Large — parser group model + new CLI + skill (**two** clearing sites, not
+  one: Phase 7b and Phase 3b step 4) + one loop-oracle state.
   Decision-*group* detection is a new data model with its own grouping rules and test matrix, not a
   thin filter over existing blocks
 - **Risk**: Medium. `autodev.yaml`, `refine-to-ready-issue.yaml`, `auto-refine-and-implement.yaml`,
@@ -620,6 +767,10 @@ frontmatter-clearing logic and introduces no new gap kind, gate, keyword list, o
   already `false`, skip the write"). There is no re-scan for surviving decision points, and the
   extraction that justified the clear (`locate_enumerable_options` via Phase 3) structurally returns
   at most one tier's worth of options.
+
+- **Second site**: `§ Phase 3b step 4 (:313-321)` performs the same unconditional set-to-`false` on
+  the `AUTO_MODE` lock-in path, and its step 6 skips Phases 4–7, so it never reaches Phase 7b's
+  guard at all. Both sites must be gated — see Proposed Solution part 5.
 
 The skill already establishes the correct principle elsewhere and simply does not apply it here —
 Phase 3b-i (`SKILL.md:196-217`) refuses to clear the flag in the `NO_ACTIONABLE_DECISIONS` case with
@@ -663,7 +814,8 @@ what changed and why so the reasoning is not lost.
   the bold-wrapped shape is unreachable until BUG-3287 lands. This document was flattened from four
   layers of in-place revision into a single current-state spec at the same time.
 
-  Round 4 also found **BUG-3279 in flight and uncommitted in the working tree**, which moves two of
+  Round 4 also found **BUG-3279 in flight and uncommitted in the working tree** (it has since
+  landed — see Round 5), which moves two of
   this issue's premises: (i) `_iter_option_blocks`' end-of-section over-consumption is fixed there,
   so boundary correctness is no longer the reason for a bespoke group iterator (offsets are), and
   the new shared `_option_span_boundary` helper should be reused; (ii) BUG-3279 adds an
@@ -673,7 +825,45 @@ what changed and why so the reasoning is not lost.
   implementation time; if BUG-3279's shape changed before landing, part 3 and assertion (e) are the
   paragraphs that move.
 
-`confidence_score` and `outcome_confidence` in frontmatter predate round 3 — re-run
+- **Round 5 (2026-08-21)** — pre-implementation review against the tree *after* BUG-3279 landed
+  (`f39a417e`). Three spec corrections, each of which would have shipped a fix that does not fix
+  the reported bug, plus a full citation refresh (`f39a417e` shifted every `issue_parser.py` anchor
+  by +58 to +100 lines and **deleted `_RESOLVED_OPTION_MARKER_RE`**, which part 5 cited):
+  1. **The fix gated only Phase 7b, but there is a second unconditional clearing site.**
+     `SKILL.md:313-321` (Phase 3b step 4) writes `decision_needed: false` on its own and step 6
+     skips Phases 4–7 entirely, so Phase 7b's new probe never executes there. That is the
+     `AUTO_MODE`-only path `ll-auto` / `autodev` / `resolve-decision.yaml` take — the fix would have
+     been inert exactly where the bug does the most damage. Part 5 and Implementation Step 9 now
+     gate both sites.
+  2. **Part 5's `provisional_e` marker placement could not work.** Measured against live
+     `_locate_directive_alternatives`: the suppressors are evaluated per sliding window
+     (`lines[max(0, i-3) : min(len, i+4)]`), so a `> **Selected:**` callout on the line *after* the
+     directive leaves the `i = D-3` window unsuppressed and the group re-emits forever — and that
+     surviving window's span excludes the callout, so a span-scoped `is_group_resolved` check fails
+     too. Only a marker appended to the directive line itself is contained by every window that
+     contains the imperative. A `**DECIDED — …**` rewording does **not** work (the `pick one`
+     imperative survives it); ENH-3277's decided prose returns `None` only because it dropped the
+     imperative outright, not because `DECIDED` is recognized.
+  3. **Pattern E can only ever yield one group per document.**
+     `_locate_directive_alternatives` returns from inside its scan loop on the first matching
+     window, over a fixed 4-section list, so part 1's "one group per decision point" contract is
+     best-effort for Pattern E. Part 3 now states the limitation and offers an explicit
+     accept-vs-`_iter_directive_alternatives` choice rather than leaving it undiscovered.
+
+  Three smaller corrections folded in: Phase 3 never said *which* group to select when several are
+  unresolved (now pinned to `unresolved[0]`, document order, or the bounded-convergence argument
+  does not hold); part 4 called the new `--json` payload a "drop-in substitute" for
+  `locate-options --json` while also describing the incompatible reshape (top-level
+  `count`/`pattern` → per-group `len(options)`/`tier`); and `_option_span_boundary`'s real
+  four-argument signature is now recorded, since "reuse the shared helper" understated what the
+  caller must supply. Confirmed correct and unchanged: the `fsm/evaluators.py:255-259` polarity and
+  part 6's branch assignments, all `resolve-decision.yaml` state anchors, case 2 matching zero of
+  four tiers, the quoted `locate_unresolved_options` docstring, and all four doc-update targets.
+  One claim strengthened: `autodev.yaml`'s write-once `autodev-decide-ran` marker plus caller-side
+  `record_decision_unresolved` is the mechanism that makes part 6's `done` routing provably
+  non-spinning — Impact → Risk asserted bounded-ness without citing it.
+
+`confidence_score` and `outcome_confidence` in frontmatter predate round 5 — re-run
 `/ll:confidence-check` before implementing rather than carrying them forward.
 
 ## Status
@@ -681,6 +871,7 @@ what changed and why so the reasoning is not lost.
 **Open** | Created: 2026-08-21 | Priority: P2
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-21T19:00:59 - `de2bc4f7-6272-4f52-a9cb-998af08752f1.jsonl`
 - `/ll:confidence-check` - 2026-08-21T18:01:01 - `e8b100f2-1d69-4959-840b-2aa9aba3993f.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-21T17:52:59 - `f27d8342-f3ba-42ea-95ca-41ad79008fbf.jsonl`
 - `/ll:confidence-check` - 2026-08-21T17:26:19 - `ce6fc8e8-cc01-4d82-ba15-c569a3c2657d.jsonl`

@@ -53,6 +53,7 @@ cli/loop/_helpers.py grab-bag into named modules).
 
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-08-21T19:06:53 - `8c9f6596-f570-42d1-a2a2-c4e750b706f8.jsonl`
 - `/ll:verify-issues` - 2026-08-16T16:40:24 - `688cfc38-322a-447f-94a0-315f2c2aee33.jsonl`
 - `/ll:verify-issues` - 2026-08-13T03:04:15 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-10T18:52:50 - `ffa08fd4-dce7-4108-91f7-6bb57e5df4c8.jsonl`
