@@ -113,7 +113,9 @@ i.e. every consuming project.
   through to `revert`. Reverting on "no test command configured" destroys work in exchange
   for no signal at all.
 - `revert` should scope its checkout to what the step touched rather than the whole tree, or
-  the loop should refuse to start with a dirty working tree.
+  the loop should refuse to start with a dirty working tree. Either way, the loop's own
+  runtime directory (`.loops/`) must be excluded from both the cleanliness gate and any
+  `git clean` — see Proposed Solution step 3.
 
 ## Motivation
 
@@ -180,8 +182,7 @@ The Decision Rationale's key-evidence line for Option B claims no `action_type: 
 can branch "precondition empty" vs. "command failed" to two different targets. **That is
 wrong** — `evaluate_exit_code` (`scripts/little_loops/fsm/evaluators.py:238-264`) already
 gives shell states a four-way verdict space, and `abstain_on_exit_3` is schema-supported
-(ENH-3224, `scripts/little_loops/fsm/schema.py:113,158-159,210`) though not yet used by any
-loop YAML:
+(ENH-3224, `scripts/little_loops/fsm/schema.py:113,158-159,210`):
 
 | exit code | verdict | edge on `verify_tests` |
 |---|---|---|
@@ -208,9 +209,32 @@ exit 1                         # every real failure -> on_no: revert, as today
 
 with `abstain_on_exit_3: true` and `on_cannot_judge: failed` on the state. This preserves
 today's "any test failure reverts" semantic exactly while carving the resolution failure out
-of it. An acceptable variant is to route empty → `on_error: failed` and collapse all real
-failures to `1`; if that variant is taken, state it explicitly, because `on_error` and
-`on_no` currently both point at `revert` and the distinction becomes load-bearing.
+of it.
+
+**Reuse the `harness_exit` fragment rather than hand-rolling `evaluate:`.**
+`scripts/little_loops/loops/lib/common.yaml:23-36` already defines a fragment for exactly this
+`0=pass / 1=fail / 3=abstained` contract (`action_type: shell` + `evaluate: {type: exit_code,
+abstain_on_exit_3: true}`), and its own docstring requires the caller to declare
+`on_cannot_judge`. `incremental-refactor.yaml:15-17` already imports `lib/common.yaml`, so
+`verify_tests` becomes `fragment: harness_exit` plus `action`/`on_yes`/`on_no`/
+`on_cannot_judge`/`on_error`. This raises Option B's consistency score and drops its cost
+below even the "two-line change" estimate above.
+
+**`on_error` must be repointed to `failed`, not left at `revert`.** Earlier drafts left this
+as "an acceptable variant"; it is not optional. Once the wrapper owns the exit-code space,
+`on_error` can no longer fire on a test failure — the only remaining triggers are a state
+timeout or a signal kill, i.e. cases with *no test signal at all*, which is precisely what the
+`3`-carve-out exists to keep off the destructive edge. Leaving `on_error: revert` reintroduces
+the "destroy work in exchange for no signal" failure this issue exists to close, through a
+narrower door. `on_no: revert` remains the only edge into `revert`.
+
+**Abstention routes immediately — no hold.** `_abstention_declared()` /
+`_route_abstention_hold()` (`scripts/little_loops/fsm/executor.py:2669-2725`) apply the
+`_ABSTENTION_HOLD_CAP = 2` re-execution hold only to *undeclared* abstentions. With
+`on_cannot_judge: failed` declared, a `3` transitions on the first evaluation; `verify_tests`
+does not re-run the resolution twice before failing. The declared route also satisfies
+`_validate_abstention_route` (`scripts/little_loops/fsm/validation/structural_rules.py:1483+`),
+so no `abstention_route_ok` suppression is needed.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
@@ -240,14 +264,43 @@ _These touchpoints were identified by wiring analysis and must be included in th
    Given that invariant, `revert` becomes:
 
    ```bash
-   git checkout -- . && git clean -fd
+   git checkout -- . && git clean -fd -e .loops
    ```
 
    `git clean -fd` closes the *too-narrow* half of the defect (untracked files created by the
    step survive a bare `git checkout -- .`). It is safe only under the invariant, which is
-   why the precondition must reject untracked files too — plain `git status --porcelain`
-   emptiness is the right gate, since `??` entries are included by default. Do not weaken the
-   gate to `--untracked-files=no`.
+   why the precondition must reject untracked files too. Do not weaken the gate to
+   `--untracked-files=no`.
+
+   **`.loops/` must be excluded from both the gate and the clean — this is a blocker, not a
+   refinement.** (Found 2026-08-21 during pre-implementation review.) `ll-init`'s gitignore
+   block — `_GITIGNORE_ENTRIES`, `scripts/little_loops/init/writers.py:59-72` — contains **no
+   `.loops/` entry at all**; a grep of `scripts/little_loops/init/` for `.loops` returns zero
+   hits. This repository's own `.gitignore:81-89` carries those entries, but they are
+   hand-maintained here and are not deployed to consuming projects. Consequences:
+
+   - By the time the initial state runs, `.loops/runs/<id>/` and `.loops/.running/` exist and
+     are untracked-and-unignored in a consuming project, so a bare `git status --porcelain`
+     reports `?? .loops/` and the precondition **refuses to start — deterministically, in
+     every consuming project.** That is this bug's own signature failure shape (works in this
+     repo, breaks everywhere else) reintroduced by its fix, and it would not reproduce during
+     local development here.
+   - `git clean -fd` skips ignored paths, so `.loops/` survives in *this* repo but is
+     **deleted in a consuming project** — taking the active run directory and the persisted
+     FSM state with it, mid-run.
+
+   Exclude at the pathspec level, which is correct regardless of the target project's
+   gitignore state (both forms verified against a scratch repo containing `.loops/runs/x/a`
+   and an untracked `src.py`):
+
+   ```bash
+   git status --porcelain -- ':(exclude).loops'   # precondition gate
+   git checkout -- . && git clean -fd -e .loops   # revert
+   ```
+
+   Adding `.loops/` to `_GITIGNORE_ENTRIES` is separately worthwhile, but it cannot be the
+   primary mechanism: it does nothing for already-initialized projects. Treat it as an
+   optional follow-up, not part of this fix's correctness argument.
 
 4. **Survey for siblings.** `test-coverage-improvement.yaml:54,57` builds
    `COV_CMD="python -m pytest --cov ..."` as a literal. That one is a *coverage* invocation
@@ -321,6 +374,13 @@ evidence that this codebase does not treat "no test signal" as safe-to-pass unif
   + empty-`CMD` branch
 - `scripts/little_loops/loops/incremental-refactor.yaml:57-60` — `revert` scoping
 
+_Optional follow-up, not required for this fix's correctness:_
+- `scripts/little_loops/init/writers.py:59-72` — `_GITIGNORE_ENTRIES` has no `.loops/` entry,
+  so consuming projects leave the loop runtime dir untracked-and-unignored. Adding one is
+  independently worthwhile but does nothing for already-initialized projects; the
+  `':(exclude).loops'` pathspec (step 3) is what makes the fix correct. Consider splitting to
+  its own issue rather than widening this one.
+
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/config/core.py` — `ProjectConfig.test_cmd` default (`:191`, `:215`);
   read-only here, pinned by BUG-3269's tests
@@ -348,12 +408,26 @@ _Wiring pass added by `/ll:wire-issue`:_
   with a controlled `.ll/ll-config.json`, asserting the **exit-code contract** from step (2):
   empty/unresolvable → `3`; passing command → `0`; failing command → `1`; and that a command
   exiting `4` (pytest usage error — this bug's own failure mode) maps to `1`, not to `3`.
-- New: `verify_tests` declares `abstain_on_exit_3: true` and `on_cannot_judge: failed`
-  (structural), so the `3` above cannot silently degrade to `on_error`.
+- New: `verify_tests` resolves `abstain_on_exit_3: true` and declares `on_cannot_judge: failed`
+  (structural, asserted post-fragment-resolution), so the `3` above cannot silently degrade to
+  `on_error`.
+- New (structural): `verify_tests.on_error == "failed"`, and `revert` has exactly one inbound
+  edge across the whole FSM — `verify_tests.on_no`. Pins AC (3b) against a future edit
+  re-pointing `on_error` back at `revert`.
+- New (behavioural, `.loops` exclusion — the blocker in step 3): against a `tmp_path` git repo
+  containing an untracked `.loops/runs/x/` and nothing else, the precondition state's script
+  must exit **pass**, not refuse. Add the mirror case: an untracked `src.py` alongside
+  `.loops/` must still refuse. Without the first assertion the loop is unrunnable in every
+  consuming project, and no in-repo test would catch it, since this repo gitignores `.loops/`.
+- New (behavioural): after `revert` runs in a `tmp_path` repo, an untracked file created by
+  the step is gone **and** `.loops/runs/x/` still exists. Pins `-e .loops`.
 - New: the clean-tree precondition state rejects a dirty tree **including untracked files**
-  — a `??`-only `git status --porcelain` must refuse to start.
-- New: `revert` includes `git clean -fd` (untracked-file half of the defect), alongside the
-  `test_revert_uses_scoped_targets`-style assertion already noted above.
+  — a `??`-only status (outside `.loops`) must refuse to start.
+- New: `revert` includes `git clean -fd -e .loops` (untracked-file half of the defect),
+  alongside the `test_revert_uses_scoped_targets`-style assertion already noted above.
+- New (AC 9, resume): a resumed run does not re-execute the precondition. Model on the
+  existing persistence/resume tests; assert `resume()` leaves `current_state` at the persisted
+  value rather than `fsm.initial` for this loop.
 
 ### Documentation
 - `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` — BUG-3269 adds the "resolve project commands
@@ -413,11 +487,21 @@ design; these are the checkable outcomes._
 2. `verify_tests` resolves context-first, then `ll-config get project.test_cmd` **with the
    `RC` check**, matching `general-task.yaml:49-58`.
 3. `verify_tests` implements the exit-code contract: `3` = unresolvable/opt-out, `1` = any
-   real test failure, `0` = pass; declares `abstain_on_exit_3: true` and
-   `on_cannot_judge: failed`. A resolution failure never reaches `revert`.
+   real test failure, `0` = pass; it obtains `abstain_on_exit_3: true` by reusing the
+   `harness_exit` fragment (`loops/lib/common.yaml:23-36`) rather than a hand-written
+   `evaluate:` block, and declares `on_cannot_judge: failed`. A resolution failure never
+   reaches `revert`.
+3b. `verify_tests` declares `on_error: failed`. `on_no: revert` is the **only** remaining
+   edge into `revert`; no timeout or signal kill can route to a destructive revert.
 4. A clean-tree precondition state runs before `plan_steps` and is the FSM's `initial`;
-   it refuses to start on any non-empty `git status --porcelain`, untracked files included.
-5. `revert` performs `git checkout -- . && git clean -fd`, valid under (4)'s invariant.
+   it refuses to start on any non-empty `git status --porcelain -- ':(exclude).loops'`,
+   untracked files included. The `.loops` exclusion is mandatory — without it the gate
+   refuses to start in every consuming project (see Proposed Solution step 3). Its failure
+   message names both `project.test_cmd` and the clean-tree requirement, and tells the user
+   to `git stash` (or commit) outstanding work.
+5. `revert` performs `git checkout -- . && git clean -fd -e .loops`, valid under (4)'s
+   invariant. The `-e .loops` is mandatory — without it the revert deletes the active run
+   directory and persisted FSM state in any consuming project.
 6. `ll-loop validate incremental-refactor` passes (MR-1..MR-14), and
    `python -m pytest scripts/tests/` exits 0 — including the updated
    `test_required_top_level_fields` `initial` assertion (`test_builtin_loops.py:11786-11789`).
@@ -426,17 +510,24 @@ design; these are the checkable outcomes._
    `scripts/little_loops/loops/README.md:52` describe the new behavior; the "never hardcode a
    project command literal" rule is added to `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md`
    (step 5).
-9. **Resume behavior is verified, not assumed** — see Open Question below.
+9. Resume re-enters the persisted `current_state`, not the precondition — see Resolved
+   Question below. No "first lap only" guard is implemented, and a regression test pins that
+   a resumed run does not re-run the precondition.
 
-### Open Question (resolve during implementation, do not defer)
+### Resolved Question (was open; closed 2026-08-21 during pre-implementation review)
 
-This loop sets `on_handoff: spawn`. A resumed run must re-enter at the persisted
+This loop sets `on_handoff: spawn`, so a resumed run must re-enter at the persisted
 `current_state`, **not** at `initial` — otherwise AC (4)'s precondition fires mid-refactor
 against a legitimately dirty tree (uncommitted step work) and refuses to continue, turning a
-safety gate into a resume-breaker. Confirm against `scripts/little_loops/fsm/persistence.py`
-and the handoff path before landing; if resume does re-enter `initial`, the precondition needs
-a "first lap only" guard (e.g. skip when a run-dir marker from a prior lap exists). No
-existing loop has a precondition of this kind, so there is no precedent to inherit here.
+safety gate into a resume-breaker.
+
+**Confirmed safe.** `LoopRunner.resume()` restores the executor's position directly —
+`self._executor.current_state = state.current_state`
+(`scripts/little_loops/fsm/persistence.py:1022`, inside the `resume()` body beginning at
+`:1006`) — after gating on `RESUMABLE_STATUSES`. The FSM does not re-enter `fsm.initial` on
+resume; `executor.py:253` sets `current_state = fsm.initial` only at construction, and
+`resume()` overwrites it. **No first-lap guard is needed.** Keep AC (9)'s regression test
+anyway, since this invariant is what makes the precondition safe to add at all.
 
 ## Impact
 
@@ -452,7 +543,15 @@ existing loop has a precondition of this kind, so there is no precedent to inher
   loop now refuses to start instead of running. That is the intended trade — an unverifiable
   test-gated refactor should not run — but it means users of projects without `project.test_cmd`
   configured see a hard stop where they previously saw (destructive) motion. The precondition's
-  failure message must name `project.test_cmd` and the clean-tree requirement explicitly.
+  failure message must name `project.test_cmd` and the clean-tree requirement explicitly, and
+  must give the remedy (`git stash` or commit) rather than only stating the requirement — this
+  is a stop users will hit routinely, not an edge case.
+- **Near-miss worth recording**: as originally specified, the step-(3) precondition would have
+  refused to start in *every* consuming project, because `ll-init` never gitignores `.loops/`
+  and the run directory is untracked by the time the gate runs. The fix would have reproduced
+  this bug's exact signature — correct in this repo, broken everywhere else — and local
+  development here could not have surfaced it. The `':(exclude).loops'` pathspec is the
+  load-bearing detail; see Proposed Solution step 3.
 - **Backward compatibility**: in *this* repo the resolved `project.test_cmd`
   (`python -m pytest scripts/tests/`) is byte-identical to the current hardcoded literal, so
   behavior here is unchanged. Every other project changes from "always revert" to "gate on
@@ -477,6 +576,7 @@ existing loop has a precondition of this kind, so there is no precedent to inher
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-21T13:15:17 - `0d521468-396a-40b1-8135-6a291b58af1a.jsonl`
 - `/ll:confidence-check` - 2026-08-21T05:03:13 - `21d9445e-396a-4f1c-8a38-86569c765496.jsonl`
 - `/ll:decide-issue` - 2026-08-21T04:57:58 - `89ddbdcc-e3df-48b0-a087-301d49597946.jsonl`
 - `/ll:refine-issue` - 2026-08-21T04:51:56 - `f1b83cf4-c090-438e-b615-05796ab30785.jsonl`
