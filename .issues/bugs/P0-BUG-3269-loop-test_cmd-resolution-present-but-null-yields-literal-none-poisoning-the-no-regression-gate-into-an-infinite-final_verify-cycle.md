@@ -16,17 +16,18 @@ labels:
 - test-cmd
 - postmortem
 relates_to:
+- ENH-3277
 - ENH-2244
 - BUG-3270
 - BUG-3271
 - ENH-3272
 - BUG-3274
 - BUG-3276
-confidence_score: 88
-outcome_confidence: 77
+confidence_score: 98
+outcome_confidence: 79
 score_complexity: 9
 score_test_coverage: 25
-score_ambiguity: 18
+score_ambiguity: 20
 score_change_surface: 25
 ---
 
@@ -44,8 +45,23 @@ shell then tries to execute.
 Exactly one copy (`fix-quality-and-tests.yaml:66-72`) implements the correct
 present-vs-absent semantics — but the existing `ll-config get` CLI already implements those
 semantics *and* honors `.ll/ll.local.md`, which all 13 inline copies silently ignore. This
-issue deletes every inline snippet in favor of `ll-config get project.<key>` and adds a
-static mirror-drift gate so the fourteenth copy cannot reintroduce the defect.
+issue routes the **three defective sites** through `ll-config get project.<key>`, hardens
+`general-task`'s baseline sentinel, and lands a static mirror-drift gate so the fourteenth
+copy cannot reintroduce the defect.
+
+> **SCOPE — REVISED 2026-08-20 (fourth pass). The bulk conversion is split out.**
+> The nine "correct-but-guessing" sites **cannot produce this P0**: `raw if raw else
+> 'pytest'` never emits `None`. Only `general-task.yaml:37` and `rl-coding-agent.yaml:60,68`
+> do. Converting the other nine carries the sharpest behavior changes in the original plan —
+> `dead-code-cleanup` moving from `revert_and_scan` to `commit` on an **auto-deletion** path,
+> `evaluation-quality` feeding an empty capture to a scorer — and bundling them delays a P0
+> spin fix that is live in every local-editable consuming project *right now*.
+>
+> This is the same argument this issue already accepted for splitting out
+> `incremental-refactor.yaml` (BUG-3276): a P0 spin fix must not wait behind an unrelated
+> destructive-default fix. See **Deferred to follow-up** below for the exact split. The §4
+> mirror-drift gate **stays here**, with the ten unconverted sites as a documented,
+> shrinking exemption list — so no *fourteenth* copy can land while the follow-up is open.
 
 Discovered by forensic audit of `general-task` run `2026-08-20T121448` in
 an external docs-oriented project with `test_cmd: null`, which spun for
@@ -461,8 +477,28 @@ reintroduced one level up. Replace it with a single resolution:
   §1e row 4 — safe to test here, and only here). It is also free to log which of the three it
   was into the run dir, which is the diagnostic §1e's stderr warning was reaching for, in a
   location known to survive.
-- `run_final_tests` **reads** `resolved-test-cmd.txt` instead of resolving again. Empty or
-  missing → the `SKIP` path §3/§3b already specify. It never calls `ll-config`.
+- `run_final_tests` **reads** `resolved-test-cmd.txt` instead of resolving again. It never
+  calls `ll-config`. For what empty-or-missing means, see the 2×2 immediately below — **not**
+  "the `SKIP` path §3/§3b already specify", which is a different signal.
+
+**⚠ "The `SKIP` path" names two different things — do not conflate them.**
+An earlier revision routed an empty `resolved-test-cmd.txt` to "the `SKIP` path §3/§3b
+already specify". But §3b's `SKIP` is a property of **`baseline-exit.txt`** and gates on
+`FINAL_EXIT ∈ {0,127}`, which presupposes that a command actually *ran*. Emptiness of
+`resolved-test-cmd.txt` means no command runs at all, so there is no `FINAL_EXIT` to gate on.
+These are **orthogonal signals** and row 2 below is genuinely reachable — a baseline that
+exited 127 (unrunnable command) while `resolved-test-cmd.txt` is non-empty. The authoritative
+contract for `run_final_tests` is this table; it supersedes any prose reading of "the `SKIP`
+path" elsewhere in this issue:
+
+| `resolved-test-cmd.txt` | `baseline-exit.txt` (after §3b normalization) | `run_final_tests` behavior |
+|---|---|---|
+| empty / missing | *any* | run nothing, exit 0 → `count_final` |
+| non-empty | `SKIP` | run it; pass iff `FINAL_EXIT ∈ {0, 127}` |
+| non-empty | a run of digits | run it; pass iff `FINAL_EXIT ∈ {0, 127}` **or** `FINAL_EXIT = BASELINE_EXIT` |
+
+`126` is not admitted in any row (see Expected Behavior). Each of the three rows needs its own
+regression test.
 
 Why this is better than two synchronized resolutions:
 
@@ -807,9 +843,39 @@ than snippet-extracting-and-executing:
   and decide whether the gate should flag bare `ruff check` / `mypy` / `pytest` literals in
   loop actions or whether that is too noisy to enforce. If too noisy, say so here rather than
   leaving it silently uncovered.
-- Exemption list: `oracles/code-run-gate.yaml` only, with the §1d rationale as a comment.
+- **Exemption list — two kinds, kept distinct.**
+  - *Permanent*: `oracles/code-run-gate.yaml`, with the §1d rationale as a comment.
+  - *Temporary (`_PENDING_CONVERSION`)*: the ten sites deferred to ENH-3277 (see
+    **Deferred to follow-up**). The gate lands **now**, red-listing them explicitly, so the
+    fourteenth copy cannot land while the follow-up is open. The follow-up's definition of
+    done is that this list is empty and the constant is deleted. A gate that is permanently
+    red on ten known sites cannot be enforced; an exemption list that shrinks to zero can.
 - Pair it with behavioral tests on `ll-config get` itself (Implementation Step 1), which
   are ordinary Python tests rather than bash-extraction gymnastics.
+
+**Second assertion — undeclared `${context.<key>}` references. This is the gate that covers
+the risk §2 calls "the single highest-risk axis", and nothing covers it today.**
+
+§2 establishes that eight of eleven files need the **opposite** precedence shape, and that
+pasting `${context.test_cmd}` into a loop that does not declare the key raises
+`InterpolationError: Path 'test_cmd' not found in context` — at **runtime**, potentially deep
+into a run. The mirror-drift gate as specified above scans for *inline JSON reads*, so it
+would pass a file converted wrong in exactly this way.
+
+**Verified: there is no static validation of undeclared context keys.**
+`fsm/validation/shell_safety.py`'s MR-7 (`_validate_bash_default_interpolation`) catches only
+the unsupported bash `${ns.path:-value}` form; nothing walks `${context.*}` references against
+the loop's declared `context:` block. Grep over `fsm/validation/` confirms no such rule exists.
+
+Add it as a second assertion in the same test module: **every `${context.<key>}` reference in
+any `scripts/little_loops/loops/**/*.yaml` must resolve against that loop's declared
+`context:` block.** Cheap, catches the named risk before a run rather than during one, and is
+generally valuable well beyond this issue. Scope is small — only four loops declare
+`test_cmd`/`lint_cmd` today (`general-task.yaml:23`, `incremental-refactor.yaml:12`,
+`rl-coding-agent.yaml:17-18`, `test-coverage-improvement.yaml:23`), verified by grep.
+
+Note this assertion must tolerate the engine-native `${context.x:default=y}` form (strip the
+`:default=` suffix before resolving the key) and the escaped `$${...}` shell form.
 
 This is strictly stronger than the originally-proposed execute-each-snippet gate: it also
 catches the `ll.local.md` bypass, which an execute-the-snippet check cannot see.
@@ -825,6 +891,12 @@ Research Findings; commit `fb747a60`'s pattern lives there, not in `test_builtin
 _Revised: no `lib/common.yaml` fragment is added. `ll-config get`'s **resolution** already
 behaves correctly and is not changed; the only production-code edit is §1e's stderr warning
 (below). Everything else is loop YAMLs plus tests/docs._
+
+> **SCOPE FILTER (fourth pass).** Only the first three loop-YAML entries below —
+> `general-task.yaml` and `rl-coding-agent.yaml` — are in scope for BUG-3269. Every other
+> loop file in this list, and the corresponding entries under *Wiring Phase*, moved to the
+> follow-up issue; see **Deferred to follow-up**. They are retained here unedited because the
+> per-file analysis is the follow-up's input, not because this issue touches them.
 
 - `scripts/little_loops/cli/config.py:69-73` — split the single `except Exception` into
   construction and resolution blocks; warn on stderr when `BRConfig(Path.cwd())` itself
@@ -988,9 +1060,11 @@ _Added by `/ll:refine-issue` — 2026-08-20 — based on codebase analysis:_
 
 ### Signatures
 
-- `main_config(key: str) -> int` — **existing** CLI entry point (`cli/config.py:54`),
-  invoked from shell as `ll-config get project.test_cmd`; the single resolution path
-  replacing 13 hand-rolled inline snippets. Signature is unchanged by this issue — no
+- `main_config() -> int` — **existing** CLI entry point (`cli/config.py:54`), invoked from
+  shell as `ll-config get project.test_cmd`; the single resolution path replacing the
+  hand-rolled inline snippets. **Takes no parameters** — the key arrives as `args.key` from
+  `parser.parse_args()` inside the function (`:63`), not as an argument. (An earlier revision
+  wrote `main_config(key: str) -> int`, which does not exist.) Signature is unchanged by this issue — no
   `--strict` parameter is added (§1e/§1f). Prints the value, the absent-default, or nothing
   (opt-out) on stdout, always returns 0, and gains only a stderr warning when
   `BRConfig(Path.cwd())` construction raises.
@@ -1167,13 +1241,15 @@ re-derive them._
    exist until Step 3a, which cannot pass.)
    **These belong in `scripts/tests/test_config_cli.py`** — the existing `ll-config` CLI test
    module. Extend it; do not start a new one.
-2. **Make the three genuine design decisions before writing any shell.** None of these are
+2. **Make the genuine design decisions before writing any shell.** None of these are
    mechanical, and each one is wrong-by-default if skipped:
-   - a. The `rl-coding-agent` precedence question (§2, options (a)/(b)).
-   - b. Per-site empty-`CMD` handling for the nine converted sites (§2b table). The three
-     marked *explicit skip required* — `dead-code-cleanup`, `test-coverage-improvement`,
-     `evaluation-quality` — change from "gate on pytest" to "pass unverified" if converted
-     naively, and `dead-code-cleanup`'s `on_yes` edge is a commit of deletions.
+   - a. The `rl-coding-agent` precedence question (§2, options (a)/(b)). **Still in scope** —
+     `rl-coding-agent.yaml:60,68` are two of the three defective sites.
+   - b. ~~Per-site empty-`CMD` handling for the nine converted sites (§2b table).~~
+     **MOVED to ENH-3277** along with the conversions themselves — see **Deferred
+     to follow-up**. §2b's table stays in this issue as the analysis the follow-up must act
+     on; it is a hard prerequisite *there*, not here. Nothing in Steps 3–5 converts any of
+     those nine sites, so no §2b row needs picking to ship this P0.
    - ~~c. Whether §1e's stderr warning lands now or is deferred to Impact.~~ **DECIDED: it
      lands now.** See §1e — the `cfg is None` discriminator is confirmed to exist, and the
      work is a ~5-line split of `cli/config.py:69-73` into two `try` blocks. No longer a
@@ -1183,9 +1259,14 @@ re-derive them._
      the flag covered one door rather than a class; and a non-zero exit is unroutable at the
      states that need it (§1f). The stderr warning lands as a pure diagnostic and §3c closes
      both live doors. No longer a decision.
-   - **c''. NEW — confirm the executor persists per-state shell stderr.** If it does not,
-     §1e's warning is written to nowhere and `check_baseline_tests` must emit the
-     diagnostic into the run dir instead (§3c). One grep; do it before Step 3a.
+   - ~~c''. Confirm the executor persists per-state shell stderr.~~ **RESOLVED 2026-08-20
+     (fourth pass) — it does. No longer a blocker; do not re-investigate.** `FSMExecutor`
+     captures shell stderr into `stderr_chunks` (`fsm/executor.py:2497-2553`), surfaces the
+     last 2000 chars as `stderr_preview` on the state record (`:2299-2306`, ENH-2469), and
+     persists the full `result.stderr` at `:2373`. So §1e's stderr warning **is** visible to a
+     run forensic, exactly as §1e originally asserted, and the fallback plan (write the
+     diagnostic into a run-dir artifact instead) is unnecessary. §3c still writes its
+     which-door marker into the run dir, but as a convenience rather than a rescue.
 3a. **Land the §1e stderr warning as a diagnostic.** Split `cli/config.py:69-73`'s single
    `except Exception` into two `try` blocks — construction failure → warn on stderr,
    `return 0`; resolution failure → `value = None` as today (note this second arm is
@@ -1210,7 +1291,11 @@ re-derive them._
    because it is `next:`-routed rather than exit-code-gated, is the one state that may
    safely test `$?` — use it to distinguish `ll-config` not found (127) from an explicit
    opt-out, writing both to `SKIP` but logging which into the run dir. `run_final_tests`
-   reads `resolved-test-cmd.txt` and no longer invokes `ll-config`. Tests: (i) a run whose
+   reads `resolved-test-cmd.txt` and no longer invokes `ll-config`.
+   **Preserve `run_final_tests`'s existing `on_error: diagnose` edge** (`general-task.yaml:627`)
+   through the rewrite — same class of omission as the `baseline-ref.txt` capture, which this
+   issue does call out explicitly. Losing it silently reroutes shell-level failures.
+   Implement the three rows of §3c's 2×2 table, one regression test each. Tests: (i) a run whose
    `context.test_cmd` override is set produces the *same* command in the baseline and the
    final gate; (ii) `resolved-test-cmd.txt` empty → `run_final_tests` takes the `SKIP` path;
    (iii) `ll-config` absent from PATH (shadow it in the test env) → `baseline-exit.txt` is
@@ -1234,32 +1319,87 @@ re-derive them._
    baseline that ran plus a final command that became unrunnable still spins. Do **not**
    admit `126` — add a test pinning that `baseline=0`, `FINAL_EXIT=126` still routes to
    `continue_work`, so the exclusion is deliberate rather than incidental.
-5. **Land the mirror-drift gate — before the bulk conversion, not after.** Static scan over
-   every loop YAML per §4 (all six `ProjectConfig` command keys, access-pattern match, not
-   path-substring), with `oracles/code-run-gate.yaml` as the sole documented exemption.
-   Written here it is **red on the remaining sites and green on the three already fixed in
-   step 3**, which is a real signal; written after step 6 it can only assert a state that
-   already holds. Its failure list then becomes the step-6 worklist.
-6. **Convert the remaining sites.** The nine correct-but-guessing copies plus
-   `auto-refine-and-implement.yaml:433-436` (not `:679-680` — see §2b correction), one file
-   at a time. After each file: `ll-loop validate`, a scoped `grep` for the old
-   `.get('test_cmd'` pattern, and the step-5 gate (its failure list shrinks by one).
-   Apply the §2 precedence shape for that file — **config-first bare for eight of the
-   eleven** — and the §2b empty-`CMD` row for that site.
-   `fix-quality-and-tests.yaml:58-78`'s three-way python body is **deleted**, not
-   generalized. Skip `oracles/code-run-gate.yaml` (§1d).
-7. **Verify.** `python -m pytest scripts/tests/` exits 0; `ll-loop validate` clean on every
-   converted loop; manual smoke of `general-task` in a scratch project with
-   `test_cmd: null` reaching a terminal state instead of cycling, plus a second smoke with
-   `test_cmd` set to a nonexistent command (the 127 path from step 4).
+5. **Land the mirror-drift gate — with a shrinking exemption list.** Two assertions per §4:
+   (i) no loop YAML contains an inline `.ll/ll-config.json` read for any of the six
+   `ProjectConfig` command keys (access-pattern match, not path-substring); (ii) every
+   `${context.<key>}` reference resolves against its loop's declared `context:` block — the
+   assertion that covers §2's "single highest-risk axis", which nothing covers today.
+   Exemptions: `oracles/code-run-gate.yaml` permanently (§1d), plus a
+   `_PENDING_CONVERSION` constant listing the ten deferred sites. Green on the three sites
+   fixed in step 3, red-listing the rest explicitly — so the fourteenth copy cannot land
+   while the follow-up is open. Assertion (ii) applies to **every** loop with no exemptions;
+   it should be green on the tree as it stands and stay green.
+6. ~~**Convert the remaining sites.**~~ **DEFERRED — see *Deferred to follow-up*.** Nothing
+   in this issue converts the nine correct-but-guessing copies or
+   `auto-refine-and-implement.yaml:433-436`.
+7. **Verify.** `python -m pytest scripts/tests/` exits 0; `ll-loop validate` clean on
+   `general-task.yaml` and `rl-coding-agent.yaml`; manual smoke of `general-task` in a
+   scratch project with `test_cmd: null` reaching a terminal state instead of cycling, plus a
+   second smoke with `test_cmd` set to a nonexistent command (the 127 path from step 4).
 
 **Rollback seam:** steps 3–5 are independent per-file edits behind a contract pinned in
 step 1. If a conversion misbehaves in a consuming project, revert that one file — there is
 no shared artifact to unwind, which is a further advantage over the fragment design.
 
+### Deferred to follow-up
+
+**The follow-up is [ENH-3277] — "Convert the nine remaining inline `test_cmd`/`lint_cmd`
+resolution sites to `ll-config get`" (P2), `blocked_by: [BUG-3269]`.**
+
+_Split out 2026-08-20 (fourth pass). Rationale in the SCOPE note under Summary: the nine
+"correct-but-guessing" sites cannot produce this P0, and three of them carry behavior changes
+on irreversible edges that must not gate a live spin fix._
+
+**Stays in BUG-3269 (the P0):**
+
+- Steps 1, 2a, 3a, 3, 3b, 4, 5, 7.
+- The three defective sites: `general-task.yaml:37`, `rl-coding-agent.yaml:60,68`.
+- `general-task`'s `SKIP` sentinel, §3b reader-side normalization, §3c resolve-once handoff,
+  and the §3c 2×2 contract.
+- §1e's `cli/config.py` stderr warning (the only production-code edit).
+- The §4 mirror-drift gate, both assertions, with `_PENDING_CONVERSION` populated.
+- Docs limited to what this issue changes: `HARNESS_OPTIMIZATION_GUIDE.md` (the `ll-config
+  get` convention, both precedence shapes, the cwd precondition, §4's `build_cmd`/`run_cmd`
+  semantic trap), `LOOPS_REFERENCE.md`'s `baseline-exit.txt` / `SKIP` sentinel, and
+  `config-schema.json` + `CONFIGURATION.md`'s absent-vs-null note.
+
+**Moves to ENH-3277 (consistency refactor, not a P0):**
+
+- Converting the nine correct-but-guessing sites: `fix-quality-and-tests.yaml:58-78`,
+  `evaluation-quality.yaml:58` **and** its hardcoded `ruff check scripts/` at `:64`,
+  `dead-code-cleanup.yaml:76`, `harness-plan-research-implement-report.yaml:126`,
+  `harness-multi-item.yaml:95`, `harness-single-shot.yaml:66`,
+  `test-coverage-improvement.yaml:45,152`, `rn-refine.yaml:991`, plus
+  `auto-refine-and-implement.yaml:433-436` (**not** `:679-680`, §2b correction).
+- **Step 2b — picking a §2b empty-`CMD` row per site — is that issue's hard prerequisite.**
+  The three marked *explicit skip required* (`dead-code-cleanup`,
+  `test-coverage-improvement`, `evaluation-quality`) change from "gate on pytest" to "pass
+  unverified" if converted naively, and `dead-code-cleanup`'s `on_yes` edge commits
+  deletions. That analysis is the reason for the split, not an afterthought to it.
+- Emptying `_PENDING_CONVERSION` and deleting the constant — the follow-up's definition of
+  done.
+- Docs for those sites: `scripts/little_loops/loops/README.md:33`, and the
+  `LOOPS_REFERENCE.md` `project.test_cmd`/`lint_cmd` rows at `:979`, `:1305`, `:1327`.
+- The §2b `evaluation-quality.yaml` marker-into-`eval-test-results.txt` design, and the
+  `evaluation-quality.yaml:64` lint-scope widening (`ruff check scripts/` → `ruff check .`
+  in projects that never set `lint_cmd`).
+
+Out of scope for both, already split: `incremental-refactor.yaml` → BUG-3276 (§Similar
+Patterns), `oracles/code-run-gate.yaml` → permanent exemption (§1d).
+
 ### Wiring Phase (added by `/ll:wire-issue`)
 
-_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+_These touchpoints were identified by wiring analysis and must be included in the implementation._
+
+> **SCOPE FILTER (fourth pass).** Bullets below that convert one of the nine
+> correct-but-guessing sites, `auto-refine-and-implement.yaml`, or
+> `evaluation-quality.yaml:64` — and the §2b row-picking bullet — belong to the **follow-up**,
+> not BUG-3269. In-scope here: the `general-task` / `rl-coding-agent` bullets, the
+> `ll-config get` contract tests, the `test_general_task_loop.py` /
+> `test_builtin_loops.py` retargeting, the §1e `cli/config.py` warning, the §3c
+> resolve-once implementation, the `127`/`126`/empty/absent `run_final_tests` regression
+> tests, the `HARNESS_OPTIMIZATION_GUIDE.md` convention write-up, and the two mirror-drift
+> gate assertions. See **Deferred to follow-up** for the authoritative split.
 
 - Convert `scripts/little_loops/loops/auto-refine-and-implement.yaml:433-436` — the
   13th call site, not in the original ~12-site table; not currently buggy but in scope for
@@ -1330,19 +1470,22 @@ _These touchpoints were identified by wiring analysis and must be included in th
   second loop.
 - **Blast radius**: `general-task` is the most-used built-in loop and is live in every
   local-editable consuming project.
-- **Risk of the fix**: low. Almost no new production code — `ll-config get`'s resolution
-  already exists and behaves correctly; the sole production edit is §1e's ~5-line `except`
-  split, which leaves the stdout and exit-code contract untouched and so cannot affect any
-  existing `ll-config` caller. The risk
-  is otherwise entirely in converting 13 call sites across 11 loop files, each mechanically
-  checkable by the new gate and independently revertible.
-- **Risk being *accepted* by the fix**: all 13 gates now depend on a single binary whose
-  contract is fail-open (§1e). That is a real concentration of risk relative to 13
-  independent inline snippets. It is fully mitigated only in `general-task`, where §3c maps
-  both live failure doors to `SKIP`; the other ten loops still fail open on a malformed
-  config, per their §2b row. That residue is accepted: the alternative is 13 divergent
-  implementations that fail open *and* disagree with each other, but it should be stated
-  rather than netted out.
+- **Risk of the fix**: low, and **lower after the fourth-pass scope split**. Almost no new
+  production code — `ll-config get`'s resolution already exists and behaves correctly; the
+  sole production edit is §1e's ~5-line `except` split, which leaves the stdout and exit-code
+  contract untouched and so cannot affect any existing `ll-config` caller. The risk is
+  otherwise confined to **three call sites in two loop files** (`general-task.yaml`,
+  `rl-coding-agent.yaml`) plus `general-task`'s sentinel rework, each mechanically checkable
+  by the new gate and independently revertible. The ten remaining conversions — which carried
+  the behavior changes on a commit edge and a scoring edge — are deferred, so none of that
+  risk ships with the P0.
+- **Risk being *accepted* by the fix**: the three converted gates now depend on a single
+  binary whose contract is fail-open (§1e). That is a real concentration of risk relative to
+  independent inline snippets. It is fully mitigated in `general-task`, where §3c maps both
+  live failure doors to `SKIP`. `rl-coding-agent`'s two sites still fail open on a malformed
+  config, per §2's config-first shape — accepted, since the alternative there is the status
+  quo of scoring a reward against `command not found`. The ten unconverted loops keep their
+  present inline behavior (which also fails open) until the follow-up lands.
 - **Backward compatibility**: projects with a non-null `test_cmd` see no behavior change.
   Projects with `test_cmd: null` change from "guess pytest" to "no test gate" — that is
   the intended fix, and matches what `fix-quality-and-tests.yaml` already does. Two smaller
@@ -1353,11 +1496,13 @@ _These touchpoints were identified by wiring analysis and must be included in th
   present-but-unrunnable `test_cmd` (exit 127) no longer gates `general-task`'s
   `run_final_tests`; (d) `general-task`'s `check_baseline_tests` starts honoring
   `${context.test_cmd}`, which it silently ignored before.
-- **Behavior changes at the nine non-`general-task` sites**: under `test_cmd: null` they stop
-  gating on a guessed `pytest`. For six sites that is a clean opt-out; for
-  `dead-code-cleanup`, `test-coverage-improvement`, and `evaluation-quality` it would mean
-  committing or scoring unverified work unless handled explicitly — see the §2b table, which
-  is a hard prerequisite for Step 6, not advisory.
+- ~~**Behavior changes at the nine non-`general-task` sites**~~ — **DEFERRED to the follow-up;
+  no such change ships with this issue.** Retained for that issue's Impact: under
+  `test_cmd: null` those sites would stop gating on a guessed `pytest`. For six that is a
+  clean opt-out; for `dead-code-cleanup`, `test-coverage-improvement`, and
+  `evaluation-quality` it would mean committing or scoring unverified work unless handled
+  explicitly — the §2b table is a hard prerequisite *there*, not advisory. This bullet is
+  precisely why the split exists.
 - **Not fixed by this issue**: `ll-config get` resolves from `Path.cwd()` with no upward
   walk, so a loop state invoked from a subdirectory still loses the opt-out. Safe for all
   13 converted sites today (FSM shell actions run at the project or worktree root) and no
@@ -1369,7 +1514,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
   information, and was itself a live spin path for a project with a valid `test_cmd`.
   (f) `check_baseline_tests`'s `on_error` path now writes `SKIP` rather than leaving the file
   untouched.
-- **Behavior change at `evaluation-quality.yaml:64`**: the hardcoded `ruff check scripts/`
+- **Behavior change at `evaluation-quality.yaml:64` — DEFERRED to the follow-up**: the hardcoded `ruff check scripts/`
   becomes `ll-config get project.lint_cmd`, which resolves to `ruff check .` in a project
   that never configured `lint_cmd` — a broader lint scope than before. Already non-gating
   (`|| true`), so this affects the captured lint artifact, not control flow.
@@ -1398,6 +1543,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ## Related Key Documentation
 
+- ENH-3277 — the follow-up this issue splits the bulk conversion into; `blocked_by: [BUG-3269]`
 - `postmortems/general-task-final-verify-spin-2026-08-20.md` — full forensic audit
 - `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` — loop design rules
 - ENH-2244 — the baseline-comparison gate whose null-config failure mode this is
@@ -1448,6 +1594,7 @@ _Added by `/ll:confidence-check` on 2026-08-20_
   the old `.get('test_cmd'` pattern after each file, not just at the end.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-21T02:27:16 - `fb32bf22-991c-4d52-a0d3-c79ca31f1f78.jsonl`
 - `/ll:confidence-check` - 2026-08-21T00:48:05 - `e0ced191-faba-4adf-9e21-fe9bb9babc29.jsonl`
 - `/ll:confidence-check` - 2026-08-21T00:22:27 - `8fa51734-384b-46a2-a10c-bd13c601a684.jsonl`
 - `/ll:confidence-check` - 2026-08-20T23:39:55 - `bae4c657-9e53-457d-bcc4-db4ed042c8fb.jsonl`
