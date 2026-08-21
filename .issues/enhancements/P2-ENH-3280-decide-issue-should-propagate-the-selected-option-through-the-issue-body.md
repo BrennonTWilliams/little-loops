@@ -135,10 +135,82 @@ nothing.
 - A fixture with an implementation step naming the loser: assert the step no longer instructs the
   rejected work
 - An already-propagated fixture: assert a second run writes nothing (idempotency)
+- `_unapplied_decision` test coverage: `scripts/tests/test_issue_parser.py:4757-4965`, class
+  `TestUnappliedDecision`, using an inline `_issue()` builder helper (`:4765-4770`) rather than
+  on-disk `.md` fixtures — no fixture file for this detector exists under
+  `scripts/tests/fixtures/issues/`
+- A live-corpus sweep test already exists and documents a known precision limit:
+  `scripts/tests/test_issue_parser.py:4968`, `TestUnappliedDecisionLiveCorpusSweep.test_corpus_sweep_does_not_crash`
+  — asserts `_unapplied_decision` never raises across `.issues/`, and is explicitly
+  report-only/non-blocking due to ~40% false-positive rate on the real corpus (this is the noise
+  BUG-3279 is fixing)
+- `decide-issue`'s own test file, `scripts/tests/test_decide_issue_skill.py`, tests SKILL.md as
+  prose/documentation (the skill has no executable binary) via a `_phase_text()` slice-and-assert
+  helper reused across five phase test classes (e.g. lines 233-238, 290-295, 402-406). A Phase 7c
+  test class should follow this same slicing convention against the new `### 7c` heading rather
+  than attempting to execute the skill.
 
 ### Documentation
 
 - `skills/decide-issue/reference.md` — Phase 9 output report template
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-21 — based on codebase analysis:_
+
+- `_unapplied_decision(content: str) -> list[str]` (`scripts/little_loops/issue_parser.py:1392`) returns only formatted reason strings — `"{section} still specifies \`{identifier}\` (rejected option)"` (`:1513`) — not a structured `(section, identifier)` tuple. Phase 7c must parse this string to recover the section name and identifier, since no structured API exists.
+- Surfaced today via `ll-issues format-check <ID> --format json` → `unapplied_decision` key (`scripts/little_loops/cli/issues/format_check.py:672-685`, JSON serialization at `issue_parser.py:594`) — a skill-authored Phase 7c can consume this over subprocess without new Python glue.
+- `unapplied_decision` is **not** in the `--fix`/`--apply` dispatch list (`format_check.py:98-113`, which covers `prose_dep_drift`, `duplicate_findings_block`, `duplicate_heading`, `empty_provenance_stub`, `template_placeholders`) — there is no existing auto-repair path; Phase 7c must perform its own edits.
+- `check_format_gaps` (`issue_parser.py:1114`) is the sole caller of `_unapplied_decision`; `unapplied_decision` is a **blocking** (non-advisory) gap class on `FormatGaps.has_blocking_gaps` (`issue_parser.py:555-565`) — so the pre-fix state already fails `format-check`, independent of this issue.
+- `_DECISION_DIRECTIVE_SECTIONS = ("Proposed Solution", "Program Design", "Implementation Steps", "Files to Modify", "Acceptance Criteria")` (`issue_parser.py:1302-1308`) is the closed list of sections `_unapplied_decision` scans — Phase 7c's sweep scope should match this list, not invent a broader one.
+- Supporting extraction helpers Phase 7c may need for finer-grained matching beyond the formatted-string output: `_option_block_spans` (`:1371`), `_selected_option_title` (`:1322`), `_option_label` (`:1335`), `_decision_identifiers` (`:1341`) — all private module functions with no CLI wrapper; only reachable in aggregate via `_unapplied_decision`'s output.
+
+### Conventions in Force
+- Lettered sub-phases (`### 7a`, `### 7b`, ...) nest under one `## Phase N` parent, each a discrete ordered write — evidence: `skills/decide-issue/SKILL.md:399-424` (7a/7b under Phase 7) and `skills/wire-issue/SKILL.md:336-452` (8a/8b/8c under Phase 8). No skill in the repo goes past a `c` suffix; Phase 7c would be the first `c`-level sub-phase in `decide-issue`.
+- Idempotency guards are phrased "**Idempotency [rule]**: if `<condition>`, skip the write and log `<marker> <message>`" — evidence: `skills/decide-issue/SKILL.md:409` (uses `⚠` for "content already present") and `:424` (uses `✓` for "flag already at target value"). The two symbols are not interchangeable within this skill; ENH-3280's own "Mirroring Phase 7a" points at the `⚠` form since Phase 7c is a content-presence check, not a flag check.
+- `/ll:reconcile-issue` (`commands/reconcile-issue.md:46-117`) is the only existing precedent in this codebase for rewriting (not just appending to) issue prose, and it bounds itself with an explicit rewrite allowlist, a preserve-untouched list, and a rule that "every rewritten claim must trace to an existing finding" (`:112-117`). Every other prose-touching skill (`wire-issue`, `refine-issue`) is append-only or marker-only. Phase 7c's "Bounded scope" language should be understood as adopting this same shape, not a novel one.
+- Audit-trail reporting of edits made during a rewrite pass uses a dedicated report subsection, one bullet per edit, each citing its driving evidence — evidence: `commands/reconcile-issue.md:288-296` (`## CORRECTIONS_MADE`, `[reconcile]`-tagged bullets citing a quoted finding) and `skills/decide-issue/reference.md:125-128` (`## CHANGES APPLIED`, fixed-choice bullets). No existing report block cites literal `file:line` per edit — reconcile-issue's closest analog cites step numbers, not line numbers; ENH-3280's "with its line reference" requirement has no direct precedent to copy.
+
+## Program Design
+
+### Signatures
+
+- `_unapplied_decision(content: str) -> list[str]` — the sole existing entry point Phase 7c drives
+  off; returns formatted reason strings only, one per `(section, identifier)` pair, never a
+  structured tuple (`scripts/little_loops/issue_parser.py:1392`)
+- `check_format_gaps(content: str) -> FormatGaps` — sole caller of `_unapplied_decision`; invoked
+  from `ll-issues format-check <ID> --format json`, which serializes the list under the JSON key
+  `"unapplied_decision"` (`issue_parser.py:1114`, CLI at `scripts/little_loops/cli/issues/format_check.py:672-685`,
+  JSON key at `issue_parser.py:594`) — the subprocess-callable surface Phase 7c uses; no new Python
+  glue is required
+- `_DECISION_DIRECTIVE_SECTIONS: tuple[str, ...]` — the closed set of section names
+  `_unapplied_decision` scans; Phase 7c's sweep scope must match it, not invent a broader one
+  (`issue_parser.py:1302-1308`)
+
+### Call Path
+
+`/ll:decide-issue` Phase 7c (new `### 7c` under `## Phase 7: Apply Changes`,
+`skills/decide-issue/SKILL.md:399`, inserted after `### 7b` at `:439`) runs after Phase 7a/7b have
+already written the callout and frontmatter, so `_unapplied_decision`'s own precondition (a
+resolvable `> **Selected:**` callout) is satisfied by the time Phase 7c fires ->
+shells out to `ll-issues format-check <ID> --format json` -> `cmd_format_check`
+(`format_check.py:476`) -> `check_format_gaps` (`issue_parser.py:1114`) -> `_unapplied_decision`
+(`issue_parser.py:1392`) -> JSON `unapplied_decision` list returned to the skill -> skill parses
+each `"<Section> still specifies \`<identifier>\` (rejected option)"` string to locate the
+identifier's occurrence in that section -> Edit tool rewrites/demotes/strikes the matched prose
+per the four categories in `## Proposed Solution` -> skill re-invokes `format-check` to confirm
+`unapplied_decision` is now empty before proceeding to Phase 8.
+
+### Decision Rules
+
+The four rewrite categories (recommendation markers, conditional blocks, imperative steps, explicit
+checklists) are already fully specified with their trigger patterns and per-category disposition in
+`## Proposed Solution` above — no separate decision table is needed here. The one rule not yet
+pinned down: the **input** to those categories is `_unapplied_decision`'s per-identifier findings
+(closed section set above), not a fresh full-text scan — Phase 7c only acts where the detector
+already reports a hit. Escape hatch: Phase 7c's own idempotency check (`## Proposed Solution`,
+"Idempotency") — skip and log if a post-7a/7b `format-check` shows `unapplied_decision` already
+empty.
 
 ## Implementation Steps
 
@@ -177,5 +249,6 @@ nothing.
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-08-21T17:19:06 - `ea08ee55-36d8-4ff2-b8d4-2a20e7e2ad81.jsonl`
 - `/ll:capture-issue` - 2026-08-21T16:00:38 - `826fb04a-1812-4193-be3d-c48a972bd311.jsonl`
 - `/ll:capture-issue` - 2026-08-21T15:46:43 - `da526826-2179-460f-b823-35695378ac55.jsonl`

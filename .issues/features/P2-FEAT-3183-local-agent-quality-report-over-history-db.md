@@ -2,7 +2,7 @@
 id: 3183
 title: Local agent-quality report over history.db
 type: FEAT
-priority: P1
+priority: P2
 status: open
 parent: EPIC-3214
 epic: EPIC-3214

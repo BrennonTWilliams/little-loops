@@ -1,0 +1,27 @@
+ll-private-ok: learning-test raw output artifact — contains local machine paths from test execution
+
+=== claim 1: files() returns Traversable with real fs path str() ===
+type: <class 'pathlib.PosixPath'>
+str: /Users/brennon/AIProjects/brenentech/little-loops/scripts/little_loops  ll-private-ok: learning test output
+little_loops.__file__: /Users/brennon/AIProjects/brenentech/little-loops/scripts/little_loops/__init__.py  ll-private-ok: learning test output
+
+=== claim 2: joinpath does not touch disk / no exception on missing path ===
+joinpath ok, no exception, type: <class 'pathlib.PosixPath'>
+
+=== claim 3: is_file() on missing path returns False, no exception ===
+is_file() -> False
+
+=== claim 4: existing package file is_file True and read_text works ===
+is_file: True
+read_text len: 97504
+read_text starts with: {
+  "$schema": "http://json-schema.org/d
+
+=== claim 5: repo-root skills/ NOT reachable via files('little_loops') ===
+skills joinpath is_file: False
+skills joinpath is_dir: False
+has _path attr: False
+
+=== claim 6: files() resolves to actual scripts/little_loops source dir (editable install liveness) ===
+str(root): /Users/brennon/AIProjects/brenentech/little-loops/scripts/little_loops  ll-private-ok: learning test output
+contains 'scripts/little_loops': True
