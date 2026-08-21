@@ -21,6 +21,7 @@ relates_to:
 - BUG-3271
 - ENH-3272
 - BUG-3274
+- BUG-3276
 confidence_score: 88
 outcome_confidence: 77
 score_complexity: 9
@@ -184,6 +185,24 @@ For `general-task` specifically:
   never gates. A command that runs and genuinely fails (exit 1, 2, …) still gates
   normally. BUG-3270's spin guard remains the backstop for any residual cycle, but this
   issue must not rely on it to be correct.
+- **`FINAL_EXIT = 127` must also be non-gating on the *numeric*-baseline branch — otherwise a
+  residual spin path survives this fix.** The `SKIP` rule above hardens the baseline side
+  only. Consider a run whose baseline executes cleanly (say exit `2`, pre-existing failures,
+  so `baseline-exit.txt` = `2`, a valid digit run that §3b's normalization deliberately does
+  *not* rewrite to `SKIP`) and whose command then becomes unrunnable before
+  `run_final_tests` — a worktree without the tool on PATH, a PATH change mid-run, `make`
+  absent in the isolated checkout. Then `[ "127" = "0" ] || [ "127" = "2" ]` is false →
+  `on_no: continue_work` → the BUG-3269 cycle, with a valid `test_cmd` **and** a valid
+  baseline. Low probability, but it is the same defect and this issue explicitly does not
+  get to lean on BUG-3270 for correctness. Fix: treat `FINAL_EXIT = 127` as pass on both
+  branches, not just under `SKIP`.
+- **`126` is deliberately excluded from the pass-set — do not "fix" this later.** Exit `126`
+  is *found but not executable* (a test script checked in without the executable bit, a
+  permission problem), which is
+  a stable property of the tree rather than a transient environment gap: the baseline and the
+  final run both produce `126`, and the ENH-2244 equality arm already passes them. Admitting
+  `126` alongside `127` would additionally mask a genuinely broken test runner in the case
+  where the baseline ran fine. The asymmetry is intentional.
 - Under explicit `test_cmd: null`, `run_final_tests` runs nothing and passes. (It is a
   `shell_exit` state evaluated by exit code, so "route to `count_final`" means the action
   exits 0 without invoking a command — not a distinct routing edge.)
@@ -245,8 +264,19 @@ CMD=$(ll-config get project.test_cmd)
 [ -z "$CMD" ] && { : "no test command configured — skip"; }
 ```
 
-`ll-config` is on PATH by construction: the loop is being executed by `ll-loop` from the
-same installed package.
+> **Do NOT add a `|| { ...; exit N; }` guard to this shape at an exit-code-gated site.**
+> An earlier revision of this issue specified exactly that, to catch a missing `ll-config`
+> binary (bash's 127). **It is actively harmful and must not be reintroduced** — see the
+> routing analysis in §1f. The missing-binary door is closed in `check_baseline_tests`
+> instead (§3c), where branching is free.
+
+`ll-config` is on PATH for `ll-loop`-driven runs by construction: the loop is being executed
+by `ll-loop` from the same installed package, and every converted site runs inside such a
+run. But that is an inherited property, not an enforced one — a project whose
+`install_source` is `global-claude-code` / `project-claude-code` has the plugin without
+necessarily having the pip package's `ll-*` entry points, and unlike the `python3 -c`
+snippets being replaced, a missing binary fails **silently and fail-open across all 13 gates
+at once**. §3c closes it at the one site that can safely detect it.
 
 **This is a new convention, not an established one.** No loop YAML currently invokes
 `ll-config` — verified by grep over `scripts/little_loops/loops/**`; every existing
@@ -262,7 +292,74 @@ rollout**, and an `ll-parallel` run multiplies that by the worker count against 
 `history.db`. Acceptable — the inline `python3 -c` it replaces costs the same order — but it
 should not be pushed into a tighter inner loop without re-measuring.
 
-### 1e. Known ambiguity being inherited: opt-out is indistinguishable from a broken config
+**Caveat on that measurement — it is probably the wrong branch.** The opt-out path
+(`value is None`, `cfg is not None`) falls into `_warn_if_unknown_section`
+(`cli/config.py:77-78`), which imports `little_loops.init.core` and reads
+`config-schema.json` off disk (`:93-97`) before concluding that `project` is a known root and
+printing nothing. That branch is taken **only** when resolution is empty — i.e. exactly the
+`test_cmd: null` case the 0.168s figure most likely did not cover. Re-measure the null path
+before accepting the cost paragraph, and consider short-circuiting
+`_warn_if_unknown_section` when the root segment is already in `cfg.to_dict()` (a two-line
+guard) so the opt-out path does not pay for schema loading. This matters most for
+`rl-coding-agent`, where it is 2 calls per rollout.
+
+### 1e. Structural problem being inherited: `ll-config get` is fail-open, and this issue converts 13 gates onto it
+
+**This is the one design decision worth making before any shell is written.**
+
+`main_config` is `never-raise / always-exit-0 / print-nothing-on-anything-unexpected`
+(`cli/config.py:54-80`, and the contract is written into the `--help` epilog at `:34-39`).
+That is a reasonable contract for the interactive `ll-config get history.foo.bar` use it was
+built for. It is the **wrong shape for a gate resolver**, because every failure mode collapses
+to the same byte-identical signal as a deliberate opt-out:
+
+| Door | stdout | exit | Meaning under the §3 contract | Status |
+|---|---|---|---|---|
+| `test_cmd: null` | empty | 0 | opt out | **intended** |
+| malformed `.ll/ll-config.json` | empty | 0 | opt out | **wrong** — closed by §3c |
+| ~~exception inside `resolve_variable`~~ | — | — | — | **not a real door, see below** |
+| `ll-config` not on PATH | empty | **127** | opt out | **wrong** — closed by §3c |
+
+**Row 3 is struck: `resolve_variable` cannot raise.** `config/core.py:1039-1061` is a pure
+dict walk that `return None`s on any miss, then `str(value)` — there is no parse, no I/O, and
+no call that can throw for any realistic value. The `except Exception` at `cli/config.py:69-73`
+is therefore only ever entered from the `BRConfig(Path.cwd())` **construction** on line 71.
+That collapses the table to two live doors, both of which §3c closes at
+`check_baseline_tests` without new CLI surface.
+
+**DECISION — RESOLVED 2026-08-20 (third pass). Do NOT add a strict mode to `ll-config get`.**
+A previous revision of this section proposed a `--strict` flag that would exit non-zero on
+non-null resolution failure, and recommended it. That recommendation is **withdrawn** for two
+independent reasons:
+
+1. **It covers one door, not a class.** With row 3 struck, `--strict` and the plain stderr
+   warning discriminate exactly the same single condition — construction failure — using the
+   same `cfg is None` signal. The "closes the class rather than one instance" argument for it
+   was simply wrong.
+2. **Its output is unroutable at the sites that need it.** See §1f. Turning a resolution
+   failure into a non-zero exit at an `evaluate: exit_code` state routes to `on_no`, which for
+   `run_final_tests` is `continue_work` — the BUG-3269 spin. Making `--strict` useful would
+   require swapping those states to `fragment: harness_exit` and designing an
+   `on_cannot_judge` edge for each, which is a new routing outcome in three gating states on
+   an already 11-file P0.
+
+**What lands instead:** §1e's original stderr warning, kept as a **pure diagnostic** with no
+behavioral role, plus §3c's resolve-once design, which routes both live doors through the
+`SKIP` sentinel that §3/§3b already build. No new CLI surface, no new routing edge.
+
+**Verify the warning is actually visible before relying on it.** §1e's original
+text asserts the stderr warning lands "in the loop's captured state output where a run
+forensic would find it." That is **unverified**. In `check_baseline_tests` the warning fires
+*before* the `eval "$CMD" > ... 2>&1` redirect, so it does not reach
+`baseline-test-output.txt`; it reaches the FSM executor's own stream for that state. If
+`FSMExecutor` does not persist per-state shell **stderr** to the run dir, the warning is
+written to nowhere and the remedy delivers literally nothing. Confirm this before Step 3a;
+if stderr is not persisted, write the marker into a run-dir artifact instead.
+
+---
+
+_Original §1e text, retained — the ambiguity it documents is real and its analysis of the
+`cfg is None` discriminator is correct and still load-bearing under either option:_
 
 `main_config` swallows **every** exception into `value = None` (`cli/config.py:69-73`) and
 then prints nothing with exit 0. So an unparseable `.ll/ll-config.json` produces byte-identical
@@ -287,7 +384,10 @@ conversion must not enshrine it as correct-by-omission. Required:
 - Implementation Step 1 pins it with a test: malformed `.ll/ll-config.json` → empty stdout,
   exit 0. The test documents the ambiguity so a future change to `cli/config.py`'s
   `except Exception` is a deliberate act.
-- **Remedy — DECIDED 2026-08-20: lands in this issue, not deferred.** Make `main_config`
+- **Remedy — DECIDED 2026-08-20: lands in this issue, not deferred. Confirmed by the third
+  pass as the form that ships** — the strict-mode alternative above is withdrawn, so this
+  warning is the whole of the CLI-side remedy, with §3c carrying the behavioral half.
+  Make `main_config`
   distinguish the two. When `BRConfig(Path.cwd())` construction itself raises, emit a stderr
   warning (mirroring the existing `_warn_if_unknown_section` shape at `cli/config.py:83-101`)
   before returning 0. Stdout and exit code stay unchanged, so no call site's `$(...)` capture
@@ -306,6 +406,80 @@ conversion must not enshrine it as correct-by-omission. Required:
   tell a broken config from an unresolvable key. Split it into two `try` blocks — construct
   in the first (on failure: warn, `return 0`), resolve in the second (on failure: `value =
   None`, existing behavior). ~5 lines.
+
+### 1f. Why a resolution failure must NOT be signalled by a non-zero exit — verified against the executor
+
+**This is the constraint that shapes §3c, and it is easy to get backwards.** A guard like
+
+```bash
+CMD=$(ll-config get project.test_cmd) || { echo "FATAL" >&2; exit 3; }
+```
+
+looks like an obvious safety improvement. At an **exit-code-gated** state it is the opposite:
+it converts a silent fail-open into an infinite loop.
+
+`fsm/executor.py:2015-2037`: for a state with `evaluate: type: exit_code`, `on_error` is
+reached **only** for classified failure types — `TRANSIENT` / api-server-error
+(`:2015-2023`), `INFRA_RETRY` (`:2024-2030`), and `NON_RECOVERABLE` auth
+(`:2031-2037`). Anything else falls through to ordinary verdict routing, where a non-zero
+exit is a **`no` verdict**. (The `if result.exit_code != 0 and state.on_error` branch at
+`:1835-1848` — which *does* prefer `on_error` — is in the **`next:`-routing** path, i.e. for
+states with no `evaluate:` block. It does not apply to `shell_exit` states.)
+
+Consequences at the three gating sites:
+
+| State | Fragment | `on_no` | Effect of `exit 3` on a missing `ll-config` |
+|---|---|---|---|
+| `general-task` `run_final_tests` | `shell_exit` | `continue_work` | **the exact BUG-3269 spin**, now triggered by a missing binary instead of a null config |
+| `dead-code-cleanup` `:71-81` | `shell_exit` | `revert_and_scan` | reverts valid work on every lap |
+| `test-coverage-improvement` `:148-158` | `shell_exit` | (per §2b) | gate fails permanently |
+
+So at an exit-code-gated state the only expressible outcomes are `0` → `on_yes` and non-zero
+→ `on_no`. There is no third channel — unless the state opts into
+`fragment: harness_exit`'s ABSTAIN contract (`lib/common.yaml:23-36`: 0=pass, 1=fail,
+3=abstain, requires `on_cannot_judge`), which is a genuine third outcome but also a new edge
+to design per state. **This issue does not do that.** It resolves in the one state that is
+free to branch (§3c).
+
+**`check_baseline_tests` is that state.** It is `next: define_done` with no `evaluate:` block
+(`general-task.yaml:35-43`), so its exit code is not a verdict — it can test `$?`, branch, and
+write whatever sentinel it likes with zero routing risk. That asymmetry is the whole reason
+§3c works.
+
+### 3c. Resolve once in `check_baseline_tests`; `run_final_tests` reads the result
+
+**Supersedes the "both states must end up with byte-identical resolution shell" requirement
+in §2.** That requirement is a synchronization invariant with no enforcement — the two copies
+drift the moment someone edits one, which is *literally the bug this issue exists to fix*,
+reintroduced one level up. Replace it with a single resolution:
+
+- `check_baseline_tests` resolves the command **once** — applying §2's context-first
+  precedence — and writes the resolved value to `${context.run_dir}/resolved-test-cmd.txt`.
+- On any unresolvable condition it writes an **empty** `resolved-test-cmd.txt` and `SKIP` to
+  `baseline-exit.txt`. Unresolvable means: `[ -z "$CMD" ]` (explicit null **or** malformed
+  config, §1e rows 1–2), **or** `ll-config` not found (`$?` = 127 from the substitution,
+  §1e row 4 — safe to test here, and only here). It is also free to log which of the three it
+  was into the run dir, which is the diagnostic §1e's stderr warning was reaching for, in a
+  location known to survive.
+- `run_final_tests` **reads** `resolved-test-cmd.txt` instead of resolving again. Empty or
+  missing → the `SKIP` path §3/§3b already specify. It never calls `ll-config`.
+
+Why this is better than two synchronized resolutions:
+
+1. **Both live §1e doors close** through the `SKIP` path that §3b already builds — no new CLI
+   flag, no new routing edge, no `harness_exit` swap.
+2. **§2's byte-identical requirement dissolves.** Baseline and final gate compare the same
+   command by construction, so the ENH-2244 equality comparison is sound by construction too.
+   This also subsumes the "`check_baseline_tests` gains an override it does not have today"
+   fix in §2 — there is now exactly one place the override is read.
+3. **One `ll-config` call per run instead of two**, which moots the `_warn_if_unknown_section`
+   cost question (§1) for `general-task`.
+4. **Resume/handoff composes for free** — §3b's read-side normalization already maps a
+   missing/empty file to `SKIP`, so a `run_final_tests` reached without a preceding
+   `check_baseline_tests` degrades safely rather than re-resolving into a different answer.
+
+Applies to `general-task` only. The other converted loops have a single resolution site each,
+so there is nothing to synchronize and they keep the plain §2 shape.
 
 ### 1b. Second bug this closes: local overrides are ignored today
 
@@ -433,8 +607,15 @@ This is the single highest-risk axis in Step 5: eight of the eleven files need t
 Context-first sites:
 
 ```bash
-if [ -n "${context.test_cmd}" ]; then CMD="${context.test_cmd}"; else CMD=$(ll-config get project.test_cmd); fi
+if [ -n "${context.test_cmd}" ]; then
+  CMD="${context.test_cmd}"
+else
+  CMD=$(ll-config get project.test_cmd)
+fi
 ```
+
+In `general-task` this shape appears **once**, in `check_baseline_tests`, per §3c —
+`run_final_tests` reads `resolved-test-cmd.txt` rather than repeating it.
 
 **The context-first shape is wrong for `rl-coding-agent.yaml` and must not be pasted
 there.** Its context defaults are non-empty literals (`test_cmd: "python -m pytest"`,
@@ -467,8 +648,14 @@ reads config directly with no `${context.test_cmd}` check, while `run_final_test
 checks the override first. That is a *second* divergence axis inside the same file, distinct
 from the null-handling one: with `context.test_cmd` set, the baseline and the final gate
 resolve to different commands, and the ENH-2244 equality comparison then compares two
-different test suites. Converting only the null semantics leaves this intact. Both states
-must end up with byte-identical resolution shell.
+different test suites. Converting only the null semantics leaves this intact.
+
+~~Both states must end up with byte-identical resolution shell.~~ **Superseded by §3c.**
+"Keep two copies byte-identical" is an unenforced synchronization invariant — the copies
+drift the moment one is edited, which is precisely this issue's defect reintroduced one
+level up. Instead `check_baseline_tests` resolves once (using the context-first shape above)
+and writes `resolved-test-cmd.txt`; `run_final_tests` reads that file and does not resolve at
+all. The divergence is then impossible by construction rather than by convention.
 
 ### 2b. Empty-`CMD` contract for the "correct-but-guessing" sites — REQUIRED, per site
 
@@ -641,7 +828,10 @@ behaves correctly and is not changed; the only production-code edit is §1e's st
 
 - `scripts/little_loops/cli/config.py:69-73` — split the single `except Exception` into
   construction and resolution blocks; warn on stderr when `BRConfig(Path.cwd())` itself
-  raises (§1e, Step 3a). Stdout and the always-0 exit contract are unchanged
+  raises (§1e, Step 3a). Stdout and the always-0 exit contract are unchanged. **No
+  `--strict` flag** — withdrawn, see §1e/§1f. Optionally also short-circuit
+  `_warn_if_unknown_section` (`:77-78`) when the root segment is already in `cfg.to_dict()`,
+  so the opt-out path stops paying for `_load_schema()` (§1 cost caveat)
 
 - `scripts/little_loops/loops/general-task.yaml:37` — **buggy site** (`check_baseline_tests`)
 - `scripts/little_loops/loops/general-task.yaml:617` — `run_final_tests`; also add `SKIP` handling
@@ -686,8 +876,25 @@ _Wiring pass added by `/ll:wire-issue` — partly superseded by the design revie
 - ~~`lib/common.yaml:15` `shell_exit` / `:38` `retry_counter` — fragment `parameters:`
   convention~~ — **not the model**; see Proposed Solution §1c for why fragments cannot
   express this fix
-- `scripts/little_loops/loops/incremental-refactor.yaml:12,33` — uses a plain
-  `${context.test_cmd}` with no config read; confirm it is genuinely out of scope
+- `scripts/little_loops/loops/incremental-refactor.yaml:12,33` — **DECIDED 2026-08-20: out of
+  scope for BUG-3269; split to its own issue (BUG-3276).** It declares
+  `test_cmd: "python -m pytest scripts/tests/"` as a context default (`:12`) and runs it bare
+  at `verify_tests` (`:31-36`, `action: "${context.test_cmd}"`, exit-code gated,
+  `on_no: revert`). In any consuming project that path does not exist, so the command fails
+  every lap and the loop **reverts each refactoring step** — destructive, not merely
+  ineffective. Real defect, but deliberately not this issue's:
+  - **Different mechanism.** It performs no config read, so the §4 mirror-drift gate does not
+    cover it whether or not this issue converts it.
+  - **It needs its own §2b-style safety analysis** on a *revert* edge — the same class of
+    judgment as `dead-code-cleanup`'s commit edge, and not something to append to a list of
+    nine as a mechanical edit.
+  - **Independently shippable**, and bundling it delays a P0 spin fix behind an unrelated
+    destructive-default fix.
+
+  The line against `evaluation-quality.yaml:64` (which this issue **does** convert) is
+  **proximity, not principle**: that literal sits two lines below a site already being
+  rewritten in the same state, so converting it is nearly free and leaving it would be
+  conspicuous. `incremental-refactor.yaml` has no other reason to be opened in this pass.
 
 ### Tests
 - New: mirror-drift gate parametrized over every `scripts/little_loops/loops/**/*.yaml`
@@ -783,15 +990,18 @@ _Added by `/ll:refine-issue` — 2026-08-20 — based on codebase analysis:_
 
 - `main_config(key: str) -> int` — **existing** CLI entry point (`cli/config.py:54`),
   invoked from shell as `ll-config get project.test_cmd`; the single resolution path
-  replacing 13 hand-rolled inline snippets. No new code; prints the value, the
-  absent-default, or nothing (opt-out) on stdout, and always returns 0.
+  replacing 13 hand-rolled inline snippets. Signature is unchanged by this issue — no
+  `--strict` parameter is added (§1e/§1f). Prints the value, the absent-default, or nothing
+  (opt-out) on stdout, always returns 0, and gains only a stderr warning when
+  `BRConfig(Path.cwd())` construction raises.
 - `resolve_variable(var_path: str) -> str` — **existing** (`config/core.py:1044`); returns
   `None` for a present-and-null key, which is the load-bearing opt-out signal.
 - `check_baseline_tests(test_cmd: str) -> str` — writes the returned value to
   `baseline-exit.txt`; return type widens from a numeric exit-code string to that plus the
   new no-runnable-baseline sentinel `SKIP`.
 - `run_final_tests(baseline_exit: str, final_exit: int) -> bool` — gates on `final_exit`
-  alone when `baseline_exit` is `SKIP`, on the ENH-2244 equality comparison otherwise.
+  alone when `baseline_exit` is `SKIP`, on the ENH-2244 equality comparison otherwise; in
+  both cases `final_exit` values `0` and `127` pass unconditionally, and `126` does not.
 
 No fragment, no `parameters:` block, no executor change. The `config_key` /
 `absent_default` / `null_value` parameters from the original design are all subsumed: the
@@ -801,12 +1011,13 @@ live — one authority instead of a per-call-site literal.
 
 ### Call Path
 
-- `check_baseline_tests` → `ll-config get project.test_cmd` — first resolution; writes
-  `baseline-exit.txt`. Currently the buggy site at `general-task.yaml:37`.
+- `check_baseline_tests` → `ll-config get project.test_cmd` — the **only** resolution in
+  `general-task` (§3c); writes `resolved-test-cmd.txt` and `baseline-exit.txt`. Currently
+  the buggy site at `general-task.yaml:37`.
 - `check_baseline_tests` → `define_done` → `plan` → … → `final_verify` → `run_final_tests`
   — the poisoned `baseline-exit.txt` travels this far before anything reads it.
-- `run_final_tests` → `ll-config get project.test_cmd` — second resolution of the same key;
-  reads `baseline-exit.txt` and must branch on `SKIP` before the numeric comparison.
+- `run_final_tests` → reads `resolved-test-cmd.txt` + `baseline-exit.txt` — **no second
+  `ll-config` call** (§3c); branches on `SKIP` before the numeric comparison.
 - `run_final_tests` → `count_final` — the opt-out path; taken directly, running nothing,
   when the key is explicitly null.
 - `run_final_tests` → `continue_work` — the gate-failed edge; the entry point of the
@@ -864,9 +1075,11 @@ semantics now live in `ProjectConfig` + `resolve_variable`.
 **`general-task.yaml` — baseline sentinel contract**
 
 - `check_baseline_tests` writes `baseline-exit.txt` = `SKIP` when the resolved command is
-  the opt-out sentinel, **or** the command exits `127`, **or** `baseline-test-output.txt`
-  matches `command not found`. Otherwise it writes the numeric exit code as today. Its
-  `on_error` path writes `SKIP` explicitly rather than leaving the file as-is (§3b).
+  the opt-out sentinel, **or** `ll-config` itself was not found (`$?` = 127 from the
+  substitution — testable here and only here, §1f), **or** the command exits `127`, **or**
+  `baseline-test-output.txt` matches `command not found`. Otherwise it writes the numeric
+  exit code as today. Its `on_error` path writes `SKIP` explicitly rather than leaving the
+  file as-is (§3b). It also writes `resolved-test-cmd.txt` for `run_final_tests` (§3c).
 - `run_final_tests` **normalizes before branching**: any `baseline-exit.txt` content that is
   not a run of digits — missing, empty, truncated, garbage, or the literal `SKIP` — is
   treated as `SKIP` (§3b). The old `|| echo "0"` fallback is removed; it made a missing
@@ -876,6 +1089,11 @@ semantics now live in `ProjectConfig` + `resolve_variable`.
   baseline. This preserves the ENH-2244 comparison for every run that has a real baseline,
   and prevents a present-but-unrunnable `test_cmd` from reproducing the BUG-3269 cycle (see
   Expected Behavior).
+- On the **numeric**-baseline branch, the comparison becomes
+  `[ "$FINAL_EXIT" = "0" ] || [ "$FINAL_EXIT" = "127" ] || [ "$FINAL_EXIT" = "$BASELINE_EXIT" ]`
+  — the `127` arm is the same "an unrunnable command never gates" rule, applied to the case
+  where the baseline *did* run and the final command could not (see Expected Behavior). `126`
+  is not admitted on either branch, by design.
 - Under the opt-out, `run_final_tests` routes straight to `count_final` without running
   anything.
 
@@ -942,9 +1160,11 @@ re-derive them._
    currently covers only the key-**absent** path.
    Also add the negative case: `test_cmd: null` in `ll.local.md` resolves to the
    absent-default, **not** opt-out (documented asymmetry, see Expected Behavior).
-   Add the malformed-config case from §1e: unparseable `.ll/ll-config.json` → empty stdout,
-   exit 0. Per §1e's decision the stderr-warning remedy lands in this issue, so assert the
-   warning on stderr **and** that stdout stays empty and the exit code stays 0.
+   Add the malformed-config case from §1e, asserting **current** behavior: unparseable
+   `.ll/ll-config.json` → empty stdout, exit 0, **nothing on stderr**. (This step is labeled
+   "no production code yet", so it must pin what exists today; §1e's stderr warning flips
+   this assertion in Step 3a, which is where the new expectation belongs. The original text asked Step 1 to assert a warning that does not
+   exist until Step 3a, which cannot pass.)
    **These belong in `scripts/tests/test_config_cli.py`** — the existing `ll-config` CLI test
    module. Extend it; do not start a new one.
 2. **Make the three genuine design decisions before writing any shell.** None of these are
@@ -958,18 +1178,43 @@ re-derive them._
      lands now.** See §1e — the `cfg is None` discriminator is confirmed to exist, and the
      work is a ~5-line split of `cli/config.py:69-73` into two `try` blocks. No longer a
      decision; it is Step 3a below.
-3a. **Land the §1e stderr warning.** Split `cli/config.py:69-73`'s single `except Exception`
-   into two `try` blocks: construction failure → warn on stderr, `return 0`; resolution
-   failure → `value = None` as today. Stdout and the always-0 contract are unchanged, so no
-   call site is affected. This is the only production-code change in the issue.
+   - ~~c'. `--strict` vs. the stderr warning (§1e).~~ **DECIDED 2026-08-20 (third pass): no
+     `--strict`.** Row 3 of §1e's table was not real (`resolve_variable` cannot raise), so
+     the flag covered one door rather than a class; and a non-zero exit is unroutable at the
+     states that need it (§1f). The stderr warning lands as a pure diagnostic and §3c closes
+     both live doors. No longer a decision.
+   - **c''. NEW — confirm the executor persists per-state shell stderr.** If it does not,
+     §1e's warning is written to nowhere and `check_baseline_tests` must emit the
+     diagnostic into the run dir instead (§3c). One grep; do it before Step 3a.
+3a. **Land the §1e stderr warning as a diagnostic.** Split `cli/config.py:69-73`'s single
+   `except Exception` into two `try` blocks — construction failure → warn on stderr,
+   `return 0`; resolution failure → `value = None` as today (note this second arm is
+   currently unreachable, since `resolve_variable` cannot raise; keep it for shape). Stdout
+   and the always-0 exit contract are unchanged, so no call site is affected. Optionally
+   short-circuit `_warn_if_unknown_section` when the root segment is already in
+   `cfg.to_dict()` (§1 cost caveat). Retarget Step 1's malformed-config assertion here.
+   **Do NOT add a `|| { ...; exit N; }` guard to any converted call site** — see §1f; at the
+   three exit-code-gated sites it routes to `on_no` and creates a spin. This is the only
+   production-code change in the issue.
 
 3. **Fix the three blockers.** Convert `general-task.yaml:37` and
    `rl-coding-agent.yaml:60,68` to `ll-config get` — the sites that emit literal `None`
    today. Use the **per-site** precedence from §2's table: context-first for
    `general-task`, config-first for `rl-coding-agent`. Do not paste one shape into both.
    In the same edit, give `check_baseline_tests` the `${context.test_cmd}` override it
-   lacks today, so its resolution shell is byte-identical to `run_final_tests`'s; preserve
-   the existing `baseline-ref.txt` capture at `:39`.
+   lacks today; preserve the existing `baseline-ref.txt` capture at `:39`.
+   **Per §3c this is the *only* resolution in `general-task`** — do not add a second one to
+   `run_final_tests` and then try to keep the two byte-identical.
+3b. **Implement §3c's resolve-once handoff.** `check_baseline_tests` writes the resolved
+   command to `${context.run_dir}/resolved-test-cmd.txt` (empty when unresolvable) and,
+   because it is `next:`-routed rather than exit-code-gated, is the one state that may
+   safely test `$?` — use it to distinguish `ll-config` not found (127) from an explicit
+   opt-out, writing both to `SKIP` but logging which into the run dir. `run_final_tests`
+   reads `resolved-test-cmd.txt` and no longer invokes `ll-config`. Tests: (i) a run whose
+   `context.test_cmd` override is set produces the *same* command in the baseline and the
+   final gate; (ii) `resolved-test-cmd.txt` empty → `run_final_tests` takes the `SKIP` path;
+   (iii) `ll-config` absent from PATH (shadow it in the test env) → `baseline-exit.txt` is
+   `SKIP` and the run reaches `count_final` rather than `continue_work`.
 4. **Add the baseline sentinel.** Implement the `SKIP` contract in `check_baseline_tests` +
    `run_final_tests`, with the opt-out detected as `[ -z "$CMD" ]`. The `SKIP` branch in
    `run_final_tests` passes on `FINAL_EXIT` in `{0, 127}` — the `127` arm is required to
@@ -983,6 +1228,12 @@ re-derive them._
    **empty** and `baseline-exit.txt` **absent**, each with `FINAL_EXIT = 2`, asserting
    `count_final` rather than `continue_work`. Without these two the fix leaves a live spin
    path open for a project with a perfectly valid `test_cmd`.
+   **Also add the `127` arm to the numeric-baseline branch** (Expected Behavior): with
+   `baseline-exit.txt` = `2` and `FINAL_EXIT = 127`, `run_final_tests` must reach
+   `count_final`, not `continue_work`. Add that regression test alongside; without it a
+   baseline that ran plus a final command that became unrunnable still spins. Do **not**
+   admit `126` — add a test pinning that `baseline=0`, `FINAL_EXIT=126` still routes to
+   `continue_work`, so the exclusion is deliberate rather than incidental.
 5. **Land the mirror-drift gate — before the bulk conversion, not after.** Static scan over
    every loop YAML per §4 (all six `ProjectConfig` command keys, access-pattern match, not
    path-substring), with `oracles/code-run-gate.yaml` as the sole documented exemption.
@@ -1054,9 +1305,23 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - Add `run_final_tests` tests for `baseline-exit.txt` **empty** and **absent** with
   `FINAL_EXIT = 2`, both routing to `count_final` (§3b — the cases the literal-`SKIP`
   branch alone does not cover)
-- Split `scripts/little_loops/cli/config.py:69-73`'s `except Exception` into construction
-  and resolution blocks, warning on stderr for the former (§1e, Step 3a) — the issue's only
-  production-code edit; update the `Files to Modify` note that says this file needs no change
+- Land the §1e stderr warning in `scripts/little_loops/cli/config.py` (Step 3a) — the
+  issue's only production-code edit; update the `Files to Modify` note that says this file
+  needs no change
+- **Do NOT add a `|| { ...; exit N; }` guard to converted call sites.** A previous revision
+  of this issue required one at every site to catch a missing `ll-config` binary; it is
+  withdrawn as **harmful** — at the three `evaluate: exit_code` sites a non-zero exit routes
+  to `on_no`, which for `run_final_tests` is `continue_work`, i.e. the BUG-3269 spin (§1f).
+  The missing-binary case is handled once, in `check_baseline_tests` (§3c)
+- Implement §3c in `general-task.yaml`: `check_baseline_tests` resolves once and writes
+  `${context.run_dir}/resolved-test-cmd.txt`; `run_final_tests` reads it and does not call
+  `ll-config`. This replaces the withdrawn "both states must be byte-identical" requirement
+  in §2 and subsumes the separate `${context.test_cmd}`-override fix for `check_baseline_tests`
+- Add the `127` arm to `run_final_tests`'s **numeric**-baseline comparison, not just the
+  `SKIP` branch (Expected Behavior), with a regression test for `baseline=2` / `FINAL_EXIT=127`
+  → `count_final`, and a pinning test that `FINAL_EXIT=126` still routes to `continue_work`
+- Decide `incremental-refactor.yaml:12`'s hardcoded `python -m pytest scripts/tests/` in or
+  out of scope explicitly (see Similar Patterns) rather than leaving it as a "confirm"
 
 ## Impact
 
@@ -1066,10 +1331,18 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - **Blast radius**: `general-task` is the most-used built-in loop and is live in every
   local-editable consuming project.
 - **Risk of the fix**: low. Almost no new production code — `ll-config get`'s resolution
-  already exists and behaves correctly; the sole production edit is §1e's ~5-line stderr
-  warning, which cannot affect any call site (stdout and exit code unchanged). The risk is
-  otherwise entirely in converting 13 call sites across 11 loop files, each mechanically
+  already exists and behaves correctly; the sole production edit is §1e's ~5-line `except`
+  split, which leaves the stdout and exit-code contract untouched and so cannot affect any
+  existing `ll-config` caller. The risk
+  is otherwise entirely in converting 13 call sites across 11 loop files, each mechanically
   checkable by the new gate and independently revertible.
+- **Risk being *accepted* by the fix**: all 13 gates now depend on a single binary whose
+  contract is fail-open (§1e). That is a real concentration of risk relative to 13
+  independent inline snippets. It is fully mitigated only in `general-task`, where §3c maps
+  both live failure doors to `SKIP`; the other ten loops still fail open on a malformed
+  config, per their §2b row. That residue is accepted: the alternative is 13 divergent
+  implementations that fail open *and* disagree with each other, but it should be stated
+  rather than netted out.
 - **Backward compatibility**: projects with a non-null `test_cmd` see no behavior change.
   Projects with `test_cmd: null` change from "guess pytest" to "no test gate" — that is
   the intended fix, and matches what `fix-quality-and-tests.yaml` already does. Two smaller
@@ -1100,11 +1373,28 @@ _These touchpoints were identified by wiring analysis and must be included in th
   becomes `ll-config get project.lint_cmd`, which resolves to `ruff check .` in a project
   that never configured `lint_cmd` — a broader lint scope than before. Already non-gating
   (`|| true`), so this affects the captured lint artifact, not control flow.
-- **§1e now fixed, not deferred**: an unparseable `.ll/ll-config.json` still resolves to
-  empty output (and is therefore still treated as an opt-out — the stdout contract is
-  deliberately unchanged), but it now emits a stderr warning that distinguishes it from a
-  genuine `test_cmd: null`, visible in the loop's captured state output. The silent-failure
-  half of the ambiguity is closed; the resolution half is pinned by a test in Step 1.
+- **§1e closed, without new CLI surface.** An unparseable `.ll/ll-config.json` still resolves
+  to empty output (the stdout contract is deliberately unchanged) but now emits a stderr
+  warning distinguishing it from a genuine `test_cmd: null`. In `general-task` it no longer
+  merely warns: §3c's `check_baseline_tests` maps *both* live doors — malformed config and a
+  missing `ll-config` binary — to `SKIP`, so the run degrades to "no baseline to compare
+  against" instead of silently opting out of the gate. At the other converted sites the
+  behavior is the §2b row for that site.
+  - **A strict mode for `ll-config get` was considered and rejected** (§1e/§1f): with
+    `resolve_variable` unable to raise, it discriminated the same single condition as the
+    warning, and its non-zero exit is unroutable at `evaluate: exit_code` states without a
+    `harness_exit`/`on_cannot_judge` swap in three gating states.
+- **§3c changes `general-task`'s internal structure, not just its resolution.**
+  `run_final_tests` stops resolving the test command and reads
+  `${context.run_dir}/resolved-test-cmd.txt` written by `check_baseline_tests`. Consequence:
+  the two states can no longer disagree, the ENH-2244 equality comparison is sound by
+  construction, and `general-task` makes one `ll-config` call per run instead of two. A
+  `run_final_tests` reached without a preceding `check_baseline_tests` (resume, handoff) sees
+  a missing file, which §3b's normalization already maps to `SKIP`.
+- **Additional intended change (g)**: `general-task`'s `run_final_tests` stops gating on
+  `FINAL_EXIT = 127` on the numeric-baseline branch as well as under `SKIP` — a command that
+  became unrunnable between the baseline and the final gate no longer spins. `126` is
+  deliberately still gating (see Expected Behavior).
 
 ## Related Key Documentation
 
