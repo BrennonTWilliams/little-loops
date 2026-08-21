@@ -19,12 +19,12 @@ relates_to:
 - ENH-3280
 - ENH-3277
 verify_verdict: VALID
-confidence_score: 90
+confidence_score: 98
 outcome_confidence: 85
-score_complexity: 10
+score_complexity: 15
 score_test_coverage: 25
 score_ambiguity: 25
-score_change_surface: 25
+score_change_surface: 20
 ---
 
 # BUG-3278: decide-issue clears decision_needed while lower-precedence decision blocks stay unresolved
@@ -352,12 +352,33 @@ selection is model-discretionary, so two runs over the same file can pick differ
 already contains a `### Decision Rationale` section, skip the annotation write"* — document-wide.
 Once Phase 3 can select a second group, that rule silently suppresses the annotation for it: run 2
 picks group B, writes no `> **Selected:**` callout, and B stays unresolved forever. Rephrase as:
-skip only when **the selected group** is already resolved per `is_group_resolved`. Rationale
-headings are disambiguated — `### Decision Rationale — <group heading or first option label>` —
-because two identical `### Decision Rationale` H3s in one section are ambiguous to a reader and
-extra noise for part 1's section-level fallback. (`_DECISION_RATIONALE_SECTION_MARKER_RE` at
-`issue_parser.py:1326` anchors on `^\s*###\s+Decision Rationale\b`, so the suffixed form still
-matches. The older `_RESOLVED_OPTION_MARKER_RE` this bullet used to cite no longer exists —
+skip only when **the selected group** is already resolved per `is_group_resolved`.
+
+**The rationale heading text must stay exactly `### Decision Rationale` — do not suffix it.** When a
+second group is decided and a `### Decision Rationale` already exists in the section, disambiguate in
+the *body*, not the heading: the subsection's first line becomes
+`**Decision point:** <group heading or first option label>`. A suffixed heading
+(`### Decision Rationale — <label>`) reads fine to a human and still matches the lenient
+`_DECISION_RATIONALE_SECTION_MARKER_RE` (`issue_parser.py:1326`, `^\s*###\s+Decision Rationale\b`),
+but there is a **second, strict constant** that it silently breaks:
+
+- `_DECISION_RATIONALE_HEADING_RE` (`issue_parser.py:1316`) is
+  `r"^###\s+Decision Rationale\s*$"` — end-anchored, and its own comment at `:1318` says *"exact
+  heading, no trailing text"*
+- its consumer is `_unapplied_decision` (`:1449`, the `format-check` gate), at `:1466`:
+  `dr_start = dr_match.start() if dr_match else len(proposed_body)`, feeding
+  `scrub_start = min(dr_start, spans[-1][1])`
+
+Under a suffixed heading that search misses, `dr_start` falls back to end-of-section, the self-scan
+window widens, and every issue decided after this lands risks a new `unapplied_decision` false
+positive. That function is also being actively changed by **BUG-3289**, so widening its regex here
+would collide with in-flight work for a purely cosmetic gain. Keeping the heading literal leaves
+`_unapplied_decision` untouched and out of this issue's blast radius entirely.
+
+Two identical `### Decision Rationale` H3s in one section are acceptable under part 1 because the
+section-level fallback in `is_group_resolved` only fires for **single-group** sections — a
+multi-group section resolves per group via an in-span marker, so the duplicate heading is inert to
+the detector. (The older `_RESOLVED_OPTION_MARKER_RE` this bullet used to cite no longer exists —
 `f39a417e` deleted it.)
 
 **Phase 7a needs a marker placement rule for every tier.** Today it inserts the callout
@@ -407,10 +428,33 @@ reported defect fully live under automation while appearing fixed interactively.
    and carry the surviving groups into Phase 9 exactly as Phase 7b does;
 4. **exit 2+** → treat as exit 1 (conservative: never clear on an unverifiable probe).
 
-Step 5's success log line stays on the exit-0 branch only. Note the interaction with step 3's
-Pattern D branch: it writes a `> **Selected:**` callout on the recommended bullet, which *is* a
-valid `bullet`-tier resolution marker under part 1, so a single-decision issue still clears in one
-pass and the common auto path is unchanged.
+Step 5's success log line stays on the exit-0 branch only.
+
+**Step 3's Patterns A–C branch must also write a resolution marker, or the gate stalls the auto
+path.** Step 3 (`SKILL.md:300-303`) has two branches, and only one of them leaves a marker the new
+probe can see:
+
+- **Pattern D** — *"add a `> **Selected:** (x) — per the stated recommendation` callout on the
+  recommended bullet."* That callout *is* a valid `bullet`-tier resolution marker under part 1, so
+  this branch clears in one pass and is unchanged.
+- **Patterns A–C** — *"remove the provisional qualifier (`e.g.,`/parenthetical wrapper, `TBD`,
+  `must be replaced with`)"*. **No callout, no rationale heading.** And step 1 explicitly routes
+  *already-structured* alternatives to step 3 as a no-op (*"If already structured, this step is a
+  no-op: **clear winner** → step 3"*), so the file can still hold an intact, unmarked
+  `**Option A**`/`**Option B**` `bold_label` group when step 4's probe runs. The probe returns
+  exit 1, step 4 makes no write, and `decision_needed` never clears — a permanent stall on the
+  `ll-auto` / `autodev` path, introduced *by this fix*, on the single-decision common case.
+
+The fix: **step 3's A–C branch additionally writes a `> **Selected:** <approach> — per the locked-in
+provisional resolution` callout on the winning option block whenever structured option blocks exist
+under `## Proposed Solution`** (i.e. whenever step 1 found them already structured, or materialized
+them). Marker placement follows the same per-tier rule as Phase 7a. When no structured blocks exist
+— the qualifier-removal-only case, where the edit deletes the provisional shape outright and leaves
+no group for the probe to find — no callout is needed and the probe returns exit 0 naturally.
+
+This is the precise shape of the risk the *Impact → Risk* bullet names ("an over-firing probe
+converts a silent false-ready into a loop stall"), so it is a required part of the change, not a
+polish item. Assertion (c4) is its guard.
 
 ### Part 6 — loop integration (`loops/oracles/resolve-decision.yaml`)
 
@@ -501,6 +545,11 @@ Both span-based alternatives are dropped, which removes this issue's dependency 
   guard for that is assertion (e)
 - `scripts/little_loops/cli/issues/check_decidable.py:19-52` — shares Phase 7b's single-tier blind
   spot for the same reason, but is **not** modified here (BUG-3287 covers the shared chain)
+- `scripts/little_loops/issue_parser.py:1449` `_unapplied_decision` (the `format-check` gate) —
+  **deliberately untouched.** It reads the *strict* `_DECISION_RATIONALE_HEADING_RE` (`:1316`,
+  end-anchored) at `:1466`, so Phase 7a's rationale heading must stay literally
+  `### Decision Rationale`; part 5 pins that, assertion (c5) guards it. BUG-3289 is changing this
+  function concurrently — keeping the heading literal is what keeps the two changes disjoint
 - `scripts/little_loops/loops/oracles/resolve-decision.yaml`:
   - `check_decision_decidable` (`:47-67`) — inherits `check-decidable`'s blind spot; unchanged here
   - `check_open_question_progress` (`:104-143`) — sums
@@ -660,9 +709,11 @@ frontmatter-clearing logic and introduces no new gap kind, gate, keyword list, o
 7. Phase 3: source the candidate group from `check-unresolved-decisions`; state the auto-mode
    boundary (bullet-tier residual under `AUTO_MODE = true` is not scored — exit 0 leaving the flag
    `true`, group named in Phase 9). Add phase-text assertions for both.
-8. Phase 7a: per-group idempotency, disambiguated `### Decision Rationale — <label>` heading, and
-   the per-tier marker placement rule including the `provisional_e` case. Add a phase-text
-   assertion for the per-group phrasing.
+8. Phase 7a: per-group idempotency, a literal (**unsuffixed**) `### Decision Rationale` heading with
+   the decision point named on the subsection's first body line, and the per-tier marker placement
+   rule including the `provisional_e` case. Add a phase-text assertion for the per-group phrasing,
+   and one asserting the heading stays literal (the guard for `_unapplied_decision`'s strict
+   `_DECISION_RATIONALE_HEADING_RE` at `issue_parser.py:1316`).
 9. Phase 7b: run `ll-issues check-unresolved-decisions` after 7a's annotation; clear only on exit
    0; on exit 1 make no frontmatter write. Keep the literal `decision_needed: false` in the
    clearing branch and phrase the new branch as `decision_needed remains true`, matching
@@ -672,6 +723,11 @@ frontmatter-clearing logic and introduces no new gap kind, gate, keyword list, o
     Phase 7b's probe never runs there; without this the fix is inert on the `--auto` path that
     `ll-auto` / `autodev` actually take. Add a phase-text assertion that the Phase 3b slice contains
     both `check-unresolved-decisions` and `decision_needed remains true`.
+    **Same step, step 3's Patterns A–C branch.** Add the `> **Selected:**` callout write for the
+    structured-blocks case per part 5, or the new gate stalls the single-decision auto path it was
+    supposed to leave alone. Add a phase-text assertion that the Phase 3b slice requires a
+    `> **Selected:**` callout on the A–C branch, not only on Pattern D. Assertion (c4) is the
+    deterministic half.
 
 10. `reference.md` Phase 9 Output Report Template (`:94`) gains the unresolved-decisions line;
     `SKILL.md` Phase 9 (line 463) continues to defer to it.
@@ -708,6 +764,16 @@ frontmatter-clearing logic and introduces no new gap kind, gate, keyword list, o
       passes (a) and (c) and fails only this one
     - **(c3)** **span-rule guard** — after 7a inserts a `> **Selected:**` callout into a bullet-tier
       group, that group still reports as one group, not two
+    - **(c4)** **Phase 3b A–C stall guard** — a fixture holding intact, unmarked
+      `**Option A**`/`**Option B**` blocks reports **exit 1**, proving the probe would block step
+      4's clear; the same fixture with the callout step 3's A–C branch now writes reports **exit 0**.
+      This is the deterministic half of the part-5 A–C requirement — without that skill change the
+      first state is what `ll-auto` reaches and the flag never clears
+    - **(c5)** **`_unapplied_decision` non-regression** — a fixture decided with a literal
+      `### Decision Rationale` heading yields the same `_unapplied_decision` output before and after
+      this diff, pinning the "do not suffix the heading" rule against
+      `_DECISION_RATIONALE_HEADING_RE`'s end-anchor (`issue_parser.py:1316`). Coordinate the
+      snapshot with BUG-3289, which is changing the same function
     - **(d)** an issue with a settled decision but open free-form questions still clears, proving
       the new probe is narrower than `check-open-questions`
     - **(e)** `locate_unresolved_options`' `(count, heading)` output is unchanged on every existing
@@ -863,6 +929,30 @@ what changed and why so the reasoning is not lost.
   `record_decision_unresolved` is the mechanism that makes part 6's `done` routing provably
   non-spinning — Impact → Risk asserted bounded-ness without citing it.
 
+- **Round 6 (2026-08-21)** — pre-implementation review. Three corrections:
+  1. **The gate would have stalled the auto path it was written to protect.** Part 5 gated Phase 3b
+     step 4 but accounted only for step 3's **Pattern D** branch. Step 3's **Patterns A–C** branch
+     writes no resolution marker, and step 1 routes *already-structured* alternatives to it as a
+     no-op, so an intact unmarked `bold_label` group survives to the probe → exit 1 → step 4 never
+     writes → `decision_needed` never clears, on the single-decision common case under `ll-auto` /
+     `autodev`. Part 5 now requires the A–C branch to write a `> **Selected:**` callout whenever
+     structured blocks exist; Implementation Step 9 and assertion (c4) carry it.
+  2. **The disambiguated rationale heading broke a second, stricter regex.** Round 3–5 specified
+     `### Decision Rationale — <label>`, checked only against the lenient
+     `_DECISION_RATIONALE_SECTION_MARKER_RE` (`:1326`). `_unapplied_decision` (`:1449`, the
+     `format-check` gate) reads the **end-anchored** `_DECISION_RATIONALE_HEADING_RE` (`:1316`) at
+     `:1466`; a suffix makes that search miss, `dr_start` falls back to end-of-section, the
+     self-scan window widens, and decided issues risk new `unapplied_decision` false positives —
+     while colliding with **BUG-3289**, which is changing that same function. The heading now stays
+     literal and disambiguation moves into the subsection's first body line. Assertion (c5) guards
+     it; the duplicate-H3 concern that motivated the suffix is inert to the detector, because
+     part 1's section-level fallback fires only for single-group sections.
+  3. **Part 3's (a)/(b) was itself an undecided decision point** — a literal `pick one` directive
+     under `## Proposed Solution`, i.e. the `provisional_e` shape this issue is about, in a file
+     with no `decision_needed` flag to gate it. Decided **(a)**: at most one `provisional_e` group
+     per document, documented in the docstring and CLI reference. (b) is recorded as a follow-up on
+     BUG-3287, whose shared-precedence-chain blast radius it belongs to.
+
 `confidence_score` and `outcome_confidence` in frontmatter predate round 5 — re-run
 `/ll:confidence-check` before implementing rather than carrying them forward.
 
@@ -871,6 +961,7 @@ what changed and why so the reasoning is not lost.
 **Open** | Created: 2026-08-21 | Priority: P2
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-21T19:12:09 - `e7bfa83a-61b5-42db-9234-b883edce75e7.jsonl`
 - `/ll:confidence-check` - 2026-08-21T19:00:59 - `de2bc4f7-6272-4f52-a9cb-998af08752f1.jsonl`
 - `/ll:confidence-check` - 2026-08-21T18:01:01 - `e8b100f2-1d69-4959-840b-2aa9aba3993f.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-21T17:52:59 - `f27d8342-f3ba-42ea-95ca-41ad79008fbf.jsonl`

@@ -107,19 +107,29 @@ run as a Python gate rather than an LLM judgement:
 3. **Resolve the cited artifact.** Issue ID -> path via the existing resolver; file paths as
    given. An artifact that does not resolve, or resolves to an untracked path, is skipped with no
    finding (see Decision Rules → Fail-open).
-4. **Match spans against the artifact, artifact-major.** For each artifact, enumerate its
-   revisions once, read each blob once, normalize once, then test every candidate span against
-   that cached text — not span-major, which costs O(spans x revisions) blob reads. Short-circuit
-   in order **working tree -> HEAD -> history**; the overwhelmingly common case resolves at the
-   first. Normalize span and artifact text identically before matching (Decision Rules →
-   Normalization: whitespace **and** markdown emphasis/decoration — whitespace alone is not enough,
-   and the fixture's flagship true-negative is the proof); skip spans below a minimum length.
+4. **Match spans against the artifact, artifact-major, one process per tier.** For each artifact,
+   fetch its history once, normalize once, then test every candidate span against that cached text
+   — not span-major, which costs O(spans x revisions) blob reads. Short-circuit in order **working
+   tree -> HEAD -> history**; the overwhelmingly common case resolves at the first. Normalize span
+   and artifact text identically before matching (Decision Rules → Normalization: whitespace **and**
+   markdown emphasis/decoration — whitespace alone is not enough, and the fixture's flagship
+   true-negative is the proof); skip spans below a minimum length. The history tier is
+   `git log -p`, not a `git log` + per-revision `git show` loop — see Decision Rules → History
+   enumeration for the measured reason.
 5. **Fail on zero hits**, naming the span and the artifact.
-6. **Baseline the full-scan mode, keyed on issue ID.** Changed-files mode is strict; `--all`
-   reports only findings beyond a tracked baseline, with `--update-baseline` to regenerate. The
-   baseline keys on the **anchored numeric issue ID, not the file path** — issue files are renamed
-   constantly, and a path-keyed baseline turns every re-prioritization into a spurious regression
-   (see Implementation Steps step 4). Without this the gate cannot land green.
+6. **Changed-files mode scans added lines only.** Port `staged_added_lines()`
+   (`verify_private_refs.py:297`) alongside the baseline machinery: a span is a candidate in
+   changed-files mode only if it sits on a line the staged diff *added*. Without this the gate is
+   strict against the whole file, so the first refine pass over any legacy issue fires on
+   pre-existing fabrications its author never wrote — a recurring failure, not a one-time seeding
+   problem. `None` (diff uncomputable) means scan everything, matching the ported function's
+   fail-closed contract.
+7. **Baseline the full-scan mode, keyed on issue ID.** `--all` reports only findings beyond a
+   tracked baseline, with `--update-baseline` to regenerate. The baseline keys on the **anchored
+   numeric issue ID, not the file path** — issue files are renamed constantly, and a path-keyed
+   baseline turns every re-prioritization into a spurious regression (see Implementation Steps
+   step 4). With step 6 in place the baseline is what makes `--all` *useful*; it is not a
+   prerequisite for the pytest gate, which shells changed-files mode.
 
 This lands as `ll-verify-evidence`, a new deterministic CLI invoked from the skill (testable by
 subprocess), not as prose added to `commands/verify-issues.md`.
@@ -213,6 +223,13 @@ _Wiring pass added by `/ll:wire-issue`:_
   floor lands in `(13, 22]`
 - Baseline behavior: `--all` exits 0 when findings equal the tracked baseline, 1 on any increase;
   `--update-baseline` rewrites it (mirror `test_verify_private_refs.py`'s baseline tests)
+- **Added-lines filter**: an issue file carrying a pre-existing unverifiable span, edited to touch
+  an *unrelated* line, produces no finding in changed-files mode; the same file with a *new*
+  unverifiable span added does. Pins Implementation Steps step 3b — the property that keeps the
+  gate off legacy content
+- **History tiering**: a span present only in a pre-rename revision misses the `git log --all -p`
+  tier and is found by the `--follow` tier, so the tiering is transparent to results and changes
+  only cost (Decision Rules → History enumeration)
 - **Baseline survives a rename**: baseline an issue file, rename it (`P2-` -> `P1-`, or a title
   change), re-run -> still exits 0. Path-keyed baselines fail this; ID-keyed ones pass. Both rename
   flavors are live in this repo's history (`R099` on `FEAT-3183` for the priority prefix, `R074` on
@@ -308,17 +325,23 @@ N/A — no new data types. Findings would be ad hoc violation records analogous 
 extraction via `text_utils.py`'s `fence_spans()` / `in_fence()` (`:64`, `:97`), then the
 nearest-preceding, section-bounded attribution filter with the command-output exclusion (Decision
 Rules → Attribution rule) -> `resolve_issue_path()`
-(`issue_parser.py:92`) to resolve the cited artifact -> **artifact-major** match: working tree,
-then HEAD, then `git log --all --follow -n 20` revision enumeration, reading each blob once via
-`git show <sha>:<path>` and testing all of that artifact's candidate spans against the cached
-normalized text, short-circuiting on first hit -> finding emitted in the same
-`_findings_to_json`-style JSON shape as `verify_private_refs.py`/`verify_skill_prose.py`
+(`issue_parser.py:92`) to resolve the cited artifact -> **artifact-major** match, tiered: working
+tree, then HEAD, then `git log --all -p -n 20`, then — only on a residual miss —
+`git log --all --follow -p -n 20`, each tier a single subprocess whose output is normalized once
+and tested against all of that artifact's candidate spans, short-circuiting on first hit ->
+finding emitted in the same `_findings_to_json`-style JSON shape as
+`verify_private_refs.py`/`verify_skill_prose.py`
+
+In changed-files mode a `staged_added_lines()` filter (`verify_private_refs.py:297`) runs between
+span extraction and matching, dropping spans that sit on unchanged lines.
 
 Revision enumeration has no existing helper. The nearest primitives are `_git_grep_word()`
 (`scripts/little_loops/codequery/fallback.py:50`, presence-anywhere-in-tree search) and the
 FEAT-2652 spike `read_blob_at_ref()` (`scripts/tests/spike/git_show_blob_at_ref/blob_reader.py`,
 single-ref blob read). Per Decision Rules the `GitLock` question is settled in favor of bare
-`subprocess.run`, matching every shipped git-history module.
+`subprocess.run`, matching every shipped git-history module. Note that neither primitive is the
+right shape here — see Decision Rules → History enumeration; `read_blob_at_ref()` in particular is
+the per-revision `git show` pattern the measurements rule out.
 
 ### Decision Rules
 
@@ -397,12 +420,29 @@ single-ref blob read). Per Decision Rules the `GitLock` question is settled in f
   (`issue_history/parsing.py`, `issues/research_triage.py`, `codequery/fallback.py`,
   `issues/program_design.py`) applies rather than the FEAT-2652 spike's write-path requirement.
   Consequently the `test_uses_gitlock_no_bare_subprocess` AST guard is **not** copied.
+- **History enumeration — one process per tier, `--follow` last (measured 2026-08-21)**: content
+  is *free* once the log walk is paid for, and `--follow` is the expensive flag. Per artifact,
+  20 revisions, this repo:
+
+  | Strategy | Time | Processes |
+  |---|---|---|
+  | `git log --all --follow` + 20x `git show <sha>:<path>` | 1.50s | 21 |
+  | `git log --all --follow -p` | 0.92s | 1 |
+  | `git log --all -p` | 0.56s | 1 |
+  | `git log -p` | 0.41s | 1 |
+
+  `git log -p -n 20` costs 0.406s against 0.430s for the bare SHAs — the patch text is nearly
+  free, so the per-revision `git show` loop pays 21 process spawns for data the walk already
+  had. `--follow` costs what it does because it diffs every commit to detect renames across a
+  3192-file history. Hence: **`git log --all -p -n 20` first, `--follow` only on a residual miss.**
+  Rename-crossing only buys content older than a rename, which matters solely when the cheap tier
+  has already missed.
 - **Renames**: issue files are renamed constantly — by `/ll:prioritize-issues` (priority-prefix
-  changes) and by title edits; both flavors are live in this repo's history. Revision enumeration
-  must therefore use `git log --all --follow` for the cited path, capped at `-n 20` so a long-lived
-  artifact does not dominate a scan. `--all` and `--follow` combine correctly here (verified: on a
-  `.issues/` path they return identical history, and `--follow` does cross the `R0xx` renames);
-  `--follow` takes a single path, so enumeration is one invocation per artifact — which is what
+  changes) and by title edits; both flavors are live in this repo's history. This is why the
+  `--follow` tier exists at all. `-n 20` caps every tier so a long-lived artifact does not dominate
+  a scan. `--all` and `--follow` combine correctly here (verified: on a `.issues/` path they return
+  identical history, and `--follow` does cross the `R0xx` renames); `--follow` takes a single path,
+  so enumeration is one invocation per artifact — which is what
   makes the artifact-major loop the right shape. The same rename churn is why the `--all` baseline
   keys on issue ID rather than path (Implementation Steps step 4).
 
@@ -423,11 +463,19 @@ single-ref blob read). Per Decision Rules the `GitLock` question is settled in f
    regex, resolves the cited artifact via `resolve_issue_path()`
    (`scripts/little_loops/issue_parser.py:92`), and reports zero-hit spans as findings in the same
    `_findings_to_json` shape `verify_private_refs.py` and `verify_skill_prose.py` already emit.
-3. Matching is artifact-major with working-tree -> HEAD -> history short-circuiting, each blob read
-   and normalized once per artifact (Proposed Solution step 4). Revision enumeration uses
-   `git log --all --follow -n <k>` via bare `subprocess.run`.
-4. **Seed the `--all` baseline before wiring the gate, and key it on issue ID.** `git ls-files
-   '.issues/**/*.md'` returns 3190 tracked files, 3169 of which carry an issue-ID reference; a
+3. Matching is artifact-major with **tiered** working-tree -> HEAD -> `git log --all -p -n 20` ->
+   `git log --all --follow -p -n 20` short-circuiting, each tier one `subprocess.run` whose output
+   is normalized once per artifact (Proposed Solution step 4; Decision Rules → History
+   enumeration for the measurements). Do **not** enumerate revisions and then `git show` each one:
+   that is 21 processes for content the log walk already produced, and it is 3.7x the cost of the
+   cheap tier.
+3b. **Changed-files mode filters to added lines** via a ported `staged_added_lines()`
+   (`verify_private_refs.py:297`), applied between extraction and matching. This is what keeps the
+   gate off legacy content: without it, the first `/ll:refine-issue` pass over any pre-existing
+   issue fires on fabrications its author never wrote. It also decouples the gate from step 4 —
+   with it, no baseline is needed for the gate to land green.
+4. **Key the `--all` baseline on issue ID, and seed it *after* the gate lands.** `git ls-files
+   '.issues/**/*.md'` returns 3192 tracked files, ~3169 of which carry an issue-ID reference; a
    first full scan will surface a large finding set on pre-existing issues nobody will retro-fix.
    Port `verify_private_refs.py`'s mechanism — `BASELINE_PATH` (`:66`), `load_baseline()` (`:418`),
    `regressions()` (`:446` — note the function is `regressions`, not `filter_regressions`),
@@ -440,11 +488,18 @@ single-ref blob read). Per Decision Rules the `GitLock` question is settled in f
    with zero baseline and fails CI on findings that were already accepted. **Key on the anchored
    numeric issue ID** (`3183`), falling back to path for non-issue artifacts.
    **Runtime**: a `--all` run is not free. Hits short-circuit at the working tree for ~nothing, but
-   *misses* — which is precisely the baselined population, re-derived on every run — walk history:
-   measured at ~1.1s per artifact for a 20-revision `git log --follow` plus per-revision `git show`
-   on this repo. Set the `-n <k>` history cap explicitly (k = 20 is the measured basis) and keep
-   `--all` off the pytest path (see Integration Map → Tests: the gate shells changed-files mode).
-   Changed-files mode stays strict; `--all` exits 1 only beyond baseline.
+   *misses* — which is precisely the baselined population, re-derived on every run — walk history.
+   Three levers, all measured or mechanical, take the seeding scan from an overnight chore to a
+   few minutes:
+   - **Tiered, single-process history** (step 3): 1.50s -> 0.56s per history-walking artifact.
+   - **Parallelize the scan** across artifacts with a process pool. Safe by construction: the git
+     calls are read-only and `GitLock` is already ruled out (Decision Rules → `GitLock`). At 8
+     workers, ~3192 artifacts x 0.56s is ~4 minutes rather than ~80.
+   - **Seed in its own commit, after the gate.** With step 3b the gate does not depend on the
+     baseline, so a slow one-time chore never sits on the feature's critical path.
+   Set the `-n <k>` history cap explicitly (k = 20 is the measured basis) and keep `--all` off the
+   pytest path (see Integration Map → Tests: the gate shells changed-files mode). `--all` exits 1
+   only beyond baseline.
 5. `commands/verify-issues.md` §B gains a numbered check (parallel to existing checks 1-6) that
    invokes the new CLI and folds a non-clean result into the verdict table, adding the
    `EVIDENCE_UNVERIFIED` verdict value — no existing verdict in the `#### C. Determine Verdict`
@@ -478,8 +533,12 @@ _These touchpoints were identified by wiring analysis and must be included in th
   (chained off the `:350,353-365` `check_proposal_unsound` pattern) routing to `reconcile_issue`
   rather than `refine_followup`. Add parallel fixtures to
   `scripts/tests/test_ll_issues_check_verify_verdict.py`
+- Port `staged_added_lines()` (`scripts/little_loops/cli/verify_private_refs.py:297`) along with
+  the baseline machinery, and apply it in changed-files mode (Implementation Steps step 3b). It is
+  in the module being ported anyway; skipping it is what makes the gate fire on legacy content
 - Seed `.ll/evidence-baseline.json` (issue-ID-keyed, per Implementation Steps step 4) and commit
-  it, or the `--all` full scan has nothing to diff against on day one
+  it in a **separate follow-up commit** — the `--all` full scan needs it to be useful, but with
+  step 3b the pytest gate does not wait on it
 
 ## Impact
 
@@ -544,8 +603,10 @@ _Update — 2026-08-21, review pass:_ all three are now resolved in Decision Rul
 escape hatch **yes** (`<!-- ll-evidence-ok: reason -->`), verdict persistence **distinct**
 (`EVIDENCE_UNVERIFIED`, routing to `reconcile_issue`), `GitLock` **no** (bare `subprocess.run`,
 read-only git). Two risks the original pass did not surface were added: the `--all` gate cannot
-land green across ~3190 issue files without a seeded baseline, and section scoping is load-bearing
-against false positives rather than an optimization.
+land green across ~3190 issue files without a seeded baseline _(superseded by the mitigation pass
+below — the gate shells changed-files mode and, with `staged_added_lines()`, never depended on the
+baseline)_, and section scoping is load-bearing against false positives rather than an
+optimization.
 
 _Update — 2026-08-21, pre-implementation review (claims re-verified against the repo):_ seven
 changes, three of which were blocking.
@@ -569,9 +630,11 @@ changes, three of which were blocking.
    block).
 5. **Section scope is an allowlist** — unlisted sections (`## Summary`, `## Impact`,
    `## Session Log`, …) are out of scope, so a template change cannot silently widen the checker.
-6. **`--all` runtime budgeted**: ~1.1s per history-walking artifact (measured, 20 revisions), and
-   misses are exactly the baselined population. The pytest gate shells changed-files mode; `--all`
-   is manual / `--update-baseline`. History cap fixed at `-n 20`.
+6. **`--all` runtime budgeted** _(figure superseded by the mitigation pass below: 1.50s measured
+   for that strategy, 0.56s for the tiered single-process one that replaced it)_: ~1.1s per
+   history-walking artifact (measured, 20 revisions), and misses are exactly the baselined
+   population. The pytest gate shells changed-files mode; `--all` is manual / `--update-baseline`.
+   History cap fixed at `-n 20`.
 7. Fixed `filter_regressions()` → `regressions()` (`verify_private_refs.py:446`); dropped the
    unwired "reusable by `capture-issue`" claim.
 Also confirmed sound and left alone: `git log --all --follow` behaves correctly on `.issues/`
@@ -601,7 +664,27 @@ fixture unsatisfiable as previously written.
    ENH-3277 revision, and already used elsewhere in this issue as the floor-calibration span. The
    `(a)` span's line was also wrong — `:38`, not `:39`. Corrected occurrences: `:38` (×2), `:40`,
    `:60`.
-Also re-confirmed: 3192 tracked `.issues/**/*.md` files today (issue says ~3190 — drift only),
+_Update — 2026-08-21, seeding-risk mitigation pass (git strategies benchmarked on this repo):_ the
+"`--all` baseline seeding is a long pole" risk is largely dissolved, via four changes.
+1. **`staged_added_lines()` is now part of the port** (Implementation Steps step 3b). The prior
+   spec ported the baseline machinery from `verify_private_refs.py` but not this function, leaving
+   changed-files mode strict against whole files — so every refine pass over a legacy issue would
+   fire on fabrications its author never wrote. That was the real exposure, and it recurs forever
+   rather than being a one-time seeding cost.
+2. **History enumeration is tiered and single-process** (Decision Rules → History enumeration).
+   Measured: the spec's `git log --follow` + 20x `git show` costs 1.50s/artifact, while
+   `git log --all -p` costs 0.56s and includes the content — `git log -p -n 20` is 0.406s against
+   0.430s for the bare SHAs, so patch text is nearly free and the `git show` loop was paying 21
+   process spawns for data already in hand. `--follow` is the expensive flag and now runs only on
+   a residual miss.
+3. **Seeding parallelizes** — read-only git, `GitLock` already ruled out. ~80 min serial becomes
+   ~4 min at 8 workers.
+4. **Resolved a contradiction**: step 4 said "seed the baseline before wiring the gate / without
+   this the gate cannot land green" while Integration Map → Tests said the gate shells
+   changed-files mode. With change 1 the Tests version is correct; the baseline is what makes
+   `--all` useful and now lands in its own follow-up commit.
+Also re-confirmed: 3192 tracked `.issues/**/*.md` files today (issue said ~3190 — drift only, now
+corrected in step 4),
 `regressions()`/`load_baseline()`/`write_baseline()`/`BASELINE_PATH` anchors, the
 `--proposal-unsound` flag shape, `refine-to-ready-issue.yaml:350,353-365`, and the
 `PROPOSAL_UNSOUND` verdict row (`verify-issues.md:223`) plus its distinct-persistence note
