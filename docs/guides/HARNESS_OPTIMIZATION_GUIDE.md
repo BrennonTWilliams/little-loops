@@ -513,6 +513,63 @@ it with a non-LLM evaluator (e.g., `exit_code` or `output_numeric`) to satisfy M
 
 ---
 
+## Resolving a Project Command Inside a Loop
+
+`ll-config get project.<key>` is the **required** way for a loop's shell action to read a
+project command (`test_cmd`, `lint_cmd`, `type_cmd`, `format_cmd`, `build_cmd`, `run_cmd`)
+from `.ll/ll-config.json`. Do not hand-roll a `python3 -c "import json, ..."` inline parse —
+that bypasses `.ll/ll.local.md` (the documented local-override mechanism) and, if written as
+`cfg.get('project', {}).get('<key>', 'pytest')`, emits the literal string `"None"` for a
+present-and-null key instead of opting out (BUG-3269). `ll-config get` never raises and
+always exits 0; no call site needs `|| true` or a `try/except`.
+
+**Contract**, verified against `ProjectConfig`'s field defaults (`config/core.py`):
+
+| Config state | `ll-config get project.<key>` |
+|---|---|
+| key absent (or file absent) | the `ProjectConfig` default (`pytest` for `test_cmd`, `ruff check .` for `lint_cmd`, ...) |
+| key present and `null` | empty output — the project deliberately opted out; do not guess |
+| key present with a value | that value |
+
+**Two precedence shapes** — pick per loop, not one pasted everywhere:
+
+- **Config-first (bare, preferred default)** — no `${context.<key>}` override:
+  ```bash
+  CMD=$(ll-config get project.test_cmd)
+  ```
+- **Context-first** — only if the loop's `context:` block **already declares** the key
+  (e.g. `test_cmd: ""`). FSM shell actions are interpolated in full before bash runs, so
+  `${context.test_cmd}` against an undeclared key raises `InterpolationError: Path
+  'test_cmd' not found in context` at runtime, not at load time:
+  ```bash
+  if [ -n "${context.test_cmd}" ]; then
+    CMD="${context.test_cmd}"
+  else
+    CMD=$(ll-config get project.test_cmd)
+  fi
+  ```
+
+**Precondition**: `ll-config get` resolves from `Path.cwd()` with no upward directory walk.
+Safe for ordinary FSM shell actions (they run at the project or worktree root), but a state
+that `cd`s into a subdirectory before calling it will silently lose the opt-out and fall back
+to the absent-default.
+
+**Semantic trap**: the three-way absent/null/value contract above holds only for `test_cmd`,
+`lint_cmd`, `type_cmd`, and `format_cmd`. `build_cmd` and `run_cmd` default to `None` in
+`ProjectConfig`, so for those two keys `ll-config get` collapses absent ≡ null — there is no
+"not configured yet" guess to fall back on.
+
+A static mirror-drift gate
+([`scripts/tests/test_bug3269_test_cmd_resolution_gate.py`](../../scripts/tests/test_bug3269_test_cmd_resolution_gate.py))
+asserts no loop YAML reads a project command key via an inline raw-JSON access pattern, and
+that every `${context.test_cmd}`/`${context.lint_cmd}` reference resolves against its loop's
+declared `context:`/`parameters:` block. `oracles/code-run-gate.yaml` is a permanent
+exemption — it implements a different, deliberately non-guessing resolution convention
+(alias pairs, `${context.project_root}`-relative) that predates and is incompatible with this
+one. A handful of other loops are a temporary exemption pending ENH-3277's conversion pass.
+
+---
+
 ## See Also
 
 - [AUTOMATIC_HARNESSING_GUIDE.md](AUTOMATIC_HARNESSING_GUIDE.md) — the sibling pattern:

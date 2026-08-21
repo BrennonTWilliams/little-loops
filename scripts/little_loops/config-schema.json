@@ -28,13 +28,13 @@
           "default": "tests"
         },
         "test_cmd": {
-          "type": "string",
-          "description": "Command to run tests",
+          "type": ["string", "null"],
+          "description": "Command to run tests. Absent (key not set): defaults to \"pytest\". Explicit null: opt out of the test gate entirely — do not guess a default (BUG-3269).",
           "default": "pytest"
         },
         "lint_cmd": {
-          "type": "string",
-          "description": "Command to run linter",
+          "type": ["string", "null"],
+          "description": "Command to run linter. Absent (key not set): defaults to \"ruff check .\". Explicit null: opt out of the lint gate entirely — do not guess a default (BUG-3269).",
           "default": "ruff check ."
         },
         "type_cmd": {

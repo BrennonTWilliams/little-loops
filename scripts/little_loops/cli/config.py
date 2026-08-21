@@ -65,16 +65,23 @@ def main_config() -> int:
 
         from little_loops.config import BRConfig
 
-        cfg = None
         try:
             cfg = BRConfig(Path.cwd())
+        except Exception as exc:
+            print(f"Warning: could not load project config ({exc})", file=sys.stderr)
+            return 0
+
+        try:
             value = cfg.resolve_variable(args.key)
         except Exception:
+            # resolve_variable() is a pure dict walk today (config/core.py) and
+            # cannot raise, but the shape is kept so a future change there
+            # degrades the same way construction failures do.
             value = None
 
         if value is not None:
             print(value)
-        elif cfg is not None:
+        else:
             _warn_if_unknown_section(cfg, args.key)
 
         return 0

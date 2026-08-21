@@ -58,6 +58,128 @@ class TestGet:
         assert capsys.readouterr().out.strip() == ""
 
 
+class TestProjectCommandThreeWayContract:
+    """BUG-3269 Implementation Step 1: pin the exact three-way contract that
+    every converted loop call site now depends on — present-and-null must
+    resolve to empty (opt-out), absent must resolve to the ProjectConfig
+    default, and .ll/ll.local.md must override .ll/ll-config.json. These pass
+    today; they exist so a future type-correctness cleanup of
+    ProjectConfig.test_cmd (str annotation holding None) can't silently
+    delete the opt-out. Uses a real BRConfig against a real tmp_path project
+    — no mocking — since the contract lives in resolve_variable()'s dict walk.
+    """
+
+    @pytest.mark.parametrize(
+        ("key", "default"),
+        [("project.test_cmd", "pytest"), ("project.lint_cmd", "ruff check .")],
+    )
+    def test_present_and_null_resolves_to_empty(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+        key: str,
+        default: str,
+    ) -> None:
+        cmd_key = key.rsplit(".", 1)[1]
+        (tmp_path / ".ll").mkdir()
+        (tmp_path / ".ll" / "ll-config.json").write_text(f'{{"project": {{"{cmd_key}": null}}}}')
+        monkeypatch.chdir(tmp_path)
+        with patch("sys.argv", ["ll-config", "get", key]):
+            assert main_config() == 0
+        assert capsys.readouterr().out.strip() == ""
+
+    @pytest.mark.parametrize(
+        ("key", "default"),
+        [("project.test_cmd", "pytest"), ("project.lint_cmd", "ruff check .")],
+    )
+    def test_absent_key_resolves_to_project_config_default(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+        key: str,
+        default: str,
+    ) -> None:
+        (tmp_path / ".ll").mkdir()
+        (tmp_path / ".ll" / "ll-config.json").write_text('{"project": {}}')
+        monkeypatch.chdir(tmp_path)
+        with patch("sys.argv", ["ll-config", "get", key]):
+            assert main_config() == 0
+        assert capsys.readouterr().out.strip() == default
+
+    @pytest.mark.parametrize("key", ["project.test_cmd", "project.lint_cmd"])
+    def test_config_file_entirely_absent_resolves_to_default(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+        key: str,
+    ) -> None:
+        monkeypatch.chdir(tmp_path)
+        with patch("sys.argv", ["ll-config", "get", key]):
+            assert main_config() == 0
+        assert capsys.readouterr().out.strip() != ""
+
+    @pytest.mark.parametrize("key", ["project.test_cmd", "project.lint_cmd"])
+    def test_present_value_resolves_to_that_value(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+        key: str,
+    ) -> None:
+        cmd_key = key.rsplit(".", 1)[1]
+        (tmp_path / ".ll").mkdir()
+        (tmp_path / ".ll" / "ll-config.json").write_text(f'{{"project": {{"{cmd_key}": "custom"}}}}')
+        monkeypatch.chdir(tmp_path)
+        with patch("sys.argv", ["ll-config", "get", key]):
+            assert main_config() == 0
+        assert capsys.readouterr().out.strip() == "custom"
+
+    def test_ll_local_md_overrides_ll_config_json(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        (tmp_path / ".ll").mkdir()
+        (tmp_path / ".ll" / "ll-config.json").write_text('{"project": {"test_cmd": "from-json"}}')
+        (tmp_path / ".ll" / "ll.local.md").write_text(
+            "---\nproject:\n  test_cmd: from-local-md\n---\n"
+        )
+        monkeypatch.chdir(tmp_path)
+        with patch("sys.argv", ["ll-config", "get", "project.test_cmd"]):
+            assert main_config() == 0
+        assert capsys.readouterr().out.strip() == "from-local-md"
+
+    def test_ll_local_md_explicit_null_resolves_to_absent_default_not_opt_out(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        # Documented asymmetry (Expected Behavior): a null override in
+        # ll.local.md means "remove this override" per the deep-merge
+        # semantics, which resolves to the absent-default — NOT opt-out, even
+        # though the same null value in ll-config.json IS opt-out.
+        (tmp_path / ".ll").mkdir()
+        (tmp_path / ".ll" / "ll-config.json").write_text('{"project": {"test_cmd": "from-json"}}')
+        (tmp_path / ".ll" / "ll.local.md").write_text(
+            "---\nproject:\n  test_cmd: null\n---\n"
+        )
+        monkeypatch.chdir(tmp_path)
+        with patch("sys.argv", ["ll-config", "get", "project.test_cmd"]):
+            assert main_config() == 0
+        assert capsys.readouterr().out.strip() == "pytest"
+
+    def test_malformed_config_resolves_to_empty_with_stderr_warning(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        (tmp_path / ".ll").mkdir()
+        (tmp_path / ".ll" / "ll-config.json").write_text('{"project": {"test_cmd": "make test",,,}')
+        monkeypatch.chdir(tmp_path)
+        with patch("sys.argv", ["ll-config", "get", "project.test_cmd"]):
+            assert main_config() == 0
+        captured = capsys.readouterr()
+        assert captured.out.strip() == ""
+        assert "Warning" in captured.err
+
+
 class TestUnknownSectionWarning:
     """ENH-3021: stderr diagnostic when a dot-path's root is not a known config section."""
 
@@ -104,15 +226,23 @@ class TestUnknownSectionWarning:
         assert captured.out.strip() == "little-loops"
         assert captured.err == ""
 
-    def test_construction_error_emits_no_warning(self, capsys: pytest.CaptureFixture[str]) -> None:
+    def test_construction_error_emits_stderr_warning(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        # BUG-3269 §1e/§3a: a malformed .ll/ll-config.json (BRConfig(...)
+        # construction raises) is byte-identical to an explicit opt-out on
+        # stdout — always empty, always exit 0 — so it now gets a stderr
+        # diagnostic distinguishing it from a genuine `test_cmd: null`. The
+        # stdout/exit contract is deliberately unchanged so no `$(...)`
+        # capture at any call site is affected.
         with (
-            patch("sys.argv", ["ll-config", "get", "totally.made.up.path"]),
+            patch("sys.argv", ["ll-config", "get", "project.test_cmd"]),
             patch("little_loops.config.BRConfig", side_effect=Exception("boom")),
         ):
             assert main_config() == 0
         captured = capsys.readouterr()
         assert captured.out == ""
-        assert captured.err == ""
+        assert "boom" in captured.err
 
     def test_install_source_and_dollar_schema_emit_no_warning(
         self, capsys: pytest.CaptureFixture[str]

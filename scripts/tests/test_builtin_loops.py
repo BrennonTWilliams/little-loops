@@ -10590,6 +10590,61 @@ class TestRlCodingAgentLoop:
         )
 
 
+class TestRlCodingAgentObserveTestCmdResolution:
+    """BUG-3269: observe's test_cmd/lint_cmd resolution — config-first via
+    `ll-config get`, opt-out (null) scores 0.0 instead of running a guessed
+    command against `command not found`. Tests only the resolution step
+    (TEST_CMD/LINT_CMD assignment), not the downstream passed/failed count
+    parsing (unrelated pre-existing `paste -sd+` portability wrinkle) or the
+    LLM-judge section, which requires `claude -p`."""
+
+    LOOP_FILE = BUILTIN_LOOPS_DIR / "rl-coding-agent.yaml"
+
+    def _resolution_prefix(self, tmp_path: Path) -> str:
+        data = yaml.safe_load(self.LOOP_FILE.read_text())
+        action = data["states"]["observe"]["action"]
+        prefix, _, _ = action.partition("# Test score")
+        script = prefix.replace("${context.run_dir}", str(tmp_path))
+        script += 'echo "TEST_CMD=[$TEST_CMD] LINT_CMD=[$LINT_CMD]"\n'
+        return script
+
+    def test_resolves_config_test_and_lint_cmd(self, tmp_path: Path) -> None:
+        (tmp_path / ".ll").mkdir()
+        config = {"project": {"test_cmd": "custom-test", "lint_cmd": "custom-lint"}}
+        (tmp_path / ".ll" / "ll-config.json").write_text(json.dumps(config))
+        script = self._resolution_prefix(tmp_path)
+        result = subprocess.run(
+            ["bash", "-c", script], cwd=tmp_path, capture_output=True, text=True, timeout=30
+        )
+        assert result.returncode == 0, result.stderr
+        assert "TEST_CMD=[custom-test] LINT_CMD=[custom-lint]" in result.stdout
+
+    def test_null_test_cmd_resolves_to_empty_not_a_guessed_default(self, tmp_path: Path) -> None:
+        # The BUG-3269 repro shape for rl-coding-agent: present-and-null must
+        # resolve to empty (opt-out), not the literal string "None" and not
+        # a guessed "pytest"/"ruff check" default.
+        (tmp_path / ".ll").mkdir()
+        (tmp_path / ".ll" / "ll-config.json").write_text(
+            '{"project": {"test_cmd": null, "lint_cmd": null}}'
+        )
+        script = self._resolution_prefix(tmp_path)
+        result = subprocess.run(
+            ["bash", "-c", script], cwd=tmp_path, capture_output=True, text=True, timeout=30
+        )
+        assert result.returncode == 0, result.stderr
+        assert "TEST_CMD=[] LINT_CMD=[]" in result.stdout
+
+    def test_absent_config_falls_back_to_project_config_default(self, tmp_path: Path) -> None:
+        (tmp_path / ".ll").mkdir()
+        (tmp_path / ".ll" / "ll-config.json").write_text('{"project": {}}')
+        script = self._resolution_prefix(tmp_path)
+        result = subprocess.run(
+            ["bash", "-c", script], cwd=tmp_path, capture_output=True, text=True, timeout=30
+        )
+        assert result.returncode == 0, result.stderr
+        assert "TEST_CMD=[pytest] LINT_CMD=[ruff check .]" in result.stdout
+
+
 class TestAgentEvalImproveLoop:
     """Structural tests for the agent-eval-improve FSM loop."""
 

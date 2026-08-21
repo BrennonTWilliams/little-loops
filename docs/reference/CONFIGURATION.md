@@ -297,8 +297,8 @@ Project-level settings for commands:
 | `name` | Directory name | Project name |
 | `src_dir` | `src/` | Source code directory |
 | `test_dir` | `tests` | Test directory path |
-| `test_cmd` | `pytest` | Command to run tests |
-| `lint_cmd` | `ruff check .` | Command to run linter |
+| `test_cmd` | `pytest` | Command to run tests. Key absent → the default; explicit `null` → opt out of the test gate entirely rather than guessing (BUG-3269) |
+| `lint_cmd` | `ruff check .` | Command to run linter. Same absent-vs-null distinction as `test_cmd` (BUG-3269) |
 | `type_cmd` | `mypy` | Command for type checking |
 | `format_cmd` | `ruff format .` | Command to format code |
 | `build_cmd` | `null` | Optional build command |

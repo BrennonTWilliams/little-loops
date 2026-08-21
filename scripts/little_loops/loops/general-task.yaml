@@ -16,10 +16,11 @@ import:
 context:
   min_pass_rate: 0.95
   hard_criteria_tags: "hard"
-  # Whole-suite test command, run ONLY by the final-only gate (run_final_tests),
-  # NOT per-step (ENH-2225). Empty = read project.test_cmd from .ll/ll-config.json,
-  # else fall back to bare "pytest". A whole-artifact gate embedded here (e.g. a
-  # coverage threshold) is enforced at completion time, not after every step.
+  # Whole-suite test command, resolved ONCE by check_baseline_tests and read
+  # (not re-resolved) by the final-only gate (run_final_tests), NOT per-step
+  # (ENH-2225). Empty here = fall back to `ll-config get project.test_cmd`
+  # (BUG-3269 §3c). A whole-artifact gate embedded here (e.g. a coverage
+  # threshold) is enforced at completion time, not after every step.
   test_cmd: ""
   max_step_attempts: 3 # max verify attempts per step before abandoning it (Fix #2)
 
@@ -33,10 +34,40 @@ circuit:
 
 states:
   check_baseline_tests:
+    # BUG-3269: resolve the whole-suite test command ONCE here — explicit
+    # ${context.test_cmd} override, else project.test_cmd via `ll-config get`
+    # (honors .ll/ll.local.md; present-and-null resolves to opt-out, absent
+    # resolves to the "pytest" default). run_final_tests reads the resolved
+    # command from resolved-test-cmd.txt rather than re-resolving, so the two
+    # states can never disagree (§3c). baseline-exit.txt starts as "SKIP" and
+    # is only overwritten once a real baseline actually ran, so a mid-script
+    # crash (on_error: define_done) leaves the safe sentinel behind instead of
+    # a garbage exit code.
     action: |
-      CMD=$(python3 -c "import json,pathlib; p=pathlib.Path('.ll/ll-config.json'); cfg=json.loads(p.read_text()) if p.exists() else {}; print(cfg.get('project',{}).get('test_cmd','pytest'))")
-      eval "$CMD" > "${context.run_dir}/baseline-test-output.txt" 2>&1
-      echo $? > "${context.run_dir}/baseline-exit.txt"
+      echo "SKIP" > "${context.run_dir}/baseline-exit.txt"
+      : > "${context.run_dir}/resolved-test-cmd.txt"
+      if [ -n "${context.test_cmd}" ]; then
+        CMD="${context.test_cmd}"
+      else
+        CMD=$(ll-config get project.test_cmd)
+        RC=$?
+        if [ "$RC" != "0" ]; then
+          echo "ll-config not found (exit $RC)" > "${context.run_dir}/baseline-skip-reason.txt"
+          CMD=""
+        fi
+      fi
+      if [ -z "$CMD" ]; then
+        [ -f "${context.run_dir}/baseline-skip-reason.txt" ] || echo "opt-out: project.test_cmd is null or unresolvable" > "${context.run_dir}/baseline-skip-reason.txt"
+      else
+        echo "$CMD" > "${context.run_dir}/resolved-test-cmd.txt"
+        eval "$CMD" > "${context.run_dir}/baseline-test-output.txt" 2>&1
+        EXIT=$?
+        if [ "$EXIT" = "127" ] || grep -q "command not found" "${context.run_dir}/baseline-test-output.txt" 2>/dev/null; then
+          echo "unrunnable test_cmd (exit $EXIT)" > "${context.run_dir}/baseline-skip-reason.txt"
+        else
+          echo "$EXIT" > "${context.run_dir}/baseline-exit.txt"
+        fi
+      fi
       git rev-parse HEAD > "${context.run_dir}/baseline-ref.txt" 2>/dev/null || echo "" > "${context.run_dir}/baseline-ref.txt"
     action_type: shell
     next: define_done
@@ -605,23 +636,32 @@ states:
     fragment: shell_exit
     timeout: 1800
     action: |
-      # Resolve the whole-suite test command: explicit ${context.test_cmd}
-      # override, else project.test_cmd from .ll/ll-config.json, else bare "pytest".
-      if [ -n "${context.test_cmd}" ]; then
-        CMD="${context.test_cmd}"
-      else
-        CMD=$(python3 -c "
-      import json, pathlib
-      p = pathlib.Path('.ll/ll-config.json')
-      cfg = json.loads(p.read_text()) if p.exists() else {}
-      raw = cfg.get('project', {}).get('test_cmd')
-      print(raw if raw else 'pytest')
-      ")
+      # BUG-3269 §3c: the command was already resolved once, in
+      # check_baseline_tests — read it rather than re-resolving, so the
+      # baseline and final gate can never disagree. Empty (or a state reached
+      # without a preceding check_baseline_tests, e.g. resume/handoff) means
+      # no command to run: pass without gating (opt-out).
+      CMD=$(cat "${context.run_dir}/resolved-test-cmd.txt" 2>/dev/null || echo "")
+      if [ -z "$CMD" ]; then
+        exit 0
       fi
+      # Normalize the baseline on read: anything that is not a run of digits
+      # (missing file, empty, truncated, garbage, or the literal SKIP written
+      # by check_baseline_tests) is treated as "no baseline to compare
+      # against" rather than trusted as a numeric exit code (§3b).
+      BASELINE_EXIT=$(cat "${context.run_dir}/baseline-exit.txt" 2>/dev/null || echo "")
+      case "$BASELINE_EXIT" in ''|*[!0-9]*) BASELINE_EXIT=SKIP ;; esac
       eval "$CMD" > "${context.run_dir}/verify-output.txt" 2>&1
       FINAL_EXIT=$?
-      BASELINE_EXIT=$(cat "${context.run_dir}/baseline-exit.txt" 2>/dev/null || echo "0")
-      [ "$FINAL_EXIT" = "0" ] || [ "$FINAL_EXIT" = "$BASELINE_EXIT" ]
+      # 127 (command not found) never gates — an unrunnable command can't
+      # signal a regression, on either branch. 126 (found but not executable)
+      # is deliberately NOT admitted: it's a stable tree property, not a
+      # transient environment gap.
+      if [ "$BASELINE_EXIT" = "SKIP" ]; then
+        [ "$FINAL_EXIT" = "0" ] || [ "$FINAL_EXIT" = "127" ]
+      else
+        [ "$FINAL_EXIT" = "0" ] || [ "$FINAL_EXIT" = "127" ] || [ "$FINAL_EXIT" = "$BASELINE_EXIT" ]
+      fi
     on_yes: count_final
     on_no: continue_work
     on_error: diagnose

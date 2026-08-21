@@ -11,6 +11,7 @@ against regression via prompt-content assertions:
 
 from __future__ import annotations
 
+import os
 import subprocess
 from pathlib import Path
 
@@ -1428,11 +1429,20 @@ class TestENH2225FinalOnlyGate:
         assert state.get("fragment") == "shell_exit"
 
     def test_run_final_tests_resolves_test_cmd(self, raw_data: dict) -> None:
-        # The whole-suite gate IS the place the resolved test command runs.
+        # BUG-3269 §3c: the whole-suite gate no longer resolves the command
+        # itself — it reads the single resolution check_baseline_tests wrote.
         action = raw_data["states"]["run_final_tests"]["action"]
+        assert "resolved-test-cmd.txt" in action
+        assert "eval " in action
+
+    def test_check_baseline_tests_resolves_test_cmd(self, raw_data: dict) -> None:
+        # BUG-3269: the single resolution now lives in check_baseline_tests —
+        # context override first, else `ll-config get` (honors .ll/ll.local.md,
+        # present-and-null means opt-out).
+        action = raw_data["states"]["check_baseline_tests"]["action"]
         assert "${context.test_cmd}" in action
-        assert "ll-config.json" in action
-        assert "pytest" in action
+        assert "ll-config get project.test_cmd" in action
+        assert "resolved-test-cmd.txt" in action
 
     def test_run_final_tests_routing(self, raw_data: dict) -> None:
         state = raw_data["states"]["run_final_tests"]
@@ -1446,19 +1456,22 @@ class TestENH2225FinalOnlyGate:
 
 class TestRunFinalTestsShellAction:
     """Shell execution tests for run_final_tests — the final-only whole-suite gate
-    (ENH-2225). Pattern mirrors TestCountFinalShellScript / TestVerifyStepShellAction."""
+    (ENH-2225). Pattern mirrors TestCountFinalShellScript / TestVerifyStepShellAction.
 
-    def _load(self, run_dir: Path, test_cmd: str = "") -> str:
+    BUG-3269 §3c: run_final_tests reads resolved-test-cmd.txt (written once by
+    check_baseline_tests) instead of resolving ${context.test_cmd} itself."""
+
+    def _load(self, run_dir: Path) -> str:
         with open(LOOP_FILE) as f:
             data = yaml.safe_load(f)
         script = data["states"]["run_final_tests"]["action"]
-        script = script.replace("${context.test_cmd}", test_cmd)
         script = script.replace("${context.run_dir}", str(run_dir))
         return script
 
     def test_passing_command_exits_zero(self, tmp_path: Path) -> None:
         run_dir = _setup_run_dir(tmp_path)
-        script = self._load(run_dir, test_cmd="true")
+        (run_dir / "resolved-test-cmd.txt").write_text("true\n")
+        script = self._load(run_dir)
         result = _bash(script, cwd=tmp_path)
         assert result.returncode == 0, f"Script failed: {result.stderr}"
         # output is captured for continue_work to read.
@@ -1466,22 +1479,164 @@ class TestRunFinalTestsShellAction:
 
     def test_failing_command_exits_nonzero(self, tmp_path: Path) -> None:
         run_dir = _setup_run_dir(tmp_path)
-        # Simulate a whole-suite gate failing (e.g. coverage below threshold).
-        script = self._load(run_dir, test_cmd="echo 'coverage too low' && false")
+        (run_dir / "resolved-test-cmd.txt").write_text("echo 'coverage too low' && false\n")
+        script = self._load(run_dir)
         result = _bash(script, cwd=tmp_path)
         assert result.returncode != 0, (
             "run_final_tests must propagate the test command's failure exit code"
         )
         assert "coverage too low" in (run_dir / "verify-output.txt").read_text()
 
-    def test_falls_back_to_config_test_cmd(self, tmp_path: Path) -> None:
-        # Empty test_cmd → read project.test_cmd from .ll/ll-config.json.
+    def test_empty_resolved_cmd_passes_without_running_anything(self, tmp_path: Path) -> None:
+        # Opt-out: check_baseline_tests wrote an empty resolved-test-cmd.txt
+        # (explicit null / unresolvable). run_final_tests must pass without
+        # running anything, not fall back to a guessed default.
         run_dir = _setup_run_dir(tmp_path)
-        (tmp_path / ".ll").mkdir()
-        (tmp_path / ".ll" / "ll-config.json").write_text('{"project": {"test_cmd": "true"}}')
-        script = self._load(run_dir, test_cmd="")
+        (run_dir / "resolved-test-cmd.txt").write_text("")
+        script = self._load(run_dir)
         result = _bash(script, cwd=tmp_path)
         assert result.returncode == 0, f"Script failed: {result.stderr}"
+        assert not (run_dir / "verify-output.txt").exists()
+
+    def test_missing_resolved_cmd_file_passes_without_running_anything(
+        self, tmp_path: Path
+    ) -> None:
+        # Reached without a preceding check_baseline_tests (resume/handoff) —
+        # must degrade safely to the opt-out, not crash or guess "pytest".
+        run_dir = _setup_run_dir(tmp_path)
+        script = self._load(run_dir)
+        result = _bash(script, cwd=tmp_path)
+        assert result.returncode == 0, f"Script failed: {result.stderr}"
+
+    def test_final_exit_127_passes_under_skip_baseline(self, tmp_path: Path) -> None:
+        # An unrunnable command (exit 127) never gates when the baseline was
+        # never runnable either (Expected Behavior, BUG-3269).
+        run_dir = _setup_run_dir(tmp_path)
+        (run_dir / "resolved-test-cmd.txt").write_text("does-not-exist-cmd\n")
+        (run_dir / "baseline-exit.txt").write_text("SKIP\n")
+        script = self._load(run_dir)
+        result = _bash(script, cwd=tmp_path)
+        assert result.returncode == 0, f"Script failed: {result.stderr}"
+
+    def test_final_exit_127_passes_against_numeric_baseline(self, tmp_path: Path) -> None:
+        # The 127 arm must also be non-gating on the numeric-baseline branch,
+        # not just under SKIP (Expected Behavior) — a command that ran fine at
+        # baseline time but became unrunnable before the final gate must not spin.
+        run_dir = _setup_run_dir(tmp_path)
+        (run_dir / "resolved-test-cmd.txt").write_text("does-not-exist-cmd\n")
+        (run_dir / "baseline-exit.txt").write_text("2\n")
+        script = self._load(run_dir)
+        result = _bash(script, cwd=tmp_path)
+        assert result.returncode == 0, f"Script failed: {result.stderr}"
+
+    def test_final_exit_126_still_gates_against_numeric_baseline(self, tmp_path: Path) -> None:
+        # 126 (found but not executable) is deliberately NOT admitted — pin
+        # that it still routes to on_no (spec: Expected Behavior).
+        run_dir = _setup_run_dir(tmp_path)
+        (run_dir / "resolved-test-cmd.txt").write_text("exit 126\n")
+        (run_dir / "baseline-exit.txt").write_text("0\n")
+        script = self._load(run_dir)
+        result = _bash(script, cwd=tmp_path)
+        assert result.returncode != 0
+
+    def test_missing_baseline_exit_normalizes_to_skip(self, tmp_path: Path) -> None:
+        # §3b: an absent baseline-exit.txt must resolve to SKIP (pass on
+        # FINAL_EXIT in {0, 127}), not the old "require FINAL_EXIT == 0" fallback.
+        run_dir = _setup_run_dir(tmp_path)
+        (run_dir / "resolved-test-cmd.txt").write_text("sh -c 'exit 2'\n")
+        script = self._load(run_dir)
+        result = _bash(script, cwd=tmp_path)
+        assert result.returncode != 0, "exit 2 must still fail without a runnable baseline"
+
+    def test_empty_baseline_exit_normalizes_to_skip(self, tmp_path: Path) -> None:
+        run_dir = _setup_run_dir(tmp_path)
+        (run_dir / "resolved-test-cmd.txt").write_text("true\n")
+        (run_dir / "baseline-exit.txt").write_text("")
+        script = self._load(run_dir)
+        result = _bash(script, cwd=tmp_path)
+        assert result.returncode == 0, f"Script failed: {result.stderr}"
+
+
+class TestCheckBaselineTestsShellAction:
+    """Shell execution tests for check_baseline_tests — the single test_cmd
+    resolution site (BUG-3269 §3c): context override, else `ll-config get`
+    project.test_cmd, writing resolved-test-cmd.txt + baseline-exit.txt."""
+
+    def _run(
+        self, tmp_path: Path, *, context_test_cmd: str = ""
+    ) -> subprocess.CompletedProcess[str]:
+        run_dir = _setup_run_dir(tmp_path)
+        script = _load_state_script("check_baseline_tests")
+        script = script.replace("${context.test_cmd}", context_test_cmd)
+        script = script.replace("${context.run_dir}", str(run_dir))
+        return _bash(script, cwd=tmp_path)
+
+    def test_context_override_wins_over_config(self, tmp_path: Path) -> None:
+        (tmp_path / ".ll").mkdir()
+        (tmp_path / ".ll" / "ll-config.json").write_text('{"project": {"test_cmd": "false"}}')
+        result = self._run(tmp_path, context_test_cmd="true")
+        assert result.returncode == 0, result.stderr
+        run_dir = tmp_path / "run_dir"
+        assert (run_dir / "resolved-test-cmd.txt").read_text().strip() == "true"
+        assert (run_dir / "baseline-exit.txt").read_text().strip() == "0"
+
+    def test_falls_back_to_config_test_cmd(self, tmp_path: Path) -> None:
+        (tmp_path / ".ll").mkdir()
+        (tmp_path / ".ll" / "ll-config.json").write_text('{"project": {"test_cmd": "true"}}')
+        result = self._run(tmp_path)
+        assert result.returncode == 0, result.stderr
+        run_dir = tmp_path / "run_dir"
+        assert (run_dir / "resolved-test-cmd.txt").read_text().strip() == "true"
+        assert (run_dir / "baseline-exit.txt").read_text().strip() == "0"
+
+    def test_explicit_null_test_cmd_writes_skip(self, tmp_path: Path) -> None:
+        # The BUG-3269 repro: test_cmd present-and-null must opt out, not
+        # emit the literal string "None" and let a shell try to execute it.
+        (tmp_path / ".ll").mkdir()
+        (tmp_path / ".ll" / "ll-config.json").write_text('{"project": {"test_cmd": null}}')
+        result = self._run(tmp_path)
+        assert result.returncode == 0, result.stderr
+        run_dir = tmp_path / "run_dir"
+        assert (run_dir / "resolved-test-cmd.txt").read_text().strip() == ""
+        assert (run_dir / "baseline-exit.txt").read_text().strip() == "SKIP"
+
+    def test_unrunnable_command_writes_skip_not_127(self, tmp_path: Path) -> None:
+        (tmp_path / ".ll").mkdir()
+        (tmp_path / ".ll" / "ll-config.json").write_text(
+            '{"project": {"test_cmd": "does-not-exist-cmd-xyz"}}'
+        )
+        result = self._run(tmp_path)
+        assert result.returncode == 0, result.stderr
+        run_dir = tmp_path / "run_dir"
+        assert (run_dir / "baseline-exit.txt").read_text().strip() == "SKIP"
+
+    def test_writes_baseline_ref_regardless_of_skip(self, tmp_path: Path) -> None:
+        (tmp_path / ".ll").mkdir()
+        (tmp_path / ".ll" / "ll-config.json").write_text('{"project": {"test_cmd": null}}')
+        result = self._run(tmp_path)
+        assert result.returncode == 0, result.stderr
+        assert (tmp_path / "run_dir" / "baseline-ref.txt").exists()
+
+    def test_ll_config_not_on_path_writes_skip(self, tmp_path: Path) -> None:
+        # §1f/§3c: a missing `ll-config` binary is the other live fail-open
+        # door — it must resolve to SKIP too, not silently pass an empty CMD
+        # through as though nothing happened.
+        (tmp_path / ".ll").mkdir()
+        (tmp_path / ".ll" / "ll-config.json").write_text('{"project": {"test_cmd": null}}')
+        run_dir = _setup_run_dir(tmp_path)
+        script = _load_state_script("check_baseline_tests")
+        script = script.replace("${context.test_cmd}", "")
+        script = script.replace("${context.run_dir}", str(run_dir))
+        import shutil
+
+        bash_path = shutil.which("bash")
+        assert bash_path, "bash must be on PATH to run this test"
+        env = {**os.environ, "PATH": str(Path(bash_path).parent)}
+        result = subprocess.run(
+            [bash_path, "-c", script], cwd=tmp_path, capture_output=True, text=True, env=env
+        )
+        assert result.returncode == 0, result.stderr
+        assert (run_dir / "baseline-exit.txt").read_text().strip() == "SKIP"
 
 
 class TestENH1631SummarizePartial:
