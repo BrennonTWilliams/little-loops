@@ -18,7 +18,7 @@ relates_to:
 - BUG-3269
 - BUG-3270
 - BUG-3271
-confidence_score: 97
+confidence_score: 99
 outcome_confidence: 90
 score_complexity: 22
 score_test_coverage: 20
@@ -121,6 +121,31 @@ have been drafted as flowcharts; the (now-correct) DoD would fail them and the l
 still burn steps on repair. Add the same conditional-detect-then-read pre-step to `plan`'s
 prompt, worded for step authoring rather than criterion authoring.
 
+### `plan` must carry the observed format forward into the step text
+
+_Added by the 2026-08-21 pre-implementation review._
+
+`do_work` (`general-task.yaml:430`) is blind in exactly the same way, and it is the state
+that actually authors the artifact. Its full prompt is `${context.input}`, an instruction to
+read `${context.run_dir}/current-step.txt`, a prohibition on editing `plan.md`/`dod.md`, and
+the `LAST_FILES:` reporting line. There is no exemplar instruction and no path by which the
+exemplar reaches it.
+
+So with the pre-step added to `define_done` and `plan` alone, the exemplar is read twice —
+once per state — and neither read reaches the state that writes the diagram. The fix would
+stop one state short, which is the same half-done shape this section argues against for
+`define_done`-only.
+
+The resolution is **not** a third copy of the pre-step in `do_work`. It is to make `plan`'s
+pre-step responsible for propagation: when `plan` reads an exemplar, it must state the
+observed concrete format **inside the step text it writes to `plan.md`** (e.g. "…as a
+`sequenceDiagram`, matching `<exemplar path>`"), not merely use it to shape its own
+step decomposition. The step text is the only channel from `plan` to `do_work`, since
+`do_work` reads `current-step.txt` and nothing else from the planning phase.
+
+This is a wording requirement on `plan`'s new block, not an additional state or context key,
+and it keeps `do_work`'s prompt untouched.
+
 ### Placement inside the prompt
 
 The new block must be the **first** instruction after the `Your task is: ${context.input}`
@@ -135,23 +160,54 @@ explicitly carve these out, stating that reading an existing file to ground the 
 steps) is not "work" and is required before writing. Without the carve-out the two
 instructions read as contradictory and the trailing one wins.
 
-### YAML authoring hazard
+### YAML authoring hazard — convert both scalars to `|`
 
 Both `define_done` and `plan` use `action: >` (folded scalar), unlike the precedent at
 `interactive-component-generator.yaml:69` which uses `|`. Under `>`, consecutive non-blank
-lines collapse into one paragraph — a numbered list written without blank lines between
-items will render as a single run-on sentence. Write the new block as blank-line-separated
-paragraphs and keep the `>` scalar; do **not** convert to `|` as a convenience, since that
-rewrites every line's whitespace in a body that three tests assert substrings against.
+lines at the same indentation collapse into one paragraph.
+
+**This hazard is already live, not merely a risk for the new block.** Loading
+`general-task.yaml` and printing the resolved `define_done.action` shows the fenced DoD
+template rendering as a single line:
+
+```
+...write a concrete Definition of Done to ${context.run_dir}/dod.md in this format:
+``` # Definition of Done ## Verification Criteria - [ ] <Hard criterion — must be
+satisfied for done> [hard] - [ ] <Another hard criterion ...> [hard] - [ ] <Soft
+criterion ...> ```
+```
+
+The fence, the heading, and all three sample criteria fold together. The Standing Criteria
+block — which the prompt instructs the model to reproduce **verbatim** — folds the same way:
+the fence, `## Standing Criteria`, criterion 1, and the opening of criterion 2 become one
+line. Criteria 2 onward survive only incidentally, because their continuation lines are
+more-indented and break the fold. `plan.action`'s `# Task Plan` template is folded
+identically.
+
+This is not cosmetic. `count_done` tallies criteria with an awk pass anchored on `^- [ ]`
+(`general-task.yaml:596-620`, see Codebase Research Findings). A model that copies the
+verbatim block as delivered emits criteria that do not start a line and are therefore not
+counted.
+
+**Therefore: convert both `action: >` to `action: |` as part of this change**, and write the
+new pre-step block as ordinary literal lines. This repairs an existing defect in the same
+edit rather than authoring a new block around it. See the test-preservation notes below for
+the one assertion that requires a source rewrap under `|`.
 
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/loops/general-task.yaml:81` — the `define_done` prompt body.
+- `scripts/little_loops/loops/general-task.yaml:81` — the `define_done` prompt body, plus
+  its `action: >` → `action: |` scalar conversion.
 - `scripts/little_loops/loops/general-task.yaml:153` — the `plan` prompt body, same
-  conditional pre-step worded for step authoring.
+  conditional pre-step worded for step authoring and carrying the observed format into the
+  step text; same scalar conversion.
+- `scripts/little_loops/loops/general-task.yaml:139-140` — whitespace-only rewrap so
+  `no new errors` sits on one source line, required by the scalar conversion.
 
-These two prompt bodies are the entire change under option 1.
+These two prompt bodies (plus the scalar conversion and the one rewrap) are the entire
+change under option 1. `do_work` (`:430`) is deliberately **not** modified — see "`plan`
+must carry the observed format forward into the step text".
 
 ### Dependent Files (Callers/Importers)
 - No code callers. The downstream consumers of `dod.md` are states within the same loop:
@@ -167,11 +223,13 @@ These two prompt bodies are the entire change under option 1.
   them here (see Scope Boundaries).
 
 ### Tests
-- No natural pytest assertion; the failure is prompt quality, not logic.
-- Prefer `/ll:create-eval-from-issues` to build an eval harness: a task whose input names an
-  exemplar in a non-default format, asserting no DoD criterion cites the wrong format.
-- Regression guard for the conditional: a task naming **no** exemplar must not gain a
-  file-reading step in `define_done`.
+- No natural pytest assertion for the behavior itself; the failure is prompt quality, not
+  logic. The committed automated gate is a prompt-text assertion (see Implementation Step 6).
+- An ad-hoc eval run — a task whose input names an exemplar in a non-default format,
+  checking no DoD criterion or plan step cites the wrong format — is the honest behavioral
+  check. Not checked in; see "Decision: no checked-in eval harness".
+- Regression guard for the conditional: assert the prompt makes the read an explicit
+  branch, so a task naming **no** exemplar gains no file-reading step in `define_done`.
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_general_task_loop.py` — the loop's dedicated content-assertion test
@@ -182,22 +240,46 @@ _Wiring pass added by `/ll:wire-issue`:_
   conditional-detect-then-read instruction is present in `define_done.action` **and in
   `plan.action`**, following the same substring-assertion convention as the existing
   classes.
-- **Existing tests to preserve (not edit), guard against accidental breakage**:
-  `test_define_done_action_requires_runtime_criteria` (`test_general_task_loop.py:81`,
-  requires `"runtime"`/`"static"`/`"insufficient"`),
-  `test_define_done_forbids_tracking_file_criteria` (`test_general_task_loop.py:1017`,
-  requires `"Do NOT write DoD criteria that target"` + `"plan.md"`/`"dod.md"`), and
-  `test_define_done_has_standing_criteria_block` (`scripts/tests/test_builtin_loops.py:14994`,
-  requires `"## Standing Criteria"` + `"not derived from the task description"`) all do
-  substring containment on `define_done.action`. The prompt revision must add text without
-  removing or rewording these phrases, or these three tests break.
-- `scripts/tests/test_create_eval_from_issues.py` — home for a fixture test class
-  (mirroring `TestEvalHarnessVariantAWithProofGates` at line 519) once the
-  `/ll:create-eval-from-issues`-generated eval harness for this issue is checked into source
-  control, asserting its `execute`→`check_skill` shape via `load_and_validate`/
-  `validate_fsm`/`ll-loop validate` [Agent 3 finding]. **This is contingent on checking the
-  harness in** (Implementation Steps 4 and 7) — it is a second deliverable, not a free
-  add-on. If the eval is run ad hoc instead, drop both.
+- **Existing tests to preserve (not edit), guard against accidental breakage.** _Corrected
+  by the 2026-08-21 pre-implementation review: the originally-listed three tests are all
+  safe under the `|` conversion, and the one assertion that actually breaks was missing._
+
+  All of these do substring containment on `define_done.action`. The prompt revision must
+  add text without removing or rewording these phrases:
+
+  - `test_define_done_action_requires_runtime_criteria` (`test_general_task_loop.py:81`) —
+    `"runtime"`/`"static"`/`"insufficient"`. **Intra-line; `|`-safe.**
+  - `test_define_done_forbids_tracking_file_criteria` (`test_general_task_loop.py:1017`) —
+    `"Do NOT write DoD criteria that target"` + `"plan.md"`/`"dod.md"`. **Intra-line;
+    `|`-safe.**
+  - `test_define_done_has_standing_criteria_block`
+    (`scripts/tests/test_builtin_loops.py:14994`) — `"## Standing Criteria"` + `"not derived
+    from the task description"`. **Intra-line; `|`-safe.**
+  - `TestENH2858StandingCriteria` (`test_general_task_loop.py:2385`) — five further
+    `define_done.action` assertions the issue previously cited only as a line anchor and
+    never listed as protected: `test_define_done_contains_standing_criteria_heading` (`:2388`),
+    `test_define_done_standing_criteria_cover_all_five` (`:2393`, requires `"read on every
+    code path"`, `"Contract-over-mechanism"`, `"validated before use"`, `"reachable from a
+    built artifact"`, `"PROVISIONAL"`/`"TODO"`/`"GUESS"`),
+    `test_define_done_wheel_criterion_is_conditional` (`:2401`), and
+    `test_define_done_marker_criterion_notes_mechanical_grep` (`:2406`). All intra-line;
+    `|`-safe.
+
+- **The one assertion that breaks under `|` — requires a source rewrap.**
+  `test_define_done_requires_exits_0_phrasing` (`test_general_task_loop.py:2411`) asserts:
+
+  ```python
+  assert 'never as a delta claim like "no new errors"' in action
+  ```
+
+  The phrase spans a source line break in the YAML (`general-task.yaml:139-140`:
+  `... never as a delta claim like "no new` / `errors" or "no new lint failures
+  introduced."`). Folding under `>` stitches it back into one line; `|` will not. Rewrap
+  those two source lines so `no new errors` sits on a single line. This is a whitespace-only
+  fix, but it is **required** — without it the `|` conversion turns this test red.
+- ~~`scripts/tests/test_create_eval_from_issues.py` — fixture test class for a checked-in
+  eval harness [Agent 3 finding].~~ **Dropped by the 2026-08-21 pre-implementation review**
+  along with the harness check-in itself; see "Decision: no checked-in eval harness".
 
 ### Documentation
 - `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` — the general rule: a state that authors
@@ -261,6 +343,10 @@ the read: format-specific criteria are to be *derived from the exemplar's observ
 and where no exemplar was read, format-specific criteria are to be *omitted* rather than
 guessed.
 
+The third constraint is **propagation**. `do_work`, not `plan`, writes the artifact, and it
+never sees the exemplar. A read that stops at `plan`'s own reasoning is wasted; `plan` must
+serialize what it learned into the step text, which is the only channel forward.
+
 The failure mode to guard against in review is a mermaid-specific patch. The defect was "did
 not read the reference", not "did not know mermaid"; format-name allowlists would fix the
 observed run and nothing else.
@@ -286,31 +372,56 @@ _Added by `/ll:refine-issue` — 2026-08-20 — based on codebase analysis:_
 
 ## Implementation Steps
 
+_Revised by the 2026-08-21 pre-implementation review: the `|` conversion and its required
+rewrap are now explicit steps, `plan`'s carry-forward requirement is called out, and the
+eval-harness deliverable is decided rather than left as a branch at implementation time._
+
 1. **Confirm the ordering claim** — `check_baseline_tests → define_done → plan`, and that
-   both `define_done` and `plan` receive only `${context.input}` with no read instruction.
-2. **Draft the prompt revision** for `define_done` per Proposed Solution: conditional
+   `define_done`, `plan`, and `do_work` all receive only `${context.input}` with no read
+   instruction.
+2. **Convert `define_done.action` and `plan.action` from `>` to `|`** (see YAML authoring
+   hazard). Do this first, as a mechanical scalar change, so the prompt-text edits in steps
+   3–4 are made against the body as it will actually render.
+3. **Rewrap `general-task.yaml:139-140`** so `no new errors` sits on a single source line,
+   preserving `test_define_done_requires_exits_0_phrasing`. Run
+   `pytest scripts/tests/test_general_task_loop.py scripts/tests/test_builtin_loops.py`
+   after steps 2–3 and before any prompt-text edit — a green run here proves the scalar
+   conversion is behavior-preserving, and isolates any later failure to the new text.
+4. **Draft the prompt revision** for `define_done` per Proposed Solution: conditional
    detection, conditional read, derivation binding, and the explicit omit-don't-guess
-   fallback. Place it first in the prompt, with the "reading is not work" carve-out, as
-   blank-line-separated paragraphs under the `>` scalar.
-3. **Apply the same pre-step to `plan`**, worded for step authoring: steps whose correctness
+   fallback. Place it first in the prompt, with the "reading is not work" carve-out.
+5. **Apply the same pre-step to `plan`**, worded for step authoring: steps whose correctness
    depends on the artifact's concrete form must be derived from the exemplar actually read,
-   not from the artifact-type name.
-4. **Build the eval** with `/ll:create-eval-from-issues` — a task naming an exemplar in a
-   non-default format for its artifact type. Check the generated harness into source control
-   under `scripts/little_loops/loops/` (or the repo's eval-harness location) so step 7 has a
-   fixture to assert against.
-5. **Measure before/after** on that eval: does any DoD criterion, or any plan step, cite a
-   format the exemplar does not use? Zero wrong-format citations is the acceptance signal.
+   not from the artifact-type name. **Include the carry-forward requirement** — when an
+   exemplar is read, the observed concrete format must appear in the step text written to
+   `plan.md`, since that is the only channel to `do_work`.
 6. **Check the no-exemplar path** — assert the prompt text makes the read *conditional*
    (an explicit "if a reference is named … otherwise …" branch rather than an unconditional
    preamble). This is a prompt-text assertion in the new test class, not a runtime
    observation: attributing tool calls to a single state's turn would require parsing the
-   run's session transcript, which is out of proportion to the guarantee it buys.
-7. **Add the eval-harness fixture test** in `scripts/tests/test_create_eval_from_issues.py`
-   once step 4's harness is checked in — or drop both step 4's check-in and this step if the
-   eval is run ad hoc. Do not leave the harness uncommitted with a test asserting against it.
+   run's session transcript, which is out of proportion to the guarantee it buys. **This is
+   the committed automated gate for the issue.**
+7. **Measure before/after ad hoc** on a task naming an exemplar in a non-default format for
+   its artifact type: does any DoD criterion, or any plan step, cite a format the exemplar
+   does not use? Zero wrong-format citations is the acceptance signal. Record the result in
+   the issue; **do not** check an eval harness into source control for this issue (decided
+   below).
 8. **Verify.** `ll-loop validate general-task` clean; `python -m pytest scripts/tests/`
    exits 0.
+
+### Decision: no checked-in eval harness
+
+_2026-08-21 pre-implementation review._ The earlier steps 4 and 7 offered "check the harness
+in, or drop both" as a branch to be resolved during implementation. That is the difference
+between a two-prompt-body edit and a new checked-in FSM harness plus a fixture test in
+`scripts/tests/test_create_eval_from_issues.py` — too large a scope swing to leave to the
+implementer, and an open invitation to silently take the cheap branch.
+
+Decided: **run the eval ad hoc (step 7), commit no harness.** The prompt-text conditionality
+assertion (step 6) is the committed gate. §Impact already concedes there is no natural
+pytest assertion for prompt quality, so a checked-in harness would buy a fixture-shape test
+(`load_and_validate`/`validate_fsm`) rather than a test of the behavior this issue is about.
+The `test_create_eval_from_issues.py` fixture-test entry under Wiring is therefore dropped.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
@@ -319,12 +430,14 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - Update `scripts/tests/test_general_task_loop.py` — add a `TestEnh3272DefineDoneConditionalRead`
   class asserting the conditional-detect-then-read instruction is present in
   `define_done.action` and `plan.action`, plus a conditionality assertion (the branch is
-  "if a reference is named … otherwise …", not an unconditional read).
-- Preserve (do not reword away) the substrings required by
-  `test_general_task_loop.py:81` (`test_define_done_action_requires_runtime_criteria`),
-  `test_general_task_loop.py:1017` (`test_define_done_forbids_tracking_file_criteria`), and
-  `scripts/tests/test_builtin_loops.py:14994` (`test_define_done_has_standing_criteria_block`)
-  when rewriting the `define_done` prompt body.
+  "if a reference is named … otherwise …", not an unconditional read) and an assertion that
+  `plan.action` requires the observed format to be written into the step text.
+- Preserve (do not reword away) the substrings required by the tests enumerated under
+  **Existing tests to preserve** above. Note that list was corrected on 2026-08-21: the
+  originally-named three are all `|`-safe, `TestENH2858StandingCriteria`
+  (`test_general_task_loop.py:2385`) was missing from it, and
+  `test_define_done_requires_exits_0_phrasing` (`:2411`) requires the
+  `general-task.yaml:139-140` rewrap or it turns red under the scalar conversion.
 - Update `docs/guides/LOOPS_REFERENCE.md:106` — extend the "Define Done" step description to
   note the conditional exemplar-read requirement.
 
@@ -373,10 +486,17 @@ is about not generating the bad step in the first place, not about the recovery 
 
 ## Scope Boundaries
 
-**In scope**: the `define_done` and `plan` prompts in `general-task.yaml`. (Option 2, if it
-were chosen, would instead add one new post-`plan` state — it is not chosen.)
+**In scope**: the `define_done` and `plan` prompts in `general-task.yaml`, their `>` → `|`
+scalar conversion, and the `:139-140` rewrap that conversion requires. (Option 2, if it were
+chosen, would instead add one new post-`plan` state — it is not chosen.)
 
 **Out of scope**:
+- Any edit to `do_work`'s prompt (`:430`). It is blind to the exemplar by design here; the
+  observed format reaches it through the step text `plan` writes, not through a third copy
+  of the pre-step.
+- Converting other states' `action: >` scalars in `general-task.yaml`, or other loops'.
+  The same folding hazard very likely affects them, but that is a separate sweep — file it
+  as its own issue if the conversion here proves out.
 - Generalizing exemplar-reading to other loops' DoD-authoring states. Do that only once
   this shape is proven in `general-task`.
 - Any change to the step-abandonment machinery, which behaved correctly.
@@ -396,7 +516,18 @@ were chosen, would instead add one new post-`plan` state — it is not chosen.)
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-21T16:05:43 - `e51da567-cdae-4205-bfd5-023682a758f8.jsonl`
 - `/ll:confidence-check` - 2026-08-21T15:54:46 - `da526826-2179-460f-b823-35695378ac55.jsonl`
+- Pre-implementation review (2) - 2026-08-21 - four corrections verified against the tree:
+  (1) `>` → `|` guidance **reversed** — the folding hazard is already live and mangles both
+  fenced templates and the Standing Criteria block, so the conversion is now required work,
+  not a forbidden convenience; (2) protected-test list corrected — the three named tests are
+  all `|`-safe, `TestENH2858StandingCriteria` was missing, and
+  `test_define_done_requires_exits_0_phrasing` (`:2411`) is the sole breakage, needing a
+  `general-task.yaml:139-140` rewrap; (3) `do_work` identified as equally blind, resolved by
+  requiring `plan` to carry the observed format into the step text rather than by editing
+  `do_work`; (4) eval-harness branch decided — ad-hoc run, no check-in, dropping former
+  Implementation Steps 4 and 7 and the `test_create_eval_from_issues.py` wiring entry.
 - Pre-implementation review - 2026-08-21 - scope extended to `plan`; line anchors
   re-verified against current `general-task.yaml`; prompt placement, `>`-scalar hazard, and
   eval-harness deliverable made explicit; Step 5 no-exemplar check converted from an

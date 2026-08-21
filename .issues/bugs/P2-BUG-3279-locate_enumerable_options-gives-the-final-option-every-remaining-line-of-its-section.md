@@ -67,6 +67,35 @@ Two consequences:
 4. Inspect `options[-1].text` — it contains the §2b table, *Dead site*, *Pinning*, *Precedence*,
    *Codebase Research Findings*, and `### Decision Rationale`, none of which describe that option.
 
+### Second consumer, same defect — `_unapplied_decision` (verified 2026-08-21)
+
+`issue_parser._unapplied_decision` (`:1392`) does not call `locate_enumerable_options`; it uses a
+sibling span function, `_option_block_spans`. It has the identical last-block absorption bug, and
+`ll-issues format-check ENH-3277` shows it firing:
+
+```
+unapplied_decision: Proposed Solution still specifies `pytest` (rejected option)
+unapplied_decision: Proposed Solution still specifies `lint_cmd` (rejected option)
+unapplied_decision: Proposed Solution still specifies `ll-config get` (rejected option)
+... ~40 more
+```
+
+None of those are rejected-option identifiers. They are ordinary vocabulary from the ~230 lines of
+analysis prose that the last option block absorbed, reported as things the rejected option
+"specifies".
+
+**Its existing mitigations are the right idea and insufficient.** ENH-3256 already hardened this
+function against exactly this failure with two clamps, both documented in its docstring: clamp the
+final block at `### Decision Rationale`, and trim it at the end of its own `> **Selected:**`
+callout line. Neither helps here — the last block is a *rejected* option (no callout to trim at),
+and the `### Decision Rationale` boundary still leaves every intervening `###` subsection inside
+the span.
+
+The fix proposed below — terminate at the next heading of any depth — subsumes both existing
+clamps and repairs this consumer too. **Fix both functions, or factor the boundary rule into one
+helper they share**; two independent span implementations with the same bug is the reason this
+recurred after ENH-3256 supposedly closed it.
+
 ## Expected Behavior
 
 An option's span ends at the first structural boundary after it — the next option, the next
@@ -97,7 +126,9 @@ Option C to `172-204` instead of `172-404`.
 
 ### Files to Modify
 
-- `scripts/little_loops/issue_parser.py` — `locate_enumerable_options` span termination
+- `scripts/little_loops/issue_parser.py` — `locate_enumerable_options` span termination, and
+  `_option_block_spans` / `_unapplied_decision` (`:1392`), which carry the same bug independently.
+  Prefer a shared boundary helper over two parallel fixes
 
 ### Tests
 

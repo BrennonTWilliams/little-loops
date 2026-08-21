@@ -12,6 +12,8 @@ labels:
 - skills
 - pipeline
 - consistency
+blocked_by:
+- BUG-3279
 relates_to:
 - BUG-3278
 - BUG-3279
@@ -32,7 +34,10 @@ so the file ships with implementation steps instructing work that was decided ag
 Phases 6–7 of `skills/decide-issue/SKILL.md` define exactly those three writes. There is no phase
 that reconciles the rest of the document against the selection.
 
-Observed on ENH-3277 (2026-08-21), where Option A was selected and the body still contains:
+Observed on ENH-3277 (2026-08-21), where Option A was selected and the body still contained the
+list below. **These have since been repaired by hand** — ENH-3277 is a record of the defect, not a
+reproducer. Line numbers are as-observed, pre-repair; use `git show` on the commit that captured
+this issue to see the original. A fresh reproducer fixture is needed (see *Tests*).
 
 - `**Recommendation: Option C.**` (line 193) — a direct contradiction of the callout 35 lines above
 - `*If Option C is taken*, the following elsewhere in this issue change and must be updated in the
@@ -67,6 +72,23 @@ body was internally consistent.
 That the propagation work is expected is not an inference: ENH-3277's own text (line 198) wrote
 the checklist of what must change if a given option won. The skill had that list in front of it
 and had no phase in which to act on it.
+
+### Half of this already exists — `format-check`'s `unapplied_decision` (found 2026-08-21)
+
+`issue_parser._unapplied_decision` (`:1392`) already **detects** this defect: it enumerates option
+blocks, and reports rejected-option identifiers still present in directive sections as
+`unapplied_decision` gaps. So the missing capability is narrower than "notice the problem" — it is
+**acting on it at decision time**.
+
+Two consequences for this issue:
+
+1. **Reuse the detector rather than writing a second one.** Phase 7c should drive off the same
+   rejected-identifier extraction, so detection and remediation cannot drift apart.
+2. **The detector must be fixed first, or Phase 7c inherits its noise.** On ENH-3277 it currently
+   emits ~40 findings, nearly all false — `pytest`, `lint_cmd`, `ll-config get` — because the
+   rejected option's block absorbs the section's trailing analysis prose (**BUG-3279**, which
+   documents this as its second confirmed consumer). A propagation phase driven off that signal
+   today would rewrite correct prose. **BUG-3279 is a hard prerequisite.**
 
 ## Proposed Solution
 
@@ -120,13 +142,17 @@ nothing.
 
 ## Implementation Steps
 
-1. Write Phase 7c into `skills/decide-issue/SKILL.md` with the four reference categories and the
+1. **Land BUG-3279 first** — Phase 7c drives off `_unapplied_decision`, which is unusable until
+   its span bug is fixed.
+2. Write Phase 7c into `skills/decide-issue/SKILL.md` with the four reference categories and the
    explicit bounded-scope statement (option-keyed prose only, never a re-refine).
-2. Extend the Phase 9 report template in `skills/decide-issue/reference.md` with a propagated-edits
+3. Extend the Phase 9 report template in `skills/decide-issue/reference.md` with a propagated-edits
    block and a flagged-but-not-edited block.
-3. Verify against ENH-3277 as the live fixture: after a re-run, line 193's `Recommendation: Option
-   C`, step 3b's `--raw` instruction, and the two Signatures entries are gone or demoted, and the
-   stale counts are *flagged* rather than silently rewritten.
+4. Verify against a fixture reconstructed from ENH-3277's pre-repair state (`git show` the capture
+   commit): after a run, the `Recommendation: Option C` marker, step 3b's `--raw` instruction, and
+   the two `--raw` Signatures entries are gone or demoted, and the stale counts are *flagged*
+   rather than silently rewritten. The hand-repaired ENH-3277 doubles as the expected output —
+   compare against it rather than inventing an oracle.
 
 ## Impact
 
@@ -151,4 +177,5 @@ nothing.
 
 
 ## Session Log
+- `/ll:capture-issue` - 2026-08-21T16:00:38 - `826fb04a-1812-4193-be3d-c48a972bd311.jsonl`
 - `/ll:capture-issue` - 2026-08-21T15:46:43 - `da526826-2179-460f-b823-35695378ac55.jsonl`

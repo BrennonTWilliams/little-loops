@@ -19,13 +19,14 @@ relates_to:
 - BUG-3269
 - BUG-3276
 - ENH-2244
+- ENH-3281
 reconcile_attempted: true
 decision_needed: false
-confidence_score: 100
-outcome_confidence: 75
+confidence_score: 98
+outcome_confidence: 72
 score_complexity: 18
 score_test_coverage: 12
-score_ambiguity: 25
+score_ambiguity: 22
 score_change_surface: 20
 ---
 
@@ -118,8 +119,8 @@ the list is technical debt with a name, and this issue is its payoff.
 ## Proposed Solution
 
 Convert one file at a time, applying BUG-3269 §2's precedence shape and §2b's empty-`CMD` row
-for that specific site. After each file: `ll-loop validate`, a scoped `grep` for the old
-`.get('test_cmd'` pattern, and BUG-3269's gate with one entry removed from
+for that specific site. After each file: `ll-loop validate`, the scoped `grep` from step 7 (which
+must exclude the two permanently-exempt files), and BUG-3269's gate with one entry removed from
 `_PENDING_CONVERSION`.
 
 ### DECIDED (Option A) — `rn-refine` and `auto-refine` are permanently exempt
@@ -345,20 +346,19 @@ anti-pattern that BUG-3269's mirror-drift gate exists to stop from reaching a fo
 The comment rewrite at those three anchors is load-bearing, and it is a further argument for
 step 3's ordering (these convert first).
 
-### Precedence — config-first bare for seven of the ten live sites
+### Precedence — config-first bare for seven of the eight live converted sites
 
 Only three loops declare a `context.test_cmd` key at all (`general-task.yaml:23`,
 `test-coverage-improvement.yaml:23`, `rl-coding-agent.yaml:17`). Of this issue's targets, only
 `test-coverage-improvement.yaml` does — and today that declaration reaches nothing but dead code
-(*Dead site* above), so context-first is legitimate at exactly one site (`verify_tests`) and only
-under decision (a). **Do not paste the context-first shape into the
+(*Dead site* above), so context-first is legitimate at exactly one site: `verify_tests`, under the
+now-pinned decision (a). **Do not paste the context-first shape into the
 others** — an undeclared `${context.test_cmd}` raises `InterpolationError: Path 'test_cmd' not
 found in context` at interpolation time, turning a mechanical conversion into a hard loop
 breakage. BUG-3269's gate assertion (ii) now catches this statically.
 
-Config-first bare (seven sites — `fix-quality-and-tests`, the three `harness-*`,
-`evaluation-quality`'s `test_cmd` **and** `lint_cmd`, `dead-code-cleanup`; eight if
-*Dead site* decision (b) is taken, which puts `test-coverage-improvement.verify_tests` here too):
+Config-first bare — seven sites: `fix-quality-and-tests`, the three `harness-*`,
+`evaluation-quality`'s `test_cmd` **and** `lint_cmd`, and `dead-code-cleanup`:
 
 ```bash
 CMD=$(ll-config get project.test_cmd)
@@ -448,7 +448,8 @@ consistency, simplicity, and risk, despite the issue's own text recommending Opt
 - `scripts/little_loops/loops/harness-single-shot.yaml:66` — and its template comment at `:57-60`
 - `scripts/little_loops/loops/test-coverage-improvement.yaml:45,152` — `:45` (with its enclosing
   `CMD` block, `:37-48`) is **deleted, not converted**; `:152` is the only live read. The
-  `test_cmd` declaration at `:23` is resolved by decision (a)/(b) under *Dead site*
+  `test_cmd` declaration at `:23` **stays** and becomes functional per the pinned decision (a)
+  under *Dead site*
 - `scripts/little_loops/loops/rn-refine.yaml:991`
 - `scripts/little_loops/loops/auto-refine-and-implement.yaml:433-436` — **not** `:679-680`,
   which reads `cfg.project.test_cmd` off a real `BRConfig` and is already correct and already
@@ -498,8 +499,8 @@ _Wiring pass added by `/ll:wire-issue`:_
   add a fourth case per `TestIncrementalRefactorLoop.test_verify_tests_resolves_context_first_then_ll_config`
   (L11983): context wins over `ll-config get`. [Agent 3 finding]
   **Correction (2026-08-21):** the fourth case does **not** belong at `measure` — that branch is
-  dead (*Dead site*). Under decision (a) it attaches to `verify_tests` (`:148-158`) instead;
-  under decision (b) it is dropped entirely. Additionally, add a guard asserting no state in
+  dead (*Dead site*). Per the pinned decision (a) it attaches to `verify_tests` (`:148-158`)
+  instead. Additionally, add a guard asserting no state in
   `test-coverage-improvement.yaml` resolves a `CMD` it never evaluates — the defect that made
   `:45` dead in the first place would otherwise be reintroducible.
 - The three near-identical `harness-*.yaml` `check_concrete` states have zero existing coverage
@@ -531,8 +532,9 @@ _Wiring pass added by `/ll:wire-issue`:_
   `test_cmd`/`lint_cmd` row
 - `docs/guides/LOOPS_REFERENCE.md:979,1305,1327` — the `project.test_cmd`/`lint_cmd` rows
 - `docs/guides/LOOPS_REFERENCE.md:1347` — `test-coverage-improvement`'s `test_cmd` context-variable
-  row, currently documenting an inert knob (*Dead site*). Under decision (a) it stays and becomes
-  true; under (b) it is deleted
+  row, currently documenting an inert knob (*Dead site*). Per the pinned decision (a) it **stays**
+  and becomes true — no edit needed, but re-verify the wording matches `verify_tests`'s new
+  context-first behavior
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `docs/guides/EVALUATION_GUIDE.md:393` — prose reads *"runs your configured `test_cmd` plus
@@ -546,11 +548,11 @@ _Wiring pass added by `/ll:wire-issue`:_
   within files already in Files to Modify, not a new file). [Agent 2 finding]
 - `skills/audit-loop-run/SKILL.md:~277` — documents `verify_verdict: "skipped"` semantics for
   `auto-refine-and-implement`'s post-implementation verify step; the issue's plan for
-  `auto-refine-and-implement.yaml:433-436`. **Upgraded from a sanity check to a decision input:**
-  the original "drop-in; already treats falsy `test_cmd` as skipped" reading was wrong — under
-  option (b) of the *DECISION REQUIRED* block this doc describes semantics that no longer hold
-  for an unconfigured project, so it is a required edit, not a spot-check. Under Option A or C it
-  stays accurate as written. [Agent 2 finding, superseded by the decision block]
+  `auto-refine-and-implement.yaml:433-436`. **No edit needed under Option A** — the file is not
+  converted, so its `verify_verdict: "skipped"` semantics are preserved byte-for-byte and this doc
+  stays accurate as written. (It would have become a required edit under the rejected Option B,
+  which is why an earlier pass upgraded it from a sanity check to a decision input.)
+  [Agent 2 finding, resolved by the decision]
 
 ### Codebase Research Findings
 
@@ -700,13 +702,14 @@ _These touchpoints were identified by wiring analysis and must be included in th
   **Load-bearing, not cosmetic**: these are `# EXAMPLE:` scaffolds users clone, so the comments
   propagate the inline-parse anti-pattern into new loops
 - Delete `test-coverage-improvement.yaml:37-48` (the dead `CMD` block in `measure`) rather than
-  converting `:45`, and resolve *Dead site* decision (a)/(b) for `:23` + `:152` +
+  converting `:45`, and apply the pinned *Dead site* decision (a) across `:23` + `:152` +
   `LOOPS_REFERENCE.md:1347` together — they are one change, not three
-- Pin `dead-code-cleanup.verify_tests`'s empty-`CMD` target before writing shell (*Pinning
-  `dead-code-cleanup`'s skip edge*); `on_error: revert_and_scan` is reachable but mis-frames a
-  no-signal skip as a test failure against an empty log
+- Apply the pinned empty-`CMD` targets for **both** `verify_tests` gates before writing shell
+  (*Pinning the two explicit-skip gate edges*). `dead-code-cleanup`'s `on_error:
+  revert_and_scan` and `test-coverage-improvement`'s `on_no/on_error: fix_tests` are each
+  reachable but each mis-frames a no-signal skip as a test failure against an empty log
 - Write new subprocess-level resolution tests per site (no existing test exercises shell content
-  at the value-resolution level for any of the nine sites) — model on
+  at the value-resolution level for any of the converted sites) — model on
   `TestRlCodingAgentObserveTestCmdResolution` (`test_builtin_loops.py:10747-10799`); parametrize
   the three `harness-*.yaml` `check_concrete` sites as one test class rather than tripling it
 - If a new intermediate state is introduced for `dead-code-cleanup.yaml` or
@@ -717,17 +720,19 @@ _These touchpoints were identified by wiring analysis and must be included in th
   documentation against `auto-refine-and-implement.yaml:433-436`'s preserved skip semantics
 
 **Rollback seam:** independent per-file edits. If one conversion misbehaves in a consuming
-project, revert that file and re-add its `_PENDING_CONVERSION` entry.
+project, revert that file and re-add its exemption — as a `_PENDING_CONVERSION` entry if step 6
+has not yet run, or as a `_PERMANENT_EXEMPTIONS` entry (with a rationale comment) if it has,
+since step 6 deletes the former.
 
 ## Scope Boundaries
 
 **In scope:** the correct-but-guessing inline resolution sites listed under *Files to Modify* —
-**nine files, eleven inline reads, ten live** (`test-coverage-improvement.yaml` has two, `:45`
-and `:152`, of which `:45` is dead and deleted; `evaluation-quality.yaml` has two, `:58` for
-`test_cmd` and `:63` for `lint_cmd`) — plus
+**seven files, nine inline reads, eight of them converted** per the counts table under *Summary*
+(`test-coverage-improvement.yaml` has two, `:45` and `:152`, of which `:45` is dead and deleted;
+`evaluation-quality.yaml` has two, `:58` for `test_cmd` and `:63` for `lint_cmd`) — plus
 `evaluation-quality.yaml:63`'s hardcoded lint command, plus emptying and deleting
-`_PENDING_CONVERSION`, plus generalizing the this-repo-hardcode gate (step 6b), plus the two
-doc files whose rows describe those sites.
+`_PENDING_CONVERSION` (moving two entries to `_PERMANENT_EXEMPTIONS` and widening
+`_INLINE_ACCESS_RE`), plus the two doc files whose rows describe those sites.
 
 **Out of scope — belongs to BUG-3269:** the three defective sites
 (`general-task.yaml:37`, `rl-coding-agent.yaml:60,68`); `general-task`'s `SKIP` sentinel,
@@ -742,6 +747,16 @@ warning; the mirror-drift gate itself (both assertions); the
 its contract is deliberately *absent ≡ null ≡ skip, never guess* — converting it would make a
 project that never configured `type_cmd` start running `mypy`. Full rationale in BUG-3269
 §1d. It stays a documented gate exemption.
+
+**Out of scope — permanently (added by the Option A decision):** `rn-refine.yaml` and
+`auto-refine-and-implement.yaml:433-436`. Same §1d rationale — an absent≡skip contract that
+`ll-config get` cannot express. Both keep their inline parse and join
+`oracles/code-run-gate.yaml` in `_PERMANENT_EXEMPTIONS`, bringing it to three entries. Accepted
+cost: both continue to bypass `.ll/ll.local.md`.
+
+**Out of scope — split separately:** generalizing BUG-3276's this-repo-hardcode gate over all
+built-in loops → **ENH-3281** (was step 6b). Converting `evaluation-quality.yaml:63`'s
+`ruff check scripts/` stays here as step 5; gating the *class* does not.
 
 **Out of scope — split separately:** `incremental-refactor.yaml:12,33` → BUG-3276. It
 performs no config read at all, so no gate covers it either way, and its destructive
@@ -802,10 +817,10 @@ regression — the inline snippets open the same relative path — but not fixed
   For four that is a clean opt-out; for `dead-code-cleanup`, `test-coverage-improvement`, and
   `evaluation-quality` it means committing or scoring unverified work unless the §2b row is
   applied.
-- **`test-coverage-improvement`'s `context.test_cmd` becomes functional (decision (a)) or is
-  removed (decision (b))** — today it is declared, documented, and wired to nothing (*Dead
-  site*). Either outcome is a user-visible change to a documented knob; doing neither leaves the
-  doc lying.
+- **`test-coverage-improvement`'s `context.test_cmd` becomes functional** (pinned decision (a)) —
+  today it is declared, documented, and wired to nothing (*Dead site*). A user-visible change to a
+  documented knob: a loop invocation that passes `test_cmd` starts having an effect at
+  `verify_tests` where it previously had none.
 - **`.ll/ll.local.md` overrides of `test_cmd`/`lint_cmd` start taking effect** inside these
   loops (they never did).
 - **`evaluation-quality.yaml:63` lint scope widens**: `ruff check scripts/` →
@@ -831,6 +846,7 @@ regression — the inline snippets open the same relative path — but not fixed
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-21T16:05:16 - `31b75f64-db6a-4a60-b5e4-21ce3b3efbc5.jsonl`
 - `/ll:decide-issue` - 2026-08-21T15:37:47 - `fd963709-cda9-4223-bed4-b0ecd04d5d50.jsonl`
 - `/ll:confidence-check` - 2026-08-21T15:19:04 - `36629249-e029-4d46-add2-34299614a223.jsonl`
 - `/ll:confidence-check` - 2026-08-21T14:55:55 - `e03958cc-36c6-4afa-b441-77f5795b84f4.jsonl`
