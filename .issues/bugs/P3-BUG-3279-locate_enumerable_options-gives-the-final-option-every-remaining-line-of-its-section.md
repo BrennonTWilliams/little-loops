@@ -3,8 +3,9 @@ id: BUG-3279
 type: BUG
 title: locate_enumerable_options gives the final option every remaining line of its
   section
-priority: P2
+priority: P3
 status: open
+parent: EPIC-3290
 discovered_by: ll-issues-create
 discovered_date: '2026-08-21'
 captured_at: '2026-08-21T15:45:38Z'
@@ -19,13 +20,13 @@ relates_to:
 - ENH-3277
 - BUG-3285
 - BUG-3289
-size: Large
-confidence_score: 99
-outcome_confidence: 81
-score_complexity: 17
+size: Small
+confidence_score: 100
+outcome_confidence: 92
+score_complexity: 22
 score_test_coverage: 25
-score_ambiguity: 20
-score_change_surface: 19
+score_ambiguity: 22
+score_change_surface: 23
 ---
 
 # BUG-3279: locate_enumerable_options gives the final option every remaining line of its section
@@ -320,6 +321,7 @@ _Added by `/ll:refine-issue` — 2026-08-21 — based on codebase analysis:_
 - `scripts/little_loops/issue_parser.py` — `locate_enumerable_options` span termination, and
   `_option_block_spans` / `_unapplied_decision` (`:1392`), which carry the same bug independently.
   Prefer a shared boundary helper over two parallel fixes
+  > ⚠ Superseded — anchors stale post-fix; now `:1405` / `:1449`, see § Codebase Research Findings under Program Design
 - `scripts/little_loops/issue_parser.py` — `_iter_option_blocks` (`:2216`), a **third** sibling
   span function with the identical unbounded-last-span defect (`end = matches[i + 1].start() if i
   + 1 < len(matches) else len(text)` at `:2229`). It backs `locate_unresolved_options` /
@@ -329,10 +331,12 @@ _Added by `/ll:refine-issue` — 2026-08-21 — based on codebase analysis:_
   decide explicitly whether this is in scope or an accepted gap; the shared-helper approach this
   issue already proposes would naturally cover it. [Agent 2 finding] **Resolved: in scope — see
   Proposed Solution Rule 3, and note the coupled `_is_option_resolved` change below.**
+  > ⚠ Superseded — anchor stale post-fix; now `:2287`, see § Codebase Research Findings under Program Design
 - `scripts/little_loops/issue_parser.py` — `_is_option_resolved` (`:2242`) and
   `_RESOLVED_OPTION_MARKER_RE` (`:2204`). The `### Decision Rationale` alternative must move from
   block scope to section scope in the same change as `_iter_option_blocks`, or 151 issues in this
   repo alone gain phantom unresolved options (Rule 3)
+  > ⚠ Superseded — `_is_option_resolved` anchor stale post-fix; now `:2328`, see § Codebase Research Findings under Program Design
 
 ### Dependent Files (Callers/Importers)
 
@@ -474,6 +478,10 @@ _Added by `/ll:refine-issue` — 2026-08-21 — based on codebase analysis:_
   assertions check `set(option) == {"label", "text", "start_line", "end_line"}` (`:94`); no existing
   fixture there places a trailing `###` after the last option. [pattern-finder finding]
 
+_Added by `/ll:refine-issue` — 2026-08-21 — based on codebase analysis:_
+
+- **Confirmed current test coverage inventory (post-`f39a417e`)**: `scripts/tests/test_issue_parser_unresolved.py` — `TestLocatedOptionsDataclass` (`:19`), `TestLocatedOptionsPatternNames` (`:59`), `TestCountEnumerableOptions` (`:106`), `TestCountUnresolvedOptions` (`:157`, includes `test_decision_rationale_marks_resolved` `:204`, `test_two_option_groups_under_one_decision_rationale_is_blunt` `:294`, `test_whole_document_fallback_scope_is_the_h2_span_not_the_document` `:328`), `TestLastOptionSpanBoundary` (`:817`, the 6 tests the fix commit added). `scripts/tests/test_issue_parser.py` — `TestUnappliedDecision` (`:4757`), `TestUnappliedDecisionLiveCorpusSweep` (`:5005`, currently 1 test: `test_corpus_sweep_does_not_crash` `:5027`). `scripts/tests/test_issues_locate_options.py` — `test_last_option_excludes_trailing_subsection` (`:146`, the CLI-level fixture this issue asked for, already landed). [Agent 1 finding]
+
 ## Program Design
 
 ### Deviations
@@ -561,7 +569,54 @@ _Added by `/ll:refine-issue` — 2026-08-21 — based on codebase analysis:_
 N/A — no new decision logic. This is a span-termination boundary fix, not a new gap kind, gate,
 keyword list, or threshold.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-21 — based on codebase analysis:_
+
+- **Post-fix anchor correction (f39a417e)**: every anchor in this section's Types/Signatures/Call Path was written pre-fix and is stale. Current locations in `scripts/little_loops/issue_parser.py`: `_decision_identifiers` `:1351` (was cited `:1341`), `_option_span_boundary` `:1381` (the shared helper the fix introduced), `_option_block_spans` `:1405` (was `:1371`), `_unapplied_decision` `:1449` (was `:1392`), its `discriminating = rej_ids - sel_ids` line `:1530` (was `:1475`), its `scrub_start = min(dr_start, spans[-1][1])` line `:1541` (was `:1483`), `_locate_options_in_text` `:2025` (was `:1967`, signature now `(content: str, body: str, body_offset: int) -> LocatedOptions | None`), `locate_enumerable_options` `:2209` (was `:2134`), `_OPTION_HEADING_RE` `:2281` (was `:2210`), `_iter_option_blocks` `:2287` (was `:2216`), `_is_option_resolved` `:2328` (was `:2242`), `locate_unresolved_options` `:2341` (was `:2249`, signature `(content: str) -> tuple[int, str | None]`), `count_unresolved_options` `:2398` (uncited previously). [Agent 2 finding, grep-verified]
+
 ## Implementation Steps
+
+> **The parser fix already shipped as `f39a417e`.** Everything under *Landed in `f39a417e`* below
+> is historical spec, retained as provenance — **do not re-implement it**, and note that every
+> anchor in it is pre-fix and stale (corrected anchors: § Program Design → Codebase Research
+> Findings). The only remaining work is the two test-only steps here.
+
+### Remaining work
+
+1. **Write the "winner's tail no longer suppresses a report" fixture** (Residual Work item 1).
+   Insertion point: a new method on `class TestUnappliedDecision`
+   (`scripts/tests/test_issue_parser.py:4757`), after
+   `test_last_block_stops_at_trailing_subsection_not_just_callout_or_dr` (ends `:5002`) and before
+   `class TestUnappliedDecisionLiveCorpusSweep` (`:5005`). Build with the class's `_issue(self,
+   proposed_solution, **directive_sections)` helper (`:4765`); open the docstring `"""BUG-3279: …"""`
+   per class convention.
+
+   **Assert at the boundary layer, not the report layer.** The end-to-end report fires only because
+   of BUG-3289 (`_decision_identifiers` treating every backticked token as discriminating), so a
+   test that asserts `_unapplied_decision(...) != []` will invert the moment BUG-3289 lands, and its
+   implementer will not know whether to fix or delete it. Prefer asserting the fact this issue
+   actually owns: with the winner's span bounded at the trailing `###`, the shared identifier is
+   **no longer in `sel_ids`** and is therefore promoted into `discriminating = rej_ids - sel_ids`
+   (`issue_parser.py:1530`). If the report-level assertion is kept as well, the docstring must name
+   BUG-3289 and state that this test is **expected to invert** when BUG-3289 is fixed.
+
+2. **Pin the corpus invariants as frozen fixtures, not a live-corpus sweep** (Residual Work item 2).
+   See that item for the full rationale — briefly: the before/after diff the original Step 5 asks
+   for is not constructible (the pre-fix function no longer exists in the tree), the scoped
+   invariant is tautological, and a baseline over a corpus that grows daily is a flake generator.
+
+   Copy the three shapes that produced the measured numbers into fixtures and assert exact counts:
+   a decided issue whose winning option is **not** the last; the ENH-2692 shape; and a
+   `### Decision Rationale` living under a **different** H2 than its options. Record the measured
+   figures (`767 → 527` reports; `~118` issues dropping to zero unresolved) in the docstring as
+   provenance only — never as assertions. Leave `test_corpus_sweep_does_not_crash` (`:5027`) as the
+   sole live-corpus test.
+
+3. Run `python -m pytest scripts/tests/` and confirm green. No source changes are expected in
+   `scripts/little_loops/`; if a test forces one, the fix regressed and that is a new finding.
+
+### Landed in `f39a417e` — historical spec, do not re-implement
 
 1. Add the heading boundary to span termination in **`_locate_options_in_text` (`:1967`)** — the
    actual defect site; `locate_enumerable_options` (`:2134`) is the public wrapper and needs no
@@ -685,7 +740,8 @@ keyword list, or threshold.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
-_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+_These touchpoints were identified by wiring analysis. **All three are satisfied by `f39a417e`** —
+retained as provenance:_
 
 - ~~Decide explicitly whether `_iter_option_blocks` (`issue_parser.py:2216`) … is in scope for this
   fix or an accepted gap~~ — **resolved: in scope, and it carries a blocker.** See Proposed
@@ -699,6 +755,10 @@ _These touchpoints were identified by wiring analysis and must be included in th
   they consume the fixed function's output without code changes, confirmed above
 
 ## Impact
+
+> **Repriced 2026-08-21 (post-`f39a417e`).** The two bullets below describe the *original* scope and
+> are retained as provenance. Current: **P3**, **size Small** — the parser work has landed; what
+> remains is two test methods with known insertion points and no source change.
 
 - **Priority**: P2 — degrades decision quality on the issues that matter most, but does not
   corrupt files or block the pipeline
@@ -772,41 +832,103 @@ behavior; all three exist to stop the fix being un-done by a later reader.
    Missing: the fixture from *Tests → "Winner's tail no longer suppresses a report"* — a **winning**
    option whose description is followed by a `###` subheading, with a shared identifier named in the
    *rejected* option, again in the winner's post-heading tail, and again in a directive section.
-   **Assert the report DOES fire**, and name in the docstring that this is the accepted pre-existing
-   `_decision_identifiers` defect, not the boundary misbehaving. This is the one direction in which
-   the fix makes `format-check` noisier; without the fixture, the next reader who meets a new
-   `unapplied_decision` report reads it as a regression and re-widens the winner's span —
-   reintroducing the absorption dependency this issue removed.
+   This is the one direction in which the fix makes `format-check` noisier; without the fixture, the
+   next reader who meets a new `unapplied_decision` report reads it as a regression and re-widens
+   the winner's span — reintroducing the absorption dependency this issue removed.
+
+   **Revised 2026-08-21 — assert at the boundary layer, not the report layer.** *Tests* above says
+   "Assert the report DOES fire." That assertion is coupled to a defect that is now scheduled for
+   removal: the end-to-end report fires only because `_decision_identifiers` treats every backticked
+   token as option-discriminating, which is exactly what **BUG-3289** fixes. A test asserting
+   `_unapplied_decision(...) != []` therefore inverts the moment BUG-3289 lands, leaving its
+   implementer with a red test and no way to tell whether to fix it or delete it. Assert instead the
+   fact this issue owns and BUG-3289 does not touch: with the winner's span bounded at the trailing
+   `###`, the shared identifier is no longer in `sel_ids` and is promoted into
+   `discriminating = rej_ids - sel_ids` (`issue_parser.py:1530`). If a report-level assertion is
+   kept alongside it, the docstring **must** name BUG-3289 and state that this test is expected to
+   invert when BUG-3289 lands.
 
 2. **Neither corpus invariant is pinned as a test.** *Implementation Step 5* calls `gains == 0`
    "the invariant to assert" and gives `new_reports == 0` its own bullet. Both were verified
-   manually and recorded only in `f39a417e`'s commit message, so nothing re-checks them. Add a
-   corpus sweep over `.issues/` asserting `gains == 0` strictly, plus `new_reports == 0` modulo the
-   one accepted ENH-2692 exception. Record the drop count (~118) and the report total (767 → 527)
-   as observations, not assertions — both are corpus-dependent. Follow
-   `test_corpus_sweep_does_not_crash` (`test_issue_parser.py`) for the sweep idiom, and skip
-   gracefully if `.issues/` is absent so the test survives outside this repo.
+   manually and recorded only in `f39a417e`'s commit message, so nothing re-checks them.
 
-3. **The `_decision_identifiers` follow-up — filed as BUG-3289 (2026-08-21).**
-   *Implementation Step 5* says "File **one** follow-up for that breadth problem."
-   `_decision_identifiers`
+   **Revised 2026-08-21 — do this with frozen fixtures, not a live-corpus sweep.** Step 5's
+   formulation is not implementable as written, and the two obvious substitutes are worse:
+
+   - **The literal diff is not constructible.** `gains == 0` and `new_reports == 0` are both
+     *before/after* quantities, and the pre-fix functions no longer exist in the tree to diff
+     against. (Already noted independently under § Residual Work → Codebase Research Findings.)
+   - **The invariant form is tautological or wrong.** Measured 2026-08-21 over the live corpus:
+     the naive document-scope invariant "issue contains `### Decision Rationale` →
+     `count_unresolved_options == 0`" has **12 violations across 3193 issues** (BUG-2586, ENH-2544,
+     ENH-2720, ENH-2226, ENH-2507, ENH-2509, ENH-2623, ENH-2966, …) — and none is a bug: each has
+     its `### Decision Rationale` under a *different* H2 than its options, which is Rule 3's
+     section scope behaving correctly. Scoping the invariant properly means re-implementing
+     `locate_unresolved_options` inside the test, which asserts nothing.
+   - **A frozen baseline over `.issues/` is a flake generator.** The corpus grows every day; a
+     checked-in snapshot of per-issue counts would need re-baselining on most issue-touching
+     commits, and the first person to re-baseline reflexively defeats the guard.
+
+   Do instead: copy the three shapes that produced the measured numbers into fixtures and assert
+   exact counts on them —
+
+   - a decided issue whose winning option is **not** the last (the ~118-issue direction),
+   - the ENH-2692 shape (the one new-report case),
+   - a `### Decision Rationale` under a **different** H2 than its options (the section-scope case
+     the 12 corpus "violations" above actually represent).
+
+   Record the measured figures as provenance in the docstring — `767 → 527` reports at fix time,
+   **523 reports across 120 issues** as re-measured 2026-08-21, `~118` issues dropping to zero
+   unresolved — explicitly as observations, never as assertions. Leave
+   `test_corpus_sweep_does_not_crash` (`test_issue_parser.py:5027`) as the sole live-corpus test.
+
+3. ~~**The `_decision_identifiers` follow-up.**~~ **Done — filed as BUG-3289 (2026-08-21)** and
+   listed in this issue's `relates_to`. No action remains here. For context: `_decision_identifiers`
    (`issue_parser.py`, reached from `_unapplied_decision`) treats **every** backticked token in an
    option block as an option-discriminating identifier, so shared subject vocabulary fires whenever
-   the winner's own prose happens not to restate it. That single defect accounts for both the ~23
-   surviving ENH-3277 reports and the one new ENH-2692 report. Candidate rule already recorded
-   above: subtract identifiers appearing in the issue's title/Summary, or in any section preceding
-   `## Proposed Solution`, before computing `discriminating = rej_ids - sel_ids`. File it as a BUG
-   and add it to `relates_to` here.
+   the winner's own prose happens not to restate it — accounting for both the ~23 surviving ENH-3277
+   reports and the one new ENH-2692 report. Candidate rule recorded there: subtract identifiers
+   appearing in the issue's title/Summary, or in any section preceding `## Proposed Solution`,
+   before computing `discriminating = rej_ids - sel_ids`.
 
-Item 3 is a separate issue; items 1–2 are test-only and close this one.
+Item 3 is closed out. Items 1–2 are test-only and close this issue.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-21 — based on codebase analysis:_
+
+- **Confirmed still missing, verified against current tree (2026-08-21, post-`f39a417e`)**: item 1 (the ENH-2692 "new-report direction" fixture) and item 2 (the `gains == 0`/`new_reports == 0` corpus-sweep) are not covered by any existing test. `TestLastOptionSpanBoundary` (`scripts/tests/test_issue_parser_unresolved.py:817`) added 6 tests by the fix commit, but all 6 call only `locate_enumerable_options` — none calls `_unapplied_decision`, so none exercises the `discriminating = rej_ids - sel_ids` report-firing path item 1 needs. The closest existing test, `test_last_block_stops_at_trailing_subsection_not_just_callout_or_dr` (`scripts/tests/test_issue_parser.py:4967-5002`), asserts the opposite direction (`_unapplied_decision(content) == []`) and repeats its shared identifier in only 2 of the 3 required places (rejected option + winner's post-heading tail; not also a directive section). [Agent 2 finding]
+- **Item 1 insertion point**: add a new test to `class TestUnappliedDecision` (`scripts/tests/test_issue_parser.py:4757`), immediately after `test_last_block_stops_at_trailing_subsection_not_just_callout_or_dr` (ends `:5002`) and before `class TestUnappliedDecisionLiveCorpusSweep` (`:5005`). Build via the class's existing `_issue(self, proposed_solution: str, **directive_sections: str) -> str` helper (`:4765`), matching this class's established docstring convention of opening `"""BUG-3279: ..."""` and naming the accepted defect (`BUG-3289`) inline, per the two existing docstring precedents `test_last_block_stops_at_trailing_subsection_not_just_callout_or_dr` and `test_fence_aware_marker_inside_fence_not_counted`. [Agent 3 finding]
+- **Item 2 insertion point**: add a new test method inside `class TestUnappliedDecisionLiveCorpusSweep` (`scripts/tests/test_issue_parser.py:5005`), alongside `test_corpus_sweep_does_not_crash` (`:5027`), reusing its `issues_dir = Path(__file__).parent.parent.parent / ".issues"` + `pytest.skip` idiom. No existing utility in this codebase computes a before/after diff across corpus function versions — a repo-wide search for `gains ==`, `new_reports`, `before_reasons`/`after_reasons`, and set-subtraction diff idioms in `scripts/tests/` returned no matches, and the old (pre-fix) function no longer exists in the tree to diff against. Since only the current (fixed) behavior is measurable now, encode the invariants as fixed-corpus assertions against present-day output — e.g. `count_unresolved_options` returns `0` for every issue previously known to be fully decided, and `_unapplied_decision` returns `[]` for every issue with no live `unapplied_decision` report today — rather than a literal `old_fn` vs `new_fn` diff, since that comparison is no longer constructible. [Agent 2 + Agent 3 findings]
+  > ⚠ Superseded 2026-08-21 — the "fixed-corpus assertions against present-day output" tail of this
+  > bullet is replaced by the frozen-fixture decision in item 2 above; a live-`.issues/` aggregate is
+  > not to be asserted. The insertion-point facts stand.
+
+## Acceptance Criteria
+
+1. `scripts/tests/test_issue_parser.py::TestUnappliedDecision` gains a test for the winner's-tail
+   direction, asserting that the shared identifier appears in `discriminating` once the winning
+   option's span is bounded at its trailing `###`. Its docstring opens `"""BUG-3279: …"""` and names
+   BUG-3289 as the reason any report-level assertion in it is expected to invert later.
+2. Three frozen fixtures pin the corpus invariants — non-last winner, the ENH-2692 shape, and
+   `### Decision Rationale` under a different H2 than its options — asserting exact
+   `count_unresolved_options` / `_unapplied_decision` results. No test asserts a live-`.issues/`
+   aggregate; `test_corpus_sweep_does_not_crash` remains the only live-corpus test.
+3. `python -m pytest scripts/tests/` exits 0 with **no changes under `scripts/little_loops/`** — the
+   parser fix from `f39a417e` stands unmodified.
 
 ## Status
 
-**Open** | Created: 2026-08-21 | Priority: P2 | Parser fix landed `f39a417e`; reopened for residual
-test coverage and one un-filed follow-up
+**Open** | Created: 2026-08-21 | Priority: P3 | Parser fix landed `f39a417e`; reopened for residual
+test coverage only (the follow-up is filed as BUG-3289). Repriced 2026-08-21: P2→P3, Large→Small —
+remaining scope is two test methods with known insertion points. Stale `confidence_score` /
+`outcome_confidence` / `score_*` frontmatter was cleared rather than carried over; re-run
+`/ll:confidence-check` to score the reduced scope.
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-21T19:27:27 - `eae61f16-add8-4659-bd44-04cb88cf7241.jsonl`
+- `/ll:refine-issue` - 2026-08-21T19:17:17 - `d646290c-1aab-4dd7-b7a8-3cf697c83ace.jsonl`
 - `/ll:manage-issue` - 2026-08-21T18:43:02 - `8dfb1ac4-9c46-4e39-8612-aa72663c1c57.jsonl`
 - `/ll:confidence-check` - 2026-08-21T18:06:29 - `1dc42ab1-08c6-4bb9-a00d-68fb256a4aa4.jsonl`
 - `/ll:confidence-check` - 2026-08-21T17:41:34 - `49809b3e-fc41-407d-a838-27884c8554fc.jsonl`

@@ -5,6 +5,7 @@ title: decide-issue clears decision_needed while lower-precedence decision block
   stay unresolved
 priority: P2
 status: open
+parent: EPIC-3290
 discovered_by: ll-issues-create
 discovered_date: '2026-08-21'
 captured_at: '2026-08-21T15:45:13Z'

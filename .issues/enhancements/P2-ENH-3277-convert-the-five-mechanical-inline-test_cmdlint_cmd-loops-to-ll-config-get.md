@@ -132,9 +132,26 @@ the list is technical debt with a name, and this issue is its payoff.
 ## Proposed Solution
 
 Convert one file at a time, applying BUG-3269 §2's precedence shape and §2b's empty-`CMD` row
-for that specific site. After each file: `ll-loop validate`, the scoped `grep` from step 7 (which
+for that specific site. After each file: `ll-loop validate`, the scoped `grep` from step 6 (which
 must exclude the two permanently-exempt files), and BUG-3269's gate with one entry removed from
 `_PENDING_CONVERSION`.
+
+### Behavior Parity
+
+What the inline `.ll/ll-config.json` parse is replaced by, per input:
+
+| `.ll/ll-config.json` state | Inline parse today | `ll-config get project.<key>` | Parity? |
+|---|---|---|---|
+| Key set to a value | that value | that value | **identical** |
+| Key absent | `'pytest'` literal (per call site) | `ProjectConfig` field default — `pytest` / `ruff check .` | **identical for `test_cmd`**; `lint_cmd` widens from the hardcoded `ruff check scripts/` to `ruff check .` at `evaluation-quality.yaml:63` only |
+| Key present-and-null | `'pytest'` guess (`raw if raw else`) — except `fix-quality-and-tests`, which prints `true` | empty string → that site's §2b branch | **intended change**: the opt-out is honored instead of overridden. `fix-quality-and-tests` is already-equivalent (`eval "true"` and `eval ""` both exit 0 → `done`) |
+| File absent entirely | `'pytest'` | `pytest` (rc 0) | **identical** |
+| `.ll/ll.local.md` overrides the key | ignored | honored (deep-merged in `_load_config`) | **intended change**: the documented override mechanism starts working |
+| `ll-config` binary missing | n/a | empty `CMD` → §2b branch | **new failure mode**, accepted — see *Risk accepted* under *Impact* |
+
+Not in parity scope: exit codes (`ll-config get` returns 0 in every row above, verified
+empirically under *Codebase Research Findings*), routing (unchanged at all five sites), and
+`evaluate_code`'s own exit status (must stay 0 — *EXIT-CODE CORRECTION*).
 
 ### DECIDED (Option A) — `rn-refine` and `auto-refine` are permanently exempt
 
@@ -258,7 +275,7 @@ Per BUG-3269 §2b:
 | `harness-multi-item.yaml:90-100` | `check_mcp` | pass-on-empty |
 | `evaluation-quality.yaml:58` (`test_cmd`) | **none — `next: score`, ungated** | **explicit skip required.** Emit a "no test signal" marker **on stdout** (see *CAPTURE CORRECTION* below) — **not** by rerouting; `evaluate_code` has no `on_yes`/`on_no` edges |
 | `evaluation-quality.yaml:63` (`lint_cmd`) | **none — same state** | **explicit skip required.** Same hazard, same state, separate branch: post-conversion an empty `LINT_CMD` makes `eval "" \| tee eval-lint-results.txt` write an empty file *and* contribute nothing to stdout, which `score` reads as *clean lint*. Emit a "no lint signal" marker on stdout instead. The existing `\|\| true` makes this non-gating, so the risk is a falsified artifact, not a false pass |
-| `dead-code-cleanup.yaml:71-81`, `test-coverage-improvement.yaml:45` and `:148-158` | `commit` / ungated | **SPLIT OUT — ENH-3288.** All three need explicit-skip handling on an `on_yes: commit` edge, which requires a `harness_exit` fragment switch and new states. Not this issue's work; do not convert them here |
+| `dead-code-cleanup.yaml:71-81`, `test-coverage-improvement.yaml:45` and `:143-158` (read at `:152`) | `commit` / ungated | **SPLIT OUT — ENH-3288.** All three need explicit-skip handling on an `on_yes: commit` edge, which requires a `harness_exit` fragment switch and new states. Not this issue's work; do not convert them here |
 | `rn-refine.yaml:986-994` | advisory only | **NOT CONVERTED — permanently exempt (Option A).** Its absent≡skip contract inverts under `ll-config get`. Left exactly as-is, including the already-correct `[ -z "$TEST_CMD" ]` branch at `:995-997` |
 | `auto-refine-and-implement.yaml:433-436` | `emit('skipped')` | **NOT CONVERTED — permanently exempt (Option A).** It treats falsy *and absent* `test_cmd` as skipped, and absent stops being falsy after conversion |
 
@@ -293,6 +310,31 @@ or a bare `echo` (the file is optional; the capture is not). Do not use `>`.
 A regression test for this state must assert on the state's **captured stdout**, not on file
 contents, or it will pass against the broken shape.
 
+#### EXIT-CODE CORRECTION (2026-08-21) — `evaluate_code` exits 0 only by accident today
+
+**Verified against the tree.** `evaluate_code` declares `action_type: shell` with **no
+`evaluate:` block and no `fragment:`**, so `_evaluate` falls through to its shell default —
+`evaluate_exit_code(action_result.exit_code)` (`fsm/executor.py:2608-2610`) — and a non-zero
+exit produces a `no` verdict at a state whose only edge is `next: score`.
+
+Today that never fires, but only as a side-effect: `set -o pipefail` is in force and the test
+line carries **no** `|| true`, so a failing suite *does* leave a non-zero status — it is
+overwritten purely because the last line of the action is `ruff check scripts/ … || true`,
+which forces the script's exit status to 0. The state's benign exit code is therefore load-bearing
+behavior resting on statement order, not on anything declared.
+
+**Steps 4 and 5 restructure both branches of exactly that action.** A natural rewrite —
+`if [ -z "$CMD" ]; then echo … | tee …; else eval "$CMD" 2>&1 | tee …; fi` as the final
+statement, with the lint branch above it — makes a **failing test suite** set this state's exit
+code non-zero for the first time. That is a control-flow change smuggled into an issue whose
+*Impact* section explicitly promises "no control-flow edits anywhere."
+
+**Required:** `evaluate_code` must exit 0 unconditionally after conversion, in all four
+combinations of (`test_cmd` set / empty) × (suite passes / fails). The simplest shape that
+preserves this is to keep a trailing `|| true` on whichever statement ends the action, or to end
+the action with an explicit `exit 0`. Pin it with a test (see *Tests*); do not rely on statement
+order surviving a future edit.
+
 ### Structural sites — split out to ENH-3288
 
 **`dead-code-cleanup.yaml` and `test-coverage-improvement.yaml` are no longer this issue's
@@ -305,6 +347,31 @@ the final `_PENDING_CONVERSION` teardown.
 
 This issue keeps the six conversions that are pure find-and-replace, and shrinks
 `_PENDING_CONVERSION` from nine entries to four. Do not touch either structural loop here.
+
+### The gate file's own prose is falsified by this issue
+
+**Verified against the tree 2026-08-21.** `scripts/tests/test_bug3269_test_cmd_resolution_gate.py`
+asserts in **three** places that *this* issue empties and deletes `_PENDING_CONVERSION`. The split
+moved that to ENH-3288, so all three become false the moment this issue lands, in the file that is
+the family's own source of truth:
+
+| Anchor | Current text | Required |
+|---|---|---|
+| Module docstring `:23-27` | *"populated with the nine sites deferred to ENH-3277 … **ENH-3277's definition of done is that `_PENDING_CONVERSION` is empty and can be deleted.**"* | Nine → four; the definition-of-done sentence reassigned to **ENH-3288** |
+| `_PENDING_CONVERSION` comment `:52-55` | *"sites deferred to ENH-3277 (blocked_by: [BUG-3269]) … ENH-3277's definition of done is emptying this set and deleting it."* | Same reassignment |
+| `test_pending_conversion_sites_still_exist` assertion message `:155` | *"shrink the exemption list (ENH-3277)"* | → ENH-3288 |
+
+**And the set's name becomes a lie for two of its four members.** Option A made `rn-refine.yaml`
+and `auto-refine-and-implement.yaml` **permanent** exemptions, but ENH-3288 owns the move into
+`_PERMANENT_EXEMPTIONS` (its step 5). So between this issue and that one, a set literally named
+`_PENDING_CONVERSION`, under a docstring promising it will be emptied, lists two files that will
+never be converted. Annotate both entries in place with a one-line `# Permanently exempt per
+ENH-3277 Option A — moves to _PERMANENT_EXEMPTIONS in ENH-3288 step 5` comment so the gap is
+documented rather than merely survived.
+
+This is prose-only — no assertion logic changes, no test breaks. It is in scope precisely because
+leaving it is worse than not splitting: the next reader of the gate is told the wrong issue owns
+the teardown.
 
 ### The three `harness-*` sites are user-facing templates
 
@@ -320,6 +387,29 @@ documentation drift to tidy alongside the code — **they actively teach the inl
 anti-pattern that BUG-3269's mirror-drift gate exists to stop from reaching a fourteenth copy.**
 The comment rewrite at those three anchors is load-bearing, and it is a further argument for
 step 3's ordering (these convert first).
+
+#### Pinned replacement text — use this verbatim at all three anchors
+
+"Rewrite to stop teaching the inline parse" is not a specification; three implementers would
+write three different comments into three copy-me scaffolds. Use exactly this, adjusting only
+the trailing `# Replace ...` line where the current file already has one
+(`harness-single-shot.yaml:59-60`) and omitting it where it does not:
+
+```yaml
+    # EXAMPLE: Cheapest gate first — run the project's configured test suite.
+    # Resolves project.test_cmd via `ll-config get`, which honors .ll/ll.local.md
+    # and the three-way contract: key absent → ProjectConfig default (`pytest`);
+    # present-and-null → empty, meaning the project opted out of a test suite;
+    # value set → that value.
+    # NOTE: an opted-out project yields an empty CMD, `eval ""` exits 0, and this
+    # gate PASSES. That is deliberate here (the next state is a further gate). If
+    # you clone this into a loop whose on_yes performs an irreversible action, add
+    # an explicit `[ -z "$CMD" ]` branch — see ENH-3288.
+```
+
+The second paragraph is the load-bearing half: a cloner who copies a pass-on-empty gate onto an
+`on_yes: commit` edge reproduces exactly the hazard that forced this issue's split. The comment
+is where that warning has to live, because the shell body no longer shows the fallback.
 
 ### Precedence — config-first bare at all five sites
 
@@ -442,6 +532,8 @@ consistency, simplicity, and risk, despite the issue's own text recommending Opt
   (`scripts/tests/test_bug3269_test_cmd_resolution_gate.py:55-65`) — **shrunk from nine entries
   to four**, one per converted file. Not emptied and not deleted here: that is ENH-3288's step 6,
   and `test_pending_conversion_sites_still_exist` keeps the remaining four honest in the meantime.
+- **The same file's prose, in three places** — see *The gate file's own prose is falsified by this
+  issue* below. Not optional cleanup: all three currently assert something this issue makes false.
 
 Out of scope: `dead-code-cleanup.yaml` and `test-coverage-improvement.yaml` (**ENH-3288**);
 `rn-refine.yaml` and `auto-refine-and-implement.yaml` (permanently exempt, Option A — the
@@ -469,7 +561,12 @@ _Wiring pass added by `/ll:wire-issue`:_
 - **Per-site subprocess resolution tests**, driven through **`bash -c`**
   (`subprocess.run(["bash", "-c", body])`, matching `runners.py:297` — under `dash`,
   `set -o pipefail` is unavailable and `rc=$?` becomes `tee`'s status, so an `sh`-driven test
-  reports a passing gate for a failing suite). Assert three cases each: present-and-set,
+  reports a passing gate for a failing suite). *Scope note:* only three of the five sites actually
+  carry `set -o pipefail` + a `tee` pipe — `fix-quality-and-tests`, `harness-multi-item`, and
+  `evaluation-quality`. `harness-single-shot` and `harness-plan-research-implement-report` are bare
+  `eval "$CMD" 2>&1` with no pipe at all. Use `bash -c` uniformly anyway (one harness, matches the
+  runner), but do not infer from this rule that those two are pipefail-dependent — they are not,
+  and a conversion must not introduce a pipe to make them so. Assert three cases each: present-and-set,
   present-and-null (opts out, not literal `"None"`), and absent (falls back to `ll-config get`'s
   own `ProjectConfig` default). Closest template:
   `TestRlCodingAgentObserveTestCmdResolution` (`test_builtin_loops.py:10747-10799`) — extract the
@@ -483,6 +580,17 @@ _Wiring pass added by `/ll:wire-issue`:_
   triplicating one subprocess test, following
   `test_bug3269_test_cmd_resolution_gate.py`'s own `pytest.mark.parametrize`-over-file-list
   pattern. They have zero existing coverage of their shell body today. [Agent 3 finding]
+- **Pin `evaluate_code`'s exit code at 0** across all four combinations of (`test_cmd` set /
+  present-null) × (suite passes / fails) — per *EXIT-CODE CORRECTION*. Today this holds only
+  because the action's last statement carries `|| true`; steps 4 and 5 rewrite that statement, and
+  a non-zero exit at this state produces a `no` verdict (`evaluate_exit_code`,
+  `fsm/executor.py:2608-2610`) on a state whose only edge is `next: score`. Same `bash -c`
+  subprocess harness as the resolution tests, asserting `returncode == 0`.
+- **Pin the three `harness-*` scaffold comments** with a structural guard, so the one AC that
+  protects against the anti-pattern propagating has a verifier like every other row:
+  parametrized over the three files, assert `"falls back to 'pytest'" not in text` **and** that
+  the `check_concrete` comment block mentions `ll-config get`. Without this, the comment rewrite
+  is the only load-bearing change in the issue with nothing holding it in place.
 - **Pin the hardcoded-`ruff` removal** with a structural guard mirroring
   `TestIncrementalRefactorLoop.test_no_state_hardcodes_this_repo_test_path` — assert
   `"ruff check scripts/" not in action` post-conversion. `evaluation-quality.yaml`'s
@@ -584,6 +692,9 @@ gate-teardown criteria live in **ENH-3288**._
       **on stdout** (`| tee`, never a bare `>`)
 - [ ] `evaluation-quality.yaml:63`'s hardcoded `ruff check scripts/` → `ll-config get
       project.lint_cmd`, with a no-lint-signal marker on stdout
+- [ ] `evaluate_code` still exits **0 unconditionally** — all four combinations of (`test_cmd`
+      set / present-null) × (suite passes / fails). Today this is guaranteed only by the trailing
+      `|| true` that steps 4–5 rewrite (*EXIT-CODE CORRECTION*)
 - [ ] All five sites use the **config-first bare** shape — no `${context.test_cmd}` reference
       anywhere (none of the five declares the key; an undeclared reference is an
       `InterpolationError` and fails gate assertion (ii))
@@ -600,6 +711,15 @@ gate-teardown criteria live in **ENH-3288**._
       step 5
 - [ ] `test_no_inline_project_command_config_read`, `test_context_references_are_declared`, and
       `test_general_task_and_rl_coding_agent_are_not_exempt` all remain and pass
+- [ ] All three "ENH-3277 empties/deletes this set" claims in
+      `test_bug3269_test_cmd_resolution_gate.py` reassigned to **ENH-3288** — module docstring
+      (`:23-27`), `_PENDING_CONVERSION` comment (`:52-55`), and
+      `test_pending_conversion_sites_still_exist`'s assertion message (`:155`). Verified by
+      `grep -c 'ENH-3277' scripts/tests/test_bug3269_test_cmd_resolution_gate.py` returning only
+      the Option-A annotation hits below
+- [ ] The `rn-refine.yaml` and `auto-refine-and-implement.yaml` entries in `_PENDING_CONVERSION`
+      each carry an inline comment marking them permanently exempt per Option A and pointing at
+      ENH-3288 step 5 for the move
 
 **Tests** (each is new; none exists today)
 
@@ -609,11 +729,18 @@ gate-teardown criteria live in **ENH-3288**._
       `eval-test-results.txt` / `eval-lint-results.txt`
 - [ ] Structural guard asserting `"ruff check scripts/" not in action` at
       `evaluation-quality.evaluate_code`
+- [ ] Structural guard over the three `harness-*.yaml` asserting `"falls back to 'pytest'"` is
+      absent and the `check_concrete` comment names `ll-config get` — the verifier for the Docs
+      row below
+- [ ] `evaluate_code` exit-0 test, four combinations (see *Conversions*)
 
 **Docs**
 
 - [ ] `EVALUATION_GUIDE.md:393` describes the configured `lint_cmd`, not `ruff`
-- [ ] The three `harness-*` in-YAML scaffold comments no longer describe a `'pytest'` fallback
+- [ ] The three `harness-*` in-YAML scaffold comments match the **pinned replacement text** under
+      *Proposed Solution* — including the clone-hazard note ("if your `on_yes` is irreversible,
+      add an explicit `[ -z "$CMD" ]` branch"). Verified by the structural guard above, not by
+      inspection
 - [ ] `LOOPS_REFERENCE.md:979,1305,1327` re-verified against final behavior
 
 **Exit gates**
@@ -632,6 +759,14 @@ gate-teardown criteria live in **ENH-3288**._
 2. **Pick a §2b row for every site before writing any shell.** The table under *Proposed
    Solution* is a hard prerequisite, not advisory. Four of the five sites here are pass-on-empty;
    `evaluation-quality` is the one that needs an explicit skip.
+
+2b. **Write the subprocess resolution tests before converting, not alongside.** Both of this
+   issue's named outcome risks reduce to "no execution-level coverage exists for any of the five
+   sites today" — which is exactly why `outcome_confidence` (63) sits below this project's
+   `outcome_threshold` (65). Written first, each test is a red-then-green check on that site's §2b
+   row; written alongside, it is a description of whatever shell was just typed and clears
+   nothing. Order: the parametrized `harness-*` class, then `fix-quality-and-tests`, then
+   `evaluation-quality` (both branches, plus the exit-0 test), then steps 3–5 turn them green.
 3. **Convert the four pass-on-empty sites first** — `fix-quality-and-tests.yaml`
    (delete its three-way python body outright), `harness-single-shot.yaml`,
    `harness-plan-research-implement-report.yaml`, `harness-multi-item.yaml`. These are
@@ -644,8 +779,15 @@ gate-teardown criteria live in **ENH-3288**._
    bare `>`), because `score` reads `${captured.code_results.output}` and not the files — see
    *CAPTURE CORRECTION*. Do **not** reroute; `evaluate_code` has no `on_yes`/`on_no` edges.
 5. **Convert `evaluation-quality.yaml:63`'s hardcoded `ruff check scripts/`** to
-   `ll-config get project.lint_cmd` — the same defect, pre-inlined. Then remove
-   `evaluation-quality.yaml` from `_PENDING_CONVERSION`, bringing it to four entries.
+   `ll-config get project.lint_cmd` — the same defect, pre-inlined. Keep the action exiting 0
+   unconditionally (*EXIT-CODE CORRECTION*). Then remove `evaluation-quality.yaml` from
+   `_PENDING_CONVERSION`, bringing it to four entries.
+
+5b. **Correct the gate file's prose.** Reassign all three "ENH-3277 empties/deletes this set"
+   claims to ENH-3288 (module docstring `:23-27`, `_PENDING_CONVERSION` comment `:52-55`,
+   `test_pending_conversion_sites_still_exist`'s assertion message `:155`) and annotate the two
+   Option-A entries in place — see *The gate file's own prose is falsified by this issue*.
+   Prose-only; no assertion logic changes and no test breaks.
 6. **Verify.** After each file: `ll-loop validate`, a scoped `grep` for the old
    `.get('test_cmd'` / `.get('lint_cmd'` pattern, and the gate with one fewer entry.
 
@@ -653,9 +795,15 @@ gate-teardown criteria live in **ENH-3288**._
    under Option A, `oracles/code-run-gate.yaml`, and (until ENH-3288 lands) the two structural
    loops:
 
+   **The grep must cover the bracket form too.** `_INLINE_ACCESS_RE` alternates on
+   `['project']['test_cmd']` as well as `.get('project'…).get('test_cmd'`, and
+   `fix-quality-and-tests.yaml:69` uses **the bracket form** (`'test_cmd' in cfg['project']`)
+   inside the three-way body step 3 deletes. A `.get(`-only grep therefore reports clean against a
+   *partial* deletion that leaves that line behind, while the gate test still fails. Include both:
+
    ```bash
-   grep -rn "\.get('test_cmd'\|\.get('lint_cmd'" scripts/little_loops/loops/ \
-     --include='*.yaml' \
+   grep -rnE "\.get\('(test_cmd|lint_cmd)'|\['project'\]\['(test_cmd|lint_cmd)'\]" \
+     scripts/little_loops/loops/ --include='*.yaml' \
      | grep -v -e 'rn-refine.yaml' -e 'auto-refine-and-implement.yaml' \
                -e 'oracles/code-run-gate.yaml' \
                -e 'dead-code-cleanup.yaml' -e 'test-coverage-improvement.yaml'
@@ -663,6 +811,10 @@ gate-teardown criteria live in **ENH-3288**._
 
    Expected output at the end of this issue: empty. (ENH-3288 drops the last two exclusions and
    expects empty again.)
+
+   **`test_no_inline_project_command_config_read` is authoritative, not this grep** — the grep is
+   a fast per-file convenience during step 3/4/5 and matches a narrower pattern than the gate.
+   A clean grep is never sufficient evidence that a file converted; the gate passing is.
 
    At the end: `python -m pytest scripts/tests/` exits 0.
 
@@ -828,7 +980,9 @@ regression — the inline snippets open the same relative path — but not fixed
   ENH-3288.
 - **Rollback seam**: independent per-file edits; revert one file and re-add its
   `_PENDING_CONVERSION` entry. Nothing shared to unwind — no new states, no fragment changes, no
-  control-flow edits anywhere in this issue.
+  control-flow edits anywhere in this issue. **The one way to violate that promise accidentally**
+  is to let `evaluate_code` start exiting non-zero on a failing suite while restructuring its two
+  branches (*EXIT-CODE CORRECTION*); the exit-0 test exists to catch it.
 
 ## Related Key Documentation
 
@@ -867,12 +1021,38 @@ prose — a likely false positive against the same pattern the prior pre-split r
 but the cap is mechanical and doesn't distinguish structured-rejected-option text from genuine
 drift.
 
+### Pre-implementation review addendum — 2026-08-21
+
+_Manual design review against the tree; six changes applied to this issue. Scores below are from
+the prior `/ll:confidence-check` run and are **stale** — re-run before treating the 63 as current._
+
+1. **`missing_behavior_parity` was a true positive, now closed** — a `### Behavior Parity` table
+   was added under *Proposed Solution*.
+2. **Outcome Criterion C's `unapplied_decision` re-confirmed as a false positive** on a second
+   direct read: every flagged term sits inside a labeled `REJECTED` block or Option C's
+   deliberately-retained fallback rationale.
+3. **New in-scope work found:** the gate file's own docstring, set comment, and assertion message
+   all assert that *this* issue empties `_PENDING_CONVERSION` — false after the split. Added to
+   *Files to Modify*, step 5b, and the Gate ACs.
+4. **New hazard found:** `evaluate_code`'s exit code is 0 today only because its last statement
+   carries `|| true`, and steps 4–5 rewrite that statement (*EXIT-CODE CORRECTION*).
+5. **Step 6's grep was weaker than the gate it stood in for** — it missed the bracket access form
+   that `fix-quality-and-tests.yaml:69` actually uses. Widened, and the gate declared authoritative.
+6. **Two unverified ACs given verifiers** — the `harness-*` comment rewrite (now pinned to
+   verbatim replacement text plus a structural guard) and the exit-0 invariant. The AC preamble's
+   "every row is verified by a named test or command" now holds.
+
+Anchors spot-checked and confirmed accurate: all six conversion sites, the "none of the five
+declares `context.test_cmd`" claim, and the `fix-quality-and-tests` identical-routing proof.
+One anchor corrected: `test-coverage-improvement.yaml`'s second read is at `:152` within a
+`:143-158` state (was cited `:148-158`) — ENH-3288's scope, fixed here since it was quoted.
+
 ### Outcome Risk Factors
 
 - No execution-level test coverage exists today for any of the five target read sites — only
   structural checks (state-set membership, edge shape) cover them. A subprocess-level resolution
-  test is needed per site (per *Tests*) before/alongside each conversion to catch a bad
-  `[ -z "$CMD" ]` routing choice.
+  test is needed per site (per *Tests*) **before** each conversion — not alongside it — to catch a
+  bad `[ -z "$CMD" ]` routing choice. Sequencing pinned as step 2b.
 - `format-check`'s `unapplied_decision` gate (19 hits) drives the ambiguity cap above; worth one
   skim of *Proposed Solution* / *Program Design* before starting to confirm no genuinely stale
   rejected-option text survives outside the labeled `REJECTED` blocks.

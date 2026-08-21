@@ -5,6 +5,7 @@ title: _decision_identifiers treats every backticked token in an option block as
   firing unapplied_decision on shared vocabulary
 priority: P3
 status: open
+parent: EPIC-3290
 discovered_by: ll-issues-create
 discovered_date: '2026-08-21'
 captured_at: '2026-08-21T18:59:36Z'

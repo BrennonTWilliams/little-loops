@@ -24,6 +24,7 @@ score_complexity: 16
 score_test_coverage: 18
 score_ambiguity: 12
 score_change_surface: 18
+missing_artifacts: true
 ---
 
 # BUG-3282: verify-issues certifies evidence quotes that exist in no revision of the cited artifact
@@ -691,6 +692,7 @@ corrected in step 4),
 (`:276-278`).
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-21T19:15:15 - `6e72bea6-f81f-494d-91ee-89b15f1562c6.jsonl`
 - `/ll:confidence-check` - 2026-08-21T18:50:00 - `c9ef2e6f-97ff-48c5-ab63-1c421d2aa389.jsonl`
 - `/ll:confidence-check` - 2026-08-21T18:24:15 - `50bb079c-e6a6-43cf-afbb-5f557001b12e.jsonl`
 - `/ll:wire-issue` - 2026-08-21T18:11:26 - `de2bc4f7-6272-4f52-a9cb-998af08752f1.jsonl`

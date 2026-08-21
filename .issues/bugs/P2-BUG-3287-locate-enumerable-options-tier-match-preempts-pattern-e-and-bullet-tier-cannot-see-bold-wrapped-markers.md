@@ -5,6 +5,7 @@ title: locate_enumerable_options lets a tier match preempt Pattern E, and its bu
   tier cannot see bold-wrapped markers
 priority: P2
 status: open
+parent: EPIC-3290
 discovered_by: bug-3278-pre-implementation-review
 discovered_date: '2026-08-21'
 captured_at: '2026-08-21T19:30:00Z'
