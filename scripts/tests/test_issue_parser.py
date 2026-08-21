@@ -4964,6 +4964,43 @@ class TestUnappliedDecision:
 
         assert _unapplied_decision(content) == []
 
+    def test_last_block_stops_at_trailing_subsection_not_just_callout_or_dr(self) -> None:
+        """BUG-3279: the last option block's span now ends at the first
+        qualifying heading generally, not only at a literal `### Decision
+        Rationale` heading or a `> **Selected:**` callout line (the two
+        ENH-3256 clamps this issue subsumes for the heading case). A trailing
+        `### Codebase Research Findings` subsection with no callout and no
+        Decision Rationale heading must not leak its identifiers into REJ."""
+        from little_loops.issue_parser import _unapplied_decision
+
+        content = self._issue(
+            "**Option A**: Route via `refine_followup`.\n\n"
+            "**Option B**: Route via `check_refine_limit`.\n\n"
+            "> **Selected:** Option A\n\n"
+            "### Codebase Research Findings\n\n"
+            "Some unrelated prose naming `check_refine_limit` for context.\n",
+            Implementation_Steps="Uses `refine_followup` as designed.\n",
+        )
+
+        assert _unapplied_decision(content) == []
+
+    def test_fence_aware_marker_inside_fence_not_counted(self) -> None:
+        """BUG-3279 Rule 1: a `**Option A` line inside a fenced code block is not
+        a real option marker -- with only one real option block, the < 2 guard
+        makes this inert regardless of directive-section content."""
+        from little_loops.issue_parser import _unapplied_decision
+
+        content = self._issue(
+            "**Option A**: Route via `refine_followup`.\n\n"
+            "```text\n"
+            "**Option B**: this is example prose inside a fence, not a real option\n"
+            "```\n\n"
+            "> **Selected:** Option A\n",
+            Implementation_Steps="Uses `refine_followup` as designed.\n",
+        )
+
+        assert _unapplied_decision(content) == []
+
 
 class TestUnappliedDecisionLiveCorpusSweep:
     """ENH-3256 Implementation Steps step 5: sweep the live `.issues/` corpus.

@@ -4,10 +4,11 @@ type: BUG
 title: locate_enumerable_options gives the final option every remaining line of its
   section
 priority: P2
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-08-21'
 captured_at: '2026-08-21T15:45:38Z'
+completed_at: '2026-08-21T18:43:33Z'
 labels:
 - decide-issue
 - issue-parser
@@ -475,6 +476,24 @@ _Added by `/ll:refine-issue` — 2026-08-21 — based on codebase analysis:_
 
 ## Program Design
 
+### Deviations
+
+- **2026-08-21** — Rule 3's section-scope resolution check uses a new, separate
+  `_DECISION_RATIONALE_SECTION_MARKER_RE` (`r"^\s*###\s+Decision Rationale\b"`,
+  lenient/prefix-matching) rather than reusing `_DECISION_RATIONALE_HEADING_RE`
+  (`r"^###\s+Decision Rationale\s*$"`, strict exact-heading) as the Program
+  Design's Call Path section implies. The strict regex does not match decorated
+  headings like `### Decision Rationale (superseded — retained for provenance)`,
+  which two live corpus issues (BUG-3177, BUG-3253) actually use. The old (pre-fix)
+  `_RESOLVED_OPTION_MARKER_RE`'s `\b`-bounded alternative matched these leniently;
+  reusing the strict regex for section-scope resolution silently regressed both
+  issues to non-zero unresolved-option gains, violating this issue's own
+  `gains == 0` regression-guard invariant (Implementation Steps, step 5). Verified
+  corpus-wide with the lenient regex: `gains == 0`, `losses == 119` — matching the
+  documented expectation exactly. `_DECISION_RATIONALE_HEADING_RE` itself is
+  unchanged and still used, as designed, for `_unapplied_decision`'s `dr_start`
+  scrub cap.
+
 ### Types
 
 - `LocatedOption` (`scripts/little_loops/issue_parser.py:1907`) — dataclass fields `label: str`,
@@ -729,6 +748,7 @@ where the decision matters most.
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-21T18:43:02 - `8dfb1ac4-9c46-4e39-8612-aa72663c1c57.jsonl`
 - `/ll:confidence-check` - 2026-08-21T18:06:29 - `1dc42ab1-08c6-4bb9-a00d-68fb256a4aa4.jsonl`
 - `/ll:confidence-check` - 2026-08-21T17:41:34 - `49809b3e-fc41-407d-a838-27884c8554fc.jsonl`
 - `/ll:confidence-check` - 2026-08-21T17:30:27 - `08ddfd12-c4b5-4b15-9c96-41356558ea91.jsonl`

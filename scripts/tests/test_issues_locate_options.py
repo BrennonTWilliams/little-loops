@@ -143,6 +143,39 @@ class TestLocateOptionsJsonFlag:
         assert data["heading"] is None
         assert data["options"] == []
 
+    def test_last_option_excludes_trailing_subsection(self, temp_project_dir: Path) -> None:
+        """BUG-3279: mirrors the live ENH-3277 shape -- a refined issue where
+        analysis subsections follow the last option in the same section. The
+        last option's `text` must exclude that trailing prose, and its
+        `end_line` must land before the next heading, not at the section end."""
+        body = (
+            "---\n"
+            "id: FEAT-9204\n"
+            "title: Test\n"
+            "type: feature\n"
+            "status: open\n"
+            "priority: P3\n"
+            "---\n\n"
+            "# FEAT-9204\n\n"
+            "## Summary\n\nTest.\n\n"
+            "## Proposed Solution\n\n"
+            "### Option A\nDo X.\n\n"
+            "### Option B\nDo Y.\n\n"
+            "### Codebase Research Findings\n\n"
+            "Unrelated analysis prose that belongs to no option.\n\n"
+            "## Labels\n\n`feature`\n\n"
+        )
+        _write_issue(temp_project_dir, body)
+        result = _invoke(temp_project_dir, "locate-options", "FEAT-9204", "--json")
+        assert result.returncode == 0, f"stdout={result.stdout!r} stderr={result.stderr!r}"
+        data = json.loads(result.stdout)
+        assert data["count"] == 2
+        last_option = data["options"][-1]
+        assert "Codebase Research Findings" not in last_option["text"]
+        assert "Unrelated analysis prose" not in last_option["text"]
+        heading_line = body.splitlines().index("### Codebase Research Findings") + 1
+        assert last_option["end_line"] < heading_line
+
 
 class TestLocateOptionsErrorHandling:
     """Missing issues exit 1 with an error token, matching check-decidable's contract."""

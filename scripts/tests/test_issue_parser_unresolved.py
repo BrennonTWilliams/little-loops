@@ -202,7 +202,16 @@ class TestCountUnresolvedOptions:
         assert count_unresolved_options(content) == 2
 
     def test_decision_rationale_marks_resolved(self) -> None:
-        """A ### Decision Rationale subsection (without Selected:) is sufficient."""
+        """A ### Decision Rationale heading resolves every option block in its section.
+
+        BUG-3279 Rule 3: resolution via `### Decision Rationale` is section-scope,
+        not block-scope. Option A's own span no longer absorbs the Decision
+        Rationale block (it now stops at that heading, a qualifying boundary),
+        but the section still carries the heading, so both Option A and the
+        non-last-decided Option B read resolved -- this is the fix's "119-issue"
+        direction: a winner that is not the last option no longer leaves earlier
+        blocks reporting falsely unresolved.
+        """
         from little_loops.issue_parser import count_unresolved_options
 
         content = (
@@ -217,7 +226,7 @@ class TestCountUnresolvedOptions:
             "### Option B\n"
             "Do Y.\n"
         )
-        assert count_unresolved_options(content) == 1
+        assert count_unresolved_options(content) == 0
 
     def test_bold_option_label_format(self) -> None:
         """Pattern 2: bold Option A: labels are recognized."""
@@ -255,6 +264,99 @@ class TestCountUnresolvedOptions:
 
         content = FIXTURE_PATH.read_text()
         assert count_unresolved_options(content) == 0
+
+    def test_mixed_shape_depth_heading_and_bold_blocks_in_same_section(self) -> None:
+        """BUG-3279 Rule 2 (sibling functions): a ### Option block keeps its own
+        #### subheading while a **-shaped block in the same section terminates at
+        a ### heading -- depth is decided per-match, not per-call, in the two
+        _OPTION_HEADING_RE-based sibling functions."""
+        from little_loops.issue_parser import count_unresolved_options
+
+        content = (
+            "## Proposed Solution\n"
+            "\n"
+            "### Option A\n"
+            "Do X.\n"
+            "\n"
+            "#### Decision 2 — legitimate nested detail\n"
+            "More about A.\n"
+            "\n"
+            "> **Selected:** A\n"
+            "\n"
+            "**Option B: alt approach**\n"
+            "Do Y.\n"
+            "\n"
+            "### Some unrelated heading\n"
+            "Not part of Option B.\n"
+        )
+        assert count_unresolved_options(content) == 1
+
+    def test_two_option_groups_under_one_decision_rationale_is_blunt(self) -> None:
+        """BUG-3279 Rule 3 caveat: section scope is blunt -- one ### Decision
+        Rationale resolves every option block in the section, even a second,
+        genuinely-undecided group (FEAT-2478 shape). Pinned as the accepted
+        trade-off, not a bug: count_unresolved_options reports 0 even though
+        Decision 2 is still open."""
+        from little_loops.issue_parser import count_unresolved_options
+
+        content = (
+            "## Proposed Solution\n"
+            "\n"
+            "#### Decision 1\n"
+            "\n"
+            "### Option A\n"
+            "Do X.\n"
+            "\n"
+            "> **Selected:** A\n"
+            "\n"
+            "### Option B\n"
+            "Do Y.\n"
+            "\n"
+            "### Decision Rationale\n"
+            "Picked A for Decision 1.\n"
+            "\n"
+            "#### Decision 2\n"
+            "\n"
+            "### Option C\n"
+            "Do Z.\n"
+            "\n"
+            "### Option D\n"
+            "Do W.\n"
+        )
+        assert count_unresolved_options(content) == 0
+
+    def test_whole_document_fallback_scope_is_the_h2_span_not_the_document(self) -> None:
+        """BUG-3279 Rule 3: in the whole-document fallback, section-scope resolution
+        is per-H2-span -- a Decision Rationale in one H2 must not resolve options
+        under an unrelated second H2."""
+        from little_loops.issue_parser import locate_unresolved_options
+
+        content = (
+            "## Some Unrelated Section\n"
+            "\n"
+            "### Option A\n"
+            "Do X.\n"
+            "\n"
+            "### Decision Rationale\n"
+            "Picked A.\n"
+            "\n"
+            "### Option B\n"
+            "Do Y.\n"
+            "\n"
+            "## Another Unrelated Section\n"
+            "\n"
+            "### Option C\n"
+            "Do Z.\n"
+            "\n"
+            "### Option D\n"
+            "Do W.\n"
+        )
+        # Whole-document fallback returns on the *first* H2 section carrying any
+        # option block (Some Unrelated Section) -- that section is fully resolved
+        # by its own Decision Rationale.
+        unresolved, heading = locate_unresolved_options(content)
+        assert heading == "Some Unrelated Section"
+        assert unresolved == 0
 
 
 class TestCountOpenQuestionsInSections:
@@ -710,3 +812,122 @@ class TestPatternEDirectiveAlternatives:
         located = locate_enumerable_options(content)
         assert located.count == 2
         assert located.heading == "Scope Boundaries"
+
+
+class TestLastOptionSpanBoundary:
+    """BUG-3279: the last option's span ends at the first qualifying heading
+    after it, not at the section end -- the absorption-of-trailing-prose fix."""
+
+    def test_last_option_stops_at_trailing_subsection(self) -> None:
+        """A trailing ### subsection after the last option is excluded from its text."""
+        from little_loops.issue_parser import locate_enumerable_options
+
+        content = (
+            "## Proposed Solution\n"
+            "\n"
+            "### Option A\n"
+            "Do X.\n"
+            "\n"
+            "### Option B\n"
+            "Do Y.\n"
+            "\n"
+            "### Codebase Research Findings\n"
+            "Unrelated analysis prose that belongs to no option.\n"
+        )
+        located = locate_enumerable_options(content)
+        assert located.count == 2
+        last = located.options[-1]
+        assert "Codebase Research Findings" not in last.text
+        assert "Unrelated analysis prose" not in last.text
+        assert last.text.strip() == "### Option B\nDo Y."
+
+    def test_option_list_as_section_tail_still_runs_to_section_end(self) -> None:
+        """No trailing subsection -- the section-end fallback is preserved."""
+        from little_loops.issue_parser import locate_enumerable_options
+
+        content = "## Proposed Solution\n\n### Option A\nDo X.\n\n### Option B\nDo Y.\n"
+        located = locate_enumerable_options(content)
+        assert located.count == 2
+        assert located.options[-1].text.strip() == "### Option B\nDo Y."
+
+    def test_prior_decision_rationale_excluded_from_last_option_text(self) -> None:
+        """A previously-appended ### Decision Rationale block appears in no option's text."""
+        from little_loops.issue_parser import locate_enumerable_options
+
+        content = (
+            "## Proposed Solution\n"
+            "\n"
+            "### Option A\n"
+            "Do X.\n"
+            "\n"
+            "### Option B\n"
+            "Do Y.\n"
+            "\n"
+            "### Decision Rationale\n"
+            "> **Selected:** Option A\n"
+            "\n"
+            "Picked A because reasons.\n"
+        )
+        located = locate_enumerable_options(content)
+        for option in located.options:
+            assert "Decision Rationale" not in option.text
+            assert "Picked A" not in option.text
+
+    def test_fence_aware_boundary_ignores_shell_comment_in_fence(self) -> None:
+        """Rule 1: a `#`-shaped shell comment inside a fenced block is not a boundary."""
+        from little_loops.issue_parser import locate_enumerable_options
+
+        content = (
+            "## Proposed Solution\n"
+            "\n"
+            "**Option A**: Do X.\n"
+            "\n"
+            "```bash\n"
+            "# Build the slash-command string exactly as listed\n"
+            "echo hi\n"
+            "```\n"
+            "\n"
+            "More description of Option A.\n"
+        )
+        located = locate_enumerable_options(content)
+        assert located.count == 1
+        assert "echo hi" in located.options[0].text
+        assert "More description of Option A." in located.options[0].text
+
+    def test_section_header_tier_keeps_own_subheading(self) -> None:
+        """Rule 2: a ### Option block's own #### subheading is not a boundary."""
+        from little_loops.issue_parser import locate_enumerable_options
+
+        content = (
+            "## Proposed Solution\n"
+            "\n"
+            "### Option A\n"
+            "Do X.\n"
+            "\n"
+            "#### Decision 2 — a legitimate nested subheading\n"
+            "More detail on Option A.\n"
+            "\n"
+            "### Option B\n"
+            "Do Y.\n"
+        )
+        located = locate_enumerable_options(content)
+        assert located.count == 2
+        assert "#### Decision 2" in located.options[0].text
+        assert "More detail on Option A." in located.options[0].text
+
+    def test_bold_label_tier_terminates_at_any_depth_heading(self) -> None:
+        """Rule 2: a non-heading-shaped (bold_label) option stops at any-depth heading."""
+        from little_loops.issue_parser import locate_enumerable_options
+
+        content = (
+            "## Proposed Solution\n"
+            "\n"
+            "**Option A**: Do X.\n"
+            "\n"
+            "#### Some subheading\n"
+            "This does not belong to Option A.\n"
+        )
+        located = locate_enumerable_options(content)
+        assert located.count == 1
+        assert "Some subheading" not in located.options[0].text
+        assert "does not belong" not in located.options[0].text

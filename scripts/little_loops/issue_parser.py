@@ -1314,6 +1314,16 @@ _SELECTED_CALLOUT_RE = re.compile(r"^\s*>\s+\*\*Selected:\*\*\s*(.+)$", re.MULTI
 # (### Option A vs **Option A**: ...).
 _OPTION_LABEL_RE = re.compile(r"Option\s+[A-Za-z0-9]+", re.IGNORECASE)
 _DECISION_RATIONALE_HEADING_RE = re.compile(r"^###\s+Decision Rationale\s*$", re.MULTILINE)
+# BUG-3279 Rule 3: lenient section-scope resolution marker -- unlike
+# _DECISION_RATIONALE_HEADING_RE above (exact heading, no trailing text; used
+# for _unapplied_decision's dr_start scrub cap), this only requires the
+# heading to *start* with "### Decision Rationale", matching decorated
+# variants like "### Decision Rationale (superseded — retained for
+# provenance)" or "### Decision Rationale (original, for Option A vs B —
+# superseded above)". Matches the old (pre-fix) _RESOLVED_OPTION_MARKER_RE's
+# lenient `\b`-bounded alternative -- corpus-verified as load-bearing for the
+# gains==0 regression guard (two live issues use decorated DR headings).
+_DECISION_RATIONALE_SECTION_MARKER_RE = re.compile(r"^\s*###\s+Decision Rationale\b", re.MULTILINE)
 # A backticked code span of length >= 3 -- the identifier unit both SEL and
 # REJ are built from (Program Design § Decision Rules, Identifier extraction).
 _DECISION_IDENTIFIER_RE = re.compile(r"`([^`\n]{3,})`")
@@ -1368,6 +1378,30 @@ def _strip_codebase_research_findings(body: str) -> str:
     return "".join(kept)
 
 
+def _option_span_boundary(
+    text: str, search_start: int, max_depth: int, fences: list[tuple[int, int]]
+) -> int | None:
+    """First fence-excluded heading (depth 1..*max_depth*) at or after *search_start*, or None.
+
+    Shared boundary rule (BUG-3279) for :func:`_locate_options_in_text`,
+    :func:`_option_block_spans`, and :func:`_iter_option_blocks`: an option's span
+    ends at the next qualifying heading. Fence-aware (Rule 1) so a shell ``#``
+    comment inside a fenced code block never registers as a boundary.
+    """
+    from little_loops.text_utils import in_fence
+
+    heading_re = re.compile(rf"^#{{1,{max_depth}}}\s", re.MULTILINE)
+    pos = search_start
+    while True:
+        m = heading_re.search(text, pos)
+        if m is None:
+            return None
+        if in_fence(m.start(), m.end(), fences):
+            pos = m.end()
+            continue
+        return m.start()
+
+
 def _option_block_spans(text: str) -> list[tuple[int, int, str]]:
     """``(start, end, heading_line)`` for each option block in *text*.
 
@@ -1375,15 +1409,38 @@ def _option_block_spans(text: str) -> list[tuple[int, int, str]]:
     :data:`_OPTION_HEADING_RE` boundary rule, needed here because
     :func:`_unapplied_decision` must clamp and scrub option-block spans
     in-place rather than just read their text.
+
+    BUG-3279: each block additionally ends at the first qualifying heading after
+    its own line (fence-aware), not just at the next option marker or end of
+    text — the previous "last block runs to len(text)" defect. Depth is
+    per-match (Rule 2): a ``### Option X`` marker is itself a heading, so its
+    boundary is depth <=3 (never its own ``####`` children); a ``**Option X``
+    marker is not a heading, so any depth (<=6) is a boundary. Markers matched
+    inside a fenced code block are excluded (Rule 1) — this makes ``count`` (via
+    :func:`_iter_option_blocks`) fence-aware too, not just the boundary.
     """
-    matches = list(_OPTION_HEADING_RE.finditer(text))
+    from little_loops.text_utils import fence_spans, in_fence
+
+    fences = fence_spans(text)
+    matches = [
+        m for m in _OPTION_HEADING_RE.finditer(text) if not in_fence(m.start(), m.end(), fences)
+    ]
     spans: list[tuple[int, int, str]] = []
     for i, m in enumerate(matches):
         start = m.start()
-        end = matches[i + 1].start() if i + 1 < len(matches) else len(text)
+        is_heading_shaped = m.group(0).lstrip().startswith("#")
+        max_depth = 3 if is_heading_shaped else 6
         line_end = text.find("\n", start)
         if line_end == -1:
             line_end = len(text)
+        search_start = line_end + 1 if line_end < len(text) else len(text)
+        heading_boundary = _option_span_boundary(text, search_start, max_depth, fences)
+        end_candidates = [len(text)]
+        if i + 1 < len(matches):
+            end_candidates.append(matches[i + 1].start())
+        if heading_boundary is not None:
+            end_candidates.append(heading_boundary)
+        end = min(end_candidates)
         heading_line = text[start:line_end].strip()
         spans.append((start, end, heading_line))
     return spans
@@ -1409,12 +1466,13 @@ def _unapplied_decision(content: str) -> list[str]:
     dr_match = _DECISION_RATIONALE_HEADING_RE.search(proposed_body)
     dr_start = dr_match.start() if dr_match else len(proposed_body)
 
-    # Clamp the final option block at the Decision Rationale boundary -- it is
-    # appended to the end of Proposed Solution by /ll:decide-issue, not to
-    # any option's own body, and its block would otherwise run to end-of-input.
-    last_start, last_end, last_heading = spans[-1]
-    if last_end > dr_start:
-        spans[-1] = (last_start, max(last_start, dr_start), last_heading)
+    # BUG-3279: no explicit Decision Rationale clamp here anymore -- the
+    # heading boundary _option_block_spans now applies subsumes it (a
+    # `### Decision Rationale` line is itself a qualifying heading, so the
+    # last option's span already stops there). `dr_start` is kept: it has a
+    # second consumer below, `scrub_start = min(dr_start, spans[-1][1])`, the
+    # cap on the Proposed Solution self-scan, which still needs it for the
+    # phantom-trailing-block case tracked separately as BUG-3285.
 
     # The final block is additionally trimmed at the end of its own callout
     # line, if it carries one, dropping any further unheaded prose before the
@@ -1970,18 +2028,35 @@ def _locate_options_in_text(content: str, body: str, body_offset: int) -> Locate
     ``body_offset`` is *body*'s absolute start offset within *content*, used to
     translate each match's position into a 1-indexed line number in *content*.
     Returns None when no tier matches anywhere in *body*.
+
+    BUG-3279: each option's span additionally ends at the first qualifying
+    heading after its own line (fence-aware, Rule 1), not just at the next
+    option marker or the section end — the previous "last option runs to
+    len(body)" defect. Depth is tier-dependent (Rule 2): the ``section_header``
+    tier's marker is itself a ``###`` heading, so its boundary is depth <=3
+    (never its own ``####`` children); the other three tiers' markers are not
+    headings, so any depth (<=6) is a boundary.
     """
+    from little_loops.text_utils import fence_spans
+
+    fences = fence_spans(body)
     for pattern, pattern_name in zip(_OPTION_PATTERNS, _OPTION_PATTERN_NAMES, strict=True):
         matches = list(pattern.finditer(body))
         if not matches:
             continue
+        max_depth = 3 if pattern_name == "section_header" else 6
         options = []
         for i, m in enumerate(matches):
             line_start = body.rfind("\n", 0, m.start()) + 1
+            match_line_end = body.find("\n", m.start())
+            search_start = match_line_end + 1 if match_line_end != -1 else len(body)
+            heading_boundary = _option_span_boundary(body, search_start, max_depth, fences)
+            end_candidates = [len(body)]
             if i + 1 < len(matches):
-                block_end = body.rfind("\n", 0, matches[i + 1].start()) + 1
-            else:
-                block_end = len(body)
+                end_candidates.append(matches[i + 1].start())
+            if heading_boundary is not None:
+                end_candidates.append(heading_boundary)
+            block_end = min(end_candidates)
             block_text = body[line_start:block_end].rstrip()
             abs_start = body_offset + line_start
             abs_end = body_offset + max(block_end - 1, line_start)
@@ -2197,14 +2272,10 @@ def count_enumerable_options(content: str) -> int:
 
 # ENH-2446: coverage-aware variants used by ll-issues check-open-questions.
 # A block in ## Proposed Solution is "resolved" if it carries a `> **Selected:**`
-# callout OR a `### Decision Rationale` subsection (the two markers that
-# /ll:decide-issue writes when it resolves an option). "Unresolved" = enumerable
-# option block with neither marker — i.e. options that still need to be decided.
-
-_RESOLVED_OPTION_MARKER_RE = re.compile(
-    r"^\s*>\s+\*\*Selected:\*\*|^\s*###\s+Decision Rationale\b",
-    re.MULTILINE,
-)
+# callout, or its enclosing section carries a `### Decision Rationale` heading
+# (BUG-3279 Rule 3: section-scope, not block-scope — see _is_option_resolved
+# and locate_unresolved_options). "Unresolved" = enumerable option block with
+# neither marker — i.e. options that still need to be decided.
 
 # Pattern 1 + Pattern 2 headings: H3 "Option X" OR bold "**Option X: ...**" lines.
 _OPTION_HEADING_RE = re.compile(
@@ -2216,25 +2287,55 @@ _OPTION_HEADING_RE = re.compile(
 def _iter_option_blocks(text: str) -> list[tuple[str, str]]:
     """Yield ``(heading_line, block_body)`` for each ``### Option X`` / ``**Option X:**`` block in *text*.
 
-    Boundary = next ``###``, ``##``, or ``**Option`` line at the same or shallower
-    level. Patterns 1-2 from :data:`_OPTION_PATTERNS` (skipping the more approximate
+    Patterns 1-2 from :data:`_OPTION_PATTERNS` (skipping the more approximate
     Patterns 3-4 so the coverage-aware probe stays conservative).
+
+    BUG-3279: boundary = the next same-tier marker, the first qualifying heading
+    after the marker's own line (fence-aware, Rule 1), or the section end —
+    whichever comes first. Depth is per-match (Rule 2), since one document can
+    yield both ``###``-shaped and ``**``-shaped blocks under the shared
+    :data:`_OPTION_HEADING_RE`: a heading-shaped marker's boundary is depth <=3,
+    a bold-shaped marker's boundary is any depth (<=6). Markers matched inside a
+    fenced code block are excluded.
     """
     if not text:
         return []
+    from little_loops.text_utils import fence_spans, in_fence
+
+    fences = fence_spans(text)
+    matches = [
+        m for m in _OPTION_HEADING_RE.finditer(text) if not in_fence(m.start(), m.end(), fences)
+    ]
     blocks: list[tuple[str, str]] = []
-    matches = list(_OPTION_HEADING_RE.finditer(text))
     for i, m in enumerate(matches):
         start = m.start()
-        end = matches[i + 1].start() if i + 1 < len(matches) else len(text)
+        is_heading_shaped = m.group(0).lstrip().startswith("#")
+        max_depth = 3 if is_heading_shaped else 6
+        line_end = text.find("\n", start)
+        search_start = line_end + 1 if line_end != -1 else len(text)
+        heading_boundary = _option_span_boundary(text, search_start, max_depth, fences)
+        end_candidates = [len(text)]
+        if i + 1 < len(matches):
+            end_candidates.append(matches[i + 1].start())
+        if heading_boundary is not None:
+            end_candidates.append(heading_boundary)
+        end = min(end_candidates)
         line_start = text.rfind("\n", 0, start) + 1
         blocks.append((text[line_start:start].strip(), text[start:end]))
     return blocks
 
 
 def _is_option_resolved(block_body: str) -> bool:
-    """Return True if *block_body* contains a `> **Selected:**` or `### Decision Rationale`."""
-    return bool(_RESOLVED_OPTION_MARKER_RE.search(block_body))
+    """Return True if *block_body* contains a `> **Selected:**` callout.
+
+    BUG-3279 Rule 3: the ``### Decision Rationale`` alternative moved out of this
+    per-block check into a section-scope check
+    (:func:`locate_unresolved_options`'s ``section_resolved``) — bounding option
+    blocks at the next heading means ``### Decision Rationale`` (itself a
+    heading) can never fall inside a block again, so testing for it here would
+    always be dead code post-fix.
+    """
+    return bool(_SELECTED_CALLOUT_RE.search(block_body))
 
 
 def locate_unresolved_options(content: str) -> tuple[int, str | None]:
@@ -2248,6 +2349,14 @@ def locate_unresolved_options(content: str) -> tuple[int, str | None]:
     Return-shape note (ENH-2950): unlike its sibling, this function still returns
     the original ``(count, heading)`` tuple — it was not widened to ``LocatedOptions``.
     Do not assume the two functions are interchangeable beyond precedence semantics.
+
+    BUG-3279 Rule 3: a section containing a ``### Decision Rationale`` heading
+    anywhere counts every option block in that section as resolved — evaluated
+    per section, not once per document. This is deliberately blunt: a section
+    with two independent option groups where only one is decided reports fully
+    resolved (see Rule 3's "partially-decided multi-decision sections" hazard;
+    corpus-measured as 0 live false negatives at fix time, mitigated only by a
+    pinned regression fixture, not narrowed scope).
 
     Returns:
         ``(unresolved_count, containing_heading)``. ``containing_heading`` names the
@@ -2263,17 +2372,24 @@ def locate_unresolved_options(content: str) -> tuple[int, str | None]:
         blocks = _iter_option_blocks(body)
         if blocks and found_heading is None:
             found_heading = heading
+        section_resolved = bool(_DECISION_RATIONALE_SECTION_MARKER_RE.search(body))
         for _, block in blocks:
-            if not _is_option_resolved(block):
+            if not section_resolved and not _is_option_resolved(block):
                 unresolved += 1
     if found_heading is not None:
         return unresolved, found_heading
 
     for heading_text, start, end in _iter_h2_sections(content):
-        blocks = _iter_option_blocks(content[start:end])
+        section_text = content[start:end]
+        blocks = _iter_option_blocks(section_text)
         if not blocks:
             continue
-        total = sum(1 for _, block in blocks if not _is_option_resolved(block))
+        section_resolved = bool(_DECISION_RATIONALE_SECTION_MARKER_RE.search(section_text))
+        total = (
+            0
+            if section_resolved
+            else sum(1 for _, block in blocks if not _is_option_resolved(block))
+        )
         return total, heading_text
 
     return 0, None
