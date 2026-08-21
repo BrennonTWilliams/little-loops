@@ -26,6 +26,9 @@ score_complexity: 16
 score_test_coverage: 22
 score_ambiguity: 20
 score_change_surface: 23
+blocked_by:
+- BUG-3269
+- BUG-3271
 ---
 
 # BUG-3270: general-task: no spin guard on the continue_work -> final_verify -> run_final_tests cycle (ENH-2585 coverage gap)
@@ -502,6 +505,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-08-21T02:37:31 - `c4d0cb49-2d47-43ee-bd0a-5286b5885739.jsonl`
 - `/ll:confidence-check` - 2026-08-21T00:37:10 - `aa6e5584-37de-4177-905b-eaadb9c97749.jsonl`
 - `/ll:confidence-check` - 2026-08-21T00:23:22 - `8fa51734-384b-46a2-a10c-bd13c601a684.jsonl`
 - `/ll:wire-issue` - 2026-08-20T23:48:54 - `d1c4118b-f3cb-4064-8e75-ddacc30681ce.jsonl`

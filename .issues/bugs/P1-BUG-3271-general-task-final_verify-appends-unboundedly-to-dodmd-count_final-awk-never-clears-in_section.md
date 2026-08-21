@@ -348,4 +348,5 @@ _Added by `/ll:refine-issue` — 2026-08-20 — based on codebase analysis:_
 
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-08-21T02:37:32 - `c4d0cb49-2d47-43ee-bd0a-5286b5885739.jsonl`
 - `/ll:refine-issue` - 2026-08-20T23:06:40 - `eecdcf60-17f0-43fe-a3bb-f00297aad10d.jsonl`

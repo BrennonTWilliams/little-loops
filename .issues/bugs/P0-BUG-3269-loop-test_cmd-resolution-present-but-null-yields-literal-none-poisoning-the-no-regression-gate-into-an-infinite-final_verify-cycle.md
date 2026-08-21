@@ -1594,6 +1594,7 @@ _Added by `/ll:confidence-check` on 2026-08-20_
   the old `.get('test_cmd'` pattern after each file, not just at the end.
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-08-21T02:37:32 - `c4d0cb49-2d47-43ee-bd0a-5286b5885739.jsonl`
 - `/ll:confidence-check` - 2026-08-21T02:27:16 - `fb32bf22-991c-4d52-a0d3-c79ca31f1f78.jsonl`
 - `/ll:confidence-check` - 2026-08-21T00:48:05 - `e0ced191-faba-4adf-9e21-fe9bb9babc29.jsonl`
 - `/ll:confidence-check` - 2026-08-21T00:22:27 - `8fa51734-384b-46a2-a10c-bd13c601a684.jsonl`
