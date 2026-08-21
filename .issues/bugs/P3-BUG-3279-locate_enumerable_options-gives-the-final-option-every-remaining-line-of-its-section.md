@@ -4,11 +4,12 @@ type: BUG
 title: locate_enumerable_options gives the final option every remaining line of its
   section
 priority: P3
-status: open
+status: done
 parent: EPIC-3290
 discovered_by: ll-issues-create
 discovered_date: '2026-08-21'
 captured_at: '2026-08-21T15:45:38Z'
+completed_at: '2026-08-21T20:06:00Z'
 labels:
 - decide-issue
 - issue-parser
@@ -814,6 +815,16 @@ for the `scrub_start = min(dr_start, spans[-1][1])` cap. `python -m pytest scrip
 Reopened because three items this document names as required did not ship. None of them changes
 behavior; all three exist to stop the fix being un-done by a later reader.
 
+**Done (2026-08-21) — items 1 and 2 shipped.** `test_winner_tail_narrows_sel_ids_promoting_shared_identifier_to_discriminating`
+(`scripts/tests/test_issue_parser.py`, `class TestUnappliedDecision`) covers item 1, asserting at the
+boundary layer (`_option_block_spans` + `_decision_identifiers`) with a report-level assertion
+alongside it naming BUG-3289. Three frozen fixtures in `class TestUnappliedDecisionLiveCorpusSweep`
+cover item 2: `test_non_last_winner_resolves_via_section_scope` (the ~118-issue direction),
+`test_decision_rationale_under_a_different_h2_does_not_resolve` (the section-scope case), and
+`test_enh_2692_shape_new_report_from_narrowed_winner_span` (the one new-report case, exact reasons
+pinned). No source change under `scripts/little_loops/`; `python -m pytest scripts/tests/` is green
+(20470 passed).
+
 1. **The ENH-2692 "new-report direction" fixture was not written.** Every other fixture in
    *Integration Map → Tests* has a corresponding test —
    `test_last_option_stops_at_trailing_subsection`, `test_option_list_as_section_tail_still_runs_to_section_end`,
@@ -919,14 +930,15 @@ _Added by `/ll:refine-issue` — 2026-08-21 — based on codebase analysis:_
 
 ## Status
 
-**Open** | Created: 2026-08-21 | Priority: P3 | Parser fix landed `f39a417e`; reopened for residual
-test coverage only (the follow-up is filed as BUG-3289). Repriced 2026-08-21: P2→P3, Large→Small —
-remaining scope is two test methods with known insertion points. Stale `confidence_score` /
-`outcome_confidence` / `score_*` frontmatter was cleared rather than carried over; re-run
-`/ll:confidence-check` to score the reduced scope.
+**Done** | Created: 2026-08-21 | Completed: 2026-08-21 | Priority: P3 | Parser fix landed `f39a417e`;
+reopened for residual test coverage, closed by four new tests (winner-tail boundary fixture in
+`TestUnappliedDecision`, three frozen corpus-invariant fixtures in `TestUnappliedDecisionLiveCorpusSweep`)
+added to `scripts/tests/test_issue_parser.py`. No source change under `scripts/little_loops/`;
+`python -m pytest scripts/tests/` green (20470 passed).
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-21T20:04:58 - `8f8f2fda-d072-4b13-8b82-b229bb13b95b.jsonl`
 - `/ll:confidence-check` - 2026-08-21T19:27:27 - `eae61f16-add8-4659-bd44-04cb88cf7241.jsonl`
 - `/ll:refine-issue` - 2026-08-21T19:17:17 - `d646290c-1aab-4dd7-b7a8-3cf697c83ace.jsonl`
 - `/ll:manage-issue` - 2026-08-21T18:43:02 - `8dfb1ac4-9c46-4e39-8612-aa72663c1c57.jsonl`

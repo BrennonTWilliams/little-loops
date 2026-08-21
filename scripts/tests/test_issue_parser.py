@@ -5001,6 +5001,64 @@ class TestUnappliedDecision:
 
         assert _unapplied_decision(content) == []
 
+    def test_winner_tail_narrows_sel_ids_promoting_shared_identifier_to_discriminating(
+        self,
+    ) -> None:
+        """BUG-3279: the winner's-tail direction (the ENH-2692 shape). With the
+        winning option's span now bounded at its trailing `###` heading, an
+        identifier that appears only in the winner's post-heading tail --
+        never in the winner's own description -- is no longer counted into
+        `sel_ids`. It is therefore promoted into `discriminating = rej_ids -
+        sel_ids` once it is also named in the rejected option.
+
+        Asserted at the boundary layer (`_option_block_spans` +
+        `_decision_identifiers`), not just the report layer: whether an
+        end-to-end `unapplied_decision` report actually fires also depends on
+        `_decision_identifiers` treating every backticked token as
+        discriminating, which is BUG-3289's over-extraction defect, not this
+        issue's. The report-level assertion below is expected to invert (stop
+        firing on this exact identifier) once BUG-3289 narrows extraction --
+        the boundary-layer assertions above it are not.
+        """
+        from little_loops.issue_parser import (
+            _decision_identifiers,
+            _option_block_spans,
+            _section_body,
+            _unapplied_decision,
+        )
+
+        content = self._issue(
+            "**Option A**: Route via `check_refine_limit`.\n\n"
+            "**Option B**: Route via `refine_followup`.\n\n"
+            "> **Selected:** Option B\n\n"
+            "### Codebase Research Findings\n\n"
+            "Mentions `check_refine_limit` again here for context.\n",
+            Implementation_Steps="Uses `check_refine_limit` somewhere.\n",
+        )
+
+        proposed_body = _section_body(content, "Proposed Solution")
+        spans = _option_block_spans(proposed_body)
+        assert len(spans) == 2
+        rej_start, rej_end, rej_heading = spans[0]
+        win_start, win_end, win_heading = spans[1]
+        assert "Option A" in rej_heading
+        assert "Option B" in win_heading
+
+        winner_text = proposed_body[win_start:win_end]
+        rejected_text = proposed_body[rej_start:rej_end]
+        sel_ids = _decision_identifiers(winner_text)
+        rej_ids = _decision_identifiers(rejected_text)
+
+        # The boundary fact this issue owns: the winner's block ends before
+        # the trailing "### Codebase Research Findings" tail, so the shared
+        # identifier never reaches sel_ids and is promoted into discriminating.
+        assert "check_refine_limit" not in sel_ids
+        assert "check_refine_limit" in (rej_ids - sel_ids)
+
+        # Report layer (BUG-3289-coupled; see docstring).
+        reasons = _unapplied_decision(content)
+        assert any("check_refine_limit" in r for r in reasons)
+
 
 class TestUnappliedDecisionLiveCorpusSweep:
     """ENH-3256 Implementation Steps step 5: sweep the live `.issues/` corpus.
@@ -5034,6 +5092,88 @@ class TestUnappliedDecisionLiveCorpusSweep:
             content = path.read_text(encoding="utf-8", errors="ignore")
             reasons = _unapplied_decision(content)
             assert isinstance(reasons, list)
+
+    def test_non_last_winner_resolves_via_section_scope(self) -> None:
+        """BUG-3279 Residual Work item 2, shape 1/3 (frozen, not live-corpus):
+        the ~118-issue direction from Rule 3's net-effect note -- a decided
+        issue whose winning option is *not* the last block in its section
+        still reads fully resolved, because `### Decision Rationale`
+        resolution is section-scope rather than block-scope. Measured
+        corpus-wide at fix time: ~118 issues moved from nonzero to zero
+        unresolved options this way (provenance only; not asserted here since
+        the corpus changes daily -- see class docstring)."""
+        from little_loops.issue_parser import count_unresolved_options
+
+        content = (
+            "## Proposed Solution\n\n"
+            "### Option A\n"
+            "Do X.\n\n"
+            "> **Selected:** A\n\n"
+            "### Option B\n"
+            "Do Y.\n\n"
+            "### Option C\n"
+            "Do Z.\n\n"
+            "### Decision Rationale\n"
+            "Picked A because it's simplest.\n"
+        )
+
+        assert count_unresolved_options(content) == 0
+
+    def test_decision_rationale_under_a_different_h2_does_not_resolve(self) -> None:
+        """BUG-3279 Residual Work item 2, shape 3 (frozen, not live-corpus):
+        the section-scope case behind the 12 corpus "violations" of the naive
+        document-scope invariant ("issue contains `### Decision Rationale` ->
+        count_unresolved_options == 0"). A `### Decision Rationale` heading
+        living under an unrelated H2 must not resolve options under
+        `## Proposed Solution` -- resolution is scoped per-section, not
+        per-document."""
+        from little_loops.issue_parser import count_unresolved_options
+
+        content = (
+            "## Proposed Solution\n\n"
+            "### Option A\n"
+            "Do X.\n\n"
+            "### Option B\n"
+            "Do Y.\n\n"
+            "## Some Other Section\n\n"
+            "### Decision Rationale\n"
+            "Picked A but recorded here by mistake.\n"
+        )
+
+        assert count_unresolved_options(content) == 2
+
+    def test_enh_2692_shape_new_report_from_narrowed_winner_span(self) -> None:
+        """BUG-3279 Residual Work item 2, shape 2 (frozen, not live-corpus):
+        the one new-report case measured corpus-wide when the fix landed
+        (767 -> 527 total reports; re-measured 523 reports across 120 issues
+        on 2026-08-21). Mirrors the live ENH-2692 shape: `final_score` is a
+        shared subject named in the rejected option and in a directive
+        section, but not in the winner's own (now-bounded) description --
+        only in its absorbed post-heading tail. Narrowing the winner's span
+        drops it from `sel_ids`, promoting it into `discriminating` and
+        firing a report that the pre-fix absorption bug used to mask. This is
+        a pre-existing `_decision_identifiers` breadth defect (BUG-3289), not
+        a boundary error -- see `TestUnappliedDecision`'s winner-tail test."""
+        from little_loops.issue_parser import _unapplied_decision
+
+        content = (
+            "# ENH-9801: routing description update\n\n"
+            "## Summary\n\nDecide how `final_score` factors into routing.\n\n"
+            "## Proposed Solution\n\n"
+            "**Option A**: Give `final_score` a real `on_no` path.\n\n"
+            "**Option B**: Update the loop `description` only.\n\n"
+            "> **Selected:** Option B\n\n"
+            "### Codebase Research Findings\n\n"
+            "Both options build on the same `final_score` computation; see analysis.\n\n"
+            "### Decision Rationale\n\nOption B is simpler and lower-risk.\n\n"
+            "## Files to Modify\n\n"
+            "- `loops/example.yaml` still references `final_score`.\n\n"
+            "## Status\n\n- open\n"
+        )
+
+        assert _unapplied_decision(content) == [
+            "Files to Modify still specifies `final_score` (rejected option)"
+        ]
 
 
 class TestStackedFindingsBlocks:
