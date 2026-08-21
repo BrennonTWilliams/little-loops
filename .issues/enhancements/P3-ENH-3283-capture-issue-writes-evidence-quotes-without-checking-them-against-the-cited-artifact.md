@@ -84,6 +84,21 @@ reimplementing span extraction in skill prose.
   LLM-executed skills (see `test_decide_issue_skill.py`): assert the pre-write check phrase and
   its "drop or correct, never write unverified" instruction are present
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_capture_issue_skill.py` — the existing structural-test file for this skill
+  (currently only `TestCaptureIssueNearDuplicateCheck`, covering Phase 2). Add a new test class
+  here for the Phase 4 evidence-quote check — this is the file to update, not a new file, and
+  should follow its own `_phase_text()`-style heading-slice helper (bound the assertion to the
+  Phase 4 slice so it doesn't accidentally match elsewhere in the file) [Agent 3 finding].
+- Style precedent beyond the `testable` scan already cited: `skills/decide-issue/SKILL.md`'s
+  Phase 2.5/Phase 3b inline gates (`TestPhase3bInlineProvisionalScan` /
+  `TestOptionsMissing` in `test_decide_issue_skill.py`) show the same
+  "self-contained prose check with an explicit exit-cleanly escape hatch" shape and can be
+  used alongside the `testable` gate as a second reference pattern [Agent 2 finding].
+- Confirmed clean (no action needed): no test asserts on Phase 4's step count or order, so
+  inserting a new step does not break `test_feat1896_skill_bridges.py::TestCaptureIssueDecisionsBridge`
+  or any other existing test [Agent 2, Agent 3 finding].
+
 ### Codebase Research Findings
 
 _Added by `/ll:refine-issue` — 2026-08-21 — based on codebase analysis:_
@@ -139,5 +154,6 @@ Neither signature inspects quoted content against an external artifact — confi
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-08-21T18:16:11 - `3f6ddaa1-8943-4e02-80c6-991ae42bf623.jsonl`
 - `/ll:refine-issue` - 2026-08-21T17:43:40 - `aee80426-6ab1-4a8c-814d-a6f459361121.jsonl`
 - `/ll:capture-issue` - 2026-08-21T17:30:51 - `fa57a84b-34e0-4018-9e9e-dd57ed7ef3f3.jsonl`

@@ -241,6 +241,14 @@ Then in the skill:
   skip the annotation write") means a second run would re-extract the same decided group, decide
   nothing, and re-observe the same residual forever.
 
+  For this to be a drop-in substitution for the `ll-issues locate-options --json` call Phase 3
+  makes today, the new CLI's per-group payload must carry the **full** `LocatedOption` shape
+  (`label`, `text`, `start_line`, `end_line`), not just labels: Phase 4 scores options from their
+  `text`, and Phase 3's own Option Count Check branches on `pattern == "bullet"`
+  (`SKILL.md:182`). A group's `tier` must therefore use the `_OPTION_PATTERN_NAMES` vocabulary
+  (`section_header`/`bold_label`/`numbered`/`bullet`, plus `provisional_e` for a Pattern E window)
+  so that check reads unchanged against `tier`.
+
 **Convergence is interactive-mode only.** In interactive mode: run 1 decides A/B/C, run 2 decides
 (a)/(b), run 3 finds nothing residual and clears — one decision point per run, bounded. Under
 `--auto` this does **not** hold. Phase 3's existing auto-mode rule (`SKILL.md:182`) says that when
@@ -279,7 +287,14 @@ previously matched no tier:
 
 Verified strict superset (no previously-matching shape regresses): `- (a) foo` ✓→✓,
 `* Option B: x` ✓→✓, `- **Option B** x` ✓→✓, `- **(a) foo**` ✗→✓, `- (a)foo` ✗→✓,
-`- some bullet` ✗→✗, `- optional extras` ✗→✗.
+`- some bullet` ✗→✗, `- optional extras` ✗→✗, `- **Options** are` ✗→✗, `1. (a) foo` ✗→✗.
+
+Re-verified 2026-08-21 against live `_OPTION_PATTERNS`. Two of the newly-matching shapes come from
+the `\s+`→`\s*` relaxation rather than the bold widening, and are additions the blast radius above
+must account for: `- (a)foo` (no space after the marker) and a bare `- (a)` (marker with no text at
+all). Both are intended — a marker-only bullet is still an option label — but the second means a
+stray `- (a)` line in unrelated prose is now a `bullet`-tier match for `check-decidable`. This is
+the full test matrix for step 1.
 
 ## Integration Map
 
@@ -458,7 +473,12 @@ The detection mechanism is pinned (Mechanism C, see *Proposed Solution*) — no 
      (this is the case the pre-review spec got wrong — it must not report B and C as residual)
    - same three blocks with no marker anywhere → one group, unresolved
    - a section-level `### Decision Rationale` with the `> **Selected:**` callout placed at the top
-     of `## Proposed Solution` rather than on an option line → resolved (this issue's own shape)
+     of `## Proposed Solution` rather than on an option line, and **only one group in the section**
+     → resolved (this issue's own shape)
+   - **the same section-level `### Decision Rationale`, but with two groups in the section** →
+     only the group carrying a `> **Selected:**` inside its own span is resolved; the other stays
+     unresolved. This is the test that pins the second pre-implementation review's correction — an
+     unrestricted section-level rule passes every other case here and still reproduces the bug
    - `**Option A/B/C**` plus a separate `- **(a)/(b)**` pair → **two** groups, independently
      resolvable
    - a tier run split by an intervening `**DECISION — pick one:**` directive → two groups
@@ -488,8 +508,16 @@ The detection mechanism is pinned (Mechanism C, see *Proposed Solution*) — no 
    the parser block, `:1015-1029` for dispatch). Model it on `check_open_questions.py` — exit 0
    clean, exit 1 with an `UNRESOLVED_DECISIONS_REMAIN` stderr token naming each surviving group's
    heading and line range; `--json` emits a `{"id", "unresolved": [DecisionGroup...]}` shape.
-   Each group serializes `heading`, `tier`, `start_line`, `end_line`, and its member option labels
-   — not the flat `LocatedOptions` shape, which cannot say *which decision point* is open.
+   Each group serializes `heading`, `tier`, `start_line`, `end_line`, and its member options as
+   **full `LocatedOption` dicts** (`label`, `text`, `start_line`, `end_line` — `LocatedOption`
+   already has `to_dict()` at `issue_parser.py:1917`) — not the flat `LocatedOptions` shape, which
+   cannot say *which decision point* is open, and not a labels-only list, which step 6's Phase 3
+   cannot score from. `tier` uses the `_OPTION_PATTERN_NAMES` vocabulary so `SKILL.md:182`'s
+   `pattern == "bullet"` check reads unchanged against it.
+   **Diverge from `check_open_questions.py` on one point**: a missing/unresolvable issue ID exits
+   **2**, not 1 (`check_open_questions.py:54` returns 1). Step 9 routes exit 1 to `done`, so
+   reusing 1 for "not found" would silently report a nonexistent issue as legitimately residual.
+   Exit 2 lands on `on_error` instead. Add a CLI test for the unresolvable-ID exit code.
 5. Subprocess CLI tests in a new `scripts/tests/test_ll_issues_check_unresolved_decisions.py`, reusing
    the `_cli()` / `temp_project_dir` / `_write_issue` / `_invoke` fixture quartet that
    `test_issues_locate_options.py` and `test_ll_issues_check_open_questions.py` share verbatim.
@@ -503,6 +531,16 @@ The detection mechanism is pinned (Mechanism C, see *Proposed Solution*) — no 
    `bullet`-tier and `AUTO_MODE = true`, the existing rule at `SKILL.md:182` applies unchanged —
    do not score it; exit 0 leaving `decision_needed: true` with the group named in Phase 9. Add a
    phase-text assertion for this branch in `test_decide_issue_skill.py`.
+6a. **Phase 7a (`SKILL.md:401-407`): make the idempotency rule per-group.** Today it skips the
+   annotation write whenever *any* `### Decision Rationale` exists in the document; with step 6 in
+   place that suppresses the callout for every group after the first, so no second group is ever
+   annotated and the fix stalls. Rephrase to skip only when the **selected group** already satisfies
+   `is_group_resolved`, and emit a disambiguated heading
+   (`### Decision Rationale — <group heading or first option label>`) so a section can carry one per
+   group. Add a phase-text assertion for the per-group phrasing in `test_decide_issue_skill.py`.
+   The existing `test_idempotency_rule_documented` (line 201) only asserts the substring
+   `Idempotency`/`idempotent` appears in the Phase 7 slice, so it survives the rewording unchanged —
+   which is exactly why a new, specific assertion is needed to pin the per-group semantics.
 7. Phase 7b (`SKILL.md:411-424`): run `ll-issues check-unresolved-decisions` after 7a's annotation;
    clear only on exit 0. On exit 1, make no frontmatter write and leave the flag `true`. Keep the
    literal phrase `decision_needed: false` in the clearing branch —
@@ -532,13 +570,20 @@ The detection mechanism is pinned (Mechanism C, see *Proposed Solution*) — no 
    - Insert a `check_residual_decision` state between them: `ll-issues check-unresolved-decisions
      ${context.issue_id}`, `fragment: shell_exit`.
    - `assert_decision_cleared` `on_yes` → `check_residual_decision`.
-   - `check_residual_decision` `on_yes` (exit 1, a real residual group remains) → `done`. The flag
-     is *correctly* still set; the sub-loop's job is finished and the caller's `decision_needed`
-     gate will hold the issue for human review. This is the auto-mode human-review exit from
-     *Proposed Solution*, not a failure.
-   - `on_no` (exit 0, no residual — so the flag is set with nothing justifying it) → `failed`,
+   - **Branch polarity (corrected 2026-08-21, second pre-implementation review).** The `shell_exit`
+     fragment (`loops/lib/common.yaml:15-21`) uses the `exit_code` evaluator, which maps **0 →
+     `on_yes`, 1 → `on_no`, 2+ → `on_error`** (`fsm/evaluators.py:255-259`). The pre-review draft
+     assigned `on_yes` to exit 1, which inverts both branches: a legitimate residual would route to
+     `failed` and a genuine silent no-op to `done` — regressing BUG-2595 while breaking the
+     human-review exit this step exists to add. The correct mapping is:
+   - `check_residual_decision` `on_no` (**exit 1** — `UNRESOLVED_DECISIONS_REMAIN`, a real residual
+     group survives) → `done`. The flag is *correctly* still set; the sub-loop's job is finished and
+     the caller's `decision_needed` gate will hold the issue for human review. This is the auto-mode
+     human-review exit from *Proposed Solution*, not a failure.
+   - `on_yes` (**exit 0** — no residual, so the flag is set with nothing justifying it) → `failed`,
      preserving BUG-2595's original silent-no-op detection exactly.
-   - `on_error` → `failed` (unverifiable state stays conservative, matching the existing comment).
+   - `on_error` (**exit 2+** — includes the unresolvable-issue-ID case from step 4) → `failed`
+     (unverifiable state stays conservative, matching the existing comment).
 
    FSM tests: (i) residual-group path reaches `done` without re-firing `run_decide`; (ii) silent
    no-op path still reaches `failed`; (iii) no path re-enters `check_open_question_progress` from
@@ -547,19 +592,41 @@ The detection mechanism is pinned (Mechanism C, see *Proposed Solution*) — no 
 **Tests**
 
 10. `scripts/tests/fixtures/issues/BUG-3278-two-decision-points.md` — new; the shape in *Steps to
-    Reproduce*. `FEAT-2339-mixed-resolved-unresolved.md` is the nearest existing fixture but both
-    its options are already resolved, so it cannot exercise this path.
-11. Assertions:
-    - (a) two-decision fixture leaves `decision_needed: true` after one `--auto` run;
-    - (b) **interactive mode only** — the same fixture clears after a second run resolves the
-      residual group (convergence, not just conservatism). Not assertable under `--auto`: the
-      residual group is `bullet`-tier and `SKILL.md:182` forbids auto-scoring it (see
-      *Convergence is interactive-mode only*). The `--auto` companion asserts the human-review
-      exit instead: flag stays `true`, exit 0, Phase 9 names the group;
-    - (c) **the common-path regression guard, and the one that would have caught the pre-review
-      spec**: a single-decision-point fixture with three options where one is decided still clears
-      in one run. The per-block filter this issue originally specified fails here — losing options
-      B and C read as unresolved and the flag never clears;
+    Reproduce*, with both groups inside the same `## Proposed Solution` section (that co-location is
+    the point, not an incidental detail — see part 1's single-group restriction).
+    `FEAT-2339-mixed-resolved-unresolved.md` is the nearest existing fixture but both its options are
+    already resolved, so it cannot exercise this path. Also add
+    `BUG-3278-two-decision-points-first-decided.md`: the same document with group A carrying a
+    `> **Selected:**` callout and the section carrying a `### Decision Rationale`. This is the
+    fixture for assertion (c2) and the only one that distinguishes a correct `is_group_resolved`
+    from the unrestricted section-level version.
+11. Assertions. **Corrected 2026-08-21 (second pre-implementation review): (a) and (b) as originally
+    written are not executable.** `decide-issue` is LLM-executed with no subprocess entry point —
+    `scripts/tests/test_decide_issue_skill.py` asserts `SKILL.md` prose within a bounded phase-text
+    slice and never runs the skill (the issue states this split in *Codebase Research Findings* and
+    then contradicts it here). "Leaves `decision_needed: true` after one `--auto` run" cannot be
+    asserted by any test in this suite. Each behavioral claim below therefore splits into a
+    **deterministic CLI/parser assertion** (the part that is actually testable) plus a
+    **phase-text assertion** (the part that pins the skill's documented contract):
+    - (a) two decision points, one decided → `ll-issues check-unresolved-decisions` **exits 1** on
+      the fixture and names the surviving group; paired with a Phase 7b phase-text assertion that
+      exit 1 means no frontmatter write and `decision_needed remains true`;
+    - (b) convergence — with **both** groups marked resolved in the fixture,
+      `check-unresolved-decisions` **exits 0** (so the second run's clear is reachable); paired with
+      a Phase 3 phase-text assertion that already-resolved groups are skipped. The end-to-end
+      "second interactive run clears the flag" claim stays prose-level by necessity. Under `--auto`
+      the residual group is `bullet`-tier and `SKILL.md:182` forbids auto-scoring it (see
+      *Convergence is interactive-mode only*), so the `--auto` contract is asserted as phase text
+      only: flag stays `true`, exit 0, Phase 9 names the group;
+    - (c) **the common-path regression guard, and the one that would have caught the first
+      pre-review spec**: a single-decision-point fixture with three options where one is decided
+      reports zero unresolved groups (`check-unresolved-decisions` exits 0), so the flag still
+      clears in one run. The per-block filter this issue originally specified fails here — losing
+      options B and C read as unresolved and the flag never clears;
+    - (c2) **the guard for the second pre-review correction**: the two-group fixture *after* group A
+      is decided — a `### Decision Rationale` now exists in `## Proposed Solution`, and
+      `check-unresolved-decisions` must still exit 1 for group B. An unrestricted section-level
+      resolution rule (part 1) passes (a) and (c) and fails only this one;
     - (d) an issue with a settled decision but open free-form questions still clears, proving the
       new probe is narrower than `check-open-questions`;
     - (e) `locate_unresolved_options`' `(count, heading)` output is byte-identical on every
@@ -574,7 +641,9 @@ The detection mechanism is pinned (Mechanism C, see *Proposed Solution*) — no 
     Note the new `_OPTION_PATTERNS` bullet shape under `#### locate_enumerable_options`
     (lines 987-1022).
 13. `docs/reference/CLI.md` — new `#### ll-issues check-unresolved-decisions` section with the exit
-    codes and `--json` group shape, sited beside `#### ll-issues locate-options` (lines 2021-2039).
+    codes (0 clean / 1 residual / 2 unresolvable ID — call out the deliberate divergence from
+    `check-open-questions`, which returns 1 for a missing issue) and the `--json` group shape,
+    sited beside `#### ll-issues locate-options` (lines 2021-2039).
     `locate-options` gains no flag, but its documented `bullet` pattern shape changes with step 1's
     widening and the worked example must be re-checked against it.
 14. `docs/reference/COMMANDS.md:256` — "Sets `decision_needed: false` after annotating the winning
@@ -613,10 +682,15 @@ residual bullet-tier group under `--auto` is a human-review exit by design, not 
   and the pre-review spec over-fired on the *common path* (see the **Revised 2026-08-21** note in
   *Proposed Solution*), which is why group-aware resolution and test (c) are mandatory, not
   nice-to-have.
-  Bounded by four things: the tier widening is opt-in (`include_approximate_tiers`), resolution is
-  group-level so deciding one option settles its whole decision point, Phase 3 skips
-  already-resolved groups so each interactive run makes progress, and `check_residual_decision`
-  routes a legitimate residual to `done` rather than to `failed` or an unbounded retry cycle
+  Bounded by five things: the tier widening is opt-in (`include_approximate_tiers`), resolution is
+  group-level so deciding one option settles its whole decision point *without* leaking across to a
+  co-located second group, Phase 3 skips already-resolved groups and Phase 7a annotates per group so
+  each interactive run makes progress, and `check_residual_decision` routes a legitimate residual to
+  `done` rather than to `failed` or an unbounded retry cycle.
+  The second pre-implementation review (2026-08-21) found three defects that would each have shipped
+  a non-working fix — an unrestricted section-level resolution rule, Phase 7a's document-wide
+  idempotency rule, and inverted `on_yes`/`on_no` branches in step 9 — which is why assertions (c2)
+  and step 9's FSM tests are mandatory rather than nice-to-have
 - **Breaking Change**: No
 
 ## Root Cause

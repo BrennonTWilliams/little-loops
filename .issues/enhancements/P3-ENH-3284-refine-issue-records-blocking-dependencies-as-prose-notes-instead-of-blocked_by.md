@@ -86,10 +86,61 @@ does not work until that issue lands" is `blocked_by`.
   step, calling `ll-issues link [ID] blocked_by [BLOCKER-ID]` (the mechanical write Step 6.7's
   `prose_dep_drift` handling at ~lines 922-928 already uses reactively)
 
+### Dependent Files (Callers/Importers)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/cli/issues/format_check.py:118-143` (`_fix_prose_deps`, ENH-3247) —
+  **an existing reactive repair already does this mechanical write**: `ll-issues format-check
+  --fix --apply` backfills `blocked_by` from `prose_dep_drift` by calling `cmd_link` in-process,
+  today. It is not mentioned anywhere in this issue's current text (confirmed via grep — zero
+  matches for ENH-3247). This issue's Step 5a step is a *proactive, deposit-time* classification;
+  `_fix_prose_deps` is a *reactive, post-write, sweep-capable* repair — genuinely different points
+  in the pipeline, but the Proposed Solution/Implementation Steps should say explicitly that Step
+  5a complements (not replaces) this existing mechanism, since `apply_link`'s idempotency
+  (`link.py:208-209`, "unchanged" on a duplicate edge) makes the reactive sweep a harmless no-op
+  once Step 5a has already written the edge [Agent 1, Agent 2 finding].
+- `scripts/little_loops/cli/issues/sequence.py:15-44` (`_unverified_prose_deps`) — a read-only
+  consumer that re-derives the same drift classification (terminal/structured exclusions) for
+  `ll-issues sequence`'s display (`⚠ prose dep ..., not in blocked_by`). Once Step 5a promotes a
+  finding at deposit time, this warning naturally stops firing for that edge — no code change
+  needed here, but it's a third site with an opinion on the same signal [Agent 1 finding].
+- `skills/wire-issue/prose-dependency-gate.md` (FEAT-2849, Phase 3.7) — a third existing site with
+  the same reactive pattern this issue proposes to make proactive: it also instructs adding a
+  `blocked_by` edge via `ll-issues link` when `prose_dep_drift` fires, downstream in the wire-issue
+  pass. Worth a cross-reference so the two passes aren't read as independently reinventing the same
+  rule [Agent 1 finding].
+- `commands/reconcile-issue.md:214-219` — already documents the "canonical dependency phrasing"
+  contract (paraphrases are invisible to `extract_prose_deps()`) but does not itself call
+  `ll-issues link`; no code change required, listed for cross-reference only [Agent 1 finding].
+
+### Documentation
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/CLI.md` (`format-check` section, `--fix`/`--all --fix --apply` description) and
+  `docs/reference/API.md` (`check_format_gaps`'s `prose_dep_drift` gap-class description) — neither
+  is factually broken by this change, but both currently read as though `format-check --fix` is the
+  *only* route by which a `blocked_by` edge gets written from a prose claim. Add a short clarifying
+  note that `/ll:refine-issue` Step 5a can also write the edge proactively at deposit time, so the
+  two mechanisms read as layered (reactive safety net + proactive write) rather than mutually
+  exclusive [Agent 2 finding].
+
 ### Tests
 
 - Skill-prose assertions for the promotion step and the `blocked_by` vs `relates_to` discriminator,
   following the structural convention used for LLM-executed skills
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_refine_issue_command.py` — the existing structural-test file for
+  `commands/refine-issue.md`. Add a new test class here (e.g. `TestDependencyClassificationInStep5a`)
+  mirroring `TestOptionCountDetectionInCommand`'s slicing idiom (`content.index("### 5a. Fill Gaps
+  with Research Findings")` to `"### 5b. Interactive Refinement"`) — this is the file to update,
+  not a new file [Agent 3 finding].
+- Confirmed clean (no action needed): `apply_link`/`cmd_link` idempotency and cycle-guard are
+  already covered by `test_link_cli.py` (`test_link_is_idempotent_no_duplicate_entry`,
+  `test_link_cycle_refused_nonzero_exit`) and `test_ll_issues_format_check.py::TestFormatCheckFix::
+  test_fix_apply_is_idempotent` — calling `ll-issues link` twice (once from `format-check --fix`,
+  once from this new Step 5a step) is safe by construction; no new idempotency test is required
+  [Agent 2, Agent 3 finding].
 
 ### Codebase Research Findings
 
@@ -137,6 +188,23 @@ N/A — no new data shape; the promotion step operates on the `blocked_by`/`rela
    `find_issues_for_graph` (`issue_parser.py:3367`) still treats the edge as unresolved until the
    blocker reaches `done`/`cancelled`.
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Add a sentence to the Proposed Solution or Step 5a prose noting that `ll-issues format-check
+  --fix --apply` (`format_check.py:118-143`, ENH-3247) already backfills `blocked_by` from
+  `prose_dep_drift` reactively — this new step complements it (proactive, deposit-time) rather
+  than duplicating or superseding it; `apply_link`'s idempotency makes a later reactive sweep a
+  harmless no-op.
+- Update `docs/reference/CLI.md` (`format-check` `--fix` description) and `docs/reference/API.md`
+  (`prose_dep_drift` gap-class description) with a short note that `/ll:refine-issue` Step 5a can
+  also write the `blocked_by` edge proactively, so the two write paths read as layered rather than
+  mutually exclusive.
+- Add a new test class to `scripts/tests/test_refine_issue_command.py` (e.g.
+  `TestDependencyClassificationInStep5a`) asserting the promotion rule and discriminator text are
+  present in the Step 5a slice, mirroring `TestOptionCountDetectionInCommand`'s slicing idiom.
+
 ## Impact
 
 - **Priority**: P3 — the information survives either way; this makes it actionable
@@ -157,6 +225,7 @@ N/A — no new data shape; the promotion step operates on the `blocked_by`/`rela
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-08-21T18:16:11 - `3f6ddaa1-8943-4e02-80c6-991ae42bf623.jsonl`
 - `/ll:reconcile-issue` - 2026-08-21T18:07:51 - `73da6192-349c-4cd0-b9a2-b714f2801296.jsonl`
 - `/ll:refine-issue` - 2026-08-21T17:46:16 - `60a158f1-d190-4921-8534-c9c523505485.jsonl`
 - `/ll:capture-issue` - 2026-08-21T17:30:51 - `fa57a84b-34e0-4018-9e9e-dd57ed7ef3f3.jsonl`
