@@ -79,8 +79,22 @@ states:
     on_error: define_done
 
   define_done:
-    action: >
+    action: |
       Your task is: ${context.input}
+
+      Step 0 — Resolve any referenced exemplar. Scan the task text above for a
+      reference to an existing artifact: a path, a filename, or a phrase of the
+      "already completed for X" / "like the one in Y" / "matching the existing
+      Z" family. If and only if one is found, locate and read it before
+      authoring any criterion below — reading an existing file to ground the
+      criteria is not "work"; it is required before writing the DoD, and the
+      "do NOT start any work" line at the end of this prompt does not apply to
+      it. Derive every format-specific criterion from what you actually read —
+      the exemplar's concrete dialect, structure, and vocabulary — never from
+      the artifact-type name alone. If a reference is named but cannot be
+      located, say so in dod.md and write only format-agnostic criteria rather
+      than guessing. If the task names no exemplar, skip this step entirely and
+      go directly to the criteria below.
 
       Before planning or executing anything, write a concrete Definition of Done
       to ${context.run_dir}/dod.md in this format:
@@ -138,12 +152,12 @@ states:
       ```
 
       Lint/type criteria (ruff, mypy, or equivalent) MUST be phrased as an absolute
-      gate — "ruff check exits 0", "mypy exits 0" — never as a delta claim like "no new
-      errors" or "no new lint failures introduced." If a legacy baseline of pre-existing
-      errors genuinely must be tolerated, the criterion must reference an enumerated
-      allowlist file checked into the repo (specific error IDs/locations) whose set can
-      only shrink over time, not a fuzzy "no new" comparison — a new instance of an
-      already-allowlisted error class still fails the criterion.
+      gate — "ruff check exits 0", "mypy exits 0" — never as a delta claim like "no new errors"
+      or "no new lint failures introduced." If a legacy baseline of pre-existing errors
+      genuinely must be tolerated, the criterion must reference an enumerated allowlist
+      file checked into the repo (specific error IDs/locations) whose set can only shrink
+      over time, not a fuzzy "no new" comparison — a new instance of an already-allowlisted
+      error class still fails the criterion.
 
       Do NOT start any work. Only write the DoD file.
     action_type: prompt
@@ -151,8 +165,26 @@ states:
     on_error: diagnose
 
   plan:
-    action: >
+    action: |
       Your task is: ${context.input}
+
+      Step 0 — Resolve any referenced exemplar. Scan the task text above for a
+      reference to an existing artifact: a path, a filename, or a phrase of the
+      "already completed for X" / "like the one in Y" / "matching the existing
+      Z" family. If and only if one is found, locate and read it before
+      decomposing steps below — reading an existing file to ground the plan
+      is not "work"; it is required before writing the plan, and the "do NOT
+      start executing any steps yet" line at the end of this prompt does not
+      apply to it. Any step whose correctness depends on the exemplar's
+      concrete form must be derived from what you actually read, never from
+      the artifact-type name alone, and the observed concrete format MUST be
+      written into that step's own text in plan.md (e.g. "...as a
+      `sequenceDiagram`, matching `<exemplar path>`") — do_work only ever
+      reads the step text, not this reasoning, so the format must be carried
+      forward explicitly or it is lost. If a reference is named but cannot be
+      located, say so in plan.md and write only format-agnostic steps rather
+      than guessing. If the task names no exemplar, skip this step entirely
+      and go directly to the decomposition below.
 
       Before starting, decompose this task into a numbered list of discrete,
       independently completable steps. Each step should be small enough to

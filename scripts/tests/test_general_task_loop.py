@@ -2506,6 +2506,57 @@ class TestENH2858StandingCriteria:
         assert not errors, f"general-task.yaml has validation errors: {errors}"
 
 
+class TestEnh3272DefineDoneConditionalRead:
+    """ENH-3272: define_done and plan must read a named exemplar before authoring
+    format-specific criteria/steps, and the read must be conditional, not a preamble."""
+
+    def test_define_done_detects_and_reads_referenced_exemplar(self, raw_data: dict) -> None:
+        action = raw_data["states"]["define_done"]["action"]
+        assert "locate and read it before" in action
+        assert "already completed for X" in action
+
+    def test_define_done_binds_criteria_to_what_was_read(self, raw_data: dict) -> None:
+        action = raw_data["states"]["define_done"]["action"]
+        assert "never from" in action and "the artifact-type name alone" in action
+
+    def test_define_done_omits_rather_than_guesses_when_unlocatable(self, raw_data: dict) -> None:
+        action = raw_data["states"]["define_done"]["action"]
+        assert "cannot be" in action and "located" in action
+        assert "rather" in action and "guessing" in action
+
+    def test_define_done_read_is_conditional_not_unconditional_preamble(
+        self, raw_data: dict
+    ) -> None:
+        action = raw_data["states"]["define_done"]["action"]
+        assert "If and only if one is found" in action
+        assert "If the task names no exemplar, skip this step entirely" in action
+
+    def test_define_done_carves_out_read_from_do_not_start_work_line(
+        self, raw_data: dict
+    ) -> None:
+        action = raw_data["states"]["define_done"]["action"]
+        assert 'is not "work"' in action
+
+    def test_plan_detects_and_reads_referenced_exemplar(self, raw_data: dict) -> None:
+        action = raw_data["states"]["plan"]["action"]
+        assert "locate and read it before" in action
+        assert "already completed for X" in action
+
+    def test_plan_read_is_conditional_not_unconditional_preamble(self, raw_data: dict) -> None:
+        action = raw_data["states"]["plan"]["action"]
+        assert "If and only if one is found" in action
+        assert "If the task names no exemplar, skip this step entirely" in action
+
+    def test_plan_carries_observed_format_into_step_text(self, raw_data: dict) -> None:
+        action = raw_data["states"]["plan"]["action"]
+        assert "MUST be" in action and "written into" in action
+        assert "step's own text in plan.md" in action
+
+    def test_plan_carves_out_read_from_do_not_start_executing_line(self, raw_data: dict) -> None:
+        action = raw_data["states"]["plan"]["action"]
+        assert 'is not "work"' in action
+
+
 class TestENH2859HarnessWorkaroundAndConsistencySweep:
     """ENH-2859: check_done harness-workaround flag and final_verify consistency sweep."""
 

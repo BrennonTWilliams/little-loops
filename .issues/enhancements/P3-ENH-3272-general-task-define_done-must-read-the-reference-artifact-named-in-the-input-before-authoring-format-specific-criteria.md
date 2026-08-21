@@ -4,10 +4,11 @@ type: ENH
 title: 'general-task: define_done must read the reference artifact named in the input
   before authoring format-specific criteria'
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-08-20'
 captured_at: '2026-08-20T22:49:09Z'
+completed_at: '2026-08-21T16:46:25Z'
 labels:
 - enhancement
 - loops
@@ -510,12 +511,44 @@ chosen, would instead add one new post-`plan` state — it is not chosen.)
 - `general-task.yaml:81` — `define_done`, and the `check_baseline_tests → define_done → plan` ordering (`plan` at `:153`)
 - ENH-2857 — step-blocker detection in the abandonment path that recovered this run
 
+## Resolution
+
+Implemented option 1 (read-first) exactly as specified:
+
+- Converted `define_done.action` and `plan.action` from `>` to `|` in
+  `general-task.yaml`, and rewrapped the `:139-140` lint/type-criteria lines so
+  `no new errors` sits on a single source line (preserving
+  `test_define_done_requires_exits_0_phrasing`).
+- Added a "Step 0 — Resolve any referenced exemplar" block as the first
+  instruction after `Your task is: ${context.input}` in both `define_done` and
+  `plan`: conditional detect-then-read, derivation bound to what was actually
+  read (never the artifact-type name), an explicit omit-don't-guess fallback
+  when a reference is named but unlocatable, and a carve-out stating the read
+  is not "work" so it doesn't contradict each prompt's trailing do-not-act
+  line.
+- `plan`'s block additionally requires the observed concrete format to be
+  written into the step text itself in `plan.md`, since `do_work` only reads
+  `current-step.txt` and never sees `plan`'s own reasoning.
+- `do_work` left untouched, per Scope Boundaries.
+- Added `TestEnh3272DefineDoneConditionalRead` to `test_general_task_loop.py`
+  (9 tests) asserting the conditional-read instruction, derivation binding,
+  omit-fallback, carve-out, and format carry-forward for both states; all
+  previously-existing `define_done.action`/`plan.action` substring assertions
+  preserved unchanged.
+- Updated `docs/guides/LOOPS_REFERENCE.md:106-107` (Define Done / Plan step
+  descriptions) to note the conditional exemplar-read requirement.
+- No checked-in eval harness, per the issue's explicit decision — verification
+  is `ll-loop validate general-task` (clean) plus the new prompt-text gate.
+- `python -m pytest scripts/tests/`: 20454 passed, 56 skipped, 0 failed.
+
 ## Status
 
-**Open** | Created: 2026-08-20 | Priority: P3
+**Done** | Created: 2026-08-20 | Priority: P3
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-21T16:45:42 - `d0400288-190d-4cb0-b3fb-3cb255c60c98.jsonl`
+- `/ll:ready-issue` - 2026-08-21T16:32:23 - `854d9167-7f6e-4115-be61-d99dcd5607ad.jsonl`
 - `/ll:confidence-check` - 2026-08-21T16:05:43 - `e51da567-cdae-4205-bfd5-023682a758f8.jsonl`
 - `/ll:confidence-check` - 2026-08-21T15:54:46 - `da526826-2179-460f-b823-35695378ac55.jsonl`
 - Pre-implementation review (2) - 2026-08-21 - four corrections verified against the tree:
