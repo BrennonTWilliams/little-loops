@@ -3,12 +3,13 @@ id: ENH-3268
 type: ENH
 title: Export a design-token profile as DESIGN.md
 priority: P3
-status: open
+status: done
 depends_on:
 - ENH-3264
 discovered_by: ll-issues-create
 discovered_date: '2026-08-20'
 captured_at: '2026-08-20T21:10:34Z'
+completed_at: '2026-08-21T16:30:17Z'
 labels:
 - enhancement
 - design-tokens
@@ -317,6 +318,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-21T16:29:50 - `7077a532-9583-4150-9b83-3832d7cb22b4.jsonl`
 - `/ll:confidence-check` - 2026-08-21T16:02:28 - `3633e6eb-36dc-4f60-9b0a-af08a98df23d.jsonl`
 - `/ll:confidence-check` - 2026-08-21T15:51:49 - `4b6e7fc8-bea5-4102-8c7c-774c0b28d5e6.jsonl`
 - `/ll:confidence-check` - 2026-08-21T15:28:19 - `2eadf414-6592-4c46-8e33-1e7a8dad58d9.jsonl`

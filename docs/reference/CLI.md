@@ -4331,13 +4331,14 @@ python -m pytest tests/   # Run starter tests
 
 ### ll-artifact
 
-Generate self-contained, human-facing HTML artifacts from project data. All project-derived inputs are stamped into the page at generation time, so the output works over `file://` with no runtime fetch.
+Generate self-contained, human-facing artifacts from project data. `policy-builder` stamps project-derived inputs into an HTML page at generation time, so the output works over `file://` with no runtime fetch. `design-md export` renders a design-token profile as a portable DESIGN.md document.
 
 **Subcommands:**
 
 | Subcommand | Description |
 |------------|-------------|
 | `policy-builder` | Emit a visual builder for policy-router / rubric FSM loop YAML |
+| `design-md export` | Export a design-token profile as a single-theme DESIGN.md document |
 
 **Exit codes:** `0` = artifact generated successfully, `1` = error
 
@@ -4358,6 +4359,27 @@ ll-artifact policy-builder -o build/         # Write to a custom directory
 ```
 
 > **Note:** Generated YAML can be validated with `ll-loop validate <name>` after downloading. Decision Table output imports `lib/rubric-router.yaml` then `lib/policy-router.yaml`; Rubric output imports only `lib/rubric-router.yaml`.
+
+#### ll-artifact design-md export
+
+Export the project's design tokens as a valid [DESIGN.md](https://github.com/google-labs-code/design.md) document — for handoff to Cursor / Copilot / another little-loops project. The export is **lossy by construction**: the spec has no theme mechanism and no home for several token groups little-loops profiles carry (`shadow.*`, `border.width.*`, most typography axes, and — for a DESIGN.md → DESIGN.md round trip — the spec's `components:` block). Every dropped axis is named in a `[little-loops] Warning: design-md export dropped: ...` note on stderr, never silently omitted. Semantic colors are exported under classifier-recognized names (e.g. `color.border.subtle` → `outline-subtle`) so a re-import of the document recovers the original semantic role; typography is synthesized into the spec's role-organized shape (`display`, `headline-lg`, …) from little-loops' axis-organized token scales.
+
+**Flags:**
+
+| Flag | Description |
+|------|-------------|
+| `--profile <name>` | Named profile to export — the project's `profiles_dir` first, then the packaged built-ins (`default`, `warm-paper`, `editorial-mono`). Default: the project's active/configured source. |
+| `--theme <name>` | Theme to flatten into the single-theme output (default: `active_theme`). Ignored for a `design_tokens.source: design_md` project unless `--profile` is also given. |
+| `-o, --output <path>` | Output file (default: stdout). The dropped-groups note always goes to stderr, so `ll-artifact design-md export > DESIGN.md` yields a clean document. |
+
+**Examples:**
+```bash
+ll-artifact design-md export                                  # Project's active profile -> stdout
+ll-artifact design-md export -o DESIGN.md                     # -> file
+ll-artifact design-md export --profile warm-paper --theme dark -o DESIGN.md
+```
+
+**Exit codes:** `0` = export written, `1` = no design tokens available (`design_tokens.enabled: false`, missing path, missing active profile, or an unresolvable `--profile`), or a color-name collision in the export.
 
 ---
 

@@ -19,6 +19,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+import yaml
+
 if TYPE_CHECKING:
     from little_loops.config.core import BRConfig
 
@@ -54,6 +56,7 @@ _DESIGN_MD_NAMESPACE_MAP = {
     "spacing": "space",
     "rounded": "radius",
 }
+
 
 # Well-known DESIGN.md color names mapped onto the four semantic roles
 # render_as_prompt_context() groups by. Matches the naming conventions used
@@ -351,6 +354,61 @@ def _load_design_md(path: Path) -> tuple[dict[str, Any], str]:
     return mapped, prose
 
 
+def _load_profile_from_root(dt_cfg: Any, token_root: Path, theme: str | None) -> DesignTokens:
+    """Load a profile's `DesignTokens` from an already-resolved *token_root*.
+
+    Shared by `load_design_tokens`'s project-config path and
+    `load_profile_tokens_from_root` (ENH-3268), which resolves *token_root*
+    from an explicit `--profile` name (project profile or packaged built-in)
+    instead of the project's configured active profile.
+    """
+    primitives = _load_json(token_root / dt_cfg.primitives_file)
+    semantic = _load_json(token_root / dt_cfg.semantic_file)
+    typography = _load_json(token_root / "typography.json")
+    spacing = _load_json(token_root / "spacing.json")
+
+    active_theme = theme or dt_cfg.active_theme
+    theme_file = token_root / dt_cfg.themes_dir / f"{active_theme}.json"
+    theme_data = _load_json(theme_file)
+
+    primitives_flat = _flatten(primitives)
+    # Layer order: semantic → typography → spacing → theme override.
+    merged_flat: dict[str, Any] = {
+        **_flatten(semantic),
+        **_flatten(typography),
+        **_flatten(spacing),
+        **_flatten(theme_data),
+    }
+    resolved = _resolve_references(merged_flat, primitives_flat)
+    # Also include primitive leaf values in resolved
+    for k, v in primitives_flat.items():
+        if k not in resolved:
+            resolved[k] = str(v)
+
+    return DesignTokens(
+        primitives=primitives,
+        semantic=semantic,
+        theme=theme_data,
+        resolved=resolved,
+        source_path=token_root,
+        guidance="",
+        source="profile",
+    )
+
+
+def load_profile_tokens_from_root(
+    config: BRConfig, token_root: Path, theme: str | None = None
+) -> DesignTokens:
+    """Load a profile's `DesignTokens` from an explicit *token_root* directory,
+    bypassing the project's configured active-profile resolution.
+
+    Used by `ll-artifact design-md export --profile <name>` (ENH-3268), whose
+    named profile may be a packaged built-in never materialized in the
+    project (see `cli/artifact.py::_resolve_export_profile_root`).
+    """
+    return _load_profile_from_root(config.design_tokens, token_root, theme)
+
+
 def load_design_tokens(
     config: BRConfig,
     theme: str | None = None,
@@ -375,38 +433,7 @@ def load_design_tokens(
     base_path = config.project_root / dt_cfg.path
 
     def _load_profile(token_root: Path) -> DesignTokens:
-        primitives = _load_json(token_root / dt_cfg.primitives_file)
-        semantic = _load_json(token_root / dt_cfg.semantic_file)
-        typography = _load_json(token_root / "typography.json")
-        spacing = _load_json(token_root / "spacing.json")
-
-        active_theme = theme or dt_cfg.active_theme
-        theme_file = token_root / dt_cfg.themes_dir / f"{active_theme}.json"
-        theme_data = _load_json(theme_file)
-
-        primitives_flat = _flatten(primitives)
-        # Layer order: semantic → typography → spacing → theme override.
-        merged_flat: dict[str, Any] = {
-            **_flatten(semantic),
-            **_flatten(typography),
-            **_flatten(spacing),
-            **_flatten(theme_data),
-        }
-        resolved = _resolve_references(merged_flat, primitives_flat)
-        # Also include primitive leaf values in resolved
-        for k, v in primitives_flat.items():
-            if k not in resolved:
-                resolved[k] = str(v)
-
-        return DesignTokens(
-            primitives=primitives,
-            semantic=semantic,
-            theme=theme_data,
-            resolved=resolved,
-            source_path=token_root,
-            guidance="",
-            source="profile",
-        )
+        return _load_profile_from_root(dt_cfg, token_root, theme)
 
     def _materialized_token_root() -> Path | None:
         """Silent `auto` probe: the token root, if it would yield >=1 token file.
@@ -678,3 +705,227 @@ def render_as_css_vars_themed(light: DesignTokens, dark: DesignTokens) -> str:
         return "\n".join(lines)
 
     return _block(":root", light) + "\n" + _block("[data-theme=dark]", dark)
+
+
+# ---------------------------------------------------------------------------
+# DESIGN.md export (ENH-3268)
+# ---------------------------------------------------------------------------
+
+_DESIGN_MD_SEMANTIC_ROLES = ("surface", "text", "border", "action")
+
+# Prose skeleton emitted when tokens.guidance is empty (a profile source has
+# no prose body to round-trip). Headings match the vendored spec fixture.
+_DESIGN_MD_SKELETON_SECTIONS = (
+    "Overview",
+    "Colors",
+    "Typography",
+    "Layout",
+    "Elevation & Depth",
+    "Shapes",
+    "Components",
+    "Do's and Don'ts",
+)
+
+# Pinned typography role table: (role name, font.size step, font.family key,
+# font.line-height step, font.weight step). See ENH-3268 Program Design —
+# this table is not derivable from the profiles; it is a design decision.
+_DESIGN_MD_TYPOGRAPHY_ROLES: tuple[tuple[str, str, str, str, str], ...] = (
+    ("display", "4xl", "heading", "tight", "bold"),
+    ("headline-lg", "3xl", "heading", "tight", "bold"),
+    ("headline-md", "2xl", "heading", "tight", "semibold"),
+    ("title-lg", "xl", "heading", "tight", "semibold"),
+    ("body-lg", "lg", "body", "relaxed", "normal"),
+    ("body-md", "base", "body", "normal", "normal"),
+    ("label-md", "sm", "body", "normal", "medium"),
+    ("label-sm", "xs", "body", "normal", "medium"),
+)
+
+# Token groups with no home in the DESIGN.md spec frontmatter — always dropped.
+_DESIGN_MD_UNSUPPORTED_PREFIXES = ("shadow.", "border.width.")
+
+
+class DesignMdColorCollisionError(ValueError):
+    """Two semantic color leaves exported to the same flat `colors:` name."""
+
+
+def _export_color_name(role: str, leaf: str) -> str:
+    """Map a semantic color leaf onto a DESIGN.md color name that
+    `_classify_design_md_color_role` re-derives back into *role* on import.
+
+    Generic per-role rule, not a per-leaf allowlist — see ENH-3268 "The key
+    mapping must be classifier-aware".
+    """
+    if role == "surface":
+        return "surface" if leaf == "primary" else f"surface-{leaf}"
+    if role == "text":
+        if leaf == "primary":
+            return "on-surface"
+        if leaf == "inverse":
+            return "inverse-on-surface"
+        return f"on-surface-{leaf}"
+    if role == "border":
+        return "outline" if leaf == "primary" else f"outline-{leaf}"
+    if role == "action":
+        return "primary" if leaf == "primary" else f"accent-{leaf}"
+    raise ValueError(f"Unknown semantic color role: {role}")  # pragma: no cover - guarded by caller
+
+
+def _export_colors(tokens: DesignTokens, primitive_keys: set[str]) -> dict[str, str]:
+    colors: dict[str, str] = {}
+    origin: dict[str, str] = {}
+    for name, value in sorted(tokens.resolved.items()):
+        if name in primitive_keys or name.startswith("_"):
+            continue
+        parts = name.split(".")
+        if len(parts) < 3 or parts[0] != "color" or parts[1] not in _DESIGN_MD_SEMANTIC_ROLES:
+            continue
+        role = parts[1]
+        leaf = "-".join(parts[2:])
+        export_name = _export_color_name(role, leaf)
+        if export_name in colors and origin[export_name] != name:
+            raise DesignMdColorCollisionError(
+                f"colors.{export_name}: '{origin[export_name]}' and '{name}' both "
+                "export to this name"
+            )
+        colors[export_name] = value
+        origin[export_name] = name
+    return colors
+
+
+def _export_typography(tokens: DesignTokens) -> tuple[dict[str, dict[str, str]], list[str]]:
+    """Synthesize the spec's role-organized `typography:` block per the
+    pinned role table. Returns (typography_block, skipped_role_names).
+    """
+    typography: dict[str, dict[str, str]] = {}
+    skipped: list[str] = []
+    for role_name, size_step, family_key, lh_step, weight_step in _DESIGN_MD_TYPOGRAPHY_ROLES:
+        size = tokens.resolved.get(f"font.size.{size_step}")
+        family = tokens.resolved.get(f"font.family.{family_key}")
+        if size is None or family is None:
+            skipped.append(role_name)
+            continue
+        role: dict[str, str] = {"fontFamily": family, "fontSize": size}
+        line_height = tokens.resolved.get(f"font.line-height.{lh_step}")
+        if line_height is not None:
+            role["lineHeight"] = line_height
+        weight = tokens.resolved.get(f"font.weight.{weight_step}")
+        if weight is not None:
+            role["fontWeight"] = weight
+        typography[role_name] = role
+    return typography, skipped
+
+
+def _unused_typography_axes(tokens: DesignTokens) -> list[str]:
+    """Font axis values the pinned role table never reads, named in the
+    dropped-groups note: the whole `letter-spacing` axis, plus any
+    size/family/line-height/weight step no role in the table consumes.
+    """
+    used_size_steps = {row[1] for row in _DESIGN_MD_TYPOGRAPHY_ROLES}
+    used_family_keys = {row[2] for row in _DESIGN_MD_TYPOGRAPHY_ROLES}
+    used_lh_steps = {row[3] for row in _DESIGN_MD_TYPOGRAPHY_ROLES}
+    used_weight_steps = {row[4] for row in _DESIGN_MD_TYPOGRAPHY_ROLES}
+
+    unused: list[str] = []
+    for name in sorted(tokens.resolved):
+        if name.startswith("font.letter-spacing."):
+            unused.append(name)
+        elif name.startswith("font.size.") and name.split(".")[2] not in used_size_steps:
+            unused.append(name)
+        elif name.startswith("font.family.") and name.split(".")[2] not in used_family_keys:
+            unused.append(name)
+        elif name.startswith("font.line-height.") and name.split(".")[2] not in used_lh_steps:
+            unused.append(name)
+        elif name.startswith("font.weight.") and name.split(".")[2] not in used_weight_steps:
+            unused.append(name)
+    return unused
+
+
+def _export_spacing_and_rounded(
+    tokens: DesignTokens, primitive_keys: set[str]
+) -> tuple[dict[str, str], dict[str, str]]:
+    """`space.*` -> flat `spacing:` (emitted verbatim, numeric scale — see
+    ENH-3268 "spacing deliberately does not follow the typography ruling"),
+    `radius.*` -> flat `rounded:`.
+    """
+    spacing: dict[str, str] = {}
+    rounded: dict[str, str] = {}
+    for name, value in sorted(tokens.resolved.items()):
+        if name in primitive_keys or name.startswith("_"):
+            continue
+        if name.startswith("space."):
+            spacing[name[len("space.") :]] = value
+        elif name.startswith("radius."):
+            rounded[name[len("radius.") :]] = value
+    return spacing, rounded
+
+
+def _design_md_dropped_groups(tokens: DesignTokens) -> list[str]:
+    """Pure computation of every dropped-group note line (ENH-3268 AC 5/6),
+    excluding the dropped-theme note.
+
+    `render_as_design_md` matches the other `render_as_*` renderers' shape
+    (`DesignTokens` in, `str` out, no I/O), so it cannot itself write the
+    stderr note. This function is the shared source of truth the CLI layer
+    (the only caller with I/O) calls to build that note. It also excludes
+    the dropped-theme note: that requires listing sibling theme files on
+    disk, which is outside what a single `DesignTokens` can see.
+    """
+    notes: list[str] = []
+    for prefix in _DESIGN_MD_UNSUPPORTED_PREFIXES:
+        if any(name.startswith(prefix) for name in tokens.resolved):
+            notes.append(prefix.rstrip("."))
+
+    _typography, skipped_roles = _export_typography(tokens)
+    if skipped_roles:
+        notes.append(f"typography roles (missing size/family): {', '.join(skipped_roles)}")
+    unused_axes = _unused_typography_axes(tokens)
+    if unused_axes:
+        notes.append(f"typography axes not used by the role table: {', '.join(unused_axes)}")
+
+    if tokens.source == "design_md":
+        notes.append("components (dropped on import; nothing to re-export)")
+
+    return notes
+
+
+def _design_md_skeleton() -> str:
+    return "\n\n".join(f"## {section}" for section in _DESIGN_MD_SKELETON_SECTIONS) + "\n"
+
+
+def render_as_design_md(tokens: DesignTokens) -> str:
+    """Render *tokens* as a single-theme DESIGN.md document (ENH-3268).
+
+    Lossy by construction: the spec has no theme mechanism and no home for
+    several token groups little-loops profiles carry. Raw primitives are
+    excluded structurally (any key in `_flatten(tokens.primitives)`), colors
+    are exported under classifier-recognized names so a re-import recovers
+    the original role, and typography is synthesized into the spec's
+    role-organized shape per the pinned role table — see
+    `_design_md_dropped_groups` for what does not survive.
+
+    Raises `DesignMdColorCollisionError` if two semantic leaves would export
+    to the same flat `colors:` name.
+    """
+    primitive_keys = set(_flatten(tokens.primitives))
+
+    frontmatter: dict[str, Any] = {
+        "name": tokens.source_path.stem if tokens.source == "design_md" else tokens.source_path.name
+    }
+
+    colors = _export_colors(tokens, primitive_keys)
+    if colors:
+        frontmatter["colors"] = colors
+
+    typography, _skipped = _export_typography(tokens)
+    if typography:
+        frontmatter["typography"] = typography
+
+    spacing, rounded = _export_spacing_and_rounded(tokens, primitive_keys)
+    if rounded:
+        frontmatter["rounded"] = rounded
+    if spacing:
+        frontmatter["spacing"] = spacing
+
+    yaml_block = yaml.dump(frontmatter, default_style='"', sort_keys=False, allow_unicode=True)
+    body = tokens.guidance if tokens.guidance else _design_md_skeleton()
+    return f"---\n{yaml_block}---\n\n{body}"
