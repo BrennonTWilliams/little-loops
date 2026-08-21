@@ -84,6 +84,35 @@ reimplementing span extraction in skill prose.
   LLM-executed skills (see `test_decide_issue_skill.py`): assert the pre-write check phrase and
   its "drop or correct, never write unverified" instruction are present
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-21 — based on codebase analysis:_
+
+- Insertion point confirmed: `skills/capture-issue/SKILL.md` Phase 4 "Action: Create New Issue" — the new pre-write check lands as a new step between step 2 (`testable` keyword-scan gate, lines 233–238) and step 3 (the `ll-issues create` write, lines 239–248). Step 2 is the closest existing precedent inside the same phase for a content-level gate before the write.
+- No existing span/quote-verification utility exists in `scripts/little_loops/` to call — searched for `grep_capable_files|verify_evidence|check_quote|_check_evidence_quotes` and fence/citation-checking helpers; only `fence_spans`/`in_fence` (`text_utils.py`, used by `create.py`'s body-merge logic for section placement, not content verification) turned up. The check must be self-contained skill prose for now (see Program Design → Decision Rules).
+- Conversation Mode (`SKILL.md:108-157`) is the exact path BUG-3278 was captured through: it instructs extracting "Source context (brief quote or summary...)" from conversation history rather than a fresh file read — this is where an unverified quote enters `$ISSUE_SUMMARY` before Phase 4 ever runs.
+- `commands/verify-issues.md:69-72,126-130` is the only existing quote-check in the codebase, and it is scoped to source-code snippets only (`"Validate code snippets": Does quoted code match current code?`), not evidence attributed to another `.issues/` file — confirming there is no existing evidence-quote pattern to mirror beyond this narrower code-only precedent.
+
+## Program Design
+
+### Types
+N/A — no new data shape introduced; the check operates on strings already present in `$ISSUE_SUMMARY`.
+
+### Signatures
+- `cmd_create(args) -> int` — the handler behind Phase 4's write call; reads the body from stdin when `--body-file -` is passed (`create.py:540`, stdin read at `:554`)
+- `create_issue(spec) -> Path` — writes the file via exclusive-create; called by `cmd_create` (`create.py:406`, exclusive-create at `:458`)
+
+Neither signature inspects quoted content against an external artifact — confirming the gap: nothing on this call path can catch an unverified quote before the write.
+
+### Call Path
+`SKILL.md Phase 1` (title/description extraction) -> `SKILL.md Phase 4 step 2` (`testable` keyword-scan gate) -> new pre-write evidence check (this issue) -> `SKILL.md Phase 4 step 3` (`ll-issues create --body-file -`) -> `cmd_create` -> `create_issue`
+
+### Decision Rules
+- **Gap kind**: pre-write evidence-quote check, gating the Phase 4 step 3 write.
+- **Trigger**: a quoted span (fenced block or inline backticks) in the drafted `$ISSUE_SUMMARY` that is attributed to a named file or issue ID — same span-extraction shape BUG-3282 proposes for verify-time, per that issue's own note that this phase should call BUG-3282's checker "rather than reimplementing span extraction" if it ships as a CLI.
+- **Escape hatch**: on a miss, drop the quote and describe the evidence in prose, or re-read the artifact and quote it correctly — never write the unverified span (per Proposed Solution step 3). When evidence came from uncommitted/transient state, say so explicitly rather than attributing it to the file (step 4).
+- **Confirmed dependency status**: BUG-3282 (`status: open`) has no implemented checker as of this pass — its own Proposed Solution frames the CLI-vs-prose shape as an open sub-question, and no `ll-verify-*` evidence/span-checking entry point exists in `scripts/pyproject.toml` or `scripts/little_loops/cli/`. This step must therefore be authored as self-contained skill prose (grep-and-verify instructions) now; a follow-up pass can replace it with a CLI call once BUG-3282 lands one.
+
 ## Implementation Steps
 
 1. [Major phase 1]
@@ -110,4 +139,5 @@ reimplementing span extraction in skill prose.
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-08-21T17:43:40 - `aee80426-6ab1-4a8c-814d-a6f459361121.jsonl`
 - `/ll:capture-issue` - 2026-08-21T17:30:51 - `fa57a84b-34e0-4018-9e9e-dd57ed7ef3f3.jsonl`

@@ -103,6 +103,20 @@ def _resolve_priority(self, filename: str, frontmatter: dict[str, Any]) -> str:
 | `scripts/tests/test_issue_parser*.py` | Fallback, precedence, and regression coverage |
 | `.issues/` (4 files) | Reconcile existing mismatches |
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-21 — based on codebase analysis:_
+
+- **Prefer-source-A-fall-back-to-source-B resolution is an established shape in this module**, with the precedence documented inline rather than left implicit — evidence: `resolve_issue_path()`'s nested `_frontmatter_identity()` helper (`scripts/little_loops/issue_parser.py:213-234`, used at :236-249), where a missing/unparseable frontmatter value is treated as "no opinion" and falls through to the other source unchanged. `_gate_program_design()` (`scripts/little_loops/issue_parser.py:356-372`) is a smaller instance of the same "value present unless overridden" shape.
+- **Duplicate independent readers of the same field get consolidated into one shared resolver, not reconciled after the fact** — evidence: `resolve_issue_path()`'s docstring (`scripts/little_loops/issue_parser.py:92-98`) states it is "the single shared ID->path resolver for filename-based lookups (BUG-3229)" specifically because `cli/issues/show.py` and `sprint.py:_find_issue_path` had drifted by computing the same thing independently. This is the same shape BUG-3286 describes between `IssueParser._parse_priority` and `show.py`'s own filename regex (`scripts/little_loops/cli/issues/show.py:80-81`).
+- **Filename-vs-frontmatter drift has two prior resolutions in this codebase, not one** — (a) pick a winner via documented precedence (BUG-2806, `_frontmatter_identity`, frontmatter wins when present and non-contradictory, filename otherwise), or (b) leave both sources standing and report disagreement as a `FormatGaps` entry without picking a winner (BUG-2769's `malformed_id` gap, `scripts/little_loops/issue_parser.py:941-948`, which computes a canonical value from the filename and reports `f"{key}: {raw} (expected {canonical})"` when the frontmatter value disagrees). Both are live conventions; this issue's own Decision Rules already commits to option (a) for resolution and a `FormatGaps`-shaped rule for drift reporting, matching (b)'s output shape.
+- **`update_frontmatter` + rewrite has three established call idioms**, distinguished by whether a rename is also happening:
+  - Rename + frontmatter write as one filesystem operation: `content` is mutated via `update_frontmatter` before the rename, then threaded into `git_mv_with_fallback`'s optional `content=` parameter — evidence: `apply_normalize()` (`scripts/little_loops/cli/issues/normalize.py:432-464`), and `git_mv_with_fallback`'s own docstring (`scripts/little_loops/issue_lifecycle.py:1314-1332`) which documents "the write happens before the git-mv-failure fallback rename, or after a successful `git mv`." `apply_priorities()` (`scripts/little_loops/cli/issues/prioritize.py:100-148`) currently calls `git_mv_with_fallback(path, new_path)` with no `content=` argument and never touches frontmatter.
+  - No rename, `update_frontmatter` + `atomic_write` as two calls: evidence — `scripts/little_loops/cli/issues/normalize.py:403-428` (`_rewrite_referencing_edges`), `scripts/little_loops/cli/issues/link.py:205,220`.
+  - No rename, `update_frontmatter` + `Path.write_text` inside try/except with a warning log on failure: evidence — `scripts/little_loops/issue_lifecycle.py:594-605`.
+  - The `update_frontmatter(content, updates)` immediately followed by a write is otherwise the standard two-line idiom across this codebase — evidence: `scripts/little_loops/cli/issues/set_status.py:137`, `scripts/little_loops/cli/issues/set_scores.py:54`, `scripts/little_loops/cli/issues/size.py:154`, `scripts/little_loops/cli/sprint/run.py:445`.
+- **Adding a new `FormatGaps` gap kind touches nine fixed locations**, all present for every existing gap class (e.g. `malformed_dep_id`): the dataclass field (`scripts/little_loops/issue_parser.py:490-522`), the `has_gaps` OR-in (`:524-553`), the advisory-vs-blocking classification (`:483-487, 555-565`), `to_dict()` (`:567-595`), a documented paragraph in `check_format_gaps()`'s "Gap classes:" docstring block (`:654-824`) citing the originating issue ID, the inline detection loop itself, the `--help` text and docstring enumeration in `scripts/little_loops/cli/issues/format_check.py` (lines 63-70, 479-485) plus a matching print loop in `_print_gaps`, a dedicated test class following the `TestCheckFormatGapsMalformedDepId` template (`scripts/tests/test_issue_parser.py:4369-4458`) with a paired corpus self-check test (`TestCorpusHasNoMalformedDepIds`, `:4461-4477`) asserting the new gap kind fires zero times against this repo's own `.issues/` tree, and a baseline-shape entry in `scripts/tests/test_ll_issues_format_check.py` (~lines 339-360).
+
 ## Program Design
 
 ### Types
@@ -213,4 +227,5 @@ The two share a root: priority is stored twice with no designated authority and 
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-08-21T17:42:10 - `c401e0f5-28d0-4d01-95f3-309f5a7b95c5.jsonl`
 - `/ll:capture-issue` - 2026-08-21T17:37:13 - `0c91fc4e-e09c-41b9-a77b-d05fa80fd5b1.jsonl`

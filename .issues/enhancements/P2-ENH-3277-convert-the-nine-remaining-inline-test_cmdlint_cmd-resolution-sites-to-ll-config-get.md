@@ -1180,6 +1180,7 @@ _Added by `/ll:confidence-check` on 2026-08-21_
 - `format-check` also flagged `stale_cli_flag: "ll-config get --raw (no such flag)"` and a missing `Behavior Parity` subsection — both expected given Option C's `--raw` flag was explicitly rejected and never built; confirm `cli/config.py` still has zero optional flags before starting, since a code drift there would invalidate the "No new production code" scope boundary.
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-08-21T17:52:58 - `f27d8342-f3ba-42ea-95ca-41ad79008fbf.jsonl`
 - `/ll:confidence-check` - 2026-08-21T17:18:53 - `03a5de0d-b8b9-470c-a7c9-e3445c858ad8.jsonl`
 - `/ll:confidence-check` - 2026-08-21T16:27:41 - `e55ad46d-5b7e-43e8-8452-c0861f23904f.jsonl`
 - `/ll:confidence-check` - 2026-08-21T16:05:16 - `31b75f64-db6a-4a60-b5e4-21ce3b3efbc5.jsonl`

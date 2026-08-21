@@ -7,6 +7,7 @@ status: open
 discovered_by: ll-issues-create
 discovered_date: '2026-08-21'
 captured_at: '2026-08-21T17:30:43Z'
+reconcile_attempted: true
 labels:
 - refine-issue
 - skills
@@ -80,19 +81,61 @@ does not work until that issue lands" is `blocked_by`.
 
 ### Files to Modify
 
-- `skills/refine-issue/SKILL.md` (or `commands/refine-issue.md`) — dependency-classification and
-  frontmatter-promotion step
+- `commands/refine-issue.md` Step 5a (Enrichment Rules, alongside the existing "Option-Count
+  Detection" rule at ~lines 538-557) — new dependency-classification and `blocked_by`-promotion
+  step, calling `ll-issues link [ID] blocked_by [BLOCKER-ID]` (the mechanical write Step 6.7's
+  `prose_dep_drift` handling at ~lines 922-928 already uses reactively)
 
 ### Tests
 
 - Skill-prose assertions for the promotion step and the `blocked_by` vs `relates_to` discriminator,
   following the structural convention used for LLM-executed skills
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-21 — based on codebase analysis:_
+
+- Confirmed: `skills/refine-issue/SKILL.md` does not exist (`Glob skills/refine-issue/**` returns no matches). Refine-issue is implemented only as `commands/refine-issue.md` — the "Files to Modify" line above has been annotated accordingly.
+- Exact insertion points in `commands/refine-issue.md`: Step 6 item 6 ("Canonical dependency phrasing", ~lines 885–892) already instructs writing prose canonically so `extract_prose_deps()` can detect it, but only Step 6.7's `prose_dep_drift` handling (~lines 922–928) actually calls `ll-issues link [ID] blocked_by [ID]` — and only reactively, after the drift gate fires. There is no step in Step 3–5a's research-to-enrichment path that classifies a fresh finding as a hard dependency and promotes it at write time; a new promotion step belongs in Step 5a, alongside the other Enrichment Rules.
+- `ll-issues link` (`scripts/little_loops/cli/issues/link.py`) is the only CLI that writes `blocked_by`: `apply_link()` (`:119-225`) reads existing `blocked_by`/`relates_to` (`:192-194`) and appends (`new_list = [*existing, target_id]`, `:219`) — it does not overwrite. Idempotent: re-adding an existing edge reports `unchanged` (`:208-209`). A cycle guard (`_check_cycle()`, `:299-329`) refuses an edge that would create a dependency cycle, raising and returning exit `1`. `ll-issues fold-findings` never touches frontmatter — the classification/promotion logic would be new skill-prose, with `ll-issues link` supplying only the mechanical write.
+- Confirmed dependency-resolution rule: `find_issues_for_graph()` (`issue_parser.py:3367-3386`) loads the non-terminal superset, so a `blocked_by` edge to a `deferred` issue stays unresolved — matches `.claude/CLAUDE.md`'s "only `done`/`cancelled` resolve `blocked_by`/`depends_on`" rule.
+- Closest existing precedent for "classify freshly-deposited content, then write a frontmatter field" is Step 5a's "Option-Count Detection" (~lines 538-557): count a structural signal, verify with a deterministic CLI probe (`ll-issues check-decidable`) before setting `decision_needed`, skip the write if the value is already correct (idempotency), and skip it entirely under `--dry-run`. A `blocked_by`-promotion step has a direct write-side analogue (`ll-issues link [ID] blocked_by [BLOCKER-ID]`, already used in Step 6.7) but no existing precedent for the *classification* judgment itself — that judgment is closer in kind to Step 6.7's `soft_dep_hard_edge` handling (~lines 965-974), which states its discriminator as a closed phrase list with an explicit default direction when signals conflict.
+
+## Program Design
+
+### Types
+N/A — no new data shape; the promotion step operates on the `blocked_by`/`relates_to` frontmatter lists that already exist on `IssueInfo`.
+
+### Signatures
+- `apply_link(source_id, field, target_id) -> LinkResult` — the mechanical write this step must call; appends to the existing list rather than overwriting (`link.py:119`)
+- `extract_prose_deps(body) -> list[ProseDep]` — the canonical-phrasing detector Step 6.7's `prose_dep_drift` gate already runs; a promotion step written at deposit time makes this detector's reactive catch redundant for findings this pass writes (`prose_deps.py:87`)
+
+### Call Path
+`commands/refine-issue.md Step 5a` (Enrichment Rules — deposit a finding under `## Codebase Research Findings`) -> new classification step (this issue: hard-dependency vs relates_to) -> `apply_link` (`link.py:119`, invoked as `ll-issues link [ID] blocked_by [BLOCKER-ID]`) -> `find_issues_for_graph` (`issue_parser.py:3367`) -> `DependencyGraph.get_ready_issues` (`dependency_graph.py:154`)
+
+### Decision Rules
+- **Gap kind**: dependency-hardness classification — decides whether a freshly-deposited finding is promoted from prose-only to a `blocked_by:` frontmatter edge.
+- **Trigger**: a finding names another open issue as affecting *how or whether* this issue's proposed mechanism works — not merely that it touches the same file or function.
+- **Discriminator** (from Proposed Solution): "touches the same function" -> `relates_to`; "the mechanism this issue proposes does not work until that issue lands" -> `blocked_by`. Structurally the same shape as the existing `soft_dep_hard_edge` gate (`commands/refine-issue.md` § 6.7), which states an explicit default when signals conflict ("the soft prose is usually the accurate statement and the hard edge is the mistake") — a `blocked_by`-promotion rule needs the same kind of explicit default for the ambiguous middle ground, or it inherits `soft_dep_hard_edge`'s stated risk in reverse (spurious hard edges that stall sprint dequeue, named in this issue's own Impact § Risk).
+- **Escape hatch / idempotency**: `apply_link` is already idempotent (`unchanged` on a duplicate edge) and refuses a cycle-forming edge (`_check_cycle`, `link.py:299`) — the new step does not need to reimplement either check, only decide whether to call `ll-issues link` at all.
+
 ## Implementation Steps
 
-1. [Major phase 1]
-2. [Major phase 2]
-3. [Verification approach]
+1. Add a dependency-classification rule to `commands/refine-issue.md` Step 5a's Enrichment Rules
+   (alongside "Option-Count Detection", ~lines 538-557): when a fresh finding names another open
+   issue as affecting whether or how the proposed mechanism works (not merely touching the same
+   function/file), classify it as a hard dependency using the Program Design § Decision Rules
+   discriminator, with an explicit default for the ambiguous middle ground — mirroring Step 6.7's
+   `soft_dep_hard_edge` gate, which states its own default when signals conflict.
+2. On hard-dependency classification, call `ll-issues link [ID] blocked_by [BLOCKER-ID]`
+   (`apply_link`, `link.py:119` — already idempotent and cycle-guarded, `_check_cycle`,
+   `link.py:299`) to promote the finding into frontmatter at deposit time, and write the prose
+   finding in plain ordering-constraint language (what breaks if the order is violated) instead of
+   hedged "worth checking" phrasing.
+3. Verify: a finding matching the BUG-3278/BUG-3279 shape now sets `blocked_by` when Step 5a runs,
+   rather than only being caught reactively by Step 6.7's `prose_dep_drift` gate; confirm
+   `find_issues_for_graph` (`issue_parser.py:3367`) still treats the edge as unresolved until the
+   blocker reaches `done`/`cancelled`.
 
 ## Impact
 
@@ -114,4 +157,6 @@ does not work until that issue lands" is `blocked_by`.
 
 
 ## Session Log
+- `/ll:reconcile-issue` - 2026-08-21T18:07:51 - `73da6192-349c-4cd0-b9a2-b714f2801296.jsonl`
+- `/ll:refine-issue` - 2026-08-21T17:46:16 - `60a158f1-d190-4921-8534-c9c523505485.jsonl`
 - `/ll:capture-issue` - 2026-08-21T17:30:51 - `fa57a84b-34e0-4018-9e9e-dd57ed7ef3f3.jsonl`

@@ -19,6 +19,9 @@ relates_to:
 - BUG-3278
 - BUG-3279
 - ENH-3277
+size: Large
+depends_on:
+- BUG-3278
 ---
 
 # ENH-3280: decide-issue should propagate the selected option through the issue body
@@ -341,6 +344,8 @@ rebase against the other rather than assuming a clean merge [Agent 2 finding].
 
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-08-21T17:52:58 - `f27d8342-f3ba-42ea-95ca-41ad79008fbf.jsonl`
+- `/ll:verify-issues` - 2026-08-21T17:43:58 - `aee80426-6ab1-4a8c-814d-a6f459361121.jsonl`
 - `/ll:refine-issue` - 2026-08-21T17:40:24 - `2c542a24-aeb3-46f2-9dc7-120037c4fb74.jsonl`
 - `/ll:verify-issues` - 2026-08-21T17:33:43 - `fa57a84b-34e0-4018-9e9e-dd57ed7ef3f3.jsonl`
 - `/ll:wire-issue` - 2026-08-21T17:29:04 - `76775aa0-e5e0-4b13-930a-5924b752270f.jsonl`

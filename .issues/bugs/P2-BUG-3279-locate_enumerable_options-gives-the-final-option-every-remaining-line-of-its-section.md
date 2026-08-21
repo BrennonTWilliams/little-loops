@@ -19,10 +19,10 @@ relates_to:
 - ENH-3277
 - BUG-3285
 size: Large
-confidence_score: 96
-outcome_confidence: 76
+confidence_score: 99
+outcome_confidence: 81
 score_complexity: 17
-score_test_coverage: 20
+score_test_coverage: 25
 score_ambiguity: 20
 score_change_surface: 19
 ---
@@ -243,19 +243,23 @@ specified* (fence-aware boundary + section-scope rationale) across all of `.issu
 
 ```
 boundary alone:              151 gain,   0 lose
-Rule 3 as specified:           0 gain, 119 lose
+Rule 3 as specified:           0 gain, 118 lose
 ```
 
+_Re-verified 2026-08-21: both figures reproduce exactly against the current corpus. The drop count
+was recorded as 119 in an earlier pass; it is **118** as of this measurement. Only `gains == 0` is
+strict — the drop count is corpus-dependent and is an observation, not an assertion._
+
 Rule 3 fully neutralizes the regression (0 gains — this is the invariant to assert). But it also
-drops **119 issues to 0 unresolved options**. Those are decided issues whose winning option was
+drops **118 issues to 0 unresolved options**. Those are decided issues whose winning option was
 *not* the last one: today the appended `### Decision Rationale` only resolves the block that
 absorbed it, so the middle non-winning options read as unresolved. Section-scope resolution fixes
 that too.
 
-This is a **second real bug fixed for free**, but it is still a gate-behavior change: for those 119
+This is a **second real bug fixed for free**, but it is still a gate-behavior change: for those 118
 issues `ll-issues check-open-questions` flips nonzero → 0, so `resolve-decision.yaml` stops
 re-entering `decide` on them. Both directions must be asserted at verification time (see
-Implementation Step 5) — an implementer who sees a 119-issue diff and reads it as a regression will
+Implementation Step 5) — an implementer who sees a ~118-issue diff and reads it as a regression will
 "fix" it back and reintroduce the absorption dependency.
 
 #### Known hazard — partially-decided multi-decision sections
@@ -379,6 +383,20 @@ _Wiring pass added by `/ll:wire-issue`:_
   sit under an unrelated H2 alongside a `### Decision Rationale`, plus a *second* H2 carrying
   undecided options — assert only the first H2's blocks are resolved, i.e. scope is the H2 span and
   not the document
+- **Winner's tail no longer suppresses a report (the new-report direction)**: a fixture whose
+  **winning** option's description is followed by a `###` subheading, with a shared identifier
+  named in the *rejected* option, again in the winner's post-heading tail, and again in a
+  directive section. **Assert the report DOES fire, and name in the docstring that this is the
+  accepted pre-existing `_decision_identifiers` defect, not the boundary misbehaving.** Mirrors
+  live ENH-2692 (`final_score`) — see the investigation in Implementation Step 5.
+
+  Do **not** write this as "asserts nothing is reported": that outcome is unreachable without the
+  separate `_decision_identifiers` fix, and encoding it would repeat the unachievable-criterion
+  mistake called out for ENH-3277 above. Narrowing the winning block correctly drops the shared
+  identifier from `sel_ids`, promoting it into `discriminating = rej_ids - sel_ids`; today it is
+  suppressed only *because* the absorption bug sweeps shared analysis prose into the winner's
+  block. This is the one direction in which the fix makes `format-check` noisier, and the fixture
+  exists so that is visible and deliberate rather than discovered later as a regression
 - **Callout trim survives (Step 3)**: a fixture whose last option carries a `> **Selected:**`
   callout followed by *unheaded* rationale prose naming other identifiers — assert
   `_unapplied_decision` still reports nothing. Guards against deleting the trim as "redundant"
@@ -495,6 +513,13 @@ _Added by `/ll:refine-issue` — 2026-08-21 — based on codebase analysis:_
   alternative only ever matches today *because* of the absorption bug this issue fixes — it is
   written at section end by `/ll:decide-issue` Phase 7a and lands inside the last option's block.
   Bounding the block kills the marker; hence the section-scope change in Rule 3.
+- `_locate_directive_alternatives(content: str) -> LocatedOptions | None`
+  (`scripts/little_loops/issue_parser.py:2062`) — a **fifth** `LocatedOptions` producer, reached as
+  `locate_enumerable_options`'s last-resort Pattern E path (`:2180`). **Confirmed unaffected: it
+  does not carry this defect and needs no change.** It builds its span from a bounded ±3-line
+  window around the matched decide-imperative, never "from the marker to the end of the section",
+  so there is no unbounded-final-span to fix. Recorded here so it is not rediscovered mid-implementation
+  as a fourth sibling to repair.
 - Existing "next heading at any depth" precedent (not currently reused by either option-span
   function): `_empty_provenance_stub_matches` (`scripts/little_loops/issue_parser.py:1241`) computes
   `heading_re = re.compile(r"^#{1,6}\s", re.MULTILINE)` and combines it with a sibling boundary via
@@ -536,7 +561,15 @@ keyword list, or threshold.
    functions. The two ENH-3256
    clamps are **not** equally redundant — treat them separately:
    - `_DECISION_RATIONALE_HEADING_RE` clamp (`:1409-1417`) — subsumed, because
-     `### Decision Rationale` *is* a heading and the new boundary stops there anyway. Delete it.
+     `### Decision Rationale` *is* a heading and the new boundary stops there anyway. Delete
+     **the clamp block only.** **Keep the `dr_match` / `dr_start` computation (`:1407-1408`) —
+     it has a second consumer.** `dr_start` is also read at `:1483` as
+     `scrub_start = min(dr_start, spans[-1][1])`, the cap on the Proposed Solution self-scan.
+     Deleting the whole `dr_start` computation as "part of the subsumed clamp" silently changes
+     that cap. The `min()` becomes *usually* redundant once spans narrow (`spans[-1][1]` is then
+     normally ≤ `dr_start`), but not always: a phantom trailing block matched **after** the
+     `### Decision Rationale` heading — the `_OPTION_HEADING_RE` prose-matching defect tracked as
+     BUG-3285 — puts `spans[-1][1]` past `dr_start` and the `min()` is what still holds. Keep it.
    - `> **Selected:**` callout trim (`:1419-1433`) — **keep it.** Its documented job (`:1424-1432`)
      is dropping *unheaded* free-form rationale prose that follows the callout line before the
      section end. No heading boundary can catch unheaded prose, so deleting this one reintroduces
@@ -558,15 +591,73 @@ keyword list, or threshold.
      `end_line` lands on the last line *before* the boundary heading — commonly a blank line, and
      one line past the last line of `text`. This is existing behavior for every non-last option; the
      fix makes the last option match it. Assert the relation, not "no trailing blank."
-   - `ll-issues format-check ENH-3277` no longer emits `unapplied_decision` reports for ordinary
-     analysis vocabulary (was 113 at 2026-08-21T18:20Z).
+   - `ll-issues format-check ENH-3277` drops from **113** `unapplied_decision` reports
+     (2026-08-21T18:20Z) to **~23**. **Do not assert zero — this fix cannot reach zero, and a
+     criterion of "no longer emits reports for ordinary analysis vocabulary" is unachievable.**
+     Simulated with the full fix applied, the 23 survivors are still ordinary vocabulary —
+     `pytest`, `ProjectConfig`, `rn-refine`, `.ll/ll-config.json`, `to_dict()`,
+     `oracles/code-run-gate.yaml`. They do not come from span absorption; they come from
+     `_decision_identifiers` (`:1341`) extracting every backticked token in a block as a
+     "rejected-option identifier", so shared vocabulary that legitimately appears in both the
+     rejected block and a directive section still fires. That is a **separate defect — file it
+     rather than chasing it here.** Assert the *relation*: strictly decreasing, ~23 residual, and
+     no report present after that was absent before (see the next bullet).
+   - **New-report direction — assert `new_reports == 0` corpus-wide.** Narrowing spans can *create*
+     `unapplied_decision` reports, not only remove them, and this issue's other guards do not cover
+     it: they are all about Rule 3 and `check-open-questions`. Mechanism: `_unapplied_decision`
+     computes `discriminating = rej_ids - sel_ids` (`:1475`). Narrowing the **winning** block's
+     span shrinks `sel_ids`, so identifiers that used to be subtracted are promoted into
+     `discriminating` and fire against the directive sections. Measured across all of `.issues/`
+     (2026-08-21, full fix simulated):
+
+     | Direction | Measured | Meaning |
+     | --- | --- | --- |
+     | total reports | 767 → 527 | The intended win |
+     | issues whose report set changes | 17 | Expected |
+     | issues gaining **new** reports | **1** — ENH-2692 | Investigated below — **accepted**, pre-existing `_decision_identifiers` defect, not a boundary error |
+
+     ENH-2692 gains `Acceptance Criteria still specifies \`final_score\`` and `Files to Modify
+     still specifies \`final_score\``.
+
+     **Investigated 2026-08-21 — accept it, and do not change the boundary to avoid it.** The
+     boundary is behaving correctly; the report is a pre-existing `_decision_identifiers` defect
+     that the fix merely stops masking. Traced:
+
+     - `final_score` is the issue's **shared subject**, not an option-specific identifier. It is
+       in the title (`:3`), the Summary (`:28`, `:32`, `:39`), and Files to Modify (`:49`) —
+       all *before* any option exists.
+     - It appears in Option A's own text (`:88`, "Give `final_score` a real `on_no` path"), so it
+       lands in `rej_ids`.
+     - Option B's **own** description (4 lines, `:93-97`) never names it — Option B is about
+       updating the loop `description`. All 4 occurrences inside Option B's current block are in
+       the absorbed shared tail: Codebase Research Findings (`:104`, `:118`, `:163`) and Decision
+       Rationale (`:183`). That tail belongs to no option, so cutting it is exactly right.
+     - Today `sel_ids` only contains `final_score` **by accident** — the absorption bug sweeps the
+       shared analysis sections into the winner's block, and `discriminating = rej_ids - sel_ids`
+       silently subtracts it. Remove the absorption and the accidental protection goes with it.
+
+     **This is the same root defect as the 23 ENH-3277 survivors above, not a second one:**
+     `_decision_identifiers` (`:1341`) treats every backticked token in a block as an
+     option-discriminating identifier, so shared subject vocabulary fires whenever the winner's
+     own prose happens not to restate it. File **one** follow-up for that breadth problem
+     (candidate rule: subtract identifiers that appear in the issue's title/Summary, or in any
+     section preceding Proposed Solution, before computing `discriminating`). Do not widen this
+     issue's scope to cover it.
+
+     _Structural note, benign:_ ENH-2692's `> **Selected:**` callout is misplaced — it sits
+     *between* Option A and Option B (`:90-92`), so `_option_block_spans` files it inside **Option
+     A's** block. Selection is still correct, because `_selected_option_title` scans the whole
+     section body and `matching` keys on the block *heading*'s label, not on which block holds the
+     callout. Verified: `selected_index` resolves to Option B. No action needed, but do not build
+     the Step 3 callout-trim fixture on the assumption that the callout always sits in the
+     winner's block.
    - **Corpus regression check — assert BOTH directions.** Re-run `locate_unresolved_options` over
      all of `.issues/` before and after. The expected result is not "unchanged":
 
      | Direction | Expected | Meaning |
      | --- | --- | --- |
      | issues *gaining* unresolved options | **0** | Rule 3's regression guard. Any gain = the section-scope change is missing or mis-scoped |
-     | issues *losing* unresolved options | **~119** | Expected and correct — decided issues whose winner wasn't the last option (see Rule 3's net-effect note) |
+     | issues *losing* unresolved options | **~118** | Expected and correct — decided issues whose winner wasn't the last option (see Rule 3's net-effect note) |
 
      A one-directional check cannot distinguish success from regression here. In particular, do
      **not** treat the ~119 drops as a defect and "fix" them back — doing so reintroduces the
@@ -600,7 +691,18 @@ _These touchpoints were identified by wiring analysis and must be included in th
   measured, not hypothesized: 36 option blocks truncatable at an in-fence `#` comment (Rule 1) and
   ~3 at a legitimate `####` inside a `section_header` option (Rule 2). The gate-behavior change in
   Rule 3 is the highest-consequence path
-- **Breaking Change**: Not for the span API — spans narrow, and `count` / `pattern` are unaffected.
+- **Breaking Change**: Not for the span API — spans narrow, and `pattern` is unaffected.
+  **`count` is *nearly* unaffected, not fully:** Steps 3 and 4 make the option *markers*
+  fence-aware, not just the boundary, so a `**Option` line inside a fenced block stops being
+  counted as an option at all. Measured across all of `.issues/` (2026-08-21): **2 markers in 1
+  issue** — ENH-2607, whose Proposed Solution shows `**Option A` / `**Option B` inside a fence.
+  `_locate_options_in_text`'s tier-1 (`bold_label`) regex sees the same two; tier-0
+  (`section_header`) has **0** in-fence markers corpus-wide. Blast radius is small and the change
+  is correct, but state it rather than claiming `count` is untouched. Two consequences: (a) the
+  151 / 118 corpus simulation below was run with a fence-aware *boundary* only — it does **not**
+  include fence-aware markers, so re-measure with both before asserting; (b) this overlaps
+  **BUG-3285** (`_OPTION_HEADING_RE` matching option-shaped prose), which removes phantom blocks
+  by a different route — land order matters, and whichever lands second must re-baseline.
   **But `ll-issues check-open-questions` changes exit code for ~119 issues** (nonzero → 0), which
   changes what `resolve-decision.yaml`'s gate does on each of them. That is intended (they are
   decided issues that were falsely reported open — see Rule 3's net-effect note), and no consumer
@@ -627,6 +729,8 @@ where the decision matters most.
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-21T18:06:29 - `1dc42ab1-08c6-4bb9-a00d-68fb256a4aa4.jsonl`
+- `/ll:confidence-check` - 2026-08-21T17:41:34 - `49809b3e-fc41-407d-a838-27884c8554fc.jsonl`
 - `/ll:confidence-check` - 2026-08-21T17:30:27 - `08ddfd12-c4b5-4b15-9c96-41356558ea91.jsonl`
 - `/ll:verify-issues` - 2026-08-21T17:13:31 - `99f6c71e-f475-4121-a410-ed5319e99e15.jsonl`
 - `/ll:refine-issue` - 2026-08-21T17:11:12 - `125e158d-3f91-476d-a1f8-8948c119463c.jsonl`
