@@ -14,6 +14,12 @@ labels:
 - planning-hub
 - multi-repo
 - mcp
+confidence_score: 100
+outcome_confidence: 79
+score_complexity: 18
+score_test_coverage: 22
+score_ambiguity: 24
+score_change_surface: 15
 ---
 
 # BUG-3286: Priority read from filename prefix only: frontmatter priority: is write-only and drifts on re-prioritization
@@ -327,6 +333,7 @@ _Line numbers re-anchored 2026-08-21 against the current working tree; prefer th
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-21T18:58:41 - `eff768cf-ea73-4732-9715-12285ca3175d.jsonl`
 - `/ll:wire-issue` - 2026-08-21T18:29:26 - `8dfb1ac4-9c46-4e39-8612-aa72663c1c57.jsonl`
 - `/ll:refine-issue` - 2026-08-21T17:42:10 - `c401e0f5-28d0-4d01-95f3-309f5a7b95c5.jsonl`
 - `/ll:capture-issue` - 2026-08-21T17:37:13 - `0c91fc4e-e09c-41b9-a77b-d05fa80fd5b1.jsonl`

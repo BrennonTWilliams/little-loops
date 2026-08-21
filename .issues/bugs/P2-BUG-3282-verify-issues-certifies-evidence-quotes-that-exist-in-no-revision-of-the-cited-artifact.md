@@ -529,6 +529,7 @@ paths and crosses renames, and every other cited anchor resolves (`issue_parser.
 `check_verify_verdict.py:22-44`, `refine-to-ready-issue.yaml:350`, the 10-row verdict table).
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-21T18:50:00 - `c9ef2e6f-97ff-48c5-ab63-1c421d2aa389.jsonl`
 - `/ll:confidence-check` - 2026-08-21T18:24:15 - `50bb079c-e6a6-43cf-afbb-5f557001b12e.jsonl`
 - `/ll:wire-issue` - 2026-08-21T18:11:26 - `de2bc4f7-6272-4f52-a9cb-998af08752f1.jsonl`
 - `/ll:refine-issue` - 2026-08-21T17:44:39 - `169e7cf4-cd6f-42a2-b69c-b77a2737901b.jsonl`
