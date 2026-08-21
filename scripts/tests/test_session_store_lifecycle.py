@@ -380,6 +380,37 @@ class TestBackfillIssuesV2Columns:
         assert rows[0]["issue_type"] == "BUG"
         assert rows[0]["priority"] == "P3"
 
+    def test_v2_priority_prefers_filename_over_disagreeing_frontmatter(
+        self, tmp_path: Path
+    ) -> None:
+        """BUG-3286 Decision Rules § Precedence divergence: `_derive_type_priority`
+        now resolves priority filename-first, reversed from the previous
+        frontmatter-first behavior, so the history DB agrees with the planner."""
+        issues = tmp_path / ".issues" / "bugs"
+        issues.mkdir(parents=True, exist_ok=True)
+        (issues / "P0-BUG-8-drifted.md").write_text(
+            "---\nid: BUG-8\nstatus: done\ntype: BUG\npriority: P2\n---\n# x\n",
+            encoding="utf-8",
+        )
+        db = tmp_path / "session.db"
+        backfill(db, issues_dir=tmp_path / ".issues", loops_dir=tmp_path / "no")
+        rows = recent(db, kind="issue")
+        assert rows[0]["priority"] == "P0"
+
+    def test_v2_type_still_prefers_frontmatter_over_filename(self, tmp_path: Path) -> None:
+        """BUG-3286 hazard 1: only the priority half of `_derive_type_priority`
+        changed precedence — `issue_type` remains frontmatter-first."""
+        issues = tmp_path / ".issues" / "bugs"
+        issues.mkdir(parents=True, exist_ok=True)
+        (issues / "P2-BUG-9-retyped.md").write_text(
+            "---\nid: BUG-9\nstatus: done\ntype: ENH\npriority: P2\n---\n# x\n",
+            encoding="utf-8",
+        )
+        db = tmp_path / "session.db"
+        backfill(db, issues_dir=tmp_path / ".issues", loops_dir=tmp_path / "no")
+        rows = recent(db, kind="issue")
+        assert rows[0]["issue_type"] == "ENH"
+
     def test_bare_int_id_canonicalized_to_type_nnn(self, tmp_path: Path) -> None:
         """BUG-2769: id: 2756 (bare int) is canonicalized to BUG-2756 from the filename."""
         issues = tmp_path / ".issues" / "bugs"

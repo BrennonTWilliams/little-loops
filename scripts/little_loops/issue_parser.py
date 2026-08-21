@@ -89,6 +89,28 @@ def parse_issue_filename(filename: str) -> FilenameId | None:
     return FilenameId(priority=priority, type_prefix=m.group(2).upper(), number=m.group(3))
 
 
+def resolve_priority(
+    filename: str,
+    frontmatter: dict[str, Any],
+    config: BRConfig,
+    *,
+    default: str | None = None,
+) -> str | None:
+    """Resolve an issue's priority: filename prefix wins, frontmatter is the fallback.
+
+    Returns ``default`` when neither source specifies one, so each caller keeps
+    its own no-priority sentinel (parser: ``issue_priorities[-1]``; show: ``None``;
+    normalize: ``"P3"``).
+    """
+    for priority in config.issue_priorities:
+        if filename.startswith(f"{priority}-"):
+            return priority
+    fm_priority = frontmatter.get("priority")
+    if isinstance(fm_priority, str) and fm_priority.upper() in config.issue_priorities:
+        return fm_priority.upper()
+    return default
+
+
 def resolve_issue_path(config: BRConfig, user_input: str) -> Path | None:
     """Resolve user input to an issue file path.
 
@@ -520,6 +542,7 @@ class FormatGaps:
     empty_provenance_stub: list[str] = field(default_factory=list)
     template_placeholders: list[str] = field(default_factory=list)
     unapplied_decision: list[str] = field(default_factory=list)
+    priority_drift: list[str] = field(default_factory=list)
 
     @property
     def has_gaps(self) -> bool:
@@ -550,6 +573,7 @@ class FormatGaps:
             or self.empty_provenance_stub
             or self.template_placeholders
             or self.unapplied_decision
+            or self.priority_drift
         )
 
     @property
@@ -592,6 +616,7 @@ class FormatGaps:
             "empty_provenance_stub": self.empty_provenance_stub,
             "template_placeholders": self.template_placeholders,
             "unapplied_decision": self.unapplied_decision,
+            "priority_drift": self.priority_drift,
         }
 
 
@@ -821,6 +846,15 @@ def check_format_gaps(
             (:data:`_SUPERSEDED_MARKER_PREFIX`) appears in the same paragraph.
             Report-only; caps ``/ll:confidence-check`` Criterion C, never a
             hard override.
+        priority_drift: the filename's ``P<n>-`` prefix and the frontmatter
+            ``priority:`` key are both present and disagree (BUG-3286
+            Decision Rules § Drift rule). Scoped to the file's own name and
+            frontmatter — no cross-file comparison. Silent when either source
+            is absent (an absent frontmatter ``priority:`` is the normal
+            state for most of this repo's corpus, not drift). The filename
+            prefix is authoritative (:func:`resolve_priority`); the remedy is
+            re-running ``ll-issues prioritize --apply``, which reconciles
+            both sources in one operation.
 
     Args:
         issue_path: Path to the issue markdown file.
@@ -962,6 +996,22 @@ def check_format_gaps(
         for dep_entry in dep_entries:
             if dep_entry and not _DEP_ID_RE.fullmatch(dep_entry):
                 gaps.malformed_dep_id.append(f"{dep_key}: {dep_entry} (expected TYPE-NNN)")
+
+    # BUG-3286: filename prefix vs. frontmatter priority drift. Fires only when
+    # both sources are present and differ — an absent frontmatter priority is
+    # the normal state for most of this repo's corpus, not drift (Consequence 5).
+    filename_priority_match = re.match(r"^(P[0-5])-", issue_path.name)
+    fm_priority = fm.get("priority")
+    if (
+        filename_priority_match
+        and isinstance(fm_priority, str)
+        and fm_priority.strip()
+        and filename_priority_match.group(1) != fm_priority.strip().upper()
+    ):
+        gaps.priority_drift.append(
+            f"filename: {filename_priority_match.group(1)} vs. frontmatter priority: "
+            f"{fm_priority.strip()}"
+        )
 
     if issue_statuses is not None:
         from little_loops.frontmatter import strip_frontmatter
@@ -2879,9 +2929,6 @@ class IssueParser:
         """
         filename = issue_path.name
 
-        # Parse priority from filename prefix (e.g., P1-BUG-123-...)
-        priority = self._parse_priority(filename)
-
         # Parse issue type and ID from filename
         issue_type, issue_id = self._parse_type_and_id(filename, issue_path)
 
@@ -2890,6 +2937,9 @@ class IssueParser:
 
         # Parse frontmatter for discovered_by, epic, product impact, effort, and impact
         frontmatter = parse_frontmatter(content)
+
+        # Priority: filename prefix wins, frontmatter is the fallback (BUG-3286)
+        priority = self._parse_priority(filename, frontmatter)
         discovered_by = frontmatter.get("discovered_by")
         epic = frontmatter.get("epic")
         size = frontmatter.get("size")
@@ -3040,20 +3090,22 @@ class IssueParser:
             status=status,
         )
 
-    def _parse_priority(self, filename: str) -> str:
-        """Extract priority from filename.
+    def _parse_priority(self, filename: str, frontmatter: dict[str, Any]) -> str:
+        """Resolve priority from filename prefix, falling back to frontmatter.
+
+        Thin wrapper over the shared `resolve_priority()` resolver (BUG-3286).
 
         Args:
             filename: Issue filename
+            frontmatter: Parsed frontmatter dict
 
         Returns:
-            Priority string (e.g., "P1") or last priority if not found
+            Priority string (e.g., "P1") or last configured priority if neither
+            source specifies one.
         """
-        for priority in self.config.issue_priorities:
-            if filename.startswith(f"{priority}-"):
-                return priority
-        # Default to lowest priority if not found
-        return self.config.issue_priorities[-1] if self.config.issue_priorities else "P3"
+        default = self.config.issue_priorities[-1] if self.config.issue_priorities else "P3"
+        result = resolve_priority(filename, frontmatter, self.config, default=default)
+        return result if result is not None else default
 
     def _get_category_for_prefix(self, prefix: str) -> str:
         """Get category name from issue prefix.

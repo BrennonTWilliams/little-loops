@@ -3,7 +3,7 @@ id: ENH-3047
 title: 'confidence-check: consume unverified-claim and missing-parity gaps as Criterion
   4 deductions'
 type: ENH
-priority: P3
+priority: P2
 status: done
 discovered_by: capture-issue
 discovered_date: 2026-08-04

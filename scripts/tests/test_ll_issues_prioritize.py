@@ -15,6 +15,7 @@ import pytest
 
 from little_loops.cli.issues.prioritize import apply_priorities, scan_prioritize
 from little_loops.config import BRConfig
+from little_loops.frontmatter import parse_frontmatter
 
 _PRIORITIZE_CONFIG: dict[str, Any] = {
     "project": {"name": "test-project"},
@@ -171,6 +172,8 @@ class TestApplyPriorities:
         assert results[0].new_path.name == "P2-BUG-001-fix-login.md"
         assert results[0].new_path.exists()
         assert not results[0].old_path.exists()
+        fm = parse_frontmatter(results[0].new_path.read_text())
+        assert fm.get("priority") == "P2"
 
     def test_replace_on_already_prioritized_file(
         self, temp_project_dir: Path, prioritize_dir: Path
@@ -184,10 +187,15 @@ class TestApplyPriorities:
         assert results[0].old_priority == "P3"
         assert results[0].new_path.name == "P1-BUG-001-fix-login.md"
         assert results[0].new_path.exists()
+        fm = parse_frontmatter(results[0].new_path.read_text())
+        assert fm.get("priority") == "P1"
 
     def test_already_at_target_priority_is_noop(
         self, temp_project_dir: Path, prioritize_dir: Path
     ) -> None:
+        """No rename occurs, but frontmatter is reconciled (BUG-3286): this is
+        exactly the state of a drifted issue whose filename is already correct
+        and whose frontmatter must be brought into agreement."""
         path = _write(
             prioritize_dir / "bugs" / "P2-BUG-001-fix-login.md", _issue_body(id_="BUG-001")
         )
@@ -198,8 +206,32 @@ class TestApplyPriorities:
         assert len(results) == 1
         assert results[0].old_path.resolve() == results[0].new_path.resolve() == path.resolve()
         assert path.exists()
+        fm = parse_frontmatter(path.read_text())
+        assert fm.get("priority") == "P2"
+
+    def test_already_at_target_priority_reconciles_drifted_frontmatter(
+        self, temp_project_dir: Path, prioritize_dir: Path
+    ) -> None:
+        """A file whose filename prefix is already correct but whose
+        frontmatter carries a stale value gets reconciled without any rename
+        (BUG-3286 Consequence 2 — the exact state of the four drifted issues)."""
+        path = _write(
+            prioritize_dir / "bugs" / "P2-BUG-001-fix-login.md",
+            "---\nid: BUG-001\nstatus: open\npriority: P3\n---\n\n# Test issue\n",
+        )
+        config = _config(temp_project_dir)
+
+        results = apply_priorities(config, {"BUG-001": "P2"})
+
+        assert len(results) == 1
+        assert results[0].new_path.resolve() == path.resolve()
+        fm = parse_frontmatter(path.read_text())
+        assert fm.get("priority") == "P2"
 
     def test_apply_is_idempotent(self, temp_project_dir: Path, prioritize_dir: Path) -> None:
+        """Content-level idempotence still holds: a second run at the same
+        priority is a true no-op (BUG-3286 no longer makes this a filesystem
+        no-op, but the resulting content must be stable)."""
         _write(prioritize_dir / "bugs" / "BUG-001-fix-login.md", _issue_body(id_="BUG-001"))
         config = _config(temp_project_dir)
 

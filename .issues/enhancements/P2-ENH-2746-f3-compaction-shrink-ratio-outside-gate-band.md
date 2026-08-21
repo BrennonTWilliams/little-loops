@@ -2,7 +2,7 @@
 id: ENH-2746
 type: ENH
 title: F3 compaction shrink ratio measured outside 50-70% gate band
-priority: P3
+priority: P2
 status: done
 captured_at: '2026-07-23T01:37:52Z'
 completed_at: '2026-07-23T04:31:47Z'

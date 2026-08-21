@@ -114,6 +114,8 @@ def apply_priorities(config: BRConfig, mapping: dict[str, str]) -> list[RenameRe
         real issue file, including no-op entries.
     """
     from little_loops.cli.issues.show import _resolve_issue_id
+    from little_loops.file_utils import atomic_write
+    from little_loops.frontmatter import update_frontmatter
     from little_loops.issue_lifecycle import git_mv_with_fallback
 
     prefix_re = _priority_prefix_re(config)
@@ -132,7 +134,15 @@ def apply_priorities(config: BRConfig, mapping: dict[str, str]) -> list[RenameRe
         new_name = prefix_re.sub(f"{priority}-", path.name) if match else f"{priority}-{path.name}"
         new_path = path.parent / new_name
 
+        # Keep the frontmatter `priority:` in sync on every prefix write, including
+        # the already-at-target case (BUG-3286 Prefix-rewrite sync rule) — that
+        # branch is exactly the state of the four drifted issues this rule fixes.
+        content = path.read_text(encoding="utf-8")
+        updated_content = update_frontmatter(content, {"priority": priority})
+
         if new_path == path:
+            if updated_content != content:
+                atomic_write(path, updated_content, encoding="utf-8")
             results.append(
                 RenameResult(
                     id=issue_id, old_path=path, new_path=new_path, old_priority=old_priority
@@ -140,7 +150,7 @@ def apply_priorities(config: BRConfig, mapping: dict[str, str]) -> list[RenameRe
             )
             continue
 
-        git_mv_with_fallback(path, new_path)
+        git_mv_with_fallback(path, new_path, content=updated_content)
         results.append(
             RenameResult(id=issue_id, old_path=path, new_path=new_path, old_priority=old_priority)
         )

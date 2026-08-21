@@ -67,7 +67,7 @@ def add_format_check_parser(subs: argparse._SubParsersAction) -> argparse.Argume
         "duplicate_findings_block/ambiguous_file_ref/missing_behavior_parity/"
         "soft_dep_hard_edge/malformed_dep_id/stale_symbol_ref/mislocated_symbol_ref/"
         "stale_cli_flag/duplicate_heading/empty_provenance_stub/"
-        "template_placeholders/unapplied_decision)",
+        "template_placeholders/unapplied_decision/priority_drift)",
     )
     p.set_defaults(command="format-check")
     p.add_argument(
@@ -318,7 +318,7 @@ def _fix_template_placeholders(
     """
     from little_loops.file_utils import atomic_write
     from little_loops.frontmatter import parse_frontmatter
-    from little_loops.issue_parser import _replace_template_placeholder_tokens
+    from little_loops.issue_parser import _replace_template_placeholder_tokens, resolve_priority
 
     fixable = [t for t in targets if t in _TEMPLATE_PLACEHOLDER_FIXABLE]
     if not fixable:
@@ -326,7 +326,10 @@ def _fix_template_placeholders(
 
     content = path.read_text(encoding="utf-8")
     fm = parse_frontmatter(content)
-    priority = fm.get("priority")
+    # BUG-3286 Fix-order rule: source from the resolved priority, not the raw
+    # frontmatter value, so a drifted file's stale frontmatter priority is
+    # never baked into the body's Status/Impact placeholder lines.
+    priority = resolve_priority(path.name, fm, config, default=None)
     discovered_date = fm.get("discovered_date")
     issue_type = fm.get("type")
 
@@ -471,6 +474,11 @@ def _print_gaps(gaps: FormatGaps) -> None:
         )
     for entry in gaps.unapplied_decision:
         print(f"  unapplied_decision: {entry}")
+    for entry in gaps.priority_drift:
+        print(
+            f"  priority_drift: {entry} (filename prefix wins; reconcile with "
+            "ll-issues prioritize --apply)"
+        )
 
 
 def cmd_format_check(config: BRConfig, args: argparse.Namespace) -> int:
@@ -482,7 +490,7 @@ def cmd_format_check(config: BRConfig, args: argparse.Namespace) -> int:
     duplicate_findings_block/ambiguous_file_ref/missing_behavior_parity/
     soft_dep_hard_edge/malformed_dep_id/stale_symbol_ref/mislocated_symbol_ref/
     stale_cli_flag/duplicate_heading/empty_provenance_stub/
-    template_placeholders/unapplied_decision.
+    template_placeholders/unapplied_decision/priority_drift.
 
     Every class in :class:`FormatGaps` must have a matching loop in
     :func:`_print_gaps`; a class counted by ``has_gaps`` but not rendered

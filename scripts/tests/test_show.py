@@ -314,6 +314,26 @@ class TestParseCardFields:
         fields = _parse_card_fields(path, config)
         assert fields["title"] == "P3-ENH-5001-plain"
 
+    def test_prefix_less_filename_falls_back_to_frontmatter_priority(self, tmp_path: Path) -> None:
+        """A filename with no P<n>- prefix resolves priority from frontmatter (BUG-3286)."""
+        path, config = self._write_issue(
+            tmp_path,
+            "---\nstatus: open\npriority: P1\n---\n# ENH-5200: Thing\n",
+            "ENH-5200-thing.md",
+        )
+        fields = _parse_card_fields(path, config)
+        assert fields["priority"] == "P1"
+
+    def test_prefix_wins_over_disagreeing_frontmatter_priority(self, tmp_path: Path) -> None:
+        """Filename prefix and IssueParser must agree on the resolved priority (BUG-3286)."""
+        path, config = self._write_issue(
+            tmp_path,
+            "---\nstatus: open\npriority: P0\n---\n# ENH-5201: Thing\n",
+            "P2-ENH-5201-thing.md",
+        )
+        fields = _parse_card_fields(path, config)
+        assert fields["priority"] == "P2"
+
     def test_empty_summary_section_is_none(self, tmp_path: Path) -> None:
         """A ## Summary section with no body text produces summary=None.
 

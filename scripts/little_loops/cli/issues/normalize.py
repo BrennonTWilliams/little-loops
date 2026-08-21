@@ -115,10 +115,35 @@ class NormalizeFinding:
         }
 
 
-def _priority_and_defaulted(filename: str) -> tuple[str, bool]:
-    """Extract a leading ``P[0-5]-`` token, defaulting to P3 when absent."""
-    m = re.match(r"^(P[0-5])-", filename)
-    return (m.group(1), False) if m else ("P3", True)
+def _read_frontmatter(path: Path) -> dict[str, Any]:
+    """Read and parse a candidate's frontmatter for priority resolution (BUG-3286).
+
+    Scoped to the bounded candidate set (missing/duplicate IDs), not the
+    whole corpus, so the extra read per candidate is acceptable.
+    """
+    from little_loops.frontmatter import parse_frontmatter
+
+    try:
+        content = path.read_text(encoding="utf-8")
+    except OSError:
+        return {}
+    return parse_frontmatter(content)
+
+
+def _priority_and_defaulted(
+    filename: str, frontmatter: dict[str, Any], config: BRConfig
+) -> tuple[str, bool]:
+    """Resolve priority via the shared resolver, defaulting to P3 when absent (BUG-3286).
+
+    Filename prefix wins; frontmatter ``priority:`` is consulted before
+    defaulting, so a prefix-less file with a declared priority is not
+    silently overridden with an invented ``P3-`` prefix. ``defaulted`` is
+    True only when neither source specifies a priority.
+    """
+    from little_loops.issue_parser import resolve_priority
+
+    resolved = resolve_priority(filename, frontmatter, config, default=None)
+    return (resolved, False) if resolved is not None else ("P3", True)
 
 
 def _slug_for(filename: str) -> str:
@@ -287,7 +312,7 @@ def scan_normalize(
     for path in sorted(no_id_paths):
         cat = path_category[path]
         prefix = config.get_issue_prefix(cat)
-        priority, defaulted = _priority_and_defaulted(path.name)
+        priority, defaulted = _priority_and_defaulted(path.name, _read_frontmatter(path), config)
         new_num = _alloc()
         proposed_id = f"{prefix}-{new_num:03d}"
         proposed_path = path.parent / f"{priority}-{prefix}-{new_num:03d}-{_slug_for(path.name)}.md"
@@ -314,7 +339,9 @@ def scan_normalize(
             ordered = sorted(entries, key=_keeper_sort_key)
             for path, prefix, numstr in ordered[1:]:
                 current_id = f"{prefix}-{numstr}"
-                priority, defaulted = _priority_and_defaulted(path.name)
+                priority, defaulted = _priority_and_defaulted(
+                    path.name, _read_frontmatter(path), config
+                )
                 new_num = _alloc()
                 proposed_id = f"{prefix}-{new_num:03d}"
                 proposed_path = (
@@ -335,7 +362,9 @@ def scan_normalize(
             if is_normalized(path.name):
                 continue
             current_id = f"{prefix}-{numstr}"
-            priority, defaulted = _priority_and_defaulted(path.name)
+            priority, defaulted = _priority_and_defaulted(
+                path.name, _read_frontmatter(path), config
+            )
             proposed_id = f"{prefix}-{int(numstr):03d}"
             proposed_path = (
                 path.parent / f"{priority}-{prefix}-{int(numstr):03d}-{_slug_for(path.name)}.md"

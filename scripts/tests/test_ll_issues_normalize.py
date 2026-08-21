@@ -119,6 +119,25 @@ class TestMissingId:
         m = renamed[0].name.split("-")
         assert fm["id"] == f"BUG-{m[2]}"
 
+    def test_missing_id_with_frontmatter_priority_proposes_declared_prefix(
+        self, temp_project_dir: Path, normalize_dir: Path
+    ) -> None:
+        """A missing_id file with a declared frontmatter priority proposes
+        that priority's prefix rather than defaulting to P3 (BUG-3286)."""
+        _write(
+            normalize_dir / "bugs" / "fix-login-bug.md",
+            _issue_body(extra_fm="priority: P0"),
+        )
+
+        config = _config(temp_project_dir)
+        findings = scan_normalize(config)
+        assert len(findings) == 1
+        f = findings[0]
+        assert f.kind == "missing_id"
+        assert f.priority_defaulted is False
+        assert f.proposed_path is not None
+        assert f.proposed_path.name.startswith("P0-BUG-")
+
     def test_no_phantom_duplicates_from_id_less_files(
         self, temp_project_dir: Path, normalize_dir: Path
     ) -> None:
@@ -172,6 +191,25 @@ class TestMalformedFilename:
 
         data = f.to_dict()
         assert data["priority_defaulted"] is True
+
+    def test_prefix_less_file_with_frontmatter_priority_is_not_stamped_p3(
+        self, temp_project_dir: Path, normalize_dir: Path
+    ) -> None:
+        """A prefix-less file with a declared frontmatter priority proposes
+        that priority's prefix, not an invented P3- (BUG-3286 Consequence 4)."""
+        _write(
+            normalize_dir / "enhancements" / "ENH-052-improve-things.md",
+            _issue_body(id_="ENH-052", extra_fm="priority: P1"),
+        )
+
+        config = _config(temp_project_dir)
+        findings = scan_normalize(config)
+        assert len(findings) == 1
+        f = findings[0]
+        assert f.kind == "malformed_filename"
+        assert f.priority_defaulted is False
+        assert f.proposed_path is not None
+        assert f.proposed_path.name.startswith("P1-ENH-052-")
 
     def test_underscored_slug_is_not_flagged(
         self, temp_project_dir: Path, normalize_dir: Path

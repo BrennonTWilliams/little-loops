@@ -76,9 +76,10 @@ def _parse_card_fields(path: Path, config: BRConfig) -> dict[str, str | None]:
     frontmatter = parse_frontmatter(content, coerce_types=True)
     filename = path.name
 
-    # Extract priority from filename (e.g., P3-FEAT-518-...)
-    priority_match = re.match(r"^(P\d)-", filename)
-    priority = priority_match.group(1) if priority_match else None
+    # Priority: filename prefix wins, frontmatter is the fallback (BUG-3286)
+    from little_loops.issue_parser import resolve_priority
+
+    priority = resolve_priority(filename, frontmatter, config, default=None)
 
     # Extract type and ID from filename (e.g., FEAT-518).
     # Case-insensitive: the ENH-194 decomposition flow (2026-08-08) produced

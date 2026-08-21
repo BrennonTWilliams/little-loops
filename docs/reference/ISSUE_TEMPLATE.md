@@ -919,6 +919,7 @@ Issue files may include a YAML frontmatter block at the top of the file. The fol
 | `spike_attempted` | bool | absent | Set to `true` by `/ll:spike --auto` (FEAT-2567) when a code spike is run for the issue, whether or not it proved the mechanism. Read by autodev's `check_spike_needed` gate (ENH-2640) as the one-shot guard — an issue with `spike_attempted: true` never re-enters `run_spike`, so a failed or inconclusive spike does not thrash the triage lattice. |
 | `spike_completed` | bool | absent | Set to `true` by `/ll:spike --auto` (FEAT-2567) when the spike proved the mechanism (as opposed to merely attempting it). Companion to `spike_attempted`; together they suppress re-flagging of `spike_needed` (ENH-2640). |
 | `status` | string | `open` | Issue lifecycle status. Canonical values: `open`, `in_progress`, `blocked`, `deferred`, `done`, `cancelled`. Synonyms are coerced on read (`complete`/`completed`/`finished`/`closed` → `done`; `wip`/`in-progress`/`in progress` → `in_progress`; `pending` → `open`) — write canonical values to avoid ambiguity. |
+| `priority` | string | absent | Priority level (`P0`–`P5`). Secondary to the filename's `P<n>-` prefix — see [Priority: filename vs. frontmatter](#priority-filename-vs-frontmatter) below. |
 | `parent` | string | absent | Bare issue ID of the parent issue that was decomposed to create this child (e.g., `ENH-179`). Written automatically by `/ll:issue-size-review` (Phase 4 and Phase 6) when generating child issues. Machine-readable; used alongside the `## Parent Issue` body section for parent→child tracing. |
 | `blocked_by` | list of strings | absent | Hard ordering prerequisites — issue is wave-gated until all listed blockers reach `done` or `cancelled`. Frontmatter is the canonical source and takes precedence over the `## Blocked By` body section when both are present. |
 | `blocks` | list of strings | absent | Issue IDs that this issue blocks (inverse of `blocked_by`). Set in frontmatter to declare blocking relationships explicitly; takes precedence over the `## Blocks` body section when both are present. |
@@ -946,6 +947,41 @@ testable: false
 ```
 
 `manage-issue` will log `"⏭ Phase 3a skipped: testable: false in issue frontmatter"` and proceed directly to implementation.
+
+### Priority: filename vs. frontmatter
+
+Priority is stored in two places: the filename's `P<n>-` prefix (e.g.,
+`P2-BUG-123-...`) and the optional frontmatter `priority:` key. **The
+filename prefix is authoritative when both are present.** Frontmatter is
+consulted only when the filename carries no prefix — for example, a repo
+that uses the frontmatter-priority convention without filename prefixes, or
+an issue pulled from GitHub before its prefix is assigned. Neither source
+present falls back to the lowest configured priority.
+
+```yaml
+---
+priority: P1
+---
+```
+
+This resolution is centralized in
+[`resolve_priority()`](./API.md#little_loopsissue_parser) (BUG-3286) — every
+reader (`ll-issues show`, `IssueParser`, `ll-issues normalize`, GitHub sync)
+calls the same function rather than re-deriving priority independently, so
+they cannot disagree on the same file.
+
+`ll-issues prioritize --apply` and `ll-issues skip` keep both sources in
+sync whenever they rewrite the filename prefix, including when the file is
+already at its target priority (the exact state a drifted file is in before
+reconciliation). `ll-issues format-check` reports a `priority_drift` gap
+when a file's filename prefix and frontmatter `priority:` are both present
+and disagree; the remedy is `ll-issues prioritize --apply`.
+
+**Frontmatter `priority:` is not write-only** — it is the source consumed
+by the `rn-implement` autonomous-loop's next-issue scoring (when the
+filename carries no prefix) and by the session-store history DB's
+`issue_events`/`issue_snapshots` ingest. Keeping it populated matters even
+in a repo where every file has a filename prefix.
 
 ---
 

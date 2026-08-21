@@ -5,10 +5,11 @@ title: 'Priority split across filename prefix and frontmatter with no shared res
   IssueParser reads only the prefix, seven other sites read only frontmatter, and
   the two drift on re-prioritization'
 priority: P2
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-08-21'
 captured_at: '2026-08-21T17:37:01Z'
+completed_at: '2026-08-21T21:48:16Z'
 labels:
 - parser
 - frontmatter
@@ -299,6 +300,25 @@ _Added by `/ll:refine-issue` — 2026-08-21 — based on codebase analysis:_
 
 ## Program Design
 
+### Deviations
+
+_2026-08-21, `/ll:manage-issue` implementation of step 7._ The Decision Rules
+§ Precedence divergence section says `_derive_type_priority` should "call
+`resolve_priority(..., default=None)`". Implemented instead: the priority
+branch's precedence was reversed in place (filename-first, frontmatter
+fallback) using the existing `_FILENAME_PRIORITY_RE` regex, without calling
+the shared `resolve_priority()` function. Reason: `resolve_priority` requires
+a `BRConfig` for `config.issue_priorities`, and `_derive_type_priority`'s
+call chain (`_backfill_issues_and_snapshots` → `session_store/lifecycle.py`'s
+`populate()`/`backfill()`) has no `BRConfig` in scope anywhere — threading one
+through would touch call sites well beyond the single function this step
+named, none of which are enumerated in the Integration Map. The `type` half
+of the tuple is untouched, matching hazard 1; the filename fallback is
+preserved, matching hazard 2. Both are pinned by
+`test_v2_priority_prefers_filename_over_disagreeing_frontmatter` and
+`test_v2_type_still_prefers_frontmatter_over_filename` in
+`scripts/tests/test_session_store_lifecycle.py`.
+
 ### Types
 
 No new types. `IssueInfo.priority` (`str`) and `IssueInfo.priority_int` (`int`) keep their current shapes and semantics.
@@ -525,6 +545,8 @@ _Added by `/ll:confidence-check` on 2026-08-21; outcome de-risking edits applied
 _Resolved: the precedence-divergence call (`session_store/writers.py:_derive_type_priority`) is now a committed decision — convert to `resolve_priority(..., default=None)` — rather than a Preferred/Alternative choice left to the implementer (Decision Rules § Precedence divergence)._
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-21T21:47:53 - `f6b03c29-ff65-4857-8be4-439d590930d1.jsonl`
+- `/ll:ready-issue` - 2026-08-21T21:08:05 - `d9d4eb83-811f-4c1a-b740-f9e18c05bc97.jsonl`
 - `/ll:confidence-check` - 2026-08-21T21:05:23 - `259e8978-8652-4d82-a932-fd2ef9f4c5e4.jsonl`
 - `/ll:confidence-check` - 2026-08-21T20:23:41 - `4547e3e2-99ed-4578-a5e3-5c34241406e2.jsonl`
 - `/ll:confidence-check` - 2026-08-21T19:01:50 - `45eaa854-fea1-43c3-8981-1d72e357bd5f.jsonl`

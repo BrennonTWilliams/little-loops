@@ -2,7 +2,7 @@
 id: ENH-2988
 title: expand_skill ships documentation-shaped prompts with no directive to act
 type: ENH
-priority: P3
+priority: P2
 status: done
 captured_at: '2026-08-02T00:00:00Z'
 completed_at: '2026-08-02T13:18:10Z'

@@ -3,7 +3,7 @@ id: BUG-3109
 type: BUG
 title: '`cli/loop/info.py` should show the effective scope (including the `["."]`
   fallback), not just declared `scope:`'
-priority: P4
+priority: P3
 status: done
 parent: BUG-3088
 captured_at: '2026-08-08T00:00:00Z'

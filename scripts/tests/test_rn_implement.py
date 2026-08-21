@@ -1727,6 +1727,54 @@ class TestSelectNext:
         deq = data["states"]["dequeue_next"]
         assert deq["on_no"] == "fifo_pop"
 
+    @staticmethod
+    def _extract_python_body(action: str) -> str:
+        """Pull the heredoc Python body out of a `python3 << 'PYEOF' ... PYEOF` action."""
+        lines = action.splitlines()
+        start = next(i for i, ln in enumerate(lines) if "<< 'PYEOF'" in ln)
+        end = next(i for i in range(start + 1, len(lines)) if lines[i].strip() == "PYEOF")
+        return "\n".join(lines[start + 1 : end])
+
+    def _run_select_next(self, tmp_path: Path, queue_ids: list[str]) -> subprocess.CompletedProcess:
+        import sys
+
+        data = _load_loop()
+        body = self._extract_python_body(data["states"]["select_next"]["action"])
+
+        run_dir = tmp_path / "rundir"
+        run_dir.mkdir()
+        (run_dir / "queue.txt").write_text("\n".join(queue_ids) + "\n")
+
+        body = body.replace("${captured.run_dir.output}", str(run_dir))
+        script = tmp_path / "select_next.py"
+        script.write_text(body)
+        return subprocess.run(
+            [sys.executable, str(script)],
+            capture_output=True,
+            text=True,
+            cwd=tmp_path,
+            timeout=30,
+        )
+
+    def test_select_next_resolves_priority_filename_first(self, tmp_path: Path) -> None:
+        """BUG-3286 Consequence 5: a `P0-` issue with no frontmatter `priority:`
+        must outrank a `P2-` issue that has the key — previously the queue
+        scored every frontmatter-key-less issue as P3 regardless of its real
+        filename priority."""
+        bugs_dir = tmp_path / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True)
+        (bugs_dir / "P0-BUG-100-no-priority-key.md").write_text(
+            "---\nid: BUG-100\nstatus: open\n---\n\n# BUG-100: No priority key\n"
+        )
+        (bugs_dir / "P2-BUG-101-has-priority-key.md").write_text(
+            "---\nid: BUG-101\nstatus: open\npriority: P2\n---\n\n# BUG-101: Has priority key\n"
+        )
+
+        result = self._run_select_next(tmp_path, ["BUG-100", "BUG-101"])
+
+        assert result.returncode == 0, result.stderr
+        assert result.stdout.strip() == "BUG-100"
+
     def test_fifo_pop_post_conditions_match_select_next(self) -> None:
         """fifo_pop and select_next set identical post-conditions (capture, depth, visited, count)."""
         data = _load_loop()

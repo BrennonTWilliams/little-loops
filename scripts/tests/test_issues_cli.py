@@ -4469,6 +4469,68 @@ class TestIssuesSkip:
         content = expected.read_text()
         assert "retry after CI fix" in content
 
+    def test_skip_syncs_frontmatter_priority_with_renamed_prefix(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+    ) -> None:
+        """skip's frontmatter `priority:` matches the renamed prefix (BUG-3286)."""
+        from little_loops.frontmatter import parse_frontmatter
+
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "skip", "BUG-001", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        renamed = issues_dir / "bugs" / "P5-BUG-001-critical-crash.md"
+        fm = parse_frontmatter(renamed.read_text())
+        assert fm.get("priority") == "P5"
+
+    def test_skip_already_at_target_priority_reconciles_frontmatter(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+    ) -> None:
+        """skip to a filename's already-current priority still writes the
+        frontmatter value (BUG-3286 already-at-target sync rule)."""
+        from little_loops.frontmatter import parse_frontmatter
+
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        path = issues_dir / "bugs" / "P0-BUG-001-critical-crash.md"
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "ll-issues",
+                "skip",
+                "BUG-001",
+                "--priority",
+                "P0",
+                "--config",
+                str(temp_project_dir),
+            ],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        assert path.exists()
+        fm = parse_frontmatter(path.read_text())
+        assert fm.get("priority") == "P0"
+
     def test_skip_prints_new_path_to_stdout(
         self,
         temp_project_dir: Path,

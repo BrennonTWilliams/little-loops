@@ -308,6 +308,17 @@ states:
           except Exception:
               return {}
 
+      def get_priority(issue_id, fm):
+          # BUG-3286: filename prefix wins, frontmatter is the fallback — an
+          # issue with no frontmatter priority: key must not be scored as P3
+          # when its filename already names a real priority (Consequence 5).
+          p = issue_idx.get(issue_id)
+          if p is not None:
+              m = re.match(r'^(P[0-5])-', p.name)
+              if m:
+                  return m.group(1)
+          return fm.get("priority", "P3")
+
       def get_blocked_by(fm):
           val = fm.get("blocked_by") or []
           if isinstance(val, str):
@@ -360,7 +371,7 @@ states:
           deps = get_blocked_by(fm)
           if not all(d in done_ids for d in deps):
               continue
-          priority = fm.get("priority", "P3")
+          priority = get_priority(issue_id, fm)
           depth = depth_map.get(issue_id, 0)
           candidates.append((composite_score(issue_id, priority, depth), issue_id))
 

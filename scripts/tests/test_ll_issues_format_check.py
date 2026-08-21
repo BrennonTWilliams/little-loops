@@ -367,6 +367,9 @@ class TestFormatCheckJsonOutput:
             # option's discriminating identifiers still appear, unmarked, in
             # a directive section.
             "unapplied_decision": [],
+            # BUG-3286: filename P<n>- prefix and frontmatter priority: both
+            # present and disagreeing.
+            "priority_drift": [],
             # ENH-2992: marker presence rides the same payload; not a gap, so
             # it does not affect the exit code above.
             "superseded_marker_count": 0,
@@ -2071,7 +2074,7 @@ class TestFormatCheckTemplatePlaceholdersFix:
         capsys: pytest.CaptureFixture[str],
     ) -> None:
         path = self._write_placeholder_bug(
-            format_check_dir, "BUG-9450", "P3-BUG-9450-test-bug.md", priority="P2"
+            format_check_dir, "BUG-9450", "P3-BUG-9450-test-bug.md", priority="P3"
         )
 
         result = _invoke(
@@ -2089,8 +2092,8 @@ class TestFormatCheckTemplatePlaceholdersFix:
         after = path.read_text()
 
         # Derivable tokens filled from frontmatter.
-        assert "- **Priority**: P2 - [Justification]" in after
-        assert "**Open** | Created: 2026-08-17 | Priority: P2" in after
+        assert "- **Priority**: P3 - [Justification]" in after
+        assert "**Open** | Created: 2026-08-17 | Priority: P3" in after
         # Judgment tokens (not a pure function of frontmatter) untouched.
         assert "[Small/Medium/Large]" in after
         assert "[Low/Medium/High]" in after
@@ -2098,6 +2101,39 @@ class TestFormatCheckTemplatePlaceholdersFix:
         assert "[Justification]" in after
         # Report still exits 1 — judgment tokens remain unfilled gaps.
         assert result == 1
+
+    def test_fix_apply_sources_priority_from_resolved_value_not_stale_frontmatter(
+        self,
+        temp_project_dir: Path,
+        format_check_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """BUG-3286 Fix-order rule: a drifted file (filename prefix disagrees
+        with frontmatter `priority:`) fills the body from the *resolved*
+        (filename-wins) value, never the stale frontmatter one — otherwise
+        `--fix` would bake drift into prose where no lint inspects it."""
+        path = self._write_placeholder_bug(
+            format_check_dir, "BUG-9455", "P3-BUG-9455-test-bug.md", priority="P1"
+        )
+
+        _invoke(
+            [
+                "ll-issues",
+                "format-check",
+                "BUG-9455",
+                "--fix",
+                "--apply",
+                "--config",
+                str(temp_project_dir),
+            ]
+        )
+        capsys.readouterr()
+        after = path.read_text()
+
+        assert "- **Priority**: P3 - [Justification]" in after
+        assert "**Open** | Created: 2026-08-17 | Priority: P3" in after
+        assert "- **Priority**: P1" not in after
+        assert "Priority: P1" not in after
 
     def test_fix_without_apply_previews_and_does_not_write(
         self,

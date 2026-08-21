@@ -857,6 +857,41 @@ This is the body.
         labels = manager._get_labels_for_issue(issue_path)
         assert "blocked-by" in labels
 
+    def test_get_labels_for_issue_prefix_less_falls_back_to_frontmatter_priority(
+        self, mock_config: BRConfig, mock_logger: MagicMock, tmp_path: Path
+    ) -> None:
+        """A prefix-less filename's priority label is derived from frontmatter (BUG-3286)."""
+        manager = GitHubSyncManager(mock_config, mock_logger)
+        issue_path = tmp_path / ".issues" / "bugs" / "BUG-123-test.md"
+        issue_path.write_text("---\npriority: P1\n---\n# BUG-123: Test")
+
+        labels = manager._get_labels_for_issue(issue_path)
+        assert "p1" in labels
+
+    def test_create_local_issue_frontmatter_priority_matches_filename_prefix(
+        self, mock_config: BRConfig, mock_logger: MagicMock, tmp_path: Path
+    ) -> None:
+        """Pulled issues get a frontmatter priority matching the filename prefix
+        (BUG-3286 Consequence 5a) so they are not born frontmatter-priority-less."""
+        from little_loops.frontmatter import parse_frontmatter
+
+        manager = GitHubSyncManager(mock_config, mock_logger)
+        result = SyncResult(action="pull", success=True)
+        gh_issue = {
+            "number": 14,
+            "title": "High priority bug",
+            "body": "Body.",
+            "url": "https://github.com/test/repo/issues/14",
+            "labels": [{"name": "bug"}, {"name": "p1"}],
+        }
+
+        manager._create_local_issue(gh_issue, "BUG", result)
+
+        created = list((tmp_path / ".issues" / "bugs").glob("P1-BUG-*.md"))
+        assert len(created) == 1
+        fm = parse_frontmatter(created[0].read_text())
+        assert fm.get("priority") == "P1"
+
     def test_push_single_issue_adds_duplicate_of_comment(
         self, mock_config: BRConfig, mock_logger: MagicMock, tmp_path: Path
     ) -> None:

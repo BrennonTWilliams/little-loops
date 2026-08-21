@@ -1394,6 +1394,12 @@ def skip_issue(
     captured_at = parse_frontmatter(raw_content).get("captured_at")
     content = raw_content + _build_skip_section(reason)
 
+    # Keep frontmatter `priority:` in sync with the renamed prefix (BUG-3286
+    # Prefix-rewrite sync rule) so the two sources cannot drift apart again.
+    new_priority_match = re.match(r"^(P[0-5])-", new_path.name)
+    if new_priority_match:
+        content = update_frontmatter(content, {"priority": new_priority_match.group(1)})
+
     git_mv_with_fallback(original_path, new_path, content=content)
 
     if event_bus is not None:

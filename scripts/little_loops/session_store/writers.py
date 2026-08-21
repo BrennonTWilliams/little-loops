@@ -2488,25 +2488,41 @@ def canonicalize_issue_id(raw: object, file_path: str | Path | None) -> str | No
 
 
 def _derive_type_priority(filename: str, fm: dict[str, Any]) -> tuple[str | None, str | None]:
-    """Derive (issue_type, priority) preferring frontmatter, falling back to filename.
+    """Derive (issue_type, priority): type prefers frontmatter with a filename
+    fallback; priority resolves filename-first, frontmatter as the fallback.
 
     Mirrors :func:`little_loops.issue_history.parsing.parse_completed_issue`'s
     filename-parsing convention (``P[0-5]-[TYPE]-[NNN]-...``).
+
+    The ``priority`` half adopts the shared resolver's precedence
+    (``little_loops.issue_parser.resolve_priority`` — BUG-3286 Decision Rules
+    § Precedence divergence), reversed from the previous frontmatter-first
+    behavior so the history DB agrees with the planner. Only this half
+    changed: ``issue_type`` keeps its original frontmatter-first precedence,
+    which this issue does not touch. Implemented locally rather than calling
+    ``resolve_priority`` directly because that resolver requires a
+    ``BRConfig`` for ``config.issue_priorities``, and this ingest path (and
+    its ``_backfill_issues_and_snapshots``/``lifecycle.populate`` callers) has
+    no config in scope — threading one through is a larger, separate change.
+    The filename-fallback behavior is preserved unchanged, which is what
+    keeps this the one reader correct for issues with no frontmatter
+    ``priority:`` (Consequence 5).
     """
     fm_type = fm.get("type")
     issue_type: str | None = str(fm_type) if isinstance(fm_type, str) and fm_type else None
-    fm_priority = fm.get("priority")
-    priority: str | None = (
-        str(fm_priority) if isinstance(fm_priority, str) and fm_priority else None
-    )
     if issue_type is None:
         m = _FILENAME_TYPE_RE.search(filename)
         if m:
             issue_type = m.group(1)
+
+    priority: str | None = None
+    m = _FILENAME_PRIORITY_RE.match(filename)
+    if m:
+        priority = m.group(1)
     if priority is None:
-        m = _FILENAME_PRIORITY_RE.match(filename)
-        if m:
-            priority = m.group(1)
+        fm_priority = fm.get("priority")
+        priority = str(fm_priority) if isinstance(fm_priority, str) and fm_priority else None
+
     return issue_type, priority
 
 

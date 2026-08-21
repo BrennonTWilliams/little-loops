@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import re
 from pathlib import Path
 from typing import Any
 from unittest.mock import patch
@@ -19,6 +20,7 @@ from little_loops.issue_parser import (
     find_issues,
     get_next_issue_number,
     is_normalized,
+    resolve_priority,
     slugify,
 )
 
@@ -78,6 +80,57 @@ class TestIsNormalized:
 
     def test_missing_priority_is_not_normalized(self) -> None:
         assert is_normalized("BUG-010-my-issue.md") is False
+
+
+class TestResolvePriority:
+    """Tests for the shared resolve_priority() resolver (BUG-3286)."""
+
+    def _config(self, temp_project_dir: Path, sample_config: dict[str, Any]) -> BRConfig:
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+        return BRConfig(temp_project_dir)
+
+    def test_filename_prefix_wins(
+        self, temp_project_dir: Path, sample_config: dict[str, Any]
+    ) -> None:
+        config = self._config(temp_project_dir, sample_config)
+        result = resolve_priority("P2-BUG-123-foo.md", {"priority": "P0"}, config, default=None)
+        assert result == "P2"
+
+    def test_falls_back_to_frontmatter_when_no_prefix(
+        self, temp_project_dir: Path, sample_config: dict[str, Any]
+    ) -> None:
+        config = self._config(temp_project_dir, sample_config)
+        result = resolve_priority("BUG-123-foo.md", {"priority": "P1"}, config, default=None)
+        assert result == "P1"
+
+    def test_frontmatter_priority_is_case_insensitive(
+        self, temp_project_dir: Path, sample_config: dict[str, Any]
+    ) -> None:
+        config = self._config(temp_project_dir, sample_config)
+        result = resolve_priority("BUG-123-foo.md", {"priority": "p1"}, config, default=None)
+        assert result == "P1"
+
+    def test_malformed_frontmatter_priority_falls_through_to_default(
+        self, temp_project_dir: Path, sample_config: dict[str, Any]
+    ) -> None:
+        config = self._config(temp_project_dir, sample_config)
+        result = resolve_priority("BUG-123-foo.md", {"priority": "high"}, config, default="P9")
+        assert result == "P9"
+
+    def test_no_priority_anywhere_returns_default(
+        self, temp_project_dir: Path, sample_config: dict[str, Any]
+    ) -> None:
+        config = self._config(temp_project_dir, sample_config)
+        result = resolve_priority("BUG-123-foo.md", {}, config, default=None)
+        assert result is None
+
+    def test_default_is_none_by_default(
+        self, temp_project_dir: Path, sample_config: dict[str, Any]
+    ) -> None:
+        config = self._config(temp_project_dir, sample_config)
+        result = resolve_priority("BUG-123-foo.md", {}, config)
+        assert result is None
 
 
 class TestIssueInfo:
@@ -439,6 +492,43 @@ class TestIssueParser:
         # Should default to last priority in list
         assert info.priority == "P3"
         assert info.issue_id == "BUG-456"
+
+    def test_parse_file_without_priority_prefix_falls_back_to_frontmatter(
+        self, temp_project_dir: Path, sample_config: dict[str, Any]
+    ) -> None:
+        """A prefix-less filename with a frontmatter priority resolves to it (BUG-3286)."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+        config = BRConfig(temp_project_dir)
+
+        bugs_dir = temp_project_dir / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True, exist_ok=True)
+        issue_file = bugs_dir / "BUG-456-no-priority.md"
+        issue_file.write_text("---\npriority: P1\n---\n\n# BUG-456: No Priority\n\nContent.")
+
+        parser = IssueParser(config)
+        info = parser.parse_file(issue_file)
+
+        assert info.priority == "P1"
+        assert info.issue_id == "BUG-456"
+
+    def test_parse_file_prefix_wins_over_disagreeing_frontmatter(
+        self, temp_project_dir: Path, sample_config: dict[str, Any]
+    ) -> None:
+        """When both sources are present and disagree, the filename prefix wins."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+        config = BRConfig(temp_project_dir)
+
+        bugs_dir = temp_project_dir / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True, exist_ok=True)
+        issue_file = bugs_dir / "P2-BUG-456-drifted.md"
+        issue_file.write_text("---\npriority: P0\n---\n\n# BUG-456: Drifted\n\nContent.")
+
+        parser = IssueParser(config)
+        info = parser.parse_file(issue_file)
+
+        assert info.priority == "P2"
 
     def test_parse_file_extracts_title_from_header(
         self, temp_project_dir: Path, sample_config: dict[str, Any]
@@ -4475,6 +4565,248 @@ class TestCorpusHasNoMalformedDepIds:
         }
 
         assert not offenders, f"malformed dependency entries found: {offenders}"
+
+
+class TestCheckFormatGapsPriorityDrift:
+    """check_format_gaps()'s `priority_drift` gap population (BUG-3286)."""
+
+    @staticmethod
+    def _issue(tmp_path: Path, filename: str, frontmatter: str) -> Path:
+        features_dir = tmp_path / "features"
+        features_dir.mkdir(exist_ok=True)
+        issue_file = features_dir / filename
+        issue_file.write_text(f"---\nid: FEAT-9401\n{frontmatter}---\n\n# FEAT-9401: Test\n")
+        return issue_file
+
+    def test_disagreeing_sources_are_flagged(self, tmp_path: Path) -> None:
+        from little_loops.issue_parser import check_format_gaps
+
+        issue = self._issue(tmp_path, "P2-FEAT-9401-test.md", "priority: P3\n")
+
+        gaps = check_format_gaps(issue)
+
+        assert gaps.priority_drift == ["filename: P2 vs. frontmatter priority: P3"]
+
+    def test_agreeing_sources_are_not_flagged(self, tmp_path: Path) -> None:
+        from little_loops.issue_parser import check_format_gaps
+
+        issue = self._issue(tmp_path, "P2-FEAT-9401-test.md", "priority: P2\n")
+
+        gaps = check_format_gaps(issue)
+
+        assert gaps.priority_drift == []
+
+    def test_case_insensitive_agreement_is_not_flagged(self, tmp_path: Path) -> None:
+        from little_loops.issue_parser import check_format_gaps
+
+        issue = self._issue(tmp_path, "P2-FEAT-9401-test.md", "priority: p2\n")
+
+        gaps = check_format_gaps(issue)
+
+        assert gaps.priority_drift == []
+
+    def test_absent_frontmatter_priority_is_not_flagged(self, tmp_path: Path) -> None:
+        """The normal state for most of this repo's corpus (Consequence 5) is
+        silent, not drift."""
+        from little_loops.issue_parser import check_format_gaps
+
+        issue = self._issue(tmp_path, "P2-FEAT-9401-test.md", "")
+
+        gaps = check_format_gaps(issue)
+
+        assert gaps.priority_drift == []
+
+    def test_absent_filename_prefix_is_not_flagged(self, tmp_path: Path) -> None:
+        """No filename prefix to compare against — resolve_priority(), not this
+        gap, is what handles the prefix-less fallback."""
+        from little_loops.issue_parser import check_format_gaps
+
+        issue = self._issue(tmp_path, "FEAT-9401-test.md", "priority: P1\n")
+
+        gaps = check_format_gaps(issue)
+
+        assert gaps.priority_drift == []
+
+
+class TestCorpusHasNoPriorityDrift:
+    """BUG-3286: the corpus's filename/frontmatter priority mismatches stay reconciled."""
+
+    def test_no_priority_drift_in_repo(self) -> None:
+        from little_loops.config.core import BRConfig
+        from little_loops.issue_parser import check_format_gaps, find_issues
+
+        repo_root = Path(__file__).resolve().parents[2]
+        config = BRConfig(repo_root)
+
+        offenders = {
+            info.issue_id: gaps.priority_drift
+            for info in find_issues(config)
+            if (gaps := check_format_gaps(info.path)).priority_drift
+        }
+
+        assert not offenders, f"priority drift found: {offenders}"
+
+    def test_no_prefixed_issue_lacks_frontmatter_priority(self) -> None:
+        """BUG-3286 Consequence 5 / change F: every prefixed issue file in this
+        repo's corpus carries a frontmatter `priority:` key after the one-time
+        backfill — not just the ~65% that happened to have one already."""
+        import re
+
+        repo_root = Path(__file__).resolve().parents[2]
+        issues_dir = repo_root / ".issues"
+
+        offenders = []
+        for path in issues_dir.rglob("*.md"):
+            if not re.match(r"^P[0-5]-", path.name):
+                continue
+            content = path.read_text(encoding="utf-8", errors="ignore")
+            if not re.search(r"^priority:", content, re.MULTILINE):
+                offenders.append(str(path.relative_to(repo_root)))
+
+        assert not offenders, f"prefixed issues missing frontmatter priority: {offenders}"
+
+
+class TestPriorityRegexCompletenessAllowlist:
+    """BUG-3286 Tests § Completeness verification.
+
+    A regex-shape guard over every raw filename-priority-shaped pattern
+    (``P[0-5]`` or ``P\\d``) in ``scripts/little_loops``, wired as an
+    **allowlist** rather than an "expect empty" assertion — most hits are
+    legitimate and permanent (argument parsers, ID-shape regexes with the
+    priority group discarded, docstrings/comments). Failing loudly on a
+    *new*, un-allowlisted raw priority regex is the actual protection this
+    guard provides; it does not claim to be a complete census of every
+    filename-priority read (``resolve_issue_path``'s ``startswith`` tiebreaker
+    at ``issue_parser.py:272``-ish uses no regex at all and is invisible here
+    by construction — see the issue's Proposed Solution § Out of scope).
+    """
+
+    # path (relative to scripts/little_loops) -> {line: reason}. Re-derive
+    # line numbers by re-running the scan below if this test fails after an
+    # unrelated edit shifts lines; a *new* entry means a new raw priority
+    # regex was added and should be justified here or converted to call
+    # little_loops.issue_parser.resolve_priority.
+    _ALLOWLIST: dict[str, dict[int, str]] = {
+        "cli/issues/clusters.py": {
+            68: "`[P3]`-style priority tag inside cluster body text, not a filename read",
+        },
+        "cli/issues/normalize.py": {
+            154: "_slug_for strips the prefix to build a slug; a text op, not a priority read",
+        },
+        "cli/issues/prioritize.py": {
+            61: "docstring for _priority_prefix_re",
+        },
+        "cli/issues/refine_status.py": {
+            533: "normalized-filename convention check help text",
+        },
+        "cli/issues/search.py": {
+            109: "--priority P1-P3 range argument parser, not a filename regex",
+            115: "--priority P# argument parser, not a filename regex",
+        },
+        "cli/issues/skip.py": {
+            47: "prefix rewrite writing the already-validated args.priority into the "
+            "filename (BUG-3286 change C); a write, not a priority read",
+        },
+        "cli/migrate.py": {
+            16: "optional (?:P\\d-)? prefix inside an issue-ID regex; priority group discarded",
+        },
+        "hooks/post_tool_use.py": {
+            97: "gates 'is this an issue file'; does not read priority as a value",
+            107: "extracts ID+slug from an issue filename; does not read priority as a value",
+        },
+        "issue_history/parsing.py": {
+            52: "comment describing the deliberately out-of-scope analytics filename convention",
+            58: "deliberately out-of-scope analytics reader (defaults to P5, not live planning signal)",
+            744: "deliberately out-of-scope analytics reader (defaults to P5, not live planning signal)",
+        },
+        "issue_lifecycle.py": {
+            1399: "BUG-3286 step 5: derives priority from the renamed filename to sync "
+            "frontmatter on skip (write path, not a duplicate resolver)",
+            1406: "extracts issue_id from the renamed filename for event emission; "
+            "priority group discarded",
+        },
+        "issue_parser.py": {
+            50: "_NORMALIZED_RE: filename-shape validation constant",
+            58: "_ANCHORED_FILENAME_RE: ID-anchor parsing for resolve_issue_path's identity "
+            "resolution, not planning-priority resolution",
+            177: "resolve_issue_path's P-TYPE-NNN user-input parsing; priority captured from "
+            "input, not resolved planning priority",
+            351: "docstring for is_normalized",
+            1003: "BUG-3286 step 6: priority_drift gap detection compares filename vs. "
+            "frontmatter directly by design — drift IS the comparison, not a resolution",
+            1628: "_DEP_ID_RE (BUG-3059): dependency-ID shape validation; optional prefix "
+            "group discarded",
+            3143: "comment describing the P[0-5]-NNN- filename shape",
+            3147: "_parse_type_and_id's directory-fallback number extraction; priority digit "
+            "skipped over, not read as a value",
+            3168: "_generate_id_from_filename strips a leading priority token before "
+            "digit-scanning for ID generation",
+        },
+        "issues/prose_deps.py": {
+            21: "_ID_RE: prose-dependency ID shape, optional prefix group discarded",
+        },
+        "mcp_server/tools.py": {
+            588: "JSON-schema pattern for a priority argument, not a filename read",
+            683: "JSON-schema pattern for a priority argument, not a filename read",
+        },
+        "session_store/writers.py": {
+            2433: "_FILENAME_PRIORITY_RE: the deliberately-preserved filename fallback in "
+            "_derive_type_priority (BUG-3286 step 7 Deviation — no BRConfig in scope to "
+            "call resolve_priority here)",
+            2495: "docstring for _derive_type_priority",
+        },
+        "sync.py": {
+            292: "comment describing the P[0-5]-TYPE-NNN- filename shape",
+        },
+    }
+
+    _PATTERN = re.compile(r"P\[0-5\]|P\\d")
+
+    def test_no_unallowlisted_raw_priority_regex(self) -> None:
+        repo_root = Path(__file__).resolve().parents[2]
+        src_root = repo_root / "scripts" / "little_loops"
+
+        found: dict[str, set[int]] = {}
+        for path in sorted(src_root.rglob("*.py")):
+            rel = str(path.relative_to(src_root))
+            for lineno, line in enumerate(
+                path.read_text(encoding="utf-8", errors="ignore").splitlines(), start=1
+            ):
+                if self._PATTERN.search(line):
+                    found.setdefault(rel, set()).add(lineno)
+
+        allowlisted = {rel: set(lines.keys()) for rel, lines in self._ALLOWLIST.items()}
+
+        unallowlisted = {
+            rel: sorted(lines - allowlisted.get(rel, set()))
+            for rel, lines in found.items()
+            if lines - allowlisted.get(rel, set())
+        }
+        unallowlisted = {rel: lines for rel, lines in unallowlisted.items() if lines}
+
+        assert not unallowlisted, (
+            f"new raw priority regex not in the allowlist (justify here or convert to "
+            f"resolve_priority): {unallowlisted}"
+        )
+
+    def test_allowlist_entries_still_exist(self) -> None:
+        """Every allowlisted entry still matches the pattern at its recorded line
+        — catches stale entries left behind after a refactor shifts lines."""
+        repo_root = Path(__file__).resolve().parents[2]
+        src_root = repo_root / "scripts" / "little_loops"
+
+        stale: list[str] = []
+        for rel, lines in self._ALLOWLIST.items():
+            path = src_root / rel
+            if not path.exists():
+                stale.append(f"{rel}: file no longer exists")
+                continue
+            file_lines = path.read_text(encoding="utf-8", errors="ignore").splitlines()
+            for lineno in lines:
+                if lineno > len(file_lines) or not self._PATTERN.search(file_lines[lineno - 1]):
+                    stale.append(f"{rel}:{lineno}")
+
+        assert not stale, f"stale allowlist entries (line moved or pattern gone): {stale}"
 
 
 class TestSectionBodyLastMatchWins:

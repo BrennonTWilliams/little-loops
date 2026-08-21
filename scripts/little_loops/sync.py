@@ -315,15 +315,20 @@ class GitHubSyncManager:
             if type_label:
                 labels.append(type_label)
 
-        # Add priority label if configured
-        if self.sync_config.github.priority_labels:
-            priority_match = re.match(r"^(P[0-5])-", filename)
-            if priority_match:
-                labels.append(priority_match.group(1).lower())
-
-        # Add blocked-by label if blocked_by frontmatter is non-empty
+        # Read frontmatter once, ahead of the priority resolution below (BUG-3286)
         content = issue_path.read_text(encoding="utf-8")
         fm = parse_frontmatter(content, coerce_types=True)
+
+        # Add priority label if configured: filename prefix wins, frontmatter
+        # is the fallback (BUG-3286)
+        if self.sync_config.github.priority_labels:
+            from little_loops.issue_parser import resolve_priority
+
+            priority = resolve_priority(filename, fm, self.config, default=None)
+            if priority:
+                labels.append(priority.lower())
+
+        # Add blocked-by label if blocked_by frontmatter is non-empty
         if fm.get("blocked_by"):
             labels.append("blocked-by")
 
@@ -717,6 +722,10 @@ class GitHubSyncManager:
             "last_synced": now,
             "discovered_by": "github_sync",
             "discovered_date": today,
+            # BUG-3286 Consequence 5a: pulled issues must not be born
+            # frontmatter-priority-less — the filename prefix alone left
+            # frontmatter-only readers with no signal.
+            "priority": priority,
         }
         if user_labels:
             frontmatter["labels"] = user_labels

@@ -48,7 +48,17 @@ def cmd_skip(config: BRConfig, args: argparse.Namespace) -> int:
     new_path = path.parent / new_name
 
     if path == new_path:
-        # Already at target priority — nothing to rename, still print path
+        # Already at target priority — nothing to rename, but frontmatter still
+        # needs reconciling (BUG-3286 Prefix-rewrite sync rule): this is exactly
+        # the state of a drifted issue whose filename is already correct.
+        from little_loops.file_utils import atomic_write
+        from little_loops.frontmatter import update_frontmatter
+
+        content = path.read_text(encoding="utf-8")
+        updated_content = update_frontmatter(content, {"priority": args.priority})
+        if updated_content != content:
+            atomic_write(path, updated_content, encoding="utf-8")
+
         try:
             rel = str(new_path.relative_to(config.project_root))
         except ValueError:
