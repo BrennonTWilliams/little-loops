@@ -1,0 +1,12 @@
+{
+  "id": "c00ed487-16df-4c4d-9f21-6fe0d3f781dc",
+  "type": "decision",
+  "timestamp": "2026-08-21T15:37:41Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Parallel evidence-gathering scored Option A highest (10/12: consistency 3, simplicity 3, testability 2, risk 2) vs Option B (5/12) and Option C (7/12). Matches oracles/code-run-gate.yaml's existing permanent-exemption precedent exactly; Option B would reintroduce the guessed-default failure class this issue exists to eliminate; Option C is real but disproportionate production-code cost for two call sites.",
+  "rule": "Option A \u2014 permanently exempt rn-refine.yaml and auto-refine-and-implement.yaml from ll-config get conversion",
+  "scope": "issue",
+  "alternatives_rejected": "Option B (accept the guess, convert as drop-ins); Option C (add ll-config get --raw no-default read mode)",
+  "issue": "ENH-3277"
+}

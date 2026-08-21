@@ -1,0 +1,11 @@
+{
+  "id": "580b6038-5ec0-4f4b-8ee4-dff0401afbe1",
+  "type": "decision",
+  "timestamp": "2026-08-21T15:48:00Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "decide-issue's three writes leave loser-keyed prose intact, so a decided issue can still instruct the rejected implementation; add a bounded Phase 7c propagation pass.",
+  "rule": "Captured: decide-issue should propagate the selected option through the issue body",
+  "scope": "issue",
+  "issue": "ENH-3280"
+}

@@ -18,6 +18,12 @@ relates_to:
 - BUG-3269
 - BUG-3270
 - BUG-3271
+confidence_score: 97
+outcome_confidence: 90
+score_complexity: 22
+score_test_coverage: 20
+score_ambiguity: 23
+score_change_surface: 25
 ---
 
 # ENH-3272: general-task: define_done must read the reference artifact named in the input before authoring format-specific criteria
@@ -34,7 +40,7 @@ Postmortem: `postmortems/general-task-final-verify-spin-2026-08-20.md` (§6).
 
 ## Current Behavior
 
-`define_done` (`general-task.yaml:43`) is the second state in the loop, entered directly
+`define_done` (`general-task.yaml:81`) is the second state in the loop, entered directly
 from `check_baseline_tests` via `next: define_done`, and it runs **before** `plan`.
 
 Its prompt supplies only `${context.input}` — the raw task string — and asks for concrete,
@@ -56,7 +62,8 @@ implementation.
 When the input names or implies an existing exemplar artifact ("already completed for X",
 "like the one in Y", "matching the existing Z"), `define_done` must read that artifact
 before authoring any criterion whose satisfiability depends on the artifact's concrete
-form.
+form — and `plan` must do the same before authoring steps whose correctness depends on it
+(see Scope note below).
 
 Two viable shapes:
 
@@ -101,17 +108,56 @@ Rejecting option 2 (defer-and-revise) for now: it adds a state to a loop this po
 already trying to simplify, and the observed failure had a named exemplar that step 1 would
 have caught. Revisit if a later run fails with no exemplar named.
 
+### Apply the same pre-step to `plan`
+
+`plan` (`general-task.yaml:153`) has the identical defect: its prompt receives only
+`${context.input}` and contains no instruction to read a named exemplar. This was
+established by the refine pass and supersedes this issue's earlier Call Path claim that
+`plan` "would have supplied the missing context" — it would not have.
+
+Fixing only `define_done` leaves the fix half-done: correct criteria, blind plan steps.
+`do_work` executes plan steps, so in the observed run the diagrams themselves could still
+have been drafted as flowcharts; the (now-correct) DoD would fail them and the loop would
+still burn steps on repair. Add the same conditional-detect-then-read pre-step to `plan`'s
+prompt, worded for step authoring rather than criterion authoring.
+
+### Placement inside the prompt
+
+The new block must be the **first** instruction after the `Your task is: ${context.input}`
+line in each state, before `define_done`'s "Before planning or executing anything, write a
+concrete Definition of Done" and before `plan`'s "Before starting, decompose this task".
+A read-first instruction placed lower in the prompt is subordinate to instructions that
+already told the model to start writing.
+
+Both prompts also end with a do-not-act line — `define_done`: "Do NOT start any work. Only
+write the DoD file."; `plan`: "Do NOT start executing any steps yet." The new block must
+explicitly carve these out, stating that reading an existing file to ground the criteria (or
+steps) is not "work" and is required before writing. Without the carve-out the two
+instructions read as contradictory and the trailing one wins.
+
+### YAML authoring hazard
+
+Both `define_done` and `plan` use `action: >` (folded scalar), unlike the precedent at
+`interactive-component-generator.yaml:69` which uses `|`. Under `>`, consecutive non-blank
+lines collapse into one paragraph — a numbered list written without blank lines between
+items will render as a single run-on sentence. Write the new block as blank-line-separated
+paragraphs and keep the `>` scalar; do **not** convert to `|` as a convenience, since that
+rewrites every line's whitespace in a body that three tests assert substrings against.
+
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/loops/general-task.yaml:43` — the `define_done` prompt body. This is
-  the entire change under option 1.
+- `scripts/little_loops/loops/general-task.yaml:81` — the `define_done` prompt body.
+- `scripts/little_loops/loops/general-task.yaml:153` — the `plan` prompt body, same
+  conditional pre-step worded for step authoring.
+
+These two prompt bodies are the entire change under option 1.
 
 ### Dependent Files (Callers/Importers)
 - No code callers. The downstream consumers of `dod.md` are states within the same loop:
   - `count_done` — gates on unchecked `[hard]` criteria
-  - `final_verify` (`:552`) — re-verifies every criterion
-  - `count_final` (`:632`) — tallies FAILEDs
+  - `final_verify` (`:662`) — re-verifies every criterion
+  - `count_final` (`:784`) — tallies FAILEDs
 - None need changing; they consume better-grounded criteria, not differently-shaped ones.
 
 ### Similar Patterns
@@ -127,9 +173,43 @@ have caught. Revisit if a later run fails with no exemplar named.
 - Regression guard for the conditional: a task naming **no** exemplar must not gain a
   file-reading step in `define_done`.
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_general_task_loop.py` — the loop's dedicated content-assertion test
+  file (`raw_data` fixture loads `general-task.yaml` and asserts substrings of
+  `states.define_done.action`, e.g. `TestChange1DefineDoneRuntimeCriteria` at line 81,
+  `TestBUG1766ConvergenceEfficiency` at line 1017, `TestENH2858StandingCriteria` at
+  line 2385). Add a new `TestEnh3272DefineDoneConditionalRead` class here asserting the
+  conditional-detect-then-read instruction is present in `define_done.action` **and in
+  `plan.action`**, following the same substring-assertion convention as the existing
+  classes.
+- **Existing tests to preserve (not edit), guard against accidental breakage**:
+  `test_define_done_action_requires_runtime_criteria` (`test_general_task_loop.py:81`,
+  requires `"runtime"`/`"static"`/`"insufficient"`),
+  `test_define_done_forbids_tracking_file_criteria` (`test_general_task_loop.py:1017`,
+  requires `"Do NOT write DoD criteria that target"` + `"plan.md"`/`"dod.md"`), and
+  `test_define_done_has_standing_criteria_block` (`scripts/tests/test_builtin_loops.py:14994`,
+  requires `"## Standing Criteria"` + `"not derived from the task description"`) all do
+  substring containment on `define_done.action`. The prompt revision must add text without
+  removing or rewording these phrases, or these three tests break.
+- `scripts/tests/test_create_eval_from_issues.py` — home for a fixture test class
+  (mirroring `TestEvalHarnessVariantAWithProofGates` at line 519) once the
+  `/ll:create-eval-from-issues`-generated eval harness for this issue is checked into source
+  control, asserting its `execute`→`check_skill` shape via `load_and_validate`/
+  `validate_fsm`/`ll-loop validate` [Agent 3 finding]. **This is contingent on checking the
+  harness in** (Implementation Steps 4 and 7) — it is a second deliverable, not a free
+  add-on. If the eval is run ad hoc instead, drop both.
+
 ### Documentation
 - `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` — the general rule: a state that authors
   gating criteria must not run before the evidence those criteria depend on has been read.
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/guides/LOOPS_REFERENCE.md:106` — the "1. **Define Done**" step description
+  ("writes verifiable acceptance criteria to `${context.run_dir}/dod.md`... static file/import
+  checks alone are insufficient") does not mention the conditional exemplar-read step and will
+  go stale once `define_done`'s prompt changes; update alongside the prompt edit [Agent 2
+  finding]. Update the adjacent "2. **Plan**" line (`:107`) the same way, since `plan` gains
+  the same pre-step.
 
 ### Configuration
 - N/A
@@ -147,8 +227,9 @@ have caught. Revisit if a later run fails with no exemplar named.
 
 - `check_baseline_tests` → `define_done` — the entry edge. This ordering is the defect:
   `define_done` runs second, before any project file has been read.
-- `define_done` → `plan` — the successor that would have supplied the missing context; it
-  runs too late to inform the criteria.
+- `define_done` → `plan` — the successor. It does **not** supply the missing context: its
+  own prompt (`:153`) also receives only `${context.input}` with no read instruction, so
+  plan steps are authored just as blind as the criteria. Both states need the pre-step.
 - `define_done` → writes `${context.run_dir}/dod.md` — the artifact whose criteria are
   authored blind.
 - `count_done` → reads `dod.md` — the gate that an unsatisfiable `[hard]` criterion
@@ -165,8 +246,8 @@ have caught. Revisit if a later run fails with no exemplar named.
 
 ### Design constraints
 
-No new states, no schema change under option 1 — the whole change is the `define_done`
-prompt body at `general-task.yaml:43`.
+No new states, no schema change under option 1 — the whole change is the `define_done` and
+`plan` prompt bodies at `general-task.yaml:81` and `:153`.
 
 The design constraint that matters is **conditionality**. A prompt that unconditionally
 requires a file read adds latency and tool calls to every run of the most-used built-in
@@ -189,33 +270,69 @@ observed run and nothing else.
 _Added by `/ll:refine-issue` — 2026-08-20 — based on codebase analysis:_
 
 - **Confirmed current anchors** (`scripts/little_loops/loops/general-task.yaml`, line numbers as of this pass):
-  - `define_done` state: `:45-115` (prompt body `:46-112`, `action_type: prompt` `:113`, `next: plan` `:114`, `on_error: diagnose` `:115`). Confirmed the prompt references only `${context.input}` (`:47`), `${context.min_pass_rate}` (`:63`), and `${context.run_dir}` (`:50,69,82`) — no instruction anywhere to locate or read a referenced exemplar before authoring criteria.
-  - Entry edge: `check_baseline_tests` (`:35`) → `next: define_done` (`:42`) **and** `on_error: define_done` (`:43`) — both the success and shell-error paths land on `define_done`, so it always runs second regardless of baseline outcome.
-  - `plan` state: `:117-135`. Confirmed it is **not** a richer state than `define_done` in this respect — its prompt (`:118-132`) also receives only `${context.input}` with no read-first instruction. The claim that `plan` "would have supplied the missing context" (issue's Call Path) is not backed by `plan`'s current prompt text; both states are equally silent on reading a named exemplar.
-  - Step-abandonment machinery: `context.max_step_attempts: 3` (`:24`); `select_step:189-268` counts attempts against `${context.run_dir}/step-attempts.txt`, abandons via the awk-tmp-mv rewrite at `:242-244`, emits `STEP_BLOCKER_HALT`/`STEP_ABANDONED`. `check_step_halt:276-286` routes blocker-halts to `summarize_partial` and plain abandonment to `spin_gate:296-307` (cap `target: 3`, `on_yes: check_done`). Abandonment does **not** halt the run directly — it falls through to the normal `check_done`/`count_done` DoD-gating machinery.
-  - `count_done:470-551` gate: `evaluate.path: ".total"`, `operator: eq`, `target: 0` (`:544-548`); `on_no: continue_work` (`:550`). Confirmed: an unchecked `[hard]` criterion keeps `HARD_UNCHECKED_DOD > 0` forever (no mechanism auto-satisfies or drops a `[hard]` criterion), so `TOTAL` never reaches 0 and `count_done` routes to `continue_work` on every pass — the same non-terminating-pressure shape as BUG-3270, bounded only by `continue_work`'s own `max_retries: 3`/`on_retry_exhausted: diagnose` (unrelated general retry cap, not an unsatisfiable-criterion detector).
+  - _Line numbers below re-verified 2026-08-21; the earlier `:43`/`:45-115` anchors were stale
+    after `check_baseline_tests` grew with the BUG-3269 test-cmd resolution._
+  - `define_done` state: `:81-151` (prompt body `:82-148`, `action_type: prompt` `:149`, `next: plan` `:150`, `on_error: diagnose` `:151`). Confirmed the prompt references only `${context.input}` (`:83`), `${context.min_pass_rate}` (`:99`), and `${context.run_dir}` (`:86,105,118`) — no instruction anywhere to locate or read a referenced exemplar before authoring criteria.
+  - Entry edge: `check_baseline_tests` (`:41`) → `next: define_done` (`:78`) **and** `on_error: define_done` (`:79`) — both the success and shell-error paths land on `define_done`, so it always runs second regardless of baseline outcome.
+  - `plan` state: `:153`. Confirmed it is **not** a richer state than `define_done` in this respect — its prompt also receives only `${context.input}` with no read-first instruction. The claim that `plan` "would have supplied the missing context" (issue's original Call Path) is not backed by `plan`'s current prompt text; both states are equally silent on reading a named exemplar. **This is why the Proposed Solution now covers `plan` as well as `define_done`.**
+  - Step-abandonment machinery: `context.max_step_attempts: 3` (`:25`); `select_step` (`:225`) counts attempts against `${context.run_dir}/step-attempts.txt`, abandons via an awk-tmp-mv rewrite, emits `STEP_BLOCKER_HALT`/`STEP_ABANDONED`. `check_step_halt` (`:312`) routes blocker-halts to `summarize_partial` and plain abandonment to `spin_gate` (`:332`, cap `target: 3`, `on_yes: check_done`). Abandonment does **not** halt the run directly — it falls through to the normal `check_done`/`count_done` DoD-gating machinery.
+  - `count_done` (`:578`) gate: `evaluate.path: ".total"`, `operator: eq`, `target: 0`; `on_no: continue_work`. Confirmed: an unchecked `[hard]` criterion keeps `HARD_UNCHECKED_DOD > 0` forever (no mechanism auto-satisfies or drops a `[hard]` criterion), so `TOTAL` never reaches 0 and `count_done` routes to `continue_work` on every pass — the same non-terminating-pressure shape as BUG-3270, bounded only by `continue_work`'s own `max_retries: 3`/`on_retry_exhausted: diagnose` (unrelated general retry cap, not an unsatisfiable-criterion detector).
+- **The "reference named but not locatable" fallback is safe to write as prose.** `count_done`
+  tallies unchecked hard criteria with an awk pass over `^- [ ]`-prefixed lines carrying
+  `${context.hard_criteria_tags}` (`general-task.yaml:596-620`); a prose note in `dod.md`
+  about an unlocatable reference matches no criterion line and therefore cannot perturb the
+  gate. No escaping or placement constraint applies to the fallback text.
 - **Pattern precedent for the "detect a reference, read only if found" prompt shape** (pattern_finder axis): this exact shape already exists in the codebase at `scripts/little_loops/loops/interactive-component-generator.yaml:69-71` (`profile_input` state, `action_type: prompt`): "Step 1 — Resolve the source. If the input names or path-references a file (e.g. a .csv, .json, .md, .txt, .tsv), read that file. Otherwise treat the text itself as the subject/data description." This confirms option 1's shape — conditional detect-then-read inside a single prompt-type state's action text, no new FSM state or schema addition — is an established convention, not a novel mechanism being introduced for the first time.
 
 ## Implementation Steps
 
 1. **Confirm the ordering claim** — `check_baseline_tests → define_done → plan`, and that
-   `define_done`'s prompt receives only `${context.input}` with no read instruction.
-2. **Draft the prompt revision** per Proposed Solution: conditional detection, conditional
-   read, derivation binding, and the explicit omit-don't-guess fallback.
-3. **Build the eval** with `/ll:create-eval-from-issues` — a task naming an exemplar in a
-   non-default format for its artifact type.
-4. **Measure before/after** on that eval: does any DoD criterion cite a format the exemplar
-   does not use? This is the acceptance signal.
-5. **Check the no-exemplar path** — a task naming no reference must show no added file reads
-   in `define_done`.
-6. **Verify.** `ll-loop validate general-task` clean; `python -m pytest scripts/tests/`
+   both `define_done` and `plan` receive only `${context.input}` with no read instruction.
+2. **Draft the prompt revision** for `define_done` per Proposed Solution: conditional
+   detection, conditional read, derivation binding, and the explicit omit-don't-guess
+   fallback. Place it first in the prompt, with the "reading is not work" carve-out, as
+   blank-line-separated paragraphs under the `>` scalar.
+3. **Apply the same pre-step to `plan`**, worded for step authoring: steps whose correctness
+   depends on the artifact's concrete form must be derived from the exemplar actually read,
+   not from the artifact-type name.
+4. **Build the eval** with `/ll:create-eval-from-issues` — a task naming an exemplar in a
+   non-default format for its artifact type. Check the generated harness into source control
+   under `scripts/little_loops/loops/` (or the repo's eval-harness location) so step 7 has a
+   fixture to assert against.
+5. **Measure before/after** on that eval: does any DoD criterion, or any plan step, cite a
+   format the exemplar does not use? Zero wrong-format citations is the acceptance signal.
+6. **Check the no-exemplar path** — assert the prompt text makes the read *conditional*
+   (an explicit "if a reference is named … otherwise …" branch rather than an unconditional
+   preamble). This is a prompt-text assertion in the new test class, not a runtime
+   observation: attributing tool calls to a single state's turn would require parsing the
+   run's session transcript, which is out of proportion to the guarantee it buys.
+7. **Add the eval-harness fixture test** in `scripts/tests/test_create_eval_from_issues.py`
+   once step 4's harness is checked in — or drop both step 4's check-in and this step if the
+   eval is run ad hoc. Do not leave the harness uncommitted with a test asserting against it.
+8. **Verify.** `ll-loop validate general-task` clean; `python -m pytest scripts/tests/`
    exits 0.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Update `scripts/tests/test_general_task_loop.py` — add a `TestEnh3272DefineDoneConditionalRead`
+  class asserting the conditional-detect-then-read instruction is present in
+  `define_done.action` and `plan.action`, plus a conditionality assertion (the branch is
+  "if a reference is named … otherwise …", not an unconditional read).
+- Preserve (do not reword away) the substrings required by
+  `test_general_task_loop.py:81` (`test_define_done_action_requires_runtime_criteria`),
+  `test_general_task_loop.py:1017` (`test_define_done_forbids_tracking_file_criteria`), and
+  `scripts/tests/test_builtin_loops.py:14994` (`test_define_done_has_standing_criteria_block`)
+  when rewriting the `define_done` prompt body.
+- Update `docs/guides/LOOPS_REFERENCE.md:106` — extend the "Define Done" step description to
+  note the conditional exemplar-read requirement.
 
 ## Impact
 
 - **Severity**: P3. Real and measurable, but bounded — the abandonment machinery recovers,
   at a cost in steps and tokens rather than a hung run.
-- **Scope**: prompt-quality change, contained to one state.
+- **Scope**: prompt-quality change, contained to two prompt bodies (`define_done`, `plan`).
 - **Risk**: a read-first requirement adds latency to `define_done` on every run, including
   the ones with no exemplar to read. The prompt must make the read conditional on a
   reference actually being named.
@@ -244,7 +361,7 @@ Recovery cost, visible in the plan:
 - **Step 21** — apply it; **abandoned after 3 attempts** (`max_step_attempts: 3`)
 - **Step 23** — narrower direct-verify path; succeeded
 
-The root cause is ordering: `define_done` runs before `plan` (`general-task.yaml:43`,
+The root cause is ordering: `define_done` runs before `plan` (`general-task.yaml:81`,
 `next: define_done` from `check_baseline_tests`), so at authoring time the loop has read
 nothing about the domain. It has only the raw input string, and it fills the gap with the
 most statistically common form of the artifact type — flowchart, for "mermaid diagram".
@@ -256,8 +373,8 @@ is about not generating the bad step in the first place, not about the recovery 
 
 ## Scope Boundaries
 
-**In scope**: the `define_done` prompt and, if option 2 is chosen, one new post-`plan`
-state in `general-task.yaml`.
+**In scope**: the `define_done` and `plan` prompts in `general-task.yaml`. (Option 2, if it
+were chosen, would instead add one new post-`plan` state — it is not chosen.)
 
 **Out of scope**:
 - Generalizing exemplar-reading to other loops' DoD-authoring states. Do that only once
@@ -270,7 +387,7 @@ state in `general-task.yaml`.
 ## Related Key Documentation
 
 - `postmortems/general-task-final-verify-spin-2026-08-20.md` §6
-- `general-task.yaml:43` — `define_done`, and the `check_baseline_tests → define_done → plan` ordering
+- `general-task.yaml:81` — `define_done`, and the `check_baseline_tests → define_done → plan` ordering (`plan` at `:153`)
 - ENH-2857 — step-blocker detection in the abandonment path that recovered this run
 
 ## Status
@@ -279,4 +396,10 @@ state in `general-task.yaml`.
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-21T15:54:46 - `da526826-2179-460f-b823-35695378ac55.jsonl`
+- Pre-implementation review - 2026-08-21 - scope extended to `plan`; line anchors
+  re-verified against current `general-task.yaml`; prompt placement, `>`-scalar hazard, and
+  eval-harness deliverable made explicit; Step 5 no-exemplar check converted from an
+  unspecified runtime observation to a prompt-text conditionality assertion.
+- `/ll:wire-issue` - 2026-08-21T15:40:50 - `643c18b8-5d02-4711-bb71-5bf283d175a3.jsonl`
 - `/ll:refine-issue` - 2026-08-20T23:06:40 - `eecdcf60-17f0-43fe-a3bb-f00297aad10d.jsonl`
