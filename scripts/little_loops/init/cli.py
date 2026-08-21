@@ -842,7 +842,11 @@ def _run_apply(
     if config.get("product", {}).get("enabled"):
         deploy_goals(ll_dir, templates_dir, dry_run=dry_run, force=force)
 
-    if config.get("design_tokens", {}).get("enabled"):
+    # BUG-3274: section presence is the opt-in; key-level defaults (True) apply
+    # within it. An absent section stays off — only .get() through a dict that
+    # already exists on disk resolves the omitted-key default.
+    design_tokens_section = config.get("design_tokens")
+    if isinstance(design_tokens_section, dict) and design_tokens_section.get("enabled", True):
         deploy_design_tokens(ll_dir, templates_dir, dry_run=dry_run, force=force)
 
     if config.get("issues", {}).get("deploy_templates"):

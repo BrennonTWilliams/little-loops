@@ -213,6 +213,18 @@ class TestSessionStartFeatureValidation:
         assert "design_tokens.enabled is true but path" in fb
         assert "does not exist" in fb
 
+    def test_warns_design_tokens_section_present_key_omitted(self, in_tmp: Path) -> None:
+        """BUG-3274: a present design_tokens section with no `enabled` key still
+        matches DesignTokensConfig's `enabled: bool = True` default and warns."""
+        fb = self._run_with(in_tmp, {"design_tokens": {"active": "warm-paper"}})
+        assert "design_tokens.enabled is true but path" in fb
+        assert "does not exist" in fb
+
+    def test_no_design_tokens_warning_when_section_absent(self, in_tmp: Path) -> None:
+        """BUG-3274 AC 2b: no design_tokens section at all stays silent."""
+        fb = self._run_with(in_tmp, {"sync": {"enabled": False}})
+        assert "design_tokens.enabled" not in fb
+
 
 class TestSessionStartLargeConfigWarning:
     def test_large_config_warning_appears(self, in_tmp: Path) -> None:

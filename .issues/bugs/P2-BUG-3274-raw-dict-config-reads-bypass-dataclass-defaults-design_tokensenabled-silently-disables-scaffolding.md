@@ -4,10 +4,11 @@ type: BUG
 title: "Raw-dict config reads bypass dataclass defaults \u2014 design_tokens.enabled\
   \ silently disables scaffolding"
 priority: P2
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-08-20'
 captured_at: '2026-08-20T23:31:07Z'
+completed_at: '2026-08-21T05:09:18Z'
 relates_to:
 - ENH-3275
 - ENH-3264
@@ -41,7 +42,16 @@ This is not hypothetical: **the little-loops source repo is in exactly this stat
 
 ## Current Behavior
 
-`.ll/ll-config.json` in this repo contains:
+> **Correction (`/ll:ready-issue`, 2026-08-21):** the on-disk repro below has since been
+> hand-patched — commit `39b6aa30` (the same commit that captured this issue) added an
+> explicit `"enabled": true` to this repo's `.ll/ll-config.json`, so this repo no longer
+> reproduces the bug live. The underlying code defect is unaffected and independently
+> confirmed (raw-dict gates at `init/cli.py:845` and `hooks/session_start.py:313` still
+> have no key-level default), and remediating this repo's `.ll/` state is explicitly
+> out of scope for this issue (see Scope Boundaries). The example below is retained as
+> an illustrative snapshot of the config shape that triggers the bug, not a live repro.
+
+`.ll/ll-config.json` in this repo contained (at time of discovery):
 
 ```json
 "design_tokens": { "active": "warm-paper", "active_theme": "dark" }
@@ -71,7 +81,7 @@ loader returns `None`, and every `ll-loop run` in this repo injects an **empty**
 | Site | Reads | Config provenance |
 |---|---|---|
 | `init/cli.py:845` (`_run_apply`) | `config.get("design_tokens", {}).get("enabled")` | **on-disk** — `merge_with_existing(plan, load_existing_config(project_root), force)` at `:833` |
-| `hooks/session_start.py:306` | `design_tokens.get("enabled") is True` | **on-disk** raw config dict |
+| `hooks/session_start.py:313` | `design_tokens.get("enabled") is True` | **on-disk** raw config dict |
 | `init/cli.py:637` (`_run_yes`) | same | freshly built by `build_config`, but merged with existing on `--upgrade` |
 | `init/tui.py:871` (`_apply_config`) | same | freshly built (`tui.py:746` writes `enabled: True`) |
 
@@ -118,8 +128,6 @@ disabling.
 
 ### Codebase Research Findings
 
-_Added by `/ll:refine-issue` — 2026-08-21 — based on codebase analysis:_
-
 ### Sibling-section audit (partial — informs Proposed Solution step 1)
 - `ProductConfig`, `AnalyticsConfig`, `ScratchPadConfig`, `DocumentsConfig`, and `PromptOptimizationConfig` dataclasses do not exist anywhere in `scripts/little_loops/config/` (confirmed via `class \w+Config` grep across the whole `config/` package and a targeted repo-wide grep for each name). Every raw-dict read of these sections (`product`, `analytics`, `scratch_pad`, `documents`, `prompt_optimization`) has no dataclass counterpart to diverge from — there is nothing for this bug's fix to change at those sites.
 - `IssuesConfig` (`config/features.py:204`) has no `deploy_templates` field or attribute at all (confirmed by grep for `deploy_templates` in that file). The raw-dict reads at `init/cli.py:640,848` and `init/tui.py:875` (`config.get("issues", {}).get("deploy_templates")`) have no dataclass default to disagree with; the schema default (`config-schema.json:229-233`) is `false`, which already agrees with a bare `.get()` (absent → `None`, falsy). This sibling section is consistent and out of scope for a code change under the Proposed Solution's own table (dataclass default `False` → already agrees with bare-truthiness raw reads).
@@ -150,7 +158,7 @@ the feature.
 1. **Audit** every `config.get("<section>", {}).get(...)` in `init/` and `hooks/` against
    its dataclass default. Produce the disagreement list; sections whose dataclass
    default is `False` are already consistent and need no change.
-2. **Fix the two on-disk readers** — `init/cli.py:845` and `hooks/session_start.py:306`
+2. **Fix the two on-disk readers** — `init/cli.py:845` and `hooks/session_start.py:313`
    — to apply the table above: test section presence first, then resolve the key with its
    dataclass default (`.get("enabled", True)`) rather than bare truthiness. Do **not**
    substitute a `BRConfig`-mediated read, for the reason in the callout.
@@ -204,7 +212,7 @@ _Added by `/ll:refine-issue` — 2026-08-21 — based on codebase analysis:_
 
 ### Files to Modify
 - `scripts/little_loops/init/cli.py:845` (`_run_apply`) — the on-disk raw-dict gate named in Proposed Solution step 2.
-- `scripts/little_loops/hooks/session_start.py:306` (design-token validation) — the second on-disk raw-dict gate named in Proposed Solution step 2.
+- `scripts/little_loops/hooks/session_start.py:313` (design-token validation) — the second on-disk raw-dict gate named in Proposed Solution step 2.
 - `scripts/little_loops/init/cli.py:637` (`_run_yes`) and `scripts/little_loops/init/tui.py:871` (`_apply_config`) read a freshly-built config (not on-disk), matching the issue's own scoping — confirmed via `ll-code callers-of deploy_design_tokens`, no new information beyond what the issue's table already states.
 
 ### Dependent Files (Callers/Importers)
@@ -213,7 +221,7 @@ _Added by `/ll:refine-issue` — 2026-08-21 — based on codebase analysis:_
 - Importers of `init/writers.py` (the module defining both functions above): `scripts/tests/test_init_core.py:33`, `init/__init__.py:20`, `scripts/tests/test_deploy_issue_templates.py:9`, `cli/verify_cli_allowlist.py:23`.
 
 _Wiring pass added by `/ll:wire-issue`:_
-- `scripts/little_loops/design_tokens.py:370` (`load_design_tokens()`) — the dataclass-mediated consumer whose correct behavior (respecting `DesignTokensConfig.enabled`) is exactly what the two raw-dict gates fail to preserve today; must stay untouched by this fix, included here as the scope-boundary confirmation. [Agent 2 finding]
+- `scripts/little_loops/design_tokens.py:354` (`load_design_tokens()`) — the dataclass-mediated consumer whose correct behavior (respecting `DesignTokensConfig.enabled`) is exactly what the two raw-dict gates fail to preserve today; must stay untouched by this fix, included here as the scope-boundary confirmation. [Agent 2 finding]
 - `scripts/little_loops/cli/artifact.py:67,74,82` — calls `load_design_tokens(config, theme="light"/"dark")`. [Agent 1 finding]
 - `scripts/little_loops/cli/loop/_helpers.py:1398-1426` — builds `context["design_tokens_context"]` via `load_design_tokens(config)` at `:1421`; the single chokepoint between the fix and every design-consuming built-in loop. Once the fix lands, this repo's 15 design-consuming loops (`html-website-generator.yaml`, `rlhf-animated-svg.yaml`, `rlhf-svg-refine.yaml`, `rlhf-svg-generate.yaml`, `pixi-data-viz.yaml`, `pixi-generative-art.yaml`, `svg-image-generator.yaml`, `svg-textgrad.yaml`, `canvas-sketch-generator.yaml`, `hitl-md.yaml`, `hitl-compare.yaml`, `flux-image-generator.yaml`, `generative-art.yaml`, `html-anything.yaml`, `interactive-component-generator.yaml`) start receiving a real `design_tokens_context` for the first time — no code change needed in them, informational only. [Agent 1 finding]
 
@@ -224,7 +232,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `docs/reference/CONFIGURATION.md:172-179,751-756` — the canonical `design_tokens` example (`enabled: true` explicit, doesn't demonstrate the omitted-key case) sits next to the unrelated per-loop `use_design_tokens` opt-out convention (ENH-3099, "absent key treated as true") — a third defaulting convention in the same section a reader could conflate with this issue's rule. [Agent 2 finding]
 - `docs/reference/API.md:157,216-218` — `DesignTokensConfig` table row and section header; no mention of the section-presence/key-default resolution rule. [Agent 2 finding]
 - `docs/reference/CLI.md:121` — `/ll:configure design-tokens` area table row. [Agent 2 finding]
-- `skills/configure/areas.md:1107-1272`, esp. `:1214` (Case B: `enabled` false→true transition gates `shutil.copytree` materialization) — a fourth, independent enabled-transition gate outside `init/cli.py:845`/`session_start.py:306`; check for consistency with the corrected two-tier rule. [Agent 2 finding]
+- `skills/configure/areas.md:1107-1272`, esp. `:1214` (Case B: `enabled` false→true transition gates `shutil.copytree` materialization) — a fourth, independent enabled-transition gate outside `init/cli.py:845`/`session_start.py:313`; check for consistency with the corrected two-tier rule. [Agent 2 finding]
 - `skills/configure/show-output.md:186-202` — `--show` display template already annotates each field with "(default: true)"; consistent with the fix, confirm no change needed. [Agent 2 finding]
 
 ### Configuration
@@ -269,7 +277,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 `ll-init apply` -> `_run_apply()` (`init/cli.py:779`) -> `merge_with_existing(plan, load_existing_config(project_root), force)` (`:833`)
 -> **[raw-dict gate, `:845`: `config.get("design_tokens", {}).get("enabled")`]** -> `deploy_design_tokens()` *(skipped when the key is absent)*.
 
-Independently: `SessionStart` hook -> `hooks/session_start.py:306` -> **[raw-dict gate, `is True`]** -> warning *(suppressed when the key is absent)*.
+Independently: `SessionStart` hook -> `hooks/session_start.py:313` -> **[raw-dict gate, `is True`]** -> warning *(suppressed when the key is absent)*.
 
 ### Decision Rules
 - **Section presence is the opt-in; key defaults apply within it.** See the table in Proposed
@@ -307,7 +315,7 @@ Independently: `SessionStart` hook -> `hooks/session_start.py:306` -> **[raw-dic
   Filed separately.
 - Changing any dataclass default value.
 - ENH-3264's DESIGN.md work. That issue consumes the corrected understanding of
-  `session_start.py:306`; it does not depend on this fix landing.
+  `session_start.py:313`; it does not depend on this fix landing.
 
 ## Acceptance Criteria
 
@@ -336,6 +344,8 @@ Independently: `SessionStart` hook -> `hooks/session_start.py:306` -> **[raw-dic
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-21T05:08:50 - `e0baa491-8b7d-4bf1-a0c1-eb3e58d5078e.jsonl`
+- `/ll:ready-issue` - 2026-08-21T04:54:43 - `f1b83cf4-c090-438e-b615-05796ab30785.jsonl`
 - `/ll:confidence-check` - 2026-08-21T04:47:42 - `06825300-0005-4b1f-8a38-697787be5d20.jsonl`
 - `/ll:wire-issue` - 2026-08-21T04:45:06 - `ee8d0c92-9f75-42c4-9e2a-730c3d5d3cb0.jsonl`
 - `/ll:refine-issue` - 2026-08-21T04:32:54 - `a85e8b1c-5475-4885-a40b-302d5e096fc6.jsonl`

@@ -1771,7 +1771,7 @@
         "enabled": {
           "type": "boolean",
           "default": true,
-          "description": "Enable design token loading. When true, load_design_tokens() resolves the token path on session start."
+          "description": "Enable design token loading. When true, load_design_tokens() resolves the token path on session start. This default applies only within a present `design_tokens` section — omitting `enabled` there resolves to true. A wholly absent `design_tokens` section resolves to off (BUG-3274); it is not equivalent to an explicit `enabled: true`."
         },
         "path": {
           "type": "string",

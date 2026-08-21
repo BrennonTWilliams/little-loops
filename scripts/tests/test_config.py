@@ -3416,6 +3416,15 @@ class TestBRConfigDesignTokensIntegration:
         assert config.design_tokens.path == ".ll/brand-tokens"
         assert config.design_tokens.active_theme == "dark"
 
+    def test_design_tokens_dataclass_agrees_with_raw_dict_key_omitted(self) -> None:
+        """BUG-3274 AC 1/4: a present design_tokens section that omits `enabled`
+        must resolve the same way from DesignTokensConfig.from_dict() as it does
+        from a raw-dict `.get("enabled", True)` read (the shape the fixed gates
+        in init/cli.py and hooks/session_start.py now use)."""
+        section: dict[str, Any] = {"active": "warm-paper"}
+        assert DesignTokensConfig.from_dict(section).enabled is True
+        assert section.get("enabled", True) is True
+
     def test_design_tokens_round_trip_to_dict(self, temp_project_dir: Path) -> None:
         """design_tokens key appears in to_dict() with correct structure."""
         config = BRConfig(temp_project_dir)

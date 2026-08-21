@@ -2132,6 +2132,63 @@ class TestMainInit:
         assert code == 0
         assert (apply_dest / ".ll" / "design-tokens" / "profiles").is_dir()
 
+    def test_apply_deploys_design_tokens_when_section_present_key_omitted(
+        self, tmp_project: Path, tmp_path: Path
+    ) -> None:
+        """BUG-3274: a present design_tokens section with no `enabled` key still
+        deploys — matching DesignTokensConfig's `enabled: bool = True` default."""
+        import io
+        from contextlib import redirect_stdout
+
+        from little_loops.init.cli import main_init
+
+        plan_src = tmp_path / "plan_src"
+        plan_src.mkdir()
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            with patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT):
+                main_init(["--plan", "--root", str(plan_src)])
+        plan = json.loads(buf.getvalue())
+        plan["proposed_config"]["design_tokens"] = {"active": "warm-paper"}
+        plan_file = tmp_path / "plan.json"
+        plan_file.write_text(json.dumps(plan))
+
+        apply_dest = tmp_path / "apply_dest"
+        apply_dest.mkdir()
+        with patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT):
+            code = main_init(["--root", str(apply_dest), "apply", "--config", str(plan_file)])
+        assert code == 0
+        assert (apply_dest / ".ll" / "design-tokens" / "profiles").is_dir()
+
+    def test_apply_skips_design_tokens_when_section_absent(
+        self, tmp_project: Path, tmp_path: Path
+    ) -> None:
+        """BUG-3274 AC 2b: a plan with no design_tokens section at all must not
+        scaffold — guards against a naive dataclass-mediated fix that would
+        resolve an absent section to `enabled=True` and deploy for every project."""
+        import io
+        from contextlib import redirect_stdout
+
+        from little_loops.init.cli import main_init
+
+        plan_src = tmp_path / "plan_src"
+        plan_src.mkdir()
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            with patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT):
+                main_init(["--plan", "--root", str(plan_src)])
+        plan = json.loads(buf.getvalue())
+        plan["proposed_config"].pop("design_tokens", None)
+        plan_file = tmp_path / "plan.json"
+        plan_file.write_text(json.dumps(plan))
+
+        apply_dest = tmp_path / "apply_dest"
+        apply_dest.mkdir()
+        with patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT):
+            code = main_init(["--root", str(apply_dest), "apply", "--config", str(plan_file)])
+        assert code == 0
+        assert not (apply_dest / ".ll" / "design-tokens" / "profiles").is_dir()
+
     def test_apply_deploys_issue_templates_when_enabled(
         self, tmp_project: Path, tmp_path: Path
     ) -> None:

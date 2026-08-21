@@ -307,10 +307,12 @@ def _validate_features(config: dict[str, Any], *, project_root: Path | None = No
                 "[little-loops] Warning: documents.enabled is true but no document categories"
                 " configured"
             )
-    design_tokens = (
-        config.get("design_tokens") if isinstance(config.get("design_tokens"), dict) else {}
-    )
-    if isinstance(design_tokens, dict) and design_tokens.get("enabled") is True:
+    design_tokens_raw = config.get("design_tokens")
+    design_tokens = design_tokens_raw if isinstance(design_tokens_raw, dict) else {}
+    # BUG-3274: section presence is the opt-in; a present section with `enabled`
+    # omitted matches DesignTokensConfig's True default. An absent section stays
+    # silent (design_tokens_raw is not a dict, so this branch is skipped).
+    if isinstance(design_tokens_raw, dict) and design_tokens.get("enabled", True):
         token_path = Path(design_tokens.get("path", ".ll/design-tokens"))
         source = design_tokens.get("source", "auto")
         design_md_present = False

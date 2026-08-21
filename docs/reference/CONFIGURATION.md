@@ -752,6 +752,8 @@ Each category requires a `files` array of relative paths. The optional `descript
 
 Design system token settings for artifact-generating loops. When enabled, `ll-loop run` and `ll-loop resume` pre-inject the resolved token set into the FSM initial context before the first state is entered.
 
+**Defaulting rule (BUG-3274):** a wholly **absent** `design_tokens` section resolves to off — no scaffolding, no warnings, matching a project that never opted in. Within a **present** `design_tokens` section, an omitted `enabled` key resolves to the dataclass default (`true`). This two-tier rule is unrelated to the per-loop `use_design_tokens` opt-out described next, which has its own independent absent-key-means-true convention.
+
 **Per-loop opt-out (ENH-3099):** an individual loop can skip token injection even when `design_tokens.enabled` is true globally, by setting `use_design_tokens: false` in its YAML `context:` block (or via `--context use_design_tokens=false` at run time). Accepted falsy string values are case-insensitive `false`, `no`, `off`, `0`, or an empty string; anything else (including the key being absent) is treated as `true`. When opted out, `context.design_tokens_context` is still set to `""` so `${context.design_tokens_context}` interpolates without error in prompts that reference it unconditionally.
 
 #### Multi-Profile System (ENH-1768)
