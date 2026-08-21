@@ -1,0 +1,39 @@
+=== Claim 1: gh repo view -q nameWithOwner returns bare plain-text ===
+returncode: 0
+stdout repr: 'BrennonTWilliams/little-loops\n'
+is bare (no quotes/braces): True
+looks like owner/repo: True
+
+=== Claim 2: gh issue list --json number,title,state returns array of objects with exact keys ===
+returncode: 0
+is list: True
+count: 0
+
+=== Claim 3 & 4: gh pr view <ref> --json state,mergedAt ===
+pr list returncode: 0
+pr list raw: [{"number":4,"state":"OPEN","url":"https://github.com/BrennonTWilliams/little-loops/pull/4"}]
+
+pr view returncode: 0
+pr view raw: {"mergedAt":null,"state":"OPEN"}
+
+state: OPEN
+state is uppercase enum: True
+mergedAt type: NoneType
+mergedAt value: None
+
+=== Claim 5: gh issue list with zero matches returns [] ===
+returncode: 0
+stdout repr: '[]'
+parsed as empty list: True
+
+=== Claim 6: gh auth status exits 0 and writes to stderr not stdout ===
+returncode: 0
+stdout repr: "github.com\n  ✓ Logged in to github.com account BrennonTWilliams (keyring)\n  - Active account: true\n  - Git operations protocol: ssh\n  - Token: gho_************************************\n  - Token scopes: 'admin:public_key', 'gist', 'read:org', 'repo', 'workflow'\n"
+stderr repr (truncated): ''
+status text on stderr: False
+stdout empty: False
+
+=== Claim 7: gh --version stdout begins with 'gh version' ===
+returncode: 0
+stdout first line: gh version 2.86.0 (2026-01-21)
+starts with 'gh version': True
