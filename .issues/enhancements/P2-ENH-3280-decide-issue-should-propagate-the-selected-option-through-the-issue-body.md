@@ -81,7 +81,7 @@ and had no phase in which to act on it.
 
 ### Half of this already exists — `format-check`'s `unapplied_decision` (found 2026-08-21)
 
-`issue_parser._unapplied_decision` (`:1392`) already **detects** this defect: it enumerates option
+`issue_parser._unapplied_decision` (`:1449`) already **detects** this defect: it enumerates option
 blocks, and reports rejected-option identifiers still present in directive sections as
 `unapplied_decision` gaps. So the missing capability is narrower than "notice the problem" — it is
 **acting on it at decision time**.
@@ -150,6 +150,22 @@ nothing.
 - `skills/decide-issue/SKILL.md` — new Phase 7c; Phase 9 report gains a propagated-edits block
 - `skills/decide-issue/reference.md` — the Phase 9 output template lives here
 
+> ⚠ **Line budget — this is the largest of three concurrent SKILL.md edits and there are 7 lines
+> left (added 2026-08-21).** `skills/decide-issue/SKILL.md` is **493 lines** against a hard
+> **500-line** cap enforced by `TestSkillLineLimit`
+> (`scripts/tests/test_enh494_skill_companions.py:73-86`). BUG-3287 and BUG-3278 also write to this
+> file. Phase 7c as specified — four rewrite categories with trigger patterns and per-category
+> disposition, the bounded-scope statement, and the idempotency rule — cannot fit.
+>
+> **Required shape:** `SKILL.md` gets the Phase 7c *heading, the imperative step sequence, the
+> idempotency guard, and a `See [reference.md](reference.md) for the rewrite-category catalogue`
+> pointer* — target **≤ 15 lines**. The four-category catalogue, its trigger patterns, and the
+> worked dispositions move into `reference.md` (144 lines today, already this skill's companion).
+> `test_enh494_skill_companions.py::test_skill_links_to_companion` enforces that the pointer
+> exists. See EPIC-3290 § *Shared constraint — the decide-issue SKILL.md line budget*, which also
+> notes that the extraction pass may land as a standalone preparatory commit rather than inside any
+> one child — if it does, this issue inherits the headroom and only needs the budget check.
+
 ### Dependent Files (Callers/Importers)
 
 _Wiring pass added by `/ll:wire-issue`:_
@@ -165,15 +181,22 @@ _Wiring pass added by `/ll:wire-issue`:_
 - A fixture with an implementation step naming the loser: assert the step no longer instructs the
   rejected work
 - An already-propagated fixture: assert a second run writes nothing (idempotency)
-- `_unapplied_decision` test coverage: `scripts/tests/test_issue_parser.py:4757-4965`, class
-  `TestUnappliedDecision`, using an inline `_issue()` builder helper (`:4765-4770`) rather than
+- `_unapplied_decision` test coverage: `scripts/tests/test_issue_parser.py:4757`, class
+  `TestUnappliedDecision`, using an inline `_issue()` builder helper rather than
   on-disk `.md` fixtures — no fixture file for this detector exists under
   `scripts/tests/fixtures/issues/`
 - A live-corpus sweep test already exists and documents a known precision limit:
-  `scripts/tests/test_issue_parser.py:4968`, `TestUnappliedDecisionLiveCorpusSweep.test_corpus_sweep_does_not_crash`
+  `scripts/tests/test_issue_parser.py:5063`, `TestUnappliedDecisionLiveCorpusSweep`
+  (`test_corpus_sweep_does_not_crash` at `:5085`)
   — asserts `_unapplied_decision` never raises across `.issues/`, and is explicitly
-  report-only/non-blocking due to ~40% false-positive rate on the real corpus (this is the noise
-  BUG-3279 is fixing)
+  report-only/non-blocking due to a high false-positive rate on the real corpus. **That residual
+  noise is BUG-3289's, not BUG-3279's** — this issue's own `blocked_by`.
+  > ⚠ **Two corrections, 2026-08-21.** (i) The anchor `:4968` was stale; actual is `:5063`/`:5085`
+  > (the same `f39a417e` drift). (ii) This bullet read *"this is the noise BUG-3279 is fixing"*,
+  > which contradicts this issue's own *Motivation* — BUG-3279's span fix **landed** as `f39a417e`
+  > and the prerequisite was re-pointed to **BUG-3289**, which is what `blocked_by` now declares.
+  > Every remaining reference in this issue to BUG-3279 as the noise fix is stale by the same
+  > argument.
 - `decide-issue`'s own test file, `scripts/tests/test_decide_issue_skill.py`, tests SKILL.md as
   prose/documentation (the skill has no executable binary) via a `_phase_text()` slice-and-assert
   helper reused across five phase test classes (e.g. lines 233-238, 290-295, 402-406). A Phase 7c
@@ -233,12 +256,21 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 _Added by `/ll:refine-issue` — 2026-08-21 — based on codebase analysis:_
 
-- `_unapplied_decision(content: str) -> list[str]` (`scripts/little_loops/issue_parser.py:1392`) returns only formatted reason strings — `"{section} still specifies \`{identifier}\` (rejected option)"` (`:1513`) — not a structured `(section, identifier)` tuple. Phase 7c must parse this string to recover the section name and identifier, since no structured API exists.
+> ⚠ **Every `issue_parser.py` anchor in this section was the pre-`f39a417e` set and has been
+> refreshed in place (2026-08-21).** EPIC-3290 refreshed the shared anchors on 2026-08-21 but this
+> issue did not get the pass, so its entire *Program Design* § Signatures and Call Path were running
+> on stale numbers. Corrected: `_unapplied_decision` 1392→**1449**, reason template 1513→**1571**,
+> `check_format_gaps` 1114→**638**, `_option_block_spans` 1371→**1405**, `_selected_option_title`
+> 1322→**1332**, `_option_label` 1335→**1345**, `_decision_identifiers` 1341→**1351**. Verified
+> correct and unchanged: `_DECISION_DIRECTIVE_SECTIONS` `:1302-1308`, JSON key `:594`,
+> `has_blocking_gaps` `:556`.
+
+- `_unapplied_decision(content: str) -> list[str]` (`scripts/little_loops/issue_parser.py:1449`) returns only formatted reason strings — `"{section} still specifies \`{identifier}\` (rejected option)"` (`:1571`) — not a structured `(section, identifier)` tuple. Phase 7c must parse this string to recover the section name and identifier, since no structured API exists.
 - Surfaced today via `ll-issues format-check <ID> --format json` → `unapplied_decision` key (`scripts/little_loops/cli/issues/format_check.py:672-685`, JSON serialization at `issue_parser.py:594`) — a skill-authored Phase 7c can consume this over subprocess without new Python glue.
 - `unapplied_decision` is **not** in the `--fix`/`--apply` dispatch list (`format_check.py:98-113`, which covers `prose_dep_drift`, `duplicate_findings_block`, `duplicate_heading`, `empty_provenance_stub`, `template_placeholders`) — there is no existing auto-repair path; Phase 7c must perform its own edits.
-- `check_format_gaps` (`issue_parser.py:1114`) is the sole caller of `_unapplied_decision`; `unapplied_decision` is a **blocking** (non-advisory) gap class on `FormatGaps.has_blocking_gaps` (`issue_parser.py:555-565`) — so the pre-fix state already fails `format-check`, independent of this issue.
+- `check_format_gaps` (`issue_parser.py:638`) is the sole caller of `_unapplied_decision`; `unapplied_decision` is a **blocking** (non-advisory) gap class on `FormatGaps.has_blocking_gaps` (`issue_parser.py:556`) — so the pre-fix state already fails `format-check`, independent of this issue.
 - `_DECISION_DIRECTIVE_SECTIONS = ("Proposed Solution", "Program Design", "Implementation Steps", "Files to Modify", "Acceptance Criteria")` (`issue_parser.py:1302-1308`) is the closed list of sections `_unapplied_decision` scans — Phase 7c's sweep scope should match this list, not invent a broader one.
-- Supporting extraction helpers Phase 7c may need for finer-grained matching beyond the formatted-string output: `_option_block_spans` (`:1371`), `_selected_option_title` (`:1322`), `_option_label` (`:1335`), `_decision_identifiers` (`:1341`) — all private module functions with no CLI wrapper; only reachable in aggregate via `_unapplied_decision`'s output.
+- Supporting extraction helpers Phase 7c may need for finer-grained matching beyond the formatted-string output: `_option_block_spans` (`:1405`), `_selected_option_title` (`:1332`), `_option_label` (`:1345`), `_decision_identifiers` (`:1351`) — all private module functions with no CLI wrapper; only reachable in aggregate via `_unapplied_decision`'s output.
 
 _Added by `/ll:refine-issue` — 2026-08-21 — based on codebase analysis:_
 
@@ -257,10 +289,10 @@ _Added by `/ll:refine-issue` — 2026-08-21 — based on codebase analysis:_
 
 - `_unapplied_decision(content: str) -> list[str]` — the sole existing entry point Phase 7c drives
   off; returns formatted reason strings only, one per `(section, identifier)` pair, never a
-  structured tuple (`scripts/little_loops/issue_parser.py:1392`)
+  structured tuple (`scripts/little_loops/issue_parser.py:1449`)
 - `check_format_gaps(content: str) -> FormatGaps` — sole caller of `_unapplied_decision`; invoked
   from `ll-issues format-check <ID> --format json`, which serializes the list under the JSON key
-  `"unapplied_decision"` (`issue_parser.py:1114`, CLI at `scripts/little_loops/cli/issues/format_check.py:672-685`,
+  `"unapplied_decision"` (`issue_parser.py:638`, CLI at `scripts/little_loops/cli/issues/format_check.py:672-685`,
   JSON key at `issue_parser.py:594`) — the subprocess-callable surface Phase 7c uses; no new Python
   glue is required
 - `_DECISION_DIRECTIVE_SECTIONS: tuple[str, ...]` — the closed set of section names
@@ -274,8 +306,8 @@ _Added by `/ll:refine-issue` — 2026-08-21 — based on codebase analysis:_
 already written the callout and frontmatter, so `_unapplied_decision`'s own precondition (a
 resolvable `> **Selected:**` callout) is satisfied by the time Phase 7c fires ->
 shells out to `ll-issues format-check <ID> --format json` -> `cmd_format_check`
-(`format_check.py:476`) -> `check_format_gaps` (`issue_parser.py:1114`) -> `_unapplied_decision`
-(`issue_parser.py:1392`) -> JSON `unapplied_decision` list returned to the skill -> skill parses
+(`format_check.py:476`) -> `check_format_gaps` (`issue_parser.py:638`) -> `_unapplied_decision`
+(`issue_parser.py:1449`) -> JSON `unapplied_decision` list returned to the skill -> skill parses
 each `"<Section> still specifies \`<identifier>\` (rejected option)"` string to locate the
 identifier's occurrence in that section -> Edit tool rewrites/demotes/strikes the matched prose
 per the four categories in `## Proposed Solution` -> skill re-invokes `format-check` to confirm
@@ -376,6 +408,37 @@ The underlying gap is structural and independently checkable: `skills/decide-iss
 the skill, not by reproducing ENH-3277. **Do not cull this issue on the NON_VALID verdict.**
 Re-verify against the skill's phase list, or against the hand-authored fixture Implementation
 Step 4 calls for, once that fixture exists.
+
+### ⚠ This verdict is machine-consumed — the prose above will not be read by the gate
+
+`verify_verdict` is not advisory. Measured 2026-08-21:
+
+```
+$ ll-issues check-verify-verdict 3280
+VERIFY_VERDICT_NON_VALID: 3280 — verify_verdict='NON_VALID'; run /ll:verify-issues 3280 --auto
+$ echo $?
+1
+```
+
+Exit 1 routes `scripts/little_loops/loops/refine-to-ready-issue.yaml`
+`check_verify_verdict` (`:347-351`) → `on_no` → `check_proposal_unsound` (`:353-366`) → `on_no` →
+`check_refine_limit` → `refine_followup`. So if this issue enters that loop before implementation,
+automation burns refine cycles trying to repair a verdict whose own issue body says is a false
+alarm about a **deliberately absent reproducer**. "Do not cull this issue on the NON_VALID verdict"
+is a instruction to humans; the FSM reads the field.
+
+**Resolve before this issue enters any loop — pick one:**
+
+1. **Preferred** — author the hand-written fixture Implementation Step 4 already requires (from this
+   issue's own *Current Behavior* quotes), then re-run `/ll:verify-issues 3280` so the verdict flips
+   to `VALID` on real evidence. This is work the issue owes anyway; doing it first makes the field
+   honest instead of suppressed.
+2. Clear `verify_verdict` from frontmatter. `check_verify_verdict` fails open on an absent field
+   (`on_yes`, per its own comment at `:349`), so the loop proceeds. Cheaper, but discards the record
+   of an actual verify run — take it only if this issue is scheduled before the fixture exists.
+
+Deliberately **not** done as part of this review: option 2 deletes evidence and option 1 is
+implementation work. Flagged for the implementer to close.
 
 ## Status
 

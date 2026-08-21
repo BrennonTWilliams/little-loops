@@ -69,6 +69,10 @@ The first four are locator defects; the last two are consumer defects that inher
 - `scripts/little_loops/cli/issues/check_decidable.py` — the `located.count >= 1` gate at `:36`
   (BUG-3287 part 1b; required under its recommended return shape).
 - `skills/decide-issue/SKILL.md` — Phases 2.5, 3, 3b, 4, 6, 7a, 7b (BUG-3278, BUG-3287, ENH-3280).
+  > ⚠ **Shared line budget — 7 lines remain.** `SKILL.md` is **493 lines** against a hard **500-line
+  > cap** enforced by `TestSkillLineLimit` (`scripts/tests/test_enh494_skill_companions.py:73-86`),
+  > and three children write to it. See § *Shared constraint — the decide-issue SKILL.md line
+  > budget* below; do not plan any of the three skill edits without reading it.
 
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/cli/issues/` — `locate-options`, `check-decidable`, `format-check`
@@ -78,8 +82,15 @@ The first four are locator defects; the last two are consumer defects that inher
 
 ### Tests
 - `scripts/tests/test_issue_parser.py` — `TestUnappliedDecision` (`:4757`),
-  `TestUnappliedDecisionLiveCorpusSweep` (`:5005`).
+  `TestUnappliedDecisionLiveCorpusSweep` (`:5063`; its
+  `test_corpus_sweep_does_not_crash` at `:5085`).
+  > Corrected 2026-08-21: `:5005` was stale and is cited from **three** places — this table,
+  > BUG-3285's *Tests* and *Codebase Research Findings*, and BUG-3287's *Codebase Research
+  > Findings* — all of which name it as the scaffolding model for a **required new** corpus
+  > differential. All four citations corrected.
 - `scripts/tests/test_issue_parser_unresolved.py` — `TestLastOptionSpanBoundary` (`:817`).
+- `scripts/tests/test_enh494_skill_companions.py` — `TestSkillLineLimit` (`:73`), the gate the
+  three skill-touching children must budget against.
 
 ### Documentation
 - `docs/reference/CLI.md` § `ll-issues locate-options` / `check-decidable` if the precedence
@@ -90,8 +101,14 @@ The first four are locator defects; the last two are consumer defects that inher
 - **Priority**: P2 — the highest child priority. Not user-facing breakage, but it corrupts the
   input to every decision the issue pipeline makes, with measured live misparses (6 issues for
   BUG-3287, ~23 spurious reports for BUG-3289).
-- **Effort**: Medium-Large — five of six touch one file, which makes the chain serial but each
-  step small. BUG-3278 and ENH-3280 are the two substantial items.
+- **Effort**: Large — five of six touch one file, which makes the chain serial. **Three** items are
+  substantial, not two: BUG-3278 (`size: Medium-to-Large` per its own Impact; no `size` frontmatter
+  — set it), ENH-3280 (`size: Large`), and **BUG-3287 (`size: Very Large`)** — two parser parts plus
+  three mandatory consumer edits, a corpus differential, and five documentation sites.
+  > Restated 2026-08-21. This bullet previously read *"each step small … BUG-3278 and ENH-3280 are
+  > the two substantial items"*, which is contradicted by BUG-3287's own `size: Very Large`
+  > frontmatter. BUG-3285 is nominally `size: Medium` but its Effort bullet was *"repriced upward"*
+  > and it still owes a design pass (see § *Unscheduled work*), so treat that size as a floor.
 - **Risk**: Medium — `issue_parser.py` is load-bearing for the whole `.issues/` corpus, and the
   span semantics have already been reopened once. The live-corpus sweep tests are the safety net.
 
@@ -109,17 +126,26 @@ Implementation order is bottom-up: locator primitives, then the decision model, 
   two real *selected* options (`**Option A′ (SELECTED)**` in BUG-3177, `**Option C′ (selected)**`
   in BUG-3253), gains 3 matches by crossing newlines, flips 2 tiers, and moves 1 resolved section.
   Its stated acceptance bar is also unachievable — 21 of 26 repeated-letter issues repeat for a
-  legitimate reason. See that issue's § *Corpus differential*.
+  legitimate reason. See that issue's § *Corpus differential*. **Now carries
+  `decision_needed: true`** — its two sub-rules (identifier shape, title extent) are the design
+  pass, and nothing scheduled it. Run `/ll:decide-issue 3285` first.
 - **BUG-3287** (P2) — two defects in the shared precedence chain: a tier match anywhere preempts
   the Pattern E directive heuristic, and the `bullet` tier cannot see a bold-wrapped marker.
   **Sequence before BUG-3278** — BUG-3278 otherwise re-fixes both inside its own new group
   iterator rather than consuming a corrected chain. Its recommended `residual_directive` return
   shape requires three consumer edits (`to_dict()`, `check_decidable.py`, Phase 3 reporting) or it
   changes no observable behavior; those are now parts 1a–1c of that issue.
+  > ⚠ **Two corrections landed 2026-08-21, both in that issue.** (i) Option B does **not** prevent
+  > the `count == 1` false-clear its *Ordering constraint* claims it prevents — verified on
+  > BUG-3229. (ii) Part **1c** is dead on arrival if BUG-3278 lands next, because BUG-3278 part 5
+  > re-points Phase 3 off `locate-options` entirely; part 1c is now **deferred to BUG-3278** while
+  > parts 1a/1b stay required. Read that issue's *Decision Rules* before scheduling it.
 - **BUG-3289** (P3) — `_decision_identifiers` extracts every backticked span >= 3 chars as
   option-discriminating, with no filter for the issue's shared vocabulary. Candidate rule already
   recorded: subtract identifiers appearing in the title/Summary or in any section preceding
-  `## Proposed Solution`. **Now the `blocked_by` prerequisite for ENH-3280.**
+  `## Proposed Solution`. **Now the `blocked_by` prerequisite for ENH-3280.** **Also carries
+  `decision_needed: true`** — its two scope questions explicitly refuse a default, and
+  `check-decidable` already reports them as a live `provisional_e` pair.
 - **BUG-3278** (P2) — introduces the **decision group** model: one group per decision point,
   resolved as a unit, so `decision_needed` is cleared only when every group is settled. The first
   consumer-side fix, and the largest. Six pre-implementation review rounds; its round-5
@@ -194,9 +220,73 @@ does not.
 Accepted for now. File as this epic's follow-up if a gate misroute is observed live; do not fold it
 into any child.
 
+### Shared constraint — the decide-issue SKILL.md line budget (added 2026-08-21)
+
+`skills/decide-issue/SKILL.md` is **493 lines**. `TestSkillLineLimit`
+(`scripts/tests/test_enh494_skill_companions.py:73-86`) fails the suite for any `SKILL.md` over
+**500**. That leaves **7 lines** of headroom, and three children spend it:
+
+| Child | SKILL.md edits |
+| --- | --- |
+| BUG-3287 | part 1c — Phase 3 `residual_directive` reporting rule |
+| BUG-3278 | part 5 — Phase 2.5→3 handoff, Phase 3 group sourcing + `unresolved[0]` rule, Phase 3b step 3 A–C callout, step 4 gate, Phase 7a per-group idempotency + per-tier marker placement (**including a fenced markdown example**), Phase 7b gate, Phase 9 line |
+| ENH-3280 | Phase 7c in full — four rewrite categories, bounded-scope statement, idempotency rule |
+
+Combined that is well over 100 lines against a 7-line budget. **No child mentions the cap**, and
+`skills/wire-issue/SKILL.md` is already sitting at exactly 500, so there is no slack elsewhere and
+no precedent for raising the limit.
+
+**Epic-level rule, binding on all three children:** overflow extracts into
+`skills/decide-issue/reference.md` (144 lines today, already the Phase 9 Output Report Template's
+home) following the ENH-494 companion pattern — `SKILL.md` keeps the imperative phase steps and a
+`See [reference.md](reference.md) for …` pointer at the extraction point;
+`reference.md` takes the tables, worked examples, marker-placement matrices, and rewrite-category
+catalogues. `test_enh494_skill_companions.py::test_skill_links_to_companion` enforces the pointer.
+
+Each child must state its own line delta and, if it exceeds its share, name what it extracts.
+**Whichever lands first should perform the extraction pass**, so the two that follow inherit
+headroom rather than each re-litigating it. On current sequencing that is BUG-3287 — the smallest
+of the three edits, which makes it a poor place to absorb the refactor; consider doing the
+extraction as a standalone preparatory commit under this epic instead of inside any child.
+
+### Unscheduled work — BUG-3285's design pass (added 2026-08-21)
+
+BUG-3285 is the only child the epic describes as *"**needs a design pass before implementation**"*
+with nothing scheduling that pass. Its sketch regex failed its own corpus differential on four
+counts, and its *Program Design → Decision Rules* names two sub-rules it explicitly refuses to
+default (identifier shape; title extent — *"Pin one and pin it by test"*), plus an unanswered
+*"should the two regexes converge?"* open question.
+
+Resolved by setting `decision_needed: true` on BUG-3285 — see § *Undeclared decision points* below.
+Run `/ll:decide-issue 3285` (or `/ll:spike` the regex encoding) **before** scheduling it. Epic
+Success Criterion 4 is that pass's acceptance guard.
+
+### Undeclared decision points on this epic's own children (added 2026-08-21)
+
+Three children carry unresolved decision points with no `decision_needed: true` — the exact defect
+class this epic exists to fix, on the epic's own files. Measured 2026-08-21:
+
+```
+ll-issues check-decidable 3289  →  Decidable: 2 enumerable option(s), provisional_e, §Proposed Solution
+ll-issues check-decidable 3287  →  Decidable: 2 enumerable option(s), bold_label,    §Program Design
+ll-issues check-decidable 3285  →  OPTIONS_MISSING: count 0, pattern None
+```
+
+- **BUG-3285** and **BUG-3289** explicitly refuse a default (*"Pin one and pin it by test"*;
+  *"pick one scope per bullet, do not leave unaddressed"*). Both now carry `decision_needed: true`
+  and must go through `/ll:decide-issue` before implementation.
+- **BUG-3287** and **BUG-3278** record recommendations, so they are treated as settled — with the
+  correction in BUG-3287's *Decision Rules* (its Option B does not, as written, prevent the
+  false-clear it claims to; see that issue).
+- BUG-3285's two sub-rules are invisible to the locator entirely (`count 0`) — **this is BUG-3287's
+  defect 2, reproduced on this epic's own file.** Worth keeping as the epic's own dogfood
+  datapoint.
+
 ## Success Criteria
 
-- [x] All six children are `done` or `cancelled`. *(BUG-3279 done 2026-08-21; five remain.)*
+- [ ] All six children are `done` or `cancelled`. *(BUG-3279 done 2026-08-21; five remain.)*
+      > Unchecked 2026-08-21 — this box was marked `[x]` while five of six children were open, with
+      > a parenthetical saying so on the same line.
 - [ ] `- **(a) …**` bullet options resolve on the live `.issues/` corpus, and a document whose only
       decision point is a tier-preempted Pattern E directive reports **exit 0** from
       `ll-issues check-decidable`. **Stated at the consumer, not the dataclass** — BUG-3287's
@@ -216,6 +306,15 @@ into any child.
 - [ ] No real option is lost from the live corpus: `BUG-3177` and `BUG-3253` keep their current
       `count`, and no file's resolved `heading` changes. *(BUG-3285's guard — the class of
       regression its sketch regex was measured to produce.)*
+- [ ] **A document whose only decision point is a preempted directive does not hit Phase 3's
+      `count == 1` clear branch.** Measured on `BUG-3229`: today `count 2 / provisional_e`; with
+      BUG-3287 part 2 applied, `count 1 / bullet`. Under BUG-3287's *recommended* Option B, part 1
+      leaves `count` byte-identical to the tier result, so the collapse survives part 1 and
+      `SKILL.md:187` still clears `decision_needed`. Assert the **branch**, not the field's
+      existence — see BUG-3287 § *Ordering constraint*, corrected 2026-08-21.
+- [ ] `skills/decide-issue/SKILL.md` is **≤ 500 lines** after all three skill-touching children have
+      landed — `test_enh494_skill_companions.py::TestSkillLineLimit` passes. See § *Shared
+      constraint — the decide-issue SKILL.md line budget*.
 - [ ] `python -m pytest scripts/tests/` passes.
 
 ## Related Key Documentation

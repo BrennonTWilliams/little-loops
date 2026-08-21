@@ -20,6 +20,7 @@ relates_to:
 - ENH-3280
 - ENH-3277
 verify_verdict: VALID
+size: Large
 confidence_score: 98
 outcome_confidence: 85
 score_complexity: 15
@@ -344,6 +345,26 @@ clears the flag. Without this the fix stalls on the already-decided path.
 `locate_enumerable_options`'s raw winner, so already-resolved groups are skipped and repeated runs
 advance. The `count == 1` branch (`SKILL.md:187`) now reads the selected group's option count.
 
+> ⚠ **Carry-forward obligation from BUG-3287 (added 2026-08-21) — do not drop this at the rewrite.**
+> BUG-3287 lands first and adds a `residual_directive is None` guard to that same `count == 1`
+> branch, because under its recommended Option B a preempted directive collapses `count` to 1
+> (measured on `BUG-3229`: `2, provisional_e` → `1, bullet`) and the branch clears
+> `decision_needed` with the directive still open. This Phase 3 rewrite **replaces the sentence
+> that guard lives on**, so the guard vanishes unless it is deliberately re-expressed.
+>
+> Re-express it in the group vocabulary: the branch may clear only when the selected group holds one
+> option **and** `check-unresolved-decisions` reports no other unresolved group — which the group
+> iterator already knows, since part 3 probes `_locate_directive_alternatives` in addition to tiers
+> under `include_approximate_tiers=True`. So the obligation is discharged *by construction* here,
+> not by copying BUG-3287's clause — but it must be **stated**, because "the group probe covers it"
+> is exactly the reasoning that produces a silent regression when nobody checks.
+>
+> **Assertion:** extend assertion (a) with a fixture holding one bullet-tier option plus a preempted
+> Pattern E directive — `check-unresolved-decisions` must exit **1**, and the Phase 3 phase-text
+> assertion must show the `count == 1` branch cannot clear on it. BUG-3287's part 1c (Phase 3
+> *reporting* prose) was deferred into this issue for the same reason; the reporting side is the
+> Phase 9 line already specified in part 5.
+
 **Phase 3 selects the *first* unresolved group in document order** (`unresolved[0]` — the CLI emits
 groups sorted by `start_line`). State this explicitly in the skill prose. Without a pinned rule the
 selection is model-discretionary, so two runs over the same file can pick different groups, and the
@@ -534,9 +555,25 @@ Both span-based alternatives are dropped, which removes this issue's dependency 
 - `scripts/little_loops/cli/issues/check_unresolved_decisions.py` (new) and `cli/issues/__init__.py`
   (`:733-742` parser block, `:1021-1024` dispatch). `locate_options.py` is **not** touched
 - `skills/decide-issue/SKILL.md` — Phase 2.5→3 handoff, Phase 3 group sourcing + first-in-document
-  -order selection rule, **Phase 3b step 4 gate (`:313-321`)**, Phase 7a per-group idempotency +
-  per-tier marker placement, Phase 7b gate, Phase 9 report line
+  -order selection rule, **Phase 3b step 3 A–C callout write**, **Phase 3b step 4 gate
+  (`:313-321`)**, Phase 7a per-group idempotency + per-tier marker placement (including the fenced
+  `provisional_e` example), Phase 7b gate, Phase 9 report line
 - `skills/decide-issue/reference.md` — Phase 9 Output Report Template (`:94`)
+
+> ⚠ **Line budget — seven edits, seven lines of headroom (added 2026-08-21).**
+> `skills/decide-issue/SKILL.md` is **493 lines** against a hard **500-line** cap enforced by
+> `TestSkillLineLimit` (`scripts/tests/test_enh494_skill_companions.py:73-86`). BUG-3287 and
+> ENH-3280 write to the same file. This is the **most numerous** of the three edit sets and it
+> includes a fenced markdown example, so it cannot land as pure in-place prose.
+>
+> **Required shape:** the *rules* stay in `SKILL.md` as imperative one-liners on their existing
+> phases; the *tables and examples* move to `skills/decide-issue/reference.md` behind a
+> `See [reference.md](reference.md) for …` pointer — specifically the **per-tier marker-placement
+> matrix** (including the `provisional_e` fenced example and the per-window suppressor
+> measurement) and the **Phase 3b step 4 exit-code disposition table**. Both are reference material
+> by nature and neither is executed inline. Target: **≤ 20 net lines** added to `SKILL.md`.
+> See EPIC-3290 § *Shared constraint — the decide-issue SKILL.md line budget*; if the extraction
+> lands as a standalone preparatory commit, this issue only needs the budget check.
 - `scripts/little_loops/loops/oracles/resolve-decision.yaml` — new `check_residual_decision` state
 
 ### Dependent Files (Callers/Importers)
@@ -774,7 +811,16 @@ frontmatter-clearing logic and introduces no new gap kind, gate, keyword list, o
       `### Decision Rationale` heading yields the same `_unapplied_decision` output before and after
       this diff, pinning the "do not suffix the heading" rule against
       `_DECISION_RATIONALE_HEADING_RE`'s end-anchor (`issue_parser.py:1316`). Coordinate the
-      snapshot with BUG-3289, which is changing the same function
+      snapshot with BUG-3289, which is changing the same function.
+      > ⚠ **BUG-3285 also perturbs this snapshot (added 2026-08-21) — coordinate with both.**
+      > BUG-3285 tightens `_OPTION_HEADING_RE`, which feeds `_option_block_spans` (`:1405`), which
+      > determines `_unapplied_decision`'s block set and therefore its `sel_ids` / `rej_ids`. Its
+      > own *Codebase Research Findings* records the coupling explicitly: the BUG-3279 comment at
+      > `issue_parser.py:1469-1475` names BUG-3285 as the tracked fix for `spans[-1]` resolving to
+      > a phantom trailing block. So **three** issues move this function's output — BUG-3285
+      > (block set), BUG-3289 (`discriminating`), and the snapshot must be taken against whichever
+      > of them has already landed, never against a fixed baseline. Restate the baseline commit in
+      > the test docstring
     - **(d)** an issue with a settled decision but open free-form questions still clears, proving
       the new probe is narrower than `check-open-questions`
     - **(e)** `locate_unresolved_options`' `(count, heading)` output is unchanged on every existing

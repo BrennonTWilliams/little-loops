@@ -120,7 +120,13 @@ Consequence: `check-decidable` reports such a document as having nothing to deci
 - A Pattern E directive is reported even when a tier also matches — the document holds two decision
   points and the precedence chain must not silently pick one.
 - A bold-wrapped `- **(a) …**` marker matches the `bullet` tier.
-- No document that matches a tier today stops matching, and no document's reported `count` drops.
+- No document that matches a tier today stops matching, and no document's reported `count` drops
+  **except `BUG-3229`**, whose `provisional_e` result is superseded by a `bullet`-tier match
+  (`2 → 1`) while the directive it held moves to `residual_directive`. That drop is intended and
+  pinned; what must not happen is the drop reaching Phase 3's `count == 1` clear branch.
+  > ⚠ **Amended 2026-08-21.** The unqualified form of this clause was measurably false under the
+  > recommended Option B — see § *Ordering constraint*. Stating it as an absolute is what let the
+  > required corpus differential be specified with an assertion that fails on landing.
 
 ## Motivation
 
@@ -193,12 +199,40 @@ preempted directive still routes `resolve-decision.yaml:47-67` to `refine`.
   in one document" properly, and its `check-unresolved-decisions` probe would hold
   `decision_needed: true` until both resolve.
 
-**Recommended: surface-only**, with the group model as the real fix. Scoring a directive alongside
-tier options is BUG-3278's problem, and duplicating it here would be the private-copy-of-the-fix
-failure this issue was split out to prevent. But *silence* is not acceptable: a directive that
-`check-decidable` now counts as decidable and Phase 3 never mentions is a worse state than today,
-because `decision_needed` gets cleared with the directive still open and nothing in the report says
-so.
+~~**Recommended: surface-only**, with the group model as the real fix.~~ Scoring a directive
+alongside tier options is BUG-3278's problem, and duplicating it here would be the
+private-copy-of-the-fix failure this issue was split out to prevent. But *silence* is not
+acceptable: a directive that `check-decidable` now counts as decidable and Phase 3 never mentions
+is a worse state than today, because `decision_needed` gets cleared with the directive still open
+and nothing in the report says so.
+
+> ⚠ **Recommendation flipped to `defer to BUG-3278` — 2026-08-21.** Two reasons, neither available
+> when surface-only was chosen:
+>
+> 1. **Surface-only is dead on arrival.** BUG-3278 part 5 re-points Phase 3 off
+>    `locate-options --json` onto `check-unresolved-decisions`, whose group iterator already probes
+>    `_locate_directive_alternatives` *in addition to* tiers under `include_approximate_tiers=True`.
+>    Once that lands, `residual_directive` has exactly one remaining consumer — `check-decidable`
+>    (part 1b) — and any Phase 3 prose written here is orphaned. On the epic's sequencing
+>    (BUG-3287 → BUG-3278) that is one issue's lifetime.
+> 2. **It cannot pay for itself against the SKILL.md line budget.** `skills/decide-issue/SKILL.md`
+>    is **493 lines** against a hard 500-line cap (`TestSkillLineLimit`,
+>    `scripts/tests/test_enh494_skill_companions.py:73-86`), and three children write to it. Spending
+>    part of a 7-line budget on a rule with a one-issue lifetime is the worst available trade. See
+>    EPIC-3290 § *Shared constraint — the decide-issue SKILL.md line budget*.
+>
+> **What this issue still owes**, since "defer" must not mean "drop" — silence is the failure mode
+> named in the paragraph above:
+>
+> - **Parts 1a and 1b remain required and unchanged.** They are what make the defect observably
+>   fixed; deferring 1c does not weaken the Option B end-to-end guard under *Tests*.
+> - **One line, not a phase**: add to Phase 3's existing `count == 1` branch the guard
+>   `residual_directive is None`, so the branch cannot clear `decision_needed` on a document that
+>   still holds a preempted directive. This is the *Ordering constraint* correction above, and it is
+>   a condition on an existing sentence rather than new prose — it fits the budget.
+> - **BUG-3278 inherits the reporting obligation.** Recorded in that issue's part 5 as a required
+>   carry-forward; without that note the rule is silently dropped at the Phase 3 rewrite rather than
+>   deliberately deferred.
 
 ### Part 2 — widen `_OPTION_PATTERNS[3]`
 
@@ -220,8 +254,32 @@ Part 2 without part 1 **introduces a new false-clear**. Verified against BUG-322
 
 A stray `- (i)` bullet becomes a tier-4 match, preempts the real 2-alternative directive, and
 collapses the result to `count 1` — which is `/ll:decide-issue` Phase 3's *"Only one option present
-— no decision required. Clearing `decision_needed` if set"* branch (`SKILL.md:187`). Part 1 keeps
-the directive visible, so the count does not collapse.
+— no decision required. Clearing `decision_needed` if set"* branch (`SKILL.md:187`).
+
+> ⚠ **Corrected 2026-08-21 — this paragraph previously ended *"Part 1 keeps the directive visible,
+> so the count does not collapse."* That is true of Option A only, and this issue recommends
+> Option B.** Re-measured live:
+>
+> ```
+> BUG-3229 today:       count 2, provisional_e, §Proposed Solution
+> BUG-3229 + part 2:    count 1, bullet,        §Proposed Solution
+> directive still found: count 2, §Proposed Solution
+> ```
+>
+> Under **Option B** part 1 leaves `count`/`pattern` *byte-identical to the tier result* by
+> construction — that is the entire point of the shape — so `count` still collapses **2 → 1** and
+> the directive lands on a separate field the branch does not read. Phase 3 still takes the
+> `count == 1` clear branch, and `decision_needed` is still cleared with the directive open.
+> Part 1 as specified does **not** discharge the ordering constraint.
+>
+> **Two consequences, both now folded into this issue:**
+>
+> 1. **Part 1c's surface-only shape is insufficient** — a Phase 9 warning does not stop a Phase 3
+>    write. The `count == 1` branch must additionally gate on `residual_directive is None`, or the
+>    return shape must be Option A. See § *Decision Rules → Cost correction 2*.
+> 2. **The required corpus differential fails as written** — its assertion is *"no file's `count`
+>    decreases"*, and BUG-3229 decreases 2 → 1 under Option B + part 2. It needs BUG-3285's escape
+>    hatch (*"except those pinned as intended"*). See § *Tests*.
 
 ### Blast radius
 
@@ -231,7 +289,7 @@ predict, because tier precedence and *section* precedence both shift:
 
 | Issue | Before | After | Why it matters |
 |---|---|---|---|
-| BUG-3229 | `2`, `provisional_e` | `1`, `bullet` | count **drops**; hits the `count == 1` clear branch — the case part 1 exists to prevent |
+| BUG-3229 | `2`, `provisional_e` | `1`, `bullet` | count **drops**; hits the `count == 1` clear branch. **Part 1 does not prevent this under Option B** — see § *Ordering constraint*; the `residual_directive is None` guard on that branch is what prevents it |
 | ENH-3264 | `1`, `numbered`, §Confidence Check Notes | `2`, `bullet`, §**Proposed Solution** | the winning **section** changes, not just the tier |
 
 The remaining 20 are `count 0 → N`, `pattern null → bullet` — the intended correction.
@@ -283,8 +341,19 @@ not an optional one.
 - `scripts/little_loops/cli/issues/check_decidable.py` — the `located.count >= 1` gate at `:35`
   gains `or located.residual_directive is not None` (part 1b). **Required under Option B**; without
   it none of the six preempted issues changes observable behavior
-- `skills/decide-issue/SKILL.md` — Phase 3 must report a `residual_directive` it does not score
-  (part 1c, surface-only shape). **Required under Option B**
+- `skills/decide-issue/SKILL.md` — Phase 3's `count == 1` branch (`:187`) gains the
+  `residual_directive is None` guard. **Required under Option B** — it is what closes the
+  ordering-constraint hole; see § *Decision Rules → Cost correction 2*.
+  > ⚠ **Rescoped 2026-08-21.** Previously *"Phase 3 must report a `residual_directive` it does not
+  > score (part 1c, surface-only shape)"*. Part 1c is **deferred to BUG-3278**; only the one-line
+  > branch guard stays here.
+  >
+  > **Line budget.** `SKILL.md` is **493 lines** against a hard **500-line** cap enforced by
+  > `TestSkillLineLimit` (`scripts/tests/test_enh494_skill_companions.py:73-86`), and BUG-3278 and
+  > ENH-3280 also write to this file. This issue's share is **≤ 2 lines** — a condition appended to
+  > an existing sentence, not a new paragraph. If the edit does not fit in two lines, extract to
+  > `skills/decide-issue/reference.md` per EPIC-3290 § *Shared constraint — the decide-issue
+  > SKILL.md line budget* rather than spending the shared headroom.
 
 ### Dependent Files (Callers/Importers)
 
@@ -308,9 +377,20 @@ not an optional one.
 - `scripts/tests/test_issue_parser_unresolved.py` — the match matrix above as a table-driven case;
   a new `TestDirectiveNotPreempted` covering a document with both a tier match and a directive
 - **Corpus differential (required):** a test that applies `locate_enumerable_options` across
-  `.issues/` and asserts no file's `count` decreases and no file's resolved `heading` changes.
-  This is the only check that would have caught BUG-3229 and ENH-3264; the 14-shape regex matrix
-  passes both.
+  `.issues/` and asserts no file's `count` decreases and no file's resolved `heading` changes,
+  **except for files pinned as intended changes.** This is the only check that would have caught
+  BUG-3229 and ENH-3264; the 14-shape regex matrix passes both.
+  > ⚠ **Escape hatch added 2026-08-21 — without it this test fails on the two files this issue
+  > already documents as changing.** Under Option B + part 2, `BUG-3229` decreases `count` 2 → 1
+  > (measured) and `ENH-3264`'s resolved `heading` moves §`Confidence Check Notes` →
+  > §`Proposed Solution`. Both are declared intended in § *Blast radius*, so the assertion must
+  > carry a pinned-exception list the way BUG-3285's version of the same test does
+  > (*"no file's `count` moves except those pinned as intended"*). Pin exactly these two, by ID,
+  > with the expected before/after in the test docstring — a bare `!=` allowance would let the
+  > next regression through silently.
+  > Scaffolding model: `TestUnappliedDecisionLiveCorpusSweep`
+  > (`scripts/tests/test_issue_parser.py:5063`, `test_corpus_sweep_does_not_crash` at `:5085`) —
+  > skip-if-corpus-absent, `Path(__file__).resolve().parents[2]`, `rglob("*.md")`.
 - `scripts/tests/test_issues_locate_options.py` — a case asserting `- **(a) …**` reports
   `pattern: "bullet"`
 - `scripts/tests/test_ll_issues_check_decidable.py` — a case asserting the same document is
@@ -320,8 +400,13 @@ not an optional one.
   that fails if parts 1a/1b are skipped, and it is the only one that distinguishes "the field
   exists" from "the defect is fixed." Pair it with a `locate-options --json` case asserting
   `residual_directive` is present and non-null on one of the six live preempted shapes
-- `scripts/tests/test_decide_issue_skill.py` — a phase-text assertion that the Phase 3 slice
-  mentions `residual_directive` and states it is reported rather than scored (part 1c)
+- `scripts/tests/test_decide_issue_skill.py` — a phase-text assertion that the Phase 3 slice's
+  `count == 1` branch is conditioned on `residual_directive is None`.
+  > ⚠ **Restated 2026-08-21.** Previously *"asserts the Phase 3 slice mentions `residual_directive`
+  > and states it is reported rather than scored (part 1c)"*. Part 1c is deferred to BUG-3278; what
+  > survives here is the one-line guard on the existing clear branch, which is the assertion that
+  > actually distinguishes "the directive is visible" from "the flag can no longer be falsely
+  > cleared." A mention-only assertion passes even when the branch still clears.
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_issue_parser_unresolved.py:35-49`
@@ -381,9 +466,11 @@ _Added by `/ll:refine-issue` — 2026-08-21 — based on codebase analysis:_
 - Corpus-wide sweeps over `.issues/` exist in two shapes, both checked **within a single run** —
   neither loads a stored prior-run baseline to diff against, so the "no count decreases, no
   heading changes" before/after comparison this issue proposes has no direct precedent to follow:
-  - Crash-safety-only: `TestUnappliedDecisionLiveCorpusSweep.test_corpus_sweep_does_not_crash`
-    (`scripts/tests/test_issue_parser.py:5005-5036`) — asserts only that the function doesn't
-    raise on real content, no value comparison.
+  - Crash-safety-only: `TestUnappliedDecisionLiveCorpusSweep`
+    (`scripts/tests/test_issue_parser.py:5063`; `test_corpus_sweep_does_not_crash` at `:5085`) —
+    asserts only that the function doesn't raise on real content, no value comparison.
+    > Anchor corrected 2026-08-21 — `:5005-5036` was stale (the same `f39a417e` drift that moved
+    > the `issue_parser.py` anchors). Also cited stale in EPIC-3290 and twice in BUG-3285.
   - Threshold/statistical: `TestCorpusBaseline` (`scripts/tests/test_research_triage.py:538-606`,
     `@pytest.mark.timeout(600)` + `@pytest.mark.slow`, skip if corpus < 100 issues, `lru_cache`-
     memoized sweep) — asserts aggregate statistics computed within one pass, not a diff.
@@ -445,6 +532,26 @@ end-to-end guard under *Tests* is what pins it. This does not overturn the recom
 `count` is still the higher-risk shape — but Option B's advantage is a smaller *blast radius*, not a
 smaller diff.
 
+**Cost correction 2 (2026-08-21) — Option B does not preserve `count` where it matters most.**
+The correction above still understated it. Option B's stated advantage is that `count`/`pattern`
+stay byte-identical for existing consumers — but *that is exactly what breaks the ordering
+constraint*, because the constraint's whole mechanism is a `count` collapse. Measured on BUG-3229:
+`count 2 → 1` under part 2, and Option B's part 1 does nothing to it (verified live; see
+§ *Ordering constraint*). Option A would have moved `count` back to 2 and closed the hole
+incidentally.
+
+The recommendation **stands at Option B**, but only with the guard attached:
+
+> Phase 3's `count == 1` branch (`SKILL.md:187`) must additionally require
+> `residual_directive is None` before clearing `decision_needed`.
+
+Without that guard, Option B is strictly worse than Option A on this issue's own headline defect,
+and the *Expected Behavior* clause *"the precedence chain must not silently pick one"* is unmet on
+the one shape where picking wrong clears the pipeline gate. The guard is a condition on an existing
+sentence — roughly one line of SKILL.md — which is what keeps Option B affordable against the
+line budget in the *Files to Modify* note below. Assertion: the Option-B end-to-end guard under
+*Tests*, extended to a `count 1 + residual_directive` document.
+
 ### Codebase Research Findings
 
 _Added by `/ll:refine-issue` — 2026-08-21 — based on codebase analysis:_
@@ -479,12 +586,16 @@ _Added by `/ll:refine-issue` — 2026-08-21 — based on codebase analysis:_
 1. **Part 1 first.** Restructure `locate_enumerable_options` so `_locate_directive_alternatives`
    runs in addition to the tier scan; pin the return shape per *Decision Rules*. Add
    `TestDirectiveNotPreempted` and assert the six live corpus cases now surface their directive.
-2. **Parts 1a–1c — the consumer edits that make Option B observable.** Serialize
+2. **Parts 1a–1b — the consumer edits that make Option B observable.** Serialize
    `residual_directive` in `LocatedOptions.to_dict()` (`:1997`); add `or located.residual_directive
-   is not None` to `cmd_check_decidable` (`check_decidable.py:35`); write the Phase 3 reporting rule
-   into `skills/decide-issue/SKILL.md`. **Do not defer these to a follow-up** — steps 1 and 2
+   is not None` to `cmd_check_decidable` (`check_decidable.py:35`); add the
+   `residual_directive is None` guard to Phase 3's `count == 1` branch
+   (`skills/decide-issue/SKILL.md:187`). **Do not defer these to a follow-up** — steps 1 and 2
    together are the fix for defect 1; step 1 alone changes no observable output. Land the Option B
-   end-to-end guard (*Tests*) here, and confirm it fails against step 1 alone.
+   end-to-end guard (*Tests*) here, and confirm it fails against step 1 alone. Extend that guard
+   with a `count 1 + residual_directive` document asserting the clear branch does **not** fire.
+   > ⚠ **Part 1c (Phase 3 reporting prose) is deferred to BUG-3278** — see § *Proposed Solution →
+   > Part 1c*. What remains in this step is the one-line branch guard, not a reporting rule.
 3. Land the corpus differential test (no `count` decreases, no `heading` changes) **before**
    part 2, so it fails loudly if part 2 regresses a file.
 4. **Part 2.** Widen `_OPTION_PATTERNS[3]`. Add the 14-shape match matrix as a table-driven test.
@@ -531,10 +642,13 @@ document that stops matching tier 1 can fall through to tier 3. Whichever issue 
 re-run its own corpus differential against the post-first-issue tree rather than reusing the numbers
 recorded in its body.
 
-**Out of scope**: `locate_unresolved_options` and `_iter_option_blocks` (`:2210-2240`) — they do not
-read `_OPTION_PATTERNS`, and widening their conservatism is a loop-gate change with its own blast
-radius (the ENH-2446 comment at `:2225` is a deliberate choice). BUG-3278 covers the decision-group
-layer built over them.
+**Out of scope**: `locate_unresolved_options` (`:2341`) and `_iter_option_blocks` (`:2287`) — they do
+not read `_OPTION_PATTERNS`, and widening their conservatism is a loop-gate change with its own
+blast radius (the ENH-2446 comment at `:2273-2277` is a deliberate choice). BUG-3278 covers the
+decision-group layer built over them.
+> Anchors corrected 2026-08-21: `:2210-2240` and `:2225` were stale — `:2210` is inside
+> `locate_enumerable_options`, not the block iterator. BUG-3278 cites this same comment correctly
+> as `:2271-2275`.
 
 ## Impact
 

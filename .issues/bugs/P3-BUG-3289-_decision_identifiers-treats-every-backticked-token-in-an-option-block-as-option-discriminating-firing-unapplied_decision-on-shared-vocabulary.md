@@ -9,6 +9,8 @@ parent: EPIC-3290
 discovered_by: ll-issues-create
 discovered_date: '2026-08-21'
 captured_at: '2026-08-21T18:59:36Z'
+decision_needed: true
+size: Medium
 labels:
 - issue-parser
 - format-check
@@ -123,6 +125,12 @@ rule recorded in BUG-3279:
 
 Both halves need deciding before implementation — **pick one scope per bullet, do not leave
 unaddressed**:
+
+> **`decision_needed: true` set 2026-08-21.** These two bullets are a real, undecided decision point
+> and the frontmatter did not say so. `ll-issues check-decidable 3289` already reports them
+> (`count 2`, `pattern provisional_e`, §`Proposed Solution`) — the pipeline could see the decision
+> while the gate that routes to `/ll:decide-issue` could not. Run `/ll:decide-issue 3289` before
+> scheduling. Noted at EPIC-3290 § *Undeclared decision points on this epic's own children*.
 
 - **Scope of the subtraction corpus** — title + `## Summary` only (narrow, cheap, catches ENH-2692),
   or everything above `## Proposed Solution` (wider; catches more of ENH-3277's ~23 but risks

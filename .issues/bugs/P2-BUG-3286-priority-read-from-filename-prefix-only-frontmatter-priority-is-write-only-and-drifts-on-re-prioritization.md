@@ -16,9 +16,9 @@ labels:
 - multi-repo
 - mcp
 confidence_score: 100
-outcome_confidence: 70
+outcome_confidence: 82
 score_complexity: 14
-score_test_coverage: 22
+score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 18
 ---
@@ -52,7 +52,7 @@ Priority has two sources of truth in little-loops, each read by a different set 
 
 The last row matters most: `_derive_type_priority` **already is the shared resolver this issue proposes to add**, with the precedence inverted. Any fix must reckon with it rather than introduce a second, contradictory rule — see Decision Rules § Precedence divergence.
 
-In this repo's own `.issues/`, 2,089 files carry a frontmatter `priority:` (re-derive rather than trusting this number) and **0** files lack a filename prefix — so Consequence 1 below is an external-repo symptom, while Consequences 2-4 are live here.
+In this repo's own `.issues/`, **3,194** files carry a filename prefix, **2,089** carry a frontmatter `priority:`, and **0** lack a filename prefix (re-derive rather than trusting these numbers). So Consequence 1 below is an external-repo symptom, while Consequences 2-5 are live here. Note the arithmetic: **1,105 prefixed files carry no frontmatter `priority:` at all** — that population, not the four drifted files, is the largest live defect and is Consequence 5.
 
 **Consequence 1 — prefix-less repos flatten to P5.** Reproduced in a throwaway project outside this repo (see Steps to Reproduce) whose sole issue file has no `P<n>-` prefix and a frontmatter `priority: P1`:
 
@@ -86,6 +86,33 @@ This drift is **not cosmetic**, because of the frontmatter readers above. For ea
 
 **Not data loss, though** (corrected during pre-implementation review — the original capture said the `P1` was "unrecoverable"). `apply_normalize` (`normalize.py:432-464`) only ever writes `{"id": ...}` into frontmatter; it never touches `priority:`. So the declared `P1` survives on disk, the frontmatter readers listed above keep seeing it (making the two halves of the system disagree outright), and step 6's new drift lint reports the disagreement. The harm is a silently wrong resolved priority, recoverable and detectable — not destruction. `_priority_and_defaulted` must still consult frontmatter before defaulting.
 
+**Consequence 5 — 1,105 prefixed files have no frontmatter `priority:` at all, so every frontmatter-only reader is wrong for ~35% of this repo's corpus.** (Added by pre-implementation review 2026-08-21; the capture and the first review both counted only files where the two sources *disagree*.) Re-derive with:
+
+```bash
+python3 -c "
+import re, pathlib
+tot = nofm = 0
+for p in pathlib.Path('.issues').rglob('*.md'):
+    if not re.match(r'^P[0-5]-', p.name): continue
+    tot += 1
+    if not re.search(r'^priority:', p.read_text(errors='ignore'), re.M): nofm += 1
+print('prefixed:', tot, ' missing frontmatter priority:', nofm)
+"
+# prefixed: 3194   missing frontmatter priority: 1105
+```
+
+This is a **larger defect than Consequences 2-4 by an order of magnitude**, and it falsifies this issue's own "transitively fixed by step 5" claim for the frontmatter-only readers:
+
+- `loops/rn-implement.yaml:363` — `priority = fm.get("priority", "P3")` feeds `PRIO_WEIGHT` (`:346`), the dominant term of `composite_score` (`:348-353`): P-tiers are spaced 20 apart while the `impact/effort * 10` term swings at most ~20. **All 1,105 of those issues — including any P0 or P1 — are scored as P3 in the autonomous implement queue today**, losing to any P2 that happens to carry the frontmatter key. A one-tier drift on four files is a rounding error next to this.
+- `cli/issues/set_status.py:173` and `session_store/writers.py:383`, `:2542`, `:2666` write `priority=None` into `issue_events` / `issue_snapshots` for every one of them.
+- `session_store/writers.py:2622` is the sole correct reader, precisely *because* `_derive_type_priority` falls back to the filename. Its much-maligned frontmatter-first precedence is the only thing keeping history-DB ingest right for a third of the corpus — see Decision Rules § Precedence divergence, which must not lose that fallback.
+
+Step 5's prefix-rewrite sync rule does **not** reach these files: it writes frontmatter only when a prefix is *rewritten*, so an issue nobody re-prioritizes stays absent forever. Step 6's drift rule ("both present and differing") is silent on all 1,105 by construction. Two new sub-consequences follow:
+
+**5a — `sync.py`'s GitHub pull path manufactures more of them.** `_create_local_issue` (`sync.py:660-745`) derives `priority` from GitHub labels (`:669-674`, defaulting to `"P3"`), then writes it into the filename (`:682`), the `Impact` body block (`:727`), and the `Status` line (`:732`) — but the frontmatter dict at `:713-719` has **no `priority` key**. Every GitHub-pulled issue is born into the absent-frontmatter state. This is a fifth issue-creation site and the only one that disagrees with `create.py:311`/`:399`, which do write the key.
+
+**5b — the body prose is written at pull time and never revisited**, the same staleness class the Fix-order rule addresses for `_fix_template_placeholders`.
+
 ## Expected Behavior
 
 - Priority resolution consults the frontmatter `priority:` key when the filename carries no `P<n>-` prefix, and defaults to P5 only when neither source specifies one.
@@ -97,6 +124,9 @@ This drift is **not cosmetic**, because of the frontmatter readers above. For ea
 - `ll-issues show` and `IssueParser` agree on the resolved priority for any given file.
 - The existing frontmatter-first resolver `session_store/writers.py:_derive_type_priority` adopts the shared `resolve_priority(..., default=None)` resolver, replacing its inverted precedence (see Decision Rules § Precedence divergence) — the codebase does not end up with two contradictory precedence rules.
 - `format-check --fix` does not bake a stale frontmatter priority into the body's `Status:`/`Impact:` placeholder lines.
+- `rn-implement`'s next-issue scoring reflects an issue's real priority even when its frontmatter carries no `priority:` key — it resolves filename-first rather than defaulting 1,105 issues to P3 (Consequence 5).
+- `sync.py`'s GitHub pull path writes `priority:` into frontmatter, so pulled issues are not born in the absent-frontmatter state (Consequence 5a).
+- The existing 1,105 absent-frontmatter files are backfilled, so the frontmatter-only readers that this issue declines to convert are correct for the whole corpus rather than for the 65% that happen to carry the key.
 
 ## Motivation
 
@@ -110,9 +140,9 @@ Two motivations, not one:
 
 ## Proposed Solution
 
-Four coordinated changes. (1) alone closes the reported symptom; (2) is required so the fix does not become destructive; (3) and (4) prevent the fix from resting on a field that silently rots.
+Six coordinated changes, lettered **A-F** to keep them distinct from the numbered Implementation Steps below (the two lists are not 1:1 — the mapping is given per change). **A** alone closes the reported symptom; **B** is required so the fix does not become destructive; **C** and **D** prevent the fix from resting on a field that silently rots; **E** and **F** were added by pre-implementation review to address Consequence 5, which the earlier four-change plan assumed away.
 
-**1. One shared priority resolver with a frontmatter fallback.** Following the `resolve_issue_path()` precedent (BUG-3229 — duplicate readers consolidated into one shared resolver rather than reconciled after the fact; see Codebase Research Findings), add a **module-level** function in `issue_parser.py` rather than a private method, so every current reader can call it:
+**A. One shared priority resolver with a frontmatter fallback.** _(Implementation Steps 1, 2, 4.)_ Following the `resolve_issue_path()` precedent (BUG-3229 — duplicate readers consolidated into one shared resolver rather than reconciled after the fact; see Codebase Research Findings), add a **module-level** function in `issue_parser.py` rather than a private method, so every current reader can call it:
 
 ```python
 def resolve_priority(
@@ -139,27 +169,44 @@ def resolve_priority(
 
 `IssueParser._parse_priority` becomes a thin wrapper passing `default=config.issue_priorities[-1]`. `parse_file` already reads content and calls `parse_frontmatter` — the resolution call moves below that, so no extra file read.
 
-Call sites converted in this issue: `cli/issues/show.py:80-81` (`_parse_card_fields` already receives `config`, so no plumbing needed), `cli/issues/normalize.py:118-121`, and `sync.py:320`.
+Call sites converted in this issue: `cli/issues/show.py:80-81` (`_parse_card_fields` already receives `config`, so no plumbing needed), `cli/issues/normalize.py:118-121`, and `sync.py:320`. At `sync.py` the frontmatter is **already parsed five lines below** the priority regex (`:324-325`, feeding the `blocked-by` and `labels` handling), so the conversion is a reorder — move that read above the priority branch — not a new file read. The `Sync` class holds `self.config: BRConfig` (`sync.py:246, 257`), so no plumbing is needed there either.
 
-Note the config-driven widening this implies: `show.py:79` and `sync.py:320` currently hardcode `^(P\d)-` and `normalize.py:119` hardcodes `^(P[0-5])-`, while `resolve_priority` iterates `config.issue_priorities`. For a project that customizes `issues.priorities`, these three sites change behavior (more correctly, but not identically — e.g. `show.py` stops matching a hypothetical `P7-`). Also confirm `BRConfig.issue_priorities` (`config/core.py:714`) and `config.issues.priorities` — which `prioritize.py:119` uses — are the same list before the resolver takes `BRConfig`.
+Note the config-driven widening this implies: `show.py:80` hardcodes `^(P\d)-`, `skip.py:47` hardcodes `^P\d-`, and `sync.py:320` / `normalize.py:120` hardcode `^(P[0-5])-`, while `resolve_priority` iterates `config.issue_priorities`. For a project that customizes `issues.priorities`, these four sites change behavior (more correctly, but not identically — e.g. `show.py` stops matching a hypothetical `P7-`). `prioritize.py` is already config-driven via `_priority_prefix_re(config)` (`:60-61`) and needs no widening.
 
-**Out of scope, stated deliberately:** `issue_history/parsing.py:58,744` reads past filenames for analytics, not live planning signal, and keeps its filename-only behavior (note it defaults to `"P5"`, not `None`).
+**Resolved during pre-implementation review 2026-08-21** (this was previously an open confirmation item): `BRConfig.issue_priorities` and `config.issues.priorities` are the *same object*, not merely equal — `config/core.py:714-716` is a property returning `self._issues.priorities`, the identical list `prioritize.py:119` reads. `resolve_priority` may take `BRConfig` with no reconciliation and no extra test.
 
-**Newly identified during pre-implementation review — needs an explicit in/out decision, currently unresolved:**
+**Out of scope, stated deliberately** — two filename-only priority reads keep their current behavior:
 
-- `loops/rn-implement.yaml:363` — reads frontmatter directly to order the implement queue. Once step 5 keeps the two copies in sync this is *correct by construction*, so the minimal answer is "no change, covered by step 5." Say so explicitly rather than leaving it unlisted.
-- `cli/issues/set_status.py:173`, `session_store/writers.py:383`, `:2542`, `:2666` — frontmatter-only history-DB ingest, likewise fixed transitively by step 5. Same treatment.
-- `session_store/writers.py:2490-2510` `_derive_type_priority` — the one that genuinely conflicts; see Decision Rules § Precedence divergence.
-- `cli/issues/format_check.py:329` `_fix_template_placeholders` — see step 6's fix-order note below.
+- `issue_history/parsing.py:58,744` reads past filenames for analytics, not live planning signal (note it defaults to `"P5"`, not `None`).
+- `issue_parser.py:272` — inside `resolve_issue_path`, `pool` entries are filtered by `p.name.upper().startswith(f"{priority}-")` as a *duplicate-path disambiguation tiebreaker*, not as a priority read. It answers "which of these same-numbered files did the caller mean," where the caller supplied the prefix from a path string. Leave it filename-only. (Flagged explicitly because it uses `startswith`, not a regex, so step 10's completeness grep cannot see it at all — it is caught by reading or not at all. See Tests § Completeness verification.)
 
-**2. Stop `normalize` from stamping a wrong prefix.** `_priority_and_defaulted` calls `resolve_priority(..., default=None)` and only falls back to `"P3"` (with `defaulted=True`) when that returns `None`. Without this, step 1's filename-wins precedence promotes normalize's invented `P3` over the real frontmatter value — see Consequence 4.
+**Frontmatter-only readers — status after review (previously "unresolved"):**
 
-**3. Keep frontmatter in sync on every prefix rewrite.** Two writers, not one:
+- `loops/rn-implement.yaml:363` — **now in scope, Implementation Step 11.** The earlier plan said "no change, covered by step 5." **That was wrong**: step 5 syncs frontmatter only on a prefix *rewrite*, so the 1,105 files of Consequence 5 keep defaulting to P3 forever. Fix it directly — `issue_idx.get(issue_id)` (`:301`) already yields the `Path`, so the change is to derive the prefix from `p.name` first and fall back to `fm.get("priority")`, then `"P3"`.
+- `cli/issues/set_status.py:173`, `session_store/writers.py:383`, `:2542`, `:2666` — frontmatter-only history-DB ingest. Genuinely transitive **only once change F's backfill lands**; until then they record `None` for the Consequence 5 population. Left unconverted deliberately (they are ingest sites, not planning signal), but the backfill is what makes that defensible — not step 5.
+- `session_store/writers.py:2490-2510` `_derive_type_priority` — the one that genuinely conflicts; see Decision Rules § Precedence divergence. Note it is the *only* reader correct for the Consequence 5 population today.
+- `cli/issues/format_check.py:329` `_fix_template_placeholders` — see the Fix-order rule below. The function already has `config`, `path`, `content`, and the parsed `fm` in scope (`format_check.py:303, 327-329`), so sourcing from `resolve_priority` is a one-line substitution.
+
+**B. Stop `normalize` from stamping a wrong prefix.** _(Implementation Step 3.)_ `_priority_and_defaulted` calls `resolve_priority(..., default=None)` and only falls back to `"P3"` (with `defaulted=True`) when that returns `None`. Without this, change A's filename-wins precedence promotes normalize's invented `P3` over the real frontmatter value — see Consequence 4.
+
+Two corrections to the earlier plan for this function, both from pre-implementation review:
+
+- **It needs `config`, not just `frontmatter`.** The signature given in Program Design (`_priority_and_defaulted(filename, frontmatter)`) cannot call `resolve_priority`, which requires a `BRConfig`. The real signature is `_priority_and_defaulted(filename: str, frontmatter: dict[str, Any], config: BRConfig) -> tuple[str, bool]`. `config` is already in scope at every call site.
+- **It has three call sites, not two.** `normalize.py:290` (`missing_id`), `:317` (the duplicate-number branch, inside the `ordered[1:]` loop), and `:338` (the single-entry non-normalized branch). The Location section previously listed only `:292` and `:339` — off by two, and omitting `:317` entirely. All three must be plumbed or normalize stays half-fixed.
+- **This adds a file read per candidate.** None of the three sites has content in hand — the scan function works on `path.name` alone (`normalize.py` reads content only at `:198`, `:411`, `:456`, in other functions). The candidate set is bounded to files with missing/duplicate IDs, not the whole corpus, so the cost is acceptable; noted so it is a decision rather than a surprise.
+
+**C. Keep frontmatter in sync on every prefix rewrite.** _(Implementation Step 5.)_ Two writers, not one:
 
 - `apply_priorities` (`prioritize.py:99-148`) — use the established rename+write-as-one-operation idiom: `update_frontmatter(content, {"priority": priority})` then `git_mv_with_fallback(path, new_path, content=updated)`. **Critically, the early-return no-op branch at `:134-141` (`new_path == path`) must also reconcile frontmatter** — that branch is the exact state of all four existing mismatches, so leaving it untouched means step 8's reconciliation cannot be performed with the tool itself.
 - `ll-issues skip` (`skip.py:47-56`) rewrites the prefix with a bare `re.sub` and never touches frontmatter — the same defect, with the same already-at-target early return at `:49`. The write itself is cheap: `skip_issue` (`issue_lifecycle.py:1365-1397`) already reads `raw_content` and threads it through `git_mv_with_fallback(content=...)`, so it only needs `update_frontmatter(raw_content, {"priority": <derived from new_path.name>})` folded in ahead of `_build_skip_section`. The `path == new_path` early return in `skip.py:49-56` returns before `skip_issue` is ever called, so it needs its own reconciliation. Without both, `skip` keeps manufacturing exactly the drift step 6's lint reports.
 
-**4. Drift lint + one-time reconciliation.** A `format-check` rule reporting filename↔frontmatter disagreement, plus a pass over the four existing mismatches to bring them into agreement.
+**D. Drift lint + one-time reconciliation.** _(Implementation Steps 6 and 8.)_ A `format-check` rule reporting filename↔frontmatter disagreement, plus a pass over the four existing mismatches to bring them into agreement.
+
+Scope note: the rule fires only when **both** sources are present and differ. It is therefore silent on the 1,105 absent-frontmatter files of Consequence 5 — deliberately, because "frontmatter key absent" is not drift, it is the normal state for two-thirds of the corpus until change F lands. Do **not** widen this rule into a "missing `priority:`" gap kind; that would report 1,105 gaps on this repo and break the paired `TestCorpusHasNo…` self-check that every gap kind ships with.
+
+**E. Fix `rn-implement`'s queue scoring directly.** _(Implementation Step 11.)_ `loops/rn-implement.yaml:363` resolves the filename prefix first (via `issue_idx[issue_id].name`, already in scope at `:301`), falling back to `fm.get("priority")` and then `"P3"`. This is the only frontmatter-only reader that drives a *decision* rather than a record, and per Consequence 5 it is wrong for 1,105 issues today. Not covered by change C.
+
+**F. Backfill the absent `priority:` frontmatter across the corpus.** _(Implementation Step 12.)_ A one-time pass writing `priority:` (derived from the filename prefix, i.e. `resolve_priority`'s own precedence) into the 1,105 prefixed files that lack the key, plus the `sync.py:713-719` one-liner so the GitHub pull path stops manufacturing new ones (Consequence 5a). This is what makes "left unconverted, fixed transitively" an honest description of the four history-DB ingest sites rather than an assumption. Land it **after** changes A-C so the value written is the resolved one.
 
 ## Integration Map
 
@@ -168,7 +215,8 @@ Note the config-driven widening this implies: `show.py:79` and `sync.py:320` cur
 | `scripts/little_loops/issue_parser.py` | New module-level `resolve_priority()`; `_parse_priority` becomes a wrapper; call site moves below `parse_frontmatter` |
 | `scripts/little_loops/cli/issues/show.py` | `:80-81` regex → `resolve_priority(..., default=None)` so `show` agrees with the parser |
 | `scripts/little_loops/cli/issues/normalize.py` | `_priority_and_defaulted` (`:118-121`) consults frontmatter before defaulting to `P3` — stops `--apply` stamping a wrong prefix |
-| `scripts/little_loops/sync.py` | `:320` regex → `resolve_priority(..., default=None)` so GitHub labels match the resolved priority |
+| `scripts/little_loops/sync.py` | `:320` regex → `resolve_priority(..., default=None)` so GitHub labels match the resolved priority (move the existing `:324-325` frontmatter read above it); **plus** `_create_local_issue`'s frontmatter dict (`:713-719`) gains `"priority": priority` so pulled issues are not born key-less (Consequence 5a) |
+| `scripts/little_loops/loops/rn-implement.yaml` | `:363` — resolve the filename prefix from `issue_idx[issue_id].name` before falling back to `fm.get("priority")`; change E |
 | `scripts/little_loops/cli/issues/prioritize.py` | `apply_priorities` threads updated content through `git_mv_with_fallback(content=...)`; **no-op branch (`:134-141`) reconciles frontmatter too** |
 | `scripts/little_loops/cli/issues/skip.py` | `:47-56` — same frontmatter sync on prefix rewrite, including the already-at-target early return at `:49` |
 | `scripts/little_loops/cli/issues/format_check*.py` | New drift gap kind; **plus** `_fix_template_placeholders` (`:329`) must not substitute a priority the drift rule considers stale — see step 6 |
@@ -176,16 +224,18 @@ Note the config-driven widening this implies: `show.py:79` and `sync.py:320` cur
 | `docs/reference/ISSUE_TEMPLATE.md` | Document the frontmatter `priority:` field and the precedence rule |
 | `scripts/tests/test_issue_parser*.py` | Fallback, precedence, and regression coverage |
 | `.issues/` (4 files) | Reconcile existing mismatches |
+| `.issues/` (1,105 files) | Backfill absent frontmatter `priority:` from the filename prefix (change F) |
 
-**Explicitly out of scope** (decision, not oversight): `scripts/little_loops/issue_history/parsing.py:58,744` keeps its filename-only priority regex — it reads historical filenames for analytics, not live planning signal.
+**Explicitly out of scope** (decision, not oversight): `scripts/little_loops/issue_history/parsing.py:58,744` and `scripts/little_loops/issue_parser.py:272` keep their filename-only priority reads — the first is historical analytics rather than live planning signal, the second is a duplicate-path disambiguation tiebreaker inside `resolve_issue_path`, not a priority read. `parsing.py` is an allowlist entry in step 10; `issue_parser.py:272` is invisible to that grep (it uses `startswith`) and is recorded here instead.
 
-**Transitively fixed by step 5, no code change** (listed so the omission is a decision): `loops/rn-implement.yaml:363`, `cli/issues/set_status.py:173`, `session_store/writers.py:383`, `:2542`, `:2666`. Each reads frontmatter directly and becomes correct once the prefix-rewrite sync rule holds. Add a regression test that a re-prioritized issue's next-issue ordering and history-DB row both reflect the new priority, so this transitivity is asserted rather than assumed.
+**Frontmatter-only readers left unconverted** (a decision, and *conditional* on change F): `cli/issues/set_status.py:173`, `session_store/writers.py:383`, `:2542`, `:2666`. Each reads frontmatter directly for history-DB ingest and is correct once the key is present everywhere — which is change F's job, **not** step 5's. The earlier claim that step 5 alone fixed these was wrong (see Consequence 5) and `loops/rn-implement.yaml:363` has been promoted out of this list into change E. Add a regression test that a re-prioritized issue's next-issue ordering and history-DB row both reflect the new priority, plus one that an *absent-frontmatter* issue is scored at its filename priority, so the transitivity is asserted rather than assumed.
 
 ### Dependent Files (Callers/Importers)
 
 _Wiring pass added by `/ll:wire-issue`:_
-- `scripts/tests/test_ll_issues_prioritize.py` — `TestApplyPriorities` (lines ~160-256, 8 test methods) calls `apply_priorities` directly; none currently reads or asserts on the frontmatter `priority:` value, so the new `update_frontmatter` call in step 3 has zero coverage until this file is extended [Agent 1/3 finding]
+- `scripts/tests/test_ll_issues_prioritize.py` — `TestApplyPriorities` (lines ~160-256, 8 test methods) calls `apply_priorities` directly; none currently reads or asserts on the frontmatter `priority:` value, so the new `update_frontmatter` call in **step 5** has zero coverage until this file is extended [Agent 1/3 finding; step reference corrected during pre-implementation review — the `apply_priorities` write is step 5, not step 3]
 - `scripts/tests/test_show.py` — `TestParseCardFields` (~lines 289-590+, 20+ test methods) exercises `_parse_card_fields` directly, the exact function step 2 modifies; no existing case covers a prefix-less filename with a frontmatter `priority:` present [Agent 1/3 finding]
+- `scripts/little_loops/mcp_server/tools.py:141` and `scripts/little_loops/mcp_server/resources.py:234` — **both call `_parse_card_fields(path, config)` directly** [added by pre-implementation review]. Step 2 therefore fixes the ll-mcp `issues_query` summary cards named in Motivation *transitively*, at no extra cost — the ll-mcp half of the motivation is discharged by the `show.py` change alone. Check `scripts/tests/test_mcp_*` for any card-priority assertion that pins today's `None`-for-prefix-less behavior and would flip.
 
 ### Tests
 
@@ -196,15 +246,35 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_issue_parser.py` — new `TestCheckFormatGapsPriorityDrift`-style class mirroring `TestCheckFormatGapsMalformedDepId` (:4369-4458), plus a paired `TestCorpusHasNoPriorityDrift`-style class mirroring `TestCorpusHasNoMalformedDepIds` (:4461-4477) asserting the four reconciled `.issues/` files (step 8) and the rest of the corpus report zero drift [Agent 3 finding]
 - `scripts/tests/test_issue_parser.py::TestIssueParser::test_parse_file_without_priority_prefix` (:423-441) — re-verify under the new fallback; this file has no frontmatter `priority:` so its `P3`/last-priority assertion should hold unchanged, but it's the existing regression anchor for the code path being modified [Agent 3 finding]
 - `scripts/tests/test_issue_parser_fuzz.py` — optional: the `"no_priority"` filename-structure generator (~lines 93-107) and the frontmatter `priority:` draw (~line 69) currently live in separate generators; composing them into one property test would cover the fallback path under fuzzing [Agent 3 finding]
-- **Completeness verification (de-risks Criterion D / Change Surface):** after all steps land, run
+- **Completeness verification (de-risks Criterion D / Change Surface).** _Rewritten by pre-implementation review 2026-08-21 — the previously specified grep was wrong in both directions and, wired into an "expect empty" test as instructed, would have shipped a guard that guards nothing._ The defects, each confirmed by running it against the working tree:
+
+  - **It missed `skip.py:47`** — `re.sub(r"^P\d-", ...)` has no capture group, and the pattern required `\)-`. That is the literal site change C must fix, so the guard gave zero protection exactly where it mattered most.
+  - It likewise missed `normalize.py:129`, `hooks/post_tool_use.py:97,107`, and `issues/prose_deps.py:21`.
+  - **It matched `cli/issues/search.py:109`** — `re.match(r"^(P\d)-(P\d)$", val)`, the `--priority P1-P3` *range argument* parser, which is not a filename regex and never goes away. An "expect empty" test would have failed permanently.
+  - Its whole-file `grep -v issue_parser.py` exclusion also hid `issue_parser.py:272`, the `resolve_issue_path` tiebreaker (now named under Out of scope).
+
+  Widening the pattern to make the paren optional is **still not enough** — `issue_history/parsing.py:58`, `:744` and `session_store/writers.py:2433` all use the bare `re.match(r"^(P\d)", filename)` form with *no trailing hyphen*, and those three are priority readers. Since false negatives are the failure mode that broke the original, use the maximally inclusive pattern and absorb the cost in the allowlist:
 
   ```bash
-  grep -rn -E "P\[0-5\]\)-|P\\\\d\)-|_FILENAME_PRIORITY_RE" scripts/little_loops --include='*.py' \
-    | grep -v 'scripts/little_loops/issue_parser.py' \
-    | grep -v 'scripts/little_loops/issue_history/parsing.py'
+  grep -rn -E "P\[0-5\]|P\\\\d" scripts/little_loops --include='*.py'
   ```
 
-  Expected output: empty. Any hit is a raw filename-only priority regex that step 1-7's conversion missed and should have called `resolve_priority` instead (the two `grep -v` exclusions are `resolve_priority`'s own implementation and the deliberately out-of-scope analytics reader). Wire this into a test (e.g. a corpus-style assertion mirroring `TestCorpusHasNoMalformedDepIds`) rather than a manual pre-merge check, so it stays enforced after the issue closes.
+  This returns **32 hits across 16 files** today — small enough to enumerate, and it cannot miss a filename-priority regex by shape.
+
+  **"Expect empty" is the wrong assertion shape**, since most hits are legitimate and permanent. Wire this as an **allowlist test** instead: a frozen set of `path:line` entries, each with a one-line reason, asserted equal to the grep's output. It mirrors the corpus-self-check spirit of `TestCorpusHasNoMalformedDepIds` but compares against a known set rather than the empty set, so it fails loudly when a *new* raw priority regex appears — the thing actually worth guarding. Categories of legitimate survivor, to be enumerated concretely at implementation time (re-derive the line numbers; do not trust these):
+
+  | Site(s) | Why it legitimately survives |
+  |---|---|
+  | `cli/issues/search.py:109,114`, `mcp_server/tools.py:588,683` | priority-*argument* parsing / JSON-schema `pattern`; operates on a CLI or MCP value, never a filename |
+  | `cli/issues/normalize.py:129` | `_slug_for` *strips* the prefix to build a slug; a text operation, not a priority read |
+  | `cli/migrate.py:16`, `issues/prose_deps.py:21`, `issue_parser.py:58,155,1578`, `issue_lifecycle.py:1400` | optional `(?:P\d-)?` prefix inside an **issue-ID** regex; the priority group is discarded |
+  | `issue_parser.py:50,329`, `cli/issues/refine_status.py:533` | normalized-filename convention check and its `--help`/docstring text |
+  | `cli/issues/clusters.py:68` | `[P3]`-style priority tag inside cluster body text |
+  | `cli/issues/prioritize.py:61`, `sync.py:292`, `session_store/writers.py:2494`, `issue_history/parsing.py:52`, `issue_parser.py:3091` | comments and docstrings |
+  | `hooks/post_tool_use.py:97,107` | gates "is this an issue file" and extracts ID+slug; does not read priority as a value. **Known limitation, not fixed here:** it skips prefix-less files entirely, so a prefix-less repo gets no post-tool-use issue handling at all |
+  | `issue_history/parsing.py:58,744` | the deliberately out-of-scope analytics reader (defaults to `"P5"`) |
+
+  Two notes on exclusions. First, `issue_parser.py` and `issue_history/parsing.py` are **no longer excluded wholesale** via `grep -v` — their entries sit in the allowlist like any other, so the deliberate exclusions stay visible instead of hidden. Second, and importantly: **`issue_parser.py:272` does not appear in this grep at all**, because it uses `p.name.upper().startswith(f"{priority}-")` rather than a regex — as does `resolve_priority`'s own implementation. The grep is a regex-shape guard, not a complete census of filename-priority reads; `:272` is caught by reading, and is recorded under Proposed Solution § Out of scope so it is not rediscovered as a defect later.
 
 ### Documentation
 
@@ -237,7 +307,7 @@ No new types. `IssueInfo.priority` (`str`) and `IssueInfo.priority_int` (`int`) 
 
 - `resolve_priority(filename: str, frontmatter: dict[str, Any], config: BRConfig, *, default: str | None = None) -> str | None` — **new module-level function** in `issue_parser.py` (not a private method — three CLI modules outside the parser call it). Filename prefix first, frontmatter `priority:` second, caller-supplied `default` last.
 - `IssueParser._parse_priority(self, filename: str, frontmatter: dict[str, Any]) -> str` — retained as a thin wrapper over `resolve_priority` with `default=self.config.issue_priorities[-1]`; gains the `frontmatter` parameter.
-- `_priority_and_defaulted(filename: str, frontmatter: dict[str, Any]) -> tuple[str, bool]` (`normalize.py`) — gains the `frontmatter` parameter; `defaulted` is `True` only when *neither* source specifies a priority.
+- `_priority_and_defaulted(filename: str, frontmatter: dict[str, Any], config: BRConfig) -> tuple[str, bool]` (`normalize.py`) — gains **both** the `frontmatter` and `config` parameters; `defaulted` is `True` only when *neither* source specifies a priority. **Corrected during pre-implementation review**: the earlier two-parameter form could not call `resolve_priority`, which requires a `BRConfig`. `config` is in scope at all three call sites (`normalize.py:290`, `:317`, `:338` — the middle one, in the duplicate-number branch, was previously unlisted).
 - `apply_priorities(config: BRConfig, mapping: dict[str, str]) -> list[RenameResult]` — unchanged signature; body reads content, updates frontmatter, and threads it through the rename.
 - `update_frontmatter(content: str, updates: dict[str, Any]) -> str` — existing helper (`scripts/little_loops/frontmatter.py:439`). Note it is a **pure content transform that returns new content**; it does not take a path and does not write. The caller performs the write.
 - `git_mv_with_fallback(original_path: Path, new_path: Path, content: str | None = None) -> None` — existing helper (`scripts/little_loops/issue_lifecycle.py:1314`); its optional `content=` parameter is what makes rename+frontmatter-write a single filesystem operation.
@@ -272,7 +342,12 @@ No new types. `IssueInfo.priority` (`str`) and `IssueInfo.priority_int` (`int`) 
 
 **Precedence divergence rule (decided 2026-08-21).** `session_store/writers.py:_derive_type_priority` (`:2490-2510`) resolves priority frontmatter-first — the inverse of the rule above — and feeds the history DB. Two contradictory precedences must not coexist unexamined.
 
-**Decision: convert `_derive_type_priority` to call `resolve_priority(..., default=None)`.** It is a two-source resolver already; the only change is which source wins, and post-step-5 the sources agree anyway. This changes recorded history-DB priority for pre-fix drifted files ingested after the change — acceptable, since the filename value is the correct one for all four current mismatches.
+**Decision: convert `_derive_type_priority` to call `resolve_priority(..., default=None)`.** It is a two-source resolver already; the only change is which source wins, and post-change-C the sources agree anyway. This changes recorded history-DB priority for pre-fix drifted files ingested after the change — acceptable, since the filename value is the correct one for all four current mismatches.
+
+**Two hazards in that conversion, added by pre-implementation review 2026-08-21:**
+
+1. **`_derive_type_priority` resolves `type` *and* `priority` together**, both frontmatter-first (`writers.py:2496-2509`), and returns them as a tuple. Only the **priority** half changes. A naive "convert the function to `resolve_priority`" reading would silently invert the `type` precedence too, which nothing in this issue justifies and no test covers. Change the priority branch (`:2506-2509`) only; leave the `_FILENAME_TYPE_RE` branch (`:2502-2505`) exactly as-is.
+2. **Do not delete the filename fallback.** Per Consequence 5, `_derive_type_priority` is the *only* frontmatter-reading site that is correct for the 1,105 absent-frontmatter files, precisely because it falls back to `_FILENAME_PRIORITY_RE`. Converting it to `resolve_priority(..., default=None)` preserves that (the resolver checks the filename first and frontmatter second, so both sources remain consulted) — but an implementer who instead "simplifies" it to a bare `fm.get("priority")` would regress a third of history-DB ingest. Pin the absent-frontmatter case with a test.
 
 **Rejected: leave it inverted with an inline comment citing BUG-3286.** Only defensible if history-DB ingest should record what the file claimed at write time rather than what the planner resolved — nobody has made that argument, and a codebase with one resolver and one precedence is simpler to reason about than two coexisting rules that happen to agree today. Not adopted.
 
@@ -291,7 +366,9 @@ No new types. `IssueInfo.priority` (`str`) and `IssueInfo.priority_int` (`int`) 
 7. Convert `session_store/writers.py:_derive_type_priority` to call `resolve_priority(..., default=None)` per the Precedence divergence rule. Not optional; it is the one site where the new rule actively contradicts existing behavior.
 8. Reconcile the four existing `.issues/` mismatches — with step 5 landed, `ll-issues prioritize --apply` can do this itself; confirm the new rule reports clean afterwards.
 9. Update `docs/reference/ISSUE_TEMPLATE.md` to document the field and precedence, including that frontmatter is the source consumed by `rn-implement` and the history DB.
-10. Run the completeness grep below (also see Tests) and confirm it reports no remaining raw priority-prefix regex outside `resolve_priority` itself and the explicitly out-of-scope `issue_history/parsing.py`.
+10. Wire the completeness grep as an **allowlist test**, not an "expect empty" assertion — see Tests § Completeness verification for the corrected pattern, the reason the original was wrong in both directions, and the survivor table. Confirm no un-allowlisted raw priority regex remains.
+11. **(New — change E.)** Fix `loops/rn-implement.yaml:363` to resolve the filename prefix from `issue_idx[issue_id].name` before falling back to `fm.get("priority")` and then `"P3"`. Test that an issue with a `P0-`/`P1-` prefix and no frontmatter `priority:` outranks a `P2-` issue that has the key — the exact inversion happening today for 1,105 issues (Consequence 5). **This is not covered by step 5** and was previously mislabelled "transitively fixed."
+12. **(New — change F.)** Backfill the absent frontmatter `priority:` across `.issues/`: add `"priority": priority` to `sync.py`'s `_create_local_issue` frontmatter dict (`:713-719`) so no new ones are minted (Consequence 5a), then run a one-time pass writing the filename-derived priority into the ~1,105 prefixed files lacking the key. Land **after** steps 1-5 so the value written is the resolved one. Re-derive the count first; assert afterwards that the prefixed-but-key-less population is zero, and that step 6's drift rule still reports only the reconciled set.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
@@ -311,16 +388,30 @@ _Added by pre-implementation review 2026-08-21:_
 - Convert `session_store/writers.py:_derive_type_priority` (`:2490-2510`) to call `resolve_priority(..., default=None)` per Decision Rules § Precedence divergence (decided: adopt the shared resolver). Add a test pinning this precedence, so the next reader cannot mistake it for an oversight
 - Apply the Fix-order rule to `format_check.py:_fix_template_placeholders` (`:302-350`) and test that `--fix` on a drifted file does not copy the stale frontmatter priority into the body's `Status:`/`Impact:` lines
 - Add a transitivity test asserting that after `prioritize --apply` the frontmatter-only readers see the new value — specifically `rn-implement`'s `composite_score` input and the `issue_events`/`issue_snapshots` priority column — so the "fixed transitively by step 5" claim is asserted rather than assumed
-- Confirm `BRConfig.issue_priorities` and `config.issues.priorities` are the same list before `resolve_priority` takes `BRConfig`; add a test for a project with a customized `issues.priorities` if they diverge
+- ~~Confirm `BRConfig.issue_priorities` and `config.issues.priorities` are the same list~~ — **resolved 2026-08-21, no work required.** `config/core.py:714-716` is a property returning `self._issues.priorities`; they are the same object, not merely equal. No reconciliation and no divergence test needed.
+
+_Added by second pre-implementation review 2026-08-21 (Consequence 5 and the grep correction):_
+
+- Fix `loops/rn-implement.yaml:363` (step 11) and test that a prefix-`P0`/no-frontmatter-key issue outranks a prefix-`P2`/has-key issue in `composite_score` ordering
+- Add `"priority": priority` to `sync.py:_create_local_issue`'s frontmatter dict (`:713-719`) and test that a pulled issue's frontmatter priority matches its filename prefix
+- Backfill the ~1,105 absent-frontmatter files (step 12) and add a corpus assertion that the prefixed-but-key-less population is zero
+- Pin `_derive_type_priority`'s **filename fallback** with a test for the absent-frontmatter case — the conversion in step 7 must not regress it (Decision Rules § Precedence divergence, hazard 2) — and assert the `type` half of its precedence is *unchanged* (hazard 1)
+- Plumb `config` **and** `frontmatter` into `_priority_and_defaulted` at all **three** call sites (`normalize.py:290`, `:317`, `:338`); the duplicate-number branch at `:317` was previously unlisted
+- Replace step 10's "expect empty" grep with an allowlist test (Tests § Completeness verification) — as originally specified it missed `skip.py:47` and would have failed permanently on `search.py:109`
+- Check `scripts/tests/test_mcp_*` for card-priority assertions that pin today's prefix-less `None`, since `mcp_server/tools.py:141` and `resources.py:234` inherit the `show.py` change
 
 ## Impact
 
 <!-- ll-private-ok: external planning hub impact assessment -->
 **Priority: P2.** Silent corruption of the core planning signal, no crash and no data loss. It fully disables priority ordering for any prefix-less repo (ll-product: 125 open issues all reading P5) and leaves an *active* two-sources-of-truth defect in every repo including this one.
 
-Correction from the original capture, which called the four drifts "cosmetic today": they are not. Because seven sites read frontmatter directly (see Current Behavior), each drifted issue is currently mis-ordered by `rn-implement`'s queue scoring, mis-recorded in `issue_events`/`issue_snapshots`, and one `format-check --fix` away from having the stale value written into its body prose. Still P2 rather than P1 — the blast radius is four issues, the effect is a one-tier ordering error rather than a failure, and nothing is unrecoverable — but the internal half of this bug is live, not latent.
+Correction from the original capture, which called the four drifts "cosmetic today": they are not. Because seven sites read frontmatter directly (see Current Behavior), each drifted issue is currently mis-ordered by `rn-implement`'s queue scoring, mis-recorded in `issue_events`/`issue_snapshots`, and one `format-check --fix` away from having the stale value written into its body prose.
 
-**Effort: 3 (medium-high).** Revised up from 2 after refinement, and held at 3 after pre-implementation review: ten source files plus docs and tests. The shared-resolver conversion is mechanical, but three of the added sites (`normalize`, `skip`, the two already-at-target branches) are *write* paths rather than read paths, two existing tests change meaning rather than just gaining assertions, and the review added `_derive_type_priority` plus the `_fix_template_placeholders` fix-order change. The format-check rule and its nine touch points remain the single largest chunk.
+**Second correction, from pre-implementation review 2026-08-21: "the blast radius is four issues" was wrong** — that was the earlier revision's stated reason for holding at P2, and it counted only the files where the two sources *disagree*. The real internal blast radius is **1,105 files** whose frontmatter `priority:` is absent entirely (Consequence 5), every one of which `rn-implement` currently scores as P3 regardless of a `P0-`/`P1-` prefix. That is an ordering defect roughly 275× wider than the drift the issue was originally written around, and it is live in this repo right now.
+
+**Priority held at P2 anyway**, on different reasoning than before: the failure is still silent mis-ordering rather than breakage or loss, every affected file's true priority remains recoverable from its filename, and the one reader that feeds durable state (`_derive_type_priority` → history DB) already falls back to the filename correctly. A P1 argument is available if the implement queue's ordering is considered load-bearing for autonomous runs — flag it if `rn-implement` is in active use.
+
+**Effort: 3 (medium-high).** Revised up from 2 after refinement, held at 3 after the first pre-implementation review, and held at 3 again after the second: twelve source files plus docs, tests, and a one-time corpus backfill. The shared-resolver conversion is mechanical, but three of the added sites (`normalize`, `skip`, the two already-at-target branches) are *write* paths rather than read paths, two existing tests change meaning rather than just gaining assertions, and the review added `_derive_type_priority` plus the `_fix_template_placeholders` fix-order change. The format-check rule and its nine touch points remain the single largest chunk.
 
 **Risk: medium.** The precedence choice makes the read change byte-identical for every prefixed file, so existing repos see no read behavior change. Three real risks:
 
@@ -328,7 +419,9 @@ Correction from the original capture, which called the four drifts "cosmetic tod
 2. **New write surface.** `apply_priorities` currently never opens files; adding a content write makes it heavier and more failure-prone. Use the `git_mv_with_fallback(content=...)` single-operation idiom rather than a post-rename write, and check staging behavior.
 3. **Test semantics change.** `test_already_at_target_priority_is_noop` / `test_apply_is_idempotent` stop being filesystem no-ops. Restating them is intended, not a regression — but it removes the guard that would have caught an accidental rename, so the replacement must still assert no rename occurred.
 4. **Two precedence rules in one codebase.** Until step 7 lands, `resolve_priority` (filename-wins) and `_derive_type_priority` (frontmatter-wins) give different answers for the same drifted file — the planner and the history DB would disagree by construction. Step 7 is what keeps this a transition state rather than a permanent inconsistency.
-5. **Config-driven regex widening.** Converting `show.py`/`sync.py`/`normalize.py` from hardcoded `P\d`/`P[0-5]` to `config.issue_priorities` changes behavior for projects that customize `issues.priorities`. No effect on this repo; worth a release note if any consumer customizes the list.
+5. **Config-driven regex widening.** Converting `show.py`/`skip.py`/`sync.py`/`normalize.py` from hardcoded `P\d`/`P[0-5]` to `config.issue_priorities` changes behavior for projects that customize `issues.priorities`. No effect on this repo; worth a release note if any consumer customizes the list.
+6. **Corpus backfill touches ~1,105 files in one commit** (step 12). It is a mechanical frontmatter insert derived from each filename, so it is reviewable in aggregate rather than per-file, but it will dominate the diff and should land as its own commit — separate from the code changes — so a bisect can isolate it. Verify `update_frontmatter` round-trips cleanly on a sample first; a formatting regression across 1,105 issue files is the one genuinely expensive mistake available in this issue.
+7. **Step 11 edits a loop YAML with an embedded Python heredoc.** `rn-implement.yaml:363` sits inside a `PYEOF` block, so `${...}` escaping rules apply to the surrounding FSM action and `ll-loop validate` must pass afterwards. Keep the change inside the Python, not the shell wrapper.
 
 <!-- ll-private-ok: external planning hub scope documentation -->
 **Verification claim.** The reproduction above and the mismatch scan were both executed against this checkout at capture time and re-executed during pre-implementation review (2026-08-21); the P5 result and the four named mismatches reproduce exactly. Re-derived counts: **2,089** files carry a frontmatter `priority:` (capture said 2,083 — re-derive rather than trusting either) and **0** files lack a filename prefix, so Consequence 1 cannot be reproduced in-repo. The capture's characterization of those 2,083 fields as "write-only" was **wrong** and is corrected in Current Behavior. Every line anchor in Location, the `git_mv_with_fallback(content=)` parameter, `_parse_card_fields(path, config)`, and the 25-field `FormatGaps` count were verified against the working tree. The ll-product figures cited in the originating report (`{P5: 125}`, the `P3:118, P2:109, P4:38, P1:20, P0:13, P5:4` frontmatter spread, the ll-mcp summary cards) are from an external repo and were **not** independently verified here; they match the predicted symptom of the confirmed mechanism.
@@ -382,7 +475,8 @@ _Line numbers re-anchored 2026-08-21 against the current working tree; prefer th
 - `scripts/little_loops/cli/issues/create.py:311` — writes frontmatter `priority` (in sync with the filename only at creation)
 - `scripts/little_loops/cli/issues/prioritize.py:99-148` — `apply_priorities`; `:134-141` is the already-at-target early return, `:142` the rename without frontmatter
 - `scripts/little_loops/cli/issues/show.py:80-81` — independent filename regex, yields `None` not P5
-- `scripts/little_loops/cli/issues/normalize.py:118-121` — `_priority_and_defaulted`, defaults to `P3`; consumed at `:292` and `:339` to build the rename target
+- `scripts/little_loops/cli/issues/normalize.py:118-121` — `_priority_and_defaulted`, defaults to `P3`; consumed at **`:290`, `:317`, and `:338`** to build the rename target (re-anchored by pre-implementation review; the earlier `:292`/`:339` pair was off by two and omitted the duplicate-number branch at `:317`)
+- `scripts/little_loops/cli/issues/normalize.py:129` — `_slug_for`'s `re.sub(r"^P[0-5]-", "", stem)`; a slug operation, not a priority read — allowlisted, not converted
 - `scripts/little_loops/cli/issues/skip.py:47-56` — prefix rewrite via bare `re.sub`, plus its own already-at-target early return at `:49`
 - `scripts/little_loops/issue_lifecycle.py:1393-1397` — `skip_issue` reads content and threads it through `git_mv_with_fallback(content=...)`; the natural insertion point for the skip-path sync
 - `scripts/little_loops/sync.py:320` — filename-only priority regex feeding GitHub label push
@@ -395,7 +489,16 @@ _Frontmatter-priority readers, added by pre-implementation review 2026-08-21:_
 - `scripts/little_loops/cli/issues/format_check.py:329` and `:284-289` — `_fix_template_placeholders` / `_TEMPLATE_PLACEHOLDER_FIXABLE`, writes frontmatter priority into the body
 - `scripts/little_loops/cli/issues/set_status.py:173` — `record_issue_event(..., priority=fm.get("priority"))`
 - `scripts/little_loops/session_store/writers.py:383`, `:2542`, `:2666` — `issue_snapshots.priority` on ingest and backfill
-- `scripts/little_loops/config/core.py:714` — `BRConfig.issue_priorities`; compare with `config.issues.priorities` as used at `cli/issues/prioritize.py:119`
+- `scripts/little_loops/config/core.py:714-716` — `BRConfig.issue_priorities`, a property returning `self._issues.priorities`; **the same object** `cli/issues/prioritize.py:119` uses (confirmed 2026-08-21)
+
+_Consequence 5 anchors, added by second pre-implementation review 2026-08-21:_
+
+- `scripts/little_loops/sync.py:660-745` — `_create_local_issue`; priority derived from GitHub labels at `:669-674`, written to the filename at `:682`, the `Impact` body at `:727`, and the `Status` line at `:732`, but **absent from the frontmatter dict at `:713-719`**
+- `scripts/little_loops/loops/rn-implement.yaml:300-310` — `get_frontmatter`; `issue_idx.get(issue_id)` at `:301` yields the `Path`, so `p.name` is available for the filename-first fix at `:363`
+- `scripts/little_loops/session_store/writers.py:2496-2509` — `_derive_type_priority`'s two branches: `_FILENAME_TYPE_RE` (`:2502-2505`, unchanged) and `_FILENAME_PRIORITY_RE` (`:2506-2509`, the only half step 7 touches)
+- `scripts/little_loops/cli/issues/format_check.py:303, 327-329` — `_fix_template_placeholders` already holds `config`, `path`, `content`, and `fm`, so the Fix-order rule is a one-line substitution
+- `scripts/little_loops/mcp_server/tools.py:141`, `scripts/little_loops/mcp_server/resources.py:234` — `_parse_card_fields` callers; inherit step 2 transitively
+- `scripts/little_loops/issue_parser.py:272` — `resolve_issue_path`'s `startswith(f"{priority}-")` duplicate-path tiebreaker; deliberately out of scope, and invisible to step 10's regex grep
 
 ## Related Key Documentation
 
@@ -422,6 +525,7 @@ _Added by `/ll:confidence-check` on 2026-08-21; outcome de-risking edits applied
 _Resolved: the precedence-divergence call (`session_store/writers.py:_derive_type_priority`) is now a committed decision — convert to `resolve_priority(..., default=None)` — rather than a Preferred/Alternative choice left to the implementer (Decision Rules § Precedence divergence)._
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-21T21:05:23 - `259e8978-8652-4d82-a932-fd2ef9f4c5e4.jsonl`
 - `/ll:confidence-check` - 2026-08-21T20:23:41 - `4547e3e2-99ed-4578-a5e3-5c34241406e2.jsonl`
 - `/ll:confidence-check` - 2026-08-21T19:01:50 - `45eaa854-fea1-43c3-8981-1d72e357bd5f.jsonl`
 - `/ll:confidence-check` - 2026-08-21T18:58:41 - `eff768cf-ea73-4732-9715-12285ca3175d.jsonl`

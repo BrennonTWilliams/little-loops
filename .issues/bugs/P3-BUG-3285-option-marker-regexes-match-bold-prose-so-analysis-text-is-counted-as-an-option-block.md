@@ -20,6 +20,7 @@ relates_to:
 - BUG-3287
 - BUG-3289
 size: Medium
+decision_needed: true
 verify_verdict: VALID
 confidence_score: 100
 outcome_confidence: 71
@@ -329,9 +330,9 @@ _Wiring pass added by `/ll:wire-issue`:_
 - **Corpus differential (required, replaces the repeated-letter guard):** apply
   `locate_enumerable_options` across `.issues/` and assert **no file's resolved `heading` changes**
   and **no file's `count` moves** except those pinned as intended. Model on BUG-3287's differential
-  — same skip-if-corpus-absent scaffolding as
-  `TestUnappliedDecisionLiveCorpusSweep.test_corpus_sweep_does_not_crash`
-  (`test_issue_parser.py:5005-5036`). This is the only check that catches the count-drop,
+  — same skip-if-corpus-absent scaffolding as `TestUnappliedDecisionLiveCorpusSweep`
+  (`test_issue_parser.py:5063`; `test_corpus_sweep_does_not_crash` at `:5085` — anchor corrected
+  2026-08-21, `:5005-5036` was stale). This is the only check that catches the count-drop,
   count-gain, tier-flip, and section-move classes; the 8-shape execution matrix passes all four.
 - **Variant-suffix survivors (required):** fixtures pinning `**Option A′ (SELECTED)**`
   (`BUG-3177` shape) and `**Option C′ (selected)**` (`BUG-3253` shape) as **still matching**, with
@@ -370,7 +371,7 @@ _Added by `/ll:refine-issue` — 2026-08-21 — based on codebase analysis:_
 
 - Test-fixture convention for a regex-boundary fix: a dedicated test class named after the fix (not the function under test), docstring citing the bug ID, with individual `test_*` methods pairing "no longer matches" cases against at least one "still matches" survivor case so the narrowing can't be shown to over-suppress. Examples: `TestNumberedOpenQuestionCitations` (BUG-3169, `test_issue_parser_unresolved.py:485-583`), `TestLastOptionSpanBoundary` (BUG-3279, `test_issue_parser_unresolved.py:817-930+`).
 - `_OPTION_HEADING_RE` has zero test references by name anywhere in `scripts/tests/` (grep-confirmed) — it is exercised only indirectly through `locate_unresolved_options`/`count_unresolved_options`/`_iter_option_blocks`/`_unapplied_decision` call sites. A fixture targeting `_OPTION_HEADING_RE`'s tightening needs its own case via one of those call sites; there is no existing direct-import test to extend.
-- The "corpus before/after diff" this issue's Proposed Solution calls for has no existing reusable test helper to run it through: `TestUnappliedDecisionLiveCorpusSweep.test_corpus_sweep_does_not_crash` (`test_issue_parser.py:5005-5036`) is the one corpus-sweep test in this area, and it only asserts `isinstance(reasons, list)` (skips if `.issues/` is absent) — it does not diff match counts before/after a change. The corpus validation this issue's Proposed Solution describes would be a manual, ad hoc step, not an automated gate, matching how BUG-3279's own corpus diff was performed (per that class's docstring narrative, not a checked-in diff script).
+- The "corpus before/after diff" this issue's Proposed Solution calls for has no existing reusable test helper to run it through: `TestUnappliedDecisionLiveCorpusSweep.test_corpus_sweep_does_not_crash` (`test_issue_parser.py:5063`/`:5085` — anchor corrected 2026-08-21; `:5005-5036` was stale) is the one corpus-sweep test in this area, and it only asserts `isinstance(reasons, list)` (skips if `.issues/` is absent) — it does not diff match counts before/after a change. The corpus validation this issue's Proposed Solution describes would be a manual, ad hoc step, not an automated gate, matching how BUG-3279's own corpus diff was performed (per that class's docstring narrative, not a checked-in diff script).
 
 ## Program Design
 
@@ -418,6 +419,18 @@ identifier is prose and starts no block. No new gate, threshold, or keyword list
 
 **Two sub-rules the sketch encoding got wrong and any replacement must settle explicitly**
 (added 2026-08-21 from the corpus differential):
+
+> **`decision_needed: true` set 2026-08-21 — this is the design pass, and nothing scheduled it.**
+> EPIC-3290 describes this issue as *"**needs a design pass before implementation**"* while leaving
+> that pass unowned. The two sub-rules below are it: both explicitly refuse a default
+> (*"Neither is obviously right … Pin one and pin it by test"*), and the *Open question — should the
+> two regexes converge?* above is a third. Run `/ll:decide-issue 3285` — or `/ll:spike` the regex
+> encoding against the corpus — **before** scheduling implementation.
+>
+> Note that `ll-issues check-decidable 3285` reports `OPTIONS_MISSING` (`count 0`, `pattern None`):
+> these decision points are **invisible to the locator**. That is BUG-3287's defect 2 reproduced on
+> this epic's own file, and it is why the flag had to be set by hand rather than surfacing from the
+> gate. Worth keeping as the epic's dogfood datapoint.
 
 1. **Identifier shape.** The identifier is not `[A-Za-z0-9]+` alone — the corpus uses prime-marked
    variants (`Option A′`, `Option C′`) to denote a narrowed re-scoping of an earlier option, and

@@ -23,7 +23,7 @@ relates_to:
 - ENH-3281
 reconcile_attempted: true
 decision_needed: false
-confidence_score: 90
+confidence_score: 100
 outcome_confidence: 63
 score_complexity: 18
 score_test_coverage: 10
@@ -150,8 +150,10 @@ What the inline `.ll/ll-config.json` parse is replaced by, per input:
 | `ll-config` binary missing | n/a | empty `CMD` → §2b branch | **new failure mode**, accepted — see *Risk accepted* under *Impact* |
 
 Not in parity scope: exit codes (`ll-config get` returns 0 in every row above, verified
-empirically under *Codebase Research Findings*), routing (unchanged at all five sites), and
-`evaluate_code`'s own exit status (must stay 0 — *EXIT-CODE CORRECTION*).
+empirically under *Codebase Research Findings*) and routing — unchanged at four of the five
+sites. `evaluate_code`'s own exit status is unconstrained (*EXIT-CODE CORRECTION — RETRACTED*).
+The one deliberate routing consequence is `evaluation-quality`'s `route_code` branch for an
+opted-out project, per *SCORER CORRECTION*.
 
 ### DECIDED (Option A) — `rn-refine` and `auto-refine` are permanently exempt
 
@@ -283,6 +285,11 @@ Per BUG-3269 §2b:
 score must handle `[ -z "$CMD" ]` explicitly. A site whose `on_yes` leads to another gate may
 pass on empty.
 
+**Both `evaluation-quality` rows are only half the work** (third review, 2026-08-21). Emitting the
+marker stops the empty capture reading as *clean*, but nothing tells `score` how to read the
+marker itself, and its default reading is *broken* — equally false, and it routes. Step 5a closes
+that; see *SCORER CORRECTION*.
+
 #### CAPTURE CORRECTION (2026-08-21) — `capture:` reads **stdout**, not the `tee` target
 
 **Verified against the tree; supersedes the earlier parenthetical "`eval-test-results.txt`
@@ -310,30 +317,77 @@ or a bare `echo` (the file is optional; the capture is not). Do not use `>`.
 A regression test for this state must assert on the state's **captured stdout**, not on file
 contents, or it will pass against the broken shape.
 
-#### EXIT-CODE CORRECTION (2026-08-21) — `evaluate_code` exits 0 only by accident today
+#### SCORER CORRECTION (added 2026-08-21, third review) — the marker needs a reader
 
-**Verified against the tree.** `evaluate_code` declares `action_type: shell` with **no
-`evaluate:` block and no `fragment:`**, so `_evaluate` falls through to its shell default —
-`evaluate_exit_code(action_result.exit_code)` (`fsm/executor.py:2608-2610`) — and a non-zero
-exit produces a `no` verdict at a state whose only edge is `next: score`.
+**Getting the marker onto stdout is necessary but not sufficient.** Nothing tells `score` what to
+do once it arrives. Its prompt still reads *"code_health: based on test pass/fail and lint
+clean/dirty"* (`evaluation-quality.yaml:84`) and it must emit a 0-100 `code_health` regardless.
+Handed `NO TEST SIGNAL` and a no-lint-signal marker, an LLM has no passing-test evidence and will
+score the dimension low.
 
-Today that never fires, but only as a side-effect: `set -o pipefail` is in force and the test
-line carries **no** `|| true`, so a failing suite *does* leave a non-zero status — it is
-overwritten purely because the last line of the action is `ruff check scripts/ … || true`,
-which forces the script's exit status to 0. The state's benign exit code is therefore load-bearing
-behavior resting on statement order, not on anything declared.
+**Where that lands.** `route_action` → `route_issues` → `route_code.on_yes: remediate_code`, which
+instructs the user to run `fix-quality-and-tests` — a loop that, after **this same issue**, is
+pass-on-empty and does nothing on a project with no suite. So a project that deliberately set
+`test_cmd: null` gets a spurious `PRIMARY_CONCERN: CODE` and a no-op remediation branch on every
+run.
 
-**Steps 4 and 5 restructure both branches of exactly that action.** A natural rewrite —
-`if [ -z "$CMD" ]; then echo … | tee …; else eval "$CMD" 2>&1 | tee …; fi` as the final
-statement, with the lint branch above it — makes a **failing test suite** set this state's exit
-code non-zero for the first time. That is a control-flow change smuggled into an issue whose
-*Impact* section explicitly promises "no control-flow edits anywhere."
+This is the mirror image of the hazard §2b was written to prevent: §2b stops an empty capture
+reading as *clean*, and the remedy then makes it read as *broken*. Neither is the truth, which is
+*not measured*.
 
-**Required:** `evaluate_code` must exit 0 unconditionally after conversion, in all four
-combinations of (`test_cmd` set / empty) × (suite passes / fails). The simplest shape that
-preserves this is to keep a trailing `|| true` on whichever statement ends the action, or to end
-the action with an explicit `exit 0`. Pin it with a test (see *Tests*); do not rely on statement
-order surviving a future edit.
+**Required:** `score`'s prompt must handle the no-signal case explicitly. Either scope
+`code_health` to whatever signal did arrive (lint-only when the test marker is present, and
+vice-versa), or exclude the dimension from `PRIMARY_CONCERN` selection entirely when both markers
+are present. Pick one and state it in the prompt — do not leave it to the model.
+
+**Scope note.** This adds `evaluation-quality.yaml`'s `score` state to *Files to Modify* — a
+prompt edit, not a state or edge change. It does change which branch `route_code` takes for an
+opted-out project, so it is a deliberate exception to *Impact*'s "no control-flow edits anywhere"
+and is called out there. It is in scope because step 4's marker is what creates the condition:
+shipping the marker without a reader trades one wrong answer for another.
+
+#### EXIT-CODE CORRECTION — RETRACTED 2026-08-21 (third review): the hazard is unreachable
+
+**This section previously asserted a hazard that does not exist. It is retained, struck, because
+it was twice marked "verified against the tree" (first-addendum item 4, second-review preamble)
+and a reader who deletes it without explanation will re-derive it.**
+
+**The retracted claim.** That `evaluate_code`, declaring `action_type: shell` with no `evaluate:`
+block and no `fragment:`, falls through `_evaluate` to its shell default
+`evaluate_exit_code(action_result.exit_code)` (`fsm/executor.py:2608-2610`), so a non-zero exit
+would produce a `no` verdict at a state whose only edge is `next: score` — and that the action's
+trailing `|| true` is therefore load-bearing behavior resting on statement order.
+
+**Why it is wrong.** That code path is unreachable for a `next:`-only state. `executor.py:1790`
+takes the `if state.next:` branch **before** any evaluation, and inside it a non-zero exit
+reroutes only when `state.on_error` is declared (`:1836`). `evaluate_code` declares no
+`on_error`, so the branch falls through to `return interpolate(state.next, ctx)` (`:1849`)
+without ever calling `_evaluate`. The `evaluate_exit_code` call at `:2610` lives in the
+non-`next:` path further down.
+
+**Verified empirically 2026-08-21** with a probe loop — a `next:`-only shell state running
+`exit 7`, no `on_error`:
+
+```
+[1/5] fail_state -> exit: 7
+       -> landed
+[2/5] landed -> REACHED_LANDED
+Loop completed: done (2 iterations)
+```
+
+The state advanced on its `next:` edge with a non-zero exit and no verdict.
+
+**Consequences for this issue.** The trailing `|| true` is inert, not load-bearing. Nothing
+downstream consumes this state's exit code: `score` reads only
+`${captured.code_results.output}`, and the capture dict's `exit_code` / `failure_type` keys
+(`executor.py:2370-2385`) are referenced by nothing in this loop. Steps 4 and 5 may therefore
+restructure both branches freely — the `if [ -z "$CMD" ]; then … else … fi` shape the retracted
+text warned against is fine, and lets a failing suite set a non-zero exit with no routing effect.
+
+**No exit-code requirement is imposed.** The former "must exit 0 unconditionally, all four
+combinations" AC and its test are struck (see *Conversions* and *Tests*). Ending the action with
+`|| true` or `exit 0` remains harmless if an implementer prefers it, but it is a style choice
+with nothing riding on it — do not spend a test class pinning it.
 
 ### Structural sites — split out to ENH-3288
 
@@ -555,6 +609,9 @@ consistency, simplicity, and risk, despite the issue's own text recommending Opt
 - `scripts/little_loops/loops/fix-quality-and-tests.yaml:58-78` — three-way body deleted
 - `scripts/little_loops/loops/evaluation-quality.yaml:58` — and `:63`'s hardcoded
   `ruff check scripts/` → `ll-config get project.lint_cmd`
+- `scripts/little_loops/loops/evaluation-quality.yaml`'s **`score` state prompt (`:84`)** — must
+  tell the model how to score `code_health` when step 4/5's no-signal markers are present. Added
+  by the third review; see *SCORER CORRECTION*. Prompt text only, no state or edge change
 - `scripts/little_loops/loops/harness-plan-research-implement-report.yaml:126` — and its
   template comment at `:120` (load-bearing; see *The three `harness-*` sites are user-facing
   templates*)
@@ -614,12 +671,15 @@ _Wiring pass added by `/ll:wire-issue`:_
   triplicating one subprocess test, following
   `test_bug3269_test_cmd_resolution_gate.py`'s own `pytest.mark.parametrize`-over-file-list
   pattern. They have zero existing coverage of their shell body today. [Agent 3 finding]
-- **Pin `evaluate_code`'s exit code at 0** across all four combinations of (`test_cmd` set /
-  present-null) × (suite passes / fails) — per *EXIT-CODE CORRECTION*. Today this holds only
-  because the action's last statement carries `|| true`; steps 4 and 5 rewrite that statement, and
-  a non-zero exit at this state produces a `no` verdict (`evaluate_exit_code`,
-  `fsm/executor.py:2608-2610`) on a state whose only edge is `next: score`. Same `bash -c`
-  subprocess harness as the resolution tests, asserting `returncode == 0`.
+- ~~**Pin `evaluate_code`'s exit code at 0**~~ — **STRUCK (third review).** The hazard it guarded
+  is unreachable: a `next:`-only state with no `on_error` advances regardless of exit code, and
+  nothing downstream reads this state's status. See *EXIT-CODE CORRECTION — RETRACTED*. Do not
+  write this test.
+- **`evaluation-quality`'s `score` prompt handles the no-signal markers** — assert on the YAML
+  prompt text, not by execution: with the step 4/5 markers in play, the prompt must state how
+  `code_health` is scored and whether `CODE` can be selected as `PRIMARY_CONCERN`. A structural
+  guard (substring assertion on the `score` state's action) is sufficient; the routing consequence
+  itself is LLM-mediated and not unit-testable. See *SCORER CORRECTION*.
 - **Pin the three `harness-*` scaffold comments** with a structural guard, so the one AC that
   protects against the anti-pattern propagating has a verifier like every other row:
   parametrized over the three files, assert `"falls back to 'pytest'" not in text` **and** that
@@ -631,9 +691,14 @@ _Wiring pass added by `/ll:wire-issue`:_
   `evaluate_code` has zero resolution-level coverage today; no test matches
   `code_results`/`eval-test-results`. [Agent 3 finding]
 - **BUG-3269's mirror-drift gate**, with `_PENDING_CONVERSION` shrinking by one entry per
-  converted file — nine down to four. `test_pending_conversion_sites_still_exist` (`:148-156`)
-  asserts every remaining listed filename exists on disk, so an entry cannot be removed without
-  the conversion actually landing. Deleting the constant is **ENH-3288's** step 6, not this
+  converted file — nine down to four. **Verifier corrected (third review, 2026-08-21):** the test
+  that forces a conversion to land before its entry is removed is
+  **`test_no_inline_project_command_config_read`** (`:105-117`) — removing the entry un-skips its
+  `_INLINE_ACCESS_RE` assertion for that file (`:107`), which then fails against a surviving
+  inline parse. `test_pending_conversion_sites_still_exist` (`:148-156`) does **not** do this: it
+  only asserts each *listed filename still exists on disk*, guarding against a dangling entry
+  after a file rename or deletion. A green `test_pending_conversion_sites_still_exist` is not
+  evidence that any conversion happened. Deleting the constant is **ENH-3288's** step 6, not this
   issue's.
 
 _Existing coverage, for orientation:_ every current test over these loops is structural only
@@ -685,8 +750,10 @@ _Added by `/ll:refine-issue` — 2026-08-21 — based on codebase analysis:_
   "run_cmd")` and `_PERMANENT_EXEMPTIONS = {"oracles/code-run-gate.yaml"}` are unioned into
   `_EXEMPT` in the same module. Two guard tests key directly off `_PENDING_CONVERSION`:
   `test_pending_conversion_sites_still_exist` (:148-156) asserts every listed filename still
-  exists on disk — so removing a site's exemption string without also finishing its conversion
-  fails this test — and `test_general_task_and_rl_coding_agent_are_not_exempt` guards against
+  exists on disk — a dangling-entry guard only; **corrected third review: it is
+  `test_no_inline_project_command_config_read` that fails when a site's exemption string is
+  removed without finishing its conversion**, since removing the entry un-skips that file's
+  `_INLINE_ACCESS_RE` assertion — and `test_general_task_and_rl_coding_agent_are_not_exempt` guards against
   re-adding the three already-converted sites to either exemption set. A third assertion,
   `test_context_references_are_declared` (:120-145), checks every `${context.test_cmd}` /
   `${context.lint_cmd}` interpolation in every loop YAML against that loop's declared
@@ -713,7 +780,9 @@ _Added by `/ll:refine-issue` — 2026-08-21 — based on codebase analysis:_
   `states` dict (`for key in ("on_yes","on_no","on_error","on_cannot_judge","next")`), the
   shape available for asserting a state's routing target (e.g. that nothing but
   `verify_tests.on_no` reaches a revert/commit state). `TestRlCodingAgentObserveTestCmdResolution`
-  (:10742-10789) executes the extracted shell prefix via `subprocess.run(["bash", "-c", ...])`
+  (:10747 — anchor corrected third review; the `:10742-10789` previously cited here was stale,
+  and the *Tests* section's `:10747-10799` is the accurate one)
+  executes the extracted shell prefix via `subprocess.run(["bash", "-c", ...])`
   against a scratch `.ll/ll-config.json`, the shape available for asserting a *resolved value*
   (e.g. that `test_cmd: null` resolves to an empty `CMD`, not a guessed default).
 
@@ -733,9 +802,13 @@ gate-teardown criteria live in **ENH-3288**._
       **on stdout** (`| tee`, never a bare `>`)
 - [ ] `evaluation-quality.yaml:63`'s hardcoded `ruff check scripts/` → `ll-config get
       project.lint_cmd`, with a no-lint-signal marker on stdout
-- [ ] `evaluate_code` still exits **0 unconditionally** — all four combinations of (`test_cmd`
-      set / present-null) × (suite passes / fails). Today this is guaranteed only by the trailing
-      `|| true` that steps 4–5 rewrite (*EXIT-CODE CORRECTION*)
+- [ ] `evaluation-quality`'s `score` prompt (`:84`) states how `code_health` is scored when step
+      4/5's no-signal markers are present, and whether `CODE` may be selected as
+      `PRIMARY_CONCERN` in that case (*SCORER CORRECTION*). Without it, an opted-out project gets
+      a spurious CODE concern routed to a remediation loop that is itself a no-op
+- ~~[ ] `evaluate_code` still exits **0 unconditionally**~~ — **STRUCK (third review).** The
+      routing hazard was unreachable; this state's exit code is consumed by nothing
+      (*EXIT-CODE CORRECTION — RETRACTED*). No exit-code constraint applies
 - [ ] All five sites use the **config-first bare** shape — no `${context.test_cmd}` reference
       anywhere (none of the five declares the key; an undeclared reference is an
       `InterpolationError` and fails gate assertion (ii))
@@ -777,7 +850,10 @@ gate-teardown criteria live in **ENH-3288**._
 - [ ] Structural guard over the three `harness-*.yaml` asserting `"falls back to 'pytest'"` is
       absent and the `check_concrete` comment names `ll-config get` — the verifier for the Docs
       row below
-- [ ] `evaluate_code` exit-0 test, four combinations (see *Conversions*)
+- [ ] Structural guard on `evaluation-quality`'s `score` action asserting the prompt addresses the
+      no-signal case (*SCORER CORRECTION*)
+- ~~[ ] `evaluate_code` exit-0 test, four combinations~~ — **STRUCK (third review)**; the hazard
+      is unreachable (*EXIT-CODE CORRECTION — RETRACTED*). Do not write it
 
 **Docs**
 
@@ -819,7 +895,8 @@ gate-teardown criteria live in **ENH-3288**._
    `outcome_threshold` (65). Written first, each test is a red-then-green check on that site's §2b
    row; written alongside, it is a description of whatever shell was just typed and clears
    nothing. Order: the parametrized `harness-*` class, then `fix-quality-and-tests`, then
-   `evaluation-quality` (both branches, plus the exit-0 test), then steps 3–5 turn them green.
+   `evaluation-quality` (both branches), then steps 3–5 turn them green. The exit-0 test formerly
+   listed here is struck (*EXIT-CODE CORRECTION — RETRACTED*).
 3. **Convert the four pass-on-empty sites first** — `fix-quality-and-tests.yaml`
    (delete its three-way python body outright), `harness-single-shot.yaml`,
    `harness-plan-research-implement-report.yaml`, `harness-multi-item.yaml`. These are
@@ -836,9 +913,16 @@ gate-teardown criteria live in **ENH-3288**._
    bare `>`), because `score` reads `${captured.code_results.output}` and not the files — see
    *CAPTURE CORRECTION*. Do **not** reroute; `evaluate_code` has no `on_yes`/`on_no` edges.
 5. **Convert `evaluation-quality.yaml:63`'s hardcoded `ruff check scripts/`** to
-   `ll-config get project.lint_cmd` — the same defect, pre-inlined. Keep the action exiting 0
-   unconditionally (*EXIT-CODE CORRECTION*). Then remove `evaluation-quality.yaml` from
-   `_PENDING_CONVERSION`, bringing it to four entries.
+   `ll-config get project.lint_cmd` — the same defect, pre-inlined. The action's exit code is
+   unconstrained; restructure both branches freely (*EXIT-CODE CORRECTION — RETRACTED*). Then
+   remove `evaluation-quality.yaml` from `_PENDING_CONVERSION`, bringing it to four entries.
+
+5a. **Teach `score` to read the markers** (`evaluation-quality.yaml`'s `score` prompt, `:84`).
+   Steps 4 and 5 create a no-signal condition that the scorer currently has no instruction for,
+   and its default reading routes an opted-out project to `remediate_code` — a no-op after step 3.
+   Either scope `code_health` to whichever signal arrived, or exclude the dimension from
+   `PRIMARY_CONCERN` selection when both markers are present. See *SCORER CORRECTION*. Prompt text
+   only — no state or edge changes.
 
 5b. **Correct the gate file's prose.** Reassign all three "ENH-3277 empties/deletes this set"
    claims to ENH-3288 (module docstring `:23-27`, `_PENDING_CONVERSION` comment `:52-55`,
@@ -1024,6 +1108,12 @@ regression — the inline snippets open the same relative path — but not fixed
 - **Behavior change under `test_cmd: null`**: these five sites stop gating on a guessed `pytest`.
   For the four pass-on-empty sites that is a clean opt-out; for `evaluation-quality` it means
   handing `score` an empty capture unless the §2b marker is applied.
+- **One deliberate routing change, at `evaluation-quality` only** (*SCORER CORRECTION*). Step 5a's
+  `score` prompt edit changes which branch `route_code` takes for a project with no test suite —
+  today (and with the markers but without 5a) that project trends toward
+  `PRIMARY_CONCERN: CODE` → `remediate_code`, which after step 3 is a no-op. This is the single
+  exception to the "no control-flow edits anywhere" promise in the rollback bullet below, and it
+  is LLM-mediated rather than an edge change: no state, `next:`, or `on_*` key is touched.
 - **`.ll/ll.local.md` overrides of `test_cmd`/`lint_cmd` start taking effect** inside these
   loops (they never did).
 - **`evaluation-quality.yaml:63` lint scope widens**: `ruff check scripts/` →
@@ -1040,14 +1130,19 @@ regression — the inline snippets open the same relative path — but not fixed
   those four route to a further LLM gate, and the fourth (`fix-quality-and-tests`) routes to
   `done`.
 - **`_PENDING_CONVERSION` shrinks but survives.** The gate keeps blocking new inline reads
-  throughout, and the four remaining entries stay honest via
-  `test_pending_conversion_sites_still_exist`. The list is not debt this issue closes — that is
+  throughout, and each converted file's entry can only be removed once
+  `test_no_inline_project_command_config_read` passes for it (removing the entry un-skips that
+  assertion). `test_pending_conversion_sites_still_exist` guards only against a *dangling* entry
+  naming a file that no longer exists — corrected third review. The list is not debt this issue closes — that is
   ENH-3288.
 - **Rollback seam**: independent per-file edits; revert one file and re-add its
-  `_PENDING_CONVERSION` entry. Nothing shared to unwind — no new states, no fragment changes, no
-  control-flow edits anywhere in this issue. **The one way to violate that promise accidentally**
-  is to let `evaluate_code` start exiting non-zero on a failing suite while restructuring its two
-  branches (*EXIT-CODE CORRECTION*); the exit-0 test exists to catch it.
+  `_PENDING_CONVERSION` entry. Nothing shared to unwind — no new states, no fragment changes, and
+  no edge edits anywhere in this issue. The one deliberate exception to "no control-flow change"
+  is step 5a's `score` prompt (see the routing bullet above), which reverts with the rest of
+  `evaluation-quality.yaml`. **Corrected third review:** the previously-named accidental violation
+  — `evaluate_code` starting to exit non-zero on a failing suite — is not one; that state's exit
+  code routes nothing (*EXIT-CODE CORRECTION — RETRACTED*), and the exit-0 test that guarded it is
+  struck.
 
 ## Related Key Documentation
 
@@ -1099,19 +1194,22 @@ the prior `/ll:confidence-check` run and are **stale** — re-run before treatin
 3. **New in-scope work found:** the gate file's own docstring, set comment, and assertion message
    all assert that *this* issue empties `_PENDING_CONVERSION` — false after the split. Added to
    *Files to Modify*, step 5b, and the Gate ACs.
-4. **New hazard found:** `evaluate_code`'s exit code is 0 today only because its last statement
-   carries `|| true`, and steps 4–5 rewrite that statement (*EXIT-CODE CORRECTION*).
+4. ~~**New hazard found:** `evaluate_code`'s exit code is 0 today only because its last statement
+   carries `|| true`~~ — **WRONG; retracted by the third review.** The routing consequence
+   claimed here does not exist (*EXIT-CODE CORRECTION — RETRACTED*).
 5. **Step 6's grep was weaker than the gate it stood in for** — it missed the bracket access form
    that `fix-quality-and-tests.yaml:69` actually uses. Widened, and the gate declared authoritative.
 6. **Two unverified ACs given verifiers** — the `harness-*` comment rewrite (now pinned to
    verbatim replacement text plus a structural guard) and the exit-0 invariant. The AC preamble's
-   "every row is verified by a named test or command" now holds.
+   "every row is verified by a named test or command" now holds. *(Third review: the exit-0 half
+   of this is moot — that AC is struck rather than verified.)*
 
 ### Second pre-implementation review — 2026-08-21
 
 _Independent design review against the tree. All six conversion sites, the `_PENDING_CONVERSION`
-nine-entry set, the `fix-quality-and-tests` present-null→`true` routing proof, the `evaluate_code`
-accidental-exit-0 analysis, and `main_config`'s never-raise contract were re-verified and hold
+nine-entry set, the `fix-quality-and-tests` present-null→`true` routing proof, ~~the `evaluate_code`
+accidental-exit-0 analysis~~ (**retracted by the third review — it was re-affirmed here in error;
+see *EXIT-CODE CORRECTION — RETRACTED***), and `main_config`'s never-raise contract were re-verified and hold
 exactly as written. Five corrections applied:_
 
 1. **The pinned `harness-*` comment text assumed two shapes; there are three.** `harness-multi-item.yaml`
@@ -1137,6 +1235,40 @@ exactly as written. Five corrections applied:_
    stdout-isolated regardless; documented so it isn't mistaken for a new failure mode.
 
 _No change to scope, option selection, step ordering, or the conversion count._
+
+### Third pre-implementation review — 2026-08-21
+
+_Independent design review against the tree, with one claim checked by execution rather than
+reading. Re-verified and holding: all six conversion anchors (`fix-quality-and-tests.yaml:66`,
+`harness-single-shot.yaml:66`, `harness-multi-item.yaml:95`,
+`harness-plan-research-implement-report.yaml:126`, `evaluation-quality.yaml:58` and `:63`), the
+bracket-form access at `fix-quality-and-tests.yaml:69`, the three per-file `harness-*` comment
+shapes, "none of the five declares `context.test_cmd`", the `ProjectConfig` defaults
+(`config/core.py:191-192`), `EVALUATION_GUIDE.md:393`, `LOOPS_REFERENCE.md:820`, and the
+`capture:`-reads-stdout finding (`executor.py:2370-2375` writes `result.output`, with `stderr` a
+separate key). Four corrections applied:_
+
+1. **EXIT-CODE CORRECTION retracted — the hazard was unreachable.** A `next:`-only state with no
+   `on_error` never reaches `_evaluate`: `executor.py:1790` takes the `if state.next:` branch,
+   reroutes on non-zero exit only when `on_error` is declared (`:1836`), and otherwise returns
+   `interpolate(state.next, ctx)` (`:1849`). Confirmed by running a probe loop whose `next:`-only
+   shell state exits 7 — it advanced normally. The struck AC, its four-combination test, the
+   step-5 constraint, and the Impact bullet are all removed; the section is retained struck
+   because it had been marked tree-verified twice.
+2. **New in-scope work — `score` has no instruction for the no-signal markers.** *SCORER
+   CORRECTION* added, plus step 5a, a Files-to-Modify entry, a Conversions AC, a Tests AC, and an
+   Impact bullet. Without it, an opted-out project trends to `PRIMARY_CONCERN: CODE` →
+   `remediate_code`, which after step 3 is a no-op loop.
+3. **Wrong verifier named for the exemption-shrink invariant.** `test_pending_conversion_sites_still_exist`
+   only asserts each listed file exists; the test that actually fails on an entry removed without
+   its conversion is `test_no_inline_project_command_config_read`. Corrected in *Tests*, *Impact*,
+   and *Codebase Research Findings*.
+4. **Stale anchor** — `TestRlCodingAgentObserveTestCmdResolution` is at `test_builtin_loops.py:10747`;
+   the `:10742-10789` citation in *Codebase Research Findings* was wrong (the *Tests* section's
+   `:10747-10799` was right).
+
+_Conversion count, option selection, and the five/two file split are unchanged. Item 2 adds one
+prompt-text edit to an already-in-scope file._
 
 ### Anchors spot-checked in the first addendum
 
@@ -1176,7 +1308,38 @@ unchanged: Readiness 90/100 → PROCEED, Outcome Confidence 63/100 → MODERATE 
   subprocess-level resolution test is needed per site (per *Tests*) **before** each conversion,
   not alongside it, per the pinned step 2b ordering.
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-08-21. Supersedes the top "Confidence Check Notes" block
+above, whose Criterion 4 cap claim is stale: that block was never rewritten after the addendum's
+item 1 closed the `missing_behavior_parity` gap it was describing._
+
+**Readiness Score**: 100/100 → PROCEED (was 90/100; the earlier `missing_behavior_parity` cap on
+Criterion 4 no longer applies — `format-check` now returns `missing_behavior_parity: []`, and no
+other Criterion 4 cap (`stale_symbol_ref`, `stale_cli_flag`, `template_placeholders`,
+`boilerplate`, directive-section `missing`) is present either)
+**Outcome Confidence**: 63/100 → MODERATE (unchanged, below the 65 `outcome_threshold`)
+
+All hard overrides re-checked and inert: `PD_FAIL` empty (`ll-issues check-design` exits 0),
+`DEP_FAIL` empty (no `blocked_by` entries), no `learning_tests_required` targets declared.
+Outcome Criterion C (ambiguity) stays capped at 10/25 by `unapplied_decision` (19 hits,
+unchanged) — direct read again confirms all 19 sit inside labeled `REJECTED` option blocks or
+Option C's deliberately-retained fallback rationale, not genuine unresolved drift, but the cap is
+mechanical and doesn't distinguish that.
+
+### Outcome Risk Factors
+- No execution-level test coverage exists today for any of the five target read sites — a
+  subprocess-level resolution test is needed per site **before** each conversion, not alongside
+  it, per the pinned step 2b ordering (Outcome Criterion B, unchanged at 10/25).
+
+### Housekeeping note (not scored)
+`format-check` also flags `duplicate_heading`: two `### Outcome Risk Factors` headings now exist
+under `## Confidence Check Notes`, an artifact of repeated `/ll:confidence-check` runs appending
+rather than replacing. Worth collapsing the accumulated notes sections before implementation
+starts, but it doesn't affect readiness or outcome scoring.
+
 ## Session Log
+- `/ll:confidence-check` - 2026-08-21T20:59:20 - `04f81c9a-29c0-44a6-ade2-267fd3d09dd8.jsonl`
 - `/ll:confidence-check` - 2026-08-21T20:16:04 - `afe1203b-04a5-44c9-a88c-bbb1714b8e71.jsonl`
 - `/ll:confidence-check` - 2026-08-21T18:59:48 - `de2bc4f7-6272-4f52-a9cb-998af08752f1.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-21T17:52:58 - `f27d8342-f3ba-42ea-95ca-41ad79008fbf.jsonl`
