@@ -19,6 +19,12 @@ relates_to:
 - BUG-3278
 size: Medium
 verify_verdict: VALID
+confidence_score: 100
+outcome_confidence: 71
+score_complexity: 18
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 10
 ---
 
 # BUG-3285: Option-marker regexes match bold prose, so analysis text is counted as an option block
@@ -320,6 +326,8 @@ marker.
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-21T19:45:57 - `b7beb415-ab2b-43a0-8c47-c48190d638d9.jsonl`
+- `/ll:verify-issues` - 2026-08-21T19:42:56 - `72e2ec18-4b32-4231-9b8e-7263fc707cfd.jsonl`
 - `/ll:refine-issue` - 2026-08-21T19:38:51 - `7a16a3a6-404c-4906-af8c-04f2c6a84451.jsonl`
 - `/ll:verify-issues` - 2026-08-21T19:30:24 - `bd2411ca-ba9b-4390-bc28-a400fd2e7ad1.jsonl`
 - `/ll:wire-issue` - 2026-08-21T19:27:19 - `eae61f16-add8-4659-bd44-04cb88cf7241.jsonl`
