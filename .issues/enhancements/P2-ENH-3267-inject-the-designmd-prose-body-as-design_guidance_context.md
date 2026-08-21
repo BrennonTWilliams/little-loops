@@ -3,13 +3,14 @@ id: ENH-3267
 type: ENH
 title: Inject the DESIGN.md prose body as design_guidance_context
 priority: P2
-status: open
+status: done
 depends_on:
 - BUG-3266
 - ENH-3264
 discovered_by: ll-issues-create
 discovered_date: '2026-08-20'
 captured_at: '2026-08-20T21:10:34Z'
+completed_at: '2026-08-21T14:51:17Z'
 labels:
 - enhancement
 - design-tokens
@@ -205,6 +206,8 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-21T14:50:55 - `82187757-adc7-4357-99a3-07a5018a5bdf.jsonl`
+- `/ll:ready-issue` - 2026-08-21T14:37:24 - `39133f71-f73e-422b-85aa-1d32aa0fa5dc.jsonl`
 - `/ll:confidence-check` - 2026-08-21T14:28:57 - `08bd38ec-d985-4ff9-b92f-3e3223f35d2e.jsonl`
 - `/ll:confidence-check` - 2026-08-21T14:00:15 - `72ec3b4b-10e6-496a-b571-6c6eeff6d6e3.jsonl`
 - `/ll:wire-issue` - 2026-08-21T13:57:14 - `d9f3ea69-ab5f-4f68-bd22-6d65aebf22d7.jsonl`

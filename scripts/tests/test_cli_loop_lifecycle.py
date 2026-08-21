@@ -947,6 +947,35 @@ class TestCmdResume:
             "design_tokens_context must be injected into fsm.context by cmd_resume"
         )
 
+    def test_design_guidance_context_injected_via_cmd_resume(self, tmp_path: Path) -> None:
+        """design_guidance_context is injected into fsm.context by cmd_resume (ENH-3267)."""
+        logger = MagicMock()
+        args = argparse.Namespace()
+        mock_fsm = MagicMock()
+        mock_fsm.context = {}
+
+        mock_result = MagicMock()
+        mock_result.final_state = "done"
+        mock_result.iterations = 1
+        mock_result.duration_ms = 1000
+        mock_result.terminated_by = "terminal"
+        mock_result.failure_terminal = False
+
+        with (
+            patch("little_loops.cli.loop.lifecycle.load_loop", return_value=mock_fsm),
+            patch("little_loops.fsm.persistence.StatePersistence") as mock_persist_cls,
+            patch("little_loops.fsm.persistence.PersistentExecutor") as mock_exec_cls,
+            patch("little_loops.design_tokens.load_design_tokens", return_value=None),
+        ):
+            mock_persist_cls.return_value.load_state.return_value = None
+            mock_exec_cls.return_value.resume.return_value = mock_result
+            result = cmd_resume("test-loop", args, tmp_path, logger)
+
+        assert result == 0
+        assert "design_guidance_context" in mock_fsm.context, (
+            "design_guidance_context must be injected into fsm.context by cmd_resume"
+        )
+
     def test_input_hash_injected_via_cmd_resume(self, tmp_path: Path) -> None:
         """input_hash is injected into fsm.context by cmd_resume when input is present."""
         logger = MagicMock()
@@ -1538,6 +1567,9 @@ class TestDesignTokensOptOut:
         assert result == 0
         mock_load.assert_not_called()
         assert mock_fsm.context["design_tokens_context"] == ""
+        assert mock_fsm.context["design_guidance_context"] == "", (
+            "design_guidance_context must also resolve to '' under the opt-out (ENH-3267)"
+        )
 
     @pytest.mark.parametrize("falsy", ["false", "False", "no", "off", "0", ""])
     def test_resume_use_design_tokens_string_falsy_values_skip_loading(
@@ -1569,6 +1601,9 @@ class TestDesignTokensOptOut:
 
         assert result == 0
         mock_load.assert_not_called()
+        assert mock_fsm.context["design_guidance_context"] == "", (
+            "design_guidance_context must resolve to '' under falsy string opt-out values"
+        )
 
 
 class TestCmdRunYAMLConfigOverrides:

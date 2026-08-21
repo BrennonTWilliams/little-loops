@@ -1683,6 +1683,7 @@ ll-loop run html-website-generator "a landing page for a Dutch art museum"
 | `description` | (from `loop_input`) | Natural language website description — passed as the positional argument |
 | `run_dir` | runner-injected | Per-run artifact directory (`.loops/runs/html-website-generator-{instance_id}/`) for `index.html`, `brief.md`, `critique.md`, and `screenshot.png`; created automatically. Override with `--context run_dir=path/`. |
 | `design_tokens_context` | runner-injected | Resolved semantic design-token values (empty string when `design_tokens.enabled: false` or tokens path is missing). |
+| `design_guidance_context` | runner-injected | Prose body of a project's `DESIGN.md` (Do's/Don'ts, visual intent); empty string when absent or `use_design_tokens: false` (ENH-3267). |
 | `pass_threshold` | `6` | Minimum score per criterion (1–10); **all four** criteria must clear this value |
 
 Override per-run:

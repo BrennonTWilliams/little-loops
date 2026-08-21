@@ -1395,7 +1395,8 @@ def seed_confidence_thresholds(context: dict[str, Any], config: Any = None) -> N
 
 
 def inject_design_context(context: dict[str, Any], config: BRConfig | None = None) -> None:
-    """Inject ``design_tokens_context``, honoring the ``use_design_tokens`` opt-out (BUG-3266).
+    """Inject ``design_tokens_context``/``design_guidance_context``, honoring the
+    ``use_design_tokens`` opt-out (BUG-3266).
 
     A loop can set ``context.use_design_tokens=false`` (YAML boolean or
     ``--context use_design_tokens=false`` string) to skip token injection
@@ -1420,10 +1421,13 @@ def inject_design_context(context: dict[str, Any], config: BRConfig | None = Non
     if _use_tokens and not context.get("design_tokens_context"):
         _tokens = load_design_tokens(config)
         context["design_tokens_context"] = render_as_prompt_context(_tokens) if _tokens else ""
+        context["design_guidance_context"] = _tokens.guidance if _tokens else ""
     else:
-        # Ensure the key exists ("" when excluded) so `${context.design_tokens_context}`
-        # interpolates without error in prompts that reference it.
+        # Ensure the keys exist ("" when excluded) so `${context.design_tokens_context}`
+        # / `${context.design_guidance_context}` interpolate without error in prompts
+        # that reference them.
         context.setdefault("design_tokens_context", "")
+        context.setdefault("design_guidance_context", "")
 
 
 def derive_input_hash(context: dict[str, Any]) -> None:

@@ -25,6 +25,7 @@ context:
   description: ""             # populated from loop_input via input_key: description
   pass_threshold: 6           # minimum score per criterion (1-10) to pass
   design_tokens_context: ""   # runner-injected; resolved semantic token values or empty
+  design_guidance_context: "" # runner-injected; DESIGN.md prose body or empty
 
 states:
 
@@ -47,6 +48,11 @@ states:
       - **Anti-patterns to avoid**: purple gradients on white cards, unmodified stock components,
         generic hero sections, AI-generated filler patterns
 
+      ${context.design_guidance_context}
+
+      If design guidance is provided above, honor its Do's and Don'ts and any stated
+      visual intent when writing the brief.
+
       Be specific and opinionated. The generator will use this brief as its primary reference.
     next: run_gen_eval
 
@@ -67,6 +73,8 @@ states:
 
         ${context.design_tokens_context}
 
+        ${context.design_guidance_context}
+
         Write a single self-contained HTML file to ${context.run_dir}/index.html that:
         - Implements the visual identity and layout from the brief
         - Embeds all CSS and JavaScript inline (no external dependencies, no CDN links)
@@ -76,6 +84,8 @@ states:
           bland sans-serif on white backgrounds)
         - If design tokens are provided above, use their semantic names and resolved values
           for colors; do not invent new color values outside the token palette
+        - If design guidance is provided above, follow its Do's and Don'ts in place of
+          (or in addition to) the generic anti-slop guidance below
         - If critique exists, resolves every specific issue before introducing new ideas
       rubric: |
         Read the screenshot at ${context.run_dir}/screenshot.png to view the generated website.

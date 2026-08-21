@@ -9033,6 +9033,11 @@ class TestHtmlWebsiteGeneratorLoop:
         ctx = data.get("context", {})
         assert "design_tokens_context" in ctx
 
+    def test_context_has_design_guidance_context(self, data: dict) -> None:
+        """context block must declare design_guidance_context; runner-injected (ENH-3267)."""
+        ctx = data.get("context", {})
+        assert "design_guidance_context" in ctx
+
     def test_max_steps_and_timeout_defined(self, data: dict) -> None:
         """Loop must define max_steps and timeout."""
         assert data.get("max_steps", 0) > 0

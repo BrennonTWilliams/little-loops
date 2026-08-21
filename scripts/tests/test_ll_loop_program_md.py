@@ -176,6 +176,7 @@ class TestCmdRunProgramMdInjection:
         (loops_dir / "test-loop.yaml").write_text(
             "name: test-loop\ninitial: done\n"
             'context:\n  targets: ""\n  directive: ""\n  design_tokens_context: ""\n'
+            '  design_guidance_context: ""\n'
             "states:\n  done:\n    terminal: true\n"
         )
         return loops_dir
@@ -336,6 +337,54 @@ class TestCmdRunProgramMdInjection:
             "when the loop YAML declares an empty placeholder"
         )
 
+    def test_design_guidance_context_injected_into_context(self, tmp_path: Path) -> None:
+        """design_guidance_context is injected into fsm.context by cmd_run (ENH-3267).
+
+        Mirrors test_design_tokens_context_injected_into_context but asserts on the
+        guidance field of the mocked DesignTokens object.
+        """
+        from unittest.mock import patch
+
+        from little_loops.cli.loop.run import cmd_run
+        from little_loops.design_tokens import DesignTokens
+        from little_loops.fsm.validation import load_and_validate
+        from little_loops.logger import Logger
+
+        loops_dir = self._make_loop(tmp_path)
+        args = self._make_args(dry_run=True)
+        logger = Logger(use_color=False)
+
+        fsm, _ = load_and_validate(loops_dir / "test-loop.yaml")
+
+        def fake_load_and_validate(path: Path):  # type: ignore[override]
+            return fsm, []
+
+        mock_tokens = DesignTokens(
+            primitives={},
+            semantic={},
+            theme={},
+            resolved={"color.accent": "#ff0000"},
+            source_path=tmp_path / "tokens.json",
+            guidance="Do: use bold typography. Don't: use purple gradients.",
+        )
+
+        with (
+            patch(
+                "little_loops.fsm.validation.load_and_validate",
+                side_effect=fake_load_and_validate,
+            ),
+            patch(
+                "little_loops.design_tokens.load_design_tokens",
+                return_value=mock_tokens,
+            ),
+        ):
+            cmd_run("test-loop", args, loops_dir, logger)
+
+        assert (
+            fsm.context.get("design_guidance_context")
+            == "Do: use bold typography. Don't: use purple gradients."
+        ), "design_guidance_context must be populated from DesignTokens.guidance"
+
     def test_input_hash_injected_into_context(self, tmp_path: Path) -> None:
         """input_hash is injected into fsm.context by cmd_run when input is non-empty."""
         from little_loops.cli.loop.run import cmd_run
@@ -348,6 +397,7 @@ class TestCmdRunProgramMdInjection:
         (loops_dir / "test-loop.yaml").write_text(
             "name: test-loop\ninitial: done\n"
             'context:\n  input: null\n  targets: ""\n  directive: ""\n  design_tokens_context: ""\n'
+            '  design_guidance_context: ""\n'
             "states:\n  done:\n    terminal: true\n"
         )
 
@@ -411,6 +461,7 @@ class TestCmdRunProgramMdInjection:
         (loops_dir / "test-loop.yaml").write_text(
             "name: test-loop\ninitial: done\n"
             'context:\n  input: null\n  targets: ""\n  directive: ""\n  design_tokens_context: ""\n'
+            '  design_guidance_context: ""\n'
             "states:\n  done:\n    terminal: true\n"
         )
 
