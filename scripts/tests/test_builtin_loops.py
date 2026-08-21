@@ -12009,9 +12009,14 @@ class TestIncrementalRefactorLoop:
         """BUG-3276: git clean -fd must exclude .loops, or it deletes the active
         run directory and persisted FSM state in a consuming project."""
         action = data["states"]["revert"].get("action", "")
-        assert "git checkout -- ." in action
-        assert "git clean -fd" in action
+        assert "checkout -- ." in action
+        assert "clean -fd" in action
         assert "-e .loops" in action
+        # Post-implementation review: both commands must be anchored at the repo
+        # root, or a run launched from a subdirectory scopes the checkout
+        # narrowly and resolves `.loops` against the wrong directory.
+        assert "--show-toplevel" in action
+        assert action.count('git -C "$ROOT"') == 2
 
     def test_check_preconditions_is_initial(self, data: dict) -> None:
         assert data.get("initial") == "check_preconditions"
@@ -12019,18 +12024,35 @@ class TestIncrementalRefactorLoop:
     def test_check_preconditions_gates_on_test_cmd_and_clean_tree(self, data: dict) -> None:
         action = data["states"]["check_preconditions"].get("action", "")
         assert "ll-config get project.test_cmd" in action
-        assert "git status --porcelain" in action
-        assert ":(exclude).loops" in action
+        assert "status --porcelain" in action
+        # `top`-anchored so the exclusion holds regardless of the launch CWD.
+        assert ":(exclude,top).loops" in action
 
-    def test_check_preconditions_failure_message_names_both_requirements(self, data: dict) -> None:
+    def test_check_preconditions_runs_a_baseline(self, data: dict) -> None:
+        """Post-implementation review: a resolvable-but-wrong test_cmd, or an
+        already-red suite, makes every verify_tests fail through no fault of the
+        step and reverts every lap. The gate must RUN the command, not just
+        check that a string exists."""
+        action = data["states"]["check_preconditions"].get("action", "")
+        assert 'sh -c "$CMD"' in action
+        assert "baseline-test-output.txt" in action
+
+    def test_check_preconditions_message_is_per_cause(self, data: dict) -> None:
         action = data["states"]["check_preconditions"].get("action", "")
         assert "project.test_cmd" in action
-        assert "clean working tree" in action
+        assert "working tree is not clean" in action
         assert "stash" in action
+        assert "baseline test run already fails" in action
+        assert "not runnable here" in action
+        # Surfaced to the user, not only to a file in the run directory.
+        assert "tee" in action and ">&2" in action
 
     def test_check_preconditions_routes_no_to_failed(self, data: dict) -> None:
         assert data["states"]["check_preconditions"].get("on_no") == "failed"
         assert data["states"]["check_preconditions"].get("on_yes") == "plan_steps"
+        # Symmetric with verify_tests: no timeout or signal kill may fall through
+        # to a state that could reach the destructive revert edge.
+        assert data["states"]["check_preconditions"].get("on_error") == "failed"
 
 
 class TestGeneratorEvaluatorOracle:

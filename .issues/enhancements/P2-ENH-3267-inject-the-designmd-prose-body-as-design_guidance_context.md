@@ -14,6 +14,12 @@ labels:
 - enhancement
 - design-tokens
 - loops
+confidence_score: 100
+outcome_confidence: 93
+score_complexity: 23
+score_test_coverage: 23
+score_ambiguity: 24
+score_change_surface: 23
 ---
 
 # ENH-3267: Inject the DESIGN.md prose body as design_guidance_context
@@ -51,6 +57,14 @@ Filed as its own issue so this does not sit behind the DESIGN.md exporter landin
 
 Optionally expose `render_body_as_prompt_context(body: str) -> str` if the body needs framing (a heading, a truncation bound) rather than raw pass-through — decide at implementation time.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-21 — based on codebase analysis:_
+
+**Consumption convention confirmed** (from every other `design_tokens_context`-consuming loop, e.g. `canvas-sketch-generator.yaml`, `pixi-data-viz.yaml`, `flux-image-generator.yaml`, `svg-textgrad.yaml`): the FSM has no conditional-interpolation syntax. Every consumer uses a two-part pattern — (1) a bare `${context.<var>}` interpolation alone on its own line (degrades to a blank line when `""`), and (2) a separate prose bullet elsewhere in the prompt phrased "If design tokens are provided above, ..." that carries the "only meaningful when non-empty" semantics. `html-website-generator.yaml`'s existing `design_tokens_context` bullet at lines 77-78 ("If design tokens are provided above, use their semantic names...") is this project's own instance of that convention. `design_guidance_context` should follow the identical two-part shape: a bare interpolation line plus a matching "If design guidance is provided above, ..." bullet — not a template conditional.
+
+**YAML `context:` block declaration is cosmetic, not functional**: `inject_design_context()` mutates `fsm.context` unconditionally (`context[...] = ...` or `context.setdefault(...)`) regardless of whether the loop's own YAML pre-declares the key. Every existing consumer loop still declares `design_tokens_context: ""` in its own `context:` block anyway, purely for self-documentation and to guard any interpolation that might run before injection (e.g. an execution-plan dry-run print). Declaring `design_guidance_context: ""` in `html-website-generator.yaml`'s `context:` block (alongside line 27) is optional for correctness but matches the established convention followed by all 12 other consumer loops — do it for consistency.
+
 ## Integration Map
 
 ### Files to Modify
@@ -66,9 +80,70 @@ Optionally expose `render_body_as_prompt_context(body: str) -> str` if the body 
 - `scripts/tests/test_cli_loop_lifecycle.py:921-948` and `:1397-1480` — `design_guidance_context` counterparts for the `cmd_resume` injection and the opt-out
 - `scripts/tests/test_builtin_loops.py:8882` (`test_context_has_design_tokens_context`, class at `:8778`) — add `test_context_has_design_guidance_context`
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_ll_loop_program_md.py:283-337` (`test_design_tokens_context_injected_into_context`) — third site (beyond `test_cli_loop_lifecycle.py` and `test_builtin_loops.py`) exercising `inject_design_context` via `cmd_run`'s dry-run path against a synthetic `test-loop.yaml`; add a `design_guidance_context` counterpart asserting `fsm.context.get("design_guidance_context")` is populated from a mocked `DesignTokens.guidance` the same way `:334` asserts `design_tokens_context` [Agent 2 finding]
+- `scripts/tests/test_ll_loop_program_md.py` fixture context blocks at `:178`, `:350`, `:413` (`_make_loop`, synthetic loop YAML) declare `design_tokens_context: ""` but not `design_guidance_context: ""` — add the sibling declaration for consistency with the established per-loop convention [Agent 2 finding]
+
 ### Documentation
 - `docs/guides/LOOPS_REFERENCE.md` — add `design_guidance_context` to the `html-website-generator` row
 - `docs/generalized-fsm-loop.md:1099` — global runner-injected-context table, with matching `use_design_tokens: false` opt-out semantics
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/CONFIGURATION.md:757` — the "Per-loop opt-out (ENH-3099)" paragraph names `context.design_tokens_context` explicitly as the variable the opt-out sets to `""`; extend it to also name `design_guidance_context` now that both are gated by `use_design_tokens` [Agent 2 finding]
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-21 — based on codebase analysis:_
+
+- **Proposed Solution step 1 is already done.** `DesignTokens.guidance: str = ""` already exists at `scripts/little_loops/design_tokens.py:39`, populated at all construction sites (`:407` empty for profile-sourced, `:456`/`:473`/`:483` = prose for design_md-sourced, including degraded paths) by the already-completed dependency ENH-3264. This issue's remaining work is purely the injection (`design_guidance_context`) and consumption sides — no `DesignTokens` field change needed.
+- **Stale path/line references corrected**: the shared injection helper (`inject_design_context`) lives at `scripts/little_loops/cli/loop/_helpers.py:1397-1426`, not in `cli/loop/run.py` or `cli/loop/lifecycle.py` as originally stated — those two files only *call* it (`run.py:244`, `lifecycle.py:717`), via `from ...import inject_design_context`. It already exists (landed by the completed dependency BUG-3266) and gates both `design_tokens_context` and (once added) `design_guidance_context` under the same `use_design_tokens` flag.
+- `render_as_prompt_context(tokens: DesignTokens) -> str` (`design_tokens.py:545`) renders only `tokens.resolved` — it never touches `tokens.guidance`. Confirmed via full read; no change to this function is needed or implied.
+- `loops/html-website-generator.yaml` real path is `scripts/little_loops/loops/html-website-generator.yaml`. Corrected line ranges: `context:` block is lines 24-27 (`design_tokens_context: ""` at line 27); `plan` state prompt body is lines 37-50 (anti-patterns bullet at 47-48, matches original); `run_gen_eval.generate_prompt` is lines 60-79, with `${context.design_tokens_context}` interpolation at line 68 and the anti-slop bullet at lines 74-76 (not 74-78 — line 78 is the following, separate token-usage bullet).
+- Test line references corrected: `scripts/tests/test_builtin_loops.py`'s `test_context_has_design_tokens_context` for `html-website-generator` is at line 9041 (class `TestHtmlWebsiteGeneratorLoop` at line 8937), not `:8882`/class at `:8778` as originally cited — the file has grown from other loops' test churn since this issue was filed.
+- `docs/generalized-fsm-loop.md`'s "Runner-injected context variables" table spans lines 1094-1101, with the `design_tokens_context` opt-out paragraph at line 1103 (not exactly `:1099` as cited, but the same table/location).
+- `docs/guides/LOOPS_REFERENCE.md`'s `html-website-generator` context-variables table (the row to extend) is at lines 1668-1673, specifically the `design_tokens_context` row at line 1672.
+
+## Program Design
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-21 — based on codebase analysis:_
+
+Types, signatures, and the call path for the `design_guidance_context` injection, mirroring the existing `design_tokens_context` mechanism:
+
+### Types
+
+No new data type. `DesignTokens.guidance: str = ""` (`design_tokens.py:39`) already exists and is already populated end-to-end by `load_design_tokens()` — every non-`None` return path sets it (`""` for profile-sourced, prose for design_md-sourced including degraded paths).
+
+### Signatures
+
+- `inject_design_context(context: dict[str, Any], config: BRConfig | None = None) -> None` — existing shared helper (`scripts/little_loops/cli/loop/_helpers.py:1397`); extend in place, do not add a second call site.
+- `render_as_prompt_context(tokens: DesignTokens) -> str` — not touched (`design_tokens.py:545`); guidance is passed through raw, never rendered by this function.
+
+`inject_design_context`'s current body:
+```python
+_use_tokens = context.get("use_design_tokens", True)
+if isinstance(_use_tokens, str):
+    _use_tokens = _use_tokens.strip().lower() not in ("", "0", "false", "no", "off")
+if _use_tokens and not context.get("design_tokens_context"):
+    _tokens = load_design_tokens(config)
+    context["design_tokens_context"] = render_as_prompt_context(_tokens) if _tokens else ""
+else:
+    context.setdefault("design_tokens_context", "")
+```
+`_tokens` (a `DesignTokens | None`) is already in scope inside the `if` branch — `context["design_guidance_context"] = _tokens.guidance if _tokens else ""` reuses it with no second `load_design_tokens()` call. The `else` branch's `context.setdefault("design_tokens_context", "")` needs a sibling `context.setdefault("design_guidance_context", "")` for the opt-out/already-populated path.
+
+### Call Path
+
+`cmd_run` (`cli/loop/run.py:244`) / `cmd_resume` (`cli/loop/lifecycle.py:717`) -> `inject_design_context()` (`_helpers.py:1397`) -> `load_design_tokens()` (`design_tokens.py:354`) -> `context["design_guidance_context"]` set on the mutated `fsm.context` dict -> `${context.design_guidance_context}` interpolated in `html-website-generator.yaml`'s `plan` state prompt and `run_gen_eval.generate_prompt`.
+
+### Decision Rules
+
+N/A — no new gap kind, gate, keyword list, or threshold. This is a value pass-through mirroring the existing `design_tokens_context` mechanism exactly (same `use_design_tokens` gate, same `""`-default guarantee); it introduces no new decision logic of its own.
+
+### Existing Convention Confirmed (single guard caveat)
+
+The existing `if _use_tokens and not context.get("design_tokens_context"):` guard checks only `design_tokens_context`'s truthiness. Mirroring it exactly means `design_guidance_context` inherits the same short-circuit: if a caller pre-populates `design_tokens_context` but not `design_guidance_context`, the `if` branch is skipped and only `setdefault("design_guidance_context", "")` runs in the `else` branch — guidance would resolve to `""` even though tokens were pre-supplied. This is the same behavior the existing single-variable guard already has for any future third variable; no wider gate refactor is in scope for this issue (Scope Boundaries excludes touching the opt-out mechanism itself, that is BUG-3266's territory).
 
 ## Implementation Steps
 
@@ -76,6 +151,15 @@ Optionally expose `render_body_as_prompt_context(body: str) -> str` if the body 
 2. Extend the shared injection helper to set `design_guidance_context` under the same `use_design_tokens` gate, defaulting to `""`.
 3. Consume in `html-website-generator.yaml`'s `plan` brief and `generate_prompt` anti-slop clause.
 4. Tests + docs.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-21 — based on codebase analysis:_
+
+**Corrected/confirmed test targets** (line numbers in the original Integration Map were stale due to churn in `test_builtin_loops.py` since this issue was filed):
+- `scripts/tests/test_cli_loop_lifecycle.py:921-948` (`test_design_tokens_context_injected_via_cmd_resume`) and `:1396-1569` (class `TestDesignTokensOptOut`) — confirmed current; add `design_guidance_context` counterparts asserting the same behavior across both `cmd_run` and `cmd_resume`, including the falsy-string-parametrized opt-out variants.
+- `scripts/tests/test_builtin_loops.py:9031-9034` (`test_context_has_design_tokens_context`, class `TestHtmlWebsiteGeneratorLoop` starting at line 8937) — add a sibling `test_context_has_design_guidance_context` asserting `"design_guidance_context" in ctx`.
+- Step 3 ("Consume in `html-website-generator.yaml`'s `plan` brief and `generate_prompt` anti-slop clause") should follow the two-part convention confirmed in Proposed Solution: a bare `${context.design_guidance_context}` interpolation line plus a separate "If design guidance is provided above, ..." prose bullet — not a structural conditional.
 
 ## Impact
 
@@ -118,3 +202,10 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 ## Status
 
 **Open** | Created: 2026-08-20 | Priority: P2
+
+
+## Session Log
+- `/ll:confidence-check` - 2026-08-21T14:28:57 - `08bd38ec-d985-4ff9-b92f-3e3223f35d2e.jsonl`
+- `/ll:confidence-check` - 2026-08-21T14:00:15 - `72ec3b4b-10e6-496a-b571-6c6eeff6d6e3.jsonl`
+- `/ll:wire-issue` - 2026-08-21T13:57:14 - `d9f3ea69-ab5f-4f68-bd22-6d65aebf22d7.jsonl`
+- `/ll:refine-issue` - 2026-08-21T13:41:36 - `644f2c06-0c3c-414e-b6e8-cd05189797bb.jsonl`

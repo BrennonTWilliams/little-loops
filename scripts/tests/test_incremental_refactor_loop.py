@@ -87,17 +87,26 @@ class TestVerifyTestsExitCodeContract:
 class TestCheckPreconditionsShellAction:
     """BUG-3276 AC 4: refuses to start on unresolvable test_cmd or a dirty tree
     (untracked files included), .loops excluded so the gate is runnable in
-    every consuming project even though ll-init doesn't gitignore it."""
+    every consuming project even though ll-init doesn't gitignore it.
+
+    Post-implementation review: the gate also runs the resolved command once,
+    so a non-empty-but-wrong test_cmd or an already-red suite refuses to start
+    rather than reverting every step.
+    """
 
     def _run(
-        self, tmp_path: Path, *, context_test_cmd: str = "true"
+        self,
+        tmp_path: Path,
+        *,
+        context_test_cmd: str = "true",
+        cwd: Path | None = None,
     ) -> subprocess.CompletedProcess[str]:
         run_dir = tmp_path / "run_dir"
         run_dir.mkdir(parents=True, exist_ok=True)
         script = _load_state_script("check_preconditions")
         script = script.replace("${context.test_cmd}", context_test_cmd)
         script = script.replace("${context.run_dir}", str(run_dir))
-        return _bash(script, cwd=tmp_path)
+        return _bash(script, cwd=cwd or tmp_path)
 
     def test_clean_tree_and_resolvable_cmd_passes(self, tmp_path: Path) -> None:
         _init_git_repo(tmp_path)
@@ -145,7 +154,8 @@ class TestCheckPreconditionsShellAction:
         result = self._run(tmp_path, context_test_cmd="")
         assert result.returncode == 1, result.stderr
 
-    def test_failure_message_names_test_cmd_and_clean_tree(self, tmp_path: Path) -> None:
+    def test_dirty_tree_message_names_the_tree_and_the_remedy(self, tmp_path: Path) -> None:
+        """Per-cause messages: a dirty tree must not lecture about test_cmd."""
         _init_git_repo(tmp_path)
         (tmp_path / "src.py").write_text("x = 1\n")
         run_dir = tmp_path / "run_dir"
@@ -153,9 +163,71 @@ class TestCheckPreconditionsShellAction:
         result = self._run(tmp_path)
         assert result.returncode == 1, result.stderr
         message = (run_dir / "precondition-failure.txt").read_text()
-        assert "project.test_cmd" in message
-        assert "clean working tree" in message
+        assert "working tree is not clean" in message
         assert "stash" in message
+        assert "project.test_cmd" not in message
+
+    def test_unresolvable_message_names_test_cmd_and_config_path(self, tmp_path: Path) -> None:
+        _init_git_repo(tmp_path)
+        (tmp_path / ".ll").mkdir()
+        (tmp_path / ".ll" / "ll-config.json").write_text('{"project": {"test_cmd": null}}')
+        run_dir = tmp_path / "run_dir"
+        run_dir.mkdir(parents=True, exist_ok=True)
+        result = self._run(tmp_path, context_test_cmd="")
+        assert result.returncode == 1, result.stderr
+        message = (run_dir / "precondition-failure.txt").read_text()
+        assert "project.test_cmd" in message
+        assert ".ll/ll-config.json" in message
+
+    def test_failure_message_also_goes_to_stderr(self, tmp_path: Path) -> None:
+        """A file-only message leaves a user watching the run with a bare
+        `failed` terminal and no reason."""
+        _init_git_repo(tmp_path)
+        (tmp_path / "src.py").write_text("x = 1\n")
+        result = self._run(tmp_path)
+        assert result.returncode == 1
+        assert "refused to start" in result.stderr
+
+    def test_red_baseline_refuses_to_start(self, tmp_path: Path) -> None:
+        """A resolvable command whose suite is already failing must refuse --
+        otherwise every step reverts through no fault of the step."""
+        _init_git_repo(tmp_path)
+        result = self._run(tmp_path, context_test_cmd="false")
+        assert result.returncode == 1, result.stderr
+        message = (tmp_path / "run_dir" / "precondition-failure.txt").read_text()
+        assert "baseline test run already fails" in message
+
+    def test_pytest_usage_error_baseline_refuses_to_start(self, tmp_path: Path) -> None:
+        """This bug's original failure code (pytest exit 4, missing test dir)
+        reached through a wrong config value instead of a hardcoded literal."""
+        _init_git_repo(tmp_path)
+        result = self._run(tmp_path, context_test_cmd="exit 4")
+        assert result.returncode == 1, result.stderr
+
+    def test_unrunnable_command_reported_distinctly_from_red_suite(self, tmp_path: Path) -> None:
+        _init_git_repo(tmp_path)
+        result = self._run(tmp_path, context_test_cmd="ll-no-such-binary-xyz")
+        assert result.returncode == 1, result.stderr
+        message = (tmp_path / "run_dir" / "precondition-failure.txt").read_text()
+        assert "not runnable here" in message
+
+    def test_baseline_output_captured_to_run_dir(self, tmp_path: Path) -> None:
+        _init_git_repo(tmp_path)
+        self._run(tmp_path, context_test_cmd="echo BASELINE_MARKER; exit 1")
+        output = (tmp_path / "run_dir" / "baseline-test-output.txt").read_text()
+        assert "BASELINE_MARKER" in output
+
+    def test_gate_is_cwd_independent(self, tmp_path: Path) -> None:
+        """Run from a subdirectory: the .loops exclusion is top-anchored, so an
+        untracked .loops/ at the repo root must still not trip the gate."""
+        _init_git_repo(tmp_path)
+        loops_run = tmp_path / ".loops" / "runs" / "x"
+        loops_run.mkdir(parents=True)
+        (loops_run / "state.json").write_text("{}")
+        subdir = tmp_path / "pkg"
+        subdir.mkdir()
+        result = self._run(tmp_path, cwd=subdir)
+        assert result.returncode == 0, result.stderr
 
 
 class TestRevertShellAction:
@@ -184,3 +256,25 @@ class TestRevertShellAction:
         assert (loops_run / "state.json").exists(), (
             "revert must not delete the active run directory (-e .loops)"
         )
+
+    def test_revert_is_cwd_independent(self, tmp_path: Path) -> None:
+        """Run from a subdirectory: `git checkout -- .` must still cover the
+        whole repo, and `.loops` must still resolve at the repo root."""
+        _init_git_repo(tmp_path)
+        subdir = tmp_path / "pkg"
+        subdir.mkdir()
+        (subdir / "__init__.py").write_text("")
+        subprocess.run(["git", "add", "."], cwd=tmp_path, check=True)
+        subprocess.run(["git", "commit", "-q", "-m", "pkg"], cwd=tmp_path, check=True)
+
+        loops_run = tmp_path / ".loops" / "runs" / "x"
+        loops_run.mkdir(parents=True)
+        (loops_run / "state.json").write_text("{}")
+        (tmp_path / "README.md").write_text("modified by step\n")
+        (tmp_path / "new_module.py").write_text("z = 3\n")
+
+        result = _bash(_load_state_script("revert"), cwd=subdir)
+        assert result.returncode == 0, result.stderr
+        assert (tmp_path / "README.md").read_text() == "baseline\n"
+        assert not (tmp_path / "new_module.py").exists()
+        assert (loops_run / "state.json").exists()

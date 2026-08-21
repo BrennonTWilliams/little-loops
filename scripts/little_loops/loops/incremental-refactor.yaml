@@ -30,7 +30,20 @@ states:
     # step's own work. `.loops` is excluded from the gate -- `ll-init` does
     # not gitignore it in consuming projects, so a bare
     # `git status --porcelain` would refuse to start in every project but
-    # this one (the run dir is untracked by the time this state runs).
+    # this one (the run dir is untracked by the time this state runs). The
+    # pathspec is `top`-anchored and git runs with -C at the repo root, so
+    # neither the gate nor revert depends on the launch CWD.
+    #
+    # The gate also RUNS the resolved command once (general-task.yaml's
+    # check_baseline_tests shape). A command that merely exists is not
+    # enough: a wrong-but-non-empty test_cmd (pytest exit 4, this bug's own
+    # failure code) or an already-red suite makes every verify_tests fail
+    # through no fault of the step, and every lap reverts -- the original
+    # destructive cycle reached through a config value instead of a
+    # hardcoded literal. Test-gated commits are only meaningful against a
+    # known-green baseline. Ordering matters: the clean-tree check runs
+    # BEFORE the baseline so the baseline's own artifacts (.pytest_cache,
+    # __pycache__) can't trip it.
     fragment: shell_exit
     action: |
       if [ -n "${context.test_cmd}" ]; then
@@ -42,14 +55,34 @@ states:
           CMD=""
         fi
       fi
-      DIRTY=$(git status --porcelain -- ':(exclude).loops')
-      if [ -z "$CMD" ] || [ -n "$DIRTY" ]; then
-        echo "incremental-refactor requires project.test_cmd to resolve to a non-empty command (configure it in .ll/ll-config.json, or pass context.test_cmd) and a clean working tree. git stash or commit your outstanding changes, then re-run." > "${context.run_dir}/precondition-failure.txt"
+      ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || ROOT="."
+      REASON=""
+      if [ -z "$CMD" ]; then
+        REASON="project.test_cmd does not resolve to a non-empty command. Set it in .ll/ll-config.json (or pass context.test_cmd), then re-run."
+      else
+        DIRTY=$(git -C "$ROOT" status --porcelain -- ':(exclude,top).loops')
+        if [ -n "$DIRTY" ]; then
+          REASON="the working tree is not clean (untracked files count). git stash -u or commit your outstanding changes, then re-run."
+        else
+          sh -c "$CMD" > "${context.run_dir}/baseline-test-output.txt" 2>&1
+          EXIT=$?
+          if [ "$EXIT" != "0" ]; then
+            if [ "$EXIT" = "127" ] || grep -q "command not found" "${context.run_dir}/baseline-test-output.txt" 2>/dev/null; then
+              REASON="project.test_cmd is not runnable here (exit $EXIT): $CMD -- see baseline-test-output.txt. Fix the command in .ll/ll-config.json, then re-run."
+            else
+              REASON="the baseline test run already fails (exit $EXIT) before any refactoring: $CMD -- see baseline-test-output.txt. This loop gates each step on tests, so a red baseline reverts every step. Get the suite green, then re-run."
+            fi
+          fi
+        fi
+      fi
+      if [ -n "$REASON" ]; then
+        echo "incremental-refactor refused to start: $REASON" | tee "${context.run_dir}/precondition-failure.txt" >&2
         exit 1
       fi
       exit 0
     on_yes: plan_steps
     on_no: failed
+    on_error: failed
 
   plan_steps:
     action: "Analyze the refactoring goal: '${context.refactor_goal}'. Decompose it into the smallest safe atomic steps that can each be independently tested. List each step clearly. Each step should be a single, focused change that keeps the codebase in a working state."
@@ -118,8 +151,13 @@ states:
     # half of the defect (a step that creates a new file used to survive a
     # bare `git checkout -- .`). `-e .loops` is mandatory: without it this
     # deletes the active run directory and persisted FSM state mid-run in
-    # any consuming project (`ll-init` does not gitignore `.loops/`).
-    action: "git checkout -- . && git clean -fd -e .loops"
+    # any consuming project (`ll-init` does not gitignore `.loops/`). Both
+    # commands run with -C at the repo root so a run launched from a
+    # subdirectory can't scope the checkout narrowly or resolve `.loops`
+    # against the wrong directory and clean the live run dir.
+    action: |
+      ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || ROOT="."
+      git -C "$ROOT" checkout -- . && git -C "$ROOT" clean -fd -e .loops
     action_type: shell
     next: replan
 
