@@ -21,6 +21,7 @@ score_complexity: 20
 score_test_coverage: 22
 score_ambiguity: 16
 score_change_surface: 22
+decision_needed: false
 ---
 
 # BUG-3276: Built-in loops hardcode this-repo-specific project commands — incremental-refactor reverts all work in consuming projects
@@ -76,6 +77,10 @@ literal is the only source for the command.
 3. Non-zero → `on_no: revert`.
 4. `revert` runs `git checkout -- .` — **the step's work is discarded, along with any other
    uncommitted changes in the working tree**.
+   - `git checkout -- .` is also *too narrow* in the other direction: it does not remove
+     untracked files. A step that creates a new module leaves that file behind after the
+     revert, so `replan` → `execute_step` runs against a partially-reverted tree. The revert
+     is simultaneously too broad (tracked, unrelated changes) and incomplete (new files).
 5. `replan` → `execute_step` → step 2. Every lap destroys work, up to `max_steps: 30` or
    `replan`'s `max_retries: 3` → `failed`.
 
@@ -120,34 +125,92 @@ Unlike BUG-3269 — which burns budget on already-completed work — this one de
 ## Proposed Solution
 
 1. **Replace the hardcoded context default** with `test_cmd: ""` and resolve in
-   `verify_tests` using BUG-3269's context-first shape:
+   `verify_tests` using BUG-3269's context-first shape. Copy `general-task.yaml:49-58`
+   **verbatim, including the `RC` check** — a bare `CMD=$(ll-config get project.test_cmd)`
+   silently conflates "`ll-config` is missing/broken" with "the user opted out", and under
+   this issue's chosen design an empty `CMD` routes to a *terminal failure*, so that
+   conflation is no longer harmless:
 
    ```bash
    if [ -n "${context.test_cmd}" ]; then
      CMD="${context.test_cmd}"
    else
      CMD=$(ll-config get project.test_cmd)
+     RC=$?
+     if [ "$RC" != "0" ]; then
+       echo "ll-config not found (exit $RC)" > "${context.run_dir}/verify-skip-reason.txt"
+       CMD=""
+     fi
    fi
    ```
 
-   Do **not** add a `|| { ...; exit N; }` guard: `verify_tests` is exit-code gated, so a
-   non-zero exit routes to `on_no: revert`. See BUG-3269 §1f for the executor routing
-   analysis.
+   Do **not** let a resolution failure exit non-zero *unclassified*: `verify_tests` is
+   exit-code gated, so an undistinguished non-zero exit routes to `on_no: revert`. See
+   BUG-3269 §1f for the executor routing analysis, and step (2) below for the exit-code
+   contract that keeps resolution failure off the `revert` edge.
 
 2. **Decide the empty-`CMD` branch** — this is the safety decision, equivalent to
    BUG-3269 §2b's row for `dead-code-cleanup`. `verify_tests`'s `on_no` edge is destructive,
    so pass-on-empty is not automatically safe either: passing means committing a refactoring
    step with zero verification. Options:
-   - **(a)** Route to `commit_step` with a recorded "no test signal" marker — trusts the
-     model's step, matches `fix-quality-and-tests`'s pass-on-empty semantic.
-   - **(b)** Route to a new terminal `failed` state — refuses to run an unverifiable
-     test-gated refactor at all.
-   - **(c)** Refuse at loop start: validate that a test command resolves before
-     `plan_steps`, failing fast rather than mid-refactor.
 
-   Recommendation: **(c) plus (b)** — a refactor loop whose entire safety model is
-   "test-gated commits" should not start without a test gate, and should not silently
-   downgrade to untested commits if one disappears mid-run.
+**Option A**: Route to `commit_step` with a recorded "no test signal" marker — trusts the
+model's step, matches `fix-quality-and-tests`'s pass-on-empty semantic.
+
+**Option B**: Route to a new terminal `failed` state — refuses to run an unverifiable
+test-gated refactor at all.
+
+**Option C**: Refuse at loop start: validate that a test command resolves before
+`plan_steps`, failing fast rather than mid-refactor.
+
+**Recommended**: Option C plus Option B — a refactor loop whose entire safety model is
+"test-gated commits" should not start without a test gate, and should not silently
+downgrade to untested commits if one disappears mid-run.
+
+> **Selected:** Option C + Option B — refuse to start when `test_cmd` doesn't resolve
+> (`plan_steps` precondition), and route to the existing `failed` terminal as a
+> mid-run defense if the resolved command later becomes unresolvable. Option A's
+> pass-on-empty semantic has better isolated codebase reuse, but it reintroduces the
+> exact class of risk this P1 bug exists to close: an unverified refactoring step
+> gets silently committed. See Decision Rationale below.
+
+#### Mechanism for the empty-`CMD` branch (corrects the "new wiring" note in Decision Rationale)
+
+The Decision Rationale's key-evidence line for Option B claims no `action_type: shell` state
+can branch "precondition empty" vs. "command failed" to two different targets. **That is
+wrong** — `evaluate_exit_code` (`scripts/little_loops/fsm/evaluators.py:238-264`) already
+gives shell states a four-way verdict space, and `abstain_on_exit_3` is schema-supported
+(ENH-3224, `scripts/little_loops/fsm/schema.py:113,158-159,210`) though not yet used by any
+loop YAML:
+
+| exit code | verdict | edge on `verify_tests` |
+|---|---|---|
+| `0` | `yes` | `commit_step` |
+| `1` | `no` | `revert` |
+| `3` | `cannot_judge` — **only** when `abstain_on_exit_3: true` | `on_cannot_judge: failed` |
+| anything else | `error` | `on_error` |
+
+Option B is therefore a two-line change, not new wiring. Its Simplicity score of 1/3 below is
+understated; this does not change the C+B selection, only its cost.
+
+**The wrapper must own the exit-code space.** pytest's own codes collide with the table:
+`2` (interrupted), `3` (internal error), `4` (usage error — the exact code this bug's failure
+chain produces), and `5` (no tests collected) all currently land on `on_error`, which today
+points at `revert` alongside `on_no`. Normalize inside the action so only the wrapper can
+emit `3`:
+
+```bash
+[ -z "$CMD" ] && exit 3        # unresolvable / opt-out -> cannot_judge -> failed
+sh -c "$CMD"; rc=$?
+[ "$rc" = 0 ] && exit 0        # pass -> commit_step
+exit 1                         # every real failure -> on_no: revert, as today
+```
+
+with `abstain_on_exit_3: true` and `on_cannot_judge: failed` on the state. This preserves
+today's "any test failure reverts" semantic exactly while carving the resolution failure out
+of it. An acceptable variant is to route empty → `on_error: failed` and collapse all real
+failures to `1`; if that variant is taken, state it explicitly, because `on_error` and
+`on_no` currently both point at `revert` and the distinction becomes load-bearing.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
@@ -159,16 +222,46 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - If option (c) is taken: update `scripts/tests/test_builtin_loops.py:11786-11789` (`test_required_top_level_fields`)'s `data.get("initial") == "plan_steps"` assertion to match the new initial state, and add a `TestPrePatchCheckReachability`-style precondition test.
 - Sibling survey (step 4) is closed: no other loop hardcodes an unresolved project-command literal, and no other loop has an unscoped blanket `git checkout`/`reset`/`clean` beyond the four already-scoped precedents — see the new Sibling Loop Survey subsection of the Integration Map.
 
-3. **Scope or guard `revert`.** Either narrow `git checkout -- .` to the paths the step
-   touched, or add a clean-tree precondition at `plan_steps`. Independent of (1) and (2),
-   and arguably the more important half: even with a correct `test_cmd`, a genuinely failing
-   step currently discards unrelated uncommitted work.
+3. **Guard `revert` with a clean-tree precondition — not by narrowing the checkout.**
+   Earlier drafts framed these as alternatives ("narrow `git checkout -- .` to the paths the
+   step touched, *or* add a clean-tree precondition"). Path-narrowing is not implementable as
+   written: `execute_step` is `action_type: prompt` (with `fragment: diff_stall_gate`) and
+   nothing records touched files into context, so there is no scoped context variable to
+   narrow to and none can be produced without adding a further shell state to capture
+   `git diff --name-only`.
+
+   The clean-tree precondition is not a weaker substitute — **it is what makes the blanket
+   revert correct.** If `git status --porcelain` is empty at loop start, then at every
+   `revert` all uncommitted content *is* the failed step's work, because each accepted step
+   is committed by `commit_step` and HEAD advances every lap. One precondition state
+   therefore serves both step (2) and step (3), and this — not the tie-break in the Decision
+   Rationale — is the strongest argument for Option C.
+
+   Given that invariant, `revert` becomes:
+
+   ```bash
+   git checkout -- . && git clean -fd
+   ```
+
+   `git clean -fd` closes the *too-narrow* half of the defect (untracked files created by the
+   step survive a bare `git checkout -- .`). It is safe only under the invariant, which is
+   why the precondition must reject untracked files too — plain `git status --porcelain`
+   emptiness is the right gate, since `??` entries are included by default. Do not weaken the
+   gate to `--untracked-files=no`.
 
 4. **Survey for siblings.** `test-coverage-improvement.yaml:54,57` builds
    `COV_CMD="python -m pytest --cov ..."` as a literal. That one is a *coverage* invocation
    rather than the project's test command, and `project.test_cmd` has no coverage variant,
    so it is likely correct as-is — but confirm rather than assume, and record the finding
-   here either way.
+   here either way. **Closed** — see the Sibling Loop Survey subsection of the Integration
+   Map; no further sibling instances exist.
+
+5. **Extend the harness design rule — in scope, not an open argument.** Add to
+   `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md`, alongside BUG-3269's "resolve project
+   commands via `ll-config get`": *never hardcode a project command literal in a loop action
+   or context default.* Earlier drafts left this phrased as a case to be argued; it is an
+   acceptance criterion of this issue. Whether `ll-loop validate` should **enforce** it as a
+   new MR rule stays out of scope here (BUG-3269 §4) — this is a documentation change only.
 
 ### Codebase Research Findings
 
@@ -181,6 +274,44 @@ _Added by `/ll:refine-issue` — 2026-08-21 — based on codebase analysis:_
   - `fix-quality-and-tests.yaml`: splits the two falsy cases — key absent → guessed `'pytest'`; key present-and-null → runs `true` (a no-op that always passes), functionally an opt-out but implemented as "run a trivial passing command" rather than skip-with-sentinel.
   - This disagreement bears directly on options (a)/(b)/(c): the two loops that already cite BUG-3269 both chose an opt-out-without-guessing shape, which is closer to (a)/(b) than to the guessed-default loops. No existing loop implements option (c) (refuse at `plan_steps` before running); no loop in this codebase currently checks working-tree cleanliness as a precondition.
 - **Revert/destructive-git scoping (step 3) — the codebase already has scoped-revert precedent to reuse, `incremental-refactor.yaml`'s blanket `git checkout -- .` is the outlier**: `dead-code-cleanup.yaml:84-97` (`revert_and_scan`, prompt-driven `git checkout -- <file>` scoped to the single failing file) and `test-coverage-improvement.yaml:188-197` (`revert`, prompt-driven, scoped to "the new test files" only) scope to specific paths; `harness-optimize.yaml:56-57` scopes to a specific ref and path (`git checkout "$BEST" -- ${context.targets}`); `rn-refine.yaml:513-532` (`revert_leaf_failed`) uses `git reset --hard "$BASELINE"` against a per-leaf recorded commit rather than current HEAD. None of the searched loop YAMLs implement a clean-working-tree precondition check (confirmed via grep for `git status --porcelain` / "working tree" / "clean tree" — no matches).
+
+### Decision Rationale
+
+Decided by `/ll:decide-issue` on 2026-08-20.
+
+**Selected**: Option C + Option B (refuse to start when `test_cmd` is unresolvable; route to
+the existing `failed` terminal as a mid-run defense)
+
+**Reasoning**: Option A (pass-on-empty with a recorded marker) scores highest in isolation on
+codebase-pattern reuse — `fix-quality-and-tests.yaml`'s `true`-substitution and
+`general-task.yaml`'s `run_final_tests` bare `exit 0` are direct precedent for silent
+pass-through, and `general-task.yaml`'s `check_baseline_tests` sentinel is direct precedent
+for the marker half. But this is a P1 bug specifically about `incremental-refactor` destroying
+uncommitted work; Option A reintroduces the underlying danger in a new shape — committing an
+unverified refactoring step — which the issue's own Expected Behavior section rules out
+("must not fall through to revert... in exchange for no signal at all" applies equally to
+committing with no signal). Option C's `initial: <precondition-state>` shape is directly
+reused from `general-task.yaml`/`code-run-gate.yaml`/`spike-gate.yaml`, and Option B's
+route-into-an-existing-`failed`-terminal shape is reused from `incremental-refactor.yaml`'s
+own `check_complete.on_cannot_judge`/`replan.on_retry_exhausted` edges and the
+`TestOnCannotJudgeRoutes` convention (9 existing call sites) — both pieces compose known FSM
+shapes even though the specific "empty precondition" trigger is new. `rl-coding-agent.yaml`'s
+`observe` state (scoring `0.0` rather than trusting an empty command) is corroborating
+evidence that this codebase does not treat "no test signal" as safe-to-pass uniformly.
+
+#### Scoring Summary
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|--------|-------------|------------|-------------|------|-------|
+| Option A (pass-on-empty + marker) | 2/3 | 3/3 | 3/3 | 1/3 | 9/12 |
+| Option B (route to `failed`) alone | 2/3 | 1/3 | 2/3 | 2/3 | 7/12 |
+| Option C (refuse at loop start) alone | 2/3 | 1/3 | 2/3 | 3/3 | 8/12 |
+| **Option C + Option B (selected)** | 2/3 | 1/3 | 3/3 | 3/3 | **9/12** |
+
+**Key evidence**:
+- Option A: `fix-quality-and-tests.yaml:58-77` (`true` substitution), `general-task.yaml:677-685` (`run_final_tests` bare `exit 0`), `general-task.yaml:36-70` (`baseline-skip-reason.txt` marker) — but `rl-coding-agent.yaml:56-70` scores empty `test_cmd` as `0.0`, not a pass, showing the convention is contested.
+- Option B: `incremental-refactor.yaml:53` (`check_complete.on_cannot_judge: failed`) and `:64` (`replan.on_retry_exhausted: failed`) are same-file precedent for a new edge into the existing `failed` terminal; `TestOnCannotJudgeRoutes` (`test_builtin_loops.py:3376-3409`) pins 9 such edges codebase-wide. ~~No existing `action_type: shell` state branches "precondition empty" vs. "command failed" to two different targets — new wiring.~~ **Corrected 2026-08-21**: this was wrong, and it is why Option B scores 1/3 on Simplicity below. `evaluate_exit_code` (`evaluators.py:238-264`) already yields four verdicts from a shell exit code, and `abstain_on_exit_3` (`schema.py:113`) is schema-supported. The branch is a two-line change — see *Mechanism for the empty-`CMD` branch* above. The selection is unchanged; only B's cost estimate was inflated.
+- Option C: `general-task.yaml:4,36-74` (`check_baseline_tests` as `initial`), `oracles/code-run-gate.yaml:24` (`resolve_commands` as `initial`) establish the `initial: <precondition-state>` shape — but every existing instance of it (including `general-task.yaml`'s identical `test_cmd`-resolution case) resolves an empty value by skipping forward, never by refusing to start; the "refuse" behavior itself has no precedent and is the one genuinely new piece of this decision.
 
 ## Integration Map
 
@@ -212,6 +343,17 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_builtin_loops.py` — `incremental-refactor` structural assertions; add
   a case asserting `verify_tests` contains no hardcoded `scripts/tests/` literal
 - New: `verify_tests` under `test_cmd: null` does not reach `revert`
+- New (behavioural, model on `TestCheckBaselineTestsShellAction`): extract `verify_tests`'s
+  shell action and run it via `subprocess.run(["bash", "-c", script])` against a `tmp_path`
+  with a controlled `.ll/ll-config.json`, asserting the **exit-code contract** from step (2):
+  empty/unresolvable → `3`; passing command → `0`; failing command → `1`; and that a command
+  exiting `4` (pytest usage error — this bug's own failure mode) maps to `1`, not to `3`.
+- New: `verify_tests` declares `abstain_on_exit_3: true` and `on_cannot_judge: failed`
+  (structural), so the `3` above cannot silently degrade to `on_error`.
+- New: the clean-tree precondition state rejects a dirty tree **including untracked files**
+  — a `??`-only `git status --porcelain` must refuse to start.
+- New: `revert` includes `git clean -fd` (untracked-file half of the defect), alongside the
+  `test_revert_uses_scoped_targets`-style assertion already noted above.
 
 ### Documentation
 - `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` — BUG-3269 adds the "resolve project commands
@@ -261,6 +403,41 @@ _Wiring pass added by `/ll:wire-issue`:_
   branch chosen in Proposed Solution step 2.
 - Working tree dirty at `plan_steps` → refuse to start (if option (c) is taken).
 
+## Acceptance Criteria
+
+_Added 2026-08-21 during pre-implementation review. Steps 1–5 of Proposed Solution are the
+design; these are the checkable outcomes._
+
+1. `incremental-refactor.yaml`'s `context.test_cmd` is `""` — no project-command literal
+   anywhere in the file (context defaults or state actions).
+2. `verify_tests` resolves context-first, then `ll-config get project.test_cmd` **with the
+   `RC` check**, matching `general-task.yaml:49-58`.
+3. `verify_tests` implements the exit-code contract: `3` = unresolvable/opt-out, `1` = any
+   real test failure, `0` = pass; declares `abstain_on_exit_3: true` and
+   `on_cannot_judge: failed`. A resolution failure never reaches `revert`.
+4. A clean-tree precondition state runs before `plan_steps` and is the FSM's `initial`;
+   it refuses to start on any non-empty `git status --porcelain`, untracked files included.
+5. `revert` performs `git checkout -- . && git clean -fd`, valid under (4)'s invariant.
+6. `ll-loop validate incremental-refactor` passes (MR-1..MR-14), and
+   `python -m pytest scripts/tests/` exits 0 — including the updated
+   `test_required_top_level_fields` `initial` assertion (`test_builtin_loops.py:11786-11789`).
+7. Tests from the Tests subsection above exist and pass.
+8. `docs/guides/LOOPS_REFERENCE.md:1305`'s `test_cmd` row and
+   `scripts/little_loops/loops/README.md:52` describe the new behavior; the "never hardcode a
+   project command literal" rule is added to `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md`
+   (step 5).
+9. **Resume behavior is verified, not assumed** — see Open Question below.
+
+### Open Question (resolve during implementation, do not defer)
+
+This loop sets `on_handoff: spawn`. A resumed run must re-enter at the persisted
+`current_state`, **not** at `initial` — otherwise AC (4)'s precondition fires mid-refactor
+against a legitimately dirty tree (uncommitted step work) and refuses to continue, turning a
+safety gate into a resume-breaker. Confirm against `scripts/little_loops/fsm/persistence.py`
+and the handoff path before landing; if resume does re-enter `initial`, the precondition needs
+a "first lap only" guard (e.g. skip when a run-dir marker from a prior lap exists). No
+existing loop has a precondition of this kind, so there is no precedent to inherit here.
+
 ## Impact
 
 - **Severity**: P1. Destroys uncommitted work, deterministically, in every project that is
@@ -268,7 +445,14 @@ _Wiring pass added by `/ll:wire-issue`:_
 - **Blast radius**: `incremental-refactor` only. Narrower than BUG-3269, but the failure is
   destructive rather than wasteful.
 - **Risk of the fix**: low for steps (1) and (2) — one loop file, mechanically checkable.
-  Step (3) changes revert semantics and deserves its own review.
+  Step (3) changes revert semantics and deserves its own review; note it is now *coupled* to
+  the step (4) precondition rather than independent of it — `git clean -fd` is only safe under
+  the clean-tree invariant, so the two must land together or not at all.
+- **New failure mode introduced (accepted)**: on a project with no resolvable `test_cmd`, the
+  loop now refuses to start instead of running. That is the intended trade — an unverifiable
+  test-gated refactor should not run — but it means users of projects without `project.test_cmd`
+  configured see a hard stop where they previously saw (destructive) motion. The precondition's
+  failure message must name `project.test_cmd` and the clean-tree requirement explicitly.
 - **Backward compatibility**: in *this* repo the resolved `project.test_cmd`
   (`python -m pytest scripts/tests/`) is byte-identical to the current hardcoded literal, so
   behavior here is unchanged. Every other project changes from "always revert" to "gate on
@@ -280,7 +464,9 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ## Related Key Documentation
 
-- BUG-3269 — the sibling defect (divergent config *reads*); its §1f documents why a
+- BUG-3269 — the sibling defect (divergent config *reads*), **status `done`** as of
+  2026-08-21, so the `ll-config get project.test_cmd` null semantics this issue builds on are
+  already landed — no ordering dependency, `relates_to` is the correct edge; its §1f documents why a
   non-zero exit cannot be used to signal a resolution failure at an exit-code-gated state,
   and its §2/§2b document the precedence and empty-`CMD` shapes to reuse here
 - `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` — loop design rules
@@ -291,6 +477,9 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-21T05:03:13 - `21d9445e-396a-4f1c-8a38-86569c765496.jsonl`
+- `/ll:decide-issue` - 2026-08-21T04:57:58 - `89ddbdcc-e3df-48b0-a087-301d49597946.jsonl`
+- `/ll:refine-issue` - 2026-08-21T04:51:56 - `f1b83cf4-c090-438e-b615-05796ab30785.jsonl`
 - `/ll:wire-issue` - 2026-08-21T04:45:06 - `ee8d0c92-9f75-42c4-9e2a-730c3d5d3cb0.jsonl`
 - `/ll:refine-issue` - 2026-08-21T04:32:03 - `a85e8b1c-5475-4885-a40b-302d5e096fc6.jsonl`
 - `/ll:refine-issue` - 2026-08-21T03:56:04 - `d0214377-90ea-4261-b458-0b3aa6f7a0bc.jsonl`

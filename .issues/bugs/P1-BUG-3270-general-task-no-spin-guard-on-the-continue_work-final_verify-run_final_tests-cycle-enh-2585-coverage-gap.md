@@ -29,6 +29,7 @@ score_change_surface: 23
 blocked_by:
 - BUG-3269
 - BUG-3271
+verify_verdict: VALID
 ---
 
 # BUG-3270: general-task: no spin guard on the continue_work -> final_verify -> run_final_tests cycle (ENH-2585 coverage gap)
@@ -81,6 +82,18 @@ every lap:
 `done_counts.total == 0` means "nothing left to do". `continue_result == WORK_COMPLETE`
 means the model agrees. The loop had both, 45 times, and had no edge that could act on
 them.
+
+**Why the existing `circuit:` block was also silent.** `general-task.yaml:27-30` declares
+`circuit.repeated_failure` with `window: 3` / `on_repeated_failure: diagnose`, so the loop is
+not entirely without a stall mechanism — it simply cannot see this shape.
+`StallDetector.check()` (`scripts/little_loops/fsm/stall_detector.py:63-71`) fires only when
+the last `window` recorded `(state, exit_code, verdict)` triples are **identical**, i.e. the
+same state N times consecutively. On a 3-state cycle the triples rotate
+(`continue_work`, `final_verify`, `run_final_tests`, …) and are never identical three in a
+row, so the detector never fired across all 45 laps. The non-consecutive variant that *would*
+have fired, `recurrent_window`, is unset on this loop (and on every loop in the repo — zero
+matches in `scripts/little_loops/loops/`). See Proposed Solution § "Rejected alternative:
+`circuit.recurrent_window`" for why enabling it is not the fix.
 
 **These are evidence of the spin, not usable gate inputs.** Both values were *identical on
 every lap* precisely because neither is re-captured anywhere on this cycle — `done_counts`
@@ -194,15 +207,50 @@ Use content instead, stored per-lap in its own file (e.g.
 value:
 
 ```sh
-FP=$( { git diff "$BASELINE_REF" -- .
-        git ls-files -o --exclude-standard | sort | while IFS= read -r f; do
-          printf '%s %s\n' "$f" "$(git hash-object "$f" 2>/dev/null || echo missing)"
-        done
+# NOTE: no bash ${VAR} brace form anywhere in this body — see Implementation
+# Steps § brace interpolation. Unbraced "$VAR" only.
+untracked() { git ls-files -o --exclude-standard -z -- . ':(exclude).loops/'; }
+FP=$( { git diff "$BASELINE_REF" -- . ':(exclude).loops/'
+        # paths, then their contents — two cheap passes, no temp file
+        untracked | sort -z | tr '\0' '\n'
+        untracked | sort -z | xargs -0 -r git hash-object
       } | git hash-object --stdin )
 ```
 
+A shell **function**, not a `CMD="git ls-files …"` string reused twice: the pathspec must
+survive as one argument, and a string would rely on word-splitting (which zsh does not do
+by default, so the string form silently breaks if the action is ever run under a
+non-bash shell).
+
+**Verified empirically** against a throwaway repo whose `.loops/` is deliberately *not*
+gitignored — the consuming-project default. `BASELINE_REF` fixed at the run-start commit, as
+`check_baseline_tests` writes it:
+
+| Lap shape | Fingerprint | Gate reads it as |
+|---|---|---|
+| nothing changed | unchanged | no progress ✓ |
+| run-dir churn only (`.events.jsonl`, counter, fingerprint files) | unchanged | no progress ✓ |
+| new untracked file | changes | progress ✓ |
+| **content edit to an already-untracked file** | changes | progress ✓ |
+| tracked-file edit | changes | progress ✓ |
+| that same edit then committed | unchanged | no progress ✓ (no *new* work) |
+
+The last row is why `BASELINE_REF` must be the fixed run-start ref from `baseline-ref.txt`
+and must never be re-resolved to `HEAD` per lap: with a moving baseline, committing the
+lap's own work makes the diff go empty and the fingerprint jumps *backwards* to a prior
+lap's value — a false no-progress reading on the most productive kind of lap. Confirmed by
+reproducing exactly that inversion when the recipe recomputes `git rev-parse HEAD` itself.
+
 The untracked-file listing matters: newly created files are the common shape of forward
-progress in this loop and never appear in a tracked-file diff.
+progress in this loop and never appear in a tracked-file diff. Both the path list and the
+per-path content hashes go into the digest — paths alone miss content edits (below),
+hashes alone miss a pure rename.
+
+`xargs -0 -r git hash-object` rather than a `while read` loop with a `$(git hash-object
+"$f")` subshell per path: this state is entered on **every** failing lap, and a
+per-file fork over a large untracked tree (build output, an un-ignored `node_modules` or
+`.venv`) costs thousands of processes per lap. One `git hash-object` invocation hashes the
+whole list in order.
 
 **Untracked files must be hashed by content, not just listed by name.** `git ls-files -o
 --exclude-standard` emits **paths only**. The modal shape of progress in this loop is
@@ -213,12 +261,71 @@ healthy run at the cap. The `git hash-object` per untracked path in the recipe a
 what closes this; it is not optional. (See Impact — this is the primary false-no-progress
 mode, not a residual one.)
 
-**`--exclude-standard` is load-bearing.** `.loops/runs/` is gitignored (`.gitignore:85`),
-which is what keeps the gate's own `final-verify-spin-counter.txt` /
-`final-verify-fingerprint.txt`, plus the per-lap `dod.md` and `.events.jsonl` churn, out of
-the fingerprint. Drop `--exclude-standard` "to be thorough" and every lap's fingerprint
-differs, so the guard **silently never fires** — reproducing the exact defect it exists to
-fix, with no failing test to signal it. Any edit to this recipe must preserve the flag.
+**The run dir must be pruned by explicit pathspec, not by `--exclude-standard`.** The gate's
+own `final-verify-spin-counter.txt` / `final-verify-fingerprint.txt`, plus the per-lap
+`dod.md`, `.events.jsonl`, and `verify-output.txt` churn, all live under
+`${context.run_dir}` and change on every lap. If any of them reaches the fingerprint, every
+lap's fingerprint differs and the guard **silently never fires** — reproducing the exact
+defect it exists to fix, with no failing test to signal it.
+
+`--exclude-standard` alone does **not** prune them, outside this repo. This repo's
+`.gitignore:81-89` lists `.loops/runs/` et al., but that block is hand-maintained here and is
+**not shipped to consuming projects**: `ll-init`'s `_GITIGNORE_ENTRIES`
+(`scripts/little_loops/init/writers.py:59-73`) contains no `.loops/` entry of any form.
+`rn-refine.yaml:527` already hedges on the same assumption in a comment ("*Normally*
+`.loops/runs/` is gitignored so this is a no-op"). In a consuming project that has not
+hand-added the rule — the default — `git ls-files -o --exclude-standard` lists every run-dir
+artifact and the guard is dead on arrival.
+
+Therefore: pass `':(exclude).loops/'` explicitly on both the `git diff` and the
+`git ls-files` pathspec, as in the recipe above. Keep `--exclude-standard` as well (it is
+still the right thing for the project's own ignored paths), but it is a complement to the
+explicit prune, not a substitute for it. Any edit to this recipe must preserve **both**.
+
+The corresponding test case must use a temp repo that does **not** ignore `.loops/`;
+against a repo that does, the "run_dir churn → no reset" assertion passes vacuously and
+proves nothing.
+
+### Rejected alternative: `circuit.repeated_failure.recurrent_window`
+
+This is the closest thing to a one-key fix and must be addressed head-on, because
+`docs/reference/loops.md:1071-1080` documents `recurrent_window` using **this exact cycle in
+this exact loop** as its worked example, and `general-task.yaml` already carries a `circuit:`
+block. Adding `recurrent_window: 5` next to the existing `window: 3` would have fired in the
+observed run: `(run_final_tests, <exit>, "no")` recurs every lap, and
+`executor.py:1960-1975` routes to `on_repeated_failure` once the total count crosses the
+threshold. It is nonetheless the wrong mechanism here, for three independent reasons:
+
+1. **It is progress-blind.** The recurrent path builds `rw_triple = (self.current_state,
+   stall_exit_code, verdict)` at `executor.py:1967` — note the absence of the progress
+   fingerprint that `record()` receives on the consecutive path. So `recurrent_window` counts
+   *total* failures over the whole run with no notion of whether the tree changed in between.
+   A healthy long run whose final suite legitimately fails five times across five rounds of
+   real work is cut off exactly like the pathological one. Avoiding that false positive is
+   the entire reason this issue's gate hashes the working tree.
+2. **`on_repeated_failure` is a single key shared by both detectors.** There is one target
+   (`executor.py:1941` and `:1972` read the same field), so pointing the recurrent fire at
+   `summarize_partial` would simultaneously re-point the existing consecutive detector away
+   from `diagnose` — a behavior change to an unrelated, working guard.
+3. **`diagnose` is the wrong landing.** `general-task.yaml:1019-1030` ends `diagnose` at
+   `next: failed`, the failure terminal. This issue's whole point is to land repeated
+   no-progress laps in the ENH-2583 partial-credit chain (`summarize_partial` → `partial`),
+   preserving the run's completed work.
+
+**Related prior art, also not reusable.** `circuit.repeated_failure.progress_paths` /
+`exclude_paths` (`executor.py:1260-1300`) is an existing file-progress fingerprint — an
+`(mtime, size)` tuple over an explicit path list, which resets the *consecutive* window on
+change (`stall_detector.py:56-60`). It is the same idea as this issue's fingerprint and is
+weaker in three ways: `(mtime, size)` misses a same-size content edit, it requires
+enumerating paths up front rather than observing the repo, and it feeds only the consecutive
+detector — which, per Current Behavior, structurally cannot fire on a 3-state cycle no matter
+what the fingerprint says.
+
+**Documentation consequence.** `docs/reference/loops.md`'s worked example uses this cycle
+precisely because it was unguarded. Once this gate lands, that example needs a note that
+`general-task` now carries a dedicated guard, or a different loop's cycle substituted;
+`recurrent_window` remains valid as a generic mechanism. Already tracked in Integration Map ›
+Documentation.
 
 ### Rejected alternative: the `diff_stall` evaluator
 
@@ -252,19 +359,20 @@ own evidence base.
 ### Files to Modify
 - `scripts/little_loops/loops/general-task.yaml` — one new state, two edge redirects, one
   context value, one prompt-text update:
+_Anchors below are the current ones, re-verified 2026-08-20 (third pre-implementation
+review). Earlier drafts' pre-drift numbers have been replaced in place rather than
+annotated; the drift history is in Codebase Research Findings._
+
   - new `final_verify_spin_gate` state
-  - `run_final_tests.on_no` (`:626`) — currently `continue_work`
-    > ⚠ Superseded — anchor is stale, now `:704`; see Codebase Research Findings above
-  - `count_final.on_no` (`:650`) — currently `continue_work`
-    > ⚠ Superseded — anchor is stale, now `:729`; see Codebase Research Findings above
-  - `context:` block (`:24`) — add `max_final_verify_spins: 2` alongside `max_step_attempts`
-    > ⚠ Superseded — anchor is stale, now `:25`; see Codebase Research Findings above
-  - `summarize_partial` prompt body (`:848-862`) — currently tells the model the run stopped
+  - `run_final_tests.on_no` (`:704`) — currently `continue_work`
+  - `count_final.on_no` (`:729`) — currently `continue_work`
+  - `context:` block (`:16-25`) — add `max_final_verify_spins: 2` alongside
+    `max_step_attempts` (`:25`)
+  - `summarize_partial` prompt body (`:927-948`) — currently tells the model the run stopped
     "either the step budget was exhausted, or final verification failed or timed out". The
     gate adds a **third** stop reason (repeated no-progress final-verify laps); without this
     edit every spin-cutoff run writes an operator-facing `summary.md` that mis-describes why
     it stopped.
-    > ⚠ Superseded — anchor is stale, now `:927-948`; see Codebase Research Findings above
 
 ### Dependent Files (Callers/Importers)
 - None. The change is internal to one loop's state graph; no Python or CLI surface moves.
@@ -328,8 +436,12 @@ Findings; the numbers below are re-verified against the current file:_
   between laps → reset to `"0"`; **new untracked file** between laps → reset to `"0"`;
   **edit to the *content* of an already-untracked file** between laps → reset to `"0"` (the
   case a name-only untracked listing misses — see Proposed Solution); run_dir artifacts
-  churning between laps (`.events.jsonl`, `dod.md`) → **no** reset, i.e. still `"1"` then
-  `"2"`, proving `--exclude-standard` holds; no git repo at all → counts up against the
+  churning between laps (`.events.jsonl`, `dod.md`, the gate's own counter/fingerprint
+  files) → **no** reset, i.e. still `"1"` then `"2"`, proving the run-dir prune holds —
+  **this case must use a temp repo whose `.gitignore` does NOT list `.loops/`**, or it
+  passes vacuously and proves nothing (see Proposed Solution: `ll-init` does not ship that
+  ignore rule, so un-ignored is the consuming-project default); no git repo at all → counts
+  up against the
   `max_final_verify_spins * 3` cap rather than pinning at `"0"`. [Agent 3 finding, revised
   2026-08-20 pre-implementation review]
 - `scripts/tests/test_general_task_loop.py::test_validates_as_fsm` (`:43-47`) — runs
@@ -465,6 +577,19 @@ inside the gate's shell body from the working tree — no captured variables:
 A lap that legitimately fixed a failing final test changes the tree and so never counts
 toward the cap. This is what makes N=2 safe.
 
+**On the `count_final.on_no` path the fingerprint is deliberately blind to what that path is
+about.** `count_final` fails on `FAILED` markers inside `${context.run_dir}/dod.md`
+(`general-task.yaml:707-730`), and the run dir is pruned from the fingerprint by explicit
+pathspec (see Proposed Solution). So a lap that only rewrites `dod.md` — including
+`final_verify` re-writing its `## Final Verification` section — reads as no-progress and
+counts toward the cap. The effective bound on that path is therefore "three laps unless the
+**repo** changes."
+
+This is intended, not an accident of the recipe. BUG-3271 was precisely the case of
+`final_verify` re-emitting `dod.md` sections lap after lap while changing nothing real; a
+fingerprint that counted `dod.md` churn as progress would let that shape spin forever.
+Marking a criterion PASSED without touching the repo is not work the gate should reward.
+
 **Dominance: not applicable, by design.** The gate reads no `${captured.*}` variables, so
 the `capture-reachability` rule (`scripts/little_loops/fsm/validation/reachability.py`) has
 nothing to flag. This was a deliberate simplification — the earlier three-condition draft
@@ -522,72 +647,97 @@ _Added by `/ll:refine-issue` — 2026-08-21 — based on codebase analysis:_
 - **Counter-shape convention, confirmed**: the "independent, scoped counter" shape (own file under `${context.run_dir}`, own gate state, own target) recurs at `spin_gate` (`general-task.yaml:327-338`), `check_hedge_attempts` (`refine-to-ready-issue.yaml:380-401`), `check_reconcile_limit` (`:453-476`), and `check_refine_limit` (`:670-689`) — all four share the identical read-`cat ... 2>/dev/null || echo 0`-increment-write-`printf`-echo body, differing only in counter filename, `target`, and `on_yes`/`on_no` destinations, with `on_error` fail-open in every instance. This is documented as an explicit alternative to `autodev.yaml`'s shared-counter-plus-consume-once-marker layering (`autodev.yaml:1892-1958`, `count_repair_cycle_refine_for_design`/`count_repair_cycle_reconcile`, one shared counter across six repair-class states plus per-issue marker files) — the distinction between the two shapes is written down at `.issues/enhancements/P2-ENH-3248-...md:459-465` ("Counter shape: independent and scoped").
 - **`check_provisional_markers` re-confirmed** (`general-task.yaml:732-755`, drifted from the issue's cited `:653-676`) as a third, distinct git-diff usage already in this same loop file: fixed run-start `baseline-ref.txt` (written once by `check_baseline_tests`, `general-task.yaml:71`) diffed with `--name-only` against the current tree — the exact pattern this issue's Proposed Solution already warns not to reuse verbatim, now re-verified at its current anchor.
 
-### Design Revision — 2026-08-20 (pre-implementation review)
+### Design Revisions (changelog)
 
-Verified the refined design against `general-task.yaml` and the cited tests. All line
-citations held (`spin_gate:296-307`, `select_step:192-198`/`:253-254`,
-`run_final_tests.on_no:626`, `count_final.on_no:650`, `continue_work:837-846`,
-`check_provisional_markers:653-676`; test anchors `test_general_task_loop.py:366,1309,1437`
-and `test_builtin_loops.py:1593,1602`). Four changes to the design:
+One line per decision; the reasoning for each now lives in the body section named after it,
+not here. Anchors throughout the issue are the current ones — earlier passes' pre-drift
+numbers were replaced in place, with the drift history retained in Codebase Research
+Findings.
 
-1. **Three-condition reset → single fingerprint condition.** `done_counts.total == 0` is a
-   frozen value that can permanently disable the gate on the `continue_work.on_yes` entry
-   path; `continue_result == WORK_COMPLETE` is a tautology on the guarded cycle and unset on
-   the first-pass path. Both dropped. Rationale in Expected Behavior.
-2. **Fingerprint is a content hash, not `--name-only`.** A `--name-only` listing against a
-   fixed baseline is identical whether or not the current lap changed anything. Must hash
-   diff content plus the untracked-file set.
-3. **Cap promoted from "consider" to required**, as `context.max_final_verify_spins`.
-4. **`summarize_partial`'s prompt body added to the change set** — it enumerates stop
-   reasons and would otherwise mis-describe every spin-cutoff run.
+**Pass 1 — 2026-08-20, pre-implementation review.**
 
-### Design Revision — 2026-08-20 (second pre-implementation review)
+1. Three-condition reset → single fingerprint condition; `done_counts.total == 0` and
+   `continue_result == WORK_COMPLETE` dropped. → Expected Behavior § "Why the working-tree
+   fingerprint is the *only* condition".
+2. Fingerprint is a content hash, not `--name-only`. → Proposed Solution.
+3. Cap promoted from "consider" to required, as `context.max_final_verify_spins`.
+4. `summarize_partial`'s prompt body added to the change set.
 
-Re-verified every anchor from the 2026-08-21 refine pass against the working tree; all held
-(`max_step_attempts:25`, `select_step:220`, `spin_gate:327`, `final_verify:585`,
-`run_final_tests:635`, `count_final:707`, `check_provisional_markers:732`,
-`continue_work:855`, `summarize_partial:927`). Both `blocked_by` entries (BUG-3269,
-BUG-3271) are now `done`, so this is unblocked. Six changes:
+**Pass 2 — 2026-08-20, second pre-implementation review.** All Pass-1 anchors re-verified;
+both `blocked_by` entries (BUG-3269, BUG-3271) confirmed `done`, so this is unblocked.
 
-1. **Untracked files must be hashed by content, not listed by name.** The prior recipe's
-   `git ls-files -o --exclude-standard` emits paths only, so editing an already-untracked
-   file — the modal progress shape here — produced an identical fingerprint and would have
-   cut off healthy runs. Recipe corrected in Proposed Solution; Impact reclassified this from
-   residual to primary risk.
-2. **`--exclude-standard` documented as load-bearing.** `.loops/runs/` is gitignored
-   (`.gitignore:85`); dropping the flag makes every lap's fingerprint differ and the guard
-   silently never fire. Added a test case that pins this.
-3. **No-git branch no longer fails fully open.** It now counts against
-   `max_final_verify_spins * 3`. Verified `general-task` sets no `max_iterations` and that
-   the executor's `max_iterations` counts loop passes, not transitions — so a bare `0` echo
-   left non-git projects with no bound at all against a git-independent trigger.
-4. **Cap off-by-one written down.** `max_final_verify_spins: 2` cuts off on the *third*
-   identical lap; the bounded-termination test must assert three.
-5. **`diff_stall` explicitly rejected.** `evaluators.py:646` diffs against the index with no
-   ref, missing staged and committed changes entirely — weaker than the earlier research
-   pass recorded — plus the untracked blind spot and a scope-keyed global cache that
-   collides across concurrent `ll-parallel` runs.
-6. **Change-set corrections.** Test anchors refreshed to `:1518` / `:1349-1350`; the claimed
-   duplicate `count_final` assertion at `~:1660-1663` does not exist; `verify_step.on_no`
-   (`:403`) flagged as out of scope; `test_count_final_routes_no_to_continue_work` needs
-   renaming; `HARNESS_OPTIMIZATION_GUIDE.md` dropped from the change set per this issue's own
-   research finding of zero topical overlap.
+5. Untracked files hashed by **content**, not listed by name — the modal
+   create-then-refine progress shape would otherwise read as no-progress. → Proposed
+   Solution; Impact (reclassified primary risk).
+6. Run-dir artifacts must be excluded from the fingerprint or the guard never fires.
+   → Proposed Solution (superseded in Pass 3: the mechanism is an explicit pathspec, not
+   `--exclude-standard`).
+7. No-git branch counts against `max_final_verify_spins * 3` rather than failing fully
+   open. → State contract.
+8. Cap off-by-one written down: `max_final_verify_spins: 2` cuts off on the *third*
+   identical lap. → State contract § "Cap semantics".
+9. `diff_stall` rejected (no-ref diff, untracked blind spot, scope-keyed global cache).
+   → Proposed Solution § "Rejected alternative: the `diff_stall` evaluator".
+10. Change-set corrections: test anchors `:1518` / `:1349-1350`; no duplicate `count_final`
+    assertion exists; `verify_step.on_no` (`:403`) out of scope;
+    `test_count_final_routes_no_to_continue_work` needs renaming;
+    `HARNESS_OPTIMIZATION_GUIDE.md` dropped for zero topical overlap.
+
+**Pass 3 — 2026-08-20, third pre-implementation review.** Six changes:
+
+11. **Run-dir prune is an explicit `':(exclude).loops/'` pathspec, not `--exclude-standard`**
+    — corrects Pass-2 item 6, which rested on `.gitignore:85`, an entry `ll-init` does
+    **not** ship (`init/writers.py:59-73`). Consuming projects are un-ignored by default,
+    where the Pass-2 recipe made the guard dead on arrival. Test case must use a repo that
+    does not ignore `.loops/`. → Proposed Solution.
+12. **`circuit.repeated_failure.recurrent_window` evaluated and rejected**, with the reason
+    the existing `circuit:` block was silent for all 45 laps. Previously unaddressed despite
+    `docs/reference/loops.md` documenting it against this exact cycle. → Current Behavior;
+    Proposed Solution § "Rejected alternative: `circuit.recurrent_window`".
+13. **Untracked hashing batched** via `xargs -0 -r git hash-object` instead of a per-file
+    subshell fork. → Proposed Solution.
+14. **Brace-interpolation trap recorded**: no bash `${VAR}` in the action body; it is a
+    runtime failure `ll-loop validate` cannot catch, made silent by the gate's fail-open
+    `on_error`. → Implementation Steps § 3.
+15. **`count_final.on_no` fingerprint blindness stated as intentional** — `dod.md` churn does
+    not reset the counter, per BUG-3271. → State contract.
+16. Stale anchors replaced in place; the two prior Design Revision sections folded into this
+    changelog.
+17. **Recipe smoke-tested** rather than reasoned about: all six lap shapes verified in a
+    throwaway repo with an un-ignored `.loops/`, results tabulated in Proposed Solution. Two
+    findings folded back in — the `untracked()` helper must be a function (a reused string
+    breaks under zsh's no-word-splitting), and `BASELINE_REF` must never be re-resolved per
+    lap or the fingerprint inverts on the most productive laps.
 
 ## Implementation Steps
 
 1. **Confirm the diagnosis in the graph.** Re-derive that `spin_gate` is unreachable from
    `run_final_tests`/`count_final`, and that `select_step:253` deletes the counter. Both are
    asserted in Current Behavior; make them a test before changing anything.
-2. **Add the context value.** `max_final_verify_spins: 2` in the `context:` block
-   (`general-task.yaml:24`), next to `max_step_attempts`.
+2. **Add the context value.** `max_final_verify_spins: 2` in the `context:` block, next to
+   `max_step_attempts` (`general-task.yaml:25`).
 3. **Add the state.** Write `final_verify_spin_gate` with its own counter file, its own
    fingerprint file, the cap read from context, and the single fingerprint-based reset.
-   Hash untracked-file **contents**, not just their paths, and keep `--exclude-standard`.
-   Include the no-git branch — counting against `max_final_verify_spins * 3`, not pinning
-   at `0`.
+   Hash untracked-file **contents**, not just their paths; keep both `--exclude-standard`
+   **and** the explicit `':(exclude).loops/'` pathspec. Include the no-git branch —
+   counting against `max_final_verify_spins * 3`, not pinning at `0`.
+   > ⚠ Superseded — earlier drafts of this step said to rely on `--exclude-standard` alone
+   > to keep run-dir artifacts out of the fingerprint. That is stale: `ll-init` does not
+   > ship a `.loops/` ignore rule (`init/writers.py:59-73`), so in a consuming project the
+   > flag prunes nothing and the guard silently never fires. The explicit
+   > `':(exclude).loops/'` pathspec is now required on both the `git diff` and the
+   > `git ls-files` call. See Proposed Solution.
+   - **Use no bash `${VAR}` brace form anywhere in the action body.** The FSM interpolates
+     the entire action string — comments included — *before* handing it to bash, so a bare
+     `${FP}` is parsed as a namespace path and raises `expected namespace.path` at runtime.
+     Write `"$FP"` unbraced, or escape as `$${FP}`. This is a runtime failure, not a
+     validation one: `ll-loop validate` will not catch it, and the state's `on_error:
+     continue_work` fail-open posture means a broken gate degrades silently back into the
+     exact unguarded cycle. The recipe in Proposed Solution is already written in the
+     unbraced form; keep it that way.
 4. **Redirect the two edges.** `run_final_tests.on_no` and `count_final.on_no` →
    `final_verify_spin_gate`.
-5. **Amend `summarize_partial`'s prompt** (`:848-862`) to name the third stop reason:
+5. **Amend `summarize_partial`'s prompt** (`:927-948`) to name the third stop reason:
    repeated no-progress final-verify laps. Without this the operator-facing `summary.md`
    mis-describes every spin-cutoff run.
 6. **Validate.** `ll-loop validate general-task` — confirm no MR-rule regressions and that
@@ -621,7 +771,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
   `_run_check_hedge_attempts` / `test_check_hedge_attempts_counts_up_and_gates_at_two`
   (`scripts/tests/test_builtin_loops.py:1592-1618`); extend it to cover each reset condition
   independently (see Integration Map › Tests for the full case list, including the
-  untracked-content and `--exclude-standard` cases), since no existing precedent covers a
+  untracked-content and run-dir-prune cases), since no existing precedent covers a
   fingerprint-driven reset
 - Update `docs/guides/LOOPS_REFERENCE.md` (`:122`) — note the new `final_verify_spin_gate` hop
   on the `run_final_tests`/`count_final` failure paths
@@ -670,6 +820,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 
 ## Session Log
+- `/ll:verify-issues` - 2026-08-21T04:59:42 - `a341924e-a8a7-4d9a-8ab5-d56e4e233347.jsonl`
 - `/ll:refine-issue` - 2026-08-21T04:35:09 - `f4215495-4bea-4ed7-8672-c75bc402ce45.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-21T02:37:31 - `c4d0cb49-2d47-43ee-bd0a-5286b5885739.jsonl`
 - `/ll:confidence-check` - 2026-08-21T00:37:10 - `aa6e5584-37de-4177-905b-eaadb9c97749.jsonl`

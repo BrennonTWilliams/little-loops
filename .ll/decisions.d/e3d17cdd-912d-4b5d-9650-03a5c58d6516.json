@@ -1,0 +1,12 @@
+{
+  "id": "45031dad-2aaf-4f23-ba3b-6448360086cd",
+  "type": "decision",
+  "timestamp": "2026-08-21T04:57:52Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Option A's pass-on-empty scores highest on isolated codebase reuse, but it reintroduces the exact class of risk this P1 bug exists to close: an unverified refactoring step gets silently committed. C+B compose known FSM shapes (precondition-as-initial from general-task.yaml/code-run-gate.yaml; route-to-failed-terminal from incremental-refactor.yaml's own check_complete/replan edges) for a genuinely new trigger condition.",
+  "rule": "Option C + Option B: refuse to start incremental-refactor when test_cmd is unresolvable (precondition state ahead of plan_steps); route to the existing failed terminal as a mid-run defense if the resolved command later becomes unresolvable",
+  "scope": "issue",
+  "alternatives_rejected": "Option A (pass-on-empty with recorded marker, matches fix-quality-and-tests.yaml); Option B alone (route to failed without a start-time precondition)",
+  "issue": "BUG-3276"
+}
