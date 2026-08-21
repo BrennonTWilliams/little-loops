@@ -1160,7 +1160,24 @@ One anchor corrected: `test-coverage-improvement.yaml`'s second read is at `:152
   explicit in prose), but neither has been re-verified against the checker's exact matching
   rules.
 
+### Re-run confirmation — 2026-08-21
+
+_No code or issue-body changes since the prior run. All hard-override gates re-checked and
+inert: `PD_FAIL` empty (`ll-issues check-design` exits 0), `DEP_FAIL` empty (no `blocked_by`
+entries), no `learning_tests_required` targets declared. `format-check` findings are unchanged
+— the 19-hit `unapplied_decision` list still resolves to rejected-option/fallback prose on
+direct read, so Outcome Criterion C stays capped at 10 rather than escalating to a STOP. Scores
+unchanged: Readiness 90/100 → PROCEED, Outcome Confidence 63/100 → MODERATE (below the 65
+`outcome_threshold`)._
+
+### Outcome Risk Factors
+
+- No execution-level test coverage exists today for any of the five target read sites — a
+  subprocess-level resolution test is needed per site (per *Tests*) **before** each conversion,
+  not alongside it, per the pinned step 2b ordering.
+
 ## Session Log
+- `/ll:confidence-check` - 2026-08-21T20:16:04 - `afe1203b-04a5-44c9-a88c-bbb1714b8e71.jsonl`
 - `/ll:confidence-check` - 2026-08-21T18:59:48 - `de2bc4f7-6272-4f52-a9cb-998af08752f1.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-21T17:52:58 - `f27d8342-f3ba-42ea-95ca-41ad79008fbf.jsonl`
 - `/ll:confidence-check` - 2026-08-21T17:18:53 - `03a5de0d-b8b9-470c-a7c9-e3445c858ad8.jsonl`

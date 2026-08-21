@@ -9,7 +9,7 @@ parent: EPIC-3290
 discovered_by: bug-3278-pre-implementation-review
 discovered_date: '2026-08-21'
 captured_at: '2026-08-21T19:30:00Z'
-verify_verdict: NON_VALID
+verify_verdict: VALID
 labels:
 - issue-parser
 - decide-issue
@@ -19,6 +19,7 @@ relates_to:
 - BUG-3278
 - BUG-3279
 - BUG-3285
+size: Very Large
 ---
 
 # BUG-3287: locate_enumerable_options lets a tier match preempt Pattern E, and its bullet tier cannot see bold-wrapped markers
@@ -599,6 +600,8 @@ _Verified 2026-08-21 via `/ll:verify-issues --check --auto`:_
 
 
 ## Session Log
+- `/ll:verify-issues` - 2026-08-21T20:20:13 - `63b58074-9350-43f0-9772-feffb6fc0ffe.jsonl`
+- `/ll:refine-issue` - 2026-08-21T20:17:18 - `05b36e3e-cf1c-4269-a1c6-018fbadd4f92.jsonl`
 - `/ll:verify-issues` - 2026-08-21T20:15:35 - `a2289dde-4d3d-4b79-aeb5-674049d28ccd.jsonl`
 - `/ll:wire-issue` - 2026-08-21T20:08:28 - `323952ee-6da2-4c4d-9f9d-ddb206a14824.jsonl`
 - `/ll:refine-issue` - 2026-08-21T19:52:58 - `3e6f73b9-57ce-496a-8cf5-9227a47117bc.jsonl`
