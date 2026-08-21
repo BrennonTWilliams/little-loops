@@ -312,7 +312,12 @@ class TestCmdRunProgramMdInjection:
             resolved={"color.accent": "#ff0000"},
             source_path=tmp_path / "tokens.json",
         )
-        _expected_context = "**Design tokens** (resolved values):\n```\ncolor.accent: #ff0000\n```"
+        _expected_context = (
+            "**Design tokens** (resolved values):\n\n"
+            "Contrast guardrail: pair color.text.* tokens ON color.surface.* tokens. "
+            "Never use a surface color for text, or a text color for backgrounds.\n\n"
+            "```\ncolor.accent: #ff0000\n```"
+        )
 
         with (
             patch(

@@ -614,6 +614,44 @@ class TestAutomationPruningStayInTurn:
 _AMBIENT_GUARD_SENTINEL = "LL_TEST_AMBIENT_AUTOMATION_GUARD"
 
 
+class TestSessionStartDesignTokensValidation:
+    """DESIGN.md-sourced projects don't trip the "path does not exist" warning (ENH-3264 AC 9b)."""
+
+    def test_design_md_only_project_no_warning(self, in_tmp: Path) -> None:
+        (in_tmp / ".ll").mkdir(exist_ok=True)
+        (in_tmp / ".ll" / "ll-config.json").write_text(
+            json.dumps({"design_tokens": {"enabled": True}})
+        )
+        (in_tmp / "DESIGN.md").write_text("---\ncolors:\n  primary: '#000'\n---\n\nProse.\n")
+
+        result = handle(_event())
+
+        assert result.feedback is not None
+        assert "design_tokens" not in result.feedback
+
+    def test_no_tokens_no_design_md_still_warns(self, in_tmp: Path) -> None:
+        (in_tmp / ".ll").mkdir(exist_ok=True)
+        (in_tmp / ".ll" / "ll-config.json").write_text(
+            json.dumps({"design_tokens": {"enabled": True}})
+        )
+
+        result = handle(_event())
+
+        assert result.feedback is not None
+        assert "design_tokens.enabled is true but path" in result.feedback
+
+    def test_explicit_design_md_source_no_warning_even_without_file(self, in_tmp: Path) -> None:
+        (in_tmp / ".ll").mkdir(exist_ok=True)
+        (in_tmp / ".ll" / "ll-config.json").write_text(
+            json.dumps({"design_tokens": {"enabled": True, "source": "design_md"}})
+        )
+
+        result = handle(_event())
+
+        assert result.feedback is not None
+        assert "design_tokens.enabled is true but path" not in result.feedback
+
+
 class TestAmbientAutomationEnvHermeticity:
     """The suite must pass with an ambient ``LL_AUTOMATION`` in the environment.
 

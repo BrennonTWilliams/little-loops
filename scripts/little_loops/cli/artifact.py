@@ -62,15 +62,26 @@ def _themed_css_vars(config: object) -> str:
     Loads light + dark design tokens; if either is unavailable (no tokens
     configured for the project), emits empty/neutral scoped blocks so the page
     still renders and the data-theme toggle keeps working.
+
+    DESIGN.md sources (ENH-3264) have no theme mechanism, so entering
+    load_design_tokens() twice would both duplicate work and emit its
+    theme-degradation warning twice. Enter it once, branch on the returned
+    DesignTokens.source, and only make the second themed call for a profile
+    source.
     """
     from little_loops.design_tokens import load_design_tokens, render_as_css_vars_themed
 
     light = load_design_tokens(config, theme="light")  # type: ignore[arg-type]
-    dark = load_design_tokens(config, theme="dark")  # type: ignore[arg-type]
-    if light is None or dark is None:
+    if light is None:
         # Neutral fallback: empty scoped blocks (CSS fallbacks in the template
         # supply concrete colors).
         return ":root {\n}\n[data-theme=dark] {\n}"
+    if light.source == "design_md":
+        dark = light
+    else:
+        dark = load_design_tokens(config, theme="dark")  # type: ignore[arg-type]
+        if dark is None:
+            return ":root {\n}\n[data-theme=dark] {\n}"
     return render_as_css_vars_themed(light, dark)
 
 

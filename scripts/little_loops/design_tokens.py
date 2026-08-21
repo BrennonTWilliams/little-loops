@@ -371,7 +371,7 @@ def load_design_tokens(
     if not dt_cfg.enabled:
         return None
 
-    source = getattr(dt_cfg, "source", "auto")
+    source = dt_cfg.source
     base_path = config.project_root / dt_cfg.path
 
     def _load_profile(token_root: Path) -> DesignTokens:

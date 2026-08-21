@@ -192,6 +192,7 @@ Design Tokens Configuration
   path:            {{config.design_tokens.path}}            (default: .ll/design-tokens)
   active:          {{config.design_tokens.active}}          (default: default)
   profiles_dir:    {{config.design_tokens.profiles_dir}}    (default: null → "profiles")
+  source:          {{config.design_tokens.source}}          (default: auto)
   primitives_file: {{config.design_tokens.primitives_file}} (default: primitives.json)
   semantic_file:   {{config.design_tokens.semantic_file}}   (default: semantic.json)
   themes_dir:      {{config.design_tokens.themes_dir}}      (default: themes)

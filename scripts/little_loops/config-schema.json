@@ -1807,6 +1807,12 @@
           "type": ["string", "null"],
           "default": null,
           "description": "Subdirectory of <path> that contains profile directories (ENH-1768). Defaults to 'profiles' when null. Each profile is a self-contained token set (primitives, semantic, typography, spacing, themes/) selected via 'active'."
+        },
+        "source": {
+          "type": "string",
+          "enum": ["auto", "profile", "design_md"],
+          "default": "auto",
+          "description": "Design-token source format (ENH-3264). 'auto' prefers a materialized profile under <path> and falls back to a root DESIGN.md when none is materialized. 'profile' always uses the multi-file profile layout (ignoring any DESIGN.md). 'design_md' always reads the project's root DESIGN.md, degrading to no tokens with a warning if it is absent."
         }
       },
       "additionalProperties": false

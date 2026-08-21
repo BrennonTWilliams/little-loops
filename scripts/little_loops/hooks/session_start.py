@@ -253,7 +253,7 @@ def handle(event: LLHookEvent) -> LLHookResult:
         feedback_lines.append("[little-loops] Warning: No config found. Run ll-init to create one.")
 
     # 6. Feature-flag validation warnings.
-    feedback_lines.extend(_validate_features(merged_config))
+    feedback_lines.extend(_validate_features(merged_config, project_root=cwd))
 
     # BUG-3058: the stay-in-turn contract is a property of running headlessly,
     # not of pruning. It used to be emitted only on the pruned early-return
@@ -272,7 +272,7 @@ def handle(event: LLHookEvent) -> LLHookResult:
     return LLHookResult(exit_code=0, feedback=feedback, stdout=stdout_payload)
 
 
-def _validate_features(config: dict[str, Any]) -> list[str]:
+def _validate_features(config: dict[str, Any], *, project_root: Path | None = None) -> list[str]:
     """Return stderr warning lines for misconfigured enabled features.
 
     Mirrors ``validate_enabled_features`` in the bash version exactly:
@@ -283,6 +283,13 @@ def _validate_features(config: dict[str, Any]) -> list[str]:
     Other ``*.enabled`` flags (e.g. ``product.enabled``) are intentionally not
     validated — the existing ``TestSessionStartValidation`` test fixture
     enables ``product`` and asserts no ``Warning:`` substring appears.
+
+    ``project_root`` (ENH-3264): used only for the DESIGN.md-source check
+    below. This function otherwise resolves ``design_tokens.path`` relative
+    to the process CWD (not ``project_root``) — that divergence predates
+    this change and is not fixed here; ``project_root`` is threaded through
+    solely because ``_find_design_md()`` needs an explicit root and there is
+    no other one in scope at this call site.
     """
     warnings_out: list[str] = []
     sync = config.get("sync") if isinstance(config.get("sync"), dict) else {}
@@ -304,14 +311,20 @@ def _validate_features(config: dict[str, Any]) -> list[str]:
         config.get("design_tokens") if isinstance(config.get("design_tokens"), dict) else {}
     )
     if isinstance(design_tokens, dict) and design_tokens.get("enabled") is True:
-        from pathlib import Path
-
         token_path = Path(design_tokens.get("path", ".ll/design-tokens"))
+        source = design_tokens.get("source", "auto")
+        design_md_present = False
+        if source in ("auto", "design_md") and project_root is not None:
+            from little_loops.design_tokens import _find_design_md
+
+            design_md_present = _find_design_md(project_root) is not None
+
         if not token_path.exists():
-            warnings_out.append(
-                "[little-loops] Warning: design_tokens.enabled is true but path"
-                f" '{token_path}' does not exist"
-            )
+            if not (source == "design_md" or (source == "auto" and design_md_present)):
+                warnings_out.append(
+                    "[little-loops] Warning: design_tokens.enabled is true but path"
+                    f" '{token_path}' does not exist"
+                )
         else:
             # ENH-1768: warn when active profile is configured but missing.
             profiles_dir = design_tokens.get("profiles_dir") or "profiles"

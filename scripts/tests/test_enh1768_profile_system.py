@@ -132,6 +132,66 @@ class TestBRConfigDesignTokensProfileRoundTrip:
         assert d["design_tokens"]["profiles_dir"] == "themes"
 
 
+class TestDesignTokensConfigSourceField:
+    """`DesignTokensConfig.source` (ENH-3264)."""
+
+    def test_source_default_is_auto(self) -> None:
+        from little_loops.config.features import DesignTokensConfig
+
+        config = DesignTokensConfig.from_dict({})
+        assert config.source == "auto"
+
+    def test_source_loaded_from_dict(self) -> None:
+        from little_loops.config.features import DesignTokensConfig
+
+        config = DesignTokensConfig.from_dict({"source": "design_md"})
+        assert config.source == "design_md"
+
+    def test_source_absent_falls_back_to_auto(self) -> None:
+        from little_loops.config.features import DesignTokensConfig
+
+        config = DesignTokensConfig.from_dict({"active": "warm-paper"})
+        assert config.source == "auto"
+
+
+class TestBRConfigDesignTokensSourceRoundTrip:
+    def test_source_round_trip(self, tmp_path: Path) -> None:
+        from little_loops.config.core import BRConfig
+
+        (tmp_path / ".ll").mkdir(parents=True, exist_ok=True)
+        (tmp_path / ".ll" / "ll-config.json").write_text(
+            json.dumps({"design_tokens": {"enabled": True, "source": "profile"}})
+        )
+        config = BRConfig(tmp_path)
+        assert config.design_tokens.source == "profile"
+        d = config.to_dict()
+        assert d["design_tokens"]["source"] == "profile"
+
+
+class TestConfigSchemaSourceField:
+    def _schema_text(self) -> str:
+        return (PROJECT_ROOT / "scripts" / "little_loops" / "config-schema.json").read_text()
+
+    def test_source_in_schema(self) -> None:
+        schema = json.loads(self._schema_text())
+        props = schema["properties"]["design_tokens"]["properties"]
+        assert "source" in props
+        assert props["source"]["enum"] == ["auto", "profile", "design_md"]
+        assert props["source"]["default"] == "auto"
+
+
+class TestConfigureWiringForSource:
+    """ENH-3264 AC 9c: `design_tokens.source` reachable from `/ll:configure`."""
+
+    def test_configure_areas_references_source(self) -> None:
+        content = (PROJECT_ROOT / "skills" / "configure" / "areas.md").read_text()
+        assert "design_tokens.source" in content
+
+    def test_configure_show_references_source(self) -> None:
+        content = (PROJECT_ROOT / "skills" / "configure" / "show-output.md").read_text()
+        assert "design_tokens.source" in content
+
+
 # ---------------------------------------------------------------------------
 # Loader: profile resolution
 # ---------------------------------------------------------------------------

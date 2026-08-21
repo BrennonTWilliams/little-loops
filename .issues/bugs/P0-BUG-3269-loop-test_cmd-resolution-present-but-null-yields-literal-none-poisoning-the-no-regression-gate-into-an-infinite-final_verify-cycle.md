@@ -173,8 +173,17 @@ For `general-task` specifically:
   **or** `baseline-test-output.txt` matches `command not found` — write
   `baseline-exit.txt` = `SKIP`.
 - `run_final_tests` must treat `baseline-exit.txt` = `SKIP` as "no baseline to compare
-  against — pass on non-crash", never as a numeric exit code to match. A baseline that
-  never ran must never be compared against.
+  against", never as a numeric exit code to match. A baseline that never ran must never be
+  compared against. **"Pass on non-crash" is defined precisely as: pass when
+  `FINAL_EXIT` is `0` *or* `127`.** The `127` arm is load-bearing — see below.
+- **`test_cmd` may be present, non-null, and still unrunnable** (e.g. `"make test"` in a
+  project without `make`). Then the baseline exits 127 → `SKIP`, and `run_final_tests`
+  exits 127 too. If `SKIP` meant only "require `FINAL_EXIT = 0`", that run spins on the
+  exact BUG-3269 cycle with a *non-null* config — this fix would close only the
+  `test_cmd: null` path. Admitting `127` under `SKIP` closes it: an unrunnable command
+  never gates. A command that runs and genuinely fails (exit 1, 2, …) still gates
+  normally. BUG-3270's spin guard remains the backstop for any residual cycle, but this
+  issue must not rely on it to be correct.
 - Under explicit `test_cmd: null`, `run_final_tests` runs nothing and passes. (It is a
   `shell_exit` state evaluated by exit code, so "route to `count_final`" means the action
   exits 0 without invoking a command — not a distinct routing edge.)
@@ -238,6 +247,19 @@ CMD=$(ll-config get project.test_cmd)
 
 `ll-config` is on PATH by construction: the loop is being executed by `ll-loop` from the
 same installed package.
+
+**This is a new convention, not an established one.** No loop YAML currently invokes
+`ll-config` — verified by grep over `scripts/little_loops/loops/**`; every existing
+reference is either a prose comment or an inline `.ll/ll-config.json` read. There is no
+in-repo precedent to copy, which is why the harness-guide documentation in Step 6's wiring
+list is part of the deliverable rather than a nicety.
+
+**Cost per call**: ~0.17s wall (measured), and each invocation opens a
+`cli_event_context` against `history.db` (`cli/config.py:66`), so under
+`analytics.capture.cli_commands: ["*"]` every resolution writes an event row. Negligible for
+`general-task` (2 calls/run), but `rl-coding-agent`'s `observe` fires 2 calls **per
+rollout**. Acceptable — the inline `python3 -c` it replaces costs the same order — but it
+should not be pushed into a tighter inner loop without re-measuring.
 
 ### 1b. Second bug this closes: local overrides are ignored today
 
@@ -310,19 +332,56 @@ Leave it as-is and register it as a documented exemption in the mirror-drift gat
 should move to `ll-config get` in the same pass. All of them additionally ignore
 `.ll/ll.local.md` today (§1b).
 
-Note `test-coverage-improvement.yaml` and `general-task.yaml` also carry a
-`${context.test_cmd}` shell-level override ahead of the python snippet, and
-`rl-coding-agent.yaml` folds `${context.test_cmd}` / `${context.lint_cmd}` into the
-`dict.get` default. That precedence must be preserved explicitly in shell — `ll-config get`
-knows nothing about loop context:
+**Precedence is NOT uniform across call sites — there is no single snippet.** `ll-config
+get` knows nothing about loop context, so the ordering must be written explicitly in shell,
+and the correct ordering differs per loop:
+
+| Site | Context default | Documented precedence today | Required shell |
+|---|---|---|---|
+| `general-task.yaml:610-616` (`run_final_tests`) | empty | context override → config → `pytest` | context-first |
+| `general-task.yaml:36-40` (`check_baseline_tests`) | **no override at all** | config only | context-first (**new** — see below) |
+| `test-coverage-improvement.yaml:38-48` | `""` (`:23`) | context override → config → `pytest` | context-first |
+| `rl-coding-agent.yaml:60,68` | **non-empty** (`:17-18`) | **config → context → default** (`:55` comment) | **config-first** |
+
+Context-first sites:
 
 ```bash
 if [ -n "${context.test_cmd}" ]; then CMD="${context.test_cmd}"; else CMD=$(ll-config get project.test_cmd); fi
 ```
 
-Behavior change for `rl-coding-agent.yaml`: with the key **absent**, it resolves to
-`pytest` / `ruff check .` rather than the context override. The override now wins only when
-non-empty, which is the intended precedence.
+**The context-first shape is wrong for `rl-coding-agent.yaml` and must not be pasted
+there.** Its context defaults are non-empty literals (`test_cmd: "python -m pytest"`,
+`lint_cmd: "ruff check"`, `:17-18`), so `[ -n "${context.test_cmd}" ]` is *always* true,
+`ll-config get` would never execute, and the two buggy sites would silently stop reading
+`project.test_cmd` altogether — trading an emitted `None` for a total loss of project
+configuration. Use config-first there:
+
+```bash
+CMD=$(ll-config get project.test_cmd)
+[ -z "$CMD" ] && SKIP_TESTS=1   # explicit null → opt out of test scoring
+```
+
+**Decision required before implementation (rl-coding-agent only).** `ll-config get` collapses
+absent and null into "empty vs the field default", so config-first cannot fall back to the
+context override on *absent* — absent resolves to `pytest` / `ruff check .` from
+`ProjectConfig`, and the `${context.test_cmd}` / `${context.lint_cmd}` defaults at `:17-18`
+become dead. Two options: **(a)** accept that, delete the two context defaults, and document
+`ProjectConfig`'s field defaults as the only fallback (recommended — one authority, matches
+§1); or **(b)** keep the overrides by testing them separately with a second probe. Pick (a)
+unless a consumer is known to rely on those context values.
+
+Behavior change for `rl-coding-agent.yaml` under option (a): with the key **absent** it
+resolves to `pytest` / `ruff check .` rather than the context literal; with the key
+**present and null** it now skips test/lint scoring instead of scoring against
+`command not found`.
+
+**`check_baseline_tests` gains an override it does not have today.** `general-task.yaml:37`
+reads config directly with no `${context.test_cmd}` check, while `run_final_tests:610-616`
+checks the override first. That is a *second* divergence axis inside the same file, distinct
+from the null-handling one: with `context.test_cmd` set, the baseline and the final gate
+resolve to different commands, and the ENH-2244 equality comparison then compares two
+different test suites. Converting only the null semantics leaves this intact. Both states
+must end up with byte-identical resolution shell.
 
 ### 3. Baseline sentinel in `general-task`
 
@@ -396,10 +455,11 @@ _Wiring pass added by `/ll:wire-issue`:_
 _Wiring pass added by `/ll:wire-issue` — partly superseded by the design review:_
 - ~~`scripts/little_loops/cli/loop/info.py` — `cmd_fragments` listing~~ — **not applicable**;
   no new fragment to surface
-- `.issues/enhancements/P2-ENH-2858-general-task-standing-dod-criteria-and-absolute-gates.md`
-  — in-flight sibling issue plans a second capture (`baseline-ref.txt` via `git rev-parse HEAD`)
-  inside the same `check_baseline_tests` action this issue widens with the `SKIP` sentinel;
-  sequencing/contract-coexistence risk, not a code dependency [Agent 2 finding]
+- ~~ENH-2858 — in-flight sibling plans a `baseline-ref.txt` capture inside
+  `check_baseline_tests`; sequencing risk~~ — **stale, resolved.** That
+  capture has already landed: `general-task.yaml:39` is
+  `git rev-parse HEAD > "${context.run_dir}/baseline-ref.txt" ...`. No sequencing risk
+  remains; just preserve that line when rewriting the action. [Agent 2 finding, superseded]
 
 ### Similar Patterns
 - ~~`lib/common.yaml:15` `shell_exit` / `:38` `retry_counter` — fragment `parameters:`
@@ -497,13 +557,17 @@ _Added by `/ll:refine-issue` — 2026-08-20 — based on codebase analysis:_
 
 ### Signatures
 
-- `ll-config get project.<key> -> str` — **existing** CLI (`cli/config.py:54`
-  `main_config`); the single resolution path replacing 13 hand-rolled inline snippets. No
-  new code; prints the value, the absent-default, or nothing (opt-out). Always exits 0.
-- `check_baseline_tests() -> writes baseline-exit.txt: int | "SKIP"` — widened from
-  `int` only; `SKIP` is the new no-runnable-baseline sentinel.
-- `run_final_tests(baseline_exit: int | "SKIP") -> bool` — gates on `FINAL_EXIT` alone when
-  the baseline is `SKIP`, on the ENH-2244 equality comparison otherwise.
+- `main_config(key: str) -> int` — **existing** CLI entry point (`cli/config.py:54`),
+  invoked from shell as `ll-config get project.test_cmd`; the single resolution path
+  replacing 13 hand-rolled inline snippets. No new code; prints the value, the
+  absent-default, or nothing (opt-out) on stdout, and always returns 0.
+- `resolve_variable(var_path: str) -> str` — **existing** (`config/core.py:1044`); returns
+  `None` for a present-and-null key, which is the load-bearing opt-out signal.
+- `check_baseline_tests(test_cmd: str) -> str` — writes the returned value to
+  `baseline-exit.txt`; return type widens from a numeric exit-code string to that plus the
+  new no-runnable-baseline sentinel `SKIP`.
+- `run_final_tests(baseline_exit: str, final_exit: int) -> bool` — gates on `final_exit`
+  alone when `baseline_exit` is `SKIP`, on the ENH-2244 equality comparison otherwise.
 
 No fragment, no `parameters:` block, no executor change. The `config_key` /
 `absent_default` / `null_value` parameters from the original design are all subsumed: the
@@ -544,6 +608,26 @@ live — one authority instead of a per-call-site literal.
    - key present and truthy → its value.
 3. Empty result → skip; the state must not run or gate on anything.
 
+**Precondition — cwd must be the project root.** `main_config` constructs
+`BRConfig(Path.cwd())` (`cli/config.py:71`) and `resolve_config_path` (`config/core.py:157`)
+is a flat candidate probe with **no upward walk**. From a subdirectory of a project with
+`test_cmd: null`, the opt-out silently degrades to the absent-default — verified:
+
+```
+$ cd <proj>/sub/deep && ll-config get project.test_cmd
+pytest          # ← opt-out lost, no error, exit 0
+```
+
+This is **not a regression** — the 13 inline snippets open the relative path
+`.ll/ll-config.json` and fall back identically — but converting does not fix it either, and
+it must be stated rather than assumed away. FSM shell actions run at
+`FSMExecutor.working_dir` (`fsm/executor.py:2482`), which is the project root for ordinary
+runs and the worktree root (which carries its own checked-in `.ll/`) for worktree-isolated
+runs, so every converted site is safe today. Note this also means §1d's first exemption
+bullet for `oracles/code-run-gate.yaml` (`${context.project_root}` vs `Path.cwd()`) argues a
+difference that the other 13 sites never relied on; the alias-pair and never-guess bullets
+are the load-bearing reasons for that exemption.
+
 `ll-config get` never raises and always exits 0, so no call site needs `|| true` or a
 `try/except`. Note that per BUG-3274's family, resolution is **whole-dataclass**: an
 unrelated malformed key in `project` does not silently poison this read, but a future
@@ -559,9 +643,10 @@ semantics now live in `ProjectConfig` + `resolve_variable`.
   the opt-out sentinel, **or** the command exits `127`, **or** `baseline-test-output.txt`
   matches `command not found`. Otherwise it writes the numeric exit code as today.
 - `run_final_tests` reads `baseline-exit.txt` and branches **before** its numeric
-  comparison: `SKIP` → treat as pass-on-non-crash (gate on `FINAL_EXIT` alone, never on
-  equality with the baseline). This preserves the ENH-2244 comparison for every run that
-  has a real baseline.
+  comparison: `SKIP` → pass when `[ "$FINAL_EXIT" = "0" ] || [ "$FINAL_EXIT" = "127" ]`,
+  never on equality with the baseline. This preserves the ENH-2244 comparison for every run
+  that has a real baseline, and prevents a present-but-unrunnable `test_cmd` from
+  reproducing the BUG-3269 cycle (see Expected Behavior).
 - Under the opt-out, `run_final_tests` routes straight to `count_final` without running
   anything.
 
@@ -578,7 +663,7 @@ _Added by `/ll:refine-issue` — 2026-08-20 — based on codebase analysis:_
   - `rn-refine.yaml:988-994` is a **distinct third fallback convention**, not the raw/if-else idiom: `print(cfg.get('project', {}).get('test_cmd') or '')` wrapped in `try/except`, degrading to `''` (not `'pytest'`) on any error. Converting this site must account for a different downstream contract than the other sites.
 - **Fragment mechanism** (`scripts/little_loops/loops/lib/common.yaml`): top-level key is `fragments:` (`:14`); a fragment supplies state-level keys merged into the caller. Parameterized fragments declare `parameters:` (each entry has `type` + `required` or `default`) and are referenced via `${param.<name>}` inside the fragment body; the caller supplies values via a `with:` block at the `fragment: <name>` call site. Reference example: `retry_counter` (`lib/common.yaml:38-60`) — `counter_key` (required string) and `max_retries` (default 3). Unparameterized fragments (`shell_exit`, etc.) take no `with:` block. Resolution is implemented in `scripts/little_loops/fsm/fragments.py` (`resolve_fragments`, imported at `scripts/tests/test_builtin_loops.py:18`).
 - **Call path, `baseline-exit.txt`**: `check_baseline_tests` (`:35-43`) writes `${context.run_dir}/baseline-test-output.txt` and `${context.run_dir}/baseline-exit.txt` via `eval "$CMD" > ... 2>&1; echo $? > baseline-exit.txt` (`:38-39`); `on_error: define_done` (`:43`) means even a shell-level failure still proceeds. `run_final_tests` (`:596-627`) later reads `baseline-exit.txt` (`:623`) and gates on `[ "$FINAL_EXIT" = "0" ] || [ "$FINAL_EXIT" = "$BASELINE_EXIT" ]` (`:624`) — `on_no: continue_work` (`:626`).
-- **Mirror-drift gate precedent — correction to the Proposed Solution's citation**: the `fb747a60` pattern actually lives in `scripts/tests/test_wiring_skills_and_commands.py:376-424` (`GATED_HOSTS` list + `@pytest.mark.parametrize("host", GATED_HOSTS)` over `resolve_emitter`'s own registry), not in `test_builtin_loops.py`'s generic `builtin_loops` fixture (`:34-40`). A new mirror-drift gate for `test_cmd`/`lint_cmd` resolution should follow the `test_wiring_skills_and_commands.py` registry-parametrize shape — a `GATED_LOOPS` constant plus one assertion per site that it delegates to `fragment: resolve_test_cmd` rather than an inline snippet — while `builtin_loops` remains the right fixture if a blanket scan-every-loop-file approach is preferred instead.
+- **Mirror-drift gate precedent — correction to the Proposed Solution's citation**: the `fb747a60` pattern actually lives in `scripts/tests/test_wiring_skills_and_commands.py:376-424` (`GATED_HOSTS` list + `@pytest.mark.parametrize("host", GATED_HOSTS)` over `resolve_emitter`'s own registry), not in `test_builtin_loops.py`'s generic `builtin_loops` fixture (`:34-40`). A new mirror-drift gate for `test_cmd`/`lint_cmd` resolution should follow the `test_wiring_skills_and_commands.py` registry-parametrize shape — a `GATED_LOOPS` constant plus one assertion per site that it delegates to ~~`fragment: resolve_test_cmd`~~ **`ll-config get project.<key>`** (corrected: no fragment is added, see §1c) rather than an inline snippet — while `builtin_loops` remains the right fixture if a blanket scan-every-loop-file approach is preferred instead.
 
 _Added by `/ll:refine-issue` — 2026-08-20 — based on codebase analysis:_
 
@@ -597,23 +682,35 @@ _Added by `/ll:refine-issue` — 2026-08-20 — based on codebase analysis:_
    currently covers only the key-**absent** path.
    Also add the negative case: `test_cmd: null` in `ll.local.md` resolves to the
    absent-default, **not** opt-out (documented asymmetry, see Expected Behavior).
-2. **Fix the three blockers.** Convert `general-task.yaml:37` and
+2. **Decide the `rl-coding-agent` precedence question** (§2, options (a)/(b)) before writing
+   any shell there. This is the one genuine design choice in the issue; everything else is
+   mechanical.
+3. **Fix the three blockers.** Convert `general-task.yaml:37` and
    `rl-coding-agent.yaml:60,68` to `ll-config get` — the sites that emit literal `None`
-   today. Preserve the `${context.*}` override precedence explicitly in shell.
-3. **Add the baseline sentinel.** Implement the `SKIP` contract in `check_baseline_tests` +
-   `run_final_tests`, with the opt-out detected as `[ -z "$CMD" ]`.
-4. **Convert the remaining sites.** The nine correct-but-guessing copies plus
+   today. Use the **per-site** precedence from §2's table: context-first for
+   `general-task`, config-first for `rl-coding-agent`. Do not paste one shape into both.
+   In the same edit, give `check_baseline_tests` the `${context.test_cmd}` override it
+   lacks today, so its resolution shell is byte-identical to `run_final_tests`'s; preserve
+   the existing `baseline-ref.txt` capture at `:39`.
+4. **Add the baseline sentinel.** Implement the `SKIP` contract in `check_baseline_tests` +
+   `run_final_tests`, with the opt-out detected as `[ -z "$CMD" ]`. The `SKIP` branch in
+   `run_final_tests` passes on `FINAL_EXIT` in `{0, 127}` — the `127` arm is required to
+   close the present-but-unrunnable `test_cmd` spin (see Expected Behavior), not optional
+   defensiveness. Add a regression test for that case specifically: `test_cmd` set to a
+   command that does not exist, asserting `run_final_tests` reaches `count_final`.
+5. **Convert the remaining sites.** The nine correct-but-guessing copies plus
    `auto-refine-and-implement.yaml`, one file at a time, running `ll-loop validate` after
    each. `fix-quality-and-tests.yaml:58-78`'s three-way python body is **deleted**, not
    generalized. Skip `oracles/code-run-gate.yaml` (§1d).
-5. **Land the mirror-drift gate.** Static scan over every loop YAML asserting no inline
+6. **Land the mirror-drift gate.** Static scan over every loop YAML asserting no inline
    `.ll/ll-config.json` read for `test_cmd` / `lint_cmd`, with `oracles/code-run-gate.yaml`
-   as the sole documented exemption. Confirm it fails before step 2 and passes after step 4.
-6. **Verify.** `python -m pytest scripts/tests/` exits 0; `ll-loop validate` clean on every
+   as the sole documented exemption. Confirm it fails before step 3 and passes after step 5.
+7. **Verify.** `python -m pytest scripts/tests/` exits 0; `ll-loop validate` clean on every
    converted loop; manual smoke of `general-task` in a scratch project with
-   `test_cmd: null` reaching a terminal state instead of cycling.
+   `test_cmd: null` reaching a terminal state instead of cycling, plus a second smoke with
+   `test_cmd` set to a nonexistent command (the 127 path from step 4).
 
-**Rollback seam:** steps 2–4 are independent per-file edits behind a contract pinned in
+**Rollback seam:** steps 3–5 are independent per-file edits behind a contract pinned in
 step 1. If a conversion misbehaves in a consuming project, revert that one file — there is
 no shared artifact to unwind, which is a further advantage over the fragment design.
 
@@ -639,7 +736,13 @@ _These touchpoints were identified by wiring analysis and must be included in th
   change** — that loop is out of scope (§1d)
 - Document in `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` that `ll-config get` is the
   required way to read a project command inside a loop, and that inline
-  `.ll/ll-config.json` parsing is prohibited (it bypasses `ll.local.md`)
+  `.ll/ll-config.json` parsing is prohibited (it bypasses `ll.local.md`). Include both
+  precedence shapes from §2's table and the cwd precondition — no other loop uses this
+  call today, so the guide is the only precedent a future author will find
+- Add the `${context.test_cmd}` override to `general-task.yaml`'s `check_baseline_tests`
+  (it has none today) so baseline and final gate resolve identically
+- Add a `run_final_tests` test for `baseline-exit.txt = SKIP` with `FINAL_EXIT = 127`
+  routing to `count_final`, not `continue_work`
 
 ## Impact
 
@@ -656,8 +759,15 @@ _These touchpoints were identified by wiring analysis and must be included in th
   the intended fix, and matches what `fix-quality-and-tests.yaml` already does. Two smaller
   intended changes: (a) `.ll/ll.local.md` overrides of `test_cmd`/`lint_cmd` now take effect
   inside loops (they never did); (b) `rl-coding-agent.yaml` with the key **absent** resolves
-  to `pytest` / `ruff check .` instead of the context override, which now wins only when
-  non-empty.
+  to `pytest` / `ruff check .` instead of the context literal, and its `:17-18` context
+  defaults become dead under §2 option (a). Two further intended changes: (c) a
+  present-but-unrunnable `test_cmd` (exit 127) no longer gates `general-task`'s
+  `run_final_tests`; (d) `general-task`'s `check_baseline_tests` starts honoring
+  `${context.test_cmd}`, which it silently ignored before.
+- **Not fixed by this issue**: `ll-config get` resolves from `Path.cwd()` with no upward
+  walk, so a loop state invoked from a subdirectory still loses the opt-out. Safe for all
+  13 converted sites today (FSM shell actions run at the project or worktree root) and no
+  worse than the snippets being replaced — see the precondition in the Resolution contract.
 
 ## Related Key Documentation
 
@@ -679,6 +789,12 @@ _Added by `/ll:confidence-check` on 2026-08-20_
 **Outcome Confidence**: 77/100 → Good
 
 ### Gaps to Address
+- ~~**Program Design gate (hard override)**~~ — **RESOLVED 2026-08-20 by design review.**
+  The `### Signatures` bullets were rewritten as strict `name(params: Type) -> Type` lines
+  with bare-token types; `ll-issues check-design BUG-3269` now exits 0 and
+  `format-check --format json` reports an empty `program_design_nonspecific`. The
+  remaining `stale_file_ref` entries (`.ll/ll.local.md`, `postmortems/...`) are expected —
+  both paths are gitignored. Original text retained below for context:
 - **Program Design gate (hard override, `ll-issues check-design` exits 1)**: none of the
   three `### Signatures` bullets are regex-matchable as signature-shaped by
   `scripts/little_loops/issues/program_design.py` (`_SIG_CALL`/`_SIG_FIELD`), even though a
@@ -705,6 +821,7 @@ _Added by `/ll:confidence-check` on 2026-08-20_
   the old `.get('test_cmd'` pattern after each file, not just at the end.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-21T00:48:05 - `e0ced191-faba-4adf-9e21-fe9bb9babc29.jsonl`
 - `/ll:confidence-check` - 2026-08-21T00:22:27 - `8fa51734-384b-46a2-a10c-bd13c601a684.jsonl`
 - `/ll:confidence-check` - 2026-08-20T23:39:55 - `bae4c657-9e53-457d-bcc4-db4ed042c8fb.jsonl`
 - `/ll:wire-issue` - 2026-08-20T23:37:01 - `f8d1ceb8-b964-4281-915c-bc7d008244e2.jsonl`

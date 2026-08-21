@@ -1119,6 +1119,7 @@ Current Design Tokens Configuration
   active_theme:    {{config.design_tokens.active_theme}}
   active:          {{config.design_tokens.active}}
   profiles_dir:    {{config.design_tokens.profiles_dir}}
+  source:          {{config.design_tokens.source}}
   installed:       {{installed profiles list from <path>/<profiles_dir or "profiles">/ — list subdirectory names}}
 ```
 
@@ -1161,6 +1162,19 @@ questions:
         description: "Light theme"
       - label: "dark"
         description: "Dark theme"
+    multiSelect: false
+
+  - header: "Source"
+    question: "Design-token source (current: {{config.design_tokens.source}}):"
+    options:
+      - label: "{{current source}} (keep)"
+        description: "Keep current setting"
+      - label: "auto"
+        description: "Default. Prefer a materialized profile; fall back to a root DESIGN.md if none is materialized."
+      - label: "profile"
+        description: "Always use the multi-file profile layout (primitives.json, semantic.json, ...), ignoring any DESIGN.md."
+      - label: "design_md"
+        description: "Always read the project's root DESIGN.md (https://github.com/google-labs-code/design.md). Writes only the config knob — it does not scaffold a DESIGN.md file."
     multiSelect: false
 ```
 

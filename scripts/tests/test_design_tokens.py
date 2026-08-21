@@ -659,6 +659,47 @@ class TestRenderAsCssVarsThemed:
         assert "--_" not in output
 
 
+class TestThemedCssVarsDesignMdSource:
+    """cli/artifact.py::_themed_css_vars single-call behavior (ENH-3264 AC 6)."""
+
+    def test_design_md_source_no_crash_and_both_blocks_present(
+        self, tmp_path: Path, capsys
+    ) -> None:
+        from little_loops.cli.artifact import _themed_css_vars
+
+        _write_design_md(tmp_path, _DESIGN_MD_FIXTURE)
+        config = _make_config(tmp_path, {"source": "design_md"})
+        css = _themed_css_vars(config)
+        assert ":root {" in css
+        assert "[data-theme=dark] {" in css
+
+    def test_design_md_source_warns_exactly_once(self, tmp_path: Path, capsys) -> None:
+        from little_loops.cli.artifact import _themed_css_vars
+
+        _write_design_md(tmp_path, _DESIGN_MD_FIXTURE)
+        config = _make_config(tmp_path, {"source": "design_md"})
+        _themed_css_vars(config)
+        err = capsys.readouterr().err
+        assert err.count("theme mechanism") == 1
+
+    def test_profile_source_still_makes_two_calls(self, tmp_path: Path) -> None:
+        from little_loops.cli.artifact import _themed_css_vars
+
+        _write_tokens(
+            tmp_path,
+            primitives={"color": {"brand": {"500": "#4F46E5"}}},
+            semantic={"color": {"surface": "{color.brand.500}"}},
+            theme_name="dark",
+            theme={"color": {"surface": "#000000"}},
+        )
+        light_themes = tmp_path / ".ll" / "design-tokens" / "themes"
+        (light_themes / "light.json").write_text(json.dumps({"color": {"surface": "#ffffff"}}))
+        config = _make_config(tmp_path)
+        css = _themed_css_vars(config)
+        assert "--color-surface: #ffffff;" in css
+        assert "--color-surface: #000000;" in css
+
+
 # ---------------------------------------------------------------------------
 # Integration — actual template files
 # ---------------------------------------------------------------------------

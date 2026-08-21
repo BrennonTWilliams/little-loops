@@ -894,6 +894,7 @@ class BRConfig:
                 "active_theme": self._design_tokens.active_theme,
                 "active": self._design_tokens.active,
                 "profiles_dir": self._design_tokens.profiles_dir,
+                "source": self._design_tokens.source,
             },
             "artifacts": {
                 "default_output_dir": self._artifacts.default_output_dir,

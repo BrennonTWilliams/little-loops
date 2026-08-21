@@ -787,6 +787,72 @@ Built-in profiles:
 
 Run `/ll:configure design-tokens` to interactively set up profiles and select the active one.
 
+#### DESIGN.md import source (ENH-3264)
+
+As an alternative to the multi-file profile layout, the loader can read a single root
+[`DESIGN.md`](https://github.com/google-labs-code/design.md) file — a Google Labs draft
+spec (`alpha`, Apache-2.0) for describing a visual identity to coding agents in one
+human-readable file. This is an **import edge only**: profiles remain the canonical
+internal model, and nothing is ever written to disk from a DESIGN.md (no generated
+`profiles/<name>/*.json`, no scaffolded starter file).
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `source` | `"auto"\|"profile"\|"design_md"` | `"auto"` | Selects the token source format. |
+
+- `"auto"` (default) — prefers a **materialized** profile (at least one of `primitives.json`, `semantic.json`, `typography.json`, `spacing.json` present under the resolved token root); falls back to a root `DESIGN.md` when no profile is materialized. Selection is based on what's on disk, not on whether `active` has been explicitly set (it defaults to `"default"` either way, so "unset" isn't observable).
+- `"profile"` — always uses the multi-file profile layout, ignoring any root `DESIGN.md`.
+- `"design_md"` — always reads the project's root `DESIGN.md`; degrades to no tokens (with a stderr warning) if the file is absent.
+
+**Discovery is case-exact and not configurable.** The loader looks for a file named
+exactly `DESIGN.md` (not `design.md` or `Design.md`) at the project root only — no
+recursive search, no path override. This matters because `Path.exists()` is
+case-insensitive on APFS (macOS) and NTFS, so a naive existence check would
+incorrectly match a lowercase `design.md`; the loader lists the directory and
+compares names exactly instead.
+
+**Namespace mapping.** DESIGN.md's flat frontmatter blocks are renamed onto profile
+namespaces before resolution: `colors` → `color`, `typography` → `font`, `spacing` →
+`space`, `rounded` → `radius`. Well-known color names (Material-Design-style —
+`primary`, `secondary`, `on-*`, `surface*`, `background`, `outline*`, `error`, ...) are
+further mapped onto the four semantic roles (`surface`/`text`/`border`/`action`) so
+the generator prompt gets grouped, role-labeled output instead of a flat hex dump;
+unrecognized names fall into a residual "Other" group rather than being dropped.
+`{path.to.token}` alias references are rewritten to match, so a value like
+`"{colors.primary}"` still resolves correctly even though the key it points at moved
+namespaces (and, for role-mapped colors, an extra level deeper).
+
+**Not supported from DESIGN.md:**
+- **Themes.** The spec has no theme mechanism (one flat `colors:` map, no light/dark
+  split). A DESIGN.md source resolves to a single theme; `active_theme` is silently
+  ignored for the default (`theme=None`) call path used by `ll-loop run`/`resume`, and
+  a caller that passes an explicit `theme=` (only `_themed_css_vars`, used by
+  `ll-artifact` HTML generators) gets a one-time stderr warning instead. Projects that
+  need light/dark keep using profiles.
+- **`components:`.** Structural guidance, not tokens — it is dropped before token
+  resolution and never appears in `render_as_prompt_context()`/`render_as_css_vars()`
+  output. (It does feed the prose-guidance channel introduced by a later change.)
+- **Unitless numeric dimensions.** A hand-authored `rounded: {sm: 4}` (no unit) is
+  emitted verbatim as invalid CSS (`--radius-sm: 4;`). DESIGN.md numeric values must
+  carry their units (`4px`, `0.25rem`, ...) — this is an authoring contract, not
+  something the loader corrects.
+
+Malformed-but-partially-scannable YAML frontmatter is accepted (the house frontmatter
+parser's permissive line-based fallback salvages what it can rather than raising), and
+an unresolvable `{ref}` degrades to a token-empty result with a stderr warning instead
+of raising — unlike the profile path, where the same conditions raise `ValueError`.
+Either way, the file's prose body (frontmatter stripped) still parses and is available
+on the result even when no usable tokens were found.
+
+```json
+{
+  "design_tokens": {
+    "enabled": true,
+    "source": "design_md"
+  }
+}
+```
+
 #### Auto-scaffolding built-in profiles
 
 When you run `/ll:configure` and select or enable a built-in design token profile, the skill detects whether the profile directory is missing from disk and offers to materialize it automatically via `shutil.copytree`:

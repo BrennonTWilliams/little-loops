@@ -3,10 +3,11 @@ id: ENH-3264
 type: ENH
 title: Support DESIGN.md as an import source for the design-token system
 priority: P2
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-08-20'
 captured_at: '2026-08-20T20:04:28Z'
+completed_at: '2026-08-21T01:01:20Z'
 supersedes:
 - ENH-3263
 relates_to:
@@ -610,6 +611,7 @@ Outcome confidence: **63 → 66**. (3) is a genuine reduction in the dependent-s
 - Broad dependent surface (~6-10 call sites/consumers of `load_design_tokens()`/renderers — `artifact.py`, `doctor.py`, `verify_design_tokens.py`, `init/*.py`, `session_start.py`, plus 15 built-in loop YAMLs that must keep receiving `design_tokens_context` unaffected) that must keep working unchanged; verify each at implementation time rather than assuming pass-through safety.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-21T01:01:14 - `aa6e5584-37de-4177-905b-eaadb9c97749.jsonl`
 - `/ll:ready-issue` - 2026-08-21T00:22:06 - `eb4537b1-6ade-4a1f-a8af-002b9d979d84.jsonl`
 - `/ll:confidence-check` - 2026-08-20T23:00:05 - `9ae8d1c7-b681-46f2-95a1-fc3737ca1dfc.jsonl`
 - `/ll:confidence-check` - 2026-08-20T22:40:43 - `e1e0a50b-8411-4bed-94f3-b4c4901bef47.jsonl`

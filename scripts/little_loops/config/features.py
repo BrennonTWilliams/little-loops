@@ -343,6 +343,11 @@ class DesignTokensConfig:
     active_theme: str = "dark"
     active: str = "default"
     profiles_dir: str | None = None
+    # "auto" | "profile" | "design_md" (ENH-3264). "auto" prefers a
+    # materialized profile and falls back to a root DESIGN.md keyed on what
+    # is on disk — not on whether `active` is "set", which is undecidable
+    # (it defaults to "default" here and in from_dict()).
+    source: str = "auto"
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> DesignTokensConfig:
@@ -356,6 +361,7 @@ class DesignTokensConfig:
             active_theme=data.get("active_theme", "dark"),
             active=data.get("active", "default"),
             profiles_dir=data.get("profiles_dir"),
+            source=data.get("source", "auto"),
         )
 
 
