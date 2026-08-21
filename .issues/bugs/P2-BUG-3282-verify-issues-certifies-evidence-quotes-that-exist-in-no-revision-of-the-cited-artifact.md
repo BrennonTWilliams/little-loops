@@ -115,6 +115,13 @@ run as a Python gate rather than an LLM judgement:
    command-output exclusion dead code; and nearest-preceding *alone* misattributes the pervasive
    ``symbol (`path`)`` prose idiom. See Decision Rules → Attribution rule, which works the fixture
    line by line.
+
+   **Then drop mention-class spans — the quote/mention distinction (load-bearing).** Attribution
+   says *which* artifact a span is checked against; it does not say whether the span was ever
+   claimed to be a quote. Most inline-backtick runs in issue prose are symbols, paths, commands,
+   and command output that inherit an attribution purely by position. On the flagship fixture the
+   attribution rules alone produce **five spans beyond the expected set**, every one a mention
+   (Integration Map → Tests). Filter them before matching, per Decision Rules → Span kind.
 3. **Resolve the cited artifact.** Issue ID -> path via the existing resolver; file paths as
    given. An artifact that does not resolve, or resolves to an untracked path, is skipped with no
    finding (see Decision Rules → Fail-open).
@@ -137,13 +144,32 @@ run as a Python gate rather than an LLM judgement:
    caller of `staged_added_lines()`); plain changed-files mode on explicit paths is the **skill /
    host-hook** invocation. Earlier drafts of this issue put the pytest gate on changed-files mode;
    that is vacuous — see Implementation Steps step 3b.
-7. **Baseline the full-scan mode, keyed on issue ID.** `--all` reports only findings beyond a
-   tracked baseline, with `--update-baseline` to regenerate. The baseline keys on the **anchored
-   numeric issue ID, not the file path** — issue files are renamed constantly, and a path-keyed
-   baseline turns every re-prioritization into a spurious regression (see Implementation Steps
-   step 4). Because the pytest gate is `--all`, the baseline is **on the critical path**: the gate
-   cannot land green without it. The tiering and parallelism in step 4 keep that seeding scan to a
-   few minutes rather than an overnight chore.
+7. **Baseline the full-scan mode as a suppression set: keyed on issue ID, holding normalized span
+   hashes.** `--all` reports only findings beyond a tracked baseline, with `--update-baseline` to
+   regenerate. Two divergences from `verify_private_refs`'s baseline, both required:
+   - **Key on the anchored numeric issue ID, not the file path** — issue files are renamed
+     constantly, and a path-keyed baseline turns every re-prioritization into a spurious
+     regression (see Implementation Steps step 4).
+   - **Store per-span hashes, not per-file counts**, and **skip the history walk for a baselined
+     span**. The precedent can afford counts-only because its matcher is a regex over file text;
+     here a baselined finding is by definition a *miss*, and a miss is the expensive path
+     (measured ~1.6s: both history tiers). Counts-only means the pytest gate re-derives the entire
+     baselined population from git history on **every `python -m pytest scripts/tests/` run** — not
+     once at seeding time, which is how earlier drafts of step 4 budgeted it. Hashing the
+     normalized span text lets the scan drop baselined spans *before* matching, so steady-state
+     cost is file-read plus regex and the git walks fall to ~zero. It also closes the counts-only
+     blind spot where one fabrication is fixed and another introduced in the same file. The hash
+     keeps the baseline's "never stores matched text" property.
+
+   Because the pytest gate is `--all`, the baseline is **on the critical path**: the gate cannot
+   land green without it. The tiering and parallelism in step 4 keep the one-time seeding scan to a
+   few minutes.
+
+8. **Scope `--all` to `.issues/**/*.md`.** The precedent enumerates the whole repo
+   (`git ls-files -z`, `verify_private_refs.py:352`) because private refs can appear anywhere.
+   Evidence attribution is an issue-file concern; an unscoped `--all` would walk history for every
+   source file in the repo. Take the scope from `issues.base_dir` rather than hardcoding
+   `.issues/`.
 
 This lands as `ll-verify-evidence`, a new deterministic CLI invoked from the skill (testable by
 subprocess), not as prose added to `commands/verify-issues.md`.
@@ -160,7 +186,10 @@ subprocess), not as prose added to `commands/verify-issues.md`.
   entry point `ll-verify-evidence`, tests `scripts/tests/test_verify_evidence.py`, baseline
   `.ll/evidence-baseline.json`
 - `.ll/evidence-baseline.json` — new tracked baseline for `--all` mode, keyed on numeric issue ID
-  (see Implementation Steps step 4). Required for the pytest gate, not optional
+  and holding normalized span **hashes** rather than per-file counts, consulted before matching
+  (see Proposed Solution step 7 and Implementation Steps step 4). Required for the pytest gate, not
+  optional — and the hash form is what keeps that gate from re-walking git history on every
+  `pytest` run
 - `.pre-commit-config.yaml` — new `--added-only` hook entry alongside the existing
   `ll-verify-private-refs --added-only` at `:17`
 
@@ -200,7 +229,30 @@ _Wiring pass added by `/ll:wire-issue`:_
     `## Current Behavior` and `:60` in `## Steps to Reproduce`; the two `(a)`/`(b)` spans share
     `:38`. Expected findings are therefore **4 occurrences / 3 distinct spans**. Pick one and
     assert it: dedupe by normalized span text (3 findings, each carrying its occurrence lines) —
-    the report is more readable and the baseline counts stay stable when an issue is reflowed.
+    the report is more readable and the baseline stays stable when an issue is reflowed.
+  - **Must not flag the mention class — this is what the exact-finding-set assertion actually
+    buys.** Attribution + section scope + floor + normalization, with no span-kind filter, pull
+    **five further spans** out of this fixture, all attributed to ENH-3277 and all genuinely absent
+    from it. Verified by extracting every in-scope inline run from the `baa553d9` blob and matching
+    each against ENH-3277's working tree, HEAD, `git log --all -p`, and `--follow -p`
+    (prefix-stripped, emphasis-normalized) on 2026-08-21:
+
+    | Span | Line(s) | Raw | Why it must not flag |
+    |---|---|---|---|
+    | `ll-issues locate-options ENH-3277 --json` | `:42`, `:61` | 40 | command invocation |
+    | `issue_parser.locate_enumerable_options` | `:51` | 38 | code symbol |
+    | `pattern bold_label` | `:61` | 18 | command output, quoted inline |
+    | `/ll:decide-issue ENH-3277` | `:63` | 25 | skill invocation |
+    | `section_header` | `:51` | 14 | code symbol (flags at floor 14) |
+
+    Each is dropped by Decision Rules → Span kind, and by nothing else in the spec: the
+    following-parenthetical override never fires (none has a parenthetical), the command-output
+    exclusion covers the `:44` *fence* but not the invocation span itself nor output quoted inline
+    on the invocation line (`:61`), and all are over the floor. Two further spans on those lines —
+    `decision_needed: false` (`:54`, `:64`) and `/ll:decide-issue` (`:53`) — pass on their own
+    merits because they do occur in ENH-3277, so they cannot be relied on to hide the gap.
+    Assert the finding set is exactly the three above; a test that only asserts "flags the
+    fabrications" passes with all five false positives present.
   - **Must not flag** `` `**Option A**` `` / `` `**Option B**` `` / `` `**Option C**` `` at `:37`.
     These sit in the same numbered list, in the same section, under the same ENH-3277 attribution
     as the fabrications. **This true-negative holds only under emphasis-normalized matching**
@@ -208,9 +260,12 @@ _Wiring pass added by `/ll:wire-issue`:_
     `**Option A**` appears in **zero** revisions of ENH-3277 — what actually fired the `bold_label`
     tier is `**Option A — permanently exempt both. SELECTED.**`, which does not contain that
     literal. Normalize emphasis away and `Option A` matches; match raw text and the checker flags
-    its own designated true-negative. (The character floor happens to exclude `**Option A**` at 12
-    chars, but resting the clause on the floor would make precision here an accident of length —
-    assert the normalized match, and cover the floor separately below.)
+    its own designated true-negative. **Keep this clause as documentation, but do not treat it as
+    the pin**: at 12 raw chars these spans sit under any floor in `(13, 24]`, so they are dropped
+    before matching and the fixture cannot exercise normalization through them. The
+    emphasis-normalization unit test below is the actual pin. (Confirmed 2026-08-21: all three do
+    match ENH-3277's working tree once emphasis is normalized, so the stated rationale is correct —
+    it is simply unreachable from this fixture.)
   - **Must not flag** the fenced block at `:44-49` (the `count 3  pattern bold_label …` listing),
     introduced by the invocation line at `:42`. It is *output of*
     `ll-issues locate-options ENH-3277 --json`, not a quote from ENH-3277, and it appears in no
@@ -247,6 +302,21 @@ _Wiring pass added by `/ll:wire-issue`:_
   **a**, and passes when it exists in b. The direct unit twin of the `read_blob_at_ref()` false
   positive (Decision Rules → Attribution rule); without this exception the checker flags this very
   issue's `### Codebase Research Findings`
+- **Span kind — one unit test per excluded shape** (Decision Rules → Span kind), each a synthetic
+  twin of a row in the flagship fixture's mention-class table: a bare identifier
+  (`issue_parser.locate_enumerable_options`), a dotted/pathlike run, a command invocation
+  (`ll-issues …`, `git …`), a skill invocation (`/ll:…`), and an inline span *following* an
+  invocation span on the same line (`Run \`ll-x\` — observe \`pattern bold_label\``). Each must
+  produce no finding even when absent from the cited artifact. Pair each with a positive control —
+  a prose span of similar length that *is* still checked — so the filter cannot be implemented as
+  a blanket length or punctuation rule
+- **Whole-corpus precision smoke test**: run `--all` over `.issues/` with an empty baseline and
+  assert the finding count is under a stated ceiling. Not a correctness test — a canary for the
+  mention class, which is the failure mode that makes this checker unusable rather than merely
+  wrong. BUG-3282's own body carries **53** in-scope inline spans over the floor (9 in
+  `## Current Behavior`, 37 in `### Codebase Research Findings`, 4 in `## Steps to Reproduce`, 2 in
+  `## Motivation`, 1 in `## Root Cause`); if the span-kind filter is right, almost none of them
+  survive to matching
 - **Counter-example quote**: a fixture whose in-scope section quotes a span *in order to report
   that it does not exist* ("X claimed `<span>`, which appears nowhere in Y") -> flagged, and
   silenced by `<!-- ll-evidence-ok: -->`. Pins Decision Rules → Counter-example quotes as a
@@ -264,14 +334,28 @@ _Wiring pass added by `/ll:wire-issue`:_
   implementation and it is wrong, so this test must exist or the bug ships
 - Character-floor boundary: a span at and just below the minimum length. **The floor is measured on
   the raw span text, before normalization** — calibrated against BUG-3278's shortest real
-  *fabricated* span (`**(b) Drop the knob.**`, 22 raw chars) with the floor bounded below by the
-  shortest designated true-negative (`**Option A**`, 12 raw chars) — i.e. the floor lands in
-  `(13, 22]`. Assert the raw-vs-normalized contract explicitly: the same two spans normalize to 18
-  and 8 chars, so a floor applied post-normalization would need `(9, 18]` and the two calibrations
+  *fabricated* span with the floor bounded below by the shortest designated true-negative
+  (`**Option A**`, 12 raw chars). Note the extracted span includes the leading `- ` that sits
+  *inside* the backtick run at `:38` — it is `` `- **(b) Drop the knob.**` ``, **24** raw chars, not
+  the 22 of the bare `**(b) Drop the knob.**` (and its sibling is 44, not 43). So the floor lands in
+  `(13, 24]`. Assert the raw-vs-normalized contract explicitly: the same two spans normalize to 19
+  and 8 chars, so a floor applied post-normalization would need `(9, 19]` and the two calibrations
   are not interchangeable
 - Baseline behavior: `--all` exits 0 when findings equal the tracked baseline, 1 on any increase;
   `--update-baseline` rewrites it (mirror `test_verify_private_refs.py`'s baseline tests). This is
   the **pytest gate's** contract, not a side mode
+- **Baseline suppresses before matching, not after** (Proposed Solution step 7): with a span in the
+  baseline, the scan performs **zero** git-history subprocesses for that span's artifact. Assert it
+  directly — monkeypatch/spy the history-tier call and assert it is never invoked — because this is
+  the only thing standing between the gate and a multi-minute cost on every
+  `python -m pytest scripts/tests/` run, and a counts-only port passes every other baseline test
+  while failing this one
+- **Baseline detects a swapped finding**: an issue with one baselined unverifiable span, edited so
+  that span is fixed and a *different* one introduced, exits 1. Counts-only baselines pass this
+  silently; hash-keyed ones fail it
+- **`--all` scope**: a tracked source file outside `issues.base_dir` containing an attributed,
+  unverifiable-looking span produces no finding under `--all` (Proposed Solution step 8). Pins the
+  scope narrowing against the precedent's whole-repo `git ls-files` enumeration
 - **Added-lines filter (pre-commit mode)**: with a staged edit touching an *unrelated* line of an
   issue file that carries a pre-existing unverifiable span, `--added-only` produces no finding; the
   same file with a *new* unverifiable span staged does. Note the fixture must **stage** its edits —
@@ -390,7 +474,11 @@ N/A — no new data types. Findings would be ad hoc violation records analogous 
 extraction: `fence_spans()` / `in_fence()` (`text_utils.py:64`, `:97`) for fenced blocks, plus a
 **new inline-backtick regex** (no such primitive exists in `text_utils.py`) -> attribution filter:
 following-parenthetical, else nearest-preceding within the `##` section, with the command-output
-exclusion (Decision Rules → Attribution rule) -> `resolve_issue_path()`
+exclusion (Decision Rules → Attribution rule) -> **span-kind filter: drop bare identifiers/paths,
+command and skill invocations, and inline output following an invocation on the same line**
+(Decision Rules → Span kind) -> **baseline suppression: drop spans whose
+`(issue ID, normalized hash)` is already baselined, before any git call** (Proposed Solution
+step 7) -> `resolve_issue_path()`
 (`issue_parser.py:92`) to resolve the cited artifact -> **artifact-major** match, tiered: working
 tree, then HEAD, then `git log --all -p -n 20`, then — only on a residual miss —
 `git log --all --follow -p -n 20`, each tier a single subprocess whose output is
@@ -454,6 +542,33 @@ the per-revision `git show` pattern the measurements rule out.
   both halves work: `:37/:38/:40` and the `:44-49` fence inherit ENH-3277 from `:35`, `:60`
   inherits from `:58`, and the command-output exclusion is what (correctly) drops the fence.
   Section scoping does not substitute for either: `## Current Behavior` is in scope by design.
+- **Span kind — the quote/mention distinction (load-bearing; added by the fifth review pass)**: an
+  attributed span is only checked if it is plausibly a *quote*. Attribution answers "checked
+  against what"; it does not answer "was this ever claimed to be verbatim from there". Issue prose
+  is dense with backticked symbols, paths, commands, and command output whose nearest-preceding
+  mention is coincidental, and every other mitigation in this list passes them straight through to
+  matching. Measured on the flagship fixture, the rules as specified before this pass produced five
+  such false positives (Integration Map → Tests → mention class) — more false findings than true
+  ones. Excluded shapes:
+  1. **Bare identifiers and paths** — a span with no internal whitespace
+     (`issue_parser.locate_enumerable_options`, `section_header`, `scripts/pyproject.toml`). A
+     verbatim quote worth checking is prose; a lone symbol is a reference. This one rule removes
+     the bulk of the class.
+  2. **Command and skill invocations** — a span whose first token is a known binary (`ll-*`, `git`,
+     `python`, `python3`, `ruff`, `pytest`) or a `/ll:` skill name, at any length
+     (`ll-issues locate-options ENH-3277 --json`, `/ll:decide-issue ENH-3277`). Note this is the
+     *invocation span itself*; the existing command-output rule only excludes the fenced block
+     beneath it.
+  3. **Inline command output** — an inline run on the same line as, and following, an excluded
+     invocation span (`Run \`ll-issues locate-options …\` — observe \`count 3\`,
+     \`pattern bold_label\``). The fenced-block exclusion has an inline twin and the fixture
+     exercises it at `:61`.
+
+  Direction of the rule is deliberately toward *fewer* findings, consistent with Normalization and
+  Fail-open: a fabricated quote is prose almost by definition — all three of the fixture's genuine
+  fabrications carry internal whitespace and start with markdown emphasis, so none is near these
+  exclusions. Do **not** implement this as a length or punctuation heuristic; it is a shape test,
+  and Integration Map → Tests pairs each exclusion with a positive control to keep it one.
 - **Normalization (load-bearing — whitespace alone is insufficient)**: span text and artifact text
   are normalized **identically** before matching, collapsing (a) whitespace and line wrapping and
   (b) markdown emphasis and decoration — `**`, `*`, `_`, backticks — plus trailing sentence
@@ -510,17 +625,21 @@ the per-revision `git show` pattern the measurements rule out.
   (via `resolve_issue_path()` / `ll-issues path`).
 - **Threshold**: minimum span length measured in **characters, not tokens**. The Proposed
   Solution's original "a 3-token quote is not evidence" floor is wrong in the direction that
-  matters: BUG-3278's genuine fabricated span `**(b) Drop the knob.**` is 4 tokens and *is*
-  evidence. The floor is bounded on both sides by the flagship fixture: it must admit
-  `**(b) Drop the knob.**` (22 chars, must-flag) and it may not be raised so far that it becomes
-  the reason `**Option A**` (12 chars) is spared — that clause belongs to Normalization. **Floor
-  lands in `(13, 22]`**; measured against the spans at
+  matters: BUG-3278's genuine fabricated span `- **(b) Drop the knob.**` is 5 tokens and *is*
+  evidence. The floor is bounded on both sides by the flagship fixture: it must admit that span
+  (**24** chars, must-flag — the extracted run includes the leading `- ` inside the backticks at
+  `:38`; the bare `**(b) Drop the knob.**` would be 22, and its sibling `(a)` span is 44, not 43)
+  and it may not be raised so far that it becomes the reason `**Option A**` (12 chars) is spared —
+  that clause belongs to Normalization. **Floor lands in `(13, 24]`**; measured against the spans at
   `baa553d9:.issues/bugs/P2-BUG-3278-*.md:37-40`.
   **The floor measures the raw span text, before normalization.** Both calibration constants above
-  are raw counts, and the two forms are not interchangeable: the same spans normalize to 18
-  (`(b) Drop the knob.`) and 8 (`Option A`) characters, so a post-normalization floor would need
-  `(9, 18]`. Silently applying the raw bounds to normalized text moves the floor below both
+  are raw counts, and the two forms are not interchangeable: the same spans normalize to 19
+  (`- (b) Drop the knob.`) and 8 (`Option A`) characters, so a post-normalization floor would need
+  `(9, 19]`. Silently applying the raw bounds to normalized text moves the floor below both
   calibration points and admits short decorative spans wholesale.
+  Note the floor is a weak instrument against the mention class — `section_header` (14) and
+  `pattern bold_label` (18) clear any floor in range. That class is Decision Rules → Span kind's
+  job, not the floor's; raising the floor to reach them would drop genuine fabrications.
 - **Fail-open (mirrors §B.0's `ll-code` convention, `commands/verify-issues.md:74-120`)**: an
   artifact that does not resolve, or resolves to a path git does not track, is **skipped with no
   finding**. This is required, not merely lenient: Root Cause names logs and run directories as
@@ -590,6 +709,11 @@ the per-revision `git show` pattern the measurements rule out.
    `in_fence()` `:97`); inline-backtick extraction is new regex** — `text_utils.py` has no inline
    primitive (see Codebase Research Findings), and inline runs are *all three* of the flagship
    fixture's must-flag spans, so this is the majority of the extraction work rather than a corner.
+   **Then apply the span-kind filter before matching** (Decision Rules → Span kind): drop bare
+   identifiers/paths, command and skill invocations, and inline output following an invocation on
+   the same line. Implement it as a distinct, separately-tested stage rather than folding it into
+   the extraction regex — it is the difference between a checker with 3 findings on the flagship
+   fixture and one with 8, and it is what makes step 6b's clean-run acceptance signal reachable.
 3. Matching is artifact-major with **tiered** working-tree -> HEAD -> `git log --all -p -n 20` ->
    `git log --all --follow -p -n 20` short-circuiting, each tier one `subprocess.run` whose output
    is prefix-stripped and normalized once per artifact (Proposed Solution step 4; Decision Rules →
@@ -613,6 +737,10 @@ the per-revision `git show` pattern the measurements rule out.
      skill edits unstaged so an added-lines filter would see nothing anyway.
    Port `staged_added_lines()` regardless — it is in the module being ported and the pre-commit
    hook needs it — but do not let the gate depend on it.
+   **Scope `--all` to `issues.base_dir`** (Proposed Solution step 8). The precedent's `--all`
+   enumerates the entire repo via `git ls-files -z` (`verify_private_refs.py:352`); copying that
+   verbatim makes the checker walk git history for source files that can never carry an issue-file
+   evidence citation.
 4. **Key the `--all` baseline on issue ID; it is on the critical path.** Because step 3b puts the
    pytest gate on `--all`, the baseline must land *with* the gate, not in a later commit. `git
    ls-files '.issues/**/*.md'` returns 3194 tracked files, most of which carry an issue-ID
@@ -620,25 +748,41 @@ the per-revision `git show` pattern the measurements rule out.
    retro-fix.
    Port `verify_private_refs.py`'s mechanism — `BASELINE_PATH` (`:66`), `load_baseline()` (`:418`),
    `regressions()` (`:446` — note the function is `regressions`, not `filter_regressions`),
-   `write_baseline()` (`:461`), counts-only so the baseline stays portable and never stores matched
-   text — to `.ll/evidence-baseline.json`, with `--update-baseline`.
-   **One required divergence from that port:** `verify_private_refs` keys its baseline dict on the
-   file path, which is safe there because source paths are stable. Issue paths are not — the repo
-   renames them routinely (`R099 P2-FEAT-3183-… -> P1-FEAT-3183-…` on re-prioritization,
-   `R074` on a title edit of `ENH-3264`). A path-keyed baseline treats every such rename as a file
-   with zero baseline and fails CI on findings that were already accepted. **Key on the anchored
-   numeric issue ID** (`3183`), falling back to path for non-issue artifacts.
-   **Runtime**: a `--all` run is not free. Hits short-circuit at the working tree for ~nothing, but
-   *misses* — which is precisely the baselined population, re-derived on every run — walk history.
-   Three levers, all measured or mechanical, take the seeding scan from an overnight chore to a
-   few minutes:
-   - **Tiered, single-process history** (step 3): 1.50s -> 0.56s per history-walking artifact.
-   - **Parallelize the scan** across artifacts with a process pool. Safe by construction: the git
-     calls are read-only and `GitLock` is already ruled out (Decision Rules → `GitLock`). At 8
-     workers, ~3194 artifacts x 0.56s is ~4 minutes rather than ~80.
-   - **Seed in the same commit as the gate, but seed it last.** The gate *is* `--all`, so the
-     baseline cannot be deferred to a follow-up commit — the ~4-minute scan is a step in landing
-     this issue, not an optional cleanup. Budget it, do not schedule around it.
+   `write_baseline()` (`:461`) — to `.ll/evidence-baseline.json`, with `--update-baseline`.
+   **Two required divergences from that port**, both in Proposed Solution step 7:
+   - **Key on the anchored numeric issue ID, not the file path.** `verify_private_refs` keys on the
+     path, which is safe there because source paths are stable. Issue paths are not — the repo
+     renames them routinely (`R099 P2-FEAT-3183-… -> P1-FEAT-3183-…` on re-prioritization, `R074`
+     on a title edit of `ENH-3264`). A path-keyed baseline treats every such rename as a file with
+     zero baseline and fails CI on findings that were already accepted. Key on the numeric ID
+     (`3183`), falling back to path for non-issue artifacts.
+   - **Store per-span hashes, not per-file counts, and consult the baseline *before* matching.**
+     `regressions()` compares counts after the fact because its matcher is cheap; here matching is
+     the expensive part, so the port has to invert: hash the normalized span, drop baselined spans
+     during extraction, and report what remains. `load_baseline()`/`write_baseline()` port
+     structurally; `counts_by_file()` (`:434`) is replaced by a span-hash set per key. The
+     baseline still never stores matched text — a hash is not the span.
+   **Runtime — the seeding scan is one-time, but only if the baseline suppresses before matching.**
+   Hits short-circuit at the working tree for ~nothing; *misses* walk history, and the baselined
+   population is exactly the set of misses. Under a counts-only port that set is re-derived on
+   **every `python -m pytest scripts/tests/` run**, because the gate is `--all` — an earlier draft
+   of this step budgeted it as seeding cost, which was wrong about when it is paid. That matters
+   here more than in most repos: this suite is the authoritative gate (`.claude/CLAUDE.md` §
+   Testing & CI Policy), it is run constantly, and the machine has a documented sensitivity to
+   process/fs churn (BUG-2788). Four levers:
+   - **Baseline-before-match** (step 7): the steady-state run performs no history walks at all.
+     This is the lever that makes the gate affordable; the other three only shape the seeding run.
+   - **Tiered, single-process history** (step 3): 1.50s -> 0.61s per history-walking artifact.
+   - **Budget a miss at both tiers, not one.** Re-measured 2026-08-21 on this repo:
+     `git log --all -p -n 20` is 0.61s and `git log --all --follow -p -n 20` is 0.98s, and a
+     *residual miss pays both* — ~1.6s, not the 0.56s the cheap tier alone suggests. The 0.56s
+     figure describes an artifact that hits in history, not one that misses.
+   - **Parallelize the seeding scan** across artifacts with a process pool. Safe by construction:
+     the git calls are read-only and `GitLock` is already ruled out (Decision Rules → `GitLock`).
+     Cap the pool explicitly and keep it out of the pytest path — under `pytest-xdist -n N` a
+     nested pool multiplies against the workers.
+   **Seed in the same commit as the gate, but seed it last.** The gate *is* `--all`, so the
+   baseline cannot be deferred to a follow-up commit. Budget the scan as an implementation step.
    Set the `-n <k>` history cap explicitly (k = 20 is the measured basis). `--all` exits 1 only
    beyond baseline, and it is what the pytest gate shells (Integration Map → Tests).
 5. `commands/verify-issues.md` §B gains a numbered check (parallel to existing checks 1-6) that
@@ -655,6 +799,16 @@ the per-revision `git show` pattern the measurements rule out.
    to report them (Decision Rules → Counter-example quotes). Then run
    `ll-verify-evidence .issues/bugs/P2-BUG-3282-*.md` and require it clean — that run, not the
    pre-annotation one, is the acceptance signal Motivation asks for.
+   **One annotation is only sufficient if the span-kind filter is right.** This file carries 53
+   in-scope inline spans over the floor, most of them mentions rather than quotes, and the fifth
+   review pass found at least one genuine forward-looking span inside an *in-scope* section:
+   `` `ll-verify-<name> = "little_loops.cli:main_verify_<name>"` `` in
+   `### Codebase Research Findings`, which inherits `verify_private_refs.py:527` and exists in no
+   revision of it. Decision Rules → Section scope cites the Program Design copy of that string as
+   proof section scoping works; the Research Findings copy is the counterexample. Expect to
+   suppress it too — but if the clean run needs more than a small handful of annotations, that is
+   the span-kind filter failing, not the hatch working. Treat the annotation count as the real
+   signal.
 7. `python -m pytest scripts/tests/` passes.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
@@ -685,7 +839,13 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - Port `staged_added_lines()` (`scripts/little_loops/cli/verify_private_refs.py:297`) along with
   the baseline machinery and wire it to `--added-only` in `.pre-commit-config.yaml`, its only
   consumer in the precedent (`:17`). It does **not** gate the pytest path — Implementation Steps
-  step 3b explains why a gate built on it never fires
+  step 3b explains why a gate built on it never fires.
+  **Land this hook warn-only (non-blocking) on first release.** Unlike the pytest gate, pre-commit
+  fires inside automation: `ll-auto`, `ll-parallel`, and the refine loops commit issue files
+  continuously, and every newly added `### Codebase Research Findings` line carries backticked
+  symbol spans. A precision miss here does not produce a test failure someone reads — it blocks
+  commits mid-loop, where the failure is opaque and the run is already in flight. Flip it to
+  blocking once the whole-corpus smoke test (Integration Map → Tests) has a stable ceiling
 - Seed `.ll/evidence-baseline.json` (issue-ID-keyed, per Implementation Steps step 4) **in the same
   change as the gate**. Because the pytest gate is `--all`, the baseline is a prerequisite for a
   green suite, not a follow-up nicety; budget the ~4-minute parallel scan as an implementation step
@@ -699,18 +859,23 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - **Risk**: Medium — over-eager span extraction produces false failures on illustrative snippets
   that were never claimed to be verbatim quotes. Unmitigated this is the *default* outcome, not an
   edge case: forward-looking sections quote code that intentionally does not exist yet, so a
-  proximity-only rule flags nearly every refined issue (including this one). Six mitigations are
+  proximity-only rule flags nearly every refined issue (including this one). Seven mitigations are
   load-bearing and specified in Decision Rules — the **attribution rule** (following parenthetical,
-  then nearest preceding, section-bounded) with its command-output exclusion, section scoping as an
-  allowlist, emphasis-aware **normalization**, **patch-text preparation**, a raw-character minimum
-  span length, and fail-open on unresolvable artifacts — plus the `<!-- ll-evidence-ok: -->` escape
-  hatch for whatever survives them, which the counter-example class needs by construction. Four now
-  have demonstrated failure cases rather than hypotheticals, three of them on this issue's own
-  text: the attribution *window* governs whether the checker finds anything at all (a same-line
-  window scores zero recall on the flagship fixture); the attribution *override* governs whether it
-  flags `read_blob_at_ref()` in its own research findings; normalization governs whether it spares
-  `**Option A**`; and patch-text preparation governs whether every multi-line span false-positives
-  at the history tier (measured False on raw `-p` output). Each is worked through in Decision Rules.
+  then nearest preceding, section-bounded) with its command-output exclusion, the **span-kind
+  filter** (quote vs mention), section scoping as an allowlist, emphasis-aware **normalization**,
+  **patch-text preparation**, a raw-character minimum span length, and fail-open on unresolvable
+  artifacts — plus the `<!-- ll-evidence-ok: -->` escape hatch for whatever survives them, which
+  the counter-example class needs by construction. Five now have demonstrated failure cases rather
+  than hypotheticals, three of them on this issue's own text: the attribution *window* governs
+  whether the checker finds anything at all (a same-line window scores zero recall on the flagship
+  fixture); the attribution *override* governs whether it flags `read_blob_at_ref()` in its own
+  research findings; **span kind governs whether the fixture yields 3 findings or 8** (measured:
+  five mention-class false positives without it, more false than true); normalization governs
+  whether it spares `**Option A**`; and patch-text preparation governs whether every multi-line
+  span false-positives at the history tier (measured False on raw `-p` output). Each is worked
+  through in Decision Rules. The span-kind mitigation is also the one with the widest blast radius
+  if wrong: a false `EVIDENCE_UNVERIFIED` does not merely annoy, it routes the refine loop into
+  `reconcile_issue` (Wiring Phase), so imprecision rewrites correct issues.
 - **Breaking Change**: No
 
 ## Steps to Reproduce
@@ -912,6 +1077,68 @@ table); the flagship fixture's line numbers `:35/:37/:38/:40/:42/:44-49/:58/:60`
 the `baa553d9` blob; the three must-flag spans occur in **zero** revisions of ENH-3277; and
 `Option A`, `Option B`, and `Option C` all match under emphasis normalization, so all three
 designated true-negatives hold for the stated reason. Tracked `.issues/**/*.md` is now 3194.
+
+_Update — 2026-08-21, fifth pre-implementation review (spans re-extracted from the `baa553d9` blob
+and matched against ENH-3277's 18 revisions; git tiers re-timed):_ three blocking corrections and
+four smaller ones. The prior four passes are otherwise confirmed — see the re-verification list at
+the end.
+
+**Blocking**
+1. **The exact-finding-set was wrong; the spec flags five extra spans on its own flagship fixture.**
+   Extracting *every* in-scope inline run from the blob — not only the ones the issue enumerates —
+   and matching each against ENH-3277's working tree, HEAD, `git log --all -p`, and `--follow -p`
+   yields `ll-issues locate-options ENH-3277 --json` (`:42`, `:61`),
+   `issue_parser.locate_enumerable_options` (`:51`), `pattern bold_label` (`:61`),
+   `/ll:decide-issue ENH-3277` (`:63`), and — at a floor of 14 — `section_header` (`:51`). All are
+   over the floor, all inherit ENH-3277 by nearest-preceding, all are genuinely absent from it, and
+   **none** is caught by any of the six specified mitigations: no following parenthetical exists,
+   and the command-output exclusion covers the `:44` fence but not the invocation span itself nor
+   output quoted inline on the invocation line. The design had no rule separating a *quote* from a
+   *mention*. Added as Decision Rules → Span kind, with the fixture's mention-class table and one
+   unit test per excluded shape. (Two neighbouring spans, `decision_needed: false` and
+   `/ll:decide-issue`, pass on their own merits — they do occur in ENH-3277 — so they were not
+   masking the gap.)
+2. **The `--all` gate's cost is per-test-run, not one-time seeding.** Step 4 budgeted ~4 minutes as
+   a seeding chore, but a counts-only baseline re-derives every baselined finding — i.e. every
+   *miss*, the expensive path — on each `python -m pytest scripts/tests/` run. Re-timed here:
+   `git log --all -p -n 20` = 0.61s, `--follow -p -n 20` = 0.98s, and a residual miss pays **both**
+   (~1.6s), not the 0.56s the cheap tier alone suggested. Fix: the baseline becomes a suppression
+   set of `(issue ID, normalized span hash)` consulted *before* matching, so steady state does zero
+   git walks (Proposed Solution step 7, Call Path, step 4). Side benefit: it closes the counts-only
+   blind spot where one fabrication is fixed and another introduced. Also flagged: keep the process
+   pool out of the pytest path — it multiplies against `pytest-xdist` workers.
+3. **Step 6b's acceptance signal was unreachable with one annotation.** BUG-3282 carries 53
+   in-scope inline spans over the floor, and at least one genuine forward-looking span sits in an
+   *in-scope* section: `` `ll-verify-<name> = "little_loops.cli:main_verify_<name>"` `` at `:364`,
+   in `### Codebase Research Findings`, inheriting `verify_private_refs.py:527`. Decision Rules →
+   Section scope cited the Program Design copy of that string as proof section scoping suffices;
+   the Research Findings copy is the counterexample. 6b now states that the annotation *count* is
+   the real signal — more than a handful means the span-kind filter is failing, not the hatch
+   working.
+
+**Smaller**
+4. **Floor constants were off by the leading `- `.** The extracted run at `:38` is
+   `` `- **(b) Drop the knob.**` `` — **24** raw / **19** normalized, not 22 / 18; its sibling is 44,
+   not 43. Bounds corrected to `(13, 24]` raw and `(9, 19]` normalized. Also noted: the floor is a
+   weak instrument against the mention class (`section_header` = 14, `pattern bold_label` = 18 both
+   clear it), which is why span kind is a separate rule.
+5. **`--all` scope was unspecified.** The precedent enumerates the whole repo
+   (`git ls-files -z`, `verify_private_refs.py:352`); scoped to `issues.base_dir` (Proposed
+   Solution step 8) so the checker does not walk history for source files.
+6. **The `**Option A**` fixture clause is decorative.** At 12 raw chars it is dropped by any floor
+   in range before matching, so the fixture cannot pin normalization through it; the
+   emphasis-normalization unit test is the pin. The clause's *rationale* is confirmed correct —
+   all three Option spans do match once emphasis is normalized.
+7. **Pre-commit `--added-only` lands warn-only.** It fires inside `ll-auto`/`ll-parallel`/refine
+   loops, which commit issue files continuously; a precision miss there blocks commits mid-run
+   rather than producing a readable test failure.
+
+Re-verified and left standing: the flagship fixture's line numbers `:35/:37/:38/:40/:42/:44-49/
+:58/:60` are exact against the `baa553d9` blob; the three must-flag spans occur in **zero** of
+ENH-3277's now-18 revisions; `Option A`/`B`/`C` all match under emphasis normalization;
+`check_proposal_unsound` really does route `on_yes: check_reconcile_limit` /
+`on_no: check_refine_limit` / `on_error: check_refine_limit`
+(`refine-to-ready-issue.yaml:353-365`); `git ls-files '.issues/**/*.md'` = 3194.
 
 ## Session Log
 - `/ll:confidence-check` - 2026-08-21T21:21:25 - `f6b03c29-ff65-4857-8be4-439d590930d1.jsonl`
