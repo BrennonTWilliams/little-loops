@@ -607,9 +607,45 @@ Solution / Acceptance Criteria:
   unrelated failure (`test_prose_dep_sweep_gate.py::test_no_prose_dependency_drift_in_repo`,
   confirmed present on `main` before this change via `git stash`).
 
+### Post-implementation review (2026-08-21)
+
+Three residual gaps found reviewing the shipped fix, all closed in a follow-up commit:
+
+1. **The precondition validated that a command *string* existed, not that it *ran*.** AC 4 as
+   written only checks `[ -z "$CMD" ]`, so a non-empty-but-wrong `project.test_cmd` (a missing
+   test directory → pytest exit 4, this bug's own failure code) or an already-red suite passed
+   the gate and then failed `verify_tests` on every lap — reverting the step's work each time.
+   That is this bug's exact destructive cycle, reached through a config value instead of a
+   hardcoded literal, and the exit-4→1 mapping the tests pin as correct is precisely what makes
+   the two indistinguishable at the gating state. `check_preconditions` now runs the resolved
+   command once (`general-task.yaml`'s `check_baseline_tests` shape) and refuses on a non-zero
+   baseline, reporting unresolvable / unrunnable / already-red distinctly. The clean-tree check
+   is ordered *before* the baseline so the baseline's own artifacts can't trip it.
+2. **The refusal message was single-blob and file-only.** One message covered both causes, so a
+   user with a valid `test_cmd` and one stray file read a paragraph about `.ll/ll-config.json`;
+   and it was written only to `precondition-failure.txt`, leaving a user watching the run with a
+   bare `failed` terminal. Now per-cause and `tee`d to stderr.
+3. **Git pathspecs were CWD-relative.** `':(exclude).loops'` and `git clean -fd -e .loops`
+   resolved `.loops` against the process CWD, so a run launched from a subdirectory would stop
+   excluding the real `.loops/` — `git clean` deleting the live run directory and persisted FSM
+   state, the exact blocker step 3 exists to prevent, through a different door. Both the gate
+   and `revert` now resolve `ROOT=$(git rev-parse --show-toplevel)` and use `git -C "$ROOT"`,
+   with the `top` magic prefix on the pathspec.
+
+Also: `check_preconditions` now declares `on_error: failed`, symmetric with `verify_tests`
+(AC 3b) — a timeout or signal kill at the gate is no longer implicitly routed.
+
+Coverage: `scripts/tests/test_incremental_refactor_loop.py` grew baseline-refusal,
+per-cause-message, stderr, and CWD-independence cases for both the gate and `revert` (22
+tests); `TestIncrementalRefactorLoop` in `test_builtin_loops.py` gained
+`test_check_preconditions_runs_a_baseline` and `test_check_preconditions_message_is_per_cause`,
+with the revert and message assertions retargeted. Docs updated in `LOOPS_REFERENCE.md`,
+`loops/README.md`, and two new rules in `HARNESS_OPTIMIZATION_GUIDE.md` ("a resolution check is
+not a runnability check", "anchor git pathspecs at the repo root").
+
 ## Status
 
-**Open** | Created: 2026-08-20 | Priority: P1
+**Done** | Created: 2026-08-20 | Completed: 2026-08-21 | Priority: P1
 
 
 ## Session Log

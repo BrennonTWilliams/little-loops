@@ -1293,13 +1293,25 @@ ll-loop run docs-sync
 
 **When to use**: When a refactoring goal is too large for a single pass — decomposes into atomic steps, each test-gated with automatic rollback on failure.
 
-**Preconditions (BUG-3276)**: refuses to start unless `project.test_cmd` resolves to a
-non-empty command (via `context.test_cmd` override, else `ll-config get project.test_cmd`)
-**and** the working tree is clean, untracked files included (`.loops/` excluded from the
-check). Both conditions must hold because the loop's revert is a blanket
+**Preconditions (BUG-3276)**: refuses to start unless all three hold, reporting which one
+failed to stderr and to `precondition-failure.txt` in the run directory:
+
+1. `project.test_cmd` resolves to a non-empty command (via `context.test_cmd` override, else
+   `ll-config get project.test_cmd`).
+2. The working tree is clean, untracked files included (`.loops/` excluded from the check).
+3. The resolved command **runs and exits 0** — a green baseline.
+
+(1) and (3) are separate checks on purpose: a non-empty but wrong `test_cmd` (a missing test
+directory makes pytest exit 4) or an already-red suite would fail `verify_tests` on every lap
+through no fault of the step, reverting the work each time — the same destructive cycle this
+precondition exists to prevent, reached through a config value instead of a hardcoded literal.
+Test-gated commits only mean anything against a known-green baseline.
+
+(2) is required because the loop's revert is a blanket
 `git checkout -- . && git clean -fd -e .loops`: a clean tree at start is what makes every
 subsequent revert provably scoped to the failed step's own work, not unrelated changes.
-`git stash` or commit outstanding changes before running.
+`git stash -u` or commit outstanding changes before running. The clean-tree check runs before
+the baseline so the baseline's own artifacts (`.pytest_cache/`, `__pycache__/`) can't trip it.
 
 **Usage:**
 ```bash
@@ -1310,7 +1322,7 @@ ll-loop run incremental-refactor --context refactor_goal="extract auth middlewar
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `refactor_goal` | — | Natural-language description of the refactoring goal |
-| `test_cmd` | — | Test command to gate each step; falls back to `project.test_cmd` (`ll-config get`) when empty, and the loop refuses to start if neither resolves |
+| `test_cmd` | — | Test command to gate each step; falls back to `project.test_cmd` (`ll-config get`) when empty. The loop refuses to start if neither resolves, or if the resolved command doesn't run green as a baseline |
 | `commit_message` | `refactor: apply incremental refactoring step` | Commit message template |
 
 ### `test-coverage-improvement` — Coverage Gap Closure

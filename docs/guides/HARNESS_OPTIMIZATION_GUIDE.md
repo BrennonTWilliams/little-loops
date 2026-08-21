@@ -581,6 +581,29 @@ deterministically outside this repo and `on_no: revert` discarded uncommitted wo
 time. Resolve every project command through the context-first + `ll-config get` shapes above,
 with an empty context default (`test_cmd: ""`) as the override slot — never a bare literal.
 
+**A resolution check is not a runnability check.** Resolving a command only proves a
+*string* exists. A non-empty but wrong command fails identically to a missing one: a
+`test_cmd` pointing at a directory that doesn't exist makes pytest exit 4, and an already-red
+suite exits 1 — both indistinguishable, at the gating state, from "the step broke the build".
+If a loop routes a command's failure to a destructive edge, resolving the command is not
+enough; the precondition must **run it once and require exit 0**, establishing the green
+baseline that makes "tests failed" attributable to the step. Report the three refusal causes
+distinctly — unresolvable, unrunnable, already-red — because the remedy differs for each, and
+write the reason to stderr as well as to the run directory so a user watching the run sees
+something other than a bare `failed` terminal. `incremental-refactor.yaml`'s
+`check_preconditions` and `general-task.yaml`'s `check_baseline_tests` are the reference
+shapes; the latter records the baseline and continues, the former refuses to start, and which
+one is right depends on whether the loop's failure edge is destructive.
+
+**Anchor git pathspecs at the repo root.** Pathspecs and `git clean -e` patterns resolve
+against the process CWD, not the worktree root, so a loop launched from a subdirectory
+silently changes their meaning — `git checkout -- .` stops covering the repo, and an
+exclusion meant to protect `.loops/` stops matching the real one, letting `git clean` delete
+the live run directory and persisted FSM state mid-run. Resolve
+`ROOT=$(git rev-parse --show-toplevel)` and use `git -C "$ROOT" ...`, plus the `top` magic
+prefix on pathspecs (`':(exclude,top).loops'`), so behavior is independent of where the loop
+was started.
+
 ---
 
 ## See Also

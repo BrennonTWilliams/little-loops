@@ -14,11 +14,11 @@ labels:
 - test-cmd
 - refactor
 - follow-up
-blocked_by:
-- BUG-3269
+blocked_by: []
 relates_to:
 - BUG-3276
 - ENH-2244
+reconcile_attempted: true
 ---
 
 # ENH-3277: Convert the nine remaining inline test_cmd/lint_cmd resolution sites to ll-config get
@@ -73,8 +73,9 @@ Every site resolves through `ll-config get project.<key>`, honoring the three-wa
 **The duplication is the defect class.** BUG-3269 proved that hand-rolled config resolution
 diverges: `general-task.yaml` resolved the same key two different ways *inside one file*, and
 one of them spun a run for 4h58m. Fixing only the three sites that emit `None` leaves nine
-copies that are one careless edit from the same failure — the fourteenth copy is blocked by
-BUG-3269's gate, but the existing ten are grandfathered in by its `_PENDING_CONVERSION` list.
+copies that are one careless edit from the same failure — the fourteenth copy is stopped by the
+mirror-drift gate BUG-3269 shipped, but the existing nine are grandfathered in by its
+`_PENDING_CONVERSION` list.
 This issue removes the grandfathering.
 
 **Two live (non-P0) defects close with it.** These sites override an explicit
@@ -136,12 +137,52 @@ CMD=$(ll-config get project.test_cmd)
 **Do NOT add a `|| { ...; exit N; }` guard** — BUG-3269 §1f: at `evaluate: exit_code` states a
 non-zero exit routes to `on_no`, which is `revert_and_scan` for `dead-code-cleanup`.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-21 — based on codebase analysis:_
+
+- The three sites BUG-3269 already converted establish two coexisting precedent shapes, both
+  confirmed live in the codebase today:
+  - **Config-first bare** (no context override declared): `rl-coding-agent.yaml:56-63` —
+    `TEST_CMD=$(ll-config get project.test_cmd)` / `LINT_CMD=$(ll-config get project.lint_cmd)`,
+    with an in-file comment explaining that a context key here would never be reachable since
+    `ll-config get` always wins under this shape.
+  - **Context-first with an exit-code check** (only where `context.test_cmd` is declared):
+    `general-task.yaml:54-63` and `incremental-refactor.yaml:36-44,78-86` share this exact
+    shape — context wins if non-empty; otherwise `CMD=$(ll-config get project.test_cmd);
+    RC=$?; if [ "$RC" != "0" ]; then CMD=""; fi`. This captures `$?` into a named variable and
+    forces `CMD=""` on a nonzero exit, rather than the `|| { ...; exit N; }` guard this issue's
+    Proposed Solution says not to add — the two are different mechanisms with different routing
+    consequences at an `evaluate: exit_code` state. `test-coverage-improvement.yaml` is this
+    issue's one target site that already declares `context.test_cmd` (line 23); its `measure`
+    state (context-first, lines 31-59) already uses the context-check half of this shape for one
+    branch, without the `RC` check on the `ll-config get` fallback.
+- Skip-on-empty already has three coexisting variants in the codebase, disagreeing on mechanism
+  — relevant to picking a shape for the three explicit-skip sites this issue names:
+  - **Pass-through**: `rl-coding-agent.yaml:68-75,79-85` — empty `TEST_CMD`/`LINT_CMD` sets the
+    corresponding score to `0.0` and continues in the same state, no transition.
+  - **Route-away via exit code**: `incremental-refactor.yaml` `check_preconditions:46-49` —
+    empty `CMD` writes a failure artifact and `exit 1`, caught by that state's `on_no: failed`
+    edge.
+  - **Reserved exit code**: `incremental-refactor.yaml` `verify_tests:87` — `[ -z "$CMD" ] &&
+    exit 3`, routed via a dedicated `on_cannot_judge: failed` edge kept distinct from a real
+    test failure's `on_no: revert`.
+- `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md`'s "Resolving a Project Command Inside a Loop"
+  section is at lines 516-569, with the absent/null/value contract table at lines 528-532 and
+  an explicit note naming this issue: "A handful of other loops are a temporary exemption
+  pending ENH-3277's conversion pass."
+- `dead-code-cleanup.yaml`'s current inline resolution (the site whose `on_yes: commit` this
+  issue calls the sharpest change in the family) guesses `'pytest'` for both an absent and a
+  present-and-null `test_cmd` via `raw if raw else 'pytest'` — `None` and `''` are both falsy in
+  Python, so today a present-and-null config still runs the guessed default and can reach
+  `on_yes: commit`.
+
 ## Integration Map
 
 ### Files to Modify
 
 - `scripts/little_loops/loops/fix-quality-and-tests.yaml:58-78` — three-way body deleted
-- `scripts/little_loops/loops/evaluation-quality.yaml:58` — and `:64`'s hardcoded
+- `scripts/little_loops/loops/evaluation-quality.yaml:58` — and `:63`'s hardcoded
   `ruff check scripts/` → `ll-config get project.lint_cmd`
 - `scripts/little_loops/loops/dead-code-cleanup.yaml:76`
 - `scripts/little_loops/loops/harness-plan-research-implement-report.yaml:126`
@@ -170,12 +211,57 @@ Out of scope: `oracles/code-run-gate.yaml` (permanent exemption, BUG-3269 §1d);
   `test_cmd`/`lint_cmd` row
 - `docs/guides/LOOPS_REFERENCE.md:979,1305,1327` — the `project.test_cmd`/`lint_cmd` rows
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-21 — based on codebase analysis:_
+
+- The `_PENDING_CONVERSION` mirror-drift gate (referenced throughout this issue) lives in
+  `scripts/tests/test_bug3269_test_cmd_resolution_gate.py:55-65` — a nine-entry `set` literal
+  matching this issue's nine target files exactly (the `auto-refine-and-implement.yaml` entry
+  covers both its `:433-436` and `:679-680` references as one file-level exemption).
+  `PROJECT_COMMAND_KEYS = ("test_cmd", "lint_cmd", "type_cmd", "format_cmd", "build_cmd",
+  "run_cmd")` and `_PERMANENT_EXEMPTIONS = {"oracles/code-run-gate.yaml"}` are unioned into
+  `_EXEMPT` in the same module. Two guard tests key directly off `_PENDING_CONVERSION`:
+  `test_pending_conversion_sites_still_exist` (:148-156) asserts every listed filename still
+  exists on disk — so removing a site's exemption string without also finishing its conversion
+  fails this test — and `test_general_task_and_rl_coding_agent_are_not_exempt` guards against
+  re-adding the three already-converted sites to either exemption set. A third assertion,
+  `test_context_references_are_declared` (:120-145), checks every `${context.test_cmd}` /
+  `${context.lint_cmd}` interpolation in every loop YAML against that loop's declared
+  `context:`/`parameters:` block — it has no exemption list, already passes today, and is the
+  mechanism that fails a naive context-first paste onto any of the eight sites that don't
+  declare the key (per BUG-3269 §1f's `InterpolationError` hazard cited in this issue's
+  Proposed Solution).
+- Anchor correction: `evaluation-quality.yaml`'s hardcoded `ruff check scripts/` is at line 63,
+  not 64 as cited above.
+- Anchor correction: `rn-refine.yaml`'s inline `python3 -c` resolution block spans lines
+  986-994, not 988-994. Its existing `[ -z "$TEST_CMD" ]` skip guard (`exit 0`, routing to
+  `next: finalize` rather than any `on_no` edge — this state has no yes/no gate at all) is at
+  lines 995-997, itself wrapped by an outer `if [ "${context.stepwise:default=0}" = "0" ]; then
+  exit 0; fi` guard.
+- `auto-refine-and-implement.yaml`'s target block sits inside a `python3 << 'PYEOF'` heredoc in
+  the `verify` state (state starts line 370, heredoc starts line 388); the `test_cmd`/`lint_cmd`
+  extraction and `if not test_cmd: emit('skipped')` branch is at lines 430-437 and already
+  implements the present-null-skips semantics — only the resolution mechanism (not the skip
+  logic) needs to change.
+- Two existing test shapes in `scripts/tests/test_builtin_loops.py` cover the two concerns the
+  Tests subsection above calls for, without an execution-based FSM run existing for either:
+  `TestIncrementalRefactorLoop.test_revert_has_exactly_one_inbound_edge` (:11999-12006) asserts
+  a destructive state's inbound edges by static structural check over the parsed YAML
+  `states` dict (`for key in ("on_yes","on_no","on_error","on_cannot_judge","next")`), the
+  shape available for asserting a state's routing target (e.g. that nothing but
+  `verify_tests.on_no` reaches a revert/commit state). `TestRlCodingAgentObserveTestCmdResolution`
+  (:10742-10789) executes the extracted shell prefix via `subprocess.run(["bash", "-c", ...])`
+  against a scratch `.ll/ll-config.json`, the shape available for asserting a *resolved value*
+  (e.g. that `test_cmd: null` resolves to an empty `CMD`, not a guessed default).
+
 ## Implementation Steps
 
-1. **Confirm BUG-3269 has landed** and `_PENDING_CONVERSION` exists with its ten entries.
-   This issue is `blocked_by: [BUG-3269]` — the `ll-config get` convention, the
-   `HARNESS_OPTIMIZATION_GUIDE.md` write-up, and both mirror-drift gate assertions are its
-   deliverables, not this one's.
+1. **BUG-3269 has landed** (status: done) and `_PENDING_CONVERSION` exists in
+   `scripts/tests/test_bug3269_test_cmd_resolution_gate.py:55-65` with its nine entries.
+   The `ll-config get` convention, the `HARNESS_OPTIMIZATION_GUIDE.md` write-up
+   (`docs/guides/HARNESS_OPTIMIZATION_GUIDE.md:516-569`), and both mirror-drift gate assertions
+   were BUG-3269's deliverables, not this one's.
 2. **Pick a §2b row for every site before writing any shell.** The table under *Proposed
    Solution* is a hard prerequisite, not advisory. The three marked *explicit skip required*
    (`dead-code-cleanup`, `test-coverage-improvement`, `evaluation-quality`) are the reason
@@ -191,7 +277,7 @@ Out of scope: `oracles/code-run-gate.yaml` (permanent exemption, BUG-3269 §1d);
    do **not** reroute — `evaluate_code` has no `on_yes`/`on_no` edges), then
    `test-coverage-improvement.yaml:45,152` (context-first — it *does* declare the key at
    `:23`), then `dead-code-cleanup.yaml` last, since its `on_yes` commits deletions.
-5. **Convert `evaluation-quality.yaml:64`'s hardcoded `ruff check scripts/`** to
+5. **Convert `evaluation-quality.yaml:63`'s hardcoded `ruff check scripts/`** to
    `ll-config get project.lint_cmd` — the same defect, pre-inlined.
 6. **Empty `_PENDING_CONVERSION` and delete the constant.** The gate's inline-read assertion
    then holds with only the permanent `oracles/code-run-gate.yaml` exemption. This is the
@@ -297,3 +383,9 @@ regression — the inline snippets open the same relative path — but not fixed
 ## Status
 
 **Open** | Created: 2026-08-21 | Priority: P2
+
+
+## Session Log
+- `/ll:reconcile-issue` - 2026-08-21T14:29:42 - `08bd38ec-d985-4ff9-b92f-3e3223f35d2e.jsonl`
+- `/ll:refine-issue` - 2026-08-21T14:00:56 - `6686f401-b52b-45b3-a364-e4c7f0616eb7.jsonl`
+- `/ll:refine-issue` - 2026-08-21T14:00:48 - `6686f401-b52b-45b3-a364-e4c7f0616eb7.jsonl`
