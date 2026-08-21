@@ -7,6 +7,7 @@ confidence_score: 95
 outcome_confidence: 93
 status: done
 completed_at: 2026-03-04T00:00:00Z
+priority: P3
 ---
 
 # BUG-529: `cmd_stop` Writes "interrupted" Status Before SIGTERM — State Can Diverge from Reality

@@ -14,6 +14,7 @@ score_complexity: 21
 score_test_coverage: 25
 score_ambiguity: 18
 score_change_surface: 25
+priority: P2
 ---
 
 # BUG-1683: Worktree disappears mid-validation in ll-sprint parallel run

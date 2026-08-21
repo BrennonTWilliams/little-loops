@@ -3,6 +3,7 @@ discovered_date: 2026-02-12
 discovered_by: audit_claude_config
 status: done
 completed_at: 2026-02-13T00:00:00Z
+priority: P2
 ---
 
 # ENH-399: Add allowed-tools to 25 commands missing tool restrictions

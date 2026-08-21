@@ -6,6 +6,7 @@ depends_on:
 - FEAT-1076
 - FEAT-1174
 status: deferred
+priority: P3
 ---
 
 # ENH-1175: Parallel Worker Retry and Side-Effect Cleanup Contract

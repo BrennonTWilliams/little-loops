@@ -4,6 +4,7 @@ discovered_by: capture_issue
 source: docs/CLI-TOOLS-AUDIT.md
 status: done
 completed_at: 2026-02-01T00:00:00Z
+priority: P4
 ---
 
 # ENH-187: Create shared CLI argument module

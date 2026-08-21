@@ -11,6 +11,7 @@ score_complexity: 18
 score_test_coverage: 25
 score_ambiguity: 18
 score_change_surface: 25
+priority: P4
 ---
 
 # BUG-1627: Two SKILL.md parsers in cli/ have block-scalar defect

@@ -10,6 +10,7 @@ score_test_coverage: 18
 score_ambiguity: 25
 score_change_surface: 25
 status: done
+priority: P2
 ---
 
 # BUG-1952: template expansion failure on unescaped `${DIFF_SIZE:-0}` in adversarial-redesign loop

@@ -3,6 +3,7 @@ discovered_date: 2026-04-13
 discovered_by: capture-issue
 status: done
 completed_at: 2026-04-13T00:00:00Z
+priority: P4
 ---
 
 # ENH-1097: svg-image-generator loop should create a timestamped run folder in .loops/tmp/

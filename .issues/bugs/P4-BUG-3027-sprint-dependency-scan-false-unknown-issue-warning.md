@@ -12,6 +12,7 @@ score_test_coverage: 18
 score_ambiguity: 10
 score_change_surface: 25
 size: Very Large
+priority: P4
 ---
 
 # ll-sprint prints "depends_on unknown issue" for a dependency that exists and is done

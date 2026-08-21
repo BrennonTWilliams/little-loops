@@ -13,6 +13,7 @@ score_change_surface: 10
 parent: ENH-1299
 status: done
 completed_at: 2026-05-10T00:00:00Z
+priority: P2
 ---
 
 # ENH-1302: Fix `file:line` references in agent source files

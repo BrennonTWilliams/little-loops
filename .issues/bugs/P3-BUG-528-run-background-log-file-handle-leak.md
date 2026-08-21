@@ -7,6 +7,7 @@ confidence_score: 100
 outcome_confidence: 100
 status: done
 completed_at: 2026-03-04T00:00:00Z
+priority: P3
 ---
 
 # BUG-528: Resource Leak — Log File Handle Never Closed in `run_background`

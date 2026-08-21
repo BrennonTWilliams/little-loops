@@ -3,6 +3,7 @@ discovered_date: 2026-02-09
 discovered_by: capture_issue
 status: done
 completed_at: 2026-02-10T00:00:00Z
+priority: P3
 ---
 
 # ENH-309: Sprint execution plan should show file contention warnings

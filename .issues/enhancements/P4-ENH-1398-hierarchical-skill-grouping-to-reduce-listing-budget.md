@@ -16,6 +16,7 @@ status: done
 closed_at: '2026-05-11'
 close_reason: wont_do
 completed_at: '2026-05-11T07:52:55Z'
+priority: P4
 ---
 
 # ENH-1398: Hierarchical Skill Grouping to Reduce Listing Budget

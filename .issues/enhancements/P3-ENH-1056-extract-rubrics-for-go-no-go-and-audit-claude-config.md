@@ -4,6 +4,7 @@ discovered_by: issue-size-review
 confidence_score: 88
 outcome_confidence: 78
 status: deferred
+priority: P3
 ---
 
 # ENH-1056: Extract rubrics for go-no-go and audit-claude-config skills

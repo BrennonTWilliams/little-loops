@@ -6,6 +6,7 @@ confidence_score: 96
 outcome_confidence: 68
 status: done
 completed_at: 2026-02-25T00:00:00Z
+priority: P2
 ---
 
 # ENH-498: Observation Masking / Scratch Pad Pattern in ll-auto and ll-parallel

@@ -3,6 +3,7 @@ discovered_date: 2026-01-18
 discovered_by: plugin_structure_audit
 status: done
 completed_at: 2026-01-29T00:00:00Z
+priority: P4
 ---
 
 # ENH-088: Remove or Document Empty .mcp.json File

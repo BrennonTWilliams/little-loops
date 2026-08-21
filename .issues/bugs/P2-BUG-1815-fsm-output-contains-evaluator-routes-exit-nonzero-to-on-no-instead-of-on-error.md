@@ -12,6 +12,7 @@ score_complexity: 18
 score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 25
+priority: P2
 ---
 
 # BUG-1815: FSM `output_contains` evaluator routes shell exit-nonzero to `on_no` instead of `on_error`

@@ -17,6 +17,7 @@ score_change_surface: 18
 parent: ENH-1197
 status: done
 completed_at: 2026-05-10T00:00:00Z
+priority: P3
 ---
 
 # ENH-1248: ll-loop Worktree Orphan Scan Coverage + worktree-health.yaml Fix

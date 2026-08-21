@@ -5,6 +5,7 @@ confidence_score: 100
 outcome_confidence: 93
 status: done
 completed_at: 2026-04-12T00:00:00Z
+priority: P3
 ---
 
 # ENH-1051: Show prompt state response output in ll-loop run non-verbose mode

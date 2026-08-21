@@ -3,6 +3,7 @@ discovered_date: 2026-06-29T16:16:34Z
 discovered_by: manual
 status: done
 completed_at: 2026-06-29T16:16:34Z
+priority: P4
 ---
 
 # BUG-2394: `re_enqueue_unblocked` in `rn-implement` missing `on_error:` route (MR-10)

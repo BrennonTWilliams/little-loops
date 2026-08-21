@@ -3,6 +3,7 @@ discovered_date: "2026-03-11"
 discovered_by: capture-issue
 status: done
 completed_at: 2026-03-11T00:00:00Z
+priority: P3
 ---
 
 # BUG-673: FSM diagram corner characters and arrow placement

@@ -6,6 +6,7 @@ outcome_confidence: 68
 testable: false
 status: done
 completed_at: 2026-03-17T00:00:00Z
+priority: P4
 ---
 
 # ENH-802: auto-detect and set `testable: false` for doc-only issues across the issue pipeline

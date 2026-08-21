@@ -3,6 +3,7 @@ status: done
 completed_at: 2026-05-06T00:00:00Z
 relates_to:
 - BUG-1537
+priority: P1
 ---
 # BUG-1374: Implementation Failure - ENH-1115
 

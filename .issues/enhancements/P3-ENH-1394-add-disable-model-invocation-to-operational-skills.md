@@ -10,6 +10,7 @@ score_complexity: 13
 score_test_coverage: 0
 score_ambiguity: 18
 score_change_surface: 10
+priority: P3
 ---
 
 # ENH-1394: Add `disable-model-invocation: true` to Operational Skills

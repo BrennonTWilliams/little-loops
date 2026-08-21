@@ -5,6 +5,7 @@ confidence_score: 95
 outcome_confidence: 93
 status: done
 completed_at: 2026-03-18T00:00:00Z
+priority: P3
 ---
 
 # BUG-806: Route states missing unicode composition badge in FSM diagram

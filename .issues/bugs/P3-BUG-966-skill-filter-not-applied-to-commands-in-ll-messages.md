@@ -7,6 +7,7 @@ confidence_score: 100
 outcome_confidence: 93
 status: done
 completed_at: 2026-04-06T00:00:00Z
+priority: P3
 ---
 
 # BUG-966: `--skill` session filter not applied to `commands` list in `ll-messages`

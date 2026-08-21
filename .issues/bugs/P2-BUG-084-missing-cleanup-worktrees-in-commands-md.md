@@ -6,6 +6,7 @@ discovered_by: audit_docs
 doc_file: docs/COMMANDS.md
 status: done
 completed_at: 2026-02-13T00:00:00Z
+priority: P2
 ---
 
 # BUG-084: Missing cleanup_worktrees command in docs/COMMANDS.md

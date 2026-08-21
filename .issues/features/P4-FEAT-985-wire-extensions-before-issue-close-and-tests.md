@@ -5,6 +5,7 @@ confidence_score: 80
 outcome_confidence: 53
 status: done
 completed_at: 2026-04-08T00:00:00Z
+priority: P4
 ---
 
 # FEAT-985: wire_extensions() Upgrade, before_issue_close Hook, Reference Extension, and Tests

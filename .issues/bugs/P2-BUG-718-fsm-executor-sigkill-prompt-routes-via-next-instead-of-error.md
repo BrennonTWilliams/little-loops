@@ -7,6 +7,7 @@ confidence_score: 100
 outcome_confidence: 88
 status: done
 completed_at: 2026-03-13T00:00:00Z
+priority: P2
 ---
 
 # BUG-718: FSM executor routes SIGKILL'd prompt actions via unconditional `next` instead of error path

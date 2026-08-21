@@ -5,6 +5,7 @@ confidence_score: 95
 outcome_confidence: 95
 status: done
 completed_at: 2026-03-05T00:00:00Z
+priority: P4
 ---
 
 # ENH-591: Fix Output Styling Consistency in `ll-issues` CLI

@@ -7,6 +7,7 @@ confidence_score: 100
 outcome_confidence: 75
 status: done
 completed_at: 2026-03-17T00:00:00Z
+priority: P3
 ---
 
 # ENH-775: analyze-loop conflates intentional state cycling with stuck retries

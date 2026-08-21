@@ -7,6 +7,7 @@ confidence_score: 100
 outcome_confidence: 93
 status: done
 completed_at: 2026-03-17T00:00:00Z
+priority: P2
 ---
 
 # BUG-773: prompt states missing timeout and on_error in issue-refinement loop

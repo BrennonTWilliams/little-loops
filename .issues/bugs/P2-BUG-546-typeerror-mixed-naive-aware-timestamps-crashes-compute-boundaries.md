@@ -7,6 +7,7 @@ confidence_score: 98
 outcome_confidence: 86
 status: done
 completed_at: 2026-03-04T00:00:00Z
+priority: P2
 ---
 
 # BUG-546: `TypeError` on mixed naive/aware timestamps crashes `_compute_boundaries`

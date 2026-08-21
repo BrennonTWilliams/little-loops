@@ -5,6 +5,7 @@ confidence_score: 100
 outcome_confidence: 86
 status: done
 completed_at: 2026-04-06T00:00:00Z
+priority: P3
 ---
 
 # ENH-979: ll-auto --verbose Should Show Full Content Without Truncation

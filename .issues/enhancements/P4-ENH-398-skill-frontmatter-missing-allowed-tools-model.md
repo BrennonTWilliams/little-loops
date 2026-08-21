@@ -3,6 +3,7 @@ discovered_date: 2026-02-12
 discovered_by: audit_claude_config
 status: done
 completed_at: 2026-02-13T00:00:00Z
+priority: P4
 ---
 
 # ENH-398: Skill frontmatter missing allowed-tools and model fields

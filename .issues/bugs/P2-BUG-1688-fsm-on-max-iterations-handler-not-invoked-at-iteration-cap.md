@@ -11,6 +11,7 @@ score_complexity: 18
 score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 25
+priority: P2
 ---
 
 # BUG-1688: FSM `on_max_iterations` handler not invoked when iteration cap is reached

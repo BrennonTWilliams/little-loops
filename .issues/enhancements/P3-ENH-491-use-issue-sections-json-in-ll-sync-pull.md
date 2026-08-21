@@ -5,6 +5,7 @@ confidence_score: 88
 outcome_confidence: 72
 status: done
 completed_at: 2026-03-01T00:00:00Z
+priority: P3
 ---
 
 # ENH-491: Use issue-sections.json in ll-sync pull

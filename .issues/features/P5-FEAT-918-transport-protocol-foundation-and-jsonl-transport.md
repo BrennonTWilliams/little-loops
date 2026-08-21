@@ -11,6 +11,7 @@ missing_artifacts: true
 size: Very Large
 status: done
 completed_at: 2026-05-02T00:00:00Z
+priority: P5
 ---
 
 # FEAT-918: Transport Protocol Foundation and JsonlTransport

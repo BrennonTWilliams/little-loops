@@ -1,6 +1,7 @@
 ---
 status: done
 completed_at: 2026-01-13T00:00:00Z
+priority: P1
 ---
 # FEAT-043: Tier 1 Deterministic Evaluators
 

@@ -12,6 +12,7 @@ score_complexity: 22
 score_test_coverage: 22
 score_ambiguity: 15
 score_change_surface: 20
+priority: P3
 ---
 
 # BUG-2744: autodev's check_guard2_verdict can read stale cross-issue captured state

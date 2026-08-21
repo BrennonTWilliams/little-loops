@@ -7,6 +7,7 @@ confidence_score: 100
 outcome_confidence: 100
 status: done
 completed_at: 2026-03-07T00:00:00Z
+priority: P4
 ---
 
 # BUG-624: `compile_goal` hard-codes `on_error="fix"` creating infinite retry cycle on evaluator errors

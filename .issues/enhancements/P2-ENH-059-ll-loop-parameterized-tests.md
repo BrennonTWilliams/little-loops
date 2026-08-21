@@ -1,6 +1,7 @@
 ---
 status: done
 completed_at: 2026-01-15T00:00:00Z
+priority: P2
 ---
 # P2-ENH-059: Refactor ll-loop Tests to Use Parameterized Tests
 

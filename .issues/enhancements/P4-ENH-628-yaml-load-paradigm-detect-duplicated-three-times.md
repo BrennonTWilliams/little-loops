@@ -11,6 +11,7 @@ score_complexity: 18
 score_test_coverage: 20
 score_ambiguity: 23
 score_change_surface: 18
+priority: P4
 ---
 
 # ENH-628: YAML-load + paradigm-detect block duplicated three times across `load_loop`, `load_loop_with_spec`, and `cmd_run`

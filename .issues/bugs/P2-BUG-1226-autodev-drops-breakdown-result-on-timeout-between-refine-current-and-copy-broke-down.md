@@ -11,6 +11,7 @@ score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 18
 status: done
+priority: P2
 ---
 
 # BUG-1226: autodev drops breakdown result on timeout between refine_current and copy_broke_down

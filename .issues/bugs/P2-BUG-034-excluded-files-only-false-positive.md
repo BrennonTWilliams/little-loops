@@ -4,6 +4,7 @@ discovered_date: 2026-01-13
 discovered_external_repo: <external-repo>
 status: done
 completed_at: 2026-02-12T00:00:00Z
+priority: P2
 ---
 
 # BUG-034: Work verification: possible false positive on "Only excluded files modified"

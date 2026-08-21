@@ -7,6 +7,7 @@ depends_on: FEAT-1232
 status: deferred
 deferred_date: "2026-04-21"
 deferred_reason: low-value
+priority: P2
 ---
 
 # FEAT-1233: Live Status Display for `ll-loop parallel`

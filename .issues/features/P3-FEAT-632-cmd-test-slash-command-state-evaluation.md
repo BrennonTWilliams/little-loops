@@ -7,6 +7,7 @@ confidence_score: 93
 outcome_confidence: 93
 status: done
 completed_at: 2026-03-07T00:00:00Z
+priority: P3
 ---
 
 # FEAT-632: `cmd_test` silently skips slash-command states — no evaluation possible for majority of real loops

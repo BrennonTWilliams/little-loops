@@ -5,6 +5,7 @@ resolved_date: 2026-03-13
 resolved_by: manual
 status: done
 completed_at: 2026-03-13T00:00:00Z
+priority: P3
 ---
 
 # BUG-726: `loops/issue-refinement.yaml` — max_iterations too low and minor defects

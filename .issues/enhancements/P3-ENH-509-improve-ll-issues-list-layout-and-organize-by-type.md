@@ -5,6 +5,7 @@ confidence_score: 100
 outcome_confidence: 86
 status: done
 completed_at: 2026-02-26T00:00:00Z
+priority: P3
 ---
 
 # ENH-509: Improve ll-issues list layout and organize by type

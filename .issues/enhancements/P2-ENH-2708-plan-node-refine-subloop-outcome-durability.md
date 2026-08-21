@@ -12,6 +12,7 @@ score_complexity: 18
 score_test_coverage: 18
 score_ambiguity: 22
 score_change_surface: 20
+priority: P2
 ---
 
 # ENH-2708: plan-node-refine sub-loop outcome durability

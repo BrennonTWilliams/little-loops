@@ -3,6 +3,7 @@ discovered_date: 2026-02-10
 discovered_by: manual_review
 status: done
 completed_at: 2026-02-13T00:00:00Z
+priority: P2
 ---
 
 # BUG-312: Commands crash on null project commands (lint_cmd, type_cmd, format_cmd, test_cmd)

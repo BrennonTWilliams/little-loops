@@ -8,6 +8,7 @@ confidence_score: 91
 outcome_confidence: 86
 status: done
 completed_at: 2026-03-16T00:00:00Z
+priority: P4
 ---
 
 # ENH-683: Break circular import: cli.loop._helpers <-> cli.loop.info

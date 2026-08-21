@@ -1,6 +1,7 @@
 ---
 status: done
 completed_at: 2026-02-13T00:00:00Z
+priority: P3
 ---
 # ENH-067: Add End-to-End Compile Command Tests for ll-loop
 

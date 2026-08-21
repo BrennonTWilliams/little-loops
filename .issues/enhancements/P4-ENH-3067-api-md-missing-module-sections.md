@@ -8,6 +8,7 @@ labels:
 - documentation
 verify_verdict: VALID
 completed_at: '2026-08-16T04:52:44Z'
+priority: P4
 ---
 
 # ENH-3067: 13 modules listed in API.md's overview table have no reference section

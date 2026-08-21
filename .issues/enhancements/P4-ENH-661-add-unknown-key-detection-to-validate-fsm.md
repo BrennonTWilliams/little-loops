@@ -3,6 +3,7 @@ discovered_date: 2026-03-09
 discovered_by: capture-issue
 status: done
 completed_at: 2026-03-09T00:00:00Z
+priority: P4
 ---
 
 # ENH-661: Add Unknown-Key Detection to validate_fsm()

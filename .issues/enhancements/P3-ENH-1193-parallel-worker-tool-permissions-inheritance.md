@@ -5,6 +5,7 @@ depends_on:
 - FEAT-1075
 - FEAT-1076
 status: deferred
+priority: P3
 ---
 
 # ENH-1193: Document and Test Tool-Permission Inheritance for Parallel Workers

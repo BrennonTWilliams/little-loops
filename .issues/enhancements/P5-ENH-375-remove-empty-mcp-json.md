@@ -3,6 +3,7 @@ discovered_date: 2026-02-12
 discovered_by: plugin-audit
 status: done
 completed_at: 2026-02-12T00:00:00Z
+priority: P5
 ---
 
 # ENH-375: Remove empty .mcp.json placeholder file

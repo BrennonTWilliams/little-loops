@@ -3,6 +3,7 @@ discovered_date: 2026-02-06
 discovered_by: capture_issue
 status: done
 completed_at: 2026-02-06T00:00:00Z
+priority: P3
 ---
 
 # ENH-262: Add real-time worktree progress visibility during parallel execution

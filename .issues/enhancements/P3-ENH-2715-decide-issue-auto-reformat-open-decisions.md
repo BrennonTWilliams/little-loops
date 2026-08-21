@@ -13,6 +13,7 @@ score_complexity: 21
 score_test_coverage: 22
 score_ambiguity: 18
 score_change_surface: 25
+priority: P3
 ---
 
 # ENH-2715: decide-issue --auto should reformat found-but-unstructured open decisions

@@ -5,6 +5,7 @@ confidence_score: 90
 outcome_confidence: 79
 status: done
 completed_at: 2026-04-07T00:00:00Z
+priority: P4
 ---
 
 # FEAT-984: FSMExecutor Hook Dispatch for Contributed Actions, Evaluators, and Route Interceptors

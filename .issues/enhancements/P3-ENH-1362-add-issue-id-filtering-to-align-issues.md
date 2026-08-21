@@ -12,6 +12,7 @@ score_change_surface: 18
 missing_artifacts: true
 decision_needed: false
 status: done
+priority: P3
 ---
 
 # ENH-1362: Add Issue ID Filtering to align-issues Command

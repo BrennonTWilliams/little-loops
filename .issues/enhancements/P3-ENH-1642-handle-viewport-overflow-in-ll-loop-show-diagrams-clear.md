@@ -16,6 +16,7 @@ score_complexity: 10
 score_test_coverage: 18
 score_ambiguity: 25
 score_change_surface: 18
+priority: P3
 ---
 
 # ENH-1642: Handle viewport overflow in `ll-loop run --show-diagrams --clear`

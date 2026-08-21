@@ -7,6 +7,7 @@ confidence_score: 98
 outcome_confidence: 93
 status: done
 completed_at: 2026-03-20T00:00:00Z
+priority: P3
 ---
 
 # BUG-821: `StateManager.save` non-atomic write — crash mid-write corrupts state file

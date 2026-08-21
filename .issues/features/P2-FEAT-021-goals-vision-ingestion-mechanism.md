@@ -4,6 +4,7 @@ discovered_branch: main
 discovered_date: 2026-01-06T20:47:28Z
 status: done
 completed_at: 2026-01-29T00:00:00Z
+priority: P2
 ---
 
 # FEAT-021: Goals/Vision Ingestion Mechanism

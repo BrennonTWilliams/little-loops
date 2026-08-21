@@ -5,6 +5,7 @@ confidence_score: 100
 outcome_confidence: 100
 status: done
 completed_at: 2026-03-04T00:00:00Z
+priority: P3
 ---
 
 # ENH-563: `compile_goal` silently runs multiline tool text via bash instead of Claude prompt

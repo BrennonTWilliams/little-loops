@@ -5,6 +5,7 @@ confidence_score: 98
 outcome_confidence: 64
 status: done
 completed_at: 2026-03-04T00:00:00Z
+priority: P3
 ---
 
 # ENH-576: Align bug/enh section JSON files with format-issue templates.md v2.0 definitions

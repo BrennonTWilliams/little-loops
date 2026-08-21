@@ -7,6 +7,7 @@ confidence_score: 94
 outcome_confidence: 95
 status: done
 completed_at: 2026-03-16T00:00:00Z
+priority: P3
 ---
 
 # FEAT-555: `EntityCluster.span` and `inferred_workflow` declared but never populated

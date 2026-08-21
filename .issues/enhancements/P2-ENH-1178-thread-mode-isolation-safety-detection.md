@@ -6,6 +6,7 @@ depends_on:
 - FEAT-1075
 - FEAT-1084
 status: deferred
+priority: P2
 ---
 
 # ENH-1178: Thread-Mode Isolation Safety Detection and Authoring Guidance

@@ -5,6 +5,7 @@ confidence_score: 100
 outcome_confidence: 100
 status: done
 completed_at: 2026-03-23T00:00:00Z
+priority: P2
 ---
 
 # BUG: Parallel config `timeout_per_issue` key silently ignored

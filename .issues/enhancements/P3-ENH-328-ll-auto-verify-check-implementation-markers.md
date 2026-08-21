@@ -3,6 +3,7 @@ discovered_date: 2026-02-11
 discovered_by: capture-issue
 status: done
 completed_at: 2026-02-14T00:00:00Z
+priority: P3
 ---
 
 # ENH-328: ll-auto verify phase should check implementation markers

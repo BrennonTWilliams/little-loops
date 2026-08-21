@@ -5,6 +5,7 @@ confidence_score: 98
 outcome_confidence: 72
 status: done
 completed_at: 2026-04-06T00:00:00Z
+priority: P3
 ---
 
 # ENH-964: Improve ll-auto Prompt Display Formatting

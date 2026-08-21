@@ -4,6 +4,7 @@ discovered_branch: main
 discovered_date: 2026-01-12T12:00:00Z
 status: done
 completed_at: 2026-02-12T00:00:00Z
+priority: P3
 ---
 
 # ENH-031: Response Context Capture

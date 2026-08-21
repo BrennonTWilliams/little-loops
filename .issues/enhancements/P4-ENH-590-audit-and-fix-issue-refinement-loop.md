@@ -5,6 +5,7 @@ confidence_score: 95
 outcome_confidence: 95
 status: done
 completed_at: 2026-03-05T00:00:00Z
+priority: P4
 ---
 
 # ENH-590: Audit and Fix `issue-refinement` Loop Configuration

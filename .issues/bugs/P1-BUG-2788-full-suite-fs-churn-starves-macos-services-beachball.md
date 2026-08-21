@@ -13,6 +13,7 @@ labels:
 - tests
 - performance
 - macos
+priority: P1
 ---
 
 # BUG-2788: Full-suite filesystem churn starves macOS services → beachball (post cap+renice)

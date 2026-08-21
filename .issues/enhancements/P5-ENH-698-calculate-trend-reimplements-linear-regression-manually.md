@@ -5,6 +5,7 @@ discovered_date: 2026-03-13T00:36:53Z
 discovered_by: scan-codebase
 status: done
 completed_at: 2026-03-17T00:00:00Z
+priority: P5
 ---
 
 # ENH-698: `_calculate_trend` reimplements linear regression when `statistics.linear_regression` available

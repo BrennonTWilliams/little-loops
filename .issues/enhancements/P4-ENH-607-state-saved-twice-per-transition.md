@@ -7,6 +7,7 @@ confidence_score: 97
 outcome_confidence: 90
 status: done
 completed_at: 2026-03-06T00:00:00Z
+priority: P4
 ---
 
 # ENH-607: `PersistentExecutor` writes state file twice per state transition

@@ -7,6 +7,7 @@ confidence_score: 100
 outcome_confidence: 78
 status: done
 completed_at: 2026-03-16T00:00:00Z
+priority: P2
 ---
 
 # BUG-774: analyze-loop falsely flags exit_code=1 as failure in exit_code evaluators

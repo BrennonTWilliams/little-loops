@@ -13,6 +13,7 @@ labels:
 decision_needed: false
 confidence_score: 100
 completed_at: 2026-06-24 21:31:29+00:00
+priority: P3
 ---
 
 ## Summary

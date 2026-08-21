@@ -7,6 +7,7 @@ confidence_score: 92
 outcome_confidence: 88
 status: done
 completed_at: 2026-03-07T00:00:00Z
+priority: P4
 ---
 
 # ENH-539: Duplicate `operators` Dict in `evaluators.py` — Should Be Module-Level Constant

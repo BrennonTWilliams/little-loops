@@ -6,6 +6,7 @@ confidence_score: 98
 outcome_confidence: 90
 status: done
 completed_at: 2026-04-05T00:00:00Z
+priority: P4
 ---
 
 # FEAT-955: Add `ll-issues skip` subcommand to deprioritize issues that fail refinement

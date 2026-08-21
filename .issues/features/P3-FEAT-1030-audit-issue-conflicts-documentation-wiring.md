@@ -9,6 +9,7 @@ testable: false
 parent: FEAT-1029
 status: done
 completed_at: 2026-05-10T00:00:00Z
+priority: P3
 ---
 
 # FEAT-1030: audit-issue-conflicts — Documentation Wiring

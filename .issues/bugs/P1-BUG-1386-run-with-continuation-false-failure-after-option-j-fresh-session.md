@@ -11,6 +11,7 @@ score_test_coverage: 25
 score_ambiguity: 20
 score_change_surface: 18
 status: done
+priority: P1
 ---
 
 # BUG-1386: run_with_continuation false failure after Option J fresh session

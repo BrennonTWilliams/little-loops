@@ -5,6 +5,7 @@ confidence_score: 100
 outcome_confidence: 93
 status: done
 completed_at: 2026-04-08T00:00:00Z
+priority: P4
 ---
 
 # ENH-999: ll-loop run should auto-unpack JSON input into named context variables

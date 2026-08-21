@@ -5,6 +5,7 @@ confidence_score: 100
 outcome_confidence: 90
 status: done
 completed_at: 2026-03-07T00:00:00Z
+priority: P3
 ---
 
 # BUG-639: `ll-loop stop` Continues for Several More Iterations After Stop Command

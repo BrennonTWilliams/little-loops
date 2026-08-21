@@ -3,6 +3,7 @@ status: done
 completed_at: 2026-02-01T00:00:00Z
 relates_to:
 - FEAT-210
+priority: P0
 ---
 # P0-ENH-206: Improve cli.py test coverage from 29% to 80%+
 

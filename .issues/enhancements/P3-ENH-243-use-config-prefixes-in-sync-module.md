@@ -8,6 +8,7 @@ closed_date: 2026-02-05
 closing_note: "YAGNI — same reasoning as ENH-242. Hardcoded (BUG|FEAT|ENH) regex only matters if custom types (SEC, DOC, etc.) are added. No one is using custom categories. Fix when someone actually needs it."
 status: done
 completed_at: 2026-02-05T00:00:00Z
+priority: P3
 ---
 
 # ENH-243: Use config prefixes in sync module instead of hardcoded regex

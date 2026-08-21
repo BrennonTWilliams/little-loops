@@ -4,6 +4,7 @@ discovered_by: capture-issue
 testable: false
 status: done
 completed_at: 2026-03-18T00:00:00Z
+priority: P4
 ---
 
 # ENH-799: Fix documentation issues in SPRINT_GUIDE.md

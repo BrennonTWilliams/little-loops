@@ -7,6 +7,7 @@ confidence_score: 100
 outcome_confidence: 100
 status: done
 completed_at: 2026-03-13T00:00:00Z
+priority: P1
 ---
 
 # BUG-686: Early returns in `_process_merge` skip `_current_issue_id` cleanup causing infinite hang

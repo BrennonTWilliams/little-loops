@@ -5,6 +5,7 @@ confidence_score: 100
 outcome_confidence: 86
 status: done
 completed_at: 2026-03-09T00:00:00Z
+priority: P3
 ---
 
 # ENH-663: Add `--json` flag to `ll-` CLI list commands

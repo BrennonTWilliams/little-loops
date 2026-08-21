@@ -5,6 +5,7 @@ confidence_score: 100
 outcome_confidence: 100
 status: done
 completed_at: '2026-07-16T18:34:55Z'
+priority: P3
 ---
 
 # BUG-2659: `audit-issue-conflicts` skill unreachable via `/ll:` slash command (disable-model-invocation flag blocks user invocation)

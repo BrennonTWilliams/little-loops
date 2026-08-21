@@ -11,6 +11,7 @@ score_change_surface: 10
 size: Very Large
 parent: FEAT-1072
 status: deferred
+priority: P2
 ---
 
 # FEAT-1074: Parallel State Schema and Validation

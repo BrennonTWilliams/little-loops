@@ -5,6 +5,7 @@ confidence_score: 100
 outcome_confidence: 75
 status: done
 completed_at: 2026-03-23T00:00:00Z
+priority: P4
 ---
 
 # ENH-872: UserPromptSubmit hook timeout 3s too tight in hooks.json

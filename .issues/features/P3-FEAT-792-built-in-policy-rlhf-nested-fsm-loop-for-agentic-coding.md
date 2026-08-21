@@ -5,6 +5,7 @@ confidence_score: 100
 outcome_confidence: 93
 status: done
 completed_at: 2026-03-16T00:00:00Z
+priority: P3
 ---
 
 # FEAT-792: Built-in Policy+RLHF Nested FSM Loop for Agentic Coding

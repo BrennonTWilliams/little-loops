@@ -3,6 +3,7 @@ discovered_date: 2026-03-12
 discovered_by: manual
 status: done
 completed_at: 2026-03-12T00:00:00Z
+priority: P3
 ---
 
 # BUG-1505: map-dependencies creates spurious dependencies from file overlap

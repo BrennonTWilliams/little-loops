@@ -5,6 +5,7 @@ discovered_date: 2026-02-15T02:29:53Z
 discovered_by: scan-codebase
 status: done
 completed_at: 2026-02-14T00:00:00Z
+priority: P3
 ---
 
 # ENH-427: Inefficient O(N^2) wave refinement with synchronous file reads

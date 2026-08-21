@@ -14,6 +14,7 @@ score_test_coverage: 20
 score_ambiguity: 23
 score_change_surface: 20
 status: done
+priority: P3
 ---
 
 <!-- Suggested by scan-codebase: file overlap with issue_parser.py (ENH-2780) -->

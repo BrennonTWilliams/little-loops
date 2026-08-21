@@ -7,6 +7,7 @@ confidence_score: 96
 outcome_confidence: 87
 status: done
 completed_at: 2026-03-06T00:00:00Z
+priority: P4
 ---
 
 # BUG-605: Signal-shutdown exit code `1` indistinguishable from genuine failure

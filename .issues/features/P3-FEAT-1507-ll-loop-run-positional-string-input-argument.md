@@ -5,6 +5,7 @@ confidence_score: 100
 outcome_confidence: 82
 status: done
 completed_at: 2026-03-14T00:00:00Z
+priority: P3
 ---
 
 # FEAT-1507: ll-loop run positional string input argument

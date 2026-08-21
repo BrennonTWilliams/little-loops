@@ -1,6 +1,7 @@
 ---
 status: done
 completed_at: 2026-01-12T00:00:00Z
+priority: P2
 ---
 # ENH-032: Improve Test Coverage for Untested Modules
 

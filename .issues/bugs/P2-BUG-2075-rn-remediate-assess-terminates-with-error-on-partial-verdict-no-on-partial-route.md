@@ -16,6 +16,7 @@ score_test_coverage: 22
 score_ambiguity: 22
 score_change_surface: 25
 status: done
+priority: P2
 ---
 
 # BUG-2075: rn-remediate assess terminates with error on partial verdict — missing on_partial/on_no route

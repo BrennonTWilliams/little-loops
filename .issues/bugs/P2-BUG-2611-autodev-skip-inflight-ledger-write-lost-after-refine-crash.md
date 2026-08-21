@@ -10,6 +10,7 @@ score_complexity: 14
 score_test_coverage: 10
 score_ambiguity: 10
 score_change_surface: 18
+priority: P2
 ---
 
 # BUG-2611: autodev's skip_inflight ledger write is lost after a refine_current crash

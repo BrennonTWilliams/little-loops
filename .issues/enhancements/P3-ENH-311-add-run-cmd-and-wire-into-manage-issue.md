@@ -3,6 +3,7 @@ discovered_date: 2026-02-10
 discovered_by: capture_issue
 status: done
 completed_at: 2026-02-13T00:00:00Z
+priority: P3
 ---
 
 # ENH-311: Add run_cmd to config and wire into manage_issue verification

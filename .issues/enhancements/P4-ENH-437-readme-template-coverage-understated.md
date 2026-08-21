@@ -6,6 +6,7 @@ discovered_by: audit_docs
 doc_file: README.md
 status: done
 completed_at: 2026-02-15T00:00:00Z
+priority: P4
 ---
 
 # ENH-437: README understates template coverage

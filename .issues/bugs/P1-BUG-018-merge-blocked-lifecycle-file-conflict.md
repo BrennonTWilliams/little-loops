@@ -4,6 +4,7 @@ discovered_date: 2026-01-12
 discovered_external_repo: <external-repo>
 status: done
 completed_at: 2026-02-12T00:00:00Z
+priority: P1
 ---
 
 # BUG-018: Merge blocked by local changes despite stash exclusions

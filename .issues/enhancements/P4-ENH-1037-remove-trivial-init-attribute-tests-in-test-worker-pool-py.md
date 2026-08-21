@@ -5,6 +5,7 @@ confidence_score: 95
 outcome_confidence: 95
 status: done
 completed_at: 2026-04-11T00:00:00Z
+priority: P4
 ---
 
 # ENH-1037: Remove Trivial Init Attribute Tests in test_worker_pool.py

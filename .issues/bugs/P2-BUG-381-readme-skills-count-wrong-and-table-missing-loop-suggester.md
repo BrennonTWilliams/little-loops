@@ -6,6 +6,7 @@ discovered_by: audit_docs
 doc_file: README.md
 status: done
 completed_at: 2026-02-14T00:00:00Z
+priority: P2
 ---
 
 # BUG-381: README skills count wrong (7 vs 8) and table missing loop-suggester

@@ -15,6 +15,7 @@ score_complexity: 23
 score_test_coverage: 23
 score_ambiguity: 25
 score_change_surface: 23
+priority: P3
 ---
 
 # BUG-2651: `ll-history-context <ID>` silently returns empty for hyphenated issue IDs (FTS5 parses `-NNN` as a column filter)

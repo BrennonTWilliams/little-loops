@@ -1,6 +1,7 @@
 ---
 status: done
 completed_at: 2026-01-17T00:00:00Z
+priority: P3
 ---
 # ENH-087: Consolidate Hook Scripts in scripts/ Subdirectory
 

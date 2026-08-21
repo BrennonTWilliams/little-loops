@@ -5,6 +5,7 @@ confidence_score: 92
 outcome_confidence: 79
 status: done
 completed_at: 2026-03-23T00:00:00Z
+priority: P3
 ---
 
 # FEAT-862: FSM loop YAML per-loop config overrides

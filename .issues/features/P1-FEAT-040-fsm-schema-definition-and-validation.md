@@ -1,6 +1,7 @@
 ---
 status: done
 completed_at: 2026-01-13T00:00:00Z
+priority: P1
 ---
 # FEAT-040: FSM Schema Definition and Validation
 

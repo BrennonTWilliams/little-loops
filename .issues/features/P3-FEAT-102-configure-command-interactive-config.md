@@ -3,6 +3,7 @@ discovered_date: 2026-01-21
 discovered_by: user_request
 status: done
 completed_at: 2026-01-21T00:00:00Z
+priority: P3
 ---
 
 # FEAT-102: Add /ll:configure command for interactive config editing

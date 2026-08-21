@@ -5,6 +5,7 @@ confidence_score: 100
 outcome_confidence: 95
 status: done
 completed_at: 2026-07-08T00:00:00Z
+priority: P3
 ---
 
 # ENH-2555: `ll-loop list` line-2 continuation display + subgroup glyph differentiation

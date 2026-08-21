@@ -7,6 +7,7 @@ confidence_score: 95
 outcome_confidence: 71
 status: done
 completed_at: 2026-03-15T00:00:00Z
+priority: P2
 ---
 
 # BUG-770: general-task loop terminated with error in execute state

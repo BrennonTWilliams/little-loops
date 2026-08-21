@@ -5,6 +5,7 @@ discovered_date: 2026-01-16T00:00:00Z
 discovered_by: capture_issue
 status: done
 completed_at: 2026-02-13T00:00:00Z
+priority: P2
 ---
 
 # FEAT-075: Document Category Tracking and Issue Alignment

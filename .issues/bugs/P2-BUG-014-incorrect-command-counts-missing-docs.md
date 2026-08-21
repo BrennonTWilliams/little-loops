@@ -6,6 +6,7 @@ discovered_by: audit_docs
 doc_file: README.md
 status: done
 completed_at: 2026-01-10T00:00:00Z
+priority: P2
 ---
 
 # BUG-014: Incorrect command counts and missing command documentation

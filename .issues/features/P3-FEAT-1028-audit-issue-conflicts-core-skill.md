@@ -8,6 +8,7 @@ blocks: FEAT-1029
 parent: FEAT-1027
 status: done
 completed_at: 2026-05-10T00:00:00Z
+priority: P3
 ---
 
 # FEAT-1028: audit-issue-conflicts — Core Skill Implementation

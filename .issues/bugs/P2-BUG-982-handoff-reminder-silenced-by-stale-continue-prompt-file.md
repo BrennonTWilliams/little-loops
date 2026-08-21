@@ -6,6 +6,7 @@ confidence_score: 88
 outcome_confidence: 64
 status: done
 completed_at: 2026-04-07T00:00:00Z
+priority: P2
 ---
 
 # BUG-982: Handoff Reminder Silenced by Stale Continue-Prompt File

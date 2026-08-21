@@ -5,6 +5,7 @@ discovered_date: 2026-02-24T20:18:21Z
 discovered_by: scan-codebase
 status: done
 completed_at: 2026-03-02T00:00:00Z
+priority: P3
 ---
 
 # FEAT-489: Add `diff` and `close` subcommands to ll-sync

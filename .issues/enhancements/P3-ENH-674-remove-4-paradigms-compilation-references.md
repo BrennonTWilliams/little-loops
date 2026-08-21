@@ -5,6 +5,7 @@ confidence_score: 96
 outcome_confidence: 61
 status: done
 completed_at: 2026-03-11T00:00:00Z
+priority: P3
 ---
 
 # ENH-674: Remove deprecated 4 Paradigms compilation from codebase

@@ -14,6 +14,7 @@ relates_to:
 - BUG-1687
 - ENH-1732
 - BUG-1767
+priority: P3
 ---
 
 # BUG-1766: `general-task` loop wastes ~40 iterations re-doing finished work (convergence-efficiency cluster)

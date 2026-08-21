@@ -5,6 +5,7 @@ confidence_score: 100
 outcome_confidence: 93
 status: done
 completed_at: 2026-04-02T00:00:00Z
+priority: P3
 ---
 
 # ENH-919: Wire EventBus Emission into Issue Lifecycle

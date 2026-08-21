@@ -7,6 +7,7 @@ confidence_score: 98
 outcome_confidence: 86
 status: done
 completed_at: 2026-04-02T00:00:00Z
+priority: P3
 ---
 
 # ENH-825: `pull_issues` hardcoded limit of 100 GitHub issues

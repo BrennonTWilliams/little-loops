@@ -5,6 +5,7 @@ discovered_date: 2026-03-03T21:56:26Z
 discovered_by: scan-codebase
 status: done
 completed_at: 2026-03-03T00:00:00Z
+priority: P2
 ---
 
 # BUG-526: `_process_alive` Conflates EPERM with ESRCH — Treats Running Privileged Process as Dead

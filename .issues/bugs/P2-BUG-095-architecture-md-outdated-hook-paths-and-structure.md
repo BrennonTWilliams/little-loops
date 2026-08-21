@@ -6,6 +6,7 @@ discovered_by: audit_docs
 doc_file: docs/ARCHITECTURE.md
 status: done
 completed_at: 2026-02-13T00:00:00Z
+priority: P2
 ---
 
 # BUG-095: ARCHITECTURE.md outdated hook paths and module structure

@@ -20,6 +20,7 @@ score_test_coverage: 18
 score_ambiguity: 25
 score_change_surface: 25
 status: done
+priority: P2
 ---
 
 # BUG-2735: evaluation-quality.yaml's sample state reads confidence_score/outcome_confidence/formatted fields that ll-issues list --json never returns

@@ -11,6 +11,7 @@ score_complexity: 14
 score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 18
+priority: P2
 ---
 
 # BUG-1648: `ll-issues clusters` misses soft edges and deferred work, reporting 1 cluster instead of 10+

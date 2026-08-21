@@ -7,6 +7,7 @@ confidence_score: 100
 outcome_confidence: 93
 status: done
 completed_at: 2026-04-07T00:00:00Z
+priority: P4
 ---
 
 # ENH-973: `refine_waves_for_contention` iterates all pairs twice when conflicts exist

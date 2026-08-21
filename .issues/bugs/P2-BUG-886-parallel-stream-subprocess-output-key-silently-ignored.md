@@ -6,6 +6,7 @@ confidence_score: 100
 outcome_confidence: 100
 status: done
 completed_at: 2026-03-25T00:00:00Z
+priority: P2
 ---
 
 # BUG-886: `parallel.stream_subprocess_output` config key silently ignored by Python CLI

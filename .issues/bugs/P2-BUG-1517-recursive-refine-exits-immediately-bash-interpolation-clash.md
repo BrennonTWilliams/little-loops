@@ -3,6 +3,7 @@ discovered_date: 2026-04-08
 discovered_by: session-investigation
 status: done
 completed_at: 2026-04-08T00:00:00Z
+priority: P2
 ---
 
 # BUG-1517: recursive-refine loop exits immediately due to bash/interpolation syntax clash

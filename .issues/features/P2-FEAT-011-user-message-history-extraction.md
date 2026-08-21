@@ -4,6 +4,7 @@ discovered_branch: main
 discovered_date: 2026-01-09T22:40:00Z
 status: done
 completed_at: 2026-02-13T00:00:00Z
+priority: P2
 ---
 
 # FEAT-011: User Message History Extraction

@@ -1,6 +1,7 @@
 ---
 status: done
 completed_at: 2026-02-13T00:00:00Z
+priority: P4
 ---
 # ll-loop test Output Format Differs from Documentation
 

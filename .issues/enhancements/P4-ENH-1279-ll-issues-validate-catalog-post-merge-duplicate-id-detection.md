@@ -3,6 +3,7 @@ discovered_date: "2026-04-24"
 discovered_by: review
 status: done
 completed_at: 2026-04-24T00:00:00Z
+priority: P4
 ---
 
 # ENH-1279: `ll-issues validate-catalog` — Post-Merge Duplicate ID Detection

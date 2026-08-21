@@ -5,6 +5,7 @@ discovered_date: 2026-03-07T05:53:04Z
 discovered_by: scan-codebase
 status: done
 completed_at: 2026-03-07T00:00:00Z
+priority: P1
 ---
 
 # BUG-618: `DefaultActionRunner` stderr pipe can deadlock on large stderr output

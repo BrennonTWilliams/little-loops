@@ -7,6 +7,7 @@ confidence_score: 98
 outcome_confidence: 92
 status: done
 completed_at: 2026-03-06T00:00:00Z
+priority: P4
 ---
 
 # BUG-604: PID file not cleaned up after SIGTERM/SIGKILL stop path

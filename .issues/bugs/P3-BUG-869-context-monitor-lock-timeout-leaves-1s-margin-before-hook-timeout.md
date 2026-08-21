@@ -5,6 +5,7 @@ confidence_score: 100
 outcome_confidence: 93
 status: done
 completed_at: 2026-03-23T00:00:00Z
+priority: P3
 ---
 
 # BUG-869: context-monitor.sh lock timeout leaves only 1s before hook timeout

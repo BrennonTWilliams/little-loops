@@ -11,6 +11,7 @@ score_complexity: 22
 score_test_coverage: 20
 score_ambiguity: 10
 score_change_surface: 23
+priority: P3
 ---
 
 # BUG-2755: `ll-init --upgrade` silently drops into the wizard without `--yes`

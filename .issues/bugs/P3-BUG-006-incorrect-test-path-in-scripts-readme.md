@@ -6,6 +6,7 @@ discovered_by: audit_docs
 doc_file: scripts/README.md
 status: done
 completed_at: 2026-01-06T00:00:00Z
+priority: P3
 ---
 
 # BUG-006: Incorrect test path in scripts/README.md

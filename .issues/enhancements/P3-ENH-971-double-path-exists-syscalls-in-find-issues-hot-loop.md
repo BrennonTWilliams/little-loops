@@ -7,6 +7,7 @@ confidence_score: 100
 outcome_confidence: 85
 status: done
 completed_at: 2026-04-06T00:00:00Z
+priority: P3
 ---
 
 # ENH-971: `find_issues` makes double `Path.exists()` syscalls per file in hot loop

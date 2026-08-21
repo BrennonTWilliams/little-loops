@@ -8,6 +8,7 @@ outcome_confidence: 68
 parent: FEAT-1072
 status: done
 completed_at: 2026-05-10T00:00:00Z
+priority: P2
 ---
 
 # FEAT-1078: Parallel State Wiring, Display, and Docs

@@ -14,6 +14,7 @@ blocked_by:
 - BUG-1538
 relates_to:
 - BUG-1429
+priority: P2
 ---
 
 # BUG-1408: implement_issue state hangs when issue already completed

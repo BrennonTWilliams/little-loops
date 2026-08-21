@@ -7,6 +7,7 @@ confidence_score: 100
 outcome_confidence: 100
 status: done
 completed_at: 2026-02-24T00:00:00Z
+priority: P4
 ---
 
 # BUG-480: `WorkerResult.should_close` docstring says "not implemented" but it is

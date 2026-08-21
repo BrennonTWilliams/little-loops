@@ -7,6 +7,7 @@ confidence_score: 90
 outcome_confidence: 100
 status: done
 completed_at: 2026-03-12T00:00:00Z
+priority: P4
 ---
 
 # ENH-542: `_render_fsm_diagram` Uses O(n) `list.index()` Inside Edge-Classification Loop

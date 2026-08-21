@@ -6,6 +6,7 @@ discovered_by: manual-audit
 focus_area: dependency-mapping
 status: done
 completed_at: 2026-02-27T00:00:00Z
+priority: P3
 ---
 
 # ENH-514: Make overlap and conflict thresholds configurable in ll-config.json

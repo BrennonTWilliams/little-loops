@@ -5,6 +5,7 @@ confidence_score: 95
 outcome_confidence: 79
 status: done
 completed_at: 2026-04-02T00:00:00Z
+priority: P1
 ---
 
 # FEAT-914: Greenfield Project Builder Meta-Loop

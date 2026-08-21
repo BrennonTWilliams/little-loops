@@ -2,6 +2,7 @@
 discovered_date: 2026-04-12
 discovered_by: capture-issue
 status: deferred
+priority: P3
 ---
 
 # ENH-1070: Investigate and extract rubrics for remaining skill candidates

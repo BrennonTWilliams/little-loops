@@ -5,6 +5,7 @@ confidence_score: 93
 outcome_confidence: 78
 status: done
 completed_at: 2026-02-25T00:00:00Z
+priority: P3
 ---
 
 # FEAT-505: ll-issues CLI Command with Sub-commands and Visualizations

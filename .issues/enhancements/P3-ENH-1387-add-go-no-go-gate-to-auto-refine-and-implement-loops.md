@@ -3,6 +3,7 @@ discovered_date: 2026-05-09
 discovered_by: conversation
 status: done
 completed_at: 2026-05-09T00:00:00Z
+priority: P3
 ---
 
 # ENH-1387: Add go-no-go Gate to auto-refine-and-implement Loops

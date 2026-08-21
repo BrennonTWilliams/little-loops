@@ -8,6 +8,7 @@ testable: false
 parent: FEAT-988
 status: done
 completed_at: 2026-05-10T00:00:00Z
+priority: P4
 ---
 
 # FEAT-991: FSMExecutor Hook Dispatch — Skill and Docs Update

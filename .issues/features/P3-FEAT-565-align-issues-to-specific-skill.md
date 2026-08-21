@@ -7,6 +7,7 @@ confidence_score: 95
 outcome_confidence: 75
 status: done
 completed_at: 2026-03-21T00:00:00Z
+priority: P3
 ---
 
 # FEAT-565: Add skill-based alignment option to `align-issues`

@@ -3,6 +3,7 @@ discovered_date: "2026-03-01"
 discovered_by: capture-issue
 status: done
 completed_at: 2026-03-01T00:00:00Z
+priority: P3
 ---
 
 # FEAT-518: Add `ll-issues show` command for issue summary cards

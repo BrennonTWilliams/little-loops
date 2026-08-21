@@ -7,6 +7,7 @@ confidence_score: 100
 outcome_confidence: 93
 status: done
 completed_at: 2026-03-21T00:00:00Z
+priority: P4
 ---
 
 # BUG-824: `scan_active_issues` swallows all parse errors silently

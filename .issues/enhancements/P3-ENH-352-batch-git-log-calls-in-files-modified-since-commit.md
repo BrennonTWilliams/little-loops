@@ -5,6 +5,7 @@ discovered_date: 2026-02-12T16:03:46Z
 discovered_by: scan-codebase
 status: done
 completed_at: 2026-02-14T00:00:00Z
+priority: P3
 ---
 
 # ENH-352: Batch git log calls in _get_files_modified_since_commit

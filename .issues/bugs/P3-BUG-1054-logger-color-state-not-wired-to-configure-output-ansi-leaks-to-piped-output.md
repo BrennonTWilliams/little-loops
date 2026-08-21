@@ -5,6 +5,7 @@ confidence_score: 100
 outcome_confidence: 70
 status: done
 completed_at: 2026-04-12T00:00:00Z
+priority: P3
 ---
 
 # BUG-1054: Logger color state not wired to configure_output — ANSI leaks to piped output

@@ -3,6 +3,7 @@ discovered_date: 2026-02-12
 discovered_by: audit_claude_config
 status: done
 completed_at: 2026-02-13T00:00:00Z
+priority: P5
 ---
 
 # ENH-401: Add argument-hint to commands with arguments

@@ -5,6 +5,7 @@ discovered_date: 2026-02-24T20:18:21Z
 discovered_by: scan-codebase
 status: done
 completed_at: 2026-02-24T00:00:00Z
+priority: P3
 ---
 
 # BUG-477: `ll-messages` epilog documents non-existent `--include-commands` flag

@@ -6,6 +6,7 @@ discovered_by: audit_docs
 doc_file: README.md
 status: done
 completed_at: 2026-02-13T00:00:00Z
+priority: P3
 ---
 
 # BUG-274: Directory trees outdated across README, CONTRIBUTING, and ARCHITECTURE docs

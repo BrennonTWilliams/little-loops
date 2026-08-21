@@ -1,6 +1,7 @@
 ---
 status: done
 completed_at: 2026-01-18T00:00:00Z
+priority: P3
 ---
 # Convert create-loop Skill to Slash Command
 

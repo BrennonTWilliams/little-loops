@@ -1,6 +1,7 @@
 ---
 status: done
 completed_at: 2026-01-15T00:00:00Z
+priority: P1
 ---
 # P1-ENH-057: Add Successful Resume Test for ll-loop
 

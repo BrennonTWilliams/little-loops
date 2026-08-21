@@ -7,6 +7,7 @@ confidence_score: 100
 outcome_confidence: 100
 status: done
 completed_at: 2026-02-25T00:00:00Z
+priority: P3
 ---
 
 # ENH-483: Add tests for workflow_sequence_analyzer internal functions

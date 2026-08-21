@@ -5,6 +5,7 @@ confidence_score: 98
 outcome_confidence: 93
 status: done
 completed_at: 2026-04-08T00:00:00Z
+priority: P3
 ---
 
 # BUG-998: outer-loop-eval silently proceeds and hallucinates report when loop_name is empty

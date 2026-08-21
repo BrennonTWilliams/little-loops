@@ -9,6 +9,7 @@ score_ambiguity: 25
 score_change_surface: 18
 status: done
 completed_at: 2026-04-16T00:00:00Z
+priority: P3
 ---
 
 # BUG-1118: ll-loop run --verbose truncates LLM responses

@@ -5,6 +5,7 @@ follows: ENH-443
 confidence_score: 95
 status: done
 completed_at: 2026-02-19T00:00:00Z
+priority: P3
 ---
 
 # ENH-444: Build 2D ASCII renderer for FSM loop diagrams

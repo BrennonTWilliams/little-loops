@@ -10,6 +10,7 @@ score_complexity: 25
 score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 25
+priority: P3
 ---
 
 # ENH-1604: hitl-compare — add subtle write-in custom option per review item

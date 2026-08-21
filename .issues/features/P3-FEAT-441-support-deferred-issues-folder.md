@@ -5,6 +5,7 @@ confidence_score: 85
 outcome_confidence: 56
 status: done
 completed_at: 2026-02-25T00:00:00Z
+priority: P3
 ---
 
 # FEAT-441: Support Deferred Issues Folder

@@ -5,6 +5,7 @@ size: Medium
 status: done
 completed_at: '2026-04-21T00:00:00Z'
 parent: FEAT-1201
+priority: P2
 ---
 > **Status: Won't Do** — superseded by multi-loop parallel approach (simpler, no inter-loop coordination needed)
 

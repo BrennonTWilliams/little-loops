@@ -5,6 +5,7 @@ depends_on:
 - FEAT-1075
 - ENH-1177
 status: deferred
+priority: P4
 ---
 
 # FEAT-1196: Metrics Export for Parallel States (Prometheus / StatsD)

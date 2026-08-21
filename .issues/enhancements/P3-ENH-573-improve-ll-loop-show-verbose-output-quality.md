@@ -5,6 +5,7 @@ discovered_date: 2026-03-04T20:10:46Z
 discovered_by: capture-issue
 status: done
 completed_at: 2026-03-04T00:00:00Z
+priority: P3
 ---
 
 # ENH-573: Improve `ll-loop show --verbose` Output Quality and Layout

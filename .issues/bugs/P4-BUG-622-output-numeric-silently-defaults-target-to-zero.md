@@ -7,6 +7,7 @@ confidence_score: 93
 outcome_confidence: 95
 status: done
 completed_at: 2026-03-07T00:00:00Z
+priority: P4
 ---
 
 # BUG-622: `output_numeric` silently defaults missing `target` to `0.0` when validation bypassed

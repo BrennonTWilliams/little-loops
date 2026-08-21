@@ -3,6 +3,7 @@ discovered_date: 2026-01-24
 discovered_by: capture_issue
 status: done
 completed_at: 2026-02-13T00:00:00Z
+priority: P3
 ---
 
 # ENH-143: Detect and handle overlapping file modifications in parallel processing

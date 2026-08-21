@@ -9,6 +9,7 @@ labels:
 - rn-implement
 - loop-defect
 - sub-loop
+priority: P3
 ---
 
 # BUG-2076: run_remediation sub-loop verdict discarded in rn-implement loop — rn-remediate result ignored (classify_remediation)

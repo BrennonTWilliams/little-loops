@@ -6,6 +6,7 @@ outcome_confidence: 70
 testable: false
 status: done
 completed_at: 2026-04-12T00:00:00Z
+priority: P4
 ---
 
 # FEAT-1045: Extension SDK Documentation Updates

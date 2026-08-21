@@ -1,6 +1,7 @@
 ---
 status: done
 completed_at: 2026-07-08T00:00:00Z
+priority: P3
 ---
 # P3-ENH-2554: Improve `ll-loop list` layout — 5 high-impact fixes
 

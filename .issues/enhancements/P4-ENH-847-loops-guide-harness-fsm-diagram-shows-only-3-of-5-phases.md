@@ -7,6 +7,7 @@ doc_file: docs/guides/LOOPS_GUIDE.md
 testable: false
 status: done
 completed_at: 2026-03-20T00:00:00Z
+priority: P4
 ---
 
 # ENH-847: LOOPS_GUIDE Harness FSM Diagram Shows Only 3 of 5 Evaluation Phases

@@ -5,6 +5,7 @@ confidence_score: 100
 outcome_confidence: 100
 status: done
 completed_at: 2026-05-04T00:00:00Z
+priority: P3
 ---
 
 # BUG-1366: `refine-to-ready-issue` routes `decision_needed` issues to size-review instead of exiting cleanly

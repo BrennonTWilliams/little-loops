@@ -5,6 +5,7 @@ confidence_score: 100
 outcome_confidence: 86
 status: done
 completed_at: 2026-03-05T00:00:00Z
+priority: P2
 ---
 
 # BUG-599: issue-refinement loop stuck in infinite cycle due to fmt/priority bugs

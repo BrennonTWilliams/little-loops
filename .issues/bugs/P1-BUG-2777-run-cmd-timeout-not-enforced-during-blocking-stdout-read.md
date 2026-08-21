@@ -12,6 +12,7 @@ score_complexity: 16
 score_test_coverage: 22
 score_ambiguity: 15
 score_change_surface: 18
+priority: P1
 ---
 
 # BUG-2777: `_run_cmd` per-command timeout not enforced while subprocess holds stdout open

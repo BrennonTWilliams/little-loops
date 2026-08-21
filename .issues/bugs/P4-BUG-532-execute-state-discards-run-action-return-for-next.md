@@ -7,6 +7,7 @@ confidence_score: 100
 outcome_confidence: 100
 status: done
 completed_at: 2026-03-04T00:00:00Z
+priority: P4
 ---
 
 # BUG-532: `_execute_state` Discards `_run_action` Return Value for `state.next`-Routed States

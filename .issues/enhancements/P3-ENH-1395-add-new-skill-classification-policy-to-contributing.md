@@ -12,6 +12,7 @@ score_change_surface: 25
 decision_needed: false
 missing_artifacts: true
 status: done
+priority: P3
 ---
 
 # ENH-1395: Add New-Skill Classification Policy to CONTRIBUTING.md

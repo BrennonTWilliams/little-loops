@@ -5,6 +5,7 @@ source_loop: sprint-build-and-validate
 source_state: validate_issues
 status: done
 completed_at: 2026-03-15T00:00:00Z
+priority: P3
 ---
 
 # ENH-762: validate_issues proceeds without confirming sprint was created

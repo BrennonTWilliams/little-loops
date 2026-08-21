@@ -7,6 +7,7 @@ confidence_score: 98
 outcome_confidence: 97
 status: done
 completed_at: 2026-03-13T00:00:00Z
+priority: P3
 ---
 
 # ENH-553: 4 internal `workflow_sequence_analyzer` functions lack direct unit tests

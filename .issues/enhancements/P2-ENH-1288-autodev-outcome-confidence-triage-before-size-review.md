@@ -11,6 +11,7 @@ score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 25
 status: done
+priority: P2
 ---
 
 # ENH-1288: Autodev outcome-confidence triage before size-review

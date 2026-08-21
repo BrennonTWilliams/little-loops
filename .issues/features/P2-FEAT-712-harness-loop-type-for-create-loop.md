@@ -5,6 +5,7 @@ confidence_score: 98
 outcome_confidence: 86
 status: done
 completed_at: 2026-03-13T00:00:00Z
+priority: P2
 ---
 
 # FEAT-712: Add "Harness" Loop Type to create-loop

@@ -4,6 +4,7 @@ discovered_by: capture-issue
 testable: false
 status: done
 completed_at: 2026-04-02T00:00:00Z
+priority: P3
 ---
 
 # ENH-925: Document EventBus Event Types and Payload Schemas

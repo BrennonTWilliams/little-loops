@@ -12,6 +12,7 @@ score_test_coverage: 18
 score_ambiguity: 18
 score_change_surface: 18
 implementation_order_risk: true
+priority: P3
 ---
 
 # ENH-1685: Add `--follow` mode to `ll-loop run` for live streaming

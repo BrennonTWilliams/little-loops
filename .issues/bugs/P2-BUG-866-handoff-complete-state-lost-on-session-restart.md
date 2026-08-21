@@ -6,6 +6,7 @@ confidence_score: 100
 outcome_confidence: 93
 status: done
 completed_at: 2026-03-23T00:00:00Z
+priority: P2
 ---
 
 # BUG-866: handoff_complete state lost on session restart

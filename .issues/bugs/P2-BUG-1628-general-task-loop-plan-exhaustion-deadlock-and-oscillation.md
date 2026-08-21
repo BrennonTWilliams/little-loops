@@ -13,6 +13,7 @@ implementation_order_risk: true
 size: Very Large
 decision_needed: false
 depends_on: FEAT-1637
+priority: P2
 ---
 
 # BUG-1628: general-task loop deadlocks when DoD is unmet but plan is exhausted

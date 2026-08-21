@@ -4,6 +4,7 @@ discovered_by: planning
 anchor: scripts/little_loops/issue_history.py::calculate_analysis
 status: done
 completed_at: 2026-01-23T00:00:00Z
+priority: P2
 ---
 
 # ENH-116: Hotspot Analysis

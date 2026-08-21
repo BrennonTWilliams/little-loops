@@ -3,6 +3,7 @@ discovered_date: 2026-02-11
 discovered_by: capture-issue
 status: done
 completed_at: 2026-02-14T00:00:00Z
+priority: P4
 ---
 
 # ENH-342: Command examples hardcode tool names instead of config values

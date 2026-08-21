@@ -3,6 +3,7 @@ discovered_date: 2026-04-02
 discovered_by: capture-issue
 status: done
 completed_at: 2026-04-03T00:00:00Z
+priority: P2
 ---
 
 # BUG-928: `confidence_check` timeout skips `verify_issue` in refine-to-ready loop

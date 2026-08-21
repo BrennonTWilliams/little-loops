@@ -5,6 +5,7 @@ confidence_score: 100
 outcome_confidence: 79
 status: done
 completed_at: 2026-04-11T00:00:00Z
+priority: P3
 ---
 
 # FEAT-1007: Add `apply` Sub-Command to `ll-deps` for Writing Dependency Relationships

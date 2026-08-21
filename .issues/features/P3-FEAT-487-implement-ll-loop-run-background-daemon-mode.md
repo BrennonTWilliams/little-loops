@@ -7,6 +7,7 @@ confidence_score: 98
 outcome_confidence: 71
 status: done
 completed_at: 2026-02-27T00:00:00Z
+priority: P3
 ---
 
 # FEAT-487: Implement `ll-loop run --background` daemon mode

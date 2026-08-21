@@ -7,6 +7,7 @@ depends_on:
 - FEAT-1076
 - FEAT-1184
 status: deferred
+priority: P2
 ---
 
 # ENH-1188: Global Parallel-State Timeout and Hung-Worker Detection

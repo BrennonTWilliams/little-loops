@@ -3,6 +3,7 @@ discovered_date: 2026-03-05
 discovered_by: manual_audit
 status: done
 completed_at: 2026-03-05T00:00:00Z
+priority: P3
 ---
 
 # BUG-588: DefaultActionRunner uses --verbose flag and missing --no-session-persistence

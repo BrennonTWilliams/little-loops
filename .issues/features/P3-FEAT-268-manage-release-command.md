@@ -6,6 +6,7 @@ github_url: null
 last_synced: null
 status: done
 completed_at: 2026-02-13T00:00:00Z
+priority: P3
 ---
 
 # FEAT-268: Add /ll:manage-release Command for Release Management

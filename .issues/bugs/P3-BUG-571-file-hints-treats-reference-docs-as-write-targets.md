@@ -3,6 +3,7 @@ discovered_date: 2026-03-04T00:00:00Z
 discovered_by: capture-issue
 status: done
 completed_at: 2026-03-04T00:00:00Z
+priority: P3
 ---
 
 # BUG-571: `FileHints` Extractor Treats Reference Docs as Write Targets, Causing False Sprint Serialization

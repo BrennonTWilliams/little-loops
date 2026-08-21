@@ -5,6 +5,7 @@ confidence_score: 98
 outcome_confidence: 79
 status: done
 completed_at: 2026-03-05T00:00:00Z
+priority: P3
 ---
 
 # BUG-592: `ll-loop stop` Only Marks State "interrupted" Without Killing Running Processes

@@ -6,6 +6,7 @@ outcome_confidence: 74
 blocked_by:
 - ENH-470
 status: deferred
+priority: P3
 ---
 
 # FEAT-707: Scope-Based Concurrency as Worktree Alternative in ll-parallel/ll-sprint

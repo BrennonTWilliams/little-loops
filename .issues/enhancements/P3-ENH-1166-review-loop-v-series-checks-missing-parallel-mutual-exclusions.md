@@ -4,6 +4,7 @@ discovered_by: capture-issue
 depends_on:
 - FEAT-1074
 status: deferred
+priority: P3
 ---
 
 # ENH-1166: `review-loop` V-Series Check Table Missing Parallel Mutual-Exclusion Entries

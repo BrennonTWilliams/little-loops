@@ -7,6 +7,7 @@ depends_on: FEAT-1232, FEAT-1233
 status: deferred
 deferred_date: "2026-04-21"
 deferred_reason: low-value
+priority: P3
 ---
 
 # ENH-1235: Documentation for `ll-loop parallel`

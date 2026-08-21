@@ -7,6 +7,7 @@ confidence_score: 100
 outcome_confidence: 93
 status: done
 completed_at: 2026-03-20T00:00:00Z
+priority: P3
 ---
 
 # BUG-820: `_detect_main_repo_leaks` hardcoded source prefixes miss project-specific layouts

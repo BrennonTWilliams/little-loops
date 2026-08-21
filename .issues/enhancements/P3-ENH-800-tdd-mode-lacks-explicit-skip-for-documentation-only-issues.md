@@ -6,6 +6,7 @@ outcome_confidence: 61
 testable: false
 status: done
 completed_at: 2026-03-17T00:00:00Z
+priority: P3
 ---
 
 # ENH-800: TDD mode lacks explicit skip for documentation-only issues

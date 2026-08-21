@@ -5,6 +5,7 @@ discovered_date: 2026-07-08T00:00:00Z
 discovered_by: user-report
 status: done
 completed_at: 2026-07-09T02:16:40Z
+priority: P4
 ---
 
 # BUG-2695: `ll-loop list` rows overflow terminal width when labels are wide

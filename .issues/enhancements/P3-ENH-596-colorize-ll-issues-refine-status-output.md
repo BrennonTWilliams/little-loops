@@ -4,6 +4,7 @@ discovered_by: manual
 completed_date: 2026-03-05
 status: done
 completed_at: 2026-03-05T00:00:00Z
+priority: P3
 ---
 
 # ENH-596: Colorize ll-issues refine-status output

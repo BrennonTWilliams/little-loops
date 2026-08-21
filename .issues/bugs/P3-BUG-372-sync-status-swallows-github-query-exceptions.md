@@ -5,6 +5,7 @@ discovered_date: 2026-02-12T16:03:46Z
 discovered_by: scan_codebase
 status: done
 completed_at: 2026-02-13T00:00:00Z
+priority: P3
 ---
 
 # BUG-372: Silent exception swallowing in sync status hides GitHub query failures

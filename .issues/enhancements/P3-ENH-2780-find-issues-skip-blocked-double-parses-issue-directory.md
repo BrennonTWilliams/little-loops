@@ -14,6 +14,7 @@ score_test_coverage: 23
 score_ambiguity: 24
 score_change_surface: 22
 status: done
+priority: P3
 ---
 
 # ENH-2780: `find_issues(skip_blocked=True)` re-parses the entire issue directory to build the dependency graph

@@ -5,6 +5,7 @@ confidence_score: 100
 outcome_confidence: 93
 status: done
 completed_at: 2026-04-01T00:00:00Z
+priority: P2
 ---
 
 # BUG-912: `refine-to-ready-issue` loop missing `/ll:verify-issues` step causes infinite NEEDS_VERIFY cycle

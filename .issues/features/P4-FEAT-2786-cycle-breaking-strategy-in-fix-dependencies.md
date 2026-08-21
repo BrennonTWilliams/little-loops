@@ -11,6 +11,7 @@ score_test_coverage: 22
 score_ambiguity: 15
 score_change_surface: 20
 status: done
+priority: P4
 ---
 
 # FEAT-2786: Cycle-breaking strategy for `ll-deps` dependency auto-fix

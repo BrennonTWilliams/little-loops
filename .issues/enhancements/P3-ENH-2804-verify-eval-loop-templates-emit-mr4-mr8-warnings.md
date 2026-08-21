@@ -15,6 +15,7 @@ score_complexity: 22
 score_test_coverage: 20
 score_ambiguity: 25
 score_change_surface: 23
+priority: P3
 ---
 
 # ENH-2804: verify-issue-loop / create-eval-from-issues templates emit MR-4 (and risk MR-8) warnings

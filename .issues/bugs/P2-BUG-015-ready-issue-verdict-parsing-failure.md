@@ -4,6 +4,7 @@ discovered_date: 2026-01-11
 discovered_external_repo: <external-repo>
 status: done
 completed_at: 2026-02-13T00:00:00Z
+priority: P2
 ---
 
 # BUG-015: ready_issue verdict parsing fails on non-standard output

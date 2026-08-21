@@ -10,6 +10,7 @@ score_test_coverage: 10
 score_ambiguity: 25
 score_change_surface: 25
 status: done
+priority: P3
 ---
 
 # ENH-1237: Update /ll:refine-issue --auto to set decision_needed frontmatter flag

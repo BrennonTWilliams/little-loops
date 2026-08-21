@@ -11,6 +11,7 @@ score_complexity: 14
 score_test_coverage: 18
 score_ambiguity: 18
 score_change_surface: 25
+priority: P3
 ---
 
 # FEAT-1546: Add `ll-loop next-loop` sub-command to suggest next loop from execution history

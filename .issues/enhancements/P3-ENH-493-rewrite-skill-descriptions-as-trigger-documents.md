@@ -6,6 +6,7 @@ confidence_score: 100
 outcome_confidence: 71
 status: done
 completed_at: 2026-04-01T00:00:00Z
+priority: P3
 ---
 
 # ENH-493: Rewrite Skill Descriptions as Trigger Documents

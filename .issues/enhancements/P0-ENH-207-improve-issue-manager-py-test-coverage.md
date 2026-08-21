@@ -1,6 +1,7 @@
 ---
 status: done
 completed_at: 2026-02-01T00:00:00Z
+priority: P0
 ---
 # P0-ENH-207: Improve issue_manager.py test coverage from 63% to 80%+
 

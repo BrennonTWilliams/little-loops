@@ -10,6 +10,7 @@ score_complexity: 20
 score_test_coverage: 19
 score_ambiguity: 24
 score_change_surface: 22
+priority: P2
 ---
 
 # BUG-2553: `ll-loop run rn-refine <plan.md>` falsely reports `:default=` context refs as missing required variables

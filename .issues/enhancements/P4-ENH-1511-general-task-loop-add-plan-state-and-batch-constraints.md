@@ -3,6 +3,7 @@ discovered_date: 2026-03-17
 discovered_by: session
 status: done
 completed_at: 2026-03-17T00:00:00Z
+priority: P4
 ---
 
 # ENH-1511: general-task loop — add plan state and per-step execution constraints

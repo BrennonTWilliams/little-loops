@@ -5,6 +5,7 @@ confidence_score: 100
 outcome_confidence: 86
 status: done
 completed_at: 2026-04-04T00:00:00Z
+priority: P5
 ---
 
 # FEAT-1516: JSON Schema Generation for Event Types

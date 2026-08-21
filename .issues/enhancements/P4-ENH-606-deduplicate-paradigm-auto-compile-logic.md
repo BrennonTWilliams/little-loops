@@ -7,6 +7,7 @@ confidence_score: 95
 outcome_confidence: 88
 status: done
 completed_at: 2026-03-11T00:00:00Z
+priority: P4
 ---
 
 # ENH-606: Deduplicate paradigm auto-compile logic across 4 call sites

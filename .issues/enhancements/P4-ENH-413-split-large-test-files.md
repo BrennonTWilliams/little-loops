@@ -6,6 +6,7 @@ discovered_by: audit_architecture
 focus_area: large-files
 status: done
 completed_at: 2026-02-13T00:00:00Z
+priority: P4
 ---
 
 # ENH-413: Split large test files (optional)

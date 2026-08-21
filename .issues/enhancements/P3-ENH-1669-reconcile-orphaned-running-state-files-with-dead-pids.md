@@ -16,6 +16,7 @@ score_complexity: 14
 score_test_coverage: 18
 score_ambiguity: 25
 score_change_surface: 18
+priority: P3
 ---
 
 # ENH-1669: Auto-reconcile orphaned `status: running` state files when the PID is dead

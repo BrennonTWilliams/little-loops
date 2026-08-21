@@ -12,6 +12,7 @@ score_test_coverage: 18
 score_ambiguity: 25
 score_change_surface: 25
 status: done
+priority: P3
 ---
 
 # ENH-1396: Add Skill Listing Budget Validator to Release Toolchain

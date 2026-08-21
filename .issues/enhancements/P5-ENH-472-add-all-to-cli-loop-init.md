@@ -6,6 +6,7 @@ discovered_by: audit-architecture
 focus_area: organization
 status: done
 completed_at: 2026-02-24T00:00:00Z
+priority: P5
 ---
 
 # ENH-472: Add __all__ to cli/loop/__init__.py

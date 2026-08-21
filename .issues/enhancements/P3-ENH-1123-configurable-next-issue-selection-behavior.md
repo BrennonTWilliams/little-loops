@@ -10,6 +10,7 @@ score_change_surface: 18
 size: Very Large
 status: done
 completed_at: 2026-04-16T00:00:00Z
+priority: P3
 ---
 
 # ENH-1123: Configurable ll-issues next-issue Selection Behavior

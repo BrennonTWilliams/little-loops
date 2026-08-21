@@ -8,6 +8,7 @@ confidence_score: 94
 outcome_confidence: 86
 status: done
 completed_at: 2026-03-16T00:00:00Z
+priority: P3
 ---
 
 # ENH-681: Break circular import: config <-> parallel.types <-> issue_parser

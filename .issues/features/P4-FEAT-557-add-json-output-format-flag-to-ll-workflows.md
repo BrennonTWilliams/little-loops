@@ -7,6 +7,7 @@ confidence_score: 95
 outcome_confidence: 100
 status: done
 completed_at: 2026-03-06T00:00:00Z
+priority: P4
 ---
 
 # FEAT-557: Add `--format json` output option to `ll-workflows` — currently only YAML supported

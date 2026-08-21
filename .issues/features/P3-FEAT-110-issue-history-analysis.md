@@ -3,6 +3,7 @@ discovered_date: 2026-01-23
 discovered_by: capture_issue
 status: done
 completed_at: 2026-02-12T00:00:00Z
+priority: P3
 ---
 
 # FEAT-110: Advanced Issue History Analysis

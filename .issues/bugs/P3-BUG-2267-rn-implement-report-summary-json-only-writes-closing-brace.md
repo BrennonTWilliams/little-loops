@@ -5,6 +5,7 @@ discovered_date: 2026-06-24T00:00:00Z
 discovered_by: audit-loop-run
 status: done
 completed_at: 2026-06-24T00:00:00Z
+priority: P3
 ---
 
 # BUG-2267: `rn-implement` `report` state writes only `}` to `summary.json`

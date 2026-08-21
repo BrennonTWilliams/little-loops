@@ -13,6 +13,7 @@ score_complexity: 14
 score_test_coverage: 25
 score_ambiguity: 10
 score_change_surface: 25
+priority: P3
 ---
 
 # ll-sprint fallback completion path fired for 3 of 10 issues in a single sprint run

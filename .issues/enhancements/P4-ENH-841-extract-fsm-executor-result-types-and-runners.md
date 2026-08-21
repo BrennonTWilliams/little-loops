@@ -8,6 +8,7 @@ confidence_score: 100
 outcome_confidence: 70
 status: done
 completed_at: 2026-04-02T00:00:00Z
+priority: P4
 ---
 
 # ENH-841: Extract FSM executor result types and runners

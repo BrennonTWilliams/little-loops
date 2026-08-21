@@ -3,6 +3,7 @@ discovered_date: "2026-03-01"
 discovered_by: capture-issue
 status: done
 completed_at: 2026-03-01T00:00:00Z
+priority: P3
 ---
 
 # ENH-519: Enhance `ll-issues show` with additional detail fields

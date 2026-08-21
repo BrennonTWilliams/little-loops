@@ -7,6 +7,7 @@ confidence_score: 100
 outcome_confidence: 100
 status: done
 completed_at: 2026-03-22T00:00:00Z
+priority: P4
 ---
 
 # ENH-695: Category dispatch logic duplicated 3x in `analyze_rejection_rates`

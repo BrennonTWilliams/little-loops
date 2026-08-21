@@ -16,6 +16,7 @@ score_test_coverage: 20
 score_ambiguity: 14
 score_change_surface: 20
 completed_at: '2026-07-25T16:48:35Z'
+priority: P2
 ---
 
 # BUG-2803: autodev defers fresh issues as low_readiness with all readiness remedies structurally unreachable

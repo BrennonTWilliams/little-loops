@@ -11,6 +11,7 @@ score_test_coverage: 10
 score_ambiguity: 25
 score_change_surface: 25
 status: done
+priority: P4
 ---
 
 # ENH-1363: Add --issues filter argument to tradeoff-review-issues

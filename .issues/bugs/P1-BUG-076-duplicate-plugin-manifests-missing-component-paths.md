@@ -1,6 +1,7 @@
 ---
 status: done
 completed_at: 2026-01-16T00:00:00Z
+priority: P1
 ---
 # P1-BUG-076: Duplicate Plugin Manifests with Missing Component Paths
 

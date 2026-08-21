@@ -5,6 +5,7 @@ discovered_date: 2026-03-13T00:36:53Z
 discovered_by: scan-codebase
 status: done
 completed_at: 2026-03-15T00:00:00Z
+priority: P4
 ---
 
 # FEAT-701: Add `--json` output to `ll-issues show` and `ll-issues sequence`

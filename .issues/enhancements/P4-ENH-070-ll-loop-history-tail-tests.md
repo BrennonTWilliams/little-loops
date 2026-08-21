@@ -1,6 +1,7 @@
 ---
 status: done
 completed_at: 2026-01-15T00:00:00Z
+priority: P4
 ---
 # ENH-070: Add History --tail Integration Test for ll-loop
 

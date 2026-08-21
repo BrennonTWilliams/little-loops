@@ -5,6 +5,7 @@ confidence_score: 100
 outcome_confidence: 93
 status: done
 completed_at: 2026-04-12T00:00:00Z
+priority: P4
 ---
 
 # ENH-1059: Surface dependency_mapping thresholds in ll-sprint show output

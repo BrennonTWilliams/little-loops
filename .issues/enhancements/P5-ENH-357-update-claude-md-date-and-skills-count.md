@@ -3,6 +3,7 @@ discovered_date: 2026-02-12T00:00:00Z
 discovered_by: audit-claude-config
 status: done
 completed_at: 2026-02-14T00:00:00Z
+priority: P5
 ---
 
 # ENH-357: Update CLAUDE.md last-updated date and add new skills count

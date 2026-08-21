@@ -8,6 +8,7 @@ completed_at: 2026-01-31T00:00:00Z
 relates_to:
 - BUG-035
 - ENH-191
+priority: P1
 ---
 
 # ENH-190: Hooks System Audit and Robustness Improvements

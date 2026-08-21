@@ -11,6 +11,7 @@ score_complexity: 23
 score_test_coverage: 22
 score_ambiguity: 24
 score_change_surface: 23
+priority: P1
 ---
 
 # BUG-2800: YAML-invalid skill frontmatter + integration guard swallows parse errors

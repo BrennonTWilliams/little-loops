@@ -5,6 +5,7 @@ confidence_score: 100
 outcome_confidence: 100
 status: done
 completed_at: 2026-04-11T00:00:00Z
+priority: P4
 ---
 
 # ENH-1035: Consolidate Redundant CLI Flag Tests in test_cli.py

@@ -5,6 +5,7 @@ confidence_score: 83
 outcome_confidence: 75
 status: done
 completed_at: 2026-03-12T00:00:00Z
+priority: P3
 ---
 
 # BUG-678: FSM diagram branch edges to terminal states not rendered

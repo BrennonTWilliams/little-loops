@@ -6,6 +6,7 @@ discovered_by: audit_architecture
 focus_area: patterns
 status: done
 completed_at: 2026-02-13T00:00:00Z
+priority: P3
 ---
 
 # FEAT-411: Add abstract base classes for CLI commands

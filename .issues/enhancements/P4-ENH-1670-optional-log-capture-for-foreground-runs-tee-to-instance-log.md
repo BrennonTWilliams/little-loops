@@ -18,6 +18,7 @@ score_ambiguity: 18
 score_change_surface: 18
 implementation_order_risk: true
 size: Very Large
+priority: P4
 ---
 
 # ENH-1670: Optional log capture for foreground runs (tee to `{instance_id}.log`)

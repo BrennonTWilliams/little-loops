@@ -14,6 +14,7 @@ score_complexity: 22
 score_test_coverage: 18
 score_ambiguity: 25
 score_change_surface: 18
+priority: P3
 ---
 
 # P3-ENH-1818: Add smoke-test state to html-website-generator loop

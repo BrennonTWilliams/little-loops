@@ -8,6 +8,7 @@ confidence_score: 100
 outcome_confidence: 71
 status: done
 completed_at: 2026-03-22T00:00:00Z
+priority: P3
 ---
 
 # ENH-840: Split workflow_sequence_analyzer.py into package

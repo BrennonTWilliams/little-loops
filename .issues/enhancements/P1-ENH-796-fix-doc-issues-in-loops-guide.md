@@ -4,6 +4,7 @@ discovered_by: capture-issue
 testable: false
 status: done
 completed_at: 2026-03-18T00:00:00Z
+priority: P1
 ---
 
 # ENH-796: Fix documentation issues in LOOPS_GUIDE.md

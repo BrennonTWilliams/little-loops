@@ -17,6 +17,7 @@ score_complexity: 14
 score_test_coverage: 18
 score_ambiguity: 25
 score_change_surface: 25
+priority: P3
 ---
 
 # ENH-1770: hitl-md sensemaking enhancements — staged highlighting, density control, multi-channel saliency, schema-switching, minimap, and calibrated friction

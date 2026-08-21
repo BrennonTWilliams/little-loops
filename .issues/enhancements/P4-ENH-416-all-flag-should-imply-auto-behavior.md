@@ -4,6 +4,7 @@ discovered_by: capture_issue
 confidence_score: 97
 status: done
 completed_at: 2026-02-13T00:00:00Z
+priority: P4
 ---
 
 # ENH-416: --all flag should implicitly enable --auto behavior

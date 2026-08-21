@@ -5,6 +5,7 @@ confidence_score: 93
 outcome_confidence: 64
 status: done
 completed_at: 2026-03-02T00:00:00Z
+priority: P4
 ---
 
 # ENH-492: Split issue-sections.json into per-type files

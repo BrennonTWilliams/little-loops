@@ -10,6 +10,7 @@ score_test_coverage: 25
 score_ambiguity: 18
 score_change_surface: 18
 status: done
+priority: P3
 ---
 
 # ENH-1331: Enforce description: field in loop YAML; migrate comment-based descriptions

@@ -4,6 +4,7 @@ discovered_by: capture_issue
 confidence_score: 95
 status: done
 completed_at: 2026-02-13T00:00:00Z
+priority: P3
 ---
 
 # ENH-418: Confidence check type-specific criterion labels and rubrics

@@ -12,6 +12,7 @@ score_change_surface: 25
 decision_needed: false
 implementation_order_risk: true
 size: Very Large
+priority: P3
 ---
 
 # FEAT-1532: agent-loop-specialist monitors, analyzes, refines, and optimizes FSM loops

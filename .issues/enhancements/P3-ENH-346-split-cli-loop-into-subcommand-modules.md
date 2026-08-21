@@ -6,6 +6,7 @@ discovered_by: audit-architecture
 focus_area: large-files
 status: done
 completed_at: 2026-02-14T00:00:00Z
+priority: P3
 ---
 
 # ENH-346: Split cli/loop.py into subcommand modules

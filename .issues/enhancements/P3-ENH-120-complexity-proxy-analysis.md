@@ -4,6 +4,7 @@ discovered_by: planning
 anchor: scripts/little_loops/issue_history.py::analyze_complexity_proxy
 status: done
 completed_at: 2026-01-23T00:00:00Z
+priority: P3
 ---
 
 # ENH-120: Complexity Proxy Analysis

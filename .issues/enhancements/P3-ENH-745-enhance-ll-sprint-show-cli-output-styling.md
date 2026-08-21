@@ -11,6 +11,7 @@ score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 18
 completed_at: '2026-05-17T12:18:58Z'
+priority: P3
 ---
 
 # ENH-745: Enhance `ll-sprint show` CLI Output Styling

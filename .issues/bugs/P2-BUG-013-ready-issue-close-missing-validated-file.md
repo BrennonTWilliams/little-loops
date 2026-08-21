@@ -4,6 +4,7 @@ discovered_date: 2026-01-09
 discovered_external_repo: <external-repo>
 status: done
 completed_at: 2026-02-13T00:00:00Z
+priority: P2
 ---
 
 # BUG-013: ready_issue CLOSE verdict occasionally missing VALIDATED_FILE section

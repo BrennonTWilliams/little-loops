@@ -7,6 +7,7 @@ doc_file: docs/reference/EVENT-SCHEMA.md
 testable: false
 completed_at: 2026-05-31 05:15:36+00:00
 status: done
+priority: P3
 ---
 
 # ENH-2052: Document `cycle_detected` event in EVENT-SCHEMA.md

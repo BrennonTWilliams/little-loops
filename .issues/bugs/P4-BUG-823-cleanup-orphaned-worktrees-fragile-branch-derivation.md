@@ -7,6 +7,7 @@ confidence_score: 100
 outcome_confidence: 100
 status: done
 completed_at: 2026-03-21T00:00:00Z
+priority: P4
 ---
 
 # BUG-823: `_cleanup_orphaned_worktrees` fragile branch name derivation

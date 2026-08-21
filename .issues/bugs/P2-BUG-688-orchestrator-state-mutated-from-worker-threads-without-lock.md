@@ -7,6 +7,7 @@ confidence_score: 100
 outcome_confidence: 93
 status: done
 completed_at: 2026-03-13T00:00:00Z
+priority: P2
 ---
 
 # BUG-688: `self.state` mutated from worker threads without lock in orchestrator

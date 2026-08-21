@@ -10,6 +10,7 @@ score_test_coverage: 18
 score_ambiguity: 18
 score_change_surface: 25
 status: done
+priority: P2
 ---
 
 # BUG-1183: autodev silently skips parent when breakdown flag is set but no children were created

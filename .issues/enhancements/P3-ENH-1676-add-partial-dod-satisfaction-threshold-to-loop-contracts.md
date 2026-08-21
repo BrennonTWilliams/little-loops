@@ -13,6 +13,7 @@ score_complexity: 18
 score_test_coverage: 25
 score_ambiguity: 18
 score_change_surface: 25
+priority: P3
 ---
 
 # ENH-1676: Add partial DoD satisfaction threshold to loop contracts

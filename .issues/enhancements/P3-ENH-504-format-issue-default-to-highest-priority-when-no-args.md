@@ -5,6 +5,7 @@ confidence_score: 80
 outcome_confidence: 75
 status: done
 completed_at: 2026-03-01T00:00:00Z
+priority: P3
 ---
 
 # ENH-504: Format Highest-Priority Issue When No Args Provided

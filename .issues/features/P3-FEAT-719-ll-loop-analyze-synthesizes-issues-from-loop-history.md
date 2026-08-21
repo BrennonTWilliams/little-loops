@@ -5,6 +5,7 @@ confidence_score: 96
 outcome_confidence: 86
 status: done
 completed_at: 2026-03-13T00:00:00Z
+priority: P3
 ---
 
 # FEAT-719: ll-loop analyze synthesizes issues from loop history

@@ -6,6 +6,7 @@ discovered_by: audit-architecture
 focus_area: large-files
 status: done
 completed_at: 2026-02-14T00:00:00Z
+priority: P2
 ---
 
 # ENH-390: Split issue_history.py into issue_history/ package

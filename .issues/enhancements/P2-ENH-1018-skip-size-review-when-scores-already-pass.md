@@ -5,6 +5,7 @@ confidence_score: 100
 outcome_confidence: 93
 status: done
 completed_at: 2026-04-10T00:00:00Z
+priority: P2
 ---
 
 # ENH-1018: Skip size-review when scores already pass thresholds in recursive-refine

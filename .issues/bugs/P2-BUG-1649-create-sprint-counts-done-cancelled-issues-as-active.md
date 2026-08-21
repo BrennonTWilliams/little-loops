@@ -16,6 +16,7 @@ score_complexity: 25
 score_test_coverage: 18
 score_ambiguity: 25
 score_change_surface: 25
+priority: P2
 ---
 
 # BUG-1649: `/ll:create-sprint` counts `done`/`cancelled` issues as active, polluting suggested sprints

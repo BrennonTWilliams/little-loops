@@ -6,6 +6,7 @@ discovered_by: audit_docs
 doc_file: CONTRIBUTING.md
 status: done
 completed_at: 2026-02-13T00:00:00Z
+priority: P3
 ---
 
 # BUG-406: CONTRIBUTING.md project tree shows `cli.py` but actual structure is `cli/` package

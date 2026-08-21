@@ -4,6 +4,7 @@ discovered_branch: main
 discovered_date: 2026-01-12T00:00:00Z
 status: done
 completed_at: 2026-01-12T00:00:00Z
+priority: P2
 ---
 
 # FEAT-030: Issue Dependency Parsing and Graph Construction

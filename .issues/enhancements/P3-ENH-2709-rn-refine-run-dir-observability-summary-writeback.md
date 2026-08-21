@@ -11,6 +11,7 @@ score_complexity: 22
 score_test_coverage: 22
 score_ambiguity: 18
 score_change_surface: 20
+priority: P3
 ---
 
 # ENH-2709: rn-refine run-dir observability (summary.json + writeback.json)

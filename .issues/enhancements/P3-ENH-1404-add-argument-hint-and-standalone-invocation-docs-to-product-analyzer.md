@@ -10,6 +10,7 @@ score_ambiguity: 18
 score_change_surface: 25
 completed_at: 2026-05-11T09:59:22Z
 status: done
+priority: P3
 ---
 
 # ENH-1404: Add argument-hint and standalone invocation docs to product-analyzer

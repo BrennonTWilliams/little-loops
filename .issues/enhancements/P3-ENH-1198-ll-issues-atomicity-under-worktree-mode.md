@@ -5,6 +5,7 @@ depends_on:
 - FEAT-1075
 status: done
 completed_at: 2026-04-24T00:00:00Z
+priority: P3
 ---
 
 # ENH-1198: `ll-issues` Mutation Atomicity Under Parallel Worktree Mode

@@ -6,6 +6,7 @@ size: Medium
 status: deferred
 deferred_date: "2026-04-21"
 deferred_reason: low-value
+priority: P2
 ---
 
 # FEAT-1232: `ll-loop parallel` Subcommand — Core Launcher

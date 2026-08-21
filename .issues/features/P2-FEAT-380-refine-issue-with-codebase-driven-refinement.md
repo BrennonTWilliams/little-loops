@@ -3,6 +3,7 @@ discovered_date: 2026-02-12
 discovered_by: capture_issue
 status: done
 completed_at: 2026-02-13T00:00:00Z
+priority: P2
 ---
 
 # FEAT-380: Create new refine_issue with codebase-driven refinement

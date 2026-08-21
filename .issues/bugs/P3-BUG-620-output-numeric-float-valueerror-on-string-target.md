@@ -7,6 +7,7 @@ confidence_score: 98
 outcome_confidence: 90
 status: done
 completed_at: 2026-03-07T00:00:00Z
+priority: P3
 ---
 
 # BUG-620: `output_numeric` evaluator raises unguarded `ValueError` for string targets

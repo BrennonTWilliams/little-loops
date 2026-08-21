@@ -1,6 +1,7 @@
 ---
 status: done
 completed_at: 2026-03-13T00:00:00Z
+priority: P1
 ---
 # BUG-711: Built-in FSM Loop Configuration Audit Fixes
 

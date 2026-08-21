@@ -5,6 +5,7 @@ confidence_score: 100
 outcome_confidence: 93
 status: done
 completed_at: 2026-03-20T00:00:00Z
+priority: P3
 ---
 
 # BUG-836: `ll-issues list` warns on YAML block sequence frontmatter

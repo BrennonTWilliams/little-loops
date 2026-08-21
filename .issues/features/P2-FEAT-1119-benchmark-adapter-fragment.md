@@ -12,6 +12,7 @@ score_change_surface: 18
 size: Very Large
 status: done
 completed_at: 2026-04-21T00:00:00Z
+priority: P2
 ---
 
 # FEAT-1119: Benchmark Adapter Fragment (`lib/benchmark.yaml`)

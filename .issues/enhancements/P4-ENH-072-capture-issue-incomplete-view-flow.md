@@ -9,6 +9,7 @@ score_complexity: 25
 score_test_coverage: 14
 score_ambiguity: 25
 score_change_surface: 23
+priority: P4
 ---
 
 # ENH-072: capture_issue has incomplete "View Existing/Completed" flow specification

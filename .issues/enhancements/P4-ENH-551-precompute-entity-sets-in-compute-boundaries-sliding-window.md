@@ -7,6 +7,7 @@ confidence_score: 90
 outcome_confidence: 100
 status: done
 completed_at: 2026-03-23T00:00:00Z
+priority: P4
 ---
 
 # ENH-551: Pre-compute entity sets in `_compute_boundaries` to avoid re-extracting per sliding-window pair

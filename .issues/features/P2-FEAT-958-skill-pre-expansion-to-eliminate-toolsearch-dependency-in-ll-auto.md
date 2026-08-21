@@ -5,6 +5,7 @@ confidence_score: 100
 outcome_confidence: 86
 status: done
 completed_at: 2026-04-05T00:00:00Z
+priority: P2
 ---
 
 # FEAT-958: Skill pre-expansion to eliminate ToolSearch dependency in ll-auto

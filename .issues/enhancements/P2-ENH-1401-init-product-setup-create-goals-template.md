@@ -9,6 +9,7 @@ score_ambiguity: 25
 score_change_surface: 25
 status: done
 completed_at: 2026-05-11T09:06:29Z
+priority: P2
 ---
 
 # ENH-1401: Wire product setup into `init` — create goals template and config

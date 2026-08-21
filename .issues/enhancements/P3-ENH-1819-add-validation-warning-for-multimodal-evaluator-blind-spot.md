@@ -15,6 +15,7 @@ score_complexity: 21
 score_test_coverage: 22
 score_ambiguity: 25
 score_change_surface: 25
+priority: P3
 ---
 
 # P3-ENH-1819: Add validation warning for multimodal evaluator blind spot in harness loops

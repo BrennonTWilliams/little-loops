@@ -7,6 +7,7 @@ confidence_score: 100
 outcome_confidence: 93
 status: done
 completed_at: 2026-03-13T00:00:00Z
+priority: P2
 ---
 
 # BUG-689: `_current_issue_id` read without lock in `MergeCoordinator.wait_for_completion`

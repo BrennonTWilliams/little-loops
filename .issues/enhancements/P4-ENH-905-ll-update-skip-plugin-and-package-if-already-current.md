@@ -5,6 +5,7 @@ confidence_score: 100
 outcome_confidence: 78
 status: done
 completed_at: 2026-04-01T00:00:00Z
+priority: P4
 ---
 
 # ENH-905: `/ll:update` skip plugin and package if already current

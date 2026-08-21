@@ -6,6 +6,7 @@ discovered_by: audit_architecture
 focus_area: large-files
 status: done
 completed_at: 2026-02-13T00:00:00Z
+priority: P2
 ---
 
 # ENH-344: Split cli.py into cli/ package

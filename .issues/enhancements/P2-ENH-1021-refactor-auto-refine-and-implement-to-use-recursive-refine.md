@@ -5,6 +5,7 @@ confidence_score: 98
 outcome_confidence: 93
 status: done
 completed_at: 2026-04-10T00:00:00Z
+priority: P2
 ---
 
 # ENH-1021: Refactor auto-refine-and-implement to use recursive-refine

@@ -7,6 +7,7 @@ confidence_score: 96
 outcome_confidence: 79
 status: done
 completed_at: 2026-03-07T00:00:00Z
+priority: P3
 ---
 
 # FEAT-633: No `--context KEY=VALUE` CLI override for runtime FSM context variables in `run`/`resume`

@@ -12,6 +12,7 @@ score_complexity: 14
 score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 18
+priority: P3
 ---
 
 # ENH-1641: Add `main` and `full` Modes to `--show-diagrams` Output

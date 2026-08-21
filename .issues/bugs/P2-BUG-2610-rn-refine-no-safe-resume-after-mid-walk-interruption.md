@@ -14,6 +14,7 @@ score_complexity: 20
 score_test_coverage: 20
 score_ambiguity: 16
 score_change_surface: 22
+priority: P2
 ---
 
 # BUG-2610: rn-refine has no safe resume path after a mid-walk interruption

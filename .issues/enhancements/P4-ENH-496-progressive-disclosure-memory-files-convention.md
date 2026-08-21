@@ -6,6 +6,7 @@ confidence_score: 75
 outcome_confidence: 97
 status: done
 completed_at: 2026-02-26T00:00:00Z
+priority: P4
 ---
 
 # ENH-496: Progressive Disclosure Convention for Memory Files

@@ -5,6 +5,7 @@ confidence_score: 100
 outcome_confidence: 85
 status: done
 completed_at: 2026-04-05T00:00:00Z
+priority: P3
 ---
 
 # FEAT-949: Add `improve-claude-md` skill using `<important if>` block restructuring

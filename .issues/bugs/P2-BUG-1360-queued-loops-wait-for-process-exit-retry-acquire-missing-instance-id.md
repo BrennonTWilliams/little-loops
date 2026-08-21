@@ -4,6 +4,7 @@ discovered_date: 2026-05-04
 discovered_by: capture-issue
 status: done
 completed_at: 2026-05-04T00:00:00Z
+priority: P2
 ---
 
 # BUG-1360: Queued loops wait for process exit instead of lock release — retry acquire missing instance_id

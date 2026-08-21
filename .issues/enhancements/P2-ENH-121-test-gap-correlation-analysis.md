@@ -3,6 +3,7 @@ discovered_date: 2026-01-23
 discovered_by: planning
 status: done
 completed_at: 2026-01-23T00:00:00Z
+priority: P2
 ---
 
 # ENH-121: Test Gap Correlation Analysis

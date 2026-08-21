@@ -14,6 +14,7 @@ score_change_surface: 18
 size: Very Large
 status: done
 completed_at: 2026-04-22T00:00:00Z
+priority: P3
 ---
 
 # ENH-1197: Harden Worktree Cleanup Against SIGKILL Mid-Teardown

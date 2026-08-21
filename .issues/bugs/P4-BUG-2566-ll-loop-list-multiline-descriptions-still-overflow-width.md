@@ -12,6 +12,7 @@ labels:
 - ll-loop
 - display
 - truncation
+priority: P4
 ---
 
 # BUG-2566: `ll-loop list` multi-line descriptions still overflow terminal width

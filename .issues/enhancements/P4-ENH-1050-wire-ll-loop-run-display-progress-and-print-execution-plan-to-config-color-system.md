@@ -5,6 +5,7 @@ confidence_score: 100
 outcome_confidence: 100
 status: done
 completed_at: 2026-04-12T00:00:00Z
+priority: P4
 ---
 
 # ENH-1050: Wire ll-loop run display_progress and print_execution_plan to config-driven color system

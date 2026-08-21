@@ -13,6 +13,7 @@ score_ambiguity: 18
 score_change_surface: 25
 completed_at: 2026-05-17T12:43:03Z
 status: done
+priority: P4
 ---
 
 # ENH-1038: ll-verify-docs should track FSM loop counts

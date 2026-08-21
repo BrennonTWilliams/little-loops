@@ -7,6 +7,7 @@ confidence_score: 88
 outcome_confidence: 70
 status: done
 completed_at: 2026-03-17T00:00:00Z
+priority: P3
 ---
 
 # ENH-693: `parse_frontmatter` silently drops YAML lists and colon-containing values

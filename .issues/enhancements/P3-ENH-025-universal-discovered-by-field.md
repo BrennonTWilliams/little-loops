@@ -4,6 +4,7 @@ discovered_branch: main
 discovered_date: 2026-01-09T00:00:00Z
 status: done
 completed_at: 2026-02-13T00:00:00Z
+priority: P3
 ---
 
 # ENH-025: Universal discovered_by Field for Issue Tracking

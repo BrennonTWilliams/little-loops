@@ -19,6 +19,7 @@ score_complexity: 20
 score_test_coverage: 20
 score_ambiguity: 22
 score_change_surface: 20
+priority: P3
 ---
 
 # ENH-2653: `ready-issue` must name the branch it checked and not reject on suspected base-branch mismatch

@@ -7,6 +7,7 @@ confidence_score: 100
 outcome_confidence: 86
 status: done
 completed_at: 2026-04-06T00:00:00Z
+priority: P3
 ---
 
 # ENH-970: N+1 `git log` subprocess calls in `scan_completed_issues`

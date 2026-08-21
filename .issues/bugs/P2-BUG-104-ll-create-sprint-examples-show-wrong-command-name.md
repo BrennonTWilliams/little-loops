@@ -3,6 +3,7 @@ discovered_date: 2026-01-22
 discovered_by: capture_issue
 status: done
 completed_at: 2026-02-13T00:00:00Z
+priority: P2
 ---
 
 # BUG-104: ll_create_sprint examples show wrong command name

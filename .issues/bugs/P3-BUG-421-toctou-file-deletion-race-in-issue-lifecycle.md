@@ -5,6 +5,7 @@ discovered_date: 2026-02-15T02:29:53Z
 discovered_by: scan-codebase
 status: done
 completed_at: 2026-02-14T00:00:00Z
+priority: P3
 ---
 
 # BUG-421: TOCTOU file deletion race in _move_issue_to_completed()

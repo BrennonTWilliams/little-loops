@@ -7,6 +7,7 @@ discovered_by: audit-docs
 doc_file: README.md
 testable: false
 status: done
+priority: P4
 ---
 
 # ENH-1292: Document ll-generate-schemas in README

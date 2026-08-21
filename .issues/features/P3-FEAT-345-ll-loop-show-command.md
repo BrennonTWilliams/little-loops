@@ -3,6 +3,7 @@ discovered_date: 2026-02-11
 discovered_by: capture_issue
 status: done
 completed_at: 2026-02-13T00:00:00Z
+priority: P3
 ---
 
 # FEAT-345: Add `ll-loop show` command for loop inspection

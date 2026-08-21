@@ -5,6 +5,7 @@ confidence_score: 100
 outcome_confidence: 93
 status: done
 completed_at: 2026-03-26T00:00:00Z
+priority: P3
 ---
 
 # FEAT-890: Add /ll:cleanup-loops Skill for Stuck/Failed Loop Management

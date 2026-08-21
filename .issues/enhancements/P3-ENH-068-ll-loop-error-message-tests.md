@@ -1,6 +1,7 @@
 ---
 status: done
 completed_at: 2026-01-15T00:00:00Z
+priority: P3
 ---
 # ENH-068: Add Error Message Content Validation Tests for ll-loop
 

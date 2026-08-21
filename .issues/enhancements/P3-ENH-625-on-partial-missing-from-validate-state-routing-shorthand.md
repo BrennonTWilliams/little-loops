@@ -7,6 +7,7 @@ confidence_score: 100
 outcome_confidence: 93
 status: done
 completed_at: 2026-03-07T00:00:00Z
+priority: P3
 ---
 
 # ENH-625: `on_partial` missing from `_validate_state_routing` shorthand check — valid routing rejected

@@ -7,6 +7,7 @@ confidence_score: 100
 outcome_confidence: 86
 status: done
 completed_at: 2026-03-07T00:00:00Z
+priority: P4
 ---
 
 # ENH-627: `is_prompt`/`is_slash_command` re-derived independently in `_run_action` and `_evaluate` with subtle divergence

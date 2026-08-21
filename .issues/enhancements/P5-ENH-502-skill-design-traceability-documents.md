@@ -6,6 +6,7 @@ confidence_score: 78
 outcome_confidence: 90
 status: done
 completed_at: 2026-03-03T00:00:00Z
+priority: P5
 ---
 
 # ENH-502: Skill Design Traceability Documents (WHY.md per Skill)

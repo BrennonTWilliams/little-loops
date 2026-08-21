@@ -3,6 +3,7 @@ discovered_date: 2026-03-14
 discovered_by: capture-issue
 status: done
 completed_at: 2026-03-15T00:00:00Z
+priority: P3
 ---
 
 # FEAT-751: Add update-docs skill for change-driven doc maintenance

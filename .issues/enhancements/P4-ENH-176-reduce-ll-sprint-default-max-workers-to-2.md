@@ -3,6 +3,7 @@ discovered_date: 2026-01-28
 discovered_by: capture_issue
 status: done
 completed_at: 2026-01-29T00:00:00Z
+priority: P4
 ---
 
 # ENH-176: Reduce ll-sprint default max workers to 2

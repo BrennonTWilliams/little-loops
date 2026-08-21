@@ -8,6 +8,7 @@ confidence_score: 92
 outcome_confidence: 88
 status: done
 completed_at: 2026-03-22T00:00:00Z
+priority: P5
 ---
 
 # ENH-507: Add `__all__` exports to 20 public root-level modules

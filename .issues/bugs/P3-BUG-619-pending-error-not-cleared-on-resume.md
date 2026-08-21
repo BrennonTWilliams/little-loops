@@ -7,6 +7,7 @@ confidence_score: 100
 outcome_confidence: 100
 status: done
 completed_at: 2026-03-07T00:00:00Z
+priority: P3
 ---
 
 # BUG-619: `_pending_error` not cleared on resume, asymmetric with `_pending_handoff`

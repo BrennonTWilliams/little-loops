@@ -11,6 +11,7 @@ score_test_coverage: 22
 score_ambiguity: 25
 score_change_surface: 10
 status: done
+priority: P2
 ---
 
 # BUG-1297: `ll-issues clusters` drops skip-level edges and ignores one-sided `blocks:` declarations

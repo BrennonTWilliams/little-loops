@@ -12,6 +12,7 @@ score_ambiguity: 18
 score_change_surface: 25
 missing_artifacts: true
 status: done
+priority: P2
 ---
 
 # BUG-1364: check-duplicate-issue-id Hook TOCTOU Race Allows Parallel Writes of Same ID

@@ -5,6 +5,7 @@ confidence_score: 98
 outcome_confidence: 86
 status: done
 completed_at: 2026-03-31T00:00:00Z
+priority: P2
 ---
 
 # BUG-903: `llm_structured` evaluator 1800s timeout causes 30-min hang when API is unavailable

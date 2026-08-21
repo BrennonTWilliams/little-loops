@@ -12,6 +12,7 @@ score_ambiguity: 25
 score_change_surface: 25
 status: done
 completed_at: 2026-04-17T00:00:00Z
+priority: P3
 ---
 
 # ENH-1126: Tests and Documentation for Configurable next-issue Selection

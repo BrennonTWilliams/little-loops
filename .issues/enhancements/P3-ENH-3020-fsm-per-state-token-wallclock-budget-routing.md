@@ -8,6 +8,7 @@ discovered_date: 2026-08-02
 discovered_by: capture-issue
 parent: EPIC-3022
 verify_verdict: VALID
+priority: P3
 ---
 
 # No per-state/iteration token or wall-clock budget routing primitive in FSM loops

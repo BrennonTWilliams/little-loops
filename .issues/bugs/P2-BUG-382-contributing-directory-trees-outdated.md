@@ -6,6 +6,7 @@ discovered_by: audit_docs
 doc_file: CONTRIBUTING.md
 status: done
 completed_at: 2026-02-14T00:00:00Z
+priority: P2
 ---
 
 # BUG-382: CONTRIBUTING.md directory trees outdated (skills, loops, docs)

@@ -7,6 +7,7 @@ confidence_score: 96
 outcome_confidence: 86
 status: done
 completed_at: 2026-03-09T00:00:00Z
+priority: P3
 ---
 
 # ENH-537: Extract Shared `_process_alive` to Eliminate Duplication Between `concurrency.py` and `lifecycle.py`

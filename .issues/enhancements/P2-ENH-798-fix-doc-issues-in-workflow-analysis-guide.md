@@ -4,6 +4,7 @@ discovered_by: capture-issue
 testable: false
 status: done
 completed_at: 2026-03-18T00:00:00Z
+priority: P2
 ---
 
 # ENH-798: Fix documentation issues in WORKFLOW_ANALYSIS_GUIDE.md

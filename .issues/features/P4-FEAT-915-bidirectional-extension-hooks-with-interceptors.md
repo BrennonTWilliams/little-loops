@@ -5,6 +5,7 @@ confidence_score: 100
 outcome_confidence: 78
 status: done
 completed_at: 2026-04-07T00:00:00Z
+priority: P4
 ---
 
 # FEAT-915: Bidirectional Extension Hooks with Interceptors and Contributed Actions

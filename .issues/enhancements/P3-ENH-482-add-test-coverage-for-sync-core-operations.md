@@ -5,6 +5,7 @@ discovered_date: 2026-02-24T20:18:21Z
 discovered_by: scan-codebase
 status: done
 completed_at: 2026-02-24T00:00:00Z
+priority: P3
 ---
 
 # ENH-482: Add test coverage for sync.py core sync operations

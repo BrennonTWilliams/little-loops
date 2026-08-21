@@ -4,6 +4,7 @@ discovered_by: parallel-family-review
 depends_on:
 - FEAT-1174
 status: deferred
+priority: P3
 ---
 
 # ENH-1192: Handle Mid-Checkpoint-Write Failures in Per-Worker Checkpointing

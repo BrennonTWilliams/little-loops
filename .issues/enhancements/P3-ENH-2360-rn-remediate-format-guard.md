@@ -3,6 +3,7 @@ status: done
 completed_at: 2026-06-27T23:23:45Z
 relates_to:
 - ENH-2359
+priority: P3
 ---
 # P3-ENH-2360: rn-remediate format guard — ensure required sections before assess
 

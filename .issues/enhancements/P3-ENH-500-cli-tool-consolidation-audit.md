@@ -6,6 +6,7 @@ confidence_score: 95
 outcome_confidence: 58
 status: done
 completed_at: 2026-03-01T00:00:00Z
+priority: P3
 ---
 
 # ENH-500: CLI Tool Consolidation Audit

@@ -5,6 +5,7 @@ confidence_score: 95
 outcome_confidence: 93
 status: done
 completed_at: 2026-04-11T00:00:00Z
+priority: P3
 ---
 
 # BUG-1032: `refine-to-ready-issue`: no direct path from score-failure to breakdown

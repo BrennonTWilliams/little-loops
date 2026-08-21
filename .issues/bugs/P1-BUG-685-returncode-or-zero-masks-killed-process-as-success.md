@@ -7,6 +7,7 @@ confidence_score: 100
 outcome_confidence: 100
 status: done
 completed_at: 2026-03-13T00:00:00Z
+priority: P1
 ---
 
 # BUG-685: `process.returncode or 0` masks killed process as success

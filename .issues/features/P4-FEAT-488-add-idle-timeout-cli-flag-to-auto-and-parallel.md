@@ -7,6 +7,7 @@ confidence_score: 90
 outcome_confidence: 85
 status: done
 completed_at: 2026-03-06T00:00:00Z
+priority: P4
 ---
 
 # FEAT-488: Add `--idle-timeout` CLI flag to ll-auto and ll-parallel

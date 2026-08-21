@@ -4,6 +4,7 @@ discovered_date: 2026-01-14
 discovered_external_repo: <external-repo>
 status: done
 completed_at: 2026-02-12T00:00:00Z
+priority: P2
 ---
 
 # BUG-051: Issue lifecycle: git mv fails when source not under version control

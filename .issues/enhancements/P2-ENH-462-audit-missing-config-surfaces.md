@@ -3,6 +3,7 @@ discovered_date: 2026-02-22
 discovered_by: conversation-analysis
 status: done
 completed_at: 2026-02-22T00:00:00Z
+priority: P2
 ---
 
 # ENH-462: Audit missing configuration surfaces (output styles, LSP, keybindings, .claudeignore)

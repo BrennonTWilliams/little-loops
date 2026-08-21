@@ -5,6 +5,7 @@ confidence_score: 100
 outcome_confidence: 93
 status: done
 completed_at: 2026-04-03T00:00:00Z
+priority: P2
 ---
 
 # BUG-946: ll-loop slash command steps fail due to ToolSearch timeout with --no-session-persistence

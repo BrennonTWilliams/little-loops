@@ -14,6 +14,7 @@ score_test_coverage: 23
 score_ambiguity: 25
 score_change_surface: 22
 status: done
+priority: P1
 ---
 
 # BUG-2778: `_send_jsonrpc` deadline does not bound blocking `readline()`; unresponsive MCP server hangs `call_mcp_tool` indefinitely

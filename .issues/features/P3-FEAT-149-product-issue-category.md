@@ -6,6 +6,7 @@ deferred_date: 2026-01-06
 deferred_reason: Simplifying initial product dimension scope
 status: done
 completed_at: 2026-02-13T00:00:00Z
+priority: P3
 ---
 
 # FEAT-005: Product Issue Category (DEFERRED)

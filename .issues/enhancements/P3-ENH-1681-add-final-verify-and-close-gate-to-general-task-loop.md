@@ -16,6 +16,7 @@ score_complexity: 18
 score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 18
+priority: P3
 ---
 
 # ENH-1681: Add final verify-and-close gate to general-task loop

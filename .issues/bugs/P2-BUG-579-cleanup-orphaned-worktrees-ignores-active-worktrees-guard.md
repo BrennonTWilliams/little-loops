@@ -5,6 +5,7 @@ confidence_score: 94
 outcome_confidence: 79
 status: done
 completed_at: 2026-03-04T00:00:00Z
+priority: P2
 ---
 
 # BUG-579: `_cleanup_orphaned_worktrees()` Ignores Worker Pool's `_active_worktrees` Guard

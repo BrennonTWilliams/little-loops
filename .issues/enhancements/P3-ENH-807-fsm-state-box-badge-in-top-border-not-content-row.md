@@ -5,6 +5,7 @@ confidence_score: 100
 outcome_confidence: 100
 status: done
 completed_at: 2026-03-18T00:00:00Z
+priority: P3
 ---
 
 # ENH-807: FSM state box badge should appear in top border, not first content row

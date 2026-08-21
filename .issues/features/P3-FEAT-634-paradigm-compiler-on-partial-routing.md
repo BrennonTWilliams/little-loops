@@ -7,6 +7,7 @@ confidence_score: 100
 outcome_confidence: 86
 status: done
 completed_at: 2026-03-07T00:00:00Z
+priority: P3
 ---
 
 # FEAT-634: No paradigm compiler generates `on_partial` routing despite executor and evaluator supporting it

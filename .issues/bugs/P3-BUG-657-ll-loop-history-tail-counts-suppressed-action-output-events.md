@@ -5,6 +5,7 @@ confidence_score: 100
 outcome_confidence: 93
 status: done
 completed_at: 2026-03-08T00:00:00Z
+priority: P3
 ---
 
 # BUG-657: `ll-loop history` `--tail` Counts Suppressed `action_output` Events, Hiding Earlier Iterations

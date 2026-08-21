@@ -5,6 +5,7 @@ confidence_score: 95
 outcome_confidence: 95
 status: done
 completed_at: 2026-04-11T00:00:00Z
+priority: P4
 ---
 
 # ENH-1036: Remove Mock-Assertion Tests in test_orchestrator.py

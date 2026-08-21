@@ -3,6 +3,7 @@ status: done
 completed_at: 2026-02-01T00:00:00Z
 relates_to:
 - FEAT-210
+priority: P1
 ---
 # P1-ENH-209: Improve orchestrator.py test coverage from 74% to 80%+
 

@@ -7,6 +7,7 @@ score_complexity: 25
 score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 25
+priority: P4
 ---
 # _state_to_dict Helper Function Has Repetitive Conditional Logic
 

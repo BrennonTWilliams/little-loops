@@ -1,6 +1,7 @@
 ---
 status: done
 completed_at: 2026-02-13T00:00:00Z
+priority: P1
 ---
 # FEAT-047: ll-loop CLI Tool
 

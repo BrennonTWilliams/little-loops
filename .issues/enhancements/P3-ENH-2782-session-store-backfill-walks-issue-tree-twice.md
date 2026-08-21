@@ -12,6 +12,7 @@ score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 23
 status: done
+priority: P3
 ---
 
 # ENH-2782: `session_store.backfill()` reads and parses every issue file's frontmatter twice

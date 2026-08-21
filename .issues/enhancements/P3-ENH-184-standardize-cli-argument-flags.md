@@ -4,6 +4,7 @@ discovered_by: capture_issue
 source: docs/CLI-TOOLS-AUDIT.md
 status: done
 completed_at: 2026-01-29T00:00:00Z
+priority: P3
 ---
 
 # ENH-184: Standardize CLI argument flags across tools

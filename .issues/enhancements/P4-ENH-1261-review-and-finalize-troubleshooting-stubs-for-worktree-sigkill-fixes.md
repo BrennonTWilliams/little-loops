@@ -7,6 +7,7 @@ doc_file: docs/development/TROUBLESHOOTING.md
 testable: false
 completed_at: 2026-04-26T19:41:00Z
 status: done
+priority: P4
 ---
 
 # ENH-1261: Review and finalize TROUBLESHOOTING stubs for worktree SIGKILL fixes

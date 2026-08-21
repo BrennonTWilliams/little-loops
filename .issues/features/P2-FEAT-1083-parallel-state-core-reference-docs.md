@@ -8,6 +8,7 @@ outcome_confidence: 71
 parent: FEAT-1082
 status: done
 completed_at: 2026-05-10T00:00:00Z
+priority: P2
 ---
 
 # FEAT-1083: Parallel State Core Reference Documentation

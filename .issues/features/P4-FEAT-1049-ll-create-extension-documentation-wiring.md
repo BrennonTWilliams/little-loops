@@ -6,6 +6,7 @@ outcome_confidence: 68
 testable: false
 status: done
 completed_at: 2026-04-11T00:00:00Z
+priority: P4
 ---
 
 # FEAT-1049: ll-create-extension Documentation Wiring

@@ -5,6 +5,7 @@ confidence_score: 95
 outcome_confidence: 86
 status: done
 completed_at: 2026-04-02T00:00:00Z
+priority: P4
 ---
 
 # ENH-921: Wire EventBus Emission into Parallel Orchestrator

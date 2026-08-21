@@ -4,6 +4,7 @@ discovered_by: issue-size-review
 confidence_score: 90
 outcome_confidence: 80
 status: deferred
+priority: P3
 ---
 
 # ENH-1055: Extract rubrics for confidence-check and issue-size-review skills

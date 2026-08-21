@@ -14,6 +14,7 @@ score_test_coverage: 22
 score_ambiguity: 15
 score_change_surface: 20
 status: done
+priority: P3
 ---
 
 # ENH-2783: Parallel/sprint issue-close events are not live-written to the history event bus

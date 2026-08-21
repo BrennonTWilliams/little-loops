@@ -7,6 +7,7 @@ confidence_score: 100
 outcome_confidence: 100
 status: done
 completed_at: 2026-03-04T00:00:00Z
+priority: P3
 ---
 
 # BUG-530: `--no-llm` Flag Sets `llm.enabled=False` But Executor Never Reads the Field

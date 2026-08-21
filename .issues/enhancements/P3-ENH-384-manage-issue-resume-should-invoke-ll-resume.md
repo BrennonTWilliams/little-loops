@@ -3,6 +3,7 @@ discovered_date: 2026-02-12
 discovered_by: capture_issue
 status: done
 completed_at: 2026-02-13T00:00:00Z
+priority: P3
 ---
 
 # ENH-384: manage_issue --resume should programmatically invoke /ll:resume

@@ -6,6 +6,7 @@ discovered_by: audit_docs
 doc_file: README.md
 status: done
 completed_at: 2026-02-13T00:00:00Z
+priority: P2
 ---
 
 # BUG-317: README command tables missing 4 of 34 commands

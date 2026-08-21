@@ -6,6 +6,7 @@ confidence_score: 100
 outcome_confidence: 93
 status: done
 completed_at: 2026-04-05T00:00:00Z
+priority: P2
 ---
 
 # BUG-954: Nested `${}` in `check_lifetime_limit` causes `InterpolationError` crashing `refine-to-ready-issue` loop

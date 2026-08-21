@@ -3,6 +3,7 @@ discovered_date: 2026-03-07
 discovered_by: capture-issue
 status: done
 completed_at: 2026-03-07T00:00:00Z
+priority: P4
 ---
 
 # BUG-647: ll-issues refine-status ID column truncates 4-digit FEAT IDs

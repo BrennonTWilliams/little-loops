@@ -6,6 +6,7 @@ outcome_confidence: 100
 completed_date: 2026-03-13
 status: done
 completed_at: 2026-03-13T00:00:00Z
+priority: P3
 ---
 
 # BUG-721: issue-refinement loop asks LLM to parse issue ID instead of using shell

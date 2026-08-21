@@ -5,6 +5,7 @@ confidence_score: 90
 outcome_confidence: 86
 status: done
 completed_at: 2026-04-02T00:00:00Z
+priority: P4
 ---
 
 # ENH-926: Add Topic-Based Event Filtering for Extensions

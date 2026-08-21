@@ -11,6 +11,7 @@ score_ambiguity: 25
 score_change_surface: 18
 status: done
 completed_at: 2026-05-04T00:00:00Z
+priority: P4
 ---
 
 # ENH-552: `--verbose` flag only gates path echo — add per-stage progress output during analysis

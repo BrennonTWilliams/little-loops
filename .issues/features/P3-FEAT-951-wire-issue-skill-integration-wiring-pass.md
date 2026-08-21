@@ -5,6 +5,7 @@ confidence_score: 100
 outcome_confidence: 100
 status: done
 completed_at: 2026-04-04T00:00:00Z
+priority: P3
 ---
 
 # FEAT-951: `wire-issue` skill — post-refinement integration wiring pass

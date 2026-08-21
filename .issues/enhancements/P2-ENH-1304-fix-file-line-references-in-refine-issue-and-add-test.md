@@ -13,6 +13,7 @@ score_change_surface: 25
 completed_at: 2026-04-27T18:43:56Z
 parent: ENH-1299
 status: done
+priority: P2
 ---
 
 # ENH-1304: Fix `file:line` references in `commands/refine-issue.md` and add verification test

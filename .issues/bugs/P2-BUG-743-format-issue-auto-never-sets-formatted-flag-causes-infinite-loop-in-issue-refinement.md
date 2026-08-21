@@ -8,6 +8,7 @@ confidence_score: 93
 outcome_confidence: 79
 status: done
 completed_at: 2026-03-14T00:00:00Z
+priority: P2
 ---
 
 # BUG-743: format-issue --auto never sets `formatted` flag, causing infinite loop in issue-refinement

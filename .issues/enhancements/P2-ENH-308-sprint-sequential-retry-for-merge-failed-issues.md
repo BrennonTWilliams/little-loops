@@ -3,6 +3,7 @@ discovered_date: 2026-02-09
 discovered_by: capture-issue
 status: done
 completed_at: 2026-02-13T00:00:00Z
+priority: P2
 ---
 
 # ENH-308: Add immediate sequential retry for merge-failed issues in sprint

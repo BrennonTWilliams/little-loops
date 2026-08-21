@@ -11,6 +11,7 @@ score_ambiguity: 25
 score_change_surface: 25
 completed_at: 2026-05-11T09:41:29Z
 status: done
+priority: P3
 ---
 
 # ENH-1403: Remove double-deduplication between product-analyzer and scan-product

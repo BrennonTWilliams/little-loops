@@ -6,6 +6,7 @@ confidence_score: 98
 outcome_confidence: 78
 status: done
 completed_at: 2026-03-14T00:00:00Z
+priority: P3
 ---
 
 # ENH-495: Structured Handoff with Anchored Iterative Summarization

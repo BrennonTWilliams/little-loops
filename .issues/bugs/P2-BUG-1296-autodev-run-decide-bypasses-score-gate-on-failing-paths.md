@@ -7,6 +7,7 @@ confidence_score: 100
 outcome_confidence: 100
 status: done
 completed_at: 2026-04-26T00:00:00Z
+priority: P2
 ---
 
 # BUG-1296: autodev `run_decide` bypasses score gate when reached from score-failing paths

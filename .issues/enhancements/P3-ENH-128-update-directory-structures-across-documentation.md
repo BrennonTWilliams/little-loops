@@ -5,6 +5,7 @@ discovered_date: 2026-01-23T00:00:00Z
 discovered_by: audit_docs
 status: done
 completed_at: 2026-02-13T00:00:00Z
+priority: P3
 ---
 
 # ENH-128: Update directory structures across documentation

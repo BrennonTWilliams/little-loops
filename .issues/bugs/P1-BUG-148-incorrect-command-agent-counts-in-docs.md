@@ -8,6 +8,7 @@ status: done
 completed_at: 2026-01-28T00:00:00Z
 relates_to:
 - BUG-162
+priority: P1
 ---
 
 # BUG-004: Incorrect command and agent counts in documentation

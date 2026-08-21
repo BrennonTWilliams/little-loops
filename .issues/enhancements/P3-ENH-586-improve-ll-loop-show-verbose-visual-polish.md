@@ -5,6 +5,7 @@ confidence_score: 100
 outcome_confidence: 79
 status: done
 completed_at: 2026-03-05T00:00:00Z
+priority: P3
 ---
 
 # ENH-586: Improve visual polish of `ll-loop show --verbose` output

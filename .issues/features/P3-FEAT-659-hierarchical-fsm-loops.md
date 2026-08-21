@@ -5,6 +5,7 @@ confidence_score: 100
 outcome_confidence: 70
 status: done
 completed_at: 2026-03-17T00:00:00Z
+priority: P3
 ---
 
 # FEAT-659: Hierarchical FSM Loops (Sub-Loop States)

@@ -6,6 +6,7 @@ discovered_by: audit_docs
 doc_file: README.md
 status: done
 completed_at: 2026-01-28T00:00:00Z
+priority: P2
 ---
 
 # BUG-053: plugin.json path incorrect in README structure diagram

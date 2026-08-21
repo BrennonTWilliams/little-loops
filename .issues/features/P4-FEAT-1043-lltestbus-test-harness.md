@@ -5,6 +5,7 @@ confidence_score: 100
 outcome_confidence: 93
 status: done
 completed_at: 2026-04-11T00:00:00Z
+priority: P4
 ---
 
 # FEAT-1043: LLTestBus Test Harness

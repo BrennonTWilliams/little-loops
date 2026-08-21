@@ -3,6 +3,7 @@ discovered_date: 2026-02-07
 discovered_by: capture_issue
 status: done
 completed_at: 2026-02-13T00:00:00Z
+priority: P3
 ---
 
 # FEAT-270: Ship built-in loops with the plugin

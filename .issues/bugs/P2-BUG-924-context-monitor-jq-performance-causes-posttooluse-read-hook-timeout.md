@@ -5,6 +5,7 @@ confidence_score: 98
 outcome_confidence: 86
 status: done
 completed_at: 2026-04-02T00:00:00Z
+priority: P2
 ---
 
 # BUG-924: context-monitor.sh jq performance causes PostToolUse:Read hook timeout

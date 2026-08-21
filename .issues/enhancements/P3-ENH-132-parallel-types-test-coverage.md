@@ -1,6 +1,7 @@
 ---
 status: done
 completed_at: 2026-01-23T00:00:00Z
+priority: P3
 ---
 # P3-ENH-132: Add tests for parallel types module
 

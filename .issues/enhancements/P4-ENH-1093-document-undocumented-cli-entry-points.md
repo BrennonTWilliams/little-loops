@@ -13,6 +13,7 @@ score_change_surface: 25
 testable: false
 status: done
 completed_at: 2026-04-13T00:00:00Z
+priority: P4
 ---
 
 # ENH-1093: Document undocumented CLI entry points (ll-generate-schemas, mcp-call)

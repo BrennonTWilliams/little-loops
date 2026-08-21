@@ -7,6 +7,7 @@ confidence_score: 100
 outcome_confidence: 86
 status: done
 completed_at: 2026-03-20T00:00:00Z
+priority: P3
 ---
 
 # BUG-819: Missed handoff (no prompt file) silently continues as success

@@ -4,6 +4,7 @@ discovered_by: issue-size-review
 confidence_score: 85
 outcome_confidence: 82
 status: deferred
+priority: P3
 ---
 
 # ENH-1057: Documentation updates for rubric externalization system

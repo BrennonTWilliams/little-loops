@@ -5,6 +5,7 @@ discovered_date: 2026-03-07T05:53:04Z
 discovered_by: scan-codebase
 status: done
 completed_at: 2026-03-07T00:00:00Z
+priority: P4
 ---
 
 # BUG-621: `run_background` does not forward `--verbose` flag to background process

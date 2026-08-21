@@ -14,6 +14,7 @@ score_change_surface: 18
 parent: ENH-1298
 status: done
 completed_at: 2026-05-10T00:00:00Z
+priority: P2
 ---
 
 # ENH-1299: Fix `file:line` references in issue-authoring pipeline source files

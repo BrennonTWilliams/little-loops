@@ -13,6 +13,7 @@ score_complexity: 14
 score_test_coverage: 25
 score_ambiguity: 18
 score_change_surface: 18
+priority: P4
 ---
 
 # ENH-1652: Add `mini` Mode to `--show-diagrams`

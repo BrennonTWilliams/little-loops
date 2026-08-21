@@ -11,6 +11,7 @@ score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 25
 milestone: refined-ready
+priority: P4
 ---
 
 # ENH-1646: Add remaining-count progress log to prompt-across-issues advance state

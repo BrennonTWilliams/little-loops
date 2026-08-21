@@ -19,6 +19,7 @@ score_complexity: 18
 score_test_coverage: 14
 score_ambiguity: 17
 score_change_surface: 16
+priority: P3
 ---
 
 # ENH-2060: Adopt hierarchical, co-located CLAUDE.md context (DOX-inspired)

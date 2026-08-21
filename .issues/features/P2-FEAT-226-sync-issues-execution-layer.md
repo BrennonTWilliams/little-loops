@@ -5,6 +5,7 @@ related_issues:
 - FEAT-222
 status: done
 completed_at: 2026-02-13T00:00:00Z
+priority: P2
 ---
 
 # FEAT-226: Implement Sync Issues Execution Layer

@@ -7,6 +7,7 @@ confidence_score: 100
 outcome_confidence: 85
 status: done
 completed_at: 2026-03-05T00:00:00Z
+priority: P3
 ---
 
 # BUG-547: Malformed JSON line in input JSONL crashes `_load_messages` — no partial results

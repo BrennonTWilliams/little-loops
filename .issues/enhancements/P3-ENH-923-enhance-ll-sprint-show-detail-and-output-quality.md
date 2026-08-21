@@ -5,6 +5,7 @@ confidence_score: 100
 outcome_confidence: 83
 status: done
 completed_at: 2026-04-02T00:00:00Z
+priority: P3
 ---
 
 # ENH-923: Enhance `ll-sprint show` Detail and Output Quality

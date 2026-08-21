@@ -5,6 +5,7 @@ status: done
 completed_at: 2026-02-13T00:00:00Z
 relates_to:
 - ENH-190
+priority: P1
 ---
 
 # ENH-191: Distinguish transient vs real failures in automation tools

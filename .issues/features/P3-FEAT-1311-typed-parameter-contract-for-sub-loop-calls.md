@@ -10,6 +10,7 @@ score_test_coverage: 25
 score_ambiguity: 18
 score_change_surface: 18
 status: done
+priority: P3
 ---
 
 # FEAT-1311: Typed Parameter Contract for Sub-Loop Calls

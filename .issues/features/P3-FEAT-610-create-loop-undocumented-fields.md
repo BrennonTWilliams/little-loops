@@ -7,6 +7,7 @@ confidence_score: 100
 outcome_confidence: 78
 status: done
 completed_at: 2026-03-06T00:00:00Z
+priority: P3
 ---
 
 # FEAT-610: `create-loop` skill undocumented `scope`, `on_partial`, `capture` fields

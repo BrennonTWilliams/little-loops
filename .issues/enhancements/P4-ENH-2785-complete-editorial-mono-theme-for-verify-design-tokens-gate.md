@@ -13,6 +13,7 @@ score_test_coverage: 25
 score_ambiguity: 22
 score_change_surface: 22
 status: done
+priority: P4
 ---
 
 # ENH-2785: Complete the `editorial-mono` design-token theme so `ll-verify-design-tokens` can gate on exit 0

@@ -6,6 +6,7 @@ confidence_score: 88
 outcome_confidence: 100
 status: done
 completed_at: 2026-04-02T00:00:00Z
+priority: P4
 ---
 
 # ENH-497: Document Tokens-per-Task as ll-auto/ll-parallel Design Principle

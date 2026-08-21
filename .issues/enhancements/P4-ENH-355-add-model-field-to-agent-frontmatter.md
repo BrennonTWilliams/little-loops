@@ -3,6 +3,7 @@ discovered_date: 2026-02-12T00:00:00Z
 discovered_by: audit_claude_config
 status: done
 completed_at: 2026-02-12T00:00:00Z
+priority: P4
 ---
 
 # ENH-355: Add missing `model` field to all agent frontmatter

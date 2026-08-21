@@ -7,6 +7,7 @@ discovered_by: audit-docs
 doc_file: docs/reference/
 testable: false
 status: done
+priority: P3
 ---
 
 # ENH-1956: Fill `update-docs` TODO stubs in reference docs

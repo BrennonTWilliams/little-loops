@@ -7,6 +7,7 @@ confidence_score: 100
 outcome_confidence: 93
 status: done
 completed_at: 2026-03-04T00:00:00Z
+priority: P3
 ---
 
 # ENH-536: `EvaluateConfig.source` Field Parsed and Serialized But Never Consumed During Evaluation

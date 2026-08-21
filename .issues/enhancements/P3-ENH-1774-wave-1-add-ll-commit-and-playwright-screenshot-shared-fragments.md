@@ -4,6 +4,7 @@ discovered_date: 2026-05-28
 discovered_by: capture-issue
 parent: EPIC-1773
 status: cancelled
+priority: P3
 ---
 
 # ENH-1774: Wave 1 — Add `ll_commit` and `playwright_screenshot` Shared Fragments

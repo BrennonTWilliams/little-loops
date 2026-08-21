@@ -5,6 +5,7 @@ confidence_score: 98
 outcome_confidence: 86
 status: done
 completed_at: 2026-03-14T00:00:00Z
+priority: P3
 ---
 
 # BUG-744: Loop `/tmp` scratch files use global names causing cross-project conflicts

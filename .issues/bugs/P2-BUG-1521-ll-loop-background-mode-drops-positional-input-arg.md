@@ -4,6 +4,7 @@ completed_at: "2026-05-03T00:00:00Z"
 discovered_date: 2026-05-03
 discovered_by: user-report
 status: done
+priority: P2
 ---
 
 # BUG-1521: `ll-loop run --background` drops the positional `input` argument, causing "Missing required context variable" on spawn

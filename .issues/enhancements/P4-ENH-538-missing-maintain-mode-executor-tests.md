@@ -7,6 +7,7 @@ confidence_score: 100
 outcome_confidence: 100
 status: done
 completed_at: 2026-03-09T00:00:00Z
+priority: P4
 ---
 
 # ENH-538: Missing Executor-Level Tests for `maintain` Mode Restart Behavior

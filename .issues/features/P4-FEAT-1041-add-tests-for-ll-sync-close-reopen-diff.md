@@ -4,6 +4,7 @@ discovered_branch: main
 discovered_date: 2026-04-06T15:57:51Z
 discovered_by: scan-codebase
 status: deferred
+priority: P4
 ---
 
 # FEAT-1041: Add tests for `ll-sync` close/reopen/diff subcommands

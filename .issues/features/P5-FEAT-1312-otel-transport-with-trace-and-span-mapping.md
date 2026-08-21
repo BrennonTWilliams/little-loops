@@ -10,6 +10,7 @@ score_change_surface: 18
 captured_at: 2026-05-01T00:00:00Z
 completed_at: 2026-05-05T05:01:40Z
 status: done
+priority: P5
 ---
 
 # FEAT-1312: OTelTransport with Trace and Span Mapping

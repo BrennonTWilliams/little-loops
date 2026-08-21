@@ -7,6 +7,7 @@ confidence_score: 96
 outcome_confidence: 88
 status: done
 completed_at: 2026-03-06T00:00:00Z
+priority: P4
 ---
 
 # FEAT-611: `ll-loop list` improvements: status filter, paradigm type, description

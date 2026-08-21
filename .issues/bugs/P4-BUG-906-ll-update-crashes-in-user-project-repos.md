@@ -5,6 +5,7 @@ confidence_score: 100
 outcome_confidence: 100
 status: done
 completed_at: 2026-04-01T00:00:00Z
+priority: P4
 ---
 
 # BUG-906: `/ll:update` crashes in user project repos with FileNotFoundError

@@ -3,6 +3,7 @@ discovered_date: 2026-02-08
 discovered_by: manual_review
 status: done
 completed_at: 2026-02-13T00:00:00Z
+priority: P3
 ---
 
 # ENH-277: Add pre-implementation confidence check skill

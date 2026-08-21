@@ -1,6 +1,7 @@
 ---
 status: done
 completed_at: 2026-02-01T00:00:00Z
+priority: P3
 ---
 # P3-ENH-215: Improve error message validation in tests
 

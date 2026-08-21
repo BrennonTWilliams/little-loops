@@ -15,6 +15,7 @@ score_test_coverage: 25
 score_ambiguity: 18
 score_change_surface: 18
 completed_at: '2026-08-04T04:44:49Z'
+priority: P2
 ---
 
 # FSM sub-loop states can't distinguish timeout from normal on_no, and expose no outcome context

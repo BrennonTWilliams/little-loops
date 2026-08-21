@@ -10,6 +10,7 @@ score_change_surface: 18
 decision_needed: false
 completed_at: 2026-05-05T18:12:08Z
 status: done
+priority: P5
 ---
 
 # FEAT-1314: WebhookTransport with Batching and Retries

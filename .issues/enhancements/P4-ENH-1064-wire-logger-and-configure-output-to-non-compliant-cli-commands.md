@@ -7,6 +7,7 @@ confidence_score: 100
 outcome_confidence: 85
 status: done
 completed_at: 2026-04-12T00:00:00Z
+priority: P4
 ---
 
 # ENH-1064: Wire Logger and configure_output to non-compliant CLI commands

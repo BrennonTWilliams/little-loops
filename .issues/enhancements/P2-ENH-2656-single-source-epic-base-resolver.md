@@ -21,6 +21,7 @@ score_complexity: 20
 score_test_coverage: 20
 score_ambiguity: 15
 score_change_surface: 20
+priority: P2
 ---
 
 # ENH-2656: Single source-of-truth EPIC base-branch resolver

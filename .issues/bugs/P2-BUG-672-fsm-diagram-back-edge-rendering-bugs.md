@@ -5,6 +5,7 @@ confidence_score: 95
 outcome_confidence: 86
 status: done
 completed_at: 2026-03-11T00:00:00Z
+priority: P2
 ---
 
 # BUG-672: FSM diagram back-edge rendering bugs

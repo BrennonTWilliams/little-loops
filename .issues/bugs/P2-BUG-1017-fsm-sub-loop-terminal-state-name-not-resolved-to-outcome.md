@@ -5,6 +5,7 @@ confidence_score: 100
 outcome_confidence: 93
 status: done
 completed_at: 2026-04-10T00:00:00Z
+priority: P2
 ---
 
 # BUG-1017: FSM sub-loop outcome resolves by termination reason, not terminal state name

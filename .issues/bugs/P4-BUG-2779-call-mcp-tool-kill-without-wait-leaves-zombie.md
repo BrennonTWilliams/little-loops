@@ -14,6 +14,7 @@ score_test_coverage: 22
 score_ambiguity: 25
 score_change_surface: 25
 status: done
+priority: P4
 ---
 
 # BUG-2779: `call_mcp_tool` cleanup issues `kill()` without a follow-up `wait()`, leaving a zombie process

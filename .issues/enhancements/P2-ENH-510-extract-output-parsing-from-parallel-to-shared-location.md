@@ -6,6 +6,7 @@ discovered_by: audit-architecture
 focus_area: integration
 status: done
 completed_at: 2026-03-01T00:00:00Z
+priority: P2
 ---
 
 # ENH-510: Extract `output_parsing` from `parallel/` to shared location

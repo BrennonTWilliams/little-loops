@@ -7,6 +7,7 @@ confidence_score: 100
 outcome_confidence: 100
 status: done
 completed_at: 2026-03-13T00:00:00Z
+priority: P3
 ---
 
 # BUG-1508: `issue-refinement` loop exhausts iteration budget on stubborn issues

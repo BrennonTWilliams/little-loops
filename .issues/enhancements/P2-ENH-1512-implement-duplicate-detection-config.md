@@ -5,6 +5,7 @@ confidence_score: 95
 outcome_confidence: 86
 status: done
 completed_at: 2026-03-23T00:00:00Z
+priority: P2
 ---
 
 # ENH: Implement `duplicate_detection` config for `IssuesConfig`

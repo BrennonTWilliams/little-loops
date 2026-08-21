@@ -9,6 +9,7 @@ labels:
 - loop
 - process-management
 - cli
+priority: P2
 ---
 
 # BUG-2147: `ll-loop stop` Leaves Orphaned Child Processes Alive

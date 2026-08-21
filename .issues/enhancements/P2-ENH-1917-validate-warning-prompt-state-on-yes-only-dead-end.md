@@ -17,6 +17,7 @@ score_complexity: 17
 score_test_coverage: 22
 score_ambiguity: 23
 score_change_surface: 22
+priority: P2
 ---
 
 # P2-ENH-1917: ll-loop validate warning for prompt states that route only on_yes (silent partial/no dead-end)

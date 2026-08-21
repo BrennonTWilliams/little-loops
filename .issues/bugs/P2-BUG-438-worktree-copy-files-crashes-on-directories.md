@@ -3,6 +3,7 @@ discovered_date: "2026-02-15"
 discovered_by: capture-issue
 status: done
 completed_at: 2026-02-15T00:00:00Z
+priority: P2
 ---
 
 # BUG-438: worktree_copy_files crashes on directory entries with IsADirectoryError

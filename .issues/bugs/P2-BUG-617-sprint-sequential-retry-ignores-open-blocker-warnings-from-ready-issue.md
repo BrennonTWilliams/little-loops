@@ -5,6 +5,7 @@ confidence_score: 70
 outcome_confidence: 72
 status: done
 completed_at: 2026-03-06T00:00:00Z
+priority: P2
 ---
 
 # BUG-617: Sprint sequential retry proceeds to Phase 2 implementation despite open blocker warnings from `ready-issue`

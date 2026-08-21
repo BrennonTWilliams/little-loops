@@ -1,6 +1,7 @@
 ---
 status: done
 completed_at: 2026-02-01T00:00:00Z
+priority: P4
 ---
 # Error Message Format Inconsistency Across Paradigm Compilers
 

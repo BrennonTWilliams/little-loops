@@ -5,6 +5,7 @@ completed_date: 2026-03-05
 effort: S
 status: done
 completed_at: 2026-03-05T00:00:00Z
+priority: P3
 ---
 
 # ENH-593: Colorize ll-issues show card output

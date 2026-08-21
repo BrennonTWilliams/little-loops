@@ -5,6 +5,7 @@ source_loop: sprint-build-and-validate
 source_state: route_validation
 status: done
 completed_at: 2026-03-15T00:00:00Z
+priority: P2
 ---
 
 # BUG-760: route_validation evaluate prompt has uninterpolated ${context.*} variables

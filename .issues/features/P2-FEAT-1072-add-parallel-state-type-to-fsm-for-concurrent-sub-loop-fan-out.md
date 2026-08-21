@@ -5,6 +5,7 @@ confidence_score: 96
 outcome_confidence: 61
 status: done
 completed_at: 2026-04-12T00:00:00Z
+priority: P2
 ---
 
 # FEAT-1072: Add `parallel:` State Type to FSM for Concurrent Sub-Loop Fan-Out

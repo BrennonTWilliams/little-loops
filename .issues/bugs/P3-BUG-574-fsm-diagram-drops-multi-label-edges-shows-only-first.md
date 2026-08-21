@@ -7,6 +7,7 @@ confidence_score: 100
 outcome_confidence: 93
 status: done
 completed_at: 2026-03-04T00:00:00Z
+priority: P3
 ---
 
 # BUG-574: FSM diagram drops multi-label edges — only first label rendered

@@ -12,6 +12,7 @@ score_change_surface: 25
 parent: FEAT-1203
 status: done
 completed_at: 2026-05-10T00:00:00Z
+priority: P2
 ---
 
 # FEAT-1206: TestParallelRunnerRealThreading — Fail Fast + Timeout Tests

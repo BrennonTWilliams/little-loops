@@ -4,6 +4,7 @@ discovered_branch: main
 discovered_date: 2026-01-14T00:00:00Z
 status: done
 completed_at: 2026-01-14T00:00:00Z
+priority: P3
 ---
 
 # FEAT-050: Sprint and Sequence Execution

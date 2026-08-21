@@ -7,6 +7,7 @@ confidence_score: 100
 outcome_confidence: 93
 status: done
 completed_at: 2026-02-24T00:00:00Z
+priority: P2
 ---
 
 # BUG-473: Failed single-issue sprint wave corrupts resume state

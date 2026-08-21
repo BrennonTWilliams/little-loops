@@ -5,6 +5,7 @@ confidence_score: 95
 outcome_confidence: 78
 status: done
 completed_at: 2026-03-16T00:00:00Z
+priority: P3
 ---
 
 # ENH-705: Init should validate hook script dependencies and version alignment

@@ -6,6 +6,7 @@ discovered_by: audit-architecture
 focus_area: large-files
 status: done
 completed_at: 2026-02-24T00:00:00Z
+priority: P2
 ---
 
 # ENH-468: Split issue_history/analysis.py into sub-modules

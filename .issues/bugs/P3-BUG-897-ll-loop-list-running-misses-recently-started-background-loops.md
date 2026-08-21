@@ -5,6 +5,7 @@ confidence_score: 100
 outcome_confidence: 100
 status: done
 completed_at: 2026-04-01T00:00:00Z
+priority: P3
 ---
 
 # BUG-897: `ll-loop list --running` misses recently-started background loops

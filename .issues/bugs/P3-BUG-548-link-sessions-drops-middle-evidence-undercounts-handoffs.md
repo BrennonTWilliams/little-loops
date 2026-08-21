@@ -7,6 +7,7 @@ confidence_score: 98
 outcome_confidence: 93
 status: done
 completed_at: 2026-03-04T00:00:00Z
+priority: P3
 ---
 
 # BUG-548: `_link_sessions` drops middle evidence entries — handoff count under-reported

@@ -1,6 +1,7 @@
 ---
 status: done
 completed_at: 2026-01-23T00:00:00Z
+priority: P2
 ---
 # P2-ENH-131: Extend git_operations test coverage
 

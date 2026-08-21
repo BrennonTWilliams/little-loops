@@ -3,6 +3,7 @@ discovered_date: 2026-05-04
 discovered_by: session-analysis
 status: done
 completed_at: 2026-05-04T00:00:00Z
+priority: P3
 ---
 
 # BUG-1365: `verify_scores_persisted` failure triggers spurious size-review in autodev

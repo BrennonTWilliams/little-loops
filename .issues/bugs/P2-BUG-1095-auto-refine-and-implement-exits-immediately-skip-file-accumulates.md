@@ -5,6 +5,7 @@ confidence_score: 100
 outcome_confidence: 93
 status: done
 completed_at: 2026-04-13T00:00:00Z
+priority: P2
 ---
 
 # BUG-1095: auto-refine-and-implement exits immediately after skip file accumulates

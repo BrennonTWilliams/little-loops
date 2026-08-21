@@ -7,6 +7,7 @@ confidence_score: 98
 outcome_confidence: 100
 status: done
 completed_at: 2026-03-21T00:00:00Z
+priority: P4
 ---
 
 # FEAT-835: `ll-history analyze` missing `--since`/`--until` date range

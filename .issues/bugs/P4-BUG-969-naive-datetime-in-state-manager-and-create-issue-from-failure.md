@@ -5,6 +5,7 @@ discovered_date: 2026-04-06T15:57:51Z
 discovered_by: scan-codebase
 status: done
 completed_at: 2026-04-06T00:00:00Z
+priority: P4
 ---
 
 # BUG-969: Naive (non-UTC) datetime in `StateManager` and `create_issue_from_failure`

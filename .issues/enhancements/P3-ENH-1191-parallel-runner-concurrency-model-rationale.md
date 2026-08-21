@@ -5,6 +5,7 @@ depends_on:
 - FEAT-1075
 - FEAT-1086
 status: deferred
+priority: P3
 ---
 
 # ENH-1191: Document `ThreadPoolExecutor` Choice and GIL Implications

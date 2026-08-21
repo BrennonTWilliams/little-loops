@@ -4,6 +4,7 @@ discovered_date: 2026-02-08
 discovered_external_repo: <external-repo>
 status: done
 completed_at: 2026-02-13T00:00:00Z
+priority: P2
 ---
 
 # BUG-280: ll-auto falsely reports verification failure when manage_issue creates plan awaiting approval

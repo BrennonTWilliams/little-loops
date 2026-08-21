@@ -12,6 +12,7 @@ score_complexity: 18
 score_test_coverage: 25
 score_ambiguity: 18
 score_change_surface: 25
+priority: P3
 ---
 
 # BUG-1651: `ll-loop --show-diagrams` neighborhood view misaligns succ arrow, includes on_error preds, and lacks prev-state marker

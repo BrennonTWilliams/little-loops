@@ -4,6 +4,7 @@ discovered_by: parallel-family-review
 depends_on:
 - FEAT-1174
 status: deferred
+priority: P4
 ---
 
 # ENH-1195: `ll-loop resume` CLI-Side Navigation for Per-Worker Parallel Checkpoints

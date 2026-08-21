@@ -11,6 +11,7 @@ score_complexity: 14
 score_test_coverage: 18
 score_ambiguity: 25
 score_change_surface: 25
+priority: P3
 ---
 
 # BUG-1668: `ll-loop status` shows `Log: (not found)` for foreground runs even when the run is healthy

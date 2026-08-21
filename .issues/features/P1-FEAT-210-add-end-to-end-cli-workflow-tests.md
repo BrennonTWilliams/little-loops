@@ -7,6 +7,7 @@ relates_to:
 - ENH-206
 - ENH-208
 - ENH-209
+priority: P1
 ---
 # P1-FEAT-210: Add end-to-end CLI workflow tests
 

@@ -5,6 +5,7 @@ discovered_date: 2026-02-06T03:41:30Z
 discovered_by: scan_codebase
 status: done
 completed_at: 2026-02-05T00:00:00Z
+priority: P3
 ---
 
 # FEAT-256: Add bidirectional update to ll-sync pull

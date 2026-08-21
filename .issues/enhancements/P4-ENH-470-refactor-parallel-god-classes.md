@@ -7,6 +7,7 @@ focus_area: large-files
 confidence_score: 88
 outcome_confidence: 71
 status: deferred
+priority: P4
 ---
 
 # ENH-470: Refactor parallel/ god classes to extract shared concerns

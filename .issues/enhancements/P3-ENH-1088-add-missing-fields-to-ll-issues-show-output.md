@@ -5,6 +5,7 @@ confidence_score: 100
 outcome_confidence: 86
 status: done
 completed_at: 2026-04-12T00:00:00Z
+priority: P3
 ---
 
 # ENH-1088: Add missing fields to ll-issues show output

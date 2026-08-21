@@ -5,6 +5,7 @@ confidence_score: 100
 outcome_confidence: 78
 status: done
 completed_at: 2026-04-08T00:00:00Z
+priority: P4
 ---
 
 # FEAT-995: Reference Interceptor Extension and Docs Update

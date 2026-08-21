@@ -7,6 +7,7 @@ confidence_score: 100
 outcome_confidence: 100
 status: done
 completed_at: 2026-03-14T00:00:00Z
+priority: P4
 ---
 
 # ENH-626: Identical operator dispatch dict defined twice in `evaluate_output_numeric` and `_compare_values`

@@ -5,6 +5,7 @@ confidence_score: 98
 outcome_confidence: 78
 status: done
 completed_at: 2026-04-08T00:00:00Z
+priority: P3
 ---
 
 # BUG-989: ll-loop --show-diagrams --clear produces ghost diagram fragments in scrollback

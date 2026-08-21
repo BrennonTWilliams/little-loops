@@ -9,6 +9,7 @@ score_ambiguity: 27
 score_change_surface: 18
 completed_at: 2026-05-02T17:20:11Z
 status: done
+priority: P5
 ---
 
 # FEAT-1313: UnixSocketTransport for Real-Time Local Streaming

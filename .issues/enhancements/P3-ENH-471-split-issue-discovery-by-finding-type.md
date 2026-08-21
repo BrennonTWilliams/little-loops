@@ -8,6 +8,7 @@ confidence_score: 95
 outcome_confidence: 86
 status: done
 completed_at: 2026-02-25T00:00:00Z
+priority: P3
 ---
 
 # ENH-471: Split issue_discovery.py by finding type

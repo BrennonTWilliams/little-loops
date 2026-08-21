@@ -12,6 +12,7 @@ score_change_surface: 25
 size: Very Large
 status: done
 completed_at: 2026-05-11T00:00:00Z
+priority: P2
 ---
 
 # ENH-1400: Implement `goals_discovery` in product-analyzer

@@ -1,6 +1,7 @@
 ---
 status: done
 completed_at: 2026-07-07T04:21:28Z
+priority: P3
 ---
 # BUG-2502: 4 Tests in `TestEvalExport` Fail Without Project-Folder Fixture
 

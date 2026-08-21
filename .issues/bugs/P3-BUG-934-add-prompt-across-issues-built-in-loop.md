@@ -5,6 +5,7 @@ confidence_score: 100
 outcome_confidence: 93
 status: done
 completed_at: 2026-04-03T00:00:00Z
+priority: P3
 ---
 
 # BUG-934: Add prompt-across-issues Built-in Loop

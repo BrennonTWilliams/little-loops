@@ -5,6 +5,7 @@ discovered_date: 2026-02-06T03:41:30Z
 discovered_by: scan_codebase
 status: done
 completed_at: 2026-02-06T00:00:00Z
+priority: P2
 ---
 
 # BUG-231: Zombie process after timeout kill in run_claude_command

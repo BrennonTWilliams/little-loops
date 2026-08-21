@@ -5,6 +5,7 @@ confidence_score: 100
 outcome_confidence: 78
 status: done
 completed_at: 2026-03-03T00:00:00Z
+priority: P3
 ---
 
 # ENH-524: Add Session Log Steps to Issue-Modifying Commands and Skills

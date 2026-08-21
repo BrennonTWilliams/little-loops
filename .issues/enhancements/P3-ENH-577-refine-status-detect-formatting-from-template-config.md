@@ -5,6 +5,7 @@ confidence_score: 98
 outcome_confidence: 93
 status: done
 completed_at: 2026-03-04T00:00:00Z
+priority: P3
 ---
 
 # ENH-577: Detect issue formatting from template config instead of session log

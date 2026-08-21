@@ -7,6 +7,7 @@ doc_file: README.md
 testable: false
 status: done
 completed_at: 2026-03-31T00:00:00Z
+priority: P4
 ---
 
 # ENH-902: Document `ll-loop list` flags in README

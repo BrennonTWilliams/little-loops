@@ -7,6 +7,7 @@ confidence_score: 98
 outcome_confidence: 93
 status: done
 completed_at: 2026-03-03T00:00:00Z
+priority: P4
 ---
 
 # ENH-484: Deduplicate frontmatter parsing in sync.py and parsing.py

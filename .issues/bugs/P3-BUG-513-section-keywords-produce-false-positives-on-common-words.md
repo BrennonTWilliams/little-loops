@@ -6,6 +6,7 @@ discovered_by: manual-audit
 focus_area: dependency-mapping
 status: done
 completed_at: 2026-02-26T00:00:00Z
+priority: P3
 ---
 
 # BUG-513: Section keyword matching produces false positives on common programming words

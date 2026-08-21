@@ -7,6 +7,7 @@ confidence_score: 100
 outcome_confidence: 86
 status: done
 completed_at: 2026-03-21T00:00:00Z
+priority: P4
 ---
 
 # ENH-828: `_find_test_file` resolves paths against process CWD

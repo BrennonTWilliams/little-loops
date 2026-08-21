@@ -7,6 +7,7 @@ confidence_score: 100
 outcome_confidence: 100
 status: done
 completed_at: 2026-03-22T00:00:00Z
+priority: P5
 ---
 
 # ENH-699: Redundant scatter score denominator guard in `detect_cross_cutting_smells`

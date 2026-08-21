@@ -3,6 +3,7 @@ discovered_date: 2026-03-04
 discovered_by: analysis
 status: done
 completed_at: 2026-03-04T00:00:00Z
+priority: P2
 ---
 
 # BUG-585: ll-sprint run Uses Worktrees for Serialized Contention Sub-waves

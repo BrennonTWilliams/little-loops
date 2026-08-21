@@ -11,6 +11,7 @@ score_complexity: 18
 score_test_coverage: 22
 score_ambiguity: 16
 score_change_surface: 17
+priority: P3
 ---
 
 # ENH-2869: Show effort level in `ll-loop run` header

@@ -7,6 +7,7 @@ confidence_score: 100
 outcome_confidence: 93
 status: done
 completed_at: 2026-03-07T00:00:00Z
+priority: P4
 ---
 
 # BUG-636: `simulate --scenario` cannot produce `"error"` verdict — error-routing paths untestable non-interactively

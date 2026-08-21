@@ -10,6 +10,7 @@ score_complexity: 22
 score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 25
+priority: P2
 ---
 
 # BUG-1687: `general-task` `continue_work` missing `capture: execute_result` freezes `check_done` scope

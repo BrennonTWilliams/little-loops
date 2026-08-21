@@ -7,6 +7,7 @@ confidence_score: 100
 outcome_confidence: 100
 status: done
 completed_at: 2026-03-14T00:00:00Z
+priority: P3
 ---
 
 # ENH-691: `detect_regression_or_duplicate` called eagerly for displaced matches

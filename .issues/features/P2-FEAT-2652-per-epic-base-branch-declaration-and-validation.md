@@ -23,6 +23,7 @@ score_ambiguity: 20
 score_change_surface: 18
 spike_attempted: true
 spike_completed: true
+priority: P2
 ---
 
 # FEAT-2652: Per-EPIC base-branch declaration + sprint-creation validation

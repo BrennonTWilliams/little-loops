@@ -13,6 +13,7 @@ score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 18
 status: done
+priority: P3
 ---
 
 # ENH-1291: Autodev `triage_outcome_failure` missing-artifact routing branch

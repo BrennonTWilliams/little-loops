@@ -3,6 +3,7 @@ discovered_date: 2026-02-07
 discovered_by: capture_issue
 status: done
 completed_at: 2026-02-07T00:00:00Z
+priority: P2
 ---
 
 # ENH-272: Add Integration Analysis to Issue Management Lifecycle

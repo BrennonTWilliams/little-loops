@@ -4,6 +4,7 @@ discovered_by: hooks-reference-audit
 supersedes: P4-ENH-362 (that issue assumed milliseconds; the unit is seconds)
 status: done
 completed_at: 2026-02-13T00:00:00Z
+priority: P2
 ---
 
 # BUG-376: All hook timeout values are 1000x too large — unit is seconds, not milliseconds

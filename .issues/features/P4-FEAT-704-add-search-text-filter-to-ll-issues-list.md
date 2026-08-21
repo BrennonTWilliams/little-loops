@@ -7,6 +7,7 @@ closed_date: 2026-03-14
 closed_reason: wont-do
 status: done
 completed_at: 2026-03-14T00:00:00Z
+priority: P4
 ---
 
 # FEAT-704: Add `--search` text filter to `ll-issues list`

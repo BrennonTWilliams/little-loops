@@ -5,6 +5,7 @@ confidence_score: 95
 outcome_confidence: 93
 status: done
 completed_at: 2026-04-04T00:00:00Z
+priority: P3
 ---
 
 # FEAT-933: Add outer-loop-eval Built-in Loop for Loop Observation and Improvement

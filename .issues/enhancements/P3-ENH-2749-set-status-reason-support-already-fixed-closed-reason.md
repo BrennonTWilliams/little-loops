@@ -12,6 +12,7 @@ score_complexity: 21
 score_test_coverage: 25
 score_ambiguity: 18
 score_change_surface: 25
+priority: P3
 ---
 
 # ENH-2749: `set-status --reason` can't express `already_fixed` for `done` transitions

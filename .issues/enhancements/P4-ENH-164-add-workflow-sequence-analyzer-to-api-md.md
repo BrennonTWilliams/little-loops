@@ -6,6 +6,7 @@ discovered_by: audit_docs
 doc_file: docs/API.md
 status: done
 completed_at: 2026-02-13T00:00:00Z
+priority: P4
 ---
 
 # ENH-109: Add workflow_sequence_analyzer to API.md

@@ -5,6 +5,7 @@ confidence_score: 100
 outcome_confidence: 71
 status: done
 completed_at: 2026-04-05T00:00:00Z
+priority: P3
 ---
 
 # ENH-956: Add Sprint Scoping to confidence-check and issue-size-review Skills

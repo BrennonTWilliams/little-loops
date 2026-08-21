@@ -3,6 +3,7 @@ status: done
 completed_at: 2026-06-14T00:00:00Z
 discovered_date: 2026-06-14T00:00:00Z
 discovered_by: manual
+priority: P4
 ---
 
 # BUG-2155: Stale routing assertions in `test_rn_remediate.py` after `rn-remediate.yaml` update

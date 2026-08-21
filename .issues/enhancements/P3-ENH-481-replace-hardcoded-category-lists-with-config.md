@@ -7,6 +7,7 @@ confidence_score: 98
 outcome_confidence: 79
 status: done
 completed_at: 2026-02-25T00:00:00Z
+priority: P3
 ---
 
 # ENH-481: Replace hardcoded category lists with config throughout codebase

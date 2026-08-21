@@ -12,6 +12,7 @@ score_change_surface: 10
 size: Very Large
 status: done
 completed_at: 2026-04-21T00:00:00Z
+priority: P3
 ---
 
 # FEAT-1236: Add /ll:decide-issue skill to resolve multiple implementation options

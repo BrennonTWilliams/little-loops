@@ -13,6 +13,7 @@ score_complexity: 21
 score_test_coverage: 20
 score_ambiguity: 20
 score_change_surface: 20
+priority: P2
 ---
 
 # BUG-2137: `ll-loop simulate` is not sub-loop-aware — runs real child loops or errors on dynamic dispatch

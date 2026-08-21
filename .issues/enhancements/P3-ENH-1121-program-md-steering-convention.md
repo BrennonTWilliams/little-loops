@@ -11,6 +11,7 @@ score_change_surface: 18
 decision_needed: false
 completed_at: 2026-04-25T18:30:57Z
 status: done
+priority: P3
 ---
 
 # ENH-1121: `.ll/program.md` Steering Convention for Long-Horizon Loop Runs

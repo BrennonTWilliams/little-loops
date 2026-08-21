@@ -5,6 +5,7 @@ confidence_score: 100
 outcome_confidence: 93
 status: done
 completed_at: 2026-04-07T00:00:00Z
+priority: P4
 ---
 
 # FEAT-983: Extension Protocol and Type Definitions

@@ -5,6 +5,7 @@ depends_on:
 - FEAT-1075
 - FEAT-1076
 status: deferred
+priority: P2
 ---
 
 # FEAT-1189: Parallel Worker Shared-Context Mutation Contract

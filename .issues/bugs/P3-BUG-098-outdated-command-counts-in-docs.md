@@ -5,6 +5,7 @@ discovered_date: 2026-01-20T00:00:00Z
 discovered_by: audit_docs
 status: done
 completed_at: 2026-01-20T00:00:00Z
+priority: P3
 ---
 
 # BUG-098: Outdated command counts in documentation after analyze-workflows addition

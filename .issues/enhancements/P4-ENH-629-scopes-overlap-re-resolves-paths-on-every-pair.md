@@ -7,6 +7,7 @@ confidence_score: 98
 outcome_confidence: 100
 status: done
 completed_at: 2026-03-09T00:00:00Z
+priority: P4
 ---
 
 # ENH-629: `_scopes_overlap` re-resolves `Path.resolve()` (filesystem stat) on every path pair

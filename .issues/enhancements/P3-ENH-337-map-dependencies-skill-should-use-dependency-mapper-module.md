@@ -3,6 +3,7 @@ discovered_date: 2026-02-11
 discovered_by: capture_issue
 status: done
 completed_at: 2026-02-11T00:00:00Z
+priority: P3
 ---
 
 # ENH-337: map-dependencies skill should delegate to dependency_mapper.py

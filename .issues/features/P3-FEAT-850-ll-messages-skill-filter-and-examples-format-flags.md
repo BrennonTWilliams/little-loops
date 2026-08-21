@@ -5,6 +5,7 @@ confidence_score: 90
 outcome_confidence: 78
 status: done
 completed_at: 2026-03-20T00:00:00Z
+priority: P3
 ---
 
 # FEAT-850: Add `--skill` filter and `--examples-format` flags to `ll-messages`

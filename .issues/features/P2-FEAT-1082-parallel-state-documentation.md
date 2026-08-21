@@ -8,6 +8,7 @@ outcome_confidence: 63
 parent: FEAT-1078
 status: done
 completed_at: 2026-05-10T00:00:00Z
+priority: P2
 ---
 
 # FEAT-1082: Parallel State Documentation

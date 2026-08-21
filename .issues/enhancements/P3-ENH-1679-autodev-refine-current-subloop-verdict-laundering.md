@@ -10,6 +10,7 @@ score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 25
 completed_at: 2026-05-24T20:52:39Z
+priority: P3
 ---
 
 # ENH-1679: Fix sub-loop verdict laundering in autodev `refine_current` state

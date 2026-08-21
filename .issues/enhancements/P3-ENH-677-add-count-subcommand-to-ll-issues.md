@@ -3,6 +3,7 @@ discovered_date: 2026-03-12
 discovered_by: capture-issue
 status: done
 completed_at: 2026-03-12T00:00:00Z
+priority: P3
 ---
 
 # ENH-677: Add count sub-command to ll-issues CLI

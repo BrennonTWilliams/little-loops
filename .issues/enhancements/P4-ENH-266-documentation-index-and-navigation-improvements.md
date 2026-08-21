@@ -6,6 +6,7 @@ discovered_by: audit_docs
 doc_file: docs/
 status: done
 completed_at: 2026-02-13T00:00:00Z
+priority: P4
 ---
 
 # ENH-266: Documentation Index and Navigation Improvements

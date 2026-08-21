@@ -5,6 +5,7 @@ confidence_score: 95
 outcome_confidence: 63
 status: done
 completed_at: 2026-02-25T00:00:00Z
+priority: P4
 ---
 
 # FEAT-440: TDD Mode for Issue Implementation

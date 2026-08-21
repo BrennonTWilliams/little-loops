@@ -5,6 +5,7 @@ discovered_date: 2026-01-10T00:00:00Z
 discovered_by: manual
 status: done
 completed_at: 2026-01-28T00:00:00Z
+priority: P2
 ---
 
 # ENH-013: Persistent Handoff Reminder Until Completion

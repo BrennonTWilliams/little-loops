@@ -1,6 +1,7 @@
 ---
 status: done
 completed_at: 2026-01-15T00:00:00Z
+priority: P2
 ---
 # ENH-064: Add Tests for --no-llm and --llm-model CLI Flags
 

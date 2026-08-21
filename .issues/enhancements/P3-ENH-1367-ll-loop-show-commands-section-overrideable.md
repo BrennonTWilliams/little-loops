@@ -10,6 +10,7 @@ score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 18
 status: done
+priority: P3
 ---
 
 # ENH-1367: Allow loops to override Commands section in `ll-loop show` output

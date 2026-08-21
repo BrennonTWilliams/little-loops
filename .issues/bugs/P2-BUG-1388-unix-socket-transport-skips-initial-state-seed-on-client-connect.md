@@ -10,6 +10,7 @@ score_test_coverage: 18
 score_ambiguity: 18
 score_change_surface: 25
 status: done
+priority: P2
 ---
 
 # BUG-1388: UnixSocketTransport skips initial state seed on client connect

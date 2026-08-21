@@ -5,6 +5,7 @@ discovered_date: 2026-03-03T21:56:26Z
 discovered_by: scan-codebase
 status: done
 completed_at: 2026-03-03T00:00:00Z
+priority: P4
 ---
 
 # BUG-531: `evaluate_convergence` Unconditionally Returns "progress" on First Iteration

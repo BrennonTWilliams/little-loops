@@ -3,6 +3,7 @@ discovered_date: 2026-02-05
 discovered_by: capture_issue
 status: done
 completed_at: 2026-02-13T00:00:00Z
+priority: P3
 ---
 
 # ENH-227: Add GitHub sync setup to init wizard

@@ -1,6 +1,7 @@
 ---
 status: done
 completed_at: 2026-01-15T00:00:00Z
+priority: P3
 ---
 # ENH-066: Add Resume from Interrupted Status Tests for ll-loop
 

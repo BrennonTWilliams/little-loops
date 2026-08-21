@@ -11,6 +11,7 @@ score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 25
 status: done
+priority: P3
 ---
 
 # BUG-1414: ll-loop run --worktree flag silently dropped with --background

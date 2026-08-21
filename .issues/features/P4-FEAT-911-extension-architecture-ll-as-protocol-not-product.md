@@ -5,6 +5,7 @@ confidence_score: 95
 outcome_confidence: 54
 status: done
 completed_at: 2026-04-02T00:00:00Z
+priority: P4
 ---
 
 # FEAT-911: Extension Architecture — little-loops as a Protocol, not a Product

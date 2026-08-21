@@ -5,6 +5,7 @@ confidence_score: 100
 outcome_confidence: 93
 status: done
 completed_at: 2026-03-31T00:00:00Z
+priority: P3
 ---
 
 # ENH-901: Refactor issue-refinement loop to delegate to refine-to-ready-issue sub-loop

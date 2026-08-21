@@ -4,6 +4,7 @@ discovered_by: parallel-family-review
 depends_on:
 - FEAT-1075
 status: deferred
+priority: P4
 ---
 
 # ENH-1194: Worker Lifecycle Hooks for Parallel States (before_worker / after_worker / on_worker_error)

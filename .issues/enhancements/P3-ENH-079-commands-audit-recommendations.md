@@ -5,6 +5,7 @@ discovered_date: 2026-01-16
 discovered_by: manual_audit
 status: done
 completed_at: 2026-02-13T00:00:00Z
+priority: P3
 ---
 
 # ENH-079: Implement Commands Audit Recommendations

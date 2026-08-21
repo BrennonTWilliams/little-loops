@@ -11,6 +11,7 @@ score_complexity: 21
 score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 25
+priority: P3
 ---
 
 # BUG-1616: Six bridge skills have broken pipe-character descriptions

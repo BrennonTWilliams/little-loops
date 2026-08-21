@@ -5,6 +5,7 @@ confidence_score: 100
 outcome_confidence: 78
 status: done
 completed_at: 2026-04-02T00:00:00Z
+priority: P3
 ---
 
 # FEAT-927: Wire ExtensionLoader to Live EventBus in CLI Entry Points

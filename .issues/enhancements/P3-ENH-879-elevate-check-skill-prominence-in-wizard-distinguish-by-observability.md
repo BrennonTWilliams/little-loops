@@ -7,6 +7,7 @@ confidence_score: 80
 outcome_confidence: 100
 status: done
 completed_at: 2026-03-24T00:00:00Z
+priority: P3
 ---
 
 # ENH-879: Elevate check_skill prominence in wizard — distinguish phases by observability, not cost

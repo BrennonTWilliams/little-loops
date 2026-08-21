@@ -11,6 +11,7 @@ labels:
 - generator-evaluator
 relates_to:
 - ENH-2428
+priority: P2
 ---
 
 # ENH-2429: Fix generator-evaluator non-convergence (full-page screenshot + score-driven routing)

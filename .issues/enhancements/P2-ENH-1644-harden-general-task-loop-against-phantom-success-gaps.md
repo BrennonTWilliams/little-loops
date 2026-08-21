@@ -13,6 +13,7 @@ score_complexity: 18
 score_test_coverage: 10
 score_ambiguity: 25
 score_change_surface: 25
+priority: P2
 ---
 
 # ENH-1644: Harden general-task loop against phantom-success gaps

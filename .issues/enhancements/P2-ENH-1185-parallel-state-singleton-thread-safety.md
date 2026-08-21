@@ -6,6 +6,7 @@ depends_on:
 - FEAT-1076
 - FEAT-1174
 status: deferred
+priority: P2
 ---
 
 # ENH-1185: Parallel State Singleton Thread-Safety Audit

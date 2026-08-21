@@ -1,6 +1,7 @@
 ---
 status: done
 completed_at: 2026-02-13T00:00:00Z
+priority: P5
 ---
 # Minor Terminology Variation: "Execute" vs "Run"
 

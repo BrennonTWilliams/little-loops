@@ -5,6 +5,7 @@ discovered_date: 2026-01-09T00:00:00Z
 discovered_by: manual
 status: done
 completed_at: 2026-01-09T00:00:00Z
+priority: P4
 ---
 
 # ENH-012: Display CLI Logo on Startup

@@ -4,6 +4,7 @@ discovered_by: parallel-family-review
 depends_on:
 - FEAT-1075
 status: deferred
+priority: P3
 ---
 
 # ENH-1190: Backpressure for Large `items:` Lists (Streamed Dispatch)

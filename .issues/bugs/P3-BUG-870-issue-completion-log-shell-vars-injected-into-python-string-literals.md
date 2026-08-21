@@ -5,6 +5,7 @@ confidence_score: 100
 outcome_confidence: 85
 status: done
 completed_at: 2026-03-23T00:00:00Z
+priority: P3
 ---
 
 # BUG-870: issue-completion-log.sh shell vars injected into Python string literals

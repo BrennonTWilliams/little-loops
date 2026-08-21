@@ -5,6 +5,7 @@ confidence_score: 100
 outcome_confidence: 85
 status: done
 completed_at: 2026-04-03T00:00:00Z
+priority: P2
 ---
 
 # BUG-942: manage-release Shows 0 Completed Issues Due to Date-Filter Approach

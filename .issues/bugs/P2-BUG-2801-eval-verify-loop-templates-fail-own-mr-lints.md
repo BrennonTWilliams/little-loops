@@ -15,6 +15,7 @@ size: Very Large
 deferred_by: automation
 deferred_date: '2026-07-25T16:24:24Z'
 deferred_reason: low_readiness
+priority: P2
 ---
 
 # BUG-2801: create-eval-from-issues/verify-issue-loop templates fail the repo's own loop lints

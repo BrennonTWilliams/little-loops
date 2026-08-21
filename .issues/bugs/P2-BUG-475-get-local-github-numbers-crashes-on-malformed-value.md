@@ -5,6 +5,7 @@ discovered_date: 2026-02-24T20:18:21Z
 discovered_by: scan-codebase
 status: done
 completed_at: 2026-02-24T00:00:00Z
+priority: P2
 ---
 
 # BUG-475: `_get_local_github_numbers` crashes on malformed `github_issue` value

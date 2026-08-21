@@ -6,6 +6,7 @@ discovered_by: audit_docs
 doc_file: commands/analyze-workflows.md
 status: done
 completed_at: 2026-01-28T00:00:00Z
+priority: P4
 ---
 
 # ENH-094: Document /ll:analyze-workflows command in README and COMMANDS.md

@@ -7,6 +7,7 @@ confidence_score: 98
 outcome_confidence: 93
 status: done
 completed_at: 2026-03-07T00:00:00Z
+priority: P3
 ---
 
 # FEAT-642: Add `--show-diagrams` Flag to `ll-loop` for FSM Box Diagram Display
