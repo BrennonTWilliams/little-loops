@@ -26,17 +26,30 @@ score_change_surface: 15
 
 ## Summary
 
-`IssueParser` resolves an issue's priority exclusively from the `P<n>-` filename prefix; the frontmatter `priority:` key is written on every created issue but never read by any code path, so prefix-less issue files silently flatten to P5 and the two sources drift with no reconciliation. Six modules each carry their own filename-priority regex with three different no-priority defaults, and one of those defaults (`normalize`'s `P3`) is written back to the filename — so on a prefix-less repo the declared priority is not merely ignored, it is destroyed.
+`IssueParser` resolves an issue's priority exclusively from the `P<n>-` filename prefix and never consults the frontmatter `priority:` key, so prefix-less issue files silently flatten to P5. Priority is stored twice with no designated authority: six modules read it from the filename with three different no-priority defaults, and seven other sites read it from frontmatter — including `rn-implement`'s next-issue selection and one site (`session_store/writers.py:_derive_type_priority`) that already implements a frontmatter-first resolver with the *opposite* precedence to the one proposed here. Nothing keeps the two copies in agreement: `prioritize --apply` and `skip` rewrite the filename without touching frontmatter, and `normalize --auto` invents a `P3-` prefix for prefix-less files, overriding whatever the frontmatter declared.
 
 ## Current Behavior
 
-Priority has two sources of truth in little-loops and only one of them is ever read.
+Priority has two sources of truth in little-loops, each read by a different set of modules, with nothing keeping them in agreement.
 
 **The write side.** `ll-issues create` writes `priority` into the frontmatter dict at `scripts/little_loops/cli/issues/create.py:311` and builds the filename with the same value at `create.py:454`. Both are in sync at creation.
 
 **The read side.** `IssueParser.parse_file` sets priority from `self._parse_priority(filename)` at `scripts/little_loops/issue_parser.py:2883` and nothing else. Nine lines later it calls `parse_frontmatter(content)` at `:2892` and pulls a dozen fields off it — `discovered_by`, `epic`, `size`, `effort`, `impact`, `confidence_score`, `outcome_confidence`, `score_*`, `testable`, `decision_needed` — but never `priority`. `_parse_priority` at `issue_parser.py:3043-3056` does a bare `filename.startswith(f"{p}-")` scan over the priority list from `BRConfig.issue_priorities` (`scripts/little_loops/config/core.py:714`) and falls through to its last element (P5) when no prefix matches. `_ANCHORED_FILENAME_RE` at `issue_parser.py:58` likewise makes the priority group optional and yields `None`.
 
-A grep of every `"priority"` read site across `scripts/little_loops/` confirms the frontmatter key is **write-only**: no module consumes it. In this repo's own `.issues/`, 2,083 files carry a frontmatter `priority:` that no code has ever read.
+**The frontmatter key is not write-only** (corrected 2026-08-21 during pre-implementation review; the original capture asserted it was). `IssueParser` never reads it, but seven sites across five modules do — and none of them agree with the parser about where priority comes from:
+
+| Site | What it drives | Resolution shape |
+|---|---|---|
+| `scripts/little_loops/loops/rn-implement.yaml:363` | `fm.get("priority", "P3")` → `composite_score()` (`:348-353`) → **which issue the autonomous implement loop picks next** (`:355-371`) | frontmatter-only |
+| `scripts/little_loops/cli/issues/format_check.py:329` | `--fix` substitutes the frontmatter value into the body's `Status: [P0-P5]` / `Impact: [P0-P5]` placeholders (`_TEMPLATE_PLACEHOLDER_FIXABLE`, `:284-289`) | frontmatter-only |
+| `scripts/little_loops/cli/issues/set_status.py:173` | `record_issue_event(..., priority=fm.get("priority"))` → history DB `issue_events` | frontmatter-only |
+| `scripts/little_loops/session_store/writers.py:383` | `issue_snapshots.priority` on live ingest | frontmatter-only |
+| `scripts/little_loops/session_store/writers.py:2542`, `:2666` | `issue_snapshots.priority` on backfill | frontmatter-only |
+| `scripts/little_loops/session_store/writers.py:2490-2510` `_derive_type_priority` (used at `:2622`) | history-DB `issue_events` type/priority | **frontmatter first, filename regex (`_FILENAME_PRIORITY_RE`, `:2433`) as fallback** |
+
+The last row matters most: `_derive_type_priority` **already is the shared resolver this issue proposes to add**, with the precedence inverted. Any fix must reckon with it rather than introduce a second, contradictory rule — see Decision Rules § Precedence divergence.
+
+In this repo's own `.issues/`, 2,089 files carry a frontmatter `priority:` (re-derive rather than trusting this number) and **0** files lack a filename prefix — so Consequence 1 below is an external-repo symptom, while Consequences 2-4 are live here.
 
 **Consequence 1 — prefix-less repos flatten to P5.** Reproduced in a throwaway project outside this repo (see Steps to Reproduce) whose sole issue file has no `P<n>-` prefix and a frontmatter `priority: P1`:
 
@@ -53,7 +66,9 @@ ENH-279-foo.md -> 'P5'  priority_int=5
 | `P2-ENH-2988-expand-skill-ships-documentation-shaped-prompts-with-no-directive-to-act.md` | P2 | P3 |
 | `P2-ENH-3047-confidence-check-consume-claim-and-parity-gaps.md` | P2 | P3 |
 
-**Consequence 3 — six independent readers disagree on the same input.** `ll-issues show` does not use `IssueParser`; it carries its own filename regex at `scripts/little_loops/cli/issues/show.py:80-81` and yields `None` when there is no prefix, where the parser yields `P5`. It is not a pair — there are at least six independent filename-priority regexes across the package, producing three distinct answers for the same prefix-less file:
+This drift is **not cosmetic**, because of the frontmatter readers above. For each of those four issues, `rn-implement` is already scoring them at the stale priority when choosing what to implement next, the history DB has already stored the stale value in `issue_events`/`issue_snapshots`, and `format-check --fix` will bake the stale value into the body's `Status:`/`Impact:` lines — where it lands as prose that no lint inspects.
+
+**Consequence 3 — six independent readers disagree on the same input.** `ll-issues show` does not use `IssueParser`; it carries its own filename regex at `scripts/little_loops/cli/issues/show.py:80-81` and yields `None` when there is no prefix, where the parser yields `P5`. It is not a pair — five modules carry their own filename-priority regex, producing three distinct answers (`P5` / `None` / `P3`) for the same prefix-less file, and a sixth resolves the field frontmatter-first:
 
 | Site | Prefix-less result | Notes |
 |---|---|---|
@@ -61,10 +76,12 @@ ENH-279-foo.md -> 'P5'  priority_int=5
 | `scripts/little_loops/cli/issues/show.py:80` | `None` | card rendering |
 | `scripts/little_loops/cli/issues/normalize.py:120` | `P3` | **and writes it to the filename** — see Consequence 4 |
 | `scripts/little_loops/sync.py:320` | `None` | wrong/absent GitHub priority label on push |
-| `scripts/little_loops/issue_history/parsing.py:58, 744` | `None` | historical analytics |
-| `scripts/little_loops/session_store/writers.py:2433` | `None` | session analytics |
+| `scripts/little_loops/issue_history/parsing.py:58, 744` | `"P5"` | historical analytics; defaults to `P5` before the regex, like the parser |
+| `scripts/little_loops/session_store/writers.py:2433` | frontmatter value, else `None` | **not a filename-only reader** — `_FILENAME_PRIORITY_RE` is only the fallback inside `_derive_type_priority` (`:2490-2510`), which consults frontmatter *first* |
 
-**Consequence 4 — `ll-issues normalize --auto` actively destroys the frontmatter priority.** `_priority_and_defaulted` (`scripts/little_loops/cli/issues/normalize.py:118-121`) returns `("P3", True)` when the filename carries no prefix, and that value is interpolated straight into `proposed_path` at `:292` and `:339`. On a prefix-less repo, normalizing `ENH-279-foo.md` (frontmatter `priority: P1`) renames it to `P3-ENH-279-foo.md`. Under this issue's own filename-wins precedence the stamped `P3` then becomes authoritative and the real `P1` is unrecoverable — so fixing only the read path would make this data loss *worse*, not better. `_priority_and_defaulted` must consult frontmatter before defaulting.
+**Consequence 4 — `ll-issues normalize --auto` stamps an invented priority over the declared one.** `_priority_and_defaulted` (`scripts/little_loops/cli/issues/normalize.py:118-121`) returns `("P3", True)` when the filename carries no prefix, and that value is interpolated straight into `proposed_path` at `:292` and `:339`. On a prefix-less repo, normalizing `ENH-279-foo.md` (frontmatter `priority: P1`) renames it to `P3-ENH-279-foo.md`. Under this issue's own filename-wins precedence the stamped `P3` then becomes authoritative, silently overriding the declared `P1` for every filename-based reader.
+
+**Not data loss, though** (corrected during pre-implementation review — the original capture said the `P1` was "unrecoverable"). `apply_normalize` (`normalize.py:432-464`) only ever writes `{"id": ...}` into frontmatter; it never touches `priority:`. So the declared `P1` survives on disk, the frontmatter readers listed above keep seeing it (making the two halves of the system disagree outright), and step 6's new drift lint reports the disagreement. The harm is a silently wrong resolved priority, recoverable and detectable — not destruction. `_priority_and_defaulted` must still consult frontmatter before defaulting.
 
 ## Expected Behavior
 
@@ -75,6 +92,8 @@ ENH-279-foo.md -> 'P5'  priority_int=5
 - `ll-issues prioritize --apply` and `ll-issues skip` update the frontmatter `priority:` alongside the rename, **including when the filename is already at the target priority** (the exact state of today's four mismatches), so the two sources stop diverging.
 - A format-check rule reports filename↔frontmatter priority disagreement, and the four existing mismatches are reconciled.
 - `ll-issues show` and `IssueParser` agree on the resolved priority for any given file.
+- The existing frontmatter-first resolver `session_store/writers.py:_derive_type_priority` either adopts the shared resolver or keeps its inverted precedence **with a documented reason** — the codebase does not end up with two contradictory precedence rules by accident.
+- `format-check --fix` does not bake a stale frontmatter priority into the body's `Status:`/`Impact:` placeholder lines.
 
 ## Motivation
 
@@ -84,7 +103,7 @@ Two motivations, not one:
 
 <!-- ll-private-ok: external planning hub demonstrates issue scope -->
 1. **Multi-repo generalization.** Any repo using the frontmatter-priority convention without a filename prefix (the ll-product planning hub today, any future planning-hub or convention repo) gets a dead priority ordering.
-2. **Internal correctness.** Even in this repo, where the prefix convention holds, little-loops maintains two priority sources, syncs them only at creation, and has no reconciliation or lint between them. Fixing only (1) formalizes a field that goes stale on every re-prioritization — it would make a known-unreliable source authoritative for one class of repo.
+2. **Internal correctness.** Even in this repo, where the prefix convention holds and every file has a prefix, little-loops maintains two priority sources, syncs them only at creation, and has no reconciliation or lint between them — while *both* are actively read by different subsystems. This is not latent: for the four drifted issues, `rn-implement` scores them at the stale frontmatter value when picking the next issue to implement, `issue_events`/`issue_snapshots` have already recorded the stale value, and `format-check --fix` will copy it into the issue body. Fixing only (1) would also formalize a field that goes stale on every re-prioritization — making a known-unreliable source authoritative for one class of repo.
 
 ## Proposed Solution
 

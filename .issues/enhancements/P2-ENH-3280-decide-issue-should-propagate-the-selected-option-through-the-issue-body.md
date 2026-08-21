@@ -15,10 +15,11 @@ labels:
 - pipeline
 - consistency
 blocked_by:
-- BUG-3279
+- BUG-3289
 relates_to:
 - BUG-3278
 - BUG-3279
+- BUG-3289
 - ENH-3277
 size: Large
 depends_on:
@@ -89,11 +90,27 @@ Two consequences for this issue:
 
 1. **Reuse the detector rather than writing a second one.** Phase 7c should drive off the same
    rejected-identifier extraction, so detection and remediation cannot drift apart.
-2. **The detector must be fixed first, or Phase 7c inherits its noise.** On ENH-3277 it currently
-   emits ~40 findings, nearly all false — `pytest`, `lint_cmd`, `ll-config get` — because the
-   rejected option's block absorbs the section's trailing analysis prose (**BUG-3279**, which
-   documents this as its second confirmed consumer). A propagation phase driven off that signal
-   today would rewrite correct prose. **BUG-3279 is a hard prerequisite.**
+2. **The detector must be fixed first, or Phase 7c inherits its noise.** A propagation phase driven
+   off a noisy signal rewrites *correct* prose to satisfy a false report — the worst failure mode
+   available to a phase that edits arbitrary issue text.
+
+   **Prerequisite re-pointed 2026-08-21 — the blocker is BUG-3289, not BUG-3279.** This bullet
+   originally read "**BUG-3279 is a hard prerequisite**", filed when ENH-3277 emitted ~40 findings,
+   nearly all false (`pytest`, `lint_cmd`, `ll-config get`), because the rejected option's block
+   absorbed the section's trailing analysis prose. That span defect **has since been fixed** —
+   BUG-3279's parser work landed as `f39a417e`, and BUG-3279's only remaining scope is two test
+   methods that change no behavior. Blocking on it now gates this issue on test coverage while
+   leaving the actual noise ungated.
+
+   The surviving noise is **BUG-3289**'s: `_decision_identifiers` treats every backticked span of
+   length >= 3 as option-discriminating, so shared subject vocabulary fires whenever the winner's
+   own prose happens not to restate it. Measured post-`f39a417e`: **~23 surviving reports on
+   ENH-3277** (`pytest`, `ProjectConfig`, `rn-refine`, `.ll/ll-config.json`, `to_dict()`,
+   `oracles/code-run-gate.yaml`) plus two *new* ones on ENH-2692 for `final_score`, the issue's own
+   shared subject. Every one of those is prose Phase 7c would be instructed to rewrite.
+
+   `blocked_by` is therefore **BUG-3289**; BUG-3279 is demoted to `relates_to` as the issue that
+   removed the first layer of this noise and measured the second.
 
 ## Proposed Solution
 
@@ -285,8 +302,11 @@ _Added by `/ll:refine-issue` — 2026-08-21 — based on codebase analysis:_
 
 ## Implementation Steps
 
-1. **Land BUG-3279 first** — Phase 7c drives off `_unapplied_decision`, which is unusable until
-   its span bug is fixed.
+1. **Land BUG-3289 first** — Phase 7c drives off `_unapplied_decision`, whose report list is still
+   dominated by shared-subject false positives (~23 on ENH-3277, 2 on ENH-2692) even after
+   BUG-3279's span fix landed in `f39a417e`. Rewriting prose to satisfy those reports damages
+   correct text. See *Motivation § Half of this already exists*, item 2, for why the prerequisite
+   moved from BUG-3279 to BUG-3289.
 2. Write Phase 7c into `skills/decide-issue/SKILL.md` with the four reference categories and the
    explicit bounded-scope statement (option-keyed prose only, never a re-refine).
 3. Extend the Phase 9 report template in `skills/decide-issue/reference.md` with a propagated-edits
@@ -338,6 +358,24 @@ rebase against the other rather than assuming a clean merge [Agent 2 finding].
 - ENH-3277 — the observed case, including its own line-198 propagation checklist
 - BUG-3278 — `decision_needed` cleared while other decision points stay open; same pass, adjacent
   defect
+- BUG-3289 — the `blocked_by` prerequisite: `_decision_identifiers`' shared-vocabulary false
+  positives, which Phase 7c would otherwise act on as if they were real
+- BUG-3279 — landed the span fix (`f39a417e`) that removed the first noise layer; `relates_to` only
+
+## Verify Verdict Note
+
+`verify_verdict: NON_VALID` (recorded by `/ll:verify-issues`) refers to the **reproducer**, not the
+defect. The observed case in *Current Behavior* was ENH-3277, whose contradictory prose was repaired
+by hand before this issue was verified, and `/ll:wire-issue` separately confirmed that no committed
+or abandoned git revision holds the pre-repair text (see *Tests → "Flagged, not resolved"*). So a
+verifier checking the issue's claims against the live tree correctly finds nothing to reproduce.
+
+The underlying gap is structural and independently checkable: `skills/decide-issue/SKILL.md` Phases
+6–7 define exactly three writes (`> **Selected:**` callout, `### Decision Rationale`,
+`decision_needed: false`) and no phase reconciles the rest of the document — confirmed by reading
+the skill, not by reproducing ENH-3277. **Do not cull this issue on the NON_VALID verdict.**
+Re-verify against the skill's phase list, or against the hand-authored fixture Implementation
+Step 4 calls for, once that fixture exists.
 
 ## Status
 

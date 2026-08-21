@@ -17,6 +17,12 @@ relates_to:
 - BUG-3282
 - BUG-3278
 - BUG-3279
+confidence_score: 85
+outcome_confidence: 86
+score_complexity: 18
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 25
 ---
 
 # ENH-3284: refine-issue records blocking dependencies as prose notes instead of blocked_by
@@ -224,7 +230,40 @@ _These touchpoints were identified by wiring analysis and must be included in th
 **Open** | Created: 2026-08-21 | Priority: P3
 
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-08-21_
+
+**Readiness Score**: 85/100 → PROCEED WITH CAUTION
+**Outcome Confidence**: 86/100 → HIGH CONFIDENCE
+
+### Concerns
+- Criterion 4 (Issue Well-Specified) is capped at 10/20 by the Parity/Claim/Structure gate: the
+  `## Expected Behavior` section is still the literal unfilled template placeholder
+  (`[What should happen instead]`), flagged by `format-check` as both `template_placeholders` and
+  `boilerplate`.
+- `## Scope Boundaries` is entirely missing — no "what we're NOT doing" section, though the
+  Program Design § Decision Rules discriminator partially substitutes for it.
+- Two Program Design § Signatures citations have inaccurate return types/parameters:
+  `apply_link` is stated as `(source_id, field, target_id) -> LinkResult` but the actual signature
+  is `apply_link(config, *, issue_id, field, target, unlink=False, reciprocal=False, force=False,
+  dry_run=False) -> LinkResult` (`link.py:119`); `extract_prose_deps` is stated as
+  `(body) -> list[ProseDep]` but the actual signature is
+  `extract_prose_deps(body: str, host_id: str | None = None) -> set[str]` (`prose_deps.py:87`).
+  Neither trips the Program Design gate (which checks for a signature-shaped line and a
+  resolvable Call Path, not parameter accuracy), but an implementer following these signatures
+  literally would write against the wrong contract.
+- Criterion C notes that "an explicit default for the ambiguous middle ground" is *needed* for
+  the new classification rule but does not itself specify what that default is (only that it
+  should mirror `soft_dep_hard_edge`'s stated bias) — left as a judgment call for implementation.
+- `format-check` flags this issue file itself with `unmarked_superseded_directive`: the Codebase
+  Research Findings body contains a correction phrase ("does not exist") with no `⚠ Superseded`
+  marker in a directive section. Appears to be a gate false-positive here — the Files to Modify
+  section was already updated to reflect the finding — but worth a marker or it will keep
+  resurfacing in format-check sweeps.
+
 ## Session Log
+- `/ll:confidence-check` - 2026-08-21T20:13:37 - `e2e1442c-6810-4106-ac77-209e0a6a894d.jsonl`
 - `/ll:wire-issue` - 2026-08-21T18:16:11 - `3f6ddaa1-8943-4e02-80c6-991ae42bf623.jsonl`
 - `/ll:reconcile-issue` - 2026-08-21T18:07:51 - `73da6192-349c-4cd0-b9a2-b714f2801296.jsonl`
 - `/ll:refine-issue` - 2026-08-21T17:46:16 - `60a158f1-d190-4921-8534-c9c523505485.jsonl`

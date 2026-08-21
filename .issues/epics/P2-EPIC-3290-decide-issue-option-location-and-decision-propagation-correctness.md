@@ -58,11 +58,17 @@ The first four are locator defects; the last two are consumer defects that inher
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/issue_parser.py` — `locate_enumerable_options` (`:2134`),
-  `_locate_directive_alternatives` (`:2062`), `_OPTION_PATTERNS`, `_option_block_spans`,
-  `_iter_option_blocks`, `_decision_identifiers` (`:1351`), `_unapplied_decision` (`:1530`).
+- `scripts/little_loops/issue_parser.py` — `locate_enumerable_options` (`:2209`),
+  `_locate_directive_alternatives` (`:2137`), `_OPTION_PATTERNS` (`:1949`),
+  `_option_block_spans` (`:1405`), `_iter_option_blocks` (`:2287`),
+  `_decision_identifiers` (`:1351`), `_unapplied_decision` (`:1449`; its
+  `discriminating = rej_ids - sel_ids` line is `:1530`), `LocatedOptions.to_dict()` (`:1997`).
   Shared by BUG-3279, BUG-3285, BUG-3287, BUG-3289, and read by BUG-3278.
-- `skills/decide-issue/SKILL.md` — Phases 4, 6, 7, 7b (BUG-3278, ENH-3280).
+  > Anchors refreshed 2026-08-21 post-`f39a417e`, which shifted every anchor in this file by
+  > +58 to +100 lines. The pre-refresh values (`:2134`, `:2062`, `:1530`-as-function) were stale.
+- `scripts/little_loops/cli/issues/check_decidable.py` — the `located.count >= 1` gate at `:36`
+  (BUG-3287 part 1b; required under its recommended return shape).
+- `skills/decide-issue/SKILL.md` — Phases 2.5, 3, 3b, 4, 6, 7a, 7b (BUG-3278, BUG-3287, ENH-3280).
 
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/cli/issues/` — `locate-options`, `check-decidable`, `format-check`
@@ -93,32 +99,62 @@ The first four are locator defects; the last two are consumer defects that inher
 
 Implementation order is bottom-up: locator primitives, then the decision model, then propagation.
 
-- **BUG-3279** (P2) — last option's span runs to section end and absorbs trailing prose. **The
-  parser fix already landed in `f39a417e`**; the issue is reopened for residual *test-only* work
-  (an ENH-2692 new-report-direction fixture, and a corpus-sweep invariant test). Its item 3 was
-  split out as BUG-3289. Verify remaining scope before scheduling — it is much smaller than its
-  `size: Large` suggests.
+- **BUG-3279** (P3) — ✅ **`done` 2026-08-21.** Last option's span ran to section end and absorbed
+  trailing prose. Parser fix landed in `f39a417e`; the reopened test-only residual (ENH-2692
+  new-report-direction fixture + three frozen corpus-invariant fixtures) closed with no source
+  change. Its item 3 was split out as BUG-3289.
 - **BUG-3285** (P3) — `bold_label` matches by prefix only, so `**Option A evidence**:` and
-  `**Option B was already applied**:` are spanned as options. Widens the option set incorrectly;
-  **blocks BUG-3289**, whose measurement depends on clean spans.
+  `**Option B was already applied**:` are spanned as options. **Needs a design pass before
+  implementation**: its sketch regex was measured against the full corpus on 2026-08-21 and drops
+  two real *selected* options (`**Option A′ (SELECTED)**` in BUG-3177, `**Option C′ (selected)**`
+  in BUG-3253), gains 3 matches by crossing newlines, flips 2 tiers, and moves 1 resolved section.
+  Its stated acceptance bar is also unachievable — 21 of 26 repeated-letter issues repeat for a
+  legitimate reason. See that issue's § *Corpus differential*.
 - **BUG-3287** (P2) — two defects in the shared precedence chain: a tier match anywhere preempts
   the Pattern E directive heuristic, and the `bullet` tier cannot see a bold-wrapped marker.
   **Sequence before BUG-3278** — BUG-3278 otherwise re-fixes both inside its own new group
-  iterator rather than consuming a corrected chain.
-- **BUG-3289** (P3, `blocked_by: BUG-3285`) — `_decision_identifiers` extracts every backticked
-  span >= 3 chars as option-discriminating, with no filter for the issue's shared vocabulary.
-  Candidate rule already recorded: subtract identifiers appearing in the title/Summary or in any
-  section preceding `## Proposed Solution`.
+  iterator rather than consuming a corrected chain. Its recommended `residual_directive` return
+  shape requires three consumer edits (`to_dict()`, `check_decidable.py`, Phase 3 reporting) or it
+  changes no observable behavior; those are now parts 1a–1c of that issue.
+- **BUG-3289** (P3) — `_decision_identifiers` extracts every backticked span >= 3 chars as
+  option-discriminating, with no filter for the issue's shared vocabulary. Candidate rule already
+  recorded: subtract identifiers appearing in the title/Summary or in any section preceding
+  `## Proposed Solution`. **Now the `blocked_by` prerequisite for ENH-3280.**
 - **BUG-3278** (P2) — introduces the **decision group** model: one group per decision point,
   resolved as a unit, so `decision_needed` is cleared only when every group is settled. The first
-  consumer-side fix, and the largest.
-- **ENH-3280** (P2, `blocked_by: BUG-3279`, `depends_on: BUG-3278`) — reconcile the rest of the
+  consumer-side fix, and the largest. Six pre-implementation review rounds; its round-5
+  `provisional_e` suppression matrix was re-verified against the live parser on 2026-08-21 and
+  reproduces exactly.
+- **ENH-3280** (P2, `blocked_by: BUG-3289`, `depends_on: BUG-3278`) — reconcile the rest of the
   document against the selection instead of writing only the three existing markers. Genuinely
   last.
 
-Dependency edges declared in frontmatter: `BUG-3285 -> BUG-3289`, `BUG-3279 -> ENH-3280`,
-`BUG-3278 -> ENH-3280`. The BUG-3287-before-BUG-3278 ordering is a *design* preference recorded in
-BUG-3287's own body, not a hard block.
+### Dependency edges (revised 2026-08-21)
+
+Declared in frontmatter: `BUG-3289 -> ENH-3280`, `BUG-3278 -> ENH-3280`.
+
+Two edges were corrected after review:
+
+- **`BUG-3279 -> ENH-3280` re-pointed to `BUG-3289 -> ENH-3280`.** ENH-3280's Phase 7c drives its
+  prose rewrites off `_unapplied_decision`'s report list, and its own Motivation makes a quiet
+  detector the prerequisite. BUG-3279 fixed the *span* layer of that noise and is now `done`; the
+  surviving noise (~23 reports on ENH-3277, 2 new on ENH-2692) is BUG-3289's. The old edge gated a
+  P2 on test-only work while leaving the real dependency undeclared.
+- **`BUG-3285 -> BUG-3289` demoted to `relates_to`.** BUG-3285 makes BUG-3289's corpus measurement
+  cleaner but is not a correctness dependency — BUG-3289's guard (`new_reports == 0` against the
+  tree it lands on) is self-contained, and its report-total drop is already declared an observation
+  rather than an assertion. A hard block would hold BUG-3289 behind BUG-3285's redesign for no gain.
+
+The BUG-3287-before-BUG-3278 ordering remains a *design* preference recorded in BUG-3287's own body,
+not a hard block.
+
+**BUG-3285 and BUG-3287 are measured independent.** Both edit `_OPTION_PATTERNS` (element `[1]` and
+element `[3]` respectively) and neither declares an edge to the other. Running
+`locate_enumerable_options` over all of `.issues/` in four configurations (baseline / each alone /
+both) on 2026-08-21: 10 files change under BUG-3285, 22 under BUG-3287, 32 under both — with **0
+overlapping files, 0 composition surprises, and no `count` drop appearing only when both land.**
+They may land in either order. This is corpus-dependent, not structural: whichever lands second
+re-runs its own differential against the post-first tree.
 
 ## Goal
 
@@ -135,14 +171,51 @@ Out of scope: the priority-source drift in `IssueParser` (**BUG-3286**, independ
 validation (**BUG-3282** / **ENH-3283**); `blocked_by` promotion in refine-issue (**ENH-3284**); any
 change to how issues are *scored* once options are correctly located.
 
+### Accepted divergence — three detectors, three answers (recorded 2026-08-21)
+
+No child owns this, and each scopes it out defensibly, so it is recorded here as an epic-level
+accepted outcome rather than left undiscovered:
+
+| Probe | Sees, after this epic |
+| --- | --- |
+| `ll-issues check-decidable` | `_OPTION_PATTERNS` tiers 1–4 (with `[3]` widened) **+** `residual_directive` |
+| `ll-issues check-open-questions` | `_OPTION_HEADING_RE` Patterns 1–2 only — no bullet tier, no directives |
+| `check-unresolved-decisions` (proposed by BUG-3278; does not exist yet) | tiers 1–4 **+** directives, under `include_approximate_tiers=True` |
+
+Three different answers to "does this document still hold an undecided decision point?", and
+`resolve-decision.yaml:47-67` chains two of them (`check-open-questions || check-decidable`). The
+scope-outs are individually sound — BUG-3287 leaves `_iter_option_blocks` alone because widening its
+conservatism is a loop-gate change with its own blast radius (the ENH-2446 comment at `:2271-2275`
+is deliberate), and BUG-3278 part 2 leaves `locate_unresolved_options` untouched because it and the
+new group probe count different things. The divergence nonetheless **widens** as a result of this
+epic: `check-decidable` learns the `- **(a) …**` shape and directives while `check-open-questions`
+does not.
+
+Accepted for now. File as this epic's follow-up if a gate misroute is observed live; do not fold it
+into any child.
+
 ## Success Criteria
 
-- [ ] All six children are `done` or `cancelled`.
-- [ ] `- **(a) …**` bullet options and co-located Pattern E directives both resolve on the live
-      `.issues/` corpus; the 6 issues BUG-3287 measured as preempted no longer are.
-- [ ] `_unapplied_decision` fires no report attributable to shared subject vocabulary across the
-      live corpus.
-- [ ] An issue with two decision points retains `decision_needed: true` until both groups resolve.
+- [x] All six children are `done` or `cancelled`. *(BUG-3279 done 2026-08-21; five remain.)*
+- [ ] `- **(a) …**` bullet options resolve on the live `.issues/` corpus, and a document whose only
+      decision point is a tier-preempted Pattern E directive reports **exit 0** from
+      `ll-issues check-decidable`. **Stated at the consumer, not the dataclass** — BUG-3287's
+      recommended `residual_directive` shape leaves `locate-options` output byte-identical for all
+      six preempted issues unless its parts 1a–1c land, so "the directive is represented" is not
+      evidence the defect is fixed.
+- [ ] `_unapplied_decision`'s corpus report set **strictly decreases** with `new_reports == 0`, and
+      the ENH-2692 `final_score` reports no longer fire.
+      > **Restated 2026-08-21.** This criterion previously read *"fires no report attributable to
+      > shared subject vocabulary across the live corpus"* — an absolute that BUG-3279 warns against
+      > twice (*"Do not assert zero — this fix cannot reach zero"*) and that BUG-3289 cannot promise:
+      > its two scope options (title+Summary only vs. everything above `## Proposed Solution`) have
+      > materially different reach, and it deliberately refuses a default. Assert the relation
+      > BUG-3289 actually commits to; record the report-total drop as an observation.
+- [ ] An issue with two decision points retains `decision_needed: true` until both groups resolve,
+      on **both** clearing paths — Phase 7b and Phase 3b step 4 (the `AUTO_MODE` path).
+- [ ] No real option is lost from the live corpus: `BUG-3177` and `BUG-3253` keep their current
+      `count`, and no file's resolved `heading` changes. *(BUG-3285's guard — the class of
+      regression its sketch regex was measured to produce.)*
 - [ ] `python -m pytest scripts/tests/` passes.
 
 ## Related Key Documentation

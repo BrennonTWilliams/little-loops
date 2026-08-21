@@ -9,6 +9,7 @@ parent: EPIC-3290
 discovered_by: bug-3278-pre-implementation-review
 discovered_date: '2026-08-21'
 captured_at: '2026-08-21T19:30:00Z'
+verify_verdict: NON_VALID
 labels:
 - issue-parser
 - decide-issue
@@ -17,15 +18,16 @@ labels:
 relates_to:
 - BUG-3278
 - BUG-3279
+- BUG-3285
 ---
 
 # BUG-3287: locate_enumerable_options lets a tier match preempt Pattern E, and its bullet tier cannot see bold-wrapped markers
 
 ## Summary
 
-`locate_enumerable_options` (`issue_parser.py:2134`) resolves a document to **one** option set by
+`locate_enumerable_options` (`issue_parser.py:2209`) resolves a document to **one** option set by
 running `_OPTION_PATTERNS` tiers 1–4 first and falling back to the Pattern E directive heuristic
-`_locate_directive_alternatives` (`:2062`) only when **all four tiers miss document-wide**. Two
+`_locate_directive_alternatives` (`:2137`) only when **all four tiers miss document-wide**. Two
 defects follow from that chain:
 
 1. **Pattern E preemption (live today).** Any tier match anywhere in the resolved section hides a
@@ -46,7 +48,7 @@ all sit on. The two are independent — neither blocks the other.
 
 `locate_enumerable_options` walks sections in precedence order (`## Proposed Solution`, then
 `_OPTION_FALLBACK_SECTIONS`, then a whole-document H2 sweep), handing each section body to
-`_locate_options_in_text` (`:1967`), which **returns on the first `_OPTION_PATTERNS` tier with
+`_locate_options_in_text` (`:2025`), which **returns on the first `_OPTION_PATTERNS` tier with
 ≥1 match**. `_locate_directive_alternatives` is reached only after every section and every tier
 has missed.
 
@@ -151,6 +153,52 @@ both. Two viable shapes; pin one during implementation:
   `/ll:decide-issue` Phase 3's `count == 1` branch (which clears `decision_needed` outright), so
   mutating `count` is the higher-risk shape.
 
+> **Option B is inert without the consumer edits below — this is not optional polish.**
+> Verified 2026-08-21: `cmd_check_decidable` (`cli/issues/check_decidable.py:35`) reads only
+> `located.count`, and `LocatedOptions.to_dict()` (`issue_parser.py:1997-2003`) serializes only
+> `count` / `pattern` / `heading` / `options`. A `residual_directive` field that no consumer reads
+> and `--json` does not emit leaves the output for all six preempted issues **byte-identical**, so
+> defect 1 would be *made available* rather than fixed and this issue's own *Expected Behavior*
+> ("A Pattern E directive is reported even when a tier also matches") would be met by nothing.
+> Option A does not have this problem — it moves `count`, which every consumer already reads — which
+> is the honest cost of preferring Option B. Parts 1a–1c below are what make Option B equivalent.
+
+### Part 1a — serialize the field
+
+Add `"residual_directive": self.residual_directive.to_dict() if self.residual_directive else None`
+to `LocatedOptions.to_dict()` (`issue_parser.py:1997`). This is a **new top-level key** in
+`ll-issues locate-options --json`. `test_issues_locate_options.py:94` asserts exact key sets only
+per-*option* (`{"label", "text", "start_line", "end_line"}`), which is unchanged, so no existing
+assertion breaks — but re-check before landing.
+
+### Part 1b — teach `check-decidable` to see it
+
+`cmd_check_decidable` (`cli/issues/check_decidable.py:19-52`) gates on `located.count >= 1`. Change
+to `located.count >= 1 or located.residual_directive is not None`, and report the directive in the
+success line when it is the only thing found. Without this, the six live preempted issues stay
+`decidable` for the wrong reason (their tier options) and a document whose *only* decision point is a
+preempted directive still routes `resolve-decision.yaml:47-67` to `refine`.
+
+### Part 1c — state what Phase 2.5 / Phase 3 do with it
+
+`skills/decide-issue/SKILL.md` Phase 2.5 (`:110-146`) and Phase 3 (`:160-190`) consume
+`locate-options --json`. Minimum viable change: Phase 3 must **not** silently drop a
+`residual_directive` when the tier options are scored. Pin one of:
+
+- **surface-only** — Phase 3 scores the tier options as today and Phase 9 reports
+  `⚠ residual decision directive at <heading>:<line> — not scored this run`. Cheapest, keeps this
+  issue out of the decision-model layer.
+- **defer to BUG-3278** — the decision-*group* model there already represents "two decision points
+  in one document" properly, and its `check-unresolved-decisions` probe would hold
+  `decision_needed: true` until both resolve.
+
+**Recommended: surface-only**, with the group model as the real fix. Scoring a directive alongside
+tier options is BUG-3278's problem, and duplicating it here would be the private-copy-of-the-fix
+failure this issue was split out to prevent. But *silence* is not acceptable: a directive that
+`check-decidable` now counts as decidable and Phase 3 never mentions is a worse state than today,
+because `decision_needed` gets cleared with the directive still open and nothing in the report says
+so.
+
 ### Part 2 — widen `_OPTION_PATTERNS[3]`
 
 ```python
@@ -228,11 +276,20 @@ not an optional one.
 
 - `scripts/little_loops/issue_parser.py` — `locate_enumerable_options` directive-probe ordering
   (+ `LocatedOptions.residual_directive` if the recommended shape is taken), `_OPTION_PATTERNS[3]`
+- `scripts/little_loops/issue_parser.py` — `LocatedOptions.to_dict()` (`:1997-2003`), which must
+  emit `residual_directive` or the field is invisible to `locate-options --json` (part 1a).
+  **Required under Option B, not optional**
+- `scripts/little_loops/cli/issues/check_decidable.py` — the `located.count >= 1` gate at `:35`
+  gains `or located.residual_directive is not None` (part 1b). **Required under Option B**; without
+  it none of the six preempted issues changes observable behavior
+- `skills/decide-issue/SKILL.md` — Phase 3 must report a `residual_directive` it does not score
+  (part 1c, surface-only shape). **Required under Option B**
 
 ### Dependent Files (Callers/Importers)
 
 - `scripts/little_loops/cli/issues/check_decidable.py:19-52` — `count >= 1` gate
-- `scripts/little_loops/cli/issues/locate_options.py:19-38` — `--json` payload
+  > ⚠ Promoted to *Files to Modify* under Option B — see part 1b
+- `scripts/little_loops/cli/issues/locate_options.py:19-51` — `--json` payload
 - `scripts/little_loops/issues/fold_research_findings.py:178` — prose reference to
   `count_enumerable_options`
 - `scripts/little_loops/loops/oracles/resolve-decision.yaml:47-67` (`check_decision_decidable`)
@@ -257,6 +314,27 @@ not an optional one.
   `pattern: "bullet"`
 - `scripts/tests/test_ll_issues_check_decidable.py` — a case asserting the same document is
   decidable, and one asserting a tier+directive document still reports the directive
+- **Option B end-to-end guard (required):** a document whose *only* decision point is a
+  tier-preempted directive — assert `ll-issues check-decidable` **exits 0**. This is the assertion
+  that fails if parts 1a/1b are skipped, and it is the only one that distinguishes "the field
+  exists" from "the defect is fixed." Pair it with a `locate-options --json` case asserting
+  `residual_directive` is present and non-null on one of the six live preempted shapes
+- `scripts/tests/test_decide_issue_skill.py` — a phase-text assertion that the Phase 3 slice
+  mentions `residual_directive` and states it is reported rather than scored (part 1c)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_issue_parser_unresolved.py:35-49`
+  (`TestLocatedOptionsDataclass::test_located_options_to_dict_nests_options`) — **will break**
+  once `LocatedOptions.to_dict()` serializes `residual_directive` (part 1a): the test asserts
+  `located.to_dict() ==` a literal 4-key dict (`count`/`pattern`/`heading`/`options`); the real
+  dict gains a 5th key and this exact-equality assertion fails. Update the expected dict to
+  include `"residual_directive": None`. No other `.to_dict() ==` exact-equality call on
+  `LocatedOptions` exists in the suite, so this is the only mechanical break. `TestLocatedOptionsDataclass`
+  (`:19-56`) is also the closer same-dataclass-family precedent for the new field's own tests
+  (construction + `to_dict()`-includes-the-key + defaults-to-`None`-when-absent) — a better model
+  than the `IssueInfo.parent`/`base_branch` frontmatter-parsing precedent cited in Program Design,
+  since `LocatedOptions` is built by direct construction inside `locate_enumerable_options`, not
+  parsed from YAML frontmatter.
 
 ### Documentation
 
@@ -267,9 +345,49 @@ not an optional one.
 - `docs/guides/DECISIONS_LOG_GUIDE.md:198` — states Pattern E is reached when formal option blocks
   are absent; becomes false under part 1
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/COMMANDS.md:254` — prose states the pattern precedence is "section headers, bold
+  labels, numbered/bullet items, then the un-preferenced-directive heuristic," describing the
+  directive as a strict last-resort fallback; becomes stale under part 1 (directive is probed
+  alongside tiers, not only after all miss). The same sentence's `locate-options --json` /
+  `pattern: "provisional_e"` example should also note `residual_directive` when both a tier and a
+  directive match, under the recommended Option B shape.
+
 ### Configuration
 
 N/A
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-21 — based on codebase analysis:_
+
+- Test structure for `_OPTION_PATTERNS`-adjacent cases follows two coexisting, disagreeing styles
+  in the exact two files this issue already cites — the "table-driven case" language doesn't pin
+  which one:
+  - One test method per named tier/shape, grouped under a `class Test<Concept>` —
+    `TestLocatedOptionsPatternNames` (`scripts/tests/test_issue_parser_unresolved.py:59-104`).
+  - A manual `for` loop over a tuple of shapes with an inline assertion message (not
+    `pytest.mark.parametrize`) — `test_declaration_boundary_variants_counted`
+    (`scripts/tests/test_issue_parser_unresolved.py:581-592`), the closer structural match to the
+    proposed 14-shape match matrix.
+  - `pytest.mark.parametrize` is also established in the same module family
+    (`scripts/tests/test_issue_parser.py:4199-4232`).
+  - `scripts/tests/test_issues_locate_options.py` asserts at the CLI `--json` layer
+    (`class Test<Shape>JsonShape`, `_write_issue()` + `_invoke(..., "--json")`, checking
+    `data["count"]`/`data["pattern"]`/`data["heading"]` and `set(option) == {"label", "text",
+    "start_line", "end_line"}`) — a new `residual_directive` key would need a parallel
+    `set(option)`-style shape assertion at this layer if surfaced through `--json`.
+- Corpus-wide sweeps over `.issues/` exist in two shapes, both checked **within a single run** —
+  neither loads a stored prior-run baseline to diff against, so the "no count decreases, no
+  heading changes" before/after comparison this issue proposes has no direct precedent to follow:
+  - Crash-safety-only: `TestUnappliedDecisionLiveCorpusSweep.test_corpus_sweep_does_not_crash`
+    (`scripts/tests/test_issue_parser.py:5005-5036`) — asserts only that the function doesn't
+    raise on real content, no value comparison.
+  - Threshold/statistical: `TestCorpusBaseline` (`scripts/tests/test_research_triage.py:538-606`,
+    `@pytest.mark.timeout(600)` + `@pytest.mark.slow`, skip if corpus < 100 issues, `lru_cache`-
+    memoized sweep) — asserts aggregate statistics computed within one pass, not a diff.
+  - Shared scaffolding worth reusing: skip-if-corpus-absent, `.issues` resolution via
+    `Path(__file__).resolve().parents[2]`, `rglob("*.md")`, `@pytest.mark.slow`/`timeout` markers.
 
 ## Program Design
 
@@ -281,21 +399,21 @@ N/A
 ### Signatures
 
 - `locate_enumerable_options(content: str) -> LocatedOptions` —
-  `scripts/little_loops/issue_parser.py:2134` — unchanged signature; the directive probe moves from
+  `scripts/little_loops/issue_parser.py:2209` — unchanged signature; the directive probe moves from
   terminal fallback to an additional probe
 - `_locate_directive_alternatives(content: str) -> LocatedOptions | None` —
-  `scripts/little_loops/issue_parser.py:2062` — unchanged
+  `scripts/little_loops/issue_parser.py:2137` — unchanged
 - `_locate_options_in_text(content: str, body: str, body_offset: int) -> LocatedOptions | None` —
-  `scripts/little_loops/issue_parser.py:1967` — unchanged; still first-tier-wins within a section
-- `_OPTION_PATTERNS: tuple[re.Pattern, ...]` — `scripts/little_loops/issue_parser.py:1891` —
+  `scripts/little_loops/issue_parser.py:2025` — unchanged; still first-tier-wins within a section
+- `_OPTION_PATTERNS: tuple[re.Pattern, ...]` — `scripts/little_loops/issue_parser.py:1949` —
   element 3 widened
 
 ### Call Path
 
 `ll-issues check-decidable` / `ll-issues locate-options` -> `cmd_check_decidable`
 (`cli/issues/check_decidable.py:34`) / `cmd_locate_options` (`cli/issues/locate_options.py:38`) ->
-`locate_enumerable_options` (`issue_parser.py:2134`) -> `_locate_options_in_text` (`:1967`) **and**
-`_locate_directive_alternatives` (`:2062`) -> `LocatedOptions`
+`locate_enumerable_options` (`issue_parser.py:2209`) -> `_locate_options_in_text` (`:2025`) **and**
+`_locate_directive_alternatives` (`:2137`) -> `LocatedOptions`
 
 ### Decision Rules
 
@@ -307,28 +425,110 @@ moves for the 6 live preemption cases — which perturbs Phase 3's `count == 1` 
 `check-decidable`'s threshold on documents that are not otherwise changing.
 
 **Option B — `residual_directive` field.** Leave `count`/`pattern`/`options` byte-identical;
-surface the directive on a new optional field. Costs: one dataclass field and a `to_dict()` entry;
-consumers must opt in to see it, so `check-decidable` needs an explicit `or residual_directive`
-clause to benefit.
+surface the directive on a new optional field. Costs: one dataclass field, a `to_dict()` entry, an
+explicit `or residual_directive` clause in `check-decidable`, and a Phase 3 reporting rule —
+**four edits, not one.** Consumers must opt in to see it, so the field alone changes nothing.
 
 Recommendation: **Option B**, because `count` is load-bearing for a branch that clears
 `decision_needed` outright, and Option A moves it on documents this issue is not otherwise
 touching.
+
+**Cost correction (2026-08-21).** This section previously framed the consumer opt-in as a footnote
+("`check-decidable` needs an explicit `or residual_directive` clause to benefit"). Verified against
+the tree, it is the whole delta: `cmd_check_decidable` (`cli/issues/check_decidable.py:35`) reads
+only `located.count`, and `LocatedOptions.to_dict()` (`:1997-2003`) emits only
+`count`/`pattern`/`heading`/`options`. Ship the dataclass field alone and **all six preempted issues
+produce byte-identical output** — the defect is unfixed and the *Expected Behavior* above is unmet.
+Parts 1a–1c in *Proposed Solution* are the mandatory remainder of Option B, and the Option-B
+end-to-end guard under *Tests* is what pins it. This does not overturn the recommendation — moving
+`count` is still the higher-risk shape — but Option B's advantage is a smaller *blast radius*, not a
+smaller diff.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-21 — based on codebase analysis:_
+
+- `to_dict()` on every dataclass in `issue_parser.py` (`LocatedOptions.to_dict()` at `:1997-2003`,
+  `IssueInfo.to_dict()` at `:2770-2807`, `FormatGaps.to_dict()` at `:567-595`,
+  `QuestionGaps.to_dict()` at `:631-635`) always includes every field explicitly, never omitting a
+  `None`/empty value — a new optional field appears as a dict key on every call regardless of
+  whether it fired.
+- New optional fields on these dataclasses follow `field_name: Type | None = None`, appended after
+  existing non-default fields (`IssueInfo`'s `parent: str | None = None` at `:2732`,
+  `base_branch: str | None = None` at `:2733`), each documented with a one-line description and
+  provenance note in the class docstring's `Attributes:` block (`:2691-2723`).
+- Consumers of this module's own dataclasses read a possibly-unset field via direct attribute
+  access + `is not None`, never `getattr` — `cli/issues/locate_options.py:45-48`
+  (`if located.pattern is not None:`, `if located.heading is not None:`). `getattr(obj, "attr",
+  default)` is reserved in this codebase for duck-typed/external objects (`argparse.Namespace`,
+  SDK response objects) whose shape isn't guaranteed by a local `@dataclass` — e.g.
+  `locate_options.py:40`, `host_runner.py:2246,2263-2264`. No dataclass result in this module
+  family is ever consumed via `getattr`.
+- No example in this codebase merges two probes' outputs into the same result field (the shape
+  Option A proposes). Every existing multi-probe result keeps each probe on its own field:
+  `FormatGaps` (`issue_parser.py:490-522`, body `:638`) computes ~24 independent gap categories
+  each into its own list field with no probe suppressing another; `QuestionGaps` (`:615-635`) is
+  the two-field version; `triage_research_axes` (`issues/research_triage.py:279-339`) runs every
+  axis probe unconditionally into a tuple before any conditional overwrite. This is one-sided
+  evidence for Option B's shape, not a contested convention — no precedent in the codebase argues
+  for Option A's merge-into-one-field approach.
 
 ## Implementation Steps
 
 1. **Part 1 first.** Restructure `locate_enumerable_options` so `_locate_directive_alternatives`
    runs in addition to the tier scan; pin the return shape per *Decision Rules*. Add
    `TestDirectiveNotPreempted` and assert the six live corpus cases now surface their directive.
-2. Land the corpus differential test (no `count` decreases, no `heading` changes) **before**
+2. **Parts 1a–1c — the consumer edits that make Option B observable.** Serialize
+   `residual_directive` in `LocatedOptions.to_dict()` (`:1997`); add `or located.residual_directive
+   is not None` to `cmd_check_decidable` (`check_decidable.py:35`); write the Phase 3 reporting rule
+   into `skills/decide-issue/SKILL.md`. **Do not defer these to a follow-up** — steps 1 and 2
+   together are the fix for defect 1; step 1 alone changes no observable output. Land the Option B
+   end-to-end guard (*Tests*) here, and confirm it fails against step 1 alone.
+3. Land the corpus differential test (no `count` decreases, no `heading` changes) **before**
    part 2, so it fails loudly if part 2 regresses a file.
-3. **Part 2.** Widen `_OPTION_PATTERNS[3]`. Add the 14-shape match matrix as a table-driven test.
-4. Add the `locate-options` and `check-decidable` cases pinning the newly-reachable
+4. **Part 2.** Widen `_OPTION_PATTERNS[3]`. Add the 14-shape match matrix as a table-driven test.
+5. Add the `locate-options` and `check-decidable` cases pinning the newly-reachable
    `- **(a) …**` shape as `bullet`/decidable — these are behavior changes to existing consumers
    and must be pinned by test, not left implicit.
-5. Re-run the corpus differential; confirm BUG-3229 holds at `count 2` and ENH-3264's resolved
+6. Re-run the corpus differential; confirm BUG-3229 holds at `count 2` and ENH-3264's resolved
    section is stable.
-6. Update the four documentation sites in *Integration Map → Documentation*.
+7. Update the four documentation sites in *Integration Map → Documentation*. Under Option B,
+   `docs/reference/CLI.md`'s `locate-options` section also gains the new top-level
+   `residual_directive` key in its `--json` payload description.
+   > ⚠ Superseded — five sites now, `/ll:wire-issue` added `docs/reference/COMMANDS.md:254`
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Update `scripts/tests/test_issue_parser_unresolved.py:35-49`
+  (`test_located_options_to_dict_nests_options`) — add `"residual_directive": None` to the
+  expected dict once part 1a lands, or the existing exact-equality assertion fails
+- Update `docs/reference/COMMANDS.md:254` — the pattern-precedence sentence describes the
+  directive as a strict last-resort fallback; correct alongside the other documentation sites in
+  step 7
+
+### Relationship to BUG-3285 — measured independent (2026-08-21)
+
+Both issues edit `_OPTION_PATTERNS` (this one widens element `[3]`, BUG-3285 tightens element `[1]`)
+and neither declared an edge to the other. Measured directly by running
+`locate_enumerable_options` over all of `.issues/` in four configurations — baseline, tier-1
+tightened, tier-3 widened, and both:
+
+| Configuration | files changed vs baseline |
+| --- | --- |
+| BUG-3285 alone (tier 1 tighten) | 10 |
+| BUG-3287 alone (tier 3 widen) | 22 |
+| both applied together | 32 |
+
+**0 files are changed by both issues; 0 composition surprises** (every file's both-applied result
+equals its single-issue result); **no `count` drop appears only when both land.** The two are
+additive on today's corpus and may land in either order without a joint re-derivation.
+
+Caveat: this is a corpus-dependent measurement, not a structural guarantee — tier precedence means a
+document that stops matching tier 1 can fall through to tier 3. Whichever issue lands **second** must
+re-run its own corpus differential against the post-first-issue tree rather than reusing the numbers
+recorded in its body.
 
 **Out of scope**: `locate_unresolved_options` and `_iter_option_blocks` (`:2210-2240`) — they do not
 read `_OPTION_PATTERNS`, and widening their conservatism is a loop-gate change with its own blast
@@ -340,13 +540,18 @@ layer built over them.
 - **Priority**: P2 — defect 1 is live on six committed issues and silently hides a decision point;
   defect 2 makes the repo's own idiomatic option shape invisible to the decidability gate. Neither
   is a common-path break, which is what keeps it off P1.
-- **Effort**: Medium — two small, well-bounded edits to one module, but the test burden is real:
-  a corpus differential plus pinning tests for three existing consumers.
+- **Effort**: Medium — two small, well-bounded edits to `issue_parser.py` plus, under the
+  recommended Option B, three mandatory consumer edits (`to_dict()`, `check_decidable.py`, Phase 3
+  reporting — parts 1a–1c). The test burden is real: a corpus differential, the Option B end-to-end
+  guard, and pinning tests for three existing consumers.
 - **Risk**: Medium. `_OPTION_PATTERNS` is module-level state on the shared precedence chain; 22
   live issues change output, and two of them change in ways the obvious regex-superset check does
   not predict. Bounded by the ordering constraint (part 1 before part 2) and the corpus
   differential, which is the only test that catches the count-drop and section-shift classes.
-- **Breaking Change**: No — no signature or CLI contract changes under the recommended shape.
+- **Breaking Change**: No — no signature changes, and no *existing* CLI contract changes, under the
+  recommended shape. Note that Option B does **add** a top-level `residual_directive` key to
+  `ll-issues locate-options --json` (part 1a); that is additive, and `test_issues_locate_options.py`
+  asserts exact key sets only per-*option*, not on the top-level payload (verified `:94`).
 
 ## Root Cause
 
@@ -365,6 +570,35 @@ layer built over them.
 - BUG-3278 — the sibling this was split out of; fixes the same two defects inside its own new
   decision-group iterator, leaving the shared chain to this issue
 
+## Verification Notes
+
+_Verified 2026-08-21 via `/ll:verify-issues --check --auto`:_
+
+- **Both defects reproduce exactly as described.** Defect 2's snippet
+  (`_OPTION_PATTERNS` against `- **(a) Make the documented override real.**`) still returns `[]`.
+  Defect 1's corpus script still finds the same 6 issues (BUG-1183, ENH-2446, ENH-2873, ENH-2239,
+  ENH-3275, FEAT-2339) with matching lines. `residual_directive` does not exist anywhere in the
+  tree — the proposal is unimplemented, as described.
+- **`issue_parser.py` line citations had drifted 58–75 lines** (concurrent edits to sibling issues
+  BUG-3285/BUG-3289 touch the same region) and are corrected in place above:
+  `locate_enumerable_options` 2134→2209, `_locate_directive_alternatives` 2062→2137,
+  `_locate_options_in_text` 1967→2025, `_OPTION_PATTERNS` 1891→1949 (tuple opens 1949; element `[3]`
+  at 1953-1955).
+- **`check_decidable.py:36` was off by one** — the `located.count >= 1` gate is at line 35, not 36
+  (36 is the following `print(`). Corrected in the four citing spots. The `:19-52` function-range
+  citations were already accurate and untouched.
+- **`locate_options.py:19-38` corrected to `19-51`** — `cmd_locate_options` runs to the file's last
+  line (51), not 38.
+- `LocatedOptions.to_dict()` (`:1997-2003`), `test_issue_parser_unresolved.py:35-49`, dependency
+  refs (`EPIC-3290`, `BUG-3278`, `BUG-3279` all resolve; no `## Blocked By` section), and the
+  decisions log (no active required rules) all confirmed exact, no changes needed.
+
 ## Status
 
 **Open** | Created: 2026-08-21 | Priority: P2
+
+
+## Session Log
+- `/ll:verify-issues` - 2026-08-21T20:15:35 - `a2289dde-4d3d-4b79-aeb5-674049d28ccd.jsonl`
+- `/ll:wire-issue` - 2026-08-21T20:08:28 - `323952ee-6da2-4c4d-9f9d-ddb206a14824.jsonl`
+- `/ll:refine-issue` - 2026-08-21T19:52:58 - `3e6f73b9-57ce-496a-8cf5-9227a47117bc.jsonl`

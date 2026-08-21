@@ -17,6 +17,8 @@ labels:
 relates_to:
 - BUG-3279
 - BUG-3278
+- BUG-3287
+- BUG-3289
 size: Medium
 verify_verdict: VALID
 confidence_score: 100
@@ -73,6 +75,12 @@ option letter — the signature of a phantom block, since a genuine option list 
 letter. (A handful of those 31 are legitimate two-decision issues — FEAT-3078, FEAT-2878 — so 31 is
 an upper bound on affected issues, not a count of confirmed phantoms.)
 
+> ⚠ **Re-measured 2026-08-21: 365 issues with ≥2 options, 26 repeated-letter — and "a handful" is
+> wrong.** Applying the *Proposed Solution* sketch leaves **21 of the 26** still repeating, because
+> the dominant cause is documents holding two genuine decision points, not phantom blocks. Treat
+> repeated-letter as a weak smell, never as an acceptance metric — see § *Corpus differential*,
+> defect 4.
+
 ## Steps to Reproduce
 
 1. `python -c "import sys; sys.path.insert(0,'scripts'); from little_loops.issue_parser import
@@ -123,11 +131,110 @@ parenthetical qualifier, e.g.
 The load-bearing change is that `evidence`, `implementation spec`, `was already applied` — bare
 words following the identifier with no `:` / `—` separator — no longer match.
 
+> ⚠ **The sketch above is a starting point that fails on the live corpus — do not implement it
+> as written.** It was measured on 2026-08-21 (see § *Corpus differential* immediately below) and
+> found to drop two real *selected* options, to widen across line boundaries rather than only
+> tighten, and to shift tier and section precedence. Every one of those is a class of change this
+> issue's own *Impact* bullet claims cannot happen. The rule in *Expected Behavior* is right; this
+> encoding of it is not.
+
+### Corpus differential — the sketch regex, measured (2026-08-21)
+
+Substituting the sketch for `_OPTION_PATTERNS[1]` and re-running `locate_enumerable_options` over
+all of `.issues/`: **10 files change — 5 count drops, 3 count gains, 1 resolved-section move, 2 tier
+changes.** Four distinct defects, in descending severity:
+
+**1. It drops real, *selected* options.** Prime-marked variant labels are a live convention in this
+repo and the sketch cannot match them — `[A-Za-z0-9]+` stops at the letter, and `′` (U+2032) is
+neither `(` nor one of the `:` / `—` / `-` separators, so the required closing `\*\*` never matches:
+
+| File | Marker | Effect |
+| --- | --- | --- |
+| `BUG-3177:208` | `**Option A′ (SELECTED)**` | `count` 3 → 2 — **the winning option disappears** |
+| `BUG-3253:251` | `**Option C′ (selected)**` | `count` 4 → 3 — **the winning option disappears** |
+
+This is the exact failure this issue's *Impact → Risk* bullet names as *"worse than the current
+over-count"*, and it is live on two committed issues. Losing the *winner* specifically also breaks
+`_unapplied_decision`'s `selected_index` resolution, since the block carrying the
+`> **Selected:**` callout is no longer a block.
+
+**2. It is not a tightening — `[^*]*` matches newlines.** The title alternative can therefore run
+past the end of the line and find a closing `**` on a *later* line, so the sketch **gains** matches
+the current regex (`.*?\*\*`, which cannot cross a newline under `re.MULTILINE` without `re.DOTALL`)
+never had:
+
+| File | Before | After | Newly matched |
+| --- | --- | --- | --- |
+| `BUG-2735` | `count 2` | `count 3` | ``**Option C — switch `sample` to `ll-issues refine-status --json` (no CLI\nchange)**`` |
+| `ENH-2727` | `count 1` | `count 2` | a second `bold_label` marker in `## Codebase Research Findings` |
+| `FEAT-2186` | `count 1` | `count 2` | tier also flips `bold_label` → `bullet` |
+
+A two-line option title is arguably a *correct* thing to start matching, but it is a widening, it is
+undeclared, and it means "a subtraction can only remove blocks" is false — so any acceptance
+criterion phrased as "no new blocks" fails for the wrong reason.
+
+**3. It shifts tier and section precedence.** `_locate_options_in_text` returns on the *first* tier
+with ≥1 match, so removing a tier-1 match can hand the section to a lower tier — or hand the
+document to a different section entirely:
+
+| File | Before | After | Why it matters |
+| --- | --- | --- | --- |
+| `FEAT-2339` | `2`, `bold_label` | `2`, **`bullet`** | labels degrade from descriptive titles (`Option A — parallel.epic_branches.*…`) to bare `Option A`/`Option B` — the *text* Phase 4 scores changes shape |
+| `FEAT-2186` | `1`, `bold_label` | `2`, **`bullet`** | tier and count both move |
+| `ENH-1555` | `2`, §`Integration Map` | `2`, §**`Implementation Steps`** | the **winning section** changes, not just the tier |
+
+This is the same class of shift BUG-3287 measured for itself and called *"the only check that would
+have caught BUG-3229 and ENH-3264"* — a regex-level superset check does not predict it. This issue
+has the identical hazard and, until now, no corpus-differential test.
+
+**4. The acceptance bar as written is unachievable.** *"the 31 repeated-letter issues lose their
+phantom blocks while no issue loses a real option."* Re-measured on the current corpus: **365**
+issues carry ≥2 located options and **26** (not 31) show a repeated letter. After the sketch is
+applied, **21 of the 26 still repeat.** The dominant cause of a repeated letter is not bold prose —
+it is documents that genuinely hold **two decision points**, each with its own `Option A`/`Option B`:
+`FEAT-2878`, `ENH-2888`, `FEAT-2598`, `BUG-2525`, `ENH-1781`, `ENH-2318`, `ENH-2033`, `BUG-2524`,
+`ENH-2587`, `ENH-1733`, `ENH-2151`, `BUG-2421`, … That shape is not a defect; representing it
+properly is **BUG-3278**'s `DecisionGroup` model. Chasing this bar drives over-tightening, which is
+how defect 1 above gets shipped.
+
+### Revised requirements
+
+- **Acceptance bar — restated.** The bar is the *mechanism*, not the repeated-letter count: a bold
+  run that continues into bare words after the option identifier (`**Option A evidence**`,
+  `**Option B was already applied**`, `**Option A implementation spec**`) starts no block, while
+  every marker shape in *Expected Behavior* — plus the prime-marked variants `**Option A′
+  (SELECTED)**` and `**Option C′ (selected)**` — still does. Repeated-letter counts may be recorded
+  as an observation; **do not assert them.** A residual repeat is expected wherever the document
+  holds two real decision points.
+- **The regex must accept a variant suffix on the identifier.** Minimum: allow the prime character
+  and comparable modifiers after `[A-Za-z0-9]+` before the optional qualifier/title. Whatever
+  encoding is chosen, `BUG-3177` and `BUG-3253` must keep their current `count` — pin both as
+  fixtures.
+- **Constrain the title alternative to one line.** Replace `[^*]*` with a line-bounded class (e.g.
+  `[^*\n]*`) unless multi-line titles are a *deliberate* extension — in which case declare it, and
+  re-check `BUG-2735`, `ENH-2727`, `FEAT-2186` as intended gains rather than surprises.
+- **Corpus differential is a required test, not a manual step.** Same shape as BUG-3287's: apply
+  `locate_enumerable_options` across `.issues/` and assert no file's resolved `heading` changes and
+  no file's `count` moves except the ones pinned as intended. This is the only check that catches
+  defects 1–3; the 8-shape execution recorded under *Codebase Research Findings* passes all of them.
+- **Re-run the differential on the tree the fix lands on.** The numbers above are from the corpus at
+  2026-08-21 and it grows daily.
+
+### Relationship to BUG-3287 — measured independent (2026-08-21)
+
+BUG-3287 widens `_OPTION_PATTERNS[3]` while this issue tightens `_OPTION_PATTERNS[1]`; neither
+declared an edge to the other. Measured across all four configurations (baseline / this issue alone
+/ BUG-3287 alone / both): this issue changes **10** files, BUG-3287 changes **22**, both together
+change **32** — **0 files overlap, 0 composition surprises, and no `count` drop appears only when
+both land.** They are additive on today's corpus and may land in either order.
+
+Caveat: corpus-dependent, not structural — tier precedence means a document that stops matching
+tier 1 can fall through to tier 3. Whichever lands **second** must re-run its own differential
+against the post-first tree.
+
 **Validate the tightening against the corpus before committing to a pattern.** The two regexes are
-matched by a wide range of real formatting in `.issues/`; the acceptance bar is that the 31
-repeated-letter issues above lose their phantom blocks while no issue loses a real option. That is
-directly measurable — run `locate_enumerable_options` over all of `.issues/` before and after and
-diff the label lists.
+matched by a wide range of real formatting in `.issues/` — run `locate_enumerable_options` over all
+of `.issues/` before and after and diff the label lists.
 
 ### Open question — should the two regexes converge?
 
@@ -151,6 +258,7 @@ On the Open Question (should the two regexes converge):
 _Added by `/ll:refine-issue` — 2026-08-21 — based on codebase analysis:_
 
 - The proposed regex `\*\*Option\s+[A-Za-z0-9]+(?:\s*\([^)]*\))?(?:\s*[:—-][^*]*)?\*\*` was executed (not just traced) against all 8 corpus shapes named in this issue: `**Option A**`, `**Option A: title**`, `**Option A (preferred): title**`, and the em-dash variant all match; `**Option A evidence**:`, `**Option B was already applied**:`, `**Option A implementation spec**`, `**Option B evidence against**` all fail to match. This corroborates the prior pass's corpus-validation finding above with a direct execution rather than sampling.
+  > ⚠ **Superseded 2026-08-21 — the 8 shapes are the ones this issue already named, so this check could only confirm what was assumed.** Executing the same regex through `locate_enumerable_options` over the *whole* corpus surfaces four defects the 8-shape check passes: two real *selected* options dropped (`**Option A′ (SELECTED)**`, `**Option C′ (selected)**`), three count *gains* from `[^*]*` crossing newlines, two tier flips, and one resolved-section move. See § *Proposed Solution → Corpus differential*. The finding below it — "No corpus counter-example … was found in the sampled files" — is refuted: the counter-examples exist and sampling missed them. **A whole-corpus differential, not a named-shape matrix, is the required check.**
 - A closer shape-precedent than BUG-3279 exists for this exact defect class (a regex over-matching prose that merely *contains* a marker phrase, tightened by adding a positional/structural discriminator rather than being loosened or replaced): BUG-3169's `_OPEN_QUESTION_SIGNAL_RE` (`issue_parser.py:2433-2469`). Its comment documents the same shape of fix — "POSITION plus a declaration boundary, not the mere presence of" the triggering token — with explicit before/after examples of what still counts vs. what's suppressed, and its regression tests (`TestNumberedOpenQuestionCitations`, `test_issue_parser_unresolved.py:485-583`) pair "no longer matches" methods with "still matches" safety-net methods in one test class. BUG-3279 remains the closer precedent for the two-independently-authored-regexes-fixed-together shape, but BUG-3169 is the closer precedent for the bold-prose-over-match shape itself.
 - This codebase's convention for landing a narrowing fix in `issue_parser.py` is a `# BUG-NNNN:` comment directly above the changed regex/logic explaining the discriminator added — confirmed at 8+ sites beyond BUG-3279 (`:950` BUG-3059, `:1317-1326` BUG-3279 Rule 3, `:2433-2456` BUG-3169, `:2461-2464` BUG-3169, `:200` BUG-3229, `:237-265` BUG-2806/BUG-2003, `:2475` BUG-3170) — this is a file-wide convention, not specific to the one prior precedent already cited.
 - On the Open Question (should the two regexes converge): three more hoisted single-or-multi-call-site module-level regex constants exist beyond `_H3_HEADING_RE`/`_DECISION_RATIONALE_HEADING_RE` already cited — `_SELECTED_CALLOUT_RE` (`:1311`, 4 call sites: `:1341`, `:1487`, `:1505`, `:2338`), `_OPTION_LABEL_RE` (`:1315`, 1 call site `:1347`), `_DECISION_IDENTIFIER_RE` (`:1329`, 1 call site, comment ties it explicitly to "Program Design › Decision Rules, Identifier extraction"). Hoisting in this file is not gated on call-site count — single-call-site and multi-call-site hoisted constants coexist — but the premise still holds: no existing hoisted constant is shared between two independently-matched regex *tuples/sites* the way converging `_OPTION_PATTERNS[1]` and `_OPTION_HEADING_RE`'s bold-marker sub-pattern would require.
@@ -212,8 +320,26 @@ _Wiring pass added by `/ll:wire-issue`:_
   and that neither prose line appears as a label
 - Preserve the accepted real shapes: `**Option A**`, `**Option A: title**`,
   `**Option A (preferred): title**` — assert each still matches
-- A corpus-level guard mirroring the acceptance bar: assert no issue in `.issues/` reports a
-  repeated option letter from a single option group
+- ~~A corpus-level guard mirroring the acceptance bar: assert no issue in `.issues/` reports a
+  repeated option letter from a single option group~~
+  > ⚠ **Replaced 2026-08-21.** This assertion cannot pass: 21 of the 26 repeated-letter issues on
+  > the current corpus repeat because they hold two genuine decision points, not phantom blocks
+  > (see § *Corpus differential*, defect 4). Landing it as written would either fail immediately or
+  > drive over-tightening until real options are dropped. Replaced by the three entries below.
+- **Corpus differential (required, replaces the repeated-letter guard):** apply
+  `locate_enumerable_options` across `.issues/` and assert **no file's resolved `heading` changes**
+  and **no file's `count` moves** except those pinned as intended. Model on BUG-3287's differential
+  — same skip-if-corpus-absent scaffolding as
+  `TestUnappliedDecisionLiveCorpusSweep.test_corpus_sweep_does_not_crash`
+  (`test_issue_parser.py:5005-5036`). This is the only check that catches the count-drop,
+  count-gain, tier-flip, and section-move classes; the 8-shape execution matrix passes all four.
+- **Variant-suffix survivors (required):** fixtures pinning `**Option A′ (SELECTED)**`
+  (`BUG-3177` shape) and `**Option C′ (selected)**` (`BUG-3253` shape) as **still matching**, with
+  the enclosing document's `count` unchanged. These are the two live real-option losses the sketch
+  regex produces; without them the same encoding ships again.
+- **Single-line title bound (required):** a fixture whose option title runs onto a second line
+  (`BUG-2735` shape) — assert whichever behavior is *chosen*, and name the choice in the test
+  docstring. Silence here is what let `[^*]*` cross newlines undetected.
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_issue_parser_properties.py`, `scripts/tests/test_issue_parser_fuzz.py` —
@@ -290,6 +416,19 @@ closes at the end of the option identifier, optionally preceded by a parenthetic
 a separator-introduced title (`:` / `—` / `-`). A bold run continuing into bare words after the
 identifier is prose and starts no block. No new gate, threshold, or keyword list.
 
+**Two sub-rules the sketch encoding got wrong and any replacement must settle explicitly**
+(added 2026-08-21 from the corpus differential):
+
+1. **Identifier shape.** The identifier is not `[A-Za-z0-9]+` alone — the corpus uses prime-marked
+   variants (`Option A′`, `Option C′`) to denote a narrowed re-scoping of an earlier option, and
+   both live instances are the *selected* option. The identifier pattern must admit a variant
+   suffix, or the rule drops winners.
+2. **Title extent.** Whether a title may span more than one physical line is a **decision, not a
+   detail**: `[^*]*` admits multi-line titles (gaining 3 corpus matches), `[^*\n]*` does not.
+   Neither is obviously right — a two-line option title is legitimate markdown — but leaving it
+   unstated is what turned a stated tightening into an unmeasured widening. Pin one and pin it by
+   test.
+
 ### Codebase Research Findings
 
 _Added by `/ll:refine-issue` — 2026-08-21 — based on codebase analysis:_
@@ -309,10 +448,18 @@ phantom-block reasons. Not a hard dependency in either direction.
   most consequential effect (consequence 3) is partially masked today by BUG-3279's absorption bug
   and would be further masked by that issue's Rule 3
 - **Effort**: Medium — two regexes and a corpus validation pass; the work is in proving the
-  tightening doesn't drop real options, not in writing it
-- **Risk**: Medium — over-tightening silently drops genuine options, which is worse than the current
-  over-count. The corpus before/after diff is the control
-- **Breaking Change**: No — `count` falls on affected issues; no output shape changes
+  tightening doesn't drop real options, not in writing it. **Repriced upward 2026-08-21**: the
+  sketch regex failed its own differential on four counts, so the encoding needs a design pass
+  before implementation, plus a corpus-differential test that does not exist yet
+- **Risk**: Medium-High — over-tightening silently drops genuine options, which is worse than the
+  current over-count, and the sketch **already does this** on two committed issues (`BUG-3177`,
+  `BUG-3253` — both lose their *winning* option). The corpus differential is the control and must
+  be a checked-in test, not a manual step
+- **Breaking Change**: No — but the previous claim here (*"`count` falls on affected issues; no
+  output shape changes"*) is **false as measured**. On the sketch regex, `count` also *rises* on 3
+  issues (newline-crossing titles), the resolved `pattern` tier changes on 2, and the resolved
+  section changes on 1. Any replacement encoding must re-state this bullet against its own measured
+  differential rather than inheriting this one
 
 ## Root Cause
 

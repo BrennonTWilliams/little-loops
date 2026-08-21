@@ -16,8 +16,8 @@ labels:
 relates_to:
 - BUG-3279
 - BUG-3278
-blocked_by:
 - BUG-3285
+- ENH-3280
 ---
 
 # BUG-3289: _decision_identifiers treats every backticked token in an option block as option-discriminating, firing unapplied_decision on shared vocabulary
@@ -135,6 +135,25 @@ unaddressed**:
 Measure the corpus effect both directions before landing, per BUG-3279's precedent: report totals
 before/after across all of `.issues/`, and **`new_reports == 0`** (a subtraction can only remove
 reports, so any gain means the implementation is wrong).
+
+### Sequencing — BUG-3285 is a preference, not a block (revised 2026-08-21)
+
+This issue previously declared `blocked_by: BUG-3285`. **Demoted to `relates_to`.** The rationale for
+the block was that BUG-3285's phantom blocks pollute the `rej_ids` / `sel_ids` sets this issue
+subtracts from, so the corpus measurement reads cleaner once they are gone. That is a *readability*
+benefit, not a correctness dependency:
+
+- This issue's own guard — `new_reports == 0`, measured against the tree the change lands on — is
+  self-contained and holds regardless of how many phantom blocks exist at that moment.
+- The report-total drop is already declared an **observation, not an assertion** (Implementation
+  Step 3), so a shifting baseline costs nothing.
+- BUG-3285 is under redesign (its proposed regex was measured to drop two real *selected* options
+  and to widen across line boundaries — see that issue's *Proposed Solution → Corpus differential*).
+  A hard block would hold this issue behind that rework for no correctness gain.
+
+Land BUG-3285 first if it is ready; otherwise land this one and re-baseline the recorded drop when
+BUG-3285 arrives. Mirrors BUG-3285's own framing of its relationship to BUG-3279: *"Not a hard
+dependency in either direction."*
 
 ## Integration Map
 
@@ -254,6 +273,12 @@ implementation; neither has a defensible default that survives the corpus measur
 - ENH-3256 — introduced `_unapplied_decision`'s existing false-positive mitigations
   (`_strip_codebase_research_findings`, the `> **Selected:**` callout trim); the precedent for
   narrowing this check without deleting it
+- **ENH-3280 — the downstream consumer, and this issue is now its hard prerequisite.** Phase 7c
+  drives its prose rewrites off `_unapplied_decision`'s report list, so every false positive this
+  issue leaves in place is prose Phase 7c would rewrite *correctly-written* text to satisfy.
+  ENH-3280 originally declared `blocked_by: BUG-3279` on the strength of that argument; BUG-3279's
+  parser fix has since landed (`f39a417e`) and the residual noise is this issue's. The edge was
+  re-pointed here on 2026-08-21
 
 | Document | Relevance |
 | --- | --- |

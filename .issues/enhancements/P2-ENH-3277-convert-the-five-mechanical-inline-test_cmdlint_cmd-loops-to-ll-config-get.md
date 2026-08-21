@@ -388,15 +388,18 @@ anti-pattern that BUG-3269's mirror-drift gate exists to stop from reaching a fo
 The comment rewrite at those three anchors is load-bearing, and it is a further argument for
 step 3's ordering (these convert first).
 
-#### Pinned replacement text — use this verbatim at all three anchors
+#### Pinned replacement text — three anchors, three shapes (verified 2026-08-21)
 
 "Rewrite to stop teaching the inline parse" is not a specification; three implementers would
-write three different comments into three copy-me scaffolds. Use exactly this, adjusting only
-the trailing `# Replace ...` line where the current file already has one
-(`harness-single-shot.yaml:59-60`) and omitting it where it does not:
+write three different comments into three copy-me scaffolds. But the three anchors are **not
+interchangeable** — an earlier framing of this section assumed two shapes ("with or without the
+trailing `# Replace ...` line") and there are three. Applying one block verbatim to all three
+files deletes a still-true comment in one and introduces a punctuation inconsistency in another.
+Pin per file.
+
+**Shared body — the same five lines land in all three files:**
 
 ```yaml
-    # EXAMPLE: Cheapest gate first — run the project's configured test suite.
     # Resolves project.test_cmd via `ll-config get`, which honors .ll/ll.local.md
     # and the three-way contract: key absent → ProjectConfig default (`pytest`);
     # present-and-null → empty, meaning the project opted out of a test suite;
@@ -407,9 +410,38 @@ the trailing `# Replace ...` line where the current file already has one
     # an explicit `[ -z "$CMD" ]` branch — see ENH-3288.
 ```
 
-The second paragraph is the load-bearing half: a cloner who copies a pass-on-empty gate onto an
+The `NOTE:` half is the load-bearing part: a cloner who copies a pass-on-empty gate onto an
 `on_yes: commit` edge reproduces exactly the hazard that forced this issue's split. The comment
 is where that warning has to live, because the shell body no longer shows the fallback.
+
+**Per-file application:**
+
+| File | Current shape (`check_concrete`) | Required |
+|---|---|---|
+| `harness-single-shot.yaml:57-60` | `# EXAMPLE: …` + the stale fallback line + **a 2-line `# Replace the Python snippet with a direct command if you prefer:` / `#   action: "python -m pytest scripts/tests/ -q --tb=no"` block** | Keep the `# EXAMPLE:` line; replace the fallback line with the shared body. **Rewrite the `# Replace` block, do not carry it verbatim** — see *Two defects in the `# Replace` block* below |
+| `harness-multi-item.yaml:87-89` | `# EXAMPLE: …` + the stale fallback line + **`# set -o pipefail ensures the tee pipe does not swallow the test exit code.`** | Keep the `# EXAMPLE:` line, replace the fallback line with the shared body, and **preserve the `set -o pipefail` line verbatim** — it stays true post-conversion (this is the only one of the three whose action carries a `tee` pipe) and a naive verbatim apply deletes it |
+| `harness-plan-research-implement-report.yaml:119-120` | `# EXAMPLE: …` + the stale fallback line, no third line | Keep the `# EXAMPLE:` line, replace the fallback line with the shared body. **Transliterate every `—` and `→` in the shared body to ASCII (`--`, `->`)** — this file uses ASCII punctuation throughout its comments (`:119` reads *"Cheapest gate first -- run"*, `:131-133` read `->`), and the em-dash block would make it the only file with mixed punctuation |
+
+**Two defects in `harness-single-shot`'s `# Replace` block.** Both are introduced-by-inaction if
+it is carried through unchanged:
+
+1. *"Replace **the Python snippet**"* is stale the moment step 3 lands — there is no Python
+   snippet after conversion, just a `ll-config get` call.
+2. Its example, `python -m pytest scripts/tests/ -q --tb=no`, **hardcodes this repo's own test
+   path inside a scaffold users clone** — the same defect class as BUG-3276 (landed) and
+   ENH-3281. Gating that class generally is ENH-3281's; not propagating it from a line this
+   issue is already rewriting is this issue's.
+
+Required replacement for those two lines:
+
+```yaml
+    # Replace the `ll-config get` line with a literal command if you prefer:
+    #   action: "pytest -q --tb=no"
+```
+
+Note the structural guard in *Tests* asserts only that `"falls back to 'pytest'"` is gone and
+that the comment block names `ll-config get`; it does **not** catch either of the two defects
+above, so they are checklist items, not test-enforced.
 
 ### Precedence — config-first bare at all five sites
 
@@ -526,8 +558,10 @@ consistency, simplicity, and risk, despite the issue's own text recommending Opt
 - `scripts/little_loops/loops/harness-plan-research-implement-report.yaml:126` — and its
   template comment at `:120` (load-bearing; see *The three `harness-*` sites are user-facing
   templates*)
-- `scripts/little_loops/loops/harness-multi-item.yaml:95` — and its template comment at `:88`
+- `scripts/little_loops/loops/harness-multi-item.yaml:95` — and its template comment at `:87-89`
+  (three lines, including a `set -o pipefail` note that must survive — see the per-file table)
 - `scripts/little_loops/loops/harness-single-shot.yaml:66` — and its template comment at `:57-60`
+  (four lines, including a `# Replace ...` block that hardcodes this repo's `scripts/tests/` path)
 - The `_PENDING_CONVERSION` constant landed by BUG-3269
   (`scripts/tests/test_bug3269_test_cmd_resolution_gate.py:55-65`) — **shrunk from nine entries
   to four**, one per converted file. Not emptied and not deleted here: that is ENH-3288's step 6,
@@ -610,14 +644,21 @@ needs a new subprocess-level test. [Agent 3 finding]
 
 ### Documentation
 
-- `docs/guides/LOOPS_REFERENCE.md:979,1305,1327` — the `project.test_cmd`/`lint_cmd` rows;
-  re-verify against final behavior
+- `docs/guides/LOOPS_REFERENCE.md` — **no edit expected; anchor correction 2026-08-21.** The
+  previously-cited `:979,1305,1327` are all **out-of-scope loops**, verified by direct read:
+  `:979` sits inside `auto-refine-and-implement`'s FSM-flow block (permanently exempt under
+  Option A), and `:1305`/`:1327` are `incremental-refactor`'s precondition prose and `test_cmd`
+  parameter row (BUG-3276, already converted). None of the three describes any of this issue's
+  five sites, so "re-verify against final behavior" was vacuous at best and an invitation to edit
+  forbidden loops at worst. The only row covering a site here is `:820`'s one-line
+  `evaluation-quality` summary, which mentions neither `test_cmd` nor `ruff` and needs no change.
+  Confirm `:820` still reads true and stop; **do not touch `:979`, `:1305`, or `:1327`**
 - `docs/guides/EVALUATION_GUIDE.md:393` — prose reads *"runs your configured `test_cmd` plus
   `ruff`"*, describing exactly the hardcoded `ruff check scripts/` step 5 converts to
   `ll-config get project.lint_cmd`; update to describe the configured `lint_cmd` instead.
   [Agent 2 finding, confirmed]
 - In-YAML comments inside three already-listed primary files — `harness-single-shot.yaml:57-60`,
-  `harness-multi-item.yaml:88`, `harness-plan-research-implement-report.yaml:120` — currently
+  `harness-multi-item.yaml:87-89`, `harness-plan-research-implement-report.yaml:119-120` — currently
   read "Reads test_cmd from .ll/ll-config.json; falls back to 'pytest' if absent" and describe
   the exact fallback being removed. **Load-bearing, not cosmetic**: these are `# EXAMPLE:`
   scaffolds users clone, so the comments propagate the inline-parse anti-pattern into new loops.
@@ -715,8 +756,12 @@ gate-teardown criteria live in **ENH-3288**._
       `test_bug3269_test_cmd_resolution_gate.py` reassigned to **ENH-3288** — module docstring
       (`:23-27`), `_PENDING_CONVERSION` comment (`:52-55`), and
       `test_pending_conversion_sites_still_exist`'s assertion message (`:155`). Verified by
-      `grep -c 'ENH-3277' scripts/tests/test_bug3269_test_cmd_resolution_gate.py` returning only
-      the Option-A annotation hits below
+      `grep -n 'ENH-3277' scripts/tests/test_bug3269_test_cmd_resolution_gate.py` returning
+      **exactly two lines** — the two inline Option-A annotations on the `rn-refine.yaml` and
+      `auto-refine-and-implement.yaml` entries required by the next row, and nothing else.
+      (Corrected 2026-08-21: this row previously specified `grep -c`, which returns a bare count
+      and cannot show *which* hits survived, and it pinned no expected number — so the row was
+      unverifiable as written.)
 - [ ] The `rn-refine.yaml` and `auto-refine-and-implement.yaml` entries in `_PENDING_CONVERSION`
       each carry an inline comment marking them permanently exempt per Option A and pointing at
       ENH-3288 step 5 for the move
@@ -741,12 +786,20 @@ gate-teardown criteria live in **ENH-3288**._
       *Proposed Solution* — including the clone-hazard note ("if your `on_yes` is irreversible,
       add an explicit `[ -z "$CMD" ]` branch"). Verified by the structural guard above, not by
       inspection
-- [ ] `LOOPS_REFERENCE.md:979,1305,1327` re-verified against final behavior
+- [ ] `LOOPS_REFERENCE.md:820`'s `evaluation-quality` row confirmed still accurate — **no edit
+      expected**, and `:979` / `:1305` / `:1327` explicitly left alone (they describe
+      `auto-refine-and-implement` and `incremental-refactor`, both out of scope; see
+      *Documentation*)
 
 **Exit gates**
 
 - [ ] `ll-loop validate` passes for all five touched loops
-- [ ] The scoped grep from step 6 returns only the four still-pending / exempt files
+- [ ] The scoped grep from step 6 returns **empty output**. (Corrected 2026-08-21 — this row
+      previously read "returns only the four still-pending / exempt files", contradicting step 6's
+      own "Expected output at the end of this issue: empty". Both cannot hold: the grep's `grep -v`
+      chain already excludes all five files that legitimately still match, so a non-empty result
+      means an unconverted in-scope site, not an expected exemption.) `test_no_inline_project_command_config_read`
+      remains authoritative over this grep either way
 - [ ] `python -m pytest scripts/tests/` exits 0
 
 ## Implementation Steps
@@ -771,9 +824,13 @@ gate-teardown criteria live in **ENH-3288**._
    (delete its three-way python body outright), `harness-single-shot.yaml`,
    `harness-plan-research-implement-report.yaml`, `harness-multi-item.yaml`. These are
    drop-ins or route to a further gate. Config-first bare for all four — none declares a
-   `context.test_cmd` key. Rewrite the three `harness-*` template comments (`:57-60`, `:88`,
-   `:120`) in the same edit — they are copy-me scaffolds teaching the anti-pattern, not
-   incidental docs. Remove each file's `_PENDING_CONVERSION` entry as it lands.
+   `context.test_cmd` key. Rewrite the three `harness-*` template comments (`:57-60`, `:87-89`,
+   `:119-120`) in the same edit — they are copy-me scaffolds teaching the anti-pattern, not
+   incidental docs. **Apply the per-file table under *Pinned replacement text*, not one block
+   three times**: the three anchors have three different shapes, and a verbatim apply deletes
+   `harness-multi-item`'s still-true `set -o pipefail` comment and gives
+   `harness-plan-research-implement-report` the only mixed punctuation in the file.
+   Remove each file's `_PENDING_CONVERSION` entry as it lands.
 4. **Convert `evaluation-quality.yaml:58`** (`test_cmd`), the one explicit-skip site here. Both
    branches of `evaluate_code` emit their own "no signal" marker **on stdout** (`| tee`, never a
    bare `>`), because `score` reads `${captured.code_results.output}` and not the files — see
@@ -831,10 +888,11 @@ implementation. Structural-loop touchpoints moved to **ENH-3288**._
   `ruff`" once step 5 converts `evaluation-quality.yaml:63`'s hardcoded `ruff check scripts/` to
   `ll-config get project.lint_cmd`
 - Update the stale fallback-description comments inside `harness-single-shot.yaml:57-60`,
-  `harness-multi-item.yaml:88`, `harness-plan-research-implement-report.yaml:120` alongside each
-  state's action body — they currently describe the guessed-`'pytest'` fallback being removed.
+  `harness-multi-item.yaml:87-89`, `harness-plan-research-implement-report.yaml:119-120` alongside
+  each state's action body — they currently describe the guessed-`'pytest'` fallback being removed.
   **Load-bearing, not cosmetic**: these are `# EXAMPLE:` scaffolds users clone, so the comments
-  propagate the inline-parse anti-pattern into new loops
+  propagate the inline-parse anti-pattern into new loops. Use the **per-file** table under
+  *Pinned replacement text* — the three anchors are not interchangeable
 - Write new subprocess-level resolution tests per site (no existing test exercises shell content
   at the value-resolution level for any of the converted sites) — model on
   `TestRlCodingAgentObserveTestCmdResolution` (`test_builtin_loops.py:10747-10799`); parametrize
@@ -940,6 +998,13 @@ design; both are struck. `cli/config.py` is untouched by this issue.
 - each converted state → `ll-config get project.<key>` → `main_config` → `BRConfig(Path.cwd())`
   → `_load_config` (deep-merges `.ll/ll.local.md`, `:265-280`) → `ProjectConfig.from_dict`
   → `resolve_variable` → `print` only when non-`None`.
+- **The `None` branch is not a dead end — it calls `_warn_if_unknown_section`** (`cli/config.py:82,90`),
+  which is the path *every* present-and-null read takes. Verified benign for all six conversions
+  and stated here so nobody chases phantom output: the warning fires only when the key's **root
+  segment** is unknown, and `project` is always a known root (it is both a `cfg.to_dict()` key and
+  a `config-schema.json` top-level property), so `ll-config get project.<key>` never warns. Even
+  if it did, `CMD=$(...)` captures stdout only — the warning would reach the loop's stderr, never
+  `CMD`. Exit stays `0` regardless (`main_config` returns `0` unconditionally).
 - `[ -z "$CMD" ]` → that site's §2b branch: **pass-on-empty at four sites**
   (`fix-quality-and-tests` plus the three `harness-*`), or an **explicit skip** at
   `evaluation-quality` (a "no signal" marker on stdout — it has no gate to reroute).
@@ -1041,6 +1106,39 @@ the prior `/ll:confidence-check` run and are **stale** — re-run before treatin
 6. **Two unverified ACs given verifiers** — the `harness-*` comment rewrite (now pinned to
    verbatim replacement text plus a structural guard) and the exit-0 invariant. The AC preamble's
    "every row is verified by a named test or command" now holds.
+
+### Second pre-implementation review — 2026-08-21
+
+_Independent design review against the tree. All six conversion sites, the `_PENDING_CONVERSION`
+nine-entry set, the `fix-quality-and-tests` present-null→`true` routing proof, the `evaluate_code`
+accidental-exit-0 analysis, and `main_config`'s never-raise contract were re-verified and hold
+exactly as written. Five corrections applied:_
+
+1. **The pinned `harness-*` comment text assumed two shapes; there are three.** `harness-multi-item.yaml`
+   carries a third comment line (`# set -o pipefail ensures the tee pipe does not swallow the test
+   exit code`) that stays true post-conversion and that a verbatim apply would delete;
+   `harness-plan-research-implement-report.yaml` uses ASCII `--`/`->` throughout, so the em-dash
+   block would make it the only file with mixed punctuation; and `harness-single-shot.yaml`'s
+   `# Replace ...` block both goes stale ("the Python snippet" ceases to exist) and hardcodes this
+   repo's `scripts/tests/` path inside a copy-me scaffold. *Pinned replacement text* is now a
+   shared body plus a per-file table.
+2. **The Docs row's `LOOPS_REFERENCE.md:979,1305,1327` anchors were all out-of-scope loops** —
+   `:979` is `auto-refine-and-implement` (permanently exempt), `:1305`/`:1327` are
+   `incremental-refactor` (BUG-3276). Replaced with a no-edit-expected confirmation of `:820` and
+   an explicit do-not-touch on the other three.
+3. **The Exit-gates grep AC contradicted step 6** ("returns only the four still-pending / exempt
+   files" vs. "Expected output: empty"). Step 6's `grep -v` chain already excludes all five
+   legitimately-matching files, so empty is correct; the AC was wrong.
+4. **The gate-prose AC's verifier could not verify its claim** — `grep -c` returns a bare count
+   and no expected number was pinned. Now `grep -n`, expecting exactly the two Option-A
+   annotation lines.
+5. **`Program Design → Call Path` omitted the `None` branch**, which every present-and-null read
+   takes into `_warn_if_unknown_section`. Verified silent for `project.*` (known root) and
+   stdout-isolated regardless; documented so it isn't mistaken for a new failure mode.
+
+_No change to scope, option selection, step ordering, or the conversion count._
+
+### Anchors spot-checked in the first addendum
 
 Anchors spot-checked and confirmed accurate: all six conversion sites, the "none of the five
 declares `context.test_cmd`" claim, and the `fix-quality-and-tests` identical-routing proof.
