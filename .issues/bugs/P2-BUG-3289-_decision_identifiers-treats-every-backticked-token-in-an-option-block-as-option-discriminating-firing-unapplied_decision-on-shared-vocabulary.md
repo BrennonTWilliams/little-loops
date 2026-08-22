@@ -9,7 +9,7 @@ parent: EPIC-3290
 discovered_by: ll-issues-create
 discovered_date: '2026-08-21'
 captured_at: '2026-08-21T18:59:36Z'
-decision_needed: true
+decision_needed: false
 size: Medium
 labels:
 - issue-parser
@@ -20,6 +20,12 @@ relates_to:
 - BUG-3278
 - BUG-3285
 - ENH-3280
+confidence_score: 98
+outcome_confidence: 90
+score_complexity: 22
+score_test_coverage: 23
+score_ambiguity: 23
+score_change_surface: 22
 ---
 
 # BUG-3289: _decision_identifiers treats every backticked token in an option block as option-discriminating, firing unapplied_decision on shared vocabulary
@@ -142,10 +148,16 @@ unaddressed**:
 - **Scope of the subtraction corpus** — title + `## Summary` only (narrow, cheap, catches ENH-2692),
   or everything above `## Proposed Solution` (wider; catches more of ENH-3277's ~23 but risks
   suppressing a genuine rejected-option identifier that an earlier section happens to name).
+
+  > **Selected:** title + `## Summary` only (narrow) — see Decision Rationale below.
 - **Where the subtraction lands** — inside `_decision_identifiers` (would change every caller), or as
   a separate `_shared_subject_identifiers(content) -> set[str]` subtracted once in
   `_unapplied_decision` at `:1530`. The second is almost certainly right: `_decision_identifiers`
   is a pure per-block extractor and has no access to document-level context.
+
+  > **Selected:** separate `_shared_subject_identifiers` helper, subtracted once in
+  > `_unapplied_decision` at `:1530` — per the stated recommendation; `_decision_identifiers` stays
+  > a pure per-block extractor.
 
 Measure the corpus effect both directions before landing, per BUG-3279's precedent: report totals
 before/after across all of `.issues/`, and **`new_reports == 0`** (a subtraction can only remove
@@ -169,6 +181,57 @@ benefit, not a correctness dependency:
 Land BUG-3285 first if it is ready; otherwise land this one and re-baseline the recorded drop when
 BUG-3285 arrives. Mirrors BUG-3285's own framing of its relationship to BUG-3279: *"Not a hard
 dependency in either direction."*
+
+### Decision Rationale
+
+Decided by `/ll:decide-issue` on 2026-08-21.
+
+This issue bundled two decisions ("pick one scope per bullet, do not leave unaddressed"); both are
+resolved here.
+
+**Decision 1 — Scope of the subtraction corpus**
+
+**Selected**: title + `## Summary` only (narrow)
+
+**Reasoning**: An exact precedent already exists in the same file — the `testable` gap class
+(`issue_parser.py:1061-1069`) computes `scan_text = f"{title}\n{summary}"` from the title (with H1
+fallback) and `_section_body(content, "Summary")`, the identical shape this option needs. The wide
+option ("everything above `## Proposed Solution`") has no existing "prefix before heading" primitive
+in the file and, more importantly, direct corpus evidence (BUG-3287, ENH-3277) shows `## Current
+Behavior` sections in this repo's issue-writing convention routinely reuse the same identifiers
+that later become option-discriminating inside `## Proposed Solution`'s nested decision blocks.
+Since this issue's own Impact section already names over-suppression (dropping a genuine
+`unapplied_decision` detection) as the risk to bound, and Implementation Step 3's `new_reports == 0`
+gate has zero tolerance for that failure mode, the narrow scope is the safer choice. It comes with
+an accepted tradeoff: 2 of the 6 ENH-3277 terms spot-checked (`ProjectConfig`, `to_dict()`) live in
+`## Current Behavior`/`## Proposed Solution` rather than Summary and will not be suppressed by this
+fix — expected residual noise, consistent with this issue's own precedent of being split from
+BUG-3279 for an incremental, measured fix rather than a one-shot complete one.
+
+#### Scoring Summary
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|--------|-------------|------------|-------------|------|-------|
+| Narrow (title + Summary) | 3/3 | 3/3 | 3/3 | 3/3 | 12/12 |
+| Wide (everything above Proposed Solution) | 2/3 | 2/3 | 2/3 | 1/3 | 7/12 |
+
+**Key evidence**:
+- Narrow: exact reusable precedent at `issue_parser.py:1061-1069` (the `testable` gap class); no
+  over-suppression risk since `## Summary` is written before options exist.
+- Wide: no existing "prefix before heading" helper in `issue_parser.py` (new code, composed from
+  `_section_body_with_offset`/`_option_span_boundary`'s fence-aware primitives); demonstrated
+  over-suppression risk in BUG-3287 and ENH-3277, where `## Current Behavior` reuses identifiers
+  that later distinguish rejected options in `## Proposed Solution`.
+
+**Decision 2 — Where the subtraction lands**
+
+**Selected**: a separate `_shared_subject_identifiers(content) -> set[str]` helper, subtracted once
+in `_unapplied_decision` at `:1530`.
+
+**Reasoning**: Locked in per the issue's own stated recommendation — `_decision_identifiers` is a
+pure per-block extractor with no access to document-level context, so folding document-level scope
+logic into it would change every caller's contract for no benefit. Not independently scored;
+recorded here for completeness per "pick one scope per bullet, do not leave unaddressed."
 
 ## Integration Map
 
@@ -307,5 +370,7 @@ implementation; neither has a defensible default that survives the corpus measur
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-21T23:23:24 - `6c8de875-3d34-466f-bb1f-5d9046d922b9.jsonl`
+- `/ll:decide-issue` - 2026-08-21T23:04:25 - `570c3914-e306-4cb1-bfda-e25386251081.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-21T19:06:56 - `8c9f6596-f570-42d1-a2a2-c4e750b706f8.jsonl`
 - `/ll:capture-issue` - 2026-08-21T19:00:46 - `f4a44238-acd8-4729-ac3b-34de58926055.jsonl`

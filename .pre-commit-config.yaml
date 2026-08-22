@@ -17,3 +17,15 @@ repos:
         entry: ll-verify-private-refs --added-only
         pass_filenames: true
         exclude: ^(postmortems/|\.loops/|thoughts/|\.ll/private-refs-baseline\.json$)
+      - id: ll-verify-evidence
+        # BUG-3282: warn-only (non-blocking) on first release. This hook fires
+        # inside ll-auto/ll-parallel/refine-loop automation, which commits
+        # issue files continuously; a precision miss here must not block a
+        # commit mid-run the way the pytest gate's --all can afford to. Flip
+        # to blocking (drop `|| true`) once the whole-corpus precision smoke
+        # test has a stable ceiling.
+        name: Check evidence quotes against cited artifacts (warn-only)
+        language: system
+        entry: bash -c 'll-verify-evidence --added-only "$@" || true' --
+        pass_filenames: true
+        files: ^\.issues/.*\.md$

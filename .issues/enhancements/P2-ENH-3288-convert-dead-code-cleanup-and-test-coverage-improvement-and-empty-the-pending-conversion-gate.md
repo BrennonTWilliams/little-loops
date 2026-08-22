@@ -23,6 +23,12 @@ relates_to:
 - ENH-3277
 - ENH-3281
 decision_needed: false
+confidence_score: 70
+outcome_confidence: 82
+score_complexity: 14
+score_test_coverage: 18
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # ENH-3288: Convert `dead-code-cleanup` and `test-coverage-improvement` to `ll-config get`, and empty the `_PENDING_CONVERSION` gate
@@ -370,7 +376,9 @@ tests, and step budget. It is now **in scope and required**, alongside the mid-r
 3. **Routing.** `exit 1` → `on_no: unverifiable`, the bare terminal-failure state (not `failed`,
    per *State names* above, and **not** `revert_unverifiable` — nothing has been deleted yet at
    loop start, and the gate's own shell action already wrote `precondition-failure.txt` before
-   exiting 1), per the `incremental-refactor` precedent. It needs its own assertion —
+   exiting 1), per the `incremental-refactor` precedent. `exit 0` → **`on_yes: scan`**, the
+   loop's previous `initial:` — the success edge must re-enter the original pipeline, and no
+   existing assertion pins it. It needs its own assertion —
    `test_required_states_exist` (L11688) is a subset check and will pass without it.
 4. **`initial:` must move — easily missed, and the gate is dead YAML without it.**
    `dead-code-cleanup.yaml:7` is `initial: scan` today. Change it to
@@ -538,7 +546,9 @@ field, routing-edge shape). None will break from the conversion; none gives cove
   would catch someone "simplifying" the two states back into one.
 - **Assert `dead-code-cleanup`'s `initial == "check_preconditions"` and `max_steps == 18`.** Both
   are one-line scalars a future edit can revert without breaking any state-set or edge-shape
-  assertion, and either reversion silently disables the entry gate or silently cuts a cleanup lap.
+  assertion, and either reversion silently disables the entry gate or silently cuts a cleanup
+  lap. Also assert `check_preconditions.on_yes == "scan"` — the success edge is equally a
+  one-line scalar with nothing else holding it in place.
 - **Pin `evaluate.abstain_on_exit_3` / the `harness_exit` fragment at both states**, so a future
   edit that reverts the fragment to `shell_exit` while leaving the `exit 3` body in place fails
   loudly rather than silently re-routing to `on_error`.
@@ -584,7 +594,8 @@ field, routing-edge shape). None will break from the conversion; none gives cove
 - [ ] `revert_unverifiable` exists as `action_type: prompt` with `next: unverifiable`, and is
       `verify_tests.on_cannot_judge`'s only target
 - [ ] `unverifiable` exists as a bare `terminal: true` + `failure: true` state
-- [ ] `check_preconditions` entry gate exists (config-first bare), routing `on_no: unverifiable`
+- [ ] `check_preconditions` entry gate exists (config-first bare), routing `on_yes: scan` and
+      `on_no: unverifiable`
 - [ ] `:7` is `initial: check_preconditions`
 - [ ] `:108` is `max_steps: 18`
 
@@ -866,6 +877,22 @@ open the same relative path — but not fixed here either.
 - ENH-3281 — the sibling hardcode defect class (`measure`'s surviving `COV_CMD` fallback)
 - `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` — the `ll-config get` convention, written up by
   BUG-3269; its `:569` exemption sentence is this issue's to correct
+
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-08-21_
+
+**Readiness Score**: 70/100 → STOP — ADDRESS GAPS
+**Outcome Confidence**: 82/100 → HIGH CONFIDENCE
+
+### Gaps to Address
+- Blocked by ENH-3277 (status: open) — this issue's own Prerequisite step already says ENH-3277
+  must land first; the Dependencies Hard Override forces STOP regardless of aggregate score until
+  it resolves.
+- Criterion 4 capped at 10/20 by `format-check`'s `stale_cli_flag` gap:
+  `"ll-config get --raw (no such flag)"` — likely a false-positive read of this issue's own
+  explicitly-rejected Option C ("Do **not** build `ll-config get --raw`"), but recorded per
+  protocol since the CLI is the single source of truth for this signal.
 
 ## Status
 
