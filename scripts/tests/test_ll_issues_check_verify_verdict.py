@@ -171,6 +171,85 @@ class TestCheckVerifyVerdictProposalUnsound:
         )
 
 
+class TestCheckVerifyVerdictEvidenceUnverified:
+    """BUG-3282: --evidence-unverified is a distinct query mode, mirroring
+    --proposal-unsound's shape exactly (it is checked ahead of it in the loop)."""
+
+    def test_evidence_unverified_verdict_exits_zero_with_flag(
+        self, temp_project_dir: Path
+    ) -> None:
+        body = _feature("FEAT-9209", "verify_verdict: EVIDENCE_UNVERIFIED\n")
+        _write_issue(temp_project_dir, body)
+        result = _invoke(
+            temp_project_dir, "check-verify-verdict", "FEAT-9209", "--evidence-unverified"
+        )
+        assert result.returncode == 0, (
+            f"EVIDENCE_UNVERIFIED verdict with --evidence-unverified must exit 0, "
+            f"got {result.returncode}: stdout={result.stdout!r} stderr={result.stderr!r}"
+        )
+
+    def test_evidence_unverified_verdict_exits_one_without_flag(
+        self, temp_project_dir: Path
+    ) -> None:
+        """Default mode must still treat EVIDENCE_UNVERIFIED as non-VALID (exit 1) —
+        the widened check_verify_verdict.on_no still fires so check_evidence_unverified
+        gets a chance to triage it; the default contract is unchanged."""
+        body = _feature("FEAT-9210", "verify_verdict: EVIDENCE_UNVERIFIED\n")
+        _write_issue(temp_project_dir, body)
+        result = _invoke(temp_project_dir, "check-verify-verdict", "FEAT-9210")
+        assert result.returncode == 1, (
+            f"EVIDENCE_UNVERIFIED without --evidence-unverified must still exit 1 "
+            f"(default VALID/NON_VALID contract unchanged), got {result.returncode}"
+        )
+
+    def test_other_non_valid_verdict_exits_one_with_flag(self, temp_project_dir: Path) -> None:
+        body = _feature("FEAT-9211", "verify_verdict: NON_VALID\n")
+        _write_issue(temp_project_dir, body)
+        result = _invoke(
+            temp_project_dir, "check-verify-verdict", "FEAT-9211", "--evidence-unverified"
+        )
+        assert result.returncode == 1, (
+            f"NON_VALID verdict with --evidence-unverified must exit 1 (not the "
+            f"evidence-unverified verdict), got {result.returncode}"
+        )
+
+    def test_proposal_unsound_verdict_exits_one_with_evidence_flag(
+        self, temp_project_dir: Path
+    ) -> None:
+        """A PROPOSAL_UNSOUND-persisted issue is not EVIDENCE_UNVERIFIED — the two
+        are distinct persisted values even though an issue can qualify for both
+        (Decision Rules -> Verdict precedence picks one to persist)."""
+        body = _feature("FEAT-9212", "verify_verdict: PROPOSAL_UNSOUND\n")
+        _write_issue(temp_project_dir, body)
+        result = _invoke(
+            temp_project_dir, "check-verify-verdict", "FEAT-9212", "--evidence-unverified"
+        )
+        assert result.returncode == 1
+
+    def test_absent_field_exits_one_with_flag(self, temp_project_dir: Path) -> None:
+        body = _feature("FEAT-9213")
+        _write_issue(temp_project_dir, body)
+        result = _invoke(
+            temp_project_dir, "check-verify-verdict", "FEAT-9213", "--evidence-unverified"
+        )
+        assert result.returncode == 1, (
+            f"Absent verify_verdict with --evidence-unverified must exit 1 (no "
+            f"fail-open in query mode — there is nothing to default to VALID), "
+            f"got {result.returncode}"
+        )
+
+    def test_valid_verdict_exits_one_with_flag(self, temp_project_dir: Path) -> None:
+        body = _feature("FEAT-9214", "verify_verdict: VALID\n")
+        _write_issue(temp_project_dir, body)
+        result = _invoke(
+            temp_project_dir, "check-verify-verdict", "FEAT-9214", "--evidence-unverified"
+        )
+        assert result.returncode == 1, (
+            f"VALID verdict with --evidence-unverified must exit 1 (VALID is not "
+            f"EVIDENCE_UNVERIFIED), got {result.returncode}"
+        )
+
+
 class TestCheckVerifyVerdictErrorHandling:
     def test_missing_issue_exits_one(self, temp_project_dir: Path) -> None:
         result = _invoke(temp_project_dir, "check-verify-verdict", "FEAT-9999")
