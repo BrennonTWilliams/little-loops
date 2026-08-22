@@ -154,7 +154,7 @@ both. Two viable shapes; pin one during implementation:
   `pattern` set to the tier name, `count` incremented. Cheapest, but `pattern` then lies about one
   of the entries.
 - **Precedence-preserving with a flag** — return the tier result unchanged plus a new
-  `residual_directive: LocatedOption | None` field on `LocatedOptions`. Keeps `count`/`pattern`
+  `residual_directive: LocatedOptions | None` field on `LocatedOptions`. Keeps `count`/`pattern`
   contracts byte-identical for every existing consumer, and gives Phase 3 / `check-decidable`
   something explicit to branch on. **Recommended** — the `count` field feeds
   `/ll:decide-issue` Phase 3's `count == 1` branch (which clears `decision_needed` outright), so
@@ -177,6 +177,31 @@ to `LocatedOptions.to_dict()` (`issue_parser.py:1997`). This is a **new top-leve
 `ll-issues locate-options --json`. `test_issues_locate_options.py:94` asserts exact key sets only
 per-*option* (`{"label", "text", "start_line", "end_line"}`), which is unchanged, so no existing
 assertion breaks — but re-check before landing.
+
+Because the field is a `LocatedOptions` (see the type correction below), the serialized value is a
+**nested `count`/`pattern`/`heading`/`options` object** — not a bare option dict — with `pattern`
+always `"provisional_e"`. `LocatedOptions.to_dict()` therefore recurses into itself one level;
+guard against unbounded nesting by leaving `residual_directive` unset on the directive result
+itself (it is constructed by `_locate_directive_alternatives`, which never populates the field).
+`docs/reference/CLI.md`'s `locate-options` payload description must show the nested shape.
+
+> ⚠ **Type corrected 2026-08-21 (epic review) — the field is `LocatedOptions | None`, not
+> `LocatedOption | None`.** Every earlier statement of this field in this issue said
+> `LocatedOption` (singular). That is wrong at the source: `_locate_directive_alternatives`
+> returns **`LocatedOptions | None`** (`issue_parser.py:2187`), a container carrying the
+> directive's `heading` *and* every alternative it found. Measured on a directive document:
+> `(count 2, pattern 'provisional_e', heading 'Proposed Solution')`. Assigning that to a singular
+> `LocatedOption` discards two things this issue's own parts depend on:
+>
+> - the **heading**, which part 1b requires in order to "report the directive in the success
+>   line" — `LocatedOption` has no `heading` field at all (`label`/`text`/`start_line`/`end_line`,
+>   `issue_parser.py:2016-2030`);
+> - the **second alternative** — a Pattern E window is by construction a *choice between*
+>   alternatives, so keeping only `options[0]` reports that a decision exists while hiding what
+>   it is between.
+>
+> The corpus script in § *Current Behavior* already reads the probe as a container
+> (`d.heading`, `d.options[0].start_line`); the dataclass field must match it.
 
 ### Part 1b — teach `check-decidable` to see it
 
@@ -334,7 +359,8 @@ not an optional one.
 ### Files to Modify
 
 - `scripts/little_loops/issue_parser.py` — `locate_enumerable_options` directive-probe ordering
-  (+ `LocatedOptions.residual_directive` if the recommended shape is taken), `_OPTION_PATTERNS[3]`
+  (+ `LocatedOptions.residual_directive: LocatedOptions | None` if the recommended shape is taken —
+  **plural**, see part 1a's type correction), `_OPTION_PATTERNS[3]`
 - `scripts/little_loops/issue_parser.py` — `LocatedOptions.to_dict()` (`:1997-2003`), which must
   emit `residual_directive` or the field is invisible to `locate-options --json` (part 1a).
   **Required under Option B, not optional**
@@ -400,6 +426,11 @@ not an optional one.
   that fails if parts 1a/1b are skipped, and it is the only one that distinguishes "the field
   exists" from "the defect is fixed." Pair it with a `locate-options --json` case asserting
   `residual_directive` is present and non-null on one of the six live preempted shapes
+- **Directive-shape guard (required, added 2026-08-21 with the type correction):** on that same
+  `--json` case, assert the serialized `residual_directive` is the **nested container** shape —
+  `pattern == "provisional_e"`, a non-null `heading`, and `len(options) == 2` on a two-alternative
+  directive. A singular-`LocatedOption` implementation passes the "present and non-null" assertion
+  above and fails this one; without it the type regression ships silently
 - `scripts/tests/test_decide_issue_skill.py` — a phase-text assertion that the Phase 3 slice's
   `count == 1` branch is conditioned on `residual_directive is None`.
   > ⚠ **Restated 2026-08-21.** Previously *"asserts the Phase 3 slice mentions `residual_directive`
@@ -481,8 +512,17 @@ _Added by `/ll:refine-issue` — 2026-08-21 — based on codebase analysis:_
 
 ### Types
 
-- `LocatedOptions.residual_directive: LocatedOption | None` — new optional field (recommended
-  shape), default `None` so every existing constructor call and `to_dict()` consumer is unaffected
+- `LocatedOptions.residual_directive: LocatedOptions | None` — new optional field (recommended
+  shape), default `None` so every existing constructor call and `to_dict()` consumer is unaffected.
+  **Self-referential by design**: the value is whatever `_locate_directive_alternatives` returned,
+  which is a `LocatedOptions` (`issue_parser.py:2187`) carrying the directive's `heading`, its
+  `pattern` (`"provisional_e"`), and all of its alternatives. It is **not** a singular
+  `LocatedOption` — that type has no `heading` field (`:2016-2030`) and would collapse a
+  two-alternative directive to one entry. See § *Proposed Solution → Part 1a* for the correction
+  and its consequences for the `--json` payload.
+  > Consumers test it with `located.residual_directive is not None`, matching this module's
+  > direct-attribute-access convention (§ *Codebase Research Findings*); the nested object's own
+  > `residual_directive` is always `None`.
 
 ### Signatures
 
@@ -592,6 +632,16 @@ _Added by `/ll:refine-issue` — 2026-08-21 — based on codebase analysis:_
    commit, verified by `test_enh494_skill_companions.py` (line limit + companion-pointer test).
    Ownership sits here because this issue lands first — not because its own ≤2-line edit needs
    the headroom; BUG-3278 and ENH-3280 inherit it.
+
+   > ⚠ **`test_enh494_skill_companions.py` is not sufficient verification (added 2026-08-21, epic
+   > review).** `scripts/tests/test_decide_issue_skill.py` holds **77** `test_*` methods that
+   > slice `SKILL.md` by phase heading and assert on its prose (`SKILL_FILE` at `:14`; the
+   > `_phase_text()` slice-and-assert idiom runs through every phase class). Moving tables and
+   > worked examples out of `SKILL.md` is precisely the edit that breaks them, and the line-limit
+   > test cannot see it. **Run `test_decide_issue_skill.py` as part of Step 0's gate**, under the
+   > rule: *any string asserted there stays in `SKILL.md`, or its assertion moves to
+   > `reference.md` in the same commit.* Extract reference material (tables, matrices, fenced
+   > examples) preferentially over imperative phase prose, since the assertions target the latter.
 
 1. **Part 1 first.** Restructure `locate_enumerable_options` so `_locate_directive_alternatives`
    runs in addition to the tier scan; pin the return shape per *Decision Rules*. Add

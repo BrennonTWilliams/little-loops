@@ -218,8 +218,54 @@ how defect 1 above gets shipped.
   `locate_enumerable_options` across `.issues/` and assert no file's resolved `heading` changes and
   no file's `count` moves except the ones pinned as intended. This is the only check that catches
   defects 1–3; the 8-shape execution recorded under *Codebase Research Findings* passes all of them.
+- **A *second* corpus differential is required, over the `_OPTION_HEADING_RE` consumers** (added
+  2026-08-21, epic review). See § *Second blast radius* below — every measurement in this issue was
+  taken through `locate_enumerable_options` / `_OPTION_PATTERNS[1]` only, and the convergence
+  decision means `_OPTION_HEADING_RE` is tightened too, on a disjoint set of consumers.
 - **Re-run the differential on the tree the fix lands on.** The numbers above are from the corpus at
   2026-08-21 and it grows daily.
+
+### Second blast radius — the `_OPTION_HEADING_RE` side is unmeasured (added 2026-08-21, epic review)
+
+Every number in this issue — the 10 changed files, the four-defect differential, and the
+four-configuration independence study with BUG-3287 — was produced by substituting the sketch into
+`_OPTION_PATTERNS[1]` and re-running `locate_enumerable_options`. That measures **one** of the two
+regexes this issue changes, and the *smaller* half of the consumer surface.
+
+The convergence decision (§ *Open question*, decided 2026-08-21) makes this unavoidable: hoisting
+the bold-marker sub-pattern into a shared constant tightens `_OPTION_HEADING_RE` **identically and
+by construction**. Its consumers are disjoint from `locate_enumerable_options`':
+
+| Path | Consumer | Gate |
+| --- | --- | --- |
+| `_OPTION_HEADING_RE` → `_option_block_spans` (`:1455`) → `_unapplied_decision` (`:1499`) | `ll-issues format-check`, `ll-issues check-design` | **blocking** gap class (`FormatGaps.has_blocking_gaps`) |
+| `_OPTION_HEADING_RE` → `_iter_option_blocks` (`:2337`) → `locate_unresolved_options` → `count_unresolved_options` | `ll-issues check-open-questions` | `resolve-decision.yaml:63`, `refine-to-ready-issue.yaml:374`, `autodev.yaml` × 4 |
+
+Neither is observable through `count`/`pattern`/`heading`, so the required differential above
+**cannot see a regression on this side at all**. Required second differential, same
+skip-if-corpus-absent scaffolding:
+
+- `_unapplied_decision`'s report set across `.issues/`, before/after. Record the delta as an
+  observation; assert only that the changed set is explainable — a tightening removes phantom
+  blocks, which changes `sel_ids`/`rej_ids` **and** `spans[-1]`, so reports can move in *both*
+  directions here (unlike BUG-3289's subtraction, which can only remove).
+- `count_unresolved_options` across `.issues/`, before/after, with any file whose count moves
+  pinned by ID — that counter feeds a loop stall gate, and a silent drop reads as "no open
+  questions" to `resolve-decision.yaml`.
+
+**Three issues move `_unapplied_decision`'s output and they must not be measured against a fixed
+baseline**: this one (the block set, via `_option_block_spans`), **BUG-3289** (the `discriminating`
+subtraction), and **BUG-3278** assertion (c5) (the snapshot guard). BUG-3278 already records the
+three-way coupling; this issue did not. Whichever lands later re-baselines against the tree it
+lands on, and names the baseline commit in its test docstring. Note in particular that BUG-3289's
+`new_reports == 0` guard is stated against *its own* subtraction — landing this issue first can
+legitimately move that baseline, which is why BUG-3289 declares its report-total drop an
+observation rather than an assertion.
+
+Direct evidence the coupling is real, already recorded under § *Codebase Research Findings*: the
+BUG-3279 comment at `issue_parser.py:1469-1475` names **this issue** as the tracked fix for
+`spans[-1]` resolving to a phantom trailing block, which feeds both the trailing-callout trim and
+`scrub_start`.
 
 ### Relationship to BUG-3287 — measured independent (2026-08-21)
 
@@ -232,6 +278,13 @@ both land.** They are additive on today's corpus and may land in either order.
 Caveat: corpus-dependent, not structural — tier precedence means a document that stops matching
 tier 1 can fall through to tier 3. Whichever lands **second** must re-run its own differential
 against the post-first tree.
+
+> ⚠ **Second caveat, added 2026-08-21 (epic review): this study varied `_OPTION_PATTERNS` only.**
+> Both configurations were applied to the tier tuple and compared through
+> `locate_enumerable_options`. It therefore says nothing about `_OPTION_HEADING_RE`, which this
+> issue also tightens under the convergence decision — see § *Second blast radius*. BUG-3287 does
+> not touch that regex, so the two remain independent in fact; the *evidence* for it just does not
+> extend to that surface, and the independence claim should not be read as covering it.
 
 **Validate the tightening against the corpus before committing to a pattern.** The two regexes are
 matched by a wide range of real formatting in `.issues/` — run `locate_enumerable_options` over all
@@ -280,7 +333,9 @@ _Added by `/ll:refine-issue` — 2026-08-21 — based on codebase analysis:_
 ### Files to Modify
 
 - `scripts/little_loops/issue_parser.py` — `_OPTION_PATTERNS[1]` (`:1893`) and `_OPTION_HEADING_RE`
-  (`:2210`)
+  (`:2210`), plus the new shared `_BOLD_OPTION_MARKER` constant both reference (convergence
+  decision, § *Open question*; encoding and flag hazard in § *Program Design → Decision Rules*
+  item 3)
   > ⚠ Superseded — line numbers stale; see § Codebase Research Findings under Program Design
 
 ### Dependent Files (Callers/Importers)
@@ -352,6 +407,16 @@ _Wiring pass added by `/ll:wire-issue`:_
 - **Single-line title bound (required):** a fixture whose option title runs onto a second line
   (`BUG-2735` shape) — assert whichever behavior is *chosen*, and name the choice in the test
   docstring. Silence here is what let `[^*]*` cross newlines undetected.
+- **`_OPTION_HEADING_RE`-side corpus differential (required, added 2026-08-21):** `_unapplied_decision`
+  report sets and `count_unresolved_options` across `.issues/`, before/after — see § *Second blast
+  radius* for what each asserts and why the `locate_enumerable_options` differential cannot cover
+  it. Baseline against the tree this lands on and name the commit in the docstring; BUG-3289 and
+  BUG-3278 assertion (c5) move the same function's output.
+- **Phantom-block removal, positively asserted (required, added 2026-08-21):** the two live cases
+  in § *Current Behavior* — `ENH-2967` (`count 4 → 2`) and `BUG-1484` (`count 4 → 2`) — pinned by
+  ID with their expected before/after. Every other required test here is a *non-regression* guard;
+  without this one nothing asserts the defect is actually fixed. Mirrors EPIC-3290 Success
+  Criterion 9.
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_issue_parser_properties.py`, `scripts/tests/test_issue_parser_fuzz.py` —
@@ -441,7 +506,7 @@ identifier is prose and starts no block. No new gate, threshold, or keyword list
 > either. The skill's interactive path exits "nothing to decide"; its auto path parks for human
 > review. The `> **Decided:**` callouts below stand in for that pass, each citing evidence
 > already recorded in this issue. Still the epic's dogfood datapoint — now for a **third**
-> invisibility shape.
+> invisibility shape, **filed 2026-08-22 as BUG-3293**, which cites this issue as its live case.
 
 1. **Identifier shape.** The identifier is not `[A-Za-z0-9]+` alone — the corpus uses prime-marked
    variants (`Option A′`, `Option C′`) to denote a narrowed re-scoping of an earlier option, and
@@ -472,6 +537,37 @@ identifier is prose and starts no block. No new gate, threshold, or keyword list
    > extension. Pinned by the required single-line-title-bound fixture under *Tests*, whose
    > docstring must name this choice.
 
+3. **Composed encoding** (added 2026-08-21, epic review — the three decisions above were recorded
+   separately and no consolidated pattern was ever written down, which is how the sketch shipped
+   into this issue unmeasured in the first place). The shared bold-marker sub-pattern is:
+
+   ```python
+   _BOLD_OPTION_MARKER = r"\*\*Option\s+[A-Za-z0-9]+[′']?(?:\s*\([^)\n]*\))?(?:\s*[:—-][^*\n]*)?\*\*"
+   ```
+
+   Three deltas from the sketch, one per decision: `[′']?` (identifier variant suffix),
+   `[^*\n]*` for the title (line-bounded), and `[^)\n]*` for the parenthetical — the sketch's
+   `[^)]*` crosses newlines for the same reason `[^*]*` did, and decision 2 applies to both
+   alternatives, not just the title.
+
+   **Two integration hazards this encoding carries into the convergence decision:**
+
+   - **Flag mismatch.** `_OPTION_PATTERNS[1]` compiles with `re.MULTILINE` only;
+     `_OPTION_HEADING_RE` compiles with `re.MULTILINE | re.IGNORECASE` (`issue_parser.py:2331-2334`).
+     Sharing a *string* fragment between two differently-flagged compiles means `**option a**`
+     matches at one site and not the other — a live divergence hidden inside the constant that is
+     supposed to remove divergence. Either normalize the flags (and re-measure: adding IGNORECASE
+     to tier 1 is itself a widening) or use inline `(?i:...)` scoping so the shared fragment carries
+     its own case semantics. Pin the choice by test.
+   - **`_OPTION_HEADING_RE` gains a closing requirement it does not have today.** Its bold
+     alternative is currently `\*\*Option\s+[A-Za-z0-9]+` — pure prefix, no closing `\*\*` at all.
+     Substituting the shared fragment is therefore a *larger* change on that side than on tier 1,
+     which at least already required `.*?\*\*`. This is the mechanism behind § *Second blast
+     radius*; do not assume the two sites move by the same amount.
+
+   Re-run **both** differentials against this composed pattern before landing. The numbers
+   throughout this issue describe the rejected sketch and do not transfer.
+
 ### Codebase Research Findings
 
 _Added by `/ll:refine-issue` — 2026-08-21 — based on codebase analysis:_
@@ -494,8 +590,10 @@ phantom-block reasons. Not a hard dependency in either direction.
   tightening doesn't drop real options, not in writing it. **Repriced upward 2026-08-21**: the
   sketch regex failed its own differential on four counts, so the encoding needs a design pass
   before implementation, plus a corpus-differential test that does not exist yet.
-  *(Design pass completed 2026-08-21 at epic review — see § Decision Rules; the
-  corpus-differential test remains owed.)*
+  *(Design pass completed 2026-08-21 at epic review — see § Decision Rules. **Two**
+  corpus-differential tests remain owed, not one: the `locate_enumerable_options` differential and
+  the `_OPTION_HEADING_RE`-side differential added at the same review — see § Second blast radius.
+  `size: Medium` should be read as a floor.)*
 - **Risk**: Medium-High — over-tightening silently drops genuine options, which is worse than the
   current over-count, and the sketch **already does this** on two committed issues (`BUG-3177`,
   `BUG-3253` — both lose their *winning* option). The corpus differential is the control and must
@@ -505,6 +603,15 @@ phantom-block reasons. Not a hard dependency in either direction.
   issues (newline-crossing titles), the resolved `pattern` tier changes on 2, and the resolved
   section changes on 1. Any replacement encoding must re-state this bullet against its own measured
   differential rather than inheriting this one
+  > **Still owed against the composed encoding** (§ *Program Design → Decision Rules*, item 3;
+  > flagged 2026-08-21, epic review). This bullet is currently a statement about a **rejected**
+  > regex. Restate it after re-running both differentials — the `locate_enumerable_options` one and
+  > the `_OPTION_HEADING_RE`-side one (§ *Second blast radius*) — and state each surface
+  > separately. The line-bounded title and parenthetical should remove the three count *gains*, and
+  > `[′']?` should remove the two dropped winners, but neither is measured yet, and the
+  > `_OPTION_HEADING_RE` side has never been measured at all. `format-check`'s
+  > `unapplied_decision` is a **blocking** gap class, so a movement there is a harder breaking
+  > change than anything on the `locate-options` side
 
 ## Root Cause
 

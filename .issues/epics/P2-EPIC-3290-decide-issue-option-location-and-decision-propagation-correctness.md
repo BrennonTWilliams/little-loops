@@ -153,9 +153,12 @@ Implementation order is bottom-up: locator primitives, then the decision model, 
   `_decision_identifiers` extracts every backticked span >= 3 chars as
   option-discriminating, with no filter for the issue's shared vocabulary. Candidate rule already
   recorded: subtract identifiers appearing in the title/Summary or in any section preceding
-  `## Proposed Solution`. **Now the `blocked_by` prerequisite for ENH-3280.** **Also carries
-  `decision_needed: true`** — its two scope questions explicitly refuse a default, and
-  `check-decidable` already reports them as a live `provisional_e` pair.
+  `## Proposed Solution`. **Now the `blocked_by` prerequisite for ENH-3280 — i.e. the head of this
+  epic's critical path.** Its two scope questions refused a default and it carried
+  `decision_needed: true`; **`/ll:decide-issue 3289` ran 2026-08-21 and both are now decided**
+  (narrow title+Summary scope; a separate `_shared_subject_identifiers` helper), `decision_needed:
+  false`. **Still owes refine → wire → verify before implementation** — it has had none of the
+  three, and the decision was therefore made against unverified claims.
 - **BUG-3278** (P2) — introduces the **decision group** model: one group per decision point,
   resolved as a unit, so `decision_needed` is cleared only when every group is settled. The first
   consumer-side fix, and the largest. Six pre-implementation review rounds; its round-5
@@ -183,6 +186,19 @@ Two edges were corrected after review:
 
 The BUG-3287-before-BUG-3278 ordering remains a *design* preference recorded in BUG-3287's own body,
 not a hard block.
+
+> ⚠ **The independence measurement below covers `_OPTION_PATTERNS` only (added 2026-08-21, epic
+> review).** BUG-3285 edits **two** regexes — its convergence decision hoists the bold-marker
+> sub-pattern into a constant shared with `_OPTION_HEADING_RE`, whose consumers
+> (`_option_block_spans` → `_unapplied_decision` → `format-check`/`check-design`;
+> `_iter_option_blocks` → `count_unresolved_options` → `check-open-questions` →
+> `resolve-decision.yaml`, `refine-to-ready-issue.yaml`, `autodev.yaml`) are disjoint from
+> `locate_enumerable_options`' and **invisible to a `count`/`heading` differential**. BUG-3287 does
+> not touch that regex, so the two issues remain independent in fact — but the evidence below does
+> not reach that surface, and BUG-3285 now owes a **second** corpus differential for it (that
+> issue, § *Second blast radius*). That differential is also where BUG-3285, BUG-3289, and
+> BUG-3278's assertion (c5) collide: all three move `_unapplied_decision`'s output, so whichever
+> lands later re-baselines rather than asserting against a fixed commit.
 
 **BUG-3285 and BUG-3287 are measured independent.** Both edit `_OPTION_PATTERNS` (element `[1]` and
 element `[3]` respectively) and neither declares an edge to the other. Running
@@ -230,6 +246,40 @@ does not.
 Accepted for now. File as this epic's follow-up if a gate misroute is observed live; do not fold it
 into any child.
 
+### Follow-up — the third invisibility shape → **filed as BUG-3293** (2026-08-22)
+
+> ✅ **Filed 2026-08-22 as BUG-3293** (P3, `relates_to` this epic — deliberately **not** a seventh
+> child; see the closing paragraph). It carries `decision_needed: true` for its route A/B choice.
+> The scoping below is retained as the record of why it exists; BUG-3293 is now the authority on
+> its contents.
+
+This epic recorded the same finding three times (§ *Unscheduled work*, § *Undeclared decision
+points*, and BUG-3285 § *Program Design → Decision Rules*) without giving it an issue number, so
+it would not have survived epic closure. It is not a candidate — it has already cost work twice
+inside this epic's own scope:
+
+- BUG-3285's design pass had to be done by hand at epic review because `/ll:decide-issue 3285`
+  could not see its decision points;
+- BUG-3278 round 6 item 3 found its own part-3 decision point unreachable for the same reason.
+
+The shape: **bold *numbered* items under `## Program Design → ### Decision Rules`**. No
+`_OPTION_PATTERNS` tier matches it — including after BUG-3287's part-2 widening, verified against
+the widened regex — and Pattern E never scans that section, because
+`_DIRECTIVE_ALTERNATIVES_SECTIONS` is a 4-entry list (`Scope Boundaries`, `Proposed Change`,
+`Proposed Solution`, `Open Questions`) that excludes `Program Design` entirely. Note the asymmetry
+this exposes, which is the likely fix surface: `_DECISION_DIRECTIVE_SECTIONS` — the list
+`_unapplied_decision` scans for *unapplied* decisions — is a **5**-entry list that **does** include
+`Program Design`. So the codebase already asserts that decisions live in `Program Design`; only the
+locator disagrees.
+
+Scope it as: reconcile the two section lists, and/or add a tier for the bold-numbered shape. Both
+touch the shared precedence chain, so it inherits BUG-3287's blast-radius discipline (corpus
+differential, pinned exceptions) — which is the reason it is a follow-up rather than a seventh
+child of an epic that is already large.
+
+This is a direct restatement of this epic's own Goal (*"no idiomatic shape unreachable"*), on a
+shape the epic proved unreachable using its own children as the corpus.
+
 ### Shared constraint — the decide-issue SKILL.md line budget (added 2026-08-21)
 
 `skills/decide-issue/SKILL.md` is **493 lines**. `TestSkillLineLimit`
@@ -263,6 +313,14 @@ of the three edits, which makes it a poor place to absorb the refactor.
 > lines, no behavior change, verified by `test_enh494_skill_companions.py`). It executes before
 > any child's SKILL.md edit; BUG-3278 and ENH-3280 then only need their budget checks. This
 > closes the same described-but-unscheduled gap this epic called out for BUG-3285's design pass.
+>
+> ⚠ **That verification is insufficient (added 2026-08-21, same review).**
+> `scripts/tests/test_decide_issue_skill.py` holds **77** `test_*` methods that slice `SKILL.md` by
+> phase heading and assert on its prose — moving text out is exactly what breaks them, and
+> `TestSkillLineLimit` cannot see it. **Step 0's gate is both files.** Rule: any string asserted in
+> `test_decide_issue_skill.py` stays in `SKILL.md`, or its assertion moves to `reference.md` in the
+> same commit. Extract reference material (tables, matrices, fenced examples) in preference to
+> imperative phase prose, since the assertions target the latter.
 
 ### Unscheduled work — BUG-3285's design pass (added 2026-08-21; resolved same day)
 
@@ -292,22 +350,44 @@ ll-issues check-decidable 3287  →  Decidable: 2 enumerable option(s), bold_lab
 ll-issues check-decidable 3285  →  OPTIONS_MISSING: count 0, pattern None
 ```
 
-- **BUG-3289** explicitly refuses a default (*"pick one scope per bullet, do not leave
-  unaddressed"*) and carries `decision_needed: true`. Its decision points **are** visible to the
-  gate (the live `provisional_e` pair above), so `/ll:decide-issue 3289` works and must run
-  before implementation.
+> ⚠ **Read these as a *visibility* probe, not a decidedness oracle (corrected 2026-08-21).**
+> `check-decidable` reports whether options can be located, not whether they have been resolved:
+> re-run after BUG-3289's decide pass, `check-decidable 3289` **still** exits 0 with
+> `2 enumerable option(s)` (verified). So a hit here is evidence the gate *can see* a decision
+> point, and a miss is evidence it cannot — neither is evidence about whether a decision was made.
+> Treating the two as the same thing is precisely BUG-3278's subject, and this section leaned on
+> the conflation while making the epic's own dogfood argument.
+
+- **BUG-3289** explicitly refused a default (*"pick one scope per bullet, do not leave
+  unaddressed"*) and carried `decision_needed: true`. Its decision points **are** visible to the
+  gate (the `provisional_e` pair above), so `/ll:decide-issue 3289` worked — **and ran, on
+  2026-08-21.** Both scope questions are decided with recorded rationale and `decision_needed` is
+  `false`.
+  > Corrected 2026-08-21: this bullet read *"must run before implementation"* after the pass had
+  > already run. What **is** still owed on BUG-3289 is refine → wire → verify — see the Children
+  > entry above. Its own body carried the same stale instruction and has been corrected too.
 - **BUG-3285**'s refusals (*"Pin one and pin it by test"*) were decided by hand at epic review
   (2026-08-21) and its `decision_needed` is cleared — see § *Unscheduled work* above for why
   `/ll:decide-issue` could not reach them.
 - **BUG-3287** and **BUG-3278** record recommendations, so they are treated as settled — with the
   correction in BUG-3287's *Decision Rules* (its Option B does not, as written, prevent the
   false-clear it claims to; see that issue).
+- **BUG-3287 and BUG-3278 each carry a spec defect found at this review; both are corrected in
+  their own bodies and neither changes this epic's shape.** (i) BUG-3287 typed
+  `residual_directive` as a singular `LocatedOption`, but `_locate_directive_alternatives` returns
+  `LocatedOptions` — corrected to the container type, with a `--json` shape assertion added.
+  (ii) BUG-3278 prescribed retiring a `provisional_e` group by appending
+  `> **Selected:**` to the directive line; measured, `_SELECTED_CALLOUT_RE` is line-anchored and
+  does **not** match that form, so the marker is invisible to every callout consumer including
+  `is_group_resolved`. The prescribed form is now the `**RESOLVED — …**` prefix, and the retirement
+  mechanism is stated as probe suppression rather than resolution.
 - BUG-3285's sub-rules are invisible to the locator entirely (`count 0`) — but **not** as an
   instance of BUG-3287's defect 2 (claim corrected 2026-08-21, epic review). They are bold
   *numbered* items under `## Program Design → ### Decision Rules`: no tier matches that shape
   even after BUG-3287's widening, and Pattern E never scans that section. A **third**
-  invisibility shape — still worth keeping as the epic's dogfood datapoint, and a candidate
-  follow-up alongside the divergence recorded in § *Accepted divergence*.
+  invisibility shape — kept as the epic's dogfood datapoint, and **filed 2026-08-22 as BUG-3293**
+  (see § *Follow-up — the third invisibility shape*). The divergence recorded in § *Accepted
+  divergence* remains unfiled and is a separate question.
 
 ## Success Criteria
 
@@ -342,9 +422,25 @@ ll-issues check-decidable 3285  →  OPTIONS_MISSING: count 0, pattern None
       leaves `count` byte-identical to the tier result, so the collapse survives part 1 and
       `SKILL.md:187` still clears `decision_needed`. Assert the **branch**, not the field's
       existence — see BUG-3287 § *Ordering constraint*, corrected 2026-08-21.
+- [ ] **Bold prose is no longer counted as an option**: `ENH-2967` reports `count 2` (not 4) and
+      `BUG-1484` reports `count 2` (not 4), pinned by ID. *(Added 2026-08-21, epic review —
+      BUG-3285's positive criterion. Criterion 5 above is only its **non**-regression guard: every
+      other criterion this epic states for BUG-3285 asserts that real options survive, and nothing
+      asserted that the defect it exists to fix is actually fixed. A do-nothing implementation
+      passed the criteria set as written.)*
+- [ ] **`residual_directive` carries the directive's heading and every alternative** — the
+      `locate-options --json` payload for a preempted issue shows a nested
+      `{count, pattern: "provisional_e", heading, options}` object with `len(options) == 2` on a
+      two-alternative directive. *(Added 2026-08-21, epic review: BUG-3287 specified the field as a
+      singular `LocatedOption`, which cannot hold a heading and drops the second alternative. The
+      end-to-end guard in Criterion 2 passes on the truncated shape.)*
 - [ ] `skills/decide-issue/SKILL.md` is **≤ 500 lines** after all three skill-touching children have
-      landed — `test_enh494_skill_companions.py::TestSkillLineLimit` passes. See § *Shared
-      constraint — the decide-issue SKILL.md line budget*.
+      landed — `test_enh494_skill_companions.py::TestSkillLineLimit` passes, **and
+      `scripts/tests/test_decide_issue_skill.py` (77 phase-text assertions against `SKILL.md`
+      prose) still passes.** See § *Shared constraint — the decide-issue SKILL.md line budget*.
+      > Second clause added 2026-08-21 (epic review): the line-limit test cannot detect the
+      > extraction pass moving an asserted phrase out of `SKILL.md`, which is the failure mode the
+      > extraction actually has.
 - [ ] `python -m pytest scripts/tests/` passes.
 
 ## Related Key Documentation

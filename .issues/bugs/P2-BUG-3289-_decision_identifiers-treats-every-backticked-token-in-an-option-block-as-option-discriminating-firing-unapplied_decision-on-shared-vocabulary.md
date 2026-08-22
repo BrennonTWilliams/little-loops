@@ -129,21 +129,30 @@ rule recorded in BUG-3279:
 > subtract identifiers that appear in the issue's title/Summary, or in any section preceding
 > `## Proposed Solution`, before computing `discriminating`.
 
-Both halves need deciding before implementation — **pick one scope per bullet, do not leave
-unaddressed**:
+Both halves needed deciding before implementation — **pick one scope per bullet, do not leave
+unaddressed**. ✅ **Both decided 2026-08-21**; the selections are inline below and the reasoning is
+in § *Decision Rationale*:
 
-> **`decision_needed: true` set 2026-08-21.** These two bullets are a real, undecided decision point
-> and the frontmatter did not say so. `ll-issues check-decidable 3289` already reports them
-> (`count 2`, `pattern provisional_e`, §`Proposed Solution`) — the pipeline could see the decision
-> while the gate that routes to `/ll:decide-issue` could not. Run `/ll:decide-issue 3289` before
-> scheduling. Noted at EPIC-3290 § *Undeclared decision points on this epic's own children*.
+> **✅ Decided 2026-08-21 — `decision_needed` is now `false`.** Both bullets were a real, undecided
+> decision point that the frontmatter did not declare; `decision_needed: true` was set, and
+> `/ll:decide-issue 3289` ran the same day (session log `570c3914…`). Both selections and their
+> rationale are recorded in § *Decision Rationale* below, and the `> **Selected:**` callouts are on
+> each bullet. **No decide pass is owed.** Noted at EPIC-3290 § *Undeclared decision points on this
+> epic's own children*, which was stale on this point until 2026-08-21.
 >
-> **Pre-scheduling passes owed (added 2026-08-21, epic review).** This issue has had no
-> `/ll:refine-issue`, `/ll:wire-issue`, or `/ll:verify-issues` pass (session log: capture +
-> conflict-audit only) despite now gating a P2. Run refine → wire → verify **before** the decide
-> pass, so the decision is made against verified claims. Its `issue_parser.py` anchors are also
-> on the stale pre-`93270c37` set (+50 lines — resolve by symbol name, per the epic's anchor
-> note).
+> Note for anyone re-checking with the gate: `ll-issues check-decidable 3289` still exits **0** with
+> `2 enumerable option(s)`. That command reports *decidability*, not *resolution* — it is not an
+> oracle for whether a decision has been made. That conflation is BUG-3278's subject.
+>
+> **Pre-scheduling passes still owed (added 2026-08-21, epic review — NOT closed by the decide
+> pass).** This issue has had no `/ll:refine-issue`, `/ll:wire-issue`, or `/ll:verify-issues` pass
+> (session log: capture, conflict-audit, decide, confidence-check) despite now being the head of
+> this epic's critical path — the hard `blocked_by` of P2 ENH-3280. Run **refine → wire → verify
+> before implementation**. The decision was made against unverified claims, so the verify pass may
+> reopen it; that is the accepted cost of having decided first. Its `issue_parser.py` anchors are
+> also on the stale pre-`93270c37` set (+50 lines: `_decision_identifiers` is at `:1401`,
+> `_unapplied_decision` at `:1499`, `discriminating` at `:1580` as of this review — resolve by
+> symbol name at implementation time, per the epic's anchor note, rather than trusting these).
 
 - **Scope of the subtraction corpus** — title + `## Summary` only (narrow, cheap, catches ENH-2692),
   or everything above `## Proposed Solution` (wider; catches more of ENH-3277's ~23 but risks
@@ -309,17 +318,32 @@ before the directive-section scan.
 
 ### Decision Rules
 
-The two open scope questions in *Proposed Solution* are the decision rules this issue introduces —
-which region defines "shared subject", and where the subtraction lands. Both must be settled before
-implementation; neither has a defensible default that survives the corpus measurement unexamined.
+The two scope questions in *Proposed Solution* are the decision rules this issue introduces — which
+region defines "shared subject", and where the subtraction lands. **Both are settled** (2026-08-21,
+`/ll:decide-issue`): the shared-subject region is the **title + `## Summary`** only, and the
+subtraction lands in a separate `_shared_subject_identifiers(content) -> set[str]` helper applied
+once inside `_unapplied_decision`. Rationale and scoring in § *Decision Rationale*; the accepted
+residual is that identifiers living only in `## Current Behavior` / `## Proposed Solution` (2 of the
+6 ENH-3277 terms spot-checked) stay unsuppressed.
 
 ## Implementation Steps
 
-1. Decide both scope questions in *Proposed Solution* (subtraction corpus; helper placement).
+1. ~~Decide both scope questions in *Proposed Solution* (subtraction corpus; helper placement).~~
+   ✅ **Done 2026-08-21** — narrow (title + `## Summary`) and a separate
+   `_shared_subject_identifiers` helper; see § *Decision Rationale*. Replaced by: run
+   `/ll:refine-issue` → `/ll:wire-issue` → `/ll:verify-issues` (still owed — see the callout in
+   *Proposed Solution*), and re-open the decision only if verification contradicts its evidence.
 2. Implement the subtraction; add the ENH-2692-shaped fixture and its negative control to
    `TestUnappliedDecision`.
 3. Corpus-measure across `.issues/`: record the report-total drop as an observation, assert
    `new_reports == 0` strictly.
+   > **Baseline against the tree this lands on, not a fixed commit** (added 2026-08-21, epic
+   > review). `new_reports == 0` holds for *this* change in isolation — a subtraction can only
+   > remove reports. But **BUG-3285** also moves `_unapplied_decision`'s output, from the other
+   > side: tightening `_OPTION_HEADING_RE` changes `_option_block_spans`' block set and therefore
+   > `sel_ids`/`rej_ids`/`spans[-1]`, and reports there can move in *both* directions. If BUG-3285
+   > lands first, re-baseline before asserting — see BUG-3285 § *Second blast radius*, and
+   > BUG-3278 assertion (c5), which coordinates the same snapshot across all three issues.
 4. Re-check ENH-2692 and ENH-3277 by hand — the two issues whose reports motivated this — and
    confirm the surviving reports are genuine.
 5. Invert BUG-3279's residual fixture (item 1) in the same commit.
@@ -366,7 +390,11 @@ implementation; neither has a defensible default that survives the corpus measur
 
 ## Status
 
-**Open** | Created: 2026-08-21 | Priority: P3
+**Open** | Created: 2026-08-21 | Priority: P2
+
+_(Footer corrected 2026-08-21, epic review — read `P3`, contradicting the frontmatter, the filename,
+and the Impact bullet, all of which record the raise to P2 as the `blocked_by` prerequisite of
+ENH-3280.)_
 
 
 ## Session Log
