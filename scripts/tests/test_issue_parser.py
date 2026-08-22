@@ -4711,7 +4711,7 @@ class TestPriorityRegexCompletenessAllowlist:
             16: "optional (?:P\\d-)? prefix inside an issue-ID regex; priority group discarded",
         },
         "cli/verify_evidence.py": {
-            99: "_ISSUE_ID_RE (BUG-3282): issue-ID shape matching to recognize an "
+            108: "_ISSUE_ID_RE (BUG-3282): issue-ID shape matching to recognize an "
             "artifact attribution in evidence prose; optional prefix group discarded",
         },
         "hooks/post_tool_use.py": {

@@ -4,7 +4,7 @@ type: BUG
 title: verify-issues certifies evidence quotes that exist in no revision of the cited
   artifact
 priority: P2
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-08-21'
 captured_at: '2026-08-21T17:29:50Z'
@@ -18,6 +18,7 @@ relates_to:
 - ENH-3283
 - ENH-3284
 - BUG-3278
+- ENH-3291
 confidence_score: 95
 outcome_confidence: 70
 score_complexity: 16
@@ -25,6 +26,7 @@ score_test_coverage: 18
 score_ambiguity: 18
 score_change_surface: 18
 missing_artifacts: true
+completed_at: '2026-08-22T14:18:17Z'
 ---
 
 # BUG-3282: verify-issues certifies evidence quotes that exist in no revision of the cited artifact

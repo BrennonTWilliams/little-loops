@@ -18,13 +18,22 @@ so a template addition can never silently widen the checker.
 
 **Pipeline** (see BUG-3282 Program Design § Decision Rules for the full
 rationale of each stage): section filter -> span extraction (fenced blocks
-and inline-backtick runs) -> attribution (following-parenthetical, else
-nearest-preceding mention, section-bounded, with a command-output exclusion)
--> span-kind filter (drop bare identifiers, command/skill invocations, and
-inline output following an invocation) -> char floor -> baseline suppression
--> artifact resolution -> match against the working tree, then the
-artifact's blob history newest-first (``--max-revisions``, default 80), each
-side normalized identically (whitespace collapse + markdown-emphasis strip).
+and inline-backtick runs) -> attribution (see :func:`attribute_span`:
+ordered predicates that **abstain** rather than guess — a following
+parenthetical, else a mention whose governing block, per
+:func:`binding_block`, covers the span; abstaining when no mention covers it
+and when the covering mentions name more than one artifact) -> span-kind
+filter (drop bare identifiers, command/skill invocations, and inline output
+following an invocation) -> char floor -> baseline suppression -> artifact
+resolution -> match against the working tree, then the artifact's blob
+history newest-first (``--max-revisions``, default 80), each side normalized
+identically (whitespace collapse + markdown-emphasis strip).
+
+Attribution abstains by design: the earlier rule bound each span to the
+nearest preceding mention at unbounded distance and produced ~3790 findings
+against a 90-entry baseline, the large majority mis-attributed. ``###
+Codebase Research Findings`` is stricter still (:data:`STRICT_BINDING_SECTIONS`)
+— only an explicit following parenthetical binds there.
 
 **Matching** uses one :class:`HistoryIndex` pass (``git log --all --raw``)
 plus one long-lived :class:`BlobReader` (``git cat-file --batch``) for the
