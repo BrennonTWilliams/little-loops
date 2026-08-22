@@ -4,7 +4,7 @@ type: BUG
 title: ll-issues check-* probes return exit 1 for an unresolvable issue ID, routing
   FSM gates to on_no instead of on_error
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-08-22'
 decision_needed: false
@@ -13,6 +13,7 @@ relates_to:
 - BUG-3278
 - BUG-3293
 captured_at: '2026-08-22T20:37:10Z'
+completed_at: '2026-08-22T22:48:03Z'
 labels:
 - cli
 - fsm
@@ -578,6 +579,7 @@ _Added by `/ll:confidence-check` on 2026-08-22_
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-22T22:47:40 - `ccec33f2-1527-4aff-b9d7-1a9165839f2e.jsonl`
 - `/ll:ready-issue` - 2026-08-22T22:18:19 - `afe857fc-f796-4b11-9d6a-872028bfc380.jsonl`
 - `/ll:confidence-check` - 2026-08-22T22:13:39 - `4a645ef4-53d6-431a-b186-5f97907a3395.jsonl`
 - `/ll:confidence-check` - 2026-08-22T21:49:34 - `9ed67f71-7303-474d-bf20-c4416e27aef4.jsonl`
