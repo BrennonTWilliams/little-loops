@@ -233,10 +233,37 @@ Proceed directly to issue creation without user confirmation.
 2. **Infer `testable: false`** — scan the issue title and description for doc-only signal keywords before creating the file (ENH-2966: this mirrors `check_format_gaps`'s title + `## Summary` scan surface, word-boundary matched — not the pre-ENH-2966 whole-body substring scan):
    - **Signal keywords**: "doc", "docs", "documentation", "broken link"/"broken links", "broken anchor"/"broken anchors", "readme"/"readmes", "changelog"/"changelogs", "spelling", "typo"/"typos", "guide", "fix link"/"fix links" — word-boundary matches only (e.g. `doc` does not match inside `documentation` or `docs`)
    - **Threshold**: 2+ distinct keyword matches (case-insensitive) in the combined title + description text
-   - If threshold met: after `ll-issues create` writes the file (step 3), use `Edit` to add `testable: false` to its frontmatter and log `ℹ️ Set testable: false (inferred: documentation-only issue)`
+   - If threshold met: after `ll-issues create` writes the file (step 4), use `Edit` to add `testable: false` to its frontmatter and log `ℹ️ Set testable: false (inferred: documentation-only issue)`
    - If threshold not met: leave `testable` unset (absence means testable)
 
-3. **Create the issue file atomically** (FEAT-2947 — this single call replaces the old next-id/sections/slugify/Write dance, and wires `parent:` both directions when `PARENT_ID` is set):
+3. **Verify quoted evidence against the cited artifact** (ENH-3283 — the write-time half of
+   BUG-3282's verify-time gate). Before step 4's write, identify every quoted span in the drafted
+   body (fenced block or inline backticks) that is attributed to a named file or issue ID — minus
+   the non-trigger shapes below — and confirm each against that artifact.
+
+   **Non-triggers — skip these without verifying:**
+   - **Command output** and run-log excerpts (a pasted traceback, pytest summary, FSM state
+     transition) — not a quotation *of* the file it mentions
+   - **Reproduction steps** that name an artifact as an argument (e.g. `` `ll-issues show
+     ENH-3277` ``) — cites the artifact as an input, not as a source of quoted text
+   - **Proposed text** — a snippet the issue suggests be *written* (a new config key, a
+     replacement line) — by definition absent from the artifact today
+   - **Symbol and path names** in backticks (`` `create_issue` ``, `` `create.py:406` ``) —
+     references, not spans
+   - When it is ambiguous whether a span is a quotation at all, **leave it alone** — a missed
+     fabrication is tolerable; deleting a true quote is not.
+
+   **For each remaining triggered span**, confirm it appears in the cited artifact using the
+   **`Grep` tool** — not shell `grep`, which this skill has no `Bash(grep:*)` grant for. If the
+   span is attributed to an issue ID rather than a path, resolve the path first with `ll-issues
+   show <ID> --json`. Check the current working-tree file only.
+
+   **On a miss**: drop the quote and describe the evidence in prose, or re-read the artifact and
+   quote it correctly — never write the unverified span. Evidence that genuinely came from
+   uncommitted or transient state (a working-tree edit, a loop run directory) must be labeled as
+   such explicitly, rather than attributed to the file.
+
+4. **Create the issue file atomically** (FEAT-2947 — this single call replaces the old next-id/sections/slugify/Write dance, and wires `parent:` both directions when `PARENT_ID` is set):
 
    ```bash
    ll-issues create --type "$ISSUE_TYPE" --title "$ISSUE_TITLE" \
@@ -245,7 +272,7 @@ Proceed directly to issue creation without user confirmation.
      ${PARENT_ID:+--parent "$PARENT_ID"} <<< "$ISSUE_SUMMARY"
    ```
 
-   Parse the JSON result for `{"id": ..., "path": ...}`. Note `--stage` is deliberately **not** passed here: later steps still mutate the file (the `testable: false` edit of step 2, the session-log append of step 4), so staging happens once at step 5 after those edits.
+   Parse the JSON result for `{"id": ..., "path": ...}`. Note `--stage` is deliberately **not** passed here: later steps still mutate the file (the `testable: false` edit of step 2, the session-log append of step 5), so staging happens once at step 6 after those edits.
 
 **New sections in v2.0** (auto-included based on template variant):
 - **Motivation**: Why this matters (replaces Current Pain Point for ENH)
@@ -256,7 +283,7 @@ Proceed directly to issue creation without user confirmation.
 
 See [templates.md](templates.md) for the complete issue file template structure.
 
-4. **Append session log entry** to the newly created issue file. Use the Bash tool:
+5. **Append session log entry** to the newly created issue file. Use the Bash tool:
 
 ```bash
 ll-issues append-log <path-to-issue-file> /ll:capture-issue
@@ -283,7 +310,7 @@ If `ll-issues` is not available, fall back to manually appending with **exactly*
    fi
    ```
 
-5. **Stage the new file** (last, so every edit above is included in the staged content):
+6. **Stage the new file** (last, so every edit above is included in the staged content):
 
 ```bash
 git add "{{config.issues.base_dir}}/[category]/[filename]"
@@ -311,7 +338,7 @@ See [templates.md](templates.md) for the complete document linking process inclu
 ### Phase 4c: Wire Parent EPIC (if `--parent` was given)
 
 **Skip this phase for the Create New Issue action** — `ll-issues create --parent` (Phase 4,
-step 3) already writes `parent:` on the child and appends its `## Children` bullet on the EPIC,
+step 4) already writes `parent:` on the child and appends its `## Children` bullet on the EPIC,
 both staged together (FEAT-2947). This phase applies only when reopening/updating an existing
 issue under `PARENT_ID` outside the `create` path.
 

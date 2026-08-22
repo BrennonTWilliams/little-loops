@@ -4,10 +4,11 @@ type: ENH
 title: capture-issue writes evidence quotes without checking them against the cited
   artifact
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-08-21'
 captured_at: '2026-08-21T17:30:17Z'
+completed_at: '2026-08-22T20:20:04Z'
 labels:
 - capture-issue
 - skills
@@ -371,12 +372,34 @@ to it would be a regression. See Proposed Solution → Amended.
 - BUG-3278 — the capture whose fabricated evidence propagated through a full refine loop
 - `skills/capture-issue/SKILL.md` Phase 4 — where the check lands
 
+---
+
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-08-22
+- **Status**: Completed
+
+### Changes Made
+- `skills/capture-issue/SKILL.md`: added new Phase 4 step 3 — pre-write evidence-quote check with the non-trigger list (command output, reproduction-step arguments, proposed text, symbol/path references) and the drop-or-correct rule, per the Implementation Steps. Renumbered the following steps (old 3/4/5 → 4/5/6) and their internal cross-references. No `allowed-tools` change needed — `Grep` and `Bash(ll-issues:*)` were already granted.
+- `scripts/tests/test_capture_issue_skill.py`: lifted `_phase_text` to a module-level helper (reused by the existing Phase 2 class), added `TestCaptureIssueEvidenceQuoteCheck` asserting the check phrase, the `Grep`-not-`grep -F` tooling, the drop-or-correct instruction, a named non-trigger class, and frontmatter tool coverage — all scoped to the Phase 4 heading slice.
+- `.qwen/skills/capture-issue/SKILL.md`, `.gemini/skills/capture-issue/SKILL.md`, `.kimi-code/skills/capture-issue/SKILL.md`: regenerated via `ll-adapt --host <host> --apply`. **Correction to this issue's own research**: the Scope Boundaries and Codebase Research Findings sections state these mirrors have "no generating tooling and no parity test" — that was wrong (or went stale same-day). `ll-adapt` and `scripts/tests/test_wiring_skills_and_commands.py::test_host_artifacts_are_not_stale` (ENH-3062) both exist and the latter failed on all three hosts until the mirrors were regenerated. Left as-is rather than editing the historical research prose above.
+
+### Verification Results
+- Tests: PASS (`python -m pytest scripts/tests/` — 20773 passed, 51 skipped)
+- Lint: PASS (`ruff check` / `ruff format --check` on the modified test file)
+- Types: SKIP (no `type_cmd` configured)
+- Run: SKIP (no `run_cmd` configured)
+- Integration: PASS (mirror-parity gate now green; `test_feat1896_skill_bridges.py::TestCaptureIssueDecisionsBridge` unaffected)
+
 ## Status
 
-**Open** | Created: 2026-08-21 | Priority: P3
+**Done** | Created: 2026-08-21 | Priority: P3
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-22T20:19:41 - `7edaafb8-0667-4e46-9f11-03592ab1e15a.jsonl`
+- `/ll:ready-issue` - 2026-08-22T20:03:03 - `06e14ea0-b901-4e7f-942c-5c743e132605.jsonl`
 - `/ll:confidence-check` - 2026-08-22T19:22:18 - `26eb7292-b430-4fe4-a2ae-90652d09d843.jsonl`
 - `/ll:review-issue (manual)` - 2026-08-22T18:08:45 - `8e5158e7-e170-4b3d-ab1f-2afbae53a801.jsonl`
 - `/ll:refine-issue` - 2026-08-22T16:48:02 - `0189866f-e38b-421c-a800-383e0d98aaa2.jsonl`
