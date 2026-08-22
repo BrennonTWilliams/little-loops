@@ -1,0 +1,12 @@
+{
+  "id": "3e585407-d724-4de7-adda-76218b1d7b91",
+  "type": "decision",
+  "timestamp": "2026-08-21T23:04:21Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Narrow scope reuses an exact precedent (testable gap class, issue_parser.py:1061-1069) and has no over-suppression risk since Summary predates options; wide scope has demonstrated over-suppression risk in this corpus (BUG-3287, ENH-3277) and no existing prefix-before-heading primitive. Helper placement locked in per the issue's own stated recommendation.",
+  "rule": "Narrow subtraction-corpus scope (title + Summary only); separate _shared_subject_identifiers helper",
+  "scope": "issue",
+  "alternatives_rejected": "Wide scope (everything above ## Proposed Solution); folding subtraction into _decision_identifiers itself",
+  "issue": "BUG-3289"
+}

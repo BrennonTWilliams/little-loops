@@ -346,9 +346,23 @@ states:
     # throughout this file (decision_needed / check-flag).
     action: "ll-issues check-verify-verdict ${captured.issue_id.output}"
     fragment: shell_exit
-    on_yes: check_hedges              # exit 0 = verdict VALID (or absent, fail-open)
-    on_no: check_proposal_unsound     # exit 1 = VERIFY_VERDICT_NON_VALID → ENH-3250: triage before forcing refine
+    on_yes: check_hedges                # exit 0 = verdict VALID (or absent, fail-open)
+    on_no: check_evidence_unverified    # exit 1 = VERIFY_VERDICT_NON_VALID → BUG-3282: evidence outranks proposal
     on_error: check_hedges
+
+  check_evidence_unverified:
+    # BUG-3282: placed ahead of check_proposal_unsound (Decision Rules → Verdict
+    # precedence) — an issue can be both EVIDENCE_UNVERIFIED and
+    # PROPOSAL_UNSOUND (a fabricated premise very often yields an unsound
+    # proposal built on top of it), and refine_followup re-deriving research on
+    # top of a fabricated premise is exactly the failure this issue names. Both
+    # route to check_reconcile_limit, so the precedence shows up in which span
+    # the rewrite is handed, not in the routing target.
+    action: "ll-issues check-verify-verdict ${captured.issue_id.output} --evidence-unverified"
+    fragment: shell_exit
+    on_yes: check_reconcile_limit  # verify_verdict == EVIDENCE_UNVERIFIED → reconcile, not refine
+    on_no: check_proposal_unsound  # any other non-VALID verdict → today's behaviour, unchanged
+    on_error: check_proposal_unsound  # fail-open, matching this file's convention
 
   check_proposal_unsound:
     # ENH-3250: check_verify_verdict's on_no bucket previously always went to
