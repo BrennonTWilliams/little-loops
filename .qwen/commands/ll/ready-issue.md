@@ -220,10 +220,13 @@ same `prose_dep_drift`/`stale_prose_dep` taxonomy `/ll:refine-issue` and
   - If all have `status: done`, `status: cancelled`, or don't exist: PASS.
 - [ ] No `prose_dep_drift`, no open structured blocker: PASS (no blockers).
 - [ ] `ll-issues check-design [ID]` exits non-zero (ENH-2852/ENH-2967): **surface
-      only, never block.** Report it as an advisory line ("Program Design section
-      is prose, not concrete types/signatures/call path — run
-      `/ll:refine-issue`, or set `program_design_not_applicable: true` if
-      trivial") and offer to fill it in. Do **not** set the verdict to BLOCKED
+      only, never block.** Non-zero collapses exit 1 (genuine gate failure) and
+      exit 2 (unresolvable ID — BUG-3294, not expected here since `[ID]` is the
+      issue already being reviewed) into the same advisory path. Report it as
+      an advisory line ("Program Design section is prose, not concrete
+      types/signatures/call path — run `/ll:refine-issue`, or set
+      `program_design_not_applicable: true` if trivial") and offer to fill it
+      in. Do **not** set the verdict to BLOCKED
       or NOT_READY on this. The blocking decision for program design happens
       once, at `/ll:confidence-check`, where the reconcile-before-defer remedy
       path exists; two gates enforcing the same requirement with different

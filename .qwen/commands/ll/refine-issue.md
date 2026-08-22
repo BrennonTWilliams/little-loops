@@ -534,7 +534,8 @@ Then update `decision_needed` in the issue's YAML frontmatter using the Edit too
   the options were deposited somewhere the probe cannot see — fix the
   placement (move the block into `## Proposed Solution` per the rule above)
   and re-check rather than setting a flag the downstream gate can never
-  satisfy.
+  satisfy. (Exit 2 means the ID itself failed to resolve — BUG-3294 — which
+  should not happen here since `<ID>` is the issue already being refined.)
 - If option count < 2: set `decision_needed: false` (or remove if absent — prevents stale `true` from a prior pass)
 
 **Idempotency**: skip the write if `decision_needed` already has the same value (follow `skills/format-issue/SKILL.md` in section "2.5a. Testable Inference (doc-only detection)").

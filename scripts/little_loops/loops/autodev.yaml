@@ -1265,7 +1265,10 @@ states:
     # recheck_after_size_review, which owns the design_gate_failed deferral.
     action: |
       ID="${captured.input.output}"
-      if ! ll-issues check-design "$ID"; then
+      ll-issues check-design "$ID"; rc=$?
+      # BUG-3294: only a genuine gate failure (rc=1) files the design-gate-failed
+      # marker; rc>=2 (unresolvable ID) must not defer a nonexistent issue.
+      if [ "$rc" -eq 1 ]; then
         touch ${context.run_dir}/autodev-design-gate-failed-$ID
       fi
       ll-issues check-readiness "$ID" \
@@ -1798,11 +1801,16 @@ states:
     # already attempted.
     action: |
       ID="${captured.input.output}"
-      if ll-issues check-design "$ID"; then
+      ll-issues check-design "$ID"; rc=$?
+      # BUG-3294: only a genuine gate failure (rc=1) files the design-gate-failed
+      # marker; rc>=2 (unresolvable ID) must not defer a nonexistent issue.
+      if [ "$rc" -eq 0 ]; then
         DESIGN_FAIL="false"
-      else
+      elif [ "$rc" -eq 1 ]; then
         DESIGN_FAIL="true"
         touch ${context.run_dir}/autodev-design-gate-failed-$ID
+      else
+        DESIGN_FAIL="false"
       fi
       GATE=$(ll-issues show "$ID" --json 2>/dev/null | python3 -c "
       import json, sys
@@ -2025,11 +2033,16 @@ states:
     # design_gate_failed, never low_readiness.
     action: |
       ID="${captured.input.output}"
-      if ll-issues check-design "$ID"; then
+      ll-issues check-design "$ID"; rc=$?
+      # BUG-3294: only a genuine gate failure (rc=1) files the design-gate-failed
+      # marker; rc>=2 (unresolvable ID) must not defer a nonexistent issue.
+      if [ "$rc" -eq 0 ]; then
         DESIGN_FAIL="false"
-      else
+      elif [ "$rc" -eq 1 ]; then
         DESIGN_FAIL="true"
         touch ${context.run_dir}/autodev-design-gate-failed-$ID
+      else
+        DESIGN_FAIL="false"
       fi
       GATE=$(ll-issues show "$ID" --json 2>/dev/null | python3 -c "
       import json, sys

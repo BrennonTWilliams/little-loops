@@ -24,8 +24,9 @@ def cmd_check_design(config: BRConfig, args: argparse.Namespace) -> int:
     behavior — this command adds no new failure mode on top of it.
 
     Returns:
-        0 when the gate passes (or is inert), 1 when it fails or the issue
-        is not found.
+        0 when the gate passes (or is inert), 1 when it fails, 2 when the
+        issue cannot be resolved (BUG-3294 — "cannot evaluate" is distinct
+        from a genuine negative).
     """
     from little_loops.cli.issues.show import _resolve_issue_id
     from little_loops.issue_parser import check_format_gaps, design_gate_failed
@@ -33,7 +34,7 @@ def cmd_check_design(config: BRConfig, args: argparse.Namespace) -> int:
     path = _resolve_issue_id(config, args.issue_id)
     if path is None:
         print(f"Error: Issue '{args.issue_id}' not found.", file=sys.stderr)
-        return 1
+        return 2
 
     gaps = check_format_gaps(path)
     return 1 if design_gate_failed(gaps) else 0

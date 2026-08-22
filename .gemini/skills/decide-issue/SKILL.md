@@ -487,6 +487,8 @@ FSM-driven loops (`rn-remediate`, `autodev`) instead call the deterministic comp
 `ll-issues check-decidable <ID>` — a pure-Python re-implementation of the same Patterns
 1–4 counting logic (no LLM, no scoring, no write) — as a cheap pre-`decide` gate: exit 0
 means "decide has something to act on", exit 1 routes the loop through
-`/ll:refine-issue --auto` to deposit options before retrying (ENH-2443). This mirrors the
+`/ll:refine-issue --auto` to deposit options before retrying (ENH-2443). Exit 2 means the
+ID could not be resolved (BUG-3294) — a distinct "cannot evaluate" verdict, routed to
+`on_error` rather than treated as an exit-1 "no options" no-op. This mirrors the
 `ensure_formatted` → `ll-issues format-check` precedent (ENH-2426): the skill documents
 the human-facing behavior, a companion CLI gives automation a real non-LLM evaluator.

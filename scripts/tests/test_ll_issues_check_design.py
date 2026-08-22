@@ -2,7 +2,7 @@
 
 Mirrors test_ll_issues_check_decidable.py's pattern: subprocess invocation with
 the CLI binary, exit-code contract (0 = Program Design gate passes / 1 =
-gate failed or issue not found), side-effect-free, deterministic.
+gate failed / 2 = issue not found — BUG-3294), side-effect-free, deterministic.
 
 check-design replaces the three inline `python3 -c "..."` DESIGN_FAIL blocks
 in autodev.yaml with a single owned predicate
@@ -179,11 +179,12 @@ class TestCheckDesignGateFails:
 
 
 class TestCheckDesignErrorHandling:
-    """The check handles missing issues gracefully (exit 1 with error token)."""
+    """The check distinguishes an unresolvable issue (exit 2) from a genuine
+    gate failure (exit 1) — BUG-3294."""
 
-    def test_missing_issue_exits_one(self, temp_project_dir: Path) -> None:
+    def test_missing_issue_exits_two(self, temp_project_dir: Path) -> None:
         result = _invoke(temp_project_dir, "check-design", "BUG-9999")
-        assert result.returncode == 1
+        assert result.returncode == 2
         assert "BUG-9999" in result.stderr
         assert "not found" in result.stderr.lower() or "Error" in result.stderr
 

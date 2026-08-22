@@ -302,11 +302,12 @@ class TestCheckDecidableOptionsMissingDiagnosis:
 
 
 class TestCheckDecidableErrorHandling:
-    """The probe handles missing issues gracefully (exit 1 with error token)."""
+    """The probe distinguishes an unresolvable issue (exit 2) from a genuine
+    negative verdict (exit 1) — BUG-3294."""
 
-    def test_missing_issue_exits_one(self, temp_project_dir: Path) -> None:
+    def test_missing_issue_exits_two(self, temp_project_dir: Path) -> None:
         result = _invoke(temp_project_dir, "check-decidable", "FEAT-9999")
-        assert result.returncode == 1
+        assert result.returncode == 2
         assert "FEAT-9999" in result.stderr
         assert "not found" in result.stderr.lower() or "Error" in result.stderr
 

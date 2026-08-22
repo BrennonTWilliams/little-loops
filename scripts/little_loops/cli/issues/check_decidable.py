@@ -20,8 +20,9 @@ def cmd_check_decidable(config: BRConfig, args: argparse.Namespace) -> int:
     """Exit 0 if the issue has >=1 enumerable option to decide between, 1 otherwise.
 
     Returns:
-        0 when count_enumerable_options finds >=1 option, 1 when it finds 0 or the
-        issue is not found.
+        0 when count_enumerable_options finds >=1 option, 1 when it finds 0, 2 when
+        the issue cannot be resolved (BUG-3294 — "cannot evaluate" is distinct from
+        a genuine negative).
     """
     from little_loops.cli.issues.show import _resolve_issue_id
     from little_loops.issue_parser import locate_enumerable_options
@@ -29,7 +30,7 @@ def cmd_check_decidable(config: BRConfig, args: argparse.Namespace) -> int:
     path = _resolve_issue_id(config, args.issue_id)
     if path is None:
         print(f"Error: Issue '{args.issue_id}' not found.", file=sys.stderr)
-        return 1
+        return 2
 
     located = locate_enumerable_options(path.read_text())
     if located.count >= 1:

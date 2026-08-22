@@ -76,9 +76,10 @@ class TestCheckReadinessExitCodes:
         _make_issue(bugs_dir, "P2-BUG-001-test.md", confidence_score=90, outcome_confidence=50)
         assert _run_check_readiness(temp_project_dir) == 1
 
-    def test_unresolvable_issue_exits_1(self, temp_project_dir: Path) -> None:
+    def test_unresolvable_issue_exits_2(self, temp_project_dir: Path) -> None:
+        """BUG-3294: an unresolvable issue is distinct from a genuine negative (exit 1)."""
         _setup_dirs(temp_project_dir)
-        assert _run_check_readiness(temp_project_dir) == 1
+        assert _run_check_readiness(temp_project_dir) == 2
 
 
 class TestCheckReadinessEnabledIgnored:

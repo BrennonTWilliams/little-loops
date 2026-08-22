@@ -99,7 +99,7 @@ def cmd_check_acceptance_criteria(config: BRConfig, args: argparse.Namespace) ->
     path = _resolve_issue_id(config, args.issue_id)
     if path is None:
         print(f"Error: Issue '{args.issue_id}' not found.", file=sys.stderr)
-        return 1
+        return 2
 
     content = path.read_text()
     manual = _find_manual_criteria(content)

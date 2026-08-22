@@ -26,7 +26,7 @@ def cmd_check_flag(config: BRConfig, args: argparse.Namespace) -> int:
     path = _resolve_issue_id(config, args.issue_id)
     if path is None:
         print(f"Error: Issue '{args.issue_id}' not found.", file=sys.stderr)
-        return 1
+        return 2
 
     fm = parse_frontmatter(path.read_text(), coerce_types=True)
     value = fm.get(args.field)

@@ -1905,6 +1905,20 @@ ll-issues find-similar --batch --against open
 
 ---
 
+**`check-*` family exit-code convention (BUG-3294):** every probe below
+(`check-flag`, `check-decidable`, `check-design`, `check-acceptance-criteria`,
+`check-verify-verdict`, `check-open-questions`, `check-readiness`) shares one
+contract — **0** = yes / gate passes, **1** = no / genuine negative verdict,
+**2** = cannot evaluate (the issue ID could not be resolved, or — for
+`check-flag` — argparse usage errors such as a missing positional), **3**
+reserved for future abstain semantics and never emitted today. Under the FSM
+`shell_exit` evaluator this routes 0→`on_yes`, 1→`on_no`, 2+→`on_error`, so a
+bad or renamed issue ID reaches the error branch instead of being silently
+treated as a real "no". Scope boundary: a resolvable issue file whose
+frontmatter fails to parse, or that is simply missing the queried field,
+still returns 1 — only the not-found half of "cannot evaluate" is separated
+by this convention.
+
 #### `ll-issues check-flag` / `ll-issues cf`
 
 Exit 0 if a named boolean frontmatter field in the issue equals `true`. Designed for use as a shell gate in FSM loop states.
@@ -1969,7 +1983,7 @@ Exit 0 if the Program Design gate passes for an issue (ENH-2967). Single owner o
 **Examples:**
 ```bash
 ll-issues check-design BUG-2967   # Exit 0 — gate passes or is inert
-ll-issues check-design BUG-9999   # Exit 1 — issue not found
+ll-issues check-design BUG-9999   # Exit 2 — issue not found (BUG-3294)
 ```
 
 **FSM loop use**: `autodev.yaml`'s `recheck_scores`, `regate_after_atomic_remediation`, and `recheck_after_size_review` states each call `ll-issues check-design "$ID"` in place of the old inline JSON-parsing block, chaining its exit code into the surrounding readiness/outcome gate exactly like the `check-readiness` idiom.

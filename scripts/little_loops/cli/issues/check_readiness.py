@@ -137,6 +137,6 @@ def cmd_check_readiness(config: BRConfig, args: argparse.Namespace) -> int:
     )
     if status is None:
         print(f"Error: Issue '{args.issue_id}' not found.", file=sys.stderr)
-        return 1
+        return 2
 
     return 0 if (status.meets_readiness and status.meets_outcome) else 1
