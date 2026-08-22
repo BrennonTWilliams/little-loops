@@ -270,6 +270,37 @@ class TestCheckDecidableDecisionRulesNumbered:
         assert "OPTIONS_MISSING" in result.stderr
 
 
+class TestCheckDecidableOptionsMissingDiagnosis:
+    """BUG-3293 Part 3: the OPTIONS_MISSING message names both candidate causes
+    (nothing written vs. an unrecognized shape) instead of asserting the
+    document "genuinely has none"."""
+
+    def test_options_missing_names_both_candidate_causes(self, temp_project_dir: Path) -> None:
+        body = (
+            "---\n"
+            "id: FEAT-9108\n"
+            "title: Test\n"
+            "type: feature\n"
+            "status: open\n"
+            "priority: P3\n"
+            "decision_needed: true\n"
+            "---\n\n"
+            "# FEAT-9108\n\n"
+            "## Summary\n\nTest.\n\n"
+            "## Proposed Solution\n\nNo enumerable options here.\n\n"
+            "## Labels\n\n`feature`\n\n"
+        )
+        _write_issue(temp_project_dir, body)
+        result = _invoke(temp_project_dir, "check-decidable", "FEAT-9108")
+        assert result.returncode == 1
+        assert "OPTIONS_MISSING" in result.stderr
+        assert "none are written" in result.stderr
+        assert "shape the locator does not recognize" in result.stderr
+        assert "genuinely has none" not in result.stderr
+        # remedy stays present but conditional on the "nothing written" cause
+        assert "/ll:refine-issue" in result.stderr
+
+
 class TestCheckDecidableErrorHandling:
     """The probe handles missing issues gracefully (exit 1 with error token)."""
 

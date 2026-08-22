@@ -4,10 +4,11 @@ type: BUG
 title: Bold-numbered decision points under Program Design are invisible to both the
   tier scan and Pattern E
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-08-22'
 captured_at: '2026-08-22T20:14:20Z'
+completed_at: '2026-08-22T22:05:02Z'
 decision_needed: false
 size: Medium
 labels:
@@ -565,6 +566,8 @@ _Added by `/ll:verify-issues` — 2026-08-22:_
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-22T22:04:29 - `dba98e91-1220-4143-94cf-08549fcdb31a.jsonl`
+- `/ll:manage-issue` - 2026-08-22T22:04:09 - `dba98e91-1220-4143-94cf-08549fcdb31a.jsonl`
 - `/ll:ready-issue` - 2026-08-22T21:51:13 - `0fbe5749-2828-4278-bd9d-82e9ea53f7e7.jsonl`
 - `/ll:refine-issue` - 2026-08-22T21:47:33 - `eacb291c-2f02-4734-8f3d-1761d2eef94b.jsonl`
 - `/ll:verify-issues` - 2026-08-22T21:40:33 - `fbcae9c4-0aa7-44a3-a9c9-50fde4bc0060.jsonl`

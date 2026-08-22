@@ -39,14 +39,22 @@ def cmd_check_decidable(config: BRConfig, args: argparse.Namespace) -> int:
         )
         return 0
 
-    # ENH-2821: locate_enumerable_options() already scans the whole document
-    # (## Proposed Solution, the fallback sections, then every H2 section including
-    # nested H3s), so a count of 0 here means the document genuinely has none —
-    # not that the probe looked in the wrong place.
+    # BUG-3293: the two probes locate_enumerable_options() chains have different
+    # scopes, so a count of 0 does not license one diagnosis. The tier sweep IS
+    # document-wide (## Proposed Solution, the fallback sections, then every H2
+    # section including nested H3s via _iter_h2_sections) — for that probe, "not
+    # that it looked in the wrong place" holds. But the Pattern E directive probe
+    # (_locate_directive_alternatives) is bounded to a fixed section list
+    # (_DIRECTIVE_ALTERNATIVES_SECTIONS) and never runs elsewhere. A probe
+    # observes an absence, not a cause: count == 0 is indistinguishable between
+    # "none are written" and "some exist in a shape the locator does not
+    # recognize" — so the message states both candidate causes instead of
+    # asserting the document "genuinely has none".
     print(
         f"OPTIONS_MISSING: {args.issue_id} — decision_needed is true but no enumerable "
-        "alternatives were found anywhere in the document; "
-        f"run /ll:refine-issue {args.issue_id} --auto",
+        "alternatives matched; either none are written, or they are in a shape the "
+        "locator does not recognize (see BUG-3293). If none are written, run "
+        f"/ll:refine-issue {args.issue_id} --auto",
         file=sys.stderr,
     )
     return 1
