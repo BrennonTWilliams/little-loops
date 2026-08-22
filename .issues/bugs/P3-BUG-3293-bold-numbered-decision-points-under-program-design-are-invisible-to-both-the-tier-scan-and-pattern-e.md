@@ -565,6 +565,7 @@ _Added by `/ll:verify-issues` — 2026-08-22:_
 
 
 ## Session Log
+- `/ll:ready-issue` - 2026-08-22T21:51:13 - `0fbe5749-2828-4278-bd9d-82e9ea53f7e7.jsonl`
 - `/ll:refine-issue` - 2026-08-22T21:47:33 - `eacb291c-2f02-4734-8f3d-1761d2eef94b.jsonl`
 - `/ll:verify-issues` - 2026-08-22T21:40:33 - `fbcae9c4-0aa7-44a3-a9c9-50fde4bc0060.jsonl`
 - `implement-decision-rules-numbered-and-pattern-e-widening` - 2026-08-22T21:27:23 - `bc6653b6-fcc0-4790-89ae-8782900fae6c.jsonl`
