@@ -1,0 +1,12 @@
+{
+  "id": "5c7228e1-6d44-48e9-aeb3-9cae08c757c9",
+  "type": "decision",
+  "timestamp": "2026-08-22T20:54:25Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Thin semantics make audit easier not riskier; the code change is a trivial one-line literal regardless of scope; excluding it would leave the highest-traffic probe (18/44 sites) with the exact conflation this issue exists to fix, recreating a single inconsistent outlier.",
+  "rule": "Include check-flag in the exit-1-to-2 fix (uniform convention across all seven check-* probes)",
+  "scope": "issue",
+  "alternatives_rejected": "Exclude check-flag and document the carve-out",
+  "issue": "BUG-3294"
+}

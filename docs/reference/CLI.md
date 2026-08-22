@@ -2034,7 +2034,7 @@ ll-issues locate-options ENH-2950 --json
 #  "options": [{"label": "Option A", "text": "...", "start_line": 12, "end_line": 14}, ...]}
 ```
 
-`pattern` names which precedence tier fired: `section_header` (`### Option A`), `bold_label` (`**Option A**: ...`), `numbered` (`1. **Option A** ...`), `bullet` (`- (a) ...`), or `provisional_e` (an un-preferenced decision directive, ENH-2936 — `options` holds a single span covering the matched window rather than per-alternative entries, since that heuristic only proves a decision exists, not how many alternatives). `pattern`/`heading` are `null` and `options` is empty when `count` is 0.
+`pattern` names which precedence tier fired: `section_header` (`### Option A`), `bold_label` (`**Option A**: ...`), `numbered` (`1. **Option A** ...`), `bullet` (`- (a) ...`), `decision_rules_numbered` (2+ bold-numbered items under `## Program Design → ### Decision Rules`, e.g. `1. **Identifier shape.** ...`, BUG-3293), or `provisional_e` (an un-preferenced decision directive, ENH-2936/BUG-3293 — `options` holds a single span covering the matched window rather than per-alternative entries, since that heuristic only proves a decision exists, not how many alternatives). `pattern`/`heading` are `null` and `options` is empty when `count` is 0.
 
 **FSM loop use**: Prefer `check-decidable` for a pure gate (`evaluate: {type: exit_code}`); use `locate-options --json` when a downstream state needs the actual option text, not just a boolean.
 

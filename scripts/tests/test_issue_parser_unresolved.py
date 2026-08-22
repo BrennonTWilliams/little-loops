@@ -102,6 +102,36 @@ class TestLocatedOptionsPatternNames:
         located = locate_enumerable_options(content)
         assert located.pattern == "provisional_e"
 
+    def test_decision_rules_numbered_pattern_name(self) -> None:
+        """BUG-3293: bold-numbered items under Program Design -> Decision Rules."""
+        from little_loops.issue_parser import locate_enumerable_options
+
+        content = (
+            "## Program Design\n\n"
+            "### Decision Rules\n\n"
+            "1. **Identifier shape.** The identifier is not `[A-Za-z0-9]+` alone.\n"
+            "2. **Title extent.** Whether a title may span more than one line.\n"
+        )
+        located = locate_enumerable_options(content)
+        assert located.pattern == "decision_rules_numbered"
+        assert located.heading == "Program Design"
+        assert len(located.options) == 2
+
+    def test_provisional_e_matches_program_design_versus_phrasing(self) -> None:
+        """BUG-3293: "must be made before implementation ... versus ... versus" in
+        Program Design is the exact un-numbered shape this issue itself used."""
+        from little_loops.issue_parser import locate_enumerable_options
+
+        content = (
+            "## Program Design\n\n"
+            "### Decision Rules\n\n"
+            "One decision, and it must be made before implementation: route A "
+            "versus route B versus both.\n"
+        )
+        located = locate_enumerable_options(content)
+        assert located.pattern == "provisional_e"
+        assert located.heading == "Program Design"
+
 
 class TestCountEnumerableOptions:
     """count_enumerable_options/locate_enumerable_options widen to a whole-document
@@ -778,6 +808,51 @@ class TestPatternEDirectiveAlternatives:
         from little_loops.issue_parser import locate_enumerable_options
 
         content = "## Motivation\n\n- pick one: X or Y — must be decided before implementation.\n"
+        located = locate_enumerable_options(content)
+        assert located.count == 0
+        assert located.heading is None
+
+    def test_ordinary_implementation_steps_bold_numbered_list_not_matched(self) -> None:
+        """BUG-3293: an ordinary bold-led numbered step list — this repo's dominant
+        list convention — must not be misread as a decision block. Measured against
+        the live corpus: a naive unscoped widening of the `numbered` tier to match
+        any bold-numbered item hits 889/3197 files via exactly this shape."""
+        from little_loops.issue_parser import locate_enumerable_options
+
+        content = (
+            "## Implementation Steps\n\n"
+            "1. **Measure both routes before choosing.** Apply each candidate independently.\n"
+            "2. **Land the corpus differential test first.** Before either change.\n"
+        )
+        located = locate_enumerable_options(content)
+        assert located.count == 0
+        assert located.heading is None
+
+    def test_program_design_bold_numbered_outside_decision_rules_not_matched(self) -> None:
+        """BUG-3293: a bold-numbered list under Program Design but NOT under the
+        Decision Rules subsection (e.g. under Signatures) is not a decision block."""
+        from little_loops.issue_parser import locate_enumerable_options
+
+        content = (
+            "## Program Design\n\n"
+            "### Signatures\n\n"
+            "1. **`locate_enumerable_options(content: str) -> LocatedOptions`**\n"
+            "2. **`_locate_directive_alternatives(content: str) -> LocatedOptions | None`**\n"
+        )
+        located = locate_enumerable_options(content)
+        assert located.count == 0
+        assert located.heading is None
+
+    def test_single_decision_rules_numbered_item_not_matched(self) -> None:
+        """BUG-3293: a single bold-numbered item is never itself a "pick one of
+        these" decision — the discriminator requires >= 2 matches."""
+        from little_loops.issue_parser import locate_enumerable_options
+
+        content = (
+            "## Program Design\n\n"
+            "### Decision Rules\n\n"
+            "1. **Do not delete the filename fallback.** It is the only source of truth.\n"
+        )
         located = locate_enumerable_options(content)
         assert located.count == 0
         assert located.heading is None

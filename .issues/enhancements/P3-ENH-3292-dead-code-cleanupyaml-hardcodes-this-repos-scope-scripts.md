@@ -15,6 +15,12 @@ labels:
 relates_to:
 - ENH-3281
 decision_needed: false
+confidence_score: 100
+outcome_confidence: 82
+score_complexity: 22
+score_test_coverage: 25
+score_ambiguity: 10
+score_change_surface: 25
 ---
 
 # ENH-3292: dead-code-cleanup.yaml hardcodes this repo's scope: ["scripts/"]
@@ -23,14 +29,29 @@ decision_needed: false
 
 `dead-code-cleanup.yaml:8-9` ships `scope: ["scripts/"]` — a this-repo layout default
 baked into a generic built-in loop. `scripts/` is this repo's own source directory
-(`.claude/CLAUDE.md` § Key Directories); any consuming project without a top-level
-`scripts/` directory gets a loop that scopes itself to a path that doesn't exist.
+(`.claude/CLAUDE.md` § Key Directories). `scope:` is the **concurrency lock scope and
+only that** — it does not constrain what the loop scans or edits — so in any consuming
+project without a top-level `scripts/` directory the loop **locks a path it never
+touches while editing paths it never locked**. Concurrent loops that should be
+mutually excluded are not, and this loop's `git checkout --` revert paths can then
+destroy another loop's uncommitted work (see Motivation).
 
 ## Current Behavior
 
 `scripts/little_loops/loops/dead-code-cleanup.yaml` declares a hardcoded
 `scope: ["scripts/"]` at the top level, guessing this repo's own layout rather than
 deriving a project-appropriate scope or defaulting to an empty/override slot.
+
+Two things this does **not** do, both of which the original capture implied:
+
+- **It does not scope the scan.** The `scan` state (`dead-code-cleanup.yaml:55-69`,
+  delegation at `:59`) invokes `/ll:find-dead-code`, which reads `scan.focus_dirs` from
+  `.ll/ll-config.json`. `scope:` is never consulted for scan or edit targets.
+- **It does not error on a missing directory.** `LockManager._normalize_path()`
+  (`fsm/concurrency.py:425-427`) uses non-strict `Path.resolve()`, so a nonexistent
+  `<root>/scripts` resolves silently — no exception, no warning, no diagnostic.
+
+The observable defect is therefore entirely in lock behavior, not in scan behavior.
 
 ## Expected Behavior
 
@@ -41,12 +62,36 @@ elsewhere in the built-in loop corpus (BUG-3276, ENH-3277, ENH-3281).
 
 ## Motivation
 
-Flagged during ENH-3281 (generalize the this-repo-hardcode gate across all built-in
-loops). `scope:` list entries are deliberately **out of scope** for that gate — they
-are not exec-time content in the same sense as a state's `action` body or a top-level
-`context:` default (see ENH-3281 § Program Design → Decision Rules) — so this instance
-was never caught and needed its own follow-up rather than silently expanding that
-gate's scope. ENH-3281 Implementation Step 5 requires this capture.
+**The defect is under-locking, and it is a data-loss risk — not a cosmetic layout
+guess.** The lock this loop takes does not cover the files it modifies:
+
+1. In a `src/`-layout consuming project, the loop holds a lock on `<root>/scripts`
+   (nonexistent) while `remove_code` (`:90-111`) edits files under `src/`.
+2. `LockManager._paths_overlap()` (`fsm/concurrency.py:398-423`) is a strict
+   same-path / ancestor / descendant check. `<root>/scripts` and `<root>/src` are
+   siblings, so **they do not overlap** — a concurrently launched loop scoped to
+   `src/` is not blocked, and neither is this one.
+3. Both loops then edit the same working tree simultaneously. This loop's failure
+   paths run `git checkout -- <file>`: `revert_and_scan` (`:144-145`) and
+   `revert_unverifiable` (`:168`).
+4. `check_preconditions` **deliberately does not gate on a clean tree** (`:154-156`,
+   ENH-3288), so those reverts cannot distinguish this loop's own edits from another
+   loop's uncommitted work. The other loop's changes are discarded with no warning
+   and no recovery path.
+
+Preventing exactly this interleaving is the entire purpose of the scope lock
+(ENH-1354/FEAT-1789 disjoint-scope concurrency). `scope: ["."]` is therefore the
+*correct* value on lock-soundness grounds, not merely the *conventional* one: the
+loop's true write footprint is "wherever `scan.focus_dirs` points plus any import
+site touched by a removal" — not knowable in advance, so the whole tree is the only
+honest declaration.
+
+**Provenance**: flagged during ENH-3281 (generalize the this-repo-hardcode gate across
+all built-in loops). `scope:` list entries are deliberately **out of scope** for that
+gate — they are not exec-time content in the same sense as a state's `action` body or
+a top-level `context:` default (see ENH-3281 § Program Design → Decision Rules) — so
+this instance was never caught and needed its own follow-up rather than silently
+expanding that gate's scope. ENH-3281 Implementation Step 5 requires this capture.
 
 ## Proposed Solution
 
@@ -110,6 +155,43 @@ Findings below trace `scope:` from the loop file through `resolve_scope()` to it
 - Sibling per-loop `test_scope_declared` methods show the established assertion shape (membership check against the parsed `scope:` list) — e.g. `test_builtin_loops.py:1352` (issue-refinement), `:2967` (refine-to-ready-issue), `:8215` (autodev, `test_scope_field_uses_run_dir_template`), `:8664` (recursive-refine)
 - `scripts/tests/test_concurrency.py:1058` — `TestResolveScope` covers `resolve_scope()`'s template-substitution behavior directly (static passthrough, context-var substitution, unresolved-var preservation)
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_builtin_loops.py:12042` (`TestDeadCodeCleanupLoop`) — no
+  `test_scope_declared` method exists in this class today (confirmed by full read of
+  all 20 existing methods); add one following the convention at
+  `test_builtin_loops.py:1352-1363` (`is not None` + `isinstance(..., list)` + value
+  assertion), citing ENH-3292 in the docstring.
+
+  **Assert `scope == ["."]`, not `"." in scope`.** Only the equality form is a
+  regression guard: a membership check still passes if someone re-adds
+  `"scripts/"` alongside `"."`, which is the exact reintroduction this test exists
+  to catch.
+- Confirmed non-breaking, no update needed: `scripts/tests/test_fsm_fragments.py:1000` (`TestBuiltinLoopMigration.test_builtin_loops_load_after_migration`) only checks the file loads/validates post-migration, never reads `scope`; `scripts/tests/test_bug3269_test_cmd_resolution_gate.py:173` only asserts exemption-list membership for the unrelated `test_cmd` gate, never reads `scope`
+
+### Documentation
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_builtin_loop_hardcode_gate.py:13-20` — the ENH-3281 hardcode-gate
+  module docstring justifies excluding `scope:` entries from its scan by pointing at
+  this loop as the live example: "a bare `scripts/` does not match (that is
+  `dead-code-cleanup.yaml`'s `scope: ["scripts/"]`, out of this gate's scope and
+  captured as a separate follow-up issue)".
+
+  **Do not merely swap the quoted literal to `scope: ["."]`** — that produces an
+  incoherent sentence ("a bare `scripts/` does not match … that is
+  `dead-code-cleanup.yaml`'s `scope: ["."]`"), because `["."]` is not a hardcode and,
+  once this issue lands, no built-in loop contains a bare `scripts/` for the
+  parenthetical to refer to. Rewrite the parenthetical so it **retires the example
+  while keeping the exclusion rule**, e.g.:
+
+  > …a bare `scripts/` does not match. The one instance
+  > (`dead-code-cleanup.yaml`'s `scope: ["scripts/"]`) was fixed by ENH-3292;
+  > `scope:` entries remain out of this gate's scope by design.
+
+  No functional/test-assertion impact — `_HARDCODE_PATTERNS` (`:37-42`) and
+  `_scanned_strings()` (`:66-87`) match on neither the old nor the new value, so the
+  gate needs no logic change, only the docstring.
+
 ## Program Design
 
 ### Codebase Research Findings
@@ -131,12 +213,59 @@ No new type is introduced; the change is a value swap inside the existing `FSMLo
 ### Decision Rules
 N/A — no new decision logic, gate, or threshold is introduced; this changes an existing static configuration value.
 
+## Acceptance Criteria
+
+- [ ] `scripts/little_loops/loops/dead-code-cleanup.yaml:8-9` declares `scope: ["."]`;
+      a repo-wide grep for `"scripts/"` in that file returns zero matches
+- [ ] `TestDeadCodeCleanupLoop` (`scripts/tests/test_builtin_loops.py:12042`) has a
+      `test_scope_declared` method asserting `scope == ["."]` (equality, not membership —
+      see Integration Map → Tests), with ENH-3292 cited in its docstring
+- [ ] `test_all_have_scope_field` (`test_builtin_loops.py:139-158`) still passes with no
+      new entry added to `_SCOPE_EXEMPT_STEMS` (`:125-137`)
+- [ ] `test_builtin_loop_hardcode_gate.py`'s module docstring (`:13-20`) no longer cites a
+      `scripts/` instance that does not exist, and still states that `scope:` entries are
+      excluded from the gate by design
+- [ ] `scripts/tests/test_builtin_loop_hardcode_gate.py` passes unchanged in logic —
+      `_HARDCODE_PATTERNS` (`:37-42`) and `_scanned_strings()` (`:66-87`) are not modified
+- [ ] `ll-loop validate dead-code-cleanup` reports no new findings, and emits no
+      `_validate_missing_scope()` warning (`fsm/validation/structural_rules.py:1226`)
+- [ ] `python -m pytest scripts/tests/` exits 0
+
+## Implementation Steps
+
+1. **Change the scope value.** `scripts/little_loops/loops/dead-code-cleanup.yaml:8-9`:
+   `scope: ["scripts/"]` → `scope: ["."]`. One line. Do not touch any other `scripts/`
+   reference in the corpus — there are none in this file (grep-confirmed: line 9 is the
+   sole match).
+2. **Add the regression test.** New `test_scope_declared` in `TestDeadCodeCleanupLoop`
+   (`scripts/tests/test_builtin_loops.py:12042`), modeled on `test_builtin_loops.py:1352-1363`.
+   Assert `scope is not None`, `isinstance(scope, list)`, and **`scope == ["."]`**. The
+   equality form is load-bearing (Integration Map → Tests): `"." in scope` would still pass
+   if `"scripts/"` were re-added alongside.
+3. **Retire the stale example in the gate docstring.** `scripts/tests/test_builtin_loop_hardcode_gate.py:13-20`
+   — rewrite the trailing parenthetical per Integration Map → Documentation. Keep the
+   exclusion rule, drop the now-nonexistent example, reference ENH-3292 as the fix.
+   **Docstring only** — no change to `_HARDCODE_PATTERNS` or `_scanned_strings()`.
+4. **Verify.** `python -m pytest scripts/tests/test_builtin_loops.py scripts/tests/test_builtin_loop_hardcode_gate.py`,
+   then the full suite (`python -m pytest scripts/tests/`) per `.claude/CLAUDE.md` §
+   Testing & CI Policy.
+
 ## Impact
 
-- **Priority**: [P0-P5] - [Justification]
-- **Effort**: [Small/Medium/Large] - [Justification]
-- **Risk**: [Low/Medium/High] - [Justification]
-- **Breaking Change**: [Yes/No]
+- **Priority**: P3 — correct as a *backlog* rank (single loop, one-line fix, and the
+  hazard needs a consuming project running two overlapping loops concurrently), but the
+  P3 label understates severity if it fires: the failure mode is silent destruction of a
+  concurrent loop's uncommitted work (see Motivation), not a cosmetic layout mismatch.
+  Not a live defect in this repo, where `scripts/` happens to be correct.
+- **Effort**: Small — one YAML line, one new test method, one docstring rewrite. No
+  production Python changes; no new mechanism (Option B explicitly rejected).
+- **Risk**: Low — widens this loop's lock from one subtree to the whole repo tree, which
+  can only *add* mutual exclusion, never remove it. Worst case is a loop that previously
+  ran concurrently alongside dead-code-cleanup now blocking; that is the intended
+  correction, and it matches the already-accepted tradeoff in both `category: code-quality`
+  siblings (`incremental-refactor.yaml:6`, `test-coverage-improvement.yaml:16`).
+- **Breaking Change**: No — no schema, CLI, or config surface changes. Behavior change is
+  confined to lock granularity for one built-in loop.
 
 ## Scope Boundaries
 
@@ -158,5 +287,8 @@ already considered and rejected there (`scope:` entries are not exec-time conten
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-22T21:00:31 - `bc6653b6-fcc0-4790-89ae-8782900fae6c.jsonl`
+- `/ll:confidence-check` - 2026-08-22T20:48:55 - `bc6653b6-fcc0-4790-89ae-8782900fae6c.jsonl`
+- `/ll:wire-issue` - 2026-08-22T20:44:18 - `417d8b98-7782-429a-9668-dc89c2071d68.jsonl`
 - `/ll:decide-issue` - 2026-08-22T20:38:21 - `8a3822be-71d1-4b6b-bf90-c7a7081d28ae.jsonl`
 - `/ll:refine-issue` - 2026-08-22T20:30:18 - `bc6653b6-fcc0-4790-89ae-8782900fae6c.jsonl`

@@ -4740,10 +4740,10 @@ class TestPriorityRegexCompletenessAllowlist:
             "frontmatter directly by design — drift IS the comparison, not a resolution",
             1628: "_DEP_ID_RE (BUG-3059): dependency-ID shape validation; optional prefix "
             "group discarded",
-            3143: "comment describing the P[0-5]-NNN- filename shape",
-            3147: "_parse_type_and_id's directory-fallback number extraction; priority digit "
+            3257: "comment describing the P[0-5]-NNN- filename shape",
+            3261: "_parse_type_and_id's directory-fallback number extraction; priority digit "
             "skipped over, not read as a value",
-            3168: "_generate_id_from_filename strips a leading priority token before "
+            3282: "_generate_id_from_filename strips a leading priority token before "
             "digit-scanning for ID generation",
         },
         "issues/prose_deps.py": {
@@ -5394,6 +5394,73 @@ class TestUnappliedDecision:
         # Report layer (BUG-3289-coupled; see docstring).
         reasons = _unapplied_decision(content)
         assert any("check_refine_limit" in r for r in reasons)
+
+
+class TestBug3293DecisionRulesCorpusDifferential:
+    """BUG-3293 Implementation Steps 2 & 5: corpus differential for the two additive
+    changes (the `decision_rules_numbered` structural tier, and the Pattern E
+    widening — "Program Design" added to `_DIRECTIVE_ALTERNATIVES_SECTIONS`,
+    plus the "must be made before implementation" / "versus" regex alternatives).
+
+    Both changes are additive-only by construction: they run strictly after
+    every pre-existing tier and the whole-document fallback have already
+    returned nothing, so they can only ever move a file's count from 0 to
+    non-zero — never decrease a count or change a heading `locate_enumerable_options`
+    already resolved another way. That structural guarantee is what lets this
+    test assert "no unpinned file is affected" without needing a stored
+    pre-fix snapshot: it pins the exact 4 files a full `.issues/` sweep found
+    affected at fix time (measured 2026-08-22, 3198-file corpus) and asserts
+    no other file returns `decision_rules_numbered`, and no other file gains a
+    `provisional_e` match under the new "Program Design" heading.
+    """
+
+    _PINNED = {
+        "P2-BUG-3232-ll-loop-list-running-applies-no-status-filter-so-completed-and-interrupted-runs-are-reported-as-running.md": (
+            "decision_rules_numbered",
+            3,
+        ),
+        "P3-BUG-3285-option-marker-regexes-match-bold-prose-so-analysis-text-is-counted-as-an-option-block.md": (
+            "decision_rules_numbered",
+            3,
+        ),
+        "P3-BUG-3293-bold-numbered-decision-points-under-program-design-are-invisible-to-both-the-tier-scan-and-pattern-e.md": (
+            "provisional_e",
+            2,
+        ),
+        "P2-ENH-3045-replacement-parity-and-negative-claim-doctrine-for-wire-and-refine.md": (
+            "decision_rules_numbered",
+            4,
+        ),
+    }
+
+    def test_only_pinned_files_gain_program_design_options(self) -> None:
+        from little_loops.issue_parser import locate_enumerable_options
+
+        issues_dir = Path(__file__).parent.parent.parent / ".issues"
+        if not issues_dir.exists():
+            pytest.skip("no .issues/ corpus in this checkout")
+
+        unexpected = []
+        pinned_seen = {}
+        for path in issues_dir.rglob("*.md"):
+            content = path.read_text(encoding="utf-8", errors="ignore")
+            located = locate_enumerable_options(content)
+            is_new_surface = located.pattern == "decision_rules_numbered" or (
+                located.pattern == "provisional_e" and located.heading == "Program Design"
+            )
+            if not is_new_surface:
+                continue
+            if path.name in self._PINNED:
+                pinned_seen[path.name] = (located.pattern, located.count)
+            else:
+                unexpected.append((str(path), located.pattern, located.count))
+
+        assert unexpected == [], (
+            f"Unpinned files newly matched by the Program Design decision surfaces: {unexpected}"
+        )
+        assert pinned_seen == self._PINNED, (
+            f"Pinned files diverged from expected (pattern, count): {pinned_seen} != {self._PINNED}"
+        )
 
 
 class TestUnappliedDecisionLiveCorpusSweep:

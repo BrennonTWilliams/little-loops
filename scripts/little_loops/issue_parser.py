@@ -2151,12 +2151,16 @@ def _iter_h2_sections(content: str) -> list[tuple[str, int, int]]:
 # (declarative recommendation) requires a stated preference, so this shape falls
 # through every other tier — this heuristic closes that gap for the deterministic
 # probe (ll-issues check-decidable) the same way the LLM skill's Pattern E does.
+# BUG-3293: added the "must be made before implementation" alternative — the
+# phrasing this issue's own Decision Rules used, which none of the prior five
+# phrasings matched (measured: 0 corpus-wide matches before this addition).
 _DECIDE_IMPERATIVE_RE = re.compile(
     r"\bdecide before implementation\b"
     r"|\bdo not leave (?:it |this )?unaddressed\b"
     r"|\bpick one\b"
     r"|\bmust be decided\b"
-    r"|\bdecision (?:needed|required) before\b",
+    r"|\bdecision (?:needed|required) before\b"
+    r"|\bmust be made before implementation\b",
     re.IGNORECASE,
 )
 
@@ -2172,15 +2176,30 @@ _PREFERENCE_MARKER_RE = re.compile(
     re.IGNORECASE,
 )
 
-_INLINE_OR_RE = re.compile(r"\bor\b", re.IGNORECASE)
+# BUG-3293: "versus" added alongside "or" — the alternative-separator BUG-3293's
+# own Decision Rules used ("route A ... versus route B ... versus both"), which
+# the "or"-only regex could not see. Measured corpus-wide: adding it (combined
+# with the imperative alternative above and Program Design below) picks up
+# exactly one file (BUG-3293 itself), zero spurious.
+_INLINE_OR_RE = re.compile(r"\bor\b|\bversus\b", re.IGNORECASE)
 
 # Sections where a "decide before implementation" imperative is written — narrower
 # than Patterns A-D's whole-document scan (ENH-2936's Expected Behavior scope).
+# BUG-3293: added "Program Design" — measured corpus-wide (3197 files) to add
+# exactly one match (BUG-3293's own Decision Rules subsection), zero spurious,
+# once paired with the _DECIDE_IMPERATIVE_RE/_INLINE_OR_RE widenings above.
+# Deliberately left otherwise unreconciled with _DECISION_DIRECTIVE_SECTIONS
+# (which also covers "Implementation Steps"/"Files to Modify"/"Acceptance
+# Criteria"): that sibling constant scans for decisions already made and
+# unapplied, a different question from "is there a pending choice here" —
+# widening this list to match it 1:1 was measured and rejected (BUG-3293
+# corpus differential) as adding volume with no corresponding benefit.
 _DIRECTIVE_ALTERNATIVES_SECTIONS = (
     "Scope Boundaries",
     "Proposed Change",
     "Proposed Solution",
     "Open Questions",
+    "Program Design",
 )
 
 
@@ -2256,6 +2275,94 @@ def _locate_directive_alternatives(content: str) -> LocatedOptions | None:
     return None
 
 
+# BUG-3293: bold-numbered decision items under `## Program Design → ### Decision
+# Rules` (e.g. `1. **Identifier shape.** …` / `2. **Title extent.** …`) — a
+# structural shape `_OPTION_PATTERNS[2]` (the `numbered` tier) cannot see without
+# a corpus-wide false-positive blowout (measured: naively widening that tier's
+# bold alternative to any `**label**` run picks up 1149/3197 files, 77% spurious,
+# because ordinary bold-led step lists are this repo's dominant list convention —
+# see the corpus differential in this issue's Decision Rules section). Scoping the
+# same widened match to just `### Decision Rules` under `## Program Design`
+# shrinks that to 5/2778 baseline-zero files; requiring >=2 matches (a single
+# bold-numbered item is never itself a "pick one of these" decision) shrinks it
+# further to 3, with 1 genuine (BUG-3285) and 2 false positives (already-settled
+# rulings that happen to be bold-numbered lists, e.g. "**RULING: kept
+# indefinitely**"). That residual imprecision is accepted deliberately, per this
+# module's own design note on `_OPTION_PATTERNS` (ENH-2443): this probe is a
+# cheap, over-count-tolerant pre-check whose false positives cost one harmless
+# `/ll:refine-issue` detour, not a wrong final decision — `/ll:decide-issue`'s own
+# judgment remains the source of truth.
+_DECISION_RULES_NUMBERED_RE = re.compile(r"^\d+\.\s+\*\*[^*\n]+\*\*", re.MULTILINE)
+
+
+def _decision_rules_body_with_offset(content: str) -> tuple[str, int] | None:
+    """Return ``(body, absolute_start_offset)`` for ``### Decision Rules`` nested under
+    ``## Program Design`` (BUG-3293). ``None`` when either heading is absent.
+    """
+    program_design = _section_body_with_offset(content, "Program Design")
+    if program_design is None:
+        return None
+    body, body_offset = program_design
+
+    spans = fence_spans(body)
+    match = None
+    for m in re.finditer(r"^###\s+Decision Rules\s*$", body, re.MULTILINE):
+        if not in_fence(m.start(), m.end(), spans):
+            match = m
+    if match is None:
+        return None
+    start = match.end()
+
+    end = len(body)
+    for term in re.finditer(r"^#{2,3}\s", body, re.MULTILINE):
+        if term.start() > start and not in_fence(term.start(), term.end(), spans):
+            end = term.start()
+            break
+    return body[start:end], body_offset + start
+
+
+def _locate_decision_rules_numbered(content: str) -> LocatedOptions | None:
+    """Locate a bold-numbered decision block under Program Design → Decision
+    Rules (BUG-3293, Pattern structural). Requires >= 2 matches — see the
+    :data:`_DECISION_RULES_NUMBERED_RE` comment for the precision rationale
+    behind both the section scoping and the 2+ requirement.
+    """
+    result = _decision_rules_body_with_offset(content)
+    if result is None:
+        return None
+    body, body_offset = result
+    matches = list(_DECISION_RULES_NUMBERED_RE.finditer(body))
+    if len(matches) < 2:
+        return None
+
+    options = []
+    for i, m in enumerate(matches):
+        line_start = body.rfind("\n", 0, m.start()) + 1
+        end_candidates = [len(body)]
+        if i + 1 < len(matches):
+            end_candidates.append(matches[i + 1].start())
+        block_end = min(end_candidates)
+        block_text = body[line_start:block_end].rstrip()
+        abs_start = body_offset + line_start
+        abs_end = body_offset + max(block_end - 1, line_start)
+        start_line = content.count("\n", 0, abs_start) + 1
+        end_line = content.count("\n", 0, abs_end) + 1
+        options.append(
+            LocatedOption(
+                label=_extract_option_label(m.group(0)),
+                text=block_text,
+                start_line=start_line,
+                end_line=end_line,
+            )
+        )
+    return LocatedOptions(
+        count=len(options),
+        pattern="decision_rules_numbered",
+        heading="Program Design",
+        options=options,
+    )
+
+
 def locate_enumerable_options(content: str) -> LocatedOptions:
     """Locate enumerable option blocks anywhere in *content* (ENH-2821).
 
@@ -2263,18 +2370,21 @@ def locate_enumerable_options(content: str) -> LocatedOptions:
     then :data:`_OPTION_FALLBACK_SECTIONS` — matching :func:`count_enumerable_options`'s
     original behavior; (2) a whole-document fallback over every H2 section (which,
     by construction, includes nested H3 subsections and decorated/suffixed H2
-    headings) when the scoped scan finds nothing; (3) the Pattern E directive-alternatives
-    heuristic (:func:`_locate_directive_alternatives`, ENH-2936) when even the
-    whole-document fallback finds nothing.
+    headings) when the scoped scan finds nothing; (3) the bold-numbered Decision
+    Rules structural heuristic (:func:`_locate_decision_rules_numbered`, BUG-3293)
+    when the whole-document fallback finds nothing; (4) the Pattern E
+    directive-alternatives heuristic (:func:`_locate_directive_alternatives`,
+    ENH-2936) when (3) also finds nothing.
 
     Returns:
         A :class:`LocatedOptions`. ``heading`` is the exact H2/section name the
         options were found under, or ``None`` when ``count`` is 0 (nothing found
         anywhere in the document). ``pattern`` names which rule fired
         (``section_header`` | ``bold_label`` | ``numbered`` | ``bullet`` |
-        ``provisional_e``), or ``None`` when ``count`` is 0. ``options`` carries the
-        per-option spans the firing pattern computed (ENH-2950) — previously
-        discarded by the tuple-returning predecessor of this function.
+        ``decision_rules_numbered`` | ``provisional_e``), or ``None`` when
+        ``count`` is 0. ``options`` carries the per-option spans the firing
+        pattern computed (ENH-2950) — previously discarded by the
+        tuple-returning predecessor of this function.
     """
     result = _section_body_with_offset(content, "Proposed Solution")
     if result is not None:
@@ -2301,6 +2411,10 @@ def locate_enumerable_options(content: str) -> LocatedOptions:
             best = located
     if best is not None:
         return best
+
+    decision_rules = _locate_decision_rules_numbered(content)
+    if decision_rules is not None:
+        return decision_rules
 
     directive = _locate_directive_alternatives(content)
     if directive is not None:

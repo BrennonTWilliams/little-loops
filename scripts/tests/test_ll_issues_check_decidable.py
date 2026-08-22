@@ -213,6 +213,63 @@ class TestCheckDecidablePatternEDirective:
         assert "OPTIONS_MISSING" in result.stderr
 
 
+class TestCheckDecidableDecisionRulesNumbered:
+    """BUG-3293: bold-numbered decision items under Program Design -> Decision
+    Rules are decidable; an ordinary bold-led numbered step list elsewhere is not."""
+
+    def test_decision_rules_bold_numbered_exit_zero(self, temp_project_dir: Path) -> None:
+        body = (
+            "---\n"
+            "id: FEAT-9106\n"
+            "title: Test\n"
+            "type: feature\n"
+            "status: open\n"
+            "priority: P3\n"
+            "decision_needed: true\n"
+            "---\n\n"
+            "# FEAT-9106\n\n"
+            "## Summary\n\nTest.\n\n"
+            "## Proposed Solution\n\nNo options here.\n\n"
+            "## Program Design\n\n"
+            "### Decision Rules\n\n"
+            "1. **Identifier shape.** The identifier is not `[A-Za-z0-9]+` alone.\n"
+            "2. **Title extent.** Whether a title may span more than one line.\n\n"
+            "## Labels\n\n`feature`\n\n"
+        )
+        _write_issue(temp_project_dir, body)
+        result = _invoke(temp_project_dir, "check-decidable", "FEAT-9106")
+        assert result.returncode == 0, (
+            f"Bold-numbered Decision Rules items must be decidable, got "
+            f"{result.returncode}: stdout={result.stdout!r} stderr={result.stderr!r}"
+        )
+        assert "Program Design" in result.stdout
+
+    def test_implementation_steps_bold_numbered_list_exit_one(self, temp_project_dir: Path) -> None:
+        """Guardrail: an ordinary bold-led numbered step list — this repo's dominant
+        list convention — must NOT be treated as a decision block."""
+        body = (
+            "---\n"
+            "id: FEAT-9107\n"
+            "title: Test\n"
+            "type: feature\n"
+            "status: open\n"
+            "priority: P3\n"
+            "decision_needed: true\n"
+            "---\n\n"
+            "# FEAT-9107\n\n"
+            "## Summary\n\nTest.\n\n"
+            "## Proposed Solution\n\nNo options here.\n\n"
+            "## Implementation Steps\n\n"
+            "1. **Measure both routes before choosing.** Apply each candidate independently.\n"
+            "2. **Land the corpus differential test first.** Before either change.\n\n"
+            "## Labels\n\n`feature`\n\n"
+        )
+        _write_issue(temp_project_dir, body)
+        result = _invoke(temp_project_dir, "check-decidable", "FEAT-9107")
+        assert result.returncode == 1
+        assert "OPTIONS_MISSING" in result.stderr
+
+
 class TestCheckDecidableErrorHandling:
     """The probe handles missing issues gracefully (exit 1 with error token)."""
 

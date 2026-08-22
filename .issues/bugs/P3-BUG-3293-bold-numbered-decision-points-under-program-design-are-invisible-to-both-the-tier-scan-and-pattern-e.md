@@ -8,7 +8,7 @@ status: open
 discovered_by: ll-issues-create
 discovered_date: '2026-08-22'
 captured_at: '2026-08-22T20:14:20Z'
-decision_needed: true
+decision_needed: false
 size: Medium
 labels:
 - issue-parser
@@ -83,8 +83,9 @@ So the codebase already asserts that decisions live in `Program Design`. `format
 an *unapplied* decision there; the locator will not admit a decision *exists* there. Only the
 locator disagrees with the rest of the module.
 
-Live case (BUG-3285, measured 2026-08-22):
-
+Live case (BUG-3285, measured 2026-08-22, pre-fix — see this issue's own Decision Rules section for
+the post-fix re-measurement, which this defect is now closed against):
+<!-- ll-evidence-ok: frozen pre-fix snapshot, deliberately superseded by this issue's own fix — BUG-3285 no longer returns count 0 as of the corpus differential in this issue's Decision Rules section -->
 ```
 locate_enumerable_options(BUG-3285)   -> count 0, pattern None, heading None
 _locate_directive_alternatives(BUG-3285) -> None
@@ -355,6 +356,38 @@ under route A; (2) how many live files gain a spurious `numbered` match under ro
 > written proposes. This choice is deferred back to a human: it is a scope decision (extend Pattern
 > E's regex vocabulary vs. design a narrower tier-3 discriminator), not a risk measurement.
 
+> **Follow-up measurement — a section-scoped Route B discriminator, measured 2026-08-22.** Restricted
+> the widened bold-numbered-tier regex to fire only within specific sections (never via the
+> whole-document H2 fallback that produced the 77% figure above), evaluated against the 2778
+> baseline-`count==0` files:
+>
+> - Scoped to `## Program Design` (any subsection): **14 gains**. Inspecting all 14: only 1
+>   (BUG-3285) is a genuine pending-alternative list; the other 13 are bold-numbered lists of
+>   already-settled facts, findings, or rules (e.g. BUG-3232's "`--running` and `--status` are
+>   declared as independent…", ENH-3261's "**RULING: kept indefinitely**") — a *different* use of
+>   `### Decision Rules` and neighboring subsections that has nothing to do with pending choices.
+> - Scoped to just `### Decision Rules` under `## Program Design`: **5 gains** (of 102 baseline-zero
+>   files that even have this H3). Only 1 of 5 (BUG-3285) is genuine; the other 4
+>   (BUG-3232, BUG-3286, ENH-3045, ENH-3261) are the same already-decided-rule shape, just narrower
+>   in volume.
+> - **Section scoping shrinks the absolute false-positive count (1149 → 14 → 5) but does not fix
+>   precision** (1/14, 1/5): "bold-numbered items under Decision Rules" is used in this corpus for
+>   two unrelated purposes — enumerating settled rules/rulings, and (rarely) presenting unresolved
+>   alternatives — and no purely structural signal (regex shape, section, heading) tested so far
+>   separates them.
+> - **Neither genuine case trips Pattern E's own imperative vocabulary either**: verified against
+>   BUG-3293's pristine original text and BUG-3285's resolved text — both return zero
+>   `_DECIDE_IMPERATIVE_RE` matches. So "extend the imperative phrase list" is not a clean fix on its
+>   own; it would need new phrasing curve-fit to these two examples, with no third example to
+>   generalize from.
+> - **Cost framing, per `_OPTION_PATTERNS`' own `# ENH-2443` comment** (`issue_parser.py:1993-1998`):
+>   this checker is documented as a cheap, over-count-tolerant pre-check — "an under-count only
+>   costs one harmless extra `/ll:refine-issue` detour... `decide` itself remains the source of
+>   truth." Under that stated design contract, the `### Decision Rules`-scoped variant's absolute
+>   volume (5 files, 0.16% of the corpus) may be an acceptable cost for closing a false-negative that
+>   is otherwise silent forever — but that is a human call about how much of that stated tolerance to
+>   spend, not something this measurement can settle by itself.
+
 > **Dogfood note — measured on this file at creation (2026-08-22).** The decision above lives under
 > `## Program Design → ### Decision Rules`, the exact region this issue reports as unreachable, so
 > the two gates disagree about this very document:
@@ -370,6 +403,39 @@ under route A; (2) how many live files gain a spurious `numbered` match under ro
 > because the shape — not the content — is what the locator cannot see. **This divergence is the
 > defect**, and it is the cheapest available acceptance check: when the fix lands,
 > `check-decidable 3293` exits 0 without this file's body changing.
+
+> **Selected — both, narrowly scoped (implemented 2026-08-22).** Per the follow-up measurement
+> above, precision cannot be fixed by scoping alone, so the accepted design takes the small
+> residual imprecision deliberately rather than chasing a discriminator that does not exist:
+>
+> - **Structural half** (closes BUG-3285-shaped cases): a new `decision_rules_numbered` tier
+>   (`_locate_decision_rules_numbered`, wired into `locate_enumerable_options` after the
+>   whole-document fallback, before Pattern E) matches 2+ bold-numbered items scoped to
+>   `## Program Design → ### Decision Rules` specifically — not the unscoped `numbered` tier, which
+>   stays untouched. The `>= 2` requirement is a precision refinement beyond what was measured above
+>   (a single bold-numbered item is never itself a "pick one" decision): re-measured with it, the
+>   `### Decision Rules`-scoped gains drop from 5 to 3 (BUG-3232, BUG-3285, ENH-3045), 1 genuine.
+> - **Directive half** (closes BUG-3293's own case): `Program Design` added to
+>   `_DIRECTIVE_ALTERNATIVES_SECTIONS`, plus two narrow regex additions —
+>   `\bmust be made before implementation\b` on `_DECIDE_IMPERATIVE_RE` and `\bversus\b` on
+>   `_INLINE_OR_RE` — the exact phrasing BUG-3293's own Decision Rules used, which the prior
+>   five-phrase/"or"-only vocabulary could not see. Re-measured with the actual implementation
+>   (not a monkeypatch): **exactly 1 corpus-wide gain (BUG-3293 itself), 0 spurious.**
+> - **Combined real-implementation corpus differential** (full 3198-file sweep, actual landed code
+>   vs. a git-stashed pristine baseline): **exactly 4 files changed, all `count: 0 → N`, zero
+>   unpinned file's count decreased or heading changed** — BUG-3232 (3, spurious), BUG-3285 (3,
+>   genuine), BUG-3293 (2, genuine), ENH-3045 (4, spurious). Pinned and asserted in
+>   `TestBug3293DecisionRulesCorpusDifferential` (`scripts/tests/test_issue_parser.py`).
+> - **Verified against this issue's own acceptance check**: `ll-issues check-decidable 3285` and
+>   `check-decidable 3293` both now exit 0 (previously both exit 1 `OPTIONS_MISSING`).
+> - **`_DIRECTIVE_ALTERNATIVES_SECTIONS` vs. `_DECISION_DIRECTIVE_SECTIONS` — deliberately left
+>   otherwise unreconciled**, not widened to match 1:1: the sibling constant also covers
+>   `Implementation Steps`/`Files to Modify`/`Acceptance Criteria`, which answer "was a decision
+>   applied", a different question from "is there a pending choice" — see the `# BUG-3293:` comment
+>   on `_DIRECTIVE_ALTERNATIVES_SECTIONS` (`issue_parser.py`).
+>
+> Full test suite (`python -m pytest scripts/tests/ -m "not integration and not conformance"`):
+> 20050 passed, 20 skipped, 0 failed. `ruff check`/`ruff format`/`mypy` clean on all touched files.
 
 ## Implementation Steps
 
@@ -456,6 +522,7 @@ Reproduces on committed files: `BUG-3285` is the case above.
 
 
 ## Session Log
+- `implement-decision-rules-numbered-and-pattern-e-widening` - 2026-08-22T21:27:23 - `bc6653b6-fcc0-4790-89ae-8782900fae6c.jsonl`
 - `corpus-differential-measurement` - 2026-08-22T20:34:11 - `bc6653b6-fcc0-4790-89ae-8782900fae6c.jsonl`
 - `/ll:decide-issue` - 2026-08-22T20:28:37 - `b02f6c42-b49b-49f2-ab1c-39c23a52f988.jsonl`
 - `/ll:refine-issue` - 2026-08-22T20:27:35 - `bc6653b6-fcc0-4790-89ae-8782900fae6c.jsonl`

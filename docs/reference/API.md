@@ -1004,13 +1004,24 @@ Tries, in precedence order: the first `_OPTION_PATTERNS` tier (`### Option X` he
 `section_header`, `**Option X**` bold labels → `bold_label`, numbered `N. **Option`/
 `...approach` items → `numbered`, `- (x)`/`- Option X` bullets → `bullet`) with any match
 in `## Proposed Solution`; widening to `## Codebase Research Findings` / `##
-Implementation Status` when that yields 0; then a whole-document H2 scan (ENH-2821); then,
-as a final tier, the Pattern E "un-preferenced decision directive" heuristic
-(`_locate_directive_alternatives`, ENH-2936, reported as `pattern="provisional_e"`) — an
-imperative decide-marker ("decide before implementation", "do not leave unaddressed",
-"must be decided", "pick one") co-occurring within 3 lines of a 2+-alternative "X or Y"
-shape, with no stated preference, scanned over `## Scope Boundaries` / `## Proposed
-Change` / `## Proposed Solution` / `## Open Questions`. A Pattern E match always reports
+Implementation Status` when that yields 0; then a whole-document H2 scan (ENH-2821); then
+the `decision_rules_numbered` structural heuristic (`_locate_decision_rules_numbered`,
+BUG-3293) — 2+ bold-numbered items (`N. **label**`) under `## Program Design → ###
+Decision Rules` specifically, not the whole-document fallback's unscoped `_OPTION_PATTERNS`
+tiers, because a naive corpus-wide widening of the `numbered` tier's bold alternative was
+measured to false-positive on 77% of the files it newly matched (ordinary bold-led step
+lists are this repo's dominant list convention); scoping to just this one subsection and
+requiring 2+ matches shrinks that to 2 false positives out of 3 gains corpus-wide — accepted
+deliberately, since this probe is a cheap pre-check whose false positives cost one harmless
+`/ll:refine-issue` detour, not a wrong final decision; then, as a final tier, the Pattern E
+"un-preferenced decision directive" heuristic (`_locate_directive_alternatives`, ENH-2936,
+reported as `pattern="provisional_e"`) — an imperative decide-marker ("decide before
+implementation", "do not leave unaddressed", "must be decided", "pick one", "must be made
+before implementation") co-occurring within 3 lines of a 2+-alternative "X or Y"/"X versus Y"
+shape, with no stated preference, scanned over `## Scope Boundaries` / `## Proposed Change` /
+`## Proposed Solution` / `## Open Questions` / `## Program Design` (BUG-3293 added the last
+of these, plus the "must be made before implementation" and "versus" alternatives — measured
+to add exactly one corpus-wide match, zero spurious). A Pattern E match always reports
 `count=2` with a single `LocatedOption` spanning the matched window — it only proves a
 decision exists, not how many alternatives, so individual alternatives are not split out.
 
@@ -1019,7 +1030,7 @@ decision exists, not how many alternatives, so individual alternatives are not s
 
 **Returns:** A `LocatedOptions` dataclass:
 - `count: int` - Number of options found (0 when there is nothing to decide)
-- `pattern: str | None` - Which tier fired (`section_header` | `bold_label` | `numbered` | `bullet` | `provisional_e`), or `None` when `count == 0`
+- `pattern: str | None` - Which tier fired (`section_header` | `bold_label` | `numbered` | `bullet` | `decision_rules_numbered` | `provisional_e`), or `None` when `count == 0`
 - `heading: str | None` - The section the options were found under, or `None` when `count == 0`
 - `options: list[LocatedOption]` - Per-option spans; each `LocatedOption` has `label: str`, `text: str`, `start_line: int`, `end_line: int` (1-indexed), and a `to_dict()` for JSON serialization. `LocatedOptions.to_dict()` nests the full option list.
 
