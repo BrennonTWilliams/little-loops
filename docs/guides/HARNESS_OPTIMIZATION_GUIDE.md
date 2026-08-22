@@ -566,7 +566,11 @@ that every `${context.test_cmd}`/`${context.lint_cmd}` reference resolves agains
 declared `context:`/`parameters:` block. `oracles/code-run-gate.yaml` is a permanent
 exemption — it implements a different, deliberately non-guessing resolution convention
 (alias pairs, `${context.project_root}`-relative) that predates and is incompatible with this
-one. A handful of other loops are a temporary exemption pending ENH-3288's conversion pass.
+one. Two more loops are permanent exemptions: `rn-refine.yaml` and `auto-refine-and-implement.yaml`
+have an absent ≡ null ≡ skip contract that `ll-config get` cannot express — converting either
+would start running `pytest`/`ruff check .` in unconfigured projects instead of skipping. All
+three permanent exemptions keep their inline parse and their `.ll/ll.local.md` bypass
+indefinitely.
 
 **Never hardcode a project command literal in a loop action or context default.** A literal
 like `test_cmd: "python -m pytest scripts/tests/"` is this repository's own test path, not a

@@ -4,7 +4,7 @@ description: |
   Find dead code, remove high-confidence items, and verify tests pass after
   each removal. Scans for unused imports, functions, and variables, removes
   the most confident items, and loops until clean or count stops decreasing.
-initial: scan
+initial: check_preconditions
 scope:
   - "scripts/"
 import:
@@ -13,6 +13,45 @@ import:
 context:
   commit_message: "refactor: remove dead code identified by scan"
 states:
+  check_preconditions:
+    # ENH-3288: refuse to start rather than delete code before discovering
+    # there is no way to verify it. Resolves project.test_cmd config-first
+    # bare -- this loop's context: block declares only commit_message, so a
+    # context-first override reference would raise InterpolationError -- and
+    # RUNS the resolved command once (general-task.yaml/incremental-refactor.yaml
+    # check_baseline_tests shape): a wrong-but-non-empty test_cmd or an
+    # already-red suite would otherwise make every verify_tests fail through
+    # no fault of the removal. Deliberately does NOT gate on a clean working
+    # tree (unlike incremental-refactor's check_preconditions): that check's
+    # rationale is its blanket `git checkout -- . && git clean -fd` revert,
+    # which does not apply here -- revert_and_scan / revert_unverifiable both
+    # revert per file, so a dirty tree is not a correctness hazard, and users
+    # routinely run a cleanup loop mid-branch.
+    fragment: shell_exit
+    action: |
+      CMD=$(ll-config get project.test_cmd)
+      REASON=""
+      if [ -z "$CMD" ]; then
+        REASON="project.test_cmd does not resolve to a non-empty command. Set it in .ll/ll-config.json (or .ll/ll.local.md), then re-run."
+      else
+        sh -c "$CMD" > "${context.run_dir}/baseline-test-output.txt" 2>&1
+        EXIT=$?
+        if [ "$EXIT" != "0" ]; then
+          if [ "$EXIT" = "127" ] || grep -q "command not found" "${context.run_dir}/baseline-test-output.txt" 2>/dev/null; then
+            REASON="project.test_cmd is not runnable here (exit $EXIT): $CMD -- see baseline-test-output.txt. Fix the command in .ll/ll-config.json, then re-run."
+          else
+            REASON="the baseline test run already fails (exit $EXIT) before any dead code removal: $CMD -- see baseline-test-output.txt. This loop gates each removal on tests, so a red baseline makes every removal unverifiable. Get the suite green, then re-run."
+          fi
+        fi
+      fi
+      if [ -n "$REASON" ]; then
+        echo "dead-code-cleanup refused to start: $REASON" | tee "${context.run_dir}/precondition-failure.txt" >&2
+        exit 1
+      fi
+      exit 0
+    on_yes: scan
+    on_no: unverifiable
+    on_error: unverifiable
   scan:
     action_type: prompt
     timeout: 300
@@ -64,22 +103,36 @@ states:
       - Dynamic dispatch / getattr
       - Plugin registration
       - Public API contracts
+
+      Finally, truncate ${context.run_dir}/ll-dead-code-removed-files.txt and
+      append every file path you modified in this step, one per line (ENH-3288:
+      revert_unverifiable reverts exactly this list if the tests that follow
+      cannot be verified — it has no failure log to identify a culprit from).
     next: verify_tests
   verify_tests:
-    fragment: shell_exit
+    # ENH-3288: config-first bare via `ll-config get` (this loop's context:
+    # block declares only commit_message, so a context-first override
+    # reference would raise InterpolationError). harness_exit owns
+    # the exit-code space so a resolution failure can never land on the same
+    # edge as a real test failure: 3=unresolvable (abstain, routes to
+    # on_cannot_judge, never commits or reverts as a "failure"), collapsed
+    # 1=any real failure (revert_and_scan, as today), 0=pass. The non-zero
+    # collapse is mandatory: pytest's own internal-error exit code is 3, and
+    # without collapsing it here it would be misrouted to on_cannot_judge
+    # instead of on_no.
+    fragment: harness_exit
     timeout: 600
     action: |
-      CMD=$(python3 -c "
-      import json, pathlib
-      p = pathlib.Path('.ll/ll-config.json')
-      cfg = json.loads(p.read_text()) if p.exists() else {}
-      raw = cfg.get('project', {}).get('test_cmd')
-      print(raw if raw else 'pytest')
-      ")
+      CMD=$(ll-config get project.test_cmd)
+      [ -z "$CMD" ] && exit 3
       set -o pipefail
       eval "$CMD" 2>&1 | tee ${context.run_dir}/ll-dead-code-tests.txt
+      rc=$?
+      [ "$rc" = 0 ] && exit 0
+      exit 1
     on_yes: commit
     on_no: revert_and_scan
+    on_cannot_judge: revert_unverifiable
     on_error: revert_and_scan
   revert_and_scan:
     action_type: prompt
@@ -95,6 +148,28 @@ states:
       to ${context.run_dir}/ll-dead-code-excluded.txt (one item per line) so future scan
       cycles skip it.
     next: scan
+  revert_unverifiable:
+    # ENH-3288: no test ran, so there is no failure log and no single culprit
+    # to attribute -- every removal from this lap is unverified, not one of
+    # them. Reverts exactly the manifest remove_code wrote, never a blanket
+    # `git checkout -- .` (unsafe here precisely because check_preconditions
+    # deliberately does not gate on a clean tree).
+    action_type: prompt
+    timeout: 120
+    action: |
+      No test command could be resolved or run this lap, so nothing from the
+      most recent dead code removal is verifiable — this is NOT a test
+      failure.
+
+      Read ${context.run_dir}/ll-dead-code-removed-files.txt. If it is
+      missing or empty, state that plainly in
+      ${context.run_dir}/ll-dead-code-unverifiable.txt and revert nothing.
+
+      Otherwise, for each file path it lists, run `git checkout -- <file>` to
+      revert this lap's removal from that file. Then write to
+      ${context.run_dir}/ll-dead-code-unverifiable.txt which files you
+      restored and why: no test command resolved, so nothing was verifiable.
+    next: unverifiable
   commit:
     fragment: ll_commit
     next: scan
@@ -105,6 +180,14 @@ states:
   failed:
     terminal: true
     failure: true
-max_steps: 15
-timeout: 5400
+
+  # ENH-3288: distinct from `failed` -- no test signal existed to judge
+  # against, rather than a findings-count or retry-budget failure. Bare: a
+  # terminal state's action never runs (fsm/executor.py:601-636), so any
+  # revert/report work must happen before this state is reached.
+  unverifiable:
+    terminal: true
+    failure: true
+max_steps: 18
+timeout: 7200
 on_handoff: spawn

@@ -4,10 +4,11 @@ type: ENH
 title: Convert dead-code-cleanup and test-coverage-improvement to ll-config get, and
   empty the _PENDING_CONVERSION gate
 priority: P2
-status: open
+status: done
 discovered_by: split-from-ENH-3277
 discovered_date: '2026-08-21'
 captured_at: '2026-08-21T18:40:00Z'
+completed_at: '2026-08-22T18:15:05Z'
 labels:
 - loops
 - config
@@ -893,10 +894,10 @@ values are: `TestRlCodingAgentObserveTestCmdResolution` **:10820** (was cited 10
 
 ## Implementation Steps
 
-**Prerequisite: ENH-3277 must land first.** It converts the six mechanical sites and shrinks
-`_PENDING_CONVERSION` from nine entries to four (`dead-code-cleanup.yaml`,
-`test-coverage-improvement.yaml`, `rn-refine.yaml`, `auto-refine-and-implement.yaml`). Starting
-this issue earlier means racing it on the same set literal.
+**Prerequisite ENH-3277 has landed (status: done, 2026-08-22).** It converted the six mechanical
+sites and shrank `_PENDING_CONVERSION` from nine entries to four (`dead-code-cleanup.yaml`,
+`test-coverage-improvement.yaml`, `rn-refine.yaml`, `auto-refine-and-implement.yaml`) — confirmed
+live in `test_bug3269_test_cmd_resolution_gate.py:56-63`. This issue is unblocked and can proceed.
 
 1. **Read the pinned analysis before writing any shell.** *MECHANISM CORRECTION* (the fragment
    switch is required; an `on_cannot_judge:` edge on `shell_exit` is inert), *EXIT-CODE
@@ -1262,7 +1263,7 @@ _Added by `/ll:confidence-check` on 2026-08-21_
 **Outcome Confidence**: 82/100 → HIGH CONFIDENCE
 
 ### Gaps to Address
-- ~~Blocked by ENH-3277 (status: open)~~ — **RESOLVED 2026-08-22.** ENH-3277 is `status: done`
+- ~~ENH-3277 (status: open) was the Dependencies Hard Override~~ — **RESOLVED 2026-08-22.** ENH-3277 is `status: done`
   and its shrink is live: `test_bug3269_test_cmd_resolution_gate.py:56-63` now holds exactly the
   four entries this issue expects (`dead-code-cleanup.yaml`, `test-coverage-improvement.yaml`,
   `rn-refine.yaml`, `auto-refine-and-implement.yaml`), and
@@ -1276,11 +1277,56 @@ _Added by `/ll:confidence-check` on 2026-08-21_
   explicitly-rejected Option C ("Do **not** build `ll-config get --raw`"), but recorded per
   protocol since the CLI is the single source of truth for this signal.
 
+---
+
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-08-22
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/loops/dead-code-cleanup.yaml`: `initial` moved to a new
+  `check_preconditions` entry gate (config-first bare `ll-config get project.test_cmd`,
+  resolvable/runnable/green-baseline checks only, no clean-tree check); `verify_tests`
+  switched to `fragment: harness_exit` with the mandatory non-zero-exit collapse and a new
+  `on_cannot_judge: revert_unverifiable` edge; `remove_code`'s prompt now writes a
+  removed-files manifest; new `revert_unverifiable` (prompt) and `unverifiable` (bare
+  terminal) states; `max_steps` 15→18, `timeout` 5400→7200; `revert_and_scan.next` /
+  `commit.next` unchanged at `scan`
+- `scripts/little_loops/loops/test-coverage-improvement.yaml`: deleted the dead `CMD`
+  block in `measure` (`:37-48`); `verify_tests` converted to the context-first shape
+  (making the documented `context.test_cmd` knob live), switched to
+  `fragment: harness_exit` with the exit collapse and `on_cannot_judge: unverifiable`;
+  new bare `unverifiable` terminal state
+- `scripts/tests/test_builtin_loops.py`: expanded structural coverage for both loops
+  (new states, edges, `max_steps`/`timeout`, `initial`) plus new subprocess-driven
+  resolution test classes for both `verify_tests` bodies and `dead-code-cleanup`'s
+  `check_preconditions`, covering all three config cases, the exit-3/pytest-internal-error
+  collision, and the manifest contract
+- `scripts/tests/test_bug3269_test_cmd_resolution_gate.py`: `_PERMANENT_EXEMPTIONS` grown
+  to three (`oracles/code-run-gate.yaml`, `rn-refine.yaml`, `auto-refine-and-implement.yaml`);
+  `_PENDING_CONVERSION` and `test_pending_conversion_sites_still_exist` deleted;
+  `_EXEMPT = _PERMANENT_EXEMPTIONS`; `_INLINE_ACCESS_RE` widened to catch the two-step
+  bind-then-access shape
+- `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md`: rewrote the exemption-list sentence to
+  name all three permanent exemptions and drop "temporary"/"pending" language
+
+### Verification Results
+- Tests: PASS (`python -m pytest scripts/tests/` — 20654 passed, 49 skipped)
+- Lint: PASS (`ruff check` on modified Python files)
+- Types: SKIP (not configured)
+- Run: PASS (`ll-loop validate` on both converted loop YAMLs; scoped grep for
+  remaining inline `.get('test_cmd'`/`.get('lint_cmd'` reads returns empty)
+- Integration: PASS
+
 ## Status
 
-**Open** | Created: 2026-08-21 | Priority: P2
+**Completed** | Created: 2026-08-21 | Priority: P2
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-22T18:14:13 - `5d370aba-e97a-4dc1-9fd1-81607ef13a56.jsonl`
+- `/ll:ready-issue` - 2026-08-22T17:42:00 - `b6faa381-638c-4c93-a7a9-a52276742462.jsonl`
 - `/ll:confidence-check` - 2026-08-22T17:36:37 - `f38f71d4-deda-476a-8c40-f9b74012a658.jsonl`
 - `/ll:confidence-check` - 2026-08-21T23:00:39 - `02e1c33a-8ca1-415d-9b72-205f956514ca.jsonl`

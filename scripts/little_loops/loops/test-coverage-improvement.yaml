@@ -34,19 +34,6 @@ states:
     action_type: shell
     timeout: 600
     action: |
-      # Resolve test command
-      if [ -n "${context.test_cmd}" ]; then
-        CMD="${context.test_cmd}"
-      else
-        CMD=$(python3 -c "
-      import json, pathlib
-      p = pathlib.Path('.ll/ll-config.json')
-      cfg = json.loads(p.read_text()) if p.exists() else {}
-      raw = cfg.get('project', {}).get('test_cmd')
-      print(raw if raw else 'pytest')
-      ")
-      fi
-
       # Resolve coverage command
       if [ -n "${context.coverage_cmd}" ]; then
         COV_CMD="${context.coverage_cmd}"
@@ -142,20 +129,32 @@ states:
 
   verify_tests:
     # Run the test suite to ensure new tests pass and nothing is broken.
-    fragment: shell_exit
+    # ENH-3288: the one site in this family that legitimately uses the
+    # context-first shape -- this is the only loop that declares
+    # context.test_cmd (:23), per the pinned Dead site decision (a). Falls
+    # back to `ll-config get project.test_cmd` (honors .ll/ll.local.md).
+    # harness_exit owns the exit-code space so a resolution failure can
+    # never land on the same edge as a real test failure: 3=unresolvable
+    # (abstain, routes to on_cannot_judge), collapsed 1=any real failure
+    # (fix_tests, as today), 0=pass. The collapse is mandatory: pytest's own
+    # internal-error exit code is 3 and must never reach on_cannot_judge.
+    fragment: harness_exit
     timeout: 600
     action: |
-      CMD=$(python3 -c "
-      import json, pathlib
-      p = pathlib.Path('.ll/ll-config.json')
-      cfg = json.loads(p.read_text()) if p.exists() else {}
-      raw = cfg.get('project', {}).get('test_cmd')
-      print(raw if raw else 'pytest')
-      ")
+      if [ -n "${context.test_cmd}" ]; then
+        CMD="${context.test_cmd}"
+      else
+        CMD=$(ll-config get project.test_cmd)
+      fi
+      [ -z "$CMD" ] && exit 3
       set -o pipefail
       eval "$CMD" 2>&1 | tee ${context.run_dir}/ll-coverage-tests.txt
+      rc=$?
+      [ "$rc" = 0 ] && exit 0
+      exit 1
     on_yes: commit
     on_no: fix_tests
+    on_cannot_judge: unverifiable
     on_error: fix_tests
 
   fix_tests:
@@ -204,5 +203,13 @@ states:
     terminal: true
 
   failed:
+    terminal: true
+    failure: true
+
+  # ENH-3288: distinct from `failed` -- nothing to revert here (the loop adds
+  # tests rather than deleting code), so a bare terminal is correct: a
+  # terminal state's action never runs (fsm/executor.py:601-636), and the
+  # distinction from `failed` is carried by the state name alone.
+  unverifiable:
     terminal: true
     failure: true

@@ -20,15 +20,14 @@ parametrized (registry pattern per `test_wiring_skills_and_commands.py`):
    engine default — they are exactly the axis BUG-3269 §2 identifies as
    under-covered.
 
-Assertion 1 is scoped to a shrinking exemption list of four remaining sites:
-two structural loops whose conversion needs a control-flow redesign, and two
-(`rn-refine.yaml`, `auto-refine-and-implement.yaml`) permanently exempt
-because their absent-key contract means "skip", which `ll-config get` cannot
-express — see the inline comments on those two entries below. ENH-3288's
-definition of done is that `_PENDING_CONVERSION` is empty and can be deleted.
-`oracles/code-run-gate.yaml` is a *permanent* exemption (BUG-3269 §1d):
-different resolution convention (alias pairs, project-root-relative,
-never-guess), not convertible.
+Assertion 1 is scoped to exactly three permanent exemptions (ENH-3288 closed
+out the conversion pass — `_PENDING_CONVERSION` no longer exists):
+`oracles/code-run-gate.yaml` (BUG-3269 §1d — a different resolution
+convention entirely: alias pairs, project-root-relative, never-guess, not
+convertible), and `rn-refine.yaml` / `auto-refine-and-implement.yaml`
+(ENH-3277 Option A — their absent-key contract means "skip", which
+`ll-config get` collapses into the defaulted case and cannot express) — see
+the inline comments on `_PERMANENT_EXEMPTIONS` below.
 
 Assertion 2 has no exemptions — it should be green on the tree as it stands
 and stay green.
@@ -47,22 +46,22 @@ BUILTIN_LOOPS_DIR = Path(__file__).parent.parent / "little_loops" / "loops"
 # config/core.py:188-195 ProjectConfig fields.
 PROJECT_COMMAND_KEYS = ("test_cmd", "lint_cmd", "type_cmd", "format_cmd", "build_cmd", "run_cmd")
 
-# Permanent: different resolution convention entirely, not convertible (§1d).
-_PERMANENT_EXEMPTIONS = {"oracles/code-run-gate.yaml"}
-
-# Temporary: sites still pending conversion. Each of these still reads
-# project.test_cmd/lint_cmd via an inline `.ll/ll-config.json` parse today.
-# ENH-3288's definition of done is emptying this set and deleting it.
-_PENDING_CONVERSION = {
-    "dead-code-cleanup.yaml",
-    "test-coverage-improvement.yaml",
-    # Permanently exempt per ENH-3277 Option A — moves to _PERMANENT_EXEMPTIONS in ENH-3288 step 5.
+# Permanent exemptions (ENH-3288 step 5/6 — the conversion pass is done):
+# every one of these has an absent ≡ null ≡ skip, never guess contract that
+# `ll-config get` cannot express — it collapses absent and defaulted into one
+# output. `oracles/code-run-gate.yaml` (BUG-3269 §1d): a different resolution
+# convention entirely (alias pairs, project-root-relative). `rn-refine.yaml`
+# / `auto-refine-and-implement.yaml` (ENH-3277 Option A): an absent key today
+# means *skip*, and converting either would start running `pytest` / `ruff
+# check .` in unconfigured projects instead of skipping. All three keep their
+# inline parse and their `.ll/ll.local.md` bypass indefinitely.
+_PERMANENT_EXEMPTIONS = {
+    "oracles/code-run-gate.yaml",
     "rn-refine.yaml",
-    # Permanently exempt per ENH-3277 Option A — moves to _PERMANENT_EXEMPTIONS in ENH-3288 step 5.
     "auto-refine-and-implement.yaml",
 }
 
-_EXEMPT = _PERMANENT_EXEMPTIONS | _PENDING_CONVERSION
+_EXEMPT = _PERMANENT_EXEMPTIONS
 
 # Matches `cfg.get('project', {}).get('test_cmd', ...)` / `cfg['project']['test_cmd']`
 # style chained access into the `project` section of a raw-parsed
@@ -71,6 +70,11 @@ _EXEMPT = _PERMANENT_EXEMPTIONS | _PENDING_CONVERSION
 # key (not a bare `.get('test_cmd'` anywhere in the file) so an unrelated
 # dict that merely happens to have a same-named key in a different section
 # (e.g. a `service.run_cmd` in a deploy-config block) isn't a false positive.
+# ENH-3288 step 7: also matches the two-step bind-then-access shape
+# (`project = cfg.get('project', {})` ... `project.get('test_cmd')`, the
+# exact shape at auto-refine-and-implement.yaml:432-434) via a backreference
+# to the bound variable name, so a loop cloning that permanently-exempt file
+# as a copyable precedent doesn't land an undetected inline read.
 _INLINE_ACCESS_RE = {
     key: re.compile(
         r"""get\(\s*['"]project['"][^)]*\)\s*\.get\(\s*['"]"""
@@ -79,6 +83,9 @@ _INLINE_ACCESS_RE = {
         + r"""|\[\s*['"]project['"]\s*\]\s*\[\s*['"]"""
         + re.escape(key)
         + r"""['"]\s*\]"""
+        + r"""|(?P<var>\w+)\s*=\s*[\w.]*\.get\(\s*['"]project['"][^)]*\)[\s\S]*?(?P=var)\.get\(\s*['"]"""
+        + re.escape(key)
+        + r"""['"]"""
     )
     for key in PROJECT_COMMAND_KEYS
 }
@@ -143,16 +150,24 @@ def test_context_references_are_declared(loop_file: Path) -> None:
     )
 
 
-def test_pending_conversion_sites_still_exist() -> None:
+def test_permanent_exemptions_still_exist() -> None:
     """Guard against a stale exemption list: every listed file must exist,
     so a file rename or deletion doesn't leave a dangling entry behind. Does
     not force a conversion to land — see
     test_no_inline_project_command_config_read for that."""
-    for rel in _PENDING_CONVERSION:
+    for rel in _PERMANENT_EXEMPTIONS:
         assert (BUILTIN_LOOPS_DIR / rel).exists(), (
-            f"_PENDING_CONVERSION lists {rel!r}, which no longer exists under "
+            f"_PERMANENT_EXEMPTIONS lists {rel!r}, which no longer exists under "
             f"{BUILTIN_LOOPS_DIR} — remove the dangling entry."
         )
+
+
+def test_dead_code_cleanup_and_test_coverage_improvement_are_not_exempt() -> None:
+    """ENH-3288: both sites this issue converts must never be re-added to
+    the exemption list — that would silently disable the regression gate for
+    the exact control-flow defect this issue closes."""
+    assert "dead-code-cleanup.yaml" not in _EXEMPT
+    assert "test-coverage-improvement.yaml" not in _EXEMPT
 
 
 def test_general_task_and_rl_coding_agent_are_not_exempt() -> None:

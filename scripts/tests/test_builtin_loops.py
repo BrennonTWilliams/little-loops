@@ -12040,7 +12040,7 @@ class TestIntegrateSdkLoop:
 
 
 class TestDeadCodeCleanupLoop:
-    """Structural tests for the dead-code-cleanup FSM loop."""
+    """Structural tests for the dead-code-cleanup FSM loop (ENH-3288)."""
 
     LOOP_FILE = BUILTIN_LOOPS_DIR / "dead-code-cleanup.yaml"
 
@@ -12049,18 +12049,270 @@ class TestDeadCodeCleanupLoop:
         assert self.LOOP_FILE.exists(), f"Loop file not found: {self.LOOP_FILE}"
         return yaml.safe_load(self.LOOP_FILE.read_text())
 
+    @pytest.fixture
+    def resolved(self, data: dict) -> dict:
+        return resolve_fragments(data, BUILTIN_LOOPS_DIR)
+
     def test_required_top_level_fields(self, data: dict) -> None:
         assert data.get("name") == "dead-code-cleanup"
-        assert data.get("initial") == "scan"
+        # ENH-3288: a check_preconditions entry gate replaces scan as initial.
+        assert data.get("initial") == "check_preconditions"
         assert isinstance(data.get("states"), dict)
 
     def test_required_states_exist(self, data: dict) -> None:
         required = {
+            "check_preconditions",
             "scan",
             "count_findings",
             "remove_code",
             "verify_tests",
             "revert_and_scan",
+            "revert_unverifiable",
+            "unverifiable",
+            "commit",
+            "done",
+            "failed",
+        }
+        assert not required - set(data["states"].keys())
+
+    def test_commit_uses_ll_commit_fragment(self, data: dict) -> None:
+        assert data["states"]["commit"].get("fragment") == "ll_commit"
+
+    def test_done_state_is_terminal(self, data: dict) -> None:
+        assert data["states"]["done"].get("terminal") is True
+
+    def test_max_steps_and_timeout_raised(self, data: dict) -> None:
+        """ENH-3288 *Step budget*: the entry gate and revert_unverifiable each
+        claim a step, and the gate's baseline suite run adds to the wall
+        clock independently of max_steps (fsm/executor.py:559-561)."""
+        assert data.get("max_steps") == 18
+        assert data.get("timeout") == 7200
+
+    def test_verify_tests_uses_harness_exit_fragment(self, data: dict) -> None:
+        assert data["states"]["verify_tests"].get("fragment") == "harness_exit"
+
+    def test_verify_tests_resolved_abstain_on_exit_3(self, resolved: dict) -> None:
+        state = resolved["states"]["verify_tests"]
+        assert state.get("evaluate", {}).get("abstain_on_exit_3") is True
+
+    def test_verify_tests_on_cannot_judge_routes_to_revert_unverifiable(self, data: dict) -> None:
+        assert data["states"]["verify_tests"].get("on_cannot_judge") == "revert_unverifiable"
+
+    def test_verify_tests_resolves_config_first_bare(self, data: dict) -> None:
+        """dead-code-cleanup's context: block declares only commit_message --
+        a context-first ${context.test_cmd} would raise InterpolationError."""
+        action = data["states"]["verify_tests"].get("action", "")
+        assert "ll-config get project.test_cmd" in action
+        assert "${context.test_cmd}" not in action
+
+    def test_verify_tests_normalizes_exit_codes(self, data: dict) -> None:
+        action = data["states"]["verify_tests"].get("action", "")
+        assert '[ -z "$CMD" ] && exit 3' in action
+        assert "pipefail" in action
+        assert "exit 1" in action
+        assert "exit 0" in action
+
+    def test_verify_tests_keeps_test_log(self, data: dict) -> None:
+        action = data["states"]["verify_tests"].get("action", "")
+        assert "ll-dead-code-tests.txt" in action
+        assert "tee" in action
+
+    def test_revert_unverifiable_is_nonterminal_prompt(self, data: dict) -> None:
+        state = data["states"]["revert_unverifiable"]
+        assert state.get("action_type") == "prompt"
+        assert state.get("next") == "unverifiable"
+        assert state.get("terminal") is not True
+
+    def test_revert_unverifiable_consumes_removed_files_manifest(self, data: dict) -> None:
+        action = data["states"]["revert_unverifiable"].get("action", "")
+        assert "ll-dead-code-removed-files.txt" in action
+
+    def test_remove_code_writes_removed_files_manifest(self, data: dict) -> None:
+        """ENH-3288 (seventh review): revert_unverifiable has no failure log
+        to attribute a culprit from, so remove_code must record what it
+        touched."""
+        action = data["states"]["remove_code"].get("action", "")
+        assert "ll-dead-code-removed-files.txt" in action
+
+    def test_unverifiable_is_bare_terminal(self, data: dict) -> None:
+        """A terminal state's action never runs (fsm/executor.py:601-636) --
+        unverifiable must carry no action and no next:."""
+        state = data["states"]["unverifiable"]
+        assert state.get("terminal") is True
+        assert state.get("failure") is True
+        assert "action" not in state
+        assert "next" not in state
+
+    def test_check_preconditions_is_initial(self, data: dict) -> None:
+        assert data.get("initial") == "check_preconditions"
+
+    def test_check_preconditions_uses_shell_exit_fragment(self, data: dict) -> None:
+        assert data["states"]["check_preconditions"].get("fragment") == "shell_exit"
+
+    def test_check_preconditions_resolves_config_first_bare(self, data: dict) -> None:
+        action = data["states"]["check_preconditions"].get("action", "")
+        assert "ll-config get project.test_cmd" in action
+        assert "${context.test_cmd}" not in action
+
+    def test_check_preconditions_does_not_gate_on_clean_tree(self, data: dict) -> None:
+        """ENH-3288 (sixth review): unlike incremental-refactor's template,
+        this gate must NOT port the clean-working-tree check -- its
+        rationale (a blanket revert) does not transfer to dead-code-cleanup's
+        per-file revert."""
+        action = data["states"]["check_preconditions"].get("action", "")
+        assert "status --porcelain" not in action
+
+    def test_check_preconditions_runs_a_baseline(self, data: dict) -> None:
+        action = data["states"]["check_preconditions"].get("action", "")
+        assert 'sh -c "$CMD"' in action
+        assert "baseline-test-output.txt" in action
+
+    def test_check_preconditions_routes_all_three_edges(self, data: dict) -> None:
+        assert data["states"]["check_preconditions"].get("on_yes") == "scan"
+        assert data["states"]["check_preconditions"].get("on_no") == "unverifiable"
+        assert data["states"]["check_preconditions"].get("on_error") == "unverifiable"
+
+    def test_back_edges_still_point_at_scan(self, data: dict) -> None:
+        """Once check_preconditions is initial:, retargeting either back-edge
+        to it would re-run the baseline suite every lap (ENH-3288 DECIDED
+        constraint 5)."""
+        assert data["states"]["revert_and_scan"].get("next") == "scan"
+        assert data["states"]["commit"].get("next") == "scan"
+
+
+class TestDeadCodeCleanupVerifyTestsResolution:
+    """ENH-3288: verify_tests' full converted body -- config-first resolution
+    via `ll-config get`, the harness_exit exit-code collapse, and the
+    exit-3-vs-real-failure split. Driven through `bash -c` (not `sh`): under
+    `dash`, `set -o pipefail` is unavailable and `rc=$?` becomes `tee`'s
+    status, which would always read 0."""
+
+    LOOP_FILE = BUILTIN_LOOPS_DIR / "dead-code-cleanup.yaml"
+
+    def _run(self, tmp_path: Path) -> subprocess.CompletedProcess:
+        data = yaml.safe_load(self.LOOP_FILE.read_text())
+        action = data["states"]["verify_tests"]["action"]
+        script = action.replace("${context.run_dir}", str(tmp_path))
+        return subprocess.run(
+            ["bash", "-c", script], cwd=tmp_path, capture_output=True, text=True, timeout=30
+        )
+
+    def test_configured_passing_test_cmd_exits_0(self, tmp_path: Path) -> None:
+        (tmp_path / ".ll").mkdir()
+        (tmp_path / ".ll" / "ll-config.json").write_text('{"project": {"test_cmd": "true"}}')
+        result = self._run(tmp_path)
+        assert result.returncode == 0, result.stderr
+
+    def test_configured_failing_test_cmd_exits_1(self, tmp_path: Path) -> None:
+        (tmp_path / ".ll").mkdir()
+        (tmp_path / ".ll" / "ll-config.json").write_text('{"project": {"test_cmd": "false"}}')
+        result = self._run(tmp_path)
+        assert result.returncode == 1
+
+    def test_exit_3_collision_is_collapsed_to_1(self, tmp_path: Path) -> None:
+        """pytest's own internal-error exit code is 3 -- it must never reach
+        on_cannot_judge as though the command were unresolvable."""
+        (tmp_path / ".ll").mkdir()
+        (tmp_path / ".ll" / "ll-config.json").write_text(
+            '{"project": {"test_cmd": "sh -c \\"exit 3\\""}}'
+        )
+        result = self._run(tmp_path)
+        assert result.returncode == 1
+
+    def test_null_test_cmd_exits_3(self, tmp_path: Path) -> None:
+        (tmp_path / ".ll").mkdir()
+        (tmp_path / ".ll" / "ll-config.json").write_text('{"project": {"test_cmd": null}}')
+        result = self._run(tmp_path)
+        assert result.returncode == 3
+
+    def test_test_log_is_written(self, tmp_path: Path) -> None:
+        (tmp_path / ".ll").mkdir()
+        (tmp_path / ".ll" / "ll-config.json").write_text('{"project": {"test_cmd": "echo hi"}}')
+        self._run(tmp_path)
+        assert (tmp_path / "ll-dead-code-tests.txt").read_text().strip() == "hi"
+
+
+class TestDeadCodeCleanupCheckPreconditionsResolution:
+    """ENH-3288: check_preconditions' full body -- config-first resolution,
+    the three-of-four checks (resolvable / runnable / green baseline), and
+    exactly the terminal routing pinned by DECIDED constraint 3."""
+
+    LOOP_FILE = BUILTIN_LOOPS_DIR / "dead-code-cleanup.yaml"
+
+    def _run(self, tmp_path: Path) -> subprocess.CompletedProcess:
+        data = yaml.safe_load(self.LOOP_FILE.read_text())
+        action = data["states"]["check_preconditions"]["action"]
+        script = action.replace("${context.run_dir}", str(tmp_path))
+        return subprocess.run(
+            ["bash", "-c", script], cwd=tmp_path, capture_output=True, text=True, timeout=30
+        )
+
+    def test_unresolvable_test_cmd_exits_1(self, tmp_path: Path) -> None:
+        (tmp_path / ".ll").mkdir()
+        (tmp_path / ".ll" / "ll-config.json").write_text('{"project": {"test_cmd": null}}')
+        result = self._run(tmp_path)
+        assert result.returncode == 1
+        assert "does not resolve" in (tmp_path / "precondition-failure.txt").read_text()
+
+    def test_already_red_baseline_exits_1(self, tmp_path: Path) -> None:
+        (tmp_path / ".ll").mkdir()
+        (tmp_path / ".ll" / "ll-config.json").write_text('{"project": {"test_cmd": "false"}}')
+        result = self._run(tmp_path)
+        assert result.returncode == 1
+        assert "already fails" in (tmp_path / "precondition-failure.txt").read_text()
+
+    def test_unrunnable_test_cmd_exits_1(self, tmp_path: Path) -> None:
+        (tmp_path / ".ll").mkdir()
+        (tmp_path / ".ll" / "ll-config.json").write_text(
+            '{"project": {"test_cmd": "definitely-not-a-real-binary"}}'
+        )
+        result = self._run(tmp_path)
+        assert result.returncode == 1
+        assert "not runnable here" in (tmp_path / "precondition-failure.txt").read_text()
+
+    def test_green_baseline_exits_0(self, tmp_path: Path) -> None:
+        (tmp_path / ".ll").mkdir()
+        (tmp_path / ".ll" / "ll-config.json").write_text('{"project": {"test_cmd": "true"}}')
+        result = self._run(tmp_path)
+        assert result.returncode == 0, result.stderr
+        assert not (tmp_path / "precondition-failure.txt").exists()
+
+    def test_does_not_refuse_on_dirty_working_tree(self, tmp_path: Path) -> None:
+        """The gate must not port incremental-refactor's clean-tree check --
+        an untracked file must not trip it."""
+        (tmp_path / ".ll").mkdir()
+        (tmp_path / ".ll" / "ll-config.json").write_text('{"project": {"test_cmd": "true"}}')
+        (tmp_path / "untracked-scratch-file.txt").write_text("uncommitted work")
+        result = self._run(tmp_path)
+        assert result.returncode == 0, result.stderr
+
+
+class TestTestCoverageImprovementLoop:
+    """Structural tests for the test-coverage-improvement FSM loop (ENH-3288)."""
+
+    LOOP_FILE = BUILTIN_LOOPS_DIR / "test-coverage-improvement.yaml"
+
+    @pytest.fixture
+    def data(self) -> dict:
+        assert self.LOOP_FILE.exists(), f"Loop file not found: {self.LOOP_FILE}"
+        return yaml.safe_load(self.LOOP_FILE.read_text())
+
+    @pytest.fixture
+    def resolved(self, data: dict) -> dict:
+        return resolve_fragments(data, BUILTIN_LOOPS_DIR)
+
+    def test_required_top_level_fields(self, data: dict) -> None:
+        assert data.get("name") == "test-coverage-improvement"
+        assert data.get("initial") == "measure"
+        assert isinstance(data.get("states"), dict)
+
+    def test_required_states_exist(self, data: dict) -> None:
+        required = {
+            "measure",
+            "identify_gaps",
+            "write_tests",
+            "verify_tests",
+            "unverifiable",
             "commit",
             "done",
         }
@@ -12072,31 +12324,119 @@ class TestDeadCodeCleanupLoop:
     def test_done_state_is_terminal(self, data: dict) -> None:
         assert data["states"]["done"].get("terminal") is True
 
+    def test_measure_no_longer_resolves_a_dead_cmd(self, data: dict) -> None:
+        """ENH-3288 *Dead site*: measure's only executed command is
+        $COV_CMD -- the unused $CMD block must be gone entirely."""
+        action = data["states"]["measure"].get("action", "")
+        assert "${context.test_cmd}" not in action
+        assert "ll-config get project.test_cmd" not in action
 
-class TestTestCoverageImprovementLoop:
-    """Structural tests for the test-coverage-improvement FSM loop."""
+    def test_no_state_resolves_a_cmd_it_never_evaluates(self, data: dict) -> None:
+        """Guard against re-introducing the defect that made measure's CMD
+        block dead: any state resolving via `ll-config get project.test_cmd`
+        must actually `eval`/`sh -c` the result."""
+        for name, state in data["states"].items():
+            action = state.get("action", "")
+            if "ll-config get project.test_cmd" in action:
+                assert 'eval "$CMD"' in action or 'sh -c "$CMD"' in action, (
+                    f"{name} resolves $CMD via ll-config get but never evaluates it"
+                )
+
+    def test_verify_tests_uses_harness_exit_fragment(self, data: dict) -> None:
+        assert data["states"]["verify_tests"].get("fragment") == "harness_exit"
+
+    def test_verify_tests_resolved_abstain_on_exit_3(self, resolved: dict) -> None:
+        state = resolved["states"]["verify_tests"]
+        assert state.get("evaluate", {}).get("abstain_on_exit_3") is True
+
+    def test_verify_tests_on_cannot_judge_routes_to_unverifiable(self, data: dict) -> None:
+        assert data["states"]["verify_tests"].get("on_cannot_judge") == "unverifiable"
+
+    def test_verify_tests_resolves_context_first_then_ll_config(self, data: dict) -> None:
+        """Pinned decision (a): this is the one site in the family that
+        legitimately uses the context-first shape -- it is the only loop
+        that declares context.test_cmd (:23)."""
+        action = data["states"]["verify_tests"].get("action", "")
+        assert "${context.test_cmd}" in action
+        assert "ll-config get project.test_cmd" in action
+
+    def test_verify_tests_normalizes_exit_codes(self, data: dict) -> None:
+        action = data["states"]["verify_tests"].get("action", "")
+        assert '[ -z "$CMD" ] && exit 3' in action
+        assert "pipefail" in action
+        assert "exit 1" in action
+        assert "exit 0" in action
+
+    def test_verify_tests_keeps_test_log(self, data: dict) -> None:
+        action = data["states"]["verify_tests"].get("action", "")
+        assert "ll-coverage-tests.txt" in action
+        assert "tee" in action
+
+    def test_unverifiable_is_bare_terminal(self, data: dict) -> None:
+        state = data["states"]["unverifiable"]
+        assert state.get("terminal") is True
+        assert state.get("failure") is True
+        assert "action" not in state
+        assert "next" not in state
+
+    def test_context_test_cmd_still_declared(self, data: dict) -> None:
+        """Pinned decision (a): the documented knob stays and becomes live."""
+        assert "test_cmd" in data.get("context", {})
+
+
+class TestTestCoverageImprovementVerifyTestsResolution:
+    """ENH-3288: verify_tests' full converted body, context-first with a
+    `ll-config get` fallback, the harness_exit exit-code collapse, and the
+    exit-3-vs-real-failure split. Driven through `bash -c`, not `sh`."""
 
     LOOP_FILE = BUILTIN_LOOPS_DIR / "test-coverage-improvement.yaml"
 
-    @pytest.fixture
-    def data(self) -> dict:
-        assert self.LOOP_FILE.exists(), f"Loop file not found: {self.LOOP_FILE}"
-        return yaml.safe_load(self.LOOP_FILE.read_text())
+    def _run(self, tmp_path: Path, context_test_cmd: str = "") -> subprocess.CompletedProcess:
+        data = yaml.safe_load(self.LOOP_FILE.read_text())
+        action = data["states"]["verify_tests"]["action"]
+        script = action.replace("${context.run_dir}", str(tmp_path))
+        script = script.replace("${context.test_cmd}", context_test_cmd)
+        return subprocess.run(
+            ["bash", "-c", script], cwd=tmp_path, capture_output=True, text=True, timeout=30
+        )
 
-    def test_required_top_level_fields(self, data: dict) -> None:
-        assert data.get("name") == "test-coverage-improvement"
-        assert data.get("initial") == "measure"
-        assert isinstance(data.get("states"), dict)
+    def test_context_wins_over_ll_config(self, tmp_path: Path) -> None:
+        (tmp_path / ".ll").mkdir()
+        (tmp_path / ".ll" / "ll-config.json").write_text('{"project": {"test_cmd": "false"}}')
+        result = self._run(tmp_path, context_test_cmd="true")
+        assert result.returncode == 0, result.stderr
 
-    def test_required_states_exist(self, data: dict) -> None:
-        required = {"measure", "identify_gaps", "write_tests", "verify_tests", "commit", "done"}
-        assert not required - set(data["states"].keys())
+    def test_configured_passing_test_cmd_exits_0(self, tmp_path: Path) -> None:
+        (tmp_path / ".ll").mkdir()
+        (tmp_path / ".ll" / "ll-config.json").write_text('{"project": {"test_cmd": "true"}}')
+        result = self._run(tmp_path)
+        assert result.returncode == 0, result.stderr
 
-    def test_commit_uses_ll_commit_fragment(self, data: dict) -> None:
-        assert data["states"]["commit"].get("fragment") == "ll_commit"
+    def test_configured_failing_test_cmd_exits_1(self, tmp_path: Path) -> None:
+        (tmp_path / ".ll").mkdir()
+        (tmp_path / ".ll" / "ll-config.json").write_text('{"project": {"test_cmd": "false"}}')
+        result = self._run(tmp_path)
+        assert result.returncode == 1
 
-    def test_done_state_is_terminal(self, data: dict) -> None:
-        assert data["states"]["done"].get("terminal") is True
+    def test_exit_3_collision_is_collapsed_to_1(self, tmp_path: Path) -> None:
+        (tmp_path / ".ll").mkdir()
+        (tmp_path / ".ll" / "ll-config.json").write_text(
+            '{"project": {"test_cmd": "sh -c \\"exit 3\\""}}'
+        )
+        result = self._run(tmp_path)
+        assert result.returncode == 1
+
+    def test_null_test_cmd_exits_3(self, tmp_path: Path) -> None:
+        (tmp_path / ".ll").mkdir()
+        (tmp_path / ".ll" / "ll-config.json").write_text('{"project": {"test_cmd": null}}')
+        result = self._run(tmp_path)
+        assert result.returncode == 3
+
+    def test_test_log_is_written(self, tmp_path: Path) -> None:
+        (tmp_path / ".ll").mkdir()
+        (tmp_path / ".ll" / "ll-config.json").write_text('{"project": {"test_cmd": "echo hi"}}')
+        self._run(tmp_path)
+        assert (tmp_path / "ll-coverage-tests.txt").read_text().strip() == "hi"
 
 
 class TestIssueDiscoveryTriageLoop:
