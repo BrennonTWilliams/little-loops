@@ -661,6 +661,21 @@ the per-revision `git show` pattern the measurements rule out.
   the precedence shows up in the persisted value and in *which span the rewrite is handed*, not in
   the routing target. Gate order in `refine-to-ready-issue.yaml` follows: check evidence before
   proposal.
+- **Gate posture — advisory, not routing (fallback F3, decided 2026-08-21)**: the precedence above
+  still describes which verdict is *persisted*, but `check_evidence_unverified` no longer routes.
+  Every edge (`on_yes`/`on_no`/`on_error`) falls through to `check_proposal_unsound`. Rationale:
+  a hand-labelled 30-finding sample measured **~0.13–0.20 precision** against the plan's **0.30**
+  blocking bar. The residual is the *paraphrase* class — spans quoting real code inexactly — which
+  no attribution or span-kind rule reaches, so this is not closable by tuning the matcher. Below
+  0.30 a false `EVIDENCE_UNVERIFIED` sends a **correct** issue into `reconcile_issue`, so routing
+  is net-negative *even when the gate is right*; the repo gate is green only because 278 findings
+  are grandfathered into `.ll/evidence-baseline.json`. The detector stays fully wired — verdict
+  detected, persisted to frontmatter, and visible in run logs, which is how the real-world fire
+  rate gets measured. **Re-arm condition**: restore `on_yes: check_reconcile_limit` (a one-line
+  edit, guarded by `test_check_evidence_unverified_is_advisory_not_routing`) once precision is
+  measured **≥ 0.30** with recall still **1.00** on labelled true fabrications. Narrowing the scan
+  surface to `.md`/issue artifacts (fallback F2, ~316 → ~160 spans) is the most likely route there,
+  since the paraphrase FPs concentrate in quoted *code*, which is `verify-issues.md`'s §B.0 job.
 - **`GitLock` — decided**: bare `subprocess.run`. `git show` and `git log` are read-only — they
   touch neither the index nor refs — so the shipped-module precedent
   (`issue_history/parsing.py`, `issues/research_triage.py`, `codequery/fallback.py`,

@@ -13,7 +13,9 @@ category: issue-management
 #   every downstream gate reads a post-normalize file.
 #   verify_issue (/ll:verify-issues --check, non-fatal) → check_verify_verdict
 #     check_verify_verdict (reads persisted verify_verdict) → (on_yes) check_hedges
-#                                                            → (on_no)  check_proposal_unsound (ENH-3250)
+#                                                            → (on_no)  check_evidence_unverified (BUG-3282)
+#     check_evidence_unverified (ll-issues check-verify-verdict --evidence-unverified) → (on_yes) check_proposal_unsound (F3: advisory, not routed)
+#                                                                                       → (on_no)  check_proposal_unsound (ENH-3250)
 #     check_proposal_unsound (ll-issues check-verify-verdict --proposal-unsound) → (on_yes) check_reconcile_limit
 #                                                                                 → (on_no)  check_refine_limit
 #     check_hedges (ll-issues check-open-questions)          → (on_yes) check_placeholders
@@ -355,12 +357,26 @@ states:
     # precedence) — an issue can be both EVIDENCE_UNVERIFIED and
     # PROPOSAL_UNSOUND (a fabricated premise very often yields an unsound
     # proposal built on top of it), and refine_followup re-deriving research on
-    # top of a fabricated premise is exactly the failure this issue names. Both
-    # route to check_reconcile_limit, so the precedence shows up in which span
-    # the rewrite is handed, not in the routing target.
+    # top of a fabricated premise is exactly the failure this issue names.
+    #
+    # ADVISORY, NOT ROUTING (BUG-3282 fallback F3, decided 2026-08-21). The
+    # detector measured ~0.13–0.20 precision on a hand-labelled 30-finding
+    # sample against the plan's 0.30 blocking bar; the residual is the
+    # *paraphrase* class, which no attribution or span-kind rule reaches. A
+    # false EVIDENCE_UNVERIFIED sends a *correct* issue into reconcile_issue,
+    # i.e. below 0.30 the routing is net-negative even when the gate is right.
+    # So on_yes falls through to check_proposal_unsound exactly like on_no:
+    # the verdict is still detected, still persisted to frontmatter by
+    # verify_issue, and still visible in run logs (which is how the fire rate
+    # gets measured in the wild) — it just no longer diverts the loop.
+    #
+    # RE-ARM CONDITION: restore `on_yes: check_reconcile_limit` (the sole edit
+    # needed) once precision is measured ≥ 0.30 with recall still 1.00 on
+    # labelled true-fabrications. Narrowing the scan surface to .md/issue
+    # artifacts (fallback F2) is the most likely way to get there.
     action: "ll-issues check-verify-verdict ${captured.issue_id.output} --evidence-unverified"
     fragment: shell_exit
-    on_yes: check_reconcile_limit  # verify_verdict == EVIDENCE_UNVERIFIED → reconcile, not refine
+    on_yes: check_proposal_unsound  # F3: advisory — detected and logged, but not routed
     on_no: check_proposal_unsound  # any other non-VALID verdict → today's behaviour, unchanged
     on_error: check_proposal_unsound  # fail-open, matching this file's convention
 

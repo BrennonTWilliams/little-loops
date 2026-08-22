@@ -4710,6 +4710,10 @@ class TestPriorityRegexCompletenessAllowlist:
         "cli/migrate.py": {
             16: "optional (?:P\\d-)? prefix inside an issue-ID regex; priority group discarded",
         },
+        "cli/verify_evidence.py": {
+            99: "_ISSUE_ID_RE (BUG-3282): issue-ID shape matching to recognize an "
+            "artifact attribution in evidence prose; optional prefix group discarded",
+        },
         "hooks/post_tool_use.py": {
             97: "gates 'is this an issue file'; does not read priority as a value",
             107: "extracts ID+slug from an issue filename; does not read priority as a value",

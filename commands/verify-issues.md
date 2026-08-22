@@ -210,7 +210,8 @@ Program Design gate's arming.
    `PROPOSAL_UNSOUND` when an issue qualifies for both (Decision Rules → Verdict
    precedence in BUG-3282's Program Design): a fabricated premise very often also
    yields an unsound proposal built on top of it, and the premise must be named
-   first or the proposal-repair path re-derives the fiction.
+   first or the proposal-repair path re-derives the fiction. The verdict is
+   currently **advisory** — reported and persisted, but not routed; see §C.
 
 **Causal / identity claims (method for check 4, unconditional — runs regardless of
 `ll-code` availability or index freshness; not part of §2B.0):** for issue text
@@ -299,14 +300,24 @@ or update a `verify_verdict:` line in that issue's YAML frontmatter block:
 - `VALID` verdict → `verify_verdict: VALID`
 - `EVIDENCE_UNVERIFIED` verdict (BUG-3282, check B7) → `verify_verdict:
   EVIDENCE_UNVERIFIED` — persisted as its own value, **not** collapsed into
-  `NON_VALID`, so a `check_evidence_unverified` gate in
-  `refine-to-ready-issue.yaml` can route it to `reconcile_issue` (via
-  `check_reconcile_limit`) instead of `refine_followup`. **Outranks
-  `PROPOSAL_UNSOUND`**: an issue can satisfy both, and the fabricated premise
-  must be named before the proposal built on top of it is rewritten, or the
-  rewrite re-derives the fiction. It still counts as a non-VALID, `exit 1`
-  outcome in `--check` mode below — the split is in the persisted value, not
-  the exit-code contract.
+  `NON_VALID`, so the `check_evidence_unverified` gate in
+  `refine-to-ready-issue.yaml` can read it. **Outranks `PROPOSAL_UNSOUND`**: an
+  issue can satisfy both, and the fabricated premise must be named before the
+  proposal built on top of it is rewritten, or the rewrite re-derives the
+  fiction. It still counts as a non-VALID, `exit 1` outcome in `--check` mode
+  below — the split is in the persisted value, not the exit-code contract.
+
+  **Advisory, not routing (fallback F3, decided 2026-08-21).** The verdict is
+  detected, persisted, and reported, but `check_evidence_unverified` does *not*
+  divert the loop to `reconcile_issue` — every edge falls through to
+  `check_proposal_unsound`. The detector measured ~0.13–0.20 precision on a
+  hand-labelled 30-finding sample against a 0.30 blocking bar; the residual is
+  the *paraphrase* class (spans quoting real code inexactly), which no
+  attribution or span-kind rule reaches. Below 0.30 a false verdict sends a
+  **correct** issue into a rewrite, so routing is net-negative even when the
+  gate is right. Re-arm — restore `on_yes: check_reconcile_limit` — only once
+  precision is measured ≥ 0.30 with recall still 1.00 on labelled true
+  fabrications.
 - `PROPOSAL_UNSOUND` verdict (ENH-3250, check B6) → `verify_verdict:
   PROPOSAL_UNSOUND` — persisted as its own value, **not** collapsed into
   `NON_VALID`, so `check_proposal_unsound` in `refine-to-ready-issue.yaml` can

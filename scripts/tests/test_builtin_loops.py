@@ -1510,9 +1510,11 @@ class TestRefineToReadyIssueSubLoop:
         assert state.get("on_yes") == "check_hedges", (
             f"check_verify_verdict.on_yes should be 'check_hedges', got {state.get('on_yes')!r}"
         )
-        assert state.get("on_no") == "check_proposal_unsound", (
-            f"check_verify_verdict.on_no should be 'check_proposal_unsound' "
-            f"(ENH-3250: triage before forcing refine), got {state.get('on_no')!r}"
+        assert state.get("on_no") == "check_evidence_unverified", (
+            f"check_verify_verdict.on_no should be 'check_evidence_unverified' "
+            f"(BUG-3282: evidence outranks proposal; it falls through to "
+            f"check_proposal_unsound, preserving ENH-3250's triage-before-refine), "
+            f"got {state.get('on_no')!r}"
         )
         assert state.get("on_error") == "check_hedges", (
             f"check_verify_verdict.on_error should be 'check_hedges' (fail-open), "
@@ -2611,13 +2613,75 @@ class TestRefineToReadyIssueSubLoop:
             f"got {state.get('on_error')!r}"
         )
 
-    def test_check_verify_verdict_on_no_routes_to_check_proposal_unsound(self, data: dict) -> None:
-        """check_verify_verdict.on_no must route to check_proposal_unsound (the new
-        triage gate), not straight to check_refine_limit (ENH-3250)."""
-        state = data["states"].get("check_verify_verdict", {})
-        assert state.get("on_no") == "check_proposal_unsound", (
-            f"check_verify_verdict.on_no should be 'check_proposal_unsound', "
-            f"got {state.get('on_no')!r}"
+    def test_check_verify_verdict_on_no_reaches_check_proposal_unsound(self, data: dict) -> None:
+        """check_verify_verdict.on_no must triage before forcing refine — it must
+        reach check_proposal_unsound, never check_refine_limit directly (ENH-3250).
+
+        BUG-3282 inserted check_evidence_unverified ahead of check_proposal_unsound
+        (Decision Rules -> Verdict precedence: evidence outranks proposal), so the
+        edge is a chain, not adjacency. ENH-3250's invariant is reachability of the
+        triage gate, which the chain preserves.
+        """
+        states = data["states"]
+        first = states.get("check_verify_verdict", {}).get("on_no")
+        assert first == "check_evidence_unverified", (
+            f"check_verify_verdict.on_no should be 'check_evidence_unverified' "
+            f"(BUG-3282 precedence), got {first!r}"
+        )
+        assert states.get(first, {}).get("on_no") == "check_proposal_unsound", (
+            f"{first}.on_no should fall through to 'check_proposal_unsound' so "
+            f"ENH-3250's triage gate stays reachable, got "
+            f"{states.get(first, {}).get('on_no')!r}"
+        )
+
+    # --- BUG-3282: check_evidence_unverified ---
+
+    def test_check_evidence_unverified_state_exists_and_probes(self, data: dict) -> None:
+        """check_evidence_unverified sits ahead of check_proposal_unsound and probes the
+        persisted verdict via the shell_exit fragment (BUG-3282)."""
+        state = data["states"].get("check_evidence_unverified", {})
+        assert state, "State 'check_evidence_unverified' not found (BUG-3282)"
+        assert state.get("fragment") == "shell_exit", (
+            f"check_evidence_unverified.fragment should be 'shell_exit', "
+            f"got {state.get('fragment')!r}"
+        )
+        assert "--evidence-unverified" in state.get("action", ""), (
+            f"check_evidence_unverified.action should probe via "
+            f"'ll-issues check-verify-verdict --evidence-unverified', "
+            f"got {state.get('action')!r}"
+        )
+
+    def test_check_evidence_unverified_is_advisory_not_routing(self, data: dict) -> None:
+        """EVIDENCE_UNVERIFIED must NOT divert the loop into reconcile_issue
+        (BUG-3282 fallback F3, decided 2026-08-21).
+
+        The detector measured ~0.13-0.20 precision against the plan's 0.30 blocking
+        bar, and the residual is the paraphrase class that no attribution rule
+        reaches. Below 0.30 a false verdict rewrites a *correct* issue, so routing is
+        net-negative even when the gate is right. Every edge therefore falls through
+        to check_proposal_unsound: detected, persisted, and logged, but not routed.
+
+        This test is the guard against a silent re-arm. Re-arming is a deliberate act
+        gated on measurement: restore `on_yes: check_reconcile_limit` and update this
+        test together, only once precision is >= 0.30 with recall still 1.00 on
+        labelled true-fabrications.
+        """
+        state = data["states"].get("check_evidence_unverified", {})
+        assert state, "State 'check_evidence_unverified' not found (BUG-3282)"
+        for edge in ("on_yes", "on_no", "on_error"):
+            assert state.get(edge) == "check_proposal_unsound", (
+                f"check_evidence_unverified.{edge} should be 'check_proposal_unsound' "
+                f"(F3 advisory posture — the verdict is detected and persisted but "
+                f"must not route to reconcile_issue at measured precision), "
+                f"got {state.get(edge)!r}"
+            )
+        assert "check_reconcile_limit" not in (
+            state.get("on_yes"),
+            state.get("on_no"),
+            state.get("on_error"),
+        ), (
+            "check_evidence_unverified must not reach check_reconcile_limit while "
+            "EVIDENCE_UNVERIFIED is advisory (BUG-3282 F3)"
         )
 
     # --- ENH-3250: check_spike_needed / run_spike (B3) ---
