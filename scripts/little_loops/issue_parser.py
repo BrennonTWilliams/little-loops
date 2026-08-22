@@ -1577,7 +1577,20 @@ def _unapplied_decision(content: str) -> list[str]:
         if i != selected_index:
             rej_ids |= _decision_identifiers(block_text)
 
-    discriminating = rej_ids - sel_ids
+    # BUG-3295: a rejected-option identifier that is a plain substring of a
+    # selected-option identifier names the same field/value being decided
+    # (e.g. bare `scope:` subsumed by compound `scope: ["."]`), not a
+    # competing identifier -- exclude it from `discriminating` before the
+    # exact-match set difference, so it doesn't fan out into every narrative
+    # mention of the bare key across the directive sections. One-directional
+    # and existential (see Program Design > Decision Rules on the issue):
+    # containment by *any* sel_ids member excludes `r`; the reverse shape (a
+    # compound literal only in a rejected option) is unaffected and still
+    # fires. Corpus sweep at fix time (.issues/, ~307 issues carrying a
+    # `> **Selected:**` callout): report count dropped, zero new reports
+    # introduced (see TestBug3295ContainmentCorpusDifferential).
+    subsumed = {r for r in rej_ids if any(r in s for s in sel_ids)}
+    discriminating = (rej_ids - subsumed) - sel_ids
     if not discriminating:
         return []
 

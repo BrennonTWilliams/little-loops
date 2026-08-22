@@ -3,10 +3,11 @@ id: BUG-3295
 type: BUG
 title: unapplied_decision flags bare key mentions as discriminating identifiers
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-08-22'
 captured_at: '2026-08-22T21:27:39Z'
+completed_at: '2026-08-22T23:10:56Z'
 relates_to:
 - BUG-3289
 confidence_score: 99
@@ -262,12 +263,41 @@ different function (`_locate_directive_alternatives` / tier matching, not
 - ENH-3292 — where this false positive was discovered during
   `/ll:confidence-check`
 
+## Resolution
+
+Implemented the decided containment filter exactly as specified in Program
+Design > Decision Rules: `discriminating = (rej_ids - subsumed) - sel_ids`,
+where `subsumed = {r for r in rej_ids if any(r in s for s in sel_ids)}`
+(`scripts/little_loops/issue_parser.py:1580`, ahead of the pre-existing
+`rej_ids - sel_ids` line). Documented the corpus-measured effect in a
+`# BUG-3295:` comment directly above the fix, per this heuristic family's
+landing convention.
+
+Added two fixtures to `TestUnappliedDecision`
+(`test_bare_key_subsumed_by_selected_compound_literal_does_not_fire`,
+reproducing the ENH-3292 shape, and
+`test_disjoint_rejected_identifier_still_fires_negative_control`), plus a
+new `TestBug3295ContainmentCorpusDifferential` class pinning the corpus
+effect measured at fix time: total `unapplied_decision` reports across
+`.issues/` dropped from 525 (121 files) to 490 (118 files), zero files
+gained reports, and three files lost all of theirs -- including the
+motivating ENH-3292 case.
+
+Fixing the identifier-relationship line also shifted `issue_parser.py`
+line numbers below it by +13, which broke
+`TestPriorityRegexCompletenessAllowlist`'s pinned line references for
+`_DEP_ID_RE`, the P[0-5]-NNN- filename-shape comment, and
+`_generate_id_from_filename`'s priority-token strip -- updated those three
+allowlist entries to their new line numbers (1628→1641, 3257→3270,
+3261→3274, 3282→3295). Full suite: 20805 passed, 51 skipped, 0 failed.
+
 ## Status
 
-**Open** | Created: 2026-08-22 | Priority: P3
+**Done** | Created: 2026-08-22 | Priority: P3
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-22T23:10:51 - `92b7e923-4cd1-4fc8-a2fb-9557e1a82c59.jsonl`
 - `/ll:confidence-check` - 2026-08-22T22:22:12 - `2eb6bfc2-7e3e-4e7e-b9e4-4f829918648f.jsonl`
 - `/ll:confidence-check` - 2026-08-22T22:13:28 - `c3fbea37-7e24-4852-97d2-937535e0fb6c.jsonl`
 - `/ll:wire-issue` - 2026-08-22T21:56:32 - `9918c26d-d757-4f35-8afa-285147b946fc.jsonl`

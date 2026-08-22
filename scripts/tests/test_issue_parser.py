@@ -4738,12 +4738,12 @@ class TestPriorityRegexCompletenessAllowlist:
             351: "docstring for is_normalized",
             1003: "BUG-3286 step 6: priority_drift gap detection compares filename vs. "
             "frontmatter directly by design — drift IS the comparison, not a resolution",
-            1628: "_DEP_ID_RE (BUG-3059): dependency-ID shape validation; optional prefix "
+            1641: "_DEP_ID_RE (BUG-3059): dependency-ID shape validation; optional prefix "
             "group discarded",
-            3257: "comment describing the P[0-5]-NNN- filename shape",
-            3261: "_parse_type_and_id's directory-fallback number extraction; priority digit "
+            3270: "comment describing the P[0-5]-NNN- filename shape",
+            3274: "_parse_type_and_id's directory-fallback number extraction; priority digit "
             "skipped over, not read as a value",
-            3282: "_generate_id_from_filename strips a leading priority token before "
+            3295: "_generate_id_from_filename strips a leading priority token before "
             "digit-scanning for ID generation",
         },
         "issues/prose_deps.py": {
@@ -5394,6 +5394,103 @@ class TestUnappliedDecision:
         # Report layer (BUG-3289-coupled; see docstring).
         reasons = _unapplied_decision(content)
         assert any("check_refine_limit" in r for r in reasons)
+
+    def test_bare_key_subsumed_by_selected_compound_literal_does_not_fire(self) -> None:
+        """BUG-3295: the ENH-3292 shape. Option A (selected) writes the
+        compound literal `scope: ["."]`; Option B (rejected) mentions only
+        the bare `scope:` span. The bare key names the same field the
+        selected option already covers via the longer literal, so it must
+        not be promoted into `discriminating` and fan out across every
+        narrative mention of `scope:` in the directive sections."""
+        from little_loops.issue_parser import _unapplied_decision
+
+        content = self._issue(
+            "**Option A**: Change `scope: [\"scripts/\"]` to `scope: [\".\"]`.\n\n"
+            "**Option B**: Change `scope:` to `[\"${context.src_dir}\"]` instead.\n\n"
+            "> **Selected:** Option A\n\n"
+            "### Decision Rationale\n\nOption A wins.\n",
+            Program_Design="This decision affects the `scope:` key used by the scanner.\n",
+            Implementation_Steps="1. The `scope:` field controls which dirs are scanned.\n",
+        )
+
+        assert _unapplied_decision(content) == []
+
+    def test_disjoint_rejected_identifier_still_fires_negative_control(self) -> None:
+        """BUG-3295 negative control: an identifier introduced only by a
+        rejected option, with no containment relationship to anything in
+        sel_ids, must still land in `discriminating` and still fire -- the
+        containment filter must not over-broaden into a general suppressor."""
+        from little_loops.issue_parser import _unapplied_decision
+
+        content = self._issue(
+            "**Option A**: Change `scope: [\"scripts/\"]` to `scope: [\".\"]`.\n\n"
+            "**Option B**: Use `legacy_scanner_mode` instead.\n\n"
+            "> **Selected:** Option A\n\n"
+            "### Decision Rationale\n\nOption A wins.\n",
+            Implementation_Steps="1. Still calls `legacy_scanner_mode` here.\n",
+        )
+
+        assert any("legacy_scanner_mode" in r for r in _unapplied_decision(content))
+
+
+class TestBug3295ContainmentCorpusDifferential:
+    """BUG-3295 Implementation Steps 4-5: corpus differential for the
+    subsumption filter added ahead of `discriminating = rej_ids - sel_ids`
+    (`issue_parser.py`, `_unapplied_decision`). The filter is provably
+    one-directional (a pre-subtraction exclusion can only shrink
+    `discriminating`), per BUG-3289's decided test-strength precedent this
+    is measured as a report-count ceiling rather than a stored per-file
+    snapshot diff. A corpus sweep at fix time (.issues/, every `.md` file)
+    found the total `unapplied_decision` report count drop from 525 (121
+    files) to 490 (118 files) -- zero files gained reports, and three files
+    lost all of theirs, including the motivating ENH-3292 case from this
+    issue's Steps to Reproduce.
+    """
+
+    _PINNED_CLEARED = frozenset(
+        {
+            "P3-BUG-1616-six-bridge-skills-have-broken-pipe-descriptions.md",
+            "P3-ENH-1717-auto-commit-hooks-on-issue-file-crud-operations.md",
+            "P3-ENH-3292-dead-code-cleanupyaml-hardcodes-this-repos-scope-scripts.md",
+        }
+    )
+
+    _PRE_FIX_TOTAL_REPORTS = 525  # measured before this fix landed
+
+    def test_previously_spurious_files_now_clear(self) -> None:
+        from little_loops.issue_parser import _unapplied_decision
+
+        issues_dir = Path(__file__).parent.parent.parent / ".issues"
+        if not issues_dir.exists():
+            pytest.skip("no .issues/ corpus in this checkout")
+
+        found = {p.name: p for p in issues_dir.rglob("*.md")}
+        missing = self._PINNED_CLEARED - found.keys()
+        assert not missing, f"pinned files missing from corpus: {missing}"
+
+        for name in self._PINNED_CLEARED:
+            content = found[name].read_text(encoding="utf-8", errors="ignore")
+            assert _unapplied_decision(content) == [], f"{name} regained a spurious gap"
+
+    def test_total_report_count_does_not_exceed_pre_fix_baseline(self) -> None:
+        """new_reports == 0: the containment filter can only remove reports,
+        never add them, so the corpus total must never exceed the measured
+        pre-fix ceiling."""
+        from little_loops.issue_parser import _unapplied_decision
+
+        issues_dir = Path(__file__).parent.parent.parent / ".issues"
+        if not issues_dir.exists():
+            pytest.skip("no .issues/ corpus in this checkout")
+
+        total = 0
+        for path in issues_dir.rglob("*.md"):
+            content = path.read_text(encoding="utf-8", errors="ignore")
+            total += len(_unapplied_decision(content))
+
+        assert total <= self._PRE_FIX_TOTAL_REPORTS, (
+            f"corpus report total {total} exceeds pre-fix baseline "
+            f"{self._PRE_FIX_TOTAL_REPORTS} -- containment filter regressed"
+        )
 
 
 class TestBug3293DecisionRulesCorpusDifferential:
