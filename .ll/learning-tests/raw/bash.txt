@@ -1,0 +1,21 @@
+=== Claim 1: exit code is last command, not first failure ===
+exit code: 0 (expect 0)
+
+=== Claim 2: command-not-found -> 127, stderr populated, stdout empty ===
+exit code: 127 (expect 127)
+stdout empty: True (stdout='')
+stderr nonempty: True (stderr='bash: line 1: nonexistent-cmd-xyz-12345: command not found\n')
+
+=== Claim 3: shell-level `exit 137` -> Popen.returncode == 137 (positive) ===
+exit code: 137 (expect 137)
+
+=== Claim 4: killpg(SIGKILL) on child -> Popen.returncode == -9 ===
+returncode: -9 (expect -9)
+
+=== Claim 5: killpg kills background grandchild spawned inside script ===
+marker exists after kill+wait: False (expect False -- grandchild was also killed)
+
+=== Claim 6: unset variable expands to empty string, no error, exit 0 ===
+exit code: 0 (expect 0)
+stdout: '[]\n' (expect '[]\n')
+stderr: '' (expect '')
