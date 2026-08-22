@@ -11,6 +11,7 @@ is on the checker's own exclusion list.
 from __future__ import annotations
 
 import json
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -34,6 +35,13 @@ from little_loops.cli.verify_private_refs import (
 # Assembled rather than written literally so this constant does not trip a
 # naive grep over the test suite.
 _HOME = "/" + "Users" + "/alice"
+
+GATE_CLI = "ll-verify-private-refs"
+# Untimed subprocesses in a repo gate are how a whole `ll-auto` run wedged
+# once: pytest's thread-method timeout kills the xdist worker without reaping
+# the grandchild, xdist respawns and re-runs, and the cycle leaks one orphaned
+# scan per timeout. This scan is fast; 120s is headroom, not an estimate.
+GATE_TIMEOUT = 120
 
 
 class TestStructuralRules:
@@ -323,19 +331,34 @@ class TestRepoGate:
     a generic placeholder.
     """
 
-    def test_no_new_private_references(self) -> None:
+    @pytest.fixture(scope="module")
+    def gate_cli(self) -> str:
+        """Return the ``ll-verify-private-refs`` path, skipping when missing.
+
+        The canonical skip-when-missing idiom (``test_decisions_yaml_gate.py``
+        :49-63), replacing a ``returncode not in (0, 1)`` check that cannot
+        fire when the call hangs rather than returns.
+        """
+        path = shutil.which(GATE_CLI)
+        if path is None:
+            pytest.skip(f"{GATE_CLI} not installed; install via `pip install -e ./scripts[dev]`")
+        return path
+
+    def test_no_new_private_references(self, gate_cli: str) -> None:
         repo_root = Path(__file__).resolve().parents[2]
         if not (repo_root / ".git").exists():
             pytest.skip("not a git checkout; nothing to enumerate")
 
-        result = subprocess.run(
-            ["ll-verify-private-refs", "--all", "--json", "-C", str(repo_root)],
-            capture_output=True,
-            text=True,
-            cwd=repo_root,
-        )
-        if result.returncode not in (0, 1):
-            pytest.skip(f"ll-verify-private-refs unavailable (rc={result.returncode})")
+        try:
+            result = subprocess.run(
+                [gate_cli, "--all", "--json", "-C", str(repo_root)],
+                capture_output=True,
+                text=True,
+                cwd=repo_root,
+                timeout=GATE_TIMEOUT,
+            )
+        except subprocess.TimeoutExpired:
+            pytest.fail(f"{GATE_CLI} --all exceeded {GATE_TIMEOUT}s — performance regression.")
 
         payload = json.loads(result.stdout)
         if payload["ok"]:
