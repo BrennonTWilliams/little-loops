@@ -284,10 +284,12 @@ surface is not the route to re-arming.
 - One inverted case worth naming: ENH-2236 quotes an MR-2 warning **to demonstrate the guide omits
   it**, and the checker flags the quote for being absent from the artifact the issue says it is
   absent from.
-- Incidental resolver defect surfaced while labelling: a bare numeric ID matches across issue
-  types, so `BUG-042` resolves to `P1-FEAT-042`, `FEAT-108` to `ENH-108`, `BUG-490` to `FEAT-490`.
-  Six of 65 sampled findings cite an artifact of a different type than written. Worth its own
-  issue against `resolve_issue_path`; it is independent of the gate decision.
+- Six of 65 sampled findings cite an artifact whose type prefix differs from the resolved file
+  (`BUG-042` → `P1-FEAT-042`, `FEAT-108` → `ENH-108`, `BUG-490` → `FEAT-490`). This is **correct
+  behavior, not a defect**: the anchored numeric ID is the unique identifier and the type prefix
+  is advisory shorthand, so `resolve_issue_path` keys on the number. Noted because it looks like a
+  resolver bug while labelling and is not one — the mis-attribution in these cases comes from the
+  binding rule, not from resolution.
 
 ### Consequence
 
