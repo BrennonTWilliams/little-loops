@@ -2177,7 +2177,8 @@ class TestSchemaOverStampedClamp:
         that didn't exist when the clamp ran; the probe migration is only
         picked up on the *next* call."""
         from little_loops import session_store as _ss
-        from little_loops.session_store import _MIGRATIONS, schema as _schema_mod
+        from little_loops.session_store import _MIGRATIONS
+        from little_loops.session_store import schema as _schema_mod
 
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, len(_MIGRATIONS))

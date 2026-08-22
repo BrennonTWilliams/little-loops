@@ -74,8 +74,13 @@ def _themed_css_vars(config: object) -> str:
     DesignTokens.source, and only make the second themed call for a profile
     source.
     """
-    from little_loops.design_tokens import load_design_tokens, render_as_css_vars_themed
+    from little_loops.design_tokens import (
+        DesignTokens,
+        load_design_tokens,
+        render_as_css_vars_themed,
+    )
 
+    dark: DesignTokens | None
     light = load_design_tokens(config, theme="light")  # type: ignore[arg-type]
     if light is None:
         # Neutral fallback: empty scoped blocks (CSS fallbacks in the template
