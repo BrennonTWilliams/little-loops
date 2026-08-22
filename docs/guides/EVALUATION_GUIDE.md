@@ -390,8 +390,9 @@ For deterministic scoring — unit tests, exact-match — install the loop
 ### `evaluation-quality`
 
 Despite the name, this is a periodic project checkup, not a feature evaluator. It samples
-`ll-issues refine-status`, runs your configured `test_cmd` plus `ruff`, scores three
-dimensions (issue quality 40%, code health 40%, backlog health 20%), routes the single
+`ll-issues refine-status`, runs your configured `test_cmd` plus `lint_cmd`, scores three
+dimensions (issue quality 40%, code health 40%, backlog health 20%, re-weighted across the
+measured dimensions when a command is not configured), routes the single
 worst dimension to a targeted remediation loop, and writes
 `.loops/quality-report-YYYY-MM-DD.md` with a trend comparison against prior reports.
 

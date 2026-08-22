@@ -85,16 +85,17 @@ states:
 
   check_concrete:
     # EXAMPLE: Cheapest gate first — run the project's configured test suite.
-    # Reads test_cmd from .ll/ll-config.json; falls back to 'pytest' if absent.
+    # Resolves project.test_cmd via `ll-config get`, which honors .ll/ll.local.md
+    # and the three-way contract: key absent → ProjectConfig default (`pytest`);
+    # present-and-null → empty, meaning the project opted out of a test suite;
+    # value set → that value.
+    # NOTE: an opted-out project yields an empty CMD, `eval ""` exits 0, and this
+    # gate PASSES. That is deliberate here (the next state is a further gate). If
+    # you clone this into a loop whose on_yes performs an irreversible action, add
+    # an explicit `[ -z "$CMD" ]` branch.
     # set -o pipefail ensures the tee pipe does not swallow the test exit code.
     action: |
-      CMD=$(python3 -c "
-      import json, pathlib
-      p = pathlib.Path('.ll/ll-config.json')
-      cfg = json.loads(p.read_text()) if p.exists() else {}
-      raw = cfg.get('project', {}).get('test_cmd')
-      print(raw if raw else 'pytest')
-      ")
+      CMD=$(ll-config get project.test_cmd)
       set -o pipefail
       eval "$CMD" 2>&1 | tee ${context.run_dir}/harness-multi-item-tests.txt
     fragment: shell_exit

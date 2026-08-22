@@ -59,18 +59,7 @@ states:
     fragment: shell_exit
     timeout: 600
     action: |
-      CMD=$(python3 -c "
-      import json, pathlib
-      p = pathlib.Path('.ll/ll-config.json')
-      cfg = json.loads(p.read_text()) if p.exists() else {}
-      raw = cfg.get('project', {}).get('test_cmd')
-      # None/null means 'no tests configured' — skip with success
-      # Missing key means 'not configured yet' — default to pytest
-      if 'project' in cfg and 'test_cmd' in cfg['project']:
-          print(raw if raw else 'true')
-      else:
-          print(raw if raw else 'pytest')
-      ")
+      CMD=$(ll-config get project.test_cmd)
       set -o pipefail
       eval "$CMD" 2>&1 | tee ${context.run_dir}/ll-test-results.txt
     on_yes: done

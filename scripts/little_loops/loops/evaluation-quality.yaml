@@ -51,16 +51,21 @@ states:
     action_type: shell
     timeout: 600
     action: |
-      CMD=$(python3 -c "
-      import json, pathlib
-      p = pathlib.Path('.ll/ll-config.json')
-      cfg = json.loads(p.read_text()) if p.exists() else {}
-      raw = cfg.get('project', {}).get('test_cmd')
-      print(raw if raw else 'pytest')
-      ")
+      CMD=$(ll-config get project.test_cmd)
       set -o pipefail
-      eval "$CMD" 2>&1 | tee ${context.run_dir}/eval-test-results.txt
-      ruff check scripts/ 2>&1 | tee ${context.run_dir}/eval-lint-results.txt || true
+      if [ -z "$CMD" ]; then
+        echo "NO TEST SIGNAL -- project.test_cmd is null; no suite ran" \
+          | tee ${context.run_dir}/eval-test-results.txt
+      else
+        eval "$CMD" 2>&1 | tee ${context.run_dir}/eval-test-results.txt
+      fi
+      LINT_CMD=$(ll-config get project.lint_cmd)
+      if [ -z "$LINT_CMD" ]; then
+        echo "NO LINT SIGNAL -- project.lint_cmd is null; no linter ran" \
+          | tee ${context.run_dir}/eval-lint-results.txt
+      else
+        eval "$LINT_CMD" 2>&1 | tee ${context.run_dir}/eval-lint-results.txt || true
+      fi
     capture: code_results
     next: score
 
@@ -83,21 +88,30 @@ states:
 
       Score each dimension from 0-100 based on the data above:
       - issue_quality: based on avg_confidence_score, unscored count, and unformatted count
-      - code_health: based on test pass/fail and lint clean/dirty
+      - code_health: based on test pass/fail and lint clean/dirty. If the code
+        quality results contain NO TEST SIGNAL, ignore tests and score this
+        dimension from lint alone; if they contain NO LINT SIGNAL, score it from
+        tests alone. If BOTH markers are present, nothing was measured: report
+        code_health as the literal NOT MEASURED instead of a number.
       - backlog_health: based on total_active count, priority distribution, and velocity
-      - overall: weighted average (issue_quality 40%, code_health 40%, backlog_health 20%)
+      - overall: weighted average (issue_quality 40%, code_health 40%,
+        backlog_health 20%), re-weighted across the measured dimensions only.
+        When code_health is NOT MEASURED, use issue_quality 67% /
+        backlog_health 33%.
 
       Output exactly this block followed by a PRIMARY_CONCERN tag:
 
       SCORES:
       issue_quality: <0-100>
-      code_health: <0-100>
+      code_health: <0-100, or the literal NOT MEASURED>
       backlog_health: <0-100>
       overall: <0-100>
 
       PRIMARY_CONCERN: <NONE|ISSUES|CODE|BACKLOG>
 
-      Choose PRIMARY_CONCERN as the dimension furthest below its threshold.
+      Choose PRIMARY_CONCERN as the dimension furthest below its threshold,
+      excluding any dimension reported as NOT MEASURED — CODE is never the
+      primary concern when code_health was not measured.
       Use NONE if all dimensions meet their thresholds.
     capture: scores
     next: route_action

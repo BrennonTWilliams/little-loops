@@ -20,13 +20,15 @@ parametrized (registry pattern per `test_wiring_skills_and_commands.py`):
    engine default — they are exactly the axis BUG-3269 §2 identifies as
    under-covered.
 
-Assertion 1 is scoped to a shrinking exemption list, populated with the nine
-sites deferred to ENH-3277 plus the not-currently-buggy 13th call site in
-auto-refine-and-implement.yaml (also deferred — see BUG-3269's "Deferred to
-follow-up"). ENH-3277's definition of done is that `_PENDING_CONVERSION` is
-empty and can be deleted. `oracles/code-run-gate.yaml` is a *permanent*
-exemption (BUG-3269 §1d): different resolution convention (alias pairs,
-project-root-relative, never-guess), not convertible.
+Assertion 1 is scoped to a shrinking exemption list of four remaining sites:
+two structural loops whose conversion needs a control-flow redesign, and two
+(`rn-refine.yaml`, `auto-refine-and-implement.yaml`) permanently exempt
+because their absent-key contract means "skip", which `ll-config get` cannot
+express — see the inline comments on those two entries below. ENH-3288's
+definition of done is that `_PENDING_CONVERSION` is empty and can be deleted.
+`oracles/code-run-gate.yaml` is a *permanent* exemption (BUG-3269 §1d):
+different resolution convention (alias pairs, project-root-relative,
+never-guess), not convertible.
 
 Assertion 2 has no exemptions — it should be green on the tree as it stands
 and stay green.
@@ -48,19 +50,15 @@ PROJECT_COMMAND_KEYS = ("test_cmd", "lint_cmd", "type_cmd", "format_cmd", "build
 # Permanent: different resolution convention entirely, not convertible (§1d).
 _PERMANENT_EXEMPTIONS = {"oracles/code-run-gate.yaml"}
 
-# Temporary: sites deferred to ENH-3277 (blocked_by: [BUG-3269]). Each of
-# these still reads project.test_cmd/lint_cmd via an inline
-# `.ll/ll-config.json` parse today. ENH-3277's definition of done is
-# emptying this set and deleting it.
+# Temporary: sites still pending conversion. Each of these still reads
+# project.test_cmd/lint_cmd via an inline `.ll/ll-config.json` parse today.
+# ENH-3288's definition of done is emptying this set and deleting it.
 _PENDING_CONVERSION = {
-    "fix-quality-and-tests.yaml",
-    "evaluation-quality.yaml",
     "dead-code-cleanup.yaml",
-    "harness-plan-research-implement-report.yaml",
-    "harness-multi-item.yaml",
-    "harness-single-shot.yaml",
     "test-coverage-improvement.yaml",
+    # Permanently exempt per ENH-3277 Option A — moves to _PERMANENT_EXEMPTIONS in ENH-3288 step 5.
     "rn-refine.yaml",
+    # Permanently exempt per ENH-3277 Option A — moves to _PERMANENT_EXEMPTIONS in ENH-3288 step 5.
     "auto-refine-and-implement.yaml",
 }
 
@@ -147,12 +145,13 @@ def test_context_references_are_declared(loop_file: Path) -> None:
 
 def test_pending_conversion_sites_still_exist() -> None:
     """Guard against a stale exemption list: every listed file must exist,
-    so ENH-3277 closing one site is forced to also shrink this set rather
-    than silently leaving a dangling entry."""
+    so a file rename or deletion doesn't leave a dangling entry behind. Does
+    not force a conversion to land — see
+    test_no_inline_project_command_config_read for that."""
     for rel in _PENDING_CONVERSION:
         assert (BUILTIN_LOOPS_DIR / rel).exists(), (
             f"_PENDING_CONVERSION lists {rel!r}, which no longer exists under "
-            f"{BUILTIN_LOOPS_DIR} — shrink the exemption list (ENH-3277)."
+            f"{BUILTIN_LOOPS_DIR} — remove the dangling entry."
         )
 
 

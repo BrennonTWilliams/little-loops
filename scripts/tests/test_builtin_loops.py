@@ -10872,6 +10872,287 @@ class TestRlCodingAgentObserveTestCmdResolution:
         assert "TEST_CMD=[pytest] LINT_CMD=[ruff check .]" in result.stdout
 
 
+class TestFixQualityAndTestsCmdResolution:
+    """ENH-3277: check-tests' test_cmd resolution — config-first via
+    `ll-config get`, replacing the deleted three-way `python3 -c` body."""
+
+    LOOP_FILE = BUILTIN_LOOPS_DIR / "fix-quality-and-tests.yaml"
+
+    def _resolution_prefix(self, tmp_path: Path) -> str:
+        data = yaml.safe_load(self.LOOP_FILE.read_text())
+        action = data["states"]["check-tests"]["action"]
+        prefix = action.split('eval "')[0]
+        script = prefix.replace("${context.run_dir}", str(tmp_path))
+        script += 'echo "CMD=[$CMD]"\n'
+        return script
+
+    def test_resolves_configured_test_cmd(self, tmp_path: Path) -> None:
+        (tmp_path / ".ll").mkdir()
+        (tmp_path / ".ll" / "ll-config.json").write_text('{"project": {"test_cmd": "custom-test"}}')
+        script = self._resolution_prefix(tmp_path)
+        result = subprocess.run(
+            ["bash", "-c", script], cwd=tmp_path, capture_output=True, text=True, timeout=30
+        )
+        assert result.returncode == 0, result.stderr
+        assert "CMD=[custom-test]" in result.stdout
+
+    def test_null_test_cmd_resolves_to_empty_not_a_guessed_default(self, tmp_path: Path) -> None:
+        (tmp_path / ".ll").mkdir()
+        (tmp_path / ".ll" / "ll-config.json").write_text('{"project": {"test_cmd": null}}')
+        script = self._resolution_prefix(tmp_path)
+        result = subprocess.run(
+            ["bash", "-c", script], cwd=tmp_path, capture_output=True, text=True, timeout=30
+        )
+        assert result.returncode == 0, result.stderr
+        assert "CMD=[]" in result.stdout
+
+    def test_absent_config_falls_back_to_project_config_default(self, tmp_path: Path) -> None:
+        (tmp_path / ".ll").mkdir()
+        (tmp_path / ".ll" / "ll-config.json").write_text('{"project": {}}')
+        script = self._resolution_prefix(tmp_path)
+        result = subprocess.run(
+            ["bash", "-c", script], cwd=tmp_path, capture_output=True, text=True, timeout=30
+        )
+        assert result.returncode == 0, result.stderr
+        assert "CMD=[pytest]" in result.stdout
+
+
+class TestHarnessCheckConcreteCmdResolution:
+    """ENH-3277: the three harness-*.yaml `check_concrete` states' test_cmd
+    resolution — config-first via `ll-config get`, parametrized as one class
+    since all three share the same shape (BUG-3269 precedent, `rl-coding-agent`
+    already established this pattern for `observe`)."""
+
+    LOOP_FILES = [
+        BUILTIN_LOOPS_DIR / "harness-single-shot.yaml",
+        BUILTIN_LOOPS_DIR / "harness-multi-item.yaml",
+        BUILTIN_LOOPS_DIR / "harness-plan-research-implement-report.yaml",
+    ]
+
+    def _resolution_prefix(self, loop_file: Path, tmp_path: Path) -> str:
+        data = yaml.safe_load(loop_file.read_text())
+        action = data["states"]["check_concrete"]["action"]
+        prefix = action.split('eval "')[0]
+        script = prefix.replace("${context.run_dir}", str(tmp_path))
+        script += 'echo "CMD=[$CMD]"\n'
+        return script
+
+    @pytest.mark.parametrize("loop_file", LOOP_FILES, ids=lambda p: p.name)
+    def test_resolves_configured_test_cmd(self, loop_file: Path, tmp_path: Path) -> None:
+        (tmp_path / ".ll").mkdir()
+        (tmp_path / ".ll" / "ll-config.json").write_text('{"project": {"test_cmd": "custom-test"}}')
+        script = self._resolution_prefix(loop_file, tmp_path)
+        result = subprocess.run(
+            ["bash", "-c", script], cwd=tmp_path, capture_output=True, text=True, timeout=30
+        )
+        assert result.returncode == 0, result.stderr
+        assert "CMD=[custom-test]" in result.stdout
+
+    @pytest.mark.parametrize("loop_file", LOOP_FILES, ids=lambda p: p.name)
+    def test_null_test_cmd_resolves_to_empty_not_a_guessed_default(
+        self, loop_file: Path, tmp_path: Path
+    ) -> None:
+        (tmp_path / ".ll").mkdir()
+        (tmp_path / ".ll" / "ll-config.json").write_text('{"project": {"test_cmd": null}}')
+        script = self._resolution_prefix(loop_file, tmp_path)
+        result = subprocess.run(
+            ["bash", "-c", script], cwd=tmp_path, capture_output=True, text=True, timeout=30
+        )
+        assert result.returncode == 0, result.stderr
+        assert "CMD=[]" in result.stdout
+
+    @pytest.mark.parametrize("loop_file", LOOP_FILES, ids=lambda p: p.name)
+    def test_absent_config_falls_back_to_project_config_default(
+        self, loop_file: Path, tmp_path: Path
+    ) -> None:
+        (tmp_path / ".ll").mkdir()
+        (tmp_path / ".ll" / "ll-config.json").write_text('{"project": {}}')
+        script = self._resolution_prefix(loop_file, tmp_path)
+        result = subprocess.run(
+            ["bash", "-c", script], cwd=tmp_path, capture_output=True, text=True, timeout=30
+        )
+        assert result.returncode == 0, result.stderr
+        assert "CMD=[pytest]" in result.stdout
+
+
+class TestHarnessCheckConcreteScaffoldComments:
+    """ENH-3277: the three harness-*.yaml `check_concrete` scaffold comments
+    must stop teaching the inline-parse anti-pattern. Driven off raw file
+    text, not the parsed action — the comments sit above `action:` and are
+    not part of the action string, so a parsed-action guard is vacuously
+    green (verified red-on-pre-change-tree by direct read before conversion:
+    the old comment read "Reads test_cmd from .ll/ll-config.json; falls back
+    to 'pytest' if absent" and named no `ll-config get` call)."""
+
+    LOOP_FILES = [
+        BUILTIN_LOOPS_DIR / "harness-single-shot.yaml",
+        BUILTIN_LOOPS_DIR / "harness-multi-item.yaml",
+        BUILTIN_LOOPS_DIR / "harness-plan-research-implement-report.yaml",
+    ]
+
+    def _comment_block(self, loop_file: Path) -> str:
+        text = loop_file.read_text()
+        start = text.index("check_concrete:")
+        action_idx = text.index("action:", start)
+        return text[start:action_idx]
+
+    @pytest.mark.parametrize("loop_file", LOOP_FILES, ids=lambda p: p.name)
+    def test_no_longer_promises_pytest_fallback(self, loop_file: Path) -> None:
+        assert "falls back to 'pytest'" not in loop_file.read_text()
+
+    @pytest.mark.parametrize("loop_file", LOOP_FILES, ids=lambda p: p.name)
+    def test_comment_names_ll_config_get(self, loop_file: Path) -> None:
+        assert "ll-config get" in self._comment_block(loop_file)
+
+
+class TestEvaluationQualityCmdResolution:
+    """ENH-3277: evaluate_code's test_cmd/lint_cmd resolution and the
+    NO TEST SIGNAL / NO LINT SIGNAL skip markers. This is the one site whose
+    conversion adds a conditional (`if [ -z "$CMD" ]`), so the resolution
+    probe truncates at the skip guard rather than at `eval "` — truncating
+    at `eval "` cuts the `if` open (verified by execution: rc=2, bash syntax
+    error, no probe output)."""
+
+    LOOP_FILE = BUILTIN_LOOPS_DIR / "evaluation-quality.yaml"
+
+    def _action(self) -> str:
+        data = yaml.safe_load(self.LOOP_FILE.read_text())
+        return data["states"]["evaluate_code"]["action"]
+
+    def _test_cmd_resolution_prefix(self, tmp_path: Path) -> str:
+        prefix = re.split(r'^\s*(?:if |\[ -z)', self._action(), maxsplit=1, flags=re.M)[0]
+        script = prefix.replace("${context.run_dir}", str(tmp_path))
+        script += 'echo "CMD=[$CMD]"\n'
+        return script
+
+    def test_resolves_configured_test_cmd(self, tmp_path: Path) -> None:
+        (tmp_path / ".ll").mkdir()
+        (tmp_path / ".ll" / "ll-config.json").write_text('{"project": {"test_cmd": "custom-test"}}')
+        script = self._test_cmd_resolution_prefix(tmp_path)
+        result = subprocess.run(
+            ["bash", "-c", script], cwd=tmp_path, capture_output=True, text=True, timeout=30
+        )
+        assert result.returncode == 0, result.stderr
+        assert "CMD=[custom-test]" in result.stdout
+
+    def test_null_test_cmd_resolves_to_empty_not_a_guessed_default(self, tmp_path: Path) -> None:
+        (tmp_path / ".ll").mkdir()
+        (tmp_path / ".ll" / "ll-config.json").write_text('{"project": {"test_cmd": null}}')
+        script = self._test_cmd_resolution_prefix(tmp_path)
+        result = subprocess.run(
+            ["bash", "-c", script], cwd=tmp_path, capture_output=True, text=True, timeout=30
+        )
+        assert result.returncode == 0, result.stderr
+        assert "CMD=[]" in result.stdout
+
+    def test_absent_config_falls_back_to_project_config_default(self, tmp_path: Path) -> None:
+        (tmp_path / ".ll").mkdir()
+        (tmp_path / ".ll" / "ll-config.json").write_text('{"project": {}}')
+        script = self._test_cmd_resolution_prefix(tmp_path)
+        result = subprocess.run(
+            ["bash", "-c", script], cwd=tmp_path, capture_output=True, text=True, timeout=30
+        )
+        assert result.returncode == 0, result.stderr
+        assert "CMD=[pytest]" in result.stdout
+
+    def _lint_cmd_resolution_prefix(self, tmp_path: Path) -> str:
+        lines = self._action().splitlines()
+        lint_line = next(line for line in lines if line.strip().startswith("LINT_CMD="))
+        script = lint_line.strip().replace("${context.run_dir}", str(tmp_path))
+        script += '\necho "LINT_CMD=[$LINT_CMD]"\n'
+        return script
+
+    def test_resolves_configured_lint_cmd(self, tmp_path: Path) -> None:
+        (tmp_path / ".ll").mkdir()
+        (tmp_path / ".ll" / "ll-config.json").write_text('{"project": {"lint_cmd": "custom-lint"}}')
+        script = self._lint_cmd_resolution_prefix(tmp_path)
+        result = subprocess.run(
+            ["bash", "-c", script], cwd=tmp_path, capture_output=True, text=True, timeout=30
+        )
+        assert result.returncode == 0, result.stderr
+        assert "LINT_CMD=[custom-lint]" in result.stdout
+
+    def test_null_lint_cmd_resolves_to_empty_not_a_guessed_default(self, tmp_path: Path) -> None:
+        (tmp_path / ".ll").mkdir()
+        (tmp_path / ".ll" / "ll-config.json").write_text('{"project": {"lint_cmd": null}}')
+        script = self._lint_cmd_resolution_prefix(tmp_path)
+        result = subprocess.run(
+            ["bash", "-c", script], cwd=tmp_path, capture_output=True, text=True, timeout=30
+        )
+        assert result.returncode == 0, result.stderr
+        assert "LINT_CMD=[]" in result.stdout
+
+    def test_absent_lint_cmd_falls_back_to_project_config_default(self, tmp_path: Path) -> None:
+        (tmp_path / ".ll").mkdir()
+        (tmp_path / ".ll" / "ll-config.json").write_text('{"project": {}}')
+        script = self._lint_cmd_resolution_prefix(tmp_path)
+        result = subprocess.run(
+            ["bash", "-c", script], cwd=tmp_path, capture_output=True, text=True, timeout=30
+        )
+        assert result.returncode == 0, result.stderr
+        assert "LINT_CMD=[ruff check .]" in result.stdout
+
+    def test_no_test_signal_marker_on_stdout_when_test_cmd_null(self, tmp_path: Path) -> None:
+        # Full action, not the truncated prefix — safe because CMD is empty
+        # so nothing executes past the skip branch. The marker must reach
+        # captured stdout (score reads ${captured.code_results.output}, not
+        # the tee'd files) via `| tee`, never a bare `>`.
+        (tmp_path / ".ll").mkdir()
+        (tmp_path / ".ll" / "ll-config.json").write_text(
+            '{"project": {"test_cmd": null, "lint_cmd": "true"}}'
+        )
+        script = self._action().replace("${context.run_dir}", str(tmp_path))
+        result = subprocess.run(
+            ["bash", "-c", script], cwd=tmp_path, capture_output=True, text=True, timeout=30
+        )
+        assert result.returncode == 0, result.stderr
+        assert "NO TEST SIGNAL -- project.test_cmd is null; no suite ran" in result.stdout
+
+    def test_no_lint_signal_marker_on_stdout_when_lint_cmd_null(self, tmp_path: Path) -> None:
+        (tmp_path / ".ll").mkdir()
+        (tmp_path / ".ll" / "ll-config.json").write_text(
+            '{"project": {"test_cmd": "true", "lint_cmd": null}}'
+        )
+        script = self._action().replace("${context.run_dir}", str(tmp_path))
+        result = subprocess.run(
+            ["bash", "-c", script], cwd=tmp_path, capture_output=True, text=True, timeout=30
+        )
+        assert result.returncode == 0, result.stderr
+        assert "NO LINT SIGNAL -- project.lint_cmd is null; no linter ran" in result.stdout
+
+    def test_both_markers_present_when_both_commands_null(self, tmp_path: Path) -> None:
+        (tmp_path / ".ll").mkdir()
+        (tmp_path / ".ll" / "ll-config.json").write_text(
+            '{"project": {"test_cmd": null, "lint_cmd": null}}'
+        )
+        script = self._action().replace("${context.run_dir}", str(tmp_path))
+        result = subprocess.run(
+            ["bash", "-c", script], cwd=tmp_path, capture_output=True, text=True, timeout=30
+        )
+        assert result.returncode == 0, result.stderr
+        assert "NO TEST SIGNAL -- project.test_cmd is null; no suite ran" in result.stdout
+        assert "NO LINT SIGNAL -- project.lint_cmd is null; no linter ran" in result.stdout
+
+    def test_hardcoded_ruff_check_scripts_removed(self) -> None:
+        assert "ruff check scripts/" not in self._action()
+
+    def test_score_prompt_addresses_no_signal_markers(self) -> None:
+        data = yaml.safe_load(self.LOOP_FILE.read_text())
+        action = data["states"]["score"]["action"]
+        for expected in (
+            "NO TEST SIGNAL",
+            "NO LINT SIGNAL",
+            "NOT MEASURED",
+            "67%",
+            "excluding any dimension reported as NOT MEASURED",
+        ):
+            assert expected in action, f"score prompt missing {expected!r}"
+        # A mandate in the output block ("code_health: <0-100>", with the
+        # closing '>') would contradict the "report NOT MEASURED" guidance
+        # five lines above it — must not survive the rewrite.
+        assert "code_health: <0-100>" not in action
+
+
 class TestAgentEvalImproveLoop:
     """Structural tests for the agent-eval-improve FSM loop."""
 
