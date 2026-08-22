@@ -3,10 +3,11 @@ id: ENH-3292
 type: ENH
 title: 'dead-code-cleanup.yaml hardcodes this repo''s scope: ["scripts/"]'
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-08-22'
 captured_at: '2026-08-22T19:53:19Z'
+completed_at: '2026-08-22T21:42:38Z'
 labels:
 - loops
 - gate
@@ -215,21 +216,21 @@ N/A — no new decision logic, gate, or threshold is introduced; this changes an
 
 ## Acceptance Criteria
 
-- [ ] `scripts/little_loops/loops/dead-code-cleanup.yaml:8-9` declares `scope: ["."]`;
+- [x] `scripts/little_loops/loops/dead-code-cleanup.yaml:8-9` declares `scope: ["."]`;
       a repo-wide grep for `"scripts/"` in that file returns zero matches
-- [ ] `TestDeadCodeCleanupLoop` (`scripts/tests/test_builtin_loops.py:12042`) has a
+- [x] `TestDeadCodeCleanupLoop` (`scripts/tests/test_builtin_loops.py:12042`) has a
       `test_scope_declared` method asserting `scope == ["."]` (equality, not membership —
       see Integration Map → Tests), with ENH-3292 cited in its docstring
-- [ ] `test_all_have_scope_field` (`test_builtin_loops.py:139-158`) still passes with no
+- [x] `test_all_have_scope_field` (`test_builtin_loops.py:139-158`) still passes with no
       new entry added to `_SCOPE_EXEMPT_STEMS` (`:125-137`)
-- [ ] `test_builtin_loop_hardcode_gate.py`'s module docstring (`:13-20`) no longer cites a
+- [x] `test_builtin_loop_hardcode_gate.py`'s module docstring (`:13-20`) no longer cites a
       `scripts/` instance that does not exist, and still states that `scope:` entries are
       excluded from the gate by design
-- [ ] `scripts/tests/test_builtin_loop_hardcode_gate.py` passes unchanged in logic —
+- [x] `scripts/tests/test_builtin_loop_hardcode_gate.py` passes unchanged in logic —
       `_HARDCODE_PATTERNS` (`:37-42`) and `_scanned_strings()` (`:66-87`) are not modified
-- [ ] `ll-loop validate dead-code-cleanup` reports no new findings, and emits no
+- [x] `ll-loop validate dead-code-cleanup` reports no new findings, and emits no
       `_validate_missing_scope()` warning (`fsm/validation/structural_rules.py:1226`)
-- [ ] `python -m pytest scripts/tests/` exits 0
+- [x] `python -m pytest scripts/tests/` exits 0
 
 ## Implementation Steps
 
@@ -287,6 +288,7 @@ already considered and rejected there (`scope:` entries are not exec-time conten
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-22T21:42:04 - `4d29ca52-8c1f-4911-8df5-cda6d65da716.jsonl`
 - `/ll:confidence-check` - 2026-08-22T21:00:31 - `bc6653b6-fcc0-4790-89ae-8782900fae6c.jsonl`
 - `/ll:confidence-check` - 2026-08-22T20:48:55 - `bc6653b6-fcc0-4790-89ae-8782900fae6c.jsonl`
 - `/ll:wire-issue` - 2026-08-22T20:44:18 - `417d8b98-7782-429a-9668-dc89c2071d68.jsonl`

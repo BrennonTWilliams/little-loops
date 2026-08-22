@@ -16,8 +16,9 @@ Scope is deliberately narrow: ``states[*].action`` bodies and top-level
 not exec-time content in the same way (see the issue's Scope Boundaries /
 Decision Rules for the full reasoning). The match pattern set is the survey
 grep, not a definition of the defect class: a bare ``scripts/`` does not
-match (that is ``dead-code-cleanup.yaml``'s ``scope: ["scripts/"]``, out of
-this gate's scope and captured as a separate follow-up issue).
+match. The one instance (``dead-code-cleanup.yaml``'s
+``scope: ["scripts/"]``) was fixed by ENH-3292; ``scope:`` entries remain
+out of this gate's scope by design.
 """
 
 from __future__ import annotations

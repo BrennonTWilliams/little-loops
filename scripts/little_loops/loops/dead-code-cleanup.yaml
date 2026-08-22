@@ -6,7 +6,7 @@ description: |
   the most confident items, and loops until clean or count stops decreasing.
 initial: check_preconditions
 scope:
-  - "scripts/"
+  - "."
 import:
   - lib/common.yaml
   - lib/prompt-fragments.yaml

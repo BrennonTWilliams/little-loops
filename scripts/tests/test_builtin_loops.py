@@ -12078,6 +12078,18 @@ class TestDeadCodeCleanupLoop:
     def test_commit_uses_ll_commit_fragment(self, data: dict) -> None:
         assert data["states"]["commit"].get("fragment") == "ll_commit"
 
+    def test_scope_declared(self, data: dict) -> None:
+        """dead-code-cleanup must declare scope: ["."] rather than the
+        this-repo-hardcoded scope: ["scripts/"] (ENH-3292): the loop's true
+        write footprint (scan.focus_dirs plus any import site touched by a
+        removal) is not knowable in advance, so the whole tree is the only
+        honest lock declaration.
+        """
+        scope = data.get("scope")
+        assert scope is not None, "dead-code-cleanup.yaml must declare a 'scope' field."
+        assert isinstance(scope, list), f"scope must be a list, got {type(scope).__name__}"
+        assert scope == ["."], f"scope must equal ['.'], got {scope!r}"
+
     def test_done_state_is_terminal(self, data: dict) -> None:
         assert data["states"]["done"].get("terminal") is True
 
