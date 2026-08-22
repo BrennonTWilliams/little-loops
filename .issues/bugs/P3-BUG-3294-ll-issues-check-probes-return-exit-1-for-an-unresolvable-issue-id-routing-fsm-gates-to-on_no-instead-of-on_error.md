@@ -89,6 +89,22 @@ Exit **3** must be avoided throughout: `shell_exit` does not set `abstain_on_exi
 `on_error` today but is reserved for the abstain semantics and would change meaning if a caller
 ever enabled it.
 
+**Exit 2 is not a new code for these commands — argparse already uses it.** Verified 2026-08-22:
+`ll-issues check-flag` with a missing positional exits **2** (argparse `parser.error` →
+`SystemExit(2)`). That is the same "I could not evaluate this" class as an unresolvable ID, so
+choosing 2 aligns the not-found case with a signal the family already emits rather than
+introducing a new one. It also means `on_error` is **already reachable** from these gate sites
+today — see § *Dependent Files → already-live error reachability*.
+
+### Scope Boundary — what this does *not* close
+
+The fix closes the **not-found** half of "cannot evaluate", not the class. Verified 2026-08-22: an
+issue file that *resolves* but whose frontmatter fails to parse still exits **1** —
+`parse_frontmatter` degrades gracefully (no exception, no traceback), so `check-flag` reports the
+field as absent and returns a genuine-looking negative. Same for a resolvable file missing the
+queried field entirely. Those remain exit 1 by design here; do not write acceptance criteria that
+claim the conflation is eliminated, only that the unresolvable-ID case is separated.
+
 ## Motivation
 
 These probes exist to give FSM loops a deterministic, non-LLM verdict. A probe that cannot say "I
@@ -130,13 +146,13 @@ Rules* for the selected option and rationale.
 _Added by `/ll:refine-issue` — 2026-08-22 — based on codebase analysis:_
 
 - The stated precedent, `check-unresolved-decisions` (BUG-3278 part 4), has not landed: `scripts/little_loops/cli/issues/check_unresolved_decisions.py` is absent from disk, and BUG-3278 is still `status: open`. Its spec (BUG-3278 lines 314-348) describes the exit-2 divergence as an inline `if path is None: ... return 2` at the same resolution guard the other seven probes already use for `return 1` — Implementation Step 4 there says "Model on `check_open_questions.py`, diverging on the exit codes," i.e. copy-and-diverge, not extract-and-share. There is no shared helper or landed code to import from; each of the seven probes will get its own inline literal change.
-- No `EXIT_*` constant, enum, or shared exit-code helper exists anywhere in `cli/issues/` or `fsm/` today — every exit code in every one of the seven probes is a raw inline `return N`. The not-found guard is identical across all seven: `_resolve_issue_id(...) is None` → `print(f"Error: Issue '{id}' not found.", file=sys.stderr)` → `return 1` (sites: check_decidable.py:32,52; check_open_questions.py:56,81; check_design.py:36,39; check_flag.py:29,33; check_acceptance_criteria.py:102,118; check_verify_verdict.py:84,97,107,118; check_readiness.py:140,142).
+- No `EXIT_*` constant, enum, or shared exit-code helper exists anywhere in `cli/issues/` or `fsm/` today — every exit code in every one of the seven probes is a raw inline `return N`. The not-found guard is identical across all seven: `_resolve_issue_id(...) is None` → `print(f"Error: Issue '{id}' not found.", file=sys.stderr)` → `return 1`. The not-found sites — the ONLY lines that change — are exactly one per file: check_decidable.py:32, check_open_questions.py:56, check_design.py:36, check_flag.py:29, check_acceptance_criteria.py:102, check_verify_verdict.py:84, check_readiness.py:140. Every other `return 1` in these files (check_decidable.py:52, check_open_questions.py:81, check_design.py:39, check_flag.py:33, check_acceptance_criteria.py:118, check_verify_verdict.py:97,107,118, check_readiness.py:142) is a genuine negative verdict and must stay 1.
 
 _Added by `/ll:refine-issue` — 2026-08-22 — based on codebase analysis:_
 
 - No shared "resolve-or-exit" helper/decorator exists for the `_resolve_issue_id(...) is None` guard across `cli/issues/`; every one of the seven probes re-implements the check-and-return inline after importing `_resolve_issue_id` from `show.py` (evidence: `check_decidable.py:26-32`, `check_open_questions.py:47-56`, `check_flag.py:23-29`). BUG-3278's own spec for the new sibling command states the same method explicitly — "Model on `check_open_questions.py`, diverging on the exit codes" — i.e. copy-and-diverge, not extract-and-share, is the codebase's stated convention even for a brand-new file in this family.
 - Recent family-wide fixes in this codebase extract a new shared function only when the underlying data model changes (e.g. BUG-3278's `DecisionGroup`/`locate_unresolved_decisions`), not to deduplicate a repeated exit-code literal. No precedent exists for extracting a helper purely to unify this guard.
-- No iterable registry exists for the check-* subcommand family to drive a parametrized guard test: `cli/issues/__init__.py:1015-1029` dispatches via a flat `if`-chain, not a data structure a test could introspect. The nearest analog, `test_builtin_loop_hardcode_gate.py` (glob-derived parametrize + hand-maintained `_EXEMPT` set), does not transfer directly — a family-wide guard test here needs a hand-maintained subcommand list, mirroring that file's `_HARDCODE_PATTERNS` tuple.
+- No iterable registry exists for the check-* subcommand family to drive a parametrized guard test: `cli/issues/__init__.py:1015-1029` dispatches via a flat `if`-chain, not a data structure a test could introspect. The nearest analog, `test_builtin_loop_hardcode_gate.py` (glob-derived parametrize + hand-maintained `_EXEMPT` set), does not transfer directly — a family-wide guard test here needs a hand-maintained subcommand list, mirroring that file's `_HARDCODE_PATTERNS` tuple. **(Superseded — see § Tests: glob `cli/issues/check_*.py` for the family list; only per-probe extra argv is hand-maintained.)**
 - Named exit-code constants do exist elsewhere in the codebase — `fsm/types.py:17-25` (`FAILURE_TERMINAL_EXIT_CODE = 2`) and `cli/loop/_helpers.py:69-80` (`EXIT_CODES: dict[str, int]`) — but the FSM evaluator this issue targets, `evaluate_exit_code()` (`fsm/evaluators.py:238-264`), itself compares against bare literals with no named constant for 0/1/2/3, and none exists anywhere in `cli/issues/` today.
 
 ## Integration Map
@@ -151,8 +167,10 @@ _Added by `/ll:refine-issue` — 2026-08-22 — based on codebase analysis:_
 - `scripts/little_loops/cli/issues/check_readiness.py` — not-found return
 - `scripts/little_loops/cli/issues/check_flag.py` — not-found return (in scope — see § *Program Design → Decision Rules*)
 
-Each resolves the ID via `_resolve_issue_id` from `cli/issues/show.py`, so the shape of the change
-is identical in all seven.
+Six resolve the ID via `_resolve_issue_id` from `cli/issues/show.py` directly; `check_readiness.py`
+resolves through the `readiness_status()` helper and guards on `status is None` (`:139-140`). The
+fix in all seven is the CLI-layer return value only — do NOT change `readiness_status()` itself,
+which `issue_manager.py:796` also imports and whose `None` contract must stay intact.
 
 ### Dependent Files (Callers/Importers)
 
@@ -180,11 +198,52 @@ _Wiring pass added by `/ll:wire-issue`:_
   | oracles/resolve-decision.yaml:58-67 | `check_decision_decidable` | `deposit_options` | `run_decide` |
   | oracles/resolve-decision.yaml:196-204 | `assert_decision_cleared` | `done` (terminal, success) | `failed` (terminal, failure) — highest-impact: a not-found ID currently terminates this sub-loop as **success** |
 
-- **New failure mode — states with no `on_error` at all** (an "error" verdict has no route today
-  per `fsm/executor.py:2776-2792`, which returns `None` rather than falling back to `on_no`; these
-  never received a nonzero-but-not-1 exit before, so the gap was latent):
-  `autodev.yaml:611` `decide_current`, `autodev.yaml:1393` `check_missing_artifacts`,
-  `spike-gate.yaml:34` `check_spike_needed`, `spike-gate.yaml:42` `check_spike_completed`.
+- **New failure mode — states with no `on_error` at all**: `autodev.yaml:611` `decide_current`,
+  `autodev.yaml:1393` `check_missing_artifacts`, `spike-gate.yaml:34` `check_spike_needed`,
+  `spike-gate.yaml:42` `check_spike_completed`. `fsm/executor.py:2776-2792` returns `None` rather
+  than falling back to `on_no` (the fallback runs only in the other direction — a `no` verdict with
+  no `on_no` *does* fall through to `on_error`, `executor.py:2772-2773`).
+
+  **The consequence is a run abort, not an unrouted no-op.** `_route()` → `None` reaches
+  `executor.py:767-774`, which calls `_finish("error", error="No valid transition")` — the entire
+  loop run terminates. So at these four states a bad ID goes from a graceful `on_no` detour today
+  to a dead run post-fix. That makes the Wiring Phase `on_error` additions a **prerequisite** of
+  the exit-code change, not a companion cleanup: land them first, or land both in one commit.
+
+- **Already-live error reachability** (corrects the assumption that these states have never seen a
+  nonzero-but-not-1 exit): `ll-issues check-flag` exits **2** from argparse when a positional is
+  missing (verified 2026-08-22). `decide_current` (`autodev.yaml:622`) and both spike-gate states
+  interpolate a bare `${...issue_id}` into the command line, so an empty interpolation shifts the
+  field name into the ID slot and argparse errors with 2 — aborting the run today, with no
+  not-found involved. The `on_error` gap is a live defect independent of this issue's fix.
+
+- **Sites where the exit code never reaches `shell_exit` at all** — the probe is invoked inside
+  shell control flow, which collapses every nonzero to one branch. The audit framing ("record what
+  `on_error` does at each of the 44 sites") does not apply here, because these have no reachable
+  `on_error` for the probe's own verdict:
+
+  | Loop file | State | Shape | Effect of a not-found ID |
+  |---|---|---|---|
+  | autodev.yaml:1267 | `recheck_scores` | `if ! ll-issues check-design "$ID"; then touch …-design-gate-failed-$ID; fi` | marker touched — same as a genuine design failure |
+  | autodev.yaml:1799 | `regate_after_atomic_remediation` | `if ll-issues check-design "$ID"; then DESIGN_FAIL=false; else DESIGN_FAIL=true; touch …; fi` | same |
+  | autodev.yaml:2026 | `recheck_after_size_review` | same shape as `:1799` | same |
+
+  Bash `if` sees only zero/nonzero, so exit 2 is indistinguishable from exit 1 and the state's
+  overall exit code is decided by later logic in the same action. **These three sites get no
+  improvement from the fix.** The marker they touch is consumed at `autodev.yaml:1829` and `:2066`
+  to select `design_gate_failed` as the deferral reason — so an unresolvable ID is recorded as a
+  Program Design defect on an issue that does not exist. Either add an explicit discriminator
+  (`ll-issues check-design "$ID"; rc=$?; if [ "$rc" -ge 2 ]; then …` — a distinct branch that does
+  *not* touch the marker) or declare it a stated residual with a follow-up issue. Do not leave it
+  unremarked; it is the same silent-miss shape this issue exists to close.
+
+  `recheck_scores`'s trailing `&&` chain (`:1272-1274`) is a separate case: `&&` *does* propagate
+  the nonzero, so that half of the action routes normally (`on_error` there equals `on_no`, so it
+  is routing-inert).
+
+  Note also the `||` chain at `oracles/resolve-decision.yaml:62-63` — `check-open-questions ||
+  check-decidable`. Both probes share the same resolver and the same ID, so a not-found ID yields 2
+  from both and the chain's exit is 2. Convergent; no masking in this instance.
 - `skills/confidence-check/SKILL.md:141` — a non-loop caller: `ll-issues check-design ... && echo "" || echo "yes"`. Bash `&&`/`||` already collapses any nonzero to the same branch, so this site is confirmed **convergent** (no behavior change) — included for audit completeness since it sits outside the "44 loop gate sites" the audit scope names.
 - `scripts/little_loops/cli/issues/locate_options.py:36` — a related but **out-of-scope** CLI command (not one of the seven) whose own test docstring (`test_issues_locate_options.py:5,181`) explicitly asserts parity with "check-decidable's contract" on exit 1 for not-found. Once the seven move to exit 2, this file becomes the new single inconsistent outlier the Motivation section warns about — flagged for awareness, not added to *Files to Modify* since it is outside this issue's named family.
 
@@ -195,7 +254,19 @@ _Wiring pass added by `/ll:wire-issue`:_
   `_write_issue()` / `_invoke()` subprocess-fixture shape to extend
 - A guard test enumerating the family — assert every `check-*` subcommand returns 2 for a
   nonexistent ID, so a newly added probe cannot reintroduce the conflation. This is the test that
-  makes the convention durable rather than a one-time sweep
+  makes the convention durable rather than a one-time sweep.
+
+  **Derive the family list by glob, not by hand.** Earlier research here concluded a
+  hand-maintained subcommand list was the only option because `cli/issues/__init__.py` dispatches
+  through a flat `if`-chain with no introspectable registry. That understates what is available:
+  the family is one module per probe (`cli/issues/check_*.py`, seven files, exactly the seven in
+  scope), and the subcommand name is the module stem with `_`→`-`. Globbing that directory gives a
+  registry that cannot drift when an eighth probe lands — which is the entire point of the guard
+  test, and is lost the moment the list is hand-maintained. This also matches the
+  `test_builtin_loop_hardcode_gate.py` precedent more closely than the hand-maintained
+  `_HARDCODE_PATTERNS` half of it does: that file globs its *subjects* and hand-maintains only its
+  *exemptions*. Do the same — glob the probes, hand-maintain only per-probe extra argv (e.g.
+  `check-flag` needs a trailing field name, `check-readiness` needs its thresholds)
 
 _Wiring pass added by `/ll:wire-issue`:_
 
@@ -241,8 +312,16 @@ _Wiring pass added by `/ll:wire-issue`:_
   and `check_design` route "on_no/exit-1 ... independently of the confidence scores" describes only
   the genuine-failure case post-fix; needs a caveat that a not-found ID now takes the (different)
   `on_error` path instead, per the routing-divergence table above
-- `skills/decide-issue/SKILL.md:488,547` — documents `ll-issues check-decidable <ID>` as a
-  verification step; no exit-code claim to correct, but is a doc-coupling site to re-check
+- `skills/decide-issue/SKILL.md:488-490` — **does carry an exit-code claim** (an earlier pass in
+  this issue recorded "no exit-code claim to correct" — that was wrong): *"exit 0 means 'decide has
+  something to act on', exit 1 routes the loop through …"*. That enumeration becomes incomplete
+  once 2 exists; add the not-found case. Line `:547` is a plain invocation with no claim.
+  Tracked mirrors of this file carry the same prose and need the same edit (or a regeneration):
+  `.qwen/skills/decide-issue/SKILL.md`, `.kimi-code/skills/decide-issue/SKILL.md`,
+  `.gemini/skills/decide-issue/SKILL.md`
+- `commands/ready-issue.md:237` — not previously listed: `ll-issues check-design [ID]` *"exits
+  non-zero … surface only, never block"*. Convergent (any nonzero takes the same advisory path), so
+  no behavior change, but the prose should not imply non-zero means a design gap
 - `commands/refine-issue.md:488` — mentions `ll-issues check-decidable <ID>` in step text; same
   re-check note
 
@@ -251,7 +330,24 @@ _Wiring pass added by `/ll:wire-issue`:_
 _Added by `/ll:refine-issue` — 2026-08-22 — based on codebase analysis:_
 
 - Existing tests for four of the seven probes (`check_decidable`, `check_open_questions`, `check_design`, `check_acceptance_criteria`) share one verbatim `_cli()` / `temp_project_dir` / `_write_issue()` / `_invoke()` fixture quartet, duplicated per-file rather than imported from a shared module, plus an identically-shaped `test_missing_issue_exits_one` test (`returncode == 1`, id-in-stderr, "not found"/"Error" in stderr). `test_check_readiness.py` is the outlier: a different fixture shape (`_run_check_readiness`, no `_invoke`) and a differently-named not-found test (`test_unresolvable_issue_exits_1`) — a new exit-2 test for `check_readiness` should follow its own existing local shape, not the quartet.
-- No existing test enumerates the check-* family under one shared parametrized invariant. The nearest structural analog, `test_builtin_loop_hardcode_gate.py`, parametrizes over a glob-derived list of loop YAML files with a hand-maintained exemption set — but CLI subcommand registration here (`cli/issues/__init__.py`, ~708-751 registration, ~1015-1029 dispatch) is a flat per-command `if`-chain with no iterable registry a test could introspect. A family-wide guard test here would need a hand-maintained subcommand list (mirroring that same file's hand-maintained `_HARDCODE_PATTERNS` tuple), not a glob.
+- No existing test enumerates the check-* family under one shared parametrized invariant. The nearest structural analog, `test_builtin_loop_hardcode_gate.py`, parametrizes over a glob-derived list of loop YAML files with a hand-maintained exemption set — but CLI subcommand registration here (`cli/issues/__init__.py`, ~708-751 registration, ~1015-1029 dispatch) is a flat per-command `if`-chain with no iterable registry a test could introspect. A family-wide guard test here would need a hand-maintained subcommand list (mirroring that same file's hand-maintained `_HARDCODE_PATTERNS` tuple), not a glob. **(Superseded — see § Tests: the family IS glob-derivable from `cli/issues/check_*.py`; the flat dispatch `if`-chain only rules out introspecting the argparse registry, not globbing the modules.)**
+
+_Pre-implementation review — 2026-08-22 — claims re-verified against the tree:_
+
+- All seven `return 1` not-found sites confirmed present; `_resolve_issue_id` is a thin delegation
+  to `issue_parser.resolve_issue_path` (`cli/issues/show.py:39-60`) and returns `None` for every
+  unresolvable form, so one guard covers the whole family.
+- Gate-site count reproduced exactly: 44 across 6 loop files — `refine-to-ready-issue.yaml` 17,
+  `autodev.yaml` 16, `oracles/resolve-decision.yaml` 4, `spike-gate.yaml` 3, `rn-remediate.yaml` 3,
+  `recursive-refine.yaml` 1.
+- **No Python consumer** branches on these exit codes: the only cross-module import from the family
+  is `issue_manager.py:796` → `check_readiness.readiness_status` (a helper, not `cmd_*`), and the
+  MCP server exposes no `check-*` tool. The blast radius is shell callers only.
+- Exit codes measured directly: `ll-issues check-decidable 999999` → 1; `ll-issues check-flag`
+  (missing positional) → 2; `check-flag` against a file with malformed frontmatter → 1, no
+  traceback.
+- The four no-`on_error` states and the three shell-swallowing sites were read in full and are
+  recorded in *Dependent Files*.
 
 ## Program Design
 
@@ -302,14 +398,27 @@ this issue at all.
 
 ## Implementation Steps
 
-1. Audit all 44 gate sites: for each, record what `on_error` does today and whether reaching it on
-   a bad ID is an improvement or a new failure.
-2. `check-flag` scope is decided — in scope (§ *Program Design → Decision Rules*). Include its 18
+1. Audit all 44 gate sites, classifying each into one of four buckets rather than assuming they all
+   route on the probe's exit code:
+   (a) `on_no` and `on_error` target the same state → routing-inert;
+   (b) they differ → live behavior change, review individually (7 sites, table above);
+   (c) no `on_error` clause → **run abort** post-fix, must gain one first (4 sites);
+   (d) probe wrapped in shell control flow so the code never reaches `shell_exit` → the fix is
+   inert there and the not-found case stays mis-classified (3 sites, table above).
+2. Add the missing `on_error` clauses (bucket c) *before or with* the exit-code change — this is a
+   prerequisite, not a follow-up. Those four states already abort the run on an argparse exit 2
+   from an empty ID interpolation, so the clauses are worth adding on their own merits.
+3. `check-flag` scope is decided — in scope (§ *Program Design → Decision Rules*). Include its 18
    sites in the step-1 audit.
-3. Change the not-found return to 2 across all seven commands.
-4. Add the per-command exit-2 tests and the family-wide guard test.
-5. Update `docs/reference/CLI.md` with the family-wide exit-code convention.
-6. Re-run the full suite — the loop-level FSM tests are where an unreviewed `on_error` branch will
+4. Change the not-found return to 2 across all seven commands.
+5. Decide bucket (d): either add an `rc -ge 2` discriminator at the three `autodev.yaml`
+   `check-design` sites so a not-found ID stops touching `autodev-design-gate-failed-$ID`, or
+   record it as a stated residual with a follow-up issue. Do not leave it silent.
+6. Add the per-command exit-2 tests and the glob-derived family guard test.
+7. Update `docs/reference/CLI.md` with the family-wide exit-code convention (0 = yes, 1 = no,
+   2 = cannot evaluate — including argparse usage errors, 3 reserved for abstain), and note the
+   scope boundary: a resolvable-but-unparseable file still returns 1.
+8. Re-run the full suite — the loop-level FSM tests are where an unreviewed `on_error` branch will
    surface.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
@@ -317,10 +426,14 @@ this issue at all.
 _These touchpoints were identified by wiring analysis and must be included in the implementation:_
 
 - Add an explicit `on_error` clause to the 4 states that currently have none, so an "error" verdict
-  (now reachable via not-found) doesn't hit the unrouted `None` fallthrough in `fsm/executor.py`:
-  `decide_current` and `check_missing_artifacts` in `autodev.yaml`; `check_spike_needed` and
-  `check_spike_completed` in `spike-gate.yaml`. Decide each target deliberately — this is new
-  routing, not a mechanical copy of `on_no`.
+  (now reachable via not-found) doesn't hit the unrouted `None` fallthrough in `fsm/executor.py` —
+  which is **not** a benign fallthrough: it terminates the run with `error: No valid transition`
+  (`executor.py:767-774`). Sites: `decide_current` and `check_missing_artifacts` in `autodev.yaml`;
+  `check_spike_needed` and `check_spike_completed` in `spike-gate.yaml`. Decide each target
+  deliberately — this is new routing, not a mechanical copy of `on_no`. `spike-gate.yaml`'s two
+  states are the ones to think hardest about: today a bogus `${context.issue_id}` falls to
+  `run_impl` and the gate degrades open, so a naive `on_error: failed` converts a graceful
+  degradation into a hard stop.
 - Review the 7 confirmed routing-divergence states (table in Dependent Files) individually — each
   is a live behavior change, not just an audit item — and confirm the new `on_error` destination is
   correct for a not-found ID, especially `oracles/resolve-decision.yaml`'s `assert_decision_cleared`
@@ -334,11 +447,22 @@ _These touchpoints were identified by wiring analysis and must be included in th
   "issue not found" under exit 1.
 - Add `on_error`-target tests for `check_passed` and `check_ac_automatable` (currently unpinned),
   plus the 4 newly-added `on_error` clauses above.
-- Update `docs/reference/CLI.md:1972` and the `docs/guides/LOOPS_REFERENCE.md` routing prose.
+- Resolve the three exit-code-swallowing `check-design` sites in `autodev.yaml` (`recheck_scores`
+  `:1267`, `regate_after_atomic_remediation` `:1799`, `recheck_after_size_review` `:2026`) — see the
+  table in *Dependent Files*. Fix with an `rc` discriminator or record as a stated residual; either
+  way the outcome must be written down, because as they stand a not-found ID is filed as a Program
+  Design defect (`autodev-design-gate-failed-$ID` → `design_gate_failed` deferral at `:1829`/`:2066`)
+  on an issue that does not exist.
+- Update `docs/reference/CLI.md:1972` and the `docs/guides/LOOPS_REFERENCE.md` routing prose. State
+  the convention as 0/1/2/3 with 2 covering both not-found *and* argparse usage errors.
+- Correct `skills/decide-issue/SKILL.md:488-490`'s two-outcome exit-code enumeration (and its three
+  tracked host mirrors under `.qwen/`, `.kimi-code/`, `.gemini/`); re-check
+  `commands/ready-issue.md:237`'s "exits non-zero" advisory wording.
 - Note (no action required): `skills/confidence-check/SKILL.md:141`'s `&&`/`||` check-design
   invocation is confirmed convergent; `scripts/little_loops/cli/issues/locate_options.py` is a
   related but out-of-scope command that will become the new inconsistent outlier — flagged for a
-  future issue, not this one's scope.
+  future issue, not this one's scope. Likewise the resolvable-but-unparseable case (§ *Expected
+  Behavior → Scope Boundary*) stays exit 1.
 
 ## Impact
 
@@ -348,7 +472,10 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - **Effort**: Small change, Medium audit — the seven returns are trivial; step 1 is the work
 - **Risk**: Medium — a shared CLI contract with 44 consumers, several of which will newly reach
   `on_error`. Bounded by the audit and by the fact that the new branch is only reachable on an
-  unresolvable ID, which is already a broken state
+  unresolvable ID, which is already a broken state. The sharpest edge is bucket (c): four states
+  have no `on_error`, and an unrouted error verdict aborts the whole loop run
+  (`executor.py:767-774`), so shipping the exit-code change without those clauses trades a wasted
+  pass for a dead run
 - **Breaking Change**: Yes, narrowly — any external consumer branching on exit 1 to mean
   "not found or no" sees 2 for the not-found half. No such consumer is known in-repo
 

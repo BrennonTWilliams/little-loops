@@ -208,6 +208,14 @@ loop-gate change with its own blast radius.
 family-wide convention across all seven `check-*` probes, not specific to this one. Same file,
 different defect; do not fold it in.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-22 — based on codebase analysis:_
+
+- **`locate_enumerable_options()` is now a five-step fallback chain, not two** (post defects-1&2 fix, confirmed at `issue_parser.py:2366` and its call sites): (1) `## Proposed Solution` section scan (`:2389-2395`), (2) `_OPTION_FALLBACK_SECTIONS` — `Codebase Research Findings`/`Implementation Status` (`:2397-2404`), (3) whole-document H2 sweep via `_iter_h2_sections`, including nested H3s (`:2406-2413`) — this is the step the stale `# ENH-2821` comment describes, and for this one step alone the comment is accurate, (4) `_locate_decision_rules_numbered`, bounded to `## Program Design → ### Decision Rules` specifically (`:2324`, called at `:2415-2417`), (5) `_locate_directive_alternatives`, bounded to the five `_DIRECTIVE_ALTERNATIVES_SECTIONS` headings (`:2206`, called at `:2419-2421`). Only after all five miss does the function return `count=0, pattern=None, heading=None` (`:2423`). The corrected comment/message should reflect that a `count 0` result rules out these five specific shapes/locations, not "the document genuinely has none" — a bold-numbered or directive-shaped decision under some other, unlisted H2 (e.g. `## Context`, `## Expected Behavior`) still would not be caught by steps 4 or 5, only by step 3's differently-shaped `_OPTION_PATTERNS` regex tiers.
+- **No existing precedent in this codebase for an "either cause A or cause B" diagnostic message.** Surveyed all seven `cli/issues/check_*.py` probes (`check_open_questions.py`, `check_acceptance_criteria.py`, `check_verify_verdict.py`, `check_flag.py`, `check_design.py`, `check_readiness.py`, plus `check_decidable.py` itself) — every `<TOKEN>: {id} — ...; run /ll:refine-issue {id} --auto` message states one cause and one remedy. The closest analog anywhere in the CLI layer is `ctx_stats.py:59`'s help epilog ("No data found in either the SQLite store or the fallback file"), which hedges over data *sources* checked, not causes of an absence. This means the two-candidate-cause wording this issue calls for is a new shape in this file family, not an extension of an established one — free to word without breaking a convention.
+- **Comment-correction precedent exists for stating a prior comment was factually wrong** (as opposed to the codebase's more common additive-only discriminator-comment style): `host_runner.py:499-502` (`# BUG-2759: corrected to agree with structured_output — the inline --json-schema flag IS honored...`) and `rn-implement.yaml:1212-1215` (`# BUG-2006: a NO_CHILDREN decline is no longer a flat skip. Disambiguate by...`) both explicitly flag that a previous claim was wrong and state the corrected rule, rather than silently rewriting the comment with no trace of the correction.
+
 ## Integration Map
 
 ### Files to Modify
@@ -269,6 +277,12 @@ _Added by `/ll:refine-issue` — 2026-08-22 — based on codebase analysis:_
 - **Negative-control shape for "this shape must not be treated as decidable" exists in two house styles, not one**: a single `test_<shape>_not_<verb>` method (`test_out_of_scan_scope_section_not_matched`, `scripts/tests/test_issue_parser_unresolved.py:775-783`) and `@pytest.mark.parametrize` positive/negative pairs (`scripts/tests/test_issue_parser.py:4289-4313`).
 - **Corpus-sweep precedent exists but only as a crash-safety check, never as a before/after diff**: `TestUnappliedDecisionLiveCorpusSweep.test_corpus_sweep_does_not_crash` (`scripts/tests/test_issue_parser.py:5399-5430`) only asserts `isinstance(reasons, list)`. No test in the suite currently asserts "no unpinned file's count/heading moves" — the diff shape this issue's Tests section calls for has no landed precedent to copy.
 - **CLI-level fixture-pair precedent for a locator-shape change**: `TestCheckDecidablePatternEDirective` (`scripts/tests/test_ll_issues_check_decidable.py:160-193`) pairs a positive (`test_scope_boundaries_directive_exit_zero`) and negative (`test_bare_or_prose_without_imperative_marker_exit_one`) fixture using the shared `_write_issue()`/`_invoke()` subprocess helpers — the CLI-test shape to extend for the bold-numbered case.
+
+_Added by `/ll:refine-issue` — 2026-08-22 — based on codebase analysis:_
+
+- **Exact current text confirmed** (`check_decidable.py:42-52`, 53-line file): comment at `:42-45`, the `OPTIONS_MISSING` print at `:46-51`, `return 1` at `:52`. `cmd_check_decidable` itself starts at `:19`; its only caller is `main_issues` (`cli/issues/__init__.py:1018`, `return cmd_check_decidable(config, args)`), imported at `__init__.py:28`.
+- **No test in `test_ll_issues_check_decidable.py` pins the `OPTIONS_MISSING` message's prose** — every assertion (`test_no_options_at_all_exit_one`, `test_bare_or_prose_without_imperative_marker_exit_one`, `test_implementation_steps_bold_numbered_list_exit_one`) checks only `result.returncode == 1` and `"OPTIONS_MISSING" in result.stderr`, the leading token. Rewriting the message body to name two candidate causes will not break any existing assertion. This matches the house test-assertion convention across all seven `check-*` probes (`check_open_questions.py`, `check_acceptance_criteria.py`, `check_verify_verdict.py` tests) — every one asserts token + issue-ID substrings, never full/exact stderr text.
+- **`check_open_questions.py:66-69` carries an identically-styled `# ENH-2821` comment** for its own `OPEN_QUESTIONS_REMAIN` message (`:75-80`) — same convention, but scoped to `locate_unresolved_options` and explicitly out of this bug's stated scope (Part 3 names only `check_decidable.py`).
 
 ### Tests — additional precedent (pattern-finder pass)
 
@@ -516,12 +530,43 @@ Reproduces on committed files: `BUG-3285` is the case above.
   part 3 and filed separately once it turned out to be a family-wide convention across all seven
   `check-*` probes rather than a local slip
 
+## Verification Notes
+
+_Added by `/ll:verify-issues` — 2026-08-22:_
+
+- **Defects 1 & 2 (structural + directive halves) are resolved as of the
+  2026-08-22T21:27:23 implementation session.** Confirmed live:
+  `_locate_decision_rules_numbered` exists (`issue_parser.py:2324`), wired into
+  `locate_enumerable_options` (`:2415`), with `# BUG-3293:` discriminator comments
+  at `:2154`, `:2179`, `:2188`, `:2278`. Re-ran the exact **Current Behavior**
+  reproduction example (`1. **Identifier shape.** …` / `2. **Title extent.** …`
+  under `Program Design → Decision Rules`) — now returns
+  `count=2, pattern=decision_rules_numbered, heading=Program Design`, not
+  `count 0, pattern None`. `ll-issues check-decidable 3285` and
+  `check-decidable 3293` both exit 0 (previously exit 1), matching the issue's
+  own acceptance check. `TestBug3293DecisionRulesCorpusDifferential`
+  (`test_issue_parser.py:5399`) exists and passes.
+- <!-- ll-evidence-ok: describes pre-fix state, superseded by the resolution above --> **Current Behavior and Steps to Reproduce describe the pre-fix state and no
+  longer reproduce for defects 1–2** — same historical-snapshot pattern already
+  used for the BUG-3285 callout earlier in this file.
+- **Part 3 (required unconditionally, per Implementation Steps item 8) remains
+  outstanding — this is the only remaining work.** `check_decidable.py:42-45`
+  still carries the unedited `# ENH-2821` comment claiming a count of 0
+  "genuinely has none", and the `OPTIONS_MISSING` message (`:46-51`) still names
+  only one candidate cause. `status: open` is correct; scope is now narrowed to
+  Part 3 only.
+- No broken dependency refs, no active required decisions-log rule violations,
+  `ll-verify-evidence` clean (`"ok": true, "count": 0`).
+- **Verdict: NEEDS_UPDATE.**
+
 ## Status
 
 **Open** | Created: 2026-08-22 | Priority: P3
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-08-22T21:47:33 - `eacb291c-2f02-4734-8f3d-1761d2eef94b.jsonl`
+- `/ll:verify-issues` - 2026-08-22T21:40:33 - `fbcae9c4-0aa7-44a3-a9c9-50fde4bc0060.jsonl`
 - `implement-decision-rules-numbered-and-pattern-e-widening` - 2026-08-22T21:27:23 - `bc6653b6-fcc0-4790-89ae-8782900fae6c.jsonl`
 - `corpus-differential-measurement` - 2026-08-22T20:34:11 - `bc6653b6-fcc0-4790-89ae-8782900fae6c.jsonl`
 - `/ll:decide-issue` - 2026-08-22T20:28:37 - `b02f6c42-b49b-49f2-ab1c-39c23a52f988.jsonl`

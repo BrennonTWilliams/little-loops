@@ -20,6 +20,7 @@ relates_to:
 - BUG-3278
 - BUG-3285
 - ENH-3280
+- BUG-3295
 confidence_score: 98
 outcome_confidence: 90
 score_complexity: 22
