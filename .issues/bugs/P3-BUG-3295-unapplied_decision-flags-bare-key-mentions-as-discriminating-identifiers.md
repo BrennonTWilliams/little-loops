@@ -9,6 +9,12 @@ discovered_date: '2026-08-22'
 captured_at: '2026-08-22T21:27:39Z'
 relates_to:
 - BUG-3289
+confidence_score: 95
+outcome_confidence: 89
+score_complexity: 21
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 25
 ---
 
 # BUG-3295: unapplied_decision flags bare key mentions as discriminating identifiers
@@ -136,6 +142,12 @@ _Added by `/ll:refine-issue` — 2026-08-22 — based on codebase analysis:_
 - `scripts/little_loops/cli/issues/__init__.py:148` — lists `unapplied_decision` in the `format-check` subcommand help text.
 - FSM `ensure_formatted` states shell out to `ll-issues format-check` and read only the exit code (per BUG-3289's Integration Map, same call path), so a strictly-narrowing fix can flip a gate from fail to pass but never the reverse.
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `skills/confidence-check/SKILL.md:198, 208` — `FC_JSON` shell parsing pulls `unapplied_decision` from `ll-issues format-check` JSON; this is the actual Criterion C consumer this bug's own Motivation/Impact sections describe as being capped by the false positive. No code/text change expected — the extraction mechanism is unaffected, only which issues populate the list shrinks favorably. [confirmed by codebase-analyzer, ll-code callers-of found no direct code-graph edge since this is a shell/JSON coupling, not a Python call]
+- `skills/confidence-check/rubric.md:316, 324` — Criterion C scoring table caps score on any non-empty `unapplied_decision` gap list. No change expected — the cap mechanism is unaffected, only which issues trip it.
+- `scripts/tests/test_confidence_check_skill.py:582, 593-594, 632-633` — asserts `SKILL.md`/`rubric.md` reference the `unapplied_decision` gap key by name; presence-only assertions, unaffected by this fix.
+- `scripts/tests/test_ll_issues_format_check.py:369` — asserts JSON output includes an `"unapplied_decision": []` key; unaffected.
+
 ### Conventions in Force
 - This codebase has no existing precedent for backtick-identifier containment/subsumption — a grep across `issue_parser.py` for substring/containment/longest-match logic between two extracted identifier strings finds none. The two nearest analogues operate on different domains: span-offset containment (`in_fence(start, end, spans)` / `fence_spans()`, `scripts/little_loops/text_utils.py:97`, `:64`) and file-path suffix matching with an explicit ambiguity tie-break (`classify_file_ref()` / `suffix_match_candidates()`, `scripts/little_loops/text_utils.py:269`, `:333`). Neither is identifier-string containment; both are cited only as this file's closest structural precedent for "one extracted unit relates to another by containment, with an explicit rule for what wins."
 - Landed fixes to this same option-locator/decision-identifier family are documented inline with a `# BUG-NNNN:` comment stating the exact corpus-measured effect directly above the regex/constant changed — e.g. `_DECIDE_IMPERATIVE_RE` (`issue_parser.py:2154-2165`), `_INLINE_OR_RE` (`:2179-2184`), `_DECISION_RULES_NUMBERED_RE` (`:2278-2295`) — evidence: BUG-3293's landed fixes, corpus-measured before/after.
@@ -145,11 +157,18 @@ _Added by `/ll:refine-issue` — 2026-08-22 — based on codebase analysis:_
 ### Tests
 - `scripts/tests/test_issue_parser.py::TestUnappliedDecision` (`:5093-5397`) — the fixture class to extend. Shared builder: `_issue(self, proposed_solution: str, **directive_sections: str) -> str` (`:5101-5106`). Existing tests assert either `== []` (no gap) or `any("<substr>" in r for r in reasons)` (a gap containing this substring fired). `test_winner_tail_narrows_sel_ids_promoting_shared_identifier_to_discriminating` (`:5340-5397`) already asserts directly on the intermediate `sel_ids`/`rej_ids` sets in addition to the end-to-end report list, and its docstring notes an assertion there is coupled to BUG-3289 landing — a precedent for isolating boundary-layer vs. report-layer assertions in a fixture for this same containment question.
 - `scripts/tests/test_issue_parser.py::TestUnappliedDecisionLiveCorpusSweep` (`:5466-5497`) — crash-only sweep over the live `.issues/` corpus (`isinstance(reasons, list)`, no count pinning); its docstring states this detector fires on "roughly 40% of the ~307 issues carrying a `> **Selected:**` callout" as "a known precision limit of pure lexical identifier-diffing."
-- `scripts/tests/test_issue_parser.py::TestBug3293DecisionRulesCorpusDifferential` (`:5399-5464`) — pinned-exact-match corpus regression (`_PINNED` dict of filename → `(pattern, count)`), used elsewhere in this same file family; asserts `unexpected == []` for newly-matched files outside the pinned set. BUG-3289's own Implementation Steps propose a third shape instead — record the report-total drop as an observation, assert `new_reports == 0` strictly (a subtraction can only remove reports). These three corpus-regression strengths coexist in this subsystem and are chosen per-detector, not by one codebase-wide rule.
+- `scripts/tests/test_issue_parser.py::TestBug3293DecisionRulesCorpusDifferential` (`:5399-5464`) — pinned-exact-match corpus regression (`_PINNED` dict of filename → `(pattern, count)`), used elsewhere in this same file family; asserts `unexpected == []` for newly-matched files outside the pinned set. BUG-3289's own Implementation Steps propose a third shape instead — record the report-total drop as an observation, assert `new_reports == 0` strictly (a subtraction can only remove reports). These three corpus-regression strengths coexist in this subsystem and are chosen per-detector, not by one codebase-wide rule. `TestBug3293DecisionRulesCorpusDifferential` targets `locate_enumerable_options`, a strictly-additive structural change — not directly reusable in shape here since BUG-3295 is strictly-narrowing through `_unapplied_decision`'s free-text `reasons` list; the `TestUnappliedDecisionLiveCorpusSweep` crash-only shape fits better.
+
+_Wiring pass added by `/ll:wire-issue`:_
+- Model the new no-gap fixture after `test_empty_discriminating_set_is_inert` (`:5220-5230`) — the closest existing "REJ - SEL is empty" precedent, though it uses identical strings rather than containment. Model the negative-control fixture (Implementation Steps #2) after `test_negated_mention_still_fires` (`:5161-5174`), which asserts a disjoint identifier with no containment relationship still fires. Confirmed via full read: no existing fixture in `TestUnappliedDecision` currently relies on a bare-key-subsumed-by-compound-literal pattern to fire a gap, so this fix changes zero existing test outcomes — it is a pure addition, not an update. [codebase-pattern-finder finding]
+- `_shared_subject_identifiers` (BUG-3289's proposed helper) is confirmed absent from `scripts/little_loops/issue_parser.py` as of this pass — BUG-3289 has not landed, so Implementation Steps #3's composition check has nothing to compose against yet. [codebase-pattern-finder + codebase-analyzer finding, cross-checked]
 
 ### Documentation
 - `docs/reference/API.md:895, 920` — `check_format_gaps` docstring reproduction and the `**unapplied_decision** (ENH-3256)` gap description document the `REJ - SEL` rule this bug reports as flawed; update if the rule's description changes.
 - `docs/reference/CLI.md:148` — `ll-issues format-check` subcommand's gap-kind list.
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/CLI.md:2065, 2257` — the `:148` citation above is a stale anchor (that line is inside an unrelated skills-capability JSON example, not the gap-kind list); the correct locations are `:2065` (gap-kind description prose for `unapplied_decision`) and `:2257` (`--format json` example line listing gap-kind keys). Both are stated at the semantic/outcome level and remain accurate after this narrowing fix — no text change required at either location. [confirmed by codebase-locator + codebase-analyzer]
 
 ### Configuration
 - N/A
@@ -244,6 +263,8 @@ different function (`_locate_directive_alternatives` / tier matching, not
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-22T22:13:28 - `c3fbea37-7e24-4852-97d2-937535e0fb6c.jsonl`
+- `/ll:wire-issue` - 2026-08-22T21:56:32 - `9918c26d-d757-4f35-8afa-285147b946fc.jsonl`
 - `/ll:format-issue` - 2026-08-22T21:42:26 - `323559a8-cc72-4bea-b01f-060c73d5598e.jsonl`
 - `/ll:refine-issue` - 2026-08-22T21:37:48 - `42953cb7-ca2c-4d42-ad29-2d22ccf37f64.jsonl`
 - `/ll:capture-issue` - 2026-08-22T21:27:47 - `1c97624b-6c5a-4655-8896-9cd12a9f503b.jsonl`

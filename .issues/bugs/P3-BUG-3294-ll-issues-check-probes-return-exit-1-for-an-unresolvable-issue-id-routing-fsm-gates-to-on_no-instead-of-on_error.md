@@ -396,30 +396,86 @@ this issue at all.
 | Include `check-flag` | 18 additional sites, same shape as the other 26 | Closes the conflation family-wide, no asymmetric exception to remember | **Selected** |
 | Exclude `check-flag` | Smaller immediate diff | Leaves the highest-traffic probe inconsistent; requires documenting a carve-out with no principled rationale | Rejected |
 
+## Pre-Decided Routing (outcome-risk mitigation — 2026-08-22)
+
+_The 44-site audit is complete (buckets and tables in § Dependent Files). What remained open was
+per-site judgment; that judgment is exercised HERE, so implementation executes recorded decisions
+rather than making new ones._
+
+### The 4 missing `on_error` clauses — targets decided
+
+The governing convention, already live and test-pinned in autodev (`test_autodev_decision_gate.py`
+stubs exit 2 and asserts fall-through; cf. `check_passed.on_error: detect_children`,
+`triage_outcome_failure.on_error: detect_children`, confidence-recheck `on_error: enqueue_or_skip`):
+**a probe that cannot evaluate degrades open to the pipeline's fall-through state** — the gate is
+an optimization, not a correctness barrier, and downstream states have their own failure handling.
+
+| State | Add | Rationale |
+|---|---|---|
+| `autodev.yaml` `decide_current` | `on_error: implement_current` | Same as `on_no` (degrade open). A bad ID fails again inside `implement_current`'s `ll-auto --only`, which has its own triage path (`check_impl_auth` → drain/abort) — the right place to handle it. |
+| `autodev.yaml` `check_missing_artifacts` | `on_error: detect_children` | Same as `on_no`; its own comment says it "mirrors check_decision_before_size_review logic", and the size-review path is the safe fall-through. |
+| `spike-gate.yaml` `check_spike_needed` | `on_error: run_impl` | Preserves today's degrade-open not-found behavior (exit 1 → `run_impl`) instead of converting it to a hard stop; also fixes the pre-existing argparse-exit-2 run abort. |
+| `spike-gate.yaml` `check_spike_completed` | `on_error: run_impl` | Same rationale; reachable only after `check_spike_needed` succeeded, so an error here is transient — degrade open. |
+
+All four are routing-inert relative to `on_no` **by design** — the purpose is eliminating the
+run-abort (`executor.py:774`), not adding new routing semantics. This also means the exit-code flip
+produces **zero behavior change at these four sites** beyond un-breaking the abort.
+
+### The 7 routing-divergence sites — reviewed and signed off, no YAML edits needed
+
+Each `on_error` destination was reviewed for the not-found case (2026-08-22); all seven are correct
+as they stand. The new behavior at each is the *intended* fix, not an open question:
+
+- `check_passed` → `detect_children`: degrade-open convention; already reachable via argparse 2.
+- `refine-to-ready-issue.yaml` `check_verify_verdict` → `check_hedges`, `check_hedges` →
+  `check_placeholders`, `check_ac_automatable` → `confidence_check`, `check_design` →
+  `confidence_check`: all skip a remediation step and continue the chain — correct for an issue
+  that cannot be evaluated (remediating a nonexistent issue is the bug being fixed).
+- `resolve-decision.yaml` `check_decision_decidable` → `run_decide`: acceptable — `run_decide`
+  fails on its own against a bad ID, and the detour is marker-bounded.
+- `resolve-decision.yaml` `assert_decision_cleared` → `failed`: the highest-value flip — a
+  not-found ID stops terminating the sub-loop as success. The state's own comment already
+  documents `on_error: failed` as the conservative-unresolved choice.
+
+### Bucket (d) — decided: add the `rc` discriminator
+
+At the three shell-swallowed `check-design` sites (`autodev.yaml:1267`, `:1799`, `:2026`), use
+`ll-issues check-design "$ID"; rc=$?; if [ "$rc" -eq 1 ]; then <touch marker>; fi` so exit ≥2 no
+longer files a Program Design defect against a nonexistent issue. Not the "stated residual" option
+— the discriminator is three small, identical edits and closes the silent-miss fully.
+
 ## Implementation Steps
 
-1. Audit all 44 gate sites, classifying each into one of four buckets rather than assuming they all
-   route on the probe's exit code:
-   (a) `on_no` and `on_error` target the same state → routing-inert;
-   (b) they differ → live behavior change, review individually (7 sites, table above);
-   (c) no `on_error` clause → **run abort** post-fix, must gain one first (4 sites);
-   (d) probe wrapped in shell control flow so the code never reaches `shell_exit` → the fix is
-   inert there and the not-found case stays mis-classified (3 sites, table above).
-2. Add the missing `on_error` clauses (bucket c) *before or with* the exit-code change — this is a
-   prerequisite, not a follow-up. Those four states already abort the run on an argparse exit 2
-   from an empty ID interpolation, so the clauses are worth adding on their own merits.
-3. `check-flag` scope is decided — in scope (§ *Program Design → Decision Rules*). Include its 18
-   sites in the step-1 audit.
-4. Change the not-found return to 2 across all seven commands.
-5. Decide bucket (d): either add an `rc -ge 2` discriminator at the three `autodev.yaml`
-   `check-design` sites so a not-found ID stops touching `autodev-design-gate-failed-$ID`, or
-   record it as a stated residual with a follow-up issue. Do not leave it silent.
-6. Add the per-command exit-2 tests and the glob-derived family guard test.
-7. Update `docs/reference/CLI.md` with the family-wide exit-code convention (0 = yes, 1 = no,
+_Land as two phases — **Phase A first, as its own commit, suite green, before any exit code
+changes**. Phase A is purely additive (new clauses, new tests pinning current behavior), so it
+cannot regress anything; it converts "code and safety net land in the same pass" into "safety net
+pre-exists the change"._
+
+### Phase A — safety net (no behavior change to the probes)
+
+1. Add the 4 `on_error` clauses per the *Pre-Decided Routing* table above.
+2. Create `scripts/tests/test_ll_issues_check_flag.py` (sibling `_cli()`/`temp_project_dir`/
+   `_write_issue()`/`_invoke()` quartet) covering the genuine yes/no contract of the
+   highest-traffic probe. (The not-found exit-2 assertion lands in Phase B with the flip.)
+3. Pin `on_error` targets in `test_builtin_loops.py` for all 6 currently-unpinned states:
+   `check_passed`, `check_ac_automatable`, `decide_current`, `check_missing_artifacts`,
+   `check_spike_needed`, `check_spike_completed`.
+4. Run the full suite; commit Phase A.
+
+### Phase B — the flip
+
+5. Change the seven not-found returns to 2 (exact lines in § Codebase Research Findings — one line
+   per file; every other `return 1` is a genuine negative and stays).
+6. Flip the six existing not-found tests to `== 2`, add the `check-flag` not-found test, and add
+   the glob-derived family guard test (§ Tests).
+7. Add the `rc -eq 1` discriminator at the three bucket-(d) `autodev.yaml` sites per the decision
+   above.
+8. Update `docs/reference/CLI.md` with the family-wide exit-code convention (0 = yes, 1 = no,
    2 = cannot evaluate — including argparse usage errors, 3 reserved for abstain), and note the
-   scope boundary: a resolvable-but-unparseable file still returns 1.
-8. Re-run the full suite — the loop-level FSM tests are where an unreviewed `on_error` branch will
-   surface.
+   scope boundary: a resolvable-but-unparseable file still returns 1. Plus the other doc/skill
+   touchpoints in § Documentation.
+9. Re-run the full suite — with Phase A's pins in place, any surprise routing change surfaces as a
+   named test failure, not a silent behavior shift.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
@@ -429,15 +485,13 @@ _These touchpoints were identified by wiring analysis and must be included in th
   (now reachable via not-found) doesn't hit the unrouted `None` fallthrough in `fsm/executor.py` —
   which is **not** a benign fallthrough: it terminates the run with `error: No valid transition`
   (`executor.py:767-774`). Sites: `decide_current` and `check_missing_artifacts` in `autodev.yaml`;
-  `check_spike_needed` and `check_spike_completed` in `spike-gate.yaml`. Decide each target
-  deliberately — this is new routing, not a mechanical copy of `on_no`. `spike-gate.yaml`'s two
-  states are the ones to think hardest about: today a bogus `${context.issue_id}` falls to
-  `run_impl` and the gate degrades open, so a naive `on_error: failed` converts a graceful
-  degradation into a hard stop.
+  `check_spike_needed` and `check_spike_completed` in `spike-gate.yaml`. **Targets are now
+  decided — see § Pre-Decided Routing**; the spike-gate hazard flagged here (naive `on_error:
+  failed` converting degrade-open into a hard stop) is resolved by choosing `on_error: run_impl`.
 - Review the 7 confirmed routing-divergence states (table in Dependent Files) individually — each
-  is a live behavior change, not just an audit item — and confirm the new `on_error` destination is
-  correct for a not-found ID, especially `oracles/resolve-decision.yaml`'s `assert_decision_cleared`
-  (flips a not-found ID from terminal success to terminal failure).
+  is a live behavior change, not just an audit item. **Done — all seven reviewed and signed off,
+  no YAML edits needed; see § Pre-Decided Routing**, including `assert_decision_cleared`'s
+  success→failure flip, which is the intended fix.
 - Create `scripts/tests/test_ll_issues_check_flag.py` — no dedicated test file exists for the
   highest-traffic probe; add not-found coverage asserting exit 2, following the sibling quartet
   pattern.
@@ -449,10 +503,10 @@ _These touchpoints were identified by wiring analysis and must be included in th
   plus the 4 newly-added `on_error` clauses above.
 - Resolve the three exit-code-swallowing `check-design` sites in `autodev.yaml` (`recheck_scores`
   `:1267`, `regate_after_atomic_remediation` `:1799`, `recheck_after_size_review` `:2026`) — see the
-  table in *Dependent Files*. Fix with an `rc` discriminator or record as a stated residual; either
-  way the outcome must be written down, because as they stand a not-found ID is filed as a Program
-  Design defect (`autodev-design-gate-failed-$ID` → `design_gate_failed` deferral at `:1829`/`:2066`)
-  on an issue that does not exist.
+  table in *Dependent Files*. **Decided: the `rc` discriminator (see § Pre-Decided Routing →
+  Bucket (d))** — as they stand a not-found ID is filed as a Program Design defect
+  (`autodev-design-gate-failed-$ID` → `design_gate_failed` deferral at `:1829`/`:2066`) on an
+  issue that does not exist.
 - Update `docs/reference/CLI.md:1972` and the `docs/guides/LOOPS_REFERENCE.md` routing prose. State
   the convention as 0/1/2/3 with 2 covering both not-found *and* argparse usage errors.
 - Correct `skills/decide-issue/SKILL.md:488-490`'s two-outcome exit-code enumeration (and its three
@@ -524,6 +578,7 @@ _Added by `/ll:confidence-check` on 2026-08-22_
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-22T22:13:39 - `4a645ef4-53d6-431a-b186-5f97907a3395.jsonl`
 - `/ll:confidence-check` - 2026-08-22T21:49:34 - `9ed67f71-7303-474d-bf20-c4416e27aef4.jsonl`
 - `/ll:confidence-check` - 2026-08-22T21:25:43 - `0c7d6c76-7efe-4d29-9902-6a8bb3eb75f1.jsonl`
 - `/ll:wire-issue` - 2026-08-22T21:07:33 - `ad82b3b7-2da4-479e-b70b-43a0d95a179c.jsonl`
