@@ -422,6 +422,64 @@ unchanged), and to have `code_health` report the sentinel rather than a fabricat
 nothing was measured. Whichever is chosen, state it in the prompt — the same "do not leave it to
 the model" rule applies, for the same reason.
 
+##### Pinned replacement text — all four lines, verbatim (added by the seventh review, 2026-08-22)
+
+**Step 5a was the last multi-artifact edit in this issue left unpinned, and it is the one with the
+most ways to go wrong.** The marker strings and the `harness-*` comments were pinned for exactly
+this reason — several artifacts must agree — and step 5a has the same property: four prompt lines
+plus a structural guard that asserts specific wording is present *and* specific wording is gone.
+A guard matching text nobody pinned is a guess.
+
+It also resolves a real ambiguity. *SCORER CORRECTION* offers its two remedies as **either/or**,
+while the `overall` sub-section above effectively requires **both** — and they are not alternatives,
+they are the same spec split by case: one marker → scope `code_health` to the signal that arrived;
+both markers → sentinel, excluded from `PRIMARY_CONCERN`, `overall` re-weighted. The block below is
+that spec, and it is what makes all four lines say one thing.
+
+`:86` →
+
+```yaml
+      - code_health: based on test pass/fail and lint clean/dirty. If the code
+        quality results contain NO TEST SIGNAL, ignore tests and score this
+        dimension from lint alone; if they contain NO LINT SIGNAL, score it from
+        tests alone. If BOTH markers are present, nothing was measured: report
+        code_health as the literal NOT MEASURED instead of a number.
+```
+
+`:88` →
+
+```yaml
+      - overall: weighted average (issue_quality 40%, code_health 40%,
+        backlog_health 20%), re-weighted across the measured dimensions only.
+        When code_health is NOT MEASURED, use issue_quality 67% /
+        backlog_health 33%.
+```
+
+`:94` →
+
+```yaml
+      code_health: <0-100, or the literal NOT MEASURED>
+```
+
+`:100` →
+
+```yaml
+      Choose PRIMARY_CONCERN as the dimension furthest below its threshold,
+      excluding any dimension reported as NOT MEASURED — CODE is never the
+      primary concern when code_health was not measured.
+```
+
+**The guard's assertions, pinned with the text** (the negative one is fragile otherwise — a
+rewrite to `code_health: <0-100 | NOT MEASURED>` still *contains* `code_health: <0-100`, so the
+assertion must carry the closing `>`):
+
+- present: `NO TEST SIGNAL`, `NO LINT SIGNAL`, `NOT MEASURED`, `67%`
+- present: `excluding any dimension reported as NOT MEASURED`
+- absent: `code_health: <0-100>` (exact, with the closing `>`)
+
+Do **not** assert the absence of `furthest below its threshold` — the pinned `:100` still contains
+that phrase, followed by a comma.
+
 Still prompt text only: no state, `next:`, or `on_*` key changes.
 
 **Scope note.** This adds `evaluation-quality.yaml`'s `score` state to *Files to Modify* — a
@@ -827,14 +885,40 @@ _Wiring pass added by `/ll:wire-issue`:_
   script = prefix + 'echo "CMD=[$CMD]"\n'
   ```
 
-  This mirrors what the template actually does, and it holds uniformly across all five sites
-  (including `harness-multi-item`, whose `set -o pipefail` line sits between the resolution and the
-  `eval` and is harmless in the prefix).
+  This mirrors what the template actually does, and it holds at the **four** sites whose converted
+  action stays flat — `fix-quality-and-tests` and the three `harness-*` (including
+  `harness-multi-item`, whose `set -o pipefail` line sits between the resolution and the `eval` and
+  is harmless in the prefix).
 
-  **The `evaluation-quality` marker tests are the one exception** — they assert on stdout produced
-  *past* the `eval`, so they must run the full action. That is safe only on the present-null branch,
-  where `CMD` is empty and nothing executes. Use the truncated prefix for that site's three-case
-  resolution assertions and the full action only for the two marker assertions.
+  **`evaluation-quality` is the exception on BOTH halves (seventh review, 2026-08-22).** The
+  pre-seventh-review text said the truncated prefix "holds uniformly across all five sites" and
+  directed it for this site's three-case resolution assertions. It does not hold here, because this
+  is the one site whose conversion *adds a conditional*: steps 4 and 5 wrap the `eval` in an
+  `if [ -z "$CMD" ]` skip branch, so the first `eval "` sits inside the `else` and truncating there
+  cuts the `if` open. Verified by execution against the converted shape:
+
+  ```
+  rc: 2   stdout: ''
+  bash: -c: line 7: syntax error: unexpected end of file from `if' command on line 2
+  ```
+
+  No probe output at all — the test fails for a reason unconnected to resolution, in exactly the way
+  the fifth review's item 1 was written to prevent, one level down. Any conditional shape breaks the
+  naive split (`[ -z "$CMD" ] && ...` / `{ ...; }` fare no better), so this is a property of the
+  site, not of one implementer's formatting.
+
+  **Required at `evaluation-quality`:** truncate at the **skip guard** rather than at the `eval` —
+  the first line matching `^\s*(if |\[ -z)` — so the prefix ends with the resolution assignments and
+  nothing structural is left open:
+
+  ```python
+  prefix = re.split(r'^\s*(?:if |\[ -z)', action, maxsplit=1, flags=re.M)[0]
+  script = prefix.replace("${context.run_dir}", str(tmp_path)) + 'echo "CMD=[$CMD]"\n'
+  ```
+
+  Use that for this site's three-case resolution assertions, and the **full action** only for the
+  two marker assertions — they assert on stdout produced *past* the `eval`, which is safe only on
+  the present-null branch, where `CMD` is empty and nothing executes.
 - **`evaluation-quality` skip markers must be asserted on captured stdout, not file contents.**
   `score` reads `${captured.code_results.output}`; a test that opens `eval-test-results.txt`
   passes against the broken `>`-redirect shape (*CAPTURE CORRECTION*).
@@ -856,6 +940,22 @@ _Wiring pass added by `/ll:wire-issue`:_
   parametrized over the three files, assert `"falls back to 'pytest'" not in text` **and** that
   the `check_concrete` comment block mentions `ll-config get`. Without this, the comment rewrite
   is the only load-bearing change in the issue with nothing holding it in place.
+
+  **This guard MUST read raw file text, not the parsed action — otherwise it can never fail
+  (seventh review, 2026-08-22).** The scaffold comments sit *above* `action:`, so they are not part
+  of the action string. Verified:
+  `yaml.safe_load(harness_single_shot)["states"]["check_concrete"]["action"]` contains only the
+  shell body, and `"falls back to 'pytest'" in action` is **`False` on the pre-change tree** — i.e.
+  a guard written as `assert "falls back to 'pytest'" not in action` is green *before any
+  conversion*. That mistake is easy to make because the sibling guard one bullet below is correctly
+  phrased against the parsed action (`"ruff check scripts/" not in action`), and an implementer
+  reusing its shape here gets a test that asserts nothing. There is also no way to isolate "the
+  `check_concrete` comment block" from parsed YAML at all — comments do not survive `safe_load`.
+
+  **Required:** drive both assertions off `loop_file.read_text()`, slicing the comment block as the
+  contiguous run of `#` lines between the `check_concrete:` key and its `action:` key. **Confirm the
+  guard is RED on the pre-change tree before converting** — that check is what distinguishes this
+  guard from the vacuous version, and it costs one `git stash`.
 - **Pin the hardcoded-`ruff` removal** with a structural guard mirroring
   `TestIncrementalRefactorLoop.test_no_state_hardcodes_this_repo_test_path` — assert
   `"ruff check scripts/" not in action` post-conversion. `evaluation-quality.yaml`'s
@@ -1061,8 +1161,10 @@ gate-teardown criteria live in **ENH-3288**._
 
 - [ ] Per-site subprocess resolution tests driven through `bash -c`, all three config cases
       (set / present-null / absent); the three `harness-*` sites parametrized as one class.
-      **Each truncates the action at the first `eval "` and asserts on an appended
-      `echo "CMD=[$CMD]"` probe** — never on the body's exit code (*Pinned extraction shape*)
+      **Each asserts on an appended `echo "CMD=[$CMD]"` probe, never on the body's exit code** —
+      truncating the action at the first `eval "` at the four flat sites and at the **skip guard**
+      (`^\s*(if |\[ -z)`) at `evaluation-quality`, whose conversion adds a conditional that the
+      `eval`-truncation cuts open (*Pinned extraction shape*, corrected by the seventh review)
 - [ ] `evaluation-quality` skip markers asserted on the state's **captured stdout**, not on
       `eval-test-results.txt` / `eval-lint-results.txt`, and matched against the pinned
       `NO TEST SIGNAL` / `NO LINT SIGNAL` sentinels verbatim
@@ -1070,13 +1172,21 @@ gate-teardown criteria live in **ENH-3288**._
       `evaluation-quality.evaluate_code`
 - [ ] Structural guard over the three `harness-*.yaml` asserting `"falls back to 'pytest'"` is
       absent and the `check_concrete` comment names `ll-config get` — the verifier for the Docs
-      row below
+      row below. **Driven off `loop_file.read_text()`, not the parsed action** (comments are not in
+      the action string, so a parsed-action guard is green pre-conversion), and **verified RED on
+      the pre-change tree** before step 3 lands. Added by the seventh review
 - [ ] Structural guard on `evaluation-quality`'s `score` action asserting the prompt addresses the
       no-signal case (*SCORER CORRECTION*) — keyed on the `NO TEST SIGNAL` / `NO LINT SIGNAL`
       sentinels, and covering the `overall` re-weighting rule as well as `PRIMARY_CONCERN`.
       **The guard must also assert the prompt no longer carries the unconditional
-      `code_health: <0-100>` / "furthest below its threshold" wording**, or it passes against a
-      prompt whose output block still contradicts its own guidance (sixth review)
+      `code_health: <0-100>` wording**, or it passes against a prompt whose output block still
+      contradicts its own guidance (sixth review). **Assertions pinned by the seventh review**
+      (*Pinned replacement text — all four lines*): present `NO TEST SIGNAL`, `NO LINT SIGNAL`,
+      `NOT MEASURED`, `67%`, `excluding any dimension reported as NOT MEASURED`; absent
+      `code_health: <0-100>` **with the closing `>`** — without it the assertion passes against a
+      `<0-100 | NOT MEASURED>` rewrite. **Do not assert the absence of "furthest below its
+      threshold"** — the pinned `:100` retains that phrase followed by a comma, so the sixth
+      review's wording for that half would fail a correct implementation
 - ~~[ ] `evaluate_code` exit-0 test, four combinations~~ — **STRUCK (third review)**; the hazard
       is unreachable (*EXIT-CODE CORRECTION — RETRACTED*). Do not write it
 
@@ -1123,8 +1233,9 @@ gate-teardown criteria live in **ENH-3288**._
 
 2b. **Write the subprocess resolution tests before converting, not alongside.** Both of this
    issue's named outcome risks reduce to "no execution-level coverage exists for any of the five
-   sites today" — which is exactly why `outcome_confidence` (63) sits below this project's
-   `outcome_threshold` (65). Written first, each test is a red-then-green check on that site's §2b
+   sites today" — which is what held `outcome_confidence` at 63, below this project's
+   `outcome_threshold` (65), until the 2026-08-22 re-run moved it to **71**. The ordering below is
+   what earned that, so keep it. Written first, each test is a red-then-green check on that site's §2b
    row; written alongside, it is a description of whatever shell was just typed and clears
    nothing. Order: the parametrized `harness-*` class, then `fix-quality-and-tests`, then
    `evaluation-quality` (both branches), then steps 3–5 turn them green. The exit-0 test formerly
@@ -1137,6 +1248,11 @@ gate-teardown criteria live in **ENH-3288**._
    neither for a reason connected to resolution. Truncate at the first `eval "` and assert on an
    appended `echo "CMD=[$CMD]"` probe. Getting this wrong turns the red-then-green ordering into
    five spurious reds that stay red after a correct conversion.
+
+   **And note the `evaluation-quality` carve-out (seventh review):** that site is the only one whose
+   conversion adds a conditional, so truncating at `eval "` cuts its `if` open and the probe never
+   runs (`rc=2`, bash syntax error, empty stdout). Truncate at the skip guard (`^\s*(if |\[ -z)`)
+   there. Both halves of the recipe are pinned under *Tests* > *Pinned extraction shape*.
 3. **Convert the four pass-on-empty sites first** — `fix-quality-and-tests.yaml`
    (delete its three-way python body outright), `harness-single-shot.yaml`,
    `harness-plan-research-implement-report.yaml`, `harness-multi-item.yaml`. These are
@@ -1179,6 +1295,13 @@ gate-teardown criteria live in **ENH-3288**._
    their pinned sentinels (`NO TEST SIGNAL` / `NO LINT SIGNAL`), not a paraphrase. Prompt text
    only — no state or edge changes.
 
+   **Copy all four lines verbatim from *SCORER CORRECTION* > *Pinned replacement text — all four
+   lines* (seventh review).** The choice is already made there and reconciled across the four
+   lines: one marker → scope `code_health` to the signal that arrived; both markers → the literal
+   `NOT MEASURED`, excluded from `PRIMARY_CONCERN`, `overall` re-weighted 67/33. The either/or
+   framing earlier in *SCORER CORRECTION* describes the two halves of that one spec, not two
+   alternatives to choose between. The structural guard's assertions are pinned alongside it.
+
 5b. **Correct the gate file's prose.** Reassign all **four** "ENH-3277 empties/deletes this set"
    claims to ENH-3288 — module docstring `:23-27`, `_PENDING_CONVERSION` comment `:52-55`,
    `test_pending_conversion_sites_still_exist`'s **docstring** `:148-151`, and that test's
@@ -1204,11 +1327,25 @@ gate-teardown criteria live in **ENH-3288**._
    under Option A, `oracles/code-run-gate.yaml`, and (until ENH-3288 lands) the two structural
    loops:
 
-   **The grep must cover the bracket form too.** `_INLINE_ACCESS_RE` alternates on
-   `['project']['test_cmd']` as well as `.get('project'…).get('test_cmd'`, and
-   `fix-quality-and-tests.yaml:69` uses **the bracket form** (`'test_cmd' in cfg['project']`)
-   inside the three-way body step 3 deletes. A `.get(`-only grep therefore reports clean against a
-   *partial* deletion that leaves that line behind, while the gate test still fails. Include both:
+   **The grep covers the bracket form for symmetry with `_INLINE_ACCESS_RE`, which alternates on
+   `['project']['test_cmd']` as well as `.get('project'…).get('test_cmd'`. Include both:**
+
+   **CORRECTION (seventh review, 2026-08-22) — the rationale this widening was given is false, and
+   so is the backstop it claimed.** The first addendum's item 5 asserted that
+   `fix-quality-and-tests.yaml:69` "uses **the bracket form**", that a `.get(`-only grep therefore
+   "reports clean against a *partial* deletion that leaves that line behind", and that "the gate
+   test still fails" in that case. Line `:69` is
+   `if 'project' in cfg and 'test_cmd' in cfg['project']:` — a **membership test**, not
+   `cfg['project']['test_cmd']`. Both regexes were run against that literal line and **neither**
+   matches it: not the widened grep's `\['project'\]\['(test_cmd|lint_cmd)'\]` branch, and not
+   `_INLINE_ACCESS_RE`'s. Only `:66`'s `.get('project', {}).get('test_cmd')` matches either one.
+
+   Consequence, stated plainly so nobody relies on a net that isn't there: **a partial deletion that
+   removes `:66` but leaves `:69` behind passes the grep AND the gate.** The verifier that actually
+   catches it is this issue's own new per-site subprocess resolution test for
+   `fix-quality-and-tests` (step 2b) — a leftover fragment of the `python3 -c` body leaves `CMD`
+   unresolvable and the `CMD=[...]` probe wrong. The widened grep is retained because it costs
+   nothing and does cover the bracket form wherever it is genuinely used; it is simply not why.
 
    ```bash
    grep -rnE "\.get\('(test_cmd|lint_cmd)'|\['project'\]\['(test_cmd|lint_cmd)'\]" \
@@ -1253,9 +1390,10 @@ implementation. Structural-loop touchpoints moved to **ENH-3288**._
   at the value-resolution level for any of the converted sites) — model on
   `TestRlCodingAgentObserveTestCmdResolution` (`test_builtin_loops.py:10820-10872`); parametrize
   the three `harness-*.yaml` `check_concrete` sites as one test class rather than tripling it,
-  and drive them through `bash -c`, not `sh`. **Use the pinned truncate-at-`eval` extraction shape
-  under *Tests*** — running the full action shells out to the resolved command inside the scratch
-  dir and fails on exit codes 5 / 127 that have nothing to do with resolution
+  and drive them through `bash -c`, not `sh`. **Use the pinned extraction shape under *Tests***
+  — running the full action shells out to the resolved command inside the scratch dir and fails on
+  exit codes 5 / 127 that have nothing to do with resolution, and at `evaluation-quality`
+  truncating at `eval "` instead of at the skip guard cuts its new `if` open (`rc=2`, syntax error)
 - Model the five conversions on the three **already-converted** precedent sites
   (`rl-coding-agent.yaml:62-63`, `general-task.yaml:57`, `incremental-refactor.yaml:62-63`), not
   on new shapes — specifically the **config-first bare** variant, since none of the five here
@@ -1447,7 +1585,7 @@ regression — the inline snippets open the same relative path — but not fixed
 
 ## Design Review History
 
-_Five design-review passes ran against the tree before implementation; their load-bearing
+_Seven design-review passes ran against the tree before implementation; their load-bearing
 corrections are preserved below. Current scores live in the single `## Confidence Check Notes`
 section further down — earlier check runs' score blocks were collapsed on 2026-08-21 per the
 `duplicate_heading` housekeeping flag._
@@ -1468,8 +1606,11 @@ the prior `/ll:confidence-check` run and are **stale** — re-run before treatin
 4. ~~**New hazard found:** `evaluate_code`'s exit code is 0 today only because its last statement
    carries `|| true`~~ — **WRONG; retracted by the third review.** The routing consequence
    claimed here does not exist (*EXIT-CODE CORRECTION — RETRACTED*).
-5. **Step 6's grep was weaker than the gate it stood in for** — it missed the bracket access form
-   that `fix-quality-and-tests.yaml:69` actually uses. Widened, and the gate declared authoritative.
+5. ~~**Step 6's grep was weaker than the gate it stood in for** — it missed the bracket access form
+   that `fix-quality-and-tests.yaml:69` actually uses.~~ — **WRONG; corrected by the seventh
+   review.** `:69` is a membership test (`'test_cmd' in cfg['project']`), which matches neither the
+   widened grep nor `_INLINE_ACCESS_RE`. The widening is harmless and retained; its stated rationale
+   and the "the gate test still fails" claim are both struck. See the CORRECTION at step 6.
 6. **Two unverified ACs given verifiers** — the `harness-*` comment rewrite (now pinned to
    verbatim replacement text plus a structural guard) and the exit-0 invariant. The AC preamble's
    "every row is verified by a named test or command" now holds. *(Third review: the exit-0 half
@@ -1653,9 +1794,75 @@ _No change to scope boundaries, option selection, the five/two file split, or th
 (still 6). No new files: items 1, 2 and 4 tighten anchors inside already-listed files; item 3
 removes text._
 
+### Seventh pre-implementation review — 2026-08-22
+
+_Independent design review against the tree, with three claims checked by execution. Re-verified and
+holding: every anchor the sixth review pinned — the gate file's six `ENH-3277` lines across four
+locations (`:24`, `:26`, `:51`, `:53`, `:150`, `:155`), the nine-entry `_PENDING_CONVERSION` set,
+all six conversion anchors (`fix-quality-and-tests.yaml:66`, `harness-single-shot.yaml:66`,
+`harness-multi-item.yaml:95`, `harness-plan-research-implement-report.yaml:126`,
+`evaluation-quality.yaml:58` and `:63`), the four `score` prompt lines (`:86`, `:88`, `:94`,
+`:100`), the three routing states' `output_contains`-on-`PRIMARY_CONCERN` shape
+(`:106`/`:115`/`:124`), `report`'s verbatim embed (`:184`) and trend compare (`:191`), the three
+per-file `harness-*` comment shapes (exactly three files in the tree carry `falls back to 'pytest'`),
+`HARNESS_OPTIMIZATION_GUIDE.md:569` as the only `ENH-3277` mention under `docs/`,
+`EVALUATION_GUIDE.md:393-394`, `TestRlCodingAgentObserveTestCmdResolution` at `:10820`, and
+`test_verify_evidence.py`'s SHA-pinned ENH-3277 blob (still benign — it reads history, so editing
+this file cannot break the evidence gate). Five corrections applied; three of them correct a
+**previous review's own fix**:_
+
+1. **The bracket-form rationale for step 6's grep is false, and so is the backstop it claimed
+   (first addendum item 5).** `fix-quality-and-tests.yaml:69` is
+   `if 'project' in cfg and 'test_cmd' in cfg['project']:` — a membership test, not
+   `cfg['project']['test_cmd']`. Both regexes were run against that literal line: **neither** the
+   widened grep nor `_INLINE_ACCESS_RE` matches it; only `:66` matches either. So "a `.get(`-only
+   grep reports clean against a partial deletion … while the gate test still fails" is wrong in
+   both halves — such a deletion passes the grep **and** the gate. The widened grep is retained
+   (harmless, and it does cover the bracket form where genuinely used); the rationale is struck and
+   the real verifier named: this issue's own new per-site subprocess test.
+2. **The `harness-*` comment guard, as specified, could be written so it can never fail.** Those
+   comments sit *above* `action:` and are not in the action string — verified:
+   `"falls back to 'pytest'" in safe_load(...)["states"]["check_concrete"]["action"]` is `False`
+   **on the pre-change tree**. The sibling guard one bullet away is correctly phrased against the
+   parsed action (`"ruff check scripts/" not in action`), so reusing its shape here yields a
+   vacuously-green test; and comments cannot be isolated from parsed YAML at all. Now pinned to
+   `read_text()` with a required red-on-pre-change-tree check.
+3. **The fifth review's *Pinned extraction shape* does not hold at `evaluation-quality` — the one
+   site whose conversion adds a conditional.** Steps 4/5 wrap the `eval` in an `if [ -z "$CMD" ]`
+   branch, so truncating at the first `eval "` cuts the `if` open. Verified by execution: `rc=2`,
+   `syntax error: unexpected end of file from 'if' command`, empty stdout — the probe never runs.
+   Same class as fifth-review item 1, one level down, and it bites first because step 2b makes
+   these tests a hard prerequisite. Truncate at the skip guard (`^\s*(if |\[ -z)`) there; the four
+   flat sites keep the `eval` truncation.
+4. **Step 5a was the last multi-artifact edit left unpinned.** Four prompt lines plus a structural
+   guard asserting specific wording present *and* absent, with the two remedies framed as either/or
+   at *SCORER CORRECTION* but combined-by-case in the `overall` sub-section. Added *Pinned
+   replacement text — all four lines*, resolving that into one spec (one marker → scope to the
+   arriving signal; both → `NOT MEASURED`, excluded from `PRIMARY_CONCERN`, `overall` 67/33) and
+   pinning the guard's assertions with it. Also fixed a fragile assertion the sixth review
+   introduced: `code_health: <0-100>` must be matched **with the closing `>`** (a
+   `<0-100 | NOT MEASURED>` rewrite still contains the prefix), and the absence-assertion on
+   "furthest below its threshold" is **dropped** — the pinned `:100` retains that phrase, so as
+   worded it would fail a correct implementation.
+5. **Frontmatter and body disagreed across the gate that decides whether to implement.**
+   Frontmatter carries `outcome_confidence: 71` (≥ the 65 `outcome_threshold` → PROCEED); the body
+   read 63 and "below the 65 `outcome_threshold`" in four places. The 2026-08-22T16:41 check run
+   moved it — exactly what the fifth review predicted once *Pinned extraction shape* landed — but
+   the notes were never updated, so as written the body blocked work the frontmatter had cleared.
+   Body reconciled to 71.
+
+_No change to scope boundaries, option selection, the five/two file split, or the conversion count
+(still 6). No new files. Items 1–3 correct prior reviews; items 4–5 pin and reconcile text already
+in scope._
+
+**Recommendation: implement now.** Three of the five findings above are a prior pass's correction
+being itself wrong, and the same test-class anchor was cited wrong three passes running. This file
+is ~1750 lines specifying six mechanical substitutions; an eighth review pass is lower-value than
+executing step 2b, where the remaining uncertainty actually resolves.
+
 ## Confidence Check Notes
 
-_Added by `/ll:confidence-check` on 2026-08-21 — the current scores. Earlier check runs' score
+_Added by `/ll:confidence-check` on 2026-08-21, scores reconciled to the 2026-08-22 re-run. Earlier check runs' score
 blocks were collapsed into `## Design Review History` above (fourth review, 2026-08-21); their
 load-bearing corrections are preserved there._
 
@@ -1663,7 +1870,12 @@ load-bearing corrections are preserved there._
 Criterion 4 no longer applies — `format-check` now returns `missing_behavior_parity: []`, and no
 other Criterion 4 cap (`stale_symbol_ref`, `stale_cli_flag`, `template_placeholders`,
 `boilerplate`, directive-section `missing`) is present either)
-**Outcome Confidence**: 63/100 → MODERATE (unchanged, below the 65 `outcome_threshold`)
+**Outcome Confidence**: **71/100 → PROCEED** (was 63; re-run 2026-08-22T16:41 after the fifth
+review landed *Pinned extraction shape*, which retired the sole named driver of the sub-threshold
+score. **Now above the 65 `outcome_threshold`, so the gate no longer blocks.** Corrected by the
+seventh review, 2026-08-22: the frontmatter carried `outcome_confidence: 71` while this block and
+three other places in the body still read 63 and "below the 65 `outcome_threshold`" — as written,
+the body blocked implementation that the frontmatter cleared)
 
 All hard overrides re-checked and inert: `PD_FAIL` empty (`ll-issues check-design` exits 0),
 `DEP_FAIL` empty (no `blocked_by` entries), no `learning_tests_required` targets declared.
@@ -1676,13 +1888,17 @@ mechanical and doesn't distinguish that.
 - No execution-level test coverage exists today for any of the five target read sites — a
   subprocess-level resolution test is needed per site **before** each conversion, not alongside
   it, per the pinned step 2b ordering (Outcome Criterion B, unchanged at 10/25).
-- **Partially retired by the fifth review (2026-08-22), scores not re-run.** The risk above was
-  the sole named driver of the sub-threshold `outcome_confidence` (63 vs. the 65
-  `outcome_threshold`), and its remediation plan was itself defective: the extraction recipe those
-  tests were to be built on fails at all five sites (fifth review item 1, verified by execution).
-  With *Pinned extraction shape* in place the plan is executable, so re-run
-  `/ll:confidence-check` before treating 63 as current — this is the one change in this issue's
-  history that should move Outcome Criterion B.
+- **Retired by the fifth review and confirmed by the 2026-08-22 re-run.** The risk above was the
+  sole named driver of the sub-threshold `outcome_confidence` (63 vs. the 65 `outcome_threshold`),
+  and its remediation plan was itself defective: the extraction recipe those tests were to be built
+  on fails at all five sites (fifth review item 1, verified by execution). With *Pinned extraction
+  shape* in place the plan became executable, and the re-run moved the score to **71 → PROCEED**.
+  No further `/ll:confidence-check` is needed before implementing.
+- **One residual, added by the seventh review (2026-08-22): the pinned shape did not cover
+  `evaluation-quality`.** Truncating at `eval "` cuts open the `if` that steps 4/5 add at that one
+  site (`rc=2`, bash syntax error, no probe output). Now pinned separately — truncate at the skip
+  guard there. This is a narrowing of the same Criterion B risk, not a new one, and it does not
+  move the 71: the remediation is specified in the same place as the shape it corrects.
 
 ### Housekeeping note (not scored)
 Resolved 2026-08-21 (fourth review): the `duplicate_heading` finding — repeated
