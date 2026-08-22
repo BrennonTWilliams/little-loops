@@ -37,7 +37,7 @@ compound identifier that embeds it as a substring (e.g.
 `` `scope: ["scripts/"]` ``, `` `scope: ["."]` ``).
 
 In `_unapplied_decision()` (`:1499` onward, the `discriminating = rej_ids -
-sel_ids` set-difference around `:1572`): if the selected option always writes
+sel_ids` set-difference at `:1580`): if the selected option always writes
 the full literal (`` `scope: ["."]` ``) but a rejected option happens to
 mention the bare key alone anywhere in its own text (natural phrasing:
 "...then change `` `scope:` `` to `` `["${context.src_dir}"]` ``"), the bare
@@ -134,7 +134,7 @@ _Added by `/ll:refine-issue` — 2026-08-22 — based on codebase analysis:_
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/issue_parser.py` — `_decision_identifiers()` (`:1401-1403`) and/or `_unapplied_decision()`'s `discriminating = rej_ids - sel_ids` line (`:1580`, confirmed by direct read — corrects the `:1572` anchor in this issue's own Current Behavior/Root Cause sections, which point at `selected_index = matching[0]` instead). `sel_ids` is built at `:1574`, the `rej_ids` union loop at `:1575-1578`. `_DECISION_IDENTIFIER_RE` (`:1379`) is a candidate but likely unchanged — the regex controls what spans are captured, not their relationships.
+- `scripts/little_loops/issue_parser.py` — `_decision_identifiers()` (`:1401-1403`) and/or `_unapplied_decision()`'s `discriminating = rej_ids - sel_ids` line (`:1580`, confirmed by direct read; this issue's Current Behavior/Root Cause anchors have been corrected in place to match). `sel_ids` is built at `:1574`, the `rej_ids` union loop at `:1575-1578`. `_DECISION_IDENTIFIER_RE` (`:1379`) is a candidate but likely unchanged — the regex controls what spans are captured, not their relationships.
 
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/issue_parser.py:1164` — `check_format_gaps()` calls `gaps.unapplied_decision.extend(_unapplied_decision(content))`; no change expected here, only in what `_unapplied_decision` returns.
@@ -157,7 +157,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 ### Tests
 - `scripts/tests/test_issue_parser.py::TestUnappliedDecision` (`:5093-5397`) — the fixture class to extend. Shared builder: `_issue(self, proposed_solution: str, **directive_sections: str) -> str` (`:5101-5106`). Existing tests assert either `== []` (no gap) or `any("<substr>" in r for r in reasons)` (a gap containing this substring fired). `test_winner_tail_narrows_sel_ids_promoting_shared_identifier_to_discriminating` (`:5340-5397`) already asserts directly on the intermediate `sel_ids`/`rej_ids` sets in addition to the end-to-end report list, and its docstring notes an assertion there is coupled to BUG-3289 landing — a precedent for isolating boundary-layer vs. report-layer assertions in a fixture for this same containment question.
 - `scripts/tests/test_issue_parser.py::TestUnappliedDecisionLiveCorpusSweep` (`:5466-5497`) — crash-only sweep over the live `.issues/` corpus (`isinstance(reasons, list)`, no count pinning); its docstring states this detector fires on "roughly 40% of the ~307 issues carrying a `> **Selected:**` callout" as "a known precision limit of pure lexical identifier-diffing."
-- `scripts/tests/test_issue_parser.py::TestBug3293DecisionRulesCorpusDifferential` (`:5399-5464`) — pinned-exact-match corpus regression (`_PINNED` dict of filename → `(pattern, count)`), used elsewhere in this same file family; asserts `unexpected == []` for newly-matched files outside the pinned set. BUG-3289's own Implementation Steps propose a third shape instead — record the report-total drop as an observation, assert `new_reports == 0` strictly (a subtraction can only remove reports). These three corpus-regression strengths coexist in this subsystem and are chosen per-detector, not by one codebase-wide rule. `TestBug3293DecisionRulesCorpusDifferential` targets `locate_enumerable_options`, a strictly-additive structural change — not directly reusable in shape here since BUG-3295 is strictly-narrowing through `_unapplied_decision`'s free-text `reasons` list; the `TestUnappliedDecisionLiveCorpusSweep` crash-only shape fits better.
+- `scripts/tests/test_issue_parser.py::TestBug3293DecisionRulesCorpusDifferential` (`:5399-5464`) — pinned-exact-match corpus regression (`_PINNED` dict of filename → `(pattern, count)`), used elsewhere in this same file family; asserts `unexpected == []` for newly-matched files outside the pinned set. BUG-3289's own Implementation Steps propose a third shape instead — record the report-total drop as an observation, assert `new_reports == 0` strictly (a subtraction can only remove reports). These three corpus-regression strengths coexist in this subsystem and are chosen per-detector, not by one codebase-wide rule. `TestBug3293DecisionRulesCorpusDifferential` targets `locate_enumerable_options`, a strictly-additive structural change — not directly reusable in shape here since BUG-3295 is strictly-narrowing through `_unapplied_decision`'s free-text `reasons` list. **Decided strength: BUG-3289's shape** — record the corpus report-total drop as an observation, assert `new_reports == 0` strictly. The fix is provably one-directional (a pre-subtraction exclusion can only shrink `discriminating`, so no issue can gain a report), which makes the strict zero-new-reports assertion achievable and strictly stronger than the crash-only sweep; the crash-only `TestUnappliedDecisionLiveCorpusSweep` still runs unchanged alongside it.
 
 _Wiring pass added by `/ll:wire-issue`:_
 - Model the new no-gap fixture after `test_empty_discriminating_set_is_inert` (`:5220-5230`) — the closest existing "REJ - SEL is empty" precedent, though it uses identical strings rather than containment. Model the negative-control fixture (Implementation Steps #2) after `test_negated_mention_still_fires` (`:5161-5174`), which asserts a disjoint identifier with no containment relationship still fires. Confirmed via full read: no existing fixture in `TestUnappliedDecision` currently relies on a bare-key-subsumed-by-compound-literal pattern to fire a gap, so this fix changes zero existing test outcomes — it is a pure addition, not an update. [codebase-pattern-finder finding]
@@ -182,7 +182,7 @@ N/A — no new data structures. The fix operates on the existing `set[str]` valu
 ### Signatures
 
 - `_decision_identifiers(text: str) -> set[str]` — `scripts/little_loops/issue_parser.py:1401-1403`. Pure per-block extractor, no document-level context. Returns every backtick-delimited span (regex `_DECISION_IDENTIFIER_RE`, `:1379`) of length >= 3 as a flat string, no normalization.
-- `_unapplied_decision(content: str) -> list[str]` — `scripts/little_loops/issue_parser.py:1499-1622`. `sel_ids = _decision_identifiers(block_texts[selected_index])` at `:1574`; `rej_ids` unioned across every non-selected block at `:1575-1578`; `discriminating = rej_ids - sel_ids` (plain `set.__sub__`, exact-string equality only) at `:1580`. This is the confirmed fix site — the anchor `:1572` in this issue's own Current Behavior/Root Cause sections is stale (it resolves to `selected_index = matching[0]`, not the subtraction).
+- `_unapplied_decision(content: str) -> list[str]` — `scripts/little_loops/issue_parser.py:1499-1622`. `sel_ids = _decision_identifiers(block_texts[selected_index])` at `:1574`; `rej_ids` unioned across every non-selected block at `:1575-1578`; `discriminating = rej_ids - sel_ids` (plain `set.__sub__`, exact-string equality only) at `:1580`. This is the confirmed fix site (the issue's Current Behavior/Root Cause anchors now cite `:1580` as well).
 - Downstream consumers of `discriminating` (unchanged by this fix, but must keep working against whatever `discriminating` contains after it): `needle = f"`{identifier}`"` (`:1610`) and the paragraph substring check `needle in paragraph` (`:1615`), for `identifier in sorted(discriminating)` (`:1609`).
 
 ### Call Path
@@ -191,14 +191,19 @@ N/A — no new data structures. The fix operates on the existing `set[str]` valu
 
 ### Decision Rules
 
-N/A — this issue does not introduce a new gap kind, gate, keyword list, or threshold; it corrects the existing identifier-relationship computation (`discriminating = rej_ids - sel_ids`) that `_unapplied_decision` (ENH-3256) already performs.
+No new gap kind, gate, keyword list, or threshold — but the containment relation itself is a new rule and its precision boundary is decided here, not left to the implementer:
+
+- **Containment rule (decided): plain substring, one-directional.** A rejected-option identifier `r` is excluded from `discriminating` iff `any(r in s for s in sel_ids)` — plain Python substring, no word-boundary or leading-key-token requirement. Rationale: a stricter boundary-aware rule (`\b`-based, or "shares the same leading key token") breaks on punctuation-heavy spans that are legitimate subsumptions — e.g. rejected `` `["."]` `` inside selected `` `scope: ["."]` `` is neither `\b`-delimited nor key-prefixed, yet plainly names the same decided value. Accepted trade-off: a short generic rejected span (the `_DECISION_IDENTIFIER_RE` floor is 3 chars, so e.g. `` `str` `` or `` `run` ``) can be coincidentally subsumed by an unrelated longer selected identifier. That failure direction is a false *negative* inside a strictly-narrowing filter — a missed gap, never a spurious one — which is the cheap direction for this detector. Do not "tighten" this to boundary matching later without re-examining the `` `["."]` `` case.
+- **No tie-break needed.** Unlike `suffix_match_candidates` (which must resolve to a single winner and therefore states an explicit ambiguity rule), subsumption here is existential: containment by *any* `sel_ids` member excludes `r`. A bare key that is a substring of multiple compound selected identifiers is simply excluded — multiplicity is not ambiguity for this rule.
+- **One-directional by design.** The reverse shape (a compound literal appearing only in a rejected option, e.g. `` `scope: ["foo"]` `` where the selected option mentions only bare `` `scope:` ``) stays discriminating: the rejected compound names a competing literal value and should still fire.
 
 ## Implementation Steps
 
 1. `discriminating = rej_ids - sel_ids` (`issue_parser.py:1580`) must stop counting a bare identifier as discriminating when it is subsumed by a compound identifier already present in `sel_ids` — reproduced by a fixture mirroring the ENH-3292 shape (bare `` `scope:` `` in a rejected option; compound `` `scope: ["."]` ``/`` `scope: ["scripts/"]` `` in the selected option), asserting no `unapplied_decision` gap fires for that pair.
 2. The same fixture set must include a negative control: an identifier introduced only by a rejected option, with no containment relationship to anything in `sel_ids`, must still land in `discriminating` and still fire — per the negative-control convention `TestUnappliedDecision` and BUG-3289's test plan both already follow (Integration Map → Tests).
 3. Because BUG-3289 (linked, `relates_to`) is an open sibling fix on the identical `discriminating = rej_ids - sel_ids` statement for an orthogonal axis (shared-subject vocabulary), whichever of the two lands second must compose with the other's subtraction rather than replace it — verify both fixture sets pass together if BUG-3289 has landed by implementation time.
-4. `python -m pytest scripts/tests/test_issue_parser.py -k UnappliedDecision -v` passes, including `TestUnappliedDecisionLiveCorpusSweep` (crash-only) and `TestBug3293DecisionRulesCorpusDifferential` (pinned corpus regression) — see Integration Map → Tests for which corpus-regression strength fits this fix's bounded corpus effect.
+4. `python -m pytest scripts/tests/test_issue_parser.py -k UnappliedDecision -v` passes, including `TestUnappliedDecisionLiveCorpusSweep` (crash-only) and `TestBug3293DecisionRulesCorpusDifferential` (pinned corpus regression). Add a new corpus differential at BUG-3289's decided strength (Integration Map → Tests): assert `new_reports == 0` across the live `.issues/` corpus, recording the report-total drop as an observation.
+5. Run the live sweep over `.issues/` at implementation time and document the corpus-measured effect (report-total before/after, zero new reports, and which issues lost their spurious gap — ENH-3292 expected among them) in a `# BUG-3295:` comment directly above the containment filter, per the landing convention for this heuristic family (Conventions in Force).
 
 ## Impact
 
@@ -223,7 +228,7 @@ N/A — this issue does not introduce a new gap kind, gate, keyword list, or thr
 `scripts/little_loops/issue_parser.py:1379` (`_DECISION_IDENTIFIER_RE`) and
 `:1401-1403` (`_decision_identifiers`) extract whole backtick spans as
 opaque, unrelated strings. `_unapplied_decision`'s `discriminating = rej_ids
-- sel_ids` (`:1572`) then treats a bare key span and a compound literal
+- sel_ids` (`:1580`) then treats a bare key span and a compound literal
 containing that key as unrelated identifiers, so a rejected option's
 incidental bare-key mention gets promoted to "discriminating" even when the
 selected option's own text fully covers that key via a longer literal.
@@ -232,7 +237,7 @@ selected option's own text fully covers that key via a longer literal.
 
 _Added by `/ll:refine-issue` — 2026-08-22 — based on codebase analysis:_
 
-- Anchor correction, confirmed by direct read of `scripts/little_loops/issue_parser.py`: `discriminating = rej_ids - sel_ids` is at `:1580`, not `:1572` as stated above. `:1572` resolves to `selected_index = matching[0]`. `sel_ids = _decision_identifiers(block_texts[selected_index])` is at `:1574`; the `rej_ids` union loop is at `:1575-1578`.
+- Anchor correction, confirmed by direct read of `scripts/little_loops/issue_parser.py`: `discriminating = rej_ids - sel_ids` is at `:1580` (the body's original `:1572` anchors have since been corrected in place; `:1572` resolves to `selected_index = matching[0]`). `sel_ids = _decision_identifiers(block_texts[selected_index])` is at `:1574`; the `rej_ids` union loop is at `:1575-1578`.
 - Confirmed absence of containment logic: every callee in `_unapplied_decision`'s call path (`_section_body`, `_option_block_spans`, `_selected_option_title`, `_option_label`, `_heading_bodies`, `_strip_codebase_research_findings`, `_paragraph_spans`) was read in full. None performs substring/prefix/containment comparison between two backtick-span strings. `discriminating = rej_ids - sel_ids` is genuinely a Python `set.__sub__` — exact-string equality only. The only containment-style check anywhere in the function is downstream, at `:1615` (`needle in paragraph`), which checks an already-atomic `discriminating` member against a *paragraph*, not against another identifier — that is the amplification mechanism (one bare key fans out to every narrative mention), not the fix point.
 
 ## Scope Boundaries
