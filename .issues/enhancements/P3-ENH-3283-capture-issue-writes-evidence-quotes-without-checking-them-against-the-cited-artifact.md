@@ -155,6 +155,15 @@ _Added by `/ll:refine-issue` — 2026-08-21 — based on codebase analysis:_
 - Conversation Mode (`SKILL.md:108-157`) is the exact path BUG-3278 was captured through: it instructs extracting "Source context (brief quote or summary...)" from conversation history rather than a fresh file read — this is where an unverified quote enters `$ISSUE_SUMMARY` before Phase 4 ever runs.
 - `commands/verify-issues.md:69-72,126-130` is the only existing quote-check in the codebase, and it is scoped to source-code snippets only (`"Validate code snippets": Does quoted code match current code?`), not evidence attributed to another `.issues/` file — confirming there is no existing evidence-quote pattern to mirror beyond this narrower code-only precedent.
 
+_Added by `/ll:refine-issue` — 2026-08-22 — based on codebase analysis:_
+
+- Test-boundary convention **disagreement**, relevant to Implementation Step 3's structural test: three `_phase_text()`-style heading-slice helpers exist across the skill-prose test suite and they compute the end boundary differently — a generic "next `### ` heading of any name" scan (`test_capture_issue_skill.py:14-19`, `TestCaptureIssueNearDuplicateCheck`) vs. a hardcoded literal next-phase heading string (`test_decide_issue_skill.py:63-70`, `TestOptionExtractionPatterns`) vs. a hardcoded-but-`.find()`-based next-phase string (`test_decide_issue_skill.py:233-238`, `TestPhase3bInlineProvisionalScan`). For `skills/capture-issue/SKILL.md` specifically: `### Phase 4: Execute Action` (`:218`) is immediately followed by `### Phase 4b: Link Relevant Documents` (`:299`) before any other heading, so a generic same-level-heading scan and a hardcoded `"### Phase 4b"` end-string happen to land at the same offset in this file — a coincidence specific to this section, not a codebase-wide guarantee, so the new test class should state which strategy it picked rather than relying on the coincidence silently.
+- A third precedent for the "self-contained prose check with an explicit escape hatch" shape exists beyond the two the issue already cites (`testable` keyword-scan gate, decide-issue Phase 2.5/3b): the qualitative-skip guard in `skills/issue-size-review/SKILL.md:166-170` — same shape (field-presence precondition, threshold, explicit "field absent → fall through to normal behavior" escape hatch).
+- Contrast precedent: `skills/wire-issue/prose-dependency-gate.md` (`skills/wire-issue/SKILL.md:144`) is a phase-level content gate whose detection logic lives in Python (`ll-issues format-check --format json`), not skill prose — the opposite shape from the self-contained-prose convention this issue follows. Confirms both conventions coexist in the codebase; the issue's Amended note is a precision-driven argument for the self-contained shape in this specific case, not a claim that CLI-delegated gates are unprecedented.
+- `create_issue`'s full-body merge path (`_is_full_body`/`_merge_full_body_content`, `create.py:138,221`) matches caller-supplied `##` sections by heading name only, not by content — confirms `create.py` needs no change for this check: the merge logic cannot see, and therefore cannot help verify, quoted content inside a section.
+- Host-mirror copies of `skills/capture-issue/SKILL.md` exist at `.qwen/skills/capture-issue/SKILL.md`, `.kimi-code/skills/capture-issue/SKILL.md`, and `.gemini/skills/capture-issue/SKILL.md` (not gitignored). The issue's Integration Map states `skills/capture-issue/SKILL.md` is "the only file to modify"; whether these mirrors are generated from it or hand-maintained separately was not determined by this research pass.
+- No file under `skills/*/SKILL.md` or `commands/*.md` currently calls `ll-verify-evidence` as a functional call site (the only two appearances are `allowed-tools:` entries with no invocation in the body) — confirms the codebase has no existing wiring for this checker to conflict with or be consolidated into.
+
 ## Program Design
 
 ### Types
@@ -226,6 +235,7 @@ to it would be a regression. See Proposed Solution → Amended.
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-08-22T16:48:02 - `0189866f-e38b-421c-a800-383e0d98aaa2.jsonl`
 - `/ll:wire-issue` - 2026-08-21T18:16:11 - `3f6ddaa1-8943-4e02-80c6-991ae42bf623.jsonl`
 - `/ll:refine-issue` - 2026-08-21T17:43:40 - `aee80426-6ab1-4a8c-814d-a6f459361121.jsonl`
 - `/ll:capture-issue` - 2026-08-21T17:30:51 - `fa57a84b-34e0-4018-9e9e-dd57ed7ef3f3.jsonl`
