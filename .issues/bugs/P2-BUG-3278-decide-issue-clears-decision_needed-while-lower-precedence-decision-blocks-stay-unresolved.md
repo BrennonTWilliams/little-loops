@@ -19,6 +19,7 @@ relates_to:
 - BUG-3287
 - ENH-3280
 - ENH-3277
+- BUG-3285
 verify_verdict: VALID
 size: Large
 confidence_score: 98
@@ -1053,11 +1054,26 @@ what changed and why so the reasoning is not lost.
 `confidence_score` and `outcome_confidence` in frontmatter predate round 5 — re-run
 `/ll:confidence-check` before implementing rather than carrying them forward.
 
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): `_iter_decision_groups`' default
+(`include_approximate_tiers=False`) mode reuses `_OPTION_HEADING_RE`-style matching for tier
+grouping, which is the same mechanism [BUG-3285] documents as miscounting bold prose
+(`**Option A evidence**:`) as a real option block. If this issue lands before [BUG-3285], a
+bold-prose phantom block can be merged into a real decision group by `_iter_decision_groups`' "a
+maximal contiguous run of option blocks at the same tier" rule, reproducing BUG-3285's defect
+through this new code path. Add a test fixture combining real options with a bold-prose phantom
+block (the ENH-2967/BUG-1484 shape) to confirm the group iterator does not miscount it, independent
+of landing order.
+
 ## Status
 
 **Open** | Created: 2026-08-21 | Priority: P2
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-08-22T22:30:44 - `6b7204fa-1e9c-4b22-a304-4114c03357f8.jsonl`
 - `/ll:format-issue` - 2026-08-22T20:15:07 - `918913f6-1ede-43d4-b1f7-bffea0db90c5.jsonl`
 - `/ll:confidence-check` - 2026-08-21T19:12:09 - `e7bfa83a-61b5-42db-9234-b883edce75e7.jsonl`
 - `/ll:confidence-check` - 2026-08-21T19:00:59 - `de2bc4f7-6272-4f52-a9cb-998af08752f1.jsonl`

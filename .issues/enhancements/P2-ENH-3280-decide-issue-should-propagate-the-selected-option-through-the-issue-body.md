@@ -488,12 +488,27 @@ is a instruction to humans; the FSM reads the field.
 Deliberately **not** done as part of this review: option 2 deletes evidence and option 1 is
 implementation work. Flagged for the implementer to close.
 
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): [BUG-3289]'s decided fix is deliberately partial —
+its narrow title+Summary subtraction scope leaves an accepted residual of shared-vocabulary false
+positives (its own Decision Rationale names `ProjectConfig`/`to_dict()` on ENH-3277 as surviving,
+"expected residual noise"). Phase 7c as specified acts on every `_unapplied_decision` hit with no
+filter beyond the detector itself, so those residual false positives will still be rewritten as if
+they were real rejected-option prose — the failure mode this issue's own Motivation says landing
+BUG-3289 first is supposed to prevent. Before Phase 7c ships, either widen its bounded-scope rule to
+flag (not blindly edit) hits whose identifier doesn't also appear inside the option blocks' own
+text, or explicitly accept the residual risk with a named mitigation.
+
 ## Status
 
 **Open** | Created: 2026-08-21 | Priority: P2
 
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-08-22T22:31:16 - `ccec33f2-1527-4aff-b9d7-1a9165839f2e.jsonl`
 - `/ll:format-issue` - 2026-08-22T20:15:07 - `918913f6-1ede-43d4-b1f7-bffea0db90c5.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-21T17:52:58 - `f27d8342-f3ba-42ea-95ca-41ad79008fbf.jsonl`
 - `/ll:verify-issues` - 2026-08-21T17:43:58 - `aee80426-6ab1-4a8c-814d-a6f459361121.jsonl`

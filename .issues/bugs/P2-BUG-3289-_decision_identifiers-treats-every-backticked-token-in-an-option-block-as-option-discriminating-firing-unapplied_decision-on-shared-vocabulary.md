@@ -389,6 +389,19 @@ residual is that identifiers living only in `## Current Behavior` / `## Proposed
 | --- | --- |
 | `docs/reference/API.md` | Module reference for `little_loops.issue_parser`; update if a new `_shared_subject_identifiers` helper becomes part of the documented surface |
 
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): the narrow (title + `## Summary` only) subtraction
+scope decided here is knowingly incomplete — this issue's own Decision Rationale accepts that
+"2 of the 6 ENH-3277 terms spot-checked (`ProjectConfig`, `to_dict()`) live in `## Current
+Behavior`/`## Proposed Solution` rather than Summary and will not be suppressed by this fix —
+expected residual noise." [ENH-3280]'s Phase 7c acts on every `_unapplied_decision` hit with no
+filter beyond the detector itself, so it will still rewrite correct prose on residual cases this fix
+leaves in place — the exact failure ENH-3280 states this issue is a hard prerequisite to prevent.
+ENH-3280 must account for this residual before Phase 7c ships.
+
 ## Status
 
 **Open** | Created: 2026-08-21 | Priority: P2
@@ -399,6 +412,7 @@ ENH-3280.)_
 
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-08-22T22:31:16 - `ccec33f2-1527-4aff-b9d7-1a9165839f2e.jsonl`
 - `/ll:confidence-check` - 2026-08-21T23:23:24 - `6c8de875-3d34-466f-bb1f-5d9046d922b9.jsonl`
 - `/ll:decide-issue` - 2026-08-21T23:04:25 - `570c3914-e306-4cb1-bfda-e25386251081.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-21T19:06:56 - `8c9f6596-f570-42d1-a2a2-c4e750b706f8.jsonl`

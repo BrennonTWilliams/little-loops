@@ -268,6 +268,7 @@ different function (`_locate_directive_alternatives` / tier matching, not
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-22T22:22:12 - `2eb6bfc2-7e3e-4e7e-b9e4-4f829918648f.jsonl`
 - `/ll:confidence-check` - 2026-08-22T22:13:28 - `c3fbea37-7e24-4852-97d2-937535e0fb6c.jsonl`
 - `/ll:wire-issue` - 2026-08-22T21:56:32 - `9918c26d-d757-4f35-8afa-285147b946fc.jsonl`
 - `/ll:format-issue` - 2026-08-22T21:42:26 - `323559a8-cc72-4bea-b01f-060c73d5598e.jsonl`
