@@ -1,0 +1,12 @@
+{
+  "id": "f51e1e8c-dde0-4fc6-8639-abc60c543e5c",
+  "type": "decision",
+  "timestamp": "2026-08-22T20:38:15Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Drop-in, precedent-consistent one-line change; 19 built-in loops already use scope: [\".\"] verbatim with zero test friction, vs. Option B's new, undercounted context-seeding infrastructure.",
+  "rule": "Option A \u2014 scope: [\".\"] for dead-code-cleanup.yaml",
+  "scope": "issue",
+  "alternatives_rejected": "Option B: context-seeding scope from project.src_dir (new class of usage, missed a third resolve_scope() call site at info.py:1551)",
+  "issue": "ENH-3292"
+}
