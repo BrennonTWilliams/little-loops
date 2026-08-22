@@ -558,13 +558,23 @@ field, routing-edge shape). None will break from the conversion; none gives cove
 
 ### Documentation
 
-- `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md:569` — **required at step 6.** The sentence *"A
-  handful of other loops are a temporary exemption pending ENH-3277's conversion pass"* (inside
+- `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md:569` — **required at step 6.** The sentence (inside
   the "Resolving a Project Command Inside a Loop" section, `:516-569`) becomes false the moment
   `_PENDING_CONVERSION` is deleted. Rewrite it to name the three **permanent** exemptions
   (`oracles/code-run-gate.yaml`, `rn-refine.yaml`, `auto-refine-and-implement.yaml`) and their
   shared §1d rationale — absent ≡ null ≡ skip, never guess. Leaving it stale points the guide at
   closed issues as pending work.
+
+  **Expect to find ENH-3288, not ENH-3277 (anchor corrected 2026-08-22).** ENH-3277's step 5c
+  retargets the identifier in place — the line reads *"A handful of other loops are a temporary
+  exemption pending **ENH-3288's** conversion pass"* by the time this issue starts, and ENH-3277's
+  own Docs AC requires `grep -n 'ENH-3277' docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` to return
+  nothing. Do not grep for `ENH-3277` here and conclude the anchor is stale or the work already
+  done; the sentence still needs this issue's rewrite, because after the teardown the exemptions
+  are permanent rather than pending anyone's pass. _(That interim retarget was itself deferred to
+  this issue until ENH-3277's fifth review pulled it forward: between the two issues the guide
+  would otherwise have named a closed issue as owner of a pending pass — the same defect ENH-3277
+  fixes at three anchors inside the gate file.)_
 - `docs/guides/LOOPS_REFERENCE.md:1347` — `test-coverage-improvement`'s `test_cmd`
   context-variable row, currently documenting an inert knob (*Dead site*). Per the pinned decision
   (a) it **stays** and becomes true — no edit needed, but re-verify the wording matches
@@ -634,7 +644,9 @@ field, routing-edge shape). None will break from the conversion; none gives cove
 **Docs**
 
 - [ ] `HARNESS_OPTIMIZATION_GUIDE.md:569` names the three permanent exemptions and no longer calls
-      them temporary or pending
+      them temporary or pending. Verified by `grep -nE 'ENH-3277|ENH-3288|temporary exemption'
+      docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` returning **no lines** — the incoming text names
+      ENH-3288 (retargeted by ENH-3277 step 5c), so a grep for `ENH-3277` alone proves nothing
 - [ ] `LOOPS_REFERENCE.md:1347`, `loops/README.md:33`, `skills/audit-loop-run/SKILL.md:~277`
       re-verified against final behavior
 
@@ -689,9 +701,10 @@ this issue earlier means racing it on the same set literal.
      `_EXEMPT = _PERMANENT_EXEMPTIONS`.
 
    Plus the doc edit: **`docs/guides/HARNESS_OPTIMIZATION_GUIDE.md:569`**'s "temporary exemption
-   pending ENH-3277's conversion pass" sentence must be rewritten to name the three permanent
+   pending **ENH-3288's** conversion pass" sentence must be rewritten to name the three permanent
    exemptions. Deleting the constant without it leaves the guide advertising closed issues as
-   pending work forever.
+   pending work forever. (The line named *ENH-3277* until that issue's step 5c retargeted it —
+   see *Documentation*. Grep for `ENH-3288`, not `ENH-3277`.)
 
    Leave `test_no_inline_project_command_config_read`, `test_context_references_are_declared`, and
    `test_general_task_and_rl_coding_agent_are_not_exempt` in place. The inline-read assertion then
@@ -876,7 +889,8 @@ open the same relative path — but not fixed here either.
   and the `harness_exit` `verify_tests` shape
 - ENH-3281 — the sibling hardcode defect class (`measure`'s surviving `COV_CMD` fallback)
 - `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` — the `ll-config get` convention, written up by
-  BUG-3269; its `:569` exemption sentence is this issue's to correct
+  BUG-3269; its `:569` exemption sentence is this issue's to rewrite (ENH-3277 step 5c retargets
+  the issue ID in it first — expect to find `ENH-3288` there, not `ENH-3277`)
 
 ## Confidence Check Notes
 

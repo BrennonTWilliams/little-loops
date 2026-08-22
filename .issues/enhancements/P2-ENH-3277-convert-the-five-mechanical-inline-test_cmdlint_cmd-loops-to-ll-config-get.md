@@ -305,14 +305,43 @@ Consequence for both skip branches: a marker written with a plain file redirect 
 and still hands `score` a blank "Code quality results" block. That is precisely the falsified
 signal the row exists to prevent, reintroduced by the remedy.
 
-**Required shape at both branches:** the marker must reach stdout. Either
+**Required shape at both branches:** the marker must reach stdout — `| tee`, or a bare `echo`
+(the file is optional; the capture is not). Do not use `>`.
+
+##### Pinned marker strings — verbatim, ASCII only (added by the fifth review, 2026-08-22)
+
+An earlier draft gave the test marker once inside an "either/or" fence and described the lint
+marker only as *"a no-lint-signal marker"*. That is not enough to coordinate on: **five artifacts
+must agree on these exact strings** — step 4's branch, step 5's branch, step 5a's `score` prompt,
+and the two structural guards under *Tests*. Treat them like the `harness-*` comment text: pinned,
+not paraphrased.
 
 ```bash
-echo "NO TEST SIGNAL — project.test_cmd is null; no suite ran" \
+NO TEST SIGNAL -- project.test_cmd is null; no suite ran
+NO LINT SIGNAL -- project.lint_cmd is null; no linter ran
+```
+
+Applied:
+
+```bash
+echo "NO TEST SIGNAL -- project.test_cmd is null; no suite ran" \
   | tee ${context.run_dir}/eval-test-results.txt
 ```
 
-or a bare `echo` (the file is optional; the capture is not). Do not use `>`.
+```bash
+echo "NO LINT SIGNAL -- project.lint_cmd is null; no linter ran" \
+  | tee ${context.run_dir}/eval-lint-results.txt
+```
+
+**ASCII only, deliberately.** The `--` is not a typo for an em-dash. Both strings are matched by
+substring assertions in two structural guards *and* quoted into the `score` prompt (step 5a), and
+`harness-plan-research-implement-report.yaml` already carries an ASCII-transliteration rule in the
+per-file table for the same reason. A stray `—` that survives in one of the five copies but not
+the others is a silent mismatch that no single test catches.
+
+The sentinel is `NO TEST SIGNAL` / `NO LINT SIGNAL` — the trailing clause is explanatory. Guards
+and the `score` prompt should key on the two-word sentinel so a later reword of the clause does
+not break them.
 
 A regression test for this state must assert on the state's **captured stdout**, not on file
 contents, or it will pass against the broken shape.
@@ -322,7 +351,7 @@ contents, or it will pass against the broken shape.
 **Getting the marker onto stdout is necessary but not sufficient.** Nothing tells `score` what to
 do once it arrives. Its prompt still reads *"code_health: based on test pass/fail and lint
 clean/dirty"* (`evaluation-quality.yaml:84`) and it must emit a 0-100 `code_health` regardless.
-Handed `NO TEST SIGNAL` and a no-lint-signal marker, an LLM has no passing-test evidence and will
+Handed `NO TEST SIGNAL` and `NO LINT SIGNAL`, an LLM has no passing-test evidence and will
 score the dimension low.
 
 **Where that lands.** `route_action` → `route_issues` → `route_code.on_yes: remediate_code`, which
@@ -339,6 +368,32 @@ reading as *clean*, and the remedy then makes it read as *broken*. Neither is th
 `code_health` to whatever signal did arrive (lint-only when the test marker is present, and
 vice-versa), or exclude the dimension from `PRIMARY_CONCERN` selection entirely when both markers
 are present. Pick one and state it in the prompt — do not leave it to the model.
+
+##### `overall` needs the same treatment (added by the fifth review, 2026-08-22)
+
+**Fixing `PRIMARY_CONCERN` alone relocates the wrong answer rather than removing it.** Verified
+against the tree: `overall` is a **weighted average with `code_health` at 40%**
+(`evaluation-quality.yaml:88`), and the output block at `:94-96` *mandates* a 0-100 `code_health`
+value regardless. So excluding the dimension from `PRIMARY_CONCERN` selection still leaves the
+model emitting some low number for an unmeasurable dimension, and that number drags `overall` down
+40% on every run.
+
+`overall` is not inert. The `report` state trend-compares it across runs — *"compare current
+overall score to the most recent prior report and note whether quality is improving, stable, or
+declining"* (`:191`, reading `.loops/quality-report-*.md`). A project that deliberately set
+`test_cmd: null` therefore gets a permanently depressed headline score and a report that reads
+*declining* forever. That is the same falsified-signal failure the markers exist to prevent, moved
+from routing into reporting.
+
+**Required, in addition to the `PRIMARY_CONCERN` decision above:** the prompt must state how
+`overall` is computed when a dimension is unmeasured. The straightforward call is to **re-weight
+across the measured dimensions only** (both markers present → `issue_quality` 67% /
+`backlog_health` 33%; one marker → `code_health` still scored from the signal that arrived, weights
+unchanged), and to have `code_health` report the sentinel rather than a fabricated number when
+nothing was measured. Whichever is chosen, state it in the prompt — the same "do not leave it to
+the model" rule applies, for the same reason.
+
+Still prompt text only: no state, `next:`, or `on_*` key changes.
 
 **Scope note.** This adds `evaluation-quality.yaml`'s `score` state to *Files to Modify* — a
 prompt edit, not a state or edge change. It does change which branch `route_code` takes for an
@@ -471,12 +526,22 @@ Pin per file.
     # NOTE: an opted-out project yields an empty CMD, `eval ""` exits 0, and this
     # gate PASSES. That is deliberate here (the next state is a further gate). If
     # you clone this into a loop whose on_yes performs an irreversible action, add
-    # an explicit `[ -z "$CMD" ]` branch — see ENH-3288.
+    # an explicit `[ -z "$CMD" ]` branch. See docs/guides/HARNESS_OPTIMIZATION_GUIDE.md
+    # § Resolving a Project Command Inside a Loop.
 ```
 
 The `NOTE:` half is the load-bearing part: a cloner who copies a pass-on-empty gate onto an
 `on_yes: commit` edge reproduces exactly the hazard that forced this issue's split. The comment
 is where that warning has to live, because the shell body no longer shows the fallback.
+
+**Cite the guide, not an issue ID (added by the fifth review, 2026-08-22).** An earlier draft of
+this block ended `— see ENH-3288`. These YAMLs ship in the pip package into consuming projects
+(`.claude/CLAUDE.md` § Distribution), where a little-loops issue ID resolves to nothing, and the
+pointer goes stale the moment ENH-3288 lands. `HARNESS_OPTIMIZATION_GUIDE.md` § *Resolving a
+Project Command Inside a Loop* already documents the three-way contract and both precedence
+shapes, and it ships with the docs. (Terse rationale tags like `harness-single-shot.yaml:54`'s
+`# ENH-2825:` are a different thing and stay — the objection is to a *see-X-for-guidance* pointer
+aimed at a reader who cannot open X.)
 
 **Per-file application:**
 
@@ -635,6 +700,9 @@ consistency, simplicity, and risk, despite the issue's own text recommending Opt
   and `test_pending_conversion_sites_still_exist` keeps the remaining four honest in the meantime.
 - **The same file's prose, in three places** — see *The gate file's own prose is falsified by this
   issue* below. Not optional cleanup: all three currently assert something this issue makes false.
+- `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md:569` — **added by the fifth review, 2026-08-22.**
+  One identifier: "pending ENH-3277's conversion pass" → "pending ENH-3288's conversion pass".
+  Same defect class as the three gate-file anchors above; see *Documentation*
 
 Out of scope: `dead-code-cleanup.yaml` and `test-coverage-improvement.yaml` (**ENH-3288**);
 `rn-refine.yaml` and `auto-refine-and-implement.yaml` (permanently exempt, Option A — the
@@ -670,10 +738,47 @@ _Wiring pass added by `/ll:wire-issue`:_
   and a conversion must not introduce a pipe to make them so. Assert three cases each: present-and-set,
   present-and-null (opts out, not literal `"None"`), and absent (falls back to `ll-config get`'s
   own `ProjectConfig` default). Closest template:
-  `TestRlCodingAgentObserveTestCmdResolution` (`test_builtin_loops.py:10747-10799`) — extract the
-  `action` string, substitute `${context.run_dir}`, run against a scratch `.ll/ll-config.json`.
+  `TestRlCodingAgentObserveTestCmdResolution` (`test_builtin_loops.py:10820-10872`) — substitute
+  `${context.run_dir}`, run against a scratch `.ll/ll-config.json` with `cwd=tmp_path`.
   **No context-first fourth case applies at any site here** — none of the five declares
   `context.test_cmd`. [Agent 3 finding]
+
+  **Pinned extraction shape — do NOT run the whole `action` (added by the fifth review,
+  2026-08-22).** The recipe above previously read *"extract the `action` string … run [it]"*, which
+  does not work at these five sites and is the first thing an implementer hits, since step 2b makes
+  these tests a hard prerequisite written *before* any conversion.
+
+  The named template only works because `rl-coding-agent`'s `observe` action has a marker comment
+  to cut on — `_resolution_prefix` does `action.partition("# Test score")` (`:10832`) and runs the
+  prefix alone. **The five sites here have no such marker and their actions end in `eval "$CMD"`**,
+  so running the extracted action executes the resolved command inside the scratch dir. Verified
+  empirically 2026-08-22:
+
+  ```
+  $ cd tmp_path && bash -c 'CMD=$(ll-config get project.test_cmd); eval "$CMD"'
+  rc=5 CMD=[pytest]
+  ```
+
+  The absent-key case exits **5** (pytest: "no tests collected") and the value-set case exits
+  **127** (`custom-test: command not found`) — both fail a naive
+  `assert result.returncode == 0`, and neither failure has anything to do with resolution.
+
+  **Required shape:** truncate the action at the first line matching `^\s*eval "`, append a probe,
+  and assert on the probe — never on the truncated body's exit code:
+
+  ```python
+  prefix = action.split('eval "')[0].replace("${context.run_dir}", str(tmp_path))
+  script = prefix + 'echo "CMD=[$CMD]"\n'
+  ```
+
+  This mirrors what the template actually does, and it holds uniformly across all five sites
+  (including `harness-multi-item`, whose `set -o pipefail` line sits between the resolution and the
+  `eval` and is harmless in the prefix).
+
+  **The `evaluation-quality` marker tests are the one exception** — they assert on stdout produced
+  *past* the `eval`, so they must run the full action. That is safe only on the present-null branch,
+  where `CMD` is empty and nothing executes. Use the truncated prefix for that site's three-case
+  resolution assertions and the full action only for the two marker assertions.
 - **`evaluation-quality` skip markers must be asserted on captured stdout, not file contents.**
   `score` reads `${captured.code_results.output}`; a test that opens `eval-test-results.txt`
   passes against the broken `>`-redirect shape (*CAPTURE CORRECTION*).
@@ -739,10 +844,28 @@ needs a new subprocess-level test. [Agent 3 finding]
   scaffolds users clone, so the comments propagate the inline-parse anti-pattern into new loops.
   Update alongside each state's action body. [Agent 2 finding]
 
+- `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md:569` — **pulled into scope by the fifth review,
+  2026-08-22** (was deferred to ENH-3288). The line reads, verbatim: *"A handful of other loops are
+  a temporary exemption pending ENH-3277's conversion pass."* The prior deferral rationale was
+  *"still true while `_PENDING_CONVERSION` survives"* — it isn't. The sentence does not merely
+  assert that an exemption exists; it names **which pass will clear it**. The moment this issue is
+  `done`, four loops are still exempt and the doc points at a closed issue, so a reader chasing the
+  remaining exemptions lands on the wrong issue.
+
+  That is the identical defect this issue already fixes three anchors of, two sections above, on
+  the identical argument — *"the next reader of the gate is told the wrong issue owns the
+  teardown"* (*The gate file's own prose is falsified by this issue*). Deferring the doc while
+  fixing the test file is an inconsistent call on one defect class. The fix is one identifier:
+
+  > A handful of other loops are a temporary exemption pending **ENH-3288's** conversion pass.
+
+  Note ENH-3288 later deletes this sentence outright when it deletes the constant, so this edit is
+  transitional by design. That is not an argument against making it — it is the same shape as
+  shrinking `_PENDING_CONVERSION` nine → four rather than leaving it at nine because ENH-3288 will
+  empty it anyway.
+
 _Deferred to ENH-3288 (they describe the exemption list or the structural loops):_
-`docs/guides/HARNESS_OPTIMIZATION_GUIDE.md:569`'s "temporary exemption pending ENH-3277's
-conversion pass" sentence (still true while `_PENDING_CONVERSION` survives this issue — it
-becomes false only when ENH-3288 deletes the constant); `LOOPS_REFERENCE.md:1347`
+`LOOPS_REFERENCE.md:1347`
 (`test-coverage-improvement`'s `test_cmd` row); `scripts/little_loops/loops/README.md:33` and
 `skills/audit-loop-run/SKILL.md:~277` (both `auto-refine-and-implement`, permanently exempt —
 sanity check only, no edit expected under Option A).
@@ -790,8 +913,11 @@ _Added by `/ll:refine-issue` — 2026-08-21 — based on codebase analysis:_
   `states` dict (`for key in ("on_yes","on_no","on_error","on_cannot_judge","next")`), the
   shape available for asserting a state's routing target (e.g. that nothing but
   `verify_tests.on_no` reaches a revert/commit state). `TestRlCodingAgentObserveTestCmdResolution`
-  (:10747 — anchor corrected third review; the `:10742-10789` previously cited here was stale,
-  and the *Tests* section's `:10747-10799` is the accurate one)
+  (**:10820-10872 — anchor re-corrected by the fifth review, 2026-08-22.** The third review moved
+  this citation to `:10747` and declared the *Tests* section's `:10747-10799` accurate; both are
+  wrong by ~73 lines — `:10747` is `TestRlCodingAgentLoop`, the unrelated structural class. The
+  original `:10742-10789` was wrong too. Verified by
+  `grep -n 'class TestRlCodingAgentObserveTestCmdResolution'`)
   executes the extracted shell prefix via `subprocess.run(["bash", "-c", ...])`
   against a scratch `.ll/ll-config.json`, the shape available for asserting a *resolved value*
   (e.g. that `test_cmd: null` resolves to an empty `CMD`, not a guessed default).
@@ -808,14 +934,21 @@ gate-teardown criteria live in **ENH-3288**._
 - [ ] `harness-single-shot.yaml:66`, `harness-multi-item.yaml:95`,
       `harness-plan-research-implement-report.yaml:126` converted, **and** their `# EXAMPLE:`
       scaffold comments (`:57-60`, `:88`, `:120`) rewritten to stop teaching the inline parse
-- [ ] `evaluation-quality.yaml:58` (`test_cmd`) converted, with a no-test-signal marker emitted
-      **on stdout** (`| tee`, never a bare `>`)
+- [ ] `evaluation-quality.yaml:58` (`test_cmd`) converted, emitting the pinned marker
+      `NO TEST SIGNAL -- project.test_cmd is null; no suite ran` **on stdout**
+      (`| tee`, never a bare `>`), ASCII verbatim per *Pinned marker strings*
 - [ ] `evaluation-quality.yaml:63`'s hardcoded `ruff check scripts/` → `ll-config get
-      project.lint_cmd`, with a no-lint-signal marker on stdout
+      project.lint_cmd`, emitting the pinned marker
+      `NO LINT SIGNAL -- project.lint_cmd is null; no linter ran` on stdout
 - [ ] `evaluation-quality`'s `score` prompt (`:84`) states how `code_health` is scored when step
       4/5's no-signal markers are present, and whether `CODE` may be selected as
       `PRIMARY_CONCERN` in that case (*SCORER CORRECTION*). Without it, an opted-out project gets
       a spurious CODE concern routed to a remediation loop that is itself a no-op
+- [ ] The same prompt states how **`overall`** is computed when a dimension is unmeasured
+      (`:88` weights `code_health` at 40%, and `report:191` trend-compares `overall` across runs).
+      Added by the fifth review — without it, fixing `PRIMARY_CONCERN` alone leaves an opted-out
+      project with a permanently depressed headline score and a report that reads *declining*
+      forever, relocating the falsified signal from routing into reporting
 - ~~[ ] `evaluate_code` still exits **0 unconditionally**~~ — **STRUCK (third review).** The
       routing hazard was unreachable; this state's exit code is consumed by nothing
       (*EXIT-CODE CORRECTION — RETRACTED*). No exit-code constraint applies
@@ -855,22 +988,30 @@ gate-teardown criteria live in **ENH-3288**._
 **Tests** (each is new; none exists today)
 
 - [ ] Per-site subprocess resolution tests driven through `bash -c`, all three config cases
-      (set / present-null / absent); the three `harness-*` sites parametrized as one class
+      (set / present-null / absent); the three `harness-*` sites parametrized as one class.
+      **Each truncates the action at the first `eval "` and asserts on an appended
+      `echo "CMD=[$CMD]"` probe** — never on the body's exit code (*Pinned extraction shape*)
 - [ ] `evaluation-quality` skip markers asserted on the state's **captured stdout**, not on
-      `eval-test-results.txt` / `eval-lint-results.txt`
+      `eval-test-results.txt` / `eval-lint-results.txt`, and matched against the pinned
+      `NO TEST SIGNAL` / `NO LINT SIGNAL` sentinels verbatim
 - [ ] Structural guard asserting `"ruff check scripts/" not in action` at
       `evaluation-quality.evaluate_code`
 - [ ] Structural guard over the three `harness-*.yaml` asserting `"falls back to 'pytest'"` is
       absent and the `check_concrete` comment names `ll-config get` — the verifier for the Docs
       row below
 - [ ] Structural guard on `evaluation-quality`'s `score` action asserting the prompt addresses the
-      no-signal case (*SCORER CORRECTION*)
+      no-signal case (*SCORER CORRECTION*) — keyed on the `NO TEST SIGNAL` / `NO LINT SIGNAL`
+      sentinels, and covering the `overall` re-weighting rule as well as `PRIMARY_CONCERN`
 - ~~[ ] `evaluate_code` exit-0 test, four combinations~~ — **STRUCK (third review)**; the hazard
       is unreachable (*EXIT-CODE CORRECTION — RETRACTED*). Do not write it
 
 **Docs**
 
 - [ ] `EVALUATION_GUIDE.md:393` describes the configured `lint_cmd`, not `ruff`
+- [ ] `HARNESS_OPTIMIZATION_GUIDE.md:569` reads "pending **ENH-3288's** conversion pass", not
+      ENH-3277's. Verified by `grep -n 'ENH-3277' docs/guides/HARNESS_OPTIMIZATION_GUIDE.md`
+      returning **no lines**. Added by the fifth review — same defect class as the three gate-file
+      prose anchors, previously deferred to ENH-3288 on a rationale that does not hold
 - [ ] The three `harness-*` in-YAML scaffold comments match the **pinned replacement text** under
       *Proposed Solution* — including the clone-hazard note ("if your `on_yes` is irreversible,
       add an explicit `[ -z "$CMD" ]` branch"). Verified by the structural guard above, not by
@@ -910,6 +1051,14 @@ gate-teardown criteria live in **ENH-3288**._
    nothing. Order: the parametrized `harness-*` class, then `fix-quality-and-tests`, then
    `evaluation-quality` (both branches), then steps 3–5 turn them green. The exit-0 test formerly
    listed here is struck (*EXIT-CODE CORRECTION — RETRACTED*).
+
+   **Use the pinned extraction shape under *Tests* — this is the first thing you will hit.** The
+   named template partitions its action on a marker comment these five sites do not have, and
+   their actions end in `eval "$CMD"`, so running the extracted action shells out to the resolved
+   command inside the scratch dir: the absent-key case exits 5 and the value-set case exits 127,
+   neither for a reason connected to resolution. Truncate at the first `eval "` and assert on an
+   appended `echo "CMD=[$CMD]"` probe. Getting this wrong turns the red-then-green ordering into
+   five spurious reds that stay red after a correct conversion.
 3. **Convert the four pass-on-empty sites first** — `fix-quality-and-tests.yaml`
    (delete its three-way python body outright), `harness-single-shot.yaml`,
    `harness-plan-research-implement-report.yaml`, `harness-multi-item.yaml`. These are
@@ -925,6 +1074,9 @@ gate-teardown criteria live in **ENH-3288**._
    branches of `evaluate_code` emit their own "no signal" marker **on stdout** (`| tee`, never a
    bare `>`), because `score` reads `${captured.code_results.output}` and not the files — see
    *CAPTURE CORRECTION*. Do **not** reroute; `evaluate_code` has no `on_yes`/`on_no` edges.
+   **Copy both marker strings verbatim from *Pinned marker strings*, ASCII and all** — five
+   artifacts have to agree on them (this step, step 5, step 5a's prompt, and two structural
+   guards), and a paraphrase in any one of them is a silent mismatch no single test catches.
 5. **Convert `evaluation-quality.yaml:63`'s hardcoded `ruff check scripts/`** to
    `ll-config get project.lint_cmd` — the same defect, pre-inlined. The action's exit code is
    unconstrained; restructure both branches freely (*EXIT-CODE CORRECTION — RETRACTED*). Then
@@ -934,7 +1086,12 @@ gate-teardown criteria live in **ENH-3288**._
    Steps 4 and 5 create a no-signal condition that the scorer currently has no instruction for,
    and its default reading routes an opted-out project to `remediate_code` — a no-op after step 3.
    Either scope `code_health` to whichever signal arrived, or exclude the dimension from
-   `PRIMARY_CONCERN` selection when both markers are present. See *SCORER CORRECTION*. Prompt text
+   `PRIMARY_CONCERN` selection when both markers are present. **And state how `overall` is
+   computed when a dimension is unmeasured** — it weights `code_health` at 40% (`:88`) and is the
+   number `report` trend-compares across runs (`:191`), so fixing only `PRIMARY_CONCERN` moves the
+   falsified signal into the report instead of removing it. Re-weight across the measured
+   dimensions. See *SCORER CORRECTION* and its `overall` sub-section. Reference the markers by
+   their pinned sentinels (`NO TEST SIGNAL` / `NO LINT SIGNAL`), not a paraphrase. Prompt text
    only — no state or edge changes.
 
 5b. **Correct the gate file's prose.** Reassign all three "ENH-3277 empties/deletes this set"
@@ -944,6 +1101,13 @@ gate-teardown criteria live in **ENH-3288**._
    The rewritten text must not itself contain `ENH-3277` (see the *Rewrite constraint* there):
    the Gate AC's grep allows exactly the two annotation lines and nothing else.
    Prose-only; no assertion logic changes and no test breaks.
+
+5c. **Correct the guide's ownership prose too** (added by the fifth review).
+   `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md:569` — "pending ENH-3277's conversion pass" →
+   "pending **ENH-3288's** conversion pass". Same defect as 5b in a different file: the sentence
+   names which pass clears the remaining exemption, and that stops being this issue the moment it
+   closes. One identifier; `grep -n 'ENH-3277' docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` must
+   then return nothing. See *Documentation*.
 6. **Verify.** After each file: `ll-loop validate`, a scoped `grep` for the old
    `.get('test_cmd'` / `.get('lint_cmd'` pattern, and the gate with one fewer entry.
 
@@ -976,7 +1140,11 @@ gate-teardown criteria live in **ENH-3288**._
 
 7. **Hand off to ENH-3288**, which converts the two structural loops, executes the Option A
    exemption move, empties and deletes `_PENDING_CONVERSION`, widens `_INLINE_ACCESS_RE`, and
-   corrects `HARNESS_OPTIMIZATION_GUIDE.md:569`.
+   **rewrites** `HARNESS_OPTIMIZATION_GUIDE.md:569` to name the three *permanent* exemptions
+   (`oracles/code-run-gate.yaml`, `rn-refine.yaml`, `auto-refine-and-implement.yaml`) once nothing
+   is pending. Step 5c only retargets the identifier in the interim, so ENH-3288 still owns that
+   sentence — the two edits compose rather than collide. ENH-3288's *Documentation* section and
+   step 6 were updated 2026-08-22 to expect `ENH-3288` at `:569` as their starting text.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
@@ -994,9 +1162,11 @@ implementation. Structural-loop touchpoints moved to **ENH-3288**._
   *Pinned replacement text* — the three anchors are not interchangeable
 - Write new subprocess-level resolution tests per site (no existing test exercises shell content
   at the value-resolution level for any of the converted sites) — model on
-  `TestRlCodingAgentObserveTestCmdResolution` (`test_builtin_loops.py:10747-10799`); parametrize
+  `TestRlCodingAgentObserveTestCmdResolution` (`test_builtin_loops.py:10820-10872`); parametrize
   the three `harness-*.yaml` `check_concrete` sites as one test class rather than tripling it,
-  and drive them through `bash -c`, not `sh`
+  and drive them through `bash -c`, not `sh`. **Use the pinned truncate-at-`eval` extraction shape
+  under *Tests*** — running the full action shells out to the resolved command inside the scratch
+  dir and fails on exit codes 5 / 127 that have nothing to do with resolution
 - Model the five conversions on the three **already-converted** precedent sites
   (`rl-coding-agent.yaml:62-63`, `general-task.yaml:57`, `incremental-refactor.yaml:62-63`), not
   on new shapes — specifically the **config-first bare** variant, since none of the five here
@@ -1033,8 +1203,12 @@ the doc rows describing those sites.
 the `harness_exit` switches, the exit collapse, `check_preconditions`, `revert_unverifiable`,
 both `unverifiable` states, `initial:`/`max_steps:`); moving `rn-refine.yaml` and
 `auto-refine-and-implement.yaml` into `_PERMANENT_EXEMPTIONS`; emptying and deleting
-`_PENDING_CONVERSION`; widening `_INLINE_ACCESS_RE`; and
-`docs/guides/HARNESS_OPTIMIZATION_GUIDE.md:569`.
+`_PENDING_CONVERSION`; and widening `_INLINE_ACCESS_RE`.
+
+_`docs/guides/HARNESS_OPTIMIZATION_GUIDE.md:569` was on this out-of-scope list until the fifth
+review (2026-08-22) moved it **into** scope — it names ENH-3277 as the pass that clears the
+remaining exemption, which is false the moment this issue closes. ENH-3288 still deletes the
+sentence outright when it deletes the constant. See *Documentation*._
 
 **Out of scope — belongs to BUG-3269:** the three defective sites
 (`general-task.yaml:37`, `rl-coding-agent.yaml:60,68`); `general-task`'s `SKIP` sentinel,
@@ -1123,6 +1297,12 @@ regression — the inline snippets open the same relative path — but not fixed
 - **Behavior change under `test_cmd: null`**: these five sites stop gating on a guessed `pytest`.
   For the four pass-on-empty sites that is a clean opt-out; for `evaluation-quality` it means
   handing `score` an empty capture unless the §2b marker is applied.
+- **The headline `overall` score changes for an opted-out project** (fifth review). Step 5a
+  re-weights `overall` across the measured dimensions when a signal is missing, so a project with
+  `test_cmd: null` stops carrying a 40%-weighted unmeasurable dimension. Visible in
+  `.loops/quality-report-*.md` and in `report`'s cross-run trend comparison (`:191`) — a one-time
+  discontinuity against prior reports for such projects, and the correct number thereafter. No
+  effect in this repo, which configures both commands.
 - **One deliberate routing change, at `evaluation-quality` only** (*SCORER CORRECTION*). Step 5a's
   `score` prompt edit changes which branch `route_code` takes for a project with no test suite —
   today (and with the markers but without 5a) that project trends toward
@@ -1178,7 +1358,7 @@ regression — the inline snippets open the same relative path — but not fixed
 
 ## Design Review History
 
-_Four design-review passes ran against the tree before implementation; their load-bearing
+_Five design-review passes ran against the tree before implementation; their load-bearing
 corrections are preserved below. Current scores live in the single `## Confidence Check Notes`
 section further down — earlier check runs' score blocks were collapsed on 2026-08-21 per the
 `duplicate_heading` housekeeping flag._
@@ -1265,9 +1445,11 @@ separate key). Four corrections applied:_
    only asserts each listed file exists; the test that actually fails on an entry removed without
    its conversion is `test_no_inline_project_command_config_read`. Corrected in *Tests*, *Impact*,
    and *Codebase Research Findings*.
-4. **Stale anchor** — `TestRlCodingAgentObserveTestCmdResolution` is at `test_builtin_loops.py:10747`;
+4. ~~**Stale anchor** — `TestRlCodingAgentObserveTestCmdResolution` is at `test_builtin_loops.py:10747`;
    the `:10742-10789` citation in *Codebase Research Findings* was wrong (the *Tests* section's
-   `:10747-10799` was right).
+   `:10747-10799` was right).~~ — **ITSELF WRONG; re-corrected by the fifth review.** The class is
+   at **`:10820-10872`**. `:10747` is `TestRlCodingAgentLoop`. All three citations were off; see
+   the fifth review below.
 
 _Conversion count, option selection, and the five/two file split are unchanged. Item 2 adds one
 prompt-text edit to an already-in-scope file._
@@ -1290,6 +1472,53 @@ own prose is falsified by this issue", with matching notes at step 5b and the Ga
 accumulated confidence-check score blocks were collapsed into this section per the prior
 housekeeping flag; the review corrections themselves are all preserved. No change to scope,
 option selection, step ordering, or the conversion count._
+
+### Fifth pre-implementation review — 2026-08-22
+
+_Independent design review against the tree, with two claims checked by execution. Re-verified and
+holding: all six conversion anchors, the nine-entry `_PENDING_CONVERSION` set, the three per-file
+`harness-*` comment shapes (exactly three files in the tree carry `falls back to 'pytest'`, so the
+parametrized guard is complete), the `fix-quality-and-tests` identical-routing proof, and
+`ll-config`'s presence on `PATH` under the test interpreter (`TestRlCodingAgentObserveTestCmdResolution`
+passes in 2.5s). Also confirmed benign: `scripts/tests/test_verify_evidence.py` pins ENH-3277 at
+SHA `08e9f9a5` rather than HEAD, so editing or closing this issue cannot break the evidence gate —
+relevant because this issue's exit gate is a full green suite. Six corrections applied:_
+
+1. **The *Tests* extraction recipe does not work at any of the five sites — the highest-impact
+   finding, because step 2b makes these tests a hard prerequisite.** "Extract the `action` string
+   … run [it]" works for the named template only because `rl-coding-agent`'s `observe` action has a
+   marker comment to `partition` on. These five have none and end in `eval "$CMD"`. Verified by
+   execution: the absent-key case exits **5** (pytest, no tests collected) and the value-set case
+   exits **127**, neither for a resolution-related reason. Added *Pinned extraction shape* under
+   *Tests*, with matching notes at step 2b, the Tests AC, and the Wiring Phase.
+2. **The precedent anchor was wrong for the third time.** `TestRlCodingAgentObserveTestCmdResolution`
+   is at **`:10820-10872`**; `:10747` is `TestRlCodingAgentLoop`. The third review changed the
+   citation *to* `:10747` and declared the *Tests* section's `:10747-10799` accurate — both were off
+   by ~73 lines, as was the original `:10742-10789`. Corrected in all three places and the third
+   review's item 4 struck.
+3. **The two skip-marker strings were not pinned**, though five artifacts must agree on them
+   (steps 4, 5, 5a, and two structural guards). Added *Pinned marker strings* with both strings
+   verbatim and ASCII-only, keyed on the two-word `NO TEST SIGNAL` / `NO LINT SIGNAL` sentinels.
+4. **SCORER CORRECTION addressed `PRIMARY_CONCERN` but not `overall`.** `overall` weights
+   `code_health` at 40% (`:88`) and the output block mandates a 0-100 value regardless, so
+   excluding the dimension from concern-selection still leaves an opted-out project with a
+   permanently depressed headline score — and `report` trend-compares `overall` across runs
+   (`:191`), producing a *declining* verdict forever. Fixing only `PRIMARY_CONCERN` relocates the
+   falsified signal rather than removing it. Added an `overall` sub-section, a Conversions AC, an
+   Impact bullet, and a step 5a clause.
+5. **`HARNESS_OPTIMIZATION_GUIDE.md:569` pulled into scope** (was deferred to ENH-3288). Its
+   deferral rationale — "still true while `_PENDING_CONVERSION` survives" — does not hold: the
+   sentence names *which pass clears the exemption*, and that stops being this issue the moment it
+   closes. Identical defect class to the three gate-file prose anchors this issue already fixes, on
+   the identical argument. Added step 5c, a Files-to-Modify entry, a Docs AC, and a *Documentation*
+   entry; removed from the ENH-3288 out-of-scope list.
+6. **The pinned `harness-*` scaffold comment cited ENH-3288** in a YAML that ships via pip into
+   consuming projects, where the ID resolves to nothing and goes stale once ENH-3288 lands.
+   Retargeted to `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` § *Resolving a Project Command Inside
+   a Loop*, which documents the same contract and ships with the docs.
+
+_No change to scope boundaries, option selection, the five/two file split, or the conversion
+count (still 6). Item 5 adds the only new file._
 
 ## Confidence Check Notes
 
@@ -1314,6 +1543,13 @@ mechanical and doesn't distinguish that.
 - No execution-level test coverage exists today for any of the five target read sites — a
   subprocess-level resolution test is needed per site **before** each conversion, not alongside
   it, per the pinned step 2b ordering (Outcome Criterion B, unchanged at 10/25).
+- **Partially retired by the fifth review (2026-08-22), scores not re-run.** The risk above was
+  the sole named driver of the sub-threshold `outcome_confidence` (63 vs. the 65
+  `outcome_threshold`), and its remediation plan was itself defective: the extraction recipe those
+  tests were to be built on fails at all five sites (fifth review item 1, verified by execution).
+  With *Pinned extraction shape* in place the plan is executable, so re-run
+  `/ll:confidence-check` before treating 63 as current — this is the one change in this issue's
+  history that should move Outcome Criterion B.
 
 ### Housekeeping note (not scored)
 Resolved 2026-08-21 (fourth review): the `duplicate_heading` finding — repeated
