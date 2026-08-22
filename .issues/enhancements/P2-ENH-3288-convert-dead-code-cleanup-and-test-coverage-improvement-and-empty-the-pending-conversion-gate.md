@@ -23,7 +23,7 @@ relates_to:
 - ENH-3277
 - ENH-3281
 decision_needed: false
-confidence_score: 70
+confidence_score: 90
 outcome_confidence: 82
 score_complexity: 14
 score_test_coverage: 18
@@ -1282,4 +1282,5 @@ _Added by `/ll:confidence-check` on 2026-08-21_
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-22T17:36:37 - `f38f71d4-deda-476a-8c40-f9b74012a658.jsonl`
 - `/ll:confidence-check` - 2026-08-21T23:00:39 - `02e1c33a-8ca1-415d-9b72-205f956514ca.jsonl`
