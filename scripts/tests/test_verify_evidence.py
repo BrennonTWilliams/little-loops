@@ -13,6 +13,7 @@ Integration Map -> Tests).
 from __future__ import annotations
 
 import json
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -20,7 +21,10 @@ import pytest
 
 from little_loops.cli.verify_evidence import (
     BASELINE_PATH,
+    VERDICT_CACHE_PATH,
     ArtifactMatcher,
+    BlobReader,
+    HistoryIndex,
     attribute_span,
     extract_candidate_spans,
     in_scope_sections,
@@ -29,14 +33,15 @@ from little_loops.cli.verify_evidence import (
     is_suppressed,
     iter_sections,
     load_baseline,
+    load_verdict_cache,
     main_verify_evidence,
     normalize,
     resolve_artifact,
     scan_all,
     scan_file,
     scan_paths,
-    strip_patch_prefixes,
     write_baseline,
+    write_verdict_cache,
 )
 from little_loops.config import BRConfig
 
@@ -54,6 +59,16 @@ ENH_3277_REPO_PATH = (
     ".issues/enhancements/P2-ENH-3277-convert-the-five-mechanical-inline-"
     "test_cmdlint_cmd-loops-to-ll-config-get.md"
 )
+
+GATE_CLI = "ll-verify-evidence"
+# A full-corpus `--all` runs in ~10s (parallel seed) to ~50s (cold serial), so
+# 120s is generous headroom rather than a guess. It exists because an *untimed*
+# subprocess here is what wedged a whole `ll-auto` run: pytest's thread-method
+# timeout killed the xdist worker without reaping this grandchild, xdist
+# respawned and re-ran the test, and the cycle leaked one orphaned scan every
+# ~124s until the run was killed by hand. Mirrors the sibling validator gate at
+# `test_decisions_yaml_gate.py:80`.
+GATE_TIMEOUT = 120
 
 
 def _git(repo: Path, *args: str) -> subprocess.CompletedProcess:
@@ -363,39 +378,62 @@ class TestNormalization:
 
 
 # ---------------------------------------------------------------------------
-# Patch-text preparation
+# History index / blob reader
 # ---------------------------------------------------------------------------
 
 
-class TestPatchTextPreparation:
-    def test_strip_patch_prefixes_removes_diff_markers(self) -> None:
-        raw = (
-            "diff --git a/f.md b/f.md\n"
-            "index 111..222 100644\n"
-            "--- a/f.md\n"
-            "+++ b/f.md\n"
-            "@@ -1,2 +1,2 @@\n"
-            "+A multi line\n"
-            "+span here\n"
-            "-old line\n"
-        )
-        stripped = strip_patch_prefixes(raw)
-        assert "diff --git" not in stripped
-        assert "@@" not in stripped
-        assert "A multi line" in stripped
-        assert "span here" in stripped
-
-    def test_multiline_span_found_only_with_prefix_stripping(self, repo: Path) -> None:
+class TestHistoryIndex:
+    def test_multiline_span_found_in_superseded_revision(self, repo: Path) -> None:
         rel = ".issues/enhancements/history_target.md"
         _write(repo, rel, "## Section\n\nA multi line\nspan here in the original.\n")
         _commit_all(repo, "add original")
-        # Delete the file's content in a later commit so it's absent at HEAD.
+        # Overwrite in a later commit so it's absent at HEAD.
         _write(repo, rel, "## Section\n\ncompletely different content now.\n")
         _commit_all(repo, "rewrite content")
 
-        matcher = ArtifactMatcher(repo)
-        result = matcher.matches(rel, ["A multi line span here in the original."])
+        with ArtifactMatcher(repo) as matcher:
+            result = matcher.matches(rel, ["A multi line span here in the original."])
         assert result["A multi line span here in the original."] is True
+
+    def test_rename_record_does_not_mis_file_blobs(self, repo: Path) -> None:
+        """``--no-renames`` is load-bearing: an ``R100`` raw record carries two
+        tab-separated paths, and a parse that misses this files blobs under a
+        concatenated path. Renaming with content intact must leave the new path
+        resolvable, not stashed under ``old\\tnew``."""
+        old_rel = ".issues/enhancements/before.md"
+        _write(repo, old_rel, "## Section\n\nA stable distinctive sentence here.\n")
+        _commit_all(repo, "add")
+        _git(repo, "mv", old_rel, ".issues/enhancements/after.md")
+        _commit_all(repo, "rename")
+
+        index = HistoryIndex(repo)
+        index.ensure_full()
+        assert index.blobs_for(".issues/enhancements/after.md")
+        assert not any("\t" in path for path in index.as_data())
+
+    def test_blobs_for_unknown_path_is_empty(self, repo: Path) -> None:
+        """The miss case that previously cost ~250ms of ``git log`` per call."""
+        index = HistoryIndex(repo)
+        index.ensure_full()
+        assert index.blobs_for("no/such/file/ever.py") == ()
+
+    def test_blob_reader_returns_none_for_missing_oid(self, repo: Path) -> None:
+        with BlobReader(repo) as reader:
+            assert reader.read("0" * 40) is None
+
+    def test_commit_message_text_does_not_certify_a_span(self, repo: Path) -> None:
+        """Regression: ``git log -p`` interleaved commit-message text with file
+        content, so a quote appearing only in a commit message was certified as
+        present in the artifact. Verified on the real repo before this change:
+        ``on_error: define_done`` matched the patch stream for
+        ``test_builtin_loops.py`` while appearing in 0 of its 453 revisions."""
+        rel = ".issues/enhancements/msg_target.md"
+        _write(repo, rel, "## Section\n\nordinary content, nothing quoted.\n")
+        _commit_all(repo, "a distinctive phrase that lives only in this message")
+
+        with ArtifactMatcher(repo) as matcher:
+            result = matcher.matches(rel, ["a distinctive phrase that lives only in this message"])
+        assert result["a distinctive phrase that lives only in this message"] is False
 
 
 # ---------------------------------------------------------------------------
@@ -524,21 +562,20 @@ class TestBaseline:
         write_baseline(repo, hashes)
 
         called = {"n": 0}
-        orig = ArtifactMatcher._tier_text
+        orig = ArtifactMatcher._blob_text
 
-        def spy(self, rel_path, tier):
-            if tier in ("history", "history_follow"):
-                called["n"] += 1
-            return orig(self, rel_path, tier)
+        def spy(self, oid):
+            called["n"] += 1
+            return orig(self, oid)
 
-        monkeypatch.setattr(ArtifactMatcher, "_tier_text", spy)
+        monkeypatch.setattr(ArtifactMatcher, "_blob_text", spy)
 
         baseline = load_baseline(repo)
         second, _ = scan_file(
             repo, path, config, rel_path=Path(".issues/bugs/P3-BUG-1-test.md"), baseline=baseline
         )
         assert second == []
-        assert called["n"] == 0, "baselined span must skip history-tier git calls entirely"
+        assert called["n"] == 0, "baselined span must skip the blob walk entirely"
 
     def test_baseline_detects_swapped_finding(self, repo: Path, config) -> None:
         _write(repo, ".issues/enhancements/target.md", "nothing relevant here\n")
@@ -667,31 +704,110 @@ class TestAddedOnly:
 # ---------------------------------------------------------------------------
 
 
+class TestVerdictCache:
+    """The cache is memoization, never policy: it may change wall time and
+    must never change a verdict set."""
+
+    def _seed(self, repo: Path) -> tuple[Path, str]:
+        rel = ".issues/enhancements/cache_target.md"
+        _write(repo, rel, "## Section\n\nordinary content only.\n")
+        _commit_all(repo, "seed")
+        return repo, rel
+
+    def test_found_verdict_is_reused(self, repo: Path) -> None:
+        _, rel = self._seed(repo)
+        cache = load_verdict_cache(repo, max_revisions=80)
+        with ArtifactMatcher(repo, max_revisions=80, verdict_cache=cache) as m:
+            assert m.matches(rel, ["ordinary content only."]) == {"ordinary content only.": True}
+        write_verdict_cache(repo, cache)
+
+        reloaded = load_verdict_cache(repo, max_revisions=80)
+        with ArtifactMatcher(repo, max_revisions=80, verdict_cache=reloaded) as m:
+            # No blob reads at all: the hit is served from the cache.
+            m._blob_text = lambda oid: pytest.fail("cache miss: blob was re-read")  # type: ignore[assignment]
+            assert m.matches(rel, ["ordinary content only."]) == {"ordinary content only.": True}
+
+    def test_not_found_verdict_invalidated_by_working_tree_edit(self, repo: Path) -> None:
+        _, rel = self._seed(repo)
+        span = "a phrase that is not there yet"
+        cache = load_verdict_cache(repo, max_revisions=80)
+        with ArtifactMatcher(repo, max_revisions=80, verdict_cache=cache) as m:
+            assert m.matches(rel, [span]) == {span: False}
+        write_verdict_cache(repo, cache)
+
+        # The artifact gains the text: the cached miss must not survive.
+        _write(repo, rel, f"## Section\n\n{span}\n")
+        reloaded = load_verdict_cache(repo, max_revisions=80)
+        with ArtifactMatcher(repo, max_revisions=80, verdict_cache=reloaded) as m:
+            assert m.matches(rel, [span]) == {span: True}
+
+    def test_algorithm_change_discards_everything(self, repo: Path) -> None:
+        """A narrower matcher could legitimately un-find a span, so a changed
+        `max_revisions` must not inherit even the found verdicts."""
+        _, rel = self._seed(repo)
+        cache = load_verdict_cache(repo, max_revisions=80)
+        cache.record(rel, "deadbeefdeadbeef", True, "fp", "wt")
+        write_verdict_cache(repo, cache)
+
+        assert load_verdict_cache(repo, max_revisions=80).verdicts != {}
+        assert load_verdict_cache(repo, max_revisions=20).verdicts == {}
+
+    def test_corrupt_cache_is_ignored_not_fatal(self, repo: Path) -> None:
+        (repo / ".ll").mkdir(parents=True, exist_ok=True)
+        (repo / VERDICT_CACHE_PATH).write_text("{ not json")
+        assert load_verdict_cache(repo, max_revisions=80).verdicts == {}
+
+
 class TestHistoryTiering:
-    def test_follow_tier_finds_content_missed_by_non_follow(self, repo: Path) -> None:
-        """A span present only in a revision strictly before the rename — one
-        already overwritten under the old name by rename time — is
-        transparent to results: the non-follow tier (pathspec-limited to the
-        new name) misses it, --follow crosses the rename and finds it."""
+    def test_content_surviving_a_rename_is_still_found(self, repo: Path) -> None:
+        """The rename case that actually occurs: content present at rename time.
+
+        ``--no-renames`` turns a rename into delete+add, and the add's
+        post-image blob is the *complete* file, so text that survived the
+        rename is reachable under the new path without following anything.
+        """
         old_rel = ".issues/enhancements/old_name.md"
         _write(repo, old_rel, "## Section\n\nA distinctive phrase for renamed history.\n")
         _commit_all(repo, "add under old name")
-        # Overwritten *before* the rename — gone from the old-name path too,
-        # so only a --follow walk back through history reaches it.
+        new_rel_path = Path(".issues/enhancements/new_name.md")
+        _git(repo, "mv", old_rel, str(new_rel_path))
+        _commit_all(repo, "rename")
+
+        with ArtifactMatcher(repo) as matcher:
+            result = matcher.matches(
+                str(new_rel_path), ["A distinctive phrase for renamed history."]
+            )
+        assert result["A distinctive phrase for renamed history."] is True
+
+    def test_content_overwritten_before_a_rename_is_not_followed(self, repo: Path) -> None:
+        """Documents the one recall case dropping ``--follow`` gives up.
+
+        Text overwritten under the *old* name before the rename is filed under
+        the old path and is not reached from the new one. This is deliberate:
+        the ``--follow`` tier cost 33.7% of total runtime and resolved **zero**
+        spans across two independent samples (400 files and 120 files) of this
+        repo's corpus, so it was removed rather than conditionalised. Restoring
+        it means re-running the index pass with ``-M`` and chaining ``R``-status
+        records — measured at +2.2s per run for a corpus recall gain of zero.
+        """
+        old_rel = ".issues/enhancements/old_name.md"
+        _write(repo, old_rel, "## Section\n\nA distinctive phrase for renamed history.\n")
+        _commit_all(repo, "add under old name")
         _write(repo, old_rel, "## Section\n\nsomething else entirely, pre-rename.\n")
         _commit_all(repo, "modify under old name")
         new_rel_path = Path(".issues/enhancements/new_name.md")
         _git(repo, "mv", old_rel, str(new_rel_path))
         _commit_all(repo, "rename")
 
-        matcher = ArtifactMatcher(repo)
-        follow_result = matcher._tier_text(str(new_rel_path), "history_follow")
-        nonfollow_result = matcher._tier_text(str(new_rel_path), "history")
-        assert follow_result is not None
-        assert "distinctive phrase for renamed history" in follow_result
-        assert (nonfollow_result is None) or (
-            "distinctive phrase for renamed history" not in nonfollow_result
-        )
+        with ArtifactMatcher(repo) as matcher:
+            result = matcher.matches(
+                str(new_rel_path), ["A distinctive phrase for renamed history."]
+            )
+        assert result["A distinctive phrase for renamed history."] is False
+        # ...but it is still reachable under the name it was written to.
+        with ArtifactMatcher(repo) as matcher:
+            under_old = matcher.matches(old_rel, ["A distinctive phrase for renamed history."])
+        assert under_old["A distinctive phrase for renamed history."] is True
 
 
 # ---------------------------------------------------------------------------
@@ -818,18 +934,38 @@ class TestRepoGate:
     attribution/span-kind gap needs fixing before the baseline is re-seeded.
     """
 
-    def test_no_new_unverifiable_evidence(self) -> None:
+    @pytest.fixture(scope="module")
+    def gate_cli(self) -> str:
+        """Return the ``ll-verify-evidence`` path, skipping when it is missing.
+
+        The canonical skip-when-missing idiom (``test_decisions_yaml_gate.py``
+        :49-63). This replaces a ``returncode not in (0, 1)`` check, which
+        could never fire for the failure that actually occurred: the call
+        hanging means there is no return code to inspect.
+        """
+        path = shutil.which(GATE_CLI)
+        if path is None:
+            pytest.skip(f"{GATE_CLI} not installed; install via `pip install -e ./scripts[dev]`")
+        return path
+
+    def test_no_new_unverifiable_evidence(self, gate_cli: str) -> None:
         if not (REPO_ROOT / ".git").exists():
             pytest.skip("not a git checkout; nothing to enumerate")
 
-        result = subprocess.run(
-            ["ll-verify-evidence", "--all", "--json", "-C", str(REPO_ROOT)],
-            capture_output=True,
-            text=True,
-            cwd=REPO_ROOT,
-        )
-        if result.returncode not in (0, 1):
-            pytest.skip(f"ll-verify-evidence unavailable (rc={result.returncode})")
+        try:
+            result = subprocess.run(
+                [gate_cli, "--all", "--json", "-C", str(REPO_ROOT)],
+                capture_output=True,
+                text=True,
+                cwd=REPO_ROOT,
+                timeout=GATE_TIMEOUT,
+            )
+        except subprocess.TimeoutExpired:
+            pytest.fail(
+                f"{GATE_CLI} --all exceeded {GATE_TIMEOUT}s. A full corpus scan runs in "
+                "well under that; a timeout here means a performance regression, not a "
+                "slow machine."
+            )
 
         payload = json.loads(result.stdout)
         if payload["ok"]:
@@ -852,3 +988,59 @@ class TestRepoGate:
         assert load_baseline(REPO_ROOT), (
             "baseline parsed empty — every file would read as regressed"
         )
+
+    def test_baseline_size_is_bounded(self) -> None:
+        """The counterweight to ``--update-baseline``.
+
+        A baseline is a grandfathered backlog; one that grows is a checker that
+        got *worse*, not a corpus that did. It also has to stay small enough
+        that a maintainer can actually read it before committing a re-seed —
+        this one went unreviewed at ~3800 findings once already.
+        """
+        total = sum(len(v) for v in load_baseline(REPO_ROOT).values())
+        assert total <= 400, (
+            f"{total} baselined spans — a re-seed absorbed a precision regression. "
+            "Fix the checker before re-running --update-baseline."
+        )
+
+
+class TestBaselineKeying:
+    def test_id_resolves_from_filename_when_frontmatter_has_none(self, repo: Path) -> None:
+        """34% of this repo's issue files carry no ``id:`` line; keying on
+        frontmatter alone left their findings permanently unbaselineable."""
+        _write(repo, ".issues/enhancements/target.md", "nothing relevant here\n")
+        body = (
+            "## Current Behavior\n\n"
+            "See `this phrase does not exist there` (`.issues/enhancements/target.md`).\n"
+        )
+        rel = Path(".issues/bugs/P2-BUG-4242-no-frontmatter-id.md")
+        path = _write(repo, str(rel), body)
+        _commit_all(repo)
+
+        config = BRConfig(repo)
+        findings, hashes = scan_file(repo, path, config, rel_path=rel)
+        assert len(findings) == 1
+        assert "4242" in hashes, "filename-anchored numeric ID must key the baseline"
+
+    def test_reseed_does_not_drop_existing_baseline_entries(self, repo: Path, config) -> None:
+        """``--update-baseline`` scanned *with* the old baseline and then
+        replaced the file. Baselined spans are dropped before matching, so they
+        never reached the new hashes and were silently un-grandfathered."""
+        _write(repo, ".issues/enhancements/target.md", "nothing relevant here\n")
+        body = (
+            "---\nid: BUG-7\n---\n\n"
+            "## Current Behavior\n\n"
+            "See `an absent phrase used as evidence` (`.issues/enhancements/target.md`).\n"
+        )
+        rel = Path(".issues/bugs/P3-BUG-7-test.md")
+        path = _write(repo, str(rel), body)
+        _commit_all(repo)
+
+        _, hashes = scan_file(repo, path, config, rel_path=rel)
+        write_baseline(repo, hashes)
+        first = load_baseline(repo)
+        assert first.get("7")
+
+        # A re-seed must reproduce the same grandfathering, not empty it.
+        _, reseeded = scan_all(repo, config, ".issues", use_baseline=False)
+        assert reseeded.get("7") == first["7"]

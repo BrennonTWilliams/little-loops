@@ -103,6 +103,7 @@ changelog-data.json
 # little-loops context/sync state files
 .ll/*.lock
 .ll/ll-context-state.json
+.ll/evidence-verdict-cache.json
 .ll/ll-sync-state.json
 .ll/history.db
 .ll/history.db-shm

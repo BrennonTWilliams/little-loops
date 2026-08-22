@@ -67,6 +67,10 @@ _GITIGNORE_ENTRIES: tuple[str, ...] = (
     ".ll/*.lock",
     ".ll/ll-continue-prompt.md",
     ".ll/private-refs.local.txt",
+    # Pure memoization for ll-verify-evidence; churns every run and carries
+    # machine-local working-tree hashes. The *baseline* it complements
+    # (.ll/evidence-baseline.json) is deliberately tracked — that one is policy.
+    ".ll/evidence-verdict-cache.json",
     # Nested .ll/ strays — ignore at any depth, keep the repo-root .ll/ tracked.
     "**/.ll/",
     "!/.ll/",

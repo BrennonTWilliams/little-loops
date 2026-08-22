@@ -4109,21 +4109,28 @@ Certify that an issue's quoted **evidence** — a span attributed to another art
 
 **Scope.** Only evidence-bearing sections are checked — `## Current Behavior`, `## Steps to Reproduce`, `## Root Cause`, `## Motivation`, `### Codebase Research Findings`. This is an allowlist: forward-looking sections (`## Proposed Solution`, `## Expected Behavior`, `## Implementation Steps`, `## Integration Map`, `## Program Design`) quote code that intentionally does not exist yet, so a presence check there would be meaningless, and a section named in neither list is out of scope by default.
 
-**Pipeline.** Extract fenced-block and inline-backtick spans -> attribute each to a named file path or issue ID (a following parenthetical wins, else the nearest preceding mention in the same section) -> drop command output, bare identifiers/paths, and command/skill invocations (the quote-vs-mention distinction) -> drop spans under the character floor -> resolve the cited artifact -> match the normalized span against the artifact's working tree, then HEAD, then `git log --all -p`, then `git log --all --follow -p`, short-circuiting on the first hit.
+**Pipeline.** Extract fenced-block and inline-backtick spans -> attribute each to a named file path or issue ID (a following parenthetical wins, else the mention whose prose block covers the span; **abstains** when no mention covers it or when the block names two artifacts) -> drop command output, bare identifiers/paths, command/skill invocations, template reference fields (`- **Anchor**: …`), elisions, author annotations, and metavariable placeholders -> drop spans under the character floor -> resolve the cited artifact -> match the normalized span against the artifact's working tree, then its blob history newest-first, short-circuiting on the first hit.
+
+**Matching.** One `git log --all --raw` pass builds a `path -> blob OIDs` index for the whole run, and one long-lived `git cat-file --batch` reads blobs from it — two git processes per run, not two per artifact. This replaced a four-tier `working tree -> HEAD -> git log -p -> git log --follow -p` pipeline that took 13+ minutes on a 3200-issue corpus. It is also **more correct**: `git log -p` interleaves commit-message text with file content, so the old pipeline certified quotes that appeared only in some commit message and in no revision of the cited artifact.
+
+`--max-revisions` (default 80) caps how far back each artifact is searched. Renames are not followed; a rename's add-commit blob is the complete file, so only text overwritten *before* a rename is out of reach.
+
+**Verdict cache.** `.ll/evidence-verdict-cache.json` (gitignored) memoizes span-presence verdicts, taking a warm full scan to ~3s. It is a cache, **not policy** — safe to delete at any time, and it can never change a finding set. A found verdict never expires (git history only grows); a not-found verdict is revalidated against the artifact's working-tree hash and searched revision set. Do not confuse it with `.ll/evidence-baseline.json`, which is tracked, curated, and decides what the gate forgives.
 
 **Modes**, mirroring `ll-verify-private-refs`:
 
 - **changed-files** (`ll-verify-evidence FILE...`) — whole-file scan, no baseline. The skill / host-hook invocation.
 - **`--added-only FILE...`** — only spans on lines the staged diff adds. The pre-commit hook.
-- **`--all`** — full scan of `issues.base_dir`, compared against the tracked baseline `.ll/evidence-baseline.json` (keyed on the anchored numeric issue ID, holding normalized span hashes — not file path or per-file counts, since issue files are renamed constantly). This is the pytest CI gate.
+- **`--all`** — full scan of `issues.base_dir`, compared against the tracked baseline `.ll/evidence-baseline.json` (keyed on the anchored numeric issue ID, holding normalized span hashes — not file path or per-file counts, since issue files are renamed constantly). The ID comes from frontmatter when present and from the canonical `P<n>-TYPE-NNN-` filename anchor otherwise; ~34% of a mature corpus carries no `id:` line, and keying on frontmatter alone leaves those findings permanently unbaselineable. This is the pytest CI gate.
 
 **Flags:**
 
 | Flag | Short | Description |
 |------|-------|-------------|
 | `--all` | | Scan every tracked issue file against the baseline |
-| `--update-baseline` | | Rewrite the baseline from the current full scan (requires `--all`) |
+| `--update-baseline` | | Rewrite the baseline from a full scan with the baseline ignored, so the re-seed is complete and idempotent (requires `--all`) |
 | `--added-only` | | Only lines added in the staged diff (pre-commit) |
+| `--max-revisions N` | | Newest-first revisions searched per artifact (default: 80) |
 | `--directory` | `-C` | Project root to scan (default: cwd) |
 | `--json` | | Output as JSON |
 
