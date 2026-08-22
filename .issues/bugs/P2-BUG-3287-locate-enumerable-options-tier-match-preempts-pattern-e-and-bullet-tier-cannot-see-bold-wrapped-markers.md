@@ -20,20 +20,34 @@ relates_to:
 - BUG-3279
 - BUG-3285
 size: Very Large
+confidence_score: 100
+outcome_confidence: 74
+score_complexity: 14
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 10
 ---
 
 # BUG-3287: locate_enumerable_options lets a tier match preempt Pattern E, and its bullet tier cannot see bold-wrapped markers
 
 ## Summary
 
-`locate_enumerable_options` (`issue_parser.py:2209`) resolves a document to **one** option set by
-running `_OPTION_PATTERNS` tiers 1–4 first and falling back to the Pattern E directive heuristic
-`_locate_directive_alternatives` (`:2137`) only when **all four tiers miss document-wide**. Two
-defects follow from that chain:
+`locate_enumerable_options` (`issue_parser.py:2379`) resolves a document to **one** option set by
+running `_OPTION_PATTERNS` tiers 1–4 first, then the `decision_rules_numbered` structural heuristic,
+and falling back to the Pattern E directive heuristic `_locate_directive_alternatives` (`:2219`)
+only when **every earlier stage misses document-wide**. Two defects follow from that chain:
 
 1. **Pattern E preemption (live today).** Any tier match anywhere in the resolved section hides a
-   co-located prose decision directive. Measured over the live `.issues/` corpus: **6 issues** carry
+   co-located prose decision directive. Measured over the live `.issues/` corpus: **7 issues** carry
    a Pattern E directive that a tier match preempts right now, with no code change required.
+
+> ⚠ **Restated 2026-08-22 — the chain has five stages, not four.** BUG-3293 landed
+> `_locate_decision_rules_numbered` (`issue_parser.py:2337`, `pattern: "decision_rules_numbered"`)
+> between the whole-document H2 sweep and the directive probe (`:2428-2434`) *after* this issue was
+> written. Every "all four tiers miss" phrasing in the original body was stale and is corrected
+> throughout. Measured impact on this issue: **none forced** — 3 corpus files resolve to
+> `decision_rules_numbered`, **0** are preempted by a tier, and **0** preempt a directive. See
+> § *Scope boundary — `decision_rules_numbered`*.
 2. **The `bullet` tier cannot match a bold-wrapped marker.** `_OPTION_PATTERNS[3]` requires the
    `(a)` marker to sit immediately after the dash, so `- **(a) Make the override real.**` — the
    idiomatic option shape in this repo's issues — matches **zero** tiers. It is not out-competed;
@@ -48,10 +62,11 @@ all sit on. The two are independent — neither blocks the other.
 ## Current Behavior
 
 `locate_enumerable_options` walks sections in precedence order (`## Proposed Solution`, then
-`_OPTION_FALLBACK_SECTIONS`, then a whole-document H2 sweep), handing each section body to
-`_locate_options_in_text` (`:2025`), which **returns on the first `_OPTION_PATTERNS` tier with
-≥1 match**. `_locate_directive_alternatives` is reached only after every section and every tier
-has missed.
+`_OPTION_FALLBACK_SECTIONS`, then a whole-document H2 sweep keeping the highest-count section),
+handing each section body to `_locate_options_in_text` (`:2088`), which **returns on the first
+`_OPTION_PATTERNS` tier with ≥1 match**. Only when all of that misses does the chain try
+`_locate_decision_rules_numbered` (`:2337`, BUG-3293), and only when *that* also misses does it
+reach `_locate_directive_alternatives` (`:2219`).
 
 ### Defect 1 — a tier match preempts a Pattern E directive
 
@@ -69,16 +84,22 @@ for p in pathlib.Path('.issues').rglob('*.md'):
         print(p.name, loc.count, loc.pattern, '| hidden directive in', d.heading, 'line', d.options[0].start_line)
 ```
 
-Six live issues, e.g.:
+Seven live issues (re-measured 2026-08-22):
 
 | Issue | Reported | Hidden directive |
 |---|---|---|
-| BUG-1183 | `count 2`, `bold_label` | `## Proposed Solution`, line 55 |
+| BUG-1183 | `count 2`, `bold_label` | `## Proposed Solution`, line 56 |
 | ENH-2446 | `count 2`, `bullet` | `## Proposed Solution`, line 123 |
 | ENH-2873 | `count 2`, `bold_label` | `## Proposed Change`, line 84 |
+| **ENH-3277** | `count 3`, `bold_label` | `## Proposed Solution`, line 378 |
 | ENH-2239 | `count 2`, `bold_label` | `## Scope Boundaries`, line 49 |
 | ENH-3275 | `count 2`, `section_header` | `## Proposed Solution`, line 73 |
 | FEAT-2339 | `count 2`, `bold_label` | `## Proposed Solution`, line 128 |
+
+> ⚠ **Re-measured 2026-08-22 — six became seven.** `ENH-3277` is new since this issue was written
+> and BUG-1183's directive moved line 55 → 56. **The set is live corpus state, not a fixture**: do
+> not encode the cardinality in a test. Pin by ID and assert the known set is a *subset* of what the
+> probe reports — see § *Tests*.
 
 `/ll:decide-issue` Phase 3 scores the tier options, Phase 7b clears `decision_needed`, and the
 directive is never surfaced.
@@ -125,8 +146,13 @@ Consequence: `check-decidable` reports such a document as having nothing to deci
   (`2 → 1`) while the directive it held moves to `residual_directive`. That drop is intended and
   pinned; what must not happen is the drop reaching Phase 3's `count == 1` clear branch.
   > ⚠ **Amended 2026-08-21.** The unqualified form of this clause was measurably false under the
-  > recommended Option B — see § *Ordering constraint*. Stating it as an absolute is what let the
+  > settled Option B — see § *Ordering constraint*. Stating it as an absolute is what let the
   > required corpus differential be specified with an assertion that fails on landing.
+- Three further documents keep their `count` but change their **resolved section**: ENH-3264,
+  ENH-2164, ENH-2358. Intended and pinned — see § *Blast radius*.
+  > ⚠ **Added 2026-08-22.** The `heading`-stability half of this contract was never stated here,
+  > only the `count` half, which is why two of the three section-movers went unnoticed until the
+  > corpus was re-measured.
 
 ## Motivation
 
@@ -148,7 +174,8 @@ radius, and shipping part 2 alone introduces a new false-clear (see *Ordering co
 
 In `locate_enumerable_options`, call `_locate_directive_alternatives` alongside the tier scan
 rather than only after it. When both produce a result, the returned `LocatedOptions` must express
-both. Two viable shapes; pin one during implementation:
+both. Two viable shapes; pin one during implementation (**settled: Option B** — see
+§ *Decision Rules*):
 
 - **Merge** — return the tier result with the directive's `LocatedOption` appended and
   `pattern` set to the tier name, `count` incremented. Cheapest, but `pattern` then lies about one
@@ -161,8 +188,9 @@ both. Two viable shapes; pin one during implementation:
   mutating `count` is the higher-risk shape.
 
 > **Option B is inert without the consumer edits below — this is not optional polish.**
-> Verified 2026-08-21: `cmd_check_decidable` (`cli/issues/check_decidable.py:35`) reads only
-> `located.count`, and `LocatedOptions.to_dict()` (`issue_parser.py:1997-2003`) serializes only
+> Verified 2026-08-21, re-verified 2026-08-22: `cmd_check_decidable`
+> (`cli/issues/check_decidable.py:36`) reads only
+> `located.count`, and `LocatedOptions.to_dict()` (`issue_parser.py:2060-2066`) serializes only
 > `count` / `pattern` / `heading` / `options`. A `residual_directive` field that no consumer reads
 > and `--json` does not emit leaves the output for all six preempted issues **byte-identical**, so
 > defect 1 would be *made available* rather than fixed and this issue's own *Expected Behavior*
@@ -188,28 +216,53 @@ itself (it is constructed by `_locate_directive_alternatives`, which never popul
 > ⚠ **Type corrected 2026-08-21 (epic review) — the field is `LocatedOptions | None`, not
 > `LocatedOption | None`.** Every earlier statement of this field in this issue said
 > `LocatedOption` (singular). That is wrong at the source: `_locate_directive_alternatives`
-> returns **`LocatedOptions | None`** (`issue_parser.py:2187`), a container carrying the
-> directive's `heading` *and* every alternative it found. Measured on a directive document:
+> returns **`LocatedOptions | None`** (`issue_parser.py:2219`), a container carrying the
+> directive's `heading` and `count`. Measured on a directive document:
 > `(count 2, pattern 'provisional_e', heading 'Proposed Solution')`. Assigning that to a singular
-> `LocatedOption` discards two things this issue's own parts depend on:
+> `LocatedOption` discards the **heading**, which part 1b requires in order to name the directive
+> in `check-decidable`'s output — `LocatedOption` has no `heading` field at all
+> (`label`/`text`/`start_line`/`end_line`, `issue_parser.py:2029-2043`). The corpus script in
+> § *Current Behavior* already reads the probe as a container (`d.heading`,
+> `d.options[0].start_line`); the dataclass field must match it.
 >
-> - the **heading**, which part 1b requires in order to "report the directive in the success
->   line" — `LocatedOption` has no `heading` field at all (`label`/`text`/`start_line`/`end_line`,
->   `issue_parser.py:2016-2030`);
-> - the **second alternative** — a Pattern E window is by construction a *choice between*
->   alternatives, so keeping only `options[0]` reports that a decision exists while hiding what
->   it is between.
+> ⚠ **Second stated reason retracted 2026-08-22.** This note previously also claimed the container
+> preserves "the **second alternative** … keeping only `options[0]` reports that a decision exists
+> while hiding what it is between." **That is false.** `_locate_directive_alternatives` returns
+> `count=2` with **exactly one** `LocatedOption` — the matched window — and never separates the
+> alternatives; this is explicit in its own docstring (`issue_parser.py:2234-2240`: *"`options`
+> holds a single `LocatedOption` spanning the matched window — the individual 'X' / 'Y'
+> alternatives are not separated out"*). Measured across the corpus: **all 18** directive matches
+> are `(count == 2, len(options) == 1)`. The conclusion (use `LocatedOptions`) stands on the
+> `heading` argument alone. This retraction matters because a test was written against the false
+> reason — see § *Tests → Directive-shape guard*.
+
+### Part 1b — teach `check-decidable` to *report* it
+
+`cmd_check_decidable` (`cli/issues/check_decidable.py:19-61`) gates on `located.count >= 1` at
+`:36`. **Leave the gate alone.** Append the residual directive to the success line when one is
+present, e.g.:
+
+```
+Decidable: ENH-2446 has 2 enumerable option(s) in 'Proposed Solution'
+  + residual decision directive in 'Proposed Solution' (line 123) — not counted
+```
+
+> ⚠ **Rescoped 2026-08-22 — the originally specified gate change is unreachable dead code.**
+> This part previously read: *"Change to `located.count >= 1 or located.residual_directive is not
+> None` … without this, a document whose only decision point is a preempted directive still routes
+> `resolve-decision.yaml:47-67` to `refine`."* Both halves are wrong, structurally:
 >
-> The corpus script in § *Current Behavior* already reads the probe as a container
-> (`d.heading`, `d.options[0].start_line`); the dataclass field must match it.
-
-### Part 1b — teach `check-decidable` to see it
-
-`cmd_check_decidable` (`cli/issues/check_decidable.py:19-52`) gates on `located.count >= 1`. Change
-to `located.count >= 1 or located.residual_directive is not None`, and report the directive in the
-success line when it is the only thing found. Without this, the six live preempted issues stay
-`decidable` for the wrong reason (their tier options) and a document whose *only* decision point is a
-preempted directive still routes `resolve-decision.yaml:47-67` to `refine`.
+> Under Option B, `residual_directive` is populated **only when a tier already fired** — that is the
+> shape's defining property. So `count >= 1` is *always* true wherever `residual_directive` is
+> non-null, and the `or` clause can never change an exit code. Measured over `.issues/` against a
+> prototype of part 1: **7** documents receive a `residual_directive`, **0** of them with
+> `count == 0`. There is no such thing as "a document whose only decision point is a preempted
+> directive that `check-decidable` rejects" — if the directive is preempted, the preempting tier
+> match is itself ≥1 option, and the document is already `decidable` today.
+>
+> The reporting change is what makes the field observable at this CLI, and it is not dead. The
+> consequence for verification is larger and is handled in § *Tests*: the "Option B end-to-end
+> guard" specified there **passes unmodified against today's tree** and proves nothing.
 
 ### Part 1c — state what Phase 2.5 / Phase 3 do with it
 
@@ -241,7 +294,7 @@ and nothing in the report says so.
 >    (part 1b) — and any Phase 3 prose written here is orphaned. On the epic's sequencing
 >    (BUG-3287 → BUG-3278) that is one issue's lifetime.
 > 2. **It cannot pay for itself against the SKILL.md line budget.** `skills/decide-issue/SKILL.md`
->    is **493 lines** against a hard 500-line cap (`TestSkillLineLimit`,
+>    is **495 lines** against a hard 500-line cap (`TestSkillLineLimit`,
 >    `scripts/tests/test_enh494_skill_companions.py:73-86`), and three children write to it. Spending
 >    part of a 7-line budget on a rule with a one-issue lifetime is the worst available trade. See
 >    EPIC-3290 § *Shared constraint — the decide-issue SKILL.md line budget*.
@@ -309,15 +362,28 @@ collapses the result to `count 1` — which is `/ll:decide-issue` Phase 3's *"On
 ### Blast radius
 
 Measured by applying part 2 to every file in `.issues/` and diffing `locate_enumerable_options`
-output: **22 of the live corpus change**. Two change in ways a regex-level superset check does not
-predict, because tier precedence and *section* precedence both shift:
+output: **22 of the live corpus change** (re-measured 2026-08-22 — total unchanged, breakdown
+corrected). **Six** have a non-zero baseline, and **four** of those change in ways a regex-level
+superset check does not predict, because tier precedence and *section* precedence both shift:
 
 | Issue | Before | After | Why it matters |
 |---|---|---|---|
-| BUG-3229 | `2`, `provisional_e` | `1`, `bullet` | count **drops**; hits the `count == 1` clear branch. **Part 1 does not prevent this under Option B** — see § *Ordering constraint*; the `residual_directive is None` guard on that branch is what prevents it |
+| BUG-3229 | `2`, `provisional_e`, §Proposed Solution | `1`, `bullet`, §Proposed Solution | count **drops**; hits the `count == 1` clear branch. **Part 1 does not prevent this under Option B** — see § *Ordering constraint*; the `residual_directive is None` guard on that branch is what prevents it |
 | ENH-3264 | `1`, `numbered`, §Confidence Check Notes | `2`, `bullet`, §**Proposed Solution** | the winning **section** changes, not just the tier |
+| **ENH-2164** | `1`, `numbered`, §Reopened | `3`, `bullet`, §**Relationship to ENH-2165, rn-remediate, and Conjunctive Rules** | section change; the winning H2 is not even a canonical options section |
+| **ENH-2358** | `2`, `numbered`, §Implementation Steps | `3`, `bullet`, §**Expected Behavior** | section change |
+| FEAT-2332 | `3`, `bullet`, §Proposed Solution | `6`, `bullet`, §Proposed Solution | count rises, section stable — benign |
+| FEAT-2447 | `1`, `bullet`, §Integration Map | `4`, `bullet`, §Integration Map | count rises, section stable — benign |
 
-The remaining 20 are `count 0 → N`, `pattern null → bullet` — the intended correction.
+The remaining **16** are `count 0 → N`, `pattern null → bullet` — the intended correction.
+
+> ⚠ **Corrected 2026-08-22 — the original breakdown was wrong in two ways.** It named only
+> BUG-3229 and ENH-3264 as unpredicted, and said *"the remaining 20 are `count 0 → N`"*. Re-measured:
+> **ENH-2164** and **ENH-2358** also change their resolved `heading`, and the `0 → N` group is
+> **16**, not 20. This is not cosmetic: § *Tests* pins the corpus differential's exception list to
+> the documented set, so as written the required test **fails on two files this issue never named**.
+> All four heading-movers must be pinned. FEAT-2332 and FEAT-2447 need no pin — a `count` *increase*
+> with a stable heading is exactly what the assertion permits.
 
 Affected consumers:
 
@@ -348,11 +414,34 @@ Strict superset at the regex level — every previously-matching shape still mat
 | `1. (a) foo` | ✗ | ✗ |
 | `  - (a) indented` | ✗ | ✗ |
 | `-(a) foo` | ✗ | ✗ |
+| `- ***(a)*** foo` | ✗ | ✗ |
 
 Note the last four newly-matching rows come from the `\s+`→`\s*` relaxation, not the bold
 widening. A bare `- (a)` in unrelated prose is now a `bullet`-tier match — intended (a marker-only
 bullet is still an option label), but it is why the corpus differential below is a required test,
 not an optional one.
+
+> **Matrix re-verified 2026-08-22: 14/14 rows exact, no corrections.** The final row
+> (`- ***(a)*** foo`, bold-italic) is **added as an explicit non-goal** — `\*{0,2}` caps at two
+> asterisks, so a triple-marker bullet still misses. Pinning it as ✗/✗ keeps a later reader from
+> "fixing" it into `\*{0,3}` without re-running the corpus differential.
+
+### Scope boundary — `decision_rules_numbered`
+
+Part 1 makes the directive an *additional* probe alongside the four `_OPTION_PATTERNS` tiers. It
+does **not** do the same for `_locate_decision_rules_numbered` (BUG-3293, the fifth stage), and the
+directive probe is **not** attached to a `decision_rules_numbered` result. Justification, measured
+2026-08-22 over the full `.issues/` corpus:
+
+- files resolving to `decision_rules_numbered`: **3**
+- files where a tier match preempts an available `decision_rules_numbered` match: **0**
+- files where a `decision_rules_numbered` result preempts an available directive: **0**
+- files where part 2 changes a `decision_rules_numbered` resolution: **0**
+
+So the symmetric widening has no live effect and is deferred. **Implementation requirement**: the
+restructured `locate_enumerable_options` must set `residual_directive = None` on a
+`decision_rules_numbered` result explicitly, not by omission, so the choice is legible at the call
+site rather than an accident of control flow.
 
 ## Integration Map
 
@@ -361,12 +450,18 @@ not an optional one.
 - `scripts/little_loops/issue_parser.py` — `locate_enumerable_options` directive-probe ordering
   (+ `LocatedOptions.residual_directive: LocatedOptions | None` if the recommended shape is taken —
   **plural**, see part 1a's type correction), `_OPTION_PATTERNS[3]`
-- `scripts/little_loops/issue_parser.py` — `LocatedOptions.to_dict()` (`:1997-2003`), which must
+- `scripts/little_loops/issue_parser.py` — `LocatedOptions.to_dict()` (`:2060-2066`), which must
   emit `residual_directive` or the field is invisible to `locate-options --json` (part 1a).
-  **Required under Option B, not optional**
-- `scripts/little_loops/cli/issues/check_decidable.py` — the `located.count >= 1` gate at `:35`
-  gains `or located.residual_directive is not None` (part 1b). **Required under Option B**; without
-  it none of the six preempted issues changes observable behavior
+  **Required under Option B, not optional** — this is now the *only* edit that makes the field
+  externally observable
+- `scripts/little_loops/cli/issues/check_decidable.py` — the success-line `print(` at `:37-40`
+  gains a residual-directive line (part 1b). **The `located.count >= 1` gate at `:36` is
+  unchanged.**
+  > ⚠ **Rescoped 2026-08-22.** Previously *"the gate at `:35` gains `or
+  > located.residual_directive is not None`"*. That clause is unreachable — see § *Part 1b*. Two
+  > anchor corrections in the same line: the gate is at **`:36`**, not `:35`, and the file now
+  > returns **2** for an unresolvable issue ID (BUG-3294), so it is no longer the two-outcome gate
+  > this issue described.
 - `skills/decide-issue/SKILL.md` — Phase 3's `count == 1` branch (`:187`) gains the
   `residual_directive is None` guard. **Required under Option B** — it is what closes the
   ordering-constraint hole; see § *Decision Rules → Cost correction 2*.
@@ -374,7 +469,7 @@ not an optional one.
   > score (part 1c, surface-only shape)"*. Part 1c is **deferred to BUG-3278**; only the one-line
   > branch guard stays here.
   >
-  > **Line budget.** `SKILL.md` is **493 lines** against a hard **500-line** cap enforced by
+  > **Line budget.** `SKILL.md` is **495 lines** against a hard **500-line** cap enforced by
   > `TestSkillLineLimit` (`scripts/tests/test_enh494_skill_companions.py:73-86`), and BUG-3278 and
   > ENH-3280 also write to this file. This issue's share is **≤ 2 lines** — a condition appended to
   > an existing sentence, not a new paragraph. If the edit does not fit in two lines, extract to
@@ -383,8 +478,9 @@ not an optional one.
 
 ### Dependent Files (Callers/Importers)
 
-- `scripts/little_loops/cli/issues/check_decidable.py:19-52` — `count >= 1` gate
-  > ⚠ Promoted to *Files to Modify* under Option B — see part 1b
+- `scripts/little_loops/cli/issues/check_decidable.py:19-61` — `count >= 1` gate at `:36`
+  > ⚠ Promoted to *Files to Modify* under Option B — see part 1b (reporting only; the gate itself
+  > does not change). Range corrected `:19-52` → `:19-61` (BUG-3294 grew the function).
 - `scripts/little_loops/cli/issues/locate_options.py:19-51` — `--json` payload
 - `scripts/little_loops/issues/fold_research_findings.py:178` — prose reference to
   `count_enumerable_options`
@@ -395,8 +491,9 @@ not an optional one.
 
 ### Similar Patterns
 
-- `locate_unresolved_options` (`issue_parser.py:2240`) mirrors the same *section* precedence but
+- `locate_unresolved_options` (`issue_parser.py:2518`) mirrors the same *section* precedence but
   its own block iterator; it does **not** read `_OPTION_PATTERNS` and is unaffected by part 2
+  (anchor `:2240` corrected 2026-08-22)
 
 ### Tests
 
@@ -405,32 +502,52 @@ not an optional one.
 - **Corpus differential (required):** a test that applies `locate_enumerable_options` across
   `.issues/` and asserts no file's `count` decreases and no file's resolved `heading` changes,
   **except for files pinned as intended changes.** This is the only check that would have caught
-  BUG-3229 and ENH-3264; the 14-shape regex matrix passes both.
-  > ⚠ **Escape hatch added 2026-08-21 — without it this test fails on the two files this issue
-  > already documents as changing.** Under Option B + part 2, `BUG-3229` decreases `count` 2 → 1
-  > (measured) and `ENH-3264`'s resolved `heading` moves §`Confidence Check Notes` →
-  > §`Proposed Solution`. Both are declared intended in § *Blast radius*, so the assertion must
-  > carry a pinned-exception list the way BUG-3285's version of the same test does
-  > (*"no file's `count` moves except those pinned as intended"*). Pin exactly these two, by ID,
-  > with the expected before/after in the test docstring — a bare `!=` allowance would let the
-  > next regression through silently.
+  BUG-3229, ENH-3264, ENH-2164 and ENH-2358; the 14-shape regex matrix passes all four.
+  > ⚠ **Escape hatch added 2026-08-21; pinned list corrected 2026-08-22 — it named two of the four
+  > files that actually move.** Pin exactly these **four**, by ID, with the expected before/after in
+  > the test docstring — a bare `!=` allowance would let the next regression through silently:
+  >
+  > | ID | Pinned change |
+  > |---|---|
+  > | BUG-3229 | `count` 2 → 1, `provisional_e` → `bullet`, §Proposed Solution (stable) |
+  > | ENH-3264 | `heading` §Confidence Check Notes → §Proposed Solution |
+  > | ENH-2164 | `heading` §Reopened → §Relationship to ENH-2165, rn-remediate, and Conjunctive Rules |
+  > | ENH-2358 | `heading` §Implementation Steps → §Expected Behavior |
+  >
+  > FEAT-2332 (`3 → 6`) and FEAT-2447 (`1 → 4`) are **not** pinned — a `count` increase with a
+  > stable heading is what the assertion already permits. Follow BUG-3285's phrasing of the same
+  > test (*"no file's `count` moves except those pinned as intended"*).
   > Scaffolding model: `TestUnappliedDecisionLiveCorpusSweep`
-  > (`scripts/tests/test_issue_parser.py:5063`, `test_corpus_sweep_does_not_crash` at `:5085`) —
+  > (`scripts/tests/test_issue_parser.py:5563`, `test_corpus_sweep_does_not_crash` at `:5585`) —
   > skip-if-corpus-absent, `Path(__file__).resolve().parents[2]`, `rglob("*.md")`.
+  > (Anchors re-corrected 2026-08-22 from `:5063`/`:5085`.)
 - `scripts/tests/test_issues_locate_options.py` — a case asserting `- **(a) …**` reports
   `pattern: "bullet"`
 - `scripts/tests/test_ll_issues_check_decidable.py` — a case asserting the same document is
   decidable, and one asserting a tier+directive document still reports the directive
-- **Option B end-to-end guard (required):** a document whose *only* decision point is a
-  tier-preempted directive — assert `ll-issues check-decidable` **exits 0**. This is the assertion
-  that fails if parts 1a/1b are skipped, and it is the only one that distinguishes "the field
-  exists" from "the defect is fixed." Pair it with a `locate-options --json` case asserting
-  `residual_directive` is present and non-null on one of the six live preempted shapes
-- **Directive-shape guard (required, added 2026-08-21 with the type correction):** on that same
-  `--json` case, assert the serialized `residual_directive` is the **nested container** shape —
-  `pattern == "provisional_e"`, a non-null `heading`, and `len(options) == 2` on a two-alternative
-  directive. A singular-`LocatedOption` implementation passes the "present and non-null" assertion
-  above and fails this one; without it the type regression ships silently
+- **Observability guard (required) — replaces the "Option B end-to-end guard":** a
+  `locate-options --json` case over a document holding both a tier match and a directive, asserting
+  the payload carries a non-null top-level `residual_directive`. Plus a `check-decidable` case
+  asserting the success line **names** the residual directive. These two are what fail if part 1a /
+  part 1b are skipped.
+  > ⚠ **Replaced 2026-08-22 — the guard as originally specified is vacuous.** It read: *"a document
+  > whose only decision point is a tier-preempted directive — assert `ll-issues check-decidable`
+  > **exits 0** … the assertion that fails if parts 1a/1b are skipped, and the only one that
+  > distinguishes 'the field exists' from 'the defect is fixed.'"* **That test passes against
+  > today's unmodified tree.** A preempted directive means a tier fired, a fired tier means
+  > `count >= 1`, and `count >= 1` already exits 0. It cannot fail before the change, so it cannot
+  > witness the change. Implementation Step 2's instruction to *"confirm it fails against step 1
+  > alone"* was unsatisfiable. See § *Part 1b* for the structural argument and the 7/0 measurement.
+- **Directive-shape guard (required, added 2026-08-21; assertion corrected 2026-08-22):** on that
+  same `--json` case, assert the serialized `residual_directive` is the **nested container**
+  shape — `pattern == "provisional_e"`, a non-null `heading`, and **`count == 2` with
+  `len(options) == 1`**. A singular-`LocatedOption` implementation passes the "present and non-null"
+  assertion above and fails this one; without it the type regression ships silently.
+  > ⚠ **Corrected 2026-08-22 — this assertion previously read `len(options) == 2` and would fail
+  > against every correct implementation.** `_locate_directive_alternatives` returns `count=2` with
+  > exactly **one** span by design (`issue_parser.py:2234-2240`); measured, all **18** corpus
+  > directive matches are `(2, 1)`. The `2` is a floor Phase 4 scoring requires, not a span count.
+  > The bad assertion came from the retracted half of the type correction — see § *Part 1a*.
 - `scripts/tests/test_decide_issue_skill.py` — a phase-text assertion that the Phase 3 slice's
   `count == 1` branch is conditioned on `residual_directive is None`.
   > ⚠ **Restated 2026-08-21.** Previously *"asserts the Phase 3 slice mentions `residual_directive`
@@ -455,10 +572,11 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ### Documentation
 
-- `docs/reference/API.md:987-1032` — `locate_enumerable_options` precedence prose and the
-  documented `bullet` shape; `count_enumerable_options` wrapper note
-- `docs/reference/CLI.md:1945` (`check-decidable` Pattern E coverage sentence), `:2023`
-  (`locate-options` precedence framing and worked example)
+- `docs/reference/API.md:989-1045` — `locate_enumerable_options` precedence prose and the
+  documented `bullet` shape; `count_enumerable_options` wrapper note (anchor `987-1032` → `989-1045`)
+- `docs/reference/CLI.md:1957` (`check-decidable` Pattern E coverage sentence), `:2035`
+  (`locate-options` precedence framing and worked example) — anchors `1945`/`2023` corrected
+  2026-08-22
 - `docs/guides/DECISIONS_LOG_GUIDE.md:198` — states Pattern E is reached when formal option blocks
   are absent; becomes false under part 1
 
@@ -468,7 +586,12 @@ _Wiring pass added by `/ll:wire-issue`:_
   directive as a strict last-resort fallback; becomes stale under part 1 (directive is probed
   alongside tiers, not only after all miss). The same sentence's `locate-options --json` /
   `pattern: "provisional_e"` example should also note `residual_directive` when both a tier and a
-  directive match, under the recommended Option B shape.
+  directive match, under the settled Option B shape.
+  > ⚠ **This sentence is *already* stale, independently of this issue (found 2026-08-22).** Its
+  > precedence list omits BUG-3293's `decision_rules_numbered` stage entirely. Fix both defects in
+  > the one doc pass — and check `docs/reference/API.md` and `docs/guides/DECISIONS_LOG_GUIDE.md:198`
+  > for the same omission while there, rather than leaving a half-corrected precedence description
+  > across three files.
 
 ### Configuration
 
@@ -498,10 +621,11 @@ _Added by `/ll:refine-issue` — 2026-08-21 — based on codebase analysis:_
   neither loads a stored prior-run baseline to diff against, so the "no count decreases, no
   heading changes" before/after comparison this issue proposes has no direct precedent to follow:
   - Crash-safety-only: `TestUnappliedDecisionLiveCorpusSweep`
-    (`scripts/tests/test_issue_parser.py:5063`; `test_corpus_sweep_does_not_crash` at `:5085`) —
+    (`scripts/tests/test_issue_parser.py:5563`; `test_corpus_sweep_does_not_crash` at `:5585`) —
     asserts only that the function doesn't raise on real content, no value comparison.
-    > Anchor corrected 2026-08-21 — `:5005-5036` was stale (the same `f39a417e` drift that moved
-    > the `issue_parser.py` anchors). Also cited stale in EPIC-3290 and twice in BUG-3285.
+    > Anchor corrected 2026-08-21 (`:5005-5036` → `:5063`/`:5085`) and **re-corrected 2026-08-22**
+    > (`:5063`/`:5085` → `:5563`/`:5585`). Also cited stale in EPIC-3290 and twice in BUG-3285 —
+    > those citations are now wrong by ~500 lines and should be refreshed when each is next touched.
   - Threshold/statistical: `TestCorpusBaseline` (`scripts/tests/test_research_triage.py:538-606`,
     `@pytest.mark.timeout(600)` + `@pytest.mark.slow`, skip if corpus < 100 issues, `lru_cache`-
     memoized sweep) — asserts aggregate statistics computed within one pass, not a diff.
@@ -512,14 +636,14 @@ _Added by `/ll:refine-issue` — 2026-08-21 — based on codebase analysis:_
 
 ### Types
 
-- `LocatedOptions.residual_directive: LocatedOptions | None` — new optional field (recommended
-  shape), default `None` so every existing constructor call and `to_dict()` consumer is unaffected.
+- `LocatedOptions.residual_directive: LocatedOptions | None` — new optional field (settled shape),
+  default `None` so every existing constructor call and `to_dict()` consumer is unaffected.
   **Self-referential by design**: the value is whatever `_locate_directive_alternatives` returned,
-  which is a `LocatedOptions` (`issue_parser.py:2187`) carrying the directive's `heading`, its
-  `pattern` (`"provisional_e"`), and all of its alternatives. It is **not** a singular
-  `LocatedOption` — that type has no `heading` field (`:2016-2030`) and would collapse a
-  two-alternative directive to one entry. See § *Proposed Solution → Part 1a* for the correction
-  and its consequences for the `--json` payload.
+  which is a `LocatedOptions` (`issue_parser.py:2219`) carrying the directive's `heading`, its
+  `pattern` (`"provisional_e"`), its `count` (always 2), and a single window span. It is **not** a
+  singular `LocatedOption` — that type has no `heading` field (`:2029-2043`), and `heading` is what
+  part 1b's report line needs. See § *Proposed Solution → Part 1a* for the correction, the retracted
+  second rationale, and the consequences for the `--json` payload.
   > Consumers test it with `located.residual_directive is not None`, matching this module's
   > direct-attribute-access convention (§ *Codebase Research Findings*); the nested object's own
   > `residual_directive` is always `None`.
@@ -527,76 +651,73 @@ _Added by `/ll:refine-issue` — 2026-08-21 — based on codebase analysis:_
 ### Signatures
 
 - `locate_enumerable_options(content: str) -> LocatedOptions` —
-  `scripts/little_loops/issue_parser.py:2209` — unchanged signature; the directive probe moves from
+  `scripts/little_loops/issue_parser.py:2379` — unchanged signature; the directive probe moves from
   terminal fallback to an additional probe
 - `_locate_directive_alternatives(content: str) -> LocatedOptions | None` —
-  `scripts/little_loops/issue_parser.py:2137` — unchanged
+  `scripts/little_loops/issue_parser.py:2219` — unchanged
+- `_locate_decision_rules_numbered(content: str) -> LocatedOptions | None` —
+  `scripts/little_loops/issue_parser.py:2337` — unchanged; BUG-3293's fifth stage, left as a
+  terminal fallback (§ *Scope boundary — `decision_rules_numbered`*)
 - `_locate_options_in_text(content: str, body: str, body_offset: int) -> LocatedOptions | None` —
-  `scripts/little_loops/issue_parser.py:2025` — unchanged; still first-tier-wins within a section
-- `_OPTION_PATTERNS: tuple[re.Pattern, ...]` — `scripts/little_loops/issue_parser.py:1949` —
-  element 3 widened
+  `scripts/little_loops/issue_parser.py:2088` — unchanged; still first-tier-wins within a section
+- `_OPTION_PATTERNS: tuple[re.Pattern, ...]` — `scripts/little_loops/issue_parser.py:2012` —
+  element 3 (`:2016-2018`) widened
+
+> ⚠ **All `issue_parser.py` anchors re-corrected 2026-08-22** — they had drifted a further +60 to
+> +170 lines since the 2026-08-21 verification pass (BUG-3293 and BUG-3295 both landed in this
+> region). Previous values: `locate_enumerable_options` 2209, `_locate_directive_alternatives` 2137,
+> `_locate_options_in_text` 2025, `_OPTION_PATTERNS` 1949, `LocatedOptions.to_dict()` 1997-2003.
 
 ### Call Path
 
 `ll-issues check-decidable` / `ll-issues locate-options` -> `cmd_check_decidable`
-(`cli/issues/check_decidable.py:34`) / `cmd_locate_options` (`cli/issues/locate_options.py:38`) ->
-`locate_enumerable_options` (`issue_parser.py:2209`) -> `_locate_options_in_text` (`:2025`) **and**
-`_locate_directive_alternatives` (`:2137`) -> `LocatedOptions`
+(`cli/issues/check_decidable.py:19`) / `cmd_locate_options` (`cli/issues/locate_options.py:38`) ->
+`locate_enumerable_options` (`issue_parser.py:2379`) -> `_locate_options_in_text` (`:2088`) **and**
+`_locate_directive_alternatives` (`:2219`), with `_locate_decision_rules_numbered` (`:2337`)
+remaining a terminal fallback -> `LocatedOptions`
 
 ### Decision Rules
 
-One decision remains, scoped and enumerable — the return shape for part 1:
+> **SETTLED 2026-08-22 — Option B with a mandatory guard. No open decision remains here.** The
+> three rounds of Option A/B argument this section accumulated (original recommendation, "Cost
+> correction", "Cost correction 2") reached a stable answer and then kept restating it, with the
+> later rounds contradicting the earlier ones. Collapsed below to the settled result and the
+> reasoning that survives. History is in git; nothing actionable was dropped.
 
-**Option A — merge into `count`/`options`.** Append the directive's `LocatedOption`; increment
-`count`. Simplest diff, no dataclass change. Costs: `pattern` misdescribes one entry, and `count`
-moves for the 6 live preemption cases — which perturbs Phase 3's `count == 1` branch and
-`check-decidable`'s threshold on documents that are not otherwise changing.
+**The shape: Option B — a `residual_directive: LocatedOptions | None` field**, leaving
+`count`/`pattern`/`options` byte-identical to the tier result. The rejected alternative (Option A)
+was to merge the directive into `count`/`options`.
 
-**Option B — `residual_directive` field.** Leave `count`/`pattern`/`options` byte-identical;
-surface the directive on a new optional field. Costs: one dataclass field, a `to_dict()` entry, an
-explicit `or residual_directive` clause in `check-decidable`, and a Phase 3 reporting rule —
-**four edits, not one.** Consumers must opt in to see it, so the field alone changes nothing.
+**Why B over A.** `count` is load-bearing for a branch that clears `decision_needed` outright
+(`SKILL.md:187`). Option A moves `count` on all 7 live preemption cases — documents this issue is
+not otherwise touching — and makes `pattern` misdescribe one entry. B's advantage is a smaller
+*blast radius*, not a smaller diff. It is also the only shape with codebase precedent: no result
+type in this module merges two probes' outputs into one field (§ *Codebase Research Findings*).
 
-Recommendation: **Option B**, because `count` is load-bearing for a branch that clears
-`decision_needed` outright, and Option A moves it on documents this issue is not otherwise
-touching.
+**What B costs — three edits, not one.** The field alone changes nothing observable:
+`cmd_check_decidable` reads only `located.count` (`check_decidable.py:36`) and
+`LocatedOptions.to_dict()` emits only `count`/`pattern`/`heading`/`options` (`:2060-2066`). Ship the
+dataclass field by itself and all 7 preempted issues produce byte-identical output. The mandatory
+remainder is: **part 1a** (serialize it), **part 1b** (report it in `check-decidable`'s success
+line), and the guard below.
 
-**Cost correction (2026-08-21).** This section previously framed the consumer opt-in as a footnote
-("`check-decidable` needs an explicit `or residual_directive` clause to benefit"). Verified against
-the tree, it is the whole delta: `cmd_check_decidable` (`cli/issues/check_decidable.py:35`) reads
-only `located.count`, and `LocatedOptions.to_dict()` (`:1997-2003`) emits only
-`count`/`pattern`/`heading`/`options`. Ship the dataclass field alone and **all six preempted issues
-produce byte-identical output** — the defect is unfixed and the *Expected Behavior* above is unmet.
-Parts 1a–1c in *Proposed Solution* are the mandatory remainder of Option B, and the Option-B
-end-to-end guard under *Tests* is what pins it. This does not overturn the recommendation — moving
-`count` is still the higher-risk shape — but Option B's advantage is a smaller *blast radius*, not a
-smaller diff.
-
-**Cost correction 2 (2026-08-21) — Option B does not preserve `count` where it matters most.**
-The correction above still understated it. Option B's stated advantage is that `count`/`pattern`
-stay byte-identical for existing consumers — but *that is exactly what breaks the ordering
-constraint*, because the constraint's whole mechanism is a `count` collapse. Measured on BUG-3229:
-`count 2 → 1` under part 2, and Option B's part 1 does nothing to it (verified live; see
-§ *Ordering constraint*). Option A would have moved `count` back to 2 and closed the hole
-incidentally.
-
-The recommendation **stands at Option B**, but only with the guard attached:
+**The guard — non-negotiable, and the one place B is weaker than A:**
 
 > Phase 3's `count == 1` branch (`SKILL.md:187`) must additionally require
 > `residual_directive is None` before clearing `decision_needed`.
 
-Without that guard, Option B is strictly worse than Option A on this issue's own headline defect,
-and the *Expected Behavior* clause *"the precedence chain must not silently pick one"* is unmet on
-the one shape where picking wrong clears the pipeline gate. The guard is a condition on an existing
-sentence — roughly one line of SKILL.md — which is what keeps Option B affordable against the
-line budget in the *Files to Modify* note below. Assertion: the Option-B end-to-end guard under
-*Tests*, extended to a `count 1 + residual_directive` document.
+B's defining property — `count` stays byte-identical — is exactly what leaves the ordering
+constraint open, because that constraint's mechanism *is* a `count` collapse (BUG-3229, `2 → 1`
+under part 2; measured). Option A would have closed it incidentally by moving `count` back to 2.
+Without this guard B is strictly worse than A on this issue's headline defect. It is a condition
+appended to an existing sentence — ~1 line of SKILL.md — which is what keeps B affordable against
+the line budget. Pinned by the `test_decide_issue_skill.py` assertion under § *Tests*.
 
 ### Codebase Research Findings
 
 _Added by `/ll:refine-issue` — 2026-08-21 — based on codebase analysis:_
 
-- `to_dict()` on every dataclass in `issue_parser.py` (`LocatedOptions.to_dict()` at `:1997-2003`,
+- `to_dict()` on every dataclass in `issue_parser.py` (`LocatedOptions.to_dict()` at `:2060-2066`,
   `IssueInfo.to_dict()` at `:2770-2807`, `FormatGaps.to_dict()` at `:567-595`,
   `QuestionGaps.to_dict()` at `:631-635`) always includes every field explicitly, never omitting a
   `None`/empty value — a new optional field appears as a dict key on every call regardless of
@@ -627,11 +748,16 @@ _Added by `/ll:refine-issue` — 2026-08-21 — based on codebase analysis:_
    epic review).** Before any of this epic's `skills/decide-issue/SKILL.md` edits land, perform
    the extraction pass from EPIC-3290 § *Shared constraint — the decide-issue SKILL.md line
    budget*: move reference material from `SKILL.md` into `skills/decide-issue/reference.md`
-   until `SKILL.md` is at or under **460 lines** (493 today; the three children add roughly
-   ≤2 + ≤20 + ≤15 net lines against the 500-line cap). Land it as its own no-behavior-change
+   until `SKILL.md` is at or under **460 lines**. Land it as its own no-behavior-change
    commit, verified by `test_enh494_skill_companions.py` (line limit + companion-pointer test).
    Ownership sits here because this issue lands first — not because its own ≤2-line edit needs
    the headroom; BUG-3278 and ENH-3280 inherit it.
+
+   > ⚠ **Numbers refreshed 2026-08-22.** `SKILL.md` is **495** lines, not 493 — **5** lines of
+   > headroom against the 500 cap, not 7. `skills/decide-issue/reference.md` **already exists**
+   > (144 lines, extracted under ENH-494 and referenced from Phases 3b/4/6/9 + Integration), so
+   > this step **extends an existing companion**; it does not create one. The ≤460 target still
+   > holds arithmetically: 495 + 2 (this issue) + ~20 (BUG-3278) + ~15 (ENH-3280) = **532 > 500**.
 
    > ⚠ **`test_enh494_skill_companions.py` is not sufficient verification (added 2026-08-21, epic
    > review).** `scripts/tests/test_decide_issue_skill.py` holds **77** `test_*` methods that
@@ -643,36 +769,52 @@ _Added by `/ll:refine-issue` — 2026-08-21 — based on codebase analysis:_
    > `reference.md` in the same commit.* Extract reference material (tables, matrices, fenced
    > examples) preferentially over imperative phase prose, since the assertions target the latter.
 
-1. **Part 1 first.** Restructure `locate_enumerable_options` so `_locate_directive_alternatives`
-   runs in addition to the tier scan; pin the return shape per *Decision Rules*. Add
-   `TestDirectiveNotPreempted` and assert the six live corpus cases now surface their directive.
+1. **Part 1 first.** Restructure `locate_enumerable_options` (`:2379`) so
+   `_locate_directive_alternatives` runs in addition to the tier scan, per the settled Option B
+   shape in *Decision Rules*. Set `residual_directive = None` explicitly on the
+   `decision_rules_numbered` path (§ *Scope boundary*). Add `TestDirectiveNotPreempted` and assert
+   the live preempted issues now surface their directive — **pin by ID as a subset check**
+   (BUG-1183, ENH-2446, ENH-2873, ENH-3277, ENH-2239, ENH-3275, FEAT-2339), never by cardinality:
+   the set was 6 when this issue was written and is 7 today.
 2. **Parts 1a–1b — the consumer edits that make Option B observable.** Serialize
-   `residual_directive` in `LocatedOptions.to_dict()` (`:1997`); add `or located.residual_directive
-   is not None` to `cmd_check_decidable` (`check_decidable.py:35`); add the
-   `residual_directive is None` guard to Phase 3's `count == 1` branch
+   `residual_directive` in `LocatedOptions.to_dict()` (`:2060`); add the residual-directive report
+   line to `cmd_check_decidable`'s success output (`check_decidable.py:37-40`, **gate at `:36`
+   unchanged**); add the `residual_directive is None` guard to Phase 3's `count == 1` branch
    (`skills/decide-issue/SKILL.md:187`). **Do not defer these to a follow-up** — steps 1 and 2
-   together are the fix for defect 1; step 1 alone changes no observable output. Land the Option B
-   end-to-end guard (*Tests*) here, and confirm it fails against step 1 alone. Extend that guard
-   with a `count 1 + residual_directive` document asserting the clear branch does **not** fire.
+   together are the fix for defect 1; step 1 alone changes no observable output. Land the
+   observability guard and the directive-shape guard (*Tests*) here, and confirm the `--json`
+   assertion fails against step 1 alone.
+   > ⚠ **Corrected 2026-08-22.** This step previously said to add `or located.residual_directive is
+   > not None` to the gate and to *"confirm [the end-to-end guard] fails against step 1 alone."*
+   > The gate clause is unreachable (§ *Part 1b*) and the end-to-end guard passes on today's tree
+   > (§ *Tests*), so that confirmation was unsatisfiable. The `--json` `residual_directive`
+   > assertion is the check that genuinely fails before part 1a lands.
    > ⚠ **Part 1c (Phase 3 reporting prose) is deferred to BUG-3278** — see § *Proposed Solution →
    > Part 1c*. What remains in this step is the one-line branch guard, not a reporting rule.
 3. Land the corpus differential test (no `count` decreases, no `heading` changes, with the
-   pinned-exception list for BUG-3229 and ENH-3264 — see *Tests*) **before** part 2, so it fails
-   loudly if part 2 regresses a file.
+   four-file pinned-exception list — BUG-3229, ENH-3264, ENH-2164, ENH-2358; see *Tests*)
+   **before** part 2, so it fails loudly if part 2 regresses a file.
 4. **Part 2.** Widen `_OPTION_PATTERNS[3]`. Add the 14-shape match matrix as a table-driven test.
 5. Add the `locate-options` and `check-decidable` cases pinning the newly-reachable
    `- **(a) …**` shape as `bullet`/decidable — these are behavior changes to existing consumers
    and must be pinned by test, not left implicit.
-6. Re-run the corpus differential; confirm the two pinned intended changes land exactly as
+6. Re-run the corpus differential; confirm the **four** pinned intended changes land exactly as
    measured — BUG-3229 `count 2 / provisional_e` → `count 1 / bullet` with `residual_directive`
-   non-null, and ENH-3264's resolved section moving §`Confidence Check Notes` →
-   §`Proposed Solution` — and that no *unpinned* file's `count` decreases or resolved `heading`
-   changes.
+   non-null, ENH-3264 §`Confidence Check Notes` → §`Proposed Solution`, ENH-2164 §`Reopened` →
+   §`Relationship to ENH-2165, rn-remediate, and Conjunctive Rules`, and ENH-2358
+   §`Implementation Steps` → §`Expected Behavior` — and that no *unpinned* file's `count` decreases
+   or resolved `heading` changes.
    > ⚠ **Corrected 2026-08-21 (epic review).** This step previously asserted BUG-3229 "holds at
    > `count 2`" and ENH-3264's resolved section "is stable" — both contradict the amended
    > *Expected Behavior*, § *Blast radius*, and the corpus differential's pinned-exception list,
    > all of which declare exactly those two changes intended under Option B + part 2. The step
    > predated those amendments and was never updated.
+   > ⚠ **Extended 2026-08-22** — ENH-2164 and ENH-2358 added; the pinned set is four, not two.
+   >
+   > **Re-measure, do not reuse.** These four are today's corpus state. Per § *Relationship to
+   > BUG-3285*, whichever `_OPTION_PATTERNS` issue lands second must re-derive its own differential
+   > against the post-first-issue tree rather than trusting the numbers recorded here — the set has
+   > already moved once (6 → 7 preempted, 2 → 4 heading-movers) between refinement and now.
 7. Update the four documentation sites in *Integration Map → Documentation*. Under Option B,
    `docs/reference/CLI.md`'s `locate-options` section also gains the new top-level
    `residual_directive` key in its `--json` payload description.
@@ -711,27 +853,34 @@ document that stops matching tier 1 can fall through to tier 3. Whichever issue 
 re-run its own corpus differential against the post-first-issue tree rather than reusing the numbers
 recorded in its body.
 
-**Out of scope**: `locate_unresolved_options` (`:2341`) and `_iter_option_blocks` (`:2287`) — they do
+**Out of scope**: `locate_unresolved_options` (`:2518`) and `_iter_option_blocks` (`:2464`) — they do
 not read `_OPTION_PATTERNS`, and widening their conservatism is a loop-gate change with its own
-blast radius (the ENH-2446 comment at `:2273-2277` is a deliberate choice). BUG-3278 covers the
+blast radius (the ENH-2446 comment at `:2450-2455` is a deliberate choice). BUG-3278 covers the
 decision-group layer built over them.
-> Anchors corrected 2026-08-21: `:2210-2240` and `:2225` were stale — `:2210` is inside
-> `locate_enumerable_options`, not the block iterator. BUG-3278 cites this same comment correctly
-> as `:2271-2275`.
+> Anchors corrected 2026-08-21 (`:2210-2240`/`:2225` → `:2341`/`:2287`/`:2273-2277`) and
+> **re-corrected 2026-08-22** (`:2341`/`:2287`/`:2273-2277` → `:2518`/`:2464`/`:2450-2455`). This
+> region has now drifted twice in two days; re-derive with `grep -n`, do not trust these on read.
 
 ## Impact
 
 - **Priority**: P2 — defect 1 is live on six committed issues and silently hides a decision point;
   defect 2 makes the repo's own idiomatic option shape invisible to the decidability gate. Neither
   is a common-path break, which is what keeps it off P1.
-- **Effort**: Medium — two small, well-bounded edits to `issue_parser.py` plus, under the
-  recommended Option B, three mandatory consumer edits (`to_dict()`, `check_decidable.py`, Phase 3
-  reporting — parts 1a–1c). The test burden is real: a corpus differential, the Option B end-to-end
-  guard, and pinning tests for three existing consumers.
+- **Effort**: Medium — two small, well-bounded edits to `issue_parser.py` plus three mandatory
+  consumer edits under the settled Option B (`to_dict()`, `check_decidable.py`'s success line, the
+  one-line Phase 3 guard). The test burden is where the weight actually sits: a corpus differential
+  with a four-file pinned-exception list, the observability + directive-shape guards, and pinning
+  tests for three existing consumers.
+  > ⚠ **Size re-check 2026-08-22.** Frontmatter says `size: Very Large`. With part 1c deferred to
+  > BUG-3278 and part 1b reduced to a report line, the production delta is a dataclass field, a
+  > `to_dict()` entry, a regex, a `print`, and one SKILL.md clause. **Large** is the honest size;
+  > the tests and the Step 0 extraction are what keep it off Medium. Re-run
+  > `/ll:issue-size-review` before scheduling rather than inheriting the estimate.
 - **Risk**: Medium. `_OPTION_PATTERNS` is module-level state on the shared precedence chain; 22
-  live issues change output, and two of them change in ways the obvious regex-superset check does
-  not predict. Bounded by the ordering constraint (part 1 before part 2) and the corpus
-  differential, which is the only test that catches the count-drop and section-shift classes.
+  live issues change output, and **four** of them change in ways the obvious regex-superset check
+  does not predict (not two, as originally recorded). Bounded by the ordering constraint (part 1
+  before part 2) and the corpus differential, which is the only test that catches the count-drop
+  and section-shift classes.
 - **Breaking Change**: No — no signature changes, and no *existing* CLI contract changes, under the
   recommended shape. Note that Option B does **add** a top-level `residual_directive` key to
   `ll-issues locate-options --json` (part 1a); that is additive, and `test_issues_locate_options.py`
@@ -750,7 +899,7 @@ decision-group layer built over them.
 
 - `docs/guides/DECISIONS_LOG_GUIDE.md:198` — documents the Pattern E fallback semantics this
   issue changes
-- `docs/reference/CLI.md:1945` — documents `check-decidable`'s Pattern E coverage
+- `docs/reference/CLI.md:1957` — documents `check-decidable`'s Pattern E coverage
 - BUG-3278 — the sibling this was split out of; fixes the same two defects inside its own new
   decision-group iterator, leaving the shared chain to this issue
 
@@ -777,12 +926,41 @@ _Verified 2026-08-21 via `/ll:verify-issues --check --auto`:_
   refs (`EPIC-3290`, `BUG-3278`, `BUG-3279` all resolve; no `## Blocked By` section), and the
   decisions log (no active required rules) all confirmed exact, no changes needed.
 
+_Pre-implementation review — 2026-08-22 — all figures re-measured against the live tree:_
+
+- **Both defects still reproduce.** Defect 2's snippet returns `[]` unchanged; `residual_directive`
+  still does not exist anywhere in the tree.
+- **Five findings changed the spec**, each amended in place above with a dated ⚠ note:
+  1. **Part 1b was unreachable dead code** — `residual_directive` implies a tier fired implies
+     `count >= 1`, so the proposed `or` clause can never flip an exit code (7 documents receive the
+     field; 0 with `count == 0`). Rescoped to reporting.
+  2. **The "Option B end-to-end guard" passed on the unmodified tree** — it could not witness the
+     change it was designated to prove. Replaced with a `--json` observability guard.
+  3. **The directive-shape guard asserted `len(options) == 2`**, which fails against every correct
+     implementation (all 18 corpus directive matches are `count == 2, len(options) == 1`). The
+     retracted half of the 2026-08-21 type correction is where it came from.
+  4. **BUG-3293 added a fifth precedence stage** (`decision_rules_numbered`) after this issue was
+     written; measured 0/0 impact, now recorded as an explicit scope boundary.
+  5. **The corpus differential's pinned list was half the real set** — ENH-2164 and ENH-2358 also
+     move their resolved `heading`; the `0 → N` group is 16, not 20.
+- **Unchanged and re-confirmed**: the 14-shape match matrix (14/14 exact), the 22-file blast-radius
+  total, BUG-3229's `2 → 1` collapse, the ordering constraint, and the Option B recommendation.
+- **Anchor drift, second pass in two days** — every `issue_parser.py` citation moved a further
+  +60 to +170 lines (BUG-3293, BUG-3295); `check_decidable.py`'s gate moved `:35` → `:36` and the
+  file now returns 2 for unresolvable IDs (BUG-3294); the corpus-sweep test moved `:5063` → `:5563`;
+  CLI.md `1945`/`2023` → `1957`/`2035`; API.md `987` → `989`. All corrected in place. Still exact:
+  `SKILL.md:187`, `COMMANDS.md:254`, `DECISIONS_LOG_GUIDE.md:198`, `resolve-decision.yaml:47-67`,
+  `test_issue_parser_unresolved.py:44`, `test_issues_locate_options.py:94`.
+- **Line budget**: `SKILL.md` is 495 lines (not 493) and `skills/decide-issue/reference.md` already
+  exists at 144 lines; `test_decide_issue_skill.py` confirmed at 77 test methods.
+
 ## Status
 
 **Open** | Created: 2026-08-21 | Priority: P2
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-22T23:39:28 - `f148b0fe-9006-4283-9e7f-18566ca40d9e.jsonl`
 - `/ll:verify-issues` - 2026-08-21T20:20:13 - `63b58074-9350-43f0-9772-feffb6fc0ffe.jsonl`
 - `/ll:refine-issue` - 2026-08-21T20:17:18 - `05b36e3e-cf1c-4269-a1c6-018fbadd4f92.jsonl`
 - `/ll:verify-issues` - 2026-08-21T20:15:35 - `a2289dde-4d3d-4b79-aeb5-674049d28ccd.jsonl`

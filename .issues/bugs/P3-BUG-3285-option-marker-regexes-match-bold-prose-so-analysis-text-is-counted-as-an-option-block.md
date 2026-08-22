@@ -22,11 +22,11 @@ relates_to:
 size: Medium
 decision_needed: false
 verify_verdict: VALID
-confidence_score: 100
-outcome_confidence: 71
-score_complexity: 18
+confidence_score: 98
+outcome_confidence: 82
+score_complexity: 22
 score_test_coverage: 25
-score_ambiguity: 18
+score_ambiguity: 25
 score_change_surface: 10
 ---
 
@@ -112,6 +112,18 @@ Three consumers degrade, in increasing order of consequence:
    no `> **Selected:**` callout, so it counts as unresolved forever. This flips the exit code of the
    first probe in `resolve-decision.yaml`'s gate (`:63`), which can re-enter `decide` on an issue
    that is fully decided.
+4. **`_unapplied_decision` silently self-disables on any issue carrying a phantom** (added
+   2026-08-22, review pass — previously unrecorded, and the most consequential of the four).
+   `_unapplied_decision` resolves the selected block by label:
+   `matching = [i for i, (_, _, heading) in enumerate(spans) if _option_label(heading) == label]`,
+   then `if len(matching) != 1: return []` (`issue_parser.py:1568-1571`). A phantom
+   `**Option A evidence**` yields label `A`, collides with the *real* Option A, and the whole
+   function bails — so the **blocking** `unapplied_decision` gap class never fires on that
+   document at all. This is the inverse of consequences 1-3: the phantom does not add a false
+   report, it suppresses every true one. Measured effect of the fix on the live corpus:
+   `ENH-2967` gains 5 reports and `BUG-1484` gains 3, both from 0 — see § *Composed-encoding
+   differential*. That is why `_unapplied_decision`'s report set moves in **both** directions here
+   and cannot be asserted as a pure subtraction.
 
 There is also a measurement interaction with **BUG-3279**: that issue's 151-issue corpus flip is
 computed over a block set that includes these phantoms, so its blast-radius numbers partly reflect
@@ -198,6 +210,63 @@ it is documents that genuinely hold **two decision points**, each with its own `
 properly is **BUG-3278**'s `DecisionGroup` model. Chasing this bar drives over-tightening, which is
 how defect 1 above gets shipped.
 
+### Composed-encoding differential — measured 2026-08-22 (this is the baseline to implement against)
+
+The § *Corpus differential* above measures the **rejected sketch**. This section measures the
+**composed encoding** of § *Program Design → Decision Rules* item 3, corrected per the finding
+below, across **both** regexes simultaneously (`_OPTION_PATTERNS[1]` and `_OPTION_HEADING_RE`'s
+bold alternative sharing one fragment) and across **all four** observables —
+`locate_enumerable_options` (`count` / `pattern` / `heading` / labels), `_unapplied_decision`'s
+report set, and `count_unresolved_options`. Corpus: 3199 files under `.issues/`, tree at
+`64c4159e7`. **This discharges the two differentials owed by § *Revised requirements* and
+§ *Second blast radius*; re-run, do not re-derive.**
+
+**First: item 3's encoding as written still drops real options — the same defect class as the
+sketch's defect 1.** `[^*\n]*` excludes the literal `*`, and glob-bearing option titles are a live
+convention in this repo:
+
+| File | Marker | Effect under item 3 as written |
+| --- | --- | --- |
+| `FEAT-2339:136` | ``**Option A — `parallel.epic_branches.*` (near other worktree/branch knobs)**`` | dropped |
+| `FEAT-2339:144` | ``**Option B — `epics.branch.*` (separate top-level EPIC lifecycle namespace)**`` | dropped |
+
+Both real options vanish, the tier flips `bold_label` → `bullet`, and **14 blocking
+`unapplied_decision` reports collapse to 0** via the `len(spans) < 2` bail. ``**Option A: use
+`*.md` globs**`` and ``**Option A — prefer `epic/*` branches**`` fail identically. The corrected
+title class — `(?:[^*\n]|\*(?!\*))*`, a `*` that is not the closing delimiter — restores all of
+them while still honoring decision 2 (no newline crossing). It is folded into item 3.
+
+**Rejection set, exhaustively enumerated.** Every line in the corpus that matches the *current*
+tier-1 regex but not the corrected encoding: **20 lines, all 20 prose** — `**Option A evidence**`,
+`**Option B was already applied**`, `**Option A implementation spec**`, `**Option A completed
+(2026-05-06).**`, `**Option B selected**`, `**Option 3 model:**`, `**Option A tests**`, `**Option
+A only (if …):**`, `**Option B does NOT stop in-flight workers mid-state**`, `**Option B
+validation gap (critical)**`, `**Option A is recommended**`, … Zero real markers lost. **Zero**
+fixtures in `scripts/tests/` change match status.
+
+**Full changed set — 8 files. Every `count` move is a phantom removal.**
+
+| File | Status | Change | Reading |
+| --- | --- | --- | --- |
+| `ENH-2967` | done | `count 4→2`; `unapplied 0→5` | intended — the two live phantoms; gain is consequence 4 un-masking |
+| `BUG-1484` | done | `count 4→2`; `unapplied 0→3` | intended — the two live phantoms; gain is consequence 4 un-masking |
+| `FEAT-1244` | done | `count 3→2` | intended — drops `**Option B validation gap (critical)**` |
+| `FEAT-2186` | **open** | `count 1→2`; tier `bold_label→bullet`; `unresolved 1→0` | **improvement** — drops phantom `**Option A is recommended**`, falls to bullet tier, finds the two *real* options |
+| `BUG-2735` | done | `unapplied 1→0` | consequence of decision 2 — the two-line Option C title stays unmatched, as decided |
+| `ENH-1555` | done | `heading Integration Map→Implementation Steps`; `unresolved 2→0` | **improvement** — phantoms at `:103`/`:107` are under Integration Map, the real options at `:162`/`:188` are under Implementation Steps |
+| `ENH-2226` | cancelled | `unresolved 1→0` | intended — drops `**Option 3 model:**` |
+| `FEAT-1076` | deferred | `unresolved 1→0` | intended — drops `**Option B does NOT stop…**` |
+
+**Blast radius is far smaller than § *Impact → Risk* claims.** Seven of the eight are
+`done`/`cancelled`/`deferred`; the single `open` file improves. The two blocking-gap *gains* land
+exclusively on `done` issues, which `autodev.yaml` does not gate. No file loses a real option, no
+`unresolved` count rises, and the one `heading` move is a correction.
+
+**Flag mismatch (item 3, hazard 1) is corpus-neutral — decide it cheaply.** Zero bold option
+markers anywhere in `.issues/` use any casing other than exact `**Option `, so adding
+`re.IGNORECASE` to tier 1 is a measured no-op today rather than the widening item 3 feared. See
+decision 4 under § *Decision Rules*.
+
 ### Revised requirements
 
 - **Acceptance bar — restated.** The bar is the *mechanism*, not the repeated-letter count: a bold
@@ -225,7 +294,20 @@ how defect 1 above gets shipped.
 - **Re-run the differential on the tree the fix lands on.** The numbers above are from the corpus at
   2026-08-21 and it grows daily.
 
+> **Status 2026-08-22 (review pass): the first four requirements above are discharged.** Both
+> differentials have been run against the composed encoding at `64c4159e7`; the variant suffix
+> (`[′']?`) is confirmed to restore `BUG-3177`/`BUG-3253`; the title is line-bounded *and*
+> glob-safe (decision 2b); and the per-file expected deltas are enumerated in
+> § *Composed-encoding differential*. What remains is landing them as checked-in tests, plus the
+> last requirement — re-run against the actual landing tree.
+
 ### Second blast radius — the `_OPTION_HEADING_RE` side is unmeasured (added 2026-08-21, epic review)
+
+> **Measured 2026-08-22 (review pass) — this section's premise is now discharged; keep it for the
+> reasoning about *why* the second surface is invisible to the first differential, which still
+> stands.** The numbers are in § *Composed-encoding differential*: 4 files move on
+> `_unapplied_decision` (two of them *gains*, mechanism = consequence 4) and 4 on
+> `count_unresolved_options` (all drops).
 
 Every number in this issue — the 10 changed files, the four-defect differential, and the
 four-configuration independence study with BUG-3287 — was produced by substituting the sketch into
@@ -278,6 +360,15 @@ both land.** They are additive on today's corpus and may land in either order.
 Caveat: corpus-dependent, not structural — tier precedence means a document that stops matching
 tier 1 can fall through to tier 3. Whichever lands **second** must re-run its own differential
 against the post-first tree.
+
+> ⚠ **Third caveat, added 2026-08-22 (review pass): that fall-through is no longer hypothetical.**
+> The independence study was run on the rejected sketch. Under the composed encoding, `FEAT-2186`
+> stops matching tier 1 and **is resolved by the bullet tier** (`count 1→2`, tier
+> `bold_label→bullet`) — precisely the tier BUG-3287 widens. So this issue now hands at least one
+> live document down into BUG-3287's changed surface, and it is the only `open` file in this
+> issue's changed set. The "0 files overlap" measurement does not describe the encoding being
+> implemented. Re-measuring after the first of the two lands is now **required**, not prudent,
+> and `FEAT-2186` is the file to look at first.
 
 > ⚠ **Second caveat, added 2026-08-21 (epic review): this study varied `_OPTION_PATTERNS` only.**
 > Both configurations were applied to the tier tuple and compared through
@@ -332,11 +423,19 @@ _Added by `/ll:refine-issue` — 2026-08-21 — based on codebase analysis:_
 
 ### Files to Modify
 
-- `scripts/little_loops/issue_parser.py` — `_OPTION_PATTERNS[1]` (`:1893`) and `_OPTION_HEADING_RE`
-  (`:2210`), plus the new shared `_BOLD_OPTION_MARKER` constant both reference (convergence
+- `scripts/little_loops/issue_parser.py` — `_OPTION_PATTERNS[1]` (`:2014`) and `_OPTION_HEADING_RE`
+  (`:2458`), plus the new shared `_BOLD_OPTION_MARKER` constant both reference (convergence
   decision, § *Open question*; encoding and flag hazard in § *Program Design → Decision Rules*
   item 3)
-  > ⚠ Superseded — line numbers stale; see § Codebase Research Findings under Program Design
+  > ⚠ Superseded — **anchors re-verified 2026-08-22 at `64c4159e7` and corrected in place.** This issue has
+  > carried three generations of line numbers (`:1893`/`:2210` → `:1951`/`:2281` → current);
+  > BUG-3295 landed since the last pass. Current, authoritative:
+  > `_option_block_spans` `:1455`, `_unapplied_decision` `:1499`, `_OPTION_PATTERNS` tuple
+  > `:2012` with tier `[1]` at `:2014`, `LocatedOption` `:2029`, `LocatedOptions` `:2047`,
+  > `locate_enumerable_options` `:2379`, `_OPTION_HEADING_RE` `:2458`, `_iter_option_blocks`
+  > `:2464`, `locate_unresolved_options` `:2518`, `count_unresolved_options` `:2575`. The
+  > § *Second blast radius* table was already correct; § *Program Design* and its own Codebase
+  > Research Findings are stale again — resolve symbols by name, not by line.
 
 ### Dependent Files (Callers/Importers)
 
@@ -394,12 +493,39 @@ _Wiring pass added by `/ll:wire-issue`:_
   > (see § *Corpus differential*, defect 4). Landing it as written would either fail immediately or
   > drive over-tightening until real options are dropped. Replaced by the three entries below.
 - **Corpus differential (required, replaces the repeated-letter guard):** apply
-  `locate_enumerable_options` across `.issues/` and assert **no file's resolved `heading` changes**
-  and **no file's `count` moves** except those pinned as intended. Model on BUG-3287's differential
+  `locate_enumerable_options` across `.issues/` and assert ~~**no file's resolved `heading`
+  changes** and~~ **no file's `count` moves** except those pinned as intended. Model on BUG-3287's differential
   — same skip-if-corpus-absent scaffolding as `TestUnappliedDecisionLiveCorpusSweep`
   (`test_issue_parser.py:5063`; `test_corpus_sweep_does_not_crash` at `:5085` — anchor corrected
   2026-08-21, `:5005-5036` was stale). This is the only check that catches the count-drop,
   count-gain, tier-flip, and section-move classes; the 8-shape execution matrix passes all four.
+  > ⚠ **The `heading` half of this assertion is unachievable and was struck 2026-08-22 (review
+  > pass).** `ENH-1555`'s resolved heading moves `Integration Map` → `Implementation Steps` under
+  > the composed encoding, and the move is **correct**: its phantoms (`**Option A only (if
+  > \`init_run\` state is added):**`, `:103`/`:107`) sit under Integration Map while its two real
+  > options (`:162`/`:188`) sit under Implementation Steps — the locator now resolves to the
+  > section that actually holds the options. Assert `heading` the same way as `count`: pinned by
+  > ID with a justification, not "never moves". This is the same failure mode as the struck
+  > repeated-letter guard — an assertion phrased as a universal that the corpus refutes.
+- **Improvement pins (required, added 2026-08-22):** the two files where the fix makes the
+  locator *better* rather than merely quieter, pinned by ID so a future tightening cannot
+  silently undo them:
+  - `FEAT-2186` — `count 1→2`, tier `bold_label→bullet`, `unresolved 1→0`. Drops phantom
+    `**Option A is recommended**`, falls through to the bullet tier, and finds the two real
+    options. **This is the only `open` issue in the entire changed set** — every other changed
+    file is `done`/`cancelled`/`deferred` — so it is the one behavioral change with live
+    consequences and must not be filed as an incidental count move.
+  - `ENH-1555` — the `heading` move above.
+- **Glob-in-title survivors (required, added 2026-08-22):** fixtures pinning
+  ``**Option A — `parallel.epic_branches.*` (near other worktree/branch knobs)**`` and
+  ``**Option B — `epics.branch.*` (…)**`` (`FEAT-2339:136`/`:144` shapes) as **still matching**,
+  with that document's `count` (2), tier (`bold_label`), and 14-report `unapplied_decision` set
+  unchanged. These are decision 2b's live cases; without them the `[^*\n]*` encoding ships and
+  drops two real options — see § *Composed-encoding differential*.
+- **Flag-normalization pin (required, added 2026-08-22):** a synthetic `**option a**` fixture
+  asserting `locate_enumerable_options` and the `_OPTION_HEADING_RE` call paths agree on it,
+  per decision 4 under § *Decision Rules*. Corpus-neutral today (zero case variants exist), which
+  is exactly why only a synthetic fixture can hold the two sites together.
 - **Variant-suffix survivors (required):** fixtures pinning `**Option A′ (SELECTED)**`
   (`BUG-3177` shape) and `**Option C′ (selected)**` (`BUG-3253` shape) as **still matching**, with
   the enclosing document's `count` unchanged. These are the two live real-option losses the sketch
@@ -412,11 +538,22 @@ _Wiring pass added by `/ll:wire-issue`:_
   radius* for what each asserts and why the `locate_enumerable_options` differential cannot cover
   it. Baseline against the tree this lands on and name the commit in the docstring; BUG-3289 and
   BUG-3278 assertion (c5) move the same function's output.
+  > **Measured 2026-08-22 (review pass) at `64c4159e7` — expected deltas, to be pinned:**
+  > `_unapplied_decision` moves on four files (`ENH-2967` `0→5`, `BUG-1484` `0→3`, `FEAT-2339`
+  > unchanged at 14, `BUG-2735` `1→0`) and `count_unresolved_options` drops on four
+  > (`ENH-1555` `2→0`, `ENH-2226` `1→0`, `FEAT-1076` `1→0`, `FEAT-2186` `1→0`). No `unresolved`
+  > count rises anywhere. The two *gains* are consequence 4 un-masking, not regressions — assert
+  > them positively (see the phantom-block entry below) rather than filing them as unexplained
+  > movement. Full table in § *Composed-encoding differential*.
 - **Phantom-block removal, positively asserted (required, added 2026-08-21):** the two live cases
   in § *Current Behavior* — `ENH-2967` (`count 4 → 2`) and `BUG-1484` (`count 4 → 2`) — pinned by
   ID with their expected before/after. Every other required test here is a *non-regression* guard;
   without this one nothing asserts the defect is actually fixed. Mirrors EPIC-3290 Success
-  Criterion 9.
+  Criterion 9. **Extended 2026-08-22:** pin each one's `_unapplied_decision` gain in the same
+  test — `ENH-2967` `0 → 5` reports, `BUG-1484` `0 → 3` — since that is the positive assertion
+  for consequence 4 (the duplicate-label bail at `issue_parser.py:1568-1571`), and `count` alone
+  cannot observe it. A third live phantom-removal case exists and should be pinned alongside:
+  `FEAT-1244` (`count 3 → 2`, drops `**Option B validation gap (critical)**`).
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_issue_parser_properties.py`, `scripts/tests/test_issue_parser_fuzz.py` —
@@ -507,6 +644,13 @@ identifier is prose and starts no block. No new gate, threshold, or keyword list
 > review. The `> **Decided:**` callouts below stand in for that pass, each citing evidence
 > already recorded in this issue. Still the epic's dogfood datapoint — now for a **third**
 > invisibility shape, **filed 2026-08-22 as BUG-3293**, which cites this issue as its live case.
+>
+> **Update 2026-08-22 (review pass): BUG-3293 has landed, and this paragraph is now historical.**
+> `ll-issues check-decidable 3285` no longer reports `OPTIONS_MISSING` / `count 0` — it resolves
+> **3 options in `Program Design`** via the new `decision_rules_numbered` tier, i.e. exactly the
+> three sub-rules below. The dogfood datapoint is discharged; the three `> **Decided:**` callouts
+> below stand as the record of the hand-made pass. Do not re-derive the invisibility claim from
+> this text.
 
 1. **Identifier shape.** The identifier is not `[A-Za-z0-9]+` alone — the corpus uses prime-marked
    variants (`Option A′`, `Option C′`) to denote a narrowed re-scoping of an earlier option, and
@@ -542,13 +686,31 @@ identifier is prose and starts no block. No new gate, threshold, or keyword list
    into this issue unmeasured in the first place). The shared bold-marker sub-pattern is:
 
    ```python
-   _BOLD_OPTION_MARKER = r"\*\*Option\s+[A-Za-z0-9]+[′']?(?:\s*\([^)\n]*\))?(?:\s*[:—-][^*\n]*)?\*\*"
+   _BOLD_OPTION_MARKER = (
+       r"\*\*Option\s+[A-Za-z0-9]+[′']?"      # identifier + optional variant suffix (decision 1)
+       r"(?:\s*\([^)\n]*\))?"                  # optional parenthetical qualifier, line-bounded
+       r"(?:\s*[:—-](?:[^*\n]|\*(?!\*))*)?"    # optional separator-introduced title (decisions 2, 2b)
+       r"\*\*"
+   )
    ```
 
-   Three deltas from the sketch, one per decision: `[′']?` (identifier variant suffix),
-   `[^*\n]*` for the title (line-bounded), and `[^)\n]*` for the parenthetical — the sketch's
-   `[^)]*` crosses newlines for the same reason `[^*]*` did, and decision 2 applies to both
-   alternatives, not just the title.
+   `_OPTION_PATTERNS[1]` is then `re.compile("^" + _BOLD_OPTION_MARKER, ...)` — the constant
+   carries no `^` of its own, because `_OPTION_HEADING_RE` supplies one for the whole alternation.
+
+   Four deltas from the sketch, one per decision: `[′']?` (identifier variant suffix), a
+   line-bounded title, `[^)\n]*` for the parenthetical — the sketch's `[^)]*` crosses newlines for
+   the same reason `[^*]*` did, and decision 2 applies to both alternatives — and
+   `(?:[^*\n]|\*(?!\*))*` rather than `[^*\n]*` for the title body (decision 2b).
+
+   > **Decision 2b — corrected 2026-08-22 (review pass), after measuring.** The title body must
+   > admit a literal `*` that is not the closing delimiter. `[^*\n]*` — the form this item
+   > originally carried — drops **both** real options from `FEAT-2339`, whose titles are
+   > ``` `parallel.epic_branches.*` ``` and ``` `epics.branch.*` ```, taking the tier to `bullet`
+   > and 14 blocking `unapplied_decision` reports to 0. Config-key and path globs in option titles
+   > (``` `epic/*` ```, ``` `*.md` ```) are a live convention here, so this is decision 1's failure
+   > mode in a second shape, not an edge case. `(?:[^*\n]|\*(?!\*))*` still cannot cross a newline
+   > and still cannot run past the closing `**`, so decision 2 is preserved intact. Measured in
+   > § *Composed-encoding differential*; pin `FEAT-2339`'s `count` and tier as fixtures.
 
    **Two integration hazards this encoding carries into the convergence decision:**
 
@@ -559,14 +721,29 @@ identifier is prose and starts no block. No new gate, threshold, or keyword list
      supposed to remove divergence. Either normalize the flags (and re-measure: adding IGNORECASE
      to tier 1 is itself a widening) or use inline `(?i:...)` scoping so the shared fragment carries
      its own case semantics. Pin the choice by test.
+
+     > **Decided 2026-08-22 (review pass): normalize the flags — compile `_OPTION_PATTERNS[1]`
+     > with `re.MULTILINE | re.IGNORECASE`, matching `_OPTION_HEADING_RE`, and keep the shared
+     > fragment flag-free.** Rationale: the feared widening is measurably empty — **zero** bold
+     > option markers anywhere in `.issues/` use any casing other than exact `**Option ` (grep-
+     > confirmed over 3199 files, § *Composed-encoding differential*), so both choices are
+     > no-ops on today's corpus and the tie breaks on which leaves less to re-diverge. Inline
+     > `(?i:...)` scoping would bake one site's case semantics into a constant whose whole
+     > purpose is to stop the two sites drifting. Pin with a synthetic `**option a**` fixture
+     > asserting both call paths agree.
    - **`_OPTION_HEADING_RE` gains a closing requirement it does not have today.** Its bold
      alternative is currently `\*\*Option\s+[A-Za-z0-9]+` — pure prefix, no closing `\*\*` at all.
      Substituting the shared fragment is therefore a *larger* change on that side than on tier 1,
      which at least already required `.*?\*\*`. This is the mechanism behind § *Second blast
      radius*; do not assume the two sites move by the same amount.
 
-   Re-run **both** differentials against this composed pattern before landing. The numbers
-   throughout this issue describe the rejected sketch and do not transfer.
+   ~~Re-run **both** differentials against this composed pattern before landing.~~
+   > **Done 2026-08-22 (review pass) — see § *Composed-encoding differential*.** Both
+   > differentials were run against this encoding (with decision 2b applied), over all four
+   > observables, and the 8-file result there is the baseline to implement against. The numbers
+   > *elsewhere* in this issue still describe the rejected sketch and still do not transfer —
+   > that caveat now applies to § *Corpus differential* and § *Relationship to BUG-3287* only.
+   > Re-run against the tree the fix actually lands on; the corpus grows daily.
 
 ### Codebase Research Findings
 
@@ -594,24 +771,44 @@ phantom-block reasons. Not a hard dependency in either direction.
   corpus-differential tests remain owed, not one: the `locate_enumerable_options` differential and
   the `_OPTION_HEADING_RE`-side differential added at the same review — see § Second blast radius.
   `size: Medium` should be read as a floor.)*
-- **Risk**: Medium-High — over-tightening silently drops genuine options, which is worse than the
-  current over-count, and the sketch **already does this** on two committed issues (`BUG-3177`,
-  `BUG-3253` — both lose their *winning* option). The corpus differential is the control and must
-  be a checked-in test, not a manual step
+  **Repriced down 2026-08-22 (review pass):** both differentials have now been *run* (§
+  *Composed-encoding differential*), the encoding is settled including decision 2b, and the
+  expected deltas are enumerated per file — so the remaining work is writing the two differentials
+  as checked-in tests against a known-good baseline, not discovering what they say. `Medium` is
+  now a realistic estimate rather than a floor.
+- **Risk**: ~~Medium-High~~ **Medium** — repriced down 2026-08-22 (review pass) against the
+  measured composed encoding. The hazard is unchanged in *kind*: over-tightening silently drops
+  genuine options, and both the sketch (`BUG-3177`, `BUG-3253`) and item 3's first encoding
+  (`FEAT-2339`) **already did this** on committed issues, which is why the corpus differential
+  must be a checked-in test rather than a manual step. What drops is the measured *blast radius*:
+  with decisions 1, 2b and 4 applied, **8 files change, 7 of them
+  `done`/`cancelled`/`deferred`**, and the single `open` file (`FEAT-2186`) improves. No file
+  loses a real option, no `unresolved` count rises, and the two blocking-gap gains land only on
+  `done` issues, which `autodev.yaml` does not gate. The remaining risk is re-divergence and
+  corpus drift, not live breakage
 - **Breaking Change**: No — but the previous claim here (*"`count` falls on affected issues; no
   output shape changes"*) is **false as measured**. On the sketch regex, `count` also *rises* on 3
   issues (newline-crossing titles), the resolved `pattern` tier changes on 2, and the resolved
   section changes on 1. Any replacement encoding must re-state this bullet against its own measured
   differential rather than inheriting this one
-  > **Still owed against the composed encoding** (§ *Program Design → Decision Rules*, item 3;
-  > flagged 2026-08-21, epic review). This bullet is currently a statement about a **rejected**
-  > regex. Restate it after re-running both differentials — the `locate_enumerable_options` one and
-  > the `_OPTION_HEADING_RE`-side one (§ *Second blast radius*) — and state each surface
-  > separately. The line-bounded title and parenthetical should remove the three count *gains*, and
-  > `[′']?` should remove the two dropped winners, but neither is measured yet, and the
-  > `_OPTION_HEADING_RE` side has never been measured at all. `format-check`'s
-  > `unapplied_decision` is a **blocking** gap class, so a movement there is a harder breaking
-  > change than anything on the `locate-options` side
+  > ~~**Still owed against the composed encoding.**~~ **Restated 2026-08-22 (review pass), per
+  > surface, against the measured composed encoding (§ *Composed-encoding differential*):**
+  >
+  > - **`locate_enumerable_options` surface** — `count` falls on 3 files (`ENH-2967` 4→2,
+  >   `BUG-1484` 4→2, `FEAT-1244` 3→2) and *rises* on 1 (`FEAT-2186` 1→2, via tier fall-through).
+  >   The resolved `pattern` tier changes on 1 (`FEAT-2186`, `bold_label`→`bullet`) and the
+  >   resolved section on 1 (`ENH-1555`, `Integration Map`→`Implementation Steps`). Output shape
+  >   is unchanged. The sketch's three newline-crossing count gains are gone (decision 2), and its
+  >   two dropped winners are gone (decision 1) — both confirmed by measurement, not inference.
+  > - **`_OPTION_HEADING_RE` surface** — `_unapplied_decision` moves on 4 files, in **both**
+  >   directions: `ENH-2967` 0→5 and `BUG-1484` 0→3 (gains, consequence 4 un-masking),
+  >   `BUG-2735` 1→0. `count_unresolved_options` drops on 4 and rises on none.
+  >   `format-check`'s `unapplied_decision` is a **blocking** gap class, so those two gains are
+  >   the hardest-edged change in this issue — but both land on `done` issues, which no loop
+  >   gates, so no live automation path flips
+  >
+  > Still **not** a breaking change: no public signature or output shape moves, and no consumer
+  > loses a real option. Re-measure against the tree the fix lands on before final sign-off
 
 ## Root Cause
 
@@ -625,6 +822,7 @@ marker.
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-22T23:40:56 - `fd41eb6b-c0f1-4696-9c99-e8f7afeca21a.jsonl`
 - `/ll:confidence-check` - 2026-08-21T19:45:57 - `b7beb415-ab2b-43a0-8c47-c48190d638d9.jsonl`
 - `/ll:verify-issues` - 2026-08-21T19:42:56 - `72e2ec18-4b32-4231-9b8e-7263fc707cfd.jsonl`
 - `/ll:refine-issue` - 2026-08-21T19:38:51 - `7a16a3a6-404c-4906-af8c-04f2c6a84451.jsonl`
