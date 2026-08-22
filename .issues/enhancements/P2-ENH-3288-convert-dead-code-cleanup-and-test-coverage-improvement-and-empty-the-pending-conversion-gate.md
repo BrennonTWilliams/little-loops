@@ -77,9 +77,17 @@ resolution failure lands on the same edge as a real test failure.
 
 Both loops resolve through `ll-config get project.<key>`, honoring the three-way contract
 (absent → `ProjectConfig` field default; present-and-null → opt out; value → value) and
-`.ll/ll.local.md`. Neither can reach `commit` without a real test signal. A no-signal skip is
-routed and reported distinctly from a test failure. `_PENDING_CONVERSION` is empty and the
-constant is deleted, leaving exactly three permanent exemptions.
+`.ll/ll.local.md`. Neither can reach `commit` **via `verify_tests`** without a real test signal.
+A no-signal skip is routed and reported distinctly from a test failure. `_PENDING_CONVERSION` is
+empty and the constant is deleted, leaving exactly three permanent exemptions.
+
+**Scope caveat on that guarantee (added by the seventh review, 2026-08-22).** The qualifier "via
+`verify_tests`" is load-bearing and the unqualified claim would be false:
+`test-coverage-improvement.extract_percentage` routes `target: commit` (`:85-86`), so a repo
+already at `context.coverage_target` goes `measure → extract_percentage → commit` on its first lap
+and never enters `verify_tests` at all. That bypass is **pre-existing and out of scope** — it is a
+convergence-routing question, not a command-resolution one — but it is recorded here so a reviewer
+does not read this issue as having closed a hole it never touched.
 
 ## Motivation
 
@@ -249,7 +257,7 @@ without the collapse is the defect.
 
 **Second trap:** `incremental-refactor`'s template runs `sh -c "$CMD"` with **no `tee`**, but
 both target states must keep their log — `revert_and_scan` reads `ll-dead-code-tests.txt`
-(`dead-code-cleanup.yaml:87`) and `fix_tests` reads `ll-coverage-tests.txt`. Combining
+(`dead-code-cleanup.yaml:88`) and `fix_tests` reads `ll-coverage-tests.txt`. Combining
 `pipefail` + `tee` + the collapse is exactly where this slips, because `$?` after a pipeline is
 the pipeline's status. Pinned body for both states (substitute each site's log path):
 
@@ -264,6 +272,23 @@ rc=$?
 exit 1                                     # collapse ALL non-zero — pytest's own
                                            # exit 3 must never reach on_cannot_judge
 ```
+
+**The omitted `RC=$?` normalization is deliberate — do not paste it back (added by the seventh
+review, 2026-08-22).** Both cited precedents wrap the call in an exit-code check —
+`CMD=$(ll-config get project.test_cmd); RC=$?; if [ "$RC" != "0" ]; then CMD=""; fi`
+(`incremental-refactor.yaml:52-57`, and the same shape at `general-task.yaml`) — and this issue
+elsewhere says to "model resolution on these shapes, not new ones," so an implementer copying the
+template will re-add it and no reviewer will know which form is canonical. It is omitted here
+because it is unreachable defensive code: **`main_config` returns 0 unconditionally**
+(`cli/config.py:53`, whose docstring states *"Returns: 0 always — mirrors
+BRConfig.resolve_variable()'s never-raise, config-or-default contract"*); it catches its own
+`BRConfig` construction failure and its own `resolve_variable` failure internally and still
+returns 0, printing nothing on stdout. The only non-zero exit reachable is `127` from an absent
+`ll-config` binary, which leaves `$CMD` empty and is already caught by the very next line's
+`[ -z "$CMD" ]`. Adding `RC` would therefore change no behavior at either site while adding four
+lines to a body whose whole point is that its exit space is auditable at a glance. (This is a
+divergence from the template only in the *resolution* prelude — the `[ -z "$CMD" ] && exit 3`
+line and the collapse below it are copied exactly.)
 
 **Required test.** Each site's regression test must include a case where `test_cmd` resolves to
 a command that exits 3 (e.g. `test_cmd: "sh -c 'exit 3'"`), asserting the state exits **1**, not
@@ -332,14 +357,15 @@ working tree and no artifact explaining why.
 
 - **`dead-code-cleanup` needs work done, so it needs an intermediate state.**
   `verify_tests.on_cannot_judge:` → **`revert_unverifiable`**, an `action_type: prompt` state
-  that reverts the current removal (`git checkout -- <file>`) and writes the reason — *no test
-  command resolved; nothing was verifiable* — to `${context.run_dir}/ll-dead-code-unverifiable.txt`,
-  with **`next: unverifiable`**. Model its body on `revert_and_scan` (`:83-97`) but with the
-  no-signal framing rather than "tests failed", and **`next: unverifiable`, never `next: scan`** —
-  a `next: scan` re-scans, re-deletes, and re-reaches an ungated `verify_tests` for the remainder
-  of `max_steps: 15`, deleting code on every lap with no verification at any of them.
-  `unverifiable` itself is a **bare** `terminal: true` + `failure: true` marker with no action and
-  no `next:`, matching `failed`'s existing shape.
+  that reverts the current lap's removals (see *The removed-files manifest* immediately below —
+  **which files** is not self-evident here, unlike at `revert_and_scan`) and writes the reason —
+  *no test command resolved; nothing was verifiable* — to
+  `${context.run_dir}/ll-dead-code-unverifiable.txt`, with **`next: unverifiable`**. Model its
+  body on `revert_and_scan` (`:84-97`) but with the no-signal framing rather than "tests failed",
+  and **`next: unverifiable`, never `next: scan`** — a `next: scan` re-scans, re-deletes, and
+  re-reaches an ungated `verify_tests` for the remainder of `max_steps`, deleting code on every
+  lap with no verification at any of them. `unverifiable` itself is a **bare** `terminal: true` +
+  `failure: true` marker with no action and no `next:`, matching `failed`'s existing shape.
 - **`test-coverage-improvement` needs nothing done, so a bare terminal is correct.**
   `verify_tests.on_cannot_judge:` → **`unverifiable`**, bare `terminal: true` + `failure: true`.
   The loop added tests rather than deleting code, so there is nothing to revert, and a
@@ -352,6 +378,44 @@ working tree and no artifact explaining why.
 
 **Step-budget consequence.** `revert_unverifiable` consumes one more of `dead-code-cleanup`'s
 `max_steps: 15` on the skip path — see *Step budget* below.
+
+##### The removed-files manifest — `remove_code` must record what it deleted (2026-08-22)
+
+**Added by the seventh review. This is the sharpest gap the review found, and without it
+`revert_unverifiable` cannot be written correctly.**
+
+`revert_and_scan` works today because it has a file to name: its prompt says *"Read
+`ll-dead-code-tests.txt` to see the failures … revert the most recent dead code removal **that
+caused the failure**"* (`:87-92`), and the failing test output identifies it. **`revert_unverifiable`
+has neither.** In the `cannot_judge` case no test ran, the log is empty, and there is no "failure"
+to attribute — *every* removal from the current lap is unverified, not one of them. Meanwhile
+`remove_code` (`:51-67`) deletes the **top 3 highest-confidence items**, potentially across three
+different files, and declares **no `capture:`** — so nothing in the run state records what it
+touched. The pinned instruction "revert … `git checkout -- <file>`" has no `<file>` to bind.
+
+**The obvious fallback is unsafe here, specifically because of constraint 0.** A blanket
+`git checkout -- .` is provably correct in `incremental-refactor` *only because* its
+`check_preconditions` gates on a clean working tree, making every uncommitted change the failed
+step's own work (`incremental-refactor.yaml:21-35` states exactly this rationale). Constraint 0
+below deliberately declines to port that check for `dead-code-cleanup` — correctly, since users run
+a cleanup loop mid-branch — which means a blanket revert here would discard the user's own
+uncommitted edits alongside the loop's deletions. The two decisions are coupled: **declining the
+clean-tree gate is what makes an explicit manifest mandatory.**
+
+**Pinned resolution.** `remove_code`'s prompt gains a final instruction to append every file path
+it modified, one per line, to `${context.run_dir}/ll-dead-code-removed-files.txt` (truncating the
+file first, so it always describes only the current lap). `revert_unverifiable` then reverts
+exactly that list — `while read -r f; do git checkout -- "$f"; done` framing in its prompt body —
+and states plainly in `ll-dead-code-unverifiable.txt` which files it restored. If the manifest is
+absent or empty, `revert_unverifiable` must say so and revert **nothing** rather than guess.
+
+This is the one place this issue adds surface to a state it was not otherwise touching
+(`remove_code`); it is listed in *Files to Modify* and carries its own AC and assertion.
+
+*Not retrofitted to `revert_and_scan`.* That state's existing per-file, failure-log-driven revert
+keeps working unchanged, and widening it to consume the manifest would change behavior on the
+loop's normal failure path — out of scope for a resolution refactor. The manifest is additive; the
+only new consumer is `revert_unverifiable`.
 
 #### DECIDED (2026-08-21) — `dead-code-cleanup` gets a `check_preconditions` entry gate, config-first bare
 
@@ -373,7 +437,7 @@ tests, and step budget. It is now **in scope and required**, alongside the mid-r
 
    **`dead-code-cleanup` does not have that revert.** `revert_and_scan` reverts **per file** —
    *"Revert the most recent dead code removal that caused the failure using `git checkout --
-   <file>`"* (`:83-97`) — so a dirty tree is not a correctness hazard for it. Copying `:20-86`
+   <file>`"* (`:84-97`) — so a dirty tree is not a correctness hazard for it. Copying `:20-86`
    wholesale would make the loop **refuse to start on any dirty working tree**, a far larger
    behavior change than the one *Impact* describes ("unresolvable, unrunnable, or already-red")
    and one nobody asked for: users routinely run a cleanup loop mid-branch.
@@ -396,35 +460,78 @@ tests, and step budget. It is now **in scope and required**, alongside the mid-r
    general warning under *Proposed Solution* > *Precedence* applies here too, and this is the site
    most likely to be
    written by copying.
-2. **Budget.** `dead-code-cleanup` is `max_steps: 15`; the entry gate consumes one and runs the
-   suite once at loop start, adding roughly one test-suite duration to every run. See
-   *Step budget* below — this issue raises `max_steps` to `18`.
-3. **Routing.** `exit 1` → `on_no: unverifiable`, the bare terminal-failure state (not `failed`,
+2. **Budget — two knobs, not one.** `dead-code-cleanup` is `max_steps: 15` (`:108`) **and**
+   `timeout: 5400` (`:109`); the entry gate consumes one step *and* runs the suite once at loop
+   start, adding roughly one test-suite duration to every run. Both budgets absorb it and both
+   move: see *Step budget* below — this issue raises `max_steps` to `18` and `timeout` to `7200`.
+3. **Routing — all three edges, including `on_error` (pinned by the seventh review,
+   2026-08-22).** `exit 1` → `on_no: unverifiable`, the bare terminal-failure state (not `failed`,
    per *State names* above, and **not** `revert_unverifiable` — nothing has been deleted yet at
    loop start, and the gate's own shell action already wrote `precondition-failure.txt` before
    exiting 1), per the `incremental-refactor` precedent. `exit 0` → **`on_yes: scan`**, the
    loop's previous `initial:` — the success edge must re-enter the original pipeline, and no
-   existing assertion pins it. It needs its own assertion —
-   `test_required_states_exist` (L11688) is a subset check and will pass without it.
-4. **`initial:` must move — easily missed, and the gate is dead YAML without it.**
-   `dead-code-cleanup.yaml:7` is `initial: scan` today. Change it to
-   `initial: check_preconditions`, matching `incremental-refactor.yaml:4`. An entry state that is
-   not the FSM's `initial` is never entered — `scan` still runs first and the gate never fires,
-   while every structural assertion (state-set membership, edge shape) passes. Assert
-   `fsm.initial == "check_preconditions"` explicitly.
+   existing assertion pins it. `on_error:` → **`unverifiable`** as well: a `shell_exit` state
+   whose body times out or dies on a signal produces the `error` verdict, and the gate's whole
+   purpose is that an entry-time problem never reaches `scan`. It was the one edge in this issue
+   left unpinned while every other fragment and edge was pinned; the template's own
+   `on_error: failed` (`incremental-refactor.yaml:85`) is the precedent, retargeted to
+   `unverifiable` per *State names*. All three edges need their own assertions —
+   `test_required_states_exist` (`test_builtin_loops.py:12057`) is a subset check and will pass
+   without any of them.
+4. **`initial:` must move — and an existing assertion pins the old value (corrected by the
+   seventh review, 2026-08-22).** `dead-code-cleanup.yaml:7` is `initial: scan` today. Change it
+   to `initial: check_preconditions`, matching `incremental-refactor.yaml:4`. An entry state that
+   is not the FSM's `initial` is never entered — `scan` still runs first and the gate never fires,
+   while every structural *state-set membership* assertion passes.
 
-#### Step budget — `dead-code-cleanup` goes to `max_steps: 18`
+   **This is an edit to an existing test, not a new assertion.**
+   `TestDeadCodeCleanupLoop.test_required_top_level_fields`
+   (`scripts/tests/test_builtin_loops.py:12054`) already asserts
+   `data.get("initial") == "scan"` and **will fail** the moment `initial:` moves. Update that
+   line to `"check_preconditions"`. Adding a second, separately-placed
+   `assert fsm.initial == "check_preconditions"` while leaving `:12054` alone produces two
+   assertions that contradict each other and a red suite. (Note this also falsifies the *Tests*
+   preamble's blanket "none will break from the conversion" — see the correction there.)
+5. **The two back-edges stay pointed at `scan` — do not retarget them to the gate
+   (pinned by the seventh review, 2026-08-22).** `revert_and_scan.next` (`:97`) and `commit.next`
+   (`:100`) are both `next: scan` and must remain so. Once `check_preconditions` becomes
+   `initial:`, "every lap re-enters at the top" is the natural instinct and is wrong twice over:
+   it would re-run the **full baseline test suite** on every lap (the gate's whole cost, paid 3×
+   instead of once, against a wall clock — see *Step budget*), and it would consume a second step
+   per lap on a budget this issue is already raising. The gate is an entry precondition, not a lap
+   invariant; the mid-run `harness_exit` skip edge is what covers config changing under a running
+   loop. Assert both `next:` values so a later edit cannot quietly "unify" them.
+
+#### Step budget — `dead-code-cleanup` goes to `max_steps: 18` **and `timeout: 7200`**
 
 `dead-code-cleanup` is `max_steps: 15` against a five-state lap (`scan` → `count_findings` →
 `remove_code` → `verify_tests` → `commit` → `scan`), i.e. three full laps today.
-This issue adds two steps to the *success* path budget — the `check_preconditions` entry gate
-(one, once at loop start) — and one more on the *skip* path (`revert_unverifiable`). Left at 15,
-the loop drops to two full laps plus a partial, a silent reduction in cleanup throughput that has
-nothing to do with the resolution refactor.
+This issue adds one step to the *success* path — the `check_preconditions` entry gate, once at
+loop start — and one more on the *skip* path (`revert_unverifiable`). Left at 15, the loop drops
+to two full laps plus a partial, a silent reduction in cleanup throughput that has nothing to do
+with the resolution refactor.
 
 Raise `max_steps` to **18** in the same edit. The comparable sibling, `incremental-refactor`,
 carries its entry gate out of `max_steps: 30` (`:7`). Assert the new value so it is not
 absent-mindedly reverted along with the gate.
+
+**The wall clock binds too, and raising `max_steps` alone does not achieve this section's stated
+goal (added by the seventh review, 2026-08-22).** `dead-code-cleanup.yaml:109` also carries
+`timeout: 5400` — a **loop-level wall clock**, enforced as elapsed-time-since-start at
+`fsm/executor.py:559-561` (`if elapsed > self.fsm.timeout * 1000: ...`), entirely independent of
+`max_steps`. The entry gate does not merely consume a step: it **runs the whole test suite once**
+before `scan` ever fires, and each of the three laps runs it again at `verify_tests`. Against a
+fixed 90 minutes, adding a fourth full suite run plus three more steps means the wall clock, not
+`max_steps`, becomes the binding constraint on any suite of real length — so the loop would still
+land at "two laps plus a partial," and the `15 → 18` bump would buy nothing while *appearing* to
+have fixed the problem.
+
+Raise `timeout` to **7200** (2 h) in the same edit. That is the value the sibling
+`test-coverage-improvement` already carries (`:18`) for a comparably suite-heavy loop, it covers
+the added baseline run with margin (`verify_tests` alone is budgeted `timeout: 600`), and it keeps
+the two knobs consistent with each other rather than leaving one of them silently dominant. Assert
+it alongside `max_steps` — both are one-line scalars with nothing else holding them in place, and
+reverting either one silently re-imposes the throughput cut this section exists to prevent.
 
 *Rejected: mid-run skip only.* Cheaper, but leaves the loop deleting code before discovering it
 cannot verify, at the one site this issue itself calls "the sharpest change in the whole family."
@@ -481,8 +588,9 @@ work **cannot** live on the terminal state itself: a terminal state's action nev
 (*TERMINAL-ACTION CORRECTION* above). Keeps a real test failure's
 `on_no: revert_and_scan` path distinct from "there was no signal," which matters because the two
 warrant different prompts and different `excluded.txt` bookkeeping. If a new state is added, it
-needs its own assertion — `TestDeadCodeCleanupLoop.test_required_states_exist` (L11688) is a
-subset check and will pass without it (see *Tests*). Also see *Consider an entry precondition*
+needs its own assertion — `TestDeadCodeCleanupLoop.test_required_states_exist`
+(`test_builtin_loops.py:12057`) is a subset check and will pass without it (see *Tests*). Also see
+*Consider an entry precondition*
 above: the recommended shape for this loop is this skip edge **plus** an
 `incremental-refactor`-style `check_preconditions` entry gate.
 
@@ -502,19 +610,53 @@ code — so `unverifiable` is a **bare** `terminal: true` + `failure: true` stat
 no `next:`, and needs no intermediate prompt state. Do **not** give it a "report" action: a
 terminal state's action never runs (*TERMINAL-ACTION CORRECTION* above), so the distinction from
 `failed` is carried by the state name in the transcript, not by anything the state does. It
-carries the same
-subset-check caveat: `TestTestCoverageImprovementLoop.test_required_states_exist` (L11722) will
-pass without validating it.
+carries the same subset-check caveat:
+`TestTestCoverageImprovementLoop.test_required_states_exist`
+(`test_builtin_loops.py:12091`) will pass without validating it.
+
+##### DECIDED (2026-08-22) — `test-coverage-improvement` gets **no** entry gate
+
+**Added by the seventh review.** The issue argues at length for giving `dead-code-cleanup` a
+`check_preconditions` gate and is simply *silent* about its sibling — which reads as an oversight
+rather than a decision, and is the first thing a reviewer will ask. It is a decision. Recorded
+with its cost so nobody re-opens it or, worse, adds one mid-implementation for symmetry.
+
+**Decided: no gate. Mid-run `on_cannot_judge: unverifiable` only.** The rationale for
+`dead-code-cleanup`'s gate does not transfer: there, `verify_tests`'s `on_yes` **commits
+deletions**, and discovering at `verify_tests` that nothing is verifiable means code has already
+been destructively removed. Here the loop *adds* test files. Nothing irreversible has happened by
+the time `verify_tests` abstains, so refusing to start buys no safety — only earlier feedback.
+
+**The accepted cost, stated plainly.** Under `test_cmd: null` this loop still runs
+`measure` (a full coverage run — `measure` resolves `COV_CMD` independently and does not consult
+`test_cmd` at all, so a gate would not spare it), `extract_percentage`, `identify_gaps`, and
+`write_tests` (an LLM state budgeted `timeout: 900`) before `verify_tests` finally abstains and
+routes to `unverifiable`. The run therefore terminates having spent one coverage run and two LLM
+states, and **leaves the newly-written test files uncommitted in the working tree** with no revert
+and no note — `unverifiable` is a bare terminal, so it cannot write one (*TERMINAL-ACTION
+CORRECTION*).
+
+That is judged acceptable: the leftovers are **additive** (new test files, not deletions), they
+are plainly visible in `git status`, and the existing `revert` state (`:188-197`) is not a
+suitable target because its `next: measure` would send the loop back around rather than
+terminating. Adding a gate here would mean a second new state, a second baseline suite run, a
+second set of edge assertions, and another `max_steps`/`timeout` argument — real cost for a
+loop whose failure mode is untidy rather than destructive. Revisit only if the leftover-artifact
+complaint shows up in practice; it is not a resolution-refactor concern.
 
 ## Integration Map
 
 ### Files to Modify
 
-- `scripts/little_loops/loops/dead-code-cleanup.yaml` — the inline read at `:76`, plus four edits
+- `scripts/little_loops/loops/dead-code-cleanup.yaml` — the inline read at `:76`, plus six edits
   outside it: **`:7` `initial: scan` → `initial: check_preconditions`** (without it the new entry
-  gate is never entered), **`:108` `max_steps: 15` → `18`** (*Step budget*), the new
-  `check_preconditions` entry gate, and the two new states `revert_unverifiable` /
-  `unverifiable` (*Terminality*)
+  gate is never entered), **`:108` `max_steps: 15` → `18`** and **`:109` `timeout: 5400` → `7200`**
+  (*Step budget* — the wall clock binds independently of `max_steps`), the new
+  `check_preconditions` entry gate, the two new states `revert_unverifiable` / `unverifiable`
+  (*Terminality*), and a final instruction appended to **`remove_code`'s prompt (`:54-66`)**
+  writing the removed-files manifest (*The removed-files manifest* — `revert_unverifiable` cannot
+  be written without it). `revert_and_scan.next` (`:97`) and `commit.next` (`:100`) stay
+  `scan` — unchanged, but assert them (DECIDED constraint 5)
 - `scripts/little_loops/loops/test-coverage-improvement.yaml` — `:37-48` (the dead `CMD` block in
   `measure`) **deleted, not converted**; `:143-159` (`verify_tests`, inline read at `:152`)
   converted context-first and
@@ -540,6 +682,11 @@ exemption, BUG-3269 §1d); `incremental-refactor.yaml` (BUG-3276).
   precedent sites (BUG-3269). Model resolution on these shapes, not new ones.
 - `scripts/little_loops/fsm/executor.py:601-636` — the terminal-state short-circuit that makes a
   terminal state's `action` dead code (*TERMINAL-ACTION CORRECTION*)
+- `scripts/little_loops/fsm/executor.py:559-561` — the loop-level wall-clock check
+  (`elapsed > self.fsm.timeout * 1000`), enforced independently of `max_steps`; the reason
+  `timeout: 5400` must rise alongside `max_steps` (*Step budget*)
+- `scripts/little_loops/cli/config.py:53` — `main_config`'s "Returns 0 always" contract, the
+  reason the template's `RC=$?` normalization is deliberately omitted from the pinned body
 - `scripts/little_loops/fsm/runners.py:297` — `cmd = ["bash", "-c", action]`; the reason
   `set -o pipefail` is valid in these bodies and must stay `bash`
 - `scripts/little_loops/loops/lib/common.yaml:15-22` (`shell_exit`) and `:23-37`
@@ -549,13 +696,31 @@ exemption, BUG-3269 §1d); `incremental-refactor.yaml` (BUG-3276).
 
 _No existing test in `scripts/tests/` executes the shell body of either site at the
 value-resolution level — every current test is structural only (state-set membership, `fragment:`
-field, routing-edge shape). None will break from the conversion; none gives coverage either._
+field, routing-edge shape), so none gives coverage of the conversion._
+
+**ONE existing test breaks, and it is not optional (corrected by the seventh review,
+2026-08-22).** The earlier blanket claim that "none will break from the conversion" was wrong:
+`TestDeadCodeCleanupLoop.test_required_top_level_fields`
+(`scripts/tests/test_builtin_loops.py:12054`) asserts `data.get("initial") == "scan"` and fails
+the moment `initial:` moves to `check_preconditions`. **Edit that line rather than adding a
+parallel assertion** — see DECIDED constraint 4. Everything else below is genuinely new.
+
+**All test-file line anchors below were re-verified against the tree on 2026-08-22 and every one
+of them had drifted** — `test_builtin_loops.py` moved by roughly 350–650 lines when ENH-3277
+landed, so anchors inherited from the split are stale by a full screen or more. The current
+values are: `TestRlCodingAgentObserveTestCmdResolution` **:10820** (was cited 10747-10799),
+`TestDeadCodeCleanupLoop.test_required_states_exist` **:12057** (was L11688),
+`TestTestCoverageImprovementLoop.test_required_states_exist` **:12091** (was L11722),
+`TestIncrementalRefactorLoop` **:12284**, its
+`test_verify_tests_resolves_context_first_then_ll_config` **:12337** (was L11983), and its
+`test_revert_has_exactly_one_inbound_edge` **:12358** (was :11999-12006). Prefer grepping the test
+*name* over trusting any line number in this issue.
 
 - **Subprocess resolution tests for both `verify_tests` states**, driven through **`bash -c`**,
   asserting all three config cases (set / present-null / absent). Model on
-  `TestRlCodingAgentObserveTestCmdResolution` (`test_builtin_loops.py:10747-10799`). Add a fourth
+  `TestRlCodingAgentObserveTestCmdResolution` (`test_builtin_loops.py:10820`). Add a fourth
   case at `test-coverage-improvement.verify_tests` only — context wins over `ll-config get`, per
-  `TestIncrementalRefactorLoop.test_verify_tests_resolves_context_first_then_ll_config` (L11983).
+  `TestIncrementalRefactorLoop.test_verify_tests_resolves_context_first_then_ll_config` (`:12337`).
   **Drive through `bash`, not `sh`**: under `dash`, `set -o pipefail` is unavailable and `rc=$?`
   becomes `tee`'s status (always 0), so an `sh`-driven test reports a passing gate for a failing
   suite.
@@ -566,19 +731,33 @@ field, routing-edge shape). None will break from the conversion; none gives cove
 - **Dedicated assertions for all four new/changed states** — `unverifiable` in both loops,
   `dead-code-cleanup`'s `check_preconditions` and `revert_unverifiable`. Assert each state's
   `terminal`/`failure` flags, its absence of a `next:`, and its inbound edge (the
-  `TestIncrementalRefactorLoop.test_revert_has_exactly_one_inbound_edge` shape, `:11999-12006`).
-  `TestDeadCodeCleanupLoop.test_required_states_exist` (L11688) and
-  `TestTestCoverageImprovementLoop.test_required_states_exist` (L11722) are **subset** checks and
+  `TestIncrementalRefactorLoop.test_revert_has_exactly_one_inbound_edge` shape, `:12358`).
+  `TestDeadCodeCleanupLoop.test_required_states_exist` (`:12057`) and
+  `TestTestCoverageImprovementLoop.test_required_states_exist` (`:12091`) are **subset** checks and
   will silently pass without any of this.
 - **Assert neither `unverifiable` state carries an action**, and that `revert_unverifiable` is
   non-terminal with `next: unverifiable`. This is the executable form of the *TERMINAL-ACTION
   CORRECTION*: an `action` on a terminal state is silently dead, so nothing else in the suite
   would catch someone "simplifying" the two states back into one.
-- **Assert `dead-code-cleanup`'s `initial == "check_preconditions"` and `max_steps == 18`.** Both
-  are one-line scalars a future edit can revert without breaking any state-set or edge-shape
-  assertion, and either reversion silently disables the entry gate or silently cuts a cleanup
-  lap. Also assert `check_preconditions.on_yes == "scan"` — the success edge is equally a
-  one-line scalar with nothing else holding it in place.
+- **Assert `dead-code-cleanup`'s `initial == "check_preconditions"`, `max_steps == 18`, and
+  `timeout == 7200`.** All three are one-line scalars a future edit can revert without breaking
+  any state-set or edge-shape assertion, and each reversion silently disables the entry gate,
+  cuts a cleanup lap, or re-imposes the wall-clock ceiling the added baseline run now exceeds
+  (*Step budget*). The `initial` assertion is the **edit** at `:12054`, not an addition.
+- **Assert all three of `check_preconditions`' edges** — `on_yes == "scan"`,
+  `on_no == "unverifiable"`, `on_error == "unverifiable"` (DECIDED constraint 3). Each is a
+  one-line scalar with nothing else holding it in place, and `on_error` in particular has no
+  natural reader: a wrong or missing value there routes an entry-time crash into the pipeline the
+  gate exists to protect.
+- **Assert the two back-edges still point at `scan`** — `revert_and_scan.next == "scan"` and
+  `commit.next == "scan"` (DECIDED constraint 5). Once `check_preconditions` is `initial:`,
+  retargeting either to the gate is a plausible "cleanup" that would re-run the baseline suite
+  every lap; no other assertion would catch it.
+- **Assert the removed-files manifest contract** (*The removed-files manifest*): `remove_code`'s
+  action text references `ll-dead-code-removed-files.txt`, and `revert_unverifiable`'s does too.
+  Without both halves the revert has no file list to act on and silently reverts nothing — a
+  failure that leaves unverified deletions in the tree while the transcript reads as a clean
+  abstention.
 - **Pin `evaluate.abstain_on_exit_3` / the `harness_exit` fragment at both states**, so a future
   edit that reverts the fragment to `shell_exit` while leaving the `exit 3` body in place fails
   loudly rather than silently re-routing to `on_error`.
@@ -633,16 +812,26 @@ field, routing-edge shape). None will break from the conversion; none gives cove
 - [ ] `verify_tests` is `fragment: harness_exit` with `on_cannot_judge: revert_unverifiable`
 - [ ] `revert_unverifiable` exists as `action_type: prompt` with `next: unverifiable`, and is
       `verify_tests.on_cannot_judge`'s only target
+- [ ] `remove_code`'s prompt writes every modified file path to
+      `${context.run_dir}/ll-dead-code-removed-files.txt` (truncating first), and
+      `revert_unverifiable` reverts **exactly that list** — never a blanket `git checkout -- .`,
+      which is unsafe precisely because the gate does not check for a clean tree. With the
+      manifest absent or empty, `revert_unverifiable` reverts nothing and says so
 - [ ] `unverifiable` exists as a bare `terminal: true` + `failure: true` state
 - [ ] `check_preconditions` entry gate exists (`fragment: shell_exit`, **config-first bare**),
-      routing `on_yes: scan` and `on_no: unverifiable`
+      routing `on_yes: scan`, `on_no: unverifiable`, **and `on_error: unverifiable`**
+- [ ] `revert_and_scan.next` and `commit.next` are both still `scan` — the gate is an entry
+      precondition, not a per-lap one
 - [ ] The gate checks **resolvable / runnable / green-baseline only** — it does **not** carry
       `incremental-refactor`'s clean-working-tree check, whose rationale is that loop's blanket
       `git checkout -- . && git clean -fd` revert and does not transfer to `dead-code-cleanup`'s
       per-file `git checkout -- <file>`. Added by the sixth review; assert no `git status
       --porcelain` in the gate's action
 - [ ] `:7` is `initial: check_preconditions`
-- [ ] `:108` is `max_steps: 18`
+- [ ] `:108` is `max_steps: 18` **and `:109` is `timeout: 7200`** — the loop-level wall clock is
+      enforced independently of `max_steps` (`fsm/executor.py:559-561`), so raising only the step
+      budget leaves the added baseline suite run to be absorbed by an unchanged 90 minutes and the
+      step bump buys nothing
 
 **Both converted bodies**
 
@@ -665,14 +854,23 @@ field, routing-edge shape). None will break from the conversion; none gives cove
 - [ ] `test_no_inline_project_command_config_read`, `test_context_references_are_declared`, and
       `test_general_task_and_rl_coding_agent_are_not_exempt` all remain and pass
 
-**Tests** (each is new; none exists today)
+**Tests** (all new except the first, which is an edit)
 
+- [ ] `TestDeadCodeCleanupLoop.test_required_top_level_fields`
+      (`test_builtin_loops.py:12054`) updated from `initial == "scan"` to
+      `"check_preconditions"` — this existing assertion **fails** otherwise; do not add a second,
+      contradicting one elsewhere
 - [ ] Subprocess resolution tests for both states, driven through `bash -c`, all three config
       cases (plus the context-first fourth case at `test-coverage-improvement`)
 - [ ] Exit-3 collision case at both states: `sh -c 'exit 3'` → state exits **1**; empty `CMD` →
       exits **3**
-- [ ] Dedicated assertions for all four new/changed states, plus `initial`, `max_steps`, and
-      `abstain_on_exit_3`/`harness_exit` at both states
+- [ ] Dedicated assertions for all four new/changed states, plus `initial`, `max_steps`,
+      `timeout`, and `abstain_on_exit_3`/`harness_exit` at both states
+- [ ] All three `check_preconditions` edges asserted (`on_yes: scan`, `on_no: unverifiable`,
+      `on_error: unverifiable`), and both back-edges asserted still `scan`
+      (`revert_and_scan.next`, `commit.next`)
+- [ ] Assertion that both halves of the removed-files manifest contract are present —
+      `remove_code` writes `ll-dead-code-removed-files.txt` and `revert_unverifiable` consumes it
 - [ ] Assertion that neither `unverifiable` carries an action
 - [ ] Guard against a state resolving a `CMD` it never evaluates
 
@@ -713,28 +911,39 @@ this issue earlier means racing it on the same set literal.
    pinned body **including the non-zero collapse**. Land its regression tests in the same change.
 3. **`dead-code-cleanup.yaml` second**, since its `on_yes` commits deletions and it carries the
    most added surface. Convert `:76` config-first bare; switch `verify_tests` to
-   `fragment: harness_exit` with `on_cannot_judge: revert_unverifiable`; add
-   `revert_unverifiable` (prompt, `next: unverifiable`) and the bare `unverifiable` terminal; add
-   the `check_preconditions` entry gate (`fragment: shell_exit`, **config-first bare**,
-   **resolvable/runnable/green-baseline checks only — no clean-tree check**, `on_yes: scan`,
-   `on_no: unverifiable`); move `initial` to `check_preconditions`; raise `max_steps` to `18`.
-   Land its regression tests in the same change.
+   `fragment: harness_exit` with `on_cannot_judge: revert_unverifiable`; **append the
+   removed-files manifest instruction to `remove_code`'s prompt** (*The removed-files manifest* —
+   do this **before** writing `revert_unverifiable`, which has no file list to act on without
+   it); add `revert_unverifiable` (prompt, reverts exactly the manifest, `next: unverifiable`)
+   and the bare `unverifiable` terminal; add the `check_preconditions` entry gate
+   (`fragment: shell_exit`, **config-first bare**, **resolvable/runnable/green-baseline checks
+   only — no clean-tree check**, `on_yes: scan`, `on_no: unverifiable`, `on_error: unverifiable`);
+   move `initial` to `check_preconditions`; raise `max_steps` to `18` **and `timeout` to `7200`**;
+   leave `revert_and_scan.next` and `commit.next` at `scan`. Land its regression tests in the same
+   change — including the **edit** to `test_required_top_level_fields`
+   (`test_builtin_loops.py:12054`), which fails as soon as `initial:` moves.
 4. **Verify each loop before moving on:** `ll-loop validate`, the scoped grep, and the gate with
    that file's entry removed from `_PENDING_CONVERSION`.
 5. **Execute ENH-3277's Option A decision.** Move `rn-refine.yaml` and
    `auto-refine-and-implement.yaml` from `_PENDING_CONVERSION` into `_PERMANENT_EXEMPTIONS`
-   (`:49`), growing it from one entry to three, and extend that constant's comment to carry the
+   (`:51`), growing it from one entry to three, and extend that constant's comment to carry the
    §1d rationale (absent ≡ null ≡ skip, never guess) for all three. Both YAMLs stay byte-for-byte
    unchanged. Do **not** build `ll-config get --raw`.
 6. **Empty `_PENDING_CONVERSION` and delete the constant.** Four coupled edits in
    `scripts/tests/test_bug3269_test_cmd_resolution_gate.py`, not one — deleting the constant alone
    is a `NameError`:
-   - grow `_PERMANENT_EXEMPTIONS` (`:49`) to three per step 5 — **this must land before the set
+   - grow `_PERMANENT_EXEMPTIONS` (`:51`) to three per step 5 — **this must land before the set
      below is deleted**, or the gate fails on those two files;
-   - delete the `_PENDING_CONVERSION` set (`:55-65`);
-   - delete `test_pending_conversion_sites_still_exist` (`:148-156`), which dereferences it;
-   - collapse `_EXEMPT = _PERMANENT_EXEMPTIONS | _PENDING_CONVERSION` (`:67`) to
+   - delete the `_PENDING_CONVERSION` set (`:56-63`);
+   - delete `test_pending_conversion_sites_still_exist` (`:146-156`), which dereferences it;
+   - collapse `_EXEMPT = _PERMANENT_EXEMPTIONS | _PENDING_CONVERSION` (`:65`) to
      `_EXEMPT = _PERMANENT_EXEMPTIONS`.
+
+   _(All four anchors re-verified 2026-08-22; the values inherited from the split — `:49`,
+   `:55-65`, `:148-156`, `:67` — were each off by one to six lines after ENH-3277 rewrote the
+   module docstring and the set's comments. The module docstring at `:24-30` also still describes
+   a "shrinking exemption list of four remaining sites" and names ENH-3288's definition of done;
+   rewrite it in the same edit or it outlives the constant it documents.)_
 
    Plus the doc edit: **`docs/guides/HARNESS_OPTIMIZATION_GUIDE.md:569`**'s "temporary exemption
    pending **ENH-3288's** conversion pass" sentence must be rewritten to name the three permanent
@@ -747,7 +956,7 @@ this issue earlier means racing it on the same set literal.
    holds with exactly three permanent exemptions. **This is the definition of done for the whole
    ENH-3277 family.**
 
-7. **Widen `_INLINE_ACCESS_RE` (`:71-84`) — a verified blind spot.** The regex matches only a
+7. **Widen `_INLINE_ACCESS_RE` (`:74-84`) — a verified blind spot.** The regex matches only a
    *chained* access (`get('project', {}).get('test_cmd')` or `['project']['test_cmd']`). It does
    **not** match the two-step binding shape:
 
@@ -803,9 +1012,18 @@ step 6 deletes the former.
 **In scope:** `dead-code-cleanup.yaml` and `test-coverage-improvement.yaml` in full — two inline
 reads (one converted, one deleted as dead), two `fragment: shell_exit` → `harness_exit` switches,
 the non-zero exit collapse at both, four new states (`unverifiable` ×2, `revert_unverifiable`,
-`check_preconditions`), `dead-code-cleanup`'s `initial:` and `max_steps:` edits — plus the full
-gate teardown (moving two entries to `_PERMANENT_EXEMPTIONS`, deleting `_PENDING_CONVERSION`,
-widening `_INLINE_ACCESS_RE`) and the exemption-list doc edits.
+`check_preconditions`), the removed-files manifest instruction appended to
+`dead-code-cleanup.remove_code`, and `dead-code-cleanup`'s `initial:`, `max_steps:` and
+`timeout:` edits — plus the full gate teardown (moving two entries to `_PERMANENT_EXEMPTIONS`,
+deleting `_PENDING_CONVERSION`, widening `_INLINE_ACCESS_RE`) and the exemption-list doc edits.
+
+**Out of scope — pre-existing, surfaced by the seventh review:**
+`test-coverage-improvement.extract_percentage`'s `route: {target: commit}` (`:85-86`) lets a repo
+already at `context.coverage_target` reach `commit` without ever entering `verify_tests`. That is
+a convergence-routing question, not a command-resolution one, and this issue's guarantee is
+scoped accordingly (*Expected Behavior*). Also out of scope: giving `test-coverage-improvement` a
+`check_preconditions` entry gate — considered and declined with its cost recorded, see *DECIDED —
+`test-coverage-improvement` gets no entry gate*.
 
 **Out of scope — belongs to ENH-3277:** `fix-quality-and-tests.yaml`, the three `harness-*.yaml`
 (and their `# EXAMPLE:` scaffold comments), and `evaluation-quality.yaml`'s `:58` read and `:63`
@@ -902,10 +1120,28 @@ open the same relative path — but not fixed here either.
   existing users of this loop. Those three conditions are the **whole** widening — the gate
   deliberately does not adopt the template's clean-working-tree check (constraint 0 under
   *DECIDED*), which would additionally refuse every mid-branch run.
-- **`dead-code-cleanup`'s `max_steps` rises 15 → 18 and its `initial` moves to
-  `check_preconditions`.** The step bump is not a behavior change users asked for; it keeps the
-  loop at three cleanup laps after the entry gate and `revert_unverifiable` each claim a step. A
-  run that previously exhausted its budget mid-lap will now get slightly further.
+- **`dead-code-cleanup`'s `max_steps` rises 15 → 18, its `timeout` rises 5400 → 7200, and its
+  `initial` moves to `check_preconditions`.** Neither budget bump is a behavior change users asked
+  for; together they keep the loop at three cleanup laps after the entry gate and
+  `revert_unverifiable` each claim a step *and* after the gate's baseline suite run is added to
+  the wall clock. Raising only `max_steps` would not have achieved that — the wall clock is
+  enforced separately (`fsm/executor.py:559-561`) and would have become the binding constraint. A
+  run that previously exhausted either budget mid-lap will now get further, and a long-running
+  suite that previously fit inside 90 minutes now has 120.
+- **`dead-code-cleanup`'s `remove_code` starts writing a removed-files manifest**
+  (`${context.run_dir}/ll-dead-code-removed-files.txt`). A new per-run artifact, invisible outside
+  the run dir, consumed only by `revert_unverifiable`. It exists because the entry gate
+  deliberately does **not** require a clean working tree, which rules out the blanket revert
+  `incremental-refactor` relies on: without an explicit list, an unverifiable lap could only be
+  undone by discarding the user's own uncommitted work alongside the loop's.
+- **`test-coverage-improvement` can now terminate leaving uncommitted new test files.** Under
+  `test_cmd: null` the loop reaches `verify_tests`, abstains, and ends at the bare `unverifiable`
+  terminal — having already run `measure` and written tests. Nothing reverts them and nothing
+  writes an explanation (a terminal state's action never runs). Accepted rather than gated: the
+  leftovers are additive and plainly visible in `git status`, and this loop's `on_yes` commits
+  added tests rather than deletions, so the "refuse to start" rationale that justifies
+  `dead-code-cleanup`'s gate does not transfer. See *DECIDED — `test-coverage-improvement` gets
+  no entry gate*.
 - **Both `verify_tests` states stop distinguishing a command's exit code beyond pass/fail.** The
   mandated collapse to `exit 1` means a runner exiting 2/3/5 now routes identically to a plain
   test failure. Deliberate — it is what keeps pytest's internal-error code out of
@@ -931,6 +1167,61 @@ open the same relative path — but not fixed here either.
   the issue ID in it first — expect to find `ENH-3288` there, not `ENH-3277`)
 
 ## Design Review History
+
+### Pre-implementation review — 2026-08-22 (seventh review; first since ENH-3277 landed)
+
+_Independent design review against the tree, run after ENH-3277 reached `status: done`. **Every
+loop-YAML anchor in this issue re-verified and holding** — `dead-code-cleanup`'s `initial: scan`
+(`:7`), inline read (`:76`) inside `verify_tests` (`:68-83`) with `fragment: shell_exit` and
+`on_yes: commit` / `on_no`+`on_error: revert_and_scan`, `revert_and_scan` (`:84-97`),
+`max_steps: 15` (`:108`), `timeout: 5400` (`:109`); `test-coverage-improvement`'s `test_cmd`
+declaration (`:23`), dead `CMD` block (`:37-48`), `verify_tests` (`:143-159`) with its inline read
+at `:152` and `:157-159` edges; `incremental-refactor`'s gate (`:20-86`, `fragment: shell_exit` at
+`:47`) and `verify_tests` (`:99-128`, `harness_exit` at `:109`, `exit 3` at `:120`). The three
+mechanism corrections all confirmed against source: `evaluate_exit_code`'s
+`abstain_on_exit_3` gate (`fsm/evaluators.py:238-263`), the `harness_exit` fragment
+(`lib/common.yaml:23-37`), and the terminal-state short-circuit (`fsm/executor.py:601-636`).
+Nine changes applied — the loop YAMLs' anchors were the only thing that had **not** drifted:_
+
+1. **`revert_unverifiable` had no way to know which files to revert** — the sharpest gap found.
+   `revert_and_scan` works because the failure log names the file; the no-signal case has neither
+   a log nor a single culprit, `remove_code` deletes **three** items across possibly three files
+   and declares no `capture:`, and the blanket-revert fallback is ruled out by this issue's own
+   (correct) decision to skip the clean-tree check. Added *The removed-files manifest* under
+   *Terminality*, an edit to `remove_code`, an AC, an assertion, and a step-3 ordering note.
+2. **An existing test pins the old `initial` and will fail.**
+   `TestDeadCodeCleanupLoop.test_required_top_level_fields` (`test_builtin_loops.py:12054`)
+   asserts `initial == "scan"`; the issue framed the new value as an addition and the *Tests*
+   preamble claimed nothing would break. Corrected in the preamble, DECIDED constraint 4, the
+   Tests bullet, the AC, and step 3.
+3. **Every test-file anchor was stale by 350–650 lines** — ENH-3277 shifted
+   `test_builtin_loops.py`. All six corrected inline, with a standing note to grep test *names*
+   over trusting line numbers. Five gate-file anchors (`:49`→`:51`, `:55-65`→`:56-63`,
+   `:67`→`:65`, `:148-156`→`:146-156`, `:71-84`→`:74-84`) and `revert_and_scan`'s log read
+   (`:87`→`:88`) likewise.
+4. **The step budget ignored the wall clock.** `dead-code-cleanup` also carries `timeout: 5400`,
+   enforced independently of `max_steps` at `fsm/executor.py:559-561`. Since the entry gate adds a
+   whole baseline suite run, `max_steps: 18` alone would not have delivered the three laps the
+   section promises. Added `timeout: 5400 → 7200` to *Step budget*, *Files to Modify*, the AC,
+   Impact, and step 3.
+5. **`check_preconditions.on_error` was the one unpinned edge** in an issue that pins every other
+   fragment and edge. Pinned to `unverifiable` (DECIDED constraint 3) with an assertion.
+6. **Nothing pinned the two back-edges.** Once the gate is `initial:`, retargeting
+   `revert_and_scan.next` / `commit.next` from `scan` to the gate is a plausible "cleanup" that
+   would re-run the baseline suite every lap. Added DECIDED constraint 5 and assertions.
+7. **The pinned body's omission of the template's `RC=$?` normalization was unexplained**, so an
+   implementer following "model on these shapes" would paste it back. Documented why it is
+   unreachable — `main_config` returns 0 unconditionally (`cli/config.py:53`).
+8. **`test-coverage-improvement`'s lack of an entry gate was silent, not decided.** Recorded as a
+   decision with its accepted cost (a wasted `measure` + `write_tests`, and new test files left
+   uncommitted at termination), plus an Impact bullet.
+9. **The "cannot reach `commit` without a real test signal" claim was literally false** for
+   `test-coverage-improvement`: `extract_percentage` routes `target: commit` (`:85-86`). Narrowed
+   to "via `verify_tests`" and the pre-existing bypass recorded in *Scope Boundaries*.
+
+_No change to the two conversions themselves, the fragment switches, the exit-collapse
+requirement, the four new states, or the teardown steps. Net additions: one prompt edit
+(`remove_code`), one scalar (`timeout`), two pinned edges, and six assertions._
 
 ### Pre-implementation review — 2026-08-22 (sixth review of the ENH-3277 family)
 
@@ -971,9 +1262,15 @@ _Added by `/ll:confidence-check` on 2026-08-21_
 **Outcome Confidence**: 82/100 → HIGH CONFIDENCE
 
 ### Gaps to Address
-- Blocked by ENH-3277 (status: open) — this issue's own Prerequisite step already says ENH-3277
-  must land first; the Dependencies Hard Override forces STOP regardless of aggregate score until
-  it resolves.
+- ~~Blocked by ENH-3277 (status: open)~~ — **RESOLVED 2026-08-22.** ENH-3277 is `status: done`
+  and its shrink is live: `test_bug3269_test_cmd_resolution_gate.py:56-63` now holds exactly the
+  four entries this issue expects (`dead-code-cleanup.yaml`, `test-coverage-improvement.yaml`,
+  `rn-refine.yaml`, `auto-refine-and-implement.yaml`), and
+  `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md:569` already reads "pending ENH-3288's conversion
+  pass" per its step 5c retarget. The Dependencies Hard Override no longer applies; the readiness
+  score should be re-run.
+- Nine further gaps were found and closed by the seventh review (2026-08-22) — see *Design Review
+  History*. The readiness score above predates all of them.
 - Criterion 4 capped at 10/20 by `format-check`'s `stale_cli_flag` gap:
   `"ll-config get --raw (no such flag)"` — likely a false-positive read of this issue's own
   explicitly-rejected Option C ("Do **not** build `ll-config get --raw`"), but recorded per
