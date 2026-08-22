@@ -122,7 +122,7 @@ non-zero exit routes to `on_no`, which is `revert_and_scan` for `dead-code-clean
 | Site | `on_yes` | Decision |
 |---|---|---|
 | `test-coverage-improvement.yaml:45` (`measure`) | **none — `next: extract_percentage`** | **DEAD — delete, do not convert.** `measure` resolves `CMD` at `:37-48` and never uses it; the state's only `eval` is `eval "$COV_CMD"` (`:62`). See *Dead site* below — deleting it forces a decision about `context.test_cmd` |
-| `test-coverage-improvement.yaml:148-158` (`verify_tests`) | `commit` | **explicit skip required** — target pinned under *Pinning the two explicit-skip gate edges* below; its `on_no`/`on_error: fix_tests` is reachable but wrong |
+| `test-coverage-improvement.yaml:143-159` (`verify_tests`, inline read at `:152`) | `commit` | **explicit skip required** — target pinned under *Pinning the two explicit-skip gate edges* below; its `on_no`/`on_error: fix_tests` is reachable but wrong |
 | `dead-code-cleanup.yaml:71-81` | `commit` / `on_no: revert_and_scan` | **explicit skip required.** `[ -z "$CMD" ]` must route to a non-committing edge. Today `pytest` fails in exactly the project shape BUG-3269 was found in → `revert_and_scan`; after a naive conversion → **commits dead-code deletions with zero verification.** Sharpest change in the whole family. Target pinned under *Pinning the two explicit-skip gate edges* below; `revert_and_scan` is available but wrong |
 
 **Rule (BUG-3269 §2b):** a site whose `on_yes` edge performs an irreversible action (`commit`) or
@@ -157,12 +157,12 @@ correction:
 2. **The wiring pass's "fourth case" test at `:45` would pin dead code.** The
    `TestIncrementalRefactorLoop.test_verify_tests_resolves_context_first_then_ll_config`-style
    "context wins over `ll-config get`" assertion has no live behavior to assert at `measure`.
-   Move it to `verify_tests` (`:148-158`), per decision (a) below, now pinned.
+   Move it to `verify_tests` (`:143-159`), per decision (a) below, now pinned.
 3. **`test-coverage-improvement`'s `context.test_cmd` parameter is currently inert** — a latent
    bug this issue surfaces. It is declared at `:23` with the comment *"override test command;
    empty = read from ll-config.json"* and documented as a supported knob in
    `docs/guides/LOOPS_REFERENCE.md:1347` (*"Test command to run (e.g. `python -m pytest --cov`)"*),
-   but its **only consumer is the dead block**. `verify_tests:148-158` — the state that actually
+   but its **only consumer is the dead block**. `verify_tests:143-159` — the state that actually
    runs the test suite and gates `commit` — ignores it entirely and reads config inline.
 
 **DECIDED — (a), make the documented override real.** Pinned 2026-08-21. Delete `:37-48`, and give
@@ -359,7 +359,33 @@ working tree and no artifact explaining why.
 an implementer could reasonably ship either shape — and the two differ in scope, state count,
 tests, and step budget. It is now **in scope and required**, alongside the mid-run
 `harness_exit` skip edge (both, not either — same rationale
-`incremental-refactor.yaml:100-108` gives for keeping both). Three constraints, each verified:
+`incremental-refactor.yaml:100-108` gives for keeping both). Five constraints, each verified:
+
+0. **Which checks the gate performs — copy three of the template's four, NOT the clean-tree
+   one (added by the sixth review, 2026-08-22).** "Modelled on `incremental-refactor.yaml:20-86`"
+   under-specifies the most consequential thing about the state. That template gates on **four**
+   conditions: `test_cmd` resolves, the command is runnable (exit 127), the suite is green at
+   baseline, **and the working tree is clean** (`git status --porcelain`, untracked included,
+   `.loops` excluded). The fourth is load-bearing *there* and nowhere else: its stated rationale
+   (`:22-30`) is that `incremental-refactor`'s `revert` does a **blanket**
+   `git checkout -- . && git clean -fd`, which is only provably correct if every uncommitted
+   change is the failed step's own work.
+
+   **`dead-code-cleanup` does not have that revert.** `revert_and_scan` reverts **per file** —
+   *"Revert the most recent dead code removal that caused the failure using `git checkout --
+   <file>`"* (`:83-97`) — so a dirty tree is not a correctness hazard for it. Copying `:20-86`
+   wholesale would make the loop **refuse to start on any dirty working tree**, a far larger
+   behavior change than the one *Impact* describes ("unresolvable, unrunnable, or already-red")
+   and one nobody asked for: users routinely run a cleanup loop mid-branch.
+
+   **Pinned: gate on resolvable / runnable / green-baseline only. Do not port the clean-tree
+   check.** If a later issue wants it, that is a separate decision with its own Impact entry.
+
+0b. **Fragment: `shell_exit`.** The template declares `fragment: shell_exit` at
+   `incremental-refactor.yaml:47`, with a bare `exit 0` / `exit 1` body and `on_yes`/`on_no`/
+   `on_error`. Stated explicitly because every other fragment choice in this issue is pinned and an
+   unpinned one invites a `harness_exit` paste — which would then need an `on_cannot_judge` edge
+   and re-open the exit-3 collision at a state that has no reason to abstain.
 
 1. **Config-first bare — do NOT paste `incremental-refactor.yaml:20-86` verbatim.** That
    template resolves context-first via `${context.test_cmd}`, but `dead-code-cleanup`'s
@@ -427,7 +453,10 @@ A new entry state needs its own assertion for the same subset-check reason noted
 
 _This was written as a recommendation; it is now **decided and in scope** — see the DECIDED
 block immediately above, which also pins the config-first-bare constraint that the cited
-template violates. Text kept here as rationale._
+template violates **and the three-of-four check subset** (the template's fourth check, clean
+working tree, must not be ported — constraint 0). Text kept here as rationale; read "modelled on
+`incremental-refactor.yaml:20-86`" above as subject to those constraints, not as a verbatim copy
+instruction._
 
 #### `dead-code-cleanup.verify_tests`
 
@@ -487,7 +516,8 @@ pass without validating it.
   `check_preconditions` entry gate, and the two new states `revert_unverifiable` /
   `unverifiable` (*Terminality*)
 - `scripts/little_loops/loops/test-coverage-improvement.yaml` — `:37-48` (the dead `CMD` block in
-  `measure`) **deleted, not converted**; `:148-158` (`verify_tests`) converted context-first and
+  `measure`) **deleted, not converted**; `:143-159` (`verify_tests`, inline read at `:152`)
+  converted context-first and
   switched to `fragment: harness_exit`; the `:23` `test_cmd` declaration **stays** and becomes
   functional per the pinned decision (a); new `unverifiable` terminal state
 - `scripts/tests/test_bug3269_test_cmd_resolution_gate.py` — the teardown (step 6): grow
@@ -591,8 +621,8 @@ field, routing-edge shape). None will break from the conversion; none gives cove
 **`test-coverage-improvement.yaml`**
 
 - [ ] `:37-48` (the dead `CMD` block in `measure`) is **deleted**, not converted
-- [ ] `verify_tests` (`:148-158`) uses the context-first shape, so the `:23` `test_cmd`
-      declaration becomes live
+- [ ] `verify_tests` (`:143-159`, inline read at `:152`) uses the context-first shape, so the
+      `:23` `test_cmd` declaration becomes live
 - [ ] `verify_tests` is `fragment: harness_exit` with a declared `on_cannot_judge: unverifiable`
 - [ ] `unverifiable` exists as a **bare** `terminal: true` + `failure: true` state — no `action`,
       no `next:`
@@ -604,8 +634,13 @@ field, routing-edge shape). None will break from the conversion; none gives cove
 - [ ] `revert_unverifiable` exists as `action_type: prompt` with `next: unverifiable`, and is
       `verify_tests.on_cannot_judge`'s only target
 - [ ] `unverifiable` exists as a bare `terminal: true` + `failure: true` state
-- [ ] `check_preconditions` entry gate exists (config-first bare), routing `on_yes: scan` and
-      `on_no: unverifiable`
+- [ ] `check_preconditions` entry gate exists (`fragment: shell_exit`, **config-first bare**),
+      routing `on_yes: scan` and `on_no: unverifiable`
+- [ ] The gate checks **resolvable / runnable / green-baseline only** — it does **not** carry
+      `incremental-refactor`'s clean-working-tree check, whose rationale is that loop's blanket
+      `git checkout -- . && git clean -fd` revert and does not transfer to `dead-code-cleanup`'s
+      per-file `git checkout -- <file>`. Added by the sixth review; assert no `git status
+      --porcelain` in the gate's action
 - [ ] `:7` is `initial: check_preconditions`
 - [ ] `:108` is `max_steps: 18`
 
@@ -680,9 +715,10 @@ this issue earlier means racing it on the same set literal.
    most added surface. Convert `:76` config-first bare; switch `verify_tests` to
    `fragment: harness_exit` with `on_cannot_judge: revert_unverifiable`; add
    `revert_unverifiable` (prompt, `next: unverifiable`) and the bare `unverifiable` terminal; add
-   the `check_preconditions` entry gate (**config-first bare**, `on_no: unverifiable`); move
-   `initial` to `check_preconditions`; raise `max_steps` to `18`. Land its regression tests in the
-   same change.
+   the `check_preconditions` entry gate (`fragment: shell_exit`, **config-first bare**,
+   **resolvable/runnable/green-baseline checks only — no clean-tree check**, `on_yes: scan`,
+   `on_no: unverifiable`); move `initial` to `check_preconditions`; raise `max_steps` to `18`.
+   Land its regression tests in the same change.
 4. **Verify each loop before moving on:** `ll-loop validate`, the scoped grep, and the gate with
    that file's entry removed from `_PENDING_CONVERSION`.
 5. **Execute ENH-3277's Option A decision.** Move `rn-refine.yaml` and
@@ -863,7 +899,9 @@ open the same relative path — but not fixed here either.
   now runs the test suite once before scanning, and a project with an unresolvable, unrunnable, or
   already-red suite gets a terminal `unverifiable` instead of a scan. The **already-red** case is
   a broader condition than "no `test_cmd` configured" and is the main source of surprise for
-  existing users of this loop.
+  existing users of this loop. Those three conditions are the **whole** widening — the gate
+  deliberately does not adopt the template's clean-working-tree check (constraint 0 under
+  *DECIDED*), which would additionally refuse every mid-branch run.
 - **`dead-code-cleanup`'s `max_steps` rises 15 → 18 and its `initial` moves to
   `check_preconditions`.** The step bump is not a behavior change users asked for; it keeps the
   loop at three cleanup laps after the entry gate and `revert_unverifiable` each claim a step. A
@@ -891,6 +929,39 @@ open the same relative path — but not fixed here either.
 - `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` — the `ll-config get` convention, written up by
   BUG-3269; its `:569` exemption sentence is this issue's to rewrite (ENH-3277 step 5c retargets
   the issue ID in it first — expect to find `ENH-3288` there, not `ENH-3277`)
+
+## Design Review History
+
+### Pre-implementation review — 2026-08-22 (sixth review of the ENH-3277 family)
+
+_Independent design review against the tree, run jointly with ENH-3277. Re-verified and holding:
+`dead-code-cleanup`'s `initial: scan` (`:7`), `max_steps: 15` (`:108`), the inline read at `:76`
+and its `:71-81` block, `verify_tests`'s `shell_exit` fragment and `on_yes: commit` /
+`on_no`+`on_error: revert_and_scan` edges; `test-coverage-improvement`'s dead `CMD` block at
+`:37-48` (with `${context.test_cmd}` referenced **nowhere else** in the file, so deleting it leaves
+the `:23` declaration inert until `verify_tests` picks it up) and `verify_tests`'s
+`:157-159` edges; `incremental-refactor`'s template at `:20-86` / `:99-128` with
+`fragment: shell_exit` at `:47` and `harness_exit` at `:109`; the `harness_exit` fragment's
+`abstain_on_exit_3: true` (`lib/common.yaml:23-37`); and step 7's pre-verification — the widened
+`project`-bound access shape was re-run directly against `loops/**` and matches
+`auto-refine-and-implement.yaml` (`:433`, `:434`) and nothing else, so no new exemption is needed.
+Two corrections applied:_
+
+1. **The `check_preconditions` entry gate was scoped only by what it must *not* paste
+   (context-first), not by what it must *check*.** "Modelled on `incremental-refactor.yaml:20-86`"
+   silently imports that template's **clean-working-tree** gate, whose rationale is that loop's
+   blanket `git checkout -- . && git clean -fd` revert. `dead-code-cleanup` reverts per file
+   (`:83-97`), so the rationale does not transfer, and a wholesale copy would make the loop refuse
+   to start on any dirty tree — much broader than the widening *Impact* describes. Added
+   constraints 0 (three-of-four checks, no clean-tree) and 0b (`fragment: shell_exit`, pinned like
+   every other fragment in this issue), with matching AC, Impact, and step-3 updates.
+2. **Stale `verify_tests` anchor for `test-coverage-improvement`, in four places.** The state is
+   `:143-159` with the inline read at `:152`; `:148-158` was carried across the split even though
+   ENH-3277's *Anchors spot-checked in the first addendum* had already corrected it. Fixed in the
+   §2b row, *Dead site* consequence 2, *Files to Modify*, and the AC.
+
+_No change to scope, state count, the pinned bodies, the exit-collapse requirement, or the
+teardown steps._
 
 ## Confidence Check Notes
 

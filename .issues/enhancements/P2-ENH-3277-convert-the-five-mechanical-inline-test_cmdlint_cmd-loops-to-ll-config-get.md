@@ -350,9 +350,38 @@ contents, or it will pass against the broken shape.
 
 **Getting the marker onto stdout is necessary but not sufficient.** Nothing tells `score` what to
 do once it arrives. Its prompt still reads *"code_health: based on test pass/fail and lint
-clean/dirty"* (`evaluation-quality.yaml:84`) and it must emit a 0-100 `code_health` regardless.
+clean/dirty"* (`evaluation-quality.yaml:86`) and it must emit a 0-100 `code_health` regardless.
 Handed `NO TEST SIGNAL` and `NO LINT SIGNAL`, an LLM has no passing-test evidence and will
 score the dimension low.
+
+##### The prompt has FOUR load-bearing lines, not one (added by the sixth review, 2026-08-22)
+
+**Anchors re-verified against the tree; the earlier `:84` citation was off by two and named only
+one of the four lines this correction actually has to change.** Two of the other three
+*contradict* the remedy as previously worded, so an edit that touches only the scoring-guidance
+line ships a self-contradictory prompt and the model follows the mandate rather than the guidance:
+
+| Line | Current text | Why step 5a must touch it |
+|---|---|---|
+| `:86` | `- code_health: based on test pass/fail and lint clean/dirty` | The scoring guidance itself — the only line the pre-sixth-review text named (as `:84`) |
+| `:88` | `- overall: weighted average (issue_quality 40%, code_health 40%, backlog_health 20%)` | The re-weighting rule lives here (see the `overall` sub-section below) |
+| `:94` | `code_health: <0-100>` | **Contradicts** *"have `code_health` report the sentinel rather than a fabricated number"* — this line mandates a number, and a mandate in the output block beats guidance five lines above it |
+| `:100` | `Choose PRIMARY_CONCERN as the dimension furthest below its threshold.` | **Contradicts** *"exclude the dimension from `PRIMARY_CONCERN` selection"* — `code_health_threshold` is still supplied at `:81`, so an unmeasured dimension scored low is by construction "furthest below its threshold" and gets selected |
+
+**Two facts that bound the choice, both verified:**
+
+1. **Nothing parses the numbers.** All three routing states evaluate `output_contains` against the
+   `PRIMARY_CONCERN:` tag alone (`route_action:106-109`, `route_issues:115-118`,
+   `route_code:124-127`); no state reads `code_health` or `overall` numerically. So a
+   **non-numeric `code_health` is parse-safe** — reporting the sentinel does not break routing or
+   trip `diagnose_evaluator_failure` (which fires only on a missing/malformed `PRIMARY_CONCERN`
+   tag, `:226-230`).
+2. **Whatever is chosen is user-visible.** `report` embeds `${captured.scores.output}` verbatim
+   under a `### Scores` heading (`:184`), so the sentinel — or the fabricated number — lands in
+   `.loops/quality-report-*.md` as written.
+
+Pick one shape and make **all four lines** say it. Do not leave `:94` or `:100` describing the
+old contract.
 
 **Where that lands.** `route_action` → `route_issues` → `route_code.on_yes: remediate_code`, which
 instructs the user to run `fix-quality-and-tests` — a loop that, after **this same issue**, is
@@ -459,26 +488,33 @@ This issue keeps the six conversions that are pure find-and-replace, and shrinks
 
 ### The gate file's own prose is falsified by this issue
 
-**Verified against the tree 2026-08-21.** `scripts/tests/test_bug3269_test_cmd_resolution_gate.py`
-asserts in **three** places that *this* issue empties and deletes `_PENDING_CONVERSION`. The split
-moved that to ENH-3288, so all three become false the moment this issue lands, in the file that is
-the family's own source of truth:
+**Verified against the tree 2026-08-21; anchor count corrected 2026-08-22 (sixth review).**
+`scripts/tests/test_bug3269_test_cmd_resolution_gate.py` asserts in **four** places that *this*
+issue empties and deletes `_PENDING_CONVERSION`. The split moved that to ENH-3288, so all four
+become false the moment this issue lands, in the file that is the family's own source of truth:
 
 | Anchor | Current text | Required |
 |---|---|---|
-| Module docstring `:23-27` | *"populated with the nine sites deferred to ENH-3277 … **ENH-3277's definition of done is that `_PENDING_CONVERSION` is empty and can be deleted.**"* | Nine → four; the definition-of-done sentence reassigned to **ENH-3288** |
-| `_PENDING_CONVERSION` comment `:52-55` | *"sites deferred to ENH-3277 (blocked_by: [BUG-3269]) … ENH-3277's definition of done is emptying this set and deleting it."* | Same reassignment |
+| Module docstring `:23-27` (**two** `ENH-3277` lines, `:24` and `:26`) | *"populated with the nine sites deferred to ENH-3277 plus the not-currently-buggy 13th call site in auto-refine-and-implement.yaml … **ENH-3277's definition of done is that `_PENDING_CONVERSION` is empty and can be deleted.**"* | Nine → four; the definition-of-done sentence reassigned to **ENH-3288**. **Also drop the "nine … plus the … 13th call site" phrasing**, which reads as ten entries but describes nine — `auto-refine-and-implement.yaml` *is* one of the nine, not an addition to them |
+| `_PENDING_CONVERSION` comment `:52-55` (**two** `ENH-3277` lines, `:51` and `:53`) | *"sites deferred to ENH-3277 (blocked_by: [BUG-3269]) … ENH-3277's definition of done is emptying this set and deleting it."* | Same reassignment |
+| `test_pending_conversion_sites_still_exist` **docstring** `:148-151` — **added by the sixth review; the previous three-anchor table missed it entirely** | *"Guard against a stale exemption list: every listed file must exist, so ENH-3277 closing one site is forced to also shrink this set rather than silently leaving a dangling entry."* | Reassign the ID **and** fix the claim: this test does **not** force a conversion to land — it only asserts each listed filename still exists on disk. The forcing verifier is `test_no_inline_project_command_config_read` (third review, and see *Tests*). Rewrite as a dangling-entry guard, naming ENH-3288 or no issue at all |
 | `test_pending_conversion_sites_still_exist` assertion message `:155` | *"shrink the exemption list (ENH-3277)"* | → ENH-3288 |
 
-**Rewrite constraint (fourth review, 2026-08-21): the rewritten prose at all three anchors must
-not contain the string `ENH-3277` at all.** The Gate AC verifies this section with
-`grep -n 'ENH-3277'` expecting **exactly two** surviving lines — the two Option-A entry
-annotations — so a natural rewrite like *"six sites converted by ENH-3277; the teardown is
-ENH-3288's"* fails the AC even though it satisfies this table's "Required" column as worded.
-Note the docstring alone carries two mentions today (the `:24` "sites deferred to ENH-3277"
-phrase and the `:26-27` definition-of-done sentence) — both must go. Name ENH-3288 (which owns
-everything still pending) or describe the conversion pass without an issue ID; do not name this
-issue in the rewritten docstring, set comment, or assertion message.
+**Rewrite constraint (fourth review, 2026-08-21; anchor set corrected by the sixth review): the
+rewritten prose at all four anchors must not contain the string `ENH-3277` at all.** The Gate AC
+verifies this section with `grep -n 'ENH-3277'` expecting **exactly two** surviving lines — the two
+Option-A entry annotations — so a natural rewrite like *"six sites converted by ENH-3277; the
+teardown is ENH-3288's"* fails the AC even though it satisfies this table's "Required" column as
+worded.
+
+**The grep returns six lines today, across four locations** — `:24`, `:26` (docstring), `:51`,
+`:53` (set comment), `:150` (the test's own docstring), `:155` (assertion message). Every one must
+go. The third anchor above is the one a reader misses: it sits inside the *test function*, not the
+module docstring or the set comment, and the pre-sixth-review table did not list it — so an
+implementer working the table alone leaves `:150` behind and fails the AC with one stray line.
+Name ENH-3288 (which owns everything still pending) or describe the conversion pass without an
+issue ID; do not name this issue in the rewritten docstring, set comment, test docstring, or
+assertion message.
 
 **And the set's name becomes a lie for two of its four members.** Option A made `rn-refine.yaml`
 and `auto-refine-and-implement.yaml` **permanent** exemptions, but ENH-3288 owns the move into
@@ -526,22 +562,34 @@ Pin per file.
     # NOTE: an opted-out project yields an empty CMD, `eval ""` exits 0, and this
     # gate PASSES. That is deliberate here (the next state is a further gate). If
     # you clone this into a loop whose on_yes performs an irreversible action, add
-    # an explicit `[ -z "$CMD" ]` branch. See docs/guides/HARNESS_OPTIMIZATION_GUIDE.md
-    # § Resolving a Project Command Inside a Loop.
+    # an explicit `[ -z "$CMD" ]` branch.
 ```
 
 The `NOTE:` half is the load-bearing part: a cloner who copies a pass-on-empty gate onto an
 `on_yes: commit` edge reproduces exactly the hazard that forced this issue's split. The comment
 is where that warning has to live, because the shell body no longer shows the fallback.
 
-**Cite the guide, not an issue ID (added by the fifth review, 2026-08-22).** An earlier draft of
-this block ended `— see ENH-3288`. These YAMLs ship in the pip package into consuming projects
-(`.claude/CLAUDE.md` § Distribution), where a little-loops issue ID resolves to nothing, and the
-pointer goes stale the moment ENH-3288 lands. `HARNESS_OPTIMIZATION_GUIDE.md` § *Resolving a
-Project Command Inside a Loop* already documents the three-way contract and both precedence
-shapes, and it ships with the docs. (Terse rationale tags like `harness-single-shot.yaml:54`'s
-`# ENH-2825:` are a different thing and stay — the objection is to a *see-X-for-guidance* pointer
-aimed at a reader who cannot open X.)
+**No cross-reference pointer at all — the comment must stand alone (fifth review 2026-08-22,
+corrected by the sixth).** An earlier draft of this block ended `— see ENH-3288`. These YAMLs ship
+in the pip package into consuming projects (`.claude/CLAUDE.md` § Distribution), where a
+little-loops issue ID resolves to nothing and the pointer goes stale the moment ENH-3288 lands.
+The fifth review retargeted it to `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md § Resolving a Project
+Command Inside a Loop` on the stated grounds that the guide "ships with the docs."
+
+**It does not, and that fix reproduced the defect it was fixing — verified 2026-08-22.**
+`scripts/pyproject.toml:193-194` ships exactly `little_loops/**`, `LICENSE`, and `README.md`, plus
+`hatch_build.py:38-40`'s build-time copy of `skills/`. **`docs/` is not in the wheel.** A
+relative `docs/guides/...` path is therefore unresolvable from a pip-installed consuming project's
+working directory — the identical failure mode as the issue ID, one indirection later.
+
+**Resolution: drop the trailing pointer entirely** (done in the shared body above). The five-line
+block is already self-contained: it states the three-way contract, names the pass-on-empty
+consequence, and gives the cloner the concrete remedy (`add an explicit [ -z "$CMD" ] branch`).
+A pointer adds nothing a consuming-project reader can act on. If a future edit wants one anyway,
+it must be a **full URL** to the guide on GitHub, not a repo-relative path.
+
+(Terse rationale tags like `harness-single-shot.yaml:54`'s `# ENH-2825:` are a different thing and
+stay — the objection is to a *see-X-for-guidance* pointer aimed at a reader who cannot open X.)
 
 **Per-file application:**
 
@@ -684,9 +732,14 @@ consistency, simplicity, and risk, despite the issue's own text recommending Opt
 - `scripts/little_loops/loops/fix-quality-and-tests.yaml:58-78` — three-way body deleted
 - `scripts/little_loops/loops/evaluation-quality.yaml:58` — and `:63`'s hardcoded
   `ruff check scripts/` → `ll-config get project.lint_cmd`
-- `scripts/little_loops/loops/evaluation-quality.yaml`'s **`score` state prompt (`:84`)** — must
-  tell the model how to score `code_health` when step 4/5's no-signal markers are present. Added
-  by the third review; see *SCORER CORRECTION*. Prompt text only, no state or edge change
+- `scripts/little_loops/loops/evaluation-quality.yaml`'s **`score` state prompt — four lines,
+  `:86`, `:88`, `:94`, `:100`** — must tell the model how to score `code_health` and compute
+  `overall` when step 4/5's no-signal markers are present. Added by the third review; the
+  four-line anchor set (replacing a single, off-by-two `:84`) by the sixth. `:94`'s
+  `code_health: <0-100>` and `:100`'s "furthest below its threshold" each **contradict** one of
+  the two remedies on offer, so editing `:86` alone ships a self-contradictory prompt — see
+  *SCORER CORRECTION* > *The prompt has FOUR load-bearing lines*. Prompt text only, no state or
+  edge change
 - `scripts/little_loops/loops/harness-plan-research-implement-report.yaml:126` — and its
   template comment at `:120` (load-bearing; see *The three `harness-*` sites are user-facing
   templates*)
@@ -698,8 +751,11 @@ consistency, simplicity, and risk, despite the issue's own text recommending Opt
   (`scripts/tests/test_bug3269_test_cmd_resolution_gate.py:55-65`) — **shrunk from nine entries
   to four**, one per converted file. Not emptied and not deleted here: that is ENH-3288's step 6,
   and `test_pending_conversion_sites_still_exist` keeps the remaining four honest in the meantime.
-- **The same file's prose, in three places** — see *The gate file's own prose is falsified by this
-  issue* below. Not optional cleanup: all three currently assert something this issue makes false.
+- **The same file's prose, in four places** (module docstring, `_PENDING_CONVERSION` comment,
+  `test_pending_conversion_sites_still_exist`'s **docstring**, and that test's assertion message)
+  — see *The gate file's own prose is falsified by this issue* below. Not optional cleanup: all
+  four currently assert something this issue makes false, and the Gate AC's `grep -n 'ENH-3277'`
+  fails if any one is missed. The test-docstring anchor was added by the sixth review (2026-08-22)
 - `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md:569` — **added by the fifth review, 2026-08-22.**
   One identifier: "pending ENH-3277's conversion pass" → "pending ENH-3288's conversion pass".
   Same defect class as the three gate-file anchors above; see *Documentation*
@@ -837,6 +893,14 @@ needs a new subprocess-level test. [Agent 3 finding]
   `ruff`"*, describing exactly the hardcoded `ruff check scripts/` step 5 converts to
   `ll-config get project.lint_cmd`; update to describe the configured `lint_cmd` instead.
   [Agent 2 finding, confirmed]
+
+  **The same sentence continues into `:394` and step 5a falsifies that half too (sixth review,
+  2026-08-22):** *"scores three dimensions (issue quality 40%, code health 40%, backlog health
+  20%)"*. Those weights stop being unconditional once step 5a re-weights `overall` across the
+  measured dimensions — for a project with `test_cmd: null` the split becomes 67/33. Add the
+  conditional in the same edit (one clause: *"…, re-weighted across the measured dimensions when a
+  command is not configured"*). Same defect class as the four gate-file prose anchors this issue
+  already fixes: a doc asserting behavior this issue changes.
 - In-YAML comments inside three already-listed primary files — `harness-single-shot.yaml:57-60`,
   `harness-multi-item.yaml:87-89`, `harness-plan-research-implement-report.yaml:119-120` — currently
   read "Reads test_cmd from .ll/ll-config.json; falls back to 'pytest' if absent" and describe
@@ -852,7 +916,7 @@ needs a new subprocess-level test. [Agent 3 finding]
   `done`, four loops are still exempt and the doc points at a closed issue, so a reader chasing the
   remaining exemptions lands on the wrong issue.
 
-  That is the identical defect this issue already fixes three anchors of, two sections above, on
+  That is the identical defect this issue already fixes four anchors of, two sections above, on
   the identical argument — *"the next reader of the gate is told the wrong issue owns the
   teardown"* (*The gate file's own prose is falsified by this issue*). Deferring the doc while
   fixing the test file is an inconsistent call on one defect class. The fix is one identifier:
@@ -940,10 +1004,14 @@ gate-teardown criteria live in **ENH-3288**._
 - [ ] `evaluation-quality.yaml:63`'s hardcoded `ruff check scripts/` → `ll-config get
       project.lint_cmd`, emitting the pinned marker
       `NO LINT SIGNAL -- project.lint_cmd is null; no linter ran` on stdout
-- [ ] `evaluation-quality`'s `score` prompt (`:84`) states how `code_health` is scored when step
+- [ ] `evaluation-quality`'s `score` prompt (`:86`) states how `code_health` is scored when step
       4/5's no-signal markers are present, and whether `CODE` may be selected as
       `PRIMARY_CONCERN` in that case (*SCORER CORRECTION*). Without it, an opted-out project gets
       a spurious CODE concern routed to a remediation loop that is itself a no-op
+- [ ] The output block at **`:94`** (`code_health: <0-100>`) and the selection rule at **`:100`**
+      ("furthest below its threshold") are edited to match whichever remedy was chosen. Added by
+      the sixth review: each contradicts one of the two options SCORER CORRECTION offers, so a
+      prompt edited only at `:86`/`:88` is self-contradictory and the model follows the mandate
 - [ ] The same prompt states how **`overall`** is computed when a dimension is unmeasured
       (`:88` weights `code_health` at 40%, and `report:191` trend-compares `overall` across runs).
       Added by the fifth review — without it, fixing `PRIMARY_CONCERN` alone leaves an opted-out
@@ -968,19 +1036,23 @@ gate-teardown criteria live in **ENH-3288**._
       step 5
 - [ ] `test_no_inline_project_command_config_read`, `test_context_references_are_declared`, and
       `test_general_task_and_rl_coding_agent_are_not_exempt` all remain and pass
-- [ ] All three "ENH-3277 empties/deletes this set" claims in
+- [ ] All **four** "ENH-3277 empties/deletes this set" claims in
       `test_bug3269_test_cmd_resolution_gate.py` reassigned to **ENH-3288** — module docstring
-      (`:23-27`), `_PENDING_CONVERSION` comment (`:52-55`), and
-      `test_pending_conversion_sites_still_exist`'s assertion message (`:155`). Verified by
+      (`:23-27`), `_PENDING_CONVERSION` comment (`:52-55`),
+      `test_pending_conversion_sites_still_exist`'s **docstring** (`:148-151`, added by the sixth
+      review — the previous three-anchor list missed it, and the AC below fails on that one stray
+      line), and that test's assertion message (`:155`). Verified by
       `grep -n 'ENH-3277' scripts/tests/test_bug3269_test_cmd_resolution_gate.py` returning
       **exactly two lines** — the two inline Option-A annotations on the `rn-refine.yaml` and
       `auto-refine-and-implement.yaml` entries required by the next row, and nothing else.
       (Corrected 2026-08-21: this row previously specified `grep -c`, which returns a bare count
       and cannot show *which* hits survived, and it pinned no expected number — so the row was
-      unverifiable as written.) **This forces the rewritten docstring, set comment, and assertion
-      message to drop every `ENH-3277` mention — see the *Rewrite constraint* under *The gate
-      file's own prose is falsified by this issue*; a rewrite that names this issue historically
-      fails this row.**
+      unverifiable as written.) **This forces the rewritten docstring, set comment, test docstring,
+      and assertion message to drop every `ENH-3277` mention — see the *Rewrite constraint* under
+      *The gate file's own prose is falsified by this issue*; a rewrite that names this issue
+      historically fails this row.** The same grep returns **six** lines on the pre-change tree
+      (`:24`, `:26`, `:51`, `:53`, `:150`, `:155`); run it first so the fourth location is not
+      missed.
 - [ ] The `rn-refine.yaml` and `auto-refine-and-implement.yaml` entries in `_PENDING_CONVERSION`
       each carry an inline comment marking them permanently exempt per Option A and pointing at
       ENH-3288 step 5 for the move
@@ -1001,13 +1073,19 @@ gate-teardown criteria live in **ENH-3288**._
       row below
 - [ ] Structural guard on `evaluation-quality`'s `score` action asserting the prompt addresses the
       no-signal case (*SCORER CORRECTION*) — keyed on the `NO TEST SIGNAL` / `NO LINT SIGNAL`
-      sentinels, and covering the `overall` re-weighting rule as well as `PRIMARY_CONCERN`
+      sentinels, and covering the `overall` re-weighting rule as well as `PRIMARY_CONCERN`.
+      **The guard must also assert the prompt no longer carries the unconditional
+      `code_health: <0-100>` / "furthest below its threshold" wording**, or it passes against a
+      prompt whose output block still contradicts its own guidance (sixth review)
 - ~~[ ] `evaluate_code` exit-0 test, four combinations~~ — **STRUCK (third review)**; the hazard
       is unreachable (*EXIT-CODE CORRECTION — RETRACTED*). Do not write it
 
 **Docs**
 
 - [ ] `EVALUATION_GUIDE.md:393` describes the configured `lint_cmd`, not `ruff`
+- [ ] `EVALUATION_GUIDE.md:394`'s "(issue quality 40%, code health 40%, backlog health 20%)"
+      carries the re-weighting conditional step 5a introduces. Added by the sixth review — the
+      weights stop being unconditional for a project that opted out of a command
 - [ ] `HARNESS_OPTIMIZATION_GUIDE.md:569` reads "pending **ENH-3288's** conversion pass", not
       ENH-3277's. Verified by `grep -n 'ENH-3277' docs/guides/HARNESS_OPTIMIZATION_GUIDE.md`
       returning **no lines**. Added by the fifth review — same defect class as the three gate-file
@@ -1082,11 +1160,18 @@ gate-teardown criteria live in **ENH-3288**._
    unconstrained; restructure both branches freely (*EXIT-CODE CORRECTION — RETRACTED*). Then
    remove `evaluation-quality.yaml` from `_PENDING_CONVERSION`, bringing it to four entries.
 
-5a. **Teach `score` to read the markers** (`evaluation-quality.yaml`'s `score` prompt, `:84`).
+5a. **Teach `score` to read the markers** (`evaluation-quality.yaml`'s `score` prompt — **four
+   lines: `:86`, `:88`, `:94`, `:100`**, not the single `:84` cited before the sixth review).
    Steps 4 and 5 create a no-signal condition that the scorer currently has no instruction for,
    and its default reading routes an opted-out project to `remediate_code` — a no-op after step 3.
    Either scope `code_health` to whichever signal arrived, or exclude the dimension from
-   `PRIMARY_CONCERN` selection when both markers are present. **And state how `overall` is
+   `PRIMARY_CONCERN` selection when both markers are present. **Whichever you pick, the output
+   block at `:94` (`code_health: <0-100>`) and the selection rule at `:100` ("furthest below its
+   threshold") each contradict one of those two remedies and must be edited to match** — a mandate
+   in the output block beats guidance five lines above it. Nothing parses the numbers (routing is
+   `output_contains` on the `PRIMARY_CONCERN:` tag alone), so a non-numeric `code_health` is
+   parse-safe; it is user-visible, though, since `report` embeds the block verbatim (`:184`). See
+   *SCORER CORRECTION* > *The prompt has FOUR load-bearing lines*. **And state how `overall` is
    computed when a dimension is unmeasured** — it weights `code_health` at 40% (`:88`) and is the
    number `report` trend-compares across runs (`:191`), so fixing only `PRIMARY_CONCERN` moves the
    falsified signal into the report instead of removing it. Re-weight across the measured
@@ -1094,13 +1179,17 @@ gate-teardown criteria live in **ENH-3288**._
    their pinned sentinels (`NO TEST SIGNAL` / `NO LINT SIGNAL`), not a paraphrase. Prompt text
    only — no state or edge changes.
 
-5b. **Correct the gate file's prose.** Reassign all three "ENH-3277 empties/deletes this set"
-   claims to ENH-3288 (module docstring `:23-27`, `_PENDING_CONVERSION` comment `:52-55`,
-   `test_pending_conversion_sites_still_exist`'s assertion message `:155`) and annotate the two
-   Option-A entries in place — see *The gate file's own prose is falsified by this issue*.
-   The rewritten text must not itself contain `ENH-3277` (see the *Rewrite constraint* there):
-   the Gate AC's grep allows exactly the two annotation lines and nothing else.
-   Prose-only; no assertion logic changes and no test breaks.
+5b. **Correct the gate file's prose.** Reassign all **four** "ENH-3277 empties/deletes this set"
+   claims to ENH-3288 — module docstring `:23-27`, `_PENDING_CONVERSION` comment `:52-55`,
+   `test_pending_conversion_sites_still_exist`'s **docstring** `:148-151`, and that test's
+   assertion message `:155` — and annotate the two Option-A entries in place. See *The gate file's
+   own prose is falsified by this issue*. **Start by running `grep -n 'ENH-3277'` on the file: it
+   returns six lines across those four locations, and every one must go.** The docstring anchor
+   at `:150` is the one the pre-sixth-review table omitted; it additionally states a claim the
+   third review already retracted (that this test forces a conversion to land — it does not), so
+   fix the claim, not just the ID. The rewritten text must not itself contain `ENH-3277` (see the
+   *Rewrite constraint* there): the Gate AC's grep allows exactly the two annotation lines and
+   nothing else. Prose-only; no assertion logic changes and no test breaks.
 
 5c. **Correct the guide's ownership prose too** (added by the fifth review).
    `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md:569` — "pending ENH-3277's conversion pass" →
@@ -1459,7 +1548,10 @@ prompt-text edit to an already-in-scope file._
 Anchors spot-checked and confirmed accurate: all six conversion sites, the "none of the five
 declares `context.test_cmd`" claim, and the `fix-quality-and-tests` identical-routing proof.
 One anchor corrected: `test-coverage-improvement.yaml`'s second read is at `:152` within a
-`:143-158` state (was cited `:148-158`) — ENH-3288's scope, fixed here since it was quoted.
+`:143-159` state (was cited `:148-158`) — ENH-3288's scope, fixed here since it was quoted.
+_(Span re-checked by the sixth review: `:159` is the state's `on_error`, so the state is
+`:143-159`, not `:143-158`. ENH-3288 had not picked up this correction at all and still carried
+`:148-158` in four places; fixed there 2026-08-22.)_
 
 ### Fourth pre-implementation review — 2026-08-21
 
@@ -1519,6 +1611,47 @@ relevant because this issue's exit gate is a full green suite. Six corrections a
 
 _No change to scope boundaries, option selection, the five/two file split, or the conversion
 count (still 6). Item 5 adds the only new file._
+
+### Sixth pre-implementation review — 2026-08-22
+
+_Independent design review against the tree. Re-verified and holding: all six conversion anchors,
+the nine-entry `_PENDING_CONVERSION` set, the three per-file `harness-*` comment shapes, the
+`fix-quality-and-tests` present-null→`true` routing proof (its `| tee` writes an equally empty log
+before and after conversion), the `evaluate_code` `next:`-only exit-code retraction, and ENH-3288's
+step-7 pre-verification (the widened `project`-bound regex shape matches
+`auto-refine-and-implement.yaml` and nothing else under `loops/**` — re-run directly). Four
+corrections applied here, plus two to ENH-3288:_
+
+1. **The gate-file rewrite had three anchors; the file has four, and the AC fails on the missed
+   one.** `grep -n 'ENH-3277'` returns **six** lines across **four** locations — the table omitted
+   `test_pending_conversion_sites_still_exist`'s **own docstring** (`:150`). An implementer working
+   the table alone leaves it and fails the Gate AC's "exactly two lines". That line is also
+   substantively false independent of the split: it claims this test forces a conversion to land,
+   which the third review already retracted. Added as a fourth row, with matching updates to
+   *Files to Modify*, step 5b, and both Gate ACs; the docstring's "nine … plus the 13th call site"
+   miscount pinned for correction in the same rewrite.
+2. **Step 5a named one prompt line; four need editing, and two contradict the remedy.** Real
+   anchors are `:86` (guidance — the cited `:84` was off by two), `:88` (weights), `:94`
+   (`code_health: <0-100>`), `:100` ("furthest below its threshold"). `:94` contradicts the
+   "report the sentinel" option and `:100` contradicts the "exclude from `PRIMARY_CONCERN`" option;
+   neither was in scope, and a mandate in the output block beats guidance five lines above it.
+   Added *The prompt has FOUR load-bearing lines*, with two bounding facts verified: no state
+   parses the numbers (all routing is `output_contains` on the `PRIMARY_CONCERN:` tag,
+   `:106`/`:115`/`:124`), and `report` embeds the block verbatim at `:184`.
+3. **The fifth review's item-6 fix reproduced the defect it was fixing.** It retargeted the
+   scaffold comment's pointer from an issue ID to `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` on
+   the grounds that the guide "ships with the docs." It does not: the wheel ships
+   `little_loops/**`, `LICENSE`, `README.md` (`scripts/pyproject.toml:193-194`) plus
+   `hatch_build.py:38-40`'s `skills/` copy — **`docs/` is not in the package**, so the relative
+   path is as unresolvable from a consuming project as the issue ID was. Pointer dropped; the
+   five-line block is self-contained. A future pointer must be a full URL.
+4. **`EVALUATION_GUIDE.md`'s weights half was out of scope.** `:394`'s "(issue quality 40%, code
+   health 40%, backlog health 20%)" is the same sentence as the in-scope `:393` `ruff` phrase, and
+   step 5a's re-weighting makes it conditionally false. Added to *Documentation* and the Docs ACs.
+
+_No change to scope boundaries, option selection, the five/two file split, or the conversion count
+(still 6). No new files: items 1, 2 and 4 tighten anchors inside already-listed files; item 3
+removes text._
 
 ## Confidence Check Notes
 
