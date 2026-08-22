@@ -24,9 +24,9 @@ relates_to:
 reconcile_attempted: true
 decision_needed: false
 confidence_score: 100
-outcome_confidence: 63
+outcome_confidence: 71
 score_complexity: 18
-score_test_coverage: 10
+score_test_coverage: 18
 score_ambiguity: 10
 score_change_surface: 25
 ---
@@ -1690,6 +1690,7 @@ Resolved 2026-08-21 (fourth review): the `duplicate_heading` finding — repeate
 stale blocks into `## Design Review History`.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-22T16:41:20 - `e0d9a04a-155d-476f-9403-10992c6e255e.jsonl`
 - `/ll:confidence-check` - 2026-08-21T20:59:20 - `04f81c9a-29c0-44a6-ade2-267fd3d09dd8.jsonl`
 - `/ll:confidence-check` - 2026-08-21T20:16:04 - `afe1203b-04a5-44c9-a88c-bbb1714b8e71.jsonl`
 - `/ll:confidence-check` - 2026-08-21T18:59:48 - `de2bc4f7-6272-4f52-a9cb-998af08752f1.jsonl`
