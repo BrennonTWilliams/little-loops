@@ -150,6 +150,17 @@ tier, or one Pattern E directive window.
   `> **Selected:**` callout, **or** the group's enclosing section carries a
   `### Decision Rationale` subsection **and that section holds exactly one decision group**.
 
+> ⚠ **This contract does not cover `provisional_e` groups, and must say so (added 2026-08-21,
+> epic review).** A directive group is retired by **suppressing the probe**, never by satisfying
+> `is_group_resolved` — see part 5's marker-placement rule and its measurement. Written as an
+> unqualified rule, the definition above tells an implementer to make a directive group resolvable
+> by callout, which is not achievable: `_SELECTED_CALLOUT_RE` (`issue_parser.py:1361`) is
+> **line-anchored** (`^\s*>\s+\*\*Selected:\*\*`), and the only marker placement that suppresses
+> the directive is one appended to the directive line itself, which that regex cannot match.
+> State the carve-out in the docstring: *tier groups resolve via marker or single-group section
+> fallback; `provisional_e` groups are never emitted once marked, so `is_group_resolved` is never
+> consulted for them.*
+
 **The single-group restriction is load-bearing.** An unrestricted section-level check reproduces
 this very bug through the fix: on the step-10 fixture both groups live under `## Proposed
 Solution`, so run 1 deciding group A appends a `### Decision Rationale` to that section, group B
@@ -251,6 +262,12 @@ against live `_locate_directive_alternatives` (2026-08-21), with the directive o
 | directive reworded to `**DECIDED — (a); was: pick one …**` | **still matches** (`pick one` survives; there is no `DECIDED` alternative in `_RESOLVED_QUESTION_MARKER_RE`) |
 | `> **Selected:**` appended **to line `D` itself** | `None` ✓ |
 | `**RESOLVED**` prefixed **to line `D` itself** | `None` ✓ |
+
+> **Re-measured 2026-08-21 (epic review), and the last two rows are not equivalent.** Both
+> suppress the probe, but only the `**RESOLVED**` prefix is a *readable* marker: the appended
+> `> **Selected:**` form does not match `_SELECTED_CALLOUT_RE` (`issue_parser.py:1361`,
+> line-anchored — verified non-matching), so no callout consumer can see it, and a mid-line `>` is
+> not valid blockquote syntax. Part 5 now prescribes the prefix form.
 
 The mechanism: the scan slides a window `lines[max(0, i-3) : min(len, i+4)]` over every `i` and
 suppresses only the windows that contain a marker. A marker on a *neighbouring* line always leaves
@@ -415,18 +432,40 @@ this fix newly reaches:
   neighbouring line does not work.** Per the measurement in part 3, `_locate_directive_alternatives`
   suppresses per sliding window, so a marker on the line before or after the directive always leaves
   the `i = D-3` window unsuppressed — the group re-emits forever, *and* the surviving window's span
-  excludes the marker, so a span-scoped `is_group_resolved` check fails too. The rule is therefore:
-  **append the callout to the directive line itself**, e.g.
+  excludes the marker, so a span-scoped `is_group_resolved` check fails too. The marker must
+  therefore go **on the directive line itself**. The prescribed form is a `**RESOLVED — …**`
+  **prefix**:
 
   ```markdown
-  **DECISION — pick one before step 4: use the shim or rewrite the caller.** > **Selected:** the shim.
+  **RESOLVED — the shim.** **DECISION — pick one before step 4: use the shim or rewrite the caller.**
   ```
 
-  Verified to return `None`. A `**RESOLVED**` prefix on the same line works identically; a
-  `**DECIDED — …**` rewording does **not**, because the `pick one` imperative survives it.
+  Verified to return `None`. A `**DECIDED — …**` rewording does **not** work, because the
+  `pick one` imperative survives it.
   Without this rule a Pattern E group co-located with any other group in the same section can never
-  be marked resolved (the section-level fallback is restricted to single-group sections) — a
+  be retired (the section-level fallback is restricted to single-group sections) — a
   permanent stall, exactly what the per-group idempotency rule above exists to prevent.
+
+  > ⚠ **Prescribed form changed from an appended `> **Selected:**` callout to a `**RESOLVED**`
+  > prefix — 2026-08-21, epic review.** Earlier revisions specified appending
+  > `> **Selected:** the shim.` to the end of the directive line. Both forms suppress
+  > `_locate_directive_alternatives` equally (both measured `None`), but the appended form is
+  > wrong on two counts:
+  >
+  > 1. **It is not a callout to anything that reads callouts.** `_SELECTED_CALLOUT_RE`
+  >    (`issue_parser.py:1361`) is `r"^\s*>\s+\*\*Selected:\*\*\s*(.+)$"` — line-anchored.
+  >    Measured: the appended form does **not** match; the same text on its own line does. So the
+  >    marker is invisible to `_selected_option_title`, `_unapplied_decision`'s selected-index
+  >    resolution, and to `is_group_resolved` itself. Writing a `> **Selected:**` that no
+  >    `> **Selected:**` consumer can see invites exactly the "the probe covers it" reasoning this
+  >    issue keeps having to correct.
+  > 2. **A mid-line `>` is not markdown.** Blockquote syntax is line-initial; the appended form
+  >    renders as literal `> **Selected:** the shim.` text inside the directive sentence.
+  >
+  > The `**RESOLVED**` prefix has neither problem and was already recorded as working. **The
+  > retirement mechanism for a `provisional_e` group is probe suppression, not resolution** — the
+  > group ceases to be emitted, so `locate_unresolved_decisions` returns it no more and the gate
+  > passes. Say this in the skill prose rather than implying the callout path.
 
 **Phase 7b** runs `ll-issues check-unresolved-decisions` *after* 7a's annotation write. Exit 0 →
 clear as today. Exit 1 → leave `decision_needed: true`, make no frontmatter write, and carry the
@@ -749,9 +788,12 @@ frontmatter-clearing logic and introduces no new gap kind, gate, keyword list, o
    `true`, group named in Phase 9). Add phase-text assertions for both.
 8. Phase 7a: per-group idempotency, a literal (**unsuffixed**) `### Decision Rationale` heading with
    the decision point named on the subsection's first body line, and the per-tier marker placement
-   rule including the `provisional_e` case. Add a phase-text assertion for the per-group phrasing,
-   and one asserting the heading stays literal (the guard for `_unapplied_decision`'s strict
-   `_DECISION_RATIONALE_HEADING_RE` at `issue_parser.py:1316`).
+   rule including the `provisional_e` case — whose marker is a **`**RESOLVED — …**` prefix on the
+   directive line**, not an appended `> **Selected:**` callout. Add a phase-text assertion for the
+   per-group phrasing, one asserting the heading stays literal (the guard for
+   `_unapplied_decision`'s strict `_DECISION_RATIONALE_HEADING_RE` at `issue_parser.py:1316`), and
+   one asserting the `provisional_e` placement rule names the prefix form and states that the group
+   is retired by suppression rather than by `is_group_resolved`.
 9. Phase 7b: run `ll-issues check-unresolved-decisions` after 7a's annotation; clear only on exit
    0; on exit 1 make no frontmatter write. Keep the literal `decision_needed: false` in the
    clearing branch and phrase the new branch as `decision_needed remains true`, matching
@@ -802,6 +844,13 @@ frontmatter-clearing logic and introduces no new gap kind, gate, keyword list, o
       passes (a) and (c) and fails only this one
     - **(c3)** **span-rule guard** — after 7a inserts a `> **Selected:**` callout into a bullet-tier
       group, that group still reports as one group, not two
+    - **(c6)** **`provisional_e` retirement guard** (added 2026-08-21, epic review) — a fixture
+      holding a prose `pick one` directive reports **exit 1**; the same fixture with a
+      `**RESOLVED — …**` prefix on the directive line reports **exit 0**, because the group is no
+      longer emitted. Pair it with a unit assertion that `_SELECTED_CALLOUT_RE` does **not** match
+      a `> **Selected:**` appended to the end of a directive line, pinning why the prefix form is
+      prescribed — without it, a later reader "simplifies" the rule back to a callout and the
+      directive group re-emits forever
     - **(c4)** **Phase 3b A–C stall guard** — a fixture holding intact, unmarked
       `**Option A**`/`**Option B**` blocks reports **exit 1**, proving the probe would block step
       4's clear; the same fixture with the callout step 3's A–C branch now writes reports **exit 0**.
@@ -1009,6 +1058,7 @@ what changed and why so the reasoning is not lost.
 **Open** | Created: 2026-08-21 | Priority: P2
 
 ## Session Log
+- `/ll:format-issue` - 2026-08-22T20:15:07 - `918913f6-1ede-43d4-b1f7-bffea0db90c5.jsonl`
 - `/ll:confidence-check` - 2026-08-21T19:12:09 - `e7bfa83a-61b5-42db-9234-b883edce75e7.jsonl`
 - `/ll:confidence-check` - 2026-08-21T19:00:59 - `de2bc4f7-6272-4f52-a9cb-998af08752f1.jsonl`
 - `/ll:confidence-check` - 2026-08-21T18:01:01 - `e8b100f2-1d69-4959-840b-2aa9aba3993f.jsonl`

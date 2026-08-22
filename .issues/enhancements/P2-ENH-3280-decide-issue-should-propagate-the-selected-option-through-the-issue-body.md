@@ -112,6 +112,23 @@ Two consequences for this issue:
    `blocked_by` is therefore **BUG-3289**; BUG-3279 is demoted to `relates_to` as the issue that
    removed the first layer of this noise and measured the second.
 
+   **A third issue moves this detector's output, and it is not declared anywhere** (added
+   2026-08-21, epic review). **BUG-3285** tightens `_OPTION_HEADING_RE`, which feeds
+   `_option_block_spans` → `_unapplied_decision`'s block set, and therefore its `sel_ids` /
+   `rej_ids` / `spans[-1]`. Unlike BUG-3289's subtraction — which can only *remove* reports —
+   a block-set change can move reports in **both** directions, including introducing new ones.
+   Consequences for this issue:
+
+   - **Not promoted to `blocked_by`.** Phase 7c's correctness requirement is that the report list
+     is not dominated by false positives, which is BUG-3289's fix. BUG-3285 changes *which* blocks
+     exist, which shifts the list without making it untrustworthy. Blocking on it would gate a P2
+     behind an issue still owing two corpus differentials.
+   - **But Implementation Step 4's fixture comparison must be taken against the tree this lands
+     on.** If Phase 7c's expected-output oracle is captured before BUG-3285 lands and validated
+     after, the diff includes BUG-3285's block-set movement and reads as a Phase 7c defect.
+     Name the baseline commit in the fixture's docstring, the way BUG-3278 assertion (c5) does for
+     the same function. See BUG-3285 § *Second blast radius*.
+
 ## Proposed Solution
 
 Add **Phase 7c: Propagate Selection** after Phase 7b, before the session log.
@@ -391,6 +408,20 @@ residual-probe re-scan into Phase 7b's internals, while this issue inserts a new
 Phase 7b. Both issues touch the same ~40-line span concurrently; whichever lands second should
 rebase against the other rather than assuming a clean merge [Agent 2 finding].
 
+## Scope Boundaries
+
+- **In scope**: Phase 7c in `skills/decide-issue/SKILL.md`/`reference.md`, rewriting prose keyed to
+  the option set — recommendation markers, conditional blocks, imperative steps, and explicit
+  propagation checklists — within the closed `_DECISION_DIRECTIVE_SECTIONS` set (`Proposed
+  Solution`, `Program Design`, `Implementation Steps`, `Files to Modify`, `Acceptance Criteria`),
+  driven off `_unapplied_decision`'s existing detector output and reported per-edit in Phase 9.
+- **Out of scope**: Restating counts, re-deriving scope figures, or re-running analysis — a decision
+  pass must not become a refine pass, so unsafe downstream changes are flagged in the report rather
+  than edited. Writing a new detector (Phase 7c reuses `_unapplied_decision` rather than duplicating
+  it). Fixing `_decision_identifiers`'s shared-vocabulary false positives (BUG-3289, this issue's
+  `blocked_by` prerequisite). Widening `_OPTION_HEADING_RE`'s block set (BUG-3285). Resolving
+  BUG-3278's separate `decision_needed`-clearing defect (adjacent pass, not this issue's scope).
+
 ## Impact
 
 - **Priority**: P2 — the pass currently introduces the contradiction it should resolve, and the
@@ -463,6 +494,7 @@ implementation work. Flagged for the implementer to close.
 
 
 ## Session Log
+- `/ll:format-issue` - 2026-08-22T20:15:07 - `918913f6-1ede-43d4-b1f7-bffea0db90c5.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-21T17:52:58 - `f27d8342-f3ba-42ea-95ca-41ad79008fbf.jsonl`
 - `/ll:verify-issues` - 2026-08-21T17:43:58 - `aee80426-6ab1-4a8c-814d-a6f459361121.jsonl`
 - `/ll:refine-issue` - 2026-08-21T17:40:24 - `2c542a24-aeb3-46f2-9dc7-120037c4fb74.jsonl`
