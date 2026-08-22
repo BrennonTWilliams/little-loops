@@ -572,6 +572,17 @@ would start running `pytest`/`ruff check .` in unconfigured projects instead of 
 three permanent exemptions keep their inline parse and their `.ll/ll.local.md` bypass
 indefinitely.
 
+A second, sibling static gate
+([`scripts/tests/test_builtin_loop_hardcode_gate.py`](../../scripts/tests/test_builtin_loop_hardcode_gate.py),
+ENH-3281) enforces the "never hardcode a project command literal" rule below directly:
+it's parametrized over every built-in loop file and asserts no `states[*].action` body
+or top-level `context:` value contains a this-repo path (`scripts/tests`,
+`scripts/little_loops`, `ruff check scripts`, `mypy scripts`). Two files are exempted —
+`cli-anything-bootstrap.yaml` (a package-internal task-template path, not a
+consuming-project layout guess) and `loop-specialist-eval.yaml` (a genuine this-repo
+eval fixture path). `scope:` list entries, `description:` fields, and comments are
+deliberately out of this gate's scope — not exec-time content in the same sense.
+
 **Never hardcode a project command literal in a loop action or context default.** A literal
 like `test_cmd: "python -m pytest scripts/tests/"` is this repository's own test path, not a
 general default — every loop shipped as a built-in runs unmodified against arbitrary

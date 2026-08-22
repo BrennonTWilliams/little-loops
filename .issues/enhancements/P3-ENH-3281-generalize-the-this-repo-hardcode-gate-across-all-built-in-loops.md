@@ -3,10 +3,11 @@ id: ENH-3281
 type: ENH
 title: Generalize the this-repo-hardcode gate across all built-in loops
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-08-21'
 captured_at: '2026-08-21T15:58:33Z'
+completed_at: '2026-08-22T20:00:07Z'
 labels:
 - loops
 - gate
@@ -382,6 +383,28 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - ENH-3277 — parent; its step 5 converts the one live instance, and its step 6b was this issue
 - BUG-3276 — the original single-loop instance and the assertion being generalized
 
+## Resolution
+
+Implemented 2026-08-22 via `/ll:manage-issue`:
+
+- New `scripts/tests/test_builtin_loop_hardcode_gate.py`: `_hardcode_hits()` /
+  `_scanned_strings()` helpers, parametrized gate over `states[*].action` bodies and
+  top-level `context:` values across all 114 built-in loop files (dot-directories
+  excluded, `lib/` included), two-entry exemption set (`cli-anything-bootstrap.yaml`,
+  `loop-specialist-eval.yaml`), an exemption-hygiene guard, and a negative test calling
+  `_hardcode_hits()` directly on an inline string. All 114 files pass (2 exempted).
+- One-line dot-directory filter added to `_all_loop_files()` in
+  `test_bug3269_test_cmd_resolution_gate.py` so the two sibling gates enumerate
+  identically.
+- `TestIncrementalRefactorLoop.test_no_state_hardcodes_this_repo_test_path` kept as
+  specified (whole-document coverage the new gate deliberately doesn't subsume).
+- `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` gained a bullet naming/linking the new
+  gate alongside `test_bug3269_test_cmd_resolution_gate.py`.
+- Captured the `dead-code-cleanup.yaml:8-9` `scope: ["scripts/"]` follow-up as
+  ENH-3292 (new, `relates_to: [ENH-3281]`).
+- `python -m pytest scripts/tests/` exits 0 (20768 passed, 51 skipped); `ruff check`,
+  `ruff format --check`, and `mypy scripts/little_loops/` all clean on touched files.
+
 ## Status
 
 **Open** | Created: 2026-08-21 | Priority: P3
@@ -417,6 +440,7 @@ incremental-refactor assertion) are all closed in text. Re-run `/ll:confidence-c
 `/ll:verify-issues` to refresh.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-22T19:59:28 - `308a3fec-1aaf-4136-8095-36d72d321996.jsonl`
 - `/ll:confidence-check` - 2026-08-22T19:16:07 - `a4109bf2-b6ba-4ebb-95ea-4adc095f7bdc.jsonl`
 - `/ll:review-issue (manual)` - 2026-08-22T18:08:45 - `8e5158e7-e170-4b3d-ab1f-2afbae53a801.jsonl`
 - `/ll:confidence-check` - 2026-08-21T18:08:52 - `73da6192-349c-4cd0-b9a2-b714f2801296.jsonl`

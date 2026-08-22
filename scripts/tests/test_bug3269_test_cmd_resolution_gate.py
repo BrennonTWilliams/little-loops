@@ -96,7 +96,11 @@ _CONTEXT_REF_RE = re.compile(r"(?<!\$)\$\{context\.(test_cmd|lint_cmd)(?::defaul
 
 
 def _all_loop_files() -> list[Path]:
-    return sorted(BUILTIN_LOOPS_DIR.glob("**/*.yaml"))
+    return [
+        path
+        for path in sorted(BUILTIN_LOOPS_DIR.glob("**/*.yaml"))
+        if not any(part.startswith(".") for part in path.relative_to(BUILTIN_LOOPS_DIR).parts)
+    ]
 
 
 def _relative(path: Path) -> str:
