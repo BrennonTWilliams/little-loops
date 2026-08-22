@@ -1,0 +1,855 @@
+{
+ "_comment": "Hand-labelled sample behind ENH-3291's precision measurement of ll-verify-evidence (BUG-3282). Sampled from a full --all scan at commit 95b953640 run against an EMPTY baseline, so it covers every finding the detector produces, not just those beyond the grandfathered set in evidence-baseline.json. Regenerate the finding set with `ll-verify-evidence --all --json` after emptying `spans` in the baseline. Stratified on near_score (char-8-gram coverage of the normalized span against every revision of the cited artifact) because that statistic is informative about the label; estimates are reweighted by stratum size.",
+ "label_definitions": {
+  "TP": "The issue presents the span as a fact about the cited artifact and no revision of that artifact supports it. A real fabricated-evidence finding.",
+  "FP:misattribution": "The span is real content, but the prose never claimed it came from the cited artifact \u2014 the artifact is named as a run argument, a provenance credit ('(BUG-1383)'), or an adjacent example.",
+  "FP:notquote": "The span is not an evidence quote at all: command output, a constructed example, a forward-looking snippet, or an elided fragment.",
+  "FP:paraphrase": "Real content of the cited artifact, reworded or reformatted (dotted-path vs nested JSON, shorthand signature, inline vs YAML list).",
+  "FP:stale_history": "Accurate when written, since changed, and older than the 80-revision window.",
+  "FP:acknowledged_historical": "The prose itself states the shape no longer exists anywhere."
+ },
+ "scan": {
+  "commit": "95b953640",
+  "date": "2026-08-22",
+  "total_findings": 303,
+  "f2_kept_md_issue": 164,
+  "f2_dropped_code": 139,
+  "baseline": "empty"
+ },
+ "samples": {
+  "f2_kept": [
+   {
+    "file": ".issues/bugs/P1-BUG-2513-autodev-decision-gate-bypassed-on-refine-non-success.md",
+    "line": 72,
+    "section": "Motivation",
+    "artifact": "BUG-2501",
+    "span": "decision_needed: true",
+    "near_score": 0.692,
+    "stratum": "A_near_high",
+    "label": "TP"
+   },
+   {
+    "file": ".issues/bugs/P2-BUG-3202-section-lookup-is-fence-unaware-and-last-occurrence-wins-inverting-format-check-verdicts.md",
+    "line": 82,
+    "section": "Current Behavior",
+    "artifact": "BUG-3193",
+    "span": "$ ll-issues format-check 3193\n  empty: Summary\n  boilerplate: Current Behavior",
+    "near_score": 0.761,
+    "stratum": "A_near_high",
+    "label": "FP:paraphrase"
+   },
+   {
+    "file": ".issues/bugs/P2-BUG-2981-autodev-check-impl-auth-leaks-inflight-sentinel-and-double-counts-unverified.md",
+    "line": 125,
+    "section": "Root Cause",
+    "artifact": "ENH-2353",
+    "span": "fragment: ll_auto_auth_check",
+    "near_score": 0.722,
+    "stratum": "A_near_high",
+    "label": "FP:misattribution"
+   },
+   {
+    "file": ".issues/bugs/P3-BUG-941-update-skill-hardcoded-cwd-relative-paths-fail-outside-repo.md",
+    "line": 29,
+    "section": "Root Cause",
+    "artifact": "skills/update/SKILL.md",
+    "span": "python3 -c \"import json; d=json.load(open('.claude-plugin/plugin.json')); print(d['version'])\"\npython3 -c \"import json; d=json.load(open('.claude-plugin/marketplace.json')); print(d['version'])\"",
+    "near_score": 0.947,
+    "stratum": "A_near_high",
+    "label": "FP:stale_history"
+   },
+   {
+    "file": ".issues/bugs/P2-BUG-2820-refine-issue-deposits-options-outside-scanned-sections.md",
+    "line": 112,
+    "section": "Steps to Reproduce",
+    "artifact": "FEAT-2817",
+    "span": "decision_needed: true",
+    "near_score": 0.769,
+    "stratum": "A_near_high",
+    "label": "FP:notquote"
+   },
+   {
+    "file": ".issues/bugs/P3-BUG-641-handoff-writes-continuation-prompt-to-user-level-claude-dir.md",
+    "line": 37,
+    "section": "Root Cause",
+    "artifact": "commands/handoff.md",
+    "span": "Write to '.claude/ll-continue-prompt.md'.",
+    "near_score": 0.727,
+    "stratum": "A_near_high",
+    "label": "FP:stale_history"
+   },
+   {
+    "file": ".issues/bugs/P2-BUG-1381-subprocess-output-parser-silently-discards-result-events.md",
+    "line": 84,
+    "section": "Codebase Research Findings",
+    "artifact": "BUG-1383",
+    "span": "dict.fromkeys(failed_ids, \"Failed\")",
+    "near_score": 0.741,
+    "stratum": "A_near_high",
+    "label": "FP:misattribution"
+   },
+   {
+    "file": ".issues/bugs/P3-BUG-2654-autodev-spike-remedy-bypassed-on-decide-path.md",
+    "line": 61,
+    "section": "Current Behavior",
+    "artifact": "BUG-2650",
+    "span": "decision_needed: true",
+    "near_score": 1.0,
+    "stratum": "A_near_high",
+    "label": "TP"
+   },
+   {
+    "file": ".issues/bugs/P3-BUG-3285-option-marker-regexes-match-bold-prose-so-analysis-text-is-counted-as-an-option-block.md",
+    "line": 263,
+    "section": "Codebase Research Findings",
+    "artifact": "P3-BUG-2289",
+    "span": "**Option A (preferred): title**",
+    "near_score": 0.75,
+    "stratum": "A_near_high",
+    "label": "FP:notquote"
+   },
+   {
+    "file": ".issues/bugs/P2-BUG-2519-autodev-check-decision-before-size-review-shares-bug-2513-on-success-coupling.md",
+    "line": 132,
+    "section": "Steps to Reproduce",
+    "artifact": "BUG-2513",
+    "span": "refine_current.on_success \u2192 rerun_confidence_after_decide \u2192 ... \u2192 check_decision_before_size_review",
+    "near_score": 0.747,
+    "stratum": "A_near_high",
+    "label": "FP:misattribution"
+   },
+   {
+    "file": ".issues/bugs/P2-BUG-2824-generator-evaluator-oracle-family-budget-starvation.md",
+    "line": 211,
+    "section": "Codebase Research Findings",
+    "artifact": "BUG-2822",
+    "span": "generator-evaluator-flux.yaml:1-8, 208-234",
+    "near_score": 0.686,
+    "stratum": "A_near_high",
+    "label": "FP:misattribution"
+   },
+   {
+    "file": ".issues/bugs/P2-BUG-2519-autodev-check-decision-before-size-review-shares-bug-2513-on-success-coupling.md",
+    "line": 130,
+    "section": "Steps to Reproduce",
+    "artifact": "BUG-2513",
+    "span": "decision_needed: true \u2192 run_decide",
+    "near_score": 0.92,
+    "stratum": "A_near_high",
+    "label": "FP:misattribution"
+   },
+   {
+    "file": ".issues/enhancements/P4-ENH-799-fix-doc-issues-in-sprint-guide.md",
+    "line": 19,
+    "section": "Current Behavior",
+    "artifact": "docs/guides/SPRINT_GUIDE.md",
+    "span": "\"Wave 2 (after Wave 1) parallel:\"",
+    "near_score": 0.962,
+    "stratum": "A_near_high",
+    "label": "TP"
+   },
+   {
+    "file": ".issues/bugs/P3-BUG-2956-format-check-ignores-program-design-not-applicable-opt-out.md",
+    "line": 43,
+    "section": "Steps to Reproduce",
+    "artifact": "ENH-2937",
+    "span": "\"missing\": [\"Program Design\"]",
+    "near_score": 0.682,
+    "stratum": "A_near_high",
+    "label": "FP:notquote"
+   },
+   {
+    "file": ".issues/enhancements/P2-ENH-2719-epic-2456-realized-savings-verification-and-closure-gate.md",
+    "line": 87,
+    "section": "Codebase Research Findings",
+    "artifact": "skills/capture-issue/SKILL.md",
+    "span": "capture-issue \"description\" --parent EPIC-2456",
+    "near_score": 0.872,
+    "stratum": "A_near_high",
+    "label": "FP:notquote"
+   },
+   {
+    "file": ".issues/bugs/P3-BUG-3279-locate_enumerable_options-gives-the-final-option-every-remaining-line-of-its-section.md",
+    "line": 47,
+    "section": "Current Behavior",
+    "artifact": "ENH-3277",
+    "span": "count 3  pattern bold_label  heading \"Proposed Solution\"\n - Option A \u2014 permanently exempt both.    160-165   (6 lines)\n - Option B \u2014 accept the guess.           166-171   (6 lines)\n - Option C \u2014 add a no-default read mode. 172-404   (232 lines)",
+    "near_score": 0.495,
+    "stratum": "B_near_mid",
+    "label": "FP:notquote"
+   },
+   {
+    "file": ".issues/epics/P2-EPIC-3290-decide-issue-option-location-and-decision-propagation-correctness.md",
+    "line": 42,
+    "section": "Motivation",
+    "artifact": "BUG-3279",
+    "span": "**Option A evidence**:",
+    "near_score": 0.4,
+    "stratum": "B_near_mid",
+    "label": "FP:misattribution"
+   },
+   {
+    "file": ".issues/bugs/P2-BUG-3249-refine-to-ready-issue-has-no-check-design-gate-so-an-issue-missing-program-design-routes-to-done.md",
+    "line": 280,
+    "section": "Root Cause",
+    "artifact": "ENH-2967",
+    "span": "autodev.yaml:1267,1273,1799,2026   -> ll-issues check-design (3 DESIGN_FAIL gates)\nrefine-to-ready-issue.yaml         -> 0 occurrences",
+    "near_score": 0.302,
+    "stratum": "B_near_mid",
+    "label": "FP:notquote"
+   },
+   {
+    "file": ".issues/bugs/P2-BUG-644-api-md-goals-parser-section-documents-nonexistent-classes.md",
+    "line": 58,
+    "section": "Steps to Reproduce",
+    "artifact": "docs/reference/API.md",
+    "span": "ImportError: cannot import name 'PersonaGoals' from 'little_loops.goals_parser'",
+    "near_score": 0.314,
+    "stratum": "B_near_mid",
+    "label": "FP:notquote"
+   },
+   {
+    "file": ".issues/features/P2-FEAT-2930-ll-queue-run-watch-long-lived-drainer.md",
+    "line": 451,
+    "section": "Codebase Research Findings",
+    "artifact": ".claude/CLAUDE.md",
+    "span": "[project] dependencies",
+    "near_score": 0.4,
+    "stratum": "B_near_mid",
+    "label": "FP:misattribution"
+   },
+   {
+    "file": ".issues/enhancements/P3-ENH-2236-harness-optimization-guide-missing-mr2-rule-in-design-table.md",
+    "line": 30,
+    "section": "Current Behavior",
+    "artifact": "docs/guides/HARNESS_OPTIMIZATION_GUIDE.md",
+    "span": "# scripts/little_loops/fsm/validation.py:1100\nMR-2 (WARNING): meta-loop should reference a captured baseline in an evaluator.",
+    "near_score": 0.56,
+    "stratum": "B_near_mid",
+    "label": "FP:misattribution"
+   },
+   {
+    "file": ".issues/features/P3-FEAT-892-ll-update-slash-command-for-plugin-and-package-updates.md",
+    "line": 93,
+    "section": "Codebase Research Findings",
+    "artifact": "docs/claude-code/plugins-reference.md",
+    "span": "claude plugin install ll@little-loops",
+    "near_score": 0.5,
+    "stratum": "B_near_mid",
+    "label": "FP:paraphrase"
+   },
+   {
+    "file": ".issues/bugs/P3-BUG-2955-set-status-writes-to-wrong-frontmatter-block-on-double-frontmatter-files.md",
+    "line": 53,
+    "section": "Current Behavior",
+    "artifact": "ENH-2937",
+    "span": "completed_at: '2026-08-01T01:08:02Z'",
+    "near_score": 0.464,
+    "stratum": "B_near_mid",
+    "label": "FP:acknowledged_historical"
+   },
+   {
+    "file": ".issues/bugs/P2-BUG-2202-rn-implement-re-enqueue-unblocked-spuriously-re-enqueues-stalled-issues.md",
+    "line": 75,
+    "section": "Root Cause",
+    "artifact": "FEAT-1156",
+    "span": "FEAT-1157  blocked_by FEAT-1156 (not done)",
+    "near_score": 0.312,
+    "stratum": "B_near_mid",
+    "label": "FP:misattribution"
+   },
+   {
+    "file": ".issues/enhancements/P4-ENH-1718-enable-pretooluse-by-default-for-codex-adapter.md",
+    "line": 41,
+    "section": "Motivation",
+    "artifact": "FEAT-1719",
+    "span": "blocked_by: ENH-1718",
+    "near_score": 0.5,
+    "stratum": "B_near_mid",
+    "label": "FP:paraphrase"
+   },
+   {
+    "file": ".issues/bugs/P2-BUG-316-readme-max-continuations-wrong-section.md",
+    "line": 31,
+    "section": "Steps to Reproduce",
+    "artifact": "README.md",
+    "span": "\"max_continuations\": 3",
+    "near_score": 0.357,
+    "stratum": "B_near_mid",
+    "label": "FP:stale_history"
+   },
+   {
+    "file": ".issues/features/P3-FEAT-3077-decide-carve-out-policy-for-disable-background-tasks.md",
+    "line": 337,
+    "section": "Codebase Research Findings",
+    "artifact": "FEAT-2878",
+    "span": "workspace_root: Path | None = None",
+    "near_score": 0.346,
+    "stratum": "B_near_mid",
+    "label": "FP:misattribution"
+   },
+   {
+    "file": ".issues/enhancements/P2-ENH-2991-pre-patch-check-core-identification-reconstruction-verdict.md",
+    "line": 278,
+    "section": "Codebase Research Findings",
+    "artifact": "BUG-2649",
+    "span": "env[\"LL_VERIFY_GATE\"] = \"1\"",
+    "near_score": 0.389,
+    "stratum": "B_near_mid",
+    "label": "FP:misattribution"
+   },
+   {
+    "file": ".issues/features/P4-FEAT-990-fsm-executor-hook-tests-and-code-wiring.md",
+    "line": 27,
+    "section": "Current Behavior",
+    "artifact": "FEAT-987",
+    "span": "Literal[\"prompt\", \"slash_command\", \"shell\", \"mcp_tool\"] | None",
+    "near_score": 0.396,
+    "stratum": "B_near_mid",
+    "label": "FP:misattribution"
+   },
+   {
+    "file": ".issues/enhancements/P3-ENH-2508-link-commits-to-tags-and-release-versions.md",
+    "line": 48,
+    "section": "Motivation",
+    "artifact": "ENH-2458",
+    "span": "commit_tags(commit_sha, tag)",
+    "near_score": 0.316,
+    "stratum": "B_near_mid",
+    "label": "FP:notquote"
+   },
+   {
+    "file": ".issues/bugs/P0-BUG-3269-loop-test_cmd-resolution-present-but-null-yields-literal-none-poisoning-the-no-regression-gate-into-an-infinite-final_verify-cycle.md",
+    "line": 108,
+    "section": "Current Behavior",
+    "artifact": "ENH-2244",
+    "span": "[ \"2\" = \"0\" ] || [ \"2\" = \"127\" ]",
+    "near_score": 0.391,
+    "stratum": "B_near_mid",
+    "label": "FP:paraphrase"
+   },
+   {
+    "file": ".issues/bugs/P2-BUG-2629-epic-verify-gate-false-negative-editable-install-path-shadowing.md",
+    "line": 55,
+    "section": "Root Cause",
+    "artifact": "FEAT-2618",
+    "span": "PYTHONPATH=scripts python -m pytest ...",
+    "near_score": 0.357,
+    "stratum": "B_near_mid",
+    "label": "FP:notquote"
+   },
+   {
+    "file": ".issues/bugs/P2-BUG-2519-autodev-check-decision-before-size-review-shares-bug-2513-on-success-coupling.md",
+    "line": 122,
+    "section": "Steps to Reproduce",
+    "artifact": "BUG-2513",
+    "span": "# Show the current routing\ngrep -nE \"check_decision_before_size_review|check_decision_at_dequeue|check_decision_after_refine|refine_current|recheck_after_decide|size_review\" \\\n    scripts/little_loops/loops/autodev.yaml",
+    "near_score": 0.534,
+    "stratum": "B_near_mid",
+    "label": "FP:notquote"
+   },
+   {
+    "file": ".issues/bugs/P2-BUG-1226-autodev-drops-breakdown-result-on-timeout-between-refine-current-and-copy-broke-down.md",
+    "line": 42,
+    "section": "Root Cause",
+    "artifact": "FEAT-1201",
+    "span": "terminated_by: terminal",
+    "near_score": 0.467,
+    "stratum": "B_near_mid",
+    "label": "FP:misattribution"
+   },
+   {
+    "file": ".issues/bugs/P2-BUG-3289-_decision_identifiers-treats-every-backticked-token-in-an-option-block-as-option-discriminating-firing-unapplied_decision-on-shared-vocabulary.md",
+    "line": 104,
+    "section": "Steps to Reproduce",
+    "artifact": "ENH-2692",
+    "span": "Files to Modify still specifies \\",
+    "near_score": 0.346,
+    "stratum": "B_near_mid",
+    "label": "FP:notquote"
+   },
+   {
+    "file": ".issues/bugs/P2-BUG-2897-deferred-blocker-treated-as-satisfied-in-dependency-graph.md",
+    "line": 69,
+    "section": "Current Behavior",
+    "artifact": "BUG-001",
+    "span": "[P3, blocked by: BUG-001]",
+    "near_score": 0.056,
+    "stratum": "C_near_low",
+    "label": "FP:notquote"
+   },
+   {
+    "file": ".issues/enhancements/P3-ENH-2749-set-status-reason-support-already-fixed-closed-reason.md",
+    "line": 40,
+    "section": "Current Behavior",
+    "artifact": "BUG-042",
+    "span": "status == \"deferred\"",
+    "near_score": 0.0,
+    "stratum": "C_near_low",
+    "label": "FP:misattribution"
+   },
+   {
+    "file": ".issues/bugs/P2-BUG-1183-autodev-skips-parent-after-breakdown-signal-no-children.md",
+    "line": 33,
+    "section": "Current Behavior",
+    "artifact": "FEAT-1181",
+    "span": "\"Skipped: FEAT-1181 (no further decomposition possible)\"",
+    "near_score": 0.122,
+    "stratum": "C_near_low",
+    "label": "FP:misattribution"
+   },
+   {
+    "file": ".issues/enhancements/P2-ENH-2722-ctx-stats-waste-view.md",
+    "line": 43,
+    "section": "Motivation",
+    "artifact": "ENH-2721",
+    "span": "usage_events.run_id = loop_runs.run_id",
+    "near_score": 0.222,
+    "stratum": "C_near_low",
+    "label": "FP:notquote"
+   },
+   {
+    "file": ".issues/bugs/P2-BUG-2396-rn-remediate-decide-on-no-routes-unresolvable-decision-to-implement-failed.md",
+    "line": 68,
+    "section": "Steps to Reproduce",
+    "artifact": "FEAT-2387",
+    "span": "on_no \u2192 emit_implement_failed",
+    "near_score": 0.105,
+    "stratum": "C_near_low",
+    "label": "FP:misattribution"
+   },
+   {
+    "file": ".issues/enhancements/P2-ENH-1415-autodev-loop-dead-ends-after-decide-fails-outcome-instead-of-routing-to-size-review.md",
+    "line": 31,
+    "section": "Current Behavior",
+    "artifact": "ENH-1390",
+    "span": "check_decision_after_refine \u2192 run_decide",
+    "near_score": 0.034,
+    "stratum": "C_near_low",
+    "label": "FP:misattribution"
+   },
+   {
+    "file": ".issues/bugs/P2-BUG-2907-ll-auto-only-exits-zero-when-no-requested-issue-was-eligible.md",
+    "line": 72,
+    "section": "Current Behavior",
+    "artifact": "FEAT-108",
+    "span": "[21:12:34] Dependency cycle detected: FEAT-108 -> FEAT-123 -> FEAT-122 -> FEAT-108\n[21:12:34]   FEAT-108 blocked by: FEAT-122, FEAT-123, FEAT-124\n[21:12:34] 1 issue(s) remain blocked - check dependencies\n[21:12:34] No more issues to process!\n[21:12:34] Issues processed: 0",
+    "near_score": 0.014,
+    "stratum": "C_near_low",
+    "label": "FP:misattribution"
+   },
+   {
+    "file": ".issues/features/P2-FEAT-2681-learning-test-anthropic-cache-control-on-tool-blocks.md",
+    "line": 105,
+    "section": "Codebase Research Findings",
+    "artifact": "FEAT-2673",
+    "span": "learning_tests_required: [anthropic]",
+    "near_score": 0.111,
+    "stratum": "C_near_low",
+    "label": "FP:misattribution"
+   },
+   {
+    "file": ".issues/bugs/P2-BUG-2075-rn-remediate-assess-terminates-with-error-on-partial-verdict-no-on-partial-route.md",
+    "line": 66,
+    "section": "Steps to Reproduce",
+    "artifact": "ENH-2023",
+    "span": "loop_complete ... terminated_by: error",
+    "near_score": 0.138,
+    "stratum": "C_near_low",
+    "label": "FP:notquote"
+   },
+   {
+    "file": ".issues/bugs/P2-BUG-1538-ll-auto-verification-misses-commits-and-completed-status.md",
+    "line": 127,
+    "section": "Steps to Reproduce",
+    "artifact": "skills/manage-issue/SKILL.md",
+    "span": "REFUSING to mark <ID> as completed: no code changes detected despite returncode 0",
+    "near_score": 0.095,
+    "stratum": "C_near_low",
+    "label": "FP:misattribution"
+   },
+   {
+    "file": ".issues/bugs/P2-BUG-3179-python-m-build-fails-on-main-hatchling-rejects-readme-readmemd.md",
+    "line": 35,
+    "section": "Root Cause",
+    "artifact": "README.md",
+    "span": "readme = \"../README.md\"",
+    "near_score": 0.0,
+    "stratum": "C_near_low",
+    "label": "FP:misattribution"
+   },
+   {
+    "file": ".issues/enhancements/P4-ENH-2900-sequence-json-blocks-field-not-graph-derived.md",
+    "line": 54,
+    "section": "Current Behavior",
+    "artifact": "FEAT-100",
+    "span": "\"blocks\": [\"FEAT-100\"]",
+    "near_score": 0.0,
+    "stratum": "C_near_low",
+    "label": "FP:notquote"
+   },
+   {
+    "file": ".issues/bugs/P2-BUG-2981-autodev-check-impl-auth-leaks-inflight-sentinel-and-double-counts-unverified.md",
+    "line": 92,
+    "section": "Current Behavior",
+    "artifact": "FEAT-108",
+    "span": "FEAT-108  inflight_at_finalize",
+    "near_score": 0.0,
+    "stratum": "C_near_low",
+    "label": "FP:notquote"
+   },
+   {
+    "file": ".issues/bugs/P3-BUG-2955-set-status-writes-to-wrong-frontmatter-block-on-double-frontmatter-files.md",
+    "line": 52,
+    "section": "Current Behavior",
+    "artifact": "ENH-2937",
+    "span": "ENH-2937: unknown \u2192 done",
+    "near_score": 0.176,
+    "stratum": "C_near_low",
+    "label": "FP:notquote"
+   },
+   {
+    "file": ".issues/bugs/P3-BUG-2651-history-context-fts-hyphenated-id.md",
+    "line": 57,
+    "section": "Current Behavior",
+    "artifact": "BUG-490",
+    "span": "OperationalError: no such column: 490",
+    "near_score": 0.0,
+    "stratum": "C_near_low",
+    "label": "FP:notquote"
+   },
+   {
+    "file": ".issues/bugs/P2-BUG-1650-debug-loop-run-catch-single-evaluate-error-on-terminating-state.md",
+    "line": 53,
+    "section": "Motivation",
+    "artifact": "skills/debug-loop-run/SKILL.md",
+    "span": "pass | fail | continue | retry | error",
+    "near_score": 0.065,
+    "stratum": "C_near_low",
+    "label": "TP"
+   },
+   {
+    "file": ".issues/bugs/P2-BUG-3110-auto-refine-scope-arg-silently-ignored.md",
+    "line": 80,
+    "section": "Current Behavior",
+    "artifact": "EPIC-3041",
+    "span": "--context scope=EPIC-3041",
+    "near_score": 0.111,
+    "stratum": "C_near_low",
+    "label": "FP:notquote"
+   },
+   {
+    "file": ".issues/bugs/P1-BUG-2828-cli-model-aliases-404-on-the-sdk-request-path.md",
+    "line": 46,
+    "section": "Current Behavior",
+    "artifact": "FEAT-2123",
+    "span": "refine_issue   action: /ll:refine-issue FEAT-2123 --auto    exit 1 after 200ms\n  stderr: Error code: 404 - {'type':'error','error':\n          {'type':'not_found_error','message':'model: sonnet'},\n          'request_id':'req_011CdQBU2XDbsJrYtZngUqv9'}\ndiagnose       exit 1 after 210ms, SAME 404\n\u2192 classify_terminal \u2192 failed \u2192 skip_inflight \u2192 \"FEAT-2123  refine_failed\"",
+    "near_score": 0.023,
+    "stratum": "C_near_low",
+    "label": "FP:misattribution"
+   },
+   {
+    "file": ".issues/bugs/P2-BUG-1353-ll-loop-stop-refuses-interrupted-with-live-lock-pid.md",
+    "line": 60,
+    "section": "Steps to Reproduce",
+    "artifact": "ENH-1341",
+    "span": "Loop not running: autodev (status: interrupted)",
+    "near_score": 0.075,
+    "stratum": "C_near_low",
+    "label": "FP:misattribution"
+   },
+   {
+    "file": ".issues/bugs/P3-BUG-2654-autodev-spike-remedy-bypassed-on-decide-path.md",
+    "line": 68,
+    "section": "Current Behavior",
+    "artifact": "BUG-2650",
+    "span": "BUG-2650  low_readiness",
+    "near_score": 0.214,
+    "stratum": "C_near_low",
+    "label": "FP:misattribution"
+   },
+   {
+    "file": ".issues/enhancements/P4-ENH-2234-pluggable-operator-registry-for-decision-table-matcher.md",
+    "line": 40,
+    "section": "Motivation",
+    "artifact": "ENH-2164",
+    "span": "changed_file:path_glob:src/** -> deep_review",
+    "near_score": 0.094,
+    "stratum": "C_near_low",
+    "label": "FP:notquote"
+   },
+   {
+    "file": ".issues/enhancements/P4-ENH-2234-pluggable-operator-registry-for-decision-table-matcher.md",
+    "line": 38,
+    "section": "Motivation",
+    "artifact": "ENH-2164",
+    "span": "engine:semver_gte:2.4 -> upgrade_path",
+    "near_score": 0.0,
+    "stratum": "C_near_low",
+    "label": "FP:notquote"
+   },
+   {
+    "file": ".issues/enhancements/P3-ENH-2462-add-explicit-session-id-column-to-issue-events.md",
+    "line": 36,
+    "section": "Current Behavior",
+    "artifact": "FEAT-1623",
+    "span": "id, ts, issue_id, transition, discovered_by, issue_type, priority, completed_date, captured_at, completed_at",
+    "near_score": 0.099,
+    "stratum": "C_near_low",
+    "label": "FP:misattribution"
+   },
+   {
+    "file": ".issues/bugs/P2-BUG-2594-ll-auto-learning-gate-check-fragment-crashes-loop-on-untrusted-output-interpolation.md",
+    "line": 61,
+    "section": "Current Behavior",
+    "artifact": "BUG-2588",
+    "span": "output_contains: GATE_BLOCKED",
+    "near_score": 0.0,
+    "stratum": "C_near_low",
+    "label": "FP:misattribution"
+   },
+   {
+    "file": ".issues/enhancements/P3-ENH-1796-shared-message-log-alongside-captured.md",
+    "line": 73,
+    "section": "Motivation",
+    "artifact": "FEAT-1798",
+    "span": "Annotated[list, add_messages]",
+    "near_score": 0.095,
+    "stratum": "C_near_low",
+    "label": "FP:misattribution"
+   },
+   {
+    "file": ".issues/bugs/P3-BUG-1520-issue-parser-ignores-frontmatter-blocked-by-blocks-fields.md",
+    "line": 29,
+    "section": "Root Cause",
+    "artifact": "BUG-375",
+    "span": "blocked_by: [ENH-753, FEAT-1002]",
+    "near_score": 0.0,
+    "stratum": "C_near_low",
+    "label": "FP:notquote"
+   },
+   {
+    "file": ".issues/bugs/P1-BUG-1973-verify-scores-persisted-output-numeric-evaluator-mismatch.md",
+    "line": 54,
+    "section": "Current Behavior",
+    "artifact": "ENH-1924",
+    "span": "check_readiness \u2192 implement",
+    "near_score": 0.158,
+    "stratum": "C_near_low",
+    "label": "FP:misattribution"
+   },
+   {
+    "file": ".issues/enhancements/P3-ENH-2821-option-counting-probes-scan-only-three-exact-h2-headings.md",
+    "line": 45,
+    "section": "Current Behavior",
+    "artifact": "FEAT-2817",
+    "span": "count_enumerable_options(content)         -> 0\ncount_unresolved_options(content)         -> 0",
+    "near_score": 0.058,
+    "stratum": "C_near_low",
+    "label": "FP:notquote"
+   },
+   {
+    "file": ".issues/bugs/P2-BUG-1649-create-sprint-counts-done-cancelled-issues-as-active.md",
+    "line": 32,
+    "section": "Steps to Reproduce",
+    "artifact": "ENH-1390",
+    "span": "Based on N active issues, here are suggested sprint groupings",
+    "near_score": 0.093,
+    "stratum": "C_near_low",
+    "label": "FP:misattribution"
+   },
+   {
+    "file": ".issues/bugs/P3-BUG-2651-history-context-fts-hyphenated-id.md",
+    "line": 57,
+    "section": "Current Behavior",
+    "artifact": "BUG-490",
+    "span": "except sqlite3.OperationalError",
+    "near_score": 0.0,
+    "stratum": "C_near_low",
+    "label": "FP:misattribution"
+   }
+  ],
+  "f2_dropped_code": [
+   {
+    "file": ".issues/bugs/P1-BUG-2111-fsm-capture-ordering-prerequisite-classification.md",
+    "line": 46,
+    "section": "Current Behavior",
+    "artifact": "scripts/tests/test_builtin_loops.py",
+    "span": "(\"goal-cluster\", \"capture-ordering\"): states.reassess.action",
+    "near_score": 0.943,
+    "stratum": "A_near_high",
+    "label": "FP:paraphrase"
+   },
+   {
+    "file": ".issues/bugs/P2-BUG-3289-_decision_identifiers-treats-every-backticked-token-in-an-option-block-as-option-discriminating-firing-unapplied_decision-on-shared-vocabulary.md",
+    "line": 53,
+    "section": "Current Behavior",
+    "artifact": "scripts/little_loops/issue_parser.py",
+    "span": "_decision_identifiers(text) -> set[str]",
+    "near_score": 0.8,
+    "stratum": "A_near_high",
+    "label": "FP:paraphrase"
+   },
+   {
+    "file": ".issues/bugs/P2-BUG-3252-confidence-gate-conflates-unscored-issue-with-zero-score.md",
+    "line": 50,
+    "section": "Steps to Reproduce",
+    "artifact": ".ll/ll-config.json",
+    "span": "readiness_threshold: 85",
+    "near_score": 0.733,
+    "stratum": "A_near_high",
+    "label": "FP:paraphrase"
+   },
+   {
+    "file": ".issues/bugs/P4-BUG-3005-ll-auto-reports-attempted-and-failed-issues-as-filtered-out.md",
+    "line": 347,
+    "section": "Codebase Research Findings",
+    "artifact": "scripts/little_loops/state.py",
+    "span": "ProcessingState.failed_issues: dict[str, str]",
+    "near_score": 0.973,
+    "stratum": "A_near_high",
+    "label": "FP:paraphrase"
+   },
+   {
+    "file": ".issues/bugs/P2-BUG-2629-epic-verify-gate-false-negative-editable-install-path-shadowing.md",
+    "line": 41,
+    "section": "Root Cause",
+    "artifact": "scripts/little_loops/worktree_utils.py",
+    "span": "result = subprocess.run(\n    shlex.split(cmd), capture_output=True, text=True, cwd=worktree_path,\n)  # no env= \u2192 inherits host PYTHONPATH; editable .pth still wins",
+    "near_score": 0.662,
+    "stratum": "A_near_high",
+    "label": "FP:paraphrase"
+   },
+   {
+    "file": ".issues/bugs/P4-BUG-2266-detect-installation-discards-plugin-scope.md",
+    "line": 62,
+    "section": "Current Behavior",
+    "artifact": "scripts/little_loops/init/install_check.py",
+    "span": "claude plugin list --json",
+    "near_score": 0.611,
+    "stratum": "A_near_high",
+    "label": "FP:paraphrase"
+   },
+   {
+    "file": ".issues/bugs/P1-BUG-2818-dispatch-live-empty-model-under-request-path-sdk.md",
+    "line": 154,
+    "section": "Steps to Reproduce",
+    "artifact": ".ll/ll-config.json",
+    "span": "orchestration.request_path: \"sdk\"",
+    "near_score": 0.4,
+    "stratum": "B_near_mid",
+    "label": "FP:paraphrase"
+   },
+   {
+    "file": ".issues/bugs/P2-BUG-3058-ll-auto-phase2-never-receives-headless-stay-in-turn-contract.md",
+    "line": 51,
+    "section": "Steps to Reproduce",
+    "artifact": "scripts/little_loops/issue_manager.py",
+    "span": "run_in_background: true",
+    "near_score": 0.571,
+    "stratum": "B_near_mid",
+    "label": "FP:misattribution"
+   },
+   {
+    "file": ".issues/bugs/P4-BUG-2597-stale-windowed-diagram-stub-terminator-glyphs.md",
+    "line": 31,
+    "section": "Steps to Reproduce",
+    "artifact": ".ll/ll-config.json",
+    "span": "loops.run_defaults.show_diagrams: \"clean\"",
+    "near_score": 0.344,
+    "stratum": "B_near_mid",
+    "label": "FP:paraphrase"
+   },
+   {
+    "file": ".issues/enhancements/P3-ENH-2060-adopt-hierarchical-co-located-claude-md-context.md",
+    "line": 288,
+    "section": "Codebase Research Findings",
+    "artifact": "scripts/little_loops/hooks/types.py",
+    "span": "handle(event: LLHookEvent) -> LLHookResult",
+    "near_score": 0.429,
+    "stratum": "B_near_mid",
+    "label": "FP:misattribution"
+   },
+   {
+    "file": ".issues/bugs/P3-BUG-2827-grep-c-or-echo-0-emits-two-line-counts.md",
+    "line": 91,
+    "section": "Root Cause",
+    "artifact": "scripts/little_loops/loops/autodev.yaml",
+    "span": "printf '%d' \"$COUNT\"",
+    "near_score": 0.154,
+    "stratum": "C_near_low",
+    "label": "FP:paraphrase"
+   },
+   {
+    "file": ".issues/bugs/P2-BUG-1950-dequeue-next-pipeline-fallback-fails-when-depth-map-txt-is-missing.md",
+    "line": 59,
+    "section": "Root Cause",
+    "artifact": "scripts/little_loops/loops/rn-implement.yaml",
+    "span": "cmd1 | cmd2 || fallback",
+    "near_score": 0.125,
+    "stratum": "C_near_low",
+    "label": "FP:notquote"
+   },
+   {
+    "file": ".issues/bugs/P2-BUG-2770-set-status-writes-snapshot-but-no-issue-event.md",
+    "line": 78,
+    "section": "Root Cause",
+    "artifact": "scripts/little_loops/cli/issues/set_status.py",
+    "span": "elif event_type.startswith(\"issue.\"):",
+    "near_score": 0.0,
+    "stratum": "C_near_low",
+    "label": "FP:misattribution"
+   },
+   {
+    "file": ".issues/bugs/P2-BUG-1897-loop-token-usage-records-model-unknown.md",
+    "line": 62,
+    "section": "Current Behavior",
+    "artifact": "scripts/little_loops/fsm/runners.py",
+    "span": "model=event.get(\"model\", \"unknown\")",
+    "near_score": 0.0,
+    "stratum": "C_near_low",
+    "label": "FP:misattribution"
+   },
+   {
+    "file": ".issues/bugs/P2-BUG-3112-worktree-sessions-write-history-to-throwaway-db.md",
+    "line": 53,
+    "section": "Current Behavior",
+    "artifact": "scripts/little_loops/worktree_utils.py",
+    "span": "[\".claude/settings.local.json\", \".env\"]",
+    "near_score": 0.062,
+    "stratum": "C_near_low",
+    "label": "FP:misattribution"
+   },
+   {
+    "file": ".issues/bugs/P4-BUG-3027-sprint-dependency-scan-false-unknown-issue-warning.md",
+    "line": 85,
+    "section": "Root Cause",
+    "artifact": "scripts/little_loops/dependency_mapper/operations.py",
+    "span": "try/except Exception",
+    "near_score": 0.0,
+    "stratum": "C_near_low",
+    "label": "FP:notquote"
+   },
+   {
+    "file": ".issues/features/P2-FEAT-2478-f5-otel-gen-ai-usage-emission-des-schema-uuid-and-streaming-parity.md",
+    "line": 74,
+    "section": "Current Behavior",
+    "artifact": "scripts/little_loops/fsm/executor.py",
+    "span": "scripts/little_loops/subprocess_utils.py:50\u201351, 462\u2013465",
+    "near_score": 0.283,
+    "stratum": "C_near_low",
+    "label": "FP:notquote"
+   },
+   {
+    "file": ".issues/bugs/P2-BUG-3004-ll-auto-never-checks-confidence-gate-before-invoking-manage-issue.md",
+    "line": 54,
+    "section": "Steps to Reproduce",
+    "artifact": ".ll/ll-config.json",
+    "span": "commands.confidence_gate.enabled: true",
+    "near_score": 0.267,
+    "stratum": "C_near_low",
+    "label": "FP:notquote"
+   }
+  ]
+ }
+}

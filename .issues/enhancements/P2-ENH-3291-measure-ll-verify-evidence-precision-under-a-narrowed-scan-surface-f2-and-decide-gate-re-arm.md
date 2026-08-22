@@ -4,7 +4,7 @@ type: ENH
 title: Measure ll-verify-evidence precision under a narrowed scan surface (F2) and
   decide gate re-arm
 priority: P2
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-08-22'
 captured_at: '2026-08-22T14:19:01Z'
@@ -16,6 +16,7 @@ labels:
 - measurement
 relates_to:
 - BUG-3282
+completed_at: '2026-08-22T14:37:18Z'
 ---
 
 # ENH-3291: Measure ll-verify-evidence precision under a narrowed scan surface (F2) and decide gate re-arm
@@ -63,8 +64,14 @@ measuring the four metrics, and the routing decision that follows.
 **Out of scope**: fallback F1 (turning `TestRepoGate` from "zero beyond baseline" into a rate
 gate). F1 addresses gate *brittleness* under normal churn, which is a different problem from the
 imprecision that caused the demotion — it does not license re-arming and must not be bundled in
-as if it did. Also out of scope: further attribution or span-kind tuning, since the residual class
-is paraphrase and provably out of reach of both.
+as if it did. Also out of scope: further attribution or span-kind tuning, on the assumption that
+the residual class is paraphrase and out of reach of both.
+
+> **Superseded by this issue's own measurement (2026-08-22).** That last exclusion rested on a
+> premise the Verification Notes refute: the residual is **not** paraphrase (6.6% of false
+> positives) but mis-attribution (49%) and not-a-quote (38%). Attribution and span-extraction
+> tuning is therefore the *only* live route to re-arming, and a successor issue should scope to
+> it rather than inherit this boundary.
 
 ## Motivation
 
@@ -195,16 +202,17 @@ is not closable by tuning the matcher, which is why F2 narrows the *input* inste
 
 ## Acceptance Criteria
 
-- [ ] The scan surface is narrowed to `.md`/issue artifacts (F2), with the exclusion implemented
-      where span extraction or artifact resolution can enforce it deterministically.
-- [ ] The labelled sample is expanded beyond n=30 and the labels are recorded in-repo so the
-      measurement is reproducible rather than a remembered figure.
-- [ ] Precision, recall, corpus rate, and the 100-commit net-new delta are all measured and
+- [x] The scan surface is evaluated as F2 — measured, **not shipped**. See Verification Notes:
+      F2 was aimed at a class that accounts for 6.6% of false positives, so narrowing does not
+      reach the bar and does not justify a code change to a shipped checker plus a baseline
+      regeneration. Reversible if the volume reduction is wanted on its own merits.
+- [x] The labelled sample is expanded beyond n=30 and the labels are recorded in-repo so the
+      measurement is reproducible rather than a remembered figure —
+      `.ll/evidence-precision-labels.json`, 65 labelled in the kept set + 18 in the dropped set.
+- [x] Precision, recall, corpus rate, and the 100-commit net-new delta are all measured and
       reported against the table above.
-- [ ] Either: `on_yes: check_reconcile_limit` is restored **and**
-      `test_check_evidence_unverified_is_advisory_not_routing` is updated in the same commit;
-      or: the advisory posture is recorded as the outcome, with the measured numbers.
-- [ ] `python -m pytest scripts/tests/` exits 0.
+- [x] The advisory posture is recorded as the outcome, with the measured numbers.
+- [x] `python -m pytest scripts/tests/` exits 0.
 
 ## Notes
 
@@ -219,10 +227,80 @@ Gotchas that cost time on BUG-3282 and apply directly here:
 - **The verdict cache at `.ll/evidence-verdict-cache.json` is memoization, never policy.** If a
   finding set ever looks wrong, delete it — that must change timing only.
 
+## Verification Notes
+
+**Verdict: the gate stays advisory. F2 is measured and rejected. — 2026-08-22**
+
+Measured at `95b953640` from a full `--all` scan run against an **empty** baseline (303 findings),
+so the numbers cover everything the detector produces, not just what escapes the 278 grandfathered
+spans. Labels: `.ll/evidence-precision-labels.json`.
+
+### Results against the four bars
+
+| Metric | Bar | Measured (F2 surface) | |
+|---|---|---|---|
+| Precision | ≥ 0.30 | **0.070**, 95% CI [0.018, 0.122] | **FAIL** |
+| Recall on labelled true-fabrications | 1.00 | 1.00 (0 TPs in an 18-sample of the 139 dropped) | pass |
+| Corpus rate | ≤ 0.15 /file | 0.051 /file (164 findings / 3196 files) | pass |
+| Net-new per 100 commits | ≤ 5 | **8** (`HEAD` vs `HEAD~100`, same empty baseline) | **FAIL** |
+
+Precision comes from a seeded stratified sample of **65** of the 164 F2-kept findings, stratified
+on `near_score` (char-8-gram coverage of the span against every revision of the cited artifact),
+reweighted by stratum size: 3/15 TP at near ≥ 0.60, 0/20 at .30–.60, 1/30 at < .30.
+
+**The sample-size caveat is resolved.** The worry was that n=30 could not separate 0.28 from 0.32.
+It does not have to: the entire 95% interval sits below **half** the bar. Precision did not merely
+fail to clear 0.30 under F2 — it came in *below* the ~0.13–0.20 that motivated the demotion, since
+that earlier figure was itself an unweighted small sample.
+
+### F2's hypothesis is refuted
+
+F2 predicted that paraphrase false positives concentrate in quoted *code*, so dropping code
+artifacts would lift precision. The first half is right and the second does not follow:
+
+| FP class | F2-kept (n=61 FPs) | Dropped code (n=18) |
+|---|---|---|
+| mis-attribution | **49%** | 28% |
+| not-a-quote | **38%** | 17% |
+| paraphrase | 6.6% | **50%** |
+| stale-history / acknowledged-historical | 6.6% | 6% |
+
+Paraphrase really does live in the code artifacts — and that is exactly why removing them cannot
+fix the kept set, where paraphrase is a rounding error. F2 roughly doubles precision (~0.038 →
+~0.070) at no measurable recall cost, and both numbers are far below the bar. Narrowing the
+surface is not the route to re-arming.
+
+### What the real failure classes are
+
+- **Mis-attribution (49%)** — the span is real content that the prose never attributed to the
+  cited artifact. Three recurring shapes: the artifact is a *run argument*
+  (`ll-loop run autodev BUG-2650` → every span in the trace binds to BUG-2650); a
+  *provenance credit* (`env["LL_VERIFY_GATE"] = "1"` **(BUG-2649)** credits who added the line,
+  and it defeats the following-parenthetical predicate — the one binding form assumed reliable
+  because it is explicit); or a *see-also* (`(see skills/capture-issue/SKILL.md)`).
+- **Not-a-quote (38%)** — command output, `$ ll-issues …` transcripts, constructed examples
+  (`blocked_by: [ENH-753, FEAT-1002]` behind an explicit "e.g."), forward-looking snippets, and
+  spans elided with a literal `...`. These are not evidence claims at all.
+- One inverted case worth naming: ENH-2236 quotes an MR-2 warning **to demonstrate the guide omits
+  it**, and the checker flags the quote for being absent from the artifact the issue says it is
+  absent from.
+- Incidental resolver defect surfaced while labelling: a bare numeric ID matches across issue
+  types, so `BUG-042` resolves to `P1-FEAT-042`, `FEAT-108` to `ENH-108`, `BUG-490` to `FEAT-490`.
+  Six of 65 sampled findings cite an artifact of a different type than written. Worth its own
+  issue against `resolve_issue_path`; it is independent of the gate decision.
+
+### Consequence
+
+The honest outcome the issue anticipated: **this detector stays advisory indefinitely**, and the
+bar is not lowered to meet it. Any future attempt to re-arm has to attack attribution and span
+extraction — not the scan surface, and not the matcher, which is not the thing that is wrong.
+`test_check_evidence_unverified_is_advisory_not_routing` carries this finding so the next reader
+does not re-derive F2.
+
 ## Related Key Documentation
 
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
 
 ## Status
 
-**Open** | Created: 2026-08-22 | Priority: P2
+**Done** | Created: 2026-08-22 | Priority: P2

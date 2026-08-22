@@ -2653,13 +2653,22 @@ class TestRefineToReadyIssueSubLoop:
 
     def test_check_evidence_unverified_is_advisory_not_routing(self, data: dict) -> None:
         """EVIDENCE_UNVERIFIED must NOT divert the loop into reconcile_issue
-        (BUG-3282 fallback F3, decided 2026-08-21).
+        (BUG-3282 fallback F3, decided 2026-08-21; re-measured under ENH-3291).
 
-        The detector measured ~0.13-0.20 precision against the plan's 0.30 blocking
-        bar, and the residual is the paraphrase class that no attribution rule
-        reaches. Below 0.30 a false verdict rewrites a *correct* issue, so routing is
+        Below 0.30 precision a false verdict rewrites a *correct* issue, so routing is
         net-negative even when the gate is right. Every edge therefore falls through
         to check_proposal_unsound: detected, persisted, and logged, but not routed.
+
+        ENH-3291 re-measured this on a stratified sample of 65 findings (labels in
+        `.ll/evidence-precision-labels.json`) and it got *worse*, not better:
+        precision **0.070**, 95% CI [0.018, 0.122] — the whole interval sits below
+        half the bar. That measurement also refutes the original diagnosis. The
+        residual is not paraphrase (6.6% of false positives); it is
+        **mis-attribution** (49%) and **not-a-quote** (38%) — spans bound to an issue
+        merely named nearby as a run argument or provenance credit, and spans that are
+        command output or constructed examples rather than evidence quotes. Narrowing
+        the scan surface (fallback F2) was therefore aimed at the wrong class and is
+        not the route to re-arming; the attribution and extraction rules are.
 
         This test is the guard against a silent re-arm. Re-arming is a deliberate act
         gated on measurement: restore `on_yes: check_reconcile_limit` and update this
