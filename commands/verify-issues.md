@@ -8,6 +8,7 @@ allowed-tools:
   - Edit
   - Bash(git:*)
   - Bash(ll-code:*)
+  - Bash(ll-verify-evidence:*)
 arguments:
   - name: issue_id
     description: Optional specific issue ID to verify
@@ -188,6 +189,28 @@ Program Design gate's arming.
    remedy repairs the research the proposal check itself depends on, so it must
    run first. Only assign `PROPOSAL_UNSOUND` when every claim about current state
    holds and the defect is purely in the proposal's consequences.
+7. **Evidence-quote existence check (BUG-3282)** — deterministic, run via the CLI
+   rather than LLM judgment. A quote attributed to a named artifact (another
+   `.issues/` file, or a file path) can be code-accurate everywhere else and still
+   be fabricated evidence: a snippet that never appeared in the artifact it is
+   attributed to, at HEAD, in the working tree, or in any git revision. This is
+   the strongest-looking, least-checked part of an issue — downstream passes treat
+   an evidence quote as settled ground.
+
+   Run:
+   ```bash
+   ll-verify-evidence "$ISSUE_FILE" --json
+   ```
+   A non-clean (`"ok": false`) result names the unverifiable span(s) and the
+   artifact each was attributed to. `ll-verify-evidence` unavailable (non-zero on
+   invocation itself, not a findings result) → silent fallback, zero behavior
+   change, matching §B.0's `ll-code` convention.
+
+   **Verdict**: any finding → `EVIDENCE_UNVERIFIED` (§C), and it **outranks**
+   `PROPOSAL_UNSOUND` when an issue qualifies for both (Decision Rules → Verdict
+   precedence in BUG-3282's Program Design): a fabricated premise very often also
+   yields an unsound proposal built on top of it, and the premise must be named
+   first or the proposal-repair path re-derives the fiction.
 
 **Causal / identity claims (method for check 4, unconditional — runs regardless of
 `ll-code` availability or index freshness; not part of §2B.0):** for issue text
@@ -221,6 +244,7 @@ verification output.
 | DEP_ISSUES | Dependency references have problems (broken refs, missing backlinks, cycles) |
 | DECISIONS_VIOLATION | Issue violates an active required rule in the decisions log |
 | PROPOSAL_UNSOUND | The Proposed Solution, implemented as written, contradicts the code it names (check B6) — a claim-verification defect, not a claim, so it is not remedied by `refine_followup` |
+| EVIDENCE_UNVERIFIED | A quoted evidence span attributed to a named artifact (check B7) exists in no revision of that artifact — outranks `PROPOSAL_UNSOUND` when both apply |
 
 #### E. Validate Dependency References
 
@@ -273,12 +297,23 @@ instead. For **each** issue checked in this mode, use the `Edit` tool to write
 or update a `verify_verdict:` line in that issue's YAML frontmatter block:
 
 - `VALID` verdict → `verify_verdict: VALID`
+- `EVIDENCE_UNVERIFIED` verdict (BUG-3282, check B7) → `verify_verdict:
+  EVIDENCE_UNVERIFIED` — persisted as its own value, **not** collapsed into
+  `NON_VALID`, so a `check_evidence_unverified` gate in
+  `refine-to-ready-issue.yaml` can route it to `reconcile_issue` (via
+  `check_reconcile_limit`) instead of `refine_followup`. **Outranks
+  `PROPOSAL_UNSOUND`**: an issue can satisfy both, and the fabricated premise
+  must be named before the proposal built on top of it is rewritten, or the
+  rewrite re-derives the fiction. It still counts as a non-VALID, `exit 1`
+  outcome in `--check` mode below — the split is in the persisted value, not
+  the exit-code contract.
 - `PROPOSAL_UNSOUND` verdict (ENH-3250, check B6) → `verify_verdict:
   PROPOSAL_UNSOUND` — persisted as its own value, **not** collapsed into
   `NON_VALID`, so `check_proposal_unsound` in `refine-to-ready-issue.yaml` can
   route it to `reconcile_issue` instead of `refine_followup`. It still counts
   as a non-VALID, `exit 1` outcome in `--check` mode below — the split is in
-  the persisted value, not the exit-code contract.
+  the persisted value, not the exit-code contract. Only assigned when the
+  issue does not also qualify for `EVIDENCE_UNVERIFIED` above.
 - Any other verdict (`OUTDATED`, `RESOLVED`, `INVALID`, `NEEDS_UPDATE`,
   `REGRESSION_LIKELY`, `POSSIBLE_REGRESSION`, `DEP_ISSUES`,
   `DECISIONS_VIOLATION`) → `verify_verdict: NON_VALID`

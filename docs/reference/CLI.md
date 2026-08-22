@@ -4103,6 +4103,46 @@ ll-verify-kinds    # Check the current tree's session_store._MIGRATIONS
 
 ---
 
+### ll-verify-evidence
+
+Certify that an issue's quoted **evidence** — a span attributed to another artifact, usually another `.issues/` file — actually exists there (BUG-3282). `/ll:verify-issues` validates *code* claims but historically never checked evidence quotes, so an issue with accurate code citations and one fabricated evidence quote passed verification and scored `verify_verdict: VALID`.
+
+**Scope.** Only evidence-bearing sections are checked — `## Current Behavior`, `## Steps to Reproduce`, `## Root Cause`, `## Motivation`, `### Codebase Research Findings`. This is an allowlist: forward-looking sections (`## Proposed Solution`, `## Expected Behavior`, `## Implementation Steps`, `## Integration Map`, `## Program Design`) quote code that intentionally does not exist yet, so a presence check there would be meaningless, and a section named in neither list is out of scope by default.
+
+**Pipeline.** Extract fenced-block and inline-backtick spans -> attribute each to a named file path or issue ID (a following parenthetical wins, else the nearest preceding mention in the same section) -> drop command output, bare identifiers/paths, and command/skill invocations (the quote-vs-mention distinction) -> drop spans under the character floor -> resolve the cited artifact -> match the normalized span against the artifact's working tree, then HEAD, then `git log --all -p`, then `git log --all --follow -p`, short-circuiting on the first hit.
+
+**Modes**, mirroring `ll-verify-private-refs`:
+
+- **changed-files** (`ll-verify-evidence FILE...`) — whole-file scan, no baseline. The skill / host-hook invocation.
+- **`--added-only FILE...`** — only spans on lines the staged diff adds. The pre-commit hook.
+- **`--all`** — full scan of `issues.base_dir`, compared against the tracked baseline `.ll/evidence-baseline.json` (keyed on the anchored numeric issue ID, holding normalized span hashes — not file path or per-file counts, since issue files are renamed constantly). This is the pytest CI gate.
+
+**Flags:**
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--all` | | Scan every tracked issue file against the baseline |
+| `--update-baseline` | | Rewrite the baseline from the current full scan (requires `--all`) |
+| `--added-only` | | Only lines added in the staged diff (pre-commit) |
+| `--directory` | `-C` | Project root to scan (default: cwd) |
+| `--json` | | Output as JSON |
+
+**Suppression:** `<!-- ll-evidence-ok: reason -->` on the span's own or preceding line — required for the counter-example class, where an issue reports a fabricated quote and must therefore reproduce it verbatim.
+
+**Exit codes:** `0` = clean (or nothing beyond baseline under `--all`); `1` = one or more unsuppressed findings.
+
+**Examples:**
+```bash
+ll-verify-evidence .issues/bugs/BUG-1.md      # Gate one issue file
+ll-verify-evidence --all                      # Full scan vs. baseline
+ll-verify-evidence --all --update-baseline    # Re-record the grandfathered corpus
+ll-verify-evidence --all --json               # Machine-readable output
+```
+
+**Gates:** pre-commit (`.pre-commit-config.yaml`, warn-only on first release), pytest CI (`scripts/tests/test_verify_evidence.py::TestRepoGate`), and the `/ll:verify-issues` skill invocation — the same three-layer model as `ll-verify-private-refs`.
+
+---
+
 ### ll-verify-private-refs
 
 Scan for private-codebase references in files this public repo publishes. Loop runs, audits, and issue refinement execute against private codebases, and their prose quotes absolute machine paths and sibling project directories. `gitleaks` (already in `.pre-commit-config.yaml`) does not cover this — the leak is paths and project names, not credentials.

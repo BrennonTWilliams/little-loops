@@ -44,6 +44,17 @@ def add_check_verify_verdict_parser(
             "refine_followup. Does not affect the default VALID/NON_VALID behavior."
         ),
     )
+    p.add_argument(
+        "--evidence-unverified",
+        action="store_true",
+        help=(
+            "Query mode (BUG-3282): exit 0 if verify_verdict == EVIDENCE_UNVERIFIED, "
+            "1 otherwise. Used by refine-to-ready-issue.yaml's "
+            "check_evidence_unverified gate, placed ahead of check_proposal_unsound "
+            "(evidence outranks proposal). Does not affect the default VALID/NON_VALID "
+            "behavior."
+        ),
+    )
     add_config_arg(p)
     return p
 
@@ -74,6 +85,16 @@ def cmd_check_verify_verdict(config: BRConfig, args: argparse.Namespace) -> int:
 
     fm = parse_frontmatter(path.read_text(), coerce_types=True)
     verdict = fm.get("verify_verdict")
+
+    if getattr(args, "evidence_unverified", False):
+        if verdict is not None and str(verdict).upper() == "EVIDENCE_UNVERIFIED":
+            print(f"Verified: {args.issue_id} verify_verdict={verdict!r}")
+            return 0
+        print(
+            f"NOT_EVIDENCE_UNVERIFIED: {args.issue_id} — verify_verdict={verdict!r}",
+            file=sys.stderr,
+        )
+        return 1
 
     if getattr(args, "proposal_unsound", False):
         if verdict is not None and str(verdict).upper() == "PROPOSAL_UNSOUND":
