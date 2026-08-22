@@ -44,7 +44,14 @@ alternative from that invented shape. All of it was present 31 minutes before th
 
 ## Expected Behavior
 
-[What should happen instead]
+Before Phase 4's `ll-issues create` write, every quoted span in the drafted body that is
+attributed to a named file or issue ID is checked against that artifact (`grep -F` or a direct
+read). A span that verifies is written as-is. A span that does not is never written: it is
+either re-read from the artifact and quoted correctly, or dropped and replaced with a prose
+description of the evidence. Evidence that genuinely came from uncommitted or transient state
+(a working-tree edit, a loop run directory) is labeled as such instead of being attributed to
+the file. A capture like BUG-3278's — quoting a decision block that exists in no revision of
+ENH-3277 — fails the check at write time and is corrected before the issue file ever exists.
 
 ## Motivation
 
@@ -130,9 +137,24 @@ Neither signature inspects quoted content against an external artifact — confi
 
 ## Implementation Steps
 
-1. [Major phase 1]
-2. [Major phase 2]
-3. [Verification approach]
+1. Author the pre-write check as a new step in `skills/capture-issue/SKILL.md` Phase 4, inserted
+   between step 2 (the `testable` keyword-scan gate, `:233-238`) and step 3 (the
+   `ll-issues create --body-file -` write, `:239-248`): identify quoted spans in `$ISSUE_SUMMARY`
+   attributed to a named file or issue ID, verify each with `grep -F` against the cited artifact,
+   and apply the drop-or-correct rule — never write an unverified span; label transient-state
+   evidence explicitly. Self-contained skill prose, no CLI dependency (see Program Design →
+   Decision Rules: BUG-3282's checker does not exist yet).
+2. Add a provenance line to Conversation Mode (`SKILL.md:108-157`), where the quote enters
+   `$ISSUE_SUMMARY`: when extracting "Source context", record whether each quote came from a
+   fresh file read or from conversation memory, so the Phase 4 check knows which spans need
+   verification rather than re-checking everything.
+3. Add a structural test class to `scripts/tests/test_capture_issue_skill.py` (per the wiring
+   pass): bound the assertion to the Phase 4 heading slice via its `_phase_text()`-style helper,
+   and assert the check phrase and the "drop or correct, never write unverified" instruction are
+   present.
+4. Verify `python -m pytest scripts/tests/` exits 0.
+5. Follow-up (not this issue): when BUG-3282 lands its checker as a CLI, replace step 1's prose
+   grep instructions with a call site.
 
 ## Impact
 

@@ -415,6 +415,16 @@ the family's own source of truth:
 | `_PENDING_CONVERSION` comment `:52-55` | *"sites deferred to ENH-3277 (blocked_by: [BUG-3269]) … ENH-3277's definition of done is emptying this set and deleting it."* | Same reassignment |
 | `test_pending_conversion_sites_still_exist` assertion message `:155` | *"shrink the exemption list (ENH-3277)"* | → ENH-3288 |
 
+**Rewrite constraint (fourth review, 2026-08-21): the rewritten prose at all three anchors must
+not contain the string `ENH-3277` at all.** The Gate AC verifies this section with
+`grep -n 'ENH-3277'` expecting **exactly two** surviving lines — the two Option-A entry
+annotations — so a natural rewrite like *"six sites converted by ENH-3277; the teardown is
+ENH-3288's"* fails the AC even though it satisfies this table's "Required" column as worded.
+Note the docstring alone carries two mentions today (the `:24` "sites deferred to ENH-3277"
+phrase and the `:26-27` definition-of-done sentence) — both must go. Name ENH-3288 (which owns
+everything still pending) or describe the conversion pass without an issue ID; do not name this
+issue in the rewritten docstring, set comment, or assertion message.
+
 **And the set's name becomes a lie for two of its four members.** Option A made `rn-refine.yaml`
 and `auto-refine-and-implement.yaml` **permanent** exemptions, but ENH-3288 owns the move into
 `_PERMANENT_EXEMPTIONS` (its step 5). So between this issue and that one, a set literally named
@@ -834,7 +844,10 @@ gate-teardown criteria live in **ENH-3288**._
       `auto-refine-and-implement.yaml` entries required by the next row, and nothing else.
       (Corrected 2026-08-21: this row previously specified `grep -c`, which returns a bare count
       and cannot show *which* hits survived, and it pinned no expected number — so the row was
-      unverifiable as written.)
+      unverifiable as written.) **This forces the rewritten docstring, set comment, and assertion
+      message to drop every `ENH-3277` mention — see the *Rewrite constraint* under *The gate
+      file's own prose is falsified by this issue*; a rewrite that names this issue historically
+      fails this row.**
 - [ ] The `rn-refine.yaml` and `auto-refine-and-implement.yaml` entries in `_PENDING_CONVERSION`
       each carry an inline comment marking them permanently exempt per Option A and pointing at
       ENH-3288 step 5 for the move
@@ -928,6 +941,8 @@ gate-teardown criteria live in **ENH-3288**._
    claims to ENH-3288 (module docstring `:23-27`, `_PENDING_CONVERSION` comment `:52-55`,
    `test_pending_conversion_sites_still_exist`'s assertion message `:155`) and annotate the two
    Option-A entries in place — see *The gate file's own prose is falsified by this issue*.
+   The rewritten text must not itself contain `ENH-3277` (see the *Rewrite constraint* there):
+   the Gate AC's grep allows exactly the two annotation lines and nothing else.
    Prose-only; no assertion logic changes and no test breaks.
 6. **Verify.** After each file: `ll-loop validate`, a scoped `grep` for the old
    `.get('test_cmd'` / `.get('lint_cmd'` pattern, and the gate with one fewer entry.
@@ -1161,25 +1176,12 @@ regression — the inline snippets open the same relative path — but not fixed
 
 **Open** | Created: 2026-08-21 | Priority: P2
 
-## Confidence Check Notes
+## Design Review History
 
-_Added by `/ll:confidence-check` on 2026-08-21. Re-run against the trimmed six-conversion scope
-(this issue's own split) — supersedes the prior pre-split notes below._
-
-**Readiness Score**: 90/100 → PROCEED
-**Outcome Confidence**: 63/100 → MODERATE (below the 65 `outcome_threshold`)
-
-Readiness Criterion 4 (issue well-specified) is capped at 10/20 by `missing_behavior_parity`
-(`format-check`: no `### Behavior Parity` subsection describing what `.ll/ll-config.json`'s
-inline parse is replaced by) — advisory only, does not gate the PROCEED verdict. Outcome
-Criterion C (ambiguity) is capped at 10/25 by `unapplied_decision` — `format-check` flags ~19
-terms from the rejected Option B/C prose (`ll-config get`, `pytest`, `_raw_config`,
-`RECOVERY_NEEDED`, `oracles/code-run-gate.yaml`, etc.) as still present in directive sections.
-Direct read confirms these are all inside explicitly `REJECTED` option blocks or the
-deliberately-retained "documented fallback" rationale for Option C, not stray unresolved
-prose — a likely false positive against the same pattern the prior pre-split run already noted,
-but the cap is mechanical and doesn't distinguish structured-rejected-option text from genuine
-drift.
+_Four design-review passes ran against the tree before implementation; their load-bearing
+corrections are preserved below. Current scores live in the single `## Confidence Check Notes`
+section further down — earlier check runs' score blocks were collapsed on 2026-08-21 per the
+`duplicate_heading` housekeeping flag._
 
 ### Pre-implementation review addendum — 2026-08-21
 
@@ -1277,42 +1279,23 @@ declares `context.test_cmd`" claim, and the `fix-quality-and-tests` identical-ro
 One anchor corrected: `test-coverage-improvement.yaml`'s second read is at `:152` within a
 `:143-158` state (was cited `:148-158`) — ENH-3288's scope, fixed here since it was quoted.
 
-### Outcome Risk Factors
+### Fourth pre-implementation review — 2026-08-21
 
-- No execution-level test coverage exists today for any of the five target read sites — only
-  structural checks (state-set membership, edge shape) cover them. A subprocess-level resolution
-  test is needed per site (per *Tests*) **before** each conversion — not alongside it — to catch a
-  bad `[ -z "$CMD" ]` routing choice. Sequencing pinned as step 2b.
-- `format-check`'s `unapplied_decision` gate (19 hits) drives the ambiguity cap above; worth one
-  skim of *Proposed Solution* / *Program Design* before starting to confirm no genuinely stale
-  rejected-option text survives outside the labeled `REJECTED` blocks.
-- `format-check` also flagged `missing_behavior_parity` on `.ll/ll-config.json` and
-  `unmarked_superseded_directive` on the issue's own filename (the "Rescoped 2026-08-21" note at
-  the top) — both read as false positives on direct inspection (the supersession is already
-  explicit in prose), but neither has been re-verified against the checker's exact matching
-  rules.
-
-### Re-run confirmation — 2026-08-21
-
-_No code or issue-body changes since the prior run. All hard-override gates re-checked and
-inert: `PD_FAIL` empty (`ll-issues check-design` exits 0), `DEP_FAIL` empty (no `blocked_by`
-entries), no `learning_tests_required` targets declared. `format-check` findings are unchanged
-— the 19-hit `unapplied_decision` list still resolves to rejected-option/fallback prose on
-direct read, so Outcome Criterion C stays capped at 10 rather than escalating to a STOP. Scores
-unchanged: Readiness 90/100 → PROCEED, Outcome Confidence 63/100 → MODERATE (below the 65
-`outcome_threshold`)._
-
-### Outcome Risk Factors
-
-- No execution-level test coverage exists today for any of the five target read sites — a
-  subprocess-level resolution test is needed per site (per *Tests*) **before** each conversion,
-  not alongside it, per the pinned step 2b ordering.
+_External review; two corrections applied. (1) The Gate AC's `grep -n 'ENH-3277'`
+exactly-two-lines expectation silently required the three rewritten gate-file prose anchors to
+drop every `ENH-3277` mention — a constraint the edit table's "Required" column did not state,
+so an implementer following the table (e.g. writing "six converted by ENH-3277; teardown is
+ENH-3288's") would fail the AC. Now pinned as the *Rewrite constraint* under "The gate file's
+own prose is falsified by this issue", with matching notes at step 5b and the Gate AC. (2) The
+accumulated confidence-check score blocks were collapsed into this section per the prior
+housekeeping flag; the review corrections themselves are all preserved. No change to scope,
+option selection, step ordering, or the conversion count._
 
 ## Confidence Check Notes
 
-_Added by `/ll:confidence-check` on 2026-08-21. Supersedes the top "Confidence Check Notes" block
-above, whose Criterion 4 cap claim is stale: that block was never rewritten after the addendum's
-item 1 closed the `missing_behavior_parity` gap it was describing._
+_Added by `/ll:confidence-check` on 2026-08-21 — the current scores. Earlier check runs' score
+blocks were collapsed into `## Design Review History` above (fourth review, 2026-08-21); their
+load-bearing corrections are preserved there._
 
 **Readiness Score**: 100/100 → PROCEED (was 90/100; the earlier `missing_behavior_parity` cap on
 Criterion 4 no longer applies — `format-check` now returns `missing_behavior_parity: []`, and no
@@ -1333,10 +1316,9 @@ mechanical and doesn't distinguish that.
   it, per the pinned step 2b ordering (Outcome Criterion B, unchanged at 10/25).
 
 ### Housekeeping note (not scored)
-`format-check` also flags `duplicate_heading`: two `### Outcome Risk Factors` headings now exist
-under `## Confidence Check Notes`, an artifact of repeated `/ll:confidence-check` runs appending
-rather than replacing. Worth collapsing the accumulated notes sections before implementation
-starts, but it doesn't affect readiness or outcome scoring.
+Resolved 2026-08-21 (fourth review): the `duplicate_heading` finding — repeated
+`/ll:confidence-check` runs appending duplicate score blocks — was addressed by collapsing the
+stale blocks into `## Design Review History`.
 
 ## Session Log
 - `/ll:confidence-check` - 2026-08-21T20:59:20 - `04f81c9a-29c0-44a6-ade2-267fd3d09dd8.jsonl`

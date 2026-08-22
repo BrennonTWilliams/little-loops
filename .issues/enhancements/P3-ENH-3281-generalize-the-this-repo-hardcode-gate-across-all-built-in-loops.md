@@ -82,7 +82,19 @@ over `scripts/little_loops/loops/**/*.yaml` returns five files:
 | `harness-single-shot.yaml:60` | `# action: "python -m pytest scripts/tests/ -q --tb=no"` | **Change, do not exempt** — an `# EXAMPLE:` scaffold users clone, so it teaches the anti-pattern (same load-bearing-comment argument ENH-3277 makes for the three `harness-*` fallback comments). Comment-scoping the gate means it will not be caught automatically; fix it by hand in this issue |
 | `evaluation-quality.yaml:63` | `ruff check scripts/` | **Already fixed** by ENH-3277 step 5 — verify it is gone before landing the gate |
 
-Net exemption set after this issue: two files.
+Net exemption set after this issue: **one file** (`cli-anything-bootstrap.yaml`). An earlier
+framing of this line said "two files", counting `loop-specialist-eval.yaml` — but once the gate
+is scoped to `states[*].action` as this section specifies, that file's two hits (`:12` a `scope:`
+list entry, `:23` a `context:` default) fall outside scope and need no exemption entry. The
+refine-pass finding below is the correction; the Implementation Steps use the one-entry set.
+
+**Known instance outside the gate's scope — flagged, not covered here.**
+`dead-code-cleanup.yaml:8-9` ships `scope: ["scripts/"]` — a this-repo layout default in a
+generic built-in loop. `scope:` entries are deliberately outside this gate (see Program Design →
+Decision Rules), and unlike `loop-specialist-eval` (a this-repo eval loop whose scope hit is
+legitimate), this one is a genuine layout guess shipped to consuming projects. Not this issue's
+work: capture it as a separate issue rather than widening the gate here, so the "scope: is out
+of scope" rule does not silently bless it.
 
 ### Codebase Research Findings
 
@@ -154,7 +166,7 @@ _Added by `/ll:refine-issue` — 2026-08-21 — based on codebase analysis:_
 `yaml.safe_load(loop_file.read_text())` → `data.get("states", {}).values()` → read `.get("action", "")` (and, if in scope, `.get("evaluate", {}).get("prompt"/"source", "")`) from each state dict → regex/substring match against the hardcode pattern set → `pytest.mark.parametrize` assertion per file, mirroring `ALL_LOOP_FILES = sorted(BUILTIN_LOOPS_DIR.glob("**/*.yaml"))` in `scripts/tests/test_bug3269_test_cmd_resolution_gate.py:92-93`.
 
 ### Decision Rules
-- Gate scope: `states[*]["action"]` is the minimum required scope per the issue. `states[*]["evaluate"]["prompt"]`/`["source"]` are NOT scanned by any hit in the current 6-hit inventory, but are structurally identical string fields that could carry the same defect class — whether to include them is an open implementer decision, not resolved by this research pass.
+- Gate scope: `states[*]["action"]` is the minimum required scope per the issue. `states[*]["evaluate"]["prompt"]`/`["source"]` are NOT scanned by any hit in the current 6-hit inventory, but are structurally identical string fields that could carry the same defect class. **DECIDED (2026-08-21): scope this issue's gate to `action` bodies only.** No current hit lives in an evaluate field, so widening now buys nothing and would force a fresh exemption survey over prompt text (e.g. `loop-specialist-eval.yaml:50-60` interpolates its fixture path into an `evaluate` block, which would need an exemption the action-only gate avoids). If an evaluate-field instance ever appears, widen this same gate rather than adding a second one.
 - Explicitly OUT of scope (confirmed not exec-time content, so a hardcoded path there is not the live defect): `scope:` list entries (`loop-specialist-eval.yaml:12`), `context:` defaults (`loop-specialist-eval.yaml:23`, and the pattern BUG-3276/`test_context_test_cmd_has_no_hardcoded_literal` already gates separately), `description:` fields, and `#`-prefixed comments.
 - Match pattern set per the issue's own grep: `scripts/tests`, `scripts/little_loops`, `ruff check scripts`, `mypy scripts`.
 - Exemption set after full-inventory verification (2026-08-21 re-check): `cli-anything-bootstrap.yaml` (`:453`, package-internal task-template path, inside an `action` body) is the only entry actually inside `states[*].action` scope. `loop-specialist-eval.yaml` does NOT need an exemption once scoped to `action` bodies — its two hits (`:12` scope list, `:23` context default) fall outside that scope already, contradicting the issue's claim of a two-file exemption set.
@@ -164,9 +176,14 @@ _Added by `/ll:refine-issue` — 2026-08-21 — based on codebase analysis:_
 
 1. Land ENH-3277 step 5 first (or confirm it landed) — otherwise the new gate fails on
    `evaluation-quality.yaml:63` immediately.
-2. Fix `harness-single-shot.yaml:60`'s example comment by hand.
-3. Write the parametrized gate over `states[*].action` bodies with the two-entry exemption set,
-   modeled on `test_bug3269_test_cmd_resolution_gate.py`.
+2. Verify `harness-single-shot.yaml:60`'s example comment no longer carries the `scripts/tests/`
+   path — ENH-3277's pinned replacement text (its *Two defects in `harness-single-shot`'s
+   `# Replace` block* section) already rewrites it to `#   action: "pytest -q --tb=no"`, and this
+   issue is `blocked_by: ENH-3277`. Fix it by hand only if that rewrite somehow did not land; do
+   not double-edit a line ENH-3277 owns.
+3. Write the parametrized gate over `states[*].action` bodies with the **one-entry** exemption
+   set (`cli-anything-bootstrap.yaml` — see the survey correction), modeled on
+   `test_bug3269_test_cmd_resolution_gate.py`.
 4. Retire or narrow `TestIncrementalRefactorLoop.test_no_state_hardcodes_this_repo_test_path`
    once the general gate subsumes it.
 5. Verify `python -m pytest scripts/tests/` exits 0.
@@ -175,18 +192,24 @@ _Added by `/ll:refine-issue` — 2026-08-21 — based on codebase analysis:_
 
 _These touchpoints were identified by wiring analysis and must be included in the implementation:_
 
-- Re-verify every exemption-survey line citation against current tree state before writing the
-  exemption set — `cli-anything-bootstrap.yaml:453` and `oracles/code-run-gate.yaml:407` no longer
-  contain the `scripts/tests`/pattern-set hits the issue's survey cites (drifted since 2026-08-21);
-  `evaluation-quality.yaml` has no `scripts/tests` literal, though it still carries the separate
-  inline-config-read pattern already tracked in `_PENDING_CONVERSION`. Re-run the survey grep
-  fresh rather than trusting the table above.
+- ~~Drift claim retracted (2026-08-21 re-verification)~~ — an earlier wiring pass asserted here
+  that the survey's citations had drifted (`cli-anything-bootstrap.yaml:453` and
+  `oracles/code-run-gate.yaml:407` "no longer contain the hits"; `evaluation-quality.yaml` "has
+  no `scripts/tests` literal"). **That claim is false.** A fresh run of the survey grep against
+  the tree (2026-08-21) reproduces **all six hits exactly as the survey table states**. The
+  survey table and the refine-pass findings are authoritative; the drift note was itself
+  fabricated drift — the same defect class ENH-3283/BUG-3282 exist to catch. Still re-run the
+  grep once at implementation time as ordinary hygiene, but expect it to match the table.
 - Update `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md:562-582` — name/link the new gate alongside the
   existing `test_bug3269_test_cmd_resolution_gate.py` description, and connect it to the
   "never hardcode a project command literal" rule it now enforces
-- Add an exemption-hygiene guard test (mirroring `test_pending_conversion_sites_still_exist` in
-  `test_bug3269_test_cmd_resolution_gate.py`) so a renamed/deleted exempted file forces the
-  exemption set to shrink instead of silently dangling
+- Add an exemption-hygiene guard test (mirroring the `test_pending_conversion_sites_still_exist`
+  *pattern* from `test_bug3269_test_cmd_resolution_gate.py`) so a renamed/deleted exempted file
+  forces the exemption set to shrink instead of silently dangling. Note **ENH-3288 step 6 deletes
+  that test** along with `_PENDING_CONVERSION` — copy the shape, do not import or reference the
+  test itself. Sequencing: this issue and ENH-3288 both edit the gate module's neighborhood;
+  recommended order is ENH-3277 → ENH-3288 → this issue, and if this lands first, expect ENH-3288
+  to touch the same file.
 
 ## Impact
 

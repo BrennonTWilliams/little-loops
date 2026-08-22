@@ -49,6 +49,7 @@ in the pass:
 Observed on BUG-3278 (2026-08-21). Its `## Current Behavior` quoted two strings attributed to
 ENH-3277:
 
+<!-- ll-evidence-ok: counter-example — reporting a fabricated quote requires quoting it (BUG-3282 Decision Rules -> Counter-example quotes) -->
 ```
 - **(a) Make the documented override real.**
 **DECISION — pick one before step 4 touches this file:**
@@ -56,8 +57,10 @@ ENH-3277:
 
 Neither string exists in **any** committed revision of ENH-3277 (verified by grepping every
 revision returned by `git log --all --format=%h -- .issues/enhancements/P2-ENH-3277*.md`).
-ENH-3277's second decision point is prose, not bullets. Two `verify_issue` invocations during a
-`refine-to-ready-issue` loop run stamped `verify_verdict: VALID` / `confidence_score: 98` anyway,
+ENH-3277's second decision point is prose, not bullets.
+Two `verify_issue` invocations during a `refine-to-ready-issue` loop run stamped
+<!-- ll-evidence-ok: describes BUG-3278's own frontmatter after the loop run, not a quote from ENH-3277 — over-attributed to ENH-3277 by nearest-preceding proximity, not a real evidence claim -->
+`verify_verdict: VALID` / `confidence_score: 98` anyway,
 because every *code* assertion in the issue (`issue_parser.py:2134`, `:1967`, `:1891`, the
 `section_header > bold_label > numbered > bullet` precedence order, the winner-take-all return)
 was accurate.
@@ -400,7 +403,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 ### Dependent Files (Callers/Importers)
 
 - `scripts/little_loops/cli/issues/show.py:39` — `_resolve_issue_id()`, thin delegation to the
-  shared resolver `resolve_issue_path()` (`scripts/little_loops/issue_parser.py:92`); imported by
+  shared resolver `resolve_issue_path()` (`scripts/little_loops/issue_parser.py:114`); imported by
   `cli/issues/check_verify_verdict.py`, `set_status.py`, `path_cmd.py`, `set_scores.py`,
   `cli/loop/_scaffold_core.py`, and `mcp_server/tools.py` — a new checker resolving a cited issue
   ID should reuse this resolver rather than re-implementing ID parsing
@@ -463,7 +466,7 @@ N/A — no new data types. Findings would be ad hoc violation records analogous 
 
 ### Signatures
 
-- `resolve_issue_path(config: BRConfig, user_input: str) -> Path | None` — `scripts/little_loops/issue_parser.py:92`, the shared ID→path resolver a new checker calls to resolve a cited issue ID to its file (accepts bare numeric ID, `TYPE-ID`, or `P<n>-TYPE-ID`; matches on the anchored numeric ID only, so a stale type prefix still resolves)
+- `resolve_issue_path(config: BRConfig, user_input: str) -> Path | None` — `scripts/little_loops/issue_parser.py:114`, the shared ID→path resolver a new checker calls to resolve a cited issue ID to its file (accepts bare numeric ID, `TYPE-ID`, or `P<n>-TYPE-ID`; matches on the anchored numeric ID only, so a stale type prefix still resolves)
 - `main_verify_private_refs(argv: list[str] | None = None) -> int` — `scripts/little_loops/cli/verify_private_refs.py:527`, the closest existing entry-point shape (changed-files mode + `--all` full-scan mode, `--json` via `print_json`) a new `main_verify_evidence`-style entry point would follow
 - `build_ref_index(root: Path) -> RefIndex` — `scripts/little_loops/text_utils.py:229`, a single `git ls-files` call producing a basename-indexed tracked-file lookup a new checker could reuse instead of re-resolving file-path attributions itself
 
@@ -479,7 +482,7 @@ command and skill invocations, and inline output following an invocation on the 
 (Decision Rules → Span kind) -> **baseline suppression: drop spans whose
 `(issue ID, normalized hash)` is already baselined, before any git call** (Proposed Solution
 step 7) -> `resolve_issue_path()`
-(`issue_parser.py:92`) to resolve the cited artifact -> **artifact-major** match, tiered: working
+(`issue_parser.py:114`) to resolve the cited artifact -> **artifact-major** match, tiered: working
 tree, then HEAD, then `git log --all -p -n 20`, then — only on a residual miss —
 `git log --all --follow -p -n 20`, each tier a single subprocess whose output is
 **prefix-stripped** (Decision Rules → Patch-text preparation) and normalized once, then tested
@@ -702,7 +705,7 @@ the per-revision `git show` pattern the measurements rule out.
    candidate spans (fenced blocks and inline-backtick runs, each attributed by following
    parenthetical then nearest preceding mention within its `##` section, minus command-output
    blocks — Decision Rules → Attribution rule), resolves the cited artifact via
-   `resolve_issue_path()` (`scripts/little_loops/issue_parser.py:92`), and reports zero-hit spans as
+   `resolve_issue_path()` (`scripts/little_loops/issue_parser.py:114`), and reports zero-hit spans as
    findings in the same `_findings_to_json` shape `verify_private_refs.py` and
    `verify_skill_prose.py` already emit.
    **Fenced-block extraction reuses `scripts/little_loops/text_utils.py` (`fence_spans()` `:64`,
@@ -957,7 +960,7 @@ changes, three of which were blocking.
 7. Fixed `filter_regressions()` → `regressions()` (`verify_private_refs.py:446`); dropped the
    unwired "reusable by `capture-issue`" claim.
 Also confirmed sound and left alone: `git log --all --follow` behaves correctly on `.issues/`
-paths and crosses renames, and every other cited anchor resolves (`issue_parser.py:92`,
+paths and crosses renames, and every other cited anchor resolves (`issue_parser.py:114`,
 `text_utils.py:64/97/229`, `verify_private_refs.py:66/418/461/527`,
 `check_verify_verdict.py:22-44`, `refine-to-ready-issue.yaml:350`, the 10-row verdict table).
 
@@ -1070,7 +1073,7 @@ on this issue's own body.
     bypass the reconcile-attempt counter.
 
 Re-verified and left standing: every code anchor cited by this issue resolves
-(`verify_private_refs.py:66/297/418/446/461/527`, `text_utils.py:64/97/229`, `issue_parser.py:92`,
+(`verify_private_refs.py:66/297/418/446/461/527`, `text_utils.py:64/97/229`, `issue_parser.py:114`,
 `check_verify_verdict.py:22-44`, `verify_cli_allowlist.py:62/74/109`,
 `test_wiring_cli_registry.py:71-76`, `refine-to-ready-issue.yaml:350,353-365`, the 10-row verdict
 table); the flagship fixture's line numbers `:35/:37/:38/:40/:42/:44-49/:58/:60` are exact against
@@ -1141,6 +1144,8 @@ ENH-3277's now-18 revisions; `Option A`/`B`/`C` all match under emphasis normali
 (`refine-to-ready-issue.yaml:353-365`); `git ls-files '.issues/**/*.md'` = 3194.
 
 ## Session Log
+- `/ll:ready-issue` - 2026-08-21T22:14:13 - `bcd62515-864d-4978-aac0-44a5377fb4b0.jsonl`
+- `/ll:ready-issue` - 2026-08-21T22:13:59 - `bcd62515-864d-4978-aac0-44a5377fb4b0.jsonl`
 - `/ll:confidence-check` - 2026-08-21T21:21:25 - `f6b03c29-ff65-4857-8be4-439d590930d1.jsonl`
 - `/ll:confidence-check` - 2026-08-21T19:15:15 - `6e72bea6-f81f-494d-91ee-89b15f1562c6.jsonl`
 - `/ll:confidence-check` - 2026-08-21T18:50:00 - `c9ef2e6f-97ff-48c5-ab63-1c421d2aa389.jsonl`
