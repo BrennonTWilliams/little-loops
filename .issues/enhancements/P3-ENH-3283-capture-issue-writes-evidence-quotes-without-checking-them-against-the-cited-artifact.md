@@ -16,6 +16,7 @@ labels:
 relates_to:
 - BUG-3282
 - BUG-3278
+- ENH-3291
 ---
 
 # ENH-3283: capture-issue writes evidence quotes without checking them against the cited artifact
@@ -64,6 +65,28 @@ Integration Map, docs inventory, and test wiring on the fabricated mechanism, an
 BUG-3282 adds the verify-time gate, which is the backstop. This issue adds the write-time gate,
 which is the one that prevents the wasted downstream work rather than detecting it afterward.
 
+**Amended 2026-08-22 — there is no backstop.** BUG-3282's gate shipped but was demoted to
+advisory, and ENH-3291's measurement (0.070 precision, CI [0.018, 0.122]) settled that it will
+not re-arm. `EVIDENCE_UNVERIFIED` is now detected, persisted, and logged, but routes nowhere.
+That makes this issue's write-time check the only enforcing point for fabricated evidence, and
+it removes the "BUG-3282 catches it anyway" argument for deferring it.
+
+## Scope Boundaries
+
+**In scope**: one new pre-write step in `skills/capture-issue/SKILL.md` Phase 4, a provenance line
+in Conversation Mode so that step knows which spans are memory-sourced, and a structural test.
+
+**Out of scope**:
+
+- **Wiring `ll-verify-evidence` into this phase.** Ruled out on measurement, not on convenience —
+  see the amendment below. This is the boundary most likely to be crossed by a future pass acting
+  on the issue's original text, which explicitly invited that call once the CLI existed.
+- **Re-arming BUG-3282's verify-time gate.** Settled by ENH-3291; this issue does not reopen it,
+  and shipping a write-time check is not an argument for reconsidering it.
+- **Improving `ll-verify-evidence`'s attribution or span extraction.** That is the only live route
+  to making the CLI usable anywhere, but it is a change to the checker, not to capture, and
+  belongs in its own issue.
+
 ## Proposed Solution
 
 Add a self-check before the Phase 4 `ll-issues create` write:
@@ -75,15 +98,32 @@ Add a self-check before the Phase 4 `ll-issues create` write:
 4. When the evidence genuinely came from an uncommitted or transient state (a working-tree edit, a
    loop run directory), say so explicitly in the issue rather than attributing it to the file.
 
-If BUG-3282 lands the deterministic checker as a CLI, this phase should call it rather than
-reimplementing span extraction in skill prose.
+> **Amended 2026-08-22 — do *not* call `ll-verify-evidence` here.** This section previously said
+> that once BUG-3282 landed its checker as a CLI, this phase should call it rather than
+> reimplementing span extraction. BUG-3282 has since shipped `ll-verify-evidence` and is `done`,
+> so that condition is met — but ENH-3291 measured the checker at **0.070 precision**
+> (95% CI [0.018, 0.122]), and its two dominant false-positive classes are **mis-attribution**
+> (49%) and **not-a-quote** (38%). A freshly-captured `## Current Behavior` / `## Steps to
+> Reproduce` is *dense* in exactly those shapes: command output, run-log excerpts, and
+> reproduction steps that name an issue as the run argument. Capture time is therefore the
+> **worst** place to put that checker, not an upgrade over prose.
+>
+> The check below stays self-contained, and it is better-targeted than the CLI for a reason the
+> CLI cannot replicate: step 2 records whether each quote came from a *fresh file read* or from
+> *conversation memory*, and only memory-sourced spans need verifying. That provenance is the
+> actual signal — `ll-verify-evidence` has no access to it and must guess attribution from
+> surrounding prose, which is precisely where its precision goes.
 
 ## Integration Map
 
 ### Files to Modify
 
 - `skills/capture-issue/SKILL.md` — new pre-write validation step in Phase 4
-- The evidence checker from BUG-3282, if it ships as a CLI — call site, no new logic
+
+`skills/capture-issue/SKILL.md` is the **only** file to modify. An earlier revision listed
+"the evidence checker from BUG-3282, if it ships as a CLI — call site, no new logic" as a second
+target; that is struck (see Proposed Solution → Amended 2026-08-22). `ll-verify-evidence` now
+exists but must not be wired in here.
 
 ### Tests
 
@@ -111,7 +151,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 _Added by `/ll:refine-issue` — 2026-08-21 — based on codebase analysis:_
 
 - Insertion point confirmed: `skills/capture-issue/SKILL.md` Phase 4 "Action: Create New Issue" — the new pre-write check lands as a new step between step 2 (`testable` keyword-scan gate, lines 233–238) and step 3 (the `ll-issues create` write, lines 239–248). Step 2 is the closest existing precedent inside the same phase for a content-level gate before the write.
-- No existing span/quote-verification utility exists in `scripts/little_loops/` to call — searched for `grep_capable_files|verify_evidence|check_quote|_check_evidence_quotes` and fence/citation-checking helpers; only `fence_spans`/`in_fence` (`text_utils.py`, used by `create.py`'s body-merge logic for section placement, not content verification) turned up. The check must be self-contained skill prose for now (see Program Design → Decision Rules).
+- ~~No existing span/quote-verification utility exists in `scripts/little_loops/` to call~~ — true when written (2026-08-21), **superseded 2026-08-22**: BUG-3282 shipped `ll-verify-evidence` (`scripts/little_loops/cli/verify_evidence.py`, entry point `ll-verify-evidence`), which does exactly this span extraction and artifact matching. The original search (`grep_capable_files|verify_evidence|check_quote|_check_evidence_quotes`) predated it. The conclusion nonetheless stands for a different reason: the check must be self-contained skill prose **not because nothing exists, but because what exists measures 0.070 precision and is mis-targeted for capture-time input** (ENH-3291; see Proposed Solution → Amended 2026-08-22).
 - Conversation Mode (`SKILL.md:108-157`) is the exact path BUG-3278 was captured through: it instructs extracting "Source context (brief quote or summary...)" from conversation history rather than a fresh file read — this is where an unverified quote enters `$ISSUE_SUMMARY` before Phase 4 ever runs.
 - `commands/verify-issues.md:69-72,126-130` is the only existing quote-check in the codebase, and it is scoped to source-code snippets only (`"Validate code snippets": Does quoted code match current code?`), not evidence attributed to another `.issues/` file — confirming there is no existing evidence-quote pattern to mirror beyond this narrower code-only precedent.
 
@@ -131,9 +171,9 @@ Neither signature inspects quoted content against an external artifact — confi
 
 ### Decision Rules
 - **Gap kind**: pre-write evidence-quote check, gating the Phase 4 step 3 write.
-- **Trigger**: a quoted span (fenced block or inline backticks) in the drafted `$ISSUE_SUMMARY` that is attributed to a named file or issue ID — same span-extraction shape BUG-3282 proposes for verify-time, per that issue's own note that this phase should call BUG-3282's checker "rather than reimplementing span extraction" if it ships as a CLI.
+- **Trigger**: a **memory-sourced** quoted span (fenced block or inline backticks) in the drafted `$ISSUE_SUMMARY` that is attributed to a named file or issue ID. Narrowed 2026-08-22: spans recorded by step 2 as coming from a fresh file read are already verified by construction and are not re-checked. Scoping the trigger by provenance rather than by shape is what keeps this check precise where `ll-verify-evidence` is not.
 - **Escape hatch**: on a miss, drop the quote and describe the evidence in prose, or re-read the artifact and quote it correctly — never write the unverified span (per Proposed Solution step 3). When evidence came from uncommitted/transient state, say so explicitly rather than attributing it to the file (step 4).
-- **Confirmed dependency status**: BUG-3282 (`status: open`) has no implemented checker as of this pass — its own Proposed Solution frames the CLI-vs-prose shape as an open sub-question, and no `ll-verify-*` evidence/span-checking entry point exists in `scripts/pyproject.toml` or `scripts/little_loops/cli/`. This step must therefore be authored as self-contained skill prose (grep-and-verify instructions) now; a follow-up pass can replace it with a CLI call once BUG-3282 lands one.
+- **Confirmed dependency status (revised 2026-08-22)**: BUG-3282 is `done` and `ll-verify-evidence` ships as a CLI, so the dependency this issue was waiting on is **resolved** — but the resolution does **not** change the design. ENH-3291 measured that checker at 0.070 precision with mis-attribution (49%) and not-a-quote (38%) as its dominant false-positive classes, both of which capture-time input is unusually rich in. This step stays self-contained skill prose as a **deliberate choice**, not a workaround for a missing tool. The prior revision's note that "a follow-up pass can replace it with a CLI call once BUG-3282 lands one" is withdrawn.
 
 ## Implementation Steps
 
@@ -142,8 +182,9 @@ Neither signature inspects quoted content against an external artifact — confi
    `ll-issues create --body-file -` write, `:239-248`): identify quoted spans in `$ISSUE_SUMMARY`
    attributed to a named file or issue ID, verify each with `grep -F` against the cited artifact,
    and apply the drop-or-correct rule — never write an unverified span; label transient-state
-   evidence explicitly. Self-contained skill prose, no CLI dependency (see Program Design →
-   Decision Rules: BUG-3282's checker does not exist yet).
+   evidence explicitly. Self-contained skill prose, no CLI dependency — a deliberate choice, not
+   a gap (see Program Design → Decision Rules: `ll-verify-evidence` exists but is mis-targeted
+   for this input at 0.070 precision).
 2. Add a provenance line to Conversation Mode (`SKILL.md:108-157`), where the quote enters
    `$ISSUE_SUMMARY`: when extracting "Source context", record whether each quote came from a
    fresh file read or from conversation memory, so the Phase 4 check knows which spans need
@@ -153,20 +194,29 @@ Neither signature inspects quoted content against an external artifact — confi
    and assert the check phrase and the "drop or correct, never write unverified" instruction are
    present.
 4. Verify `python -m pytest scripts/tests/` exits 0.
-5. Follow-up (not this issue): when BUG-3282 lands its checker as a CLI, replace step 1's prose
-   grep instructions with a call site.
+
+Step 5 of the prior revision — "when BUG-3282 lands its checker as a CLI, replace step 1's prose
+grep instructions with a call site" — is **withdrawn** (2026-08-22). The checker landed; swapping
+to it would be a regression. See Proposed Solution → Amended.
 
 ## Impact
 
-- **Priority**: P3 — BUG-3282 catches the same class at verify time; this one saves the wasted
-  refine/wire work in between
-- **Effort**: Small if BUG-3282's checker exists; Small-Medium standalone
+- **Priority**: P3 — raised in practical importance since capture (2026-08-22): BUG-3282's
+  verify-time gate was demoted to **advisory** and will not re-arm (ENH-3291), so it no longer
+  blocks anything. This write-time check is now the only enforcing point for the class, not
+  merely the one that saves the wasted refine/wire work in between. Left at P3 because it is
+  small and the class is rare, but it is no longer backstopped.
+- **Effort**: Small-Medium — standalone skill prose. The "Small if BUG-3282's checker exists"
+  branch no longer applies: the checker exists and is deliberately not used here.
 - **Risk**: Low — the check can only suppress or correct a quote
 - **Breaking Change**: No
 
 ## Related Key Documentation
 
-- BUG-3282 — verify-time enforcement of the same invariant; shares the checker
+- BUG-3282 (`done`) — verify-time detection of the same invariant. It does **not** share a
+  checker with this issue, and its gate is advisory only, so it does not backstop this one
+- ENH-3291 (`done`) — the precision measurement that settled the advisory posture and rules
+  `ll-verify-evidence` out as this phase's implementation
 - BUG-3278 — the capture whose fabricated evidence propagated through a full refine loop
 - `skills/capture-issue/SKILL.md` Phase 4 — where the check lands
 
