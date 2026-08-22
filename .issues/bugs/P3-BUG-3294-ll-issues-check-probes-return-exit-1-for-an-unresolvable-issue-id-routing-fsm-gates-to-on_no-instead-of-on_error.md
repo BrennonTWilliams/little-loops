@@ -146,7 +146,7 @@ Rules* for the selected option and rationale.
 _Added by `/ll:refine-issue` — 2026-08-22 — based on codebase analysis:_
 
 - The stated precedent, `check-unresolved-decisions` (BUG-3278 part 4), has not landed: `scripts/little_loops/cli/issues/check_unresolved_decisions.py` is absent from disk, and BUG-3278 is still `status: open`. Its spec (BUG-3278 lines 314-348) describes the exit-2 divergence as an inline `if path is None: ... return 2` at the same resolution guard the other seven probes already use for `return 1` — Implementation Step 4 there says "Model on `check_open_questions.py`, diverging on the exit codes," i.e. copy-and-diverge, not extract-and-share. There is no shared helper or landed code to import from; each of the seven probes will get its own inline literal change.
-- No `EXIT_*` constant, enum, or shared exit-code helper exists anywhere in `cli/issues/` or `fsm/` today — every exit code in every one of the seven probes is a raw inline `return N`. The not-found guard is identical across all seven: `_resolve_issue_id(...) is None` → `print(f"Error: Issue '{id}' not found.", file=sys.stderr)` → `return 1`. The not-found sites — the ONLY lines that change — are exactly one per file: check_decidable.py:32, check_open_questions.py:56, check_design.py:36, check_flag.py:29, check_acceptance_criteria.py:102, check_verify_verdict.py:84, check_readiness.py:140. Every other `return 1` in these files (check_decidable.py:52, check_open_questions.py:81, check_design.py:39, check_flag.py:33, check_acceptance_criteria.py:118, check_verify_verdict.py:97,107,118, check_readiness.py:142) is a genuine negative verdict and must stay 1.
+- No `EXIT_*` constant, enum, or shared exit-code helper exists anywhere in `cli/issues/` or `fsm/` today — every exit code in every one of the seven probes is a raw inline `return N`. The not-found guard is identical across all seven: `_resolve_issue_id(...) is None` → `print(f"Error: Issue '{id}' not found.", file=sys.stderr)` → `return 1`. The not-found sites — the ONLY lines that change — are exactly one per file: check_decidable.py:32, check_open_questions.py:56, check_design.py:36, check_flag.py:29, check_acceptance_criteria.py:102, check_verify_verdict.py:84, check_readiness.py:140. Every other `return 1` in these files (check_decidable.py:60, check_open_questions.py:81, check_design.py:39, check_flag.py:33, check_acceptance_criteria.py:118, check_verify_verdict.py:97,107,118, check_readiness.py:142) is a genuine negative verdict and must stay 1.
 
 _Added by `/ll:refine-issue` — 2026-08-22 — based on codebase analysis:_
 
@@ -271,7 +271,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 _Wiring pass added by `/ll:wire-issue`:_
 
 - The six existing not-found tests to flip from `returncode == 1` to `== 2` (exact anchors):
-  `test_ll_issues_check_decidable.py:278-282` `test_missing_issue_exits_one`,
+  `test_ll_issues_check_decidable.py:307-311` `test_missing_issue_exits_one`,
   `test_ll_issues_check_open_questions.py:213-217` `test_missing_issue_exits_one`,
   `test_ll_issues_check_design.py:184-188` `test_missing_issue_exits_one`,
   `test_ll_issues_check_acceptance_criteria.py:177-181` `test_missing_issue_exits_one`,
@@ -578,6 +578,7 @@ _Added by `/ll:confidence-check` on 2026-08-22_
 
 
 ## Session Log
+- `/ll:ready-issue` - 2026-08-22T22:18:19 - `afe857fc-f796-4b11-9d6a-872028bfc380.jsonl`
 - `/ll:confidence-check` - 2026-08-22T22:13:39 - `4a645ef4-53d6-431a-b186-5f97907a3395.jsonl`
 - `/ll:confidence-check` - 2026-08-22T21:49:34 - `9ed67f71-7303-474d-bf20-c4416e27aef4.jsonl`
 - `/ll:confidence-check` - 2026-08-22T21:25:43 - `0c7d6c76-7efe-4d29-9902-6a8bb3eb75f1.jsonl`
