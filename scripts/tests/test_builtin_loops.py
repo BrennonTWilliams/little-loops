@@ -1644,6 +1644,10 @@ class TestRefineToReadyIssueSubLoop:
             f"check_ac_automatable.on_no should be 'check_reconcile_limit' (ENH-3248), "
             f"got {state.get('on_no')!r}"
         )
+        assert state.get("on_error") == "confidence_check", (
+            "BUG-3294: check_ac_automatable.on_error should be 'confidence_check' "
+            f"(fail open — skip AC gate rather than abort), got {state.get('on_error')!r}"
+        )
 
     def test_check_design_state_routing(self, data: dict) -> None:
         """check_design (BUG-3249) gates the Program Design section: on_yes proceeds to
@@ -6984,6 +6988,14 @@ class TestAutodevLoop:
         state = data["states"].get("check_passed", {})
         assert state.get("on_no") == "triage_outcome_failure"
 
+    def test_check_passed_on_error_routes_to_detect_children(self, data: dict) -> None:
+        """BUG-3294: an unevaluable readiness check (e.g. unresolvable issue ID) degrades
+        open to the size-review path rather than aborting the run."""
+        state = data["states"].get("check_passed", {})
+        assert state.get("on_error") == "detect_children", (
+            f"check_passed.on_error should be 'detect_children', got {state.get('on_error')!r}"
+        )
+
     def test_enqueue_children_prepends_to_autodev_queue(self, data: dict) -> None:
         """enqueue_children must rewrite .loops/tmp/autodev-queue.txt, not recursive-refine-queue.txt."""
         state = data["states"].get("enqueue_children", {})
@@ -7741,6 +7753,15 @@ class TestAutodevLoop:
             f"check_missing_artifacts.on_no should be 'detect_children', got {state.get('on_no')!r}"
         )
 
+    def test_check_missing_artifacts_on_error_routes_to_detect_children(self, data: dict) -> None:
+        """BUG-3294: an unevaluable missing_artifacts flag degrades open to the size-review
+        path (mirrors on_no) rather than aborting the run."""
+        state = data["states"].get("check_missing_artifacts", {})
+        assert state.get("on_error") == "detect_children", (
+            f"check_missing_artifacts.on_error should be 'detect_children', got "
+            f"{state.get('on_error')!r}"
+        )
+
     def test_run_wire_uses_with_rate_limit_handling_fragment(self, data: dict) -> None:
         """run_wire must use with_rate_limit_handling fragment (mirrors run_decide)."""
         state = data["states"].get("run_wire", {})
@@ -7810,6 +7831,14 @@ class TestAutodevLoop:
         state = data["states"].get("decide_current", {})
         assert state.get("on_no") == "implement_current", (
             f"decide_current.on_no should be 'implement_current', got {state.get('on_no')!r}"
+        )
+
+    def test_decide_current_on_error_routes_to_implement_current(self, data: dict) -> None:
+        """BUG-3294: an unevaluable decision_needed flag (e.g. unresolvable issue ID)
+        degrades open the same as on_no, rather than aborting the run."""
+        state = data["states"].get("decide_current", {})
+        assert state.get("on_error") == "implement_current", (
+            f"decide_current.on_error should be 'implement_current', got {state.get('on_error')!r}"
         )
 
     def test_resolve_decision_call_states_declare_on_error_matching_on_failure(
@@ -11777,6 +11806,14 @@ class TestSpikeGateLoop:
             f"check_spike_needed.on_no should be 'run_impl', got {state.get('on_no')!r}"
         )
 
+    def test_check_spike_needed_on_error_routes_to_run_impl(self, data: dict) -> None:
+        """BUG-3294: an unevaluable spike_needed flag degrades open (mirrors on_no) instead
+        of aborting the run."""
+        state = data["states"].get("check_spike_needed", {})
+        assert state.get("on_error") == "run_impl", (
+            f"check_spike_needed.on_error should be 'run_impl', got {state.get('on_error')!r}"
+        )
+
     def test_check_spike_completed_short_circuits(self, data: dict) -> None:
         """Already-proven spike (spike_completed:true) short-circuits straight to run_impl."""
         state = data["states"].get("check_spike_completed", {})
@@ -11787,6 +11824,14 @@ class TestSpikeGateLoop:
         )
         assert state.get("on_no") == "gate", (
             f"check_spike_completed.on_no should be 'gate', got {state.get('on_no')!r}"
+        )
+
+    def test_check_spike_completed_on_error_routes_to_run_impl(self, data: dict) -> None:
+        """BUG-3294: an unevaluable spike_completed flag degrades open — reachable only
+        after check_spike_needed already succeeded, so an error here is treated as transient."""
+        state = data["states"].get("check_spike_completed", {})
+        assert state.get("on_error") == "run_impl", (
+            f"check_spike_completed.on_error should be 'run_impl', got {state.get('on_error')!r}"
         )
 
     def test_gate_runs_spike_check_via_slash_command(self, data: dict) -> None:

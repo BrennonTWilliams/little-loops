@@ -9,11 +9,11 @@ discovered_date: '2026-08-22'
 captured_at: '2026-08-22T21:27:39Z'
 relates_to:
 - BUG-3289
-confidence_score: 95
-outcome_confidence: 89
-score_complexity: 21
+confidence_score: 99
+outcome_confidence: 91
+score_complexity: 22
 score_test_coverage: 25
-score_ambiguity: 18
+score_ambiguity: 19
 score_change_surface: 25
 ---
 

@@ -36,6 +36,7 @@ states:
     action: ll-issues check-flag ${context.issue_id} spike_needed
     on_yes: check_spike_completed
     on_no: run_impl
+    on_error: run_impl
 
   # A spike already proven (spike_completed:true, written by /ll:spike) short-circuits
   # the gate — re-running would be wasted work. Otherwise run the check.
@@ -44,6 +45,7 @@ states:
     action: ll-issues check-flag ${context.issue_id} spike_completed
     on_yes: run_impl
     on_no: gate
+    on_error: run_impl
 
   # /ll:spike --check runs the spike's AC suite read-only: exit 0 = ACs pass (gate
   # passes → impl), exit 1 = ACs fail or no spike package (attempt to prove it),

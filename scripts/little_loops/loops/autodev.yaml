@@ -623,6 +623,7 @@ states:
     fragment: shell_exit
     on_yes: resolve_decision
     on_no: implement_current
+    on_error: implement_current
 
   resolve_decision:
     # ENH-3075: shared decision-cluster sub-loop (BUG-3065's
@@ -1399,6 +1400,7 @@ states:
     fragment: shell_exit
     on_yes: run_wire
     on_no: detect_children
+    on_error: detect_children
 
   run_size_review:
     # Explicitly run issue-size-review when the sub-loop did not decompose the
