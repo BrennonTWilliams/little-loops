@@ -1,0 +1,12 @@
+{
+  "id": "1e2dfe5a-8958-492e-9fa9-e308b43116a3",
+  "type": "decision",
+  "timestamp": "2026-08-23T20:54:12Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Reuses the existing max-scan loop in get_next_issue_number(); has no staleness gap unlike a git-ref-based read, which can't see uncommitted/unfetched issue files on main.",
+  "rule": "Option A: filesystem union scan of the main working tree's .issues/ (extend get_next_issue_number's dirs_to_scan with the main-tree root, take max)",
+  "scope": "issue",
+  "alternatives_rejected": "Option B (git ls-tree <default-branch> ref scan): higher reuse score but has a real staleness gap for the exact collision this bug documents. Option C (min. viable guard via --git-common-dir): comparable new-code size to Option A, unhandled bare-repo edge case, no reusable guard-clause precedent, slower test fixture.",
+  "issue": "BUG-3303"
+}

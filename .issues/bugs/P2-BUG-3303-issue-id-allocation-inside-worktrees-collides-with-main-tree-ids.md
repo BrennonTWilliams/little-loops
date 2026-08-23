@@ -13,6 +13,7 @@ score_complexity: 18
 score_test_coverage: 20
 score_ambiguity: 14
 score_change_surface: 18
+decision_needed: false
 ---
 
 # BUG-3303: Issue ID allocation inside worktrees collides with main tree IDs
@@ -61,6 +62,70 @@ _Added by `/ll:refine-issue` — 2026-08-23 — based on codebase analysis:_
 
 No existing helper in this repo resolves a main/common checkout root from a linked worktree. The closest precedent is `hooks/scripts/session-cleanup.sh:30-37`, the only existing use of `git rev-parse --git-common-dir` in the codebase, which compares it against `--git-dir` to detect linked-worktree state (used there to skip destructive cleanup, not to redirect a scan). Separately, `scripts/little_loops/host_runner.py` parses a worktree's `.git` file's `gitdir:` line directly at three call sites (`:425-433`, `:719-727`, `:1041-1058`, landed via ENH-932) to set `GIT_DIR`/`GIT_WORK_TREE` for a subprocess — but stops at the object-store path and does not derive the main working-tree root either. Whichever mechanism is chosen, `.issues/` base-dir resolution is entirely filesystem-scoped today (`BRConfig.project_root = project_root.resolve()`, `scripts/little_loops/config/core.py:257`, no git awareness at all) and `get_next_issue_number()` (`scripts/little_loops/issue_parser.py:3196`) is the single choke point every allocation call site reaches through — see Integration Map → Dependent Files for the full call site list, including `issue_lifecycle.py:822`'s unguarded `create_issue_from_failure()` path, which is not named in the existing "Desired Behavior" candidates below but shares the same exposure.
 
+_Added by `/ll:refine-issue` — 2026-08-23 — based on codebase analysis:_
+
+**Option A**: Resolve the primary repo root (a worktree's `.git` file points at the main checkout's `gitdir`) and scan that `.issues/` tree in addition to the local one, taking the max.
+
+> **Selected:** Option A — filesystem union scan reuses `get_next_issue_number()`'s existing `dirs_to_scan`/max-tracking loop and carries no staleness risk (unlike Option B's ref-based read, which cannot see uncommitted or unfetched issue files).
+
+**Option B**: Scan git refs (`git ls-tree <default-branch> -- .issues` via the common git dir) so IDs allocated on main are visible regardless of checkout state.
+
+**Option C**: Minimum viable guard — when running inside a linked worktree (`git rev-parse --git-common-dir` differs from `--git-dir`), also read the main working tree's `.issues/` max ID.
+
+### Decision Rationale
+
+**Selected: Option A** (filesystem union scan of the main working tree's `.issues/`, taking the max alongside the local scan).
+
+**Reasoning**: `get_next_issue_number()` already builds a `dirs_to_scan` list and tracks a running `max_num` across per-category and legacy directories (`issue_parser.py:3196-3245`) — Option A extends that exact loop with the main tree's equivalent paths, rather than introducing a new read mechanism. Its only new logic is resolving the main working-tree root from a worktree's `gitdir:` pointer (`<main>/.git/worktrees/<name>` → `<main>`, three `.parent` hops: `<name>` → `worktrees` → `.git` → `<main>`), which is testable with the lightweight `.git`-file fixture already used in `test_host_runner.py`. Note the `.git` file's `gitdir:` value can be a *relative* path, and `git worktree move`/`repair` layouts exist — prefer `git rev-parse --path-format=absolute --git-common-dir` (then `.parent` of the returned `.git` dir) as the resolver, falling back to `.git`-file parsing only where a subprocess is undesirable. Critically, it reads live filesystem state, so it has no staleness gap: Option B's `git ls-tree <default-branch>` read is a snapshot of committed history only and would miss uncommitted or unfetched issue files on main — a correctness risk for the exact collision this bug documents. Option C targets the same resolved path as Option A but via `--git-common-dir` rather than gitdir-parsing, with an unhandled bare-repo edge case and no reusable guard-clause precedent in `issue_parser.py`/`config/core.py`; it also pulls testing toward the slower real-git fixture. Option A best matches the issue's own Implementation Steps sketch ("resolve main checkout path... union both `.issues/` scans").
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|---|---|---|---|---|---|
+| A (union scan) | 2 | 2 | 3 | 2 | **9/12** |
+| B (git ls-tree ref) | 3 | 2 | 2 | 1 | 8/12 |
+| C (min. viable guard) | 1 | 1 | 1 | 2 | 5/12 |
+
+**Key evidence**: `get_next_issue_number()`'s existing max-scan loop (`issue_parser.py:3196-3245`); `test_host_runner.py`'s lightweight `.git`-file fixture (`(tmp_path / ".git").write_text(f"gitdir: {gitdir}\n")`); Option B's staleness gap confirmed via `detect_default_branch()`/`read_paths_at_ref()` precedent research (ref-based reads see committed history only).
+
+### Sibling-Worktree Collision (must also be covered)
+
+The worktree+main union scan alone leaves a residual collision path that is live today
+(`parallel.epic_branches` enabled, `sprints.default_max_workers: 2`): worktree A
+allocates ID N (the file exists only in A's tree), releases the lock; worktree B then
+scans B + main, sees neither A's file nor N, and allocates N again. The relocated
+cross-tree lock serializes *concurrent* allocation but does not make A's completed
+allocation visible to B — same collision class as the FEAT-3117/3118 incident, different
+trigger.
+
+**Fix (adopted)**: maintain a high-water-mark file in the main tree's `.issues/`
+(e.g. `.id-alloc-highwater`, a single integer), read and written **under the cross-tree
+lock**: `next = max(union_scan_max, highwater) + 1`, then write `next` back. This makes
+every allocation durable in the canonical namespace regardless of which tree the issue
+file lands in. Treat a missing/corrupt high-water file as 0 (the union scan is the
+floor, so recovery is automatic and monotonic). The alternative — scanning every linked
+worktree via `git worktree list --porcelain` from the common dir — was rejected: it is
+slower, races with worktree creation/removal, and fails on prunable/locked worktrees.
+The high-water file is gitignored-by-location concern: it lives in the *main* tree's
+`.issues/` and should be added to `.gitignore` (allocation state, not repo content).
+
+### Graceful Degradation (required behavior)
+
+The main-checkout resolver must fall back to the current local-only scan (today's
+behavior, no error, at most a debug log) when any of: the process is not inside a git
+repo at all; `.git` is a directory (primary checkout — no redirect needed); the resolved
+common dir's parent has no `.issues/` (bare repo, or a main tree deleted while the
+worktree survives); or the main tree path is unreadable. This is what AC3
+("behavior unchanged in the primary checkout") depends on and must be tested explicitly.
+
+### Reconciliation with ENH-1198
+
+ENH-1198 was closed Invalid on the argument that `.issues/` is git-tracked, each
+worktree has an isolated copy, and cross-tree locking "would break worktree isolation
+entirely." The FEAT-3117/3118 incident falsifies the premise: isolation of the *files*
+is exactly what makes the *ID namespace* collide, because the numeric ID is globally
+unique across the repo (per `feedback_bare_numeric_frontmatter_id_supported`). This fix
+supersedes ENH-1198's closing rationale for ID allocation only — issue file *content*
+stays worktree-isolated; only the allocation counter and lock become canonical.
+
 ## Integration Map
 
 ### Files to Modify
@@ -103,6 +168,10 @@ _Wiring pass added by `/ll:wire-issue`:_
 - New test (root-resolution unit coverage): if the main-checkout resolver shells to `git rev-parse --git-common-dir`, prefer the real-git fixture above; if it parses the `.git` file directly, the lightweight fixture in `scripts/tests/test_host_runner.py:974-982` (`(tmp_path / ".git").write_text(f"gitdir: {gitdir}\n")`) is a viable, faster alternative [Agent 3 finding]
 - New test (cross-tree lock, no existing precedent found — grepped `id-alloc`/`id_alloc` repo-wide): `.id-alloc.lock` (`create.py:446`) cross-process/cross-tree serialization; place in `test_ll_issues_create.py` or a new dedicated `test_bug3303_*.py` file, matching this repo's convention (e.g. `test_bug3150_issue_mutator_atomicity.py`) [Agent 3 finding]
 - New test: `create_issue_from_failure()` (`test_issue_lifecycle.py:822-943`, `TestCreateIssueFromFailure`) currently has zero lock/collision coverage of any kind (single-process assertions only) — add worktree-collision coverage for this weaker-guarded surface [Agent 3 finding]
+- New test (sibling-worktree collision): two worktrees off the same main tree; allocate in A, then allocate in B without merging — assert B's ID > A's (exercises the high-water-mark file, since B's union scan cannot see A's file)
+- New test (highwater recovery): delete/corrupt `.id-alloc-highwater`, assert next allocation falls back to the union-scan max and rewrites a valid highwater
+- New tests (graceful degradation): non-git directory, primary checkout (`.git` is a dir), and worktree whose main tree lacks `.issues/` — all must produce today's local-only behavior with no error
+- New test (`next-id` parity): `ll-issues next-id` from a worktree returns exactly the ID `ll-issues create` then allocates
 
 ### Documentation
 - `docs/reference/API.md` — `issue_parser` / `ll-issues create` ID-allocation surfaces (already cited by this issue)
@@ -119,9 +188,12 @@ _Wiring pass added by `/ll:wire-issue`:_
 ## Implementation Steps
 
 1. Locate the next-ID scan (`scripts/little_loops/cli/issues/create.py` / `issue_parser.py` next-id helper).
-2. Add a canonical-namespace resolver: detect linked-worktree context, resolve the main checkout path from `git-common-dir`, union both `.issues/` scans.
-3. Cover decomposition paths that allocate IDs (recursive decompose flows) via the same helper.
-4. Tests: fixture repo + linked worktree on a stale branch; assert allocated ID exceeds main's max.
+2. Add a canonical-namespace resolver: detect linked-worktree context, resolve the main checkout path via `git rev-parse --path-format=absolute --git-common-dir` (parent of the returned `.git` dir; fall back to `.git`-file parsing — three `.parent` hops from `gitdir:` — where a subprocess is undesirable), union both `.issues/` scans. Degrade gracefully per Proposed Solution → Graceful Degradation.
+3. Add the high-water-mark file (Proposed Solution → Sibling-Worktree Collision): read/write `<main>/.issues/.id-alloc-highwater` under the cross-tree lock; `next = max(union_scan_max, highwater) + 1`. Add the filename to `.gitignore`.
+4. Relocate the `.id-alloc.lock` used by `create.py:446` and `scaffold_epic.py:79` to the resolved main tree's `.issues/` (worktree-local when no main tree resolves), so allocation is serialized across trees.
+5. Cover decomposition paths that allocate IDs (recursive decompose flows) via the same helper, plus the unguarded `create_issue_from_failure()` path (`issue_lifecycle.py:822`).
+6. Ensure `ll-issues next-id` (`next_id.py:35`) previews through the identical union+highwater read path (minus the highwater *write*), so its preview matches what `create` will actually allocate — `commands/scan-codebase.md`/`scan-product.md`/`find-dead-code.md` instruct agents to trust it.
+7. Tests: fixture repo + linked worktree on a stale branch; assert allocated ID exceeds main's max. Plus sibling-worktree, degradation, and highwater-recovery tests per Integration Map → Tests.
 
 ### Codebase Research Findings
 
@@ -147,10 +219,10 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ## Impact
 
-- **Priority**: [P0-P5] - [Justification]
-- **Effort**: [Small/Medium/Large] - [Justification]
-- **Risk**: [Low/Medium/High] - [Justification]
-- **Breaking Change**: [Yes/No]
+- **Priority**: P2 - Silent ID-namespace corruption in a live automation path (EPIC worktrees + parallel workers); already caused one real incident (FEAT-3117/3118), but a workaround (manual recovery + avoiding stale-branch decomposition) exists
+- **Effort**: Medium - One new resolver helper + highwater file + lock relocation, ~7 call-site-adjacent touchpoints, but a single choke point (`get_next_issue_number`) and substantial new test fixtures (real-git worktree scenarios)
+- **Risk**: Medium - Allocation is on every issue-creation path; mitigated by strict graceful-degradation fallback to today's behavior and no change to `BRConfig.project_root`
+- **Breaking Change**: No - IDs only ever get larger; primary-checkout behavior is unchanged; new `.id-alloc-highwater` file is gitignored allocation state
 
 ## Root Cause
 
@@ -187,17 +259,15 @@ N/A — no new gap kind, gate, or threshold; the fix changes an existing scan's 
 
 ## Desired Behavior
 
-ID allocation consults the canonical namespace even from a worktree — candidates:
-
-- Resolve the primary repo root (a worktree's `.git` file points at the main checkout's `gitdir`) and scan that `.issues/` tree in addition to the local one, taking the max.
-- And/or scan git refs (`git ls-tree <default-branch> -- .issues` via the common git dir) so IDs allocated on main are visible regardless of checkout state.
-- Minimum viable guard: when running inside a linked worktree (`git rev-parse --git-common-dir` differs from `--git-dir`), also read the main working tree's `.issues/` max ID.
+ID allocation consults the canonical namespace even from a worktree. See Option A/B/C decision under Proposed Solution.
 
 ## Acceptance Criteria
 
 - [ ] `ll-issues create` inside a linked worktree on a stale branch never allocates an ID <= the main tree's max allocated ID
-- [ ] Decomposition flows allocate through the same guarded path
-- [ ] Behavior unchanged when running in the primary checkout
+- [ ] Two sibling worktrees allocating sequentially (no merge between) never receive the same ID (high-water-mark file exercised)
+- [ ] Decomposition flows allocate through the same guarded path, including `create_issue_from_failure()` (`issue_lifecycle.py:822`)
+- [ ] `ll-issues next-id` previews the same ID `ll-issues create` then allocates, from inside a worktree
+- [ ] Behavior unchanged when running in the primary checkout, in a non-git directory, and in a worktree whose main tree lacks `.issues/` (graceful degradation, no errors)
 - [ ] `python -m pytest scripts/tests/` passes
 
 ## Related Key Documentation
@@ -213,6 +283,8 @@ ID allocation consults the canonical namespace even from a worktree — candidat
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-23T21:46:40 - `472772e0-0d23-4f5c-8222-6df281b8269d.jsonl`
+- `/ll:decide-issue` - 2026-08-23T20:54:12 - `b06a9731-b7f1-4cd3-ae8f-7c9209764607.jsonl`
 - `/ll:confidence-check` - 2026-08-23T20:42:20 - `36a136c9-6c59-4cf6-b7d4-c0e4e7645a9e.jsonl`
 - `/ll:wire-issue` - 2026-08-23T20:36:03 - `7746b0e5-5986-4ac4-ae25-f7097ddec171.jsonl`
 - `/ll:refine-issue` - 2026-08-23T20:27:20 - `7bbdaa9b-79ec-4518-a9d5-5daf606989bc.jsonl`

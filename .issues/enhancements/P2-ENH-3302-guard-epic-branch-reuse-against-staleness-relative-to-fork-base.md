@@ -36,16 +36,26 @@ Steps: in-memory cache hit → local `rev-parse --verify` hit → remote `ls-rem
 
 ## Expected Behavior
 
-[What should happen instead]
+On a reuse hit, `_ensure_epic_branch` measures how far the branch is behind its resolved fork
+base and, whenever `N > 0`, emits a `parallel.epic_branch_stale` event plus a warning log line
+naming the branch, base ref, and commit count. With `refresh_on_reuse: merge`, it additionally
+merges the base into the epic branch (via a scratch worktree — see Proposed Solution) before any
+worker dispatches; a merge conflict degrades to warn-only without aborting the run. `off`
+disables the check entirely. Default: `warn` (no git state changed).
 
 ## Motivation
 
 Branch persistence across runs is by design (an epic integration branch accumulates children until the epic merges), but silent staleness turns a single held-open merge into a cascade: refine failures, bogus dependency-graph errors, verify false negatives, and (see the companion BUG) issue-ID collisions. The failure is invisible until a human diffs the branch point.
 
+Scope note: `merge` mode refreshes the stale tree but does not address *why* the branch was held
+open (its own merge-to-base failed verify). Unwedging the epic itself is out of scope here — see
+the companion BUG and the epic-merge verify path; nobody should expect this guard to resolve the
+original wedge, only to stop it from silently poisoning later runs.
+
 ## Proposed Solution
 
-Add staleness measurement inside `_ensure_epic_branch` (`worker_pool.py:1938`) on both the
-local-hit and remote-hit reuse paths, using the `base` value already passed in from
+Add staleness measurement inside `_ensure_epic_branch` (`worker_pool.py:1938`) on the
+local-hit reuse path (remote-hit path excluded — see caveat below), using the `base` value already passed in from
 `_resolve_branch_targets`'s `resolve_epic_base()` call (`worker_pool.py:1865`) — the accurate
 fork base already reaches this method, so no additional base-resolution work is needed.
 
@@ -55,6 +65,40 @@ read-only local plumbing, `worker_pool.py:1956`). No existing `rev-list --count`
 codebase measures this direction (base-ahead-of-branch) — the two existing uses
 (`orchestrator.py:516-521`, `cli/loop/run.py:516`) measure the opposite (branch-ahead-of-base),
 so this is new code, not an extension of a shared helper.
+
+**Remote-hit path caveat**: on the remote-only-exists path (`ls-remote` hit, no local ref),
+`rev-list --count <branch>..<base>` fails — `<branch>` does not resolve locally, and `ls-remote`
+does not update remote-tracking refs, so `<remote>/<branch>` may not resolve either without a
+prior `git fetch`. `merge` mode would additionally need a local branch created from the remote
+ref first. **Decision: scope the staleness guard to the local-hit path only.** The observed
+failure was a local branch; the remote-hit path adds a fetch + ref-naming + branch-creation
+surface for no demonstrated need. Leave the remote-hit path unchanged and note the limitation in
+the docstring.
+
+**Threshold decision: `N > 0`, no numeric config knob.** Any commit count behind base is worth a
+log line; the observed failure was ~448 commits (no plausible tuning range), and a numeric field
+would add a fifth declaration site (two dataclasses + bridge + schema + docs) for no known use
+case. `refresh_on_reuse: off` is the opt-out.
+
+**Merge mechanics: scratch worktree required.** `merge_epic_branch_to_base()` works because the
+main repo is already checked out on the merge *target* (`base_branch`, per its own docstring).
+The reversed merge this issue needs — base *into* `epic/*` — targets a branch that is not
+checked out anywhere (the main repo stays on base throughout a run), and plain `git merge` only
+operates on HEAD. A fast-forward-only ref update (`git fetch . <base>:<branch>`) refuses in the
+normal case, since a held-open epic branch has its own commits. So `merge` mode must:
+`setup_worktree(..., checkout_existing=True)` on the epic branch (the verify gate's existing
+pattern, `worktree_utils.py:159` / `run_epic_verify_gate`), run `git merge --no-edit <base>`
+inside it following `merge_epic_branch_to_base()`'s conflict-detect → `merge --abort` →
+return-`False` skeleton (`worktree_utils.py:612-689`), then `cleanup_worktree(...,
+delete_branch=False)` in a `finally`. Note: `WorkerPool` has no `run_dir` attribute (only
+`run_id`, `worker_pool.py:152-170`), so the ENH-2643 conflict-artifact persistence pattern is
+out of scope here — conflict detail goes into the event payload and log line instead.
+
+**Event contract** (applies in both `warn` and `merge` modes — the event is the run-summary
+signal, not a merge-mode extra): emit `parallel.epic_branch_stale` (namespaced for
+`EventBus.register("parallel.*")` glob filtering, matching `parallel.worker_completed`) with
+payload `{branch, base, commits_behind, mode, action: "warned"|"merged"|"merge_conflict"}` so
+run summaries and audit tooling can distinguish warned / merged / conflict-degraded outcomes.
 
 Gate the response on a new `refresh_on_reuse: warn|merge|off` field, added consistently across
 all four sites this codebase requires for any `EpicBranchesConfig` field: the runtime dataclass
@@ -76,7 +120,7 @@ Y" messages (`worker_pool.py:1806-1810`). No `WorkerPool` constructor change nee
 
 **Option B**: Thread `event_bus` into `WorkerPool.__init__` (mirroring how `ParallelOrchestrator`
 already passes it to other collaborators, e.g. `orchestrator.py:1113`, `:1544`) and emit an
-`epic_branch_stale` event via `EventBus.emit()` (`events.py:117-138`), following the plain-dict
+`parallel.epic_branch_stale` event via `EventBus.emit()` (`events.py:117-138`), following the plain-dict
 `{"event", "ts", ...payload}` shape used at `orchestrator.py:1280-1291`. This additionally
 requires registering the new event type in two more registries this codebase enforces by test:
 `SCHEMA_DEFINITIONS` (`generate_schemas.py:600`, count-asserted by
@@ -94,7 +138,7 @@ alone does not satisfy; the extra registry updates are mechanical and test-guide
 
 ### Decision Rationale
 
-**Selected**: Option B (event bus + structured `epic_branch_stale` event)
+**Selected**: Option B (event bus + structured `parallel.epic_branch_stale` event)
 
 Option B scores higher primarily on Consistency and Testability: every element of the mechanism
 (constructor-injected `event_bus`, `EventBus.emit()`'s plain-dict shape, `SCHEMA_DEFINITIONS` and
@@ -137,32 +181,41 @@ N/A — no new data type; a new field is added to two existing dataclasses
 
 ### Call Path
 `_resolve_branch_targets` (`worker_pool.py:1871`) -> `_ensure_epic_branch(branch, base)`
-(`worker_pool.py:1938`) -> [new] `git rev-list --count <branch>..<base>` via
-`self._git_lock.run(...)` -> (if `refresh_on_reuse == "merge"` and count > 0) merge path
-analogous to `merge_epic_branch_to_base()` (`worktree_utils.py:612`), direction reversed
-(base merged into branch) -> [new] event emission, channel per the Option A/B decision above.
+(`worker_pool.py:1938`) -> [new, local-hit path only] `git rev-list --count <branch>..<base>` via
+`self._git_lock.run(...)` -> (if `refresh_on_reuse == "merge"` and count > 0)
+`setup_worktree(..., checkout_existing=True)` on the epic branch -> `git merge --no-edit <base>`
+inside the scratch worktree, conflict-detect/abort skeleton per `merge_epic_branch_to_base()`
+(`worktree_utils.py:612`) -> `cleanup_worktree(..., delete_branch=False)` in a `finally` ->
+[new] `parallel.epic_branch_stale` emission via `EventBus.emit()` (both `warn` and `merge`
+modes; see Event contract in Proposed Solution).
 
 ### Decision Rules
 - Gap kind: staleness threshold and reconcile mode.
 - Exact input: `git rev-list --count <branch>..<base>` result `N` (commits `base` has that
   `branch` lacks).
-- Threshold: the issue's Desired Behavior says "above a threshold" but does not name one —
-  UNKNOWN, needs an explicit value (e.g. `N > 0` vs a configurable minimum commit count). No
-  existing numeric-threshold field on `EpicBranchesConfig` or its siblings to anchor a default
-  against.
+- Threshold: **DECIDED — `N > 0`, no numeric config knob.** Any staleness warrants the log
+  line/event; the observed failure was ~448 commits with no plausible tuning range, and a
+  numeric field would add a fifth declaration site for no known use case. `refresh_on_reuse:
+  off` is the opt-out.
 - Mode values: `warn|merge|off` (issue-proposed) — no existing schema enum in this codebase uses
   `merge` as a value; the two closest precedents disagree on vocabulary
   (`code_query.staleness`: `strict|warn|off`, `config-schema.json:1396-1401`; `tamper_guard.mode`:
-  `off|warn|block`, `config-schema.json:1167-1170`).
+  `off|warn|block`, `config-schema.json:1167-1170`). Keep `warn|merge|off`: `merge` is a
+  genuinely new action neither precedent vocabulary covers.
+- Scope: local-hit reuse path only. The remote-hit path (`ls-remote` hit, no local ref) cannot
+  run the check as written (`<branch>` unresolvable locally; `ls-remote` does not update
+  remote-tracking refs) and stays unchanged — limitation noted in the docstring.
 - Escape hatch: on merge conflict in `merge` mode, fall back to warn without aborting the run
   (per Desired Behavior) — this is exactly the shape `merge_epic_branch_to_base()` already
-  implements (conflict -> `git merge --abort` -> return `False` -> caller logs, doesn't raise).
+  implements (conflict -> `git merge --abort` -> return `False` -> caller logs, doesn't raise),
+  executed inside the scratch worktree.
 
 ## Integration Map
 
 ### Files to Modify
 - `scripts/little_loops/parallel/worker_pool.py` — `_ensure_epic_branch` (1938-1977): add the
-  staleness check on the local-hit (1952-1960) and remote-hit (1961-1970) reuse paths.
+  staleness check on the local-hit reuse path (1952-1960) only; the remote-hit path (1961-1970)
+  stays unchanged (see Decision Rules — no local ref to measure or merge against).
 - `scripts/little_loops/parallel/types.py` — `EpicBranchesConfig` (322-349): add `refresh_on_reuse`
   field alongside `enabled`, `prefix`, `merge_to_base_on_complete`, `open_pr`, `verify_before_merge`.
 - `scripts/little_loops/config/automation.py` — a second, separately-declared
@@ -189,7 +242,7 @@ _Wiring pass added by `/ll:wire-issue`:_
   driver=...)` with no `event_bus` argument, even though `self._event_bus` is already set at
   `orchestrator.py:122` (from the `event_bus: EventBus | None = None` constructor param at
   `:99`). If Option B adds an `event_bus` param to `WorkerPool.__init__`, this is the one
-  production call site that must pass `event_bus=self._event_bus` or the new `epic_branch_stale`
+  production call site that must pass `event_bus=self._event_bus` or the new `parallel.epic_branch_stale`
   event never reaches the Orchestrator's bus/transports. [Agent 1 + Agent 2 finding]
 - `scripts/little_loops/cli/parallel.py:206,288` — two more `WorkerPool(...)` construction sites
   (`--cleanup` and `--prune-merged-branches` CLI branches), both positional, neither with an
@@ -253,20 +306,20 @@ _Wiring pass added by `/ll:wire-issue`:_
   `== 41`), `:21-66` (`test_expected_event_types_present`, literal 41-string `expected` set),
   `:72-76` and `:78-83` (`test_creates_41_files`, `test_creates_output_dir_if_missing`, both
   hardcode `== 41`) — **four separate hardcoded `41`s in this one file**, all must bump to 42 in
-  lockstep when `epic_branch_stale` is added to `SCHEMA_DEFINITIONS`
+  lockstep when `parallel.epic_branch_stale` is added to `SCHEMA_DEFINITIONS`
   (`generate_schemas.py:600-612`); the issue's Conventions section cites only the count-assert
   test, missing the other three. [Agent 3 + Agent 2 finding, confirmed]
 - `scripts/tests/test_des_schema.py:43-54` (`test_variants_cover_all_schema_definitions`) — will
-  fail with an explicit "entries missing from DES_VARIANTS" message naming `epic_branch_stale`
+  fail with an explicit "entries missing from DES_VARIANTS" message naming `parallel.epic_branch_stale`
   until a matching `DESVariant` subclass (model: `ParallelWorkerCompletedVariant`,
   `observability/schema.py:489-495`) is added to the `DES_VARIANTS` tuple
   (`observability/schema.py:690`, "Channel B: EventBus-emitted" section, `:631-690`). [Agent 3
   finding]
 - `scripts/tests/test_orchestrator.py:2706-2735` (`test_on_worker_complete_emits_event_on_success`)
   and its sibling `test_on_worker_complete_no_emission_without_event_bus` (`:2766`) — direct
-  precedent to model the new `epic_branch_stale` emission test after: construct an `EventBus`,
+  precedent to model the new `parallel.epic_branch_stale` emission test after: construct an `EventBus`,
   `bus.register(lambda e: received.append(e))`, assert on `event["event"] ==
-  "epic_branch_stale"` and payload keys, plus a no-bus-attached negative case. [Agent 3 finding]
+  "parallel.epic_branch_stale"` and payload keys, plus a no-bus-attached negative case. [Agent 3 finding]
 - `scripts/tests/test_subprocess_mocks.py:599,652,700,749` — four **positional**
   `WorkerPool(config, br_config, mock_logger, repo_path)` calls; safe only if the new
   `event_bus` param is appended after `driver` with a `None` default (matching how `run_id`/
@@ -291,7 +344,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `docs/reference/EVENT-SCHEMA.md` — the master event catalog, not previously named in this
-  issue. A new `epic_branch_stale` event (Option B) needs an entry in **four** places in this
+  issue. A new `parallel.epic_branch_stale` event (Option B) needs an entry in **four** places in this
   one file, using `parallel.worker_completed` as the template: the per-subsystem field table
   (`:1169-1196`), the generated-schema-file directory listing (`:1366`), the
   dots-to-underscores naming table (`:1391`), and the master event-type-to-emitter index
@@ -321,14 +374,24 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/little_loops/config-schema.json` — `parallel.epic_branches` block (404-435).
 - `.ll/ll-config.json` — holds live per-project `parallel.epic_branches` settings.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-23 — based on codebase analysis:_
+
+- Event-type naming convention: existing EventBus emissions are namespaced (e.g. `"parallel.worker_completed"`, `orchestrator.py:1282-1289`) and filterable via `EventBus.register`'s glob-pattern support (e.g. `"parallel.*"`, `events.py:81-96`). RESOLVED: the issue now uses `"parallel.epic_branch_stale"` (namespaced) everywhere — event emission, `SCHEMA_DEFINITIONS` key, `DES_VARIANTS`, docs.
+- `WorkerPool._epic_branches_created` (a `set[str]`, `worker_pool.py:193`) caches which branches have been confirmed to exist for the lifetime of the `WorkerPool` instance and is never invalidated — a staleness check added to the reuse paths only ever runs once per branch per `WorkerPool` instance/run, not on every dispatch to that branch.
+- `_resolve_branch_targets` (`worker_pool.py:1835-1872`) returns `(branch, branch)` to its caller identically whether `_ensure_epic_branch` took the reuse path or the create path — callers have no existing signal to distinguish "branch was just created" from "branch already existed," which any warn/merge response added here must carry itself (e.g. via the new event), not rely on the return value for.
+- `merge_epic_branch_to_base()`'s conflict path persists diagnostic artifacts (`merge-conflicts.txt`, `merge-detail.txt`, `merge-returncode.txt`) to `run_dir` when passed (`worktree_utils.py:672-684`, ENH-2643) before aborting — but its sole existing caller (`orchestrator.py:1502-1509`) omits `run_dir`, so this diagnostic persistence never fires in practice today. Confirmed: no `run_dir` is available at the `_ensure_epic_branch` call site (`WorkerPool` holds only `run_id`, `worker_pool.py:152-170`), so this persistence pattern is OUT OF SCOPE — conflict detail goes into the event payload and log line instead.
+- `ParallelOrchestrator`'s `MergeCoordinator` collaborator (`orchestrator.py:144-146`) is also constructed with no `event_bus` argument, same as `WorkerPool` — `self._event_bus` is used only inline within `ParallelOrchestrator` methods (passed as a kwarg into the free function `close_issue()` at `orchestrator.py:1106-1116` and `:1537-1547`, or emitted directly via `self._event_bus.emit()`), never threaded into a collaborator's constructor today. `WorkerPool` gaining an `event_bus` param would be the first such collaborator-constructor precedent.
+
 ## Implementation Steps
 
 1. Add staleness measurement in `_ensure_epic_branch` after the local and remote hit paths (worker_pool.py:1953-1970).
 2. Thread the resolved base into the check (already available at call sites via `resolve_epic_base`).
 3. Add `refresh_on_reuse` to `EpicBranchesConfig` (`scripts/little_loops/parallel/types.py`) + `config-schema.json` + schema-parity defaults.
-4. On `merge` mode: `git merge --no-edit <base>` inside a scratch worktree or via the git lock on the branch; conflict → emit event + warn, do not abort the run.
-5. Emit a structured event (e.g. `epic_branch_stale`) so run summaries and `ll-loop` audit tooling can surface it.
-6. Tests: stale-branch fixture repo — reuse path warns; merge mode fast-forwards; conflict falls back to warn.
+4. On `merge` mode: `setup_worktree(..., checkout_existing=True)` on the epic branch, `git merge --no-edit <base>` inside that scratch worktree (a non-checked-out branch cannot be merged into via the git lock alone — `git merge` only operates on HEAD, and ff-only ref updates refuse when the epic branch has its own commits), `cleanup_worktree(..., delete_branch=False)` in a `finally`; conflict → abort inside the worktree, emit event + warn, do not abort the run.
+5. Emit `parallel.epic_branch_stale` (namespaced) in both `warn` and `merge` modes, payload `{branch, base, commits_behind, mode, action: "warned"|"merged"|"merge_conflict"}`.
+6. Tests: stale-branch fixture repo — reuse path warns; merge mode reconciles cleanly; conflict falls back to warn.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
@@ -339,7 +402,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - Update `Orchestrator.__init__` (`orchestrator.py:133-143`) to pass `event_bus=self._event_bus`
   into its `WorkerPool(...)` construction — otherwise the new event never reaches the
   Orchestrator's bus/transports.
-- Add an `epic_branch_stale` entry to `SCHEMA_DEFINITIONS` (`generate_schemas.py:600-612`,
+- Add an `parallel.epic_branch_stale` entry to `SCHEMA_DEFINITIONS` (`generate_schemas.py:600-612`,
   modeled on `parallel.worker_completed`), then bump all four hardcoded `41`s in
   `test_generate_schemas.py` (`:17-19`, `:21-66`, `:72-76`, `:78-83`) to 42.
 - Add a matching `DESVariant` subclass (modeled on `ParallelWorkerCompletedVariant`,
@@ -350,7 +413,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - Update `docs/reference/EVENT-SCHEMA.md` (4 locations: `:1169-1196`, `:1366`, `:1391`, `:1501`),
   `docs/reference/API.md` (`:3978-3985` field table, `:7862` namespace bullet list),
   `docs/reference/CONFIGURATION.md:399-402`, and `docs/guides/SPRINT_GUIDE.md:333-335` with the
-  new `refresh_on_reuse` field / `epic_branch_stale` event.
+  new `refresh_on_reuse` field / `parallel.epic_branch_stale` event.
 - Update `skills/configure/areas.md:198,275-283` and `skills/configure/show-output.md:54-58` so
   `/ll:configure` surfaces `refresh_on_reuse`; sync to per-host mirrors under `.qwen/`,
   `.kimi-code/`, `.gemini/` only if those are otherwise kept current.
@@ -366,18 +429,18 @@ _Added by `/ll:refine-issue` — 2026-08-23 — based on codebase analysis:_
 
 ## Impact
 
-- **Priority**: [P0-P5] - [Justification]
-- **Effort**: [Small/Medium/Large] - [Justification]
-- **Risk**: [Low/Medium/High] - [Justification]
-- **Breaking Change**: [Yes/No]
+- **Priority**: P2 - Silent staleness turned one held-open merge into 5/8 skips + 11 false-negative verify failures in a real run; recurrence is likely whenever an epic merge verify fails.
+- **Effort**: Medium - Core logic is small, but the config field spans four declaration sites, the event spans two test-enforced registries, and docs/skills span ~6 files.
+- **Risk**: Low - Default `warn` changes no git state; `merge` mode is opt-in, scratch-worktree-isolated, and degrades to warn on conflict.
+- **Breaking Change**: No - New optional config field with a non-mutating default; `WorkerPool.__init__` gains a trailing keyword param with `None` default.
 
 ## Desired Behavior
 
-On the local/remote "exists" paths, measure staleness against the resolved fork base (`worktree_utils.resolve_epic_base`, ENH-2656): `git rev-list --count <branch>..<base>`. Then either:
+On the local "exists" path (remote-hit path excluded — see Decision Rules), measure staleness against the resolved fork base (`worktree_utils.resolve_epic_base`, ENH-2656): `git rev-list --count <branch>..<base>`. Then either:
 
-- **Warn** (minimum): log/emit `epic branch <branch> is N commits behind <base>` above a threshold, and
+- **Warn** (minimum): log + emit `parallel.epic_branch_stale` (`epic branch <branch> is N commits behind <base>`) whenever `N > 0`, and
 
-- **Optionally reconcile** (config-gated, e.g. `parallel.epic_branches.refresh_on_reuse: warn|merge|off`, default `warn`): merge the base into the branch before dispatching workers; on merge conflict, fall back to warn + surface in the run summary rather than proceeding silently.
+- **Optionally reconcile** (config-gated, `parallel.epic_branches.refresh_on_reuse: warn|merge|off`, default `warn`): merge the base into the branch (via a scratch worktree — see Proposed Solution) before dispatching workers; on merge conflict, fall back to warn + surface in the run summary rather than proceeding silently.
 
 ## Affected Files
 
@@ -396,8 +459,9 @@ _Added by `/ll:refine-issue` — 2026-08-23 — based on codebase analysis:_
 
 ## Acceptance Criteria
 
-- [ ] Reusing an epic branch N>threshold commits behind its fork base emits a visible warning including N and the base ref
-- [ ] `refresh_on_reuse: merge` merges the base into the branch before worker dispatch; clean merge proceeds, conflict degrades to warn without aborting
+- [ ] Reusing an epic branch N>0 commits behind its fork base (local-hit path) logs a visible warning including N and the base ref
+- [ ] A `parallel.epic_branch_stale` event is emitted in both `warn` and `merge` modes with payload `{branch, base, commits_behind, mode, action}`; no emission when `off` or when N=0
+- [ ] `refresh_on_reuse: merge` merges the base into the branch via a scratch worktree before worker dispatch; clean merge proceeds, conflict aborts the merge (clean tree, worktree removed) and degrades to warn without aborting the run
 - [ ] Default behavior (`warn`) changes no git state
 - [ ] `python -m pytest scripts/tests/` passes
 
@@ -417,10 +481,8 @@ _Added by `/ll:refine-issue` — 2026-08-23 — based on codebase analysis:_
 **Readiness: 95/100** (PROCEED) | **Outcome Confidence: 61/100** (risk factors below threshold)
 
 ### Outcome Risk Factors
-- **Threshold value undecided**: Program Design → Decision Rules explicitly marks the staleness
-  threshold as `UNKNOWN, needs an explicit value` (`N > 0` vs a configurable minimum commit
-  count) — no existing numeric-threshold field on `EpicBranchesConfig` to anchor a default
-  against. This must be resolved before/during implementation, not deferred.
+- ~~**Threshold value undecided**~~ RESOLVED (2026-08-23 review): threshold is `N > 0` with no
+  numeric config knob — see Program Design → Decision Rules.
 - **Wide fanout across subsystems**: the change spans git-op logic, a config field declared in
   two separately-maintained dataclasses plus a hand-written bridge, new EventBus wiring into a
   class (`WorkerPool`) that has none today, two mandatory test-registry updates
@@ -440,6 +502,7 @@ _Added by `/ll:refine-issue` — 2026-08-23 — based on codebase analysis:_
 _/ll:confidence-check — 2026-08-23_
 
 ## Session Log
+- `/ll:refine-issue` - 2026-08-23T20:53:23 - `08e63d9a-b62a-416e-9aee-3952a5c2db98.jsonl`
 - `/ll:confidence-check` - 2026-08-23T20:43:03 - `36a136c9-6c59-4cf6-b7d4-c0e4e7645a9e.jsonl`
 - `/ll:wire-issue` - 2026-08-23T20:40:50 - `d137b866-3013-4a7f-ba4f-5c7273420ea9.jsonl`
 - `/ll:decide-issue` - 2026-08-23T20:31:30 - `7746b0e5-5986-4ac4-ae25-f7097ddec171.jsonl`

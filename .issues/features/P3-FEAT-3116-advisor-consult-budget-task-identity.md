@@ -43,6 +43,12 @@ task-identity resolver, no consult budget/counter, and no gating predicate.
 `AdvisorConfig` (landing separately in FEAT-3043) will not yet have a
 `max_consults_per_task` field.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-23 — based on codebase analysis:_
+
+`consult()` (`scripts/little_loops/advisor.py:183`) today: `consult(question: str, signal: str, context: str = "", config: BRConfig | None = None, main_host: str | None = None, main_model: str | None = None) -> AdvisorVerdict`. `signal` is required with no default (`test_advisor.py` asserts `TypeError` when omitted). It defaults `config` to `BRConfig(Path.cwd())`, raises `AdvisorNotConfigured` if `config.advisor.host` is falsy, raises `CapabilityFloorViolation` on a same-host rank violation from `check_floor()`, and otherwise performs a live host consult unconditionally — no call counting, no task-identity resolution, and no gating predicate exist anywhere in this function or file today. Confirmed absent repo-wide (grep, zero matches): `TaskKey`, `ConsultBudget`, `resolve_task_key`, `record_consult`, `should_consult`, `consult_for_trigger`.
+
 ## Expected Behavior
 
 - `resolve_task_key()` resolves a stable `TaskKey` with precedence: issue ID
@@ -120,6 +126,20 @@ Implement in `scripts/little_loops/advisor.py`:
   so the budget counter is shared between manual and auto-triggered paths
   and the AC #5 exclusivity assertion holds tree-wide.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-23 — based on codebase analysis:_
+
+Anchor staleness check (line numbers below have drifted from current code; the cited functions/classes themselves are still present and correct unless noted):
+- `host_runner.py:1574-1619` (`resolve_host`) → actual `host_runner.py:1960-2005`.
+- `cli/loop/_helpers.py` instance_id at `~1505-1507` → actual `_make_instance_id()` at `:1543`.
+- `cli/loop/_helpers.py` usage.jsonl/ab.json counter precedent at `~1892-1923` → actual `:1934-1956`.
+- `issue_manager.py:1580` (cited for ll-auto/ll-sprint `run_id`) → actual `run_id or uuid4().hex` is at `AutoManager.__init__` `:1652`; `:1580` is an unrelated `_stamped_result` return.
+- `config/core.py:784-801` (cited for `BRConfig.to_dict()`) → `to_dict()` itself starts at `:724`; the `advisor` block specifically is at `:879`.
+- `config/core.py` advisor property cited at `:367-369` → actual `:466` (`:367-369` is the `parallel` property).
+
+Confirmed accurate as cited: `hooks/learning_tests_gate.py:gate()` (`:91-101`, off by ~1 line from actual `:90-100`), `hooks/__init__.py:_hooks_telemetry_enabled()` (`:83-108`, exact), `parallel/orchestrator.py:123` (exact), `session_log.py:get_current_session_id()` (cited `:141-155`, actual `:192-206`, shape unchanged).
+
 ## Acceptance Criteria
 
 1. `resolve_task_key` prefers issue ID, then loop run ID, then session ID
@@ -172,6 +192,68 @@ Implement in `scripts/little_loops/advisor.py`:
   `consult_for_trigger`, `record_consult`.
 - `docs/reference/CONFIGURATION.md` — `advisor.max_consults_per_task`.
 
+## Integration Map
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-23 — based on codebase analysis:_
+
+**Files to Modify**
+- `scripts/little_loops/advisor.py` — add `TaskKey`, `ConsultBudget`, `resolve_task_key()`, `record_consult()`, `should_consult()`, `consult_for_trigger()`. Confirmed today it has only `MODEL_RANKS` (:43), `FloorResult` (:60), `rank_model()` (:74), `check_floor()` (:84), `AdvisorVerdict` (:155), `consult()` (:183) — none of this issue's new symbols exist yet.
+- `scripts/little_loops/config/orchestration.py` — add `max_consults_per_task: int = 3` to `AdvisorConfig` (:109) and its `from_dict()` (:128).
+- `scripts/little_loops/config/core.py` — `to_dict()`'s `advisor` block (:879) needs the new key; `self._advisor = AdvisorConfig.from_dict(...)` construction is at `:335`; the `config.advisor` property is at `:466`.
+- `scripts/little_loops/config-schema.json` — `advisor` object schema (`:1767-1801`) needs a `max_consults_per_task` property.
+- `scripts/little_loops/cli/advise.py` — inside `cmd_invoke()` (`:24`), retarget the direct `consult(...)` call at `:40` onto `consult_for_trigger(args.signal, ..., enforce_trigger_allowlist=False)`.
+
+### Dependent Files (Callers/Importers)
+- `scripts/little_loops/cli/advise.py:40` — `cmd_invoke()` calls `consult()` directly today; this is the call site AC #5/#7 require retargeting.
+- `scripts/tests/test_advisor.py:128,147,162,184,202,225,241` — `TestConsult` calls `consult()` directly across 7 sites.
+- `scripts/little_loops/config/__init__.py:83,93` — imports and re-exports `AdvisorConfig`.
+
+### Conventions in Force
+- Precedence resolvers take an injectable `env: dict[str, str] | None = None` defaulting to `dict(os.environ)`, one fallback tier per source — evidence: `resolve_host()` (`scripts/little_loops/host_runner.py:1960-2005`).
+- Enabled-flag-then-finer-grained-check gating, checked in that order before any work happens — evidence: `hooks/learning_tests_gate.py:gate()` (`:90-100`, master `enabled` flag then `discoverability.mode`).
+- Config/telemetry helper functions fail soft: any read failure is caught and treated as "disabled" rather than raised — evidence: `hooks/__init__.py:_hooks_telemetry_enabled()` (`:83-108`).
+- Per-run counters/artifacts are written as small files directly under `${context.run_dir}` — evidence: `cli/loop/_helpers.py:1934-1956` (`usage.jsonl`, `ab.json`).
+- Run-scoped identifiers use `run_id or uuid4().hex` — evidence: `issue_manager.py:1652` (`AutoManager.__init__`) and `parallel/orchestrator.py:123` (`Orchestrator.__init__`), identical in both.
+
+### Tests
+- `scripts/tests/test_advisor.py` — has `TestModelRanks`, `TestRankModel`, `TestCheckFloor`, `TestConsult` (`:113`, 7 call sites of `consult()`: `:128,147,162,184,202,225,241`); no `TestResolveTaskKey`/`TestShouldConsult`/`TestRecordConsult`/`TestConsultForTrigger` classes yet.
+- `scripts/tests/test_config.py` — `TestAdvisorConfig` (`:3745`) covers `from_dict({})`/override/`BRConfig.advisor`; no `max_consults_per_task` case yet. `TestClusterConfig` (`:3570`)/`TestOrchestrationConfig` (`:3594`) are the three-case shape this issue's Tests section already cites.
+- `scripts/tests/test_config_schema.py` — has `test_advisor_host_enum_matches_orchestration_host_cli` (`:872-887`) and an `advisor.host`/`advisor.min_tier` schema-key list (`:1200-1201`); no `advisor.max_consults_per_task` entry yet.
+
+### Documentation
+- `docs/reference/API.md` — `## little_loops.advisor` (`:10841`) documents `consult()`/`AdvisorVerdict`/`FloorResult`/`check_floor`; no `resolve_task_key`/`should_consult`/`consult_for_trigger`/`record_consult` entries yet.
+- `docs/reference/CONFIGURATION.md` — `### \`advisor\`` (`:1401`) field table (`:1411-1416`) has no `max_consults_per_task` row yet.
+
+## Program Design
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-23 — based on codebase analysis:_
+
+**Types**
+- `TaskKey: {kind: Literal["issue", "loop_run", "session"], value: str}`
+- `ConsultBudget: {max_per_task: int, spent: int, task_key: TaskKey}`
+- Confirmed absent from `scripts/little_loops/advisor.py` today (repo-wide grep, zero matches): `TaskKey`, `ConsultBudget`, `resolve_task_key`, `record_consult`, `should_consult`, `consult_for_trigger`.
+
+### Signatures
+- `resolve_task_key(env: dict[str, str] | None = None) -> TaskKey` — mirrors `resolve_host(env: dict[str, str] | None = None) -> HostRunner` (`scripts/little_loops/host_runner.py:1960-2005`; `env` defaults to `dict(os.environ)`, one fallback tier per source: explicit override → probe → raise).
+- `record_consult(task_key: TaskKey) -> int` — returns the new count.
+- `should_consult(trigger: str, config: BRConfig) -> bool`.
+- `consult_for_trigger(trigger: str, *, question: str, context: str, enforce_trigger_allowlist: bool = True) -> AdvisorVerdict | None`.
+- `consult(question: str, signal: str, context: str = "", config: BRConfig | None = None, main_host: str | None = None, main_model: str | None = None) -> AdvisorVerdict` (`scripts/little_loops/advisor.py:183`) — the existing target `consult_for_trigger` wraps. `signal` has no default (`test_advisor.py` asserts `TypeError` when omitted, e.g. `test_missing_signal_raises_typeerror` around line 236) — `consult_for_trigger` must keep supplying `signal=trigger` on every call.
+- `AdvisorConfig.max_consults_per_task: int = 3` — new field on the dataclass at `scripts/little_loops/config/orchestration.py:109` (current fields: `enabled`, `host`, `model`, `min_tier`, `timeout_seconds`, `triggers`); wire into `from_dict()` (`:128`), `BRConfig._advisor` construction (`config/core.py:335`), the `config.advisor` property (`config/core.py:466` — not `:367-369`, which is the `parallel` property), and `to_dict()`'s `advisor` block (`config/core.py:879`).
+
+### Call Path
+`scripts/little_loops/cli/advise.py:cmd_invoke` (`:24`, current `consult()` call at `:40`) → `consult_for_trigger(args.signal, question=args.question, context=context, enforce_trigger_allowlist=False)` → `should_consult(trigger, config)` → `consult(question=..., signal=trigger, context=..., config=..., main_host=..., main_model=...)` (`scripts/little_loops/advisor.py:183`).
+
+### Decision Rules
+- `should_consult` returns `False` when `config.advisor.enabled` is `False` (master switch, mirroring `hooks/learning_tests_gate.py:gate()` :90-96's `if not lt_config.enabled: return ...`), or when `trigger not in config.advisor.triggers` — except when invoked via `consult_for_trigger(..., enforce_trigger_allowlist=False)` (the manual `ll-advise` path), which skips only the triggers-membership check while keeping the `enabled` and budget checks.
+- `should_consult` returns `False` when the resolved task key's `record_consult` count has already reached `config.advisor.max_consults_per_task` (default 3), logging the reason.
+- `should_consult` is fail-soft: any config-read failure inside it is caught and treated as "do not consult" rather than raised — mirrors `hooks/__init__.py:_hooks_telemetry_enabled()` (`:83-108`, whole body wrapped in `try/except Exception: return False`).
+- `consult_for_trigger` catches a failed or timed-out `consult()` call, logs a warning, and returns `None` rather than raising or propagating.
+
 ## Impact
 
 - **Priority**: P3 — matches parent FEAT-3038.
@@ -202,6 +284,7 @@ Removed `FEAT-3044` from `depends_on`: FEAT-3044 was decomposed into FEAT-3108/3
 The open call-site-contract conflict (this issue's AC #5 vs FEAT-3120's and FEAT-3039's direct `consult()` call paths) is settled: **`consult_for_trigger` is the sole caller of `consult()` from the moment this issue lands.** FEAT-3120 (landing first) ships `main_advise -> consult()`; retargeting it onto `consult_for_trigger(..., enforce_trigger_allowlist=False)` is added to this issue's scope; FEAT-3039 routes through `consult_for_trigger` from the start. Manual-path semantics: budget-counted and `advisor.enabled`-gated, but exempt from the `advisor.triggers` allowlist (an explicit `--signal` from the user is not an auto-trigger). `consult_for_trigger` gains the `enforce_trigger_allowlist: bool = True` parameter to express this. Scope Boundary notes here and in FEAT-3120/FEAT-3039 updated to match.
 
 ## Session Log
+- `/ll:refine-issue` - 2026-08-23T21:44:07 - `f1b87a61-ab8b-49e0-a903-dea5edc06efd.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-13T22:00:51 - `e21c16b3-391d-4ef2-80c4-decd2dced91f.jsonl`
 - `/ll:verify-issues` - 2026-08-13T03:08:32 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-10T18:51:42 - `ffa08fd4-dce7-4108-91f7-6bb57e5df4c8.jsonl`
