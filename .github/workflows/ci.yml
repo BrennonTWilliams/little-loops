@@ -45,6 +45,23 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      # Diagnostic toggles (ci/diagnose-unit-hang) — isolate the BUG-3208 wedge
+      # by disabling the ll-history plugin, capping workers, and/or switching
+      # the timeout method off `thread`. Defaults reproduce the failing path.
+      disable_ll_history:
+        description: 'Add -p no:ll_history to rule out the sqlite plugin as the hang source'
+        type: boolean
+        default: false
+      worker_count:
+        description: 'xdist worker cap (empty = -n logical as shipped)'
+        type: string
+        default: ''
+      timeout_method:
+        description: 'pytest --timeout-method'
+        type: choice
+        options: [thread, signal]
+        default: thread
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -99,8 +116,21 @@ jobs:
         # failure status. Both files are uploaded on every CI outcome below.
         run: |
           set -o pipefail
-          .venv/bin/python -m pytest scripts/tests/ \
+          # Diagnostic flags (workflow_dispatch inputs) — defaults reproduce
+          # the shipped addopts exactly, so a bare dispatch == production.
+          EXTRA=()
+          [ "${{ inputs.disable_ll_history }}" = "true" ] && EXTRA+=("-p" "no:ll_history")
+          if [ -n "${{ inputs.worker_count }}" ]; then
+            EXTRA+=("-n" "${{ inputs.worker_count }}")
+          fi
+          EXTRA+=("--timeout-method" "${{ inputs.timeout_method }}")
+          # PYTHONUNBUFFERED + -s: emit the live test-name tail to the step log
+          # incrementally, so if the runner dies mid-run the last test before
+          # the hang survives in the GH Actions UI even without artifacts.
+          PYTHONUNBUFFERED=1 .venv/bin/python -m pytest scripts/tests/ \
             -m "not integration and not conformance" \
+            --tb=line \
+            "${EXTRA[@]}" \
             --junit-xml=pytest-junit.xml \
             | tee pytest.log
 
