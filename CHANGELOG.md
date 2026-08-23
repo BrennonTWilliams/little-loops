@@ -5,15 +5,139 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.157.0] - 2026-08-20
+## [1.157.0] - 2026-08-23
 
 ### Added
+- **FEAT-3297**: mechanize-skills: built-in FSM loop to offload mechanical SKILL.md prose into scripts/CLIs
+- feat: wire ll-verify-evidence into CLI registry and init writers (3d08fff7b)
+- feat: track enclosing skill in scan-failures output (7638996ee)
+- feat: gate Update bullets on caller suitability (ENH-3258) (ae0e1b224)
 
-**The `mechanize-skills` built-in loop (EPIC-2938).** Offloads mechanical, deterministic prose out of `SKILL.md` files into callable scripts/CLIs, one skill per iteration off a queue: diagnoses which steps are mechanical (an LLM pass, deterministically validated against the skill's own text), gates on estimated token savings, implements the mechanization — extending a project CLI per a `conventions_file` doc, or bundling a script under `<skill>/scripts/` when none is given — rewrites the skill to call it, and commits or reverts on a fully deterministic gate (line count, prose count, smoke commands, project test command). `mode=diagnose` runs report-only, writing findings for a later targeted `mode=apply` run.
+### Fixed
+- **BUG-3269**: Loop test_cmd resolution: present-but-null yields literal "None", poisoning the no-regression gate into an infinite final_verify cycle
+- **BUG-3218**: sprint-build-and-validate commits when the conflict audit abstains
+- **BUG-3236**: issue_sessions view drift: issue_num absent on already-migrated databases, silently emptying session and effort readers
+- **BUG-3270**: general-task: no spin guard on the continue_work -> final_verify -> run_final_tests cycle (ENH-2585 coverage gap)
+- **BUG-3271**: general-task: final_verify appends unboundedly to dod.md; count_final awk never clears in_section
+- **BUG-3276**: Built-in loops hardcode this-repo-specific project commands — incremental-refactor reverts all work in consuming projects
+- **BUG-3196**: ll-harness dsl never compares against a task's expected: values — a flagless run reports a 100% pass rate unconditionally
+- **BUG-3208**: Uncapped pytest pin let pytest 9 into a second interpreter, hanging the full suite at 98-99%
+- **BUG-3209**: Automation skills spawn Agents with no blocking contract; headless turns can end with subagent results in flight
+- **BUG-3215**: Program Design gate resolves symbols against the issue's own markdown; corpus baseline tests 10x slower than needed
+- **BUG-3220**: Funnel judged gates route abstention into finalize_failed in composer and router loops
+- **BUG-3226**: Add on_cannot_judge routes to 11 mechanical judged gates across 9 loop files
+- **BUG-3227**: check_substrate abstention needs a deterministic probe state in rn-build/rn-plan
+- **BUG-3228**: uncertain_suffix verdicts are unroutable: X_uncertain matches no route and terminates the run
+- **BUG-3229**: ll-sprint: _find_issue_path's glob requires a priority prefix, so an unprefixed issue file reports "not found" while ll-issues list shows it
+- **BUG-3230**: ll-loop validate -j: the load-error path ignores --json and writes the reason to stderr with an empty stdout, so a programmatic caller gets a rejection with no reason
+- **BUG-3231**: ll-loop list --running: unreadable or malformed run state is absorbed into an affirmative "No running loops", and --json is ignored on that path
+- **BUG-3232**: ll-loop list --running: no status filter is applied, so completed, interrupted and user_stopped runs are reported as running
+- **BUG-3241**: Missing UNIQUE dedup indexes on migrated history databases cannot be repaired by a plain CREATE INDEX
+- **BUG-3243**: _parse_completion_date's git fallback silently returns None for relative paths, so ll-history analyze --since counts depend on the caller's path form
+- **BUG-3245**: refine-issue gap-analysis appends duplicate section headers and empty provenance stubs
+- **BUG-3249**: refine-to-ready-issue has no check-design gate, so an issue missing Program Design routes to done
+- **BUG-3252**: ll-auto confidence gate conflates an unscored issue with a zero-scored one, emits no remediation, and records the skip as a failure
+- **BUG-3255**: A history.db stamped ahead of len(_MIGRATIONS) silently never applies pending migrations
+- **BUG-3262**: html-website-generator smoke_test prepends cwd to an already-absolute run_dir, spinning until timeout
+- **BUG-3266**: ll-loop resume ignores the use_design_tokens opt-out
+- **BUG-3273**: Program Design anchor resolver cannot resolve FSM state names defined in loop YAML
+- **BUG-3274**: Raw-dict config reads bypass dataclass defaults — design_tokens.enabled silently disables scaffolding
+- **BUG-3278**: decide-issue clears decision_needed while lower-precedence decision blocks stay unresolved
+- **BUG-3282**: verify-issues certifies evidence quotes that exist in no revision of the cited artifact
+- **BUG-3286**: Priority split across filename prefix and frontmatter with no shared resolver: IssueParser reads only the prefix, seven other sites read only frontmatter, and the two drift on re-prioritization
+- **BUG-3287**: locate_enumerable_options lets a tier match preempt Pattern E, and its bullet tier cannot see bold-wrapped markers
+- **BUG-3289**: _decision_identifiers treats every backticked token in an option block as option-discriminating, firing unapplied_decision on shared vocabulary
+- **BUG-3192**: config-schema.json diverges from code: learning_tests.enabled default flips behavior by install path, sync.github.pull_limit unschema'd, socket.max_clients stale
+- **BUG-3193**: ll-issues create appends a duplicate empty template scaffold whenever body is a full sectioned markdown document
+- **BUG-3194**: ll-issues format-check emits systematic false positives from kwarg-polluted symbol index and slash-joined file refs
+- **BUG-3225**: ll-issues normalize: malformed_filename findings for underscored slugs are self-referential no-ops, permanently failing --check
+- **BUG-3239**: ll-loop validate warns declares no scope on loops that declare one, and the warning never reaches --json violations
+- **BUG-3254**: ll-parallel counts BLOCKED issues as failed in the queue while recording them as skipped, diverging from the sequential path
+- **BUG-3260**: wire-issue Phase 4 locator agent returns caller claims with no grep evidence
+- **BUG-3279**: locate_enumerable_options gives the final option every remaining line of its section
+- **BUG-3285**: Option-marker regexes match bold prose, so analysis text is counted as an option block
+- **BUG-3293**: Bold-numbered decision points under Program Design are invisible to both the tier scan and Pattern E
+- **BUG-3294**: ll-issues check-* probes return exit 1 for an unresolvable issue ID, routing FSM gates to on_no instead of on_error
+- **BUG-3295**: unapplied_decision flags bare key mentions as discriminating identifiers
+- **BUG-3296**: check-open-questions counts citations of an open question as unresolved hedges
+- **BUG-3251**: _git_mv passes a relative pathspec with cwd=src.parent, silently losing git rename tracking
+- fix: make the --all gate finish, and stop it certifying fabrications (c91878145)
+- fix: time-bound the private-refs repo gate subprocess (700972a98)
+- fix: add on_cannot_judge routes to 11 mechanical judged gates (c34397a6e)
+- fix: supply corpus targets, distinguish failure from empty (3e9711fec)
+- fix: exclude markdown from git_grep_resolver (f77aeaa3a)
 
 ### Changed
+- **ENH-3184**: Centralize child-environment construction behind a single projection helper in host_runner
+- **ENH-3185**: Add an abstention verdict and a fixed verdict grammar to LLM-judged gates
+- **ENH-3203**: Declare and enforce per-task credential scope via deny-by-default env projection
+- **ENH-3223**: harness_eval_abstention_rate has no consumers - surface abstention as a criterion-quality signal
+- **ENH-3238**: verify-issues confirms a stated cause by checking a consequence consistent with it
+- **ENH-3242**: Detect history.db structural drift instead of trusting the recorded schema_version
+- **ENH-3244**: Split template-placeholder detection out of the hedge scan's capped refine budget
+- **ENH-3246**: Widen reconcile-issue's rewrite mandate to the whole Integration Map
+- **ENH-3247**: Extend format-check --fix to repair structural debris in issue files
+- **ENH-3248**: Triage the refine-to-ready-issue retry path by failure kind instead of always refining
+- **ENH-3256**: confidence-check Criterion C credits a decision record without verifying the decision was applied
+- **ENH-3257**: confidence-check fetches format-check JSON but reads only four of its gap keys
+- **ENH-3264**: Support DESIGN.md as an import source for the design-token system
+- **ENH-3267**: Inject the DESIGN.md prose body as design_guidance_context
+- **ENH-3277**: Convert the five mechanical inline test_cmd/lint_cmd loops to ll-config get (6 conversions)
+- **ENH-3280**: decide-issue should propagate the selected option through the issue body
+- **ENH-3288**: Convert dead-code-cleanup and test-coverage-improvement to ll-config get, and empty the _PENDING_CONVERSION gate
+- **ENH-3291**: Measure ll-verify-evidence precision under a narrowed scan surface (F2) and decide gate re-arm
+- **ENH-2923**: Scope `ll-logs scan-failures` to a specific skill
+- **ENH-2966**: `testable` keyword inference fires on 88% of the issues it evaluates
+- **ENH-3062**: No suite gate runs ll-adapt --dry-run, so host mirrors drift undetected
+- **ENH-3095**: Add AutomationContext dataclass and thread it through HostRunner.build_streaming()
+- **ENH-3096**: Thread AutomationContext through ActionRunner.run() and fsm/executor.py
+- **ENH-3097**: Thread AutomationContext through run_claude_command() and its callers
+- **ENH-3195**: Derive doc counts and inventories in wiring tests instead of asserting string literals
+- **ENH-3198**: Record the .issues/completed/ closure-branch reachability conclusion and pin in-place closure counting
+- **ENH-3200**: verify-issue-loop criteria mode short-circuits on first failure; evaluate all criteria and report every failure
+- **ENH-3206**: research_triage._section_text is a third fence-unaware section-heading reimplementation
+- **ENH-3207**: Flip orchestration.disable_background_tasks default to false (background tasks allowed unless opted in)
+- **ENH-3210**: Reconcile stale running rows in subagent_runs so orphaned spawns are distinguishable from live ones
+- **ENH-3222**: Validator rule for judged gates with no abstention route and no error route
+- **ENH-3224**: ll-harness ABSTAIN exit code 3 is indistinguishable from an error to a parent FSM
+- **ENH-3237**: `ll-history summary --json` has no `--since`, so downstream tools query history.db directly
+- **ENH-3250**: refine-to-ready-issue never reviews the Proposed Solution against the code it will touch
+- **ENH-3259**: Caller suitability gate has no repeatable fixture after ENH-3258 closed
+- **ENH-3265**: Codex bridge emitters are presence-only and lossy, hiding 11 drifted files
+- **ENH-3268**: Export a design-token profile as DESIGN.md
+- **ENH-3272**: general-task: define_done must read the reference artifact named in the input before authoring format-specific criteria
+- **ENH-3281**: Generalize the this-repo-hardcode gate across all built-in loops
+- **ENH-3283**: capture-issue writes evidence quotes without checking them against the cited artifact
+- **ENH-3284**: refine-issue records blocking dependencies as prose notes instead of blocked_by
+- **ENH-3292**: dead-code-cleanup.yaml hardcodes this repo's scope: ["scripts/"]
+- **ENH-2784**: Extract _coerce_tristate_bool / _coerce_optional_int helpers for 12 copy-pasted coercions in IssueParser.parse_file
+- **ENH-3067**: 13 modules listed in API.md's overview table have no reference section
+- **ENH-3086**: ll-auto --only reports bare not_found with no did-you-mean for a wrong type prefix
+- **ENH-3240**: action_complete events omit state and iteration alongside session_jsonl so transcripts are unlabeled
+- **ENH-3261**: Remove deprecated automation_profile/disable_background_tasks/idle_timeout kwargs and rule on future automation-knob placement
+- refactor: upgrade codebase-locator model from haiku to sonnet (0e0bbfa91)
+- perf: amortize corpus-baseline git greps (857f097ed)
 
-- **Removed deprecated `automation_profile`/`disable_background_tasks`/`idle_timeout` kwargs from `run_claude_command()`/`run_with_continuation()` (ENH-3261)** — `subprocess_utils.run_claude_command()`, the `issue_manager.py` wrapper of the same name, and `issue_manager.run_with_continuation()` no longer accept the three legacy per-call automation kwargs; each now reads `automation` directly with no internal fallback resolution. A `*` keyword-only marker was inserted at each removal point so a stale positional caller fails loudly with a `TypeError` instead of silently rebinding a later positional argument. **Breaking change**: callers passing `automation_profile=`/`disable_background_tasks=`/`idle_timeout=` directly to any of these three functions must migrate to `automation=AutomationContext(profile=..., disable_background_tasks=..., idle_timeout=...)`. `HostRunner.build_streaming()`'s own legacy kwargs (ENH-3095) and `ActionRunner.run()`'s (ENH-3096) are unaffected — both are kept indefinitely as Protocol-boundary shims.
+### Documentation
+- docs: add ll-verify-evidence to verify-issues command and CLI reference (157f8c32b)
+- docs: add ruff linter behavior documentation (6255dcc01)
+
+### Maintenance
+- ci: grant actions:write so failure-artifact upload isn't silently blocked (69b3f953d)
+- ci: harden runner workflow — clean venv, [dev] exercise, conformance, history snapshot (270a11a3d)
+- ci: add Thinky self-hosted runner for the unit-test gate (351bf7955)
+
+### Other
+- style: apply ruff format fixes across scripts/ (8462bceb2)
+- test: add EVIDENCE_UNVERIFIED verdict routing tests (049736deb)
+- test: document gh CLI behavior with proven assertions (4cddcea93)
+- commands: update documentation for issue workflows (d4e161f2a)
+- skills: standardize argument-hint and allowed-tools metadata (08e61fec1)
+- loops: fix smoke test path resolution and failure modes (818596195)
+- Merge branch 'main' of https://github.com/BrennonTWilliams/little-loops (df04af512)
+- Merge pull request #3 from BrennonTWilliams/ci/artifact-retention (a12b9397d)
+- issues: render NO-GO verdict and cancel issue (65bc63fc5)
+- issues: record decision on ENH-3000 (Option B - untracked-by-design prefix allowlist) (d44c18d3f)
 
 ## [1.156.0] - 2026-08-16
 
@@ -1036,6 +1160,7 @@ beside a silently truncated list (BUG-3055).
 - ENH-2655: Standardize a .ll/ artifact directory for /ll:spike plan docs
 - refactor(runners): extract shared RunnerType/ActionSpec dispatch abstraction (c835911a)
 
+[1.157.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.156.0...v1.157.0
 [1.156.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.155.0...v1.156.0
 [1.155.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.154.0...v1.155.0
 [1.154.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.153.0...v1.154.0
