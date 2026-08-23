@@ -194,9 +194,9 @@ One-shot, signal-cited second-model consult (FEAT-3120). Resolves the configured
 | `--model` | Advisor model, overriding `advisor.model` in `.ll/ll-config.json`. |
 | `--json` / `-j` | Print the verdict as JSON. |
 
-`ll-advise` never calls `apply_host_cli_from_config()` — the ambient `LL_HOST_CLI` / `orchestration.host_cli` is unchanged after the call. `advisor.enabled: false` (the default) does not block an explicit `ll-advise` invocation; it only gates the FEAT-3038/FEAT-3039 auto-consult paths.
+`ll-advise` never calls `apply_host_cli_from_config()` — the ambient `LL_HOST_CLI` / `orchestration.host_cli` is unchanged after the call. `advisor.enabled: false` (the default) does not block an explicit `ll-advise` invocation, and neither does the `advisor.triggers` allowlist — an explicit `--signal` is not an auto-trigger. It routes through `consult_for_trigger(..., manual=True)` (FEAT-3116), so it **is** budget-counted against `advisor.max_consults_per_task` (default 3) — an explicit `ll-advise` can be refused once auto-consults have already spent the task's budget, since the budget is per task, not per path.
 
-**Exit codes:** `0` = consult succeeded, `2` = refused or failed (unconfigured advisor, capability floor violation, unwired/unauthenticated host, or transport failure)
+**Exit codes:** `0` = consult succeeded, `2` = refused or failed (unconfigured advisor, capability floor violation, unwired/unauthenticated host, transport failure, or `budget_exhausted`)
 
 **Examples:**
 ```bash

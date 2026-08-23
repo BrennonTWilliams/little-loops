@@ -4,9 +4,10 @@ title: Advisor consult budget and task-identity infrastructure
 type: FEAT
 parent: FEAT-3038
 priority: P3
-status: open
+status: done
 testable: true
 discovered_date: 2026-08-08
+completed_at: '2026-08-23T22:49:46Z'
 depends_on:
 - FEAT-3120
 - FEAT-3043
@@ -98,6 +99,19 @@ _Added by `/ll:refine-issue` — 2026-08-23 — based on codebase analysis:_
   keeps working on a fresh install where `enabled` defaults to `False`
   (`ll-init` already grants `Bash(ll-advise:*)`, `init/writers.py:89`), and
   the existing CLI.md `:197` sentence stays true.
+
+## Use Case
+
+An `ll-loop` FSM state calls `should_consult("confidence_gate", config)` on its
+third pass through the same run. The advisor has already been consulted twice
+for this loop run (`LL_LOOP_RUN_ID` resolves the task key), so
+`max_consults_per_task` (3) has one slot left; the check returns `True`, the
+gated caller (FEAT-3117, wired separately) proceeds to call
+`consult_for_trigger`, and the budget file at
+`.ll/advisor-budget/loop_run-<id>.json` increments to 3. A fourth attempt in
+the same run returns `False` and logs "budget exhausted" instead of spawning
+another host session — bounding advisor spend per task without the caller
+needing to track counts itself.
 
 ## Proposed Solution
 
@@ -353,6 +367,12 @@ _Added by `/ll:refine-issue` — 2026-08-23 — based on codebase analysis:_
 - `consult_for_trigger` spends budget (`record_consult`) before calling `consult()`; it catches `AdvisorNotConfigured` / `CapabilityFloorViolation` / `HostNotConfigured` / `BlockingJsonError`, logs a warning, and returns a `ConsultOutcome` with the matching `skipped_reason` rather than raising or propagating. It never returns bare `None`.
 - `resolve_task_key` is a pure env lookup; orchestrators are responsible for exporting `LL_ISSUE_ID` / `LL_LOOP_RUN_ID` at their spawn sites.
 
+### Deviations
+
+_Added during implementation — 2026-08-23:_
+
+- **`LL_LOOP_RUN_ID` export mechanism**: the Proposed Solution specified threading `LL_LOOP_RUN_ID` through `project_child_env(extra=...)` at ll-loop's spawn site(s) in `cli/loop/_helpers.py`, mirroring the `LL_HOST_CLI` `extra=` precedent at that file's line ~2143. Implemented instead as a process-wide `os.environ["LL_LOOP_RUN_ID"] = instance_id` set once in `run_foreground()` (`cli/loop/_helpers.py`) when `instance_id` is known. Reason: an FSM loop run's host-CLI spawns are scattered across `fsm/evaluators.py` (x2), `fsm/runners.py`, and `fsm/handoff_handler.py` — threading `extra=` through every one of those call sites would touch four modules for one env var, whereas `project_child_env()`'s documented default behavior (full `os.environ` inheritance, merged with `invocation.env` then `extra`) picks up a process-wide env var automatically at every one of those sites with a single-line change. Functionally equivalent for AC #1 (every spawned host session under this loop run inherits `LL_LOOP_RUN_ID`); `LL_ISSUE_ID` for ll-auto/ll-sprint/ll-parallel still threads through `extra_env`/`project_child_env(extra=...)` as specified, since those have a single well-defined per-issue spawn chokepoint (`subprocess_utils.run_claude_command`).
+
 ### Wiring Phase (added by `/ll:wire-issue`)
 
 _These touchpoints were identified by wiring analysis and must be included in the implementation:_
@@ -397,6 +417,8 @@ The open call-site-contract conflict (this issue's AC #5 vs FEAT-3120's and FEAT
 Revised after a code-level review: (1) added the `LL_ISSUE_ID`/`LL_LOOP_RUN_ID` env contract — no task-identifying env var existed, so the resolver had no production input; (2) `consult_for_trigger` gains `config`/`main_host`/`main_model` pass-throughs (the `ll-advise` retarget was otherwise dropping four CLI flags) and returns a typed `ConsultOutcome` instead of bare `None` (preserves `ll-advise`'s per-reason errors, feeds FEAT-3300's outcome enum); (3) `enforce_trigger_allowlist=False` → `manual=True`, which bypasses `advisor.enabled` as well — otherwise `ll-advise` is dead on a fresh install where `enabled` defaults to `False`; (4) counter store fixed to `.ll/advisor-budget/` + `acquire_lock`/`atomic_write_json` (one store, not three), reserve-before-consult; (5) FEAT-3040 refs redirected to FEAT-3300/3301; `depends_on` entries both done.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-23T22:49:18 - `7bda0207-9380-42da-8921-b7a6588dcc63.jsonl`
+- `/ll:ready-issue` - 2026-08-23T22:26:54 - `7b309cd7-ab10-4f69-9aa1-683307b82bbe.jsonl`
 - `/ll:confidence-check` - 2026-08-23T22:22:13 - `7305c635-3f60-4956-8ef1-9628802d3e9a.jsonl`
 - `/ll:confidence-check` - 2026-08-23T21:57:01 - `e5565711-67bf-4342-999d-ec26553c5ca2.jsonl`
 - `/ll:wire-issue` - 2026-08-23T21:54:15 - `eba8b56c-d064-4da7-b7b3-4b41a03187b8.jsonl`

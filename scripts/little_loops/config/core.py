@@ -883,6 +883,7 @@ class BRConfig:
                 "min_tier": self._advisor.min_tier,
                 "timeout_seconds": self._advisor.timeout_seconds,
                 "triggers": list(self._advisor.triggers),
+                "max_consults_per_task": self._advisor.max_consults_per_task,
             },
             # --- never-modelled sections: raw passthrough, no BRConfig dataclass (BUG-3012) ---
             **{

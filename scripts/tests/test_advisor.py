@@ -1,5 +1,9 @@
 """Tests for advisor module."""
 
+import ast
+import subprocess
+import sys
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -9,12 +13,17 @@ from little_loops.advisor import (
     AdvisorNotConfigured,
     AdvisorVerdict,
     CapabilityFloorViolation,
+    TaskKey,
     check_floor,
     consult,
+    consult_for_trigger,
     rank_model,
+    record_consult,
+    resolve_task_key,
+    should_consult,
 )
 from little_loops.config.orchestration import AdvisorConfig
-from little_loops.host_runner import BlockingJsonError, HostInvocation
+from little_loops.host_runner import BlockingJsonError, HostInvocation, HostNotConfigured
 
 
 class TestModelRanks:
@@ -239,3 +248,353 @@ class TestConsult:
         # argparse `required=True` at the CLI level).
         with pytest.raises(TypeError):
             consult(question="q", config=_FakeConfig(AdvisorConfig(host="claude-code")))  # type: ignore[call-arg]
+
+
+class TestResolveTaskKey:
+    """Precedence: LL_ISSUE_ID -> LL_LOOP_RUN_ID -> session ID. Hermetic — every
+    test passes an explicit env dict, never reads live os.environ."""
+
+    def test_issue_id_tier(self):
+        key = resolve_task_key(env={"LL_ISSUE_ID": "BUG-123"})
+        assert key == TaskKey(kind="issue", value="BUG-123")
+
+    def test_loop_run_id_tier(self):
+        key = resolve_task_key(env={"LL_LOOP_RUN_ID": "my-loop-20260101T000000"})
+        assert key == TaskKey(kind="loop_run", value="my-loop-20260101T000000")
+
+    def test_issue_id_wins_over_loop_run_id(self):
+        key = resolve_task_key(
+            env={"LL_ISSUE_ID": "BUG-123", "LL_LOOP_RUN_ID": "my-loop-20260101T000000"}
+        )
+        assert key == TaskKey(kind="issue", value="BUG-123")
+
+    def test_session_id_tier_from_env(self):
+        key = resolve_task_key(env={"CLAUDE_SESSION_ID": "sess-abc"})
+        assert key == TaskKey(kind="session", value="sess-abc")
+
+    def test_no_env_vars_falls_back_to_session_lookup(self):
+        with patch(
+            "little_loops.session_log.get_current_session_id", return_value="fallback-sess"
+        ):
+            key = resolve_task_key(env={})
+        assert key == TaskKey(kind="session", value="fallback-sess")
+
+    def test_no_env_vars_and_no_session_falls_back_to_unknown(self):
+        with patch("little_loops.session_log.get_current_session_id", return_value=None):
+            key = resolve_task_key(env={})
+        assert key == TaskKey(kind="session", value="unknown")
+
+
+class TestRecordConsult:
+    def test_first_call_returns_one(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.chdir(tmp_path)
+        key = TaskKey(kind="issue", value="BUG-1")
+        assert record_consult(key) == 1
+
+    def test_increments_across_calls(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.chdir(tmp_path)
+        key = TaskKey(kind="issue", value="BUG-1")
+        assert record_consult(key) == 1
+        assert record_consult(key) == 2
+        assert record_consult(key) == 3
+
+    def test_distinct_keys_have_independent_counters(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        monkeypatch.chdir(tmp_path)
+        a = TaskKey(kind="issue", value="BUG-1")
+        b = TaskKey(kind="issue", value="BUG-2")
+        assert record_consult(a) == 1
+        assert record_consult(b) == 1
+        assert record_consult(a) == 2
+
+    def test_counter_survives_a_subprocess_boundary(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        monkeypatch.chdir(tmp_path)
+        key = TaskKey(kind="issue", value="BUG-1")
+        assert record_consult(key) == 1
+
+        scripts_root = Path(__file__).parent.parent
+        script = (
+            f"import sys; sys.path.insert(0, {str(scripts_root)!r})\n"
+            "from little_loops.advisor import TaskKey, record_consult\n"
+            "print(record_consult(TaskKey(kind='issue', value='BUG-1')))\n"
+        )
+        result = subprocess.run(
+            [sys.executable, "-c", script],
+            cwd=tmp_path,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        assert result.returncode == 0, result.stderr
+        assert result.stdout.strip() == "2"
+        assert record_consult(key) == 3
+
+
+class TestShouldConsult:
+    def test_false_when_disabled(self):
+        config = _FakeConfig(AdvisorConfig(enabled=False, triggers=["confidence_gate"]))
+        assert should_consult("confidence_gate", config, task_key=TaskKey("session", "s1")) is False
+
+    def test_false_when_trigger_not_allowed(self):
+        config = _FakeConfig(AdvisorConfig(enabled=True, triggers=["pre_done"]))
+        assert should_consult("confidence_gate", config, task_key=TaskKey("session", "s1")) is False
+
+    def test_true_when_enabled_and_trigger_allowed_and_budget_free(self):
+        config = _FakeConfig(
+            AdvisorConfig(enabled=True, triggers=["confidence_gate"], max_consults_per_task=3)
+        )
+        assert should_consult("confidence_gate", config, task_key=TaskKey("session", "s1")) is True
+
+    def test_false_when_budget_exhausted(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.chdir(tmp_path)
+        config = _FakeConfig(
+            AdvisorConfig(enabled=True, triggers=["confidence_gate"], max_consults_per_task=1)
+        )
+        key = TaskKey(kind="issue", value="BUG-1")
+        record_consult(key)
+        assert should_consult("confidence_gate", config, task_key=key) is False
+
+    def test_manual_ignores_disabled(self):
+        config = _FakeConfig(AdvisorConfig(enabled=False, triggers=[]))
+        assert (
+            should_consult(
+                "user_requested", config, task_key=TaskKey("session", "s1"), manual=True
+            )
+            is True
+        )
+
+    def test_manual_ignores_trigger_allowlist(self):
+        config = _FakeConfig(AdvisorConfig(enabled=True, triggers=["pre_done"]))
+        assert (
+            should_consult(
+                "user_requested", config, task_key=TaskKey("session", "s1"), manual=True
+            )
+            is True
+        )
+
+    def test_manual_still_respects_budget(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.chdir(tmp_path)
+        config = _FakeConfig(AdvisorConfig(enabled=False, triggers=[], max_consults_per_task=1))
+        key = TaskKey(kind="issue", value="BUG-1")
+        record_consult(key)
+        assert should_consult("user_requested", config, task_key=key, manual=True) is False
+
+    def test_fail_soft_on_config_error(self):
+        class _BrokenConfig:
+            @property
+            def advisor(self):
+                raise RuntimeError("config read failed")
+
+        assert should_consult("confidence_gate", _BrokenConfig(), task_key=TaskKey("session", "s1")) is False
+
+
+class TestConsultForTrigger:
+    def test_returns_verdict_on_success(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.chdir(tmp_path)
+        config = _FakeConfig(
+            AdvisorConfig(
+                enabled=True, host="claude-code", model="opus", triggers=["confidence_gate"]
+            )
+        )
+        verdict_dict = {
+            "recommendation": "do X",
+            "risks": [],
+            "confidence": 0.9,
+            "dissent": "",
+        }
+        with (
+            patch("little_loops.advisor.resolve_host_named", return_value=_make_runner()),
+            patch("little_loops.advisor.run_blocking_json", return_value=verdict_dict),
+        ):
+            outcome = consult_for_trigger(
+                "confidence_gate",
+                question="q",
+                config=config,
+                main_host="claude-code",
+                main_model="opus",
+            )
+        assert outcome.verdict is not None
+        assert outcome.verdict.recommendation == "do X"
+        assert outcome.skipped_reason is None
+
+    def test_disabled_skips_without_calling_consult(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        monkeypatch.chdir(tmp_path)
+        config = _FakeConfig(AdvisorConfig(enabled=False, triggers=["confidence_gate"]))
+        with patch("little_loops.advisor.consult") as mock_consult:
+            outcome = consult_for_trigger("confidence_gate", question="q", config=config)
+        mock_consult.assert_not_called()
+        assert outcome.verdict is None
+        assert outcome.skipped_reason == "disabled"
+
+    def test_trigger_not_allowed_skips(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.chdir(tmp_path)
+        config = _FakeConfig(AdvisorConfig(enabled=True, triggers=["pre_done"]))
+        with patch("little_loops.advisor.consult") as mock_consult:
+            outcome = consult_for_trigger("confidence_gate", question="q", config=config)
+        mock_consult.assert_not_called()
+        assert outcome.skipped_reason == "trigger_not_allowed"
+
+    def test_budget_exhausted_skips(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.chdir(tmp_path)
+        config = _FakeConfig(
+            AdvisorConfig(enabled=True, triggers=["confidence_gate"], max_consults_per_task=1)
+        )
+        record_consult(resolve_task_key(env={"LL_ISSUE_ID": "BUG-1"}))
+        with (
+            patch("little_loops.advisor.resolve_task_key", return_value=TaskKey("issue", "BUG-1")),
+            patch("little_loops.advisor.consult") as mock_consult,
+        ):
+            outcome = consult_for_trigger("confidence_gate", question="q", config=config)
+        mock_consult.assert_not_called()
+        assert outcome.skipped_reason == "budget_exhausted"
+
+    def test_reserve_before_consult_spends_budget_even_on_failure(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        monkeypatch.chdir(tmp_path)
+        config = _FakeConfig(
+            AdvisorConfig(
+                enabled=True, host="claude-code", model="opus", triggers=["confidence_gate"]
+            )
+        )
+        key = TaskKey(kind="issue", value="BUG-1")
+        with (
+            patch("little_loops.advisor.resolve_task_key", return_value=key),
+            patch(
+                "little_loops.advisor.consult",
+                side_effect=AdvisorNotConfigured("not configured"),
+            ),
+        ):
+            consult_for_trigger("confidence_gate", question="q", config=config)
+        from little_loops.advisor import _current_spent
+
+        assert _current_spent(key) == 1
+
+    @pytest.mark.parametrize(
+        "exc,expected_reason",
+        [
+            (AdvisorNotConfigured("nope"), "not_configured"),
+            (CapabilityFloorViolation(check_floor("claude-code", "haiku", "claude-code", "opus")), "floor_violation"),
+            (HostNotConfigured("no host"), "failed"),
+            (BlockingJsonError("timed out", {"timeout": True}), "timeout"),
+            (BlockingJsonError("boom", {}), "failed"),
+        ],
+    )
+    def test_maps_each_exception_to_skipped_reason(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, exc, expected_reason
+    ):
+        monkeypatch.chdir(tmp_path)
+        config = _FakeConfig(
+            AdvisorConfig(
+                enabled=True, host="claude-code", model="opus", triggers=["confidence_gate"]
+            )
+        )
+        with patch("little_loops.advisor.consult", side_effect=exc):
+            outcome = consult_for_trigger("confidence_gate", question="q", config=config)
+        assert outcome.verdict is None
+        assert outcome.skipped_reason == expected_reason
+        assert outcome.error is not None
+
+    def test_passes_through_config_main_host_main_model(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        monkeypatch.chdir(tmp_path)
+        config = _FakeConfig(
+            AdvisorConfig(
+                enabled=True, host="claude-code", model="opus", triggers=["confidence_gate"]
+            )
+        )
+        with patch("little_loops.advisor.consult") as mock_consult:
+            mock_consult.return_value = AdvisorVerdict(
+                recommendation="r",
+                risks=[],
+                confidence=0.5,
+                dissent="",
+                signal="confidence_gate",
+                host="claude-code",
+                model="opus",
+            )
+            consult_for_trigger(
+                "confidence_gate",
+                question="q",
+                context="ctx",
+                config=config,
+                main_host="codex",
+                main_model="gpt-5",
+            )
+        mock_consult.assert_called_once_with(
+            question="q",
+            signal="confidence_gate",
+            context="ctx",
+            config=config,
+            main_host="codex",
+            main_model="gpt-5",
+        )
+
+    def test_manual_routes_ll_advise_style_call(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        monkeypatch.chdir(tmp_path)
+        config = _FakeConfig(AdvisorConfig(enabled=False, host="claude-code", model="opus"))
+        with patch("little_loops.advisor.consult") as mock_consult:
+            mock_consult.return_value = AdvisorVerdict(
+                recommendation="r",
+                risks=[],
+                confidence=0.5,
+                dissent="",
+                signal="user_requested",
+                host="claude-code",
+                model="opus",
+            )
+            outcome = consult_for_trigger(
+                "user_requested", question="q", config=config, manual=True
+            )
+        mock_consult.assert_called_once()
+        assert outcome.verdict is not None
+
+
+class TestConsultExclusivity:
+    """AC #5: no code path other than `consult_for_trigger` calls `consult()`.
+
+    AST-based (not grep-based, per the ENH-3184 spawn-site-guard pattern),
+    pinned per-module call-site table, scoped to production modules only —
+    ``scripts/tests/test_advisor.py``'s ``TestConsult`` direct calls are
+    valid low-level unit coverage of ``consult()`` itself and are excluded.
+    """
+
+    _ALLOWED_CALLERS: dict[str, int] = {
+        "little_loops/advisor.py": 1,  # consult_for_trigger's own call
+    }
+    _MODULES_TO_SCAN = [
+        "little_loops/advisor.py",
+        "little_loops/cli/advise.py",
+    ]
+
+    @staticmethod
+    def _count_consult_calls(source: str) -> int:
+        tree = ast.parse(source)
+        count = 0
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call):
+                func = node.func
+                if isinstance(func, ast.Name) and func.id == "consult":
+                    count += 1
+                elif isinstance(func, ast.Attribute) and func.attr == "consult":
+                    count += 1
+        return count
+
+    def test_only_consult_for_trigger_calls_consult(self):
+        scripts_root = Path(__file__).parent.parent
+        for relpath in self._MODULES_TO_SCAN:
+            source = (scripts_root / relpath).read_text()
+            found = self._count_consult_calls(source)
+            expected = self._ALLOWED_CALLERS.get(relpath, 0)
+            assert found == expected, (
+                f"{relpath}: found {found} call(s) to consult(), expected {expected} "
+                "(AC #5: only consult_for_trigger may call consult())"
+            )

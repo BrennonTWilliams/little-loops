@@ -2910,6 +2910,7 @@ class TestWorkerPoolRunClaudeCommand:
             on_usage: Any = None,
             resume_session: bool = False,
             timeout_kill_grace_seconds: float = 0.0,
+            extra_env: Any = None,
         ) -> subprocess.CompletedProcess[str]:
             mock_proc = Mock(spec=subprocess.Popen)
             if on_process_start:
@@ -2928,6 +2929,23 @@ class TestWorkerPoolRunClaudeCommand:
 
         assert len(started_processes) == 1
         assert len(ended_processes) == 1
+
+    def test_run_claude_command_exports_ll_issue_id(
+        self,
+        worker_pool: WorkerPool,
+        temp_repo_with_config: Path,
+    ) -> None:
+        """FEAT-3116 AC #1: LL_ISSUE_ID is forwarded as extra_env for the issue
+        being processed, so resolve_task_key() can resolve the issue tier."""
+        worktree_path = temp_repo_with_config / ".worktrees" / "worker"
+
+        with patch(
+            "little_loops.parallel.worker_pool._run_claude_base",
+            return_value=subprocess.CompletedProcess([], 0, "output", ""),
+        ) as mock_run:
+            worker_pool._run_claude_command("/ll:test", worktree_path, issue_id="BUG-001")
+
+        assert mock_run.call_args.kwargs["extra_env"] == {"LL_ISSUE_ID": "BUG-001"}
 
     def test_run_claude_command_omits_automation_when_all_default(
         self,

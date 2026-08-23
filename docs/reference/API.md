@@ -10915,6 +10915,78 @@ Uses the subprocess transport exclusively (`resolve_host_named` -> `HostRunner.b
 
 Raises `AdvisorNotConfigured` when no `advisor.host` resolves, `CapabilityFloorViolation` on a same-host floor violation, `HostNotConfigured` when the advisor host isn't registered or isn't on PATH, and `BlockingJsonError` on transport timeout/missing binary/non-zero exit/unparseable output — including a `shape_mismatch` detail flag when a host's tag-fallback parse succeeds but doesn't carry the `AdvisorVerdict` keys (never a silently defaulted verdict).
 
+### TaskKey / ConsultBudget / ConsultOutcome (FEAT-3116)
+
+```python
+@dataclass(frozen=True)
+class TaskKey:
+    kind: Literal["issue", "loop_run", "session"]
+    value: str
+
+@dataclass(frozen=True)
+class ConsultBudget:
+    max_per_task: int
+    spent: int
+    task_key: TaskKey
+
+@dataclass(frozen=True)
+class ConsultOutcome:
+    task_key: TaskKey
+    verdict: AdvisorVerdict | None = None
+    skipped_reason: Literal[
+        "disabled", "trigger_not_allowed", "budget_exhausted",
+        "not_configured", "floor_violation", "failed", "timeout",
+    ] | None = None
+    error: str | None = None
+```
+
+`TaskKey` is the stable identity a consult budget is scoped to. `ConsultOutcome` is `consult_for_trigger()`'s return type — exactly one of `verdict`/`skipped_reason` is set, never a bare `None`; `skipped_reason`'s vocabulary maps 1:1 onto FEAT-3300's `AdvisorConsultRow.outcome` enum.
+
+### Task-identity env contract
+
+`resolve_task_key()` reads three environment variables, in precedence order:
+
+- `LL_ISSUE_ID` — exported by ll-auto, ll-sprint, and ll-parallel into every spawned host session for the issue being processed.
+- `LL_LOOP_RUN_ID` — exported by ll-loop, set to the loop run's `instance_id`.
+- `CLAUDE_SESSION_ID` — read from the injected env, falling back to `session_log.get_current_session_id()` (best-effort, the most recently modified session JSONL).
+
+### resolve_task_key
+
+```python
+def resolve_task_key(env: dict[str, str] | None = None) -> TaskKey
+```
+
+Pure env lookup — mirrors `host_runner.resolve_host()`'s precedence-resolver shape. `env` defaults to `dict(os.environ)`. Never reads orchestrator state directly; the task-identity env contract above is the only channel.
+
+### record_consult
+
+```python
+def record_consult(task_key: TaskKey) -> int
+```
+
+Persists and increments the consult counter for `task_key`; returns the new count. One JSON file per key at `.ll/advisor-budget/<kind>-<value>.json`, read-modify-write under `file_utils.acquire_lock()` + `atomic_write_json()` — safe across a subprocess boundary a consult from a child runner crosses.
+
+### should_consult
+
+```python
+def should_consult(
+    trigger: str, config: BRConfig, *, task_key: TaskKey | None = None, manual: bool = False,
+) -> bool
+```
+
+Gate predicate: `False` when `config.advisor.enabled` is `False`, when `trigger` is not in `config.advisor.triggers`, or when the task's spent count has reached `config.advisor.max_consults_per_task`. `manual=True` (the `ll-advise` path) bypasses the `enabled` and `triggers` checks — an explicit user-requested consult is not an auto-consult — but the budget check always applies. Fail-soft: any config-read failure is caught and treated as "do not consult."
+
+### consult_for_trigger
+
+```python
+def consult_for_trigger(
+    trigger: str, *, question: str, context: str = "", config: BRConfig | None = None,
+    main_host: str | None = None, main_model: str | None = None, manual: bool = False,
+) -> ConsultOutcome
+```
+
+The single caller of `consult()` — no other code path may call it. Resolves the task key once, spends budget via `record_consult()` *before* the host call (reserve-before-consult: a timed-out or failed consult still spends budget, bounding retries of a hung advisor), then calls `consult()`. Never raises: `AdvisorNotConfigured`, `CapabilityFloorViolation`, `HostNotConfigured`, and `BlockingJsonError` each map to a `skipped_reason` with `error=str(exc)`, logged at warning level.
+
 ---
 
 ## little_loops.pricing

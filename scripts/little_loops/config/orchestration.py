@@ -124,6 +124,7 @@ class AdvisorConfig:
     min_tier: str | None = None
     timeout_seconds: int = 180
     triggers: list[str] = field(default_factory=list)
+    max_consults_per_task: int = 3
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> AdvisorConfig:
@@ -135,4 +136,5 @@ class AdvisorConfig:
             min_tier=data.get("min_tier"),
             timeout_seconds=data.get("timeout_seconds", 180),
             triggers=list(data.get("triggers", [])),
+            max_consults_per_task=data.get("max_consults_per_task", 3),
         )

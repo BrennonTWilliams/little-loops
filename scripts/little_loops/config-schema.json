@@ -1799,6 +1799,11 @@
           },
           "default": [],
           "description": "Keywords identifying when the advisor is consulted, e.g. confidence_gate, loop_stall, pre_done."
+        },
+        "max_consults_per_task": {
+          "type": "integer",
+          "default": 3,
+          "description": "Per-task cap on advisor consults, enforced by should_consult()/consult_for_trigger(). A task is identified by resolve_task_key() (issue ID, loop run ID, or session ID)."
         }
       },
       "additionalProperties": false

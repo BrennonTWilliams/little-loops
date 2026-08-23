@@ -34,6 +34,15 @@ def _make_runner():
 
 
 class TestMainAdvise:
+    @pytest.fixture(autouse=True)
+    def _isolate_advisor_budget(self, tmp_path, monkeypatch) -> None:
+        # FEAT-3116: cmd_invoke now routes through consult_for_trigger, which
+        # spends a per-task consult budget under .ll/advisor-budget/ relative
+        # to Path.cwd(). Isolate every test in this class to a tmp_path so
+        # repeated runs don't accumulate real budget-file state under the
+        # project root and eventually trip budget_exhausted.
+        monkeypatch.chdir(tmp_path)
+
     def test_requires_signal(self) -> None:
         with (
             patch.object(sys, "argv", ["ll-advise", "--question", "q"]),
@@ -179,6 +188,65 @@ class TestMainAdvise:
         assert result == 0
         assert before == after
         mock_r.assert_called_once_with("claude-code")
+
+    def test_disabled_advisor_still_consults_manually(
+        self, capsys: pytest.CaptureFixture
+    ) -> None:
+        # AC #7: advisor.enabled: false (the default) does not block an
+        # explicit `ll-advise` invocation — the manual path bypasses the
+        # enabled gate, though it still spends budget.
+        with (
+            patch.object(
+                sys,
+                "argv",
+                [
+                    "ll-advise",
+                    "--signal",
+                    "user_requested",
+                    "--question",
+                    "q",
+                    "--host",
+                    "claude-code",
+                    "--model",
+                    "opus",
+                    "--json",
+                ],
+            ),
+            patch("little_loops.advisor.resolve_host_named", return_value=_make_runner()),
+            patch("little_loops.advisor.run_blocking_json", return_value=_VERDICT_DICT),
+        ):
+            result = main_advise()
+        assert result == 0
+
+    def test_budget_exhausted_exits_nonzero(self) -> None:
+        from little_loops.advisor import TaskKey, record_consult
+
+        key = TaskKey(kind="session", value="unknown")
+        for _ in range(3):
+            record_consult(key)
+
+        with (
+            patch.object(
+                sys,
+                "argv",
+                [
+                    "ll-advise",
+                    "--signal",
+                    "user_requested",
+                    "--question",
+                    "q",
+                    "--host",
+                    "claude-code",
+                    "--model",
+                    "opus",
+                ],
+            ),
+            patch("little_loops.advisor.resolve_task_key", return_value=key),
+            patch("little_loops.advisor.resolve_host_named", return_value=_make_runner()) as mock_r,
+        ):
+            result = main_advise()
+        assert result == 2
+        mock_r.assert_not_called()
 
 
 def test_advisor_config_default_host_is_none() -> None:

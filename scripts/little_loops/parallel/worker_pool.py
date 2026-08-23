@@ -961,6 +961,7 @@ class WorkerPool:
             on_usage=on_usage,
             resume_session=resume_session,
             timeout_kill_grace_seconds=self.parallel_config.timeout_kill_grace_seconds,
+            extra_env={"LL_ISSUE_ID": issue_id} if issue_id else None,
         )
 
     def _check_issue_already_done(self, issue_id: str | None, working_dir: Path) -> bool:

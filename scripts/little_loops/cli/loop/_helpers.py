@@ -1757,6 +1757,14 @@ def run_foreground(
     if mode not in ("run", "resume"):
         raise ValueError(f"run_foreground: invalid mode {mode!r}; expected 'run' or 'resume'")
 
+    # FEAT-3116: task-identity env contract. Set process-wide (not threaded
+    # through project_child_env's extra=) so every downstream host spawn in
+    # this loop run — evaluators.py, runners.py, handoff_handler.py — picks
+    # it up via project_child_env()'s default os.environ.copy() inheritance,
+    # without threading a new kwarg through every one of those call sites.
+    if instance_id is not None:
+        os.environ["LL_LOOP_RUN_ID"] = instance_id
+
     _orig_stdout = sys.stdout
     _orig_stderr = sys.stderr
     _log_fh: Any = None

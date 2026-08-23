@@ -1091,6 +1091,7 @@ class TestBRConfig:
             "min_tier": "opus",
             "timeout_seconds": 90,
             "triggers": ["confidence_gate", "loop_stall"],
+            "max_consults_per_task": 5,
         }
         config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
@@ -1104,6 +1105,7 @@ class TestBRConfig:
         assert result["advisor"]["min_tier"] == "opus"
         assert result["advisor"]["timeout_seconds"] == 90
         assert result["advisor"]["triggers"] == ["confidence_gate", "loop_stall"]
+        assert result["advisor"]["max_consults_per_task"] == 5
 
         assert config.resolve_variable("advisor.host") == "codex"
         assert config.resolve_variable("advisor.timeout_seconds") == "90"
@@ -1124,6 +1126,7 @@ class TestBRConfig:
         assert result["advisor"]["min_tier"] is None
         assert result["advisor"]["timeout_seconds"] == 180
         assert result["advisor"]["triggers"] == []
+        assert result["advisor"]["max_consults_per_task"] == 3
 
     def test_to_dict_never_modelled_sections_raw_passthrough(
         self, temp_project_dir: Path, sample_config: dict[str, Any]
@@ -3753,6 +3756,7 @@ class TestAdvisorConfig:
         assert config.min_tier is None
         assert config.timeout_seconds == 180
         assert config.triggers == []
+        assert config.max_consults_per_task == 3
 
     def test_from_dict_with_values(self) -> None:
         data = {
@@ -3762,6 +3766,7 @@ class TestAdvisorConfig:
             "min_tier": "opus",
             "timeout_seconds": 60,
             "triggers": ["confidence_gate", "loop_stall", "pre_done"],
+            "max_consults_per_task": 5,
         }
         config = AdvisorConfig.from_dict(data)
         assert config.enabled is True
@@ -3770,6 +3775,17 @@ class TestAdvisorConfig:
         assert config.min_tier == "opus"
         assert config.timeout_seconds == 60
         assert config.triggers == ["confidence_gate", "loop_stall", "pre_done"]
+        assert config.max_consults_per_task == 5
+
+    def test_from_dict_partial_override_defaults_rest(self) -> None:
+        config = AdvisorConfig.from_dict({"max_consults_per_task": 7})
+        assert config.max_consults_per_task == 7
+        assert config.enabled is False
+        assert config.host is None
+        assert config.model == "opus"
+        assert config.min_tier is None
+        assert config.timeout_seconds == 180
+        assert config.triggers == []
 
 
 class TestBRConfigAdvisor:

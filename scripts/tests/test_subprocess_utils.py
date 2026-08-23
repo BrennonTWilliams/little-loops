@@ -306,6 +306,28 @@ class TestRunClaudeCommand:
 
         assert "LL_NON_INTERACTIVE" in captured_env, "LL_NON_INTERACTIVE must reach Popen env"
         assert captured_env["LL_NON_INTERACTIVE"] == "1"
+
+    def test_extra_env_reaches_popen(self) -> None:
+        """FEAT-3116: extra_env is merged into the child's env via project_child_env."""
+        mock_process = Mock()
+        mock_process.stdout = io.StringIO("")
+        mock_process.stderr = io.StringIO("")
+        mock_process.returncode = 0
+        mock_process.wait.return_value = None
+
+        captured_env: dict[str, str] = {}
+
+        def capture_popen(args: Any, **kwargs: Any) -> Mock:
+            captured_env.update(kwargs.get("env", {}))
+            return mock_process
+
+        with patch("subprocess.Popen", side_effect=capture_popen):
+            with patch("selectors.DefaultSelector") as mock_selector:
+                _patch_selector_cm(mock_selector)
+                mock_selector.return_value.get_map.return_value = {}
+                run_claude_command("test", extra_env={"LL_ISSUE_ID": "BUG-1"})
+
+        assert captured_env.get("LL_ISSUE_ID") == "BUG-1"
         assert "DANGEROUSLY_SKIP_PERMISSIONS" in captured_env
         assert captured_env["DANGEROUSLY_SKIP_PERMISSIONS"] == "1"
 

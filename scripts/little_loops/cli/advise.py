@@ -6,19 +6,26 @@ import argparse
 import sys
 from pathlib import Path
 
-from little_loops.advisor import (
-    AdvisorNotConfigured,
-    CapabilityFloorViolation,
-    consult,
-)
+from little_loops.advisor import consult_for_trigger
 from little_loops.cli.output import configure_output, print_json, use_color_enabled
 from little_loops.cli_args import add_json_arg
 from little_loops.config import BRConfig
-from little_loops.host_runner import BlockingJsonError, HostNotConfigured
 from little_loops.logger import Logger
 from little_loops.session_store import DEFAULT_DB_PATH, cli_event_context
 
 __all__ = ["main_advise"]
+
+_SKIP_MESSAGES = {
+    "disabled": "advisor is disabled (advisor.enabled: false)",
+    "trigger_not_allowed": "signal not in advisor.triggers allowlist",
+    "budget_exhausted": "advisor consult budget exhausted for this task "
+    "(advisor.max_consults_per_task)",
+    "not_configured": "advisor host not configured — set advisor.host in "
+    ".ll/ll-config.json or pass --host",
+    "floor_violation": "capability floor violation",
+    "failed": "advisor consult failed",
+    "timeout": "advisor consult timed out",
+}
 
 
 def cmd_invoke(args: argparse.Namespace, logger: Logger) -> int:
@@ -36,28 +43,24 @@ def cmd_invoke(args: argparse.Namespace, logger: Logger) -> int:
             logger.error(f"could not read --context-file {args.context_file!r}: {exc}")
             return 2
 
-    try:
-        verdict = consult(
-            question=args.question,
-            signal=args.signal,
-            context=context,
-            config=config,
-            main_host=args.main_host,
-            main_model=args.main_model,
-        )
-    except AdvisorNotConfigured as exc:
-        logger.error(str(exc))
-        return 2
-    except CapabilityFloorViolation as exc:
-        logger.error(f"capability floor violation: {exc}")
-        return 2
-    except HostNotConfigured as exc:
-        logger.error(str(exc))
-        return 2
-    except BlockingJsonError as exc:
-        logger.error(str(exc))
+    outcome = consult_for_trigger(
+        args.signal,
+        question=args.question,
+        context=context,
+        config=config,
+        main_host=args.main_host,
+        main_model=args.main_model,
+        manual=True,
+    )
+    if outcome.verdict is None:
+        reason = outcome.skipped_reason or "failed"
+        message = _SKIP_MESSAGES.get(reason, reason)
+        if outcome.error:
+            message = f"{message}: {outcome.error}"
+        logger.error(message)
         return 2
 
+    verdict = outcome.verdict
     payload = {
         "recommendation": verdict.recommendation,
         "risks": verdict.risks,

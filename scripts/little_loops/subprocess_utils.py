@@ -366,6 +366,7 @@ def run_claude_command(
     on_session_id_detected: SessionIdCallback | None = None,
     on_tool_call: ToolCallCallback | None = None,
     workspace_root: Path | None = None,
+    extra_env: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
     """Invoke Claude CLI command with real-time output streaming.
 
@@ -421,6 +422,10 @@ def run_claude_command(
             (FEAT-2878). Only honored by hosts advertising
             ``HostCapabilities.workspace_sandboxed`` — see that flag's
             docstring for the current support matrix.
+        extra_env: Optional extra environment variables merged over the
+            child's environment via ``project_child_env(invocation,
+            extra=extra_env)`` (e.g. ``LL_ISSUE_ID``, FEAT-3116's
+            task-identity env contract).
 
     Returns:
         CompletedProcess with stdout/stderr captured
@@ -444,7 +449,7 @@ def run_claude_command(
     )
     cmd_args = [invocation.binary, *invocation.args]
 
-    env = project_child_env(invocation)
+    env = project_child_env(invocation, extra=extra_env)
     if "GIT_DIR" in invocation.env:
         logger.debug("Worktree detected: GIT_DIR=%s", invocation.env["GIT_DIR"])
 

@@ -1387,6 +1387,27 @@ class TestRunWithContinuation:
 
         assert seen == [True]
 
+    def test_forwards_extra_env(self, temp_project_dir: Path) -> None:
+        """FEAT-3116 AC #1: extra_env (e.g. LL_ISSUE_ID) is forwarded to every
+        round's run_claude_command() call."""
+        from little_loops.issue_manager import run_with_continuation
+
+        mock_logger = MagicMock()
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = "Normal output"
+        mock_result.stderr = ""
+
+        with patch(
+            "little_loops.issue_manager.run_claude_command", return_value=mock_result
+        ) as mock_run:
+            with patch("little_loops.issue_manager.detect_context_handoff", return_value=False):
+                run_with_continuation(
+                    "test command", mock_logger, extra_env={"LL_ISSUE_ID": "BUG-1"}
+                )
+
+        assert mock_run.call_args.kwargs["extra_env"] == {"LL_ISSUE_ID": "BUG-1"}
+
     def test_disable_background_tasks_defaults_to_false(self, temp_project_dir: Path) -> None:
         """ENH-3261: with no automation= supplied, disable_background_tasks
         reads as falsy -- callers that never opted in are unaffected."""

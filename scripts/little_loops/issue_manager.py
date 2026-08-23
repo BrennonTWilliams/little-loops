@@ -151,6 +151,7 @@ def run_claude_command(
     on_result_seen: ResultSeenCallback | None = None,
     automation: AutomationContext | None = None,
     timeout_kill_grace_seconds: float = 0.0,
+    extra_env: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
     """Invoke Claude CLI command with real-time output streaming.
 
@@ -217,6 +218,7 @@ def run_claude_command(
         on_result_seen=on_result_seen,
         automation=automation,
         timeout_kill_grace_seconds=timeout_kill_grace_seconds,
+        extra_env=extra_env,
     )
 
 
@@ -269,6 +271,7 @@ def run_with_continuation(
     on_result_seen: ResultSeenCallback | None = None,
     automation: AutomationContext | None = None,
     timeout_kill_grace_seconds: float = 0.0,
+    extra_env: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
     """Run a Claude command with automatic continuation on context handoff.
 
@@ -305,6 +308,9 @@ def run_with_continuation(
         timeout_kill_grace_seconds: Grace period (seconds) before escalating a
             timeout SIGTERM to SIGKILL, forwarded to every round's subprocess
             (ENH-3130).
+        extra_env: Optional extra environment variables forwarded to every
+            round's subprocess (FEAT-3116's ``LL_ISSUE_ID`` task-identity
+            export).
 
     Returns:
         Final CompletedProcess result
@@ -352,6 +358,7 @@ def run_with_continuation(
             on_result_seen=_tracking_result_seen,
             automation=automation,
             timeout_kill_grace_seconds=timeout_kill_grace_seconds,
+            extra_env=extra_env,
         )
 
         all_stdout.append(result.stdout)
@@ -1262,6 +1269,7 @@ def process_issue_inplace(
                 preview_full=preview_full,
                 issue_path=info.path,
                 sprint_context=sprint_context,
+                extra_env={"LL_ISSUE_ID": info.issue_id},
                 context_limit=context_window_for(None, override=context_limit),
                 on_result_seen=lambda seen: _phase2_result_seen.__setitem__(0, seen),
                 # BUG-3058: ll-auto never passed this, so LL_AUTOMATION was

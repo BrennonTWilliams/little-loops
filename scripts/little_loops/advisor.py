@@ -20,13 +20,18 @@ mechanism.
 
 from __future__ import annotations
 
+import json
+import logging
+import os
 import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
+from little_loops.file_utils import acquire_lock, atomic_write_json
 from little_loops.host_runner import (
     BlockingJsonError,
+    HostNotConfigured,
     resolve_host,
     resolve_host_named,
     resolve_model_alias,
@@ -35,6 +40,8 @@ from little_loops.host_runner import (
 
 if TYPE_CHECKING:
     from little_loops.config import BRConfig
+
+logger = logging.getLogger(__name__)
 
 # Per-host capability rank, keyed on the concrete model ID that
 # `resolve_model_alias()` normalizes aliases to (host_runner.py:79-84).
@@ -279,3 +286,237 @@ def consult(
         host=advisor_host,
         model=advisor_model,
     )
+
+
+@dataclass(frozen=True)
+class TaskKey:
+    """Stable identity for the unit of work a consult is scoped to (FEAT-3116).
+
+    Precedence tiers, resolved by `resolve_task_key()`: issue ID (running
+    under ll-auto/ll-sprint/ll-parallel) -> loop run ID (ll-loop) -> session
+    ID (otherwise).
+    """
+
+    kind: Literal["issue", "loop_run", "session"]
+    value: str
+
+
+@dataclass(frozen=True)
+class ConsultBudget:
+    """A task's consult allowance and current spend."""
+
+    max_per_task: int
+    spent: int
+    task_key: TaskKey
+
+
+@dataclass(frozen=True)
+class ConsultOutcome:
+    """Result of `consult_for_trigger()` — never a bare `None`.
+
+    Exactly one of `verdict`/`skipped_reason` is set. `skipped_reason`'s
+    vocabulary maps 1:1 onto FEAT-3300's `AdvisorConsultRow.outcome` enum.
+    """
+
+    task_key: TaskKey
+    verdict: AdvisorVerdict | None = None
+    skipped_reason: (
+        Literal[
+            "disabled",
+            "trigger_not_allowed",
+            "budget_exhausted",
+            "not_configured",
+            "floor_violation",
+            "failed",
+            "timeout",
+        ]
+        | None
+    ) = None
+    error: str | None = None
+
+
+def resolve_task_key(env: dict[str, str] | None = None) -> TaskKey:
+    """Resolve the current `TaskKey` from environment, mirroring `resolve_host()`.
+
+    Pure env lookup — never calls `_resolve_issue_id()` or reads orchestrator
+    state directly; those values only reach this resolver via the env
+    contract orchestrators export at their spawn sites (`LL_ISSUE_ID`,
+    `LL_LOOP_RUN_ID`).
+
+    Tiers, in order:
+        1. `LL_ISSUE_ID` — set by ll-auto, ll-sprint, ll-parallel.
+        2. `LL_LOOP_RUN_ID` — set by ll-loop.
+        3. Session ID — `CLAUDE_SESSION_ID` from *env* first, then
+           `session_log.get_current_session_id()` (best-effort, the most
+           recently modified session JSONL — nondeterministic when multiple
+           sessions run concurrently against the same project).
+    """
+    if env is None:
+        env = dict(os.environ)
+
+    issue_id = env.get("LL_ISSUE_ID")
+    if issue_id:
+        return TaskKey(kind="issue", value=issue_id)
+
+    loop_run_id = env.get("LL_LOOP_RUN_ID")
+    if loop_run_id:
+        return TaskKey(kind="loop_run", value=loop_run_id)
+
+    session_id = env.get("CLAUDE_SESSION_ID")
+    if not session_id:
+        from little_loops.session_log import get_current_session_id
+
+        session_id = get_current_session_id()
+
+    return TaskKey(kind="session", value=session_id or "unknown")
+
+
+def _budget_path(task_key: TaskKey) -> Path:
+    return Path.cwd() / ".ll" / "advisor-budget" / f"{task_key.kind}-{task_key.value}.json"
+
+
+def record_consult(task_key: TaskKey) -> int:
+    """Persist and increment the consult counter for *task_key*; return the new count.
+
+    One JSON file per key at `.ll/advisor-budget/<kind>-<value>.json`,
+    read-modify-write under `acquire_lock()` + `atomic_write_json()` — safe
+    across the subprocess boundary a consult from a child runner crosses.
+    """
+    path = _budget_path(task_key)
+    with acquire_lock(path.with_suffix(".lock")):
+        spent = 0
+        if path.exists():
+            try:
+                spent = int(json.loads(path.read_text()).get("spent", 0))
+            except (OSError, ValueError, json.JSONDecodeError):
+                spent = 0
+        spent += 1
+        atomic_write_json(path, {"spent": spent})
+    return spent
+
+
+def _current_spent(task_key: TaskKey) -> int:
+    path = _budget_path(task_key)
+    if not path.exists():
+        return 0
+    try:
+        return int(json.loads(path.read_text()).get("spent", 0))
+    except (OSError, ValueError, json.JSONDecodeError):
+        return 0
+
+
+def should_consult(
+    trigger: str,
+    config: BRConfig,
+    *,
+    task_key: TaskKey | None = None,
+    manual: bool = False,
+) -> bool:
+    """Gate predicate deciding whether a consult for *trigger* may proceed.
+
+    Fail-soft, mirroring `hooks/__init__.py:_hooks_telemetry_enabled()`: any
+    config-read failure is treated as "do not consult" rather than raised.
+    `manual=True` (the `ll-advise` path) bypasses the `advisor.enabled`
+    master switch and the `advisor.triggers` allowlist — an explicit
+    user-requested consult is not an auto-consult — but the budget check
+    always applies.
+    """
+    try:
+        if not manual:
+            if not config.advisor.enabled:
+                return False
+            if trigger not in config.advisor.triggers:
+                return False
+
+        if task_key is None:
+            task_key = resolve_task_key()
+
+        spent = _current_spent(task_key)
+        if spent >= config.advisor.max_consults_per_task:
+            logger.warning(
+                "advisor: budget exhausted for task %s/%s (%d/%d consults spent)",
+                task_key.kind,
+                task_key.value,
+                spent,
+                config.advisor.max_consults_per_task,
+            )
+            return False
+    except Exception:
+        logger.warning("advisor: should_consult failed, defaulting to no-consult", exc_info=True)
+        return False
+
+    return True
+
+
+def consult_for_trigger(
+    trigger: str,
+    *,
+    question: str,
+    context: str = "",
+    config: BRConfig | None = None,
+    main_host: str | None = None,
+    main_model: str | None = None,
+    manual: bool = False,
+) -> ConsultOutcome:
+    """The single caller of `consult()` — no other call site may call it (AC #5).
+
+    Resolves the task key once, spends budget *before* the host call
+    (reserve-before-consult: a timed-out or failed consult still spends
+    budget, bounding retries of a hung advisor), then calls `consult()`.
+    Never raises — `AdvisorNotConfigured`, `CapabilityFloorViolation`,
+    `HostNotConfigured`, and `BlockingJsonError` each map to a
+    `skipped_reason` with `error=str(exc)`, logged at warning level.
+    """
+    if config is None:
+        from little_loops.config import BRConfig as _BRConfig
+
+        config = _BRConfig(Path.cwd())
+
+    task_key = resolve_task_key()
+
+    if not should_consult(trigger, config, task_key=task_key, manual=manual):
+        if not manual and not config.advisor.enabled:
+            reason: Literal["disabled", "trigger_not_allowed", "budget_exhausted"] = "disabled"
+        elif not manual and trigger not in config.advisor.triggers:
+            reason = "trigger_not_allowed"
+        else:
+            reason = "budget_exhausted"
+        return ConsultOutcome(task_key=task_key, skipped_reason=reason)
+
+    record_consult(task_key)
+
+    try:
+        verdict = consult(
+            question=question,
+            signal=trigger,
+            context=context,
+            config=config,
+            main_host=main_host,
+            main_model=main_model,
+        )
+    except AdvisorNotConfigured as exc:
+        logger.warning("advisor: consult skipped, not configured: %s", exc)
+        not_configured_reason: Literal["not_configured"] = "not_configured"
+        return ConsultOutcome(
+            task_key=task_key, skipped_reason=not_configured_reason, error=str(exc)
+        )
+    except CapabilityFloorViolation as exc:
+        logger.warning("advisor: consult skipped, floor violation: %s", exc)
+        floor_violation_reason: Literal["floor_violation"] = "floor_violation"
+        return ConsultOutcome(
+            task_key=task_key, skipped_reason=floor_violation_reason, error=str(exc)
+        )
+    except HostNotConfigured as exc:
+        logger.warning("advisor: consult failed, host not configured: %s", exc)
+        host_not_configured_reason: Literal["failed"] = "failed"
+        return ConsultOutcome(
+            task_key=task_key, skipped_reason=host_not_configured_reason, error=str(exc)
+        )
+    except BlockingJsonError as exc:
+        skipped_reason: Literal["timeout", "failed"] = (
+            "timeout" if exc.details.get("timeout") else "failed"
+        )
+        logger.warning("advisor: consult %s: %s", skipped_reason, exc)
+        return ConsultOutcome(task_key=task_key, skipped_reason=skipped_reason, error=str(exc))
+
+    return ConsultOutcome(task_key=task_key, verdict=verdict)

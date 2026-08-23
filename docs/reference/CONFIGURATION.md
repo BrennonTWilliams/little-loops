@@ -1400,24 +1400,21 @@ Settings for the `goal-cluster` multi-goal orchestration loop.
 
 ### `advisor`
 
-Advisor (FEAT-3037) settings: host, model, capability floor, and per-consult
-timeout. This block is config plumbing only (FEAT-3043) — the `advisor`
-block is absent from the config by default, which means the advisor is
-disabled; no consult logic, CLI, or `ll-doctor` check reads this block yet
-(that ships in FEAT-3044).
+Advisor (FEAT-3037) settings: host, model, capability floor, per-consult
+timeout, and the per-task consult budget. The `advisor` block is absent from
+the config by default, which means the advisor is disabled for
+auto-consults; `ll-advise`'s manual path still works (it bypasses `enabled`
+and `triggers`, but is still budget-counted — see FEAT-3116).
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `enabled` | `false` | Enable the advisor. Absent or `false` means disabled. |
+| `enabled` | `false` | Enable auto-consults (`consult_for_trigger` without `manual=True`). Absent or `false` means auto-consults are disabled; `ll-advise` still works. |
 | `host` | `null` | Registry key for the host CLI the advisor consults: `"claude-code"`, `"codex"`, `"opencode"`, `"pi"`, `"gemini"`, `"omp"`, or `"kimi-code"` — the same enum as `orchestration.host_cli`, but may differ from it. |
 | `model` | `"opus"` | Model the advisor requests from the selected host. |
 | `min_tier` | `null` | Capability floor for the advisor's model; enforced within a host, warned across hosts. |
 | `timeout_seconds` | `180` | Per-consult timeout in seconds. Mandatory-with-a-default — a synchronous in-band consult with no timeout can hang a loop indefinitely. |
-| `triggers` | `[]` | Keywords identifying when the advisor is consulted, e.g. `confidence_gate`, `loop_stall`, `pre_done`. |
-
-`max_consults_per_task` is deliberately absent from this block — enforcement
-needs task identity, which arrives in a later slice (FEAT-3038); shipping an
-accepted-but-ignored key would be a footgun.
+| `triggers` | `[]` | Keywords identifying when the advisor is consulted, e.g. `confidence_gate`, `loop_stall`, `pre_done`. Ignored for manual (`ll-advise`) consults. |
+| `max_consults_per_task` | `3` | Per-task cap on advisor consults, enforced by `should_consult()`/`consult_for_trigger()`. A task is identified by `resolve_task_key()` (issue ID, loop run ID, or session ID) — applies to both auto and manual consults. |
 
 ### `hooks`
 
