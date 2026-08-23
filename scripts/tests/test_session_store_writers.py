@@ -467,8 +467,8 @@ class TestCliEventContext:
         finally:
             conn.close()
         assert "cli_events" in names
-        assert SCHEMA_VERSION == 43
-        assert int(row[0]) == 43
+        assert SCHEMA_VERSION == 44
+        assert int(row[0]) == 44
 
     def test_cli_event_context_respects_LL_HISTORY_DB(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -1150,7 +1150,7 @@ class TestOrchestrationRuns:
         return recorder
 
     def test_v21_db_upgrades_gains_orchestration_runs(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 43
+        assert SCHEMA_VERSION == 44
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 21)
         ensure_db(db)
@@ -1280,7 +1280,7 @@ class TestPrepatchEvidence:
     """ENH-2997: prepatch_evidence table, writer, and reader round trip."""
 
     def test_v39_db_upgrades_gains_prepatch_evidence(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 43
+        assert SCHEMA_VERSION == 44
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 39)
         ensure_db(db)
@@ -1537,7 +1537,7 @@ class TestLoopRuns:
         return updater
 
     def test_v22_db_upgrades_gains_loop_runs(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 43
+        assert SCHEMA_VERSION == 44
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 22)
         ensure_db(db)
@@ -1735,7 +1735,7 @@ class TestRecordLearningTestEvent:
         assert recent(db, kind="learning_test") == []
 
     def test_v25_db_upgrades_gains_learning_test_events(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 43
+        assert SCHEMA_VERSION == 44
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 25)
         ensure_db(db)
@@ -2363,6 +2363,146 @@ class TestRecordVerdictEvent:
         )
         results = search(db, query=fts_phrase("BUG-2501"))
         assert any(r["kind"] == "verdict" for r in results)
+
+    def test_cannot_judge_writes_null_findings_count(self, tmp_path: Path) -> None:
+        """ENH-230: the writer emits SQL NULL for findings_count on an abstention.
+
+        Coalescing None to 0 at the writer would mask the abstention signal
+        in every downstream reader — the schema pins findings_count nullable
+        and the writer has to actively emit NULL, not 0.
+        """
+        import sqlite3
+
+        from little_loops.session_store import record_verdict_event
+
+        db = tmp_path / "history.db"
+        record_verdict_event(
+            db,
+            ts="2026-07-23T00:00:00Z",
+            session_id=None,
+            verdict_kind="ready-issue",
+            target_id="BUG-22",
+            verdict="cannot_judge",
+            abstention_reason="missing_artifacts",
+        )
+
+        conn = sqlite3.connect(db)
+        try:
+            row = conn.execute(
+                "SELECT findings_count, confidence, abstention_reason "
+                "FROM verdict_events WHERE target_id='BUG-22'"
+            ).fetchone()
+        finally:
+            conn.close()
+        assert row is not None
+        findings_count, confidence, abstention_reason = row
+        assert findings_count is None
+        assert confidence is None
+        assert abstention_reason == "missing_artifacts"
+
+    def test_check_constraint_rejects_unknown_abstention_reason(self, tmp_path: Path) -> None:
+        """ENH-230: the schema CHECK pins the four-tag enum; unknown tags fail the INSERT."""
+        import sqlite3
+
+        from little_loops.session_store import record_verdict_event
+
+        db = tmp_path / "history.db"
+        with pytest.raises(sqlite3.IntegrityError):
+            record_verdict_event(
+                db,
+                ts="2026-07-23T00:00:00Z",
+                session_id=None,
+                verdict_kind="ready-issue",
+                target_id="BUG-24",
+                verdict="cannot_judge",
+                abstention_reason="i_dunno",
+            )
+
+    def test_check_constraint_rejects_reason_on_non_abstention_verdict(
+        self, tmp_path: Path
+    ) -> None:
+        """ENH-230: pass/fail/implement MUST NOT carry an abstention_reason."""
+        import sqlite3
+
+        from little_loops.session_store import record_verdict_event
+
+        db = tmp_path / "history.db"
+        with pytest.raises(sqlite3.IntegrityError):
+            record_verdict_event(
+                db,
+                ts="2026-07-23T00:00:00Z",
+                session_id=None,
+                verdict_kind="ready-issue",
+                target_id="BUG-25",
+                verdict="pass",
+                abstention_reason="missing_artifacts",
+            )
+
+    def test_check_constraint_rejects_refused_verdict(self, tmp_path: Path) -> None:
+        """ENH-230: `refused` is review_events vocabulary (ENH-2512), not verdict_events.
+
+        No verifier emits it. Admitting it in the CHECK would cost a table
+        rebuild to walk back, so the grammar stays narrow until a producer
+        exists.
+        """
+        import sqlite3
+
+        from little_loops.session_store import record_verdict_event
+
+        db = tmp_path / "history.db"
+        with pytest.raises(sqlite3.IntegrityError):
+            record_verdict_event(
+                db,
+                ts="2026-07-23T00:00:00Z",
+                session_id=None,
+                verdict_kind="ready-issue",
+                target_id="BUG-26",
+                verdict="refused",
+            )
+
+    def test_cannot_judge_round_trip_preserves_null_fields(self, tmp_path: Path) -> None:
+        """ENH-230: None in -> SQL NULL on disk -> None back out of the reader.
+
+        Nails the writer boundary that the consumer-side NULL contract in
+        test_verdict_grammar_regression.py depends on.
+        """
+        import sqlite3
+
+        from little_loops.history_reader import recent_verdict_events
+        from little_loops.session_store import record_verdict_event
+
+        db = tmp_path / "history.db"
+        record_verdict_event(
+            db,
+            ts="2026-07-23T00:00:00Z",
+            session_id=None,
+            verdict_kind="ready-issue",
+            target_id="BUG-27",
+            verdict="cannot_judge",
+            abstention_reason="evaluation_context_unavailable",
+        )
+
+        # Writer boundary — raw SQL NULL on findings_count and confidence.
+        conn = sqlite3.connect(db)
+        try:
+            raw = conn.execute(
+                "SELECT findings_count, confidence, abstention_reason, verdict "
+                "FROM verdict_events WHERE target_id='BUG-27'"
+            ).fetchone()
+        finally:
+            conn.close()
+        assert raw is not None
+        assert raw[0] is None  # findings_count
+        assert raw[1] is None  # confidence
+        assert raw[2] == "evaluation_context_unavailable"
+        assert raw[3] == "cannot_judge"
+
+        # Reader surface — recent_verdict_events surfaces None, not 0.
+        rows = recent_verdict_events(db=db)
+        assert len(rows) == 1
+        assert rows[0].findings_count is None
+        assert rows[0].confidence is None
+        assert rows[0].abstention_reason == "evaluation_context_unavailable"
 
 
 class TestRecordReviewEvent:

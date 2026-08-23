@@ -8617,7 +8617,7 @@ def verdict_pass_rate(
 ) -> list[dict]
 ```
 
-Read-side API for `verdict_events` rows (ENH-2504's schema, written by `record_verdict_event()`) — one row per invocation of the nine `ll-action`-bridged verifiers (`ready-issue`, `confidence-check`, `go-no-go`, `tradeoff-review-issues`, `refine-issue`, `format-issue`, `verify-issues`, `prioritize-issues`, `align-issues`). `recent_verdict_events()` returns rows newest first, optionally filtered by exact `verdict_kind`/`target_id` and/or a `since` lower bound on `ts`; returns `[]` on a missing/unreadable DB. `verdict_pass_rate()` groups by `verdict_kind` and returns `{verdict_kind, invocations, successes, success_rate}` dicts (mirroring `summarize_skills()`'s `success_rate` field shape) — `successes` counts `verdict IN ('pass', 'implement')`.
+Read-side API for `verdict_events` rows (ENH-2504's schema, written by `record_verdict_event()`) — one row per invocation of the nine `ll-action`-bridged verifiers (`ready-issue`, `confidence-check`, `go-no-go`, `tradeoff-review-issues`, `refine-issue`, `format-issue`, `verify-issues`, `prioritize-issues`, `align-issues`). `recent_verdict_events()` returns rows newest first, optionally filtered by exact `verdict_kind`/`target_id` and/or a `since` lower bound on `ts`; returns `[]` on a missing/unreadable DB. `verdict_pass_rate()` groups by `verdict_kind` and returns `{verdict_kind, invocations, successes, cannot_judge_count, success_rate}` dicts (mirroring `summarize_skills()`'s `success_rate` field shape) — `successes` counts `verdict IN ('pass', 'implement')`, and `cannot_judge_count` (ENH-230) reports abstention volume separately so it is not read as a failure. `success_rate` keeps its existing denominator (`invocations`). `check_high_confidence_abstention()` returns `cannot_judge` rows whose `confidence` crosses a threshold (default 90) and logs a warning per row — a producer that is confident enough to score high should have been able to render a verdict.
 
 **CLI:** `ll-session recent --kind verdict` and `ll-session search --fts "<target_id>" --kind verdict` work automatically via the generic `VALID_KINDS`/`_KIND_TABLE` dispatch — no CLI code change was needed for this read API.
 
@@ -9174,12 +9174,13 @@ def record_verdict_event(
     severity_counts: dict | None = None,
     findings_count: int | None = None,
     confidence: int | None = None,
+    abstention_reason: str | None = None,
     head_sha: str | None = None,
     branch: str | None = None,
 ) -> None
 ```
 
-Write one `verdict_events` row and index it in `search_index` with `kind="verdict"` (ENH-2504). Called from `cli/action.py::cmd_invoke()` for the nine skill-bridged verifiers, wrapped in `contextlib.suppress(Exception)` so a DB failure never changes a verifier's exit code. `severity_counts` is JSON-serialized on write (`json.dumps`), parsed back on read. Mirrors `record_harness_event()`'s contract: raises on failure — the call site, not the producer, enforces best-effort.
+Write one `verdict_events` row and index it in `search_index` with `kind="verdict"` (ENH-2504). Called from `cli/action.py::cmd_invoke()` for the nine skill-bridged verifiers, wrapped in `contextlib.suppress(Exception)` so a DB failure never changes a verifier's exit code. `severity_counts` is JSON-serialized on write (`json.dumps`), parsed back on read. `abstention_reason` (ENH-230) is the closed four-tag enum (`missing_artifacts`, `unparseable_criteria`, `evaluation_context_unavailable`, `circular_dependencies`) and MUST be supplied when `verdict` is `cannot_judge` and omitted otherwise — the v44 schema CHECK enforces the pairing, so a mismatch raises `sqlite3.IntegrityError` from the INSERT. Mirrors `record_harness_event()`'s contract: raises on failure — the call site, not the producer, enforces best-effort.
 
 ### record_context_pressure_event
 

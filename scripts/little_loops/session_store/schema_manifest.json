@@ -2401,6 +2401,12 @@
           "type": "TEXT"
         },
         {
+          "name": "abstention_reason",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
           "name": "severity_counts",
           "notnull": false,
           "pk": false,
@@ -2434,5 +2440,5 @@
       "type": "table"
     }
   },
-  "schema_version": 43
+  "schema_version": 44
 }

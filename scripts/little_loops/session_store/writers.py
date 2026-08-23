@@ -1159,6 +1159,7 @@ def record_verdict_event(
     severity_counts: dict | None = None,
     findings_count: int | None = None,
     confidence: int | None = None,
+    abstention_reason: str | None = None,
     head_sha: str | None = None,
     branch: str | None = None,
 ) -> None:
@@ -1168,6 +1169,13 @@ def record_verdict_event(
     ``cmd_invoke()`` call site (ENH-2504) wraps this in
     ``contextlib.suppress(Exception)`` so a DB failure never changes a
     verifier's exit code.
+
+    ``abstention_reason`` (ENH-230) carries the closed-enum tag from the
+    producer when ``verdict`` is ``cannot_judge``: one of
+    ``missing_artifacts`` / ``unparseable_criteria`` /
+    ``evaluation_context_unavailable`` / ``circular_dependencies``. MUST be
+    None for every other verdict. The schema CHECK enforces this
+    structurally — a mismatched pair fails the INSERT.
     """
     severity_json = json.dumps(severity_counts) if severity_counts is not None else None
     conn = _pkg.connect(db_path)
@@ -1175,8 +1183,9 @@ def record_verdict_event(
         conn.execute(
             "INSERT INTO verdict_events("
             "ts, session_id, verdict_kind, target_kind, target_id, verdict, "
-            "severity_counts, findings_count, confidence, head_sha, branch"
-            ") VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "severity_counts, findings_count, confidence, abstention_reason, "
+            "head_sha, branch"
+            ") VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 ts,
                 session_id,
@@ -1187,11 +1196,15 @@ def record_verdict_event(
                 severity_json,
                 findings_count,
                 confidence,
+                abstention_reason,
                 head_sha,
                 branch,
             ),
         )
-        summary = f"{target_id or ''} {verdict} {verdict_kind} {severity_json or ''}".strip()
+        summary = (
+            f"{target_id or ''} {verdict} {abstention_reason or ''} "
+            f"{verdict_kind} {severity_json or ''}"
+        ).strip()
         _index(
             conn,
             content=summary[:512],

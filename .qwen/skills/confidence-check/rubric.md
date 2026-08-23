@@ -433,14 +433,37 @@ tagged line (ENH-2949, the same `extract_tagged_json` convention
 exit-code-only reading:
 
 ```
-VERDICT_JSON: {"verdict": "<pass|fail>", "confidence": <READINESS SCORE>, "target_id": "[ISSUE-ID]", "target_kind": "issue", "severity_counts": {"p0": 0, "p1": <Gaps to Address count>, "p2": 0, "info": 0}, "findings_count": <Gaps to Address count>}
+VERDICT_JSON: {"verdict": "<pass|fail|cannot_judge>", "confidence": <READINESS SCORE>|null, "target_id": "[ISSUE-ID]", "target_kind": "issue", "severity_counts": {"p0": 0, "p1": <Gaps to Address count>|null, "p2": 0, "info": 0}, "findings_count": <Gaps to Address count>|null, "abstention_reason": "missing_artifacts"|"unparseable_criteria"|"evaluation_context_unavailable"|"circular_dependencies"|null}
 ```
 
 `verdict` is `"pass"` when the readiness tier is `PROCEED` or
 `PROCEED WITH CAUTION`, `"fail"` for `STOP — ADDRESS GAPS` or
-`STOP — NOT READY`. `confidence` is the READINESS SCORE (0-100).
-`findings_count`/`severity_counts.p1` is the number of `### Gaps to Address`
-bullets (0 when the section is absent).
+`STOP — NOT READY`, and `"cannot_judge"` when the assessment cannot
+be completed — the issue references files or code that cannot be
+located, criteria are unparseable, or evaluation context is genuinely
+unavailable. Do not use `"cannot_judge"` to mask a poor readiness
+score; a low-confidence `"fail"` is more honest. `confidence` is the
+READINESS SCORE (0-100), or `null` when `cannot_judge`.
+`findings_count` and `severity_counts.p1` are `null` when
+`cannot_judge` (no audit completed) and otherwise equal the number of
+`### Gaps to Address` bullets (0 when the section is absent); readers
+MUST treat `null` distinctly from `0` (do not coalesce
+`row['findings_count'] or 0`). `abstention_reason` is required when
+`verdict` is `"cannot_judge"`, MUST be `null` otherwise, and MUST be
+one of the four closed tags:
+
+- `missing_artifacts` — issue references files, commits, or code that
+  cannot be located on disk or in the current branch
+- `unparseable_criteria` — acceptance criteria or Gaps-to-Address
+  text cannot be parsed into auditable structure
+- `evaluation_context_unavailable` — runtime, dependencies, or test
+  harness required to evaluate the issue are not reachable
+- `circular_dependencies` — the issue depends on other unevaluated
+  issues whose verdict is required first
+
+Adding a fifth tag is a contract change, not a config change: it
+updates this rubric, the schema `CHECK` constraint, the aggregation
+bucket, and the docs together.
 
 ## Batch Output Format (--all mode)
 

@@ -22,7 +22,7 @@ from little_loops.session_store.db import DEFAULT_DB_PATH, _resolve_db_path
 
 logger = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 43
+SCHEMA_VERSION = 44
 
 VALID_KINDS: tuple[str, ...] = (
     "tool",
@@ -1162,6 +1162,66 @@ _MIGRATIONS: list[str] = [
     CREATE INDEX IF NOT EXISTS idx_verdict_kind ON verdict_events(verdict_kind);
     CREATE INDEX IF NOT EXISTS idx_verdict_session ON verdict_events(session_id);
     CREATE INDEX IF NOT EXISTS idx_verdict_target ON verdict_events(target_id);
+    """,
+    # v44 (ENH-230): abstention verdict for LLM-judged gates. Adds the
+    # `abstention_reason` column to `verdict_events` and pins a CHECK on
+    # `verdict_events.verdict`.
+    #
+    # Without this, a verifier that cannot reach a judgment (artifacts
+    # missing, criteria unparseable) is forced to emit `pass` or `fail`, and
+    # that non-judgment lands in `verdict_pass_rate()` as if it were a real
+    # outcome. `cannot_judge` gives the gate somewhere honest to put it, and
+    # the closed `abstention_reason` tag says which fix path to take.
+    #
+    # Grammar is deliberately narrow: pass / fail / implement / cannot_judge.
+    # `implement` is pre-existing vocabulary — `verdict_pass_rate()` already
+    # counts it alongside `pass` as a "proceed" outcome (ENH-2504) — so the
+    # CHECK admits it rather than invalidating a documented reader query.
+    # `refused` is deliberately NOT admitted here: it exists on
+    # `review_events` (v35, ENH-2512) where audit-loop-run actually emits it,
+    # and no verifier produces it. Adding a value later is a one-line CHECK
+    # change plus a rebuild; admitting one nothing writes costs a rebuild to
+    # undo.
+    #
+    # SQLite ALTER TABLE cannot add a CHECK to an existing column, so
+    # `verdict_events` is rebuilt via the standard rename/copy/drop pattern.
+    # Existing rows pass: today's verdicts are only pass/fail (the coarse
+    # exit-code read in cli/action.py::_record_verdict), and
+    # abstention_reason lands NULL on every one of them.
+    #
+    # The cross-column CHECK pins NULL-as-contract: abstention_reason MUST be
+    # NULL unless verdict is `cannot_judge`, in which case it MUST be one of
+    # the four closed tags. Readers treat NULL findings_count distinctly from
+    # 0 — coalescing would fold abstentions back into the success math,
+    # which is the exact bug this migration exists to prevent. Adding a fifth
+    # tag is a contract change: rubric, CHECK, aggregation bucket, and docs
+    # move together.
+    """
+    CREATE TABLE verdict_events_new (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        ts TEXT NOT NULL,
+        session_id TEXT,
+        verdict_kind TEXT NOT NULL,
+        target_kind TEXT,
+        target_id TEXT,
+        verdict TEXT NOT NULL CHECK (verdict IN ('pass','fail','implement','cannot_judge')),
+        abstention_reason TEXT CHECK (
+            abstention_reason IS NULL
+            OR (verdict = 'cannot_judge' AND abstention_reason IN ('missing_artifacts','unparseable_criteria','evaluation_context_unavailable','circular_dependencies'))
+        ),
+        severity_counts TEXT,
+        findings_count INTEGER,
+        confidence INTEGER,
+        head_sha TEXT,
+        branch TEXT
+    );
+    INSERT INTO verdict_events_new (id, ts, session_id, verdict_kind, target_kind, target_id, verdict, abstention_reason, severity_counts, findings_count, confidence, head_sha, branch)
+    SELECT id, ts, session_id, verdict_kind, target_kind, target_id, verdict, NULL, severity_counts, findings_count, confidence, head_sha, branch FROM verdict_events;
+    DROP TABLE verdict_events;
+    ALTER TABLE verdict_events_new RENAME TO verdict_events;
+    CREATE INDEX IF NOT EXISTS idx_verdict_kind ON verdict_events(verdict_kind);
+    CREATE INDEX IF NOT EXISTS idx_verdict_target ON verdict_events(target_id);
+    CREATE INDEX IF NOT EXISTS idx_verdict_session ON verdict_events(session_id);
     """,
 ]
 

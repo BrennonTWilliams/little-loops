@@ -647,7 +647,7 @@ class TestSchemaV6:
         finally:
             conn.close()
         assert int(row[0]) == SCHEMA_VERSION
-        assert SCHEMA_VERSION == 43
+        assert SCHEMA_VERSION == 44
 
 
 class TestSchemaV9:
@@ -661,8 +661,8 @@ class TestSchemaV9:
             row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
         finally:
             conn.close()
-        assert SCHEMA_VERSION == 43
-        assert int(row[0]) == 43
+        assert SCHEMA_VERSION == 44
+        assert int(row[0]) == 44
 
     def test_idx_corrections_dedup_exists(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
@@ -713,8 +713,8 @@ class TestSchemaV10:
             row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
         finally:
             conn.close()
-        assert SCHEMA_VERSION == 43
-        assert int(row[0]) == 43
+        assert SCHEMA_VERSION == 44
+        assert int(row[0]) == 44
 
     def test_summary_nodes_table_exists(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
@@ -792,7 +792,7 @@ class TestSchemaV10:
             }
         finally:
             conn.close()
-        assert int(version[0]) == 43
+        assert int(version[0]) == 44
         assert "summary_nodes" in names
         assert "summary_spans" in names
         assert "assistant_messages" in names
@@ -809,8 +809,8 @@ class TestSchemaV12:
             row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
         finally:
             conn.close()
-        assert SCHEMA_VERSION == 43
-        assert int(row[0]) == 43
+        assert SCHEMA_VERSION == 44
+        assert int(row[0]) == 44
 
     def test_summary_nodes_has_level_column(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
@@ -1031,8 +1031,8 @@ class TestSchemaV13:
             row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
         finally:
             conn.close()
-        assert SCHEMA_VERSION == 43
-        assert int(row[0]) == 43
+        assert SCHEMA_VERSION == 44
+        assert int(row[0]) == 44
 
     def test_correction_retirements_table_exists(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
@@ -1072,8 +1072,8 @@ class TestSchemaV14:
             row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
         finally:
             conn.close()
-        assert SCHEMA_VERSION == 43
-        assert int(row[0]) == 43
+        assert SCHEMA_VERSION == 44
+        assert int(row[0]) == 44
 
     def test_issue_snapshots_table_exists(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
@@ -1127,7 +1127,7 @@ class TestSchemaV14:
             }
         finally:
             conn.close()
-        assert int(version[0]) == 43
+        assert int(version[0]) == 44
         assert "issue_snapshots" in names
 
 
@@ -1410,7 +1410,7 @@ class TestSchemaV27:
         assert cols == {"id", "ts", "session_id", "event", "detail", "head_sha", "branch"}
 
     def test_v26_db_upgrades_gains_session_lifecycle_events(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 43
+        assert SCHEMA_VERSION == 44
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 26)
         ensure_db(db)
@@ -1450,7 +1450,7 @@ class TestSchemaV28:
         }
 
     def test_v27_db_upgrades_gains_subagent_runs(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 43
+        assert SCHEMA_VERSION == 44
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 27)
         ensure_db(db)
@@ -1494,7 +1494,7 @@ class TestSchemaV29:
         assert "idx_usage_events_run_id" in names
 
     def test_v28_db_upgrades_gains_run_id_column(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 43
+        assert SCHEMA_VERSION == 44
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 28)
         ensure_db(db)
@@ -1544,7 +1544,7 @@ class TestSchemaV30HookEvents:
         assert {"idx_hook_event_name", "idx_hook_session", "idx_hook_exit"} <= names
 
     def test_v29_db_upgrades_gains_hook_events(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 43
+        assert SCHEMA_VERSION == 44
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 29)
         ensure_db(db)
@@ -1619,7 +1619,7 @@ class TestSchemaV31HarnessEvents:
         } <= names
 
     def test_v30_db_upgrades_gains_harness_events(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 43
+        assert SCHEMA_VERSION == 44
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 30)
         ensure_db(db)
@@ -1679,7 +1679,7 @@ class TestSchemaV32PromptOptEvents:
         assert {"idx_prompt_opt_events_session", "idx_prompt_opt_events_mode"} <= names
 
     def test_v31_db_upgrades_gains_prompt_opt_events(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 43
+        assert SCHEMA_VERSION == 44
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 31)
         ensure_db(db)
@@ -1730,6 +1730,7 @@ class TestSchemaV33VerdictEvents:
             "severity_counts",
             "findings_count",
             "confidence",
+            "abstention_reason",
             "head_sha",
             "branch",
         }
@@ -1747,7 +1748,7 @@ class TestSchemaV33VerdictEvents:
         assert {"idx_verdict_kind", "idx_verdict_target", "idx_verdict_session"} <= names
 
     def test_v32_db_upgrades_gains_verdict_events(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 43
+        assert SCHEMA_VERSION == 44
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 32)
         ensure_db(db)
@@ -1812,7 +1813,7 @@ class TestSchemaV34ContextPressureEvents:
         assert {"idx_pressure_session", "idx_pressure_ts", "idx_pressure_crossed"} <= names
 
     def test_v33_db_upgrade_gains_context_pressure_events(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 43
+        assert SCHEMA_VERSION == 44
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 33)
         ensure_db(db)
@@ -1880,7 +1881,7 @@ class TestSchemaV35ReviewEvents:
         assert {"idx_review_skill", "idx_review_target", "idx_review_session"} <= names
 
     def test_v34_db_upgrade_gains_review_events(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 43
+        assert SCHEMA_VERSION == 44
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 34)
         ensure_db(db)
@@ -1925,7 +1926,7 @@ class TestSchemaV38BaseShaColumns:
 
     def test_v37_db_upgrades_preserving_unstamped_rows(self, tmp_path: Path) -> None:
         """Pre-migration orchestration rows survive with NULL stamp columns."""
-        assert SCHEMA_VERSION == 43
+        assert SCHEMA_VERSION == 44
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 37)
         conn = sqlite3.connect(str(db))
@@ -1980,7 +1981,7 @@ class TestSchemaV39HarnessContentPin:
 
     def test_v38_db_upgrades_preserving_unpinned_rows(self, tmp_path: Path) -> None:
         """Pre-v39 harness rows survive with NULL content-pin columns."""
-        assert SCHEMA_VERSION == 43
+        assert SCHEMA_VERSION == 44
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 38)
         conn = sqlite3.connect(str(db))
@@ -2419,6 +2420,158 @@ class TestSchemaV43IndexRepair:
         assert leaf_ids == {leaf_a, leaf_b}
         assert dangling == 0
         assert re_target == survivor  # repointed from the deleted loser to its survivor
+
+
+class TestSchemaV44VerdictGrammar:
+    """v44 migration (ENH-230): abstention_reason column + verdict CHECK.
+
+    Pins the grammar so a future regression — adding a fifth
+    abstention_reason tag, or widening verdict without updating the CHECK —
+    fails the next writer call rather than silently corrupting the
+    aggregation in ``verdict_pass_rate()``.
+    """
+
+    def test_verdict_events_has_abstention_reason_column(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        conn = sqlite3.connect(str(db))
+        try:
+            cols = {r[1] for r in conn.execute("PRAGMA table_info(verdict_events)")}
+        finally:
+            conn.close()
+        assert "abstention_reason" in cols
+
+    def test_verdict_check_admits_exactly_four_values(self, tmp_path: Path) -> None:
+        """pass/fail/implement/cannot_judge are accepted; anything else is rejected."""
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        conn = sqlite3.connect(str(db))
+        try:
+            for i, value in enumerate(("pass", "fail", "implement", "cannot_judge")):
+                reason = "missing_artifacts" if value == "cannot_judge" else None
+                conn.execute(
+                    "INSERT INTO verdict_events(ts, verdict_kind, verdict, abstention_reason) "
+                    "VALUES(?, 'ready-issue', ?, ?)",
+                    (f"2026-08-01T00:0{i}:00Z", value, reason),
+                )
+            conn.commit()
+            accepted = conn.execute("SELECT COUNT(*) FROM verdict_events").fetchone()[0]
+
+            with pytest.raises(sqlite3.IntegrityError):
+                conn.execute(
+                    "INSERT INTO verdict_events(ts, verdict_kind, verdict) "
+                    "VALUES('2026-08-01T01:00:00Z', 'ready-issue', 'unknown')"
+                )
+        finally:
+            conn.close()
+        assert accepted == 4
+
+    def test_verdict_check_rejects_refused(self, tmp_path: Path) -> None:
+        """`refused` lives on review_events (ENH-2512), not here — no verifier emits it."""
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        conn = sqlite3.connect(str(db))
+        try:
+            with pytest.raises(sqlite3.IntegrityError):
+                conn.execute(
+                    "INSERT INTO verdict_events(ts, verdict_kind, verdict) "
+                    "VALUES('2026-08-01T00:00:00Z', 'ready-issue', 'refused')"
+                )
+        finally:
+            conn.close()
+
+    @pytest.mark.parametrize(
+        "tag",
+        [
+            "missing_artifacts",
+            "unparseable_criteria",
+            "evaluation_context_unavailable",
+            "circular_dependencies",
+        ],
+    )
+    def test_abstention_reason_admits_the_four_closed_tags(self, tmp_path: Path, tag: str) -> None:
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        conn = sqlite3.connect(str(db))
+        try:
+            conn.execute(
+                "INSERT INTO verdict_events(ts, verdict_kind, verdict, abstention_reason) "
+                "VALUES('2026-08-01T00:00:00Z', 'ready-issue', 'cannot_judge', ?)",
+                (tag,),
+            )
+            conn.commit()
+            stored = conn.execute("SELECT abstention_reason FROM verdict_events").fetchone()[0]
+        finally:
+            conn.close()
+        assert stored == tag
+
+    def test_abstention_reason_rejects_unknown_tag(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        conn = sqlite3.connect(str(db))
+        try:
+            with pytest.raises(sqlite3.IntegrityError):
+                conn.execute(
+                    "INSERT INTO verdict_events(ts, verdict_kind, verdict, abstention_reason) "
+                    "VALUES('2026-08-01T00:00:00Z', 'ready-issue', 'cannot_judge', 'invalid_tag')"
+                )
+        finally:
+            conn.close()
+
+    def test_abstention_reason_must_be_null_for_non_abstention_verdicts(
+        self, tmp_path: Path
+    ) -> None:
+        """NULL-as-contract: a reason on a pass/fail row is a producer bug, rejected structurally."""
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        conn = sqlite3.connect(str(db))
+        try:
+            for verdict in ("pass", "fail", "implement"):
+                with pytest.raises(sqlite3.IntegrityError):
+                    conn.execute(
+                        "INSERT INTO verdict_events"
+                        "(ts, verdict_kind, verdict, abstention_reason) "
+                        "VALUES('2026-08-01T00:00:00Z', 'ready-issue', ?, 'missing_artifacts')",
+                        (verdict,),
+                    )
+        finally:
+            conn.close()
+
+    def test_v43_db_upgrades_preserving_existing_rows(self, tmp_path: Path) -> None:
+        """Pre-v44 verdict_events rows survive the table rebuild with NULL abstention_reason."""
+        assert SCHEMA_VERSION == 44
+        db = tmp_path / "history.db"
+        _bootstrap_schema_at(db, 43)
+        conn = sqlite3.connect(str(db))
+        try:
+            conn.execute(
+                "INSERT INTO verdict_events"
+                "(ts, verdict_kind, target_kind, target_id, verdict, findings_count, confidence) "
+                "VALUES('2026-07-01T00:00:00Z', 'ready-issue', 'issue', 'BUG-1', 'pass', 3, 95)"
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        ensure_db(db)
+
+        conn = sqlite3.connect(str(db))
+        conn.row_factory = sqlite3.Row
+        try:
+            version = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
+            row = conn.execute(
+                "SELECT target_id, verdict, abstention_reason, findings_count, confidence "
+                "FROM verdict_events"
+            ).fetchone()
+        finally:
+            conn.close()
+        assert int(version[0]) == SCHEMA_VERSION
+        assert row is not None
+        assert row["target_id"] == "BUG-1"
+        assert row["verdict"] == "pass"
+        assert row["abstention_reason"] is None  # new column defaults to NULL
+        assert row["findings_count"] == 3
+        assert row["confidence"] == 95
 
 
 class TestPackageReexportSurface:

@@ -26,13 +26,29 @@ _CREATE_TABLE_RE = re.compile(
     r"CREATE TABLE (?:IF NOT EXISTS )?([a-zA-Z_][a-zA-Z0-9_]*)", re.IGNORECASE
 )
 
+# SQLite cannot ALTER an existing column to add a CHECK, so a constraint
+# change is expressed as a table rebuild: create `<name>_new`, copy rows,
+# drop the original, rename `<name>_new` into its place (ENH-230's v44
+# rebuild of `verdict_events` is the first). The scaffold table never
+# survives the migration, so it has no kind to register — exclude anything
+# renamed away rather than forcing a permanent _KINDLESS_TABLES entry per
+# rebuild.
+_RENAMED_AWAY_RE = re.compile(r"ALTER TABLE ([a-zA-Z_][a-zA-Z0-9_]*) RENAME TO ", re.IGNORECASE)
+
 
 def _all_migration_tables() -> set[str]:
-    """Return every table name created anywhere in ``_MIGRATIONS``."""
+    """Return every table name that still exists after ``_MIGRATIONS`` replays.
+
+    Tables created only as rebuild scaffolding (created, then renamed over
+    the table they replace) are excluded — they are not part of the live
+    schema, so requiring a kind registration for them would be noise.
+    """
     tables: set[str] = set()
+    renamed_away: set[str] = set()
     for migration_sql in session_store._MIGRATIONS:
         tables.update(_CREATE_TABLE_RE.findall(migration_sql))
-    return tables
+        renamed_away.update(_RENAMED_AWAY_RE.findall(migration_sql))
+    return tables - renamed_away
 
 
 def _run() -> tuple[int, list[str]]:

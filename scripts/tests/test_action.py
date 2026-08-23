@@ -375,8 +375,13 @@ class TestCmdInvokeRecordsVerdictEvent:
         monkeypatch.setattr("little_loops.cli.action.DEFAULT_DB_PATH", db)
 
         def fake_run(command, timeout, stream_callback, **kwargs):
+            # ENH-230: "warn" is a review_events verdict, not a verdict_events
+            # verdict. Use "cannot_judge" (with abstention_reason) to exercise
+            # the same override-the-coarse-fallback contract on a value that
+            # the new schema CHECK accepts.
             stream_callback(
-                'VERDICT_JSON: {"verdict": "warn", "findings_count": 2, "confidence": 80}',
+                'VERDICT_JSON: {"verdict": "cannot_judge", "findings_count": null, '
+                '"abstention_reason": "missing_artifacts"}',
                 False,
             )
             return _make_completed(0)
@@ -389,9 +394,9 @@ class TestCmdInvokeRecordsVerdictEvent:
 
         rows = recent(db, kind="verdict")
         assert len(rows) == 1
-        assert rows[0]["verdict"] == "warn"
-        assert rows[0]["findings_count"] == 2
-        assert rows[0]["confidence"] == 80
+        assert rows[0]["verdict"] == "cannot_judge"
+        assert rows[0]["abstention_reason"] == "missing_artifacts"
+        assert rows[0]["findings_count"] is None
 
     def test_best_effort_on_unopenable_db(
         self, tmp_path: Path, capsys: pytest.CaptureFixture, monkeypatch: pytest.MonkeyPatch
