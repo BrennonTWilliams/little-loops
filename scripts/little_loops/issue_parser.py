@@ -3193,12 +3193,65 @@ def slugify(text: str) -> str:
     return text.strip("-").lower()
 
 
+def _main_tree_issue_dirs(config: BRConfig, main_root: Path) -> list[Path]:
+    """Mirror ``get_next_issue_number``'s dirs_to_scan, rooted at *main_root*."""
+    dirs: list[Path] = []
+    for cat_config in config.issues.categories.values():
+        dirs.append(main_root / config.issues.base_dir / cat_config.dir)
+    legacy_completed = main_root / config.issues.base_dir / "completed"
+    legacy_deferred = main_root / config.issues.base_dir / "deferred"
+    if legacy_completed.exists():
+        dirs.append(legacy_completed)
+    if legacy_deferred.exists():
+        dirs.append(legacy_deferred)
+    return dirs
+
+
+def id_alloc_highwater_path(config: BRConfig) -> Path:
+    """Return the high-water-mark file path, resolved to the main checkout.
+
+    Lives in the *main* tree's ``.issues/`` (BUG-3303) regardless of which
+    worktree the current process runs from, so it's a durable, canonical
+    record of the highest ID ever allocated — even for an ID whose issue
+    file only exists in a worktree that never merges. Falls back to
+    ``config.project_root`` when not running inside a linked worktree.
+    """
+    from little_loops.paths import resolve_main_worktree_root
+
+    main_root = resolve_main_worktree_root(config.project_root)
+    base = main_root if main_root is not None else config.project_root
+    return base / config.issues.base_dir / ".id-alloc-highwater"
+
+
+def read_id_alloc_highwater(path: Path) -> int:
+    """Read the high-water-mark file; missing/corrupt/unreadable treated as 0."""
+    try:
+        return int(path.read_text(encoding="utf-8").strip())
+    except (OSError, ValueError):
+        return 0
+
+
+def write_id_alloc_highwater(path: Path, value: int) -> None:
+    """Write the high-water-mark file. Caller must hold the id-alloc lock."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(str(value), encoding="utf-8")
+
+
 def get_next_issue_number(config: BRConfig, category: str | None = None) -> int:
     """Determine the next globally unique issue number.
 
     Scans ALL issue directories (active and completed) to find the highest
     existing number across ALL issue types (BUG, FEAT, ENH). Issue numbers
     are globally unique regardless of type.
+
+    When running inside a linked git worktree (BUG-3303), also unions in the
+    main checkout's issue directories and the main tree's high-water-mark
+    file (``.id-alloc-highwater``), so an ID allocated from a stale worktree
+    can never collide with one already allocated on main — including IDs
+    whose issue files exist only in a sibling worktree that hasn't merged.
+    Falls back to today's local-only scan when not in a worktree, in a
+    non-git directory, or when the main tree is unreachable (graceful
+    degradation — see BUG-3303's Proposed Solution).
 
     Args:
         config: Project configuration
@@ -3207,6 +3260,8 @@ def get_next_issue_number(config: BRConfig, category: str | None = None) -> int:
     Returns:
         Next available issue number (globally unique across all types)
     """
+    from little_loops.paths import resolve_main_worktree_root
+
     max_num = 0
 
     # Get all known prefixes from configuration
@@ -3226,6 +3281,10 @@ def get_next_issue_number(config: BRConfig, category: str | None = None) -> int:
     if legacy_deferred.exists():
         dirs_to_scan.append(legacy_deferred)
 
+    main_root = resolve_main_worktree_root(config.project_root)
+    if main_root is not None:
+        dirs_to_scan.extend(_main_tree_issue_dirs(config, main_root))
+
     if not all_prefixes:
         return max_num + 1
 
@@ -3241,6 +3300,10 @@ def get_next_issue_number(config: BRConfig, category: str | None = None) -> int:
                 num = int(match.group(1))
                 if num > max_num:
                     max_num = num
+
+    highwater = read_id_alloc_highwater(id_alloc_highwater_path(config))
+    if highwater > max_num:
+        max_num = highwater
 
     return max_num + 1
 

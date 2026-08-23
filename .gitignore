@@ -48,6 +48,9 @@ temp/
 **/.*.lock
 **/.*.lock.lock
 
+# BUG-3303: cross-worktree issue-ID allocation state, main tree's .issues/ only
+.issues/.id-alloc-highwater
+
 # ENH-3259 staged caller-suitability-gate fixture (ephemeral, staged for the
 # duration of a fixture loop run and removed on every exit path)
 .issues/enhancements/*ENH-288-*

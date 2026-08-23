@@ -3,10 +3,11 @@ id: BUG-3303
 type: BUG
 title: Issue ID allocation inside worktrees collides with main tree IDs
 priority: P2
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-08-23'
 captured_at: '2026-08-23T19:19:29Z'
+completed_at: '2026-08-23T22:11:12Z'
 confidence_score: 94
 outcome_confidence: 70
 score_complexity: 18
@@ -237,6 +238,23 @@ _Added by `/ll:refine-issue` — 2026-08-23 — based on codebase analysis:_
 
 ## Program Design
 
+### Deviations
+
+_2026-08-23, `/ll:manage-issue`:_ The Decision Rationale preferred `git
+rev-parse --path-format=absolute --git-common-dir` as the primary
+main-checkout resolver, falling back to `.git`-file parsing "only where a
+subprocess is undesirable." Implemented `resolve_main_worktree_root()`
+(`scripts/little_loops/paths.py`) using **only** `.git`-file parsing (the
+`host_runner.py` gitdir-parsing technique), with no subprocess path at all.
+Reason: `get_next_issue_number()` is the single choke point for every ID
+allocation across the whole CLI surface (`create`, `scaffold-epic`,
+`next-id`, normalize, sync, `create_issue_from_failure`) — it runs on every
+call, not just inside worktrees, so a per-call `git` subprocess spawn on
+that path was judged an unacceptable latency/robustness cost (subprocess
+failure modes, non-zero exit on edge cases) for a resolver that the
+`.git`-file read already handles correctly for every case in the Graceful
+Degradation contract (primary checkout, non-git dir, missing main tree).
+
 ### Types
 N/A — no new data shape; the fix changes where the existing scan reads from, not what it returns.
 
@@ -263,12 +281,12 @@ ID allocation consults the canonical namespace even from a worktree. See Option 
 
 ## Acceptance Criteria
 
-- [ ] `ll-issues create` inside a linked worktree on a stale branch never allocates an ID <= the main tree's max allocated ID
-- [ ] Two sibling worktrees allocating sequentially (no merge between) never receive the same ID (high-water-mark file exercised)
-- [ ] Decomposition flows allocate through the same guarded path, including `create_issue_from_failure()` (`issue_lifecycle.py:822`)
-- [ ] `ll-issues next-id` previews the same ID `ll-issues create` then allocates, from inside a worktree
-- [ ] Behavior unchanged when running in the primary checkout, in a non-git directory, and in a worktree whose main tree lacks `.issues/` (graceful degradation, no errors)
-- [ ] `python -m pytest scripts/tests/` passes
+- [x] `ll-issues create` inside a linked worktree on a stale branch never allocates an ID <= the main tree's max allocated ID
+- [x] Two sibling worktrees allocating sequentially (no merge between) never receive the same ID (high-water-mark file exercised)
+- [x] Decomposition flows allocate through the same guarded path, including `create_issue_from_failure()` (`issue_lifecycle.py:822`)
+- [x] `ll-issues next-id` previews the same ID `ll-issues create` then allocates, from inside a worktree
+- [x] Behavior unchanged when running in the primary checkout, in a non-git directory, and in a worktree whose main tree lacks `.issues/` (graceful degradation, no errors)
+- [x] `python -m pytest scripts/tests/` passes
 
 ## Related Key Documentation
 
@@ -283,6 +301,7 @@ ID allocation consults the canonical namespace even from a worktree. See Option 
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-23T22:10:48 - `e5565711-67bf-4342-999d-ec26553c5ca2.jsonl`
 - `/ll:confidence-check` - 2026-08-23T21:46:40 - `472772e0-0d23-4f5c-8222-6df281b8269d.jsonl`
 - `/ll:decide-issue` - 2026-08-23T20:54:12 - `b06a9731-b7f1-4cd3-ae8f-7c9209764607.jsonl`
 - `/ll:confidence-check` - 2026-08-23T20:42:20 - `36a136c9-6c59-4cf6-b7d4-c0e4e7645a9e.jsonl`

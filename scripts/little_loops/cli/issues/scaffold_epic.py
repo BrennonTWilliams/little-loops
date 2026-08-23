@@ -68,15 +68,25 @@ def scaffold_epic(
         ValueError: if any child's type has no configured category.
     """
     from little_loops.file_utils import acquire_lock
-    from little_loops.issue_parser import get_next_issue_number, slugify
+    from little_loops.issue_parser import (
+        get_next_issue_number,
+        id_alloc_highwater_path,
+        slugify,
+        write_id_alloc_highwater,
+    )
+    from little_loops.paths import resolve_main_worktree_root
 
     for child in children:
         if child.type not in _VALID_TYPES:
             raise ValueError(f"Unknown issue type: {child.type!r}")
 
     now = now or datetime.now(UTC)
-    issues_dir = config.project_root / config.issues.base_dir
-    lock_path = issues_dir / ".id-alloc.lock"
+    # BUG-3303: relocate the id-alloc lock to the main checkout when running
+    # inside a linked worktree, so allocation is serialized across trees.
+    main_root = resolve_main_worktree_root(config.project_root)
+    lock_base = main_root if main_root is not None else config.project_root
+    lock_path = lock_base / config.issues.base_dir / ".id-alloc.lock"
+    highwater_path = id_alloc_highwater_path(config)
 
     written: list[tuple[str, Path]] = []  # (issue_id, Path)
     try:
@@ -135,6 +145,8 @@ def scaffold_epic(
                 with open(child_path, "x", encoding="utf-8") as f:
                     f.write(child_content)
                 written.append(("", child_path))
+
+            write_id_alloc_highwater(highwater_path, next_num - 1)
     except Exception:
         for _, path in written:
             try:

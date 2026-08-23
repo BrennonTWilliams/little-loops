@@ -81,3 +81,46 @@ def resolve_ll_dir(start: Path | None = None, create: bool = False) -> Path | No
         except OSError:
             return None
     return ll_dir
+
+
+def resolve_main_worktree_root(checkout_root: Path) -> Path | None:
+    """Return the main checkout root if *checkout_root* is a linked git worktree.
+
+    Reads *checkout_root*'s ``.git`` file directly (same technique as
+    ``host_runner.py``'s ``GIT_DIR``/``GIT_WORK_TREE`` resolution) rather than
+    shelling out, so this stays usable from hot allocation paths. A linked
+    worktree's ``.git`` file points at ``<main>/.git/worktrees/<name>``; three
+    ``.parent`` hops recover ``<main>``.
+
+    Returns ``None`` — meaning "no redirect, use *checkout_root* as-is" — for
+    every case that isn't a linked worktree pointing at a live main tree:
+    ``.git`` missing, ``.git`` is a directory (primary checkout), the
+    ``gitdir:`` pointer is malformed or doesn't end in ``.git/worktrees/<name>``,
+    or the resolved main root doesn't exist on disk (e.g. deleted while the
+    worktree survives). Never raises.
+    """
+    git_path = checkout_root / ".git"
+    if not git_path.is_file():
+        return None
+    try:
+        text = git_path.read_text(encoding="utf-8").strip()
+    except OSError:
+        return None
+    if not text.startswith("gitdir: "):
+        return None
+    gitdir_ref = text[len("gitdir: ") :].strip()
+    gitdir_path = Path(gitdir_ref)
+    if not gitdir_path.is_absolute():
+        gitdir_path = checkout_root / gitdir_path
+    try:
+        gitdir_path = gitdir_path.resolve()
+    except OSError:
+        return None
+    worktrees_dir = gitdir_path.parent
+    git_dir = worktrees_dir.parent
+    if worktrees_dir.name != "worktrees" or git_dir.name != ".git":
+        return None
+    main_root = git_dir.parent
+    if not main_root.exists():
+        return None
+    return main_root

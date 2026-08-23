@@ -819,10 +819,34 @@ def create_issue_from_failure(
     Returns:
         Path to new issue file, or None if creation failed
     """
-    bug_num = get_next_issue_number(config, "bugs")
-    prefix = config.get_issue_prefix("bugs")
-    bug_id = f"{prefix}-{bug_num:03d}"
+    from little_loops.file_utils import acquire_lock
+    from little_loops.issue_parser import id_alloc_highwater_path, write_id_alloc_highwater
+    from little_loops.paths import resolve_main_worktree_root
 
+    # BUG-3303: acquire the same cross-tree id-alloc lock create_issue() uses,
+    # relocated to the main checkout when running inside a linked worktree —
+    # this path previously allocated with no lock and no collision retry.
+    main_root = resolve_main_worktree_root(config.project_root)
+    lock_base = main_root if main_root is not None else config.project_root
+    lock_path = lock_base / config.issues.base_dir / ".id-alloc.lock"
+    with acquire_lock(lock_path, timeout=10.0):
+        bug_num = get_next_issue_number(config, "bugs")
+        prefix = config.get_issue_prefix("bugs")
+        bug_id = f"{prefix}-{bug_num:03d}"
+        result = _write_failure_issue(bug_id, error_output, parent_info, config, logger, event_bus)
+        if result is not None:
+            write_id_alloc_highwater(id_alloc_highwater_path(config), bug_num)
+        return result
+
+
+def _write_failure_issue(
+    bug_id: str,
+    error_output: str,
+    parent_info: IssueInfo,
+    config: BRConfig,
+    logger: Logger,
+    event_bus: EventBus | None,
+) -> Path | None:
     # Try to extract meaningful error info
     error_lines = error_output.split("\n")[:20]  # First 20 lines
     traceback = "\n".join(error_lines)

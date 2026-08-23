@@ -431,21 +431,33 @@ def create_issue(config: BRConfig, spec: IssueSpec, now: datetime | None = None)
         FileExistsError: if 5 collision retries are exhausted.
     """
     from little_loops.file_utils import acquire_lock
-    from little_loops.issue_parser import get_next_issue_number, slugify
+    from little_loops.issue_parser import (
+        get_next_issue_number,
+        id_alloc_highwater_path,
+        slugify,
+        write_id_alloc_highwater,
+    )
+    from little_loops.paths import resolve_main_worktree_root
 
     if spec.type not in _VALID_TYPES:
         raise ValueError(f"Unknown issue type: {spec.type!r}")
 
     now = now or datetime.now(UTC)
-    issues_dir = config.project_root / config.issues.base_dir
     category_key = _category_key_for_type(config, spec.type)
     type_dir = config.get_issue_dir(category_key)
     type_dir.mkdir(parents=True, exist_ok=True)
     slug = slugify(spec.title)
 
-    lock_path = issues_dir / ".id-alloc.lock"
+    # BUG-3303: the id-alloc lock lives in the *main* checkout's .issues/ when
+    # running inside a linked worktree, so allocation is serialized across
+    # trees rather than only within the worktree's own isolated copy.
+    main_root = resolve_main_worktree_root(config.project_root)
+    lock_base = main_root if main_root is not None else config.project_root
+    lock_path = lock_base / config.issues.base_dir / ".id-alloc.lock"
+    highwater_path = id_alloc_highwater_path(config)
     path: Path | None = None
     issue_id = ""
+    num = 0
     last_error: FileExistsError | None = None
     with acquire_lock(lock_path, timeout=10.0):
         for _ in range(5):
@@ -465,6 +477,7 @@ def create_issue(config: BRConfig, spec: IssueSpec, now: datetime | None = None)
         if path is None:
             assert last_error is not None
             raise last_error
+        write_id_alloc_highwater(highwater_path, num)
 
     created = CreatedIssue(id=issue_id, path=path)
     staged_paths = [str(path)]
