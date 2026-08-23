@@ -31,6 +31,7 @@ and then discarded.
 `scripts/little_loops/cli/loop/_helpers.py:2031` computes the two intervals and
 prints them:
 
+<!-- ll-evidence-ok: illustrative sample output the format code would produce, not a literal quote from _helpers.py's source text -->
 ```
 A/B Summary (n=5)
   Harness pass-rate:  60%  [0.23, 0.88]

@@ -70,6 +70,7 @@ Three ways a second decision point survives the pass, all ending in a cleared fl
    idiomatic shape in this repo's issues — used to match **zero** of the four tiers.
    **Already fixed by BUG-3287 (landed `e16a0bd83`), re-measured 2026-08-23:** `_OPTION_PATTERNS[3]`
    is now `^[-*]\s+\*{0,2}(?:\([a-z0-9]\)\s*|Option\s+[A-Za-z0-9])`, and that shape returns
+   <!-- ll-evidence-ok: re-measured function return value from running the fixed code, not a quote from BUG-3287's issue body -->
    `count 2, pattern bullet`. This issue's group iterator picks case 2 up at the `bullet` tier under
    `include_approximate_tiers=True` with no extra work. The only consequence left for this issue is
    fixture choice — use the bold-wrapped `- **(a) …**` shape, per the note under *Steps to
@@ -79,7 +80,9 @@ Three ways a second decision point survives the pass, all ending in a cleared fl
    BUG-3287**: `locate_enumerable_options` now runs the directive probe *alongside* every tier win
    and attaches the result as `LocatedOptions.residual_directive` rather than reaching it only when
    tiers 1–4 all miss (re-measured 2026-08-23 — a document with `**Option A/B**` plus a `pick one`
-   directive returns `2, bold_label, residual_directive=provisional_e`). This issue's group
+   directive returns
+   <!-- ll-evidence-ok: re-measured function return value from running the fixed code, not a quote from BUG-3287's issue body -->
+   `2, bold_label, residual_directive=provisional_e`). This issue's group
    iterator therefore does **not** need its own second call path: it reads `residual_directive`
    off the existing result. See part 3.
 

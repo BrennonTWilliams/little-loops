@@ -64,6 +64,7 @@ actually worth.
 Live on this epic's own BUG-3285, whose two counted items are both in `## Integration Map` and
 both point at a question decided six lines below the pointer:
 
+<!-- ll-evidence-ok: live CLI output from running the command against BUG-3285, not a quote from BUG-3285's issue body -->
 ```
 $ ll-issues check-open-questions 3285
 OPEN_QUESTIONS_REMAIN: 3285 — 2 open question(s) and 0 unresolved option(s)
