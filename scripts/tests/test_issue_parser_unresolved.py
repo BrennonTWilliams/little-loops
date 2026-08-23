@@ -746,6 +746,119 @@ class TestNumberedOpenQuestionCitations:
         # 3 in Edge Cases + 2 in Confidence Check Notes = 5
         assert count_open_questions_in_sections(content) == 5
 
+    # BUG-3296: a citation of an open question (points at one) is not a
+    # declaration of one (asks one). Verbatim shapes from the corpus differential.
+
+    def test_section_symbol_citation_not_counted(self) -> None:
+        from little_loops.issue_parser import count_open_questions_in_sections
+
+        content = (
+            "## Integration Map\n"
+            "\n"
+            "- `scripts/little_loops/issue_parser.py` — convergence decision,"
+            " § *Open question*; details below.\n"
+        )
+        assert count_open_questions_in_sections(content) == 0
+
+    def test_see_citation_not_counted(self) -> None:
+        from little_loops.issue_parser import count_open_questions_in_sections
+
+        content = (
+            "## Program Design\n"
+            "\n"
+            '- `severity: str` — `"error"` / `"warn"` (see Open Question)\n'
+        )
+        assert count_open_questions_in_sections(content) == 0
+
+    def test_possessive_this_issue_citation_not_counted(self) -> None:
+        from little_loops.issue_parser import count_open_questions_in_sections
+
+        content = (
+            "## Edge Cases\n"
+            "\n"
+            "- `docs/guides/DECISIONS_LOG_GUIDE.md` (`:198`) — description"
+            " (per this issue's Open Question)\n"
+        )
+        assert count_open_questions_in_sections(content) == 0
+
+    def test_quoted_phrase_in_code_span_not_counted(self) -> None:
+        from little_loops.issue_parser import count_open_questions_in_sections
+
+        content = (
+            "## Open Questions\n"
+            "\n"
+            '- The vocabulary `"open question"` appears in the constant name.\n'
+        )
+        assert count_open_questions_in_sections(content) == 0
+
+    def test_section_heading_in_code_span_not_counted(self) -> None:
+        from little_loops.issue_parser import count_open_questions_in_sections
+
+        content = (
+            "## Integration Map\n"
+            "\n"
+            "- The heading is `## Open Questions` in every issue file.\n"
+        )
+        assert count_open_questions_in_sections(content) == 0
+
+    def test_double_backtick_span_citation_not_counted(self) -> None:
+        """A `` `## Open Questions` ``-style span must mask fully, not mis-pair."""
+        from little_loops.issue_parser import count_open_questions_in_sections
+
+        content = (
+            "## Integration Map\n"
+            "\n"
+            "- Cite the heading using `` `## Open Questions` ``.\n"
+        )
+        assert count_open_questions_in_sections(content) == 0
+
+    def test_item_leading_declaration_survivor_counted(self) -> None:
+        from little_loops.issue_parser import count_open_questions_in_sections
+
+        content = "## Open Questions\n\n- Open question: does X need Y?\n"
+        assert count_open_questions_in_sections(content) == 1
+
+    def test_bold_item_leading_declaration_survivor_counted(self) -> None:
+        from little_loops.issue_parser import count_open_questions_in_sections
+
+        content = (
+            "## Open Questions\n"
+            "\n"
+            "- **Open question: DSL task file format** — the issue does not"
+            " specify the schema\n"
+        )
+        assert count_open_questions_in_sections(content) == 1
+
+    def test_prose_hedge_survivor_counted(self) -> None:
+        from little_loops.issue_parser import count_open_questions_in_sections
+
+        content = (
+            "## Open Questions\n\n- Minor open question on hook warning treatment"
+            " — needs follow-up.\n"
+        )
+        assert count_open_questions_in_sections(content) == 1
+
+    def test_word_boundary_survivor_wrapper_counted(self) -> None:
+        """An unanchored `per` alternation would falsely mask inside 'wrapper'."""
+        from little_loops.issue_parser import count_open_questions_in_sections
+
+        content = "## Open Questions\n\n- The wrapper open question: does X need Y?\n"
+        assert count_open_questions_in_sections(content) == 1
+
+    def test_word_boundary_survivor_proper_counted(self) -> None:
+        """An unanchored `per` alternation would falsely mask inside 'Proper'."""
+        from little_loops.issue_parser import count_open_questions_in_sections
+
+        content = "## Open Questions\n\n- Proper open questions handling is missing\n"
+        assert count_open_questions_in_sections(content) == 1
+
+    def test_word_boundary_survivor_deeper_counted(self) -> None:
+        """An unanchored `per` alternation would falsely mask inside 'deeper'."""
+        from little_loops.issue_parser import count_open_questions_in_sections
+
+        content = "## Open Questions\n\n- A deeper open question remains\n"
+        assert count_open_questions_in_sections(content) == 1
+
 
 class TestQuestionGaps:
     """QuestionGaps dataclass mirrors FormatGaps shape (ENH-2446)."""

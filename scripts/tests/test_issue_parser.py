@@ -4740,10 +4740,10 @@ class TestPriorityRegexCompletenessAllowlist:
             "frontmatter directly by design — drift IS the comparison, not a resolution",
             1665: "_DEP_ID_RE (BUG-3059): dependency-ID shape validation; optional prefix "
             "group discarded",
-            3652: "comment describing the P[0-5]-NNN- filename shape",
-            3656: "_parse_type_and_id's directory-fallback number extraction; priority digit "
+            3680: "comment describing the P[0-5]-NNN- filename shape",
+            3684: "_parse_type_and_id's directory-fallback number extraction; priority digit "
             "skipped over, not read as a value",
-            3677: "_generate_id_from_filename strips a leading priority token before "
+            3705: "_generate_id_from_filename strips a leading priority token before "
             "digit-scanning for ID generation",
         },
         "issues/prose_deps.py": {
@@ -5712,6 +5712,76 @@ class TestUnappliedDecisionLiveCorpusSweep:
         )
 
         assert _unapplied_decision(content) == []
+
+
+class TestBug3296CitationMaskCorpusSweep:
+    """BUG-3296 Implementation Steps step 3: the citation mask is a pure subtraction.
+
+    Recomputes the pre-fix (unmasked) count inline from the module's own
+    segmentation helpers -- there is no before-state to diff against once the
+    mask is live. Not asserted by ID (the corpus changes daily); only the
+    `masked <= unmasked` invariant is pinned, per
+    :class:`TestUnappliedDecisionLiveCorpusSweep`'s scaffolding model above.
+    """
+
+    @staticmethod
+    def _count_unmasked(text: str) -> int:
+        from little_loops.issue_parser import (
+            _OPEN_QUESTION_SIGNAL_RE,
+            _RESOLVED_QUESTION_MARKER_RE,
+            _is_list_item_start,
+        )
+
+        if not text:
+            return 0
+        unresolved = 0
+        item_lines: list[str] = []
+
+        def _flush() -> None:
+            nonlocal unresolved
+            if not item_lines:
+                return
+            joined = " ".join(item_lines)
+            if not _RESOLVED_QUESTION_MARKER_RE.search(
+                joined
+            ) and _OPEN_QUESTION_SIGNAL_RE.search(joined):
+                unresolved += 1
+
+        for line in text.splitlines():
+            stripped = line.strip()
+            if not stripped:
+                _flush()
+                item_lines = []
+                continue
+            if _is_list_item_start(stripped):
+                _flush()
+                item_lines = [stripped]
+            elif item_lines and not stripped.startswith("#"):
+                item_lines.append(stripped)
+            else:
+                _flush()
+                item_lines = []
+        _flush()
+        return unresolved
+
+    def test_masked_count_never_exceeds_unmasked_count(self) -> None:
+        from little_loops.issue_parser import (
+            _OPEN_QUESTION_SECTIONS,
+            _section_body,
+            count_open_questions_in_sections,
+        )
+
+        issues_dir = Path(__file__).parent.parent.parent / ".issues"
+        if not issues_dir.exists():
+            pytest.skip("no .issues/ corpus in this checkout")
+        for path in issues_dir.rglob("*.md"):
+            content = path.read_text(encoding="utf-8", errors="ignore")
+            unmasked = sum(
+                self._count_unmasked(_section_body(content, heading) or "")
+                for heading in _OPEN_QUESTION_SECTIONS
+            )
+            masked = count_open_questions_in_sections(content)
+            assert masked <= unmasked, path
 
 
 class TestBug3285BoldOptionMarkerTightening:

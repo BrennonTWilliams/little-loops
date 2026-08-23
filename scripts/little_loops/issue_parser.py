@@ -2973,6 +2973,28 @@ def locate_unresolved_decisions(
     return [g for g in groups if not is_group_resolved(content, g)]
 
 
+# BUG-3296: an item that names, quotes, or points at an open question is a
+# citation, not a declaration — mask both out of the joined item text before
+# _OPEN_QUESTION_SIGNAL_RE runs. Joins the _PLACEHOLDER_BACKTICK_SPAN_RE
+# (:1791) family and its cross-referenced siblings in symbol_claims /
+# cli_claims / prose_deps — kept as its own copy per that file's existing
+# convention rather than a new shared import.
+# Deliberate divergence: `*`, not the siblings' `+` — a `+`-quantified span
+# cannot match an empty span, so it mis-pairs across a double-backtick span
+# (`` `x` ``), the exact construct issue prose uses to show backticked
+# content.
+_OQ_BACKTICK_SPAN_RE = re.compile(r"`[^`\n]*`")
+# BUG-3296: `\b`-anchored citation lead-ins immediately preceding the "open
+# question(s)" phrase, plus a quoted section title. The `\b` sits inside the
+# alternation group, not before `§` (a non-word character) — unanchored,
+# `per`/`see`/`under` would falsely match inside "wrapper"/"foresee"/"thunder".
+_OQ_CITATION_RE = re.compile(
+    r"(?:§|\b(?:see|under|per|on the|referenced in|cited in))\s+"
+    r"[*_\"'“]{0,2}(?:this\s+issue['’]s\s+)?open questions?\b"
+    r"|[\"“]\s*Open Questions?\b",
+    re.IGNORECASE,
+)
+
 # Resolved-question markers — same vocabulary as skills/decide-issue/SKILL.md:197
 # (ENH-2446 explicitly mirrors that regex to keep the deterministic probe and the
 # LLM skill reading the same markers).
@@ -3080,9 +3102,15 @@ def _count_unresolved_items_in_text(text: str) -> int:
         if not item_lines:
             return
         joined = " ".join(item_lines)
-        if not _RESOLVED_QUESTION_MARKER_RE.search(joined) and _OPEN_QUESTION_SIGNAL_RE.search(
-            joined
-        ):
+        if _RESOLVED_QUESTION_MARKER_RE.search(joined):
+            return
+        # BUG-3296: mask code spans and citation lead-ins before signal
+        # matching — a citation of an open question is not a declaration of
+        # one. Equal-length filler keeps offsets valid for any future span
+        # reporting. The RESOLVED check above stays on the unmasked text.
+        masked = _OQ_BACKTICK_SPAN_RE.sub(lambda m: " " * len(m.group()), joined)
+        masked = _OQ_CITATION_RE.sub(lambda m: " " * len(m.group()), masked)
+        if _OPEN_QUESTION_SIGNAL_RE.search(masked):
             unresolved += 1
 
     for line in text.splitlines():

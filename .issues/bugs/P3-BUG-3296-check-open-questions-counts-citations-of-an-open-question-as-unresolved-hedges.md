@@ -3,10 +3,11 @@ id: BUG-3296
 type: BUG
 title: check-open-questions counts citations of an open question as unresolved hedges
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-08-22'
 captured_at: '2026-08-22T23:58:01Z'
+completed_at: '2026-08-23T05:19:38Z'
 parent: EPIC-3290
 labels:
 - issue-parser
@@ -267,10 +268,10 @@ sensitive it is to the mask's exact shape. Reproduce it by hand — `ll-issues c
   `_OPEN_QUESTION_SIGNAL_RE` (`:2699`), following this file's `# BUG-NNNN:` narrowing-comment
   convention.
 
-> **Line refs are anchored to `HEAD` as of 2026-08-22.** `issue_parser.py` has uncommitted
-> BUG-3278 work in the tree (+317 lines) that shifts every constant in this file by ~+317, and the
-> file moved ~+65 lines since the shapes were first measured. Re-anchor all `:NNNN` refs against
-> whatever tree the fix actually lands on; resolve by symbol name, not by line.
+> **Line refs are anchored to `HEAD` as of 2026-08-22.** BUG-3278's work has since landed on `main`
+> (verified 2026-08-23: `status: done`, tree clean) and shifted every constant in this file by
+> exactly +317 lines, confirming the predicted drift. Re-anchor all `:NNNN` refs against whatever
+> tree the fix actually lands on; resolve by symbol name, not by line.
 
 ### Dependent Files (Callers/Importers)
 
@@ -379,9 +380,9 @@ masked (measured: zero counted items live inside one). No new gate, threshold, o
 
 ## Implementation Steps
 
-0. **Re-anchor the line refs.** Every `:NNNN` in this issue is anchored to `HEAD` at 2026-08-22 and
-   the tree carries uncommitted BUG-3278 work. Resolve each constant by symbol name against the
-   landing tree before editing.
+0. **Re-anchor the line refs.** Every `:NNNN` in this issue is anchored to `HEAD` at 2026-08-22;
+   BUG-3278's work has since landed on `main` and shifted those constants by +317 lines. Resolve
+   each constant by symbol name against the landing tree before editing.
 1. **Add the two constants and the mask.** Define `_OQ_BACKTICK_SPAN_RE` (quantified `*`, with the
    sibling cross-reference comment and the `*`-not-`+` rationale) and `_OQ_CITATION_RE`
    (`\b`-anchored lead-ins, `['’]` apostrophe class) beside `_RESOLVED_QUESTION_MARKER_RE`
@@ -472,5 +473,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-23T05:19:31 - `17a55b50-a36b-49c5-816c-0c3adbd93077.jsonl`
+- `/ll:ready-issue` - 2026-08-23T05:00:56 - `cc09229a-0981-4b55-8574-725807144227.jsonl`
 - `/ll:confidence-check` - 2026-08-23T04:14:03 - `b2caa0cf-f05f-4cb4-8da9-96b9101c7e5c.jsonl`
 - `/ll:confidence-check` - 2026-08-23T03:35:28 - `f76f3255-c5a1-47a5-a256-fbcdf24c224e.jsonl`
