@@ -22,12 +22,12 @@ relates_to:
 - BUG-3285
 verify_verdict: VALID
 size: Large
-confidence_score: 98
-outcome_confidence: 85
-score_complexity: 15
+confidence_score: 90
+outcome_confidence: 78
+score_complexity: 10
 score_test_coverage: 25
 score_ambiguity: 25
-score_change_surface: 20
+score_change_surface: 18
 ---
 
 # BUG-3278: decide-issue clears decision_needed while lower-precedence decision blocks stay unresolved
@@ -66,16 +66,21 @@ Three ways a second decision point survives the pass, all ending in a cleared fl
 1. **Lower tier loses precedence.** A `bullet`-tier `- (a) …` / `- (b) …` pair anywhere in the
    resolved section is dropped once `bold_label` fires. **This issue fixes case 1.**
 2. **The block matches no tier at all.** `- **(a) Make the documented override real.**` — the
-   idiomatic shape in this repo's issues — matches **zero** of the four tiers (verified). It is not
-   out-competed; it is unreachable. **Split out to BUG-3287** — the fix is a
-   `_OPTION_PATTERNS[3]` widening on the shared precedence chain, with its own 22-file blast
-   radius. This issue's group iterator picks case 2 up for free once BUG-3287 lands; until then,
-   case 2 shapes remain invisible here too. Neither issue blocks the other.
-3. **Prose directives are preempted.** `_locate_directive_alternatives` (`:2137`) exists to catch a
-   prose `pick one` / `must be decided` directive, but `locate_enumerable_options` reaches it only
-   when tiers 1–4 **all** miss document-wide. **This issue fixes case 3 inside its own new group
-   iterator** (part 3 below probes directives *in addition to* tiers). The same defect in the
-   shared `locate_enumerable_options` chain — live on six committed issues — is BUG-3287.
+   idiomatic shape in this repo's issues — used to match **zero** of the four tiers.
+   **Already fixed by BUG-3287 (landed `e16a0bd83`), re-measured 2026-08-23:** `_OPTION_PATTERNS[3]`
+   is now `^[-*]\s+\*{0,2}(?:\([a-z0-9]\)\s*|Option\s+[A-Za-z0-9])`, and that shape returns
+   `count 2, pattern bullet`. This issue's group iterator picks case 2 up at the `bullet` tier under
+   `include_approximate_tiers=True` with no extra work. The only consequence left for this issue is
+   fixture choice — use the bold-wrapped `- **(a) …**` shape, per the note under *Steps to
+   Reproduce*.
+3. **Prose directives are preempted.** `_locate_directive_alternatives` exists to catch a prose
+   `pick one` / `must be decided` directive. In the shared chain this is **already fixed by
+   BUG-3287**: `locate_enumerable_options` now runs the directive probe *alongside* every tier win
+   and attaches the result as `LocatedOptions.residual_directive` rather than reaching it only when
+   tiers 1–4 all miss (re-measured 2026-08-23 — a document with `**Option A/B**` plus a `pick one`
+   directive returns `2, bold_label, residual_directive=provisional_e`). This issue's group
+   iterator therefore does **not** need its own second call path: it reads `residual_directive`
+   off the existing result. See part 3.
 
 `locate_unresolved_options` (`:2341`) cannot serve as the missing detector as written: its block
 iterator `_iter_option_blocks` / `_OPTION_HEADING_RE` (`:2281-2326`) deliberately recognizes only
@@ -96,10 +101,21 @@ Author `scripts/tests/fixtures/issues/BUG-3278-two-decision-points.md` with `dec
 and, inside a single `## Proposed Solution`, both of:
 
 - `**Option A** …` / `**Option B** …` / `**Option C** …` (`bold_label` tier — wins Phase 3 today)
-- a second, independent decision point below them: `- (a) …` / `- (b) …` (`bullet` tier, case 1)
+- a second, independent decision point below them: `- **(a) …**` / `- **(b) …**` (`bullet` tier,
+  case 1)
 
 The co-location in one section is the point, not incidental — it is what exercises the single-group
 restriction in part 1.
+
+**Use the bold-wrapped `- **(a) …**` shape, not the bare `- (a) …` (revised 2026-08-23).** Round 4
+downgraded this fixture to the bare form because the bold-wrapped shape was unreachable until
+BUG-3287 landed. It has landed; both shapes now return `bullet`, and the bold-wrapped one is this
+repo's idiomatic shape and the more valuable regression pin (it is the one that regressed).
+
+Re-verified against the current tree (2026-08-23): the repro still holds exactly — step 1 returns
+`count 3`, `pattern bold_label`, `residual_directive: null`, with no entry for the second decision
+point. BUG-3287's `residual_directive` does not rescue this case, because the second decision point
+is a tier match, not a prose directive.
 
 Then:
 
@@ -214,21 +230,28 @@ collapsing them would silently change the loop-gate counter.
 ### Part 3 — tier and directive widening, opt-in
 
 Under `include_approximate_tiers=True` the group iterator recognizes the `numbered` and `bullet`
-tiers, not only `_OPTION_HEADING_RE`'s Patterns 1–2, and calls `_locate_directive_alternatives`
-(`:2137`) **in addition to** the tier scan rather than as a last-resort fallback (case 3). The
-default stays `False` so `check-open-questions` and `check_open_question_progress` keep exactly
-today's conservatism — the ENH-2446 comment at `:2271-2275` is a deliberate choice, and silently
-widening it would change loop-gate behavior out of scope.
+tiers, not only `_OPTION_HEADING_RE`'s Patterns 1–2, and probes the Pattern E directive **in
+addition to** the tier scan rather than as a last-resort fallback (case 3). The default stays
+`False` so `check-open-questions` and `check_open_question_progress` keep exactly today's
+conservatism — the ENH-2446 comment is a deliberate choice, and silently widening it would change
+loop-gate behavior out of scope.
+
+**Source the directive from `LocatedOptions.residual_directive`, not a second call (revised
+2026-08-23).** BUG-3287 already made `locate_enumerable_options` run `_locate_directive_alternatives`
+alongside every tier win and attach the result as `residual_directive` (verified: `2, bold_label,
+residual_directive=provisional_e`). Building a parallel `_locate_directive_alternatives` call inside
+the group iterator would duplicate a probe the shared chain already performs, and the two could
+drift. Read the existing field.
 
 **At most one Pattern E group is detectable per document, and this is a hard limit of the existing
 function.** `_locate_directive_alternatives` `return`s from inside its scan loop on the **first**
-matching window, iterating `_DIRECTIVE_ALTERNATIVES_SECTIONS` in a fixed order (`Scope Boundaries`,
-`Proposed Change`, `Proposed Solution`, `Open Questions`). Consequences the group model cannot
-paper over:
+matching window, iterating `_DIRECTIVE_ALTERNATIVES_SECTIONS` in a fixed order — a **5-entry** list
+since BUG-3293 added `Program Design`: `Scope Boundaries`, `Proposed Change`, `Proposed Solution`,
+`Open Questions`, `Program Design`. Consequences the group model cannot paper over:
 
 - two independent prose directives in the same section collapse into a single `provisional_e` group
 - a directive in `Proposed Solution` masks one in `Open Questions` entirely
-- a directive in any section outside that 4-entry list is invisible
+- a directive in any section outside that 5-entry list is invisible
 
 So part 1's *"one group per decision point"* contract holds for the four tier-based shapes but is
 **best-effort for Pattern E**.
@@ -253,22 +276,40 @@ instead of returning the first, and reimplement `_locate_directive_alternatives`
 `check-decidable`) stay bit-identical. Delivers the stated contract; file as a follow-up on BUG-3287
 if a second-directive case is ever observed live.
 
-**The suppressors are per-window, not per-document — this is load-bearing for part 5.** Measured
-against live `_locate_directive_alternatives` (2026-08-21), with the directive on line `D`:
+**The suppressors are per-window, not per-document — this is load-bearing for part 5.** Re-measured
+against live `_locate_directive_alternatives` (**2026-08-23**), with the directive on line `D`:
 
 | Marker placement | Result |
 | --- | --- |
 | `> **Selected:**` on the line **after** `D` | **still matches** `provisional_e`; the returned window does not contain the callout |
 | `> **Selected:**` on the line **before** `D` | **still matches**; window does not contain the callout |
 | directive reworded to `**DECIDED — (a); was: pick one …**` | **still matches** (`pick one` survives; there is no `DECIDED` alternative in `_RESOLVED_QUESTION_MARKER_RE`) |
+| `**RESOLVED — the shim.**` prefixed to line `D` | **still matches** — ✗ **the form Rounds 5–6 prescribed does not work**; see below |
+| `**RESOLVED:** the shim.` prefixed to line `D` | **still matches** ✗ |
 | `> **Selected:**` appended **to line `D` itself** | `None` ✓ |
 | `**RESOLVED**` prefixed **to line `D` itself** | `None` ✓ |
+| `**RESOLVED** — the shim.` prefixed **to line `D` itself** | `None` ✓ ← **prescribed form** |
 
-> **Re-measured 2026-08-21 (epic review), and the last two rows are not equivalent.** Both
-> suppress the probe, but only the `**RESOLVED**` prefix is a *readable* marker: the appended
-> `> **Selected:**` form does not match `_SELECTED_CALLOUT_RE` (`issue_parser.py:1361`,
-> line-anchored — verified non-matching), so no callout consumer can see it, and a mid-line `>` is
-> not valid blockquote syntax. Part 5 now prescribes the prefix form.
+> ⚠ **Correction, round 7 (2026-08-23) — the bold run must close at `RESOLVED`.**
+> `_RESOLVED_QUESTION_MARKER_RE` is
+> `(?:✅|✔)\s*RESOLVED|>\s*\*\*RESOLVED\*\*|\*\*RESOLVED\*\*` — every alternative requires
+> `RESOLVED` to be immediately followed by the closing `**`. Round 6 generalized from the bare
+> `**RESOLVED**` row to a *decorated* `**RESOLVED — the shim.**`, which puts the em-dash and reason
+> **inside** the bold run and therefore matches nothing. Measured: it is **not** suppressed. Shipping
+> that form makes a `provisional_e` group unretirable — it re-emits on every run, the probe exits 1
+> forever, and `decision_needed` can never clear. That is the permanent stall Round 6 §1 existed to
+> prevent, reintroduced by the wording of its own fix.
+>
+> **Correct form: `**RESOLVED** — the shim.`** — bold closes at `RESOLVED`, reason follows outside
+> it. Verified `None`.
+>
+> **Also correct the record on the two suppressing rows.** The appended `> **Selected:**` form
+> *does* suppress (via `_PREFERENCE_MARKER_RE`'s `>\s*\*\*selected:\*\*` — windows are
+> whitespace-normalized before matching, so a mid-line `>` still matches). Round 6's *reasons* for
+> rejecting it stand and still decide the choice: it does not match `_SELECTED_CALLOUT_RE`
+> (line-anchored — verified non-matching), so no callout consumer can see it, and a mid-line `>` is
+> not valid blockquote syntax. The prefix form is prescribed on those grounds, not because the
+> appended form fails to suppress.
 
 The mechanism: the scan slides a window `lines[max(0, i-3) : min(len, i+4)]` over every `i` and
 suppresses only the windows that contain a marker. A marker on a *neighbouring* line always leaves
@@ -321,11 +362,17 @@ the different reason in the note below. Offsets are the surviving justification.
 
 Passes `include_approximate_tiers=True`.
 
-The exit-2 case is a deliberate divergence from `check_open_questions.py:56`, which returns 1 for a
-missing issue: the FSM `exit_code` evaluator maps 0→`on_yes`, 1→`on_no`, 2+→`on_error`
-(`fsm/evaluators.py:255-259`), so reusing 1 for "not found" would make an unresolvable ID
-indistinguishable from a genuine residual and route it to `done` (part 6). The command must also
-never exit **3** — `shell_exit` does not set `abstain_on_exit_3`, so 3 would land on `on_error`.
+Exit 2 for an unresolvable ID is required by the FSM `exit_code` evaluator's mapping — 0→`on_yes`,
+1→`on_no`, 2+→`on_error` (`fsm/evaluators.py:255-259`) — because reusing 1 for "not found" would
+make an unresolvable ID indistinguishable from a genuine residual and route it to `done` (part 6).
+The command must also never exit **3** — `shell_exit` does not set `abstain_on_exit_3`, so 3 would
+land on `on_error`.
+
+**This is no longer a divergence (corrected 2026-08-23).** Earlier revisions framed exit 2 as a
+deliberate departure from `check_open_questions.py`, which returned 1 for a missing issue. BUG-3294
+landed (`cd57acab5`) and that command now returns 2 as well (confirmed at
+`check_open_questions.py:56`), as does `check_decidable.py`. All three probes agree; do not repeat
+the "divergence" framing in the CLI reference (step 15) — document exit 2 as the house convention.
 
 `--json` emits `{"id", "unresolved": [DecisionGroup...]}`. Each group serializes `heading`, `tier`,
 `start_line`, `end_line`, and its member options as **full `LocatedOption` dicts** (`label`, `text`,
@@ -338,15 +385,61 @@ Phase 3's Option Count Check still branches on the bullet tier, but now via the 
 `tier` rather than a document-level `pattern` (`SKILL.md:183`).
 
 A group's `tier` uses the `_OPTION_PATTERN_NAMES` vocabulary
-(`issue_parser.py:1962` — `section_header`/`bold_label`/`numbered`/`bullet`) extended with
-`provisional_e` for a Pattern E window; `_OPTION_PATTERN_NAMES` is a 4-tuple today and
-`provisional_e` is a bare literal inside `_locate_directive_alternatives`, so either extend the
-tuple or document `tier` as a 5-value union.
+(`section_header`/`bold_label`/`numbered`/`bullet`) extended with `provisional_e` for a Pattern E
+window **and `decision_rules_numbered` for a BUG-3293 Program Design block** (see the next
+subsection); `_OPTION_PATTERN_NAMES` is a 4-tuple today and the other two are bare literals inside
+`_locate_directive_alternatives` / `_locate_decision_rules_numbered`, so either extend the tuple or
+document `tier` as a **6-value** union. Earlier revisions said 5 — that predates BUG-3293.
 
 Deliberately **not** `check-open-questions`: that command also counts free-form open questions in
 `## Edge Cases` / `## Confidence Check Notes`, which have nothing to do with whether a decision was
 made — gating the flag on it would pin `decision_needed: true` on any issue with an open question
 and stall every loop that branches on the flag.
+
+### Part 4b — `decision_rules_numbered` is outside the group model, and that creates a new unearned clear (added 2026-08-23, round 7)
+
+BUG-3293 added a sixth detection path, `_locate_decision_rules_numbered` — bold-numbered items under
+`## Program Design` → `### Decision Rules`, reported as `pattern="decision_rules_numbered"`. It is
+reachable from `locate_enumerable_options` and therefore from `check-decidable`, but it is **not** a
+`_OPTION_PATTERNS` tier and **not** visible to `_OPTION_HEADING_RE` / `locate_unresolved_options`.
+The group model as specified in parts 1–4 cannot see it either. Measured 2026-08-23 on a document
+whose only decision surface is such a block:
+
+| Probe | Result |
+| --- | --- |
+| `check-decidable` (`locate_enumerable_options`) | **exit 0** — `count 2`, `pattern decision_rules_numbered` |
+| `locate_unresolved_options` | `(0, None)` |
+| `check-unresolved-decisions` (this issue, as specified) | would report **zero groups → exit 0** |
+
+Part 5's new Phase 2.5→3 handoff rule — *"zero unresolved groups with `decision_needed: true` falls
+through to Phase 7b, which exits 0 and clears the flag"* — then fires. Phase 2.5 passed, Phase 3
+found nothing, and the flag clears **with no option scored and no annotation written**. That is a
+new instance of this issue's own failure mode, introduced by the fix, and it is strictly worse than
+today: today Phase 3 sources `decision_rules_numbered` options from `locate-options`, routes them to
+Phase 4 scoring, and at least *makes* a decision before clearing.
+
+> **Selected:** do **not** emit `decision_rules_numbered` groups; narrow the Phase 3 fall-through
+> instead.
+
+**Why not emit them as groups.** Decision Rules items are not mutually exclusive alternatives — they
+are the issue's own settled design rulings (`1. **Identifier shape.** …` / `2. **Title extent.** …`),
+and "pick one" is meaningless over them. Emitting them as a decision group would make
+`check-unresolved-decisions` exit 1 on essentially every refined issue in this repo, since none of
+them carry a `> **Selected:**` callout on a Decision Rules item — a mass loop stall, and exactly the
+over-firing hazard *Impact → Risk* names. BUG-3293's own comment already frames this probe as an
+over-count-tolerant *pre-check*, not a decision surface.
+
+**The narrowing.** Phase 3's zero-group fall-through clears only when the group probe reports zero
+groups **and** the Phase 2.5 `locate-options` result is not a tier the group model declines to
+model. Concretely: if `check-unresolved-decisions` returns zero groups but `locate-options` reports
+`pattern == "decision_rules_numbered"` with `count >= 2`, Phase 3 keeps **today's** behavior —
+source the options from `locate-options`, proceed to Phase 4 scoring, and reach Phase 7a/7b
+normally. Phase 7b's probe then returns exit 0 (there genuinely are no groups) and the flag clears
+*after* a real decision and annotation. No path is newly blocked and no path newly clears unearned.
+
+State the exclusion in `locate_unresolved_decisions`' docstring alongside the Pattern E limitation:
+*`decision_rules_numbered` blocks are deliberately not decision groups.* Assertion (c7) is the
+guard.
 
 ### Part 5 — skill changes (`skills/decide-issue/`)
 
@@ -358,6 +451,11 @@ are all already resolved — a common shape after a prior run annotated 7a and d
 write, or after a human decided by hand. Phase 3 must define that branch explicitly: **zero
 unresolved groups with `decision_needed: true` falls through to Phase 7b**, which exits 0 and
 clears the flag. Without this the fix stalls on the already-decided path.
+
+**That fall-through carries part 4b's carve-out.** It fires only when the Phase 2.5 `locate-options`
+result is not `decision_rules_numbered`; on that tier Phase 3 keeps today's behavior and scores the
+options rather than clearing on an empty group set. Without the carve-out the fall-through is itself
+an unearned clear — see part 4b.
 
 **Phase 3 sources its candidate group** from `check-unresolved-decisions` rather than
 `locate_enumerable_options`'s raw winner, so already-resolved groups are skipped and repeated runs
@@ -434,24 +532,33 @@ this fix newly reaches:
   suppresses per sliding window, so a marker on the line before or after the directive always leaves
   the `i = D-3` window unsuppressed — the group re-emits forever, *and* the surviving window's span
   excludes the marker, so a span-scoped `is_group_resolved` check fails too. The marker must
-  therefore go **on the directive line itself**. The prescribed form is a `**RESOLVED — …**`
-  **prefix**:
+  therefore go **on the directive line itself**. The prescribed form is a bare `**RESOLVED**` bold
+  run, with the reason **outside** it:
 
   ```markdown
-  **RESOLVED — the shim.** **DECISION — pick one before step 4: use the shim or rewrite the caller.**
+  **RESOLVED** — the shim. **DECISION — pick one before step 4: use the shim or rewrite the caller.**
   ```
 
-  Verified to return `None`. A `**DECIDED — …**` rewording does **not** work, because the
-  `pick one` imperative survives it.
+  Verified `None` (2026-08-23). **The bold run must close immediately at `RESOLVED`** —
+  `_RESOLVED_QUESTION_MARKER_RE`'s alternatives are `(?:✅|✔)\s*RESOLVED`, `>\s*\*\*RESOLVED\*\*`,
+  and `\*\*RESOLVED\*\*`, all of which require the closing `**` right after the word. Decorating the
+  bold run — `**RESOLVED — the shim.**`, `**RESOLVED:** the shim.` — matches **nothing** and leaves
+  the group emitting forever (both measured; see part 3's table). A `**DECIDED — …**` rewording does
+  **not** work either, because the `pick one` imperative survives it.
   Without this rule a Pattern E group co-located with any other group in the same section can never
   be retired (the section-level fallback is restricted to single-group sections) — a
   permanent stall, exactly what the per-group idempotency rule above exists to prevent.
 
-  > ⚠ **Prescribed form changed from an appended `> **Selected:**` callout to a `**RESOLVED**`
-  > prefix — 2026-08-21, epic review.** Earlier revisions specified appending
-  > `> **Selected:** the shim.` to the end of the directive line. Both forms suppress
-  > `_locate_directive_alternatives` equally (both measured `None`), but the appended form is
-  > wrong on two counts:
+  > ⚠ **Prescribed form changed twice — read both notes.** Round 6 (2026-08-21) moved from an
+  > appended `> **Selected:**` callout to a `**RESOLVED**` prefix; **round 7 (2026-08-23) corrected
+  > the prefix's shape**, because round 6 wrote it as `**RESOLVED — the shim.**`, which suppresses
+  > nothing (measured). The bold run must close at `RESOLVED`: `**RESOLVED** — the shim.`
+  >
+  > Round 6's original reasoning, still valid for *why the prefix rather than the callout*: earlier
+  > revisions specified appending `> **Selected:** the shim.` to the end of the directive line. Both
+  > forms suppress `_locate_directive_alternatives` equally (both measured `None` — the appended
+  > callout matches `_PREFERENCE_MARKER_RE`'s `>\s*\*\*selected:\*\*`, since windows are
+  > whitespace-normalized before matching), but the appended form is wrong on two counts:
   >
   > 1. **It is not a callout to anything that reads callouts.** `_SELECTED_CALLOUT_RE`
   >    (`issue_parser.py:1361`) is `r"^\s*>\s+\*\*Selected:\*\*\s*(.+)$"` — line-anchored.
@@ -463,7 +570,8 @@ this fix newly reaches:
   > 2. **A mid-line `>` is not markdown.** Blockquote syntax is line-initial; the appended form
   >    renders as literal `> **Selected:** the shim.` text inside the directive sentence.
   >
-  > The `**RESOLVED**` prefix has neither problem and was already recorded as working. **The
+  > The `**RESOLVED**` prefix has neither problem — *in its bare-bold-run form only*, per the
+  > round-7 correction above. **The
   > retirement mechanism for a `provisional_e` group is probe suppression, not resolution** — the
   > group ceases to be emitted, so `locate_unresolved_decisions` returns it no more and the gate
   > passes. Say this in the skill prose rather than implying the callout path.
@@ -584,6 +692,66 @@ bounded-ness; this is the mechanism it rests on.
 
 Both span-based alternatives are dropped, which removes this issue's dependency on BUG-3279.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-23 — based on codebase analysis:_
+
+**Anchor drift since last refine (2026-08-21 → now).** Three sibling issues landed after this
+issue's last research pass — BUG-3287 (`e16a0bd83`), BUG-3285 (`c25d6c85f`), BUG-3289 (`e3ffd49ce`)
+— and shifted `scripts/little_loops/issue_parser.py` line numbers throughout this document's Parts
+1-6. Re-verify every citation at implementation time rather than trusting the numbers below the
+table; confirmed current lines as of this pass:
+
+| Symbol | Cited in this doc | Current actual line |
+|---|---|---|
+| `_SELECTED_CALLOUT_RE` | `:1361` | 1361 (unchanged) |
+| `_DECISION_RATIONALE_HEADING_RE` | `:1316` | 1366 |
+| `_DECISION_RATIONALE_SECTION_MARKER_RE` | `:1326` | 1376 |
+| `_option_span_boundary` def | `:1381` | 1450 |
+| `_unapplied_decision` def | `:1449` | 1518 |
+| `_locate_directive_alternatives` def | `:2137` | 2264 |
+| `LocatedOption` class | `:1966` | 2065 |
+| `LocatedOptions` class | `:1984` | 2083 |
+| `_OPTION_PATTERN_NAMES` | `:1962` | 2061 |
+| `_locate_options_in_text` def | `:2025` | 2133 |
+| `locate_enumerable_options` def | `:2209` | 2424 |
+| ENH-2446 conservatism comment | `:2271-2275` | ~2513 |
+| `_is_option_resolved` def | `:2328` | 2570 |
+| `locate_unresolved_options` def | `:2341` | 2583 |
+| `_OPTION_HEADING_RE` / `_iter_option_blocks` | `:2281-2326` | 2523 / 2529 |
+
+`skills/decide-issue/SKILL.md` citations for Phase 7b (`:411-424`) and Phase 3b step 4
+(`:313-321`) remain exact. Two smaller SKILL.md drifts: `## Phase 3: Extract Options` heading is
+now at line 158, not 160 (content this doc cites at `:160-190` runs through line 188); Phase 3b
+step 3 ("Lock in without scoring") is now at lines 308-312, not `:300-303` (that earlier range now
+falls inside step 2, "Re-scan and route to full scoring").
+
+**`_DIRECTIVE_ALTERNATIVES_SECTIONS` is now a 5-entry list, not 4.** BUG-3293 (landed since this
+issue's last pass) added `"Program Design"` to the fixed section-order list `_locate_directive_alternatives`
+scans (`issue_parser.py:2255-2261`: `Scope Boundaries`, `Proposed Change`, `Proposed Solution`,
+`Open Questions`, `Program Design`). Part 3's "a directive in any section outside that 4-entry list
+is invisible" consequence should read 5-entry; the "at most one Pattern E group per document" limit
+itself is unaffected — confirmed still true (the function still `return`s on its first
+matching window across the fixed list).
+
+**The Part 4 "deliberate divergence from `check_open_questions.py:56`" premise no longer holds.**
+BUG-3294 (Completed, landed since this issue's last pass) already changed `check_open_questions.py`
+to `return 2` for a missing issue (confirmed at `check_open_questions.py:56`); `check_decidable.py`
+already returned 2 there too. So `check-unresolved-decisions` returning exit 2 for an unresolvable
+ID is no longer a divergence from `check_open_questions.py` — both probes already agree on 2. The
+design decision itself (exit 2, not 1, per the `fsm/evaluators.py:255-259` on_error mapping) is
+still correct and required; only the comparison used to justify it is now moot and should not be
+repeated as a "divergence" at implementation time.
+
+**The Part 5 "Carry-forward obligation from BUG-3287" is confirmed discharged, not merely
+anticipated.** BUG-3287 has since landed (`e16a0bd83`) exactly as this doc's hedge assumed —
+`locate_enumerable_options` (`issue_parser.py:2424`) attaches a preempted Pattern E directive as
+`LocatedOptions.residual_directive` without replacing the winning tier result (Option B, as this
+doc names it), and `skills/decide-issue/SKILL.md:187` already carries the `residual_directive is
+non-null` guard on the `count == 1` branch, phrased in exactly the terms this doc anticipated. This
+doc's Phase 3 rewrite (Part 5) still must re-express that guard in the new group vocabulary when it
+replaces the sentence it lives on — the obligation is now against live code, not a future landing.
+
 ## Integration Map
 
 ### Files to Modify
@@ -600,11 +768,16 @@ Both span-based alternatives are dropped, which removes this issue's dependency 
   `provisional_e` example), Phase 7b gate, Phase 9 report line
 - `skills/decide-issue/reference.md` — Phase 9 Output Report Template (`:94`)
 
-> ⚠ **Line budget — seven edits, seven lines of headroom (added 2026-08-21).**
-> `skills/decide-issue/SKILL.md` is **493 lines** against a hard **500-line** cap enforced by
-> `TestSkillLineLimit` (`scripts/tests/test_enh494_skill_companions.py:73-86`). BUG-3287 and
-> ENH-3280 write to the same file. This is the **most numerous** of the three edit sets and it
+> ⚠ **Line budget — eight edits, five lines of headroom (re-measured 2026-08-23).**
+> `skills/decide-issue/SKILL.md` is **495 lines** against a hard **500-line** cap enforced by
+> `TestSkillLineLimit` (`scripts/tests/test_enh494_skill_companions.py:73-86`). The earlier
+> "seven edits, seven lines" arithmetic was measured at 493 lines and before part 4b added the
+> Phase 3 `decision_rules_numbered` carve-out. ENH-3280 and BUG-3296 also queue against this file
+> (BUG-3287's edit has already landed). This is the **most numerous** of the queued edit sets and it
 > includes a fenced markdown example, so it cannot land as pure in-place prose.
+>
+> **Land the `reference.md` extraction as its own preparatory commit before starting this issue.**
+> With five lines of headroom there is no room to discover the cap mid-implementation.
 >
 > **Required shape:** the *rules* stay in `SKILL.md` as imperative one-liners on their existing
 > phases; the *tables and examples* move to `skills/decide-issue/reference.md` behind a
@@ -661,6 +834,11 @@ Both span-based alternatives are dropped, which removes this issue's dependency 
 - `scripts/tests/fixtures/issues/BUG-3278-two-decision-points-first-decided.md` — new; the same
   document with group A carrying a `> **Selected:**` callout and the section carrying a
   `### Decision Rationale`
+- `scripts/tests/fixtures/issues/BUG-3278-directive-only.md` and
+  `BUG-3278-directive-resolved.md` — new; a prose `pick one` directive, and the same document with
+  the bare `**RESOLVED**` prefix on the directive line. Assertion (c6)
+- `scripts/tests/fixtures/issues/BUG-3278-decision-rules-only.md` — new; a `## Program Design` →
+  `### Decision Rules` bold-numbered block as the document's only decision surface. Assertion (c7)
 - `scripts/tests/test_issue_parser_unresolved.py` — new `TestDecisionGroups`, following the
   existing `class Test<Concept>` / `def test_<scenario>_<expectation>` convention alongside
   `TestLocatedOptionsDataclass`, `TestCountUnresolvedOptions`, `TestPatternEDirectiveAlternatives`
@@ -690,6 +868,32 @@ Both span-based alternatives are dropped, which removes this issue's dependency 
 
 N/A
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-23 — based on codebase analysis:_
+
+**Test-line citation correction.** Implementation Step 9 cites
+`test_decision_needed_not_cleared_on_no_actionable` at "line 310" — it is currently at line 334 in
+`scripts/tests/test_decide_issue_skill.py`. The two other citations from the same test file,
+`test_decision_needed_false_update_documented` (line 192) and `test_idempotency_rule_documented`
+(line 201), are still exact.
+
+**`skills/decide-issue/SKILL.md` is 495 lines today, not 493.** The Line Budget warning's "seven
+edits, seven lines of headroom" arithmetic was measured against 493; current headroom against the
+500-line `TestSkillLineLimit` cap is closer to 5 lines. Re-measure at implementation time — the gap
+is small but the file has kept growing since this warning was written (`da8c1ad8e` previously
+trimmed it under the cap once already).
+
+**Two "Confirmed FSM gate consumers" line ranges could not be re-verified and may be stale.**
+`loops/refine-to-ready-issue.yaml:229-243, :583-589` — a grep for `decision_needed` in that file
+today lands near lines 232-245 and 574-618, not exactly the cited ranges; the actual
+`check_decision_needed`-style state is at line 618. `loops/auto-refine-and-implement.yaml:229-238,
+:283-290, :588-597` — only one incidental `decision_needed` hit (a comment at line 875) was found
+by a direct grep; the three cited ranges did not resolve. Both files are listed as unchanged by this
+issue ("no change is implied"), so this doesn't block the fix, but the citations should be
+re-confirmed (or the search widened to `check-flag`/`check_decision`-prefixed state names) before
+being relied on.
+
 ## Program Design
 
 ### Types
@@ -699,7 +903,9 @@ N/A
 - `LocatedOption` — `scripts/little_loops/issue_parser.py:1966` — `label: str`, `text: str`,
   `start_line: int`, `end_line: int`; `to_dict()` at `:1974`
 - `LocatedOptions` — `scripts/little_loops/issue_parser.py:1984` — `count: int`,
-  `pattern: str | None`, `heading: str | None`, `options: list[LocatedOption]`
+  `pattern: str | None`, `heading: str | None`, `options: list[LocatedOption]`,
+  `residual_directive: LocatedOptions | None = None` (fifth field, added by BUG-3287 — the group
+  iterator reads it instead of calling `_locate_directive_alternatives` itself, per part 3)
 
 ### Signatures
 
@@ -714,9 +920,14 @@ N/A
 - `locate_unresolved_options(content: str) -> tuple[int, str | None]` —
   `scripts/little_loops/issue_parser.py:2341` — **unchanged**, per part 2
 - `_locate_directive_alternatives(content: str) -> LocatedOptions | None` —
-  `scripts/little_loops/issue_parser.py:2137` — unchanged; newly called from the group iterator.
-  Returns on its **first** matching window, so it yields at most one Pattern E group per document
-  (part 3)
+  `scripts/little_loops/issue_parser.py:2264` — unchanged, and **not called directly by the group
+  iterator**: BUG-3287 already runs it alongside every tier win, so the iterator reads
+  `LocatedOptions.residual_directive` instead (part 3). Returns on its **first** matching window,
+  so it yields at most one Pattern E group per document
+- `_locate_decision_rules_numbered(content: str) -> LocatedOptions | None` —
+  `scripts/little_loops/issue_parser.py:2382` — unchanged, and **deliberately not a decision-group
+  source**; its `decision_rules_numbered` result is handled by part 4b's Phase 3 carve-out, not by
+  the group iterator
 - `_option_span_boundary(text: str, search_start: int, max_depth: int, fences: list[tuple[int, int]]) -> int | None` —
   `scripts/little_loops/issue_parser.py:1381` — unchanged; reused by the group iterator (part 3)
 - `_is_option_resolved(block_body: str) -> bool` —
@@ -743,6 +954,17 @@ After: `/ll:decide-issue` Phase 7b **and Phase 3b step 4** ->
 N/A — the detection mechanism is pinned (Mechanism C); this fix corrects existing
 frontmatter-clearing logic and introduces no new gap kind, gate, keyword list, or threshold.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-23 — based on codebase analysis:_
+
+**`LocatedOptions`'s Types listing is missing a field BUG-3287 already added.** The live dataclass
+(`issue_parser.py:2083-2100`) now carries a fifth field, `residual_directive: LocatedOptions | None
+= None` (line 2095), landed by BUG-3287 after this section's Types list was last written. The
+Proposed Solution prose elsewhere in this document already discusses `residual_directive` at
+length and depends on it (Part 5's carry-forward obligation); only this Types subsection's field
+list is out of sync with the live class.
+
 ## Implementation Steps
 
 **Parser layer** (`scripts/little_loops/issue_parser.py`)
@@ -768,9 +990,11 @@ frontmatter-clearing logic and introduces no new gap kind, gate, keyword list, o
    section precedence. **Leave `locate_unresolved_options` exactly as it is** — assertion (e) is
    its guard.
 3. Under `include_approximate_tiers=True`, extend the group iterator to the `numbered` and `bullet`
-   tiers and fold `_locate_directive_alternatives` in as an additional probe. Default `False` must
-   reproduce today's group set over Patterns 1–2 only — the regression guard for the ENH-2446
-   conservatism comment at `:2271-2275`.
+   tiers and fold the Pattern E directive in as an additional probe — sourced from
+   `LocatedOptions.residual_directive` (BUG-3287 already runs it alongside tier wins), **not** from a
+   fresh `_locate_directive_alternatives` call. Default `False` must reproduce today's group set
+   over Patterns 1–2 only — the regression guard for the ENH-2446 conservatism comment. Emit **no**
+   `decision_rules_numbered` groups at either setting, and say so in the docstring (part 4b).
 
 **CLI layer**
 
@@ -783,14 +1007,19 @@ frontmatter-clearing logic and introduces no new gap kind, gate, keyword list, o
 **Skill layer** (`skills/decide-issue/`)
 
 6. Phase 2.5 → Phase 3 handoff: state the zero-unresolved-groups branch explicitly (fall through to
-   Phase 7b, which clears). Add a phase-text assertion.
+   Phase 7b, which clears) **and its part 4b carve-out** — the fall-through does not fire when
+   `locate-options` reports `pattern == "decision_rules_numbered"`; that tier keeps today's
+   score-then-clear path. Add a phase-text assertion for both halves.
 7. Phase 3: source the candidate group from `check-unresolved-decisions`; state the auto-mode
    boundary (bullet-tier residual under `AUTO_MODE = true` is not scored — exit 0 leaving the flag
    `true`, group named in Phase 9). Add phase-text assertions for both.
 8. Phase 7a: per-group idempotency, a literal (**unsuffixed**) `### Decision Rationale` heading with
    the decision point named on the subsection's first body line, and the per-tier marker placement
-   rule including the `provisional_e` case — whose marker is a **`**RESOLVED — …**` prefix on the
-   directive line**, not an appended `> **Selected:**` callout. Add a phase-text assertion for the
+   rule including the `provisional_e` case — whose marker is a bare `**RESOLVED**` bold run prefixed
+   to the directive line with the reason *outside* the bold run
+   (`**RESOLVED** — the shim. **DECISION — pick one …**`); not an appended `> **Selected:**`
+   callout, and **not** a decorated `**RESOLVED — the shim.**`, which suppresses nothing. Add a
+   phase-text assertion for the
    per-group phrasing, one asserting the heading stays literal (the guard for
    `_unapplied_decision`'s strict `_DECISION_RATIONALE_HEADING_RE` at `issue_parser.py:1316`), and
    one asserting the `provisional_e` placement rule names the prefix form and states that the group
@@ -845,13 +1074,26 @@ frontmatter-clearing logic and introduces no new gap kind, gate, keyword list, o
       passes (a) and (c) and fails only this one
     - **(c3)** **span-rule guard** — after 7a inserts a `> **Selected:**` callout into a bullet-tier
       group, that group still reports as one group, not two
-    - **(c6)** **`provisional_e` retirement guard** (added 2026-08-21, epic review) — a fixture
-      holding a prose `pick one` directive reports **exit 1**; the same fixture with a
-      `**RESOLVED — …**` prefix on the directive line reports **exit 0**, because the group is no
-      longer emitted. Pair it with a unit assertion that `_SELECTED_CALLOUT_RE` does **not** match
-      a `> **Selected:**` appended to the end of a directive line, pinning why the prefix form is
-      prescribed — without it, a later reader "simplifies" the rule back to a callout and the
-      directive group re-emits forever
+    - **(c6)** **`provisional_e` retirement guard** (added 2026-08-21; **corrected 2026-08-23**) — a
+      fixture holding a prose `pick one` directive reports **exit 1**; the same fixture with a bare
+      `**RESOLVED**` prefix on the directive line (`**RESOLVED** — the shim. **DECISION — pick
+      one …**`) reports **exit 0**, because the group is no longer emitted. Pair it with **two** unit
+      assertions, each pinning a way the rule gets "simplified" back into a permanent stall:
+      (i) `_locate_directive_alternatives` still **matches** when the prefix is decorated
+      (`**RESOLVED — the shim.**`, `**RESOLVED:** the shim.`) — the bold run must close at
+      `RESOLVED`; (ii) `_SELECTED_CALLOUT_RE` does **not** match a `> **Selected:**` appended to the
+      end of a directive line, which is why the callout form is not prescribed even though it does
+      suppress the probe.
+      > ⚠ The version of (c6) written in round 6 asserted **exit 0** for the decorated
+      > `**RESOLVED — …**` form. That assertion **fails** against the live tree (measured
+      > 2026-08-23). Do not "fix" it by relaxing the test — the marker shape is what was wrong
+    - **(c7)** **`decision_rules_numbered` carve-out guard** (added 2026-08-23) — a fixture whose
+      only decision surface is a `## Program Design` → `### Decision Rules` bold-numbered block:
+      `check-decidable` exits **0** (`count 2`, `pattern decision_rules_numbered`) while
+      `check-unresolved-decisions` reports **zero groups / exit 0**. Paired with a Phase 3 phase-text
+      assertion that the zero-group fall-through does **not** clear on that tier and routes to
+      Phase 4 scoring instead. Without this pair the fix introduces a fresh unearned clear on a
+      shape Phase 2.5 passes — see part 4b
     - **(c4)** **Phase 3b A–C stall guard** — a fixture holding intact, unmarked
       `**Option A**`/`**Option B**` blocks reports **exit 1**, proving the probe would block step
       4's clear; the same fixture with the callout step 3's A–C branch now writes reports **exit 0**.
@@ -895,7 +1137,12 @@ frontmatter-clearing logic and introduces no new gap kind, gate, keyword list, o
 **Out of scope**
 
 - The `_OPTION_PATTERNS[3]` widening and the Pattern E preemption in the shared
-  `locate_enumerable_options` chain — **BUG-3287**. Case 2 stays unfixed here until it lands.
+  `locate_enumerable_options` chain — **BUG-3287, landed `e16a0bd83`**. Cases 2 and 3 are fixed
+  there; this issue consumes the result (the widened `bullet` tier, and `residual_directive`) rather
+  than re-deriving it.
+- Making `decision_rules_numbered` blocks decidable as decision groups — part 4b, deliberately
+  excluded. If a live case ever needs it, file a follow-up; the exclusion is a semantic judgment
+  ("design rulings are not mutually exclusive alternatives"), not an oversight.
 - Broadening `check_open_questions.py` / `check_decidable.py` to decision *groups* — neither passes
   `include_approximate_tiers`, and step 2 leaves `locate_unresolved_options` untouched. Separate
   change with its own loop-gate blast radius; file as a follow-up if wanted.
@@ -1051,28 +1298,84 @@ what changed and why so the reasoning is not lost.
      per document, documented in the docstring and CLI reference. (b) is recorded as a follow-up on
      BUG-3287, whose shared-precedence-chain blast radius it belongs to.
 
-`confidence_score` and `outcome_confidence` in frontmatter predate round 5 — re-run
+- **Round 7 (2026-08-23)** — pre-implementation review against the tree *after* BUG-3287
+  (`e16a0bd83`), BUG-3285 (`c25d6c85f`), BUG-3289 (`e3ffd49ce`), and BUG-3293 landed. Two
+  ship-blocking corrections and four stale premises:
+  1. **The prescribed `provisional_e` retirement marker did not suppress the probe.** Round 6
+     specified `**RESOLVED — the shim.** **DECISION — pick one …**` and recorded it as verified
+     `None`. Measured against the live tree: it still matches `provisional_e`.
+     `_RESOLVED_QUESTION_MARKER_RE`'s three alternatives all require the bold run to **close
+     immediately at `RESOLVED`**, and round 6 generalized from the measurement table's *bare*
+     `**RESOLVED**` row to a decorated form that puts the em-dash and reason inside the bold run.
+     Shipping it makes a `provisional_e` group unretirable — the exact permanent stall round 6 §1
+     existed to prevent, reintroduced by the wording of its own fix. Corrected to
+     `**RESOLVED** — the shim.` (verified `None`). Assertion (c6) was also wrong as written and
+     would have failed, inviting a test-side "fix" that kept the broken marker. Also corrected for
+     the record: the appended `> **Selected:**` form *does* suppress (via `_PREFERENCE_MARKER_RE`,
+     windows being whitespace-normalized); round 6's reasons for rejecting it stand, but not the
+     claim that only the prefix suppresses.
+  2. **`decision_rules_numbered` (BUG-3293) is a sixth detection path outside the group model, and
+     the new Phase 3 fall-through turned it into a fresh unearned clear.** Measured: on a document
+     whose only decision surface is a Program Design → Decision Rules block, `check-decidable` exits
+     0 (`count 2`) while `locate_unresolved_options` reports 0 and the group iterator would see
+     nothing — so part 5's "zero unresolved groups → fall through to Phase 7b, which clears" fires
+     and the flag clears with nothing scored and nothing annotated, which is strictly worse than
+     today's behavior. New **part 4b** decides it: do not emit `decision_rules_numbered` groups
+     (design rulings are not mutually exclusive alternatives, and emitting them would exit 1 on
+     nearly every refined issue in this repo — a mass loop stall); narrow the Phase 3 fall-through
+     instead. Assertion (c7) is the guard.
+  3. **Case 2 is fixed.** BUG-3287 widened `_OPTION_PATTERNS[3]`; `- **(a) …**` now returns
+     `count 2, bullet` (measured). The *Out of scope* "stays unfixed until it lands" line and round
+     4's reason for downgrading the fixture to the bare `- (a) …` shape are both retired — the
+     fixture goes back to the bold-wrapped shape.
+  4. **Case 3's mechanism changed.** BUG-3287 made `locate_enumerable_options` run the directive
+     probe alongside every tier win and attach `residual_directive`. The group iterator reads that
+     field rather than building a second `_locate_directive_alternatives` call path.
+  5. **BUG-3285's ordering conditional in *Scope Boundary* is moot** — it landed, and
+     `_BOLD_OPTION_MARKER` is now shared between `_OPTION_PATTERNS[1]` and `_OPTION_HEADING_RE`. The
+     phantom-block fixture is kept anyway, since the *grouping* rule is new code.
+  6. **Three corrections that lived only in *Codebase Research Findings* are folded into the body**,
+     where they will actually be read at implementation time: the exit-2 "deliberate divergence from
+     `check_open_questions.py`" (BUG-3294 landed; all three probes now return 2), the 4-entry
+     `_DIRECTIVE_ALTERNATIVES_SECTIONS` (5 entries since BUG-3293 added `Program Design`), and
+     `LocatedOptions`' missing fifth field.
+
+  Re-verified unchanged and still exact: the *Steps to Reproduce* repro (`count 3`, `bold_label`,
+  `residual_directive: null`, no entry for the second decision point), `SKILL.md`'s Phase 7b
+  (`:411-424`) and Phase 3b step 4 (`:313-321`) anchors, `assert_decision_cleared` at
+  `resolve-decision.yaml:185`, the `fsm/evaluators.py:255-259` polarity, the Phase 3b A–C stall
+  analysis (step 3 now at `:308-312` — A–C removes qualifiers and writes no marker; only Pattern D
+  writes a callout), and `_SELECTED_CALLOUT_RE`'s line anchoring.
+
+`confidence_score` and `outcome_confidence` in frontmatter predate round 7 — re-run
 `/ll:confidence-check` before implementing rather than carrying them forward.
 
 ---
 
 ## Scope Boundary
 
-**Note** (added by `/ll:audit-issue-conflicts`): `_iter_decision_groups`' default
-(`include_approximate_tiers=False`) mode reuses `_OPTION_HEADING_RE`-style matching for tier
-grouping, which is the same mechanism [BUG-3285] documents as miscounting bold prose
-(`**Option A evidence**:`) as a real option block. If this issue lands before [BUG-3285], a
-bold-prose phantom block can be merged into a real decision group by `_iter_decision_groups`' "a
-maximal contiguous run of option blocks at the same tier" rule, reproducing BUG-3285's defect
-through this new code path. Add a test fixture combining real options with a bold-prose phantom
-block (the ENH-2967/BUG-1484 shape) to confirm the group iterator does not miscount it, independent
-of landing order.
+**Note** (added by `/ll:audit-issue-conflicts`; **updated 2026-08-23**): `_iter_decision_groups`'
+default (`include_approximate_tiers=False`) mode reuses `_OPTION_HEADING_RE`-style matching for tier
+grouping, which is the same mechanism [BUG-3285] documented as miscounting bold prose
+(`**Option A evidence**:`) as a real option block.
+
+**BUG-3285 has landed (`c25d6c85f`), so the ordering conditional is moot.** `_OPTION_HEADING_RE`'s
+bold alternative and `_OPTION_PATTERNS[1]` now share one `_BOLD_OPTION_MARKER` fragment
+(`issue_parser.py:2035`) encoding the rule "a bold run must close at the end of the option
+identifier, not continue into prose", so the group iterator inherits the fix by construction.
+**Keep the fixture anyway**: add a test combining real options with a bold-prose phantom block (the
+ENH-2967/BUG-1484 shape) to confirm the group iterator's "maximal contiguous run of option blocks at
+the same tier" rule does not merge a phantom into a real group — the shared fragment prevents the
+*match*, but the grouping rule is new code and untested against that shape.
 
 ## Status
 
 **Open** | Created: 2026-08-21 | Priority: P2
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-23T02:50:36 - `591b725f-a600-40d5-8bf6-26baeac94edd.jsonl`
+- `/ll:confidence-check` - 2026-08-23T02:24:03 - `6e6bb8a8-074e-4384-a442-4dd63e0ec57e.jsonl`
+- `/ll:refine-issue` - 2026-08-23T02:12:16 - `d4c69d5a-08a6-4fc3-8ad7-d7b1686ad66e.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-22T22:30:44 - `6b7204fa-1e9c-4b22-a304-4114c03357f8.jsonl`
 - `/ll:format-issue` - 2026-08-22T20:15:07 - `918913f6-1ede-43d4-b1f7-bffea0db90c5.jsonl`
 - `/ll:confidence-check` - 2026-08-21T19:12:09 - `e7bfa83a-61b5-42db-9234-b883edce75e7.jsonl`
