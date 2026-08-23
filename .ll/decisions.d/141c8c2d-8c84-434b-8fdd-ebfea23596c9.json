@@ -1,0 +1,12 @@
+{
+  "id": "15ae795a-6292-4168-98ab-a25ab5312e06",
+  "type": "decision",
+  "timestamp": "2026-08-23T20:31:07Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Direct precedent for every mechanism piece (constructor-injected event_bus, EventBus.emit dict shape, SCHEMA_DEFINITIONS/DES_VARIANTS registration); only option satisfying the issue's requirement that run summaries/ll-loop audit tooling can surface the event structurally.",
+  "rule": "Option B: thread event_bus into WorkerPool, emit structured epic_branch_stale event",
+  "scope": "issue",
+  "alternatives_rejected": "Option A: logger-only emission via self.logger \u2014 simpler, no constructor change, but leaves the stated tooling consumer unserved since nothing parses WorkerPool log lines structurally",
+  "issue": "ENH-3302"
+}

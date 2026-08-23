@@ -69,6 +69,18 @@ Advisor consult() core, `ll-advise` CLI, and `/ll:advise` skill.
 - `apply_host_cli_from_config()` (`host_runner.py:1622-1647`) mutates the
   process-global `LL_HOST_CLI` — the advisor must never call it.
 
+**Dependencies resolved (2026-08-23)**: `FEAT-3042`, `FEAT-3043`, and
+`FEAT-3108` are all `status: done` on `main`. Verified directly against
+code, not just frontmatter: `resolve_host_named` / `run_blocking_json`
+exist at `host_runner.py:2008` / `host_runner.py:2103`; `AdvisorConfig`
+is defined at `config/orchestration.py:108` and wired into `BRConfig`
+(`config/core.py:335,466-468,879-885` — `self._advisor`, the `.advisor`
+property, and the config-dump dict); `check_floor` exists at
+`advisor.py:64` with the exact signature this issue's Program Design
+assumes. The three bullets above describing pre-FEAT-3042/3043 absence
+are historical context for why this issue was blocked, not current
+state — this issue is unblocked and ready to implement.
+
 ## Expected Behavior
 
 - `ll-advise --signal <name> --question <q> [--context-file F]` resolves
@@ -114,11 +126,22 @@ at the `cmd_*` boundary (not a blanket `except Exception`) — e.g.
 (`cli/harness.py:447-466`, `378-388`) catch `json.JSONDecodeError`.
 `ll-advise`'s fail-soft contract should catch `HostNotConfigured`
 (raised by `OpenCodeRunner`/`PiRunner`, `host_runner.py:779-907`) plus
-host/transport timeouts at this same boundary. The closest existing
-exception-tuple precedent for the fail-soft catch is
-`cli/doctor.py:_probe_version` (lines 912-932):
+`BlockingJsonError` (`host_runner.py:2019-2029`) at this same boundary.
+
+_Correction (2026-08-23, verified against landed FEAT-3042 code)_: the
+`cli/doctor.py:_probe_version`-style tuple
 `(subprocess.TimeoutExpired, FileNotFoundError, OSError,
-HostNotConfigured)`.
+HostNotConfigured)` is **not** the right precedent for this catch site.
+`run_blocking_json` (`host_runner.py:2103-2160`) already catches
+`subprocess.TimeoutExpired` and `FileNotFoundError` internally and
+re-raises everything as `BlockingJsonError` — those raw subprocess
+exceptions never propagate to `consult()`'s caller. The correct catch
+tuple at the `cmd_*` boundary is `(HostNotConfigured, BlockingJsonError)`:
+`HostNotConfigured` from `resolve_host_named()` (unwired/unregistered
+host) and `BlockingJsonError` from `run_blocking_json()` (timeout,
+missing binary, non-zero exit, unparseable output — inspect its
+`.details` dict for the specific reason to surface in the CLI's error
+message).
 
 Structured output (not prose) is deliberate — it keeps the consult
 auditable and lets gates consume `confidence` programmatically.
@@ -169,6 +192,7 @@ def consult(
     signal: str,
     context: str = "",
     config: BRConfig | None = None,
+    main_host: str | None = None,
     main_model: str | None = None,
 ) -> AdvisorVerdict: ...
 ```
@@ -177,7 +201,7 @@ CLI:
 
 ```
 ll-advise --signal <name> --question <text>
-          [--context-file PATH] [--main-model MODEL]
+          [--context-file PATH] [--main-host HOST] [--main-model MODEL]
           [--host HOST] [--model MODEL] [--json]
 ```
 
@@ -193,7 +217,7 @@ ll-advise --signal <name> --question <text>
 
 ### Signatures
 
-- `consult(*, question: str, signal: str, context: str, config: BRConfig | None, main_model: str | None) -> AdvisorVerdict`
+- `consult(*, question: str, signal: str, context: str, config: BRConfig | None, main_host: str | None, main_model: str | None) -> AdvisorVerdict`
 - `main_advise(argv: list[str] | None = None) -> int`
 
 ### Call Path
@@ -216,6 +240,23 @@ model=...)` then `subprocess.run([inv.binary, *inv.args],
 capture_output=True, text=True, timeout=...)` inside a `try` that catches
 `subprocess.TimeoutExpired` and `FileNotFoundError` narrowly.
 
+_Verdict schema routing (added 2026-08-23)_: `consult()` must pass the
+AdvisorVerdict JSON schema (object with `recommendation: str`,
+`risks: array[str]`, `confidence: number`, `dissent: str`) at **build**
+time via `build_blocking_json(json_schema=...)` — not via
+`run_blocking_json(schema=...)`. The build-time path is the
+host-agnostic one: `CodexRunner` materializes the schema as an
+`--output-schema` temp file (`host_runner.py:679-687`), while the
+run-time `schema=` parameter only handles the inline `--json-schema`
+case (`run_blocking_json`'s own docstring says codex "must instead
+receive it via `build_blocking_json(json_schema=...)`"). Thread
+`config.advisor.timeout_seconds` (default 180, `AdvisorConfig`,
+`config/orchestration.py:126`) through as
+`run_blocking_json(timeout=...)`. The `signal`/`host`/`model` fields of
+`AdvisorVerdict` are stamped locally by `consult()` from its own
+arguments and the resolved host — they are not part of the schema sent
+to the model.
+
 ### Decision Rules
 
 - `--signal` is required: a missing `--signal` is a usage error via the
@@ -228,6 +269,36 @@ capture_output=True, text=True, timeout=...)` inside a `try` that catches
 - Unwired/unauthenticated host: `HostNotConfigured` (or a host/transport
   timeout) at the `cmd_*` boundary → non-zero exit with a clear reason —
   no traceback, no partial stdout.
+- **Verdict shape mismatch fails soft** (added 2026-08-23): on a host
+  without structured-output support, `run_blocking_json`'s tag fallback
+  (`_extract_tagged_structured_output`, `host_runner.py:2055`) mines the
+  fixed `<verdict>/<confidence>/<reason>/<evidence>` field names — not
+  the advisor's `recommendation`/`risks`/`dissent` keys — so the
+  returned dict can parse successfully yet not match `AdvisorVerdict`.
+  `consult()` must validate the returned dict's keys and raise/route a
+  missing-or-mistyped-key result through the same fail-soft path as
+  `BlockingJsonError` (non-zero exit, clear reason). Never emit a
+  half-empty verdict with defaulted `recommendation`.
+- **Unconfigured advisor fails soft** (added 2026-08-23):
+  `AdvisorConfig.host` defaults to `None`. With no `--host` flag and no
+  `advisor.host` in config, `ll-advise` exits non-zero with a clear
+  "advisor host not configured — set advisor.host in .ll/ll-config.json
+  or pass --host" message; no consult, no traceback.
+- **`advisor.enabled` gates auto-triggers only** (added 2026-08-23):
+  `enabled: false` (the default) does **not** block an explicit
+  `ll-advise` invocation — a user-initiated consult with a resolvable
+  host proceeds regardless. `enabled` is the switch for the FEAT-3038/
+  FEAT-3039 auto-consult paths (`confidence_gate`, `pre_done`, stall
+  escalation), which are out of scope here.
+- **`main_host` source for `check_floor`** (added 2026-08-23):
+  `check_floor` takes four args `(advisor_host, advisor_model,
+  main_host, main_model)`, but `consult()`'s signature only carries
+  `main_model`. Add a parallel keyword-only `main_host: str | None =
+  None` parameter to `consult()` (and a `--main-host` CLI flag),
+  defaulting to the ambient resolved host — `resolve_host(...)`'s
+  resolved registry name, i.e. what `orchestration.host_cli` /
+  `LL_HOST_CLI` selects — so the floor check compares against the host
+  actually running the primary session.
 - `AdvisorConfig.min_tier` reconciliation (open decision inherited from
   FEAT-3044's refine pass, resolved here): `min_tier` is validated at
   config-load time only (a separate, simpler check), and `check_floor`'s
@@ -296,11 +367,12 @@ _Added by `/ll:refine-issue` — 2026-08-08 — based on codebase analysis:_
   reason to refuse the consult.
 - `HostInvocation.cleanup_paths: tuple[Path, ...]` (`host_runner.py:164`)
   is populated only by `CodexRunner.build_blocking_json` (writes a temp
-  schema file, `host_runner.py:679-687`) and must be unlinked by the
-  caller after the subprocess call completes. If `advisor.host` ever
-  resolves to `codex`, `consult()`'s implementation must unlink these
-  paths — none of the other host runners populate this field, so it is
-  easy to omit without a codex-specific test catching it.
+  schema file, `host_runner.py:679-687`). _Stale-claim correction
+  (2026-08-23, verified against landed FEAT-3042 code)_: the landed
+  `run_blocking_json` already unlinks every `invocation.cleanup_paths`
+  entry in a `finally` block (`host_runner.py:2168-2170`), including on
+  timeout and subprocess failure — its docstring states this explicitly.
+  `consult()` needs **no** caller-side unlink code; do not add one.
 
 ## Integration Map
 
@@ -429,7 +501,9 @@ _Added by `/ll:refine-issue` — 2026-08-08 — based on codebase analysis:_
 
 1. `ll-advise --signal user_requested --question "..."` returns exit 0
    and prints JSON with exactly the keys `recommendation`, `risks`,
-   `confidence`, `dissent`, `signal`, `host`, `model`.
+   `confidence`, `dissent`, `signal`, `host`, `model` (asserted against
+   a mocked host runner, per the Tests section — no test may require a
+   live host CLI or authentication).
 2. Omitting `--signal` exits non-zero with a usage error. No code path
    performs a consult without a recorded signal.
 3. With `advisor.host` differing from `orchestration.host_cli`, the
@@ -556,6 +630,7 @@ VERDICT_JSON: {"verdict": "fail", "confidence": 80, "target_id": "FEAT-3120", "t
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-23T20:40:26 - `fad07b61-67e3-4267-bcbb-23085fac7a72.jsonl`
 - `/ll:confidence-check` - 2026-08-23T15:42:17 - `3bda1192-b8d1-4c2a-b941-b18241890b0b.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-13T22:00:51 - `e21c16b3-391d-4ef2-80c4-decd2dced91f.jsonl`
 - `/ll:verify-issues` - 2026-08-13T03:05:56 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
