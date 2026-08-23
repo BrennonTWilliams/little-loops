@@ -140,6 +140,9 @@ class ParallelOrchestrator:
             # row onto the same (run_id, issue_id) the terminal write below uses.
             run_id=self.run_id,
             driver=self.driver,
+            # ENH-3302: so parallel.epic_branch_stale reaches the same bus/
+            # transports as parallel.worker_completed.
+            event_bus=self._event_bus,
         )
         self.merge_coordinator = MergeCoordinator(
             parallel_config, self.logger, self.repo_path, self._git_lock

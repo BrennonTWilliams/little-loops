@@ -1,0 +1,48 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "little-loops://event-parallel.epic_branch_stale.json",
+  "title": "Parallel: EPIC Branch Stale",
+  "description": "Emitted by WorkerPool when a reused EPIC integration branch is found behind its resolved fork base and warned/merged/conflict-degraded (ENH-3302).",
+  "type": "object",
+  "required": [
+    "event",
+    "ts",
+    "branch",
+    "base",
+    "commits_behind",
+    "mode",
+    "action"
+  ],
+  "properties": {
+    "event": {
+      "type": "string",
+      "description": "Event type identifier"
+    },
+    "ts": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp"
+    },
+    "branch": {
+      "type": "string",
+      "description": "EPIC integration branch name"
+    },
+    "base": {
+      "type": "string",
+      "description": "Resolved fork base the branch was measured/merged against"
+    },
+    "commits_behind": {
+      "type": "integer",
+      "description": "git rev-list --count <branch>..<base> \u2014 commits base has that branch lacks"
+    },
+    "mode": {
+      "type": "string",
+      "description": "Configured parallel.epic_branches.refresh_on_reuse value"
+    },
+    "action": {
+      "type": "string",
+      "description": "warned | merged | merge_conflict"
+    }
+  },
+  "additionalProperties": true
+}

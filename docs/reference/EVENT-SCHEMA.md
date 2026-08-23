@@ -1195,6 +1195,36 @@ Emitted when a parallel worker finishes processing an issue in its isolated git 
 }
 ```
 
+### `parallel.epic_branch_stale`
+
+Emitted by `WorkerPool` when a reused (already-existing, local-hit) EPIC integration
+branch is found behind its resolved fork base and is warned/merged/conflict-degraded
+(ENH-3302). Not emitted for `N == 0` (fresh) or `refresh_on_reuse: off`. The
+`checkout_epic_branch` state of `auto-refine-and-implement.yaml` shares the same
+underlying `worktree_utils.ensure_epic_branch()` helper but has no `EventBus` — it
+writes `${context.run_dir}/epic-branch-stale.txt` with the same fields instead.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `branch` | `str` | EPIC integration branch name |
+| `base` | `str` | Resolved fork base the branch was measured/merged against |
+| `commits_behind` | `int` | `git rev-list --count <branch>..<base>` — commits `base` has that `branch` lacks |
+| `mode` | `str` | Configured `parallel.epic_branches.refresh_on_reuse` value (`warn`/`merge`) |
+| `action` | `str` | `"warned"` \| `"merged"` \| `"merge_conflict"` |
+
+**Example:**
+```json
+{
+  "event": "parallel.epic_branch_stale",
+  "ts": "...",
+  "branch": "epic/epic-3041-host-agnostic-advisor",
+  "base": "main",
+  "commits_behind": 448,
+  "mode": "merge",
+  "action": "merged"
+}
+```
+
 ---
 
 ## Error Handling Contract
@@ -1363,6 +1393,7 @@ docs/reference/schemas/
 ├── loop_start.json
 ├── max_iterations_reached_summary.json
 ├── max_steps_summary.json
+├── parallel_epic_branch_stale.json
 ├── parallel_worker_completed.json
 ├── rate_limit_exhausted.json
 ├── prompt_size_warn.json
@@ -1389,6 +1420,7 @@ Event type identifiers map to filenames by replacing dots with underscores:
 | `issue.completed` | `issue_completed.json` |
 | `state.issue_completed` | `state_issue_completed.json` |
 | `parallel.worker_completed` | `parallel_worker_completed.json` |
+| `parallel.epic_branch_stale` | `parallel_epic_branch_stale.json` |
 
 ### Schema Format
 
@@ -1499,6 +1531,7 @@ See [`ll-generate-schemas`](CLI.md#ll-generate-schemas) in the CLI reference and
 | `issue.skipped` | Issue Lifecycle | `issue_lifecycle.py` |
 | `issue.started` | Issue Lifecycle | `issue_lifecycle.py` |
 | `parallel.worker_completed` | Parallel | `parallel/orchestrator.py` |
+| `parallel.epic_branch_stale` | Parallel | `parallel/worker_pool.py` |
 | `state_change` | Socket seed (not on the EventBus) | `transport.py` |
 
 ---

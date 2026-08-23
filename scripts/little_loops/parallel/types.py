@@ -340,6 +340,12 @@ class EpicBranchesConfig:
         verify_before_merge: When True, run test_cmd/lint_cmd against the EPIC
             branch before merge-to-base or PR-open (default False — inert
             until ENH-2603 reads it).
+        refresh_on_reuse: How a reused (already-existing, local-hit) EPIC
+            branch is guarded against staleness relative to its resolved fork
+            base (ENH-3302). ``"merge"`` (default): merge the base into the
+            branch via a scratch worktree before dispatch; a conflict aborts
+            the merge and degrades to warn. ``"warn"``: measure and log only,
+            no git state change. ``"off"``: disable the check entirely.
     """
 
     enabled: bool = False
@@ -347,6 +353,7 @@ class EpicBranchesConfig:
     merge_to_base_on_complete: bool = True
     open_pr: bool = False
     verify_before_merge: bool = False
+    refresh_on_reuse: str = "merge"
 
 
 @dataclass

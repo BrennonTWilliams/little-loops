@@ -429,6 +429,12 @@
               "type": "boolean",
               "description": "When true, run test_cmd/lint_cmd against the EPIC branch before merge-to-base or PR-open. Read by ll-parallel (ENH-2603) and the auto-refine-and-implement FSM loop's merge_epic_branch state (BUG-2614).",
               "default": false
+            },
+            "refresh_on_reuse": {
+              "type": "string",
+              "enum": ["warn", "merge", "off"],
+              "description": "How a reused (already-existing, local-hit) EPIC branch is guarded against staleness relative to its resolved fork base (ENH-3302). 'merge' (default) merges the base into the branch via a scratch worktree before dispatch/worktree-attach; a conflict aborts and degrades to warn. 'warn' measures and logs only. 'off' disables the check.",
+              "default": "merge"
             }
           },
           "additionalProperties": false

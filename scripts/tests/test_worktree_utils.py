@@ -18,8 +18,10 @@ import pytest
 from little_loops.logger import Logger
 from little_loops.parallel.git_lock import GitLock
 from little_loops.worktree_utils import (
+    EpicBranchStatus,
     cleanup_worktree,
     detect_default_branch,
+    ensure_epic_branch,
     format_verify_detail,
     merge_epic_branch_to_base,
     open_pr_for_epic_branch,
@@ -754,6 +756,201 @@ class TestMergeEpicBranchToBase:
         assert not (run_dir / "merge-detail.txt").exists()
         assert not (run_dir / "merge-returncode.txt").exists()
         assert not (run_dir / "merge-conflicts.txt").exists()
+
+
+class TestEnsureEpicBranch:
+    """ensure_epic_branch() (ENH-3302): shared exists-check (local -> remote ->
+    create) + local-hit staleness guard (measure, and optionally merge base
+    into branch via a scratch worktree), reversing merge_epic_branch_to_base()'s
+    merge direction. Real-repo git fixture, mirroring TestMergeEpicBranchToBase."""
+
+    def _repo_with_stale_epic_branch(self, tmp_path: Path) -> Path:
+        """epic branch forked from main; main then advances — branch is 1 behind."""
+        repo = _init_repo(tmp_path / "repo")
+        _git(repo, "branch", "epic/epic-1-integration")
+        (repo / "extra.txt").write_text("main work\n")
+        _git(repo, "add", "extra.txt")
+        _git(repo, "commit", "-m", "main advances")
+        return repo
+
+    def _repo_with_conflicting_stale_epic_branch(self, tmp_path: Path) -> Path:
+        """Both branch and (later) base edit README.md — merging base in conflicts."""
+        repo = _init_repo(tmp_path / "repo")
+        _git(repo, "checkout", "-b", "epic/epic-1-integration")
+        (repo / "README.md").write_text("epic version\n")
+        _git(repo, "commit", "-am", "epic edits README")
+        _git(repo, "checkout", "main")
+        (repo / "README.md").write_text("main version\n")
+        _git(repo, "commit", "-am", "main edits README")
+        return repo
+
+    def test_create_path_when_branch_does_not_exist(self, tmp_path: Path) -> None:
+        repo = _init_repo(tmp_path / "repo")
+        logger = Logger(verbose=False)
+        git_lock = GitLock(logger)
+
+        status = ensure_epic_branch(
+            "epic/epic-1-integration",
+            "main",
+            repo_path=repo,
+            git_lock=git_lock,
+            logger=logger,
+            remote_name="origin",
+            refresh_on_reuse="merge",
+        )
+
+        assert isinstance(status, EpicBranchStatus)
+        assert status.action == "created"
+        assert status.created is True
+        assert status.commits_behind == 0
+        branches = _git(repo, "branch", "--list", "epic/epic-1-integration").stdout
+        assert "epic/epic-1-integration" in branches
+
+    def test_local_hit_not_behind_base_is_fresh_no_op(self, tmp_path: Path) -> None:
+        repo = _init_repo(tmp_path / "repo")
+        _git(repo, "branch", "epic/epic-1-integration")
+        logger = Logger(verbose=False)
+        git_lock = GitLock(logger)
+
+        status = ensure_epic_branch(
+            "epic/epic-1-integration",
+            "main",
+            repo_path=repo,
+            git_lock=git_lock,
+            logger=logger,
+            remote_name="origin",
+            refresh_on_reuse="merge",
+        )
+
+        assert status.action == "fresh"
+        assert status.created is False
+        assert status.commits_behind == 0
+
+    def test_warn_mode_measures_and_logs_without_changing_git_state(self, tmp_path: Path) -> None:
+        repo = self._repo_with_stale_epic_branch(tmp_path)
+        branch_sha_before = _git(repo, "rev-parse", "epic/epic-1-integration").stdout.strip()
+        logger = Logger(verbose=False)
+        git_lock = GitLock(logger)
+
+        status = ensure_epic_branch(
+            "epic/epic-1-integration",
+            "main",
+            repo_path=repo,
+            git_lock=git_lock,
+            logger=logger,
+            remote_name="origin",
+            refresh_on_reuse="warn",
+        )
+
+        assert status.action == "warned"
+        assert status.commits_behind == 1
+        branch_sha_after = _git(repo, "rev-parse", "epic/epic-1-integration").stdout.strip()
+        assert branch_sha_after == branch_sha_before
+        worktrees = _git(repo, "worktree", "list").stdout
+        assert "epic-refresh" not in worktrees
+
+    def test_merge_mode_merges_base_into_branch_base_unchanged(self, tmp_path: Path) -> None:
+        repo = self._repo_with_stale_epic_branch(tmp_path)
+        base_sha_before = _git(repo, "rev-parse", "main").stdout.strip()
+        logger = Logger(verbose=False)
+        git_lock = GitLock(logger)
+
+        status = ensure_epic_branch(
+            "epic/epic-1-integration",
+            "main",
+            repo_path=repo,
+            git_lock=git_lock,
+            logger=logger,
+            remote_name="origin",
+            refresh_on_reuse="merge",
+        )
+
+        assert status.action == "merged"
+        assert status.commits_behind == 1
+        base_sha_after = _git(repo, "rev-parse", "main").stdout.strip()
+        assert base_sha_after == base_sha_before  # base is never touched
+        # exactly one merge commit landed on the epic branch (two parents)
+        parents = (
+            _git(repo, "log", "-1", "--pretty=%P", "epic/epic-1-integration").stdout.strip().split()
+        )
+        assert len(parents) == 2
+        message = _git(repo, "log", "-1", "--pretty=%B", "epic/epic-1-integration").stdout
+        assert "Merge main into epic/epic-1-integration" in message
+        # scratch worktree cleaned up
+        worktrees = _git(repo, "worktree", "list").stdout
+        assert "epic-refresh" not in worktrees
+
+    def test_merge_conflict_aborts_and_degrades_to_warn(self, tmp_path: Path) -> None:
+        repo = self._repo_with_conflicting_stale_epic_branch(tmp_path)
+        branch_sha_before = _git(repo, "rev-parse", "epic/epic-1-integration").stdout.strip()
+        logger = Logger(verbose=False)
+        git_lock = GitLock(logger)
+
+        status = ensure_epic_branch(
+            "epic/epic-1-integration",
+            "main",
+            repo_path=repo,
+            git_lock=git_lock,
+            logger=logger,
+            remote_name="origin",
+            refresh_on_reuse="merge",
+        )
+
+        assert status.action == "merge_conflict"
+        branch_sha_after = _git(repo, "rev-parse", "epic/epic-1-integration").stdout.strip()
+        assert branch_sha_after == branch_sha_before  # branch SHA unchanged
+        assert _git(repo, "status", "--porcelain").stdout == ""  # clean tree
+        worktrees = _git(repo, "worktree", "list").stdout
+        assert "epic-refresh" not in worktrees  # scratch worktree removed
+
+    def test_merge_conflict_with_run_dir_persists_diagnostic_artifacts(
+        self, tmp_path: Path
+    ) -> None:
+        """ENH-2643 pattern: conflict detail persisted under run_dir when given."""
+        repo = self._repo_with_conflicting_stale_epic_branch(tmp_path)
+        logger = Logger(verbose=False)
+        git_lock = GitLock(logger)
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+
+        status = ensure_epic_branch(
+            "epic/epic-1-integration",
+            "main",
+            repo_path=repo,
+            git_lock=git_lock,
+            logger=logger,
+            remote_name="origin",
+            refresh_on_reuse="merge",
+            run_dir=run_dir,
+        )
+
+        assert status.action == "merge_conflict"
+        assert (run_dir / "merge-returncode.txt").exists()
+        assert (run_dir / "merge-detail.txt").exists()
+        conflicts = run_dir / "merge-conflicts.txt"
+        assert conflicts.exists()
+        assert "README.md" in conflicts.read_text()
+
+    def test_off_mode_disables_check_entirely(self, tmp_path: Path) -> None:
+        repo = self._repo_with_stale_epic_branch(tmp_path)
+        branch_sha_before = _git(repo, "rev-parse", "epic/epic-1-integration").stdout.strip()
+        logger = Logger(verbose=False)
+        git_lock = GitLock(logger)
+
+        status = ensure_epic_branch(
+            "epic/epic-1-integration",
+            "main",
+            repo_path=repo,
+            git_lock=git_lock,
+            logger=logger,
+            remote_name="origin",
+            refresh_on_reuse="off",
+        )
+
+        assert status.action == "off"
+        assert status.commits_behind == 0
+        branch_sha_after = _git(repo, "rev-parse", "epic/epic-1-integration").stdout.strip()
+        assert branch_sha_after == branch_sha_before
 
 
 class TestVerifyEpicBranchBeforeMerge:

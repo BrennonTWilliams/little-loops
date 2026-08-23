@@ -11,9 +11,10 @@ import re
 import shlex
 import shutil
 import subprocess
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 from little_loops.git_operations import preserve_before_teardown
 from little_loops.host_runner import project_child_env
@@ -687,6 +688,221 @@ def merge_epic_branch_to_base(
     except Exception as e:  # noqa: BLE001 — never let completion crash the caller
         logger.warning(f"EPIC {epic_id} integration branch merge error: {e}")
         return False
+
+
+@dataclass(frozen=True)
+class EpicBranchStatus:
+    """Result of ``ensure_epic_branch()``'s exists-check + staleness guard (ENH-3302).
+
+    Attributes:
+        branch: The EPIC integration branch name.
+        base: The resolved fork base the branch was measured/merged against.
+        created: True only on the actual-create path (branch did not exist
+            locally or remotely, so ``git branch <branch> <base>`` ran) —
+            staleness is then 0/``"created"`` since a freshly created branch
+            cannot be behind its own fork point.
+        commits_behind: ``git rev-list --count <branch>..<base>`` — how many
+            commits ``base`` has that ``branch`` lacks. Always 0 outside the
+            local-hit reuse path (not measured on create/remote-hit/off).
+        action: ``"created"`` (branch didn't exist locally — either just
+            created, or a remote-hit whose staleness is out of scope, see
+            Decision Rules), ``"fresh"`` (local-hit, N==0, nothing to do),
+            ``"warned"`` (local-hit, N>0, refresh_on_reuse=warn — measured
+            and logged only), ``"merged"`` (local-hit, N>0,
+            refresh_on_reuse=merge, clean merge of base into branch),
+            ``"merge_conflict"`` (local-hit, N>0, refresh_on_reuse=merge,
+            merge conflicted — aborted, degraded to warn without raising),
+            or ``"off"`` (local-hit, refresh_on_reuse=off — no measurement).
+        detail: Conflict file list / merge stderr tail on
+            ``action="merge_conflict"``, else None.
+    """
+
+    branch: str
+    base: str
+    created: bool
+    commits_behind: int
+    action: Literal["created", "fresh", "warned", "merged", "merge_conflict", "off"]
+    detail: str | None = None
+
+
+def ensure_epic_branch(
+    branch: str,
+    base: str,
+    *,
+    repo_path: Path,
+    git_lock: GitLock,
+    logger: Logger,
+    remote_name: str,
+    refresh_on_reuse: str,
+    run_dir: Path | None = None,
+) -> EpicBranchStatus:
+    """Lazily create ``branch`` off ``base``, guarding reuse against staleness (ENH-3302).
+
+    Shared helper for ``WorkerPool._ensure_epic_branch`` and the
+    ``checkout_epic_branch`` FSM state — the single implementation of the
+    exists-check (local -> remote -> create) previously duplicated at both
+    call sites, now additionally measuring (and optionally reconciling)
+    staleness on a local-hit reuse.
+
+    Exists-check sequence:
+    1. Local branch check (``git rev-parse --verify <branch>``).
+    2. Remote branch check (``git ls-remote --heads <remote_name> <branch>``).
+    3. Create (``git branch <branch> <base>``) if neither hit.
+
+    Staleness is measured **only on the local-hit path** (step 1): ``git
+    rev-list --count <branch>..<base>`` — how many commits ``base`` has that
+    ``branch`` lacks. The remote-hit path is left unchanged and unmeasured —
+    ``<branch>`` does not resolve locally, and ``ls-remote`` does not update
+    remote-tracking refs, so measuring/merging it would require a prior
+    ``git fetch`` (out of scope, see ENH-3302 Decision Rules). A just-created
+    branch is trivially not behind its own fork point.
+
+    ``refresh_on_reuse`` gates the response to a local-hit's ``N > 0``:
+    - ``"off"``: no measurement, no event, no artifact.
+    - ``"warn"``: measure and log; no git state changes.
+    - ``"merge"`` (default): measure, log, and additionally merge ``base``
+      into ``branch`` via a scratch worktree — the main repo stays checked
+      out on ``base`` throughout a run, so ``branch`` is not checked out
+      anywhere and ``git merge`` (which only operates on HEAD) cannot target
+      it directly. A merge conflict aborts the merge (branch SHA unchanged,
+      clean tree) and degrades to ``"merge_conflict"`` without raising — the
+      run proceeds on the still-stale branch.
+
+    Args:
+        branch: The EPIC integration branch name.
+        base: The resolved fork base (``resolve_epic_base()``'s return value)
+            to measure/merge against.
+        repo_path: Path to the main repository.
+        git_lock: Thread-safe git lock for serializing repo operations.
+        logger: Logger instance.
+        remote_name: Remote to check for a remote-hosted branch.
+        refresh_on_reuse: ``"warn"`` | ``"merge"`` | ``"off"``.
+        run_dir: When non-``None`` (the YAML call site), a merge conflict
+            persists the ENH-2643 diagnostic artifacts (``merge-conflicts.txt``
+            / ``merge-detail.txt`` / ``merge-returncode.txt``) under it,
+            mirroring ``merge_epic_branch_to_base()``. ``WorkerPool`` has no
+            per-run ``run_dir`` and passes ``None``, relying on the returned
+            status / emitted event instead.
+
+    Returns:
+        An ``EpicBranchStatus`` describing what happened.
+    """
+    # 1. Local check
+    r = git_lock.run(["rev-parse", "--verify", branch], cwd=repo_path, timeout=10)
+    if r.returncode != 0:
+        # 2. Remote check — out of scope for staleness (Decision Rules): a
+        # remote-only ref cannot be measured/merged without a prior fetch.
+        remote_r = git_lock.run(
+            ["ls-remote", "--heads", remote_name, branch], cwd=repo_path, timeout=30
+        )
+        if remote_r.stdout and remote_r.stdout.strip():
+            return EpicBranchStatus(
+                branch=branch, base=base, created=False, commits_behind=0, action="created"
+            )
+        # 3. Create off the resolved EPIC fork base
+        git_lock.run(["branch", branch, base], cwd=repo_path, timeout=30)
+        return EpicBranchStatus(
+            branch=branch, base=base, created=True, commits_behind=0, action="created"
+        )
+
+    # Local-hit reuse path.
+    if refresh_on_reuse == "off":
+        return EpicBranchStatus(
+            branch=branch, base=base, created=False, commits_behind=0, action="off"
+        )
+
+    count_r = git_lock.run(["rev-list", "--count", f"{branch}..{base}"], cwd=repo_path, timeout=10)
+    commits_behind = int(count_r.stdout.strip()) if count_r.returncode == 0 else 0
+
+    if commits_behind == 0:
+        return EpicBranchStatus(
+            branch=branch, base=base, created=False, commits_behind=0, action="fresh"
+        )
+
+    logger.warning(f"epic branch {branch} is {commits_behind} commit(s) behind {base}")
+
+    if refresh_on_reuse != "merge":
+        return EpicBranchStatus(
+            branch=branch,
+            base=base,
+            created=False,
+            commits_behind=commits_behind,
+            action="warned",
+        )
+
+    # merge mode: merge base into branch via a scratch worktree — base is
+    # checked out nowhere but the main repo, and `git merge` only operates
+    # on HEAD, so branch must be checked out somewhere first.
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
+    worktree_path = (
+        repo_path / ".worktrees" / f"epic-refresh-{branch.replace('/', '-')}-{timestamp}"
+    )
+    try:
+        setup_worktree(
+            repo_path=repo_path,
+            worktree_path=worktree_path,
+            branch_name=branch,
+            copy_files=[],
+            logger=logger,
+            git_lock=git_lock,
+            checkout_existing=True,
+        )
+    except RuntimeError as e:
+        logger.warning(f"epic branch {branch}: refresh worktree setup failed: {e}")
+        return EpicBranchStatus(
+            branch=branch,
+            base=base,
+            created=False,
+            commits_behind=commits_behind,
+            action="warned",
+            detail=str(e),
+        )
+
+    try:
+        merge_r = git_lock.run(
+            [
+                "merge",
+                "--no-ff",
+                "--no-edit",
+                "-m",
+                f"Merge {base} into {branch} (ENH-3302 refresh)",
+                base,
+            ],
+            cwd=worktree_path,
+            timeout=60,
+        )
+        if merge_r.returncode == 0:
+            logger.info(f"epic branch {branch}: merged {base} ({commits_behind} commits)")
+            return EpicBranchStatus(
+                branch=branch,
+                base=base,
+                created=False,
+                commits_behind=commits_behind,
+                action="merged",
+            )
+
+        logger.warning(f"epic branch {branch}: merge of {base} conflicted: {merge_r.stderr}")
+        detail = format_verify_detail(merge_r.stdout, merge_r.stderr)
+        if run_dir is not None:
+            # ENH-2643: persist failure detail before `merge --abort` discards
+            # the conflict state, mirroring merge_epic_branch_to_base().
+            conflicts = git_lock.run(
+                ["diff", "--name-only", "--diff-filter=U"], cwd=worktree_path, timeout=10
+            )
+            (run_dir / "merge-returncode.txt").write_text(str(merge_r.returncode))
+            (run_dir / "merge-detail.txt").write_text(detail)
+            (run_dir / "merge-conflicts.txt").write_text(conflicts.stdout or "")
+        git_lock.run(["merge", "--abort"], cwd=worktree_path, timeout=10)
+        return EpicBranchStatus(
+            branch=branch,
+            base=base,
+            created=False,
+            commits_behind=commits_behind,
+            action="merge_conflict",
+            detail=detail,
+        )
+    finally:
+        cleanup_worktree(worktree_path, repo_path, logger, git_lock, delete_branch=False)
 
 
 def open_pr_for_epic_branch(

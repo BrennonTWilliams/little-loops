@@ -181,13 +181,19 @@ states:
 
   checkout_epic_branch:
     # ENH-2601 Option A (create-without-switching — mirrors
-    # WorkerPool._ensure_epic_branch, worker_pool.py:1707-1743): when scope is
+    # WorkerPool._ensure_epic_branch, worker_pool.py:1938): when scope is
     # an EPIC-NNN id and parallel.epic_branches.enabled is true, ensure
     # epic/<EPIC-ID>-<slug> exists off base_branch. Deliberately does NOT `git
     # checkout` it — the main working tree stays on whatever branch was
     # already active, preserving the invariant documented in orchestrator.py's
     # _merge_epic_branch_to_base docstring. No-op (writes nothing, always
     # continues) when scope isn't an EPIC id or the config flag is off.
+    # ENH-3302: the exists-check + staleness-guard + optional merge is now the
+    # single shared worktree_utils.ensure_epic_branch() implementation (also
+    # used by WorkerPool._ensure_epic_branch) instead of an inline
+    # rev-parse/ls-remote/branch reimplementation. On a local-hit reuse that is
+    # N>0 commits behind base, this writes epic-branch-stale.txt (read by
+    # finalize) when the outcome is warned/merge_conflict.
     action: |
       python3 << 'PYEOF'
       import re
@@ -197,8 +203,11 @@ states:
 
       from little_loops.config import BRConfig
       from little_loops.issue_parser import IssueParser, slugify
+      from little_loops.logger import Logger
+      from little_loops.parallel.git_lock import GitLock
       from little_loops.worktree_utils import (
           detect_default_branch,
+          ensure_epic_branch,
           resolve_epic_base,
           resolve_epic_branch_name,
       )
@@ -247,20 +256,30 @@ states:
       default_base = cfg.parallel.base_branch or detect_default_branch(Path.cwd())
       base = resolve_epic_base(epic_id, default_base, Path.cwd(), cfg)
 
-      def _git(args: list[str]) -> subprocess.CompletedProcess:
-          return subprocess.run(["git", *args], capture_output=True, text=True)
-
-      exists = _git(["rev-parse", "--verify", branch]).returncode == 0
-      if not exists:
-          remote = _git(["ls-remote", "--heads", cfg.parallel.remote_name, branch])
-          exists = bool(remote.stdout and remote.stdout.strip())
-      if not exists:
-          _git(["branch", branch, base])
-          print(f"checkout_epic_branch: created {branch} off {base}", file=sys.stderr)
-      else:
-          print(f"checkout_epic_branch: {branch} already exists", file=sys.stderr)
-
       run_dir.mkdir(parents=True, exist_ok=True)
+      logger = Logger(verbose=False)
+      git_lock = GitLock(logger)
+      status = ensure_epic_branch(
+          branch,
+          base,
+          repo_path=Path.cwd(),
+          git_lock=git_lock,
+          logger=logger,
+          remote_name=cfg.parallel.remote_name,
+          refresh_on_reuse=epic_cfg.refresh_on_reuse,
+          run_dir=run_dir,
+      )
+      print(f"checkout_epic_branch: {branch} action={status.action}", file=sys.stderr)
+
+      if status.action in ("warned", "merge_conflict"):
+          (run_dir / "epic-branch-stale.txt").write_text(
+              f"branch={status.branch}\n"
+              f"base={status.base}\n"
+              f"commits_behind={status.commits_behind}\n"
+              f"mode={epic_cfg.refresh_on_reuse}\n"
+              f"action={status.action}\n"
+          )
+
       (run_dir / "epic-branch-name.txt").write_text(branch + "\n")
       # BUG-2614: persist the resolved base branch so merge_epic_branch can
       # merge back into the SAME branch this one was forked from, instead of
@@ -961,6 +980,19 @@ states:
       # same as VERIFY_VERDICT — does not gate finalize's own closure verdict.
       EPIC_MERGE_VERDICT=$(cat "$RUN_DIR/epic-merge-verdict.txt" 2>/dev/null || echo "not_run")
 
+      # ENH-3302: EPIC_BRANCH_STALE_ACTION surfaces checkout_epic_branch's
+      # staleness-guard outcome (written to epic-branch-stale.txt only on
+      # warned/merge_conflict — N=0/fresh/off/merged-clean write nothing).
+      # merge_conflict is the one case a human must intervene on: the epic
+      # branch is STILL stale and the run proceeded on it anyway, so it gets
+      # a loud stderr line here in addition to the summary.json field.
+      EPIC_BRANCH_STALE_ACTION=$(grep '^action=' "$RUN_DIR/epic-branch-stale.txt" 2>/dev/null \
+        | cut -d= -f2- || true)
+      [ -z "$EPIC_BRANCH_STALE_ACTION" ] && EPIC_BRANCH_STALE_ACTION="none"
+      if [ "$EPIC_BRANCH_STALE_ACTION" = "merge_conflict" ]; then
+        echo "*** WARNING: epic branch merge conflict on refresh (ENH-3302) — branch is STILL stale, run proceeded anyway. See $RUN_DIR/epic-branch-stale.txt ***" >&2
+      fi
+
       # Verdict reflects real closure. A run is only 'success' when it closed
       # something and left nothing parked (no skips, no not-closed, no crash).
       # ENH-2657: an abandoned queue takes precedence over every closed>0 bucket —
@@ -986,14 +1018,14 @@ states:
         VERDICT=no-op
       fi
 
-      printf '{"verdict":"%s","closed":%s,"not_closed":%s,"skipped":%s,"errored":%s,"skipped_breakdown":%s,"closed_via_recovery":%s,"gate_blocked":%s,"decision_unresolved":%s,"inflight_unresolved":%s,"abandoned":%s,"parked_rate":%s,"verify_verdict":"%s","verify_returncode":%s,"epic_merge_verdict":"%s"}\n' \
-        "$VERDICT" "$CLOSED" "$NOT_CLOSED" "$SKIP" "$ERR" "$SKIPPED_BREAKDOWN" "$CLOSED_VIA_RECOVERY" "$GATE_BLOCKED" "$DECISION_UNRESOLVED" "$INFLIGHT_UNRESOLVED" "$ABANDONED" "$PARKED_RATE" "$VERIFY_VERDICT" "$VERIFY_RETURNCODE" "$EPIC_MERGE_VERDICT" > "$RUN_DIR/summary.json"
+      printf '{"verdict":"%s","closed":%s,"not_closed":%s,"skipped":%s,"errored":%s,"skipped_breakdown":%s,"closed_via_recovery":%s,"gate_blocked":%s,"decision_unresolved":%s,"inflight_unresolved":%s,"abandoned":%s,"parked_rate":%s,"verify_verdict":"%s","verify_returncode":%s,"epic_merge_verdict":"%s","epic_branch_stale_action":"%s"}\n' \
+        "$VERDICT" "$CLOSED" "$NOT_CLOSED" "$SKIP" "$ERR" "$SKIPPED_BREAKDOWN" "$CLOSED_VIA_RECOVERY" "$GATE_BLOCKED" "$DECISION_UNRESOLVED" "$INFLIGHT_UNRESOLVED" "$ABANDONED" "$PARKED_RATE" "$VERIFY_VERDICT" "$VERIFY_RETURNCODE" "$EPIC_MERGE_VERDICT" "$EPIC_BRANCH_STALE_ACTION" > "$RUN_DIR/summary.json"
       # ENH-2005 artifact-channel sidecar: a parent loop (e.g.
       # sprint-refine-and-implement) recovers the real verdict from this token
       # rather than the collapsed done/failed routing verdict.
       printf '%s\n' "$VERDICT" > "$RUN_DIR/subloop_outcome_auto-refine-and-implement.txt"
-      printf '%s: verdict=%s closed=%s not_closed=%s skipped=%s errored=%s closed_via_recovery=%s gate_blocked=%s decision_unresolved=%s inflight_unresolved=%s abandoned=%s parked_rate=%s verify_verdict=%s epic_merge_verdict=%s\n' \
-        "$P" "$VERDICT" "$CLOSED" "$NOT_CLOSED" "$SKIP" "$ERR" "$CLOSED_VIA_RECOVERY" "$GATE_BLOCKED" "$DECISION_UNRESOLVED" "$INFLIGHT_UNRESOLVED" "$ABANDONED" "$PARKED_RATE" "$VERIFY_VERDICT" "$EPIC_MERGE_VERDICT"
+      printf '%s: verdict=%s closed=%s not_closed=%s skipped=%s errored=%s closed_via_recovery=%s gate_blocked=%s decision_unresolved=%s inflight_unresolved=%s abandoned=%s parked_rate=%s verify_verdict=%s epic_merge_verdict=%s epic_branch_stale_action=%s\n' \
+        "$P" "$VERDICT" "$CLOSED" "$NOT_CLOSED" "$SKIP" "$ERR" "$CLOSED_VIA_RECOVERY" "$GATE_BLOCKED" "$DECISION_UNRESOLVED" "$INFLIGHT_UNRESOLVED" "$ABANDONED" "$PARKED_RATE" "$VERIFY_VERDICT" "$EPIC_MERGE_VERDICT" "$EPIC_BRANCH_STALE_ACTION"
 
       # BUG-2636: route the FSM terminal on the REAL outcome, not just "reached the
       # end". `ll-loop` derives success purely from the terminal state's NAME —

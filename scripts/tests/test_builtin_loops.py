@@ -4207,16 +4207,40 @@ class TestAutoRefineAndImplementLoop:
     def test_checkout_epic_branch_gated_on_epic_scope_and_config(self, data: dict) -> None:
         """checkout_epic_branch must gate on scope being an EPIC id AND
         parallel.epic_branches.enabled, and must not switch the working tree
-        (Option A — create-without-switch, no `git checkout`)."""
+        (Option A — create-without-switch, no `git checkout`). ENH-3302: the
+        actual create-if-missing/staleness-guard logic now lives entirely
+        inside ensure_epic_branch() — the main tree is never checked out."""
         action = data["states"].get("checkout_epic_branch", {}).get("action", "")
         assert "EPIC-" in action
         assert "epic_cfg.enabled" in action
-        assert '"branch", branch, base' in action, (
-            "must create via `git branch <name> <base>`, not `git checkout -b`"
+        assert "checkout_existing" not in action, (
+            "Option A must not literally `git checkout` the epic branch in the main tree "
+            "(checkout_existing is an internal detail of ensure_epic_branch's scratch worktree)"
         )
-        assert "checkout" not in action.lower().replace("checkout_epic_branch", ""), (
-            "Option A must not literally `git checkout` the epic branch"
-        )
+
+    def test_checkout_epic_branch_uses_shared_ensure_epic_branch_helper(self, data: dict) -> None:
+        """ENH-3302: checkout_epic_branch must call the shared
+        worktree_utils.ensure_epic_branch() helper (exists-check + staleness
+        guard + optional merge) instead of reimplementing rev-parse/ls-remote/
+        branch inline — the single implementation shared with
+        WorkerPool._ensure_epic_branch."""
+        action = data["states"].get("checkout_epic_branch", {}).get("action", "")
+        assert "ensure_epic_branch" in action
+        assert "refresh_on_reuse=epic_cfg.refresh_on_reuse" in action
+        assert "run_dir=run_dir" in action
+        # No duplicated rev-parse/ls-remote/branch reimplementation left inline.
+        assert "rev-parse" not in action
+        assert "ls-remote" not in action
+        assert '"branch", branch, base' not in action
+
+    def test_checkout_epic_branch_writes_stale_artifact_on_warned_or_conflict(
+        self, data: dict
+    ) -> None:
+        """ENH-3302: a warned/merge_conflict outcome must persist
+        epic-branch-stale.txt (finalize's source for surfacing it)."""
+        action = data["states"].get("checkout_epic_branch", {}).get("action", "")
+        assert "epic-branch-stale.txt" in action
+        assert '"warned", "merge_conflict"' in action
 
     def test_checkout_epic_branch_imports_and_calls_resolver(self, data: dict) -> None:
         """ENH-2656 Option B: the heredoc must import the shared resolvers from
@@ -4233,13 +4257,6 @@ class TestAutoRefineAndImplementLoop:
         assert 'f"{epic_cfg.prefix}' not in action, (
             "branch name must come from resolve_epic_branch_name, not an inline f-string"
         )
-
-    def test_checkout_epic_branch_reuses_ensure_epic_branch_shape(self, data: dict) -> None:
-        """Must mirror WorkerPool._ensure_epic_branch's idempotency checks (local
-        rev-parse, then remote ls-remote) before creating the branch."""
-        action = data["states"].get("checkout_epic_branch", {}).get("action", "")
-        assert "rev-parse" in action
-        assert "ls-remote" in action
 
     def test_verify_state_exists_and_routes_to_merge_epic_branch(self, data: dict) -> None:
         """verify runs unconditionally after delegate and always continues to
@@ -4366,6 +4383,7 @@ class TestAutoRefineAndImplementLoop:
         verify_returncode: str | None = None,
         inflight: str | None = None,
         queue: tuple[str, ...] = (),
+        epic_branch_stale_action: str | None = None,
     ) -> dict:
         """Execute finalize against ground-truth completed/ + done dirs; return summary.json.
 
@@ -4402,6 +4420,15 @@ class TestAutoRefineAndImplementLoop:
         # default the field to null.
         if verify_returncode is not None:
             (run_dir / "verify-returncode.txt").write_text(verify_returncode + "\n")
+        # ENH-3302: seed epic-branch-stale.txt (checkout_epic_branch's artifact,
+        # written only on warned/merge_conflict) so summary.json's
+        # epic_branch_stale_action key can be exercised; absent by default ->
+        # finalize must default the field to "none".
+        if epic_branch_stale_action is not None:
+            (run_dir / "epic-branch-stale.txt").write_text(
+                f"branch=epic/epic-1-x\nbase=main\ncommits_behind=3\nmode=merge\n"
+                f"action={epic_branch_stale_action}\n"
+            )
         (run_dir / f"{p}-completed-baseline.txt").write_text(
             "".join(f"{i}\n" for i in sorted(baseline))
         )
@@ -4704,6 +4731,61 @@ class TestAutoRefineAndImplementLoop:
             data, run_dir, closed=("FEAT-1",), passed=("FEAT-1",), verify_verdict="passed"
         )
         assert summary["verify_returncode"] is None, f"got {summary}"
+
+    # --- ENH-3302: epic branch staleness guard surfacing in finalize ---------
+
+    def test_finalize_sources_epic_branch_stale_artifact(self, data: dict) -> None:
+        """finalize must read epic-branch-stale.txt — checkout_epic_branch's
+        artifact, written only on a warned/merge_conflict staleness outcome."""
+        action = data["states"].get("finalize", {}).get("action", "")
+        assert "epic-branch-stale.txt" in action
+
+    def test_finalize_surfaces_epic_branch_stale_action(self, data: dict, tmp_path: Path) -> None:
+        """A warned/merged/merge_conflict outcome must surface verbatim in
+        summary.json's epic_branch_stale_action key."""
+        for action_value in ("warned", "merge_conflict"):
+            run_dir = tmp_path / f"run-{action_value}"
+            run_dir.mkdir()
+            summary = self._run_finalize(
+                data,
+                run_dir,
+                closed=("FEAT-1",),
+                passed=("FEAT-1",),
+                epic_branch_stale_action=action_value,
+            )
+            assert summary["epic_branch_stale_action"] == action_value, f"got {summary}"
+
+    def test_finalize_epic_branch_stale_action_defaults_to_none(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        """When the staleness guard never fired (fresh/off/merged-clean write
+        nothing), epic_branch_stale_action must default to 'none', not omit
+        the key or crash."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        summary = self._run_finalize(data, run_dir, closed=("FEAT-1",), passed=("FEAT-1",))
+        assert summary["epic_branch_stale_action"] == "none", f"got {summary}"
+
+    def test_finalize_warns_loudly_on_merge_conflict(self, data: dict, tmp_path: Path) -> None:
+        """The merge_conflict outcome is the one case a human must intervene on
+        (branch is STILL stale and the run proceeded anyway) — finalize must
+        emit a prominent stderr warning, not just the summary.json field."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        (run_dir / "epic-branch-stale.txt").write_text(
+            "branch=epic/epic-1-x\nbase=main\ncommits_behind=3\nmode=merge\naction=merge_conflict\n"
+        )
+        action = data["states"]["finalize"].get("action", "")
+        script = action.replace("${context.run_dir}", str(run_dir))
+        script = script.replace("${captured.issue_set.output}", "")
+        (run_dir / "auto-refine-and-implement-completed-baseline.txt").write_text("")
+        (run_dir / "auto-refine-and-implement-done-baseline.txt").write_text("")
+        (run_dir / "autodev-passed.txt").write_text("")
+        (run_dir / "autodev-skipped.txt").write_text("")
+        result = subprocess.run(["bash", "-c", script], cwd=run_dir, capture_output=True, text=True)
+        assert "WARNING" in result.stderr and "merge conflict" in result.stderr.lower(), (
+            f"expected a prominent merge_conflict warning on stderr, got: {result.stderr!r}"
+        )
 
     def test_finalize_sources_gate_blocked_ledger(self, data: dict) -> None:
         """finalize must read autodev-gate-blocked.txt — previously never referenced,

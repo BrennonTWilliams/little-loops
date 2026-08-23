@@ -4130,6 +4130,153 @@ class TestResolveBranchTargets:
         )
 
 
+class TestEnsureEpicBranchEventEmission:
+    """WorkerPool._ensure_epic_branch emits parallel.epic_branch_stale (ENH-3302).
+
+    Mocks little_loops.worktree_utils.ensure_epic_branch (the shared helper
+    _ensure_epic_branch now wraps) to control the returned EpicBranchStatus —
+    real-repo staleness/merge mechanics are covered by
+    TestEnsureEpicBranch in test_worktree_utils.py. Modeled on
+    test_orchestrator.py's test_on_worker_complete_emits_event_on_success /
+    test_on_worker_complete_no_emission_without_event_bus.
+    """
+
+    def _make_pool(
+        self,
+        default_parallel_config: ParallelConfig,
+        br_config: BRConfig,
+        mock_logger: MagicMock,
+        temp_repo_with_config: Path,
+        mock_git_lock: GitLock,
+        event_bus: Any = None,
+    ) -> WorkerPool:
+        cfg = ParallelConfig(**{**default_parallel_config.to_dict()})
+        cfg.epic_branches.enabled = True
+        return WorkerPool(
+            parallel_config=cfg,
+            br_config=br_config,
+            logger=mock_logger,
+            repo_path=temp_repo_with_config,
+            git_lock=mock_git_lock,
+            event_bus=event_bus,
+        )
+
+    @pytest.mark.parametrize("action", ["warned", "merged", "merge_conflict"])
+    def test_emits_event_for_staleness_actions(
+        self,
+        action: str,
+        default_parallel_config: ParallelConfig,
+        br_config: BRConfig,
+        mock_logger: MagicMock,
+        temp_repo_with_config: Path,
+        mock_git_lock: GitLock,
+    ) -> None:
+        from little_loops.events import EventBus
+        from little_loops.worktree_utils import EpicBranchStatus
+
+        received: list[dict[str, Any]] = []
+        bus = EventBus()
+        bus.register(lambda e: received.append(e))
+        pool = self._make_pool(
+            default_parallel_config,
+            br_config,
+            mock_logger,
+            temp_repo_with_config,
+            mock_git_lock,
+            event_bus=bus,
+        )
+
+        status = EpicBranchStatus(
+            branch="epic/epic-1-integration",
+            base="main",
+            created=False,
+            commits_behind=5,
+            action=action,  # type: ignore[arg-type]
+        )
+        with patch(
+            "little_loops.worktree_utils.ensure_epic_branch", return_value=status
+        ) as mock_ensure:
+            pool._ensure_epic_branch("epic/epic-1-integration", "main")
+
+        mock_ensure.assert_called_once()
+        assert len(received) == 1
+        event = received[0]
+        assert event["event"] == "parallel.epic_branch_stale"
+        assert event["branch"] == "epic/epic-1-integration"
+        assert event["base"] == "main"
+        assert event["commits_behind"] == 5
+        assert event["mode"] == "merge"  # default refresh_on_reuse
+        assert event["action"] == action
+        assert "ts" in event
+
+    @pytest.mark.parametrize("action", ["fresh", "off", "created"])
+    def test_no_emission_for_non_staleness_actions(
+        self,
+        action: str,
+        default_parallel_config: ParallelConfig,
+        br_config: BRConfig,
+        mock_logger: MagicMock,
+        temp_repo_with_config: Path,
+        mock_git_lock: GitLock,
+    ) -> None:
+        from little_loops.events import EventBus
+        from little_loops.worktree_utils import EpicBranchStatus
+
+        received: list[dict[str, Any]] = []
+        bus = EventBus()
+        bus.register(lambda e: received.append(e))
+        pool = self._make_pool(
+            default_parallel_config,
+            br_config,
+            mock_logger,
+            temp_repo_with_config,
+            mock_git_lock,
+            event_bus=bus,
+        )
+
+        status = EpicBranchStatus(
+            branch="epic/epic-1-integration",
+            base="main",
+            created=(action == "created"),
+            commits_behind=0,
+            action=action,  # type: ignore[arg-type]
+        )
+        with patch("little_loops.worktree_utils.ensure_epic_branch", return_value=status):
+            pool._ensure_epic_branch("epic/epic-1-integration", "main")
+
+        assert received == []
+
+    def test_no_emission_without_event_bus(
+        self,
+        default_parallel_config: ParallelConfig,
+        br_config: BRConfig,
+        mock_logger: MagicMock,
+        temp_repo_with_config: Path,
+        mock_git_lock: GitLock,
+    ) -> None:
+        """Backward compat: no event_bus attached -> no error, no emission attempted."""
+        from little_loops.worktree_utils import EpicBranchStatus
+
+        pool = self._make_pool(
+            default_parallel_config,
+            br_config,
+            mock_logger,
+            temp_repo_with_config,
+            mock_git_lock,
+            event_bus=None,
+        )
+
+        status = EpicBranchStatus(
+            branch="epic/epic-1-integration",
+            base="main",
+            created=False,
+            commits_behind=3,
+            action="warned",
+        )
+        with patch("little_loops.worktree_utils.ensure_epic_branch", return_value=status):
+            pool._ensure_epic_branch("epic/epic-1-integration", "main")  # must not raise
+
+
 class TestWorkerPoolBaseStateStamp:
     """ENH-2866: dequeue-time base-SHA stamp captured at per-issue worktree creation."""
 

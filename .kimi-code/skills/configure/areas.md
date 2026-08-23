@@ -196,6 +196,7 @@ Current Parallel Configuration
   push_feature_branches:        {{config.parallel.push_feature_branches}}
   open_pr_for_feature_branches: {{config.parallel.open_pr_for_feature_branches}}
   epic_branches.enabled:        {{config.parallel.epic_branches.enabled}}
+  epic_branches.refresh_on_reuse: {{config.parallel.epic_branches.refresh_on_reuse}}
 ```
 
 ### Round 1 (4 questions)
@@ -282,6 +283,18 @@ questions:
         description: "Yes — children of a single EPIC coalesce their work onto a shared epic/<EPIC-ID>-<slug> integration branch instead of per-worker branches; the integration branch merges back to base after the EPIC's last child completes. Applies to ll-parallel / ll-sprint multi-issue waves only."
       - label: "false"
         description: "No, use per-worker branches (default)"
+    multiSelect: false
+  - header: "Epic branch staleness guard"
+    question: "How should a reused (already-existing) EPIC integration branch be guarded against staleness relative to its fork base? (ENH-3302)"
+    options:
+      - label: "{{current epic_branches.refresh_on_reuse}} (keep)"
+        description: "Keep current setting"
+      - label: "merge"
+        description: "Default — merge the base into the reused branch via a scratch worktree before dispatch; a conflict degrades to warn without failing the run."
+      - label: "warn"
+        description: "Measure and log only; no git state change."
+      - label: "off"
+        description: "Disable the staleness check entirely."
     multiSelect: false
 ```
 

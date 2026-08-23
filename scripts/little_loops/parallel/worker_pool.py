@@ -15,7 +15,7 @@ import time
 from collections.abc import Callable
 from concurrent.futures import Future, ThreadPoolExecutor
 from contextlib import suppress
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
@@ -42,6 +42,7 @@ from little_loops.work_verification import EXCLUDED_DIRECTORIES, verify_work_was
 
 if TYPE_CHECKING:
     from little_loops.config import BRConfig
+    from little_loops.events import EventBus
     from little_loops.issue_parser import IssueInfo
     from little_loops.logger import Logger
     from little_loops.parallel.types import SprintWorkerContext
@@ -151,6 +152,7 @@ class WorkerPool:
         git_lock: GitLock | None = None,
         run_id: str | None = None,
         driver: str | None = None,
+        event_bus: EventBus | None = None,
     ) -> None:
         """Initialize the worker pool.
 
@@ -166,9 +168,16 @@ class WorkerPool:
                 which case no early row is written.
             driver: Producer identity for the stamp (``ll-parallel`` /
                 ``ll-sprint``); see ``run_id``.
+            event_bus: Optional EventBus (ENH-3302). When set, a
+                ``parallel.epic_branch_stale`` event is emitted whenever an
+                epic-branch reuse is warned/merged/conflict-degraded by
+                ``_ensure_epic_branch``. Appended last, keyword-optional, so
+                existing positional callers (``cli/parallel.py``,
+                ``test_subprocess_mocks.py``) remain unaffected.
         """
         self.run_id = run_id
         self.driver = driver
+        self._event_bus = event_bus
         self.parallel_config = parallel_config
         self.br_config = br_config
         self.logger = logger
@@ -1937,45 +1946,47 @@ class WorkerPool:
         return epic_id.lower()
 
     def _ensure_epic_branch(self, branch: str, base: str) -> None:
-        """Lazily create ``branch`` off ``base`` if it does not exist yet.
+        """Lazily create ``branch`` off ``base``, guarding reuse against staleness.
 
-        Sequence (idempotent via ``self._epic_branches_created``):
-        1. In-memory cache hit -> return.
-        2. Local branch check (``git rev-parse --verify <branch>``) -> exists.
-        3. Remote branch check (``git ls-remote --heads <remote> <branch>``).
-        4. Create (``git branch <branch> <base>``).
+        Idempotent via ``self._epic_branches_created`` (in-memory cache hit ->
+        return; the guard fires once per run per branch, at first touch). Thin
+        wrapper over ``worktree_utils.ensure_epic_branch()`` (ENH-3302), the
+        shared exists-check/staleness/merge implementation also used by the
+        ``checkout_epic_branch`` FSM state — no ``run_dir`` here (``WorkerPool``
+        holds only ``run_id``), so a merge conflict's diagnostic detail goes
+        into the emitted event/log line instead of a persisted artifact.
 
         ``base`` is the EPIC fork base resolved via
         ``worktree_utils.resolve_epic_base`` (ENH-2656).
         """
         if branch in self._epic_branches_created:
             return
-        # 1. Local check
-        r = self._git_lock.run(
-            ["rev-parse", "--verify", branch],
-            cwd=self.repo_path,
-            timeout=10,
-        )
-        if r.returncode == 0:
-            self._epic_branches_created.add(branch)
-            return
-        # 2. Remote check
-        remote = self.parallel_config.remote_name
-        r = self._git_lock.run(
-            ["ls-remote", "--heads", remote, branch],
-            cwd=self.repo_path,
-            timeout=30,
-        )
-        if r.stdout and r.stdout.strip():
-            self._epic_branches_created.add(branch)
-            return
-        # 3. Create off the resolved EPIC fork base
-        self._git_lock.run(
-            ["branch", branch, base],
-            cwd=self.repo_path,
-            timeout=30,
+
+        from little_loops.worktree_utils import ensure_epic_branch
+
+        status = ensure_epic_branch(
+            branch,
+            base,
+            repo_path=self.repo_path,
+            git_lock=self._git_lock,
+            logger=self.logger,
+            remote_name=self.parallel_config.remote_name,
+            refresh_on_reuse=self.parallel_config.epic_branches.refresh_on_reuse,
         )
         self._epic_branches_created.add(branch)
+
+        if status.action in ("warned", "merged", "merge_conflict") and self._event_bus:
+            self._event_bus.emit(
+                {
+                    "event": "parallel.epic_branch_stale",
+                    "ts": datetime.now(UTC).isoformat(),
+                    "branch": status.branch,
+                    "base": status.base,
+                    "commits_behind": status.commits_behind,
+                    "mode": self.parallel_config.epic_branches.refresh_on_reuse,
+                    "action": status.action,
+                }
+            )
 
     @property
     def active_count(self) -> int:

@@ -495,6 +495,18 @@ class ParallelWorkerCompletedVariant(DESVariant):
     status: str = ""
 
 
+@dataclass(frozen=True)
+class ParallelEpicBranchStaleVariant(DESVariant):
+    """WorkerPool emits 'parallel.epic_branch_stale' on a stale reused EPIC branch (ENH-3302)."""
+
+    type: Literal["parallel.epic_branch_stale"] = "parallel.epic_branch_stale"
+    branch: str = ""
+    base: str = ""
+    commits_behind: int = 0
+    mode: str = ""
+    action: str = ""
+
+
 # ---------------------------------------------------------------------------
 # Channel A: Direct writers to .ll/history.db (target-table representation)
 # ---------------------------------------------------------------------------
@@ -688,6 +700,7 @@ DES_VARIANTS: Final[tuple[type[DESVariant], ...]] = (
     IssueSkippedVariant,
     IssueStartedVariant,
     ParallelWorkerCompletedVariant,
+    ParallelEpicBranchStaleVariant,
     # --- Channel A: Direct writers ---
     ToolEventVariant,
     FileEventVariant,

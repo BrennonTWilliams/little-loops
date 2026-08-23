@@ -3982,6 +3982,7 @@ class EpicBranchesConfig:
     merge_to_base_on_complete: bool = True  # merge EPIC branch to base after last child
     open_pr: bool = False              # open a PR for the EPIC branch via gh on completion
     verify_before_merge: bool = False  # run test_cmd/lint_cmd against the branch tip before merge/PR-open (ENH-2603)
+    refresh_on_reuse: str = "merge"    # warn|merge|off — staleness guard on a reused branch (ENH-3302)
 ```
 
 When `enabled`, `WorkerPool` routes every child of a shared `parent:` EPIC onto
@@ -7859,7 +7860,7 @@ bus.register(my_callback)
 **Event namespace conventions:**
 - `issue.*` — issue lifecycle events (`issue.closed`, `issue.completed`, etc.)
 - `state.*` — state manager events (`state.issue_completed`, `state.issue_failed`)
-- `parallel.*` — parallel orchestrator events (`parallel.worker_completed`)
+- `parallel.*` — parallel orchestrator events (`parallel.worker_completed`, `parallel.epic_branch_stale`)
 - Bare names — FSM executor events (`state_enter`, `loop_start`, `action_start`, etc.)
 
 ---
@@ -12144,6 +12145,38 @@ Merges `epic_branch` into `base_branch` (via `git merge --no-ff`) then deletes i
 - `run_dir` — When non-`None`, the per-run directory to persist a merge-failure diagnostic into (ENH-2643). On failure, before `git merge --abort` discards the conflict state, three flat-text artifacts are written: `merge-returncode.txt` (the failing `git merge` exit code), `merge-detail.txt` (the bounded `stderr + stdout` tail via `format_verify_detail`), and `merge-conflicts.txt` (the conflicted-path list from `git diff --name-only --diff-filter=U`). When `None` (the parallel-orchestrator caller, which has no per-run `run_dir`), nothing is persisted.
 
 **Returns:** `True` if the merge succeeded (and the branch was deleted), `False` on merge failure or an unexpected error.
+
+### ensure_epic_branch
+
+```python
+def ensure_epic_branch(
+    branch: str,
+    base: str,
+    *,
+    repo_path: Path,
+    git_lock: GitLock,
+    logger: Logger,
+    remote_name: str,
+    refresh_on_reuse: str,
+    run_dir: Path | None = None,
+) -> EpicBranchStatus
+```
+
+Lazily creates `branch` off `base`, guarding a **local-hit reuse** against staleness relative to `base` (ENH-3302). Shared helper for `WorkerPool._ensure_epic_branch` and the `checkout_epic_branch` FSM state — the single implementation of the exists-check (local → remote → create) previously duplicated at both call sites.
+
+**Exists-check sequence:** local `git rev-parse --verify <branch>` → remote `git ls-remote --heads <remote_name> <branch>` → `git branch <branch> <base>`. Staleness (`git rev-list --count <branch>..<base>`) is measured **only on the local-hit path** — the remote-hit path cannot be measured/merged without a prior `git fetch`, and stays unmeasured (left unchanged).
+
+**Parameters:**
+- `branch` — The EPIC integration branch name.
+- `base` — The resolved fork base (`resolve_epic_base()`'s return value).
+- `repo_path` — Path to the main repository.
+- `git_lock` — Thread-safe git lock for serializing repo operations.
+- `logger` — Logger instance.
+- `remote_name` — Remote to check for a remote-hosted branch.
+- `refresh_on_reuse` — `"warn"` | `"merge"` | `"off"`. `"off"`: no measurement/event/artifact. `"warn"`: measure and log only, no git state change. `"merge"` (default): additionally merge `base` into `branch` via a scratch worktree (`setup_worktree(..., checkout_existing=True)`, `git merge --no-ff --no-edit -m "Merge <base> into <branch> (ENH-3302 refresh)" <base>`, `cleanup_worktree(..., delete_branch=False)`); a conflict aborts the merge (branch SHA unchanged, clean tree) and degrades to `"merge_conflict"` without raising.
+- `run_dir` — When non-`None` (the YAML call site), a merge conflict persists the ENH-2643 diagnostic artifacts (`merge-conflicts.txt` / `merge-detail.txt` / `merge-returncode.txt`) under it. `WorkerPool` has no per-run `run_dir` and passes `None`, relying on the returned status / an emitted `parallel.epic_branch_stale` event instead.
+
+**Returns:** `EpicBranchStatus` — `branch`, `base`, `created: bool`, `commits_behind: int`, `action: Literal["created", "fresh", "warned", "merged", "merge_conflict", "off"]`, `detail: str | None` (conflict detail on `merge_conflict`).
 
 ### open_pr_for_epic_branch
 

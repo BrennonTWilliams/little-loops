@@ -1,4 +1,4 @@
-"""JSON Schema generation for all 41 LLEvent types.
+"""JSON Schema generation for all 42 LLEvent types.
 
 Generates one JSON Schema (draft-07) file per event type to docs/reference/schemas/.
 Schemas validate the flat wire format: {"event": type, "ts": timestamp, ...payload}.
@@ -596,7 +596,7 @@ SCHEMA_DEFINITIONS: dict[str, dict[str, Any]] = {
         },
         ["issue_id", "file_path", "reason"],
     ),
-    # Parallel Orchestrator (1 type)
+    # Parallel Orchestrator (2 types)
     "parallel.worker_completed": _schema(
         "parallel.worker_completed",
         "Parallel: Worker Completed",
@@ -608,6 +608,23 @@ SCHEMA_DEFINITIONS: dict[str, dict[str, Any]] = {
             "duration_seconds": {"type": "number", "description": "Wall-clock time in seconds"},
         },
         ["issue_id", "worker_name", "status", "duration_seconds"],
+    ),
+    "parallel.epic_branch_stale": _schema(
+        "parallel.epic_branch_stale",
+        "Parallel: EPIC Branch Stale",
+        "Emitted by WorkerPool when a reused EPIC integration branch is found behind its "
+        "resolved fork base and warned/merged/conflict-degraded (ENH-3302).",
+        {
+            "branch": _str("EPIC integration branch name"),
+            "base": _str("Resolved fork base the branch was measured/merged against"),
+            "commits_behind": {
+                "type": "integer",
+                "description": "git rev-list --count <branch>..<base> — commits base has that branch lacks",
+            },
+            "mode": _str("Configured parallel.epic_branches.refresh_on_reuse value"),
+            "action": _str("warned | merged | merge_conflict"),
+        },
+        ["branch", "base", "commits_behind", "mode", "action"],
     ),
 }
 

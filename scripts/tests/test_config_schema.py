@@ -1074,6 +1074,9 @@ class TestConfigSchema:
         assert eb_props["open_pr"]["default"] is False
         assert eb_props["verify_before_merge"]["type"] == "boolean"
         assert eb_props["verify_before_merge"]["default"] is False
+        assert eb_props["refresh_on_reuse"]["type"] == "string"
+        assert eb_props["refresh_on_reuse"]["enum"] == ["warn", "merge", "off"]
+        assert eb_props["refresh_on_reuse"]["default"] == "merge"
 
     def test_loops_run_defaults_in_schema(self) -> None:
         """loops.run_defaults.delay must be declared as a nullable number (ENH-2556).

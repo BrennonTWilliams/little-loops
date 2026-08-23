@@ -15,11 +15,11 @@ class TestSchemaDefinitions:
     """Tests for the SCHEMA_DEFINITIONS catalog."""
 
     def test_all_41_event_types_defined(self) -> None:
-        """All 41 LLEvent types must be defined (BUG-2731: added infra_retry pair)."""
-        assert len(SCHEMA_DEFINITIONS) == 41
+        """All 42 LLEvent types must be defined (ENH-3302: added parallel.epic_branch_stale)."""
+        assert len(SCHEMA_DEFINITIONS) == 42
 
     def test_expected_event_types_present(self) -> None:
-        """Each of the 41 known event types must appear in catalog."""
+        """Each of the 42 known event types must appear in catalog."""
         expected = {
             "loop_start",
             "state_enter",
@@ -54,6 +54,7 @@ class TestSchemaDefinitions:
             "issue.skipped",
             "issue.started",
             "parallel.worker_completed",
+            "parallel.epic_branch_stale",
             "learning_blocked",
             "learning_complete",
             "learning_explore_invoked",
@@ -70,17 +71,17 @@ class TestGenerateSchemas:
     """Tests for generate_schemas() output."""
 
     def test_creates_41_files(self, tmp_path: Path) -> None:
-        """Generates exactly 41 schema files (BUG-2731: added infra_retry pair)."""
+        """Generates exactly 42 schema files (ENH-3302: added parallel.epic_branch_stale)."""
         generate_schemas(tmp_path)
         files = list(tmp_path.glob("*.json"))
-        assert len(files) == 41
+        assert len(files) == 42
 
     def test_creates_output_dir_if_missing(self, tmp_path: Path) -> None:
         """Creates the output directory if it doesn't exist."""
         output_dir = tmp_path / "nested" / "schemas"
         generate_schemas(output_dir)
         assert output_dir.exists()
-        assert len(list(output_dir.glob("*.json"))) == 41
+        assert len(list(output_dir.glob("*.json"))) == 42
 
     def test_all_files_are_valid_json(self, tmp_path: Path) -> None:
         """Every generated file contains valid JSON."""
@@ -204,12 +205,12 @@ class TestGenerateSchemasCLI:
         assert result == 0
 
     def test_cli_creates_files(self, tmp_path: Path) -> None:
-        """CLI generates 41 schema files in the specified output directory (BUG-2731)."""
+        """CLI generates 42 schema files in the specified output directory (ENH-3302)."""
         from little_loops.cli.schemas import main_generate_schemas
 
         with patch("sys.argv", ["ll-generate-schemas", "--output", str(tmp_path)]):
             main_generate_schemas()
-        assert len(list(tmp_path.glob("*.json"))) == 41
+        assert len(list(tmp_path.glob("*.json"))) == 42
 
     def test_cli_default_output_dir(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """CLI defaults to docs/reference/schemas/ relative to cwd."""

@@ -456,9 +456,10 @@ class TestParallelAutomationConfig:
         assert config.epic_branches.merge_to_base_on_complete is True
         assert config.epic_branches.open_pr is False
         assert config.epic_branches.verify_before_merge is False
+        assert config.epic_branches.refresh_on_reuse == "merge"
 
     def test_epic_branches_from_dict(self) -> None:
-        """EpicBranchesConfig parses all 5 sub-keys from data."""
+        """EpicBranchesConfig parses all 6 sub-keys from data (ENH-3302: +refresh_on_reuse)."""
         data = {
             "epic_branches": {
                 "enabled": True,
@@ -466,6 +467,7 @@ class TestParallelAutomationConfig:
                 "merge_to_base_on_complete": False,
                 "open_pr": True,
                 "verify_before_merge": True,
+                "refresh_on_reuse": "warn",
             }
         }
         config = ParallelAutomationConfig.from_dict(data)
@@ -474,6 +476,7 @@ class TestParallelAutomationConfig:
         assert config.epic_branches.merge_to_base_on_complete is False
         assert config.epic_branches.open_pr is True
         assert config.epic_branches.verify_before_merge is True
+        assert config.epic_branches.refresh_on_reuse == "warn"
 
     def test_epic_branches_partial_dict_uses_defaults(self) -> None:
         """Partial EpicBranchesConfig dict fills missing keys with defaults."""
@@ -483,6 +486,7 @@ class TestParallelAutomationConfig:
         assert config.epic_branches.merge_to_base_on_complete is True
         assert config.epic_branches.open_pr is False
         assert config.epic_branches.verify_before_merge is False
+        assert config.epic_branches.refresh_on_reuse == "merge"
 
 
 class TestConfidenceGateConfig:
@@ -893,6 +897,7 @@ class TestBRConfig:
         assert parallel["epic_branches"]["merge_to_base_on_complete"] is True
         assert parallel["epic_branches"]["open_pr"] is False
         assert parallel["epic_branches"]["verify_before_merge"] is False
+        assert parallel["epic_branches"]["refresh_on_reuse"] == "merge"
 
     def test_to_dict_confidence_gate_schema_aligned_keys(
         self, temp_project_dir: Path, sample_config: dict[str, Any]
@@ -1291,6 +1296,7 @@ class TestBRConfig:
                 "merge_to_base_on_complete": False,
                 "open_pr": True,
                 "verify_before_merge": True,
+                "refresh_on_reuse": "warn",
             },
         )
         config_path = temp_project_dir / ".ll" / "ll-config.json"
@@ -1302,6 +1308,7 @@ class TestBRConfig:
         assert result.epic_branches.merge_to_base_on_complete is False
         assert result.epic_branches.open_pr is True
         assert result.epic_branches.verify_before_merge is True
+        assert result.epic_branches.refresh_on_reuse == "warn"
 
     def test_create_parallel_config_timeout_explicit_zero(
         self, temp_project_dir: Path, sample_config: dict[str, Any]

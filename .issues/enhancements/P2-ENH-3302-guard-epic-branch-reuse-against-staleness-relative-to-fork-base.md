@@ -3,10 +3,11 @@ id: ENH-3302
 type: ENH
 title: Guard epic branch reuse against staleness relative to fork base
 priority: P2
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-08-23'
 captured_at: '2026-08-23T19:19:05Z'
+completed_at: '2026-08-23T23:39:19Z'
 decision_needed: false
 confidence_score: 95
 outcome_confidence: 73
@@ -65,6 +66,18 @@ Scope note: `merge` mode refreshes the stale tree but does not address *why* the
 open (its own merge-to-base failed verify). Unwedging the epic itself is out of scope here — see
 the companion BUG and the epic-merge verify path; nobody should expect this guard to resolve the
 original wedge, only to stop it from silently poisoning later runs.
+
+## Scope Boundaries
+
+Out of scope for this issue (already decided in Proposed Solution / Decision Rules, called out here
+per the required section):
+
+- **Remote-hit reuse path** (`ls-remote` hit, no local ref) — `rev-list --count` can't resolve
+  `<branch>` locally without a prior `git fetch`; left unchanged, limitation noted in the docstring.
+- **Unwedging the epic branch itself** — the reason a branch is held open (its own merge-to-base
+  failing verify) is not addressed here; see the companion BUG and the epic-merge verify path.
+- **Numeric staleness threshold config** — no `commits_behind` tuning knob; any `N > 0` triggers
+  the warn/merge response, `refresh_on_reuse: off` is the only opt-out.
 
 ## Proposed Solution
 
@@ -601,6 +614,9 @@ _Added by `/ll:refine-issue` — 2026-08-23 — based on codebase analysis:_
 _/ll:confidence-check — 2026-08-23_
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-23T23:39:19 - `3a3fd195-a606-4714-b96c-def6d1615433.jsonl`
+- `/ll:ready-issue` - 2026-08-23T23:04:19 - `aa35c4eb-f11f-4207-b414-76abb4bf11bc.jsonl`
+- `/ll:ready-issue` - 2026-08-23T23:03:59 - `aa35c4eb-f11f-4207-b414-76abb4bf11bc.jsonl`
 - `/ll:confidence-check` - 2026-08-23T22:41:37 - `7bda0207-9380-42da-8921-b7a6588dcc63.jsonl`
 - manual review (shared helper, YAML path in scope, default `merge`) - 2026-08-23T21:30:00 - `9c4139c2-0aa3-4509-a4fa-9201f472ecc2.jsonl`
 - `/ll:refine-issue` - 2026-08-23T20:53:23 - `08e63d9a-b62a-416e-9aee-3952a5c2db98.jsonl`

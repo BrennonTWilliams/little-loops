@@ -68,6 +68,7 @@ class EpicBranchesConfig:
     merge_to_base_on_complete: bool = True
     open_pr: bool = False
     verify_before_merge: bool = False
+    refresh_on_reuse: str = "merge"
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> EpicBranchesConfig:
@@ -78,6 +79,7 @@ class EpicBranchesConfig:
             merge_to_base_on_complete=data.get("merge_to_base_on_complete", True),
             open_pr=data.get("open_pr", False),
             verify_before_merge=data.get("verify_before_merge", False),
+            refresh_on_reuse=data.get("refresh_on_reuse", "merge"),
         )
 
 
