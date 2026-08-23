@@ -20,6 +20,9 @@ import pytest
 DOC_STRINGS_PRESENT: list[tuple[str, str, str]] = [
     # (doc_path, expected_string, issue_id)
     ("docs/reference/API.md", "update_frontmatter", "FEAT-1172"),
+    ("docs/reference/API.md", "little_loops.advisor", "FEAT-3120"),
+    ("docs/reference/API.md", "AdvisorVerdict", "FEAT-3120"),
+    ("docs/reference/API.md", "consult", "FEAT-3120"),
     ("docs/reference/ISSUE_TEMPLATE.md", "`completed_at`", "FEAT-1172"),
     ("docs/reference/ISSUE_TEMPLATE.md", "status", "FEAT-1172"),
     ("docs/reference/ISSUE_TEMPLATE.md", "spike_needed", "ENH-2569"),

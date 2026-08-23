@@ -1,20 +1,40 @@
-"""Capability-rank comparison for the advisor consult path.
+"""Capability-rank comparison and consult path for the advisor.
 
-Source: FEAT-3108. `MODEL_RANKS` is a self-declared ordinal within each
-host, not derived from a benchmark — for `claude-code` it follows the
-conventional tier naming (haiku < sonnet < opus), with `fable` placed as
-the top flagship tier. Every other host key carries an empty rank table
-until a follow-up issue gives it real capability data; `rank_model` returns
-`None` for any model on those hosts, and `check_floor` classifies that as
-`unknown` rather than guessing.
+`MODEL_RANKS`/`rank_model`/`check_floor` (FEAT-3108) are a self-declared
+ordinal within each host, not derived from a benchmark — for `claude-code`
+it follows the conventional tier naming (haiku < sonnet < opus), with
+`fable` placed as the top flagship tier. Every other host key carries an
+empty rank table until a follow-up issue gives it real capability data;
+`rank_model` returns `None` for any model on those hosts, and `check_floor`
+classifies that as `unknown` rather than guessing.
+
+`consult()`/`AdvisorVerdict` (FEAT-3120) compose FEAT-3042's named-host
+transport with the floor check above into the accountable, signal-cited
+consult contract. `consult()` uses the subprocess transport exclusively
+(`resolve_host_named` -> `build_blocking_json` -> `run_blocking_json`), so
+it structurally never touches `derive_input_hash` or
+`dispatch_anthropic_request` — this is deliberate so a future FSM-integrated
+advisor state (FEAT-3039) doesn't accidentally wire a consult into either
+mechanism.
 """
 
 from __future__ import annotations
 
+import sys
 from dataclasses import dataclass
-from typing import Literal
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, Literal
 
-from little_loops.host_runner import resolve_model_alias
+from little_loops.host_runner import (
+    BlockingJsonError,
+    resolve_host,
+    resolve_host_named,
+    resolve_model_alias,
+    run_blocking_json,
+)
+
+if TYPE_CHECKING:
+    from little_loops.config import BRConfig
 
 # Per-host capability rank, keyed on the concrete model ID that
 # `resolve_model_alias()` normalizes aliases to (host_runner.py:79-84).
@@ -109,4 +129,153 @@ def check_floor(
             f"advisor {advisor_model} (rank {advisor_rank}) meets the floor "
             f"set by main {main_model} (rank {main_rank}) on {advisor_host}"
         ),
+    )
+
+
+# Sent to the host at build time (`build_blocking_json(json_schema=...)`), not
+# via `run_blocking_json(schema=...)` — the latter only handles the inline
+# `--json-schema` case, while codex needs the schema materialized into a
+# temp file at build time. `signal`/`host`/`model` are stamped locally by
+# `consult()`, not requested from the model.
+_VERDICT_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "recommendation": {"type": "string"},
+        "risks": {"type": "array", "items": {"type": "string"}},
+        "confidence": {"type": "number"},
+        "dissent": {"type": "string"},
+    },
+    "required": ["recommendation", "risks", "confidence", "dissent"],
+}
+
+_VERDICT_KEYS = frozenset({"recommendation", "risks", "confidence", "dissent"})
+
+
+@dataclass(frozen=True)
+class AdvisorVerdict:
+    """A structured, signal-cited consult response from the advisor host."""
+
+    recommendation: str
+    risks: list[str]
+    confidence: float
+    dissent: str
+    signal: str
+    host: str
+    model: str
+
+
+class AdvisorNotConfigured(RuntimeError):
+    """No advisor host resolved — no ``--host`` flag and no ``advisor.host`` in config."""
+
+
+class CapabilityFloorViolation(RuntimeError):
+    """`check_floor()` classified the advisor/main pairing as `"violation"`.
+
+    Same-host pairing where the advisor ranks below the main model —
+    refuses the consult per MR-1 (no self-decided escalation on vibes).
+    """
+
+    def __init__(self, floor: FloorResult) -> None:
+        super().__init__(floor.detail)
+        self.floor = floor
+
+
+def consult(
+    *,
+    question: str,
+    signal: str,
+    context: str = "",
+    config: BRConfig | None = None,
+    main_host: str | None = None,
+    main_model: str | None = None,
+) -> AdvisorVerdict:
+    """Issue one blocking, signal-cited consult to the configured advisor host.
+
+    Resolves the advisor host/model from *config* (``.ll/ll-config.json``'s
+    ``advisor`` block, overridden by the CLI's ``--host``/``--model`` flags
+    via direct mutation of ``config.advisor`` before this call — see
+    ``cli/advise.py``), gates the pairing through `check_floor` (FEAT-3108),
+    and — for anything but a `"violation"` — issues one
+    `run_blocking_json` call against `resolve_host_named(advisor_host)`,
+    independent of the ambient `orchestration.host_cli` / `LL_HOST_CLI`.
+
+    Never calls `apply_host_cli_from_config()`; never touches
+    `derive_input_hash` or `dispatch_anthropic_request` (satisfied by
+    construction — this function only reaches the subprocess transport).
+
+    Args:
+        question: The consult prompt.
+        signal: What prompted this consult (e.g. `"score_stall"`,
+            `"user_requested"`). Required by the caller (`main_advise`
+            enforces this via argparse); every consult is signal-cited.
+        context: Optional caller-authored context appended to the prompt.
+            Never an auto-slurp of the working tree.
+        config: Project config; defaults to `BRConfig(Path.cwd())`.
+        main_host: The host running the primary session, for the floor
+            check. Defaults to the ambient `resolve_host().name`.
+        main_model: The model running the primary session, for the floor
+            check. Defaults to `fsm.schema.DEFAULT_LLM_MODEL`.
+
+    Returns:
+        The structured `AdvisorVerdict`.
+
+    Raises:
+        AdvisorNotConfigured: no `advisor.host` resolved.
+        CapabilityFloorViolation: `check_floor()` returns `"violation"`.
+        HostNotConfigured: the advisor host isn't registered or isn't on
+            PATH (`resolve_host_named` / ambient `resolve_host` for
+            `main_host`).
+        BlockingJsonError: the transport call times out, the binary is
+            missing, the subprocess exits non-zero, or the structured
+            output can't be parsed — including a `shape_mismatch` detail
+            flag when a tag-fallback parse succeeds but doesn't carry the
+            `AdvisorVerdict` keys (never a silently defaulted verdict).
+    """
+    from little_loops.fsm.schema import DEFAULT_LLM_MODEL
+
+    if config is None:
+        from little_loops.config import BRConfig as _BRConfig
+
+        config = _BRConfig(Path.cwd())
+
+    advisor_host = config.advisor.host
+    advisor_model = config.advisor.model
+
+    if not advisor_host:
+        raise AdvisorNotConfigured(
+            "advisor host not configured — set advisor.host in .ll/ll-config.json or pass --host"
+        )
+
+    resolved_main_host = main_host or resolve_host().name
+    resolved_main_model = main_model or DEFAULT_LLM_MODEL
+
+    floor = check_floor(advisor_host, advisor_model, resolved_main_host, resolved_main_model)
+    if floor.status == "violation":
+        raise CapabilityFloorViolation(floor)
+    if floor.status in ("advisory", "unknown"):
+        print(f"advisor: {floor.status} — {floor.detail}", file=sys.stderr)
+
+    runner = resolve_host_named(advisor_host)
+    prompt = f"{question}\n\nContext:\n{context}" if context else question
+    invocation = runner.build_blocking_json(
+        prompt=prompt, model=advisor_model, json_schema=_VERDICT_SCHEMA
+    )
+    result = run_blocking_json(invocation, timeout=config.advisor.timeout_seconds)
+
+    if result is None or not _VERDICT_KEYS.issubset(result.keys()):
+        got_keys = sorted((result or {}).keys())
+        raise BlockingJsonError(
+            f"advisor response missing expected verdict keys ({sorted(_VERDICT_KEYS)}): "
+            f"got {got_keys}",
+            {"error": "advisor response missing expected verdict keys", "shape_mismatch": True},
+        )
+
+    return AdvisorVerdict(
+        recommendation=str(result["recommendation"]),
+        risks=[str(r) for r in result["risks"]],
+        confidence=float(result["confidence"]),
+        dissent=str(result["dissent"]),
+        signal=signal,
+        host=advisor_host,
+        model=advisor_model,
     )

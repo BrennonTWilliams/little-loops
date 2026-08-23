@@ -175,6 +175,36 @@ ll-action capabilities
 ll-action list
 ```
 
+### ll-advise
+
+One-shot, signal-cited second-model consult (FEAT-3120). Resolves the configured advisor host **independently of** `orchestration.host_cli` / `LL_HOST_CLI`, issues one blocking call, and prints a structured verdict as JSON on stdout.
+
+`--signal` is required — every consult records what prompted it (`user_requested` is a valid, explicit value); there is no unsignalled consult path. Before issuing the consult, the advisor/main model pairing is gated through the FEAT-3108 capability floor (`check_floor`): a same-host `violation` (advisor ranks below main) refuses the consult; a cross-host `advisory` or an unrankable `unknown` proceeds with a warning on stderr. A consult against an unwired host (`opencode`, `pi`) or an unauthenticated host fails soft — non-zero exit with a clear reason, never a traceback.
+
+**Flags:**
+
+| Flag | Description |
+|------|-------------|
+| `--signal` | Required. What prompted this consult (e.g. `score_stall`, `user_requested`). |
+| `--question` | Required. The consult prompt. |
+| `--context-file` | Path to a caller-authored context file appended to the prompt. Never an auto-slurp of the working tree. |
+| `--main-host` | Host running the primary session, for the capability floor check. Default: the ambient resolved host. |
+| `--main-model` | Model running the primary session, for the capability floor check. Default: `fsm.schema.DEFAULT_LLM_MODEL` (`"sonnet"`). |
+| `--host` | Advisor host, overriding `advisor.host` in `.ll/ll-config.json`. |
+| `--model` | Advisor model, overriding `advisor.model` in `.ll/ll-config.json`. |
+| `--json` / `-j` | Print the verdict as JSON. |
+
+`ll-advise` never calls `apply_host_cli_from_config()` — the ambient `LL_HOST_CLI` / `orchestration.host_cli` is unchanged after the call. `advisor.enabled: false` (the default) does not block an explicit `ll-advise` invocation; it only gates the FEAT-3038/FEAT-3039 auto-consult paths.
+
+**Exit codes:** `0` = consult succeeded, `2` = refused or failed (unconfigured advisor, capability floor violation, unwired/unauthenticated host, or transport failure)
+
+**Examples:**
+```bash
+ll-advise --signal user_requested --question "Is this design sound?"
+ll-advise --signal score_stall --question "..." --context-file notes.md
+ll-advise --signal user_requested --question "..." --host codex --model gpt-5.1 --json
+```
+
 ### ll-harness
 
 One-shot runner evaluation CLI that invokes a skill, shell command, MCP tool, or raw Claude prompt, captures its output, and exits `0` (PASS) / `1` (FAIL) / `2` (error/timeout) based on optional criteria.

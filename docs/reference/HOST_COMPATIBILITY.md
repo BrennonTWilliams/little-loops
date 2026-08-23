@@ -396,6 +396,7 @@ touching call sites.
 | `ll-loop`                     | ✓           | stub[^orch]   | ✓            | ✓            | ✓            | ✓            | ✓            |
 | `ll-harness`                  | ✓           | stub[^orch]   | ✓            | ✓            | ✓            | ✓            | ✓            |
 | `ll-sprint`                   | ✓           | stub[^orch]   | ✓            | ✓            | ✓            | ✓            | ✓            |
+| `ll-advise`                   | ✓           | stub[^orch]   | ✓            | ✓            | ✓            | ✓            | ✓            |
 | FSM evaluators / handoff      | ✓           | stub[^orch]   | ✓            | ✓            | ✓            | ✓            | ✓ — inline `--json-schema` path (`structured_output=True`)[^qwen] |
 | Conformance harness[^conf]    | ✓           | stub[^orch]   | ✓            | ✓            | ✓            | ✓            | ✓ — 4/4 golden paths pass on qwen 0.21.6 |
 

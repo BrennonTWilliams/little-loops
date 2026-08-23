@@ -86,6 +86,7 @@ _LL_PERMISSIONS: tuple[str, ...] = (
     "Bash(ll-adapt:*)",
     "Bash(ll-adapt-agents-for-codex:*)",
     "Bash(ll-adapt-skills-for-codex:*)",
+    "Bash(ll-advise:*)",
     "Bash(ll-artifact:*)",
     "Bash(ll-auto:*)",
     "Bash(ll-check-links:*)",
@@ -161,6 +162,10 @@ _CLAUDE_MD_SECTION_MARKER = "## little-loops"
 # generic text.
 _LL_COMMANDS: tuple[tuple[str, str], ...] = (
     ("ll-action", "Invoke ll skills as one-shot commands with JSON-structured output"),
+    (
+        "ll-advise",
+        "One-shot, signal-cited second-model consult, independent of orchestration.host_cli",
+    ),
     (
         "ll-harness",
         "One-shot runner evaluation (skill, cmd, mcp, prompt, dsl) with exit-code and semantic criteria",

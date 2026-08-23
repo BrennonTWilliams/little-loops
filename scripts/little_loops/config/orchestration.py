@@ -115,8 +115,7 @@ class AdvisorConfig:
     dataclass performs no enum validation itself, mirroring
     :class:`OrchestrationConfig`'s division of labor.
 
-    This block is config plumbing only (FEAT-3043); no code reads
-    ``AdvisorConfig`` yet. The advisor core and CLI ship in FEAT-3044.
+    Read by ``little_loops.advisor.consult()`` / ``ll-advise`` (FEAT-3120).
     """
 
     enabled: bool = False

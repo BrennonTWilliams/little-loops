@@ -4,10 +4,11 @@ title: Advisor consult() core and ll-advise CLI
 type: FEAT
 parent: FEAT-3044
 priority: P3
-status: open
+status: done
 testable: true
 verify_verdict: VALID
 discovered_date: 2026-08-08
+completed_at: '2026-08-23T21:15:03Z'
 depends_on:
 - FEAT-3042
 - FEAT-3043
@@ -576,7 +577,53 @@ Also unresolved and deferred:
 
 ## Status
 
-open
+done
+
+## Resolution
+
+Implemented per the Program Design and Integration Map:
+
+- `consult()`/`AdvisorVerdict` land in `scripts/little_loops/advisor.py`,
+  composing `resolve_host_named` -> `build_blocking_json(json_schema=...)`
+  -> `run_blocking_json` (FEAT-3042). `check_floor` (FEAT-3108) gates the
+  pairing before the transport call — a same-host `violation` raises
+  `CapabilityFloorViolation` (no consult, no host reached); a cross-host
+  `advisory` or unrankable `unknown` proceeds with a stderr warning.
+  `AdvisorNotConfigured` covers the no-`advisor.host` case. A response
+  missing the `AdvisorVerdict` keys raises `BlockingJsonError` with a
+  `shape_mismatch` detail flag rather than a silently defaulted verdict.
+- `ll-advise` (`main_advise`, `scripts/little_loops/cli/advise.py`) wraps
+  `consult()`: `--signal`/`--question` required, `--context-file`,
+  `--main-host`/`--main-model` (default: ambient `resolve_host().name` /
+  `fsm.schema.DEFAULT_LLM_MODEL`), `--host`/`--model` (override
+  `config.advisor.host`/`.model` via direct mutation before the call),
+  `--json`. Exit `0` on success, `2` on any fail-soft path (unconfigured
+  advisor, floor violation, unwired/unauthenticated host, transport
+  failure) — never a traceback.
+- Wired: `scripts/pyproject.toml` entry point, `cli/__init__.py`
+  docstring/import/`__all__`, `init/writers.py` `_LL_PERMISSIONS` +
+  `_LL_COMMANDS`, `skills/configure/areas.md` preset list (plus its three
+  tracked host mirrors — `.gemini/`, `.kimi-code/`, `.qwen/` —
+  regenerated via `ll-adapt --host <name> --apply` after the source edit
+  to avoid companion drift), `docs/reference/CLI.md`, `docs/reference/API.md`,
+  `docs/reference/HOST_COMPATIBILITY.md`.
+- Tests: `test_advisor.py::TestConsult` (mocked host runner — exact
+  verdict keys, unconfigured-host raise, floor-violation refusal with
+  `resolve_host_named`/`run_blocking_json` never called, cross-host
+  advisory proceeds with a stderr warning, shape-mismatch fail-soft,
+  `dispatch_anthropic_request`/`derive_input_hash` never touched);
+  `test_cli_advise.py` (argparse contract, exact JSON keys, unwired-host
+  and floor-violation fail-soft with `subprocess.run`/
+  `resolve_host_named` asserted not called, `LL_HOST_CLI` unchanged
+  across the call); doc-lockstep rows added to
+  `test_wiring_cli_registry.py` and `test_wiring_reference_docs.py`.
+- `python -m pytest scripts/tests/`: 21020 passed, 51 skipped, 0 failed.
+  `ruff check scripts/` and `python -m mypy scripts/little_loops/`: clean.
+
+Deferred to their tracked issues per Out of Scope: FEAT-3121 (`/ll:advise`
+skill), FEAT-3122 (`ll-doctor` advisor check), FEAT-3038/3039 (auto-consult
+triggers), FEAT-3040 (consult telemetry), FEAT-3116 (`consult_for_trigger`
+as sole caller of `consult()`).
 
 ## Confidence Check Notes
 
@@ -630,6 +677,7 @@ VERDICT_JSON: {"verdict": "fail", "confidence": 80, "target_id": "FEAT-3120", "t
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-23T21:14:40 - `b06a9731-b7f1-4cd3-ae8f-7c9209764607.jsonl`
 - `/ll:confidence-check` - 2026-08-23T20:40:26 - `fad07b61-67e3-4267-bcbb-23085fac7a72.jsonl`
 - `/ll:confidence-check` - 2026-08-23T15:42:17 - `3bda1192-b8d1-4c2a-b941-b18241890b0b.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-13T22:00:51 - `e21c16b3-391d-4ef2-80c4-decd2dced91f.jsonl`

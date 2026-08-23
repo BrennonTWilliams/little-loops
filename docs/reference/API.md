@@ -101,7 +101,7 @@ pip install -e "./scripts[dev]"
 | `little_loops.prepatch_check` | Pre-patch check core (ENH-3142) — `run_prepatch_check()`, `collect_candidates()`, and the `PrePatchCandidate` / `PrePatchTestOutcome` / `PrePatchEvidence` dataclasses. Deterministic, no LLM/FSM/CLI/database access; runs candidate tests from a step diff against the pre-patch worktree ENH-3141's `setup_prepatch_worktree()` produces to flag evidence that passes without the change it claims to demonstrate. |
 | `little_loops.mcp_call` | Thin CLI wrapper for direct MCP tool invocation via JSON-RPC |
 | `little_loops.mcp_server` | `ll-mcp` MCP server (2026-07-28 spec, FEAT-3135) — `main_mcp` entry point plus the five read-only tools (`issues_query`, `issue_get`, `history_search`, `deps_check`, `capabilities`), the `ll://` resource surface (FEAT-3136): issue files, `.ll/ll-goals.md`, and `docs/` served under `ll://issues/<ID>`, `ll://goals`, `ll://docs/<relative-path>`, and the prompts-from-skills surface (FEAT-3137): every discovered `SKILL.md` advertised as an MCP prompt (name/description/args from frontmatter), all resolved against discovery-time enumerations. Serves over stdio by default; `ll-mcp --http` or `LL_MCP_TRANSPORT=http` switches to streamable HTTP on loopback (FEAT-3143), same server, same tool/resource/prompt surfaces. |
-| `little_loops.advisor` | Capability-rank comparison for the advisor consult path (FEAT-3108) — `MODEL_RANKS`, `rank_model`, `check_floor`. |
+| `little_loops.advisor` | Capability-rank comparison (`MODEL_RANKS`, `rank_model`, `check_floor`, FEAT-3108) and the accountable, signal-cited consult path (`consult`, `AdvisorVerdict`, FEAT-3120). |
 
 ---
 
@@ -10840,7 +10840,7 @@ Compares an installed version string against the latest available version using 
 
 ## little_loops.advisor
 
-Capability-rank comparison used to gate an advisor consult on model strength (FEAT-3108). Pure logic, no transport dependency — `consult()`/`AdvisorVerdict` land here in a later commit (FEAT-3109).
+Capability-rank comparison used to gate an advisor consult on model strength (FEAT-3108), plus the `consult()`/`AdvisorVerdict` accountable consult path (FEAT-3120).
 
 ### FloorResult
 
@@ -10878,6 +10878,42 @@ def check_floor(
 ```
 
 Classifies an advisor/main model pairing against the capability floor. The cross-host check runs before rank lookup, so a host mismatch always returns `"advisory"` regardless of whether either model is individually rankable. `check_floor("claude-code", "haiku", "claude-code", "opus")` returns `"violation"`.
+
+### AdvisorVerdict
+
+```python
+@dataclass(frozen=True)
+class AdvisorVerdict:
+    recommendation: str
+    risks: list[str]
+    confidence: float
+    dissent: str
+    signal: str
+    host: str
+    model: str
+```
+
+A structured, signal-cited consult response from the advisor host. `signal`/`host`/`model` are stamped locally by `consult()` from its own arguments and the resolved host — they are not requested from the model.
+
+### consult
+
+```python
+def consult(
+    *,
+    question: str,
+    signal: str,
+    context: str = "",
+    config: BRConfig | None = None,
+    main_host: str | None = None,
+    main_model: str | None = None,
+) -> AdvisorVerdict
+```
+
+Issues one blocking, signal-cited consult to the configured advisor host (`config.advisor.host`/`config.advisor.model`), independent of the ambient `orchestration.host_cli` / `LL_HOST_CLI`. Gates the advisor/main pairing through `check_floor` before the transport call: a same-host `"violation"` raises `CapabilityFloorViolation` (no consult); a cross-host `"advisory"` or unrankable `"unknown"` proceeds with a warning on stderr. `context` is caller-authored — never an auto-slurp of the working tree. `main_host` defaults to the ambient `resolve_host().name`; `main_model` defaults to `fsm.schema.DEFAULT_LLM_MODEL`.
+
+Uses the subprocess transport exclusively (`resolve_host_named` -> `HostRunner.build_blocking_json(json_schema=...)` -> `run_blocking_json`), so it structurally never touches `derive_input_hash` or `dispatch_anthropic_request` — advisor consults are excluded from FSM resume/replay input hashing and are never cache-marked, by construction. Never calls `apply_host_cli_from_config()`.
+
+Raises `AdvisorNotConfigured` when no `advisor.host` resolves, `CapabilityFloorViolation` on a same-host floor violation, `HostNotConfigured` when the advisor host isn't registered or isn't on PATH, and `BlockingJsonError` on transport timeout/missing binary/non-zero exit/unparseable output — including a `shape_mismatch` detail flag when a host's tag-fallback parse succeeds but doesn't carry the `AdvisorVerdict` keys (never a silently defaulted verdict).
 
 ---
 

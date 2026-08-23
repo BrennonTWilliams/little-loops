@@ -1,6 +1,20 @@
 """Tests for advisor module."""
 
-from little_loops.advisor import MODEL_RANKS, check_floor, rank_model
+from unittest.mock import patch
+
+import pytest
+
+from little_loops.advisor import (
+    MODEL_RANKS,
+    AdvisorNotConfigured,
+    AdvisorVerdict,
+    CapabilityFloorViolation,
+    check_floor,
+    consult,
+    rank_model,
+)
+from little_loops.config.orchestration import AdvisorConfig
+from little_loops.host_runner import BlockingJsonError, HostInvocation
 
 
 class TestModelRanks:
@@ -73,3 +87,155 @@ class TestCheckFloor:
     def test_advisor_ranked_above_main_same_host_is_ok(self):
         result = check_floor("claude-code", "opus", "claude-code", "haiku")
         assert result.status == "ok"
+
+
+class _FakeConfig:
+    """Minimal config double — consult() only reads `.advisor.{host,model,timeout_seconds}`."""
+
+    def __init__(self, advisor: AdvisorConfig) -> None:
+        self.advisor = advisor
+
+
+def _make_runner():
+    runner = type(
+        "FakeRunner",
+        (),
+        {
+            "name": "claude-code",
+            "build_blocking_json": lambda self, *, prompt, model=None, json_schema=None: (
+                HostInvocation(binary="claude", args=["-p", prompt])
+            ),
+        },
+    )()
+    return runner
+
+
+class TestConsult:
+    """consult() contract against a mocked host runner — no live host/auth required."""
+
+    def test_returns_verdict_with_exact_keys(self):
+        config = _FakeConfig(AdvisorConfig(host="claude-code", model="opus"))
+        verdict_dict = {
+            "recommendation": "do X",
+            "risks": ["r1", "r2"],
+            "confidence": 0.8,
+            "dissent": "none",
+        }
+        with (
+            patch("little_loops.advisor.resolve_host_named", return_value=_make_runner()),
+            patch("little_loops.advisor.run_blocking_json", return_value=verdict_dict),
+        ):
+            verdict = consult(
+                question="q",
+                signal="user_requested",
+                config=config,
+                main_host="claude-code",
+                main_model="opus",
+            )
+        assert isinstance(verdict, AdvisorVerdict)
+        assert verdict.recommendation == "do X"
+        assert verdict.risks == ["r1", "r2"]
+        assert verdict.confidence == 0.8
+        assert verdict.dissent == "none"
+        assert verdict.signal == "user_requested"
+        assert verdict.host == "claude-code"
+        assert verdict.model == "opus"
+
+    def test_unconfigured_host_raises(self):
+        config = _FakeConfig(AdvisorConfig(host=None))
+        with pytest.raises(AdvisorNotConfigured):
+            consult(
+                question="q",
+                signal="user_requested",
+                config=config,
+                main_host="claude-code",
+                main_model="opus",
+            )
+
+    def test_capability_floor_violation_refuses_consult(self):
+        config = _FakeConfig(AdvisorConfig(host="claude-code", model="haiku"))
+        with (
+            patch("little_loops.advisor.resolve_host_named") as mock_resolve,
+            patch("little_loops.advisor.run_blocking_json") as mock_run,
+        ):
+            with pytest.raises(CapabilityFloorViolation):
+                consult(
+                    question="q",
+                    signal="user_requested",
+                    config=config,
+                    main_host="claude-code",
+                    main_model="opus",
+                )
+        mock_resolve.assert_not_called()
+        mock_run.assert_not_called()
+
+    def test_cross_host_advisory_proceeds(self, capsys):
+        config = _FakeConfig(AdvisorConfig(host="claude-code", model="haiku"))
+        verdict_dict = {
+            "recommendation": "do X",
+            "risks": [],
+            "confidence": 0.5,
+            "dissent": "",
+        }
+        with (
+            patch("little_loops.advisor.resolve_host_named", return_value=_make_runner()),
+            patch("little_loops.advisor.run_blocking_json", return_value=verdict_dict),
+        ):
+            verdict = consult(
+                question="q",
+                signal="user_requested",
+                config=config,
+                main_host="codex",
+                main_model="opus",
+            )
+        assert verdict.recommendation == "do X"
+        assert "advisory" in capsys.readouterr().err
+
+    def test_shape_mismatch_fails_soft_not_defaulted(self):
+        config = _FakeConfig(AdvisorConfig(host="claude-code", model="opus"))
+        malformed = {"verdict": "yes", "confidence": 0.5, "reason": "...", "evidence": "..."}
+        with (
+            patch("little_loops.advisor.resolve_host_named", return_value=_make_runner()),
+            patch("little_loops.advisor.run_blocking_json", return_value=malformed),
+        ):
+            with pytest.raises(BlockingJsonError) as exc_info:
+                consult(
+                    question="q",
+                    signal="user_requested",
+                    config=config,
+                    main_host="claude-code",
+                    main_model="opus",
+                )
+        assert exc_info.value.details.get("shape_mismatch") is True
+
+    def test_never_touches_dispatch_anthropic_request_or_input_hash(self):
+        config = _FakeConfig(AdvisorConfig(host="claude-code", model="opus"))
+        verdict_dict = {
+            "recommendation": "do X",
+            "risks": [],
+            "confidence": 0.5,
+            "dissent": "",
+        }
+        with (
+            patch("little_loops.advisor.resolve_host_named", return_value=_make_runner()),
+            patch("little_loops.advisor.run_blocking_json", return_value=verdict_dict),
+            patch("little_loops.host_runner.dispatch_anthropic_request") as mock_dispatch,
+            patch("little_loops.cli.loop._helpers.derive_input_hash") as mock_hash,
+        ):
+            consult(
+                question="q",
+                signal="user_requested",
+                config=config,
+                main_host="claude-code",
+                main_model="opus",
+            )
+        mock_dispatch.assert_not_called()
+        mock_hash.assert_not_called()
+
+    def test_signal_required_by_caller_contract(self):
+        # consult() itself has no default for `signal` — a TypeError at the
+        # call boundary is the enforcement mechanism for "no unsignalled
+        # consult path" at the Python level (main_advise enforces it via
+        # argparse `required=True` at the CLI level).
+        with pytest.raises(TypeError):
+            consult(question="q", config=_FakeConfig(AdvisorConfig(host="claude-code")))  # type: ignore[call-arg]
