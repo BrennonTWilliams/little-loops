@@ -164,6 +164,7 @@ class TestBuiltinLoopFiles:
             "docs-sync",
             "evaluation-quality",
             "fix-quality-and-tests",
+            "mechanize-skills",
             "issue-discovery-triage",
             "issue-refinement",
             "issue-staleness-review",
@@ -12393,6 +12394,153 @@ class TestDeadCodeCleanupCheckPreconditionsResolution:
         (tmp_path / "untracked-scratch-file.txt").write_text("uncommitted work")
         result = self._run(tmp_path)
         assert result.returncode == 0, result.stderr
+
+
+class TestMechanizeSkillsLoop:
+    """Structural tests for the mechanize-skills FSM loop: offloads mechanical
+    prose out of SKILL.md files into scripts/CLIs, one skill per iteration
+    (EPIC-2938)."""
+
+    LOOP_FILE = BUILTIN_LOOPS_DIR / "mechanize-skills.yaml"
+
+    @pytest.fixture
+    def data(self) -> dict:
+        assert self.LOOP_FILE.exists(), f"Loop file not found: {self.LOOP_FILE}"
+        return yaml.safe_load(self.LOOP_FILE.read_text())
+
+    @pytest.fixture
+    def resolved(self, data: dict) -> dict:
+        return resolve_fragments(data, BUILTIN_LOOPS_DIR)
+
+    @pytest.fixture
+    def raw_text(self) -> str:
+        return self.LOOP_FILE.read_text()
+
+    def test_required_top_level_fields(self, data: dict) -> None:
+        assert data.get("name") == "mechanize-skills"
+        assert data.get("initial") == "init"
+        assert data.get("scope") == ["."]
+        assert isinstance(data.get("states"), dict)
+
+    def test_required_states_exist(self, data: dict) -> None:
+        required = {
+            "init",
+            "resolve_env",
+            "pick_skill",
+            "snapshot_baseline",
+            "diagnose_skill",
+            "validate_diagnosis",
+            "diagnosis_retry",
+            "worth_gate",
+            "check_mode",
+            "record_finding",
+            "apply",
+            "check_emission",
+            "apply_retry",
+            "accept_gate",
+            "commit_change",
+            "revert_changes",
+            "record_skip",
+            "advance",
+            "report",
+            "diagnose_failure",
+            "done",
+            "failed",
+        }
+        assert not required - set(data["states"].keys())
+
+    def test_terminal_states(self, data: dict) -> None:
+        done = data["states"]["done"]
+        assert done.get("terminal") is True
+        assert "action" not in done
+        assert "next" not in done
+
+        failed = data["states"]["failed"]
+        assert failed.get("terminal") is True
+        assert failed.get("failure") is True
+
+    def test_diagnose_skill_routes_through_validator(self, data: dict) -> None:
+        assert data["states"]["diagnose_skill"].get("next") == "validate_diagnosis"
+
+    def test_validate_diagnosis_is_exit_code_with_retry_routing(self, resolved: dict) -> None:
+        state = resolved["states"]["validate_diagnosis"]
+        assert state.get("evaluate", {}).get("type") == "exit_code"
+        assert state.get("on_yes") == "worth_gate"
+        # MR-4: a non-yes verdict must not dead-end -- both route back to the
+        # bounded-retry counter, never straight to a terminal.
+        assert state.get("on_no") == "diagnosis_retry"
+        assert state.get("on_error") == "diagnosis_retry"
+
+    def test_accept_gate_is_exit_code_never_llm_structured(
+        self, resolved: dict, raw_text: str
+    ) -> None:
+        state = resolved["states"]["accept_gate"]
+        assert state.get("evaluate", {}).get("type") == "exit_code"
+        # The accept/revert decision is deterministic throughout this loop --
+        # no state anywhere may use an LLM self-grade for it.
+        assert "llm_structured" not in raw_text
+        assert "check_semantic" not in raw_text
+
+    def test_commit_change_reachable_only_via_accept_gate_on_yes(self, data: dict) -> None:
+        assert data["states"]["accept_gate"].get("on_yes") == "commit_change"
+        for name, state in data["states"].items():
+            if name == "accept_gate":
+                continue
+            routes = {
+                state.get("on_yes"),
+                state.get("on_no"),
+                state.get("on_error"),
+                state.get("next"),
+            }
+            assert "commit_change" not in routes, (
+                f"{name} routes to commit_change outside accept_gate.on_yes"
+            )
+
+    def test_accept_gate_references_both_captured_baselines(self, data: dict) -> None:
+        # MR-2: the gate must compare against the measure->propose->apply
+        # spine's own captured baselines, not re-derive fresh values.
+        action = data["states"]["accept_gate"].get("action", "")
+        assert "${captured.baseline_lines.output}" in action
+        assert "${captured.prose_baseline.output}" in action
+
+    def test_worth_gate_thresholds_on_context_min_savings(self, data: dict) -> None:
+        state = data["states"]["worth_gate"]
+        assert state.get("evaluate", {}).get("type") == "output_numeric"
+        assert state.get("evaluate", {}).get("target") == "${context.min_savings_tokens}"
+
+    def test_diagnose_mode_branch_never_reaches_apply(self, data: dict) -> None:
+        assert data["states"]["check_mode"].get("on_yes") == "record_finding"
+        assert data["states"]["record_finding"].get("next") == "advance"
+        # advance loops back to pick_skill, not apply -- diagnose mode's only
+        # path to more work is the next queued skill.
+        assert data["states"]["advance"].get("next") == "pick_skill"
+
+    def test_revert_changes_uses_git_restore_not_clean(self, data: dict) -> None:
+        action = data["states"]["revert_changes"].get("action", "")
+        assert "git restore" in action
+        assert "git clean" not in action
+
+    def test_no_shared_tmp_scratch_in_retry_counters(self, data: dict) -> None:
+        # MR-3: hand-rolled retry counters must live under run_dir, not the
+        # shared .loops/tmp/ scratch space that fragment: retry_counter uses.
+        for name, state in data["states"].items():
+            action = state.get("action", "")
+            assert ".loops/tmp" not in action, f"{name} action references .loops/tmp"
+
+    def test_discriminated_skip_reasons_present(self, raw_text: str) -> None:
+        for reason in (
+            "dirty-worktree",
+            "diagnosis-invalid",
+            "below-threshold",
+            "apply-no-op",
+            "emission-failed",
+            "gate-rejected:",
+        ):
+            assert reason in raw_text, f"missing discriminated skip-reason: {reason}"
+
+    def test_resolve_env_uses_ll_config_get(self, data: dict) -> None:
+        action = data["states"]["resolve_env"].get("action", "")
+        assert "ll-config get project.test_cmd" in action
 
 
 class TestTestCoverageImprovementLoop:

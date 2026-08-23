@@ -1,0 +1,745 @@
+name: mechanize-skills
+category: code-quality
+description: |
+  Offload mechanical, deterministic prose out of SKILL.md files into callable
+  scripts/CLIs, one skill per iteration (EPIC-2938). For each queued skill:
+  diagnose which steps are mechanical (an LLM pass, deterministically
+  validated), gate on estimated savings, implement the mechanization (apply
+  mode only) per a project conventions doc when one is given via
+  conventions_file — else bundle small scripts under the skill's own
+  scripts/ subdirectory — then rewrite the skill to call them. Every
+  accept/revert decision is a deterministic shell gate (line count, prose
+  count, smoke commands, project test command); the LLM never decides
+  accept/revert.
+
+  mode=diagnose runs report-only: findings are written to diagnoses/ for a
+  later targeted apply run, and no skill file or repo state is touched.
+  mode=apply (the default) implements and commits accepted mechanizations —
+  run it on a branch: reverts are manifest-scoped per skill, so an accepted
+  change to skill A can land as a real commit while skill B is still queued
+  and later rejected.
+
+  Usage:
+    ll-loop run mechanize-skills --context mode=diagnose
+    ll-loop run mechanize-skills --context skill=capture-issue
+    ll-loop run mechanize-skills --context conventions_file=docs/CONVENTIONS.md
+initial: init
+scope:
+  - "."
+artifact_versioning: true
+max_steps: 500
+timeout: 28800
+import:
+  - lib/common.yaml
+
+context:
+  skill: ""              # Optional: single target (SKILL.md path, skill dir, or bare name).
+                          # Empty (default) = sweep every skill under skills_dir.
+  skills_dir: ""          # Optional override. Empty = auto-discover skills/ then .claude/skills/.
+  exclude_glob: "ll-*"    # Skill-dir basenames to skip during a full sweep.
+  mode: "apply"           # apply | diagnose (report-only, no writes/commits).
+  conventions_file: ""    # Optional project conventions doc. Empty = bundle
+                          # scripts under <skill>/scripts/ instead of
+                          # extending project CLIs.
+  test_cmd: ""            # Optional override. Empty = resolve via
+                          # `ll-config get project.test_cmd`. Still empty =
+                          # accept_gate's test check is skipped.
+  min_savings_tokens: 300 # worth_gate threshold (ENH-2952): skip skills whose
+                          # diagnosed mechanization would save too little.
+  max_diag_attempts: 3    # Retry cap for an invalid/hallucinated diagnosis.
+  max_apply_attempts: 3   # Retry cap for a failed/no-op apply pass.
+  line_cap: 500           # Passed to `ll-verify-skills --limit`.
+
+states:
+
+  init:
+    # HARNESS: capture the runner-injected run_dir as an absolute path (guard
+    # against double-prefixing an already-absolute path, per BUG-2435), then
+    # discover the skills directory and build the per-run skill queue.
+    fragment: shell_exit
+    action: |
+      DIR="${context.run_dir}"
+      mkdir -p "$DIR"
+      mkdir -p "$DIR/diagnoses"
+      case "$DIR" in
+        /*) RUN_DIR="$DIR" ;;
+        *) RUN_DIR="$(pwd)/$DIR" ;;
+      esac
+
+      SKILLS_DIR=${context.skills_dir:shell}
+      if [ -n "$SKILLS_DIR" ]; then
+        if [ ! -d "$SKILLS_DIR" ]; then
+          echo "skills_dir '$SKILLS_DIR' does not exist" >&2
+          exit 1
+        fi
+      elif [ -d "skills" ]; then
+        SKILLS_DIR="skills"
+      elif [ -d ".claude/skills" ]; then
+        SKILLS_DIR=".claude/skills"
+      else
+        echo "no skills directory found (checked skills/, .claude/skills/)" >&2
+        exit 1
+      fi
+      echo "$SKILLS_DIR" > "$RUN_DIR/skills-dir.txt"
+
+      SKILL=${context.skill:shell}
+      : > "$RUN_DIR/pending.txt"
+      if [ -n "$SKILL" ]; then
+        if [ -f "$SKILL" ]; then
+          TARGET="$SKILL"
+        elif [ -f "$SKILL/SKILL.md" ]; then
+          TARGET="$SKILL/SKILL.md"
+        elif [ -f "$SKILLS_DIR/$SKILL/SKILL.md" ]; then
+          TARGET="$SKILLS_DIR/$SKILL/SKILL.md"
+        else
+          echo "skill target for '$SKILL' not found (tried as a file, a dir, and a bare name under $SKILLS_DIR)" >&2
+          exit 1
+        fi
+        echo "$TARGET" >> "$RUN_DIR/pending.txt"
+      else
+        EXCLUDE=${context.exclude_glob:shell}
+        find "$SKILLS_DIR" -mindepth 2 -maxdepth 2 -name SKILL.md | sort | while IFS= read -r f; do
+          BASENAME=$(basename "$(dirname "$f")")
+          case "$BASENAME" in
+            $EXCLUDE) ;;
+            *) echo "$f" ;;
+          esac
+        done >> "$RUN_DIR/pending.txt"
+      fi
+
+      : > "$RUN_DIR/results.jsonl"
+      : > "$RUN_DIR/findings.jsonl"
+
+      if [ ! -s "$RUN_DIR/pending.txt" ]; then
+        echo "no skills queued (all excluded by exclude_glob, or none found under $SKILLS_DIR)" >&2
+        exit 1
+      fi
+      echo "$RUN_DIR"
+    capture: run_dir
+    on_yes: resolve_env
+    on_no: diagnose_failure
+    on_error: diagnose_failure
+
+  resolve_env:
+    # BUG-2622: conventions_file/test_cmd are user-controlled -- shell-escape
+    # via :shell wherever interpolated raw into the action body. Never write
+    # the literal strings scripts/tests or scripts/little_loops anywhere in
+    # this action (ENH-3281 hardcode gate) -- test_cmd resolution stays
+    # config-first via `ll-config get project.test_cmd`.
+    fragment: shell_exit
+    action: |
+      RUN_DIR="${captured.run_dir.output}"
+
+      CONV=${context.conventions_file:shell}
+      if [ -n "$CONV" ]; then
+        if [ ! -f "$CONV" ]; then
+          echo "conventions_file '$CONV' does not exist" >&2
+          exit 1
+        fi
+        echo "$CONV" > "$RUN_DIR/conventions-path.txt"
+      else
+        : > "$RUN_DIR/conventions-path.txt"
+      fi
+
+      TEST_CMD=${context.test_cmd:shell}
+      if [ -z "$TEST_CMD" ]; then
+        TEST_CMD=$(ll-config get project.test_cmd)
+      fi
+      echo "$TEST_CMD" > "$RUN_DIR/resolved-test-cmd.txt"
+
+      HAVE_VERIFY_SKILLS="false"
+      command -v ll-verify-skills >/dev/null 2>&1 && HAVE_VERIFY_SKILLS="true"
+      echo "$HAVE_VERIFY_SKILLS" > "$RUN_DIR/have-verify-skills.txt"
+
+      HAVE_VERIFY_PROSE="false"
+      command -v ll-verify-skill-prose >/dev/null 2>&1 && HAVE_VERIFY_PROSE="true"
+      echo "$HAVE_VERIFY_PROSE" > "$RUN_DIR/have-verify-prose.txt"
+
+      if [ "$HAVE_VERIFY_PROSE" = "true" ]; then
+        ll-verify-skill-prose --json > "$RUN_DIR/prose-baseline.json" 2>/dev/null
+      fi
+
+      RUN_DIR="$RUN_DIR" python3 << 'PYEOF'
+      import json, os
+      run_dir = os.environ["RUN_DIR"]
+      try:
+          with open(f"{run_dir}/prose-baseline.json") as f:
+              print(json.load(f).get("count", -1))
+      except Exception:
+          print(-1)
+      PYEOF
+    capture: prose_baseline
+    on_yes: pick_skill
+    on_no: diagnose_failure
+    on_error: diagnose_failure
+
+  pick_skill:
+    # fragment: queue_pop supplies action_type: shell + evaluate: exit_code;
+    # this state supplies the head-1 pop action itself.
+    fragment: queue_pop
+    action: |
+      RUN_DIR="${captured.run_dir.output}"
+      [ ! -s "$RUN_DIR/pending.txt" ] && exit 1
+      head -1 "$RUN_DIR/pending.txt"
+    capture: current_skill
+    on_yes: snapshot_baseline
+    on_no: report
+    on_error: diagnose_failure
+
+  snapshot_baseline:
+    # MR-6: this shell state only snapshots/reads -- it must never write to
+    # the SKILL.md path that diagnose_skill/apply (the LLM states) target.
+    fragment: shell_exit
+    action: |
+      RUN_DIR="${captured.run_dir.output}"
+      SKILL_FILE="${captured.current_skill.output}"
+      rm -f "$RUN_DIR/diagnosis.json" "$RUN_DIR/apply-manifest.json" "$RUN_DIR/gate-last.txt" "$RUN_DIR/skip-reason.txt"
+      rm -f "$RUN_DIR/.diag_retry_count" "$RUN_DIR/.apply_retry_count"
+
+      if [ ! -f "$SKILL_FILE" ]; then
+        echo "dirty-worktree" > "$RUN_DIR/skip-reason.txt"
+        echo "skill file '$SKILL_FILE' does not exist" >&2
+        exit 1
+      fi
+
+      SKILL_DIR=$(dirname "$SKILL_FILE")
+      if [ -n "$(git status --porcelain -- "$SKILL_DIR" 2>/dev/null)" ]; then
+        echo "dirty-worktree" > "$RUN_DIR/skip-reason.txt"
+        echo "'$SKILL_DIR' has uncommitted changes; refusing to diagnose/apply against a dirty tree" >&2
+        exit 1
+      fi
+
+      cp "$SKILL_FILE" "$RUN_DIR/baseline-SKILL.md"
+      wc -l < "$SKILL_FILE" | tr -d ' '
+    capture: baseline_lines
+    on_yes: diagnose_skill
+    on_no: record_skip
+    on_error: record_skip
+
+  diagnose_skill:
+    action_type: prompt
+    timeout: 900
+    action: |
+      Skill file: ${captured.current_skill.output}
+      Conventions doc path (read from this file; empty means bundle small
+      scripts under <skill-dir>/scripts/ instead of extending project CLIs):
+      ${captured.run_dir.output}/conventions-path.txt
+
+      Read the skill file. If the conventions-path.txt file above contains a
+      non-empty path, also read that document -- it describes how this
+      project wants mechanical work offloaded from prose into callable
+      tooling (e.g. extend an existing CLI with tests) vs. this loop's own
+      fallback of bundling small scripts under the skill's own scripts/
+      subdirectory.
+
+      Identify mechanical, deterministic elements of the skill's prose that a
+      script could execute instead of an LLM following written steps by hand
+      -- for example: fixed-shape file enumeration, counting/parsing
+      routines, templated boilerplate generation, deterministic validation
+      checks, or any step whose instructions read like "run this exact
+      sequence of commands."
+
+      Do NOT flag steps that require genuine judgment, synthesis, or
+      reasoning about content -- only mechanical, input-to-output
+      deterministic steps. Some skills are correctly almost entirely
+      reasoning; if none of a skill's content is mechanical, that is a valid
+      outcome -- do not force findings.
+
+      For each candidate, estimate a conservative per-run token savings from
+      removing that prose and replacing it with one script invocation line
+      (the prose block's token cost minus the replacement line's token cost,
+      discounted for the mechanization being imperfect).
+
+      Write ${captured.run_dir.output}/diagnosis.json as strict JSON (no
+      markdown fences, no commentary) in this exact shape:
+
+      {
+        "skill": "<skill name>",
+        "findings": [
+          {
+            "quote": "<verbatim text copied exactly from the skill file>",
+            "kind": "<short label, e.g. file-enumeration, counting, validation, boilerplate>",
+            "proposal": "<one sentence: what script/CLI extension replaces this>",
+            "target": "extend-cli|bundle-script",
+            "smoke_cmd": "<a command that exercises the new script/CLI and exits non-zero on failure>",
+            "est_tokens_saved": <integer>
+          }
+        ],
+        "total_est_tokens_saved": <integer, sum of est_tokens_saved>,
+        "skip_reason": "<empty string, or a short reason if findings is empty>"
+      }
+
+      Every "quote" MUST be copied character-for-character from the skill
+      file -- it is checked verbatim against the file in the next state.
+    next: validate_diagnosis
+
+  validate_diagnosis:
+    # Deterministic hallucination check: every quoted "quote" must appear
+    # verbatim in the skill file, in addition to schema validation. Parse/
+    # assertion failures raise a non-zero exit (MR-10) rather than being
+    # caught and swallowed.
+    fragment: shell_exit
+    action: |
+      SKILL_FILE="${captured.current_skill.output}" python3 << 'PYEOF'
+      import json, os
+      skill_file = os.environ["SKILL_FILE"]
+      with open("${captured.run_dir.output}/diagnosis.json") as f:
+          d = json.load(f)
+      findings = d.get("findings") or []
+      assert isinstance(findings, list), "findings must be a list"
+      total = d.get("total_est_tokens_saved")
+      assert isinstance(total, int), "total_est_tokens_saved must be an int"
+      skill_text = open(skill_file).read()
+      for i, finding in enumerate(findings):
+          quote = finding.get("quote")
+          assert quote, f"finding {i} has an empty quote"
+          assert quote in skill_text, f"finding {i} quote not found verbatim in {skill_file}"
+          assert finding.get("kind"), f"finding {i} missing kind"
+          assert finding.get("proposal"), f"finding {i} missing proposal"
+          assert finding.get("target") in ("extend-cli", "bundle-script"), f"finding {i} bad target"
+          assert finding.get("smoke_cmd"), f"finding {i} missing smoke_cmd"
+          assert isinstance(finding.get("est_tokens_saved"), int), f"finding {i} est_tokens_saved not an int"
+      PYEOF
+    on_yes: worth_gate
+    on_no: diagnosis_retry
+    on_error: diagnosis_retry
+
+  diagnosis_retry:
+    # Hand-rolled counter under run_dir (MR-3) -- fragment: retry_counter
+    # targets .loops/tmp/, which is shared scratch outside this run's
+    # isolation boundary.
+    action_type: shell
+    action: |
+      RUN_DIR="${captured.run_dir.output}"
+      echo "diagnosis-invalid" > "$RUN_DIR/skip-reason.txt"
+      FILE="$RUN_DIR/.diag_retry_count"
+      N=$(cat "$FILE" 2>/dev/null || echo 0)
+      N=$((N + 1))
+      printf '%s' "$N" > "$FILE"
+      echo "$N"
+    evaluate:
+      type: output_numeric
+      operator: lt
+      target: "${context.max_diag_attempts}"
+    on_yes: diagnose_skill
+    on_no: record_skip
+
+  worth_gate:
+    # ENH-2952: a correctly-declined skill (too little to gain) is not a
+    # failure -- pre-write the skip-reason so record_skip has it regardless
+    # of which branch is taken.
+    action_type: shell
+    action: |
+      RUN_DIR="${captured.run_dir.output}"
+      echo "below-threshold" > "$RUN_DIR/skip-reason.txt"
+      python3 << 'PYEOF'
+      import json
+      with open("${captured.run_dir.output}/diagnosis.json") as f:
+          print(json.load(f).get("total_est_tokens_saved", 0))
+      PYEOF
+    evaluate:
+      type: output_numeric
+      operator: ge
+      target: "${context.min_savings_tokens}"
+    on_yes: check_mode
+    on_no: record_skip
+    on_error: record_skip
+
+  check_mode:
+    # Exit-code polarity (fsm/evaluators.py): 0 -> on_yes (diagnose mode,
+    # report-only), 1 -> on_no (apply mode). 2+ -> on_error is unreachable
+    # here (a bare string comparison), kept only for completeness.
+    fragment: shell_exit
+    action: |
+      [ "${context.mode}" = "diagnose" ]
+    on_yes: record_finding
+    on_no: apply
+    on_error: apply
+
+  record_finding:
+    action_type: shell
+    action: |
+      RUN_DIR="${captured.run_dir.output}"
+      mkdir -p "$RUN_DIR/diagnoses"
+      SKILL_NAME=$(basename "$(dirname "${captured.current_skill.output}")")
+      N=$(ls "$RUN_DIR/diagnoses" 2>/dev/null | wc -l | tr -d ' ')
+      N=$((N + 1))
+      NUM=$(printf '%03d' "$N")
+      python3 << 'PYEOF'
+      import json
+      with open("${captured.run_dir.output}/diagnosis.json") as f:
+          d = json.load(f)
+      with open("${captured.run_dir.output}/findings.jsonl", "a") as out:
+          out.write(json.dumps(d) + chr(10))
+      PYEOF
+      cp "$RUN_DIR/diagnosis.json" "$RUN_DIR/diagnoses/$NUM-$SKILL_NAME.json"
+    next: advance
+
+  apply:
+    action_type: prompt
+    timeout: 1800
+    max_retries: 2
+    on_retry_exhausted: revert_changes
+    action: |
+      Skill file: ${captured.current_skill.output}
+      Diagnosis: ${captured.run_dir.output}/diagnosis.json
+      Conventions doc path (read from this file; empty means use the
+      bundled-scripts fallback):
+      ${captured.run_dir.output}/conventions-path.txt
+
+      Read the diagnosis. For each finding, implement the mechanization:
+
+      - If conventions-path.txt is non-empty, follow the doc it points to:
+        typically that means extending an existing project CLI with a new
+        subcommand/flag, adding `--json` output and deterministic exit
+        codes, and adding test coverage for the new behavior.
+      - If conventions-path.txt is empty, instead write a small script under
+        the skill's own `scripts/` subdirectory (e.g.
+        `<skill-dir>/scripts/<name>.py` or `.sh`), invoked by the skill via
+        a relative path.
+
+      Then rewrite the skill file: replace each quoted mechanical prose
+      block with a single line invoking the new script/CLI (per the
+      finding's `smoke_cmd`). The rewritten skill file must not be longer,
+      in lines, than the original -- offloading mechanics to a script should
+      shrink the prose, not add to it.
+
+      Finally, write ${captured.run_dir.output}/apply-manifest.json as
+      strict JSON (no markdown fences, no commentary) in this exact shape,
+      with every path relative to the repository root:
+
+      {
+        "created": ["<path>", ...],
+        "modified": ["<path>", ...],
+        "smoke_cmds": ["<command>", ...]
+      }
+
+      List every file you created or modified, and every finding's
+      `smoke_cmd` (plus any additional smoke commands needed to exercise the
+      new scripts or tests).
+    next: check_emission
+
+  check_emission:
+    # BUG-3278-style discriminators: 0 -> on_yes (real emission),
+    # 1 -> on_no (silent no-op: unchanged SKILL.md + empty manifest),
+    # 2+ -> on_error (manifest missing/unparseable -- emission failed
+    # outright).
+    fragment: shell_exit
+    action: |
+      RUN_DIR="${captured.run_dir.output}"
+      MANIFEST="$RUN_DIR/apply-manifest.json"
+      if [ ! -f "$MANIFEST" ]; then
+        echo "emission-failed" > "$RUN_DIR/skip-reason.txt"
+        exit 2
+      fi
+
+      python3 << 'PYEOF'
+      import json
+      with open("${captured.run_dir.output}/apply-manifest.json") as f:
+          json.load(f)
+      PYEOF
+      if [ "$?" != "0" ]; then
+        echo "emission-failed" > "$RUN_DIR/skip-reason.txt"
+        exit 2
+      fi
+
+      CHANGED="true"
+      cmp -s "${captured.current_skill.output}" "$RUN_DIR/baseline-SKILL.md" && CHANGED="false"
+
+      EMPTY_MANIFEST=$(python3 << 'PYEOF'
+      import json
+      with open("${captured.run_dir.output}/apply-manifest.json") as f:
+          d = json.load(f)
+      empty = not d.get("created") and not d.get("modified")
+      print("true" if empty else "false")
+      PYEOF
+      )
+
+      if [ "$CHANGED" = "false" ] && [ "$EMPTY_MANIFEST" = "true" ]; then
+        echo "apply-no-op" > "$RUN_DIR/skip-reason.txt"
+        exit 1
+      fi
+      exit 0
+    on_yes: accept_gate
+    on_no: apply_retry
+    on_error: apply_retry
+
+  apply_retry:
+    action_type: shell
+    action: |
+      RUN_DIR="${captured.run_dir.output}"
+      FILE="$RUN_DIR/.apply_retry_count"
+      N=$(cat "$FILE" 2>/dev/null || echo 0)
+      N=$((N + 1))
+      printf '%s' "$N" > "$FILE"
+      echo "$N"
+    evaluate:
+      type: output_numeric
+      operator: lt
+      target: "${context.max_apply_attempts}"
+    on_yes: apply
+    on_no: revert_changes
+
+  accept_gate:
+    # The deterministic accept decision -- the LLM never decides
+    # accept/revert. Cheap-to-expensive ordering; every check that runs must
+    # pass. The rejecting check's name is logged to gate-last.txt so
+    # revert_changes/record_skip can attribute the rejection precisely.
+    fragment: shell_exit
+    timeout: 1800
+    action: |
+      RUN_DIR="${captured.run_dir.output}"
+      SKILL_FILE="${captured.current_skill.output}"
+      REASON=""
+
+      LINES=$(wc -l < "$SKILL_FILE" | tr -d ' ')
+      if [ "$LINES" -gt "${captured.baseline_lines.output}" ]; then
+        REASON="line-growth"
+      fi
+
+      if [ -z "$REASON" ]; then
+        HAVE_VERIFY_SKILLS=$(cat "$RUN_DIR/have-verify-skills.txt" 2>/dev/null || echo false)
+        if [ "$HAVE_VERIFY_SKILLS" = "true" ]; then
+          ll-verify-skills --limit ${context.line_cap} > "$RUN_DIR/gate-verify-skills.txt" 2>&1 || REASON="verify-skills"
+        fi
+      fi
+
+      if [ -z "$REASON" ] && [ "${captured.prose_baseline.output}" != "-1" ]; then
+        HAVE_VERIFY_PROSE=$(cat "$RUN_DIR/have-verify-prose.txt" 2>/dev/null || echo false)
+        if [ "$HAVE_VERIFY_PROSE" = "true" ]; then
+          ll-verify-skill-prose --json > "$RUN_DIR/gate-prose.json" 2>/dev/null
+          NEW_COUNT=$(RUN_DIR="$RUN_DIR" python3 << 'PYEOF'
+      import json, os
+      run_dir = os.environ["RUN_DIR"]
+      try:
+          with open(f"{run_dir}/gate-prose.json") as f:
+              print(json.load(f).get("count", -1))
+      except Exception:
+          print(-1)
+      PYEOF
+      )
+          if [ "$NEW_COUNT" != "-1" ] && [ "$NEW_COUNT" -gt "${captured.prose_baseline.output}" ]; then
+            REASON="prose-count"
+          fi
+        fi
+      fi
+
+      if [ -z "$REASON" ]; then
+        SMOKE_FAIL=$(RUN_DIR="$RUN_DIR" python3 << 'PYEOF'
+      import json, os, subprocess
+      run_dir = os.environ["RUN_DIR"]
+      with open(f"{run_dir}/apply-manifest.json") as f:
+          manifest = json.load(f)
+      for cmd in manifest.get("smoke_cmds") or []:
+          rc = subprocess.run(cmd, shell=True).returncode
+          if rc != 0:
+              print(cmd)
+              break
+      PYEOF
+      )
+        if [ -n "$SMOKE_FAIL" ]; then
+          REASON="smoke-cmd"
+        fi
+      fi
+
+      if [ -z "$REASON" ]; then
+        TEST_CMD=$(cat "$RUN_DIR/resolved-test-cmd.txt" 2>/dev/null || echo "")
+        if [ -n "$TEST_CMD" ]; then
+          eval "$TEST_CMD" > "$RUN_DIR/gate-test-output.txt" 2>&1 || REASON="test-cmd"
+        fi
+      fi
+
+      if [ -n "$REASON" ]; then
+        echo "gate-rejected:$REASON" > "$RUN_DIR/gate-last.txt"
+        exit 1
+      fi
+      echo "gate-accepted" > "$RUN_DIR/gate-last.txt"
+      exit 0
+    on_yes: commit_change
+    on_no: revert_changes
+    on_error: revert_changes
+
+  commit_change:
+    # git add explicit paths only -- never `-A`/`.` (harness-optimize.yaml
+    # commit_and_log precedent).
+    action_type: shell
+    action: |
+      RUN_DIR="${captured.run_dir.output}"
+      SKILL_FILE="${captured.current_skill.output}"
+      SKILL_DIR=$(dirname "$SKILL_FILE")
+      MANIFEST_PATHS=$(python3 << 'PYEOF'
+      import json
+      with open("${captured.run_dir.output}/apply-manifest.json") as f:
+          m = json.load(f)
+      paths = (m.get("created") or []) + (m.get("modified") or [])
+      print(" ".join(paths))
+      PYEOF
+      )
+      git add "$SKILL_DIR" $MANIFEST_PATHS
+      SAVED=$(python3 << 'PYEOF'
+      import json
+      with open("${captured.run_dir.output}/diagnosis.json") as f:
+          print(json.load(f).get("total_est_tokens_saved", 0))
+      PYEOF
+      )
+      SKILL_NAME=$(basename "$SKILL_DIR")
+      git commit -m "mechanize-skills: $SKILL_NAME (est. $SAVED tokens/run)"
+      COMMIT=$(git rev-parse HEAD)
+      COMMIT="$COMMIT" SAVED="$SAVED" python3 << 'PYEOF'
+      import json, os
+      entry = {
+          "outcome": "accepted",
+          "commit": os.environ["COMMIT"],
+          "est_tokens_saved": int(os.environ["SAVED"]),
+      }
+      with open("${captured.run_dir.output}/results.jsonl", "a") as f:
+          f.write(json.dumps(entry) + chr(10))
+      PYEOF
+    next: advance
+
+  revert_changes:
+    # Manifest-driven revert -- rm created paths, git restore modified
+    # paths, restore the baseline SKILL.md copy. Never a repo-wide
+    # `git clean`.
+    action_type: shell
+    action: |
+      RUN_DIR="${captured.run_dir.output}"
+      SKILL_FILE="${captured.current_skill.output}"
+      MANIFEST="$RUN_DIR/apply-manifest.json"
+
+      if [ -f "$MANIFEST" ]; then
+        python3 << 'PYEOF'
+      import json, os
+      with open("${captured.run_dir.output}/apply-manifest.json") as f:
+          m = json.load(f)
+      for p in m.get("created") or []:
+          try:
+              os.remove(p)
+          except OSError:
+              pass
+      PYEOF
+        MODIFIED=$(python3 << 'PYEOF'
+      import json
+      with open("${captured.run_dir.output}/apply-manifest.json") as f:
+          m = json.load(f)
+      print(" ".join(p for p in (m.get("modified") or []) if p))
+      PYEOF
+      )
+        [ -n "$MODIFIED" ] && git restore $MODIFIED
+      fi
+
+      if [ -f "$RUN_DIR/baseline-SKILL.md" ]; then
+        cp "$RUN_DIR/baseline-SKILL.md" "$SKILL_FILE"
+      fi
+
+      REASON=""
+      if [ -f "$RUN_DIR/gate-last.txt" ]; then
+        REASON=$(grep -o 'gate-rejected:.*' "$RUN_DIR/gate-last.txt" || true)
+      fi
+      [ -z "$REASON" ] && REASON=$(cat "$RUN_DIR/skip-reason.txt" 2>/dev/null || echo "unknown")
+      echo "$REASON" > "$RUN_DIR/skip-reason.txt"
+    next: record_skip
+
+  record_skip:
+    action_type: shell
+    action: |
+      RUN_DIR="${captured.run_dir.output}"
+      REASON=$(cat "$RUN_DIR/skip-reason.txt" 2>/dev/null || echo "unknown")
+      OUTCOME="skipped"
+      case "$REASON" in
+        gate-rejected:*) OUTCOME="rejected" ;;
+      esac
+      REASON="$REASON" OUTCOME="$OUTCOME" python3 << 'PYEOF'
+      import json, os
+      entry = {"outcome": os.environ["OUTCOME"], "reason": os.environ["REASON"]}
+      with open("${captured.run_dir.output}/results.jsonl", "a") as f:
+          f.write(json.dumps(entry) + chr(10))
+      PYEOF
+    next: advance
+
+  advance:
+    # Portable pop idiom (prompt-across-issues.yaml precedent): tail -n +2
+    # instead of `sed -i ''`, which is macOS-only.
+    action_type: shell
+    action: |
+      RUN_DIR="${captured.run_dir.output}"
+      DIR="$(dirname "$RUN_DIR/pending.txt")"
+      tail -n +2 "$RUN_DIR/pending.txt" > "$DIR/pending.tmp"
+      mv "$DIR/pending.tmp" "$RUN_DIR/pending.txt"
+      REMAINING=$(wc -l < "$RUN_DIR/pending.txt" | tr -d ' ')
+      echo "Progress: $REMAINING skill(s) remaining"
+    next: pick_skill
+
+  report:
+    action_type: shell
+    action: |
+      python3 << 'PYEOF'
+      import json
+
+      run_dir = "${captured.run_dir.output}"
+
+      results = []
+      with open(f"{run_dir}/results.jsonl") as f:
+          for line in f:
+              line = line.strip()
+              if line:
+                  results.append(json.loads(line))
+
+      findings = []
+      with open(f"{run_dir}/findings.jsonl") as f:
+          for line in f:
+              line = line.strip()
+              if line:
+                  findings.append(json.loads(line))
+
+      accepted = [r for r in results if r.get("outcome") == "accepted"]
+      rejected = [r for r in results if r.get("outcome") == "rejected"]
+      skipped = [r for r in results if r.get("outcome") == "skipped"]
+      total_saved = sum(r.get("est_tokens_saved", 0) for r in accepted)
+
+      lines = ["# mechanize-skills report", ""]
+      lines.append(f"- Accepted: {len(accepted)}")
+      lines.append(f"- Rejected: {len(rejected)}")
+      lines.append(f"- Skipped: {len(skipped)}")
+      lines.append(f"- Estimated tokens saved/run: {total_saved}")
+      lines.append("")
+      if findings:
+          lines.append(f"{len(findings)} diagnosis report(s) written to diagnoses/ for a follow-up apply run.")
+          lines.append("")
+      lines.append("| Outcome | Reason/Detail |")
+      lines.append("|---|---|")
+      for r in results:
+          detail = r.get("reason") or r.get("commit") or ""
+          lines.append(f"| {r.get('outcome')} | {detail} |")
+
+      with open(f"{run_dir}/report.md", "w") as f:
+          f.write(chr(10).join(lines) + chr(10))
+      PYEOF
+    next: done
+
+  diagnose_failure:
+    action_type: prompt
+    action: |
+      The mechanize-skills loop has terminated with an unrecoverable
+      infrastructure failure (not a skill-diagnosis or gate rejection --
+      those route to record_skip/revert_changes, not here).
+
+      Diagnose what happened:
+      - If ${context.run_dir}/pending.txt exists, report its contents and
+        whether it is empty.
+      - If failure was in init, report whether a skills directory was found
+        and whether context.skill (if set) resolved to a real SKILL.md.
+      - If failure was in resolve_env, report whether context.conventions_file
+        (if set) exists.
+      - Identify the most likely failure cause.
+
+      Write a one-paragraph diagnostic summary the operator can use to
+      re-run with valid inputs.
+    next: failed
+
+  done:
+    terminal: true
+
+  failed:
+    terminal: true
+    failure: true

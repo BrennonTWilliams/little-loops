@@ -51,6 +51,7 @@ Install a loop into your project for customization: `ll-loop install <name>`
 | `test-coverage-improvement` | Measure coverage, identify highest-risk gaps, write tests, verify, and iterate until target is met |
 | `incremental-refactor` | Decompose a refactoring goal into safe atomic steps, execute each with test-gated commits, rollback and re-plan on failure; refuses to start unless a test command resolves, runs green as a baseline, and the tree is clean |
 | `docs-sync` | Verify documentation matches the codebase, auto-fix auto-severity count mismatches, and report the rest |
+| `mechanize-skills` | Diagnose mechanical, deterministic prose in each SKILL.md, gate on estimated savings, implement the mechanization (extend a project CLI or bundle a script), rewrite the skill to call it, and commit-or-revert on a deterministic gate |
 
 ## Planning
 

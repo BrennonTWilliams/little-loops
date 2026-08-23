@@ -1217,6 +1217,7 @@ The counters reflect cumulative totals at the moment of dequeue: position `N/tot
 | `docs-sync` | Verify documentation matches the codebase, auto-fix auto-severity count mismatches, and report the rest |
 | `fix-quality-and-tests` | Sequential quality gate: lint + format + types must be clean before tests run |
 | `incremental-refactor` | Decompose a refactoring goal into safe atomic steps, execute each with test-gated commits, rollback and re-plan on failure |
+| `mechanize-skills` | Diagnose mechanical, deterministic prose in each SKILL.md (one skill per iteration), gate on estimated token savings, implement the mechanization — extend a project CLI per a conventions doc, or bundle a script under `<skill>/scripts/` — rewrite the skill to call it, and commit-or-revert on a deterministic gate (never an LLM self-grade) |
 | `rubric-refine` | Converge loop that scores an artifact on a multi-dimension rubric, routes to tier-specific repair (light or deep), and re-scores until the aggregate meets `threshold_high`. Supply `subject` (path or description) and `rubric_dimensions` (pipe-separated). Demonstrates `lib/rubric-router.yaml` fragment usage. |
 | `test-coverage-improvement` | Measure test coverage, identify uncovered code paths, write tests for highest-risk gaps, and converge when coverage target is met |
 | `worktree-health` | Continuous monitoring of orphaned worktrees and stale branches from both `ll-parallel` workers and `ll-loop --worktree` runs |
@@ -1324,6 +1325,37 @@ ll-loop run incremental-refactor --context refactor_goal="extract auth middlewar
 | `refactor_goal` | — | Natural-language description of the refactoring goal |
 | `test_cmd` | — | Test command to gate each step; falls back to `project.test_cmd` (`ll-config get`) when empty. The loop refuses to start if neither resolves, or if the resolved command doesn't run green as a baseline |
 | `commit_message` | `refactor: apply incremental refactoring step` | Commit message template |
+
+### `mechanize-skills` — Skill Mechanization
+
+**When to use**: When a SKILL.md has accumulated deterministic, mechanical prose (fixed-shape file enumeration, counting/parsing routines, templated boilerplate, deterministic validation) that an LLM is executing by hand every run instead of a script (EPIC-2938). Offloads that prose into a callable script/CLI extension, one skill per iteration, with a deterministic accept/revert gate — the LLM never decides accept/revert.
+
+Runs a two-phase workflow: `mode=diagnose` (report-only) writes per-skill diagnosis reports to `diagnoses/` in the run directory without touching any skill file or repo state; a later `mode=apply` run (the default) implements and commits the accepted mechanizations. Apply mode should run on a branch — reverts are manifest-scoped per skill, so an accepted change to one skill can land as a real commit while another is still queued and later rejected.
+
+**Usage:**
+```bash
+# Report-only sweep across every skill
+ll-loop run mechanize-skills --context mode=diagnose
+
+# Apply mode targeting a single skill
+ll-loop run mechanize-skills --context skill=capture-issue
+
+# Apply mode following a project conventions doc (else scripts are bundled
+# under <skill>/scripts/)
+ll-loop run mechanize-skills --context conventions_file=docs/CONVENTIONS.md
+```
+
+**Key context variables:**
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `skill` | — | Single target (SKILL.md path, skill dir, or bare name). Empty sweeps every skill under `skills_dir` |
+| `skills_dir` | — | Override; empty auto-discovers `skills/` then `.claude/skills/` |
+| `exclude_glob` | `ll-*` | Skill-dir basenames to skip during a full sweep |
+| `mode` | `apply` | `apply` \| `diagnose` (report-only) |
+| `conventions_file` | — | Project conventions doc; empty bundles scripts under `<skill>/scripts/` instead of extending project CLIs |
+| `test_cmd` | — | Override; else resolved via `ll-config get project.test_cmd`; still empty skips the gate's test check |
+| `min_savings_tokens` | `300` | Minimum estimated per-run token savings to bother implementing a diagnosis |
+| `line_cap` | `500` | Passed to `ll-verify-skills --limit` |
 
 ### `test-coverage-improvement` — Coverage Gap Closure
 

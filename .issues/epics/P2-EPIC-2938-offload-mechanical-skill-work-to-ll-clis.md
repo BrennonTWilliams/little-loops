@@ -73,6 +73,8 @@ Three concrete harms today:
   Option C (leave as-is, documented)**: measured ~150 tokens/site, paid per-invocation not
   cumulatively; Options A/B yielded ~0 or marginal net savings against their own build cost.
   No CLI or markdown changes; dropped from the epic's remaining work (Wave 3)
+- **FEAT-3297** — mechanize-skills: built-in FSM loop to offload mechanical SKILL.md prose into scripts/CLIs (open)
+
 
 ## Dependency Graph
 

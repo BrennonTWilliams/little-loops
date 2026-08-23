@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.157.0] - 2026-08-20
 
+### Added
+
+**The `mechanize-skills` built-in loop (EPIC-2938).** Offloads mechanical, deterministic prose out of `SKILL.md` files into callable scripts/CLIs, one skill per iteration off a queue: diagnoses which steps are mechanical (an LLM pass, deterministically validated against the skill's own text), gates on estimated token savings, implements the mechanization — extending a project CLI per a `conventions_file` doc, or bundling a script under `<skill>/scripts/` when none is given — rewrites the skill to call it, and commits or reverts on a fully deterministic gate (line count, prose count, smoke commands, project test command). `mode=diagnose` runs report-only, writing findings for a later targeted `mode=apply` run.
+
 ### Changed
 
 - **Removed deprecated `automation_profile`/`disable_background_tasks`/`idle_timeout` kwargs from `run_claude_command()`/`run_with_continuation()` (ENH-3261)** — `subprocess_utils.run_claude_command()`, the `issue_manager.py` wrapper of the same name, and `issue_manager.run_with_continuation()` no longer accept the three legacy per-call automation kwargs; each now reads `automation` directly with no internal fallback resolution. A `*` keyword-only marker was inserted at each removal point so a stale positional caller fails loudly with a `TypeError` instead of silently rebinding a later positional argument. **Breaking change**: callers passing `automation_profile=`/`disable_background_tasks=`/`idle_timeout=` directly to any of these three functions must migrate to `automation=AutomationContext(profile=..., disable_background_tasks=..., idle_timeout=...)`. `HostRunner.build_streaming()`'s own legacy kwargs (ENH-3095) and `ActionRunner.run()`'s (ENH-3096) are unaffected — both are kept indefinitely as Protocol-boundary shims.
