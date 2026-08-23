@@ -23,7 +23,7 @@ Child 3 of 3 decomposed from FEAT-3038 (Advisor signal-gated auto-consults and
 per-task budget). Adds the `pre_done` signal: a new `Stop` hook entry that
 dispatches to a host-agnostic handler, calling `should_consult`/
 `consult_for_trigger` on the final diff before a task is declared done.
-Depends on FEAT-3116 for `should_consult` and `consult_for_trigger`.
+Builds on FEAT-3116 (done) for `should_consult` and `consult_for_trigger`.
 
 ## Parent Issue
 
