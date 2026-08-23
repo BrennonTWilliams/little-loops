@@ -2003,6 +2003,18 @@ def _count_testable_keyword_matches(text: str) -> int:
     return sum(1 for pattern in _TESTABLE_PATTERNS if pattern.search(lowered))
 
 
+# BUG-3285: shared bold-option-marker fragment for _OPTION_PATTERNS[1] and
+# _OPTION_HEADING_RE's bold alternative (converged so the one rule — "a bold run
+# must close at the end of the option identifier, not continue into prose" — is
+# encoded exactly once). Carries no leading `^` of its own: _OPTION_PATTERNS[1]
+# prepends it, _OPTION_HEADING_RE supplies one for its whole alternation.
+_BOLD_OPTION_MARKER = (
+    r"\*\*Option\s+[A-Za-z0-9]+[′']?"  # identifier + optional variant suffix (decision 1)
+    r"(?:\s*\([^)\n]*\))?"  # optional parenthetical qualifier, line-bounded
+    r"(?:\s*[:—-](?:[^*\n]|\*(?!\*))*)?"  # optional separator-introduced title (decisions 2, 2b)
+    r"\*\*"
+)
+
 # ENH-2443: deterministic (non-LLM) re-implementation of skills/decide-issue/SKILL.md
 # Phase 3's Patterns 1-4, tried in precedence order (only the first tier with >=1 match
 # counts). This is a cheap pre-check for FSM automation (ll-issues check-decidable), not
@@ -2011,7 +2023,7 @@ def _count_testable_keyword_matches(text: str) -> int:
 # just skips that optimization; `decide` itself remains the source of truth.
 _OPTION_PATTERNS = (
     re.compile(r"^###\s+Option\s+[A-Za-z0-9]", re.MULTILINE | re.IGNORECASE),
-    re.compile(r"^\*\*Option\s+[A-Za-z0-9]+.*?\*\*", re.MULTILINE),
+    re.compile("^" + _BOLD_OPTION_MARKER, re.MULTILINE | re.IGNORECASE),
     re.compile(r"^\d+\.\s+(?:\*\*Option|[A-Z][^.]*\bapproach\b)", re.MULTILINE),
     re.compile(
         r"^[-*]\s+(?:\([a-z0-9]\)\s+|\*{0,2}Option\s+[A-Za-z0-9])", re.MULTILINE | re.IGNORECASE
@@ -2455,8 +2467,10 @@ def count_enumerable_options(content: str) -> int:
 # neither marker — i.e. options that still need to be decided.
 
 # Pattern 1 + Pattern 2 headings: H3 "Option X" OR bold "**Option X: ...**" lines.
+# BUG-3285: the bold alternative shares _BOLD_OPTION_MARKER with _OPTION_PATTERNS[1]
+# so the two sites cannot re-diverge the way BUG-3279's history showed they do.
 _OPTION_HEADING_RE = re.compile(
-    r"^(?:###\s+Option\s+[A-Za-z0-9]|\*\*Option\s+[A-Za-z0-9]+)",
+    rf"^(?:###\s+Option\s+[A-Za-z0-9]|{_BOLD_OPTION_MARKER})",
     re.MULTILINE | re.IGNORECASE,
 )
 

@@ -4740,10 +4740,10 @@ class TestPriorityRegexCompletenessAllowlist:
             "frontmatter directly by design — drift IS the comparison, not a resolution",
             1641: "_DEP_ID_RE (BUG-3059): dependency-ID shape validation; optional prefix "
             "group discarded",
-            3270: "comment describing the P[0-5]-NNN- filename shape",
-            3274: "_parse_type_and_id's directory-fallback number extraction; priority digit "
+            3284: "comment describing the P[0-5]-NNN- filename shape",
+            3288: "_parse_type_and_id's directory-fallback number extraction; priority digit "
             "skipped over, not read as a value",
-            3295: "_generate_id_from_filename strips a leading priority token before "
+            3309: "_generate_id_from_filename strips a leading priority token before "
             "digit-scanning for ID generation",
         },
         "issues/prose_deps.py": {
@@ -5405,8 +5405,8 @@ class TestUnappliedDecision:
         from little_loops.issue_parser import _unapplied_decision
 
         content = self._issue(
-            "**Option A**: Change `scope: [\"scripts/\"]` to `scope: [\".\"]`.\n\n"
-            "**Option B**: Change `scope:` to `[\"${context.src_dir}\"]` instead.\n\n"
+            '**Option A**: Change `scope: ["scripts/"]` to `scope: ["."]`.\n\n'
+            '**Option B**: Change `scope:` to `["${context.src_dir}"]` instead.\n\n'
             "> **Selected:** Option A\n\n"
             "### Decision Rationale\n\nOption A wins.\n",
             Program_Design="This decision affects the `scope:` key used by the scanner.\n",
@@ -5423,7 +5423,7 @@ class TestUnappliedDecision:
         from little_loops.issue_parser import _unapplied_decision
 
         content = self._issue(
-            "**Option A**: Change `scope: [\"scripts/\"]` to `scope: [\".\"]`.\n\n"
+            '**Option A**: Change `scope: ["scripts/"]` to `scope: ["."]`.\n\n'
             "**Option B**: Use `legacy_scanner_mode` instead.\n\n"
             "> **Selected:** Option A\n\n"
             "### Decision Rationale\n\nOption A wins.\n",
@@ -5674,6 +5674,299 @@ class TestUnappliedDecisionLiveCorpusSweep:
         assert _unapplied_decision(content) == [
             "Files to Modify still specifies `final_score` (rejected option)"
         ]
+
+
+class TestBug3285BoldOptionMarkerTightening:
+    """BUG-3285: a bold option marker matches only when the bold run closes at
+    the end of the option identifier (`**Option A**`, `**Option A: title**`,
+    `**Option A (preferred): title**`) -- a bold run continuing into bare
+    words after the identifier (`**Option A evidence**`, `**Option B was
+    already applied**`) is prose *about* an option, not an option, and starts
+    no block. `_OPTION_PATTERNS[1]` (bold_label tier) and
+    `_OPTION_HEADING_RE`'s bold alternative share one `_BOLD_OPTION_MARKER`
+    fragment so the one rule cannot re-diverge the way BUG-3279's did.
+    """
+
+    def _issue(self, proposed_solution: str) -> str:
+        return f"# BUG-9900\n\n## Proposed Solution\n\n{proposed_solution}\n## Status\n\n- open\n"
+
+    def test_real_options_survive_alongside_evidence_prose(self) -> None:
+        """The motivating case (ENH-2967/BUG-1484 shape): two real options
+        plus two evidence/status prose lines that used to be miscounted as a
+        third and fourth option."""
+        from little_loops.issue_parser import locate_enumerable_options
+
+        content = self._issue(
+            "**Option A: Do X**\n\n"
+            "**Option B: Do Y**\n\n"
+            "**Option A evidence**: analysis showed X works.\n\n"
+            "**Option B was already applied**: turns out true.\n"
+        )
+        located = locate_enumerable_options(content)
+
+        assert located.count == 2
+        assert {o.label for o in located.options} == {"Option A: Do X", "Option B: Do Y"}
+
+    @pytest.mark.parametrize(
+        "marker",
+        [
+            "**Option A**",
+            "**Option A: title**",
+            "**Option A (preferred): title**",
+            "**Option A (preferred) — use the existing FSM `config:` block.**",
+        ],
+    )
+    def test_accepted_shapes_still_match(self, marker: str) -> None:
+        from little_loops.issue_parser import _OPTION_HEADING_RE, _OPTION_PATTERNS
+
+        assert _OPTION_PATTERNS[1].match(marker), marker
+        assert _OPTION_HEADING_RE.match(marker), marker
+
+    @pytest.mark.parametrize(
+        "prose",
+        [
+            "**Option A evidence**:",
+            "**Option B was already applied**:",
+            "**Option A implementation spec**",
+            "**Option B evidence against**",
+            "**Option A completed (2026-05-06).**",
+            "**Option B selected**",
+            "**Option 3 model:**",
+            "**Option A is recommended**",
+            "**Option B validation gap (critical)**",
+        ],
+    )
+    def test_prose_shapes_no_longer_match(self, prose: str) -> None:
+        from little_loops.issue_parser import _OPTION_HEADING_RE, _OPTION_PATTERNS
+
+        assert _OPTION_PATTERNS[1].match(prose) is None, prose
+        assert _OPTION_HEADING_RE.match(prose) is None, prose
+
+    def test_variant_suffix_survivors(self) -> None:
+        """Decision 1: prime-marked variant labels (`Option A′`) denote a
+        narrowed re-scoping of an earlier option -- a live convention in this
+        repo, and both live corpus instances (BUG-3177, BUG-3253) are the
+        *selected* option. The identifier class must admit the variant
+        suffix or the rule drops winners (the sketch regex's defect 1)."""
+        from little_loops.issue_parser import _OPTION_HEADING_RE, _OPTION_PATTERNS
+
+        for marker in ("**Option A′ (SELECTED)**", "**Option C′ (selected)**"):
+            assert _OPTION_PATTERNS[1].match(marker), marker
+            assert _OPTION_HEADING_RE.match(marker), marker
+
+    def test_glob_in_title_survivors(self) -> None:
+        """Decision 2b: a literal `*` in a title (a config-key/path glob) must
+        not be mistaken for the closing delimiter -- FEAT-2339's two real
+        options each title a glob (`parallel.epic_branches.*`,
+        `epics.branch.*`); the naive `[^*\\n]*` title body drops both."""
+        from little_loops.issue_parser import _OPTION_HEADING_RE, _OPTION_PATTERNS
+
+        markers = [
+            "**Option A — `parallel.epic_branches.*` (near other worktree/branch knobs)**",
+            "**Option B — `epics.branch.*` (separate top-level EPIC lifecycle namespace)**",
+        ]
+        for marker in markers:
+            assert _OPTION_PATTERNS[1].match(marker), marker
+            assert _OPTION_HEADING_RE.match(marker), marker
+
+    def test_single_line_title_bound(self) -> None:
+        """Decision 2: a title may not span physical lines -- chosen to
+        preserve current behavior (the pre-fix regex, `.*?\\*\\*` under
+        MULTILINE without DOTALL, already could not cross a newline). The
+        BUG-2735 two-line title stays unmatched by design, not by omission --
+        a deliberate multi-line extension would be a separate, measured
+        change."""
+        from little_loops.issue_parser import _OPTION_PATTERNS
+
+        two_line = (
+            "**Option C — switch `sample` to `ll-issues refine-status --json` (no CLI\nchange)**"
+        )
+        assert _OPTION_PATTERNS[1].search(two_line) is None
+
+    def test_flag_normalization_case_insensitive(self) -> None:
+        """Decision 4: normalize flags -- _OPTION_PATTERNS[1] compiles with
+        re.IGNORECASE (matching _OPTION_HEADING_RE) rather than baking case
+        semantics into the shared fragment. Corpus-neutral today (zero
+        case-variant markers exist in `.issues/`), so only a synthetic
+        fixture can hold the two call paths to the same answer."""
+        from little_loops.issue_parser import _OPTION_HEADING_RE, _OPTION_PATTERNS
+
+        marker = "**option a**"
+        assert _OPTION_PATTERNS[1].match(marker)
+        assert _OPTION_HEADING_RE.match(marker)
+
+    def test_corpus_has_no_phantom_bold_label_options(self) -> None:
+        """Corpus-wide invariant (the acceptance bar restated per this issue's
+        *Revised requirements*, replacing the struck repeated-letter guard):
+        no bold_label-tier LocatedOption anywhere in `.issues/` carries a
+        label matching one of the phantom shapes this issue's exhaustively-
+        enumerated `Rejection set` measured (20 lines, all prose) -- these
+        substrings are a representative sample of that set, not the full 20.
+        Anchored to immediately follow the identifier (no `:`/`—`/`-`/`(`
+        separator in between) so a legitimate title that merely *mentions*
+        one of these words later on (e.g. "Option A -- add `evidence` list
+        to ...") is not a false positive."""
+        from little_loops.issue_parser import locate_enumerable_options
+
+        issues_dir = Path(__file__).parent.parent.parent / ".issues"
+        if not issues_dir.exists():
+            pytest.skip("no .issues/ corpus in this checkout")
+
+        phantom_label_re = re.compile(
+            r"^Option\s+[A-Za-z0-9]+[′']?\s+"
+            r"(?:evidence\b|was already applied\b|implementation spec\b"
+            r"|validation gap\b|is recommended\b|does NOT stop\b)",
+            re.IGNORECASE,
+        )
+        offenders = []
+        for path in issues_dir.rglob("*.md"):
+            content = path.read_text(encoding="utf-8", errors="ignore")
+            located = locate_enumerable_options(content)
+            if located.pattern != "bold_label":
+                continue
+            for option in located.options:
+                if phantom_label_re.match(option.label):
+                    offenders.append((str(path), option.label))
+        assert offenders == []
+
+
+class TestBug3285CorpusDifferential:
+    """BUG-3285 Tests section: 'Corpus differential', 'Improvement pins',
+    'Phantom-block removal, positively asserted', 'Glob-in-title survivors',
+    'Variant-suffix survivors', and the `_OPTION_HEADING_RE`-side corpus
+    differential.
+
+    Measured on this repo's `.issues/` corpus at the tree this fix lands on
+    (3199 files): the tightened bold-marker regex moves exactly 8 files
+    across the three observables (`locate_enumerable_options`
+    count/pattern/heading, `_unapplied_decision` report count,
+    `count_unresolved_options`) -- 7 of the 8 are
+    `done`/`cancelled`/`deferred`; `FEAT-2186` is the one `open` file and the
+    one whose fix is a behavioral improvement (drops a phantom, falls
+    through to the bullet tier, finds the two real options), not just
+    quieter output. `BUG-3177`, `BUG-3253` (variant-suffix survivors) and
+    `FEAT-2339` (glob-in-title survivors) are pinned unchanged.
+    """
+
+    _ISSUES_ROOT = Path(__file__).parent.parent.parent / ".issues"
+
+    # relative path -> (count, pattern, heading) after the fix
+    _LOCATE_PINS = {
+        "bugs/P2-BUG-1484-config-init-imports-orchestrationconfig-clconfig-before-defined-in-core.md": (
+            2,
+            "bold_label",
+            "Proposed Solution",
+        ),
+        "enhancements/P3-ENH-2967-autodev-redderives-design-fail-predicate-in-three-blocks.md": (
+            2,
+            "bold_label",
+            "Proposed Solution",
+        ),
+        "enhancements/P4-ENH-1555-harness-optimize-trajectory-path-refactor.md": (
+            2,
+            "bold_label",
+            "Implementation Steps",
+        ),
+        "features/P2-FEAT-1244-benchmark-fragment-core.md": (
+            2,
+            "bold_label",
+            "Design Decision Required",
+        ),
+        "features/P4-FEAT-2186-gemini-hook-adapter.md": (
+            2,
+            "bullet",
+            "Decision — RATIFIED 2026-06-24 (Option A; see ARCHITECTURE-046)",
+        ),
+    }
+
+    # relative path -> (count, pattern) unchanged by the fix
+    _UNCHANGED_LOCATE_PINS = {
+        "bugs/P2-BUG-3177-ll-mcp-serves-zero-prompts-on-a-non-editable-install-skills-is-not-package-data-and-_find_plugin_root-falls-back-to-the-site-packages-parent.md": (
+            3,
+            "bold_label",
+        ),
+        "bugs/P3-BUG-3253-auto-correction-rate-denominator-includes-pre-phase1-gate-blocked-issues.md": (
+            4,
+            "bold_label",
+        ),
+        "features/P3-FEAT-2339-per-epic-integration-branch-strategy.md": (2, "bold_label"),
+    }
+
+    # relative path -> unapplied_decision report count after the fix
+    _UNAPPLIED_PINS = {
+        "bugs/P2-BUG-1484-config-init-imports-orchestrationconfig-clconfig-before-defined-in-core.md": 3,
+        "enhancements/P3-ENH-2967-autodev-redderives-design-fail-predicate-in-three-blocks.md": 5,
+        "bugs/P2-BUG-2735-evaluation-quality-sample-reads-nonexistent-list-json-fields.md": 0,
+        "features/P3-FEAT-2339-per-epic-integration-branch-strategy.md": 14,  # unchanged
+    }
+
+    # relative path -> count_unresolved_options after the fix
+    _UNRESOLVED_PINS = {
+        "enhancements/P3-ENH-2226-external-runtime-configurable-fsm-route-decision-tables.md": 0,
+        "enhancements/P4-ENH-1555-harness-optimize-trajectory-path-refactor.md": 0,
+        "features/P2-FEAT-1076-parallel-state-executor-dispatch.md": 0,
+        "features/P4-FEAT-2186-gemini-hook-adapter.md": 0,
+    }
+
+    def _read(self, relpath: str) -> str:
+        path = self._ISSUES_ROOT / relpath
+        if not path.exists():
+            pytest.skip(f"no {relpath} in this checkout's .issues/ corpus")
+        return path.read_text(encoding="utf-8", errors="ignore")
+
+    def test_locate_enumerable_options_pins(self) -> None:
+        from little_loops.issue_parser import locate_enumerable_options
+
+        if not self._ISSUES_ROOT.exists():
+            pytest.skip("no .issues/ corpus in this checkout")
+
+        for relpath, expected in self._LOCATE_PINS.items():
+            located = locate_enumerable_options(self._read(relpath))
+            assert (located.count, located.pattern, located.heading) == expected, relpath
+
+    def test_locate_enumerable_options_unchanged_pins(self) -> None:
+        from little_loops.issue_parser import locate_enumerable_options
+
+        if not self._ISSUES_ROOT.exists():
+            pytest.skip("no .issues/ corpus in this checkout")
+
+        for relpath, expected in self._UNCHANGED_LOCATE_PINS.items():
+            located = locate_enumerable_options(self._read(relpath))
+            assert (located.count, located.pattern) == expected, relpath
+
+    def test_unapplied_decision_pins(self) -> None:
+        from little_loops.issue_parser import _unapplied_decision
+
+        if not self._ISSUES_ROOT.exists():
+            pytest.skip("no .issues/ corpus in this checkout")
+
+        for relpath, expected in self._UNAPPLIED_PINS.items():
+            reasons = _unapplied_decision(self._read(relpath))
+            assert len(reasons) == expected, (relpath, reasons)
+
+    def test_count_unresolved_options_pins(self) -> None:
+        from little_loops.issue_parser import count_unresolved_options
+
+        if not self._ISSUES_ROOT.exists():
+            pytest.skip("no .issues/ corpus in this checkout")
+
+        for relpath, expected in self._UNRESOLVED_PINS.items():
+            n = count_unresolved_options(self._read(relpath))
+            assert n == expected, relpath
+
+    def test_corpus_sweep_does_not_crash(self) -> None:
+        """Mirrors TestUnappliedDecisionLiveCorpusSweep's idiom for the two
+        newly-touched observables."""
+        from little_loops.issue_parser import count_unresolved_options, locate_enumerable_options
+
+        if not self._ISSUES_ROOT.exists():
+            pytest.skip("no .issues/ corpus in this checkout")
+
+        for path in self._ISSUES_ROOT.rglob("*.md"):
+            content = path.read_text(encoding="utf-8", errors="ignore")
+            located = locate_enumerable_options(content)
+            assert isinstance(located.count, int)
+            assert isinstance(count_unresolved_options(content), int)
 
 
 class TestStackedFindingsBlocks:

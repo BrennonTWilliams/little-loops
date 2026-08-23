@@ -4,11 +4,12 @@ type: BUG
 title: Option-marker regexes match bold prose, so analysis text is counted as an option
   block
 priority: P3
-status: open
+status: done
 parent: EPIC-3290
 discovered_by: manual-review
 discovered_date: '2026-08-21'
 captured_at: '2026-08-21T18:55:00Z'
+completed_at: '2026-08-23T00:11:43Z'
 labels:
 - issue-parser
 - locate-options
@@ -112,6 +113,19 @@ Three consumers degrade, in increasing order of consequence:
    no `> **Selected:**` callout, so it counts as unresolved forever. This flips the exit code of the
    first probe in `resolve-decision.yaml`'s gate (`:63`), which can re-enter `decide` on an issue
    that is fully decided.
+
+   > **Qualified 2026-08-22 (review pass): that exit code is a conjunction, and this issue owns
+   > only half of it.** `cmd_check_open_questions` exits 0 only when
+   > `unresolved_options == 0 **and** open_questions == 0` — the second half is
+   > `count_open_questions_in_sections`, a free-form hedge scan this issue does not touch. So
+   > "flips the exit code" is true only where the hedge half is already clean. Measured across the
+   > four files whose option count drops to 0 (`ENH-1555`, `ENH-2226`, `FEAT-1076`, `FEAT-2186`),
+   > all four have `hedges == 0`, so the gate does genuinely flip `1 → 0` on today's corpus and
+   > this consequence stands. `FEAT-2339` is the standing counterexample: option half already
+   > clean, `hedges == 2`, exit stays 1 regardless of anything this issue does. The hedge half's
+   > own false-positive class is **BUG-3296** (citations of an open question counted as hedges),
+   > which flips 11 gates on its own; **BUG-3278:346-349** diagnosed the conjunction first and
+   > routes around it rather than fixing it. Independent fixes, one shared gate, either order.
 4. **`_unapplied_decision` silently self-disables on any issue carrying a phantom** (added
    2026-08-22, review pass — previously unrecorded, and the most consequential of the four).
    `_unapplied_decision` resolves the selected block by label:
@@ -822,6 +836,7 @@ marker.
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-23T00:10:58 - `81716d8c-dc95-4755-aaff-e3574ddf7605.jsonl`
 - `/ll:confidence-check` - 2026-08-22T23:40:56 - `fd41eb6b-c0f1-4696-9c99-e8f7afeca21a.jsonl`
 - `/ll:confidence-check` - 2026-08-21T19:45:57 - `b7beb415-ab2b-43a0-8c47-c48190d638d9.jsonl`
 - `/ll:verify-issues` - 2026-08-21T19:42:56 - `72e2ec18-4b32-4231-9b8e-7263fc707cfd.jsonl`
@@ -830,3 +845,41 @@ marker.
 - `/ll:wire-issue` - 2026-08-21T19:27:19 - `eae61f16-add8-4659-bd44-04cb88cf7241.jsonl`
 - `/ll:refine-issue` - 2026-08-21T19:21:07 - `bc62da4a-c398-499d-b656-61818f561aff.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-21T19:06:56 - `8c9f6596-f570-42d1-a2a2-c4e750b706f8.jsonl`
+
+---
+
+## Resolution
+
+- **Action**: fix
+- **Completed**: 2026-08-23
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/issue_parser.py`: hoisted the composed `_BOLD_OPTION_MARKER`
+  fragment settled under § *Program Design → Decision Rules* item 3 (identifier +
+  optional prime/apostrophe variant suffix, line-bounded parenthetical qualifier,
+  line-bounded separator-introduced title tolerant of a non-closing literal `*`);
+  `_OPTION_PATTERNS[1]` (`bold_label` tier) and `_OPTION_HEADING_RE`'s bold
+  alternative now both compile it with `re.MULTILINE | re.IGNORECASE`, converging
+  the two independently-authored encodings per the Open Question decision.
+- `scripts/tests/test_issue_parser.py`: added `TestBug3285BoldOptionMarkerTightening`
+  (accepted-shape / prose-rejection fixtures, variant-suffix survivors, glob-in-title
+  survivors, single-line title bound, flag-normalization pin, corpus-wide phantom-label
+  invariant) and `TestBug3285CorpusDifferential` (pinned before/after values for the 8
+  files the fix moves — `ENH-2967`, `BUG-1484`, `FEAT-1244`, `ENH-1555`, `FEAT-2186`,
+  `BUG-2735`, `ENH-2226`, `FEAT-1076` — plus unchanged-pin fixtures for `BUG-3177`,
+  `BUG-3253`, `FEAT-2339`); also corrected 3 stale line-number entries in
+  `TestPriorityRegexCompletenessAllowlist._ALLOWLIST` shifted by the new constant.
+
+### Verification Results
+- Tests: PASS (`python -m pytest scripts/tests/` — 20829 passed, 51 skipped)
+- Lint: PASS (`ruff check`)
+- Format: PASS (`ruff format --check`)
+- Types: PASS (`python -m mypy scripts/little_loops/issue_parser.py`)
+- Corpus differential: measured directly against this repo's live `.issues/` tree
+  (3199 files) — exactly 8 files move across `locate_enumerable_options`
+  (count/pattern/heading), `_unapplied_decision`, and `count_unresolved_options`;
+  7 of the 8 are `done`/`cancelled`/`deferred`, the one `open` file (`FEAT-2186`)
+  improves (drops a phantom, falls through to the `bullet` tier, finds its two real
+  options); no file loses a real option. Matches this issue's own
+  § *Composed-encoding differential* measurement.
