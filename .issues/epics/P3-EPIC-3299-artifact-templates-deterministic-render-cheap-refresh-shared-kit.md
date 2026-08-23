@@ -105,6 +105,9 @@ instead of three divergent copies of `policy-builder`.
 - **FEAT-2301** — Visual builder for policy-router and rubric FSM loops (UX
   shell) — **done**; the `policy-builder` template this epic generalizes, and
   the sole consumer ENH-3035 must port onto the kit
+- **FEAT-3304** — Embed sql.js + filtered history.db export for queryable
+  single-file artifacts — foundation-tier dashboard artifact; first consumer
+  of the ENH-3035 shared template kit
 
 FEAT-3036's phases 1–4 are expected to decompose into further children as they
 are scoped.
