@@ -1013,17 +1013,27 @@ measured to false-positive on 77% of the files it newly matched (ordinary bold-l
 lists are this repo's dominant list convention); scoping to just this one subsection and
 requiring 2+ matches shrinks that to 2 false positives out of 3 gains corpus-wide — accepted
 deliberately, since this probe is a cheap pre-check whose false positives cost one harmless
-`/ll:refine-issue` detour, not a wrong final decision; then, as a final tier, the Pattern E
-"un-preferenced decision directive" heuristic (`_locate_directive_alternatives`, ENH-2936,
-reported as `pattern="provisional_e"`) — an imperative decide-marker ("decide before
-implementation", "do not leave unaddressed", "must be decided", "pick one", "must be made
-before implementation") co-occurring within 3 lines of a 2+-alternative "X or Y"/"X versus Y"
-shape, with no stated preference, scanned over `## Scope Boundaries` / `## Proposed Change` /
-`## Proposed Solution` / `## Open Questions` / `## Program Design` (BUG-3293 added the last
-of these, plus the "must be made before implementation" and "versus" alternatives — measured
-to add exactly one corpus-wide match, zero spurious). A Pattern E match always reports
-`count=2` with a single `LocatedOption` spanning the matched window — it only proves a
-decision exists, not how many alternatives, so individual alternatives are not split out.
+`/ll:refine-issue` detour, not a wrong final decision; then, as a final fallback tier when
+nothing else has matched anywhere in the document, the Pattern E "un-preferenced decision
+directive" heuristic (`_locate_directive_alternatives`, ENH-2936, reported as
+`pattern="provisional_e"`) — an imperative decide-marker ("decide before implementation", "do
+not leave unaddressed", "must be decided", "pick one", "must be made before implementation")
+co-occurring within 3 lines of a 2+-alternative "X or Y"/"X versus Y" shape, with no stated
+preference, scanned over `## Scope Boundaries` / `## Proposed Change` / `## Proposed Solution` /
+`## Open Questions` / `## Program Design` (BUG-3293 added the last of these, plus the "must be
+made before implementation" and "versus" alternatives — measured to add exactly one
+corpus-wide match, zero spurious). A Pattern E match always reports `count=2` with a single
+`LocatedOption` spanning the matched window — it only proves a decision exists, not how many
+alternatives, so individual alternatives are not split out.
+
+BUG-3287: the Pattern E directive probe additionally runs **alongside** the tier scan and the
+whole-document H2 scan, not only as the terminal fallback — a document holding both an
+enumerated option set and a separate prose decision directive reports both. When a tier or the
+H2 scan wins, a co-located directive is attached as `residual_directive` rather than replacing
+the winning result — `count`/`pattern`/`heading` stay byte-identical to the tier-only result
+(the directive would otherwise silently preempt and hide a second, distinct decision point). A
+`decision_rules_numbered` win explicitly sets `residual_directive = None` — that stage is
+out of scope for the directive probe (measured 0/0 corpus impact; see BUG-3287).
 
 **Parameters:**
 - `content` - Full issue file text
@@ -1033,6 +1043,7 @@ decision exists, not how many alternatives, so individual alternatives are not s
 - `pattern: str | None` - Which tier fired (`section_header` | `bold_label` | `numbered` | `bullet` | `decision_rules_numbered` | `provisional_e`), or `None` when `count == 0`
 - `heading: str | None` - The section the options were found under, or `None` when `count == 0`
 - `options: list[LocatedOption]` - Per-option spans; each `LocatedOption` has `label: str`, `text: str`, `start_line: int`, `end_line: int` (1-indexed), and a `to_dict()` for JSON serialization. `LocatedOptions.to_dict()` nests the full option list.
+- `residual_directive: LocatedOptions | None` - A co-located Pattern E directive preempted by a tier/H2-scan win (BUG-3287), or `None`. Always `None` on the nested object itself (no recursion).
 
 #### count_enumerable_options
 

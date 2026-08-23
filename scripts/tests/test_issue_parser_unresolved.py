@@ -46,6 +46,7 @@ class TestLocatedOptionsDataclass:
             "pattern": "bold_label",
             "heading": "Proposed Solution",
             "options": [option.to_dict()],
+            "residual_directive": None,
         }
 
     def test_located_options_defaults_to_empty_options_list(self) -> None:
@@ -131,6 +132,76 @@ class TestLocatedOptionsPatternNames:
         located = locate_enumerable_options(content)
         assert located.pattern == "provisional_e"
         assert located.heading == "Program Design"
+
+
+class TestDirectiveNotPreempted:
+    """BUG-3287 defect 1: a tier match must not hide a co-located Pattern E
+    directive — the directive is attached as ``residual_directive`` rather than
+    silently dropped. Settled Option B: ``count``/``pattern``/``heading`` stay
+    byte-identical to the tier-only result."""
+
+    FIXTURE_PATH = (
+        __import__("pathlib").Path(__file__).parent
+        / "fixtures"
+        / "issues"
+        / "BUG-9301-tier-match-preempts-directive.md"
+    )
+
+    def test_tier_match_reports_residual_directive(self) -> None:
+        from little_loops.issue_parser import locate_enumerable_options
+
+        content = self.FIXTURE_PATH.read_text()
+        located = locate_enumerable_options(content)
+        assert located.pattern == "bold_label"
+        assert located.heading == "Proposed Solution"
+        assert located.count == 2
+        assert located.residual_directive is not None
+        assert located.residual_directive.heading == "Scope Boundaries"
+
+    def test_residual_directive_is_nested_container_shape(self) -> None:
+        """The field is LocatedOptions, not a bare LocatedOption — count==2 with
+        exactly one option span, per _locate_directive_alternatives's contract."""
+        from little_loops.issue_parser import locate_enumerable_options
+
+        content = self.FIXTURE_PATH.read_text()
+        located = locate_enumerable_options(content)
+        rd = located.residual_directive
+        assert rd is not None
+        assert rd.pattern == "provisional_e"
+        assert rd.count == 2
+        assert len(rd.options) == 1
+
+    def test_residual_directive_never_nests_further(self) -> None:
+        from little_loops.issue_parser import locate_enumerable_options
+
+        content = self.FIXTURE_PATH.read_text()
+        located = locate_enumerable_options(content)
+        rd = located.residual_directive
+        assert rd is not None
+        assert rd.residual_directive is None
+
+    def test_no_directive_leaves_residual_directive_none(self) -> None:
+        from little_loops.issue_parser import locate_enumerable_options
+
+        content = "## Proposed Solution\n\n**Option A**: Do X.\n\n**Option B**: Do Y.\n"
+        located = locate_enumerable_options(content)
+        assert located.pattern == "bold_label"
+        assert located.residual_directive is None
+
+    def test_decision_rules_numbered_sets_residual_directive_none_explicitly(self) -> None:
+        """BUG-3287 § Scope boundary — decision_rules_numbered is out of scope for
+        the directive probe; the field must be explicitly None, not merely unset."""
+        from little_loops.issue_parser import locate_enumerable_options
+
+        content = (
+            "## Program Design\n\n"
+            "### Decision Rules\n\n"
+            "1. **Identifier shape.** The identifier is not `[A-Za-z0-9]+` alone.\n"
+            "2. **Title extent.** Whether a title may span more than one line.\n"
+        )
+        located = locate_enumerable_options(content)
+        assert located.pattern == "decision_rules_numbered"
+        assert located.residual_directive is None
 
 
 class TestCountEnumerableOptions:

@@ -227,6 +227,30 @@ class TestSessionLogCall:
         )
 
 
+class TestPhase3CountOneResidualDirectiveGuard:
+    """BUG-3287 ordering constraint: Phase 3's `count == 1` clear branch must not
+    fire when a residual_directive is present — otherwise decision_needed gets
+    cleared with a co-located Pattern E directive still open."""
+
+    def _phase_text(self) -> str:
+        content = SKILL_FILE.read_text()
+        start = content.index("## Phase 3: Extract Options")
+        next_heading = content.find("\n## Phase 3b:", start + 1)
+        end = next_heading if next_heading != -1 else len(content)
+        return content[start:end]
+
+    def test_count_one_branch_guards_on_residual_directive(self) -> None:
+        text = self._phase_text()
+        assert "residual_directive" in text, (
+            "Phase 3's count == 1 branch must reference residual_directive"
+        )
+
+    def test_count_one_clear_branch_still_documented(self) -> None:
+        text = self._phase_text()
+        assert "count == 1" in text
+        assert "decision_needed" in text
+
+
 class TestPhase3bInlineProvisionalScan:
     """Phase 3b must be documented in SKILL.md for AUTO_MODE + OPTIONS=0 path (BUG-1416)."""
 

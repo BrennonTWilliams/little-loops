@@ -1956,7 +1956,7 @@ to.
 
 #### `ll-issues check-decidable`
 
-Exit 0 if an issue has >=1 enumerable option to decide between (ENH-2443). Deterministic (no-LLM) companion to `/ll:decide-issue --validate-only` — re-implements the same option-extraction patterns in pure Python (`count_enumerable_options`), so FSM `shell` states can pre-check decidability without dispatching an LLM call. Mirrors the `ll-issues format-check` / `ensure_formatted` precedent (ENH-2426). Also covers Pattern E — un-preferenced decision directives (ENH-2936): a passage naming 2+ concrete alternatives alongside an imperative decide-marker ("decide before implementation", "do not leave unaddressed") but no stated preference, not just formal `### Option A/B` blocks.
+Exit 0 if an issue has >=1 enumerable option to decide between (ENH-2443). Deterministic (no-LLM) companion to `/ll:decide-issue --validate-only` — re-implements the same option-extraction patterns in pure Python (`count_enumerable_options`), so FSM `shell` states can pre-check decidability without dispatching an LLM call. Mirrors the `ll-issues format-check` / `ensure_formatted` precedent (ENH-2426). Also covers Pattern E — un-preferenced decision directives (ENH-2936): a passage naming 2+ concrete alternatives alongside an imperative decide-marker ("decide before implementation", "do not leave unaddressed") but no stated preference, not just formal `### Option A/B` blocks. The Pattern E probe runs alongside every other stage, not only when they all miss (BUG-3287): when a tier match wins the gate and a separate directive is also present, the success line names it as a residual, uncounted decision point (`+ residual decision directive in '<heading>' (line N) — not counted`) rather than silently dropping it.
 
 | Argument | Description |
 |----------|-------------|
@@ -2045,10 +2045,13 @@ Print count/pattern/heading/spans of enumerable options in an issue (ENH-2950). 
 ```bash
 ll-issues locate-options ENH-2950 --json
 # {"id": "ENH-2950", "count": 2, "pattern": "bold_label", "heading": "Proposed Solution",
-#  "options": [{"label": "Option A", "text": "...", "start_line": 12, "end_line": 14}, ...]}
+#  "options": [{"label": "Option A", "text": "...", "start_line": 12, "end_line": 14}, ...],
+#  "residual_directive": null}
 ```
 
-`pattern` names which precedence tier fired: `section_header` (`### Option A`), `bold_label` (`**Option A**: ...`), `numbered` (`1. **Option A** ...`), `bullet` (`- (a) ...`), `decision_rules_numbered` (2+ bold-numbered items under `## Program Design → ### Decision Rules`, e.g. `1. **Identifier shape.** ...`, BUG-3293), or `provisional_e` (an un-preferenced decision directive, ENH-2936/BUG-3293 — `options` holds a single span covering the matched window rather than per-alternative entries, since that heuristic only proves a decision exists, not how many alternatives). `pattern`/`heading` are `null` and `options` is empty when `count` is 0.
+`pattern` names which precedence tier fired: `section_header` (`### Option A`), `bold_label` (`**Option A**: ...`), `numbered` (`1. **Option A** ...`), `bullet` (`- (a) ...` / `- **(a) ...**`), `decision_rules_numbered` (2+ bold-numbered items under `## Program Design → ### Decision Rules`, e.g. `1. **Identifier shape.** ...`, BUG-3293), or `provisional_e` (an un-preferenced decision directive, ENH-2936/BUG-3293 — `options` holds a single span covering the matched window rather than per-alternative entries, since that heuristic only proves a decision exists, not how many alternatives). `pattern`/`heading` are `null` and `options` is empty when `count` is 0.
+
+`residual_directive` (BUG-3287): a co-located Pattern E directive that a tier or H2-scan match preempted from being the primary result — the directive probe runs alongside those stages, not only as a terminal fallback, so a document holding both an enumerated option set and a separate un-preferenced decision directive reports both. It is a nested `LocatedOptions` object (same shape, `pattern` always `"provisional_e"`) rather than a bare option, and is `null` whenever no such directive exists (including on the nested object itself — it never recurses). The human-readable (non-`--json`) output prints an additional `+ residual decision directive in '<heading>' (line N) — not counted` line when present.
 
 **FSM loop use**: Prefer `check-decidable` for a pure gate (`evaluate: {type: exit_code}`); use `locate-options --json` when a downstream state needs the actual option text, not just a boolean.
 

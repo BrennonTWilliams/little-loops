@@ -38,14 +38,20 @@ def cmd_check_decidable(config: BRConfig, args: argparse.Namespace) -> int:
             f"Decidable: {args.issue_id} has {located.count} enumerable option(s) "
             f"in '{located.heading}'"
         )
+        if located.residual_directive is not None:
+            rd = located.residual_directive
+            line = rd.options[0].start_line if rd.options else "?"
+            print(f"  + residual decision directive in '{rd.heading}' (line {line}) — not counted")
         return 0
 
     # BUG-3293: the two probes locate_enumerable_options() chains have different
     # scopes, so a count of 0 does not license one diagnosis. The tier sweep IS
     # document-wide (## Proposed Solution, the fallback sections, then every H2
-    # section including nested H3s via _iter_h2_sections) — for that probe, "not
-    # that it looked in the wrong place" holds. But the Pattern E directive probe
-    # (_locate_directive_alternatives) is bounded to a fixed section list
+    # section including nested H3s via _iter_h2_sections), and (BUG-3287) now
+    # also probes the Pattern E directive alongside every tier win rather than
+    # only as a terminal fallback — for that probe, "not that it looked in the
+    # wrong place" holds. But the Pattern E directive probe
+    # (_locate_directive_alternatives) is itself bounded to a fixed section list
     # (_DIRECTIVE_ALTERNATIVES_SECTIONS) and never runs elsewhere. A probe
     # observes an absence, not a cause: count == 0 is indistinguishable between
     # "none are written" and "some exist in a shape the locator does not

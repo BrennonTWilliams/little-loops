@@ -183,7 +183,7 @@ After extraction:
 
 - If `count == 0` and `AUTO_MODE = false`: print `No options found in Proposed Solution — nothing to decide.` and exit cleanly
 - If `count == 0` and `AUTO_MODE = true`: proceed to Phase 3b (Inline Decision Scan)
-- If `count == 1`: print `Only one option present — no decision required. Clearing decision_needed if set.` then proceed to Phase 7 (frontmatter update only: set `decision_needed: false`)
+- If `count == 1` and `residual_directive` is `null`: print `Only one option present — no decision required. Clearing decision_needed if set.` then proceed to Phase 7 (frontmatter update only: set `decision_needed: false`). If `count == 1` and `residual_directive` is non-null (BUG-3287), the document still holds a separate un-preferenced decision directive — do NOT clear `decision_needed`; proceed to Phase 4 scoring instead.
 - If `count >= 2`: proceed to Phase 4
 
 ---

@@ -48,4 +48,8 @@ def cmd_locate_options(config: BRConfig, args: argparse.Namespace) -> int:
         print(f"  heading: {located.heading}")
     for option in located.options:
         print(f"  - {option.label} (lines {option.start_line}-{option.end_line})")
+    if located.residual_directive is not None:
+        rd = located.residual_directive
+        line = rd.options[0].start_line if rd.options else "?"
+        print(f"  + residual decision directive in '{rd.heading}' (line {line}) — not counted")
     return 0

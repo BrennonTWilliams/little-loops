@@ -2026,7 +2026,7 @@ _OPTION_PATTERNS = (
     re.compile("^" + _BOLD_OPTION_MARKER, re.MULTILINE | re.IGNORECASE),
     re.compile(r"^\d+\.\s+(?:\*\*Option|[A-Z][^.]*\bapproach\b)", re.MULTILINE),
     re.compile(
-        r"^[-*]\s+(?:\([a-z0-9]\)\s+|\*{0,2}Option\s+[A-Za-z0-9])", re.MULTILINE | re.IGNORECASE
+        r"^[-*]\s+\*{0,2}(?:\([a-z0-9]\)\s*|Option\s+[A-Za-z0-9])", re.MULTILINE | re.IGNORECASE
     ),
 )
 
@@ -2068,6 +2068,12 @@ class LocatedOptions:
     pattern: str | None
     heading: str | None
     options: list[LocatedOption] = field(default_factory=list)
+    residual_directive: LocatedOptions | None = None
+    """A co-located Pattern E directive (BUG-3287) found *alongside* this result's
+    own tier/decision_rules match — populated only when a tier or
+    decision_rules_numbered match preempted a separate directive that would
+    otherwise have been reported on its own. ``None`` whenever no such directive
+    exists, and always ``None`` on the nested object itself (no recursion)."""
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -2075,6 +2081,9 @@ class LocatedOptions:
             "pattern": self.pattern,
             "heading": self.heading,
             "options": [o.to_dict() for o in self.options],
+            "residual_directive": self.residual_directive.to_dict()
+            if self.residual_directive
+            else None,
         }
 
 
@@ -2091,7 +2100,7 @@ def _extract_option_label(match_text: str) -> str:
     """Strip markdown decoration from a matched option heading/marker to get a label."""
     label = match_text.strip()
     label = re.sub(r"^\d+\.\s*", "", label)
-    label = re.sub(r"^[-*]\s*(?:\([a-z0-9]\)\s*)?", "", label)
+    label = re.sub(r"^[-*]\s*\*{0,2}(?:\([a-z0-9]\)\s*)?", "", label)
     label = label.strip("#").strip()
     label = label.strip("*").strip()
     return label
@@ -2401,6 +2410,17 @@ def locate_enumerable_options(content: str) -> LocatedOptions:
     directive-alternatives heuristic (:func:`_locate_directive_alternatives`,
     ENH-2936) when (3) also finds nothing.
 
+    BUG-3287: the directive probe additionally runs *alongside* stages (1)-(2) —
+    not only as the terminal fallback — so a document holding both an enumerated
+    option set and a separate prose decision directive reports both. When a tier
+    match wins, the directive (if any) is attached as ``residual_directive``
+    rather than replacing the tier result — ``count``/``pattern``/``heading`` stay
+    byte-identical to the tier-only result (settled Option B; see BUG-3287
+    § Decision Rules). A ``decision_rules_numbered`` win explicitly sets
+    ``residual_directive = None`` (out of scope; see BUG-3287
+    § Scope boundary — decision_rules_numbered) rather than leaving it unset by
+    omission.
+
     Returns:
         A :class:`LocatedOptions`. ``heading`` is the exact H2/section name the
         options were found under, or ``None`` when ``count`` is 0 (nothing found
@@ -2409,14 +2429,19 @@ def locate_enumerable_options(content: str) -> LocatedOptions:
         ``decision_rules_numbered`` | ``provisional_e``), or ``None`` when
         ``count`` is 0. ``options`` carries the per-option spans the firing
         pattern computed (ENH-2950) — previously discarded by the
-        tuple-returning predecessor of this function.
+        tuple-returning predecessor of this function. ``residual_directive``
+        carries a co-located Pattern E directive preempted by a tier match
+        (BUG-3287), or ``None``.
     """
+    directive = _locate_directive_alternatives(content)
+
     result = _section_body_with_offset(content, "Proposed Solution")
     if result is not None:
         body, body_offset = result
         located = _locate_options_in_text(content, body, body_offset)
         if located is not None:
             located.heading = "Proposed Solution"
+            located.residual_directive = directive
             return located
 
     for heading in _OPTION_FALLBACK_SECTIONS:
@@ -2426,6 +2451,7 @@ def locate_enumerable_options(content: str) -> LocatedOptions:
             located = _locate_options_in_text(content, body, body_offset)
             if located is not None:
                 located.heading = heading
+                located.residual_directive = directive
                 return located
 
     best: LocatedOptions | None = None
@@ -2435,13 +2461,14 @@ def locate_enumerable_options(content: str) -> LocatedOptions:
             located.heading = heading_text
             best = located
     if best is not None:
+        best.residual_directive = directive
         return best
 
     decision_rules = _locate_decision_rules_numbered(content)
     if decision_rules is not None:
+        decision_rules.residual_directive = None
         return decision_rules
 
-    directive = _locate_directive_alternatives(content)
     if directive is not None:
         return directive
 

@@ -213,6 +213,88 @@ class TestCheckDecidablePatternEDirective:
         assert "OPTIONS_MISSING" in result.stderr
 
 
+class TestCheckDecidableResidualDirective:
+    """BUG-3287: a tier match co-located with a Pattern E directive still exits 0
+    (gate at `:36` unchanged), but the success line now names the preempted
+    directive rather than silently dropping it."""
+
+    def test_tier_match_success_line_names_residual_directive(self, temp_project_dir: Path) -> None:
+        body = (
+            "---\n"
+            "id: FEAT-9108\n"
+            "title: Test\n"
+            "type: feature\n"
+            "status: open\n"
+            "priority: P3\n"
+            "decision_needed: true\n"
+            "---\n\n"
+            "# FEAT-9108\n\n"
+            "## Summary\n\nTest.\n\n"
+            "## Proposed Solution\n\n"
+            "**Option A**: Do X.\n\n"
+            "**Option B**: Do Y.\n\n"
+            "## Scope Boundaries\n\n"
+            "- stamp it or move it to Out of scope with a stated reason — do not "
+            "leave it unaddressed\n\n"
+            "## Labels\n\n`feature`\n\n"
+        )
+        _write_issue(temp_project_dir, body)
+        result = _invoke(temp_project_dir, "check-decidable", "FEAT-9108")
+        assert result.returncode == 0, f"stdout={result.stdout!r} stderr={result.stderr!r}"
+        assert "Decidable" in result.stdout
+        assert "residual decision directive" in result.stdout
+        assert "Scope Boundaries" in result.stdout
+
+    def test_no_directive_omits_residual_line(self, temp_project_dir: Path) -> None:
+        body = (
+            "---\n"
+            "id: FEAT-9109\n"
+            "title: Test\n"
+            "type: feature\n"
+            "status: open\n"
+            "priority: P3\n"
+            "decision_needed: true\n"
+            "---\n\n"
+            "# FEAT-9109\n\n"
+            "## Summary\n\nTest.\n\n"
+            "## Proposed Solution\n\n"
+            "**Option A**: Do X.\n\n"
+            "**Option B**: Do Y.\n\n"
+            "## Labels\n\n`feature`\n\n"
+        )
+        _write_issue(temp_project_dir, body)
+        result = _invoke(temp_project_dir, "check-decidable", "FEAT-9109")
+        assert result.returncode == 0
+        assert "residual decision directive" not in result.stdout
+
+
+class TestCheckDecidableBoldWrappedBulletMarker:
+    """BUG-3287 part 2: the repo's idiomatic `- **(a) ...**` option shape is now
+    decidable (previously invisible to every tier)."""
+
+    def test_bold_wrapped_marker_exit_zero(self, temp_project_dir: Path) -> None:
+        body = (
+            "---\n"
+            "id: FEAT-9110\n"
+            "title: Test\n"
+            "type: feature\n"
+            "status: open\n"
+            "priority: P3\n"
+            "decision_needed: true\n"
+            "---\n\n"
+            "# FEAT-9110\n\n"
+            "## Summary\n\nTest.\n\n"
+            "## Proposed Solution\n\n"
+            "- **(a) Make the documented override real.**\n\n"
+            "- **(b) Remove the dead branch.**\n\n"
+            "## Labels\n\n`feature`\n\n"
+        )
+        _write_issue(temp_project_dir, body)
+        result = _invoke(temp_project_dir, "check-decidable", "FEAT-9110")
+        assert result.returncode == 0, f"stdout={result.stdout!r} stderr={result.stderr!r}"
+        assert "Decidable" in result.stdout
+
+
 class TestCheckDecidableDecisionRulesNumbered:
     """BUG-3293: bold-numbered decision items under Program Design -> Decision
     Rules are decidable; an ordinary bold-led numbered step list elsewhere is not."""

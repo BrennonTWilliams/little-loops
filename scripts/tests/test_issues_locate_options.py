@@ -120,6 +120,37 @@ class TestLocateOptionsJsonFlag:
         assert data["heading"] == "Scope Boundaries"
         assert len(data["options"]) == 1
 
+    def test_bold_wrapped_bullet_marker_json_shape(self, temp_project_dir: Path) -> None:
+        """BUG-3287 part 2: `- **(a) ...**` — the repo's idiomatic option shape,
+        previously unreachable by any tier — now matches `bullet`. The label
+        symmetry fix makes its label match the plain `- (a) ...` shape's label
+        (empty — the label extractor only strips the matched marker prefix, it
+        never captures the trailing option text for either shape)."""
+        body = (
+            "---\n"
+            "id: FEAT-9210\n"
+            "title: Test\n"
+            "type: feature\n"
+            "status: open\n"
+            "priority: P3\n"
+            "---\n\n"
+            "# FEAT-9210\n\n"
+            "## Summary\n\nTest.\n\n"
+            "## Proposed Solution\n\n"
+            "- **(a) Make the documented override real.**\n\n"
+            "- **(b) Remove the dead branch.**\n\n"
+            "## Labels\n\n`feature`\n\n"
+        )
+        _write_issue(temp_project_dir, body)
+        result = _invoke(temp_project_dir, "locate-options", "FEAT-9210", "--json")
+        assert result.returncode == 0, f"stdout={result.stdout!r} stderr={result.stderr!r}"
+        data = json.loads(result.stdout)
+        assert data["count"] == 2
+        assert data["pattern"] == "bullet"
+        assert data["heading"] == "Proposed Solution"
+        assert data["options"][0]["label"] == ""
+        assert data["options"][1]["label"] == ""
+
     def test_no_options_json_shape(self, temp_project_dir: Path) -> None:
         body = (
             "---\n"
@@ -175,6 +206,94 @@ class TestLocateOptionsJsonFlag:
         assert "Unrelated analysis prose" not in last_option["text"]
         heading_line = body.splitlines().index("### Codebase Research Findings") + 1
         assert last_option["end_line"] < heading_line
+
+
+class TestResidualDirectiveJsonShape:
+    """BUG-3287 observability guard: a tier match co-located with a Pattern E
+    directive must surface a non-null top-level `residual_directive` in the
+    `--json` payload — the field alone (without this CLI-layer serialization)
+    leaves output byte-identical to today's tree (Option B is inert without it)."""
+
+    def test_tier_and_directive_both_present_json_shape(self, temp_project_dir: Path) -> None:
+        body = (
+            "---\n"
+            "id: FEAT-9205\n"
+            "title: Test\n"
+            "type: feature\n"
+            "status: open\n"
+            "priority: P3\n"
+            "---\n\n"
+            "# FEAT-9205\n\n"
+            "## Summary\n\nTest.\n\n"
+            "## Proposed Solution\n\n"
+            "**Option A**: Do X.\n\n"
+            "**Option B**: Do Y.\n\n"
+            "## Scope Boundaries\n\n"
+            "- stamp it or move it to Out of scope with a stated reason — do not "
+            "leave it unaddressed\n\n"
+            "## Labels\n\n`feature`\n\n"
+        )
+        _write_issue(temp_project_dir, body)
+        result = _invoke(temp_project_dir, "locate-options", "FEAT-9205", "--json")
+        assert result.returncode == 0, f"stdout={result.stdout!r} stderr={result.stderr!r}"
+        data = json.loads(result.stdout)
+        assert data["count"] == 2
+        assert data["pattern"] == "bold_label"
+        assert data["heading"] == "Proposed Solution"
+        rd = data["residual_directive"]
+        assert rd is not None
+        assert rd["pattern"] == "provisional_e"
+        assert rd["heading"] == "Scope Boundaries"
+        assert rd["count"] == 2
+        assert len(rd["options"]) == 1
+        assert rd["residual_directive"] is None
+
+    def test_no_directive_reports_residual_directive_null(self, temp_project_dir: Path) -> None:
+        body = (
+            "---\n"
+            "id: FEAT-9206\n"
+            "title: Test\n"
+            "type: feature\n"
+            "status: open\n"
+            "priority: P3\n"
+            "---\n\n"
+            "# FEAT-9206\n\n"
+            "## Summary\n\nTest.\n\n"
+            "## Proposed Solution\n\n"
+            "**Option A**: Do X.\n\n"
+            "**Option B**: Do Y.\n\n"
+            "## Labels\n\n`feature`\n\n"
+        )
+        _write_issue(temp_project_dir, body)
+        result = _invoke(temp_project_dir, "locate-options", "FEAT-9206", "--json")
+        assert result.returncode == 0
+        data = json.loads(result.stdout)
+        assert data["residual_directive"] is None
+
+    def test_residual_directive_line_in_text_output(self, temp_project_dir: Path) -> None:
+        body = (
+            "---\n"
+            "id: FEAT-9207\n"
+            "title: Test\n"
+            "type: feature\n"
+            "status: open\n"
+            "priority: P3\n"
+            "---\n\n"
+            "# FEAT-9207\n\n"
+            "## Summary\n\nTest.\n\n"
+            "## Proposed Solution\n\n"
+            "**Option A**: Do X.\n\n"
+            "**Option B**: Do Y.\n\n"
+            "## Scope Boundaries\n\n"
+            "- stamp it or move it to Out of scope with a stated reason — do not "
+            "leave it unaddressed\n\n"
+            "## Labels\n\n`feature`\n\n"
+        )
+        _write_issue(temp_project_dir, body)
+        result = _invoke(temp_project_dir, "locate-options", "FEAT-9207")
+        assert result.returncode == 0, f"stdout={result.stdout!r} stderr={result.stderr!r}"
+        assert "residual decision directive" in result.stdout
+        assert "Scope Boundaries" in result.stdout
 
 
 class TestLocateOptionsErrorHandling:
