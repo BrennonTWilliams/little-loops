@@ -126,6 +126,28 @@ Two consequences for this issue:
    - **But Implementation Step 4's fixture comparison must be taken against the tree this lands
      on.** If Phase 7c's expected-output oracle is captured before BUG-3285 lands and validated
      after, the diff includes BUG-3285's block-set movement and reads as a Phase 7c defect.
+
+   > **Mechanism identified and measured 2026-08-22 (review pass) — stronger than "shifts which
+   > blocks exist".** On a phantom-carrying document `_unapplied_decision` returns **`[]`
+   > outright**, not a shifted list. `_option_label("**Option A evidence**")` yields `A`, which
+   > collides with the real Option A, so the selected-block resolution
+   > `matching = [i for i, (_, _, heading) in enumerate(spans) if _option_label(heading) == label]`
+   > fails its `if len(matching) != 1: return []` guard (`issue_parser.py:1568-1571`). The phantom
+   > does not add a false report — it **suppresses every true one**, and with it the whole
+   > blocking `unapplied_decision` gap class on that issue. Filed as BUG-3285 consequence 4.
+   >
+   > Consequences for this issue, beyond the baseline caveat above:
+   >
+   > - **Phase 7c silently no-ops today on exactly the documents BUG-3285 repairs.**
+   >   `_unapplied_decision` is named here (`:315`) as "the sole existing entry point Phase 7c
+   >   drives"; on a phantom-carrying issue it yields nothing to drive. Measured: `ENH-2967`
+   >   `0 → 5` reports and `BUG-1484` `0 → 3` once BUG-3285 lands.
+   > - **Implementation Step 4's oracle cannot be captured on a phantom-carrying fixture at all
+   >   before BUG-3285 lands** — not "the diff will include movement", but "the detector produces
+   >   nothing to diff". Choose fixtures whose option letters are already unique, or capture the
+   >   oracle post-BUG-3285.
+   > - Still **not** promoted to `blocked_by`, for the reason already given: this changes how much
+   >   the detector sees, not whether what it reports is trustworthy, which remains BUG-3289's.
      Name the baseline commit in the fixture's docstring, the way BUG-3278 assertion (c5) does for
      the same function. See BUG-3285 § *Second blast radius*.
 

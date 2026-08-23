@@ -321,6 +321,15 @@ r"^[-*]\s+\*{0,2}(?:\([a-z0-9]\)\s*|Option\s+[A-Za-z0-9])"   # MULTILINE | IGNOR
 Hoists `\*{0,2}` out of the `Option` alternative so it covers the `(a)` marker too, and relaxes
 the post-marker `\s+` to `\s*`.
 
+> ⚠ **Added 2026-08-22 (pre-implementation review 2) — widen `_extract_option_label` in the same
+> step.** The label-stripping regex (`issue_parser.py:2082`,
+> `^[-*]\s*(?:\([a-z0-9]\)\s*)?`) does not tolerate a bold wrapper before the marker, so the
+> newly-reachable shapes get asymmetric labels. Measured: `- (a) foo` → `label ''` today, while
+> `- **(a) foo**` → `label '(a)'` after part 2 — the `**` blocks the marker-stripping group, and
+> the later `strip("*")` removes only the asterisks, leaving the marker. Cosmetic, but it surfaces
+> in `locate-options --json` `options[].label`. Apply the same hoist there —
+> `^[-*]\s*\*{0,2}(?:\([a-z0-9]\)\s*)?` — and pin both shapes' labels in the part 2 tests.
+
 ### Ordering constraint
 
 Part 2 without part 1 **introduces a new false-clear**. Verified against BUG-3229:
@@ -454,6 +463,13 @@ site rather than an accident of control flow.
   emit `residual_directive` or the field is invisible to `locate-options --json` (part 1a).
   **Required under Option B, not optional** — this is now the *only* edit that makes the field
   externally observable
+- `scripts/little_loops/issue_parser.py` — `_extract_option_label` (`:2078-2085`) gains the same
+  `\*{0,2}` hoist so bold-wrapped markers strip to the same labels as plain ones (added 2026-08-22,
+  pre-implementation review 2 — see § *Part 2*)
+- `scripts/little_loops/cli/issues/locate_options.py` — one human-readable line naming the
+  residual directive when present, for parity with part 1b's `check-decidable` line; without it
+  the non-`--json` path silently omits what the JSON payload carries (added 2026-08-22; promoted
+  from *Dependent Files*)
 - `scripts/little_loops/cli/issues/check_decidable.py` — the success-line `print(` at `:37-40`
   gains a residual-directive line (part 1b). **The `located.count >= 1` gate at `:36` is
   unchanged.**
@@ -482,6 +498,8 @@ site rather than an accident of control flow.
   > ⚠ Promoted to *Files to Modify* under Option B — see part 1b (reporting only; the gate itself
   > does not change). Range corrected `:19-52` → `:19-61` (BUG-3294 grew the function).
 - `scripts/little_loops/cli/issues/locate_options.py:19-51` — `--json` payload
+  > ⚠ Promoted to *Files to Modify* 2026-08-22 — gains a human-readable residual-directive parity
+  > line (pre-implementation review 2)
 - `scripts/little_loops/issues/fold_research_findings.py:178` — prose reference to
   `count_enumerable_options`
 - `scripts/little_loops/loops/oracles/resolve-decision.yaml:47-67` (`check_decision_decidable`)
@@ -521,6 +539,24 @@ site rather than an accident of control flow.
   > (`scripts/tests/test_issue_parser.py:5563`, `test_corpus_sweep_does_not_crash` at `:5585`) —
   > skip-if-corpus-absent, `Path(__file__).resolve().parents[2]`, `rglob("*.md")`.
   > (Anchors re-corrected 2026-08-22 from `:5063`/`:5085`.)
+  >
+  > ⚠ **Mechanism + persistence specified 2026-08-22 (pre-implementation review 2).** Two things
+  > this bullet left open:
+  >
+  > 1. **The "before" side needs an explicit mechanism** — no stored baseline exists (per
+  >    § *Codebase Research Findings*, neither corpus-sweep precedent diffs against a prior run).
+  >    The only in-run form is: keep the **old tier-3 regex as a literal in the test**, monkeypatch
+  >    it into `_OPTION_PATTERNS[3]`, sweep the corpus, then sweep again with the live code, and
+  >    diff per file. State this in the test docstring so the literal isn't later "cleaned up" into
+  >    a reference to the live pattern — which would make the test vacuously self-comparing.
+  > 2. **The live-corpus form is a landing gate, not a permanent suite member.** Any future issue
+  >    file whose shape makes it a new mover (a stray `- (a)` bullet outranking a numbered list)
+  >    would fail the suite on an unrelated commit, and the four pinned files are live documents
+  >    this very pipeline edits. Run the live-corpus differential at Implementation Steps 3/6 to
+  >    certify the landing; persist the regression on **frozen fixture copies** (the four movers,
+  >    2–3 of the preempted seven, one `0 → N` sample) under `scripts/tests/`, and keep any
+  >    permanent live-corpus sweep to content-independent invariants (crash safety; the directive
+  >    `(count 2, len(options) 1)` shape) per the codebase's existing corpus-test style.
 - `scripts/tests/test_issues_locate_options.py` — a case asserting `- **(a) …**` reports
   `pattern: "bullet"`
 - `scripts/tests/test_ll_issues_check_decidable.py` — a case asserting the same document is
@@ -579,6 +615,11 @@ _Wiring pass added by `/ll:wire-issue`:_
   2026-08-22
 - `docs/guides/DECISIONS_LOG_GUIDE.md:198` — states Pattern E is reached when formal option blocks
   are absent; becomes false under part 1
+- **In-code docs (added 2026-08-22, pre-implementation review 2 — the list above covered external
+  docs only):** `locate_enumerable_options`'s docstring (`issue_parser.py:2380-2400`) spells out
+  the four-stage "when (3) also finds nothing" precedence, and the BUG-3293 comment in
+  `check_decidable.py:43-53` frames the directive probe as chain-fallback; both go stale under
+  part 1 and must be updated in the same commit
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `docs/reference/COMMANDS.md:254` — prose states the pattern precedence is "section headers, bold
@@ -713,6 +754,16 @@ Without this guard B is strictly worse than A on this issue's headline defect. I
 appended to an existing sentence — ~1 line of SKILL.md — which is what keeps B affordable against
 the line budget. Pinned by the `test_decide_issue_skill.py` assertion under § *Tests*.
 
+> ⚠ **Reachability note added 2026-08-22 (pre-implementation review 2) — the guarded branch is
+> interactive-mode-only for the bullet collapse.** Phase 3's auto-mode bullet carve-out
+> (`SKILL.md:183`) precedes the `count == 1` branch: with `pattern == "bullet"` and
+> `AUTO_MODE = true`, `OPTIONS` is treated as empty and flow routes to Phase 3b (whose own
+> Pattern E scan can still find the directive). So BUG-3229's post-part-2 `count 1, bullet` result
+> never reaches the clear branch under automation; the false-clear the ordering constraint
+> describes runs through **interactive** mode. The guard is still required — but place it on the
+> `count == 1` line itself (`:187`), after the carve-out, and do not let the interactive-only
+> reachability argue it away.
+
 ### Codebase Research Findings
 
 _Added by `/ll:refine-issue` — 2026-08-21 — based on codebase analysis:_
@@ -776,6 +827,13 @@ _Added by `/ll:refine-issue` — 2026-08-21 — based on codebase analysis:_
    the live preempted issues now surface their directive — **pin by ID as a subset check**
    (BUG-1183, ENH-2446, ENH-2873, ENH-3277, ENH-2239, ENH-3275, FEAT-2339), never by cardinality:
    the set was 6 when this issue was written and is 7 today.
+   > ⚠ **Fixture the permanent pins — added 2026-08-22 (pre-implementation review 2).** The seven
+   > preempted issues are all open `decision_needed` documents in exactly the pipeline this epic
+   > feeds: running `/ll:decide-issue` on ENH-2446 edits the very directive text a live-corpus pin
+   > asserts. Copy 2–3 of them into test fixtures for the committed `TestDirectiveNotPreempted`
+   > cases; keep the seven-ID live subset check as a landing-time verification, not a committed
+   > assertion the backlog's normal churn can break. Same rationale as the corpus differential's
+   > fixture split — see § *Tests*.
 2. **Parts 1a–1b — the consumer edits that make Option B observable.** Serialize
    `residual_directive` in `LocatedOptions.to_dict()` (`:2060`); add the residual-directive report
    line to `cmd_check_decidable`'s success output (`check_decidable.py:37-40`, **gate at `:36`
@@ -954,12 +1012,36 @@ _Pre-implementation review — 2026-08-22 — all figures re-measured against th
 - **Line budget**: `SKILL.md` is 495 lines (not 493) and `skills/decide-issue/reference.md` already
   exists at 144 lines; `test_decide_issue_skill.py` confirmed at 77 test methods.
 
+_Pre-implementation review 2 — 2026-08-22 — independent re-measurement:_
+
+- **Every empirical claim reproduces exactly**: 7 preempted issues (IDs, headings, lines all
+  match), 22-file blast radius with exactly the four pinned movers, 15/15 match matrix (including
+  the `- ***(a)*** foo` non-goal row), directive shape `(2, 1)` across all 18 corpus matches, and
+  all code/test anchors exact (`:2012`/`:2060`/`:2088`/`:2219`/`:2337`/`:2379`; gate at `:36`;
+  SKILL.md 495 lines with the clear branch at `:187`; single exact-equality `to_dict()` assertion
+  at `test_issue_parser_unresolved.py:44`). Only `_locate_options_in_text` reads
+  `_OPTION_PATTERNS`, confirming the blast-radius boundary.
+- **Five additions folded in above**, each with a dated ⚠ note:
+  1. The corpus differential's "before" baseline mechanism (old-regex-literal monkeypatch) and
+     its landing-gate vs frozen-fixture split (§ *Tests*).
+  2. Live-corpus pin fragility for `TestDirectiveNotPreempted` — fixture 2–3 of the seven
+     (Implementation Step 1).
+  3. `_extract_option_label` widened alongside the tier regex; label asymmetry measured
+     (`''` vs `'(a)'`) (§ *Part 2*, *Files to Modify*).
+  4. In-code doc sites (the `locate_enumerable_options` docstring, `check_decidable.py:43-53`
+     comment) plus a human-readable `locate-options` parity line (§ *Documentation*,
+     *Files to Modify*).
+  5. The Phase 3 guard's `count == 1` branch is interactive-mode-only reachable for the bullet
+     collapse — the auto-mode bullet carve-out at `SKILL.md:183` precedes it; guard still
+     required, placement clarified (§ *Decision Rules*).
+
 ## Status
 
 **Open** | Created: 2026-08-21 | Priority: P2
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-22T23:55:04 - `ce409b47-4f21-485c-93e6-b694fe8d8170.jsonl`
 - `/ll:confidence-check` - 2026-08-22T23:39:28 - `f148b0fe-9006-4283-9e7f-18566ca40d9e.jsonl`
 - `/ll:verify-issues` - 2026-08-21T20:20:13 - `63b58074-9350-43f0-9772-feffb6fc0ffe.jsonl`
 - `/ll:refine-issue` - 2026-08-21T20:17:18 - `05b36e3e-cf1c-4269-a1c6-018fbadd4f92.jsonl`

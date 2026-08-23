@@ -138,6 +138,25 @@ Implementation order is bottom-up: locator primitives, then the decision model, 
   are recorded with rationale in that issue's § *Decision Rules* and `decision_needed` is
   cleared. `/ll:decide-issue 3285` could not have made them — see § *Unscheduled work* below,
   corrected.
+  > **Encoding settled and both differentials run 2026-08-22 (review pass).** The composed
+  > encoding recorded at the design pass *also* dropped two real options (`FEAT-2339`'s
+  > glob-bearing titles, ``` `parallel.epic_branches.*` ```) because its line-bounded title class
+  > excluded the literal `*`; corrected to `(?:[^*\n]|\*(?!\*))*` and re-measured. Final:
+  > **8 files change, 7 of them `done`/`cancelled`/`deferred`**, the one `open` file
+  > (`FEAT-2186`) improves, no real option is lost, and 0 test fixtures break. Risk repriced
+  > Medium-High → **Medium**. See that issue's § *Composed-encoding differential*, now the
+  > baseline to implement against.
+- **BUG-3296** (P3) — filed 2026-08-22. `_OPEN_QUESTION_SIGNAL_RE` counts a *citation of* an open
+  question (`§ *Open question*`, `(see Open Question)`, `` `"open question"` `` in a code span) as
+  an unresolved hedge. The unnumbered sibling of the already-done **BUG-3169**, which added the
+  same discriminator for *numbered* citations only. Belongs to this epic because
+  `ll-issues check-open-questions` exits 0 only when
+  `unresolved_options == 0 **and** open_questions == 0` — so this defect and **BUG-3285** each own
+  half of one gate feeding `resolve-decision.yaml:63`, `refine-to-ready-issue.yaml:404`, and
+  `autodev.yaml`. Measured: **14 issues change, 0 counts rise (pure subtraction), 11 gate exit
+  codes flip 1→0**; all 16 suppressed items hand-verified as citations. Independent of BUG-3285 —
+  either order. **BUG-3278:346-349** diagnosed the conjunction first and routes around the command
+  rather than fixing it, so the two are complementary, not overlapping.
 - **BUG-3287** (P2) — two defects in the shared precedence chain: a tier match anywhere preempts
   the Pattern E directive heuristic, and the `bullet` tier cannot see a bold-wrapped marker.
   **Sequence before BUG-3278** — BUG-3278 otherwise re-fixes both inside its own new group
@@ -207,6 +226,8 @@ both) on 2026-08-21: 10 files change under BUG-3285, 22 under BUG-3287, 32 under
 overlapping files, 0 composition surprises, and no `count` drop appearing only when both land.**
 They may land in either order. This is corpus-dependent, not structural: whichever lands second
 re-runs its own differential against the post-first tree.
+- **BUG-3296** — check-open-questions counts citations of an open question as unresolved hedges (open)
+
 
 ## Goal
 
