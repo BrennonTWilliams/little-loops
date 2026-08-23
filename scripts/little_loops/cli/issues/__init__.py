@@ -33,6 +33,10 @@ def main_issues() -> int:
             cmd_check_open_questions,
         )
         from little_loops.cli.issues.check_readiness import cmd_check_readiness
+        from little_loops.cli.issues.check_unresolved_decisions import (
+            add_check_unresolved_decisions_parser,
+            cmd_check_unresolved_decisions,
+        )
         from little_loops.cli.issues.check_verify_verdict import (
             add_check_verify_verdict_parser,
             cmd_check_verify_verdict,
@@ -740,6 +744,7 @@ Examples:
         add_config_arg(loc)
 
         add_check_open_questions_parser(subs)
+        add_check_unresolved_decisions_parser(subs)
         add_check_acceptance_criteria_parser(subs)
         add_check_verify_verdict_parser(subs)
 
@@ -1022,6 +1027,8 @@ Examples:
             return cmd_locate_options(config, args)
         if args.command == "check-open-questions":
             return cmd_check_open_questions(config, args)
+        if args.command == "check-unresolved-decisions":
+            return cmd_check_unresolved_decisions(config, args)
         if args.command == "check-acceptance-criteria":
             return cmd_check_acceptance_criteria(config, args)
         if args.command == "check-verify-verdict":

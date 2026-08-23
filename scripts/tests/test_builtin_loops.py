@@ -3282,16 +3282,67 @@ class TestResolveDecisionOracle:
         )
 
     def test_assert_decision_cleared_terminal_contract(self, data: dict) -> None:
-        """assert_decision_cleared.on_yes (flag still armed) must route to failed;
-        on_no (flag cleared) must route to done — the sub-loop's binary
-        done/failed terminal contract."""
+        """BUG-3278: assert_decision_cleared.on_yes (flag still armed) must route to
+        check_residual_decision, not straight to failed — a still-set flag might be
+        a legitimate residual (a lower-precedence decision group survived the pass),
+        not necessarily BUG-2595's silent no-op. on_no (flag cleared) is unaffected
+        and still routes to done."""
         state = data["states"].get("assert_decision_cleared", {})
-        assert state.get("on_yes") == "failed", (
-            f"assert_decision_cleared.on_yes should be 'failed', got {state.get('on_yes')!r}"
+        assert state.get("on_yes") == "check_residual_decision", (
+            f"assert_decision_cleared.on_yes should be 'check_residual_decision', "
+            f"got {state.get('on_yes')!r}"
         )
         assert state.get("on_no") == "done", (
             f"assert_decision_cleared.on_no should be 'done', got {state.get('on_no')!r}"
         )
+
+    def test_check_residual_decision_routes_a_real_residual_to_done(self, data: dict) -> None:
+        """BUG-3278: check_residual_decision.on_no (check-unresolved-decisions exit 1
+        — a real decision group survives) must route to done, not failed or back to
+        run_decide — the residual is correct, by-design behavior, not an error to
+        retry. Polarity: fsm/evaluators.py's shell_exit fragment maps 0->on_yes,
+        1->on_no, 2+->on_error."""
+        state = data["states"].get("check_residual_decision", {})
+        assert state.get("action") == "ll-issues check-unresolved-decisions ${context.issue_id}", (
+            f"check_residual_decision.action should call check-unresolved-decisions, "
+            f"got {state.get('action')!r}"
+        )
+        assert state.get("fragment") == "shell_exit", (
+            f"check_residual_decision.fragment should be 'shell_exit', "
+            f"got {state.get('fragment')!r}"
+        )
+        assert state.get("on_no") == "done", (
+            f"check_residual_decision.on_no should be 'done', got {state.get('on_no')!r}"
+        )
+
+    def test_check_residual_decision_preserves_silent_no_op_detection(self, data: dict) -> None:
+        """BUG-3278: check_residual_decision.on_yes (exit 0 — zero unresolved groups,
+        yet decision_needed is still true) must route to failed — preserving
+        BUG-2595's original silent-no-op detection exactly for the case nothing
+        actually justifies the still-set flag."""
+        state = data["states"].get("check_residual_decision", {})
+        assert state.get("on_yes") == "failed", (
+            f"check_residual_decision.on_yes should be 'failed', got {state.get('on_yes')!r}"
+        )
+        assert state.get("on_error") == "failed", (
+            f"check_residual_decision.on_error should be 'failed' (unverifiable state "
+            f"stays conservative), got {state.get('on_error')!r}"
+        )
+
+    def test_check_residual_decision_never_reenters_open_question_progress(
+        self, data: dict
+    ) -> None:
+        """BUG-3278: no route out of assert_decision_cleared or check_residual_decision
+        may target check_open_question_progress — that counter is blind to residual
+        decision groups by construction, so routing there would spin
+        (progress -> on_no -> run_decide -> assert -> on_yes -> progress -> ...)
+        with no exit the stall gate can break."""
+        for state_name in ("assert_decision_cleared", "check_residual_decision"):
+            state = data["states"].get(state_name, {})
+            targets = {state.get("on_yes"), state.get("on_no"), state.get("on_error")}
+            assert "check_open_question_progress" not in targets, (
+                f"{state_name} must not route to check_open_question_progress, got routes {state!r}"
+            )
 
     def test_failed_terminal_is_a_failure_terminal(self, data: dict) -> None:
         """'failed' must be recognized as a failure terminal (FAILURE_TERMINAL_NAMES)

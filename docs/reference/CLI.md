@@ -2057,6 +2057,32 @@ ll-issues locate-options ENH-2950 --json
 
 ---
 
+#### `ll-issues check-unresolved-decisions`
+
+Decision-*group*-aware residual probe (BUG-3278). Not a drop-in substitute for `check-open-questions`: that command counts unresolved *option blocks* (a decided 3-option group with 2 losers reports 2, not 0) plus free-form open questions elsewhere; this command counts unresolved *decision points* — Phase 7a of `/ll:decide-issue` marks only the winning option, so the unit of resolution has to be the decision point, not the block, or a correctly-decided single-decision issue would never clear `decision_needed`. This is the gate `/ll:decide-issue` Phase 7b and Phase 3b step 4 run before writing `decision_needed: false`.
+
+A group is resolved when any member option's own span carries a `> **Selected:**` callout, or the group's enclosing section carries a `### Decision Rationale` subsection AND holds exactly one group (the single-group restriction — an unrestricted section-level check would let deciding one group in a multi-group section silently resolve every sibling group by side effect). Runs with the widened tier scan (`numbered`/`bullet` tiers plus a co-located Pattern E directive), unlike `check-open-questions`'/`check_open_question_progress`'s conservative default. Never reports a `decision_rules_numbered` block (BUG-3293's Program Design → Decision Rules) as a decision group — those are settled design rulings, not alternatives to pick between.
+
+| Argument/Flag | Description |
+|---------------|-------------|
+| `issue_id` | Issue ID (e.g., `3278`, `BUG-3278`, `P2-BUG-3278`) |
+| `--json`, `-j` | Output as JSON object |
+
+**Exit codes**: `0` — no unresolved decision group remains. `1` — `UNRESOLVED_DECISIONS_REMAIN`, naming each surviving group's heading and line range. `2` — the issue ID does not resolve. Exit 2 is not a divergence from `check-open-questions`/`check-decidable` — BUG-3294 already moved both of those to 2 for a missing issue; all three probes agree on the house convention (0 clean / 1 residual-or-negative / 2 unresolvable). The FSM `exit_code` evaluator maps 0→`on_yes`, 1→`on_no`, 2+→`on_error` (`fsm/evaluators.py:255-259`), which is why 2 is distinct from 1 — collapsing them would make an unresolvable ID indistinguishable from a genuine residual.
+
+**Examples:**
+```bash
+ll-issues check-unresolved-decisions BUG-3278 --json
+# {"id": "BUG-3278", "unresolved": [{"heading": "Proposed Solution", "tier": "bullet",
+#  "options": [...], "start_line": 24, "end_line": 25}]}
+
+ll-issues check-unresolved-decisions ENH-2446   # Exit 0 — no unresolved decision group
+```
+
+**FSM loop use**: `oracles/resolve-decision.yaml`'s `check_residual_decision` state runs this after `assert_decision_cleared` finds the flag still set — exit 1 (a real residual) routes to `done`, exit 0 (nothing justifies the still-set flag) preserves BUG-2595's silent-no-op detection and routes to `failed`.
+
+---
+
 #### `ll-issues check-open-questions`
 
 Coverage-aware decidability probe (ENH-2446). Companion to `check-decidable` — exits 0 only when **both** (a) every option block in `## Proposed Solution` carries a `> **Selected:**` or `### Decision Rationale` marker AND (b) no bullet items in `## Edge Cases` / `## Confidence Check Notes` / `## Open Questions` carry an open-question signal (`Q:`, `?`, `open question`, `needs decision`, `decision needed`, `open decision`, `unresolved decision`, `decision point`) without a `✅ RESOLVED` / `✔ RESOLVED` / `**RESOLVED**` / `> **RESOLVED**` marker. Exits 1 with `OPEN_QUESTIONS_REMAIN: <ID> — N open question(s) and M unresolved option(s); run /ll:refine-issue <ID> --auto` otherwise.

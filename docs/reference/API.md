@@ -1081,6 +1081,45 @@ free-form questions is the coverage gap this probe catches (the count-based
 **Returns:** Count of unresolved (unmarked) option blocks. 0 means every enumerable
 option in the issue has a `> **Selected:**` or `### Decision Rationale` marker.
 
+#### locate_unresolved_decisions
+
+```python
+def locate_unresolved_decisions(
+    content: str, *, include_approximate_tiers: bool = False
+) -> list[DecisionGroup]
+```
+
+BUG-3278: the decision-*group*-aware sibling of `locate_unresolved_options`, and **not
+interchangeable with it**. `locate_unresolved_options` resolves per option *block* — Phase 7a of
+`/ll:decide-issue` marks only the winning option, so every losing option in a correctly-decided
+group reads as unresolved (a 3-option group with one winner reports 2, not 0). This function
+resolves per decision *group* — a maximal contiguous run of same-tier option blocks, or one
+Pattern E directive window — via `DecisionGroup`/`_iter_decision_groups`/`is_group_resolved`. A
+group is resolved when any member option's own span carries a `> **Selected:**` callout, or the
+group's enclosing section carries a `### Decision Rationale` subsection AND holds exactly one
+group (the single-group restriction — an unrestricted section-level check would let deciding one
+group in a multi-group section silently resolve every sibling group by side effect). Backs `ll-issues
+check-unresolved-decisions`, the gate `/ll:decide-issue` Phase 7b and Phase 3b step 4 run before
+clearing `decision_needed`.
+
+Under the default `include_approximate_tiers=False`, only the `section_header`/`bold_label` tiers
+are recognized — reproducing today's group set over Patterns 1-2 only, so the ENH-2446
+conservatism `check-open-questions`/`check_open_question_progress` depend on is undisturbed.
+`include_approximate_tiers=True` additionally recognizes the `numbered`/`bullet` tiers and probes
+for a co-located Pattern E directive (sourced from `LocatedOptions.residual_directive`, not a
+second `_locate_directive_alternatives` call). At most one `provisional_e` group is detectable per
+document — a hard limit of the shared directive probe, which returns on its first matching window.
+Never emits a `decision_rules_numbered` group (BUG-3293's Program Design → Decision Rules block):
+those are the issue's own settled design rulings, not mutually exclusive alternatives.
+
+**Parameters:**
+- `content` - Full issue file text
+- `include_approximate_tiers` - Widen to `numbered`/`bullet` tiers plus the Pattern E directive probe (default `False`)
+
+**Returns:** `DecisionGroup` list — `heading: str | None`, `tier: str`, `options: list[LocatedOption]`,
+`start_line: int`, `end_line: int` — for every group that fails `is_group_resolved`. Empty when no
+unresolved decision point remains.
+
 #### count_open_questions_in_sections
 
 ```python

@@ -726,3 +726,94 @@ class TestPattern3bDirectiveAlternatives:
         assert (
             "Pattern E" in text.split("Provisional Pattern D")[1].split("Provisional Pattern E")[0]
         ), "Pattern D's Requirement note must cross-reference Pattern E for the no-preference case"
+
+
+class TestBug3278DecisionGroupGating:
+    """SKILL.md must document BUG-3278's decision-group model: Phase 7b and Phase 3b
+    step 4 gate the `decision_needed: false` clear on `check-unresolved-decisions`
+    rather than clearing unconditionally after annotating only the highest-precedence
+    decision point."""
+
+    def _phase3_text(self) -> str:
+        content = SKILL_FILE.read_text()
+        start = content.index("## Phase 3: Extract Options")
+        end = content.index("## Phase 3b")
+        return content[start:end]
+
+    def _phase3b_text(self) -> str:
+        content = SKILL_FILE.read_text()
+        start = content.index("## Phase 3b: Inline Decision Scan")
+        next_heading = content.find("\n## Phase 4:", start + 1)
+        end = next_heading if next_heading != -1 else len(content)
+        return content[start:end]
+
+    def _phase7_text(self) -> str:
+        content = SKILL_FILE.read_text()
+        start = content.index("## Phase 7: Apply Changes")
+        end = content.index("## Phase 8:")
+        return content[start:end]
+
+    def test_phase3_sources_from_check_unresolved_decisions(self) -> None:
+        text = self._phase3_text()
+        assert "check-unresolved-decisions" in text and "unresolved[0]" in text, (
+            "Phase 3 must source its candidate group from check-unresolved-decisions, "
+            "not locate-options' raw tier winner"
+        )
+
+    def test_phase3_decision_rules_numbered_carveout_documented(self) -> None:
+        text = self._phase3_text()
+        assert "decision_rules_numbered" in text, (
+            "Phase 3's zero-groups fall-through must carve out decision_rules_numbered "
+            "(BUG-3278 part 4b) or the flag clears with nothing scored"
+        )
+
+    def test_phase3b_step3_ac_branch_requires_callout(self) -> None:
+        text = self._phase3b_text()
+        assert (
+            "Patterns A–C additionally add a" in text and "per the locked-in provisional" in text
+        ), (
+            "Phase 3b step 3's Patterns A-C branch must write a > **Selected:** callout "
+            "on structured option blocks, or step 4's gate stalls the single-decision "
+            "auto path (BUG-3278)"
+        )
+
+    def test_phase3b_step4_gates_on_check_unresolved_decisions(self) -> None:
+        text = self._phase3b_text()
+        assert "check-unresolved-decisions" in text and "decision_needed remains true" in text, (
+            "Phase 3b step 4 must gate its decision_needed: false write on "
+            "check-unresolved-decisions — this is the AUTO_MODE-only clearing site "
+            "Phase 7b's gate never reaches (BUG-3278)"
+        )
+
+    def test_phase7a_idempotency_is_per_group(self) -> None:
+        text = self._phase7_text()
+        assert "is_group_resolved" in text and "per-group" in text, (
+            "Phase 7a's idempotency rule must be per-group (is_group_resolved), not "
+            "document-wide — a document-wide rule suppresses the annotation for every "
+            "group after the first"
+        )
+
+    def test_phase7a_rationale_heading_stays_literal(self) -> None:
+        text = self._phase7_text()
+        assert "Keep the heading literally" in text, (
+            "Phase 7a must document that the ### Decision Rationale heading is never "
+            "suffixed — _unapplied_decision's strict heading regex depends on the exact form"
+        )
+
+    def test_phase7a_provisional_e_retired_by_suppression_not_callout(self) -> None:
+        text = self._phase7_text()
+        assert "retirement being" in text and "probe suppression" in text, (
+            "Phase 7a must document that a provisional_e group is retired by probe "
+            "suppression, never by is_group_resolved or a callout"
+        )
+
+    def test_phase7b_gates_on_check_unresolved_decisions(self) -> None:
+        text = self._phase7_text()
+        assert (
+            "check-unresolved-decisions" in text
+            and "**after** 7a's annotation" in text
+            and "decision_needed remains true" in text
+        ), (
+            "Phase 7b must run check-unresolved-decisions after 7a's annotation write "
+            "and leave decision_needed: true on a residual (BUG-3278)"
+        )

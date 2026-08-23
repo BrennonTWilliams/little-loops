@@ -178,14 +178,18 @@ re-derives them.
 
 ### Option Count Check
 
-After extraction:
+After extraction, also run `ll-issues check-unresolved-decisions "${ISSUE_ID}"` (BUG-3278) — the
+decision-*group*-aware probe Phase 3b step 4 and Phase 7b gate on. It resolves whole decision
+points, not option blocks (a decided 3-option group reports 0, not 2 losers), and covers the
+`numbered`/`bullet` tiers plus a co-located Pattern E directive. When 2+ groups are unresolved,
+source **`unresolved[0]`** (first group in document order) as the candidate below, not
+`locate-options`' raw winner, so an already-decided group is skipped and repeated runs progress.
 
-**Auto-mode bullet-list handling**: if `pattern == "bullet"` and `AUTO_MODE = true`, do NOT route them to Phase 4 scoring — automation must not re-litigate an informal list the author may have already settled. Treat `OPTIONS` as empty so flow proceeds to Phase 3b, where Pattern D resolves the case: a declarative recommendation marker naming one of the bullet options locks it in; absent a marker, `decision_needed` stays `true` for human review. In interactive mode, bullet-pattern options ARE scored through Phases 4–7 normally.
+**Auto-mode bullet-list handling**: if `pattern == "bullet"` and `AUTO_MODE = true`, do NOT route them to Phase 4 scoring — automation must not re-litigate an informal list the author may have already settled. Treat `OPTIONS` as empty so flow proceeds to Phase 3b, where Pattern D resolves the case: a declarative recommendation marker naming one of the bullet options locks it in; absent a marker, a residual bullet-tier group under `--auto` stays a human-review exit by design (`decision_needed` stays `true`; Phase 9 names it). In interactive mode, bullet-pattern options ARE scored through Phases 4–7 normally.
 
-- If `count == 0` and `AUTO_MODE = false`: print `No options found in Proposed Solution — nothing to decide.` and exit cleanly
-- If `count == 0` and `AUTO_MODE = true`: proceed to Phase 3b (Inline Decision Scan)
-- If `count == 1` and `residual_directive` is `null`: print `Only one option present — no decision required. Clearing decision_needed if set.` then proceed to Phase 7 (frontmatter update only: set `decision_needed: false`). If `count == 1` and `residual_directive` is non-null (BUG-3287), the document still holds a separate un-preferenced decision directive — do NOT clear `decision_needed`; proceed to Phase 4 scoring instead.
-- If `count >= 2`: proceed to Phase 4
+- If `count == 0` and `check-unresolved-decisions` also finds zero groups: `AUTO_MODE = false` → print `No options found in Proposed Solution — nothing to decide.` and exit cleanly; `AUTO_MODE = true` → proceed to Phase 3b. **Exception (BUG-3278 part 4b)**: if `pattern == "decision_rules_numbered"` (BUG-3293 Program Design rulings — never a decision group), keep today's behavior instead — score via `locate-options` — or the flag clears with nothing scored.
+- If `unresolved[0]` holds one option (the group-vocabulary re-expression of the old `count == 1` check) and no other group is unresolved: print `Only one option present — no decision required. Clearing decision_needed if set.` then proceed to Phase 7 (7b's own gate re-verifies before writing). This subsumes BUG-3287's `residual_directive is null` guard by construction — the group probe already treats a co-located `provisional_e` directive as a second unresolved group, so a stale read here can never clear a flag Phase 7b would refuse.
+- If `unresolved[0]` holds 2+ options, or 2+ groups remain: proceed to Phase 4, scoring `unresolved[0]`'s options.
 
 ---
 
@@ -217,43 +221,13 @@ Markers appear inline after the bold question label, e.g.:
 
 ---
 
-Scan ALL sections of the issue file (not just `## Proposed Solution`) for provisional decision language using these patterns:
+Scan ALL sections of the issue file (not just `## Proposed Solution`) for provisional decision
+language. See [reference.md](reference.md) for each pattern's full Match/Example/Candidate shape.
 
-### Provisional Pattern A — Parenthetical `(e.g., ...)`
-```
-Match: parenthetical containing `e.g.,` followed by a concrete name
-Example: (e.g., completed_at: frontmatter field)
-Candidate: the specific approach named inside the parenthetical
-```
-
-### Provisional Pattern B — Inline `TBD` design marker
-```
-Match: `TBD` used as a placeholder for a design decision (not a research gap)
-Surrounding context must name a single approach being considered
-Example: "field name: TBD (leaning toward completed_at)"
-Candidate: the approach mentioned in the surrounding sentence
-```
-
-### Provisional Pattern C — Definitive replacement language
-```
-Match: phrases like "fundamental rethink" / "must be replaced with" / "should be replaced by"
-Example: "the existing approach must be replaced with direct file writes"
-Candidate: the concrete replacement approach named
-```
-
-### Provisional Pattern D — Declarative recommendation
-```
-Match: prose naming a winning option without a provisional wrapper:
-  **Recommended**: (b)  /  the recommendation is now (b)  /  Refresh N supersedes prior — (a)+(b)
-Candidate: the referenced option(s); multi-part winners like (a)+(b) are allowed.
-Requirement: the referent must exist as a Pattern-4 bullet option in `## Proposed Solution` or
-`## Codebase Research Findings` (existing-bullet case), OR the referent must be one of 2+
-concrete alternatives named inline in an unresolved `## Open Questions` item (ENH-2715) — e.g.
-"could do X or Y" with a stated preference; no pre-existing bullet is required for this shape,
-since the alternatives are materialized as structured options in Resolution Logic step 1 below.
-A marker (or an Open-Questions item naming a preference) with a resolvable referent is a
-**clear winner** — treat as decided. Same shape, **no** stated preference → Pattern E below.
-```
+- **Pattern A — Parenthetical `(e.g., ...)`**: candidate is the approach named inside the parenthetical.
+- **Pattern B — Inline `TBD` marker**: candidate is the approach named in the surrounding sentence.
+- **Pattern C — Definitive replacement language** (`must be replaced with`, `fundamental rethink`): candidate is the concrete replacement approach named.
+- **Provisional Pattern D — Declarative recommendation** (`**Recommended**: (b)`, or a stated preference among 2+ alternatives named inline in an unresolved `## Open Questions` item — no pre-existing bullet is required for this shape, since the alternatives are materialized as structured options in Resolution Logic step 1): candidate is the referenced option(s); a resolvable referent is a **clear winner**. Same shape with **no** stated preference → Pattern E below.
 
 ### Provisional Pattern E — Un-preferenced decision directive (ENH-2936)
 
@@ -309,8 +283,16 @@ Classify each match as:
    no 2+-alternative shape to reformat): edit the issue text to make the approach declarative —
    for Patterns A–C remove the provisional qualifier (`e.g.,`/parenthetical wrapper, `TBD`,
    `"must be replaced with"`); for Pattern D add a `> **Selected:** (x) — per the stated
-   recommendation` callout on the recommended bullet. State the concrete approach as decided.
-4. Use the Edit tool (inline `---` block replacement — same pattern as Phase 7b) to set `decision_needed: false` in the issue frontmatter:
+   recommendation` callout on the recommended bullet. **Patterns A–C additionally add a
+   `> **Selected:** <approach> — per the locked-in provisional resolution` callout on the winning
+   option block whenever structured option blocks exist under `## Proposed Solution`** (BUG-3278)
+   — without this, step 4's gate below can never see that group as resolved and the auto path
+   stalls forever on the single-decision common case. State the concrete approach as decided.
+4. Run `ll-issues check-unresolved-decisions "${ISSUE_ID}"` (BUG-3278). **Exit 1 or 2+**: make NO
+   frontmatter write; log `✗ Phase 3b: locked in [approach], but N unresolved decision point(s)
+   remain — decision_needed remains true`; carry the surviving groups into Phase 9 exactly as
+   Phase 7b does; skip to step 6. **Exit 0**: use the Edit tool (inline `---` block replacement —
+   same pattern as Phase 7b) to set `decision_needed: false` in the issue frontmatter:
    ```
    READ the current --- frontmatter block (from opening --- to closing ---)
    FIND the decision_needed field:
@@ -319,7 +301,7 @@ Classify each match as:
    USE Edit tool to replace the entire --- block with the updated block
    ```
    **Idempotency**: if `decision_needed` is already `false`, skip the write and log `✓ decision_needed already false — no update needed`.
-5. Log: `✓ Phase 3b: resolved provisional decision — [approach] locked in; decision_needed set to false`
+5. **Exit-0 branch only**: log `✓ Phase 3b: resolved provisional decision — [approach] locked in; decision_needed set to false`.
 6. Proceed to Phase 8 (Append Session Log) and Phase 9 (Output Report), skipping Phases 4–7 — except the materialize-and-score path in step 2, which proceeds through Phase 4–7 normally before reaching Phase 8/9.
 
 **If no clear winner (zero candidates or all ambiguous):**
@@ -402,15 +384,31 @@ evidence).
 
 ### 7a: Annotate Issue File
 
-Use the Edit tool to:
-1. Insert the `> **Selected:** ...` callout immediately after the winning option's title line in the Proposed Solution section
-2. Append the `### Decision Rationale` subsection at the end of the Proposed Solution section (before the next `##` heading)
+Use the Edit tool on the **selected group** (`unresolved[0]`, per Phase 3):
+1. Insert a `> **Selected:** ...` marker for the winning option — placement is per-tier; see
+   [reference.md](reference.md)'s Marker-Placement Matrix (`section_header`/`bold_label` → after
+   the title line; `bullet`/`numbered` → after the winning bullet; `provisional_e` → **not** a
+   callout at all — a bare `**RESOLVED**` prefix on the directive line itself, retirement being
+   probe suppression, never `is_group_resolved`).
+2. Append a `### Decision Rationale` subsection at the end of the Proposed Solution section (before
+   the next `##` heading). Keep the heading literally `### Decision Rationale` — never suffix it
+   (`_unapplied_decision`'s strict heading regex depends on the exact form). Disambiguate a second
+   decided group sharing a section in the **body** instead: `**Decision point:** <group heading or
+   first option label>` as the subsection's first line.
 
-**Idempotency rule**: if the issue already contains a `### Decision Rationale` section, skip the annotation write and log `⚠ Decision already annotated — skipping annotation (idempotent)`. Only proceed to the frontmatter update.
+**Idempotency rule (per-group, BUG-3278)**: skip the annotation write only when **the selected
+group** is already resolved per `is_group_resolved` — not "a `### Decision Rationale` section
+exists anywhere in the issue", which would silently suppress the annotation for every group after
+the first and stall convergence. Log `⚠ Decision already annotated for this group — skipping
+annotation (idempotent)`.
 
 ### 7b: Update Frontmatter
 
-Set `decision_needed: false` in the issue's YAML frontmatter using the Edit tool inline `---` block replacement pattern:
+Run `ll-issues check-unresolved-decisions "${ISSUE_ID}"` (BUG-3278) **after** 7a's annotation
+write. **Exit 1 or 2+**: make NO frontmatter write; leave `decision_needed: true`; log `⚠
+decision_needed remains true — N unresolved decision point(s): <heading:line-range>` naming each
+surviving group; carry that line into Phase 9. **Exit 0**: set `decision_needed: false` in the
+issue's YAML frontmatter using the Edit tool inline `---` block replacement pattern:
 
 ```
 READ the current --- frontmatter block (from opening --- to closing ---)
@@ -463,7 +461,8 @@ git add "{{issue_file_path}}"
 ## Phase 9: Output Report
 
 See [reference.md](reference.md) for the full Output Report template (issue summary,
-options table, scoring table, decision, changes applied, dry-run preview, next steps).
+options table, scoring table, decision, changes applied, dry-run preview, next steps,
+and the residual-decisions line Phase 3b step 4 / Phase 7b populate on exit 1).
 
 ---
 

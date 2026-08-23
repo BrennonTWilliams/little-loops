@@ -2656,6 +2656,323 @@ def count_unresolved_options(content: str) -> int:
     return count
 
 
+# BUG-3278: decision-group model. Widens the per-block resolution of
+# locate_unresolved_options() (which reads every losing option as unresolved,
+# so a correctly-decided single-decision issue would never clear) into
+# per-decision-point resolution: Phase 7a marks only the winning option, so
+# the unit of resolution must be "the decision point", not "the option
+# block". locate_unresolved_options() itself is left exactly as-is (its
+# callers, check-open-questions and the loop stall gate, are unaffected).
+
+
+@dataclass
+class DecisionGroup:
+    """One decision point — a maximal contiguous run of same-tier option
+    blocks, or one Pattern E directive window (BUG-3278).
+
+    A run breaks when the tier changes, when a Pattern E directive window
+    intervenes, or at a section boundary — so ``**Option A/B/C**`` followed by
+    a separate ``- (a)/(b)`` pair below it is *two* groups, not one, even
+    though both live in the same section.
+    """
+
+    heading: str | None
+    tier: str
+    options: list[LocatedOption]
+    start_line: int
+    end_line: int
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "heading": self.heading,
+            "tier": self.tier,
+            "options": [o.to_dict() for o in self.options],
+            "start_line": self.start_line,
+            "end_line": self.end_line,
+        }
+
+
+def _decision_option_span(
+    content: str,
+    body: str,
+    body_offset: int,
+    match: re.Match[str],
+    max_depth: int,
+    fences: list[tuple[int, int]],
+    next_match_start: int | None,
+) -> LocatedOption:
+    """One decision group's member option span (BUG-3278).
+
+    Same block-boundary computation as :func:`_locate_options_in_text`, except
+    *next_match_start* is the next marker in document order across *every*
+    enabled tier (not just this match's own tier) — so a bold_label option's
+    span stops before an immediately-following bullet marker instead of
+    swallowing it, even though the two belong to different groups.
+    """
+    line_start = body.rfind("\n", 0, match.start()) + 1
+    match_line_end = body.find("\n", match.start())
+    search_start = match_line_end + 1 if match_line_end != -1 else len(body)
+    heading_boundary = _option_span_boundary(body, search_start, max_depth, fences)
+    end_candidates = [len(body)]
+    if next_match_start is not None:
+        end_candidates.append(next_match_start)
+    if heading_boundary is not None:
+        end_candidates.append(heading_boundary)
+    block_end = min(end_candidates)
+    block_text = body[line_start:block_end].rstrip()
+    abs_start = body_offset + line_start
+    abs_end = body_offset + max(block_end - 1, line_start)
+    start_line = content.count("\n", 0, abs_start) + 1
+    end_line = content.count("\n", 0, abs_end) + 1
+    return LocatedOption(
+        label=_extract_option_label(match.group(0)),
+        text=block_text,
+        start_line=start_line,
+        end_line=end_line,
+    )
+
+
+def _decision_groups_in_body(
+    content: str,
+    body: str,
+    body_offset: int,
+    heading: str,
+    tier_patterns: tuple[re.Pattern[str], ...],
+    tier_names: tuple[str, ...],
+    directive_split_line: int | None,
+) -> list[DecisionGroup]:
+    """Decision groups found in one section body (BUG-3278).
+
+    Tags every tier pattern's matches (fence-excluded) with its tier name,
+    sorts them in document order, then splits into maximal contiguous
+    same-tier runs — breaking a run early when *directive_split_line* (the
+    document's single Pattern E directive, if any) falls between two
+    consecutive matches, even when they share a tier.
+    """
+    fences = fence_spans(body)
+    tagged: list[tuple[int, re.Match[str], str]] = []
+    for pattern, tier_name in zip(tier_patterns, tier_names, strict=True):
+        for m in pattern.finditer(body):
+            if in_fence(m.start(), m.end(), fences):
+                continue
+            tagged.append((m.start(), m, tier_name))
+    tagged.sort(key=lambda t: t[0])
+    if not tagged:
+        return []
+
+    runs: list[list[int]] = [[0]]
+    for i in range(1, len(tagged)):
+        prev_pos, _, prev_tier = tagged[i - 1]
+        pos, _, tier_name = tagged[i]
+        directive_between = directive_split_line is not None and (
+            content.count("\n", 0, body_offset + prev_pos) + 1
+            < directive_split_line
+            < content.count("\n", 0, body_offset + pos) + 1
+        )
+        if tier_name == prev_tier and not directive_between:
+            runs[-1].append(i)
+        else:
+            runs.append([i])
+
+    groups: list[DecisionGroup] = []
+    for run in runs:
+        tier_name = tagged[run[0]][2]
+        max_depth = 3 if tier_name == "section_header" else 6
+        options = []
+        for idx in run:
+            _, m, _ = tagged[idx]
+            next_start = tagged[idx + 1][0] if idx + 1 < len(tagged) else None
+            options.append(
+                _decision_option_span(content, body, body_offset, m, max_depth, fences, next_start)
+            )
+        groups.append(
+            DecisionGroup(
+                heading=heading,
+                tier=tier_name,
+                options=options,
+                start_line=options[0].start_line,
+                end_line=options[-1].end_line,
+            )
+        )
+    return groups
+
+
+def _directive_decision_group(content: str) -> DecisionGroup | None:
+    """The document's single Pattern E directive group, or None (BUG-3278, part 3).
+
+    Reads ``LocatedOptions.residual_directive`` off :func:`locate_enumerable_options`
+    (BUG-3287 already runs the directive probe alongside every tier win) rather
+    than calling :func:`_locate_directive_alternatives` a second time. At most
+    one ``provisional_e`` group is detectable per document — a hard limit of
+    the shared probe, which returns on its first matching window.
+    """
+    top = locate_enumerable_options(content)
+    directive = top if top.pattern == "provisional_e" else top.residual_directive
+    if directive is None or not directive.options:
+        return None
+    option = directive.options[0]
+    return DecisionGroup(
+        heading=directive.heading,
+        tier="provisional_e",
+        options=[option],
+        start_line=option.start_line,
+        end_line=option.end_line,
+    )
+
+
+def _iter_decision_groups(
+    content: str, *, include_approximate_tiers: bool = False
+) -> list[DecisionGroup]:
+    """All decision groups in *content* (BUG-3278).
+
+    Same section precedence as :func:`locate_unresolved_options`: the scoped
+    sections (``## Proposed Solution`` then :data:`_OPTION_FALLBACK_SECTIONS`)
+    are scanned in full (a group-bearing section does not short-circuit the
+    others), falling back to the first H2 section with any block only when
+    none of the scoped sections carry one.
+
+    Under the default ``include_approximate_tiers=False`` only the
+    ``section_header``/``bold_label`` tiers are recognized — the group set
+    this reproduces is today's, over Patterns 1-2 only, so the ENH-2446
+    conservatism ``check-open-questions``/``check_open_question_progress``
+    depend on is undisturbed. ``include_approximate_tiers=True`` additionally
+    recognizes the ``numbered``/``bullet`` tiers and probes for a co-located
+    Pattern E directive.
+
+    Never emits a ``decision_rules_numbered`` group (BUG-3293's Program
+    Design -> Decision Rules block, part 4b): those are the issue's own
+    settled design rulings, not mutually exclusive alternatives, so "pick
+    one" is meaningless over them — treating them as a decision group would
+    make every refined issue in this repo carrying one report a residual
+    decision. Callers that need to distinguish that shape from a genuine
+    zero-groups result read ``ll-issues locate-options``' ``pattern`` field
+    directly (see ``skills/decide-issue/SKILL.md``'s Phase 3 carve-out).
+
+    A ``provisional_e`` group's *end of life* is probe suppression, not
+    :func:`is_group_resolved`: the retirement marker must sit on the
+    directive line itself (see :func:`_locate_directive_alternatives`'s
+    sliding-window suppressors), so once suppressed the group is no longer
+    emitted at all, and ``is_group_resolved`` is never consulted for it.
+    """
+    tier_names: tuple[str, ...]
+    tier_patterns: tuple[re.Pattern[str], ...]
+    if include_approximate_tiers:
+        tier_names = _OPTION_PATTERN_NAMES
+        tier_patterns = _OPTION_PATTERNS
+    else:
+        tier_names = _OPTION_PATTERN_NAMES[:2]
+        tier_patterns = _OPTION_PATTERNS[:2]
+
+    directive_group = _directive_decision_group(content) if include_approximate_tiers else None
+    # The window's end_line, not start_line, approximates the directive's own
+    # line: _locate_directive_alternatives' sliding window returns on the
+    # first i where the imperative becomes visible, which for a window of
+    # width 7 (i-3..i+3) is typically i = D-3, so the window's own end line
+    # (i+3) lands on D. The window's start_line commonly bleeds into a
+    # preceding option block's text (see the module's suppressor-window
+    # measurement), which would misplace the split point.
+    directive_split_line = directive_group.end_line if directive_group is not None else None
+
+    groups: list[DecisionGroup] = []
+    found_any = False
+    for heading in ("Proposed Solution", *_OPTION_FALLBACK_SECTIONS):
+        result = _section_body_with_offset(content, heading)
+        if result is None:
+            continue
+        body, body_offset = result
+        section_groups = _decision_groups_in_body(
+            content, body, body_offset, heading, tier_patterns, tier_names, directive_split_line
+        )
+        if section_groups:
+            found_any = True
+            groups.extend(section_groups)
+
+    if not found_any:
+        for heading_text, start, end in _iter_h2_sections(content):
+            section_groups = _decision_groups_in_body(
+                content,
+                content[start:end],
+                start,
+                heading_text,
+                tier_patterns,
+                tier_names,
+                directive_split_line,
+            )
+            if section_groups:
+                groups.extend(section_groups)
+                break
+
+    if directive_group is not None:
+        groups.append(directive_group)
+
+    groups.sort(key=lambda g: g.start_line)
+    return groups
+
+
+def is_group_resolved(content: str, group: DecisionGroup) -> bool:
+    """True when *group* carries a resolution marker (BUG-3278).
+
+    Resolved when any member option's own span carries a
+    ``> **Selected:**`` callout (the callout sits inside the option it marks
+    and can never split the group — block spans only end at the next marker
+    or a qualifying heading, never at a blockquote line), OR when the
+    group's enclosing section carries a ``### Decision Rationale``
+    subsection AND that section holds exactly one decision group under the
+    widest tier scan.
+
+    The single-group restriction is load-bearing: an unrestricted
+    section-level check would let deciding one group in a multi-group
+    section silently resolve every sibling group by side effect — the exact
+    bug this function exists to close, reproduced through the fix.
+
+    Does not cover ``provisional_e`` groups: a directive group is retired by
+    suppressing the probe (see :func:`_iter_decision_groups`), never by
+    satisfying this function.
+    """
+    for option in group.options:
+        if _SELECTED_CALLOUT_RE.search(option.text):
+            return True
+
+    if group.heading is None:
+        return False
+
+    section = _section_body(content, group.heading)
+    if section is None:
+        for heading_text, start, end in _iter_h2_sections(content):
+            if heading_text == group.heading:
+                section = content[start:end]
+                break
+    if section is None or not _DECISION_RATIONALE_SECTION_MARKER_RE.search(section):
+        return False
+
+    sibling_groups = [
+        g
+        for g in _iter_decision_groups(content, include_approximate_tiers=True)
+        if g.heading == group.heading
+    ]
+    return len(sibling_groups) == 1
+
+
+def locate_unresolved_decisions(
+    content: str, *, include_approximate_tiers: bool = False
+) -> list[DecisionGroup]:
+    """Decision groups in *content* that fail :func:`is_group_resolved` (BUG-3278).
+
+    The residual-aware sibling of :func:`locate_unresolved_options`: that
+    function counts unresolved *option blocks* (so a correctly-decided
+    single-decision issue with two losing options reports 2, not 0);
+    this function counts unresolved *decision points* and reports 0 for
+    that same issue. The two are not interchangeable — see each function's
+    docstring — and callers must not swap one for the other.
+
+    See :func:`_iter_decision_groups` for the ``decision_rules_numbered``
+    exclusion and the ``provisional_e`` Pattern E limitation (at most one
+    directive group per document); both apply here unchanged.
+    """
+    groups = _iter_decision_groups(content, include_approximate_tiers=include_approximate_tiers)
+    return [g for g in groups if not is_group_resolved(content, g)]
+
+
 # Resolved-question markers — same vocabulary as skills/decide-issue/SKILL.md:197
 # (ENH-2446 explicitly mirrors that regex to keep the deterministic probe and the
 # LLM skill reading the same markers).

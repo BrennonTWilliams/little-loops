@@ -199,6 +199,47 @@ states:
     # unresolved, not silently as cleared.
     action: "ll-issues check-flag ${context.issue_id} decision_needed"
     fragment: shell_exit
+    on_yes: check_residual_decision
+    on_no: done
+    on_error: failed
+
+  check_residual_decision:
+    # BUG-3278: assert_decision_cleared's on_yes (flag still true) used to
+    # route straight to failed, treating every still-set flag as a silent
+    # no-op (BUG-2595). But decide-issue's own Phase 7b now leaves the flag
+    # armed on purpose when a lower-precedence decision group survives the
+    # pass (a residual bullet-tier group under --auto is a defined
+    # human-review exit, not a bug) — routing that case to failed would turn
+    # a correct, bounded stop into a hard oracle failure. This state tells
+    # the two apart with the same group-aware probe decide-issue itself
+    # gates on: ll-issues check-unresolved-decisions.
+    #
+    # Polarity follows fsm/evaluators.py:255-259 (0->on_yes, 1->on_no,
+    # 2+->on_error) — do not swap these:
+    #   - on_no (exit 1, a real residual group survives): the flag is
+    #     *correctly* still set. Route to done — the sub-loop's job is
+    #     finished; the caller's own decision_needed gate holds the issue
+    #     for human review.
+    #   - on_yes (exit 0, zero unresolved groups yet the flag is still
+    #     true): nothing justifies the still-set flag — preserves BUG-2595's
+    #     silent-no-op detection exactly. Route to failed.
+    #   - on_error (exit 2+, including an unresolvable issue ID): an
+    #     unverifiable state stays conservative, matching
+    #     assert_decision_cleared's own on_error above.
+    #
+    # Do NOT route on_yes to check_open_question_progress: that counter is
+    # blind to residual groups by construction (part 3's opt-in tier/directive
+    # widening is not something it probes), so it would read flat and retry
+    # forever — progress -> on_no -> run_decide -> assert -> on_yes ->
+    # progress -> ... with no exit the stall gate can break.
+    #
+    # Verified non-spinning: autodev.yaml's decide_current short-circuits on
+    # a write-once autodev-decide-ran marker, so a multi-decision issue under
+    # autodev gets exactly one decide pass per dequeue before this state's
+    # on_no routes it to human review — bounded by the caller, not by a
+    # retry loop here.
+    action: "ll-issues check-unresolved-decisions ${context.issue_id}"
+    fragment: shell_exit
     on_yes: failed
     on_no: done
     on_error: failed

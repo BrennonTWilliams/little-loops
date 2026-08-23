@@ -186,14 +186,16 @@ This is the end-to-end flow when you're running issues through `ll-auto`, `ll-pa
 │      Scores each option: Consistency / Simplicity /               │
 │      Testability / Risk (0–3 each, max 12)                        │
 │      → inserts > **Selected:** callout into issue                 │
-│      → sets decision_needed: false                                │
-│      → writes a .ll/decisions.d/<uuid4>.json fragment            │
+│      → check-unresolved-decisions: any other decision group left? │
+│         no  → sets decision_needed: false                         │
+│         yes → decision_needed stays true; group named in report   │
+│      → writes a .ll/decisions.d/<uuid4>.json fragment (on clear)  │
 │          ↓                                                        │
-│  Automation resumes with the decided issue                        │
+│  Automation resumes with the decided issue (or stops for review)  │
 └───────────────────────────────────────────────────────────────────┘
 ```
 
-The `decision_needed` flag is the handshake. `confidence-check` sets it when it sees ambiguity; `decide-issue` clears it after selecting an option. Automation never implements an issue while the flag is set.
+The `decision_needed` flag is the handshake. `confidence-check` sets it when it sees ambiguity; `decide-issue` clears it once no unresolved decision *group* remains (BUG-3278) — an issue can hold more than one decision point, and annotating the highest-precedence one does not earn the right to clear a flag a lower-precedence group still needs. Automation never implements an issue while the flag is set.
 
 **The structural-vs-semantic gap (ENH-2443):** `decision_needed: true` sometimes has *nothing to decide* — the `## Proposed Solution` section is structurally complete but has no enumerable options (no `### Option A/B`, no bullet alternatives). `ll-issues format-check` reports this as compliant, since the gap is semantic, not structural. `/ll:decide-issue`'s Phase 2.5 catches this by calling `ll-issues locate-options --json` (the same call Phase 3 makes): `OPTIONS_MISSING` on a `--validate-only` probe, or — in `--auto` mode — one bounded `/ll:refine-issue --auto` retry to deposit options before falling through to Phase 3b's inline provisional-language scan (BUG-2606), which can still lock in a clear winner from prose recommendations even without formal option blocks — or, for a passage that names alternatives with an imperative decide-marker but states no preference, routes through Pattern E (ENH-2936, reported by `locate-options` as `pattern: "provisional_e"`) to full evidence-based scoring instead. Pattern E is not only a last-resort fallback for when formal option blocks are wholly absent — `locate_enumerable_options()` also probes it *alongside* a tier match (BUG-3287), so a document that already has formal options can still carry a separate, un-preferenced directive elsewhere; that case surfaces as a non-null `residual_directive` on the tier result rather than as the primary `pattern`. Only if Phase 3b also finds nothing does `decision_needed` stay `true` — `MANUAL_REVIEW_RECOMMENDED` (distinct from `MANUAL_REVIEW_NEEDED`) is an FSM-level diagnostic derived from the deposit-attempt marker, not emitted by this phase directly. FSM (finite-state machine) loop callers (`rn-remediate`, `autodev`) pre-check with the deterministic `ll-issues check-decidable <ID>` CLI rather than paying for a full `decide` pass with nothing to score; `ll-issues locate-options <ID> --json` is the data-frontend sibling (ENH-2950) for callers that need the option spans themselves, not just a boolean. The pattern precedence for both CLIs — and for `/ll:decide-issue` Phase 3's own extraction — is defined exactly once, in `issue_parser.locate_enumerable_options()`.
 

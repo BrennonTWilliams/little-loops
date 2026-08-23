@@ -1077,3 +1077,360 @@ class TestLastOptionSpanBoundary:
         assert located.count == 1
         assert "Some subheading" not in located.options[0].text
         assert "does not belong" not in located.options[0].text
+
+
+class TestDecisionGroups:
+    """DecisionGroup / _iter_decision_groups / is_group_resolved /
+    locate_unresolved_decisions (BUG-3278): the unit of resolution is the
+    decision *group* (one decision point), not the option block — Phase 7a
+    marks only the winning option, so a per-block gate would read every
+    loser as unresolved and never clear a correctly-decided single-decision
+    issue."""
+
+    def test_selected_on_one_option_resolves_the_whole_group(self) -> None:
+        """Three Option A/B/C blocks with a callout on A -> one group,
+        resolved — B and C must not report as residual (the per-block
+        spec's failure mode)."""
+        from little_loops.issue_parser import _iter_decision_groups, is_group_resolved
+
+        content = (
+            "## Proposed Solution\n"
+            "\n"
+            "**Option A**: do the thing\n"
+            "> **Selected:** Option A\n"
+            "\n"
+            "**Option B**: do the other thing\n"
+            "\n"
+            "**Option C**: do a third thing\n"
+        )
+        groups = _iter_decision_groups(content)
+        assert len(groups) == 1
+        assert groups[0].tier == "bold_label"
+        assert len(groups[0].options) == 3
+        assert is_group_resolved(content, groups[0]) is True
+
+    def test_no_marker_anywhere_is_one_unresolved_group(self) -> None:
+        from little_loops.issue_parser import _iter_decision_groups, is_group_resolved
+
+        content = (
+            "## Proposed Solution\n"
+            "\n"
+            "**Option A**: do the thing\n"
+            "\n"
+            "**Option B**: do the other thing\n"
+            "\n"
+            "**Option C**: do a third thing\n"
+        )
+        groups = _iter_decision_groups(content)
+        assert len(groups) == 1
+        assert is_group_resolved(content, groups[0]) is False
+
+    def test_section_level_rationale_single_group_resolves(self) -> None:
+        """A section-level `### Decision Rationale` with the callout at the
+        top of the section, not on any option line, resolves the section's
+        one group (this issue's own shape)."""
+        from little_loops.issue_parser import _iter_decision_groups, is_group_resolved
+
+        content = (
+            "## Proposed Solution\n"
+            "\n"
+            "### Decision Rationale\n"
+            "> **Selected:** the shim.\n"
+            "\n"
+            "**Option A**: do the thing\n"
+            "\n"
+            "**Option B**: do the other thing\n"
+        )
+        groups = _iter_decision_groups(content)
+        assert len(groups) == 1
+        assert is_group_resolved(content, groups[0]) is True
+
+    def test_section_level_rationale_two_groups_only_marked_one_resolves(self) -> None:
+        """Assertion (c2) — the single-group restriction. An unrestricted
+        section-level rule would resolve group B by side effect once group A
+        is decided; that is this issue's own failure mode reproduced through
+        the fix."""
+        from little_loops.issue_parser import _iter_decision_groups, is_group_resolved
+
+        content = (
+            "## Proposed Solution\n"
+            "\n"
+            "**Option A**: do the thing\n"
+            "> **Selected:** Option A\n"
+            "\n"
+            "### Decision Rationale\n"
+            "Chose Option A because reasons.\n"
+            "\n"
+            "- **(a) approach one**\n"
+            "- **(b) approach two**\n"
+        )
+        groups = _iter_decision_groups(content, include_approximate_tiers=True)
+        assert [g.tier for g in groups] == ["bold_label", "bullet"]
+        assert is_group_resolved(content, groups[0]) is True
+        assert is_group_resolved(content, groups[1]) is False
+
+    def test_two_groups_co_located_in_one_section(self) -> None:
+        """`**Option A/B/C**` plus a separate `- (a)/(b)` pair below it in the
+        same `## Proposed Solution` -> two independently resolvable groups —
+        the shape from the issue's own Steps to Reproduce."""
+        from little_loops.issue_parser import _iter_decision_groups
+
+        content = (
+            "## Proposed Solution\n"
+            "\n"
+            "**Option A**: do the thing\n"
+            "\n"
+            "**Option B**: do the other thing\n"
+            "\n"
+            "**Option C**: do a third thing\n"
+            "\n"
+            "- **(a) approach one**\n"
+            "- **(b) approach two**\n"
+        )
+        groups = _iter_decision_groups(content, include_approximate_tiers=True)
+        assert [g.tier for g in groups] == ["bold_label", "bullet"]
+        assert len(groups[0].options) == 3
+        assert len(groups[1].options) == 2
+        # default (opt-out) mode must not see the bullet-tier group at all —
+        # the ENH-2446 conservatism regression guard.
+        default_groups = _iter_decision_groups(content)
+        assert [g.tier for g in default_groups] == ["bold_label"]
+
+    def test_directive_splits_a_same_tier_run_into_two_groups(self) -> None:
+        """A tier run split by an intervening `**DECISION — pick one:**`
+        directive is two groups, not one — the tier differs across the
+        directive only in the sense that the directive itself intervenes."""
+        from little_loops.issue_parser import _iter_decision_groups
+
+        content = (
+            "## Proposed Solution\n"
+            "\n"
+            "**Option A**: do the thing\n"
+            "\n"
+            "**DECISION — pick one before step 4 touches this file: use A or B.**\n"
+            "\n"
+            "**Option B**: do the other thing\n"
+        )
+        groups = _iter_decision_groups(content, include_approximate_tiers=True)
+        bold_groups = [g for g in groups if g.tier == "bold_label"]
+        assert len(bold_groups) == 2
+
+    def test_mid_group_callout_does_not_split_the_group(self) -> None:
+        """Span rule: a `> **Selected:**` callout inserted mid-group does not
+        split the group in two."""
+        from little_loops.issue_parser import _iter_decision_groups, is_group_resolved
+
+        content = (
+            "## Proposed Solution\n"
+            "\n"
+            "- **(a) approach one**\n"
+            "> **Selected:** (a) — per the stated recommendation\n"
+            "- **(b) approach two**\n"
+        )
+        groups = _iter_decision_groups(content, include_approximate_tiers=True)
+        assert len(groups) == 1
+        assert len(groups[0].options) == 2
+        assert is_group_resolved(content, groups[0]) is True
+
+    def test_bold_prose_phantom_does_not_merge_into_real_group(self) -> None:
+        """Scope Boundary guard: a bold-prose phantom block
+        (`**Option A evidence**:`, the ENH-2967/BUG-1484 shape) must not be
+        matched at all, and therefore cannot merge into or break a real
+        group's contiguous-run — the shared `_BOLD_OPTION_MARKER` fragment
+        prevents the match; this pins the grouping rule against it too."""
+        from little_loops.issue_parser import _iter_decision_groups
+
+        content = (
+            "## Proposed Solution\n"
+            "\n"
+            "**Option A evidence**: shows it works.\n"
+            "\n"
+            "**Option A**: do the thing\n"
+            "\n"
+            "**Option B**: do the other thing\n"
+        )
+        groups = _iter_decision_groups(content)
+        assert len(groups) == 1
+        assert len(groups[0].options) == 2
+
+    def test_common_path_regression_guard(self) -> None:
+        """Assertion (c) — a single-decision fixture with three options where
+        one is decided reports zero unresolved groups, so the flag still
+        clears in one run. The per-block filter fails here: losing options B
+        and C would read as unresolved and the flag would never clear."""
+        from little_loops.issue_parser import locate_unresolved_decisions
+
+        content = (
+            "## Proposed Solution\n"
+            "\n"
+            "**Option A**: do the thing\n"
+            "> **Selected:** Option A\n"
+            "\n"
+            "**Option B**: do the other thing\n"
+            "\n"
+            "**Option C**: do a third thing\n"
+        )
+        assert locate_unresolved_decisions(content) == []
+
+    def test_two_decision_points_one_decided_leaves_one_unresolved(self) -> None:
+        """Assertion (a) — two decision points, one decided, must still
+        report exactly one surviving group."""
+        from little_loops.issue_parser import locate_unresolved_decisions
+
+        content = (
+            "## Proposed Solution\n"
+            "\n"
+            "**Option A**: do the thing\n"
+            "> **Selected:** Option A\n"
+            "\n"
+            "**Option B**: do the other thing\n"
+            "\n"
+            "**Option C**: do a third thing\n"
+            "\n"
+            "- **(a) approach one**\n"
+            "- **(b) approach two**\n"
+        )
+        unresolved = locate_unresolved_decisions(content, include_approximate_tiers=True)
+        assert len(unresolved) == 1
+        assert unresolved[0].tier == "bullet"
+
+    def test_both_groups_marked_resolved_converges_to_zero(self) -> None:
+        """Assertion (b) — convergence: with both groups marked resolved,
+        the probe reports zero, so a second interactive run's clear is
+        reachable."""
+        from little_loops.issue_parser import locate_unresolved_decisions
+
+        content = (
+            "## Proposed Solution\n"
+            "\n"
+            "**Option A**: do the thing\n"
+            "> **Selected:** Option A\n"
+            "\n"
+            "**Option B**: do the other thing\n"
+            "\n"
+            "**Option C**: do a third thing\n"
+            "\n"
+            "- **(a) approach one**\n"
+            "> **Selected:** (a) — per the stated recommendation\n"
+            "- **(b) approach two**\n"
+        )
+        assert locate_unresolved_decisions(content, include_approximate_tiers=True) == []
+
+    def test_provisional_e_unresolved_until_retired_by_prefix(self) -> None:
+        """Assertion (c6) — a prose `pick one` directive reports exit-worthy
+        residual (one unresolved group); the same fixture with a bare
+        `**RESOLVED**` prefix on the directive line reports zero, because the
+        group is no longer emitted (retirement is probe suppression, not
+        `is_group_resolved`)."""
+        from little_loops.issue_parser import locate_unresolved_decisions
+
+        unresolved_content = (
+            "## Proposed Solution\n"
+            "\n"
+            "**DECISION — pick one before step 4 touches this file: use the "
+            "shim or rewrite the caller.**\n"
+        )
+        assert (
+            len(locate_unresolved_decisions(unresolved_content, include_approximate_tiers=True))
+            == 1
+        )
+
+        retired_content = (
+            "## Proposed Solution\n"
+            "\n"
+            "**RESOLVED** — the shim. **DECISION — pick one before step 4 "
+            "touches this file: use the shim or rewrite the caller.**\n"
+        )
+        assert locate_unresolved_decisions(retired_content, include_approximate_tiers=True) == []
+
+    def test_decorated_resolved_prefix_does_not_suppress(self) -> None:
+        """Guard against "simplifying" the retirement rule back into a
+        permanent stall: the bold run must close immediately at `RESOLVED` —
+        a decorated `**RESOLVED — the shim.**` matches nothing and the
+        directive group keeps re-emitting."""
+        from little_loops.issue_parser import locate_unresolved_decisions
+
+        content = (
+            "## Proposed Solution\n"
+            "\n"
+            "**RESOLVED — the shim.** **DECISION — pick one before step 4 "
+            "touches this file: use the shim or rewrite the caller.**\n"
+        )
+        assert len(locate_unresolved_decisions(content, include_approximate_tiers=True)) == 1
+
+    def test_appended_selected_callout_does_not_mark_directive_resolved_via_callout_re(
+        self,
+    ) -> None:
+        """The appended `> **Selected:**` form does suppress the Pattern E
+        probe (via `_PREFERENCE_MARKER_RE`), but is not itself a valid
+        `_SELECTED_CALLOUT_RE` match — pinning why the prefix form, not the
+        appended callout, is the prescribed retirement marker."""
+        from little_loops.issue_parser import _SELECTED_CALLOUT_RE, locate_unresolved_decisions
+
+        content = (
+            "## Proposed Solution\n"
+            "\n"
+            "**DECISION — pick one before step 4 touches this file: use the "
+            "shim or rewrite the caller.** > **Selected:** the shim.\n"
+        )
+        assert locate_unresolved_decisions(content, include_approximate_tiers=True) == []
+        assert _SELECTED_CALLOUT_RE.search(content) is None
+
+    def test_decision_rules_numbered_is_not_emitted_as_a_group(self) -> None:
+        """Assertion (c7) — a `## Program Design` -> `### Decision Rules`
+        bold-numbered block is `check-decidable`'s own decidable surface
+        (`pattern == "decision_rules_numbered"`, count 2) but must not be
+        emitted as a decision group: design rulings are not mutually
+        exclusive alternatives, and emitting them would exit 1 on nearly
+        every refined issue in this repo."""
+        from little_loops.issue_parser import locate_enumerable_options, locate_unresolved_decisions
+
+        content = (
+            "## Program Design\n\n"
+            "### Decision Rules\n\n"
+            "1. **Identifier shape.** Use backticked spans.\n"
+            "2. **Title extent.** Keep titles short.\n"
+        )
+        located = locate_enumerable_options(content)
+        assert located.pattern == "decision_rules_numbered"
+        assert located.count == 2
+        assert locate_unresolved_decisions(content, include_approximate_tiers=True) == []
+
+    def test_settled_decision_with_open_free_form_question_still_clears(self) -> None:
+        """Assertion (d) — an issue with a settled decision but open
+        free-form questions elsewhere still clears via this probe, proving
+        it is narrower than `check-open-questions`."""
+        from little_loops.issue_parser import locate_unresolved_decisions
+
+        content = (
+            "## Proposed Solution\n"
+            "\n"
+            "**Option A**: do the thing\n"
+            "> **Selected:** Option A\n"
+            "\n"
+            "**Option B**: do the other thing\n"
+            "\n"
+            "## Edge Cases\n"
+            "\n"
+            "- What happens on empty input?\n"
+        )
+        assert locate_unresolved_decisions(content) == []
+
+    def test_locate_unresolved_options_unchanged_by_this_module(self) -> None:
+        """Assertion (e) — `locate_unresolved_options`'s `(count, heading)`
+        output is untouched by the decision-group model; it still counts
+        every losing option block as unresolved (the behavior this issue's
+        group model exists to correct only for the flag-clearing gate)."""
+        from little_loops.issue_parser import locate_unresolved_options
+
+        content = (
+            "## Proposed Solution\n"
+            "\n"
+            "**Option A**: do the thing\n"
+            "> **Selected:** Option A\n"
+            "\n"
+            "**Option B**: do the other thing\n"
+            "\n"
+            "**Option C**: do a third thing\n"
+        )
+        assert locate_unresolved_options(content) == (2, "Proposed Solution")

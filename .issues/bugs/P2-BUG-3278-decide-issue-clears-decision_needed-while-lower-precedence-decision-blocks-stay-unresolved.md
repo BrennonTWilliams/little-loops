@@ -4,11 +4,12 @@ type: BUG
 title: decide-issue clears decision_needed while lower-precedence decision blocks
   stay unresolved
 priority: P2
-status: open
+status: done
 parent: EPIC-3290
 discovered_by: ll-issues-create
 discovered_date: '2026-08-21'
 captured_at: '2026-08-21T15:45:13Z'
+completed_at: '2026-08-23T03:55:32Z'
 labels:
 - decide-issue
 - skills
@@ -1368,11 +1369,70 @@ ENH-2967/BUG-1484 shape) to confirm the group iterator's "maximal contiguous run
 the same tier" rule does not merge a phantom into a real group — the shared fragment prevents the
 *match*, but the grouping rule is new code and untested against that shape.
 
+---
+
 ## Status
 
-**Open** | Created: 2026-08-21 | Priority: P2
+**Done** | Created: 2026-08-21 | Priority: P2
+
+## Resolution
+
+- **Action**: fix
+- **Completed**: 2026-08-22
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/issue_parser.py`: added `DecisionGroup`, `_iter_decision_groups`,
+  `is_group_resolved`, `locate_unresolved_decisions` per Parts 1-3 — group-aware residual
+  detection, opt-in `numbered`/`bullet` tier + Pattern E directive coverage
+- `scripts/little_loops/cli/issues/check_unresolved_decisions.py` (new) +
+  `cli/issues/__init__.py`: new `ll-issues check-unresolved-decisions` subcommand
+  (exit 0/1/2 per Part 4)
+- `skills/decide-issue/SKILL.md` + `reference.md`: Phase 3 sources `unresolved[0]` from the
+  new probe with the `decision_rules_numbered` carve-out; Phase 3b step 3's A-C branch now
+  writes a resolution callout and step 4 gates on the probe; Phase 7a idempotency is
+  per-group with a per-tier marker-placement rule; Phase 7b gates the clear on the probe;
+  Phase 9 reports residual groups. Extracted the Provisional Patterns A-D detail and the new
+  marker-placement/exit-code tables into `reference.md` to stay under the 500-line cap
+  (494 lines) — the "land the extraction as its own preparatory commit" note was folded into
+  this same change instead, since the budget was only breached by this issue's own edits
+- `scripts/little_loops/loops/oracles/resolve-decision.yaml`: new `check_residual_decision`
+  state between `assert_decision_cleared` and the terminals, per Part 6
+- `docs/reference/API.md`, `docs/reference/CLI.md`, `docs/reference/COMMANDS.md`,
+  `docs/guides/DECISIONS_LOG_GUIDE.md`: documented the new function/CLI and the now-conditional
+  frontmatter clear
+- `scripts/tests/test_issue_parser_unresolved.py::TestDecisionGroups` (17 tests),
+  `scripts/tests/test_ll_issues_check_unresolved_decisions.py` (new, 8 subprocess tests),
+  `scripts/tests/test_decide_issue_skill.py::TestBug3278DecisionGroupGating` (8 phase-text
+  tests), `scripts/tests/test_builtin_loops.py::TestResolveDecisionOracle` (4 new FSM routing
+  tests) — cover assertions (a), (b), (c), (c2), (c3), (c6), (c7), (d), (e) plus the
+  provisional_e retirement/decorated-prefix/appended-callout guards and the
+  Scope-Boundary phantom-block regression
+- `scripts/tests/test_issue_parser.py`: re-anchored the pre-existing
+  `TestPriorityRegexCompletenessAllowlist` line numbers (3335/3339/3360 → 3652/3656/3677),
+  shifted by this issue's ~315-line parser insertion
+- `.gemini/skills/decide-issue/`, `.kimi-code/skills/decide-issue/`,
+  `.qwen/skills/decide-issue/`: regenerated via `ll-adapt --host <host> --apply` after the
+  SKILL.md/reference.md edit
+
+### Verification Results
+- Tests: PASS (20174 passed, 20 skipped, full suite minus `-m "integration or conformance"`;
+  one pre-existing, unrelated failure remains —
+  `test_verify_evidence.py::TestRepoGate::test_no_new_unverifiable_evidence` flags stale
+  evidence citations in this issue's own `## Current Behavior` (lines 72/81, attributed to the
+  already-landed BUG-3287) and in `P3-BUG-3296-...md`; reproduced identically with every change
+  in this diff fully reverted, confirming it predates this fix and is out of this issue's scope)
+- Lint: PASS (`ruff check` clean on all changed files)
+- Format: PASS (`ruff format --diff` clean on all changed files)
+- Types: PASS (`mypy scripts/little_loops/` clean)
+- Loop validation: PASS (`ll-loop validate` on `resolve-decision.yaml`)
+- TDD: Red confirmed retroactively — all 35 new tests fail against the pre-fix source
+  (reverted via `git stash` and re-run), then pass after restoring the implementation
+
+
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-23T03:55:00 - `f76f3255-c5a1-47a5-a256-fbcdf24c224e.jsonl`
 - `/ll:confidence-check` - 2026-08-23T02:50:36 - `591b725f-a600-40d5-8bf6-26baeac94edd.jsonl`
 - `/ll:confidence-check` - 2026-08-23T02:24:03 - `6e6bb8a8-074e-4384-a442-4dd63e0ec57e.jsonl`
 - `/ll:refine-issue` - 2026-08-23T02:12:16 - `d4c69d5a-08a6-4fc3-8ad7-d7b1686ad66e.jsonl`

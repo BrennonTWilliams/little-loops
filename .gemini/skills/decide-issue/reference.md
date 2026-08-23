@@ -3,6 +3,44 @@
 Extracted from `SKILL.md` (ENH-494 500-line budget). Referenced from Phase 3b, Phase 4, Phase 6,
 Phase 9, and Integration.
 
+## Phase 3b Provisional Patterns A–D — full match shapes (moved from SKILL.md, BUG-3278)
+
+### Provisional Pattern A — Parenthetical `(e.g., ...)`
+```
+Match: parenthetical containing `e.g.,` followed by a concrete name
+Example: (e.g., completed_at: frontmatter field)
+Candidate: the specific approach named inside the parenthetical
+```
+
+### Provisional Pattern B — Inline `TBD` design marker
+```
+Match: `TBD` used as a placeholder for a design decision (not a research gap)
+Surrounding context must name a single approach being considered
+Example: "field name: TBD (leaning toward completed_at)"
+Candidate: the approach mentioned in the surrounding sentence
+```
+
+### Provisional Pattern C — Definitive replacement language
+```
+Match: phrases like "fundamental rethink" / "must be replaced with" / "should be replaced by"
+Example: "the existing approach must be replaced with direct file writes"
+Candidate: the concrete replacement approach named
+```
+
+### Provisional Pattern D — Declarative recommendation
+```
+Match: prose naming a winning option without a provisional wrapper:
+  **Recommended**: (b)  /  the recommendation is now (b)  /  Refresh N supersedes prior — (a)+(b)
+Candidate: the referenced option(s); multi-part winners like (a)+(b) are allowed.
+Requirement: the referent must exist as a Pattern-4 bullet option in `## Proposed Solution` or
+`## Codebase Research Findings` (existing-bullet case), OR the referent must be one of 2+
+concrete alternatives named inline in an unresolved `## Open Questions` item (ENH-2715) — e.g.
+"could do X or Y" with a stated preference; no pre-existing bullet is required for this shape,
+since the alternatives are materialized as structured options in Resolution Logic step 1 below.
+A marker (or an Open-Questions item naming a preference) with a resolvable referent is a
+**clear winner** — treat as decided. Same shape, **no** stated preference → Pattern E below.
+```
+
 ## Phase 3b Pattern E — full rationale and worked example (ENH-2936)
 
 Pattern E exists to close a specific remedy-chain gap (ENH-2866): an issue can name 2+ concrete
@@ -25,6 +63,40 @@ This matches Pattern E: two alternatives ("stamp it" / "move it to Out of scope"
 of an imperative marker ("do not leave it unaddressed"), no stated preference between them. It
 is materialized as `**Option A**: stamp it` / `**Option B**: move it to Out of scope` and routed
 to Phase 4 scoring.
+
+## Phase 7a Marker-Placement Matrix, per decision-group tier (BUG-3278)
+
+| Tier | Marker | Placement |
+| --- | --- | --- |
+| `section_header` / `bold_label` | `> **Selected:** [title] — [rationale]` | Immediately after the winning option's title line |
+| `bullet` / `numbered` | `> **Selected:** (x) — per the stated recommendation` | Immediately after the winning bullet's line (part 1's span rule keeps this inside the group) |
+| `provisional_e` | Retirement is **probe suppression**, never a callout — see below | On the directive line itself, nowhere else |
+
+A `provisional_e` group has no option title line to attach a callout to, and
+`_locate_directive_alternatives`' sliding-window suppressors only see a marker placed **on the
+directive line itself** — a marker on a neighbouring line always leaves one window that holds the
+imperative but not the marker, so the group re-emits forever. The prescribed form is a bare
+`**RESOLVED**` bold run — closing **immediately** at `RESOLVED` — with the reason **outside** the
+bold run:
+
+```markdown
+**RESOLVED** — the shim. **DECISION — pick one before step 4: use the shim or rewrite the caller.**
+```
+
+Verified against the live tree (2026-08-23). A decorated bold run (`**RESOLVED — the shim.**`,
+`**RESOLVED:** the shim.`) matches **nothing** — `_RESOLVED_QUESTION_MARKER_RE`'s alternatives all
+require the closing `**` immediately after `RESOLVED` — and leaves the group emitting forever. An
+appended `> **Selected:**` callout also suppresses the probe (via `_PREFERENCE_MARKER_RE`), but is
+not itself a valid `_SELECTED_CALLOUT_RE` match (line-anchored) and a mid-line `>` is not valid
+blockquote syntax — so it is not the prescribed form, even though it happens to work.
+
+## Phase 3b Step 4 Exit-Code Disposition (BUG-3278)
+
+| `check-unresolved-decisions` exit | Meaning | Phase 3b step 4 action |
+| --- | --- | --- |
+| 0 | No unresolved decision group remains | Write `decision_needed: false`, log success |
+| 1 | A real residual group survives | No frontmatter write; log `decision_needed remains true`; carry groups to Phase 9 |
+| 2+ | Unresolvable ID / unverifiable probe | Treat as exit 1 — never clear on an unverifiable probe |
 
 ## When to Use vs. Related Commands
 
@@ -125,7 +197,10 @@ Reasoning: [2-3 sentences]
 ## CHANGES APPLIED
 - [Annotated issue with > **Selected:** callout | Skipped (idempotent)]
 - [Appended ### Decision Rationale section | Skipped (idempotent)]
-- decision_needed: [set to false | already false — no change]
+- decision_needed: [set to false | already false — no change | remains true — see below]
+
+⚠ decision_needed remains true — N unresolved decision point(s):  ← only shown on
+  - [heading] (lines [start]-[end])                                 check-unresolved-decisions exit 1/2+ (BUG-3278)
 
 ## DRY RUN PREVIEW  ← only shown when --dry-run
 ---
