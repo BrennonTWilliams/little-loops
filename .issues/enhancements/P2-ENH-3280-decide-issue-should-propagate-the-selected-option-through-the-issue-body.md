@@ -14,6 +14,7 @@ labels:
 - skills
 - pipeline
 - consistency
+reconcile_attempted: true
 blocked_by:
 - BUG-3289
 relates_to:
@@ -151,6 +152,12 @@ Two consequences for this issue:
      Name the baseline commit in the fixture's docstring, the way BUG-3278 assertion (c5) does for
      the same function. See BUG-3285 § *Second blast radius*.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-23 — based on codebase analysis:_
+
+- **Status update (2026-08-23): the entire prerequisite chain discussed above has landed.** `BUG-3289` (subtract shared-subject vocabulary from `_unapplied_decision`, commit `e3ffd49ce`), `BUG-3285` (widen `_option_block_spans`'/`_OPTION_HEADING_RE` matching, probe Pattern E directives), `BUG-3279` (fix `locate_enumerable_options` giving the final option every remaining line), and `BUG-3278` (gate `decision_needed` clear on a decision-group residual probe, adding the `is_group_resolved`/`check-unresolved-decisions` machinery to Phase 7b) are all `status: done` as of this pass — confirmed via `ll-issues show <ID>` and `git log --all --grep`. `blocked_by: BUG-3289` in this issue's frontmatter is therefore resolved per the status-based resolution rule (only `done`/`cancelled` resolve `blocked_by`); this issue is no longer blocked on prerequisite work. See the Program Design findings above for what BUG-3289's and BUG-3278's landed changes actually did to `_unapplied_decision` and Phase 7's structure, since neither landed as a pure no-op relative to what this issue's Proposed Solution assumed.
+
 ## Proposed Solution
 
 Add **Phase 7c: Propagate Selection** after Phase 7b, before the session log.
@@ -197,21 +204,24 @@ with no defined exit.
 - `skills/decide-issue/SKILL.md` — new Phase 7c; Phase 9 report gains a propagated-edits block
 - `skills/decide-issue/reference.md` — the Phase 9 output template lives here
 
-> ⚠ **Line budget — this is the largest of three concurrent SKILL.md edits and there are 7 lines
-> left (added 2026-08-21).** `skills/decide-issue/SKILL.md` is **493 lines** against a hard
+> ⚠ **Line budget — updated 2026-08-23; BUG-3287 and BUG-3278 have both landed and already
+> consumed most of the headroom.** `skills/decide-issue/SKILL.md` is **494 lines** against the hard
 > **500-line** cap enforced by `TestSkillLineLimit`
-> (`scripts/tests/test_enh494_skill_companions.py:73-86`). BUG-3287 and BUG-3278 also write to this
-> file. Phase 7c as specified — four rewrite categories with trigger patterns and per-category
-> disposition, the bounded-scope statement, and the idempotency rule — cannot fit.
+> (`scripts/tests/test_enh494_skill_companions.py:73-86`) — **6 lines left**. Phase 7c as specified —
+> four rewrite categories with trigger patterns and per-category disposition, the bounded-scope
+> statement, and the idempotency rule — cannot fit.
 >
 > **Required shape:** `SKILL.md` gets the Phase 7c *heading, the imperative step sequence, the
 > idempotency guard, and a `See [reference.md](reference.md) for the rewrite-category catalogue`
-> pointer* — target **≤ 15 lines**. The four-category catalogue, its trigger patterns, and the
-> worked dispositions move into `reference.md` (144 lines today, already this skill's companion).
-> `test_enh494_skill_companions.py::test_skill_links_to_companion` enforces that the pointer
-> exists. See EPIC-3290 § *Shared constraint — the decide-issue SKILL.md line budget*, which also
-> notes that the extraction pass may land as a standalone preparatory commit rather than inside any
-> one child — if it does, this issue inherits the headroom and only needs the budget check.
+> pointer* — target **≤ 15 lines**, tighter still now that only 6 lines remain. The four-category
+> catalogue, its trigger patterns, and the worked dispositions move into `reference.md` (**219
+> lines** now, already this skill's companion — grown in part from BUG-3278's own additions:
+> `## Phase 7a Marker-Placement Matrix, per decision-group tier (BUG-3278)` and `## Phase 3b Step 4
+> Exit-Code Disposition (BUG-3278)`). `test_enh494_skill_companions.py::test_skill_links_to_companion`
+> enforces that the pointer exists. See EPIC-3290 § *Shared constraint — the decide-issue SKILL.md
+> line budget*, which also notes that the extraction pass may land as a standalone preparatory commit
+> rather than inside any one child — if it does, this issue inherits the headroom and only needs the
+> budget check.
 
 ### Dependent Files (Callers/Importers)
 
@@ -228,13 +238,13 @@ _Wiring pass added by `/ll:wire-issue`:_
 - A fixture with an implementation step naming the loser: assert the step no longer instructs the
   rejected work
 - An already-propagated fixture: assert a second run writes nothing (idempotency)
-- `_unapplied_decision` test coverage: `scripts/tests/test_issue_parser.py:4757`, class
+- `_unapplied_decision` test coverage: `scripts/tests/test_issue_parser.py:5093`, class
   `TestUnappliedDecision`, using an inline `_issue()` builder helper rather than
   on-disk `.md` fixtures — no fixture file for this detector exists under
   `scripts/tests/fixtures/issues/`
 - A live-corpus sweep test already exists and documents a known precision limit:
-  `scripts/tests/test_issue_parser.py:5063`, `TestUnappliedDecisionLiveCorpusSweep`
-  (`test_corpus_sweep_does_not_crash` at `:5085`)
+  `scripts/tests/test_issue_parser.py:5604`, `TestUnappliedDecisionLiveCorpusSweep`
+  (`test_corpus_sweep_does_not_crash` at `:5626`)
   — asserts `_unapplied_decision` never raises across `.issues/`, and is explicitly
   report-only/non-blocking due to a high false-positive rate on the real corpus. **That residual
   noise is BUG-3289's, not BUG-3279's** — this issue's own `blocked_by`.
@@ -324,6 +334,13 @@ _Added by `/ll:refine-issue` — 2026-08-21 — based on codebase analysis:_
 - **Correction (pattern-finder, 2026-08-21): `reconcile-issue` is not the only in-place-prose-rewrite precedent.** `decide-issue`'s own existing Phase 3b already rewrites prose in place: "Materialize alternatives, if not already structured (ENH-2715)" (`skills/decide-issue/SKILL.md:284-293`) converts informal `- (a) ...`/`- (b) ...` bullets or an Open-Questions-named alternative into structured `**Option A**`/`**Option B**` blocks, and the skill text names this itself as "additive/rewrite-in-place of the same prose already matched" (`:292`). Two further in-place-rewrite precedents exist outside issue-markdown prose specifically: `skills/improve-claude-md/SKILL.md:89,174` (rewrites `CLAUDE.md` via Edit) and `skills/simplify-loop/SKILL.md:204` ("4b. Rewrite the parent", verified against a reachable-terminal diff at `:92-98`). `wire-issue` and `refine-issue` remain confirmed append-only/marker-only (`skills/wire-issue/SKILL.md:427`, `refine-issue.md`'s marker-only carve-out) — the "Bounded scope" analogy to `reconcile-issue` in this issue's Proposed Solution still holds, but the "no existing skill rewrites prose except reconcile-issue" framing above is inexact; Phase 7c has an in-skill precedent (Phase 3b) as well as the cross-skill one already cited.
 - **Audit-trail heading conventions (pattern-finder, 2026-08-21):** two heading families coexist and are not interchangeable. `## CHANGES APPLIED` (decide-issue `reference.md:125`, format-issue `templates.md:318`, review-sprint `review-sprint.md:336`) varies its bullet shape per command (decide-issue: tri-state `[Action | Skipped (idempotent)]`; format-issue: grouped `###` sub-headings; review-sprint: flat `Pruned:`/`Removed:`/`Added:`/`Revalidated:` lines). `## CORRECTIONS_MADE` (reconcile-issue `:288-296`, ready-issue `:463-476`) shares a tighter `[category-tag] description` bullet convention and both end with an explicit `[Or "None" if no corrections needed]` empty-state line. Phase 7c's report block should pick one family deliberately rather than inventing a third shape — decide-issue already owns `## CHANGES APPLIED` in `reference.md:125`, so extending that heading with a new propagated-edits bullet group is the lower-friction fit.
 
+_Added by `/ll:refine-issue` — 2026-08-23 — based on codebase analysis:_
+
+- **Anchor refresh (2026-08-23) — supersedes the 2026-08-21 anchor correction above; the file has drifted again since that pass.** `skills/decide-issue/SKILL.md` is now **494 lines** (was 493) against the 500-line `TestSkillLineLimit` cap — headroom is now **6 lines**, one tighter than the "7 lines left" the Line-Budget callout above cites. `skills/decide-issue/reference.md` is now **219 lines** (was cited as "144 lines today") — the growth is attributable at least in part to two BUG-3278-landed sections not present at the 144-line snapshot: `## Phase 7a Marker-Placement Matrix, per decision-group tier (BUG-3278)` (`reference.md:67-91`) and `## Phase 3b Step 4 Exit-Code Disposition (BUG-3278)` (`reference.md:93-99`), together ~32 of the ~75-line delta — some additional growth exists elsewhere in the file beyond these two sections.
+- **Phase 7c insertion point, read directly from the current file:** `## Phase 7: Apply Changes` at `SKILL.md:381`, `### 7a: Annotate Issue File` at `:385` (ends `:403`), `### 7b: Update Frontmatter` at `:405` (its `ll-issues decisions add` bash block closes at `:437`), then a blank line, `---` at `:439`, blank line, `## Phase 8: Append Session Log` at `:441`. A new `### 7c` would be written starting at line 438, pushing the `---`/Phase 8 down.
+- **`docs/guides/DECISIONS_LOG_GUIDE.md`**: the pipeline-diagram fence now spans lines 168-196 (issue's Documentation section cites 168-194 — close, off by the closing fence line); the "reports only these three issue-file edits" sentence is now at **line 264**, not the cited line 262 (262 is now the closing fence of the preceding sample-output block).
+- **`docs/reference/COMMANDS.md`**: `### /ll:decide-issue` section header at line 245; the "Frontmatter write-back (conditional, BUG-3278)" paragraph is at line 256 — this one still matches the issue's citation exactly.
+
 ### Conventions in Force
 - Lettered sub-phases (`### 7a`, `### 7b`, ...) nest under one `## Phase N` parent, each a discrete ordered write — evidence: `skills/decide-issue/SKILL.md:399-424` (7a/7b under Phase 7) and `skills/wire-issue/SKILL.md:336-452` (8a/8b/8c under Phase 8). No skill in the repo goes past a `c` suffix; Phase 7c would be the first `c`-level sub-phase in `decide-issue`.
 - Idempotency guards are phrased "**Idempotency [rule]**: if `<condition>`, skip the write and log `<marker> <message>`" — evidence: `skills/decide-issue/SKILL.md:409` (uses `⚠` for "content already present") and `:424` (uses `✓` for "flag already at target value"). The two symbols are not interchangeable within this skill; ENH-3280's own "Mirroring Phase 7a" points at the `⚠` form since Phase 7c is a content-presence check, not a flag check.
@@ -381,6 +398,16 @@ _Added by `/ll:refine-issue` — 2026-08-21 — based on codebase analysis:_
 - **Test-slicing precedent (pattern-finder, 2026-08-21):** the closest existing precedent for a test that isolates a lettered/compound sub-heading (rather than only the outer `## Phase N` span) is `TestPhase3bResolvedFilter` (`scripts/tests/test_decide_issue_skill.py:287-300`), which slices from `content.index("## Phase 3b: Inline Decision Scan")` then asserts `"Phase 3b-i" in text` inside that slice. This is closer to what a Phase 7c test needs than the outer-slice-only precedent (`TestDecisionNeededFrontmatterUpdate`) this issue's Tests section currently cites as the template — no existing test binds a start-heading (`### 7a`) and end-heading (`### 7b`) pair to isolate a single lettered sub-phase's own span; `TestPhase3bResolvedFilter`'s single-heading-start-plus-substring-search shape is the nearest analog.
 - **Analyzer confirmation, no correction (2026-08-21):** all five points in this section and Codebase Research Findings above were independently re-verified against source and are accurate as stated, including the exact `⚠`/`✓` idempotency-marker distinction (`skills/decide-issue/SKILL.md:409` vs `:424`) and the `--fix`/`--apply` dispatch table exclusion (`scripts/little_loops/cli/issues/format_check.py:98-108`). One precedent is stronger than cited: `skills/confidence-check/SKILL.md:138` (`FC_JSON=$(ll-issues format-check {{issue_id}} --format json 2>/dev/null || true)`) is the same `--format json` + `2>/dev/null || true` shell-out idiom this issue's Call Path already assumes for Phase 7c, not merely an analogous one.
 
+_Added by `/ll:refine-issue` — 2026-08-23 — based on codebase analysis:_
+
+- **Anchor refresh (2026-08-23) — supersedes the 2026-08-21 anchor table above; the file drifted again since that pass.** Current defs in `scripts/little_loops/issue_parser.py`: `has_blocking_gaps` `:580` (was cited `:556`), `FormatGaps.to_dict()` `:591-620` with the `"unapplied_decision"` JSON key at `:618` (was cited `:594`), `check_format_gaps` `:663` (was `:638`), the `_unapplied_decision` call site `gaps.unapplied_decision.extend(...)` at `:1164`, `_DECISION_DIRECTIVE_SECTIONS` `:1352-1358` (was `:1302-1308`, membership unchanged), `_selected_option_title` `:1382` (was `:1332`), `_option_label` `:1395` (was `:1345`), `_decision_identifiers` `:1401` (was `:1351`), `_option_block_spans` `:1474-1515` (was `:1405`), `_unapplied_decision` `:1518-1659` (was `:1449`). `ll-issues format-check` call chain: `cmd_format_check` now `format_check.py:484` (was cited `:476`); single-issue JSON emission at `format_check.py:690-693`; `--all` sweep emission at `:618`.
+- **`_unapplied_decision`'s signature and return shape are confirmed unchanged** despite the anchor drift — still `(content: str) -> list[str]`, still one formatted reason string per hit via `reasons.append(f"{section_name} still specifies \`{identifier}\` (rejected option)")` at `issue_parser.py:1658`. The issue's existing Signatures entry is accurate in content, only its anchor was stale.
+- **BUG-3289's landed fix added a new input surface, not a signature change.** It introduced `_shared_subject_identifiers(content: str) -> set[str]` (`issue_parser.py:1406-1422`), which reads the frontmatter `title` (falling back to the H1) plus `## Summary` — content **outside** `_DECISION_DIRECTIVE_SECTIONS`. It's consumed inside `_unapplied_decision` as a third subtraction term: `discriminating = (rej_ids - subsumed) - sel_ids - shared_ids` (`issue_parser.py:1616-1617`), layered after a pre-existing BUG-3295 `subsumed` containment exclusion (`:1599-1611`). So `_unapplied_decision`'s output now depends on title/Summary content in addition to the closed directive-section set; Phase 7c's own sweep scope (bounded to `_DECISION_DIRECTIVE_SECTIONS`) is unaffected, but this is a new fact about what the detector it drives off actually reads.
+- **BUG-3278's `DecisionGroup`/`is_group_resolved` machinery (`issue_parser.py:2823-2973`: `_iter_decision_groups` `:2823`, `is_group_resolved` `:2912`, `locate_unresolved_decisions` `:2956`) and `_unapplied_decision` are two independent systems that do not share state.** `_unapplied_decision` has no per-group scoping parameter — it always scans the entire `## Proposed Solution` section as one decision: it collects all option spans via `_option_block_spans` (`:1531`), finds the first `> **Selected:**` callout in the whole section via `_selected_option_title` (`:1581`, first-occurrence intentional per its docstring `:1382-1392`), and requires exactly one span whose label matches (`issue_parser.py:1588-1591`: `if len(matching) != 1: return []`). On a document with multiple sibling decision groups (BUG-3278's own reason for existing), this document-grain design means Phase 7c — if it drives strictly off `_unapplied_decision`'s output — is reading "all directive sections vs. one globally-first-resolved selection," not "this specific group Phase 3b/7a just resolved." Nothing in the landed BUG-3278 work made `_unapplied_decision` group-aware; it remains the original ENH-3256 identifier-diff detector, unmodified in this respect. There is also a second, independent option-boundary implementation now in the file: `_option_block_spans` (used by `_unapplied_decision`) vs. `_decision_groups_in_body`/`DecisionGroup` (used by the group-resolution gate) — these can disagree about span boundaries and therefore about what "resolved" means for the same document.
+- **Idempotency-marker convention has two distinct shapes, both now landed and both live in Phase 7 (pattern-finder, 2026-08-23):** Phase 7a's guard is headed `**Idempotency rule (per-group, BUG-3278)**:` and guards a content-presence/group-resolution check with `⚠` (`SKILL.md:399-403`: "skip the annotation write only when **the selected group** is already resolved per `is_group_resolved` ... Log `⚠ Decision already annotated for this group — skipping annotation (idempotent)`"). Phase 7b's guard is headed bare `**Idempotency**:` (no BUG tag, no "per-group") and guards a flag-already-at-target-value check with `✓` (`SKILL.md:422`: "if `decision_needed` is already `false`, skip the write and log `✓ decision_needed already false — no update needed`"), phrasing repeated verbatim at Phase 3b step 4 (`SKILL.md:303`). The `⚠`/`✓` split maps to *kind* of check (content-presence vs. flag-value), not to phase; Phase 7c's own idempotency guard ("Mirroring Phase 7a") should match Phase 7a's fuller header convention (`**Idempotency rule (...)**:`), not Phase 7b's bare one.
+- **No skill anywhere in the codebase currently re-parses a composed `unapplied_decision` gap-reason string back into its `(section, identifier)` parts (pattern-finder, 2026-08-23).** The two existing consumers of `format-check --format json` (`wire-issue` Phase 1.6, `confidence-check` Phase 1.8, which explicitly reuses wire-issue's cached `$FC_JSON` rather than re-invoking `format-check`, `SKILL.md:189-190`) both pull named JSON keys structurally via a one-line `python -c "...json.load(sys.stdin).get('<key>', [])..."` idiom and pass each list's string entries through unmodified for display (`confidence-check`'s `DECISION_GAP` joins entries with `"; "` for advisory display, never splits them, `SKILL.md:198,207`). A repo-wide grep for `"still specifies"`/`"rejected option"` outside `issue_parser.py` finds only that one display-prose hit. Phase 7c's need to parse `"{section} still specifies \`{identifier}\` (rejected option)"` back into structured section/identifier parts is therefore genuinely novel in this codebase — there is no existing string-parsing convention to model it on, only the JSON-key-extraction idiom for getting the raw list.
+- **Three distinct "edit then reverify" shapes exist in the codebase and disagree on retry (pattern-finder, 2026-08-23):** (a) `decide-issue`'s own Phase 3b step 4 and Phase 7b — inline reverify immediately after the edit, single check, no retry, residual carried to Phase 9 (`SKILL.md:291-294`, `:407-410`; `reference.md:99` makes this explicit: "exit 2+ ... Treat as exit 1 — never clear on an unverifiable probe"); (b) `reconcile-issue` — no inline reverify at all; convergence is re-evaluated externally on a later loop pass by `autodev.yaml`'s `check_reconcile_needed`, which "routes on marker *presence*, so a marker that survives a completed reconcile pass re-fires the gate on every subsequent pass" (`commands/reconcile-issue.md:83-85`); (c) `ready-issue`'s Learning Tests step — inline, but with one bounded fix-and-recheck cycle before flagging (`commands/ready-issue.md:260-261`). Phase 7c's proposed "Non-empty re-check ... not a failure and must not retry" behavior matches shape (a) exactly — decide-issue's own existing precedent — not shapes (b) or (c).
+
 ## Implementation Steps
 
 0. **Resolve `verify_verdict` first (see § *Verify Verdict Note*; added 2026-08-21, epic
@@ -390,11 +417,12 @@ _Added by `/ll:refine-issue` — 2026-08-21 — based on codebase analysis:_
    against a false alarm about a deliberately absent reproducer. This is the Verify Verdict
    Note's option 1, made the first act of implementation.
 
-1. **Land BUG-3289 first** — Phase 7c drives off `_unapplied_decision`, whose report list is still
-   dominated by shared-subject false positives (~23 on ENH-3277, 2 on ENH-2692) even after
-   BUG-3279's span fix landed in `f39a417e`. Rewriting prose to satisfy those reports damages
-   correct text. See *Motivation § Half of this already exists*, item 2, for why the prerequisite
-   moved from BUG-3279 to BUG-3289.
+1. **Prerequisite chain has landed — no external blocker remains.** BUG-3289 (`e3ffd49ce`),
+   BUG-3285, BUG-3279, and BUG-3278 are all `status: done`; `blocked_by: BUG-3289` is resolved per
+   the status-based resolution rule. Before writing Phase 7c, read the `## Scope Boundary` note
+   below: BUG-3289's fix is deliberately partial (title+Summary subtraction only), so a residual of
+   shared-vocabulary false positives is an accepted, not eliminated, risk — Phase 7c's bounded-scope
+   rule must account for it rather than blindly rewriting every `_unapplied_decision` hit.
 2. Write Phase 7c into `skills/decide-issue/SKILL.md` with the four reference categories and the
    explicit bounded-scope statement (option-keyed prose only, never a re-refine).
 3. Extend the Phase 9 report template in `skills/decide-issue/reference.md` with a propagated-edits
@@ -411,24 +439,24 @@ _Added by `/ll:refine-issue` — 2026-08-21 — based on codebase analysis:_
 
 _These touchpoints were identified by wiring analysis and must be included in the implementation:_
 
-- Update `docs/guides/DECISIONS_LOG_GUIDE.md` — revise the pipeline diagram (lines 168-194) and the
-  "Sample output" block's "only these three issue-file edits" claim (line 262) to account for
+- Update `docs/guides/DECISIONS_LOG_GUIDE.md` — revise the pipeline diagram (lines 168-196) and the
+  "Sample output" block's "only these three issue-file edits" claim (line 264) to account for
   Phase 7c's propagated-edits report
 - Update `docs/reference/COMMANDS.md` — add a Phase 7c behavior sentence to the `/ll:decide-issue`
   section's "Frontmatter write-back" paragraph (~line 256)
 - Add a Phase 7c test class to `scripts/tests/test_decide_issue_skill.py` — outer slice
   `## Phase 7:` → `## Phase 8:` per `TestDecisionNeededFrontmatterUpdate` (`:183-208`), method
-  shape per `TestPattern3bDirectiveAlternatives` (`:649-705`)
+  shape per `TestPattern3bDirectiveAlternatives` (`:673`)
 - Add fixture(s) under `scripts/tests/fixtures/issues/` for the four Phase 7c scenarios, modeled on
   the `BUG-3025-pre-review-original.md` / `BUG-3025-reviewed-uncorrected.md` before/after pairing
   and wired into a test class like `FEAT-398-decide-empty-proposed.md` is
   (`test_decide_issue_skill.py:496-527`)
 
-**Sequencing note (not auto-resolved):** `BUG-3278` independently edits the same
-`## Phase 7: Apply Changes` region of `skills/decide-issue/SKILL.md` (lines 399-441) — it inserts a
-residual-probe re-scan into Phase 7b's internals, while this issue inserts a new Phase 7c after
-Phase 7b. Both issues touch the same ~40-line span concurrently; whichever lands second should
-rebase against the other rather than assuming a clean merge [Agent 2 finding].
+**Sequencing note — resolved: BUG-3278 already landed.** BUG-3278's `is_group_resolved` machinery
+landed first and now defines Phase 7a's idempotency guard (`**Idempotency rule (per-group,
+BUG-3278)**:`, `SKILL.md:399-403`). Phase 7c must be written against this already-changed Phase 7
+region — inserting the new `### 7c` after the now-landed `### 7b` — not as a concurrent edit needing
+a rebase.
 
 ## Scope Boundaries
 
@@ -530,6 +558,8 @@ text, or explicitly accept the residual risk with a named mitigation.
 
 
 ## Session Log
+- `/ll:reconcile-issue` - 2026-08-23T05:28:00 - `547ad306-83f6-4672-bcc1-e1656230f4b2.jsonl`
+- `/ll:refine-issue` - 2026-08-23T05:22:39 - `b2d2e7b4-d39e-4d10-a40c-83a347d4aafb.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-22T22:31:16 - `ccec33f2-1527-4aff-b9d7-1a9165839f2e.jsonl`
 - `/ll:format-issue` - 2026-08-22T20:15:07 - `918913f6-1ede-43d4-b1f7-bffea0db90c5.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-21T17:52:58 - `f27d8342-f3ba-42ea-95ca-41ad79008fbf.jsonl`
@@ -540,3 +570,12 @@ text, or explicitly accept the residual risk with a named mitigation.
 - `/ll:refine-issue` - 2026-08-21T17:19:06 - `ea08ee55-36d8-4ff2-b8d4-2a20e7e2ad81.jsonl`
 - `/ll:capture-issue` - 2026-08-21T16:00:38 - `826fb04a-1812-4193-be3d-c48a972bd311.jsonl`
 - `/ll:capture-issue` - 2026-08-21T15:46:43 - `da526826-2179-460f-b823-35695378ac55.jsonl`
+
+## Tests
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-23 — based on codebase analysis:_
+
+- **Anchor refresh (2026-08-23) — test-file line numbers cited elsewhere in this section are stale, drifted again since the 2026-08-21 refine pass.** `scripts/tests/test_issue_parser.py`: `class TestFormatGradedChecker` now `:3966`, `class TestUnappliedDecision` now `:5093` (was cited `:4757`), `test_all_blocks_carry_selected_line_resolves_single_winner` now `:5248` (was `:4912-4929`), `class TestUnappliedDecisionLiveCorpusSweep` now `:5604` (was `:5063`), `test_corpus_sweep_does_not_crash` now `:5626` (was `:5085`). `scripts/tests/test_decide_issue_skill.py`: `class TestDecisionNeededFrontmatterUpdate` still `:183-208` (exact match, unchanged), `class TestPhase3bResolvedFilter` now `:311` (was cited `:287-300`), `class TestFEAT398Snapshot`/`FIXTURE = Path(...)` now `:520`/`:529` (was `:496-527`), `class TestPattern3bDirectiveAlternatives` now `:673` (was `:649-705`). `scripts/tests/test_enh494_skill_companions.py` citations (`test_skill_links_to_companion` `:63`, `class TestSkillLineLimit` `:73-86`) are confirmed still exact. `scripts/little_loops/cli/issues/format_check.py` `--fix` dispatch-list citation (`:98-113`) is confirmed still exact.
+- **Confirmed still true (2026-08-23): no fixture exists yet under `scripts/tests/fixtures/issues/` for the two-option decision shape** (`**Option A**`/`**Option B**` + `> **Selected:**` callout + stale directive-section prose) this issue's four Phase 7c test scenarios need. Only `FEAT-398-decide-empty-proposed.md` and the `BUG-3025-pre-review-original.md`/`BUG-3025-reviewed-uncorrected.md` pair remain the closest decide-issue-adjacent precedents on disk.
