@@ -4,7 +4,7 @@ title: Advisor consult telemetry in history.db
 type: FEAT
 parent: EPIC-3041
 priority: P4
-status: open
+status: done
 testable: true
 discovered_date: 2026-08-03
 depends_on:
@@ -16,6 +16,7 @@ depends_on:
 labels:
 - planning-hub
 verify_verdict: VALID
+completed_at: '2026-08-23T19:11:04Z'
 ---
 
 # FEAT-3040: Advisor consult telemetry in history.db
@@ -199,3 +200,13 @@ action, never automatically.
 - **Counter collapse (vs FEAT-3116)**: the proposed collapse of FEAT-3116's
   per-task budget counter into the `advisor_consults` table must preserve
   FEAT-3116 AC #3's subprocess-boundary correctness.
+
+---
+
+## Resolution
+
+- **Status**: Decomposed
+- **Closed**: 2026-08-23
+- **Decomposed into**: FEAT-3300, FEAT-3301
+
+Work for FEAT-3040 is now carried by its child issues; this parent was closed by rn-decompose.

@@ -8,6 +8,9 @@ verify_verdict: VALID
 discovered_date: 2026-08-04
 labels:
 - planning-hub
+relates_to:
+- FEAT-3300
+- FEAT-3301
 ---
 
 # EPIC-3041: Host-agnostic advisor
