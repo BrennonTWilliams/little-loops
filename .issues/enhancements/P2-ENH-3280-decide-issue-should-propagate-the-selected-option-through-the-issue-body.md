@@ -3,11 +3,12 @@ id: ENH-3280
 type: ENH
 title: decide-issue should propagate the selected option through the issue body
 priority: P2
-status: open
+status: done
 parent: EPIC-3290
 discovered_by: ll-issues-create
 discovered_date: '2026-08-21'
 captured_at: '2026-08-21T15:46:10Z'
+completed_at: '2026-08-23T06:29:57Z'
 verify_verdict: NON_VALID
 labels:
 - decide-issue
@@ -761,6 +762,7 @@ says landing BUG-3289 first is supposed to prevent.
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-23T06:29:22 - `9baa8c00-89a5-4246-9348-375ab389fe73.jsonl`
 - `/ll:confidence-check` - 2026-08-23T05:44:03 - `574730a3-8c19-454d-94a0-aa87ee1491aa.jsonl`
 - `/ll:reconcile-issue` - 2026-08-23T05:28:00 - `547ad306-83f6-4672-bcc1-e1656230f4b2.jsonl`
 - `/ll:refine-issue` - 2026-08-23T05:22:39 - `b2d2e7b4-d39e-4d10-a40c-83a347d4aafb.jsonl`

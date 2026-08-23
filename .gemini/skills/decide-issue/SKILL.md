@@ -230,18 +230,12 @@ language. See [reference.md](reference.md) for each pattern's full Match/Example
 
 ### Provisional Pattern E — Un-preferenced decision directive (ENH-2936)
 
-Already detected by the Phase 3 `locate-options` call: when its JSON result has
-`pattern == "provisional_e"`, the single `options[0].text` entry is the matched window —
-2+ concrete alternatives ("X or Y", enumerated alternatives) named within ~3 lines of an
-imperative decide-marker ("decide before implementation", "do not leave (it/this)
-unaddressed", "must be decided", "decision needed/required before", "pick one"), with
-NO stated preference (no Pattern-D-style recommendation marker naming one of them as the
-winner). Bare "X or Y" prose with no imperative marker is explicitly NOT Pattern E (the
-settled-informal-list case Phase 3's auto-mode conservatism already protects against).
-Scan scope (narrower than Patterns A–D, and already applied by the CLI): `## Scope Boundaries`, `## Proposed Change` / `## Proposed Solution`, and unresolved `## Open Questions` items. Read the alternatives named in `options[0].text` verbatim as the
-candidates — no separate scan needed here. The precedence/exclusion regexes themselves
-live only in `issue_parser._locate_directive_alternatives` (ENH-2950); see
-[reference.md](reference.md) for the full match rationale and worked example.
+Already detected by the Phase 3 `locate-options` call: `pattern == "provisional_e"` means 2+
+concrete alternatives named near an imperative decide-marker, with NO stated preference (Pattern
+D above requires one). Bare "X or Y" prose with no imperative marker is explicitly NOT Pattern E.
+Scan scope: `## Scope Boundaries`, `## Proposed Solution`, and unresolved `## Open Questions`.
+Read `options[0].text` verbatim as the candidates — no separate scan needed. See
+[reference.md](reference.md) for the full match shape and worked example.
 
 For each provisional pattern match, read 3–5 lines of surrounding context to determine if one approach is clearly stated (not merely listed as a possibility).
 
@@ -434,6 +428,17 @@ if [ -f .ll/decisions.yaml ] || [ -d .ll/decisions.d ]; then
       2>/dev/null || true
 fi
 ```
+
+### 7c: Propagate Selection
+
+**Entry gates** (skip and log if either fails): `DRY_RUN` is false, and Phase 7b took its exit-0 branch — otherwise log `⚠ Phase 7c: skipped — N decision point(s) still unresolved` and stop.
+
+1. Run `ll-issues format-check "${ISSUE_ID}" --format json` and read `unapplied_decision_detail` (list of `{section, identifier}` pairs).
+2. For each pair, locate the identifier's occurrence in `section` and classify against the four rewrite categories in [reference.md](reference.md) — recommendation markers, option-keyed conditionals, imperative steps, explicit propagation checklists.
+3. Edit only matches (rewrite/demote/strike per category); flag everything else in Phase 9 without editing it.
+4. Re-run `format-check`; a non-empty `unapplied_decision` residual is expected under the bounded-scope rule — carry it to Phase 9's flagged block, no retry.
+
+**Idempotency rule (content-presence, ENH-3280)**: if the post-7a/7b `unapplied_decision` is already empty, skip and log `⚠ Phase 7c: no unpropagated references — skipping (idempotent)`.
 
 ---
 

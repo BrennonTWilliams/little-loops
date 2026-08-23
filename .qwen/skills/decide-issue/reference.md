@@ -1,7 +1,32 @@
 # decide-issue reference
 
 Extracted from `SKILL.md` (ENH-494 500-line budget). Referenced from Phase 3b, Phase 4, Phase 6,
-Phase 9, and Integration.
+Phase 7c, Phase 9, and Integration.
+
+## Phase 7c Rewrite Categories (ENH-3280)
+
+`_unapplied_decision`'s output (surfaced structurally via the `unapplied_decision_detail` format-check
+key) is a **candidate list, not an edit list**. A candidate is *edited* only when its surrounding
+prose also matches one of the four categories below; every other candidate is *flagged* in the
+Phase 9 report and left untouched. This is what keeps BUG-3289's accepted residual of
+shared-vocabulary false positives (e.g. a bare `` `ProjectConfig` `` mention in narrative prose)
+harmless — it matches none of the four categories, so it is flagged, never rewritten.
+
+1. **Recommendation markers naming a loser** — `Recommendation: <X>`, `Recommended: <X>`,
+   `we should take <X>` where `<X>` is not the winner. Rewrite to name the selection, or strike
+   and fold into the Decision Rationale as a "considered and rejected" line.
+2. **Conditional blocks keyed to an option** — `If <X> is taken, …`, `Under <X>, …`, `conditional
+   on the DECISION REQUIRED outcome`. For the winner: unwrap the condition and state it
+   declaratively. For a loser: delete, or demote to a parenthetical under the rejected option.
+3. **Imperative steps referencing a loser** — any `## Implementation Steps` item naming a rejected
+   option. Rewrite to the winner's shape or mark not-applicable — never left as-is.
+4. **Sections the issue itself flags** — an explicit propagation checklist for the selected
+   option, present in the issue body; apply it item by item and report each edit.
+
+**Bounded scope.** Phase 7c rewrites prose keyed to the option set only — it does not restate
+counts, re-derive scope, or re-run analysis. Where propagation implies a downstream change it
+cannot safely make (stale counts, an untouched `## Scope Boundaries` figure), flag the location
+in the Phase 9 report rather than editing it.
 
 ## Phase 3b Provisional Patterns A–D — full match shapes (moved from SKILL.md, BUG-3278)
 
@@ -63,6 +88,20 @@ This matches Pattern E: two alternatives ("stamp it" / "move it to Out of scope"
 of an imperative marker ("do not leave it unaddressed"), no stated preference between them. It
 is materialized as `**Option A**: stamp it` / `**Option B**: move it to Out of scope` and routed
 to Phase 4 scoring.
+
+**Match shape.** The Phase 3 `locate-options` call's JSON result carries `pattern ==
+"provisional_e"`; the single `options[0].text` entry is the matched window — 2+ concrete
+alternatives ("X or Y", enumerated alternatives) named within ~3 lines of an imperative
+decide-marker ("decide before implementation", "do not leave (it/this) unaddressed", "must be
+decided", "decision needed/required before", "pick one"), with NO stated preference (no
+Pattern-D-style recommendation marker naming one of them as the winner). Bare "X or Y" prose
+with no imperative marker is explicitly NOT Pattern E (the settled-informal-list case Phase 3's
+auto-mode conservatism already protects against).
+
+**Scan scope** (narrower than Patterns A–D, and already applied by the CLI): `## Scope
+Boundaries`, `## Proposed Change` / `## Proposed Solution`, and unresolved `## Open Questions`
+items. The precedence/exclusion regexes themselves live only in
+`issue_parser._locate_directive_alternatives` (ENH-2950).
 
 ## Phase 7a Marker-Placement Matrix, per decision-group tier (BUG-3278)
 
@@ -198,14 +237,21 @@ Reasoning: [2-3 sentences]
 - [Annotated issue with > **Selected:** callout | Skipped (idempotent)]
 - [Appended ### Decision Rationale section | Skipped (idempotent)]
 - decision_needed: [set to false | already false — no change | remains true — see below]
+- Propagation (Phase 7c):
+  - [section] (line [N]): `[identifier]` — [rewritten | demoted | struck]  ← one bullet per edit
+  - ... | Skipped (idempotent) | Skipped — N decision point(s) still unresolved
 
 ⚠ decision_needed remains true — N unresolved decision point(s):  ← only shown on
   - [heading] (lines [start]-[end])                                 check-unresolved-decisions exit 1/2+ (BUG-3278)
+
+⚠ Flagged, not edited (Phase 7c) — N candidate(s) matched no rewrite category:  ← only shown when
+  - [section] (line [N]): `[identifier]`                                          residuals survive the bounded-scope rule
 
 ## DRY RUN PREVIEW  ← only shown when --dry-run
 ---
 [Full annotation content that would be written]
 ---
+Propagation (Phase 7c): not evaluated under --dry-run
 
 ## FILE STATUS
 - [Modified | Not modified (--dry-run | nothing to change)]

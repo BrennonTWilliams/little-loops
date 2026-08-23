@@ -506,7 +506,10 @@ def _normalize_whitespace(text: str) -> str:
 # feed FormatGaps.has_gaps, so they render in every output surface) but must
 # not fail format-check's exit code. `testable`'s false-positive rate made a
 # hard gate out of what is meant to be a "maybe set testable: false" nudge.
-_ADVISORY_GAP_CLASSES: frozenset[str] = frozenset({"testable"})
+# `unapplied_decision_detail` (ENH-3280) is a structured projection of the
+# already-blocking `unapplied_decision` class, not an independent gap -- it
+# must never drive the exit code on its own.
+_ADVISORY_GAP_CLASSES: frozenset[str] = frozenset({"testable", "unapplied_decision_detail"})
 
 
 @dataclass
@@ -543,6 +546,9 @@ class FormatGaps:
     template_placeholders: list[str] = field(default_factory=list)
     unapplied_decision: list[str] = field(default_factory=list)
     priority_drift: list[str] = field(default_factory=list)
+    # ENH-3280: structured (section, identifier) projection of unapplied_decision,
+    # for machine consumers that would otherwise re-parse the reason string.
+    unapplied_decision_detail: list[dict[str, str]] = field(default_factory=list)
 
     @property
     def has_gaps(self) -> bool:
@@ -588,7 +594,7 @@ class FormatGaps:
             getattr(self, f.name) for f in fields(self) if f.name not in _ADVISORY_GAP_CLASSES
         )
 
-    def to_dict(self) -> dict[str, list[str]]:
+    def to_dict(self) -> dict[str, list[str] | list[dict[str, str]]]:
         """Serialize to a JSON-serializable dict for --format json output."""
         return {
             "missing": self.missing,
@@ -617,6 +623,7 @@ class FormatGaps:
             "template_placeholders": self.template_placeholders,
             "unapplied_decision": self.unapplied_decision,
             "priority_drift": self.priority_drift,
+            "unapplied_decision_detail": self.unapplied_decision_detail,
         }
 
 
@@ -846,6 +853,12 @@ def check_format_gaps(
             (:data:`_SUPERSEDED_MARKER_PREFIX`) appears in the same paragraph.
             Report-only; caps ``/ll:confidence-check`` Criterion C, never a
             hard override.
+        unapplied_decision_detail: structured ``{"section", "identifier"}``
+            projection of ``unapplied_decision`` (ENH-3280), one entry per
+            reason string, in the same order -- lets machine consumers (e.g.
+            ``/ll:decide-issue`` Phase 7c) read the pair without re-parsing the
+            formatted reason string. Advisory-only (:data:`_ADVISORY_GAP_CLASSES`):
+            a projection of an already-blocking class, never an independent gap.
         priority_drift: the filename's ``P<n>-`` prefix and the frontmatter
             ``priority:`` key are both present and disagree (BUG-3286
             Decision Rules § Drift rule). Scoped to the file's own name and
@@ -1161,7 +1174,14 @@ def check_format_gaps(
         if not any(_SUPERSEDED_MARKER_PREFIX in body for body in directive_bodies):
             gaps.unmarked_superseded_directive.append(issue_path.name)
 
-    gaps.unapplied_decision.extend(_unapplied_decision(content))
+    _unapplied_pairs = _unapplied_decision_pairs(content)
+    gaps.unapplied_decision.extend(
+        f"{section} still specifies `{identifier}` (rejected option)"
+        for section, identifier in _unapplied_pairs
+    )
+    gaps.unapplied_decision_detail.extend(
+        {"section": section, "identifier": identifier} for section, identifier in _unapplied_pairs
+    )
 
     gaps.duplicate_findings_block.extend(_duplicate_findings_blocks(content))
     gaps.duplicate_heading.extend(_duplicate_headings(content))
@@ -1518,6 +1538,18 @@ def _option_block_spans(text: str) -> list[tuple[int, int, str]]:
 def _unapplied_decision(content: str) -> list[str]:
     """Reason strings for rejected-option identifiers left in directive sections.
 
+    Thin formatter over :func:`_unapplied_decision_pairs` (ENH-3280) -- kept so
+    the reason-string template stays byte-identical for existing callers/tests.
+    """
+    return [
+        f"{section} still specifies `{identifier}` (rejected option)"
+        for section, identifier in _unapplied_decision_pairs(content)
+    ]
+
+
+def _unapplied_decision_pairs(content: str) -> list[tuple[str, str]]:
+    """``(section_name, identifier)`` pairs for rejected-option identifiers left in directive sections.
+
     Options are enumerated from ``_section_body(content, "Proposed Solution")``
     only -- never full ``content`` -- and the final block is clamped at
     ``### Decision Rationale``. The Proposed Solution scan subtracts the option
@@ -1632,7 +1664,7 @@ def _unapplied_decision(content: str) -> list[str]:
         if start < end:
             scrubbed_proposed = scrubbed_proposed[:start] + scrubbed_proposed[end:]
 
-    reasons: list[str] = []
+    pairs: list[tuple[str, str]] = []
     for section_name in _DECISION_DIRECTIVE_SECTIONS:
         if section_name == "Proposed Solution":
             bodies = [scrubbed_proposed]
@@ -1655,8 +1687,8 @@ def _unapplied_decision(content: str) -> list[str]:
                 if fired:
                     break
             if fired:
-                reasons.append(f"{section_name} still specifies `{identifier}` (rejected option)")
-    return reasons
+                pairs.append((section_name, identifier))
+    return pairs
 
 
 # BUG-3059: a well-formed dependency entry. The optional `P<n>-` prefix is the

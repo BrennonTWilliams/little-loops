@@ -190,6 +190,9 @@ This is the end-to-end flow when you're running issues through `ll-auto`, `ll-pa
 │         no  → sets decision_needed: false                         │
 │         yes → decision_needed stays true; group named in report   │
 │      → writes a .ll/decisions.d/<uuid4>.json fragment (on clear)  │
+│      → Phase 7c: propagates the selection into the rest of the    │
+│        issue body (rejected-option prose still in a directive     │
+│        section) — skipped under --dry-run or an unresolved group  │
 │          ↓                                                        │
 │  Automation resumes with the decided issue (or stops for review)  │
 └───────────────────────────────────────────────────────────────────┘
@@ -259,9 +262,10 @@ CHANGES APPLIED
   - Annotated issue with > **Selected:** callout
   - Appended ### Decision Rationale section
   - decision_needed: set to false
+  - Propagation (Phase 7c): Implementation Steps (line 214): `beta_writer` — rewritten
 ```
 
-`CHANGES APPLIED` reports only these three issue-file edits (each line flips to "Skipped (idempotent)" / "already false — no change" on a repeat run). The decisions.yaml log append happens separately in Phase 7b via `ll-issues decisions add` — it's a silent no-op when `decisions.yaml` doesn't exist, and isn't itself listed in the `CHANGES APPLIED` block.
+`CHANGES APPLIED` reports these issue-file edits (each line flips to "Skipped (idempotent)" / "already false — no change" on a repeat run). The decisions.yaml log append happens separately in Phase 7b via `ll-issues decisions add` — it's a silent no-op when `decisions.yaml` doesn't exist, and isn't itself listed in the `CHANGES APPLIED` block. The propagation line (ENH-3280) is Phase 7c's report of any rejected-option prose it rewrote in a directive section; residuals it flagged but did not edit (the bounded-scope rule) appear in a separate "Flagged, not edited" block instead.
 
 ---
 

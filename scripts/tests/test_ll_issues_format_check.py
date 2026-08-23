@@ -370,6 +370,9 @@ class TestFormatCheckJsonOutput:
             # BUG-3286: filename P<n>- prefix and frontmatter priority: both
             # present and disagreeing.
             "priority_drift": [],
+            # ENH-3280: structured (section, identifier) projection of
+            # unapplied_decision, for machine consumers.
+            "unapplied_decision_detail": [],
             # ENH-2992: marker presence rides the same payload; not a gap, so
             # it does not affect the exit code above.
             "superseded_marker_count": 0,
@@ -2739,6 +2742,13 @@ class TestFormatCheckTestableRendering:
         assert "BUG-9803" in out
         assert "testable:" in out
 
+    # ENH-3280: unapplied_decision_detail is a structured (section, identifier)
+    # projection of unapplied_decision for machine consumers only — it is not
+    # counted by has_gaps (see FormatGaps.has_gaps), so it cannot trigger the
+    # "counted but not rendered" regression this guard exists to catch, and
+    # deliberately has no _print_gaps loop of its own.
+    _TEXT_RENDER_EXEMPT = {"unapplied_decision_detail"}
+
     def test_every_format_gaps_field_is_rendered(
         self,
         capsys: pytest.CaptureFixture[str],
@@ -2746,14 +2756,19 @@ class TestFormatCheckTestableRendering:
         """Every FormatGaps list field must have a loop in _print_gaps.
 
         Structural guard so a future gap class cannot repeat the regression:
-        counted by has_gaps, absent from the text report.
+        counted by has_gaps, absent from the text report. Exempts fields in
+        `_TEXT_RENDER_EXEMPT` (machine-only projections not counted by has_gaps).
         """
         import dataclasses
 
         from little_loops.cli.issues.format_check import _print_gaps
         from little_loops.issue_parser import FormatGaps
 
-        field_names = [f.name for f in dataclasses.fields(FormatGaps)]
+        field_names = [
+            f.name
+            for f in dataclasses.fields(FormatGaps)
+            if f.name not in self._TEXT_RENDER_EXEMPT
+        ]
         gaps = FormatGaps(**{name: [f"sentinel-{name}"] for name in field_names})
 
         assert gaps.has_gaps

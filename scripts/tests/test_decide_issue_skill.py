@@ -208,6 +208,128 @@ class TestDecisionNeededFrontmatterUpdate:
         )
 
 
+class TestPhase7cPropagateSelection:
+    """Phase 7 must include a ### 7c sub-phase that propagates the selected
+    option into the rest of the issue body (ENH-3280)."""
+
+    def _phase_text(self) -> str:
+        content = SKILL_FILE.read_text()
+        start = content.index("## Phase 7: Apply Changes")
+        next_heading = content.find("\n## Phase 8:", start + 1)
+        end = next_heading if next_heading != -1 else len(content)
+        return content[start:end]
+
+    def _subphase_text(self) -> str:
+        text = self._phase_text()
+        start = text.index("### 7c: Propagate Selection")
+        return text[start:]
+
+    def test_7c_positioned_after_7b(self) -> None:
+        text = self._phase_text()
+        assert text.index("### 7b: Update Frontmatter") < text.index(
+            "### 7c: Propagate Selection"
+        ), "### 7c must follow ### 7b under Phase 7"
+
+    def test_7c_body_within_line_budget(self) -> None:
+        subphase = self._subphase_text()
+        # Up to (not including) the trailing '---' that precedes Phase 8.
+        body = subphase.split("\n---", 1)[0]
+        line_count = len(body.strip("\n").splitlines())
+        assert line_count <= 15, f"### 7c body must be <= 15 lines, found {line_count}"
+
+    def test_dry_run_entry_gate_documented(self) -> None:
+        assert "`DRY_RUN` is false" in self._subphase_text(), (
+            "Phase 7c must gate on DRY_RUN being false"
+        )
+
+    def test_exit_zero_entry_gate_documented(self) -> None:
+        assert "exit-0 branch" in self._subphase_text(), (
+            "Phase 7c must gate on Phase 7b's exit-0 branch (skip on unresolved decision groups)"
+        )
+
+    def test_idempotency_rule_marker_and_header_form(self) -> None:
+        text = self._subphase_text()
+        assert "**Idempotency rule (content-presence, ENH-3280)**:" in text, (
+            "Phase 7c's idempotency guard must use Phase 7a's fuller "
+            "'**Idempotency rule (...)**:' header form, not Phase 7b's bare one"
+        )
+        assert "⚠ Phase 7c" in text, "Phase 7c's idempotency skip must use the ⚠ marker"
+
+    def test_reference_md_pointer_present(self) -> None:
+        assert "[reference.md](reference.md)" in self._subphase_text(), (
+            "Phase 7c must point to reference.md for the rewrite-category catalogue"
+        )
+
+
+class TestPhase7cFixtures:
+    """Golden fixtures for Phase 7c's four rewrite categories + idempotency (ENH-3280).
+
+    Mirrors TestFEAT398Snapshot: decide-issue is an LLM-executed markdown SKILL, so
+    these lock in that each fixture reproduces the *precondition* Phase 7c consumes
+    — `_unapplied_decision_pairs`' candidate list — via the deterministic detector,
+    not by executing the skill itself.
+    """
+
+    FIXTURES_DIR = Path(__file__).parent / "fixtures" / "issues"
+
+    RECOMMENDATION_MARKER = FIXTURES_DIR / "ENH-3280-fixture-recommendation-marker.md"
+    CONDITIONAL_BLOCK = FIXTURES_DIR / "ENH-3280-fixture-conditional-block.md"
+    IMPERATIVE_STEP = FIXTURES_DIR / "ENH-3280-fixture-imperative-step.md"
+    ALREADY_PROPAGATED = FIXTURES_DIR / "ENH-3280-fixture-already-propagated.md"
+
+    def test_fixtures_exist(self) -> None:
+        for fixture in (
+            self.RECOMMENDATION_MARKER,
+            self.CONDITIONAL_BLOCK,
+            self.IMPERATIVE_STEP,
+            self.ALREADY_PROPAGATED,
+        ):
+            assert fixture.exists(), f"{fixture} must exist"
+
+    def test_recommendation_marker_fixture_trips_detector(self) -> None:
+        from little_loops.issue_parser import _unapplied_decision_pairs
+
+        content = self.RECOMMENDATION_MARKER.read_text()
+        pairs = _unapplied_decision_pairs(content)
+        assert ("Program Design", "beta_writer") in pairs
+
+    def test_conditional_block_fixture_trips_detector(self) -> None:
+        from little_loops.issue_parser import _unapplied_decision_pairs
+
+        content = self.CONDITIONAL_BLOCK.read_text()
+        pairs = _unapplied_decision_pairs(content)
+        assert ("Implementation Steps", "beta_writer") in pairs
+
+    def test_imperative_step_fixture_trips_detector(self) -> None:
+        from little_loops.issue_parser import _unapplied_decision_pairs
+
+        content = self.IMPERATIVE_STEP.read_text()
+        pairs = _unapplied_decision_pairs(content)
+        assert ("Implementation Steps", "beta_writer") in pairs
+
+    def test_already_propagated_fixture_is_idempotent(self) -> None:
+        """No rejected-option identifier survives -- a second Phase 7c pass writes nothing."""
+        from little_loops.issue_parser import _unapplied_decision_pairs
+
+        content = self.ALREADY_PROPAGATED.read_text()
+        assert _unapplied_decision_pairs(content) == []
+
+    def test_enh_3277_reproducer_fixture_exists(self) -> None:
+        fixture = self.FIXTURES_DIR / "ENH-3277-pre-repair-reproducer.md"
+        assert fixture.exists(), f"{fixture} must exist"
+
+    def test_enh_3277_reproducer_trips_recommendation_and_imperative_categories(self) -> None:
+        """Hand-authored from ENH-3280's own quoted Current Behavior text (Implementation
+        Step 4) -- no git revision holds ENH-3277's actual pre-repair state."""
+        from little_loops.issue_parser import _unapplied_decision_pairs
+
+        fixture = self.FIXTURES_DIR / "ENH-3277-pre-repair-reproducer.md"
+        pairs = _unapplied_decision_pairs(fixture.read_text())
+        rejected_identifier = "ll-config get --raw project.<key>"
+        assert ("Program Design", rejected_identifier) in pairs
+        assert ("Implementation Steps", rejected_identifier) in pairs
+
+
 class TestSessionLogCall:
     """SKILL.md must document the ll-issues append-log call in Phase 8."""
 

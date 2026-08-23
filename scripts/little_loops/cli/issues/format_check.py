@@ -495,6 +495,9 @@ def cmd_format_check(config: BRConfig, args: argparse.Namespace) -> int:
     Every class in :class:`FormatGaps` must have a matching loop in
     :func:`_print_gaps`; a class counted by ``has_gaps`` but not rendered
     exits 1 with an empty report (the `testable` regression, ENH-2946).
+    Exception: `unapplied_decision_detail` (ENH-3280) is a structured
+    projection of `unapplied_decision` for machine consumers only, is not
+    counted by ``has_gaps``, and has no render line by design.
 
     Returns:
         0 when structurally compliant, or when the only gaps found are
