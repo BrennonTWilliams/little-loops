@@ -6,7 +6,7 @@ priority: P3
 status: done
 discovered_date: 2026-06-26
 discovered_by: capture-issue
-parent: EPIC-2087
+parent: EPIC-3299
 captured_at: '2026-06-26T00:35:41Z'
 completed_at: '2026-08-08T09:35:17Z'
 relates_to:

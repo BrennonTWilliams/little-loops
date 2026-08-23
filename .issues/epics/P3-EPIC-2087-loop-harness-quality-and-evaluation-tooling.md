@@ -40,10 +40,6 @@ Loops are authored and iterated subjectively — authors assess quality via spot
 
 ## Children
 
-- **FEAT-2301** — Visual builder for policy-router and rubric FSM loops (UX shell; delta on FEAT-2390's shipped template) *(parented 2026-07-03 via unparented sweep)*
-- **FEAT-3036** — Artifact templates design *(parented 2026-08-04 via /ll:link-epics)*
-- **ENH-3035** — Factor a shared artifact template kit out of the policy-builder template *(parented 2026-08-04 via /ll:link-epics)*
-
 - **ENH-2079** — Enforce generator-fix discipline in meta-loop validation (MR-6)
 - **ENH-2080** — Add retry-budget calibration guide tied to evaluator health
 - **ENH-2081** — Generate DSL-native eval tasks from ll's own config formats
@@ -52,6 +48,14 @@ Loops are authored and iterated subjectively — authors assess quality via spot
 - **ENH-2086** — Add cross-host validation option to ll-loop run --baseline
 
 - **BUG-2482** — Shallow-iteration heuristic blind for gitignored run dirs *(parented 2026-07-05 as a defect in ENH-2082's shipped detector)*
+
+- **ENH-3298** — Baseline verdicts ignore the Wilson CIs they print — **open**; completes ENH-2084's half-landed statistical rigor, whose ACs asked only that the CI be *displayed*
+
+**Re-parented out 2026-08-23** to EPIC-3299 (artifact templates), which describes
+what they actually deliver: FEAT-2301, FEAT-3036, ENH-3035. All three had landed
+here by automated sweep rather than a scoping decision, and two of them
+(FEAT-2301's authoring UI, the dashboards FEAT-3036 anticipates) fall under this
+epic's own Out-of-Scope list.
 
 ## Implementation Notes
 
@@ -65,17 +69,39 @@ Delivery order suggestion:
 
 ## Acceptance Criteria
 
-- [x] All six child issues are resolved
-- [x] `ll-loop validate` enforces MR-6 with suppression flag
+- [x] All seven original child issues are resolved (ENH-2079/2080/2081/2082/2084/2086, BUG-2482)
+- [x] `ll-loop validate` enforces MR-6 with suppression flag — `_validate_generator_fix_discipline` in `scripts/little_loops/fsm/validation/meta_rules.py:358`, suppressed by top-level `generator_fix_ok: true`
 - [x] `ll-loop run --baseline` reports Wilson 95% CI alongside point estimates
+- [ ] Baseline **conclusions** are CI-aware, not just the display — ENH-3298
 - [x] `ll-loop run --baseline` supports `--cross-host` validation
-- [x] Shallow-iteration failure mode detection — delivered by ENH-2082 as a step in the `/ll:audit-loop-run` skill (fixture `assess-shallow-iteration.yaml` + skill step), not as an `ll-loop audit` CLI subcommand; AC wording updated 2026-06-12 to match the shipped surface
-- [x] DSL-native eval task generation is available for ll config formats
-- [x] Retry-budget calibration guidance is documented
+- [x] Shallow-iteration failure mode detection — originally delivered by ENH-2082 as a step in the `/ll:audit-loop-run` skill (fixture `assess-shallow-iteration.yaml` + skill step). **Superseded 2026-08-01 by ENH-2949** (under EPIC-2938), which landed exactly the `ll-loop audit --json` subcommand this line previously said would not be built; `skills/audit-loop-run/SKILL.md:206` now calls it for deterministic `tool_call_count` / `aux_mutation_count` / `diff_stall_present` counters. Treat the earlier "not as a CLI subcommand" wording as historical, not as a design constraint.
+- [x] DSL-native eval task generation is available for ll config formats — `ll-loop scaffold-eval`
+- [x] Retry-budget calibration guidance is documented — `ll-loop calibrate-budget` + `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md`
 
 ## Verification Notes
 
 - 2026-08-10: Verified 2026-08-10: original 6-item AC checklist (ENH-2079/80/81/82/84/86, BUG-2482) is fully done but checkboxes remained unchecked in the AC section — checked off. Two later children (FEAT-3036, ENH-3035, added 2026-08-04) are legitimately still open, so the epic correctly stays open pending those.
+
+- 2026-08-23: Re-reviewed against the epic's stated goal. All seven original
+  deliverables verified present in the tree, not merely marked done — MR-6
+  (`fsm/validation/meta_rules.py:358`), `stats.wilson_ci` wired into both the A/B
+  summary and `diagnose-evaluators`, `--cross-host` (`_run_cross_host_validation`),
+  `ll-loop scaffold-eval`, `ll-loop calibrate-budget`, and `ll-loop audit --json`.
+
+  Two corrections to this file: (1) the shallow-iteration AC's "not as an
+  `ll-loop audit` CLI subcommand" clause went stale when ENH-2949 built that
+  subcommand on 2026-08-01 — annotated above so it is not honored as a
+  constraint; (2) FEAT-2301 / FEAT-3036 / ENH-3035 re-parented to EPIC-3299.
+
+  One genuine gap found and filed as **ENH-3298**: ENH-2084 added Wilson CIs to
+  the *display* but nothing consumes them. `_print_ab_summary`
+  (`cli/loop/_helpers.py:2074`) picks its verdict from `results.delta > 0`, and
+  `_print_cross_host_table` (`:2213`) gates its ordering-reversal warning the
+  same way — so a one-item delta at n=5 is reported as confidently as a decisive
+  one. `grep -rnE 'overlap|significan|inconclusive'` over `cli/loop/`,
+  `stats.py`, and `ab_writer.py` returns nothing.
+
+  With ENH-3298 closed, this epic has no remaining work under its stated scope.
 
 ## Session Log
 - `/ll:verify-issues` - 2026-08-13T03:04:16 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`

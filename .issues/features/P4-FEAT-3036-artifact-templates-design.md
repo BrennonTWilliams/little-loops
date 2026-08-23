@@ -7,7 +7,7 @@ status: open
 discovered_date: 2026-08-03
 labels:
 - planning-hub
-parent: EPIC-2087
+parent: EPIC-3299
 depends_on:
 - FEAT-2301
 verify_verdict: VALID
