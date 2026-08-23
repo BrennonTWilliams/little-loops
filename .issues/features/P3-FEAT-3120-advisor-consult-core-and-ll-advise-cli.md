@@ -202,6 +202,14 @@ ll-advise --signal <name> --question <text>
 `HostRunner.build_blocking_json` -> `run_blocking_json` (FEAT-3042) ->
 `AdvisorVerdict`
 
+_Contract note (settled 2026-08-23)_: this direct `main_advise -> consult`
+call is temporary by design. FEAT-3116 (which lands after this issue)
+retargets it onto `consult_for_trigger(args.signal, ...,
+enforce_trigger_allowlist=False)` and adds a static assertion that
+`consult_for_trigger` is the **only** caller of `consult()`. Implement the
+CLI knowing that call site will be migrated — keep the consult invocation
+in one obvious place in `cmd_*` rather than threading it through helpers.
+
 Closest existing call-path precedent: `runner_spec.py:_run_prompt`
 (lines 287-303) — `resolve_host().build_blocking_json(prompt=...,
 model=...)` then `subprocess.run([inv.binary, *inv.args],
@@ -566,14 +574,14 @@ VERDICT_JSON: {"verdict": "fail", "confidence": 80, "target_id": "FEAT-3120", "t
 
 **Note** (added by `/ll:audit-issue-conflicts`):
 
-- **consult() call-site contract (vs FEAT-3116, FEAT-3039)**: this issue's
-  Call Path invokes `consult()` directly (`main_advise -> consult`), but
-  FEAT-3116 AC #5 asserts no code path other than `consult_for_trigger` calls
-  `consult()` directly (with a static-assertion test). Settle one contract
-  before implementation: either route the manual `ll-advise` path through
-  `consult_for_trigger` (signal `user_requested`, budget-counted per
-  FEAT-3116's Expected Behavior), or FEAT-3116 qualifies its exclusivity
-  assertion to auto-trigger call sites only.
+- **consult() call-site contract (vs FEAT-3116, FEAT-3039)** — **SETTLED
+  2026-08-23**: `consult_for_trigger` becomes the sole caller of `consult()`
+  when FEAT-3116 lands. This issue ships `main_advise -> consult` directly
+  (it lands before `consult_for_trigger` exists); FEAT-3116's scope includes
+  retargeting that call with `enforce_trigger_allowlist=False` (manual
+  consults stay budget-counted but are not blocked by the auto-trigger
+  allowlist). See the Contract note under Call Path and FEAT-3116's
+  2026-08-23 verification note.
 - **Telemetry skip instrumentation (vs FEAT-3040)**: FEAT-3040 AC #1 requires
   `advisor_consults` rows for capability-floor-refused consults, but floor
   violations are refused at this issue's CLI layer (`check_floor` → non-zero

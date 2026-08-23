@@ -18,7 +18,7 @@ score_complexity: 18
 score_test_coverage: 10
 score_ambiguity: 18
 score_change_surface: 25
-size: Very Large
+size: Small
 reconcile_attempted: true
 ---
 
@@ -29,10 +29,9 @@ reconcile_attempted: true
 > IDs were minted against a shadow issue tree. Salvaged and re-IDed to
 > `FEAT-3121`; sibling `FEAT-3111` → `FEAT-3120`, `FEAT-3110` → `FEAT-3122`,
 > and the redundant `FEAT-3109` grouping layer collapsed into `FEAT-3044`.
-> Two claims below are stale as a result: the dependency-chain check under
-> `## Verification Notes` asserts `FEAT-3042`/`FEAT-3043` have no issue files
-> (they do exist canonically, both `status: open`), and `FEAT-3120` is
-> described as `Deferred` (it is now `open`).
+> _2026-08-23: the two stale claims this note used to flag (a research note
+> asserting `FEAT-3042`/`FEAT-3043` have no issue files; `FEAT-3120`
+> described as `Deferred`) have now been corrected in place below._
 
 ## Summary
 
@@ -170,8 +169,8 @@ _Wiring pass added by `/ll:wire-issue`:_
   count would overstate its coverage.
 - No test in this repo exercises a skill referencing a CLI
   (`Bash(ll-advise:*)`) whose Python entry point does not yet exist in
-  the source tree — this is a genuinely new ordering (skill lands
-  ahead of its CLI dependency, since FEAT-3120 is `status: deferred`).
+  the source tree — only relevant if this skill were authored ahead of
+  FEAT-3120 (`status: open`; the planned order lands the CLI first).
   Authoring `skills/advise/SKILL.md` with `Bash(ll-advise:*)` today
   will not fail any lint (confirmed no allowed-tools-vs-registered-CLI
   cross-check exists).
@@ -207,7 +206,7 @@ _Added by `/ll:refine-issue` — 2026-08-08 — based on codebase analysis:_
 - `skills/init/SKILL.md:1-22` — the cited frontmatter/shape precedent, confirmed verbatim: `disable-model-invocation: true`, `argument-hint: "[flags]"`, `allowed-tools` listing `Bash(ll-init:*)` **and** a separate bare `Bash` entry, `arguments:` as a list of `{name, description, required}` objects, and `<!-- PLUGIN_VERSION: 1.106.0 -->` immediately under the H1 (title line, blank line, marker line).
 - Closest existing "assemble context → shell to one CLI → parse JSON → surface structured result" precedents, ranked: `skills/create-eval-from-issues/SKILL.md:180-257` (fullest match — Step 4 there shows the exact "call CLI with `--json`, read the JSON result, if it failed report the `errors` field and stop" shape this skill needs) and `skills/compact-session/SKILL.md:44-61` (minimal single-call variant, names each JSON field to parse in prose after the invocation).
 - `allowed-tools` scoping is not a single fixed rule — it splits by how much non-wrapped-CLI shell work the skill does: scoped-only (`skills/compact-session/SKILL.md:5-7`), scoped + bare `Bash` (`skills/init/SKILL.md:6-11`, the form this issue's Proposed Solution already specifies), comma-listed multi-scope (`skills/cleanup-loops/SKILL.md:8`), fully bare (`skills/distill-traces/SKILL.md:7-11`).
-- `<!-- PLUGIN_VERSION: x.y.z -->` is carried by exactly 3 skills today (`skills/init/SKILL.md:22`, `skills/configure/SKILL.md:32`, `skills/update/SKILL.md:21`), all currently `1.106.0`. It is read programmatically, not decorative (`skills/configure/SKILL.md:62-63`, `skills/update/SKILL.md:72-78`). Note: this value has visibly drifted from `.claude-plugin/plugin.json`'s `1.154.0` at research time — the marker is not kept in lockstep automatically; whatever value this skill ships with will need the same manual-sync awareness.
+- `<!-- PLUGIN_VERSION: x.y.z -->` is carried by exactly 3 skills today (`skills/init/SKILL.md:22`, `skills/configure/SKILL.md:32`, `skills/update/SKILL.md:21`), all currently `1.106.0`. It is read programmatically, not decorative (`skills/configure/SKILL.md:62-63`, `skills/update/SKILL.md:72-78`). Note: this value has visibly drifted from `.claude-plugin/plugin.json`'s version (`1.154.0` at research time, `1.156.0` as of 2026-08-23) — the marker is not kept in lockstep automatically; whatever value this skill ships with will need the same manual-sync awareness.
 - Confirmed via Glob + `scripts/pyproject.toml` entry-point search: `scripts/little_loops/cli/advise.py`, `skills/advise/SKILL.md`, and `consult()`/`AdvisorVerdict` in `advisor.py` do not exist yet anywhere in the main tree — only the capability-floor slice (FEAT-3108: `MODEL_RANKS`, `rank_model`, `check_floor`, `FloorResult`) has landed, in `scripts/little_loops/advisor.py` (113 lines total).
 - `skills/go-no-go/SKILL.md` (481 lines) confirmed to have **no** advisor/`Bash(ll-advise:*)` reference today — its "second opinion" is produced via same-model `Agent`-tool subagent spawns (`go-no-go/SKILL.md:172-337`), not a distinct advisor host/model. The overlap this issue's Out of Scope section defers to Slice 2 is real and still unresolved as of this research pass. `skills/ll-go-no-go/SKILL.md` is an unrelated 27-line Codex-bridge pointer to the same file, not a second implementation.
 - `scripts/little_loops/cli/doctor.py`'s `CheckResult` dataclass (`doctor.py:54-73`, fields `name/status/note/severity/findings`) is the "structured JSON, never hard-fail" shape this issue's Expected Behavior cites; `severity: Literal["error","informational"]` decides exit-code impact independently of `status` (`doctor.py:60-67`), and `_capability_check_results` (`doctor.py:98-113`) is a deliberately non-`@register_check` function because it needs a resolved `HostRunner` at call time — the same shape `/ll:advise`'s Bash invocation needs for a resolved advisor host.
@@ -250,7 +249,7 @@ Also unresolved and deferred (inherited from FEAT-3044):
 
 _Added by `/ll:refine-issue` — 2026-08-08 — based on codebase analysis:_
 
-- Dependency-chain check (2026-08-08): `depends_on: FEAT-3120` is itself `status: deferred` with `depends_on: [FEAT-3042, FEAT-3043, FEAT-3108]` (confirmed via `ll-issues show FEAT-3120`). `FEAT-3042` and `FEAT-3043` do not exist as issue files anywhere under `.issues/` (`ll-issues show` returns "not found" for both; a repo-wide grep finds them only as references inside FEAT-3108/FEAT-3044/FEAT-3120's own text, never as an authored file). This deepens the "Landing-order risk" already noted in Confidence Check Notes: the blocking chain for this skill's end-to-end smoke test currently bottoms out on two dependency IDs with no corresponding issue in the tracker, not just on a single `deferred` sibling.
+- Dependency-chain check (2026-08-08; **corrected 2026-08-23** — the original note was written against a shadow issue tree, see the provenance note at the top of this file): `depends_on: FEAT-3120` is `status: open` with `depends_on: [FEAT-3042, FEAT-3043, FEAT-3108]`. `FEAT-3042` and `FEAT-3043` **do** exist as canonical issue files under `.issues/features/`, both `status: open`; `FEAT-3108` is `done`. The blocking chain for this skill's end-to-end smoke test is therefore ordinary open-issue sequencing (FEAT-3042 → FEAT-3043 → FEAT-3120 → this), not missing tracker entries.
 
 ## Program Design
 
@@ -265,7 +264,7 @@ _Added by `/ll:refine-issue` — 2026-08-08 — based on codebase analysis:_
 ### Signatures
 - `consult(*, question: str, signal: str, context: str = "", config: BRConfig | None = None, main_model: str | None = None) -> AdvisorVerdict` — target signature (FEAT-3044's `## API/Interface`), not yet implemented; this is what the `ll-advise` CLI this skill wraps calls into
 - `rank_model(host: str, model: str) -> int | None` and `check_floor(advisor_host, advisor_model, main_host, main_model) -> FloorResult` — already implemented (`scripts/little_loops/advisor.py:54-61`, `:64-112`)
-- Target `ll-advise` CLI surface (FEAT-3044/FEAT-3120, not yet implemented — FEAT-3120 is status=Deferred): `ll-advise --signal <name> --question <text> [--context-file PATH] [--main-model MODEL] [--host HOST] [--model MODEL] [--json]` — `--signal` is a required argparse argument (non-zero exit, no default substituted, on omission)
+- Target `ll-advise` CLI surface (FEAT-3044/FEAT-3120, not yet implemented — FEAT-3120 is `status: open`): `ll-advise --signal <name> --question <text> [--context-file PATH] [--main-model MODEL] [--host HOST] [--model MODEL] [--json]` — `--signal` is a required argparse argument (non-zero exit, no default substituted, on omission)
 
 ### Call Path
 `/ll:advise` skill (`Bash(ll-advise:*)`) -> `ll-advise` CLI (`scripts/little_loops/cli/advise.py`, not yet implemented — confirmed absent via Glob and `pyproject.toml` entry-point search) -> `consult()` (`scripts/little_loops/advisor.py`, not yet implemented) -> `check_floor()` (`advisor.py:64-112`, implemented) -> `FloorResult`/`AdvisorVerdict` surfaced through the CLI's `--json` stdout (success) or a JSON `"error"` key (fail-soft, following the shape at `scripts/little_loops/cli/harness.py:454-464`) -> the skill parses stdout and surfaces `recommendation`/`risks`/`confidence`/`dissent` or the error text into the transcript
@@ -295,31 +294,26 @@ open
 
 ## Confidence Check Notes
 
-_Added by `/ll:confidence-check` on 2026-08-08_
+_Added by `/ll:confidence-check` on 2026-08-08. A near-duplicate of this
+block (same date, same scores) was pruned 2026-08-23; full text in git
+history. Two claims below were minted against the shadow issue tree and are
+corrected inline in brackets._
 
 **Readiness Score**: 80/100 → PROCEED WITH CAUTION
 **Outcome Confidence**: 71/100 → MODERATE
 
 ### Concerns
-- `depends_on: FEAT-3120` is `status: deferred` — the `ll-advise` CLI and `consult()` core this skill wraps do not exist in the tree yet, so this skill cannot be smoke-tested end-to-end until FEAT-3120 lands. `blocked_by` is empty (only `depends_on` is set), so this did not trip the Dependencies hard override, but Criterion 5 scores 0 to reflect it — sequencing risk, not a scope problem.
-- Test coverage for the new skill is currently plan-only: `scripts/tests/test_advise_skill.py` is proposed but not yet written, and `ll-verify-skills` only checks line count, not frontmatter shape (`allowed-tools`, `arguments:`, `PLUGIN_VERSION`).
-
-### Outcome Risk Factors
-- Landing-order risk: authoring `skills/advise/SKILL.md` with `Bash(ll-advise:*)` today references a CLI entry point that doesn't exist yet, so a real smoke test of the skill is blocked until FEAT-3120 ships — mitigate by writing the skill against the FEAT-3120 spec now but deferring the smoke-test AC to right after FEAT-3120 merges.
-
-## Confidence Check Notes
-
-_Added by `/ll:confidence-check` on 2026-08-08_
-
-**Readiness Score**: 80/100 → PROCEED WITH CAUTION
-**Outcome Confidence**: 71/100 → MODERATE
-
-### Concerns
-- `depends_on: FEAT-3120` is `status: deferred`, and its own `depends_on` chain bottoms out on `FEAT-3042`/`FEAT-3043`, neither of which exists as an authored issue file — the `ll-advise` CLI and `consult()` core this skill wraps do not exist in the tree yet (confirmed: no `scripts/little_loops/cli/advise.py`, no `skills/advise/`, no `consult()` in `advisor.py`), so this skill cannot be smoke-tested end-to-end until FEAT-3120 lands. `blocked_by` is empty, so this does not trip the Dependencies hard override, but Criterion 5 scores 0 to reflect that verification is currently impossible, not just delayed.
+- `depends_on: FEAT-3120` is `status: deferred` _[now `open`]_, and its own `depends_on` chain bottoms out on `FEAT-3042`/`FEAT-3043`, neither of which exists as an authored issue file _[both exist canonically under `.issues/features/`, `status: open`]_ — the `ll-advise` CLI and `consult()` core this skill wraps do not exist in the tree yet (confirmed: no `scripts/little_loops/cli/advise.py`, no `skills/advise/`, no `consult()` in `advisor.py`), so this skill cannot be smoke-tested end-to-end until FEAT-3120 lands. `blocked_by` is empty, so this does not trip the Dependencies hard override, but Criterion 5 scores 0 to reflect that verification is currently impossible, not just delayed.
 - Test coverage for the new skill is plan-only: `scripts/tests/test_advise_skill.py` is proposed but not yet written, and `ll-verify-skills` only checks SKILL.md line count, not frontmatter shape (`allowed-tools`, `arguments:`, `PLUGIN_VERSION`).
 
 ### Outcome Risk Factors
 - Landing-order risk: authoring `skills/advise/SKILL.md` with `Bash(ll-advise:*)` today references a CLI entry point that doesn't exist yet, so a real smoke test of the skill is blocked until FEAT-3120 ships — mitigate by writing the skill against the FEAT-3120 spec now but deferring the smoke-test AC to right after FEAT-3120 merges.
+
+## Verification Notes
+
+### 2026-08-23 (manual staleness pass)
+
+Corrected in place the two stale claims the provenance note flagged (the shadow-tree "FEAT-3042/FEAT-3043 have no issue files" research note; two "FEAT-3120 is deferred" mentions — it is `open`). Frontmatter `size: Very Large` corrected to `Small`: the deliverable is one skill markdown file plus catalog wiring, matching this issue's own Impact section ("Effort: Small") — the prior value was minted against the shadow tree and would have invited a pointless decomposition pass. Refreshed the plugin.json version note (now 1.156.0).
 
 ## Session Log
 - `/ll:verify-issues` - 2026-08-13T03:05:57 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`

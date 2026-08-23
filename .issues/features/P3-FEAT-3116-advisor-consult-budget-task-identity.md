@@ -61,8 +61,13 @@ task-identity resolver, no consult budget/counter, and no gating predicate.
 - `AdvisorConfig.max_consults_per_task` (default 3) exists in
   `config/orchestration.py`, `config-schema.json`, and is round-tripped by
   `BRConfig.to_dict()`.
-- `cli/advise.py`'s manual `ll-advise` path reuses `should_consult` so
-  manually-triggered consults are budget-counted too.
+- `cli/advise.py`'s manual `ll-advise` path is **retargeted onto
+  `consult_for_trigger`** (it lands in FEAT-3120 calling `consult()`
+  directly, before this issue exists — migrating it is in this issue's
+  scope). Manual consults pass the user-supplied `--signal` as the trigger
+  and are budget-counted; they bypass only the `advisor.triggers` allowlist
+  check (an explicit user request is not an auto-trigger), via
+  `enforce_trigger_allowlist=False`.
 
 ## Proposed Solution
 
@@ -94,19 +99,26 @@ Implement in `scripts/little_loops/advisor.py`:
   `hooks/__init__.py:_hooks_telemetry_enabled()` (`:83-108`, fail-soft:
   "any config-read failure disables telemetry rather than raising").
   `should_consult` must be fail-soft the same way.
-- `consult_for_trigger(trigger: str, *, question: str, context: str) ->
-  AdvisorVerdict | None` — calls `little_loops.advisor.consult()` with the
-  trigger as the signal; a failed or timed-out consult logs and returns
-  `None` rather than raising (the fail-soft contract this issue's callers
-  depend on).
+- `consult_for_trigger(trigger: str, *, question: str, context: str,
+  enforce_trigger_allowlist: bool = True) -> AdvisorVerdict | None` — calls
+  `little_loops.advisor.consult()` with the trigger as the signal; a failed
+  or timed-out consult logs and returns `None` rather than raising (the
+  fail-soft contract this issue's callers depend on).
+  `enforce_trigger_allowlist=False` (the manual `ll-advise` path only)
+  skips the `trigger in advisor.triggers` membership check while keeping
+  the `advisor.enabled` and budget checks — a user-requested consult must
+  not be blocked by the auto-trigger allowlist, but still spends budget.
 - `AdvisorConfig.max_consults_per_task: int = 3` in `config/orchestration.py`;
   add to `config-schema.json`; wire into `BRConfig.to_dict()`
   (`config/core.py:784-801`, hand-rolled per block — no generic serializer,
   tracked separately under BUG-3012) and a `core.py:367-369`-style
   `config.advisor` property; add `AdvisorConfig` to
   `config/__init__.py` imports/`__all__`.
-- `cli/advise.py` — call `should_consult` before the manual consult so the
-  budget counter is shared between manual and auto-triggered paths.
+- `cli/advise.py` — retarget `main_advise`'s consult call from `consult()`
+  (how FEAT-3120 ships it) onto
+  `consult_for_trigger(args.signal, ..., enforce_trigger_allowlist=False)`,
+  so the budget counter is shared between manual and auto-triggered paths
+  and the AC #5 exclusivity assertion holds tree-wide.
 
 ## Acceptance Criteria
 
@@ -122,11 +134,17 @@ Implement in `scripts/little_loops/advisor.py`:
    cases are verified in FEAT-3117/FEAT-3118).
 5. No code path other than `consult_for_trigger` calls
    `little_loops.advisor.consult()` directly (asserted) (FEAT-3038 AC #8).
+   This includes `cli/advise.py`, whose FEAT-3120-era direct `consult()`
+   call is retargeted by this issue; future call sites (FEAT-3039's
+   evaluator) route through `consult_for_trigger` from the start.
 6. A failed or timed-out consult inside `consult_for_trigger` returns `None`
    and logs a warning rather than raising (the general fail-soft contract
    FEAT-3038 AC #7 depends on; per-caller "primary path completes normally"
    is verified in FEAT-3117/FEAT-3118).
-7. `ll-advise`'s manual consult path is budget-counted via `should_consult`.
+7. `ll-advise`'s manual consult path routes through `consult_for_trigger`
+   with `enforce_trigger_allowlist=False`: it is budget-counted and
+   respects `advisor.enabled`, but is not blocked by the trigger allowlist
+   (a `--signal` value absent from `advisor.triggers` still consults).
 8. `python -m pytest scripts/tests/`, `ruff check scripts/`, and
    `python -m mypy scripts/little_loops/` pass.
 
@@ -179,6 +197,10 @@ Implement in `scripts/little_loops/advisor.py`:
 
 Removed `FEAT-3044` from `depends_on`: FEAT-3044 was decomposed into FEAT-3108/3120/3121/3122 on 2026-08-10, and this issue already separately lists its successor `FEAT-3120` in the same field — keeping both was redundant. `depends_on` now reads `[FEAT-3120, FEAT-3043]`.
 
+### 2026-08-23 (consult() exclusivity contract settled)
+
+The open call-site-contract conflict (this issue's AC #5 vs FEAT-3120's and FEAT-3039's direct `consult()` call paths) is settled: **`consult_for_trigger` is the sole caller of `consult()` from the moment this issue lands.** FEAT-3120 (landing first) ships `main_advise -> consult()`; retargeting it onto `consult_for_trigger(..., enforce_trigger_allowlist=False)` is added to this issue's scope; FEAT-3039 routes through `consult_for_trigger` from the start. Manual-path semantics: budget-counted and `advisor.enabled`-gated, but exempt from the `advisor.triggers` allowlist (an explicit `--signal` from the user is not an auto-trigger). `consult_for_trigger` gains the `enforce_trigger_allowlist: bool = True` parameter to express this. Scope Boundary notes here and in FEAT-3120/FEAT-3039 updated to match.
+
 ## Session Log
 - `/ll:audit-issue-conflicts` - 2026-08-13T22:00:51 - `e21c16b3-391d-4ef2-80c4-decd2dced91f.jsonl`
 - `/ll:verify-issues` - 2026-08-13T03:08:32 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
@@ -191,16 +213,17 @@ Removed `FEAT-3044` from `depends_on`: FEAT-3044 was decomposed into FEAT-3108/3
 
 **Note** (added by `/ll:audit-issue-conflicts`):
 
-- **consult() call-site contract (vs FEAT-3120, FEAT-3039)**: AC #5 asserts no
-  code path other than `consult_for_trigger` calls
-  `little_loops.advisor.consult()` directly, but FEAT-3120's `ll-advise` CLI
-  (`main_advise -> consult`) and FEAT-3039's `advisor_consult` evaluator
-  (`evaluate_advisor_consult -> should_consult -> little_loops.advisor.consult`)
-  both call `consult()` directly. Settle one contract before implementation:
-  either route all consult call sites (the manual `ll-advise` path with signal
-  `user_requested`, the FSM evaluator with its state-derived signal) through
-  `consult_for_trigger`, or qualify AC #5's exclusivity assertion to
-  auto-trigger call sites only, naming the exempted paths.
+- **consult() call-site contract (vs FEAT-3120, FEAT-3039)** — **SETTLED
+  2026-08-23**: all consult call sites route through `consult_for_trigger`;
+  AC #5's exclusivity assertion stands unqualified. Landing-order
+  accommodation: FEAT-3120 lands before this issue and ships
+  `main_advise -> consult()` directly; retargeting that call onto
+  `consult_for_trigger(args.signal, ..., enforce_trigger_allowlist=False)`
+  is in **this issue's scope** (see Proposed Solution), so the static
+  assertion holds tree-wide from the moment this issue lands. FEAT-3039's
+  evaluator (which lands after this issue) routes through
+  `consult_for_trigger` with its state-derived signal from the start —
+  its Call Path has been updated to match.
 - **Telemetry skip instrumentation (vs FEAT-3040)**: FEAT-3040 AC #1 requires
   `advisor_consults` rows for budget-skipped consults, but budget skips
   short-circuit in `should_consult`/`consult_for_trigger` here — they never

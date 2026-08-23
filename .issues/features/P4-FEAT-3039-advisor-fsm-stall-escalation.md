@@ -76,8 +76,10 @@ verdict to a prompt-repair state instead of another refine iteration.
 Add `advisor_consult` alongside the existing evaluator types in
 `fsm/evaluators.py` (registered in the dispatch at `evaluators.py:~1830-1944`,
 where `score_stall` and friends are wired), delegating to
-`little_loops.advisor.consult()` with the signal derived from the state that
-routed into it.
+`consult_for_trigger()` (FEAT-3116) with the signal derived from the state
+that routed into it — never calling `little_loops.advisor.consult()`
+directly, per the exclusivity contract settled 2026-08-23 (see Scope
+Boundary).
 
 Verdict mapping: the evaluator's routable verdict comes from a configurable
 map on the state (e.g. `proceed` / `revise` / `abort`), with `confidence`
@@ -103,7 +105,7 @@ Determinism: consults stay excluded from the resume/replay input hash
 
 ### Call Path
 
-`FSM executor` -> evaluator dispatch (`eval_type == "advisor_consult"`) -> `evaluate_advisor_consult` -> `should_consult` -> `little_loops.advisor.consult` -> `EvaluationResult`
+`FSM executor` -> evaluator dispatch (`eval_type == "advisor_consult"`) -> `evaluate_advisor_consult` -> `consult_for_trigger` (FEAT-3116; runs `should_consult` internally, then `little_loops.advisor.consult`) -> `EvaluationResult`
 
 ## Integration Map
 
@@ -171,8 +173,10 @@ _Wiring pass added by `/ll:wire-issue`:_
   `open_question_stall`). Verdict-map routing, confidence-in-details, and
   neutral-fallback tests should follow the `mock_cli`/dispatch pattern and
   parametrized-routing style of `test_mcp_result_routing` (line 1923), but
-  must mock `little_loops.advisor.consult` directly — no existing test mocks
-  `advisor.consult` since the function doesn't exist yet (see Wiring Phase
+  must mock `consult_for_trigger` (the evaluator's actual collaborator under
+  the settled exclusivity contract — mocking `advisor.consult` directly would
+  bypass the budget/allowlist gating the evaluator relies on); no existing
+  test mocks it since the function doesn't exist yet (see Wiring Phase
   blocker below). [Agent 3 finding]
 - `scripts/tests/test_fsm_schema.py` — new
   `test_advisor_consult_evaluator_type_is_valid` + round-trip test, modeled on
@@ -389,11 +393,11 @@ check after `FEAT-3044` and `FEAT-3116` (at minimum) reach `done`.
 
 ## Scope Boundary
 
-**Note** (added by `/ll:audit-issue-conflicts`): This issue's Call Path
-invokes `little_loops.advisor.consult` directly (`evaluate_advisor_consult ->
-should_consult -> little_loops.advisor.consult`), but FEAT-3116 AC #5 asserts
-no code path other than `consult_for_trigger` calls `consult()` directly
-(with a static-assertion test). Settle one contract before implementation:
-either route the FSM evaluator through `consult_for_trigger` (carrying the
-state-derived signal), or FEAT-3116 qualifies its exclusivity assertion to
-exempt the evaluator path.
+**Note** (added by `/ll:audit-issue-conflicts`; **SETTLED 2026-08-23**):
+the FSM evaluator routes through `consult_for_trigger` (carrying the
+state-derived signal) and never calls `little_loops.advisor.consult()`
+directly — FEAT-3116 AC #5's exclusivity assertion stands unqualified.
+The Proposed Solution and Call Path above have been updated to match. Note
+`consult_for_trigger` already runs `should_consult` and the budget check
+internally, which also satisfies this issue's AC #5 (per-task counter) and
+the budget-exhausted branch of AC #4 without evaluator-local gating code.

@@ -9,7 +9,7 @@ testable: true
 discovered_date: 2026-08-04
 labels:
 - planning-hub
-verify_verdict: NON_VALID
+verify_verdict: VALID
 ---
 
 # FEAT-3043: Advisor configuration - AdvisorConfig block
@@ -21,6 +21,16 @@ validation, `BRConfig` round-trip, and `.ll/ll.local.md` merge support) that
 the advisor core (FEAT-3044) will read to resolve its host, model, capability
 floor, and per-consult timeout. This is pure config plumbing — no consult
 logic, no CLI — and is independently testable via config round-trip tests.
+
+> **Stranded implementation exists (recorded 2026-08-23).** A complete
+> implementation of this issue — dataclass, `BRConfig` wiring, schema block,
+> docs, and tests, commit message "Closes FEAT-3043" — sits unmerged as
+> commit `6c29f69c` on `epic/epic-3041-host-agnostic-advisor`, a branch now
+> ~448 commits behind `main`. It will not apply cleanly (the `qwen` host enum
+> value and general config drift landed after it was written). Before
+> implementing fresh, decide: cherry-pick `6c29f69c` and reconcile, or
+> re-implement on `main` using the commit as a reference. Either way, retire
+> the stale epic branch so resumed epic automation doesn't reuse it.
 
 ## Parent Issue
 
@@ -74,9 +84,10 @@ covers the config plumbing concern.
 
 - `host` validates against the same enum as `orchestration.host_cli`. Not
   `"claude"` — that is not a registry key. `config-schema.json`'s
-  `orchestration.host_cli` enum (`:1637-1640`) is a bare inline literal array
-  with no existing `$ref`'able shared definition — `advisor.host`'s enum will
-  need to duplicate the same 8-value array rather than reference it.
+  `orchestration.host_cli` enum (`:1689`, re-anchored 2026-08-23) is a bare
+  inline literal array with no existing `$ref`'able shared definition —
+  `advisor.host`'s enum will need to duplicate the same 8-value array rather
+  than reference it.
 - `timeout_seconds` is mandatory-with-a-default: a synchronous in-band consult
   with no timeout can hang a loop indefinitely.
 - `max_consults_per_task` is **deliberately absent** from this schema.
@@ -224,6 +235,10 @@ _Added by `/ll:refine-issue` — 2026-08-07 — based on codebase analysis:_
 ### 2026-08-12 (`/ll:verify-issues`)
 
 The proposed `advisor.host` enum was stale: `orchestration.host_cli` has grown from 7 to 8 values since this issue was written — `qwen` was added by EPIC-3154 (Qwen Code host adapter). Updated every enum listing in this issue (`claude-code | codex | opencode | pi | gemini | omp | kimi-code` → `... | qwen`) and the `orchestration.host_cli` line citation (`config-schema.json:1558-1562` → `:1637-1640`) to match. Rest of the design (config plumbing shape, `AdvisorConfig` dataclass, `deep_merge` reuse) is unaffected.
+
+### 2026-08-23 (manual staleness pass)
+
+Leftover `verify_verdict: NON_VALID` frontmatter (stale since the 2026-08-12 anchor fix above) reset to `VALID`; `orchestration.host_cli` enum re-anchored to `config-schema.json:1689`. Recorded the stranded `6c29f69c` implementation on the stale epic branch (see the callout under Summary) — the salvage decision (cherry-pick vs re-implement) is the one open question before implementation.
 
 ## Session Log
 - `/ll:verify-issues` - 2026-08-13T03:08:32 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`

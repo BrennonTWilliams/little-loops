@@ -12,7 +12,7 @@ depends_on:
 - FEAT-3120
 labels:
 - planning-hub
-verify_verdict: NON_VALID
+verify_verdict: VALID
 ---
 
 # FEAT-3117: Wire confidence_gate consult trigger into the ll-auto readiness gate
@@ -128,6 +128,10 @@ return value and blocking behavior are unchanged either way.
 ### 2026-08-12 (`/ll:verify-issues`)
 
 The `issue_manager.py` line citation for the pre-Phase-1 confidence gate had drifted from `:788-816` to `:808-833` — confirmed by grep (the sub-threshold branch now starts at the `action = config.get_category_action(...)` guard on `:807`/`:808` and returns at `:833`). Both citations in this issue (Current Behavior, Proposed Solution) were updated. The gate's shape and behavior are unchanged; only the line range moved.
+
+### 2026-08-23 (manual staleness pass)
+
+Leftover `verify_verdict: NON_VALID` frontmatter (stale since the 2026-08-12 anchor fix above) reset to `VALID`. Gate anchor re-confirmed: `CONFIDENCE_GATE_BLOCKED` prints at `issue_manager.py:817`, within the cited `:808-833` span. This issue already routes through `consult_for_trigger` and is unaffected by the consult()-exclusivity contract settled today (see FEAT-3116).
 
 ## Session Log
 - `/ll:verify-issues` - 2026-08-13T03:08:33 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`

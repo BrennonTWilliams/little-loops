@@ -61,6 +61,18 @@ before a task is declared done, when `pre_done` is listed in
 consult. A failed or timed-out consult never blocks session end — the hook
 completes normally with a logged warning.
 
+**"Final diff" specification (settled 2026-08-23; previously undefined)**:
+the consult context is the output of `git diff HEAD` (staged + unstaged
+changes vs `HEAD`) run from the project root at Stop time, plus
+`git status --porcelain` for untracked files, truncated to a fixed cap
+(~400 lines with an explicit truncation marker) before being passed as
+`context`. **Empty-diff no-op**: the `Stop` event fires on *every* session
+stop, not only when a task is being declared done — if `git diff HEAD` is
+empty and there are no untracked files (or the CWD is not a git work tree),
+the handler exits 0 without consulting and without spending budget. This is
+what keeps an enabled `pre_done` trigger from consulting on every
+conversational session end.
+
 ## Proposed Solution
 
 - Add a `pre_done` intent across all three dispatch sites in
@@ -71,9 +83,11 @@ completes normally with a logged warning.
 - New handler `scripts/little_loops/hooks/pre_done.py`, following the
   existing handler layout (`pre_compact.py`, `drift_check.py`): wraps its body
   in try/except returning exit 0 regardless of outcome (the same fail-soft
-  contract documented at `hooks/__init__.py:40-43`). Calls
+  contract documented at `hooks/__init__.py:40-43`). Assembles the final
+  diff per the specification above (`git diff HEAD` + `git status
+  --porcelain`, capped, empty-diff → exit 0 no-op). Calls
   `should_consult("pre_done", config)` (from FEAT-3116); if `True`, calls
-  `consult_for_trigger("pre_done", question=..., context=<final diff>)`.
+  `consult_for_trigger("pre_done", question=..., context=<the capped diff>)`.
   `LLHookEvent.session_id` (`main_hooks()`, `hooks/__init__.py:203`) feeds
   `resolve_task_key()`'s session-ID fallback tier.
 - New adapter `hooks/adapters/claude-code/stop.sh` (or extend the existing
@@ -90,12 +104,15 @@ completes normally with a logged warning.
 2. `pre_done` absent from `advisor.triggers` fires no consult on this path;
    `advisor.enabled: false` fires none either (FEAT-3038 AC #3, pre_done
    half).
-3. A failed or timed-out consult never blocks session end — the `Stop` hook
+3. A `Stop` event with an empty `git diff HEAD` and no untracked files (or a
+   non-git CWD) fires no consult and spends no budget — the handler exits 0
+   silently (the empty-diff no-op above).
+4. A failed or timed-out consult never blocks session end — the `Stop` hook
    completes normally (exit 0) with a logged warning (FEAT-3038 AC #7,
    pre_done half).
-4. `_INTENT_EVENT_NAME`, `_USAGE`, and `_dispatch_table()` stay in sync per
+5. `_INTENT_EVENT_NAME`, `_USAGE`, and `_dispatch_table()` stay in sync per
    `test_dispatch_table_intent_event_name_usage_stay_consistent`.
-5. `python -m pytest scripts/tests/`, `ruff check scripts/`, and
+6. `python -m pytest scripts/tests/`, `ruff check scripts/`, and
    `python -m mypy scripts/little_loops/` pass.
 
 ## Tests
@@ -105,7 +122,7 @@ completes normally with a logged warning.
   `TestHooksMainModule` happy-path subprocess smoke test (per
   `test_dispatch_subagent_start_happy_path:520-533`) and a malformed-payload
   variant (per `test_dispatch_subagent_start_malformed_payload:534-544`);
-  trigger-unlisted no-op case.
+  trigger-unlisted no-op case; empty-diff/non-git-CWD no-op case (AC #3).
 - `scripts/tests/test_advisor.py` (or a new `test_pre_done_hook.py`) — mocked
   `consult()` failure leaves the hook's exit code at 0 and logs a warning.
 

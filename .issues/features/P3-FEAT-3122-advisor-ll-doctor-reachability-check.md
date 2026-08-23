@@ -14,7 +14,7 @@ depends_on:
 - FEAT-3042
 labels:
 - planning-hub
-verify_verdict: NON_VALID
+verify_verdict: VALID
 size: Large
 reconcile_attempted: true
 confidence_score: 50
@@ -70,23 +70,15 @@ exists to keep out of the no-arg `_CHECKS` list.
 
 _Added by `/ll:refine-issue` — 2026-08-08 — based on codebase analysis:_
 
-- **Dependency-status discrepancy (critical for implementer)**: this issue's
-  `depends_on: [FEAT-3108, FEAT-3120]` frontmatter treats FEAT-3120 as a
-  satisfied prerequisite because it carries `status: done`. That status is
-  misleading for dependency-resolution purposes: FEAT-3120's own
-  `## Resolution` section reads `**Status**: Decomposed` — it was closed by
-  splitting into FEAT-3120 and FEAT-3121, not by landing code. Both
-  successors carry `status: deferred`. A full read of
-  `scripts/little_loops/advisor.py` (113 lines, current state on the `main`
-  branch) confirms it
-  contains only FEAT-3108's pieces (`MODEL_RANKS`, `FloorResult`,
-  `rank_model`, `check_floor`); there is no `consult()` function,
-  `AdvisorVerdict` dataclass, `ll-advise` CLI (`cli/advise.py` does not
-  exist), or `/ll:advise` skill anywhere in the tree. The "established
-  'resolve the advisor host without mutating `LL_HOST_CLI`' convention"
-  this issue's Parent Issue section cites from FEAT-3120 does not exist in
-  code — FEAT-3122 cannot follow it and would have to invent that
-  resolution logic itself, or is genuinely blocked pending FEAT-3120.
+- **Dependency status** (original 2026-08-08 note superseded by the
+  2026-08-10 re-check below; condensed 2026-08-23): `depends_on` now reads
+  `[FEAT-3108, FEAT-3120, FEAT-3043, FEAT-3042]` — FEAT-3108 is `done`, the
+  other three are real, open, canonical issues. `scripts/little_loops/advisor.py`
+  (112 lines on `main`) contains only FEAT-3108's pieces (`MODEL_RANKS`,
+  `FloorResult`, `rank_model`, `check_floor`); `consult()`, `AdvisorVerdict`,
+  the `ll-advise` CLI, and the "resolve the advisor host without mutating
+  `LL_HOST_CLI`" convention all arrive with FEAT-3042/FEAT-3120 — this issue
+  is genuinely blocked until they land.
 - No production call site anywhere in the tree resolves a *second*,
   independent `HostRunner` distinct from the main orchestration host.
   Every call site that reaches `resolve_host()` (`host_runner.py:1574-1619`)
@@ -222,19 +214,20 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 _Wiring pass added by `/ll:wire-issue`:_
 - **Blocking gap, not just a wiring touchpoint**: `_advisor_check` has no
-  config surface to read an advisor host/model from.
+  config surface to read an advisor host/model from until FEAT-3043 lands.
   `scripts/little_loops/config-schema.json` has no `advisor` block (only
-  `orchestration.host_cli`'s enum at line 1572-1576);
+  `orchestration.host_cli`'s enum, at line 1689 as of 2026-08-23);
   `scripts/little_loops/config/core.py`,
   `scripts/little_loops/config/orchestration.py`, and
   `scripts/little_loops/config/__init__.py` have zero `advisor`
-  references — no `AdvisorConfig` dataclass exists. Confirmed this is
-  FEAT-3043's scope, which is not in this issue's `depends_on`.
+  references — no `AdvisorConfig` dataclass exists. This is FEAT-3043's
+  scope — **now correctly listed in this issue's `depends_on`**
+  (the "not in depends_on" gap this note originally flagged was fixed).
   [Agent 2 finding]
 - Also confirmed: `scripts/little_loops/host_runner.py` has no
   named-host resolution primitive independent of the ambient
   `resolve_host()` (`resolve_host_named()`/`consult()` do not exist) —
-  this is FEAT-3042's scope, also not in `depends_on`. Without it,
+  this is FEAT-3042's scope, **also now in `depends_on`**. Without it,
   `_advisor_check` has no primitive to instantiate an advisor-specific
   `HostRunner` without either mutating `LL_HOST_CLI` (forbidden by this
   issue's own Decision Rules) or reaching into
@@ -420,14 +413,13 @@ _Added by `/ll:refine-issue` — 2026-08-08 — based on codebase analysis:_
 
 _These touchpoints were identified by wiring analysis and must be included in the implementation:_
 
-- **Blocking dependency check before starting**: confirm whether
-  FEAT-3043 (`AdvisorConfig` in `config-schema.json` /
-  `config/core.py` / `config/orchestration.py`) and FEAT-3042
-  (a named-host resolution primitive in `host_runner.py` independent of
-  ambient `resolve_host()`) have landed. Neither exists in the tree today
-  and neither is in this issue's `depends_on` — `_advisor_check` has no
-  config surface to read an advisor host/model from without one of them,
-  or must invent equivalent scaffolding itself.
+- **Blocking dependency check before starting**: confirm FEAT-3043
+  (`AdvisorConfig` in `config-schema.json` / `config/core.py` /
+  `config/orchestration.py`) and FEAT-3042 (a named-host resolution
+  primitive in `host_runner.py` independent of ambient `resolve_host()`)
+  have landed — both are in this issue's `depends_on` (added after this
+  note first flagged their absence) and neither exists in the tree as of
+  2026-08-23.
 - Update `_print_report()` in `doctor.py` — add an `advisor` key to the
   `--json` payload dict and a matching `_print_advisor_section()` call in
   `main_doctor()`'s fixed section-print sequence; the exit-code path
@@ -472,88 +464,26 @@ _These touchpoints were identified by wiring analysis and must be included in th
 > invisible to the canonical `.issues/`. It was salvaged and re-IDed to
 > `FEAT-3122`; sibling `FEAT-3111`/`FEAT-3112` became `FEAT-3120`/`FEAT-3121`,
 > and the redundant `FEAT-3109` grouping layer was collapsed into `FEAT-3044`
-> (its scope now carried by `FEAT-3120`). **The verification history below
-> predates that re-ID** and reasons about IDs that never existed canonically
-> — treat its BROKEN_REF/DEP_ISSUES findings as historical, not current.
-> This issue still needs a fresh `/ll:refine-issue` + `/ll:verify-issues`
-> pass (it carries `verify_verdict: NON_VALID`, confidence 50/58).
+> (its scope now carried by `FEAT-3120`). The pre-re-ID verification history
+> that used to follow this note was condensed on 2026-08-23 (see below);
+> its BROKEN_REF/DEP_ISSUES findings were historical artifacts of the
+> shadow-tree incident, not current defects.
 
-_Added by `/ll:verify-issues` — 2026-08-08:_
+_Condensed history (2026-08-23; full text in git history of this file):_
 
-Verdict: **DEP_ISSUES** (stale target, re-checked). The prior note below
-(BROKEN_REF) is now out of date: `FEAT-3120` has since been filed
-(`.issues/features/P3-FEAT-3120-advisor-consult-ll-advise-cli-and-skill.md`),
-so the reference itself is no longer broken. But its `status: done` does
-not mean the dependency is actually satisfied — `FEAT-3120`'s own
-`## Resolution` reads `**Status**: Decomposed`, `**Decomposed into**:
-FEAT-3120, FEAT-3121`, with the note "Work for FEAT-3120 is now carried by
-its child issues; this parent was closed by rn-decompose." Both
-`FEAT-3120` and `FEAT-3121` carry `status: deferred`. Per this repo's
-dependency convention (only `done`/`cancelled` resolve `depends_on`
-edges), `FEAT-3120` reads as a satisfied prerequisite even though none of
-`consult()`, `AdvisorVerdict`, the `ll-advise` CLI, or the `/ll:advise`
-skill exist in code — confirmed by searching every branch in the repo
-(including `epic/epic-3041-host-agnostic-advisor`, the branch this work
-would actually land on) for `def consult` in `advisor.py`: no match
-anywhere. `scripts/little_loops/advisor.py` on that branch is still the
-same 112-line FEAT-3108-only surface (`FloorResult`, `rank_model`,
-`check_floor`); `cli/advise.py` does not exist on any branch.
-
-**Recommended action**: repoint `depends_on` from `FEAT-3120` to
-`FEAT-3120` (and `FEAT-3121` if the skill wrapper matters for this issue's
-scope) — those are the actual open, unimplemented prerequisites; leaving
-`FEAT-3120` in place will let dependency-resolution tooling treat this
-issue as unblocked when the underlying `consult()`/`ll-advise` surface
-still doesn't exist.
-
----
-
-_Superseded note, kept for history — verified 2026-08-08 against a tree
-state where `FEAT-3120` had not yet been filed:_
-
-Verdict: **DEP_ISSUES** (BROKEN_REF). `depends_on: [FEAT-3108, FEAT-3120]`
-names FEAT-3120, but no `FEAT-3120` issue file exists anywhere in the tree
-(`grep -rl "^id: FEAT-3120$" .issues/` returns nothing). FEAT-3108 does
-exist and is `status: done` (`.issues/features/P3-FEAT-3108-...md`), so
-that half of the dependency is satisfied.
-
-This issue's own "Dependency-status discrepancy" note (Codebase Research
-Findings, above) describes FEAT-3120 as if it exists — `status: done`,
-Resolution "Decomposed" into FEAT-3120/FEAT-3121, both `status: deferred`.
-That description does not match the current backlog: `EPIC-3111` and
-`BUG-3112` do exist, but they are unrelated worktree-state-inheritance
-issues (from a different epic), not advisor successors. `FEAT-3120` is
-referenced only in prose, by ID, across FEAT-3037, FEAT-3044, and
-FEAT-3108, as the planned-but-never-filed issue for `consult()` /
-`AdvisorVerdict` / the `ll-advise` CLI — it was apparently never created
-as its own file. The epic (`EPIC-3041`) records FEAT-3037's actual
-decomposition as FEAT-3042/FEAT-3043/FEAT-3044, not FEAT-3120.
-
-Everything else checked out: `scripts/little_loops/advisor.py` (112
-lines) matches the issue's description of FEAT-3108's shipped surface
-(`FloorResult`, `rank_model`, `check_floor`, no `consult()`); `cli/doctor.py`
-line numbers/content for `CheckResult`, `_capability_check_results`,
-`_ADVISORY_CAPABILITIES`, `_run_registered_checks`, `_exit_code_for`,
-`_probe_version`, and the `main_doctor()` call sequence all match current
-code; `config-schema.json`/`config/core.py`/`config/orchestration.py`
-confirmed to have zero `advisor` references; `host_runner.py` confirmed to
-have no `resolve_host_named()`/`consult()`; `docs/reference/CLI.md`
-confirmed still describing "5 default install-surface checks" with no
-`advisor` key. No active required decisions-log rules to check (log has
-no entries).
-
-**Recommended action**: either file the missing `FEAT-3120` issue (if the
-`consult()`/`ll-advise` work is still intended as a separate, blocking
-prerequisite) or repoint `depends_on` to whatever issue currently owns
-that scope — decide against `EPIC-3041`'s actual decomposition
-(FEAT-3042/FEAT-3043/FEAT-3044), not the FEAT-3120/FEAT-3121 IDs cited in
-this file's own research notes, which belong to an unrelated epic.
-
-### Codebase Research Findings
-
-_Added by `/ll:refine-issue` — 2026-08-08 — based on codebase analysis:_
-
-- Confirmed via `codebase-locator`: `EPIC-3041`'s actual decomposition traces `FEAT-3037` (host-agnostic advisor) → `FEAT-3042` (`.issues/features/P3-FEAT-3042-advisor-shared-blocking-json-transport.md`, shared blocking-JSON transport / `resolve_host_named`) + `FEAT-3043` (`.issues/features/P3-FEAT-3043-advisor-config-block.md`, `AdvisorConfig` schema block) + `FEAT-3044` (`.issues/features/P3-FEAT-3044-advisor-core-cli-and-doctor-check.md`) → `FEAT-3044` further decomposed into `FEAT-3108` (done) + `FEAT-3120` (never filed) + this issue (`FEAT-3122`). This corroborates the existing recommendation below: if `_advisor_check` needs a config surface or a second-host resolution primitive, those are `FEAT-3043` and `FEAT-3042` respectively — not `FEAT-3120`, and not the unrelated `FEAT-3120`/`FEAT-3121` IDs.
+Two 2026-08-08 `/ll:verify-issues` passes (verdicts BROKEN_REF, then
+DEP_ISSUES) plus a corroborating refine-pass research note reasoned about
+dependency IDs minted in a shadow issue tree during the FEAT-3110/3111/3112
+provenance incident, and recommended repointing `depends_on`. All of it is
+superseded: the 2026-08-10 refine pass (see Current Behavior → Codebase
+Research Findings) confirmed `depends_on` needs no repointing — FEAT-3042,
+FEAT-3043, and FEAT-3120 are real, open, canonical issues, and FEAT-3042 /
+FEAT-3043 were subsequently added to this issue's `depends_on` directly.
+Still-valid facts carried forward from those passes: `advisor.py` is the
+112-line FEAT-3108-only surface; `cli/doctor.py` anchors for `CheckResult`,
+`_capability_check_results`, `_exit_code_for`, and `_probe_version` match
+current code; no `advisor` references exist in the config modules; CLI.md
+still describes "5 default install-surface checks".
 
 ### 2026-08-10 (`/ll:verify-issues`)
 
@@ -588,7 +518,10 @@ _Added by `/ll:confidence-check` on 2026-08-08_
   isolation convention" to follow — do not exist on any branch, confirmed
   by direct grep against both `main` and the epic branch.
 - `AdvisorConfig` (FEAT-3043) landed on the epic branch (commit `6c29f69c`)
-  but not on `main`, and is not in this issue's `depends_on` — confirm
+  but not on `main`, and is not in this issue's `depends_on` _[corrected
+  2026-08-23: FEAT-3043 has since been added to `depends_on`; the epic
+  branch is ~448 commits stale and slated for retirement — target `main`]_
+  — confirm
   which branch state this issue targets; `_advisor_check` needs this
   config surface to read an advisor host/model from.
 - A named-host resolution primitive (FEAT-3042, `resolve_host_named()`)
@@ -618,6 +551,10 @@ accurate — no `_advisor_check` in `cli/doctor.py`'s registered checks and
 only).
 
 - 2026-08-16: Core claim still solid — no `_advisor_check` in `cli/doctor.py`; `depends_on` IDs are all valid and correctly reflect current status. The file body contains multiple stale/superseded Verification Notes blocks about a since-resolved ID-confusion incident (FEAT-3120 provenance mix-up) that now read as contradictory to a reader; flagging for a future pruning/consolidation pass rather than deleting here. Verdict: NEEDS_UPDATE.
+
+### 2026-08-23 (manual staleness pass)
+
+Performed the pruning/consolidation the 2026-08-16 pass requested: the two superseded 2026-08-08 verification blocks and their corroborating research note are condensed into the summary above (full text in git history); the shadow-tree "Dependency-status discrepancy" research note is condensed in place; the two wiring-pass claims that FEAT-3042/FEAT-3043 were "not in this issue's `depends_on`" are corrected (both were added to `depends_on` after those notes were written). `verify_verdict` reset `NON_VALID` → `VALID`: the core claim (no `_advisor_check`; genuinely blocked on FEAT-3042/3043/3120) was already re-confirmed 2026-08-16 and the NEEDS_UPDATE consolidation is now done. Note: the epic branch this file's confidence-check notes reference (`epic/epic-3041-host-agnostic-advisor`) is ~448 commits behind `main` and slated for retirement — target `main`'s tree state, not that branch's.
 
 ## Session Log
 - `/ll:verify-issues` - 2026-08-16T16:40:24 - `688cfc38-322a-447f-94a0-315f2c2aee33.jsonl`
