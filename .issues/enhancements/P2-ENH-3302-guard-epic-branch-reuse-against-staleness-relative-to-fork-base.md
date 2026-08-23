@@ -9,11 +9,11 @@ discovered_date: '2026-08-23'
 captured_at: '2026-08-23T19:19:05Z'
 decision_needed: false
 confidence_score: 95
-outcome_confidence: 61
+outcome_confidence: 73
 score_complexity: 12
 score_test_coverage: 20
-score_ambiguity: 15
-score_change_surface: 14
+score_ambiguity: 22
+score_change_surface: 19
 ---
 
 # ENH-3302: Guard epic branch reuse against staleness relative to fork base
@@ -21,6 +21,13 @@ score_change_surface: 14
 ## Summary
 
 `_ensure_epic_branch` (`scripts/little_loops/parallel/worker_pool.py:1938`) is strictly create-if-missing: when `git rev-parse --verify <branch>` succeeds it reuses the existing `epic/*` integration branch as-is — no fast-forward, no merge of the fork base, not even a warning that the branch is behind. A branch held open by a failed merge becomes a frozen snapshot: every later run attaches sub-loop worktrees (`fsm/executor.py:961`, `checkout_existing=True`) to that stale tree.
+
+**The same create-if-missing logic exists a second time**, as inline Python in the
+`checkout_epic_branch` state of `scripts/little_loops/loops/auto-refine-and-implement.yaml:182-283`
+(rev-parse → ls-remote → `git branch <branch> <base>`, then `delegate` attaches a `worktree:` to
+the result). **This YAML path — not `WorkerPool` — is the one the observed incident went through**
+(the run dir's `epic-branch-name.txt` is written only by that state). Both sites must share the
+fix.
 
 Observed 2026-08-23: `epic/epic-3041-host-agnostic-advisor` was created 2026-08-08 off then-current main (`d93ce3e8f`) and held open when its merge verify failed. This morning's `sprint-refine-and-implement` run reused it ~448 commits behind main. The worktree's stale `.issues/` tree (predating main's issue re-anchoring, commit `731af505` era) caused 5 of 8 skips (`refine_failed` — "FEAT-3118 does not exist", "depends_on unknown issue FEAT-3120") and 11 false-negative verify failures (all pass on current main). Run: `.loops/runs/sprint-refine-and-implement-20260823T093038/`.
 
@@ -36,12 +43,19 @@ Steps: in-memory cache hit → local `rev-parse --verify` hit → remote `ls-rem
 
 ## Expected Behavior
 
-On a reuse hit, `_ensure_epic_branch` measures how far the branch is behind its resolved fork
-base and, whenever `N > 0`, emits a `parallel.epic_branch_stale` event plus a warning log line
-naming the branch, base ref, and commit count. With `refresh_on_reuse: merge`, it additionally
+On a reuse hit, a shared `worktree_utils.ensure_epic_branch()` helper (called from both
+`WorkerPool._ensure_epic_branch` and the `checkout_epic_branch` YAML state) measures how far the
+branch is behind its resolved fork base and, whenever `N > 0`, logs a warning naming the branch,
+base ref, and commit count. With `refresh_on_reuse: merge` (**the default**), it additionally
 merges the base into the epic branch (via a scratch worktree — see Proposed Solution) before any
-worker dispatches; a merge conflict degrades to warn-only without aborting the run. `off`
-disables the check entirely. Default: `warn` (no git state changed).
+worker dispatches or sub-loop worktree attaches; a merge conflict aborts the merge (clean tree,
+branch SHA unchanged) and degrades to warn without aborting the run. `warn` measures and logs
+only (no git state changed). `off` disables the check entirely. `N == 0` short-circuits: no
+merge, no event, no artifact.
+
+Surfacing differs by call site: `WorkerPool` emits a `parallel.epic_branch_stale` event; the
+YAML path (no `EventBus` in an inline action) writes `${context.run_dir}/epic-branch-stale.txt`
+and logs to stderr.
 
 ## Motivation
 
@@ -54,10 +68,42 @@ original wedge, only to stop it from silently poisoning later runs.
 
 ## Proposed Solution
 
-Add staleness measurement inside `_ensure_epic_branch` (`worker_pool.py:1938`) on the
-local-hit reuse path (remote-hit path excluded — see caveat below), using the `base` value already passed in from
-`_resolve_branch_targets`'s `resolve_epic_base()` call (`worker_pool.py:1865`) — the accurate
-fork base already reaches this method, so no additional base-resolution work is needed.
+**Shared helper (2026-08-23 review decision).** Extract the exists-check + staleness + optional
+merge into one free function in `worktree_utils.py`, alongside `resolve_epic_base` /
+`resolve_epic_branch_name` that both call sites already import:
+
+```python
+@dataclass(frozen=True)
+class EpicBranchStatus:
+    branch: str
+    base: str
+    created: bool                # True on the create path; staleness fields are then 0/"created"
+    commits_behind: int
+    action: Literal["created", "fresh", "warned", "merged", "merge_conflict", "off"]
+    detail: str | None = None    # conflict file list / merge stderr on merge_conflict
+
+def ensure_epic_branch(
+    branch: str, base: str, *, repo_path: Path, git_lock: GitLock, logger: Logger,
+    remote_name: str, refresh_on_reuse: str, run_dir: Path | None = None,
+) -> EpicBranchStatus: ...
+```
+
+`WorkerPool._ensure_epic_branch` becomes a thin wrapper (cache check → helper → emit event from
+the returned status). The `checkout_epic_branch` state in `auto-refine-and-implement.yaml`
+replaces its inline rev-parse/ls-remote/branch block with one call, passing
+`run_dir=Path("${context.run_dir}")` and `refresh_on_reuse=epic_cfg.refresh_on_reuse`, and
+writes `epic-branch-stale.txt` from the status when `action` is `warned`/`merge_conflict`. Also
+fix the stale `worker_pool.py:1707-1743` line citation at `auto-refine-and-implement.yaml:184`.
+
+Because the YAML path has a real `run_dir`, the ENH-2643 conflict-artifact persistence pattern
+(`merge-conflicts.txt` / `merge-detail.txt` / `merge-returncode.txt`, `worktree_utils.py:672-684`)
+**is** in scope for the helper when `run_dir` is passed — `WorkerPool` passes `None` and gets
+the event payload instead.
+
+Staleness is measured on the local-hit reuse path (remote-hit path excluded — see caveat below),
+using the `base` value already passed in from `_resolve_branch_targets`'s `resolve_epic_base()`
+call (`worker_pool.py:1865`) — the accurate fork base already reaches this method, so no
+additional base-resolution work is needed.
 
 Measure with `self._git_lock.run(["rev-list", "--count", f"{branch}..{base}"], cwd=self.repo_path,
 timeout=10)`, following the existing local-op timeout convention in this method (10s for
@@ -80,6 +126,22 @@ log line; the observed failure was ~448 commits (no plausible tuning range), and
 would add a fifth declaration site (two dataclasses + bridge + schema + docs) for no known use
 case. `refresh_on_reuse: off` is the opt-out.
 
+**Default decision: `merge`, not `warn` (2026-08-23 review).** Every reuse site is unattended
+(`WorkerPool` workers, the autonomous YAML loop); a warning nobody reads mid-run yields the exact
+incident outcome plus one log line. The base→epic merge is inevitable — it must happen before the
+epic can land — so `merge` only moves it earlier, to the point where a fresh tree matters, and
+surfaces latent conflicts while the run can still skip cleanly instead of producing false-negative
+verifies. Its worst case *is* `warn` mode (conflict → `merge --abort` → clean tree → warn +
+signal → proceed). "Default changes no git state" is not a principle this subsystem holds:
+`_ensure_epic_branch` already creates branches and `merge_epic_branch_to_base` already merges and
+deletes them; mutating `epic/*` is its job. The happy-path delta is one merge commit on an
+`epic/*` branch that exists to accumulate commits; `base` is never touched.
+
+Caveat to make visible: an epic branch left in `merge_conflict` fallback is *still stale* and the
+run still proceeds on it — that is the one case where a human must intervene, so the
+`merge_conflict` action must be prominent in the run summary / `epic-branch-stale.txt`, not just
+a log line.
+
 **Merge mechanics: scratch worktree required.** `merge_epic_branch_to_base()` works because the
 main repo is already checked out on the merge *target* (`base_branch`, per its own docstring).
 The reversed merge this issue needs — base *into* `epic/*` — targets a branch that is not
@@ -91,11 +153,23 @@ pattern, `worktree_utils.py:159` / `run_epic_verify_gate`), run `git merge --no-
 inside it following `merge_epic_branch_to_base()`'s conflict-detect → `merge --abort` →
 return-`False` skeleton (`worktree_utils.py:612-689`), then `cleanup_worktree(...,
 delete_branch=False)` in a `finally`. Note: `WorkerPool` has no `run_dir` attribute (only
-`run_id`, `worker_pool.py:152-170`), so the ENH-2643 conflict-artifact persistence pattern is
-out of scope here — conflict detail goes into the event payload and log line instead.
+`run_id`, `worker_pool.py:152-170`), so on the `WorkerPool` path conflict detail goes into the
+event payload and log line; the ENH-2643 artifact persistence fires only when the helper is
+given a `run_dir` (the YAML path).
 
-**Event contract** (applies in both `warn` and `merge` modes — the event is the run-summary
-signal, not a merge-mode extra): emit `parallel.epic_branch_stale` (namespaced for
+Two mechanics the reversed-`TestMergeEpicBranchToBase` precedent already handles — cite, don't
+rediscover: (a) the merge must pass both `--no-edit` and an explicit
+`-m "Merge <base> into <branch> (ENH-3302 refresh)"`, mirroring `merge_epic_branch_to_base()`, so
+no editor is invoked under automation; (b) test repos need a committer identity
+(`user.name`/`user.email`) for the merge commit to succeed.
+
+Per-run semantics: `WorkerPool._epic_branches_created` caches the check once per pool instance,
+and `checkout_epic_branch` runs once per loop run — so the guard fires **once per run per
+branch**, at branch first-touch, on both paths. Do not add a per-dispatch re-check.
+
+**Event contract** (`WorkerPool` path; applies in both `warn` and `merge` modes — the event is
+the run-summary signal, not a merge-mode extra; the YAML path has no `EventBus` and uses
+`epic-branch-stale.txt` + stderr with the same fields instead): emit `parallel.epic_branch_stale` (namespaced for
 `EventBus.register("parallel.*")` glob filtering, matching `parallel.worker_completed`) with
 payload `{branch, base, commits_behind, mode, action: "warned"|"merged"|"merge_conflict"}` so
 run summaries and audit tooling can distinguish warned / merged / conflict-degraded outcomes.
@@ -172,8 +246,9 @@ N/A — no new data type; a new field is added to two existing dataclasses
 (`EpicBranchesConfig` in both `parallel/types.py:322` and `config/automation.py:57`).
 
 ### Signatures
+- `worktree_utils.ensure_epic_branch(branch: str, base: str, *, repo_path: Path, git_lock: GitLock, logger: Logger, remote_name: str, refresh_on_reuse: str, run_dir: Path | None = None) -> EpicBranchStatus` — new shared helper (see Proposed Solution).
 - `WorkerPool._ensure_epic_branch(self, branch: str, base: str) -> None` — existing signature at
-  `worker_pool.py:1938`, behavior extended in place; no signature change needed since `base`
+  `worker_pool.py:1938`, becomes a wrapper over the helper; no signature change needed since `base`
   (the resolved fork base) is already passed in by the sole caller.
 - `GitLock.run(args: list[str], cwd: Path, timeout: float = 30, ...) -> subprocess.CompletedProcess[str]` — existing signature at
   `git_lock.py:81`, the call surface a new `["rev-list", "--count", f"{branch}..{base}"]`
@@ -197,6 +272,10 @@ modes; see Event contract in Proposed Solution).
   line/event; the observed failure was ~448 commits with no plausible tuning range, and a
   numeric field would add a fifth declaration site for no known use case. `refresh_on_reuse:
   off` is the opt-out.
+- Default: **DECIDED — `merge`** (see "Default decision" in Proposed Solution). `warn` is the
+  no-git-state-change opt-down; `off` the opt-out.
+- Call sites: **both** `WorkerPool._ensure_epic_branch` and the `checkout_epic_branch` YAML state
+  go through `worktree_utils.ensure_epic_branch()`; the YAML path is the primary target.
 - Mode values: `warn|merge|off` (issue-proposed) — no existing schema enum in this codebase uses
   `merge` as a value; the two closest precedents disagree on vocabulary
   (`code_query.staleness`: `strict|warn|off`, `config-schema.json:1396-1401`; `tamper_guard.mode`:
@@ -213,9 +292,18 @@ modes; see Event contract in Proposed Solution).
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/parallel/worker_pool.py` — `_ensure_epic_branch` (1938-1977): add the
-  staleness check on the local-hit reuse path (1952-1960) only; the remote-hit path (1961-1970)
-  stays unchanged (see Decision Rules — no local ref to measure or merge against).
+- `scripts/little_loops/worktree_utils.py` — new `EpicBranchStatus` dataclass + `ensure_epic_branch()`
+  free function (exists-check, staleness, optional scratch-worktree merge, optional ENH-2643
+  artifacts); lives beside `resolve_epic_base` (69) / `merge_epic_branch_to_base` (612).
+- `scripts/little_loops/parallel/worker_pool.py` — `_ensure_epic_branch` (1938-1977): becomes
+  cache-check → `ensure_epic_branch()` → event emission; staleness applies on the local-hit reuse
+  path only; the remote-hit path stays unchanged (see Decision Rules — no local ref to measure or
+  merge against).
+- `scripts/little_loops/loops/auto-refine-and-implement.yaml` — `checkout_epic_branch` (182-283):
+  replace the inline rev-parse/ls-remote/branch block with `ensure_epic_branch(...,
+  run_dir=run_dir)`; write `epic-branch-stale.txt` on `warned`/`merge_conflict`; fix the stale
+  `worker_pool.py:1707-1743` citation at `:184`. `finalize` should surface `merge_conflict`
+  prominently in the run summary.
 - `scripts/little_loops/parallel/types.py` — `EpicBranchesConfig` (322-349): add `refresh_on_reuse`
   field alongside `enabled`, `prefix`, `merge_to_base_on_complete`, `open_pr`, `verify_before_merge`.
 - `scripts/little_loops/config/automation.py` — a second, separately-declared
@@ -251,9 +339,10 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/little_loops/loops/auto-refine-and-implement.yaml:202,248,636,696` — inline FSM Python
   action blocks import and call `resolve_epic_base(...)` / `merge_epic_branch_to_base(...)`
   directly from `worktree_utils`, duplicating logic parallel to `_ensure_epic_branch` outside
-  `worker_pool.py`; comments at lines 25/184 reference `_ensure_epic_branch` by name. Not
-  necessarily in scope to change, but this loop's own epic-branch handling will remain unaware
-  of the new staleness guard unless reconciled. [Agent 1 finding]
+  `worker_pool.py`; comments at lines 25/184 reference `_ensure_epic_branch` by name.
+  **IN SCOPE — primary target (2026-08-23 review):** this is the path the observed incident took;
+  the `checkout_epic_branch` state (`:182-283`) must call the shared `ensure_epic_branch()`
+  helper. [Agent 1 finding; escalated on review]
 - `scripts/little_loops/cli/sprint/run.py:265-283` — `_run_epic_base_preflight` (FEAT-2652)
   performs a different, earlier-timing epic-base validation (asserts a declared `base_branch:`
   frontmatter ref exists pre-dispatch) — not a required change, but the nearest existing
@@ -386,12 +475,12 @@ _Added by `/ll:refine-issue` — 2026-08-23 — based on codebase analysis:_
 
 ## Implementation Steps
 
-1. Add staleness measurement in `_ensure_epic_branch` after the local and remote hit paths (worker_pool.py:1953-1970).
-2. Thread the resolved base into the check (already available at call sites via `resolve_epic_base`).
-3. Add `refresh_on_reuse` to `EpicBranchesConfig` (`scripts/little_loops/parallel/types.py`) + `config-schema.json` + schema-parity defaults.
-4. On `merge` mode: `setup_worktree(..., checkout_existing=True)` on the epic branch, `git merge --no-edit <base>` inside that scratch worktree (a non-checked-out branch cannot be merged into via the git lock alone — `git merge` only operates on HEAD, and ff-only ref updates refuse when the epic branch has its own commits), `cleanup_worktree(..., delete_branch=False)` in a `finally`; conflict → abort inside the worktree, emit event + warn, do not abort the run.
-5. Emit `parallel.epic_branch_stale` (namespaced) in both `warn` and `merge` modes, payload `{branch, base, commits_behind, mode, action: "warned"|"merged"|"merge_conflict"}`.
-6. Tests: stale-branch fixture repo — reuse path warns; merge mode reconciles cleanly; conflict falls back to warn.
+1. Add `EpicBranchStatus` + `ensure_epic_branch()` to `worktree_utils.py`: exists-check (local → remote → create), then on local-hit `git rev-list --count <branch>..<base>`; `N == 0` → `action="fresh"`, return early.
+2. Add `refresh_on_reuse` (default `"merge"`) to both `EpicBranchesConfig` dataclasses, the `_build_parallel_epic_branches()` bridge, `config-schema.json`, and the parity/round-trip tests.
+3. On `merge` mode and `N > 0`: `setup_worktree(..., checkout_existing=True)` on the epic branch, `git merge --no-edit -m "..." <base>` inside that scratch worktree (a non-checked-out branch cannot be merged into via the git lock alone — `git merge` only operates on HEAD, and ff-only ref updates refuse when the epic branch has its own commits), `cleanup_worktree(..., delete_branch=False)` in a `finally`; conflict → write ENH-2643 artifacts if `run_dir`, `merge --abort`, `action="merge_conflict"`, do not raise.
+4. Rewrite `WorkerPool._ensure_epic_branch` as cache → helper → emit `parallel.epic_branch_stale` when `action in {warned, merged, merge_conflict}`, payload `{branch, base, commits_behind, mode, action}`.
+5. Rewrite `checkout_epic_branch` in `auto-refine-and-implement.yaml` to call the helper with `run_dir`; write `epic-branch-stale.txt` on `warned`/`merge_conflict`; have `finalize` surface `merge_conflict` in the run summary; fix the `:184` line citation.
+6. Tests (real-repo fixture, reversed `TestMergeEpicBranchToBase`): fresh branch → no-op/no event; stale + `warn` → SHA unchanged, event/artifact; stale + `merge` → base merged, one merge commit, base SHA unchanged; conflict → SHA unchanged, clean tree, worktree removed, `merge_conflict` surfaced; `off` → nothing. Plus `test_builtin_loops.py` coverage that the YAML state routes through the helper.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
@@ -431,8 +520,8 @@ _Added by `/ll:refine-issue` — 2026-08-23 — based on codebase analysis:_
 
 - **Priority**: P2 - Silent staleness turned one held-open merge into 5/8 skips + 11 false-negative verify failures in a real run; recurrence is likely whenever an epic merge verify fails.
 - **Effort**: Medium - Core logic is small, but the config field spans four declaration sites, the event spans two test-enforced registries, and docs/skills span ~6 files.
-- **Risk**: Low - Default `warn` changes no git state; `merge` mode is opt-in, scratch-worktree-isolated, and degrades to warn on conflict.
-- **Breaking Change**: No - New optional config field with a non-mutating default; `WorkerPool.__init__` gains a trailing keyword param with `None` default.
+- **Risk**: Low-Medium - Default `merge` adds at most one merge commit on an existing `epic/*` branch and never touches base; conflict degrades to warn with a clean tree (verified by the reversed `TestMergeEpicBranchToBase` case). `warn` is available for anyone wanting a no-mutation default.
+- **Breaking Change**: No - New optional config field; `WorkerPool.__init__` gains a trailing keyword param with `None` default. Behavioral change: reused epic branches now receive base merges by default.
 
 ## Desired Behavior
 
@@ -440,7 +529,9 @@ On the local "exists" path (remote-hit path excluded — see Decision Rules), me
 
 - **Warn** (minimum): log + emit `parallel.epic_branch_stale` (`epic branch <branch> is N commits behind <base>`) whenever `N > 0`, and
 
-- **Optionally reconcile** (config-gated, `parallel.epic_branches.refresh_on_reuse: warn|merge|off`, default `warn`): merge the base into the branch (via a scratch worktree — see Proposed Solution) before dispatching workers; on merge conflict, fall back to warn + surface in the run summary rather than proceeding silently.
+- **Reconcile by default** (config-gated, `parallel.epic_branches.refresh_on_reuse: warn|merge|off`, default `merge`): merge the base into the branch (via a scratch worktree — see Proposed Solution) before dispatching workers / attaching the sub-loop worktree; on merge conflict, fall back to warn + surface `merge_conflict` prominently in the run summary rather than proceeding silently.
+
+Both `WorkerPool._ensure_epic_branch` and `auto-refine-and-implement.yaml`'s `checkout_epic_branch` state get this behavior via the shared `worktree_utils.ensure_epic_branch()` helper.
 
 ## Affected Files
 
@@ -459,10 +550,13 @@ _Added by `/ll:refine-issue` — 2026-08-23 — based on codebase analysis:_
 
 ## Acceptance Criteria
 
-- [ ] Reusing an epic branch N>0 commits behind its fork base (local-hit path) logs a visible warning including N and the base ref
-- [ ] A `parallel.epic_branch_stale` event is emitted in both `warn` and `merge` modes with payload `{branch, base, commits_behind, mode, action}`; no emission when `off` or when N=0
-- [ ] `refresh_on_reuse: merge` merges the base into the branch via a scratch worktree before worker dispatch; clean merge proceeds, conflict aborts the merge (clean tree, worktree removed) and degrades to warn without aborting the run
-- [ ] Default behavior (`warn`) changes no git state
+- [ ] `worktree_utils.ensure_epic_branch()` exists and is the sole implementation of the exists-check/staleness/merge logic; both `WorkerPool._ensure_epic_branch` and `auto-refine-and-implement.yaml`'s `checkout_epic_branch` call it (no duplicated rev-parse/ls-remote/branch block remains in the YAML)
+- [ ] Reusing an epic branch N>0 commits behind its fork base (local-hit path) logs a visible warning including N and the base ref, on both call paths
+- [ ] `WorkerPool` path: a `parallel.epic_branch_stale` event is emitted in both `warn` and `merge` modes with payload `{branch, base, commits_behind, mode, action}`; no emission when `off` or when N=0
+- [ ] YAML path: `${context.run_dir}/epic-branch-stale.txt` is written with the same fields on `warned`/`merge_conflict`; `finalize` surfaces `merge_conflict` in the run summary
+- [ ] Default `refresh_on_reuse: merge` merges the base into the branch via a scratch worktree before worker dispatch / worktree attach; clean merge yields exactly one merge commit on the epic branch and leaves the base SHA unchanged; conflict aborts the merge (epic branch SHA unchanged, clean tree, worktree removed) and degrades to warn without aborting the run
+- [ ] `refresh_on_reuse: warn` changes no git state; `off` performs no measurement, emission, or artifact
+- [ ] N=0 short-circuits: no merge, no event, no artifact
 - [ ] `python -m pytest scripts/tests/` passes
 
 ## Related Key Documentation
@@ -483,6 +577,11 @@ _Added by `/ll:refine-issue` — 2026-08-23 — based on codebase analysis:_
 ### Outcome Risk Factors
 - ~~**Threshold value undecided**~~ RESOLVED (2026-08-23 review): threshold is `N > 0` with no
   numeric config knob — see Program Design → Decision Rules.
+- ~~**Fix scoped to the wrong path**~~ RESOLVED (2026-08-23 manual review): the observed incident
+  went through `auto-refine-and-implement.yaml`'s `checkout_epic_branch`, not `WorkerPool`; the
+  issue now mandates a shared `worktree_utils.ensure_epic_branch()` helper called from both.
+- ~~**Default `warn` ineffective for unattended runs**~~ RESOLVED (2026-08-23 manual review):
+  default is `merge`; rationale in Proposed Solution → "Default decision".
 - **Wide fanout across subsystems**: the change spans git-op logic, a config field declared in
   two separately-maintained dataclasses plus a hand-written bridge, new EventBus wiring into a
   class (`WorkerPool`) that has none today, two mandatory test-registry updates
@@ -502,6 +601,8 @@ _Added by `/ll:refine-issue` — 2026-08-23 — based on codebase analysis:_
 _/ll:confidence-check — 2026-08-23_
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-23T22:41:37 - `7bda0207-9380-42da-8921-b7a6588dcc63.jsonl`
+- manual review (shared helper, YAML path in scope, default `merge`) - 2026-08-23T21:30:00 - `9c4139c2-0aa3-4509-a4fa-9201f472ecc2.jsonl`
 - `/ll:refine-issue` - 2026-08-23T20:53:23 - `08e63d9a-b62a-416e-9aee-3952a5c2db98.jsonl`
 - `/ll:confidence-check` - 2026-08-23T20:43:03 - `36a136c9-6c59-4cf6-b7d4-c0e4e7645a9e.jsonl`
 - `/ll:wire-issue` - 2026-08-23T20:40:50 - `d137b866-3013-4a7f-ba4f-5c7273420ea9.jsonl`
