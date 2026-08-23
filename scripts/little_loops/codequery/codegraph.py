@@ -138,6 +138,17 @@ def _touched_paths_since(root: Path, indexed_at: str) -> list[str]:
     return sorted({line.strip() for line in raw.splitlines() if line.strip()})
 
 
+def _indexed_extensions(content_hashes: dict[str, str]) -> set[str]:
+    """Return the file extensions actually present in the codegraph index.
+
+    codegraph only parses certain languages (observed: python, yaml,
+    javascript, typescript, xml -- never json or markdown). A path whose
+    extension never appears in the index is unindexable, not unindexed, so
+    it must not be treated as evidence of staleness (BUG-3305).
+    """
+    return {Path(p).suffix for p in content_hashes if Path(p).suffix}
+
+
 def _content_aware_head_moved(
     root: Path,
     indexed_at: str,
@@ -155,14 +166,23 @@ def _content_aware_head_moved(
     from the index entirely) genuinely needs a re-sync. Bounded by
     ``_HEAD_MOVED_PATH_CAP``: beyond that many touched paths, hashing every
     file is too expensive, so fall back to the cheap commit-count heuristic.
+
+    Paths whose extension never appears anywhere in the index (e.g. ``.json``,
+    ``.md`` -- codegraph doesn't parse these) are excluded: they can never
+    gain a ``content_hash`` entry no matter how many times ``codegraph sync``
+    runs, so counting them as "changed" would make staleness permanent and
+    unresolvable (BUG-3305).
     """
     touched = _touched_paths_since(root, indexed_at)
     relevant = [p for p in touched if _is_scan_relevant(p, focus_dirs, exclude_patterns)]
     if len(relevant) > _HEAD_MOVED_PATH_CAP:
         return fallback_count
+    indexed_extensions = _indexed_extensions(content_hashes)
     changed = 0
     for path in relevant:
         expected_hash = content_hashes.get(path)
+        if expected_hash is None and Path(path).suffix not in indexed_extensions:
+            continue
         actual_hash = _sha256_file(root / path)
         if expected_hash is None or actual_hash is None or expected_hash != actual_hash:
             changed += 1
