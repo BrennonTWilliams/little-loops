@@ -131,7 +131,9 @@ class TestProjectCommandThreeWayContract:
     ) -> None:
         cmd_key = key.rsplit(".", 1)[1]
         (tmp_path / ".ll").mkdir()
-        (tmp_path / ".ll" / "ll-config.json").write_text(f'{{"project": {{"{cmd_key}": "custom"}}}}')
+        (tmp_path / ".ll" / "ll-config.json").write_text(
+            f'{{"project": {{"{cmd_key}": "custom"}}}}'
+        )
         monkeypatch.chdir(tmp_path)
         with patch("sys.argv", ["ll-config", "get", key]):
             assert main_config() == 0
@@ -159,9 +161,7 @@ class TestProjectCommandThreeWayContract:
         # though the same null value in ll-config.json IS opt-out.
         (tmp_path / ".ll").mkdir()
         (tmp_path / ".ll" / "ll-config.json").write_text('{"project": {"test_cmd": "from-json"}}')
-        (tmp_path / ".ll" / "ll.local.md").write_text(
-            "---\nproject:\n  test_cmd: null\n---\n"
-        )
+        (tmp_path / ".ll" / "ll.local.md").write_text("---\nproject:\n  test_cmd: null\n---\n")
         monkeypatch.chdir(tmp_path)
         with patch("sys.argv", ["ll-config", "get", "project.test_cmd"]):
             assert main_config() == 0

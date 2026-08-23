@@ -29,6 +29,7 @@ def sprint_not_found_message(arg: str) -> str:
         return f"EPIC not found: {arg}"
     return f"Sprint not found: {arg}"
 
+
 if TYPE_CHECKING:
     from little_loops.config import BRConfig
     from little_loops.issue_parser import IssueInfo

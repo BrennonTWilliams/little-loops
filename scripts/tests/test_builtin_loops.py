@@ -11101,7 +11101,7 @@ class TestEvaluationQualityCmdResolution:
         return data["states"]["evaluate_code"]["action"]
 
     def _test_cmd_resolution_prefix(self, tmp_path: Path) -> str:
-        prefix = re.split(r'^\s*(?:if |\[ -z)', self._action(), maxsplit=1, flags=re.M)[0]
+        prefix = re.split(r"^\s*(?:if |\[ -z)", self._action(), maxsplit=1, flags=re.M)[0]
         script = prefix.replace("${context.run_dir}", str(tmp_path))
         script += 'echo "CMD=[$CMD]"\n'
         return script

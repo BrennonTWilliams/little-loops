@@ -40,8 +40,7 @@ class TestProposalVsCodeConsequenceCheck:
         section_c_start = body.index("#### C. Determine Verdict")
         rule_start = body.index("Proposal-vs-code consequence check")
         assert section_b_start < rule_start < section_c_start, (
-            "the proposal-vs-code consequence check must sit inside §B, "
-            "before §C's verdict table"
+            "the proposal-vs-code consequence check must sit inside §B, before §C's verdict table"
         )
 
     def test_rule_has_skip_precondition(self) -> None:
@@ -93,7 +92,9 @@ class TestProposalUnsoundVerdict:
             "verify_verdict: NON_VALID — the split is what lets "
             "check_proposal_unsound route it to reconcile_issue"
         )
-        assert "not** collapsed into" in persist_section or "not collapsed into" in persist_section, (
+        assert (
+            "not** collapsed into" in persist_section or "not collapsed into" in persist_section
+        ), (
             "the persistence step must explicitly say PROPOSAL_UNSOUND is not "
             "collapsed into NON_VALID"
         )

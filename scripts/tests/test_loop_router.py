@@ -166,9 +166,12 @@ class TestLoopRouterStates:
 
     def test_score_project_loops_cannot_judge_follows_funnel(self, loop_data: dict) -> None:
         state = loop_data["states"]["score_project_loops"]
-        assert state.get("on_cannot_judge") == state.get("on_yes") == state.get(
-            "on_no"
-        ) == state.get("on_partial")
+        assert (
+            state.get("on_cannot_judge")
+            == state.get("on_yes")
+            == state.get("on_no")
+            == state.get("on_partial")
+        )
 
     def test_score_builtin_loops_is_prompt(self, loop_data: dict) -> None:
         state = loop_data["states"]["score_builtin_loops"]
@@ -177,15 +180,21 @@ class TestLoopRouterStates:
 
     def test_score_builtin_loops_cannot_judge_follows_funnel(self, loop_data: dict) -> None:
         state = loop_data["states"]["score_builtin_loops"]
-        assert state.get("on_cannot_judge") == state.get("on_yes") == state.get(
-            "on_no"
-        ) == state.get("on_partial")
+        assert (
+            state.get("on_cannot_judge")
+            == state.get("on_yes")
+            == state.get("on_no")
+            == state.get("on_partial")
+        )
 
     def test_review_cannot_judge_follows_funnel(self, loop_data: dict) -> None:
         state = loop_data["states"]["review"]
-        assert state.get("on_cannot_judge") == state.get("on_yes") == state.get(
-            "on_no"
-        ) == state.get("on_partial")
+        assert (
+            state.get("on_cannot_judge")
+            == state.get("on_yes")
+            == state.get("on_no")
+            == state.get("on_partial")
+        )
 
     def test_dispatch_uses_native_loop_field(self, loop_data: dict) -> None:
         state = loop_data["states"]["dispatch"]

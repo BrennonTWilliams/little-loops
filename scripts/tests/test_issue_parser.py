@@ -5742,9 +5742,9 @@ class TestBug3296CitationMaskCorpusSweep:
             if not item_lines:
                 return
             joined = " ".join(item_lines)
-            if not _RESOLVED_QUESTION_MARKER_RE.search(
+            if not _RESOLVED_QUESTION_MARKER_RE.search(joined) and _OPEN_QUESTION_SIGNAL_RE.search(
                 joined
-            ) and _OPEN_QUESTION_SIGNAL_RE.search(joined):
+            ):
                 unresolved += 1
 
         for line in text.splitlines():

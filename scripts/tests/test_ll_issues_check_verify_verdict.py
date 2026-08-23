@@ -109,9 +109,7 @@ class TestCheckVerifyVerdictNonValid:
 class TestCheckVerifyVerdictProposalUnsound:
     """ENH-3250: --proposal-unsound is a distinct query mode."""
 
-    def test_proposal_unsound_verdict_exits_zero_with_flag(
-        self, temp_project_dir: Path
-    ) -> None:
+    def test_proposal_unsound_verdict_exits_zero_with_flag(self, temp_project_dir: Path) -> None:
         body = _feature("FEAT-9204", "verify_verdict: PROPOSAL_UNSOUND\n")
         _write_issue(temp_project_dir, body)
         result = _invoke(
@@ -122,9 +120,7 @@ class TestCheckVerifyVerdictProposalUnsound:
             f"got {result.returncode}: stdout={result.stdout!r} stderr={result.stderr!r}"
         )
 
-    def test_proposal_unsound_verdict_exits_one_without_flag(
-        self, temp_project_dir: Path
-    ) -> None:
+    def test_proposal_unsound_verdict_exits_one_without_flag(self, temp_project_dir: Path) -> None:
         """Default mode must still treat PROPOSAL_UNSOUND as non-VALID (exit 1) —
         the widened check_verify_verdict.on_no still fires so check_proposal_unsound
         gets a chance to triage it; the default contract is unchanged."""
@@ -175,9 +171,7 @@ class TestCheckVerifyVerdictEvidenceUnverified:
     """BUG-3282: --evidence-unverified is a distinct query mode, mirroring
     --proposal-unsound's shape exactly (it is checked ahead of it in the loop)."""
 
-    def test_evidence_unverified_verdict_exits_zero_with_flag(
-        self, temp_project_dir: Path
-    ) -> None:
+    def test_evidence_unverified_verdict_exits_zero_with_flag(self, temp_project_dir: Path) -> None:
         body = _feature("FEAT-9209", "verify_verdict: EVIDENCE_UNVERIFIED\n")
         _write_issue(temp_project_dir, body)
         result = _invoke(

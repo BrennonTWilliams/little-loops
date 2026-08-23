@@ -421,9 +421,7 @@ class TestBug3270FinalVerifySpinGate:
         assert "git hash-object" in action
         assert "ls-files -o --exclude-standard" in action
 
-    def test_final_verify_spin_gate_action_has_no_bare_brace_locals(
-        self, raw_data: dict
-    ) -> None:
+    def test_final_verify_spin_gate_action_has_no_bare_brace_locals(self, raw_data: dict) -> None:
         # FSM interpolates the whole action string before bash sees it, so a
         # bare ${FP} local-variable reference is a runtime failure, not a
         # validation one (see the state's own comment).
@@ -2531,9 +2529,7 @@ class TestEnh3272DefineDoneConditionalRead:
         assert "If and only if one is found" in action
         assert "If the task names no exemplar, skip this step entirely" in action
 
-    def test_define_done_carves_out_read_from_do_not_start_work_line(
-        self, raw_data: dict
-    ) -> None:
+    def test_define_done_carves_out_read_from_do_not_start_work_line(self, raw_data: dict) -> None:
         action = raw_data["states"]["define_done"]["action"]
         assert 'is not "work"' in action
 

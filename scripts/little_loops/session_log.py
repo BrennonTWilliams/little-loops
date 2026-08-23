@@ -54,7 +54,9 @@ def session_log_body(content: str) -> str | None:
     """
     spans = fence_spans(content)
     headings = [
-        m for m in _SESSION_LOG_HEADING_RE.finditer(content) if not in_fence(m.start(), m.end(), spans)
+        m
+        for m in _SESSION_LOG_HEADING_RE.finditer(content)
+        if not in_fence(m.start(), m.end(), spans)
     ]
     if not headings:
         return None

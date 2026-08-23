@@ -764,9 +764,7 @@ class TestNumberedOpenQuestionCitations:
         from little_loops.issue_parser import count_open_questions_in_sections
 
         content = (
-            "## Program Design\n"
-            "\n"
-            '- `severity: str` — `"error"` / `"warn"` (see Open Question)\n'
+            '## Program Design\n\n- `severity: str` — `"error"` / `"warn"` (see Open Question)\n'
         )
         assert count_open_questions_in_sections(content) == 0
 
@@ -795,9 +793,7 @@ class TestNumberedOpenQuestionCitations:
         from little_loops.issue_parser import count_open_questions_in_sections
 
         content = (
-            "## Integration Map\n"
-            "\n"
-            "- The heading is `## Open Questions` in every issue file.\n"
+            "## Integration Map\n\n- The heading is `## Open Questions` in every issue file.\n"
         )
         assert count_open_questions_in_sections(content) == 0
 
@@ -805,11 +801,7 @@ class TestNumberedOpenQuestionCitations:
         """A `` `## Open Questions` ``-style span must mask fully, not mis-pair."""
         from little_loops.issue_parser import count_open_questions_in_sections
 
-        content = (
-            "## Integration Map\n"
-            "\n"
-            "- Cite the heading using `` `## Open Questions` ``.\n"
-        )
+        content = "## Integration Map\n\n- Cite the heading using `` `## Open Questions` ``.\n"
         assert count_open_questions_in_sections(content) == 0
 
     def test_item_leading_declaration_survivor_counted(self) -> None:

@@ -537,9 +537,7 @@ _METAVAR_RE = re.compile(
 _REFERENCE_FIELD_RE = re.compile(
     r"^\s*(?:[-*+]\s*)?\*\*(?:Anchor|File|Location|Symbol|Path)\*\*\s*:\s*$", re.I
 )
-_LOCATION_PHRASE_RE = re.compile(
-    r"^in\s+(?:function|method|class|module|file|the)\b", re.I
-)
+_LOCATION_PHRASE_RE = re.compile(r"^in\s+(?:function|method|class|module|file|the)\b", re.I)
 
 
 def excluded_span_kind(span: CandidateSpan, artifact_ref: str, content: str = "") -> str | None:
@@ -1195,9 +1193,7 @@ class VerdictCache:
             return None
         return False
 
-    def record(
-        self, artifact: str, span_hash: str, found: bool, blob_fp: str, wt_sha: str
-    ) -> None:
+    def record(self, artifact: str, span_hash: str, found: bool, blob_fp: str, wt_sha: str) -> None:
         value = "1" if found else f"0:{blob_fp}:{wt_sha}"
         if self.verdicts.setdefault(artifact, {}).get(span_hash) == value:
             return

@@ -54,8 +54,7 @@ class TestCausalIdentityClaimRule:
     def test_states_needs_update_consequence(self) -> None:
         flat = " ".join(_body(VERIFY_CMD).split())
         assert "assign `NEEDS_UPDATE` rather than `VALID`" in flat, (
-            "an unverifiable causal/identity claim must route to NEEDS_UPDATE, "
-            "not VALID"
+            "an unverifiable causal/identity claim must route to NEEDS_UPDATE, not VALID"
         )
 
     def test_states_load_bearing_firing_constraint(self) -> None:

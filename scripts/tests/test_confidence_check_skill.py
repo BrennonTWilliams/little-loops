@@ -658,9 +658,7 @@ class TestConfidenceCheckStructGapPrefetch:
 
     def test_phase_1_8_names_struct_gap_and_source_keys(self) -> None:
         phase_text = self._phase_text("### Phase 1.8: Pre-Fetch Claim and Parity Gaps")
-        assert "STRUCT_GAP" in phase_text, (
-            "Phase 1.8 must extract a STRUCT_GAP variable (ENH-3257)"
-        )
+        assert "STRUCT_GAP" in phase_text, "Phase 1.8 must extract a STRUCT_GAP variable (ENH-3257)"
         for key in ("template_placeholders", "boilerplate", "missing"):
             assert key in phase_text, (
                 f"Phase 1.8 must reference the '{key}' format-check gap key (ENH-3257)"

@@ -960,8 +960,7 @@ class TestFeatureBranchInPlaceWarning:
         assert exit_code == 0
         assert self.orchestration_calls[0]["status"] == "skipped"
         assert (
-            self.orchestration_calls[0]["failure_reason"]
-            == "no_confidence_score (never assessed)"
+            self.orchestration_calls[0]["failure_reason"] == "no_confidence_score (never assessed)"
         )
 
     def test_warning_emitted_when_config_flag_set_and_wave_in_place(self) -> None:

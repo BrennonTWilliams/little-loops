@@ -401,9 +401,7 @@ class TestLoadDesignTokensDesignMdFormat:
         self, tmp_path: Path
     ) -> None:
         """AC 5."""
-        content = (
-            "---\ncomponents:\n  button:\n    radius: '{rounded.lg}'\n---\n\nSome prose.\n"
-        )
+        content = "---\ncomponents:\n  button:\n    radius: '{rounded.lg}'\n---\n\nSome prose.\n"
         _write_design_md(tmp_path, content)
         config = _make_config(tmp_path, {"source": "design_md"})
         result = load_design_tokens(config)
@@ -464,9 +462,7 @@ class TestLoadDesignTokensDesignMdFormat:
         assert result.resolved["font.body.fontFamily"] == "Inter, sans-serif"
         assert "[" not in result.resolved["font.body.fontFamily"]
 
-    def test_unrecognized_color_names_land_in_residual_with_guardrail(
-        self, tmp_path: Path
-    ) -> None:
+    def test_unrecognized_color_names_land_in_residual_with_guardrail(self, tmp_path: Path) -> None:
         """AC 7e: vocabulary-independent guardrail — ink/paper/rule map to no role."""
         content = (
             "---\ncolors:\n  ink: '#111111'\n  paper: '#fefefe'\n  rule: '#cccccc'\n---\n\nProse.\n"

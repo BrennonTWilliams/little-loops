@@ -254,7 +254,11 @@ DOC_STRINGS_PRESENT: list[tuple[str, str, str]] = [
     # citation, and wire-issue's evidence-confirmation.md (Layer B) must grep
     # that citation before a path enters MISSING_WIRING or the Integration Map.
     ("agents/codebase-locator.md", "cite the symbol or pattern your Grep matched", "BUG-3260"),
-    ("skills/wire-issue/evidence-confirmation.md", "one targeted Grep for the match string", "BUG-3260"),
+    (
+        "skills/wire-issue/evidence-confirmation.md",
+        "one targeted Grep for the match string",
+        "BUG-3260",
+    ),
 ]
 
 
@@ -792,7 +796,9 @@ def test_spawn_detector_candidate_set_is_superset_of_known_inventory(project_roo
         for start, end in _find_spawn_candidates(path, project_root):
             detected.update((rel, line) for line in range(start, end + 1))
     missing = {site for site in SPAWN_SITE_INVENTORY if site not in detected}
-    assert not missing, f"Detector no longer flags known spawn site(s) as candidates: {sorted(missing)}"
+    assert not missing, (
+        f"Detector no longer flags known spawn site(s) as candidates: {sorted(missing)}"
+    )
 
 
 def test_spawn_detector_does_not_flag_confidence_check(project_root: Path) -> None:

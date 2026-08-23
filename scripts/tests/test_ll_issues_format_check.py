@@ -2765,9 +2765,7 @@ class TestFormatCheckTestableRendering:
         from little_loops.issue_parser import FormatGaps
 
         field_names = [
-            f.name
-            for f in dataclasses.fields(FormatGaps)
-            if f.name not in self._TEXT_RENDER_EXEMPT
+            f.name for f in dataclasses.fields(FormatGaps) if f.name not in self._TEXT_RENDER_EXEMPT
         ]
         gaps = FormatGaps(**{name: [f"sentinel-{name}"] for name in field_names})
 

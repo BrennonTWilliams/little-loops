@@ -3555,9 +3555,7 @@ class TestScanFailures:
 
     def test_scan_failures_skill_flag_parsed(self) -> None:
         """--skill is accepted."""
-        with patch(
-            "sys.argv", ["ll-logs", "scan-failures", "--all", "--skill", "review-epic"]
-        ):
+        with patch("sys.argv", ["ll-logs", "scan-failures", "--all", "--skill", "review-epic"]):
             args = _parse_args()
         assert args.skill == "review-epic"
 
@@ -3579,9 +3577,7 @@ class TestScanFailures:
                 ],
             )
 
-            result, data = self._run_scan_failures(
-                project_path, home, ["--skill", "review-epic"]
-            )
+            result, data = self._run_scan_failures(project_path, home, ["--skill", "review-epic"])
 
         assert result == 0
         assert len(data) == 1
@@ -3605,9 +3601,7 @@ class TestScanFailures:
                 ],
             )
 
-            result, data = self._run_scan_failures(
-                project_path, home, ["--skill", "explore-api"]
-            )
+            result, data = self._run_scan_failures(project_path, home, ["--skill", "explore-api"])
 
         assert result == 0
         assert len(data) == 1
@@ -3631,9 +3625,7 @@ class TestScanFailures:
                 ],
             )
 
-            result, data = self._run_scan_failures(
-                project_path, home, ["--skill", "analyze_log"]
-            )
+            result, data = self._run_scan_failures(project_path, home, ["--skill", "analyze_log"])
 
         assert result == 0
         assert len(data) == 1
@@ -3672,9 +3664,7 @@ class TestScanFailures:
                 ],
             )
 
-            result, data = self._run_scan_failures(
-                project_path, home, ["--skill", "explore-api"]
-            )
+            result, data = self._run_scan_failures(project_path, home, ["--skill", "explore-api"])
 
         assert result == 0
         assert len(data) == 1
@@ -3700,9 +3690,7 @@ class TestScanFailures:
                 ],
             )
 
-            result, data = self._run_scan_failures(
-                project_path, home, ["--skill", "review-epic"]
-            )
+            result, data = self._run_scan_failures(project_path, home, ["--skill", "review-epic"])
 
         assert result == 0
         assert data == []
@@ -3728,9 +3716,7 @@ class TestScanFailures:
                 ],
             )
 
-            result, data = self._run_scan_failures(
-                project_path, home, ["--skill", "review-epic"]
-            )
+            result, data = self._run_scan_failures(project_path, home, ["--skill", "review-epic"])
 
         assert result == 0
         assert len(data) == 1
@@ -3765,9 +3751,7 @@ class TestScanFailures:
                 ],
             )
 
-            result, data = self._run_scan_failures(
-                project_path, home, ["--skill", "review-epic"]
-            )
+            result, data = self._run_scan_failures(project_path, home, ["--skill", "review-epic"])
 
         assert result == 0
         assert data == []
@@ -3789,9 +3773,7 @@ class TestScanFailures:
                 ],
             )
 
-            result, data = self._run_scan_failures(
-                project_path, home, ["--skill", "review-epic"]
-            )
+            result, data = self._run_scan_failures(project_path, home, ["--skill", "review-epic"])
 
         assert result == 0
         assert data == []
@@ -3867,9 +3849,7 @@ class TestScanFailures:
             )
 
             _, bare = self._run_scan_failures(project_path, home, ["--skill", "review-epic"])
-            _, prefixed = self._run_scan_failures(
-                project_path, home, ["--skill", "ll:review-epic"]
-            )
+            _, prefixed = self._run_scan_failures(project_path, home, ["--skill", "ll:review-epic"])
 
         assert bare == prefixed
         assert len(bare) == 1
@@ -3915,9 +3895,7 @@ class TestScanFailures:
                 ),
             ]
 
-            project_path = self._make_project_dir(
-                claude_projects, home, "myproject", records
-            )
+            project_path = self._make_project_dir(claude_projects, home, "myproject", records)
 
             # Unfiltered: ll-issues (3) outranks ll-history (2).
             _, unfiltered = self._run_scan_failures(project_path, home)

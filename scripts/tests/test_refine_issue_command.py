@@ -300,8 +300,7 @@ class TestGapAnalysisEmissionIdempotency:
     def test_append_beneath_existing_heading_documented(self) -> None:
         text = self._enrichment_and_preservation_text()
         assert "append" in text.lower(), (
-            "must instruct appending under an existing heading instead of "
-            "emitting a sibling"
+            "must instruct appending under an existing heading instead of emitting a sibling"
         )
 
     def test_lazy_emission_rule_documented(self) -> None:
