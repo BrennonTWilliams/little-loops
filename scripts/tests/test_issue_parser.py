@@ -4738,12 +4738,12 @@ class TestPriorityRegexCompletenessAllowlist:
             351: "docstring for is_normalized",
             1003: "BUG-3286 step 6: priority_drift gap detection compares filename vs. "
             "frontmatter directly by design — drift IS the comparison, not a resolution",
-            1641: "_DEP_ID_RE (BUG-3059): dependency-ID shape validation; optional prefix "
+            1665: "_DEP_ID_RE (BUG-3059): dependency-ID shape validation; optional prefix "
             "group discarded",
-            3311: "comment describing the P[0-5]-NNN- filename shape",
-            3315: "_parse_type_and_id's directory-fallback number extraction; priority digit "
+            3335: "comment describing the P[0-5]-NNN- filename shape",
+            3339: "_parse_type_and_id's directory-fallback number extraction; priority digit "
             "skipped over, not read as a value",
-            3336: "_generate_id_from_filename strips a leading priority token before "
+            3360: "_generate_id_from_filename strips a leading priority token before "
             "digit-scanning for ID generation",
         },
         "issues/prose_deps.py": {
@@ -5432,6 +5432,47 @@ class TestUnappliedDecision:
 
         assert any("legacy_scanner_mode" in r for r in _unapplied_decision(content))
 
+    def test_bug_3289_shared_subject_identifier_suppressed(self) -> None:
+        """BUG-3289, ENH-2692 shape: `shared_field` is the issue's shared
+        subject -- named in the title and `## Summary` before either option
+        exists -- so its appearance in the rejected option and a directive
+        section must not fire, even though the winner's own prose never
+        happens to restate it."""
+        from little_loops.issue_parser import _unapplied_decision
+
+        content = (
+            "# BUG-9800: shared_field routing\n\n"
+            "## Summary\n\nDecide how `shared_field` factors into routing.\n\n"
+            "## Proposed Solution\n\n"
+            "**Option A**: Give `shared_field` a real `on_no` path.\n\n"
+            "**Option B**: Update the loop `description` only.\n\n"
+            "> **Selected:** Option B\n\n"
+            "### Decision Rationale\n\nOption B is simpler and lower-risk.\n\n"
+            "## Implementation Steps\n\n1. Still references `shared_field` here.\n\n"
+            "## Status\n\n- open\n"
+        )
+
+        assert _unapplied_decision(content) == []
+
+    def test_bug_3289_non_shared_rejected_identifier_still_fires_negative_control(
+        self,
+    ) -> None:
+        """BUG-3289 negative control: an identifier absent from the title and
+        `## Summary` is not part of the shared subject, so it must still
+        land in `discriminating` and fire -- the subtraction must not
+        over-broaden into a general suppressor."""
+        from little_loops.issue_parser import _unapplied_decision
+
+        content = self._issue(
+            "**Option A**: Route via `refine_followup`.\n\n"
+            "**Option B**: Route via `check_refine_limit`.\n\n"
+            "> **Selected:** Option B\n\n"
+            "### Decision Rationale\n\nOption B wins.\n",
+            Implementation_Steps="1. Still routes via `refine_followup`.\n",
+        )
+
+        assert any("refine_followup" in r for r in _unapplied_decision(content))
+
 
 class TestBug3295ContainmentCorpusDifferential:
     """BUG-3295 Implementation Steps 4-5: corpus differential for the
@@ -5642,18 +5683,17 @@ class TestUnappliedDecisionLiveCorpusSweep:
 
         assert count_unresolved_options(content) == 2
 
-    def test_enh_2692_shape_new_report_from_narrowed_winner_span(self) -> None:
-        """BUG-3279 Residual Work item 2, shape 2 (frozen, not live-corpus):
-        the one new-report case measured corpus-wide when the fix landed
-        (767 -> 527 total reports; re-measured 523 reports across 120 issues
-        on 2026-08-21). Mirrors the live ENH-2692 shape: `final_score` is a
-        shared subject named in the rejected option and in a directive
-        section, but not in the winner's own (now-bounded) description --
-        only in its absorbed post-heading tail. Narrowing the winner's span
-        drops it from `sel_ids`, promoting it into `discriminating` and
-        firing a report that the pre-fix absorption bug used to mask. This is
-        a pre-existing `_decision_identifiers` breadth defect (BUG-3289), not
-        a boundary error -- see `TestUnappliedDecision`'s winner-tail test."""
+    def test_enh_2692_shape_shared_subject_suppressed(self) -> None:
+        """BUG-3279 Residual Work item 2, shape 2 -- inverted by BUG-3289.
+        Mirrors the live ENH-2692 shape: `final_score` is a shared subject
+        named in the rejected option and in a directive section, but not in
+        the winner's own (bounded) description -- only in its absorbed
+        post-heading tail. Narrowing the winner's span drops it from
+        `sel_ids`, but `final_score` also appears in `## Summary`, written
+        before either option exists, so `_shared_subject_identifiers`
+        subtracts it from `discriminating` before the report fires. Before
+        BUG-3289 this asserted the report *did* fire, documenting the defect
+        that fix closes -- see `TestUnappliedDecision`'s winner-tail test."""
         from little_loops.issue_parser import _unapplied_decision
 
         content = (
@@ -5671,9 +5711,7 @@ class TestUnappliedDecisionLiveCorpusSweep:
             "## Status\n\n- open\n"
         )
 
-        assert _unapplied_decision(content) == [
-            "Files to Modify still specifies `final_score` (rejected option)"
-        ]
+        assert _unapplied_decision(content) == []
 
 
 class TestBug3285BoldOptionMarkerTightening:
@@ -5894,10 +5932,18 @@ class TestBug3285CorpusDifferential:
 
     # relative path -> unapplied_decision report count after the fix
     _UNAPPLIED_PINS = {
-        "bugs/P2-BUG-1484-config-init-imports-orchestrationconfig-clconfig-before-defined-in-core.md": 3,
-        "enhancements/P3-ENH-2967-autodev-redderives-design-fail-predicate-in-three-blocks.md": 5,
+        # BUG-3289: 3 -> 2. `CLConfig` is named in the title ("Imports
+        # `OrchestrationConfig` and `CLConfig` Before They Exist in
+        # `core.py`"), so it is the issue's shared subject, not a
+        # rejected-option-discriminating identifier -- correctly suppressed.
+        "bugs/P2-BUG-1484-config-init-imports-orchestrationconfig-clconfig-before-defined-in-core.md": 2,
+        # BUG-3289: 5 -> 3. `issue_parser.py` is named in the title/Summary
+        # (shared subject), correctly suppressed.
+        "enhancements/P3-ENH-2967-autodev-redderives-design-fail-predicate-in-three-blocks.md": 3,
         "bugs/P2-BUG-2735-evaluation-quality-sample-reads-nonexistent-list-json-fields.md": 0,
-        "features/P3-FEAT-2339-per-epic-integration-branch-strategy.md": 14,  # unchanged
+        # BUG-3289: 14 -> 11. `base_branch` is named in the title/Summary
+        # (shared subject), correctly suppressed. No longer unchanged.
+        "features/P3-FEAT-2339-per-epic-integration-branch-strategy.md": 11,
     }
 
     # relative path -> count_unresolved_options after the fix

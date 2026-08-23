@@ -4,11 +4,12 @@ type: BUG
 title: _decision_identifiers treats every backticked token in an option block as option-discriminating,
   firing unapplied_decision on shared vocabulary
 priority: P2
-status: open
+status: done
 parent: EPIC-3290
 discovered_by: ll-issues-create
 discovered_date: '2026-08-21'
 captured_at: '2026-08-21T18:59:36Z'
+completed_at: '2026-08-23T01:16:53Z'
 decision_needed: false
 size: Medium
 labels:
@@ -412,6 +413,8 @@ ENH-3280.)_
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-23T01:16:30 - `9bb27d14-2ec6-4493-aa41-2f8eebadcfe8.jsonl`
+- `/ll:ready-issue` - 2026-08-23T01:02:51 - `836be84d-5cca-4649-a6a6-ab8992e3fb30.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-22T22:31:16 - `ccec33f2-1527-4aff-b9d7-1a9165839f2e.jsonl`
 - `/ll:confidence-check` - 2026-08-21T23:23:24 - `6c8de875-3d34-466f-bb1f-5d9046d922b9.jsonl`
 - `/ll:decide-issue` - 2026-08-21T23:04:25 - `570c3914-e306-4cb1-bfda-e25386251081.jsonl`

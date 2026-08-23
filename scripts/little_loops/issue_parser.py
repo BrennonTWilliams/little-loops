@@ -1403,6 +1403,25 @@ def _decision_identifiers(text: str) -> set[str]:
     return {m.group(1) for m in _DECISION_IDENTIFIER_RE.finditer(text)}
 
 
+def _shared_subject_identifiers(content: str) -> set[str]:
+    """Backticked identifiers from *content*'s title and ``## Summary``.
+
+    BUG-3289: both regions are written before either option in ``## Proposed
+    Solution`` exists, so any identifier they name is the issue's shared
+    subject matter, not something introduced by a rejected option --
+    ``_unapplied_decision`` subtracts this set from ``discriminating`` before
+    reporting. Same title (frontmatter, falling back to the H1) + ``##
+    Summary`` scan shape as the ``testable`` gap class.
+    """
+    fm = parse_frontmatter(content)
+    title = str(fm.get("title") or "").strip()
+    if not title:
+        title_match = re.search(r"^#\s+(.+)$", content, re.MULTILINE)
+        title = title_match.group(1) if title_match else ""
+    summary = _section_body(content, "Summary") or ""
+    return _decision_identifiers(f"{title}\n{summary}")
+
+
 def _strip_codebase_research_findings(body: str) -> str:
     """Drop every ``### Codebase Research Findings`` block from *body*.
 
@@ -1590,7 +1609,12 @@ def _unapplied_decision(content: str) -> list[str]:
     # `> **Selected:**` callout): report count dropped, zero new reports
     # introduced (see TestBug3295ContainmentCorpusDifferential).
     subsumed = {r for r in rej_ids if any(r in s for s in sel_ids)}
-    discriminating = (rej_ids - subsumed) - sel_ids
+    # BUG-3289: an identifier already named in the issue's title or ##
+    # Summary -- both written before either option exists -- is the issue's
+    # shared subject, not a rejected-option-discriminating term. Subtracted
+    # last so it never masks the subsumed-containment exclusion above.
+    shared_ids = _shared_subject_identifiers(content)
+    discriminating = (rej_ids - subsumed) - sel_ids - shared_ids
     if not discriminating:
         return []
 
