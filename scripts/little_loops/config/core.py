@@ -45,7 +45,7 @@ from little_loops.config.features import (
     SyncConfig,
     TamperGuardConfig,
 )
-from little_loops.config.orchestration import OrchestrationConfig
+from little_loops.config.orchestration import AdvisorConfig, OrchestrationConfig
 from little_loops.env_file import load_env_fallback
 from little_loops.parallel.types import EpicBranchesConfig as RuntimeEpicBranchesConfig
 from little_loops.parallel.types import ParallelConfig
@@ -332,6 +332,7 @@ class BRConfig:
         self._orchestration = OrchestrationConfig.from_dict(
             self._raw_config.get("orchestration", {})
         )
+        self._advisor = AdvisorConfig.from_dict(self._raw_config.get("advisor", {}))
         self._design_tokens = DesignTokensConfig.from_dict(
             self._raw_config.get("design_tokens", {})
         )
@@ -460,6 +461,11 @@ class BRConfig:
     def orchestration(self) -> OrchestrationConfig:
         """Get orchestration configuration."""
         return self._orchestration
+
+    @property
+    def advisor(self) -> AdvisorConfig:
+        """Get advisor configuration (FEAT-3043)."""
+        return self._advisor
 
     @property
     def design_tokens(self) -> DesignTokensConfig:
@@ -869,6 +875,14 @@ class BRConfig:
                     "propagate_context": self._orchestration.cluster.propagate_context,
                 },
                 "disable_background_tasks": self._orchestration.disable_background_tasks,
+            },
+            "advisor": {
+                "enabled": self._advisor.enabled,
+                "host": self._advisor.host,
+                "model": self._advisor.model,
+                "min_tier": self._advisor.min_tier,
+                "timeout_seconds": self._advisor.timeout_seconds,
+                "triggers": list(self._advisor.triggers),
             },
             # --- never-modelled sections: raw passthrough, no BRConfig dataclass (BUG-3012) ---
             **{

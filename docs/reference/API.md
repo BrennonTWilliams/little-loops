@@ -156,6 +156,7 @@ BRConfig(project_root: Path)
 | `cli` | `CliConfig` | CLI output settings (color toggle and color overrides) |
 | `design_tokens` | `DesignTokensConfig` | Design system token settings |
 | `orchestration` | `OrchestrationConfig` | Orchestration settings (host CLI selection, composer config, cluster config) |
+| `advisor` | `AdvisorConfig` | Advisor settings (host, model, capability floor, per-consult timeout, triggers); config plumbing only, absent means disabled (FEAT-3043) |
 | `events` | `EventsConfig` | Event transport/emission settings |
 | `decisions` | `DecisionsConfig` | Decisions and rules log configuration |
 | `learning_tests` | `LearningTestsConfig` | Learning test registry settings |
@@ -9559,7 +9560,7 @@ from little_loops.host_runner import (
 )
 ```
 
-Public surface — `__all__ = ["CapabilityEntry", "CapabilityNotSupported", "CapabilityReport", "ClaudeCodeRunner", "CodexRunner", "GeminiRunner", "HostCapabilities", "HostInvocation", "HostNotConfigured", "HostRunner", "OmpRunner", "OpenCodeRunner", "PiRunner", "apply_host_cli_from_config", "resolve_host"]`.
+Public surface — `__all__ = ["BlockingJsonError", "CapabilityEntry", "CapabilityNotSupported", "CapabilityReport", "ClaudeCodeRunner", "CodexRunner", "GeminiRunner", "HostCapabilities", "HostInvocation", "HostNotConfigured", "HostRunner", "KimiRunner", "OmpRunner", "OpenCodeRunner", "PiRunner", "apply_host_cli_from_config", "build_anthropic_request", "build_batch_request", "dispatch_anthropic_request", "dispatch_batch_request", "poll_batch_result", "resolve_host", "resolve_host_named", "resolve_model_alias", "run_blocking_json"]`.
 
 ### HostInvocation
 
@@ -9765,6 +9766,35 @@ Default behavior is byte-identical to the pre-ENH-3184 status quo: full inherita
 `invocation` is optional because two `bash -c` task-path spawns (`fsm/runners.py`'s `DefaultActionRunner` shell branch, `runner_spec.py::_run_cmd()`) never construct a `HostInvocation` at all — `project_child_env()` with no arguments is exactly today's implicit inheritance, made explicit and interceptable at this one seam.
 
 An AST-based guard test (`test_enh3184_spawn_site_guard.py`) enumerates every `subprocess.(run|Popen|check_output|call)` site across the task-path modules and fails if a new spawn bypasses this helper; sites intentionally exempt (git plumbing, `gh` auth/PR calls, detection/maintenance probes, pip introspection) carry an inline `# ll-no-project: <reason>` marker.
+
+### resolve_host_named
+
+FEAT-3042: resolve a specific registered host, ignoring ambient `LL_HOST_CLI`. Unlike `resolve_host`, never falls back to a PATH probe — an unregistered name raises `HostNotConfigured` immediately.
+
+```python
+def resolve_host_named(name: str) -> HostRunner: ...
+```
+
+```python
+from little_loops.host_runner import resolve_host_named
+
+runner = resolve_host_named("codex")  # ignores ambient LL_HOST_CLI, no env mutation
+```
+
+### run_blocking_json
+
+FEAT-3042: execute a blocking invocation and return the parsed structured verdict. Handles all three structured-output paths (claude-code inline `--json-schema`, codex `--output-schema` temp file, prompt-and-parse tag fallback), the empty-stdout-with-exit-0 guard, the JSON envelope extraction chain (whole-string parse → last-non-blank-line JSONL fallback → tag fallback), and unlinks every `invocation.cleanup_paths` entry — including on failure/timeout.
+
+```python
+def run_blocking_json(
+    invocation: HostInvocation,
+    *,
+    schema: dict[str, Any] | None = None,
+    timeout: int = 180,
+) -> dict[str, Any] | None: ...
+```
+
+Raises `BlockingJsonError` (a `RuntimeError` carrying a `details` dict with the same `timeout`/`missing_dependency`/`api_error`/`empty_output`/`raw_preview` flags `evaluate_llm_structured` has always surfaced) on any failure; in practice never returns `None`. `fsm.evaluators.evaluate_llm_structured` is the first migrated caller — build the invocation with `json_schema=schema` so hosts that need a schema file (codex) get it wired at build time, then pass the same `schema` to `run_blocking_json` so hosts with `HostCapabilities.structured_output` (claude-code) get the inline flag appended.
 
 ### build_anthropic_request / build_batch_request / dispatch_anthropic_request / dispatch_batch_request / poll_batch_result
 

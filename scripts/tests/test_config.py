@@ -11,6 +11,7 @@ import pytest
 from little_loops.config import (
     DEFAULT_CATEGORIES,
     REQUIRED_CATEGORIES,
+    AdvisorConfig,
     AutomationConfig,
     BRConfig,
     CaptureIssueConfig,
@@ -1078,6 +1079,51 @@ class TestBRConfig:
         assert result["orchestration"]["request_path"] == "cli"
         assert result["orchestration"]["cluster"]["max_batch_size"] == 5
         assert result["orchestration"]["disable_background_tasks"] is False
+
+    def test_to_dict_advisor(
+        self, temp_project_dir: Path, sample_config: dict[str, Any]
+    ) -> None:
+        """to_dict emits advisor block with configured values (FEAT-3043)."""
+        sample_config["advisor"] = {
+            "enabled": True,
+            "host": "codex",
+            "model": "sonnet",
+            "min_tier": "opus",
+            "timeout_seconds": 90,
+            "triggers": ["confidence_gate", "loop_stall"],
+        }
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        config = BRConfig(temp_project_dir)
+        result = config.to_dict()
+
+        assert result["advisor"]["enabled"] is True
+        assert result["advisor"]["host"] == "codex"
+        assert result["advisor"]["model"] == "sonnet"
+        assert result["advisor"]["min_tier"] == "opus"
+        assert result["advisor"]["timeout_seconds"] == 90
+        assert result["advisor"]["triggers"] == ["confidence_gate", "loop_stall"]
+
+        assert config.resolve_variable("advisor.host") == "codex"
+        assert config.resolve_variable("advisor.timeout_seconds") == "90"
+
+    def test_to_dict_advisor_defaults_when_unset(
+        self, temp_project_dir: Path, sample_config: dict[str, Any]
+    ) -> None:
+        """advisor appears with dataclass defaults even when absent from config (FEAT-3043)."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        config = BRConfig(temp_project_dir)
+        result = config.to_dict()
+
+        assert result["advisor"]["enabled"] is False
+        assert result["advisor"]["host"] is None
+        assert result["advisor"]["model"] == "opus"
+        assert result["advisor"]["min_tier"] is None
+        assert result["advisor"]["timeout_seconds"] == 180
+        assert result["advisor"]["triggers"] == []
 
     def test_to_dict_never_modelled_sections_raw_passthrough(
         self, temp_project_dir: Path, sample_config: dict[str, Any]
@@ -3504,6 +3550,22 @@ class TestDeepMerge:
         assert base == {"a": {"b": 1}}
         assert override == {"a": {"c": 2}}
 
+    def test_advisor_participates_in_generic_merge(self) -> None:
+        """advisor merges via the shared deep_merge() like every other block (FEAT-3043).
+
+        BRConfig._load_config only reads ll-config.json; the .ll/ll.local.md
+        merge happens at the raw-dict level (hooks/session_start.py), so this
+        exercises deep_merge() directly rather than through BRConfig.
+        """
+        from little_loops.config.core import deep_merge
+
+        base = {"advisor": {"enabled": True, "timeout_seconds": 180, "triggers": ["pre_done"]}}
+        override = {"advisor": {"timeout_seconds": 60, "triggers": ["loop_stall"], "host": None}}
+        result = deep_merge(base, override)
+        assert result == {
+            "advisor": {"enabled": True, "timeout_seconds": 60, "triggers": ["loop_stall"]}
+        }
+
 
 class TestClusterConfig:
     """Tests for ClusterConfig dataclass."""
@@ -3678,6 +3740,71 @@ class TestBRConfigOrchestration:
 
         config = BRConfig(temp_project_dir)
         assert config.orchestration.disable_background_tasks is False
+
+
+class TestAdvisorConfig:
+    """Tests for AdvisorConfig dataclass (FEAT-3043)."""
+
+    def test_from_dict_with_defaults(self) -> None:
+        config = AdvisorConfig.from_dict({})
+        assert config.enabled is False
+        assert config.host is None
+        assert config.model == "opus"
+        assert config.min_tier is None
+        assert config.timeout_seconds == 180
+        assert config.triggers == []
+
+    def test_from_dict_with_values(self) -> None:
+        data = {
+            "enabled": True,
+            "host": "codex",
+            "model": "sonnet",
+            "min_tier": "opus",
+            "timeout_seconds": 60,
+            "triggers": ["confidence_gate", "loop_stall", "pre_done"],
+        }
+        config = AdvisorConfig.from_dict(data)
+        assert config.enabled is True
+        assert config.host == "codex"
+        assert config.model == "sonnet"
+        assert config.min_tier == "opus"
+        assert config.timeout_seconds == 60
+        assert config.triggers == ["confidence_gate", "loop_stall", "pre_done"]
+
+
+class TestBRConfigAdvisor:
+    """Extend TestBRConfig with advisor property coverage (FEAT-3043)."""
+
+    def test_advisor_property_from_file(
+        self, temp_project_dir: Path, sample_config: dict[str, Any]
+    ) -> None:
+        """BRConfig.advisor returns AdvisorConfig from file."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        config = BRConfig(temp_project_dir)
+        assert isinstance(config.advisor, AdvisorConfig)
+        assert config.advisor.enabled is False
+
+    def test_advisor_host_from_file(self, temp_project_dir: Path) -> None:
+        """BRConfig.advisor.host is read from ll-config.json."""
+        cfg = {"advisor": {"enabled": True, "host": "codex"}}
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(cfg))
+
+        config = BRConfig(temp_project_dir)
+        assert config.advisor.enabled is True
+        assert config.advisor.host == "codex"
+
+    def test_advisor_defaults_when_key_absent(self, temp_project_dir: Path) -> None:
+        """BRConfig.advisor returns defaults when advisor key is absent."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text("{}")
+
+        config = BRConfig(temp_project_dir)
+        assert config.advisor.enabled is False
+        assert config.advisor.host is None
+        assert config.advisor.timeout_seconds == 180
 
 
 class TestBRConfigAnalyticsCaptureIntegration:

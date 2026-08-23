@@ -4,10 +4,11 @@ title: Advisor transport - shared run_blocking_json helper
 type: FEAT
 parent: FEAT-3037
 priority: P3
-status: open
+status: done
 testable: true
 decision_needed: false
 discovered_date: 2026-08-04
+completed_at: '2026-08-23T15:31:54Z'
 labels:
 - planning-hub
 confidence_score: 100
@@ -134,12 +135,12 @@ bypass ENH-3184's env-projection contract.
 module-level `import subprocess` in `fsm/evaluators.py:32` and calls
 `subprocess.run(...)` directly; `test_fsm_evaluators.py` patches this at 17
 call sites via `patch("little_loops.fsm.evaluators.subprocess.run")`.
-`host_runner.py` currently has zero `subprocess.run`/`Popen` calls. For AC
-#13's "existing tests pass without edits" to hold, either `run_blocking_json()`
-must still bottom out at a patchable `evaluators.subprocess.run` call (i.e.
-`evaluators.py` keeps doing the actual `subprocess.run` and
-`run_blocking_json` takes the already-completed result), or the tests need
-updating to patch `host_runner.subprocess.run` instead.
+`host_runner.py` currently has zero `subprocess.run`/`Popen` calls.
+`run_blocking_json()` bottoms out at a patchable `evaluators.subprocess.run`
+call — `evaluators.py` keeps doing the actual `subprocess.run` and
+`run_blocking_json` takes the already-completed result — so all 16 existing
+patch sites keep working unmodified, satisfying AC #13's "existing tests pass
+without edits."
 
 **Schema-conditional behavior stays in the caller.** Evidence-coercion
 (`evaluate_llm_structured` lines ~1288-1301, ENH-2342; `cannot_judge` exempt
@@ -174,6 +175,25 @@ Two parallel codebase-pattern-finder passes confirmed `host_runner.py` has zero 
 | Testability | 3 — all 17 existing `patch("little_loops.fsm.evaluators.subprocess.run")` sites stay untouched | 1 — all 17 sites need retargeting to `host_runner.subprocess.run` |
 | Risk | 3 — behavior-preserving, contained scope | 1 — new execution point, higher regression risk against the check-order requirement |
 | **Total** | **12/12** | **3/12** |
+
+### Decision Rationale
+
+Decided by `/ll:decide-issue` on 2026-08-23.
+
+**Selected**: Option A — `run_blocking_json()` bottoms out at a patchable `evaluators.subprocess.run` call
+
+**Reasoning**: Codebase evidence shows the "caller owns `subprocess.run`, shared logic processes the completed result" shape is the established convention across every `build_blocking_json` consumer in the tree (`runner_spec.py:290`, `session_store/lifecycle.py:154`, `worker_pool.py:805`, `cli/issues/decisions.py:797`, `learning_tests/extractor.py:132`, and all 3 call sites in `fsm/evaluators.py` itself) — `host_runner.py` has zero `subprocess`/`Popen` calls today and has never executed a subprocess directly. Option B would make `host_runner.py` the first exception to that convention and requires mechanically re-targeting all 16 existing `test_fsm_evaluators.py` patch sites for no behavioral benefit.
+
+#### Scoring Summary
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|--------|-------------|------------|-------------|------|-------|
+| Option A | 3/3 | 2/3 | 3/3 | 3/3 | 11/12 |
+| Option B | 0/3 | 1/3 | 1/3 | 1/3 | 3/12 |
+
+**Key evidence**:
+- Selected (Option A): extends a pattern already duplicated 3x in `fsm/evaluators.py` (`:1128`, `:1321`, `:1573`); reuses `_structured_output_args`, `_extract_tagged_structured_output`, and Codex's already-tested tempfile/`cleanup_paths` handling directly; all 16 existing `evaluators.subprocess.run` patch sites stay untouched.
+- Rejected (Option B): no codebase precedent for `host_runner.py` executing a subprocess itself — every one of its 6+ `build_blocking_json` consumers keeps execution local; would require re-targeting 16+ test patch sites and make `host_runner.py` an architectural outlier.
 
 ## API/Interface
 
@@ -347,6 +367,9 @@ _These touchpoints were identified by wiring analysis and must be included in th
 ### Codebase Research Findings
 
 _Added by `/ll:refine-issue` — 2026-08-07 — based on codebase analysis:_
+
+Findings verified line-by-line against `host_runner.py`/`fsm/evaluators.py`,
+organized below by category.
 
 ### Types
 - `HostInvocation` — frozen dataclass at `host_runner.py:151`; carries `binary`, `args`, `env`, `capabilities`, and `cleanup_paths: tuple[Path, ...]` (default at `host_runner.py:168`). `run_blocking_json` receives one and must unlink every `cleanup_paths` entry after the run.

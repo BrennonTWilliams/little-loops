@@ -1764,6 +1764,45 @@
       },
       "additionalProperties": false
     },
+    "advisor": {
+      "type": "object",
+      "description": "Advisor (FEAT-3037) settings: host, model, capability floor, and per-consult timeout. Absent means the advisor is disabled by default. Config plumbing only (FEAT-3043) — consult logic and the ll-advise CLI ship in FEAT-3044.",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable the advisor. Absent or false means disabled."
+        },
+        "host": {
+          "type": "string",
+          "enum": ["claude-code", "codex", "opencode", "pi", "gemini", "omp", "kimi-code", "qwen"],
+          "description": "Registry key for the host CLI the advisor consults. May differ from orchestration.host_cli."
+        },
+        "model": {
+          "type": "string",
+          "default": "opus",
+          "description": "Model the advisor requests from the selected host."
+        },
+        "min_tier": {
+          "type": "string",
+          "description": "Capability floor for the advisor's model. Enforced within a host, warned across hosts."
+        },
+        "timeout_seconds": {
+          "type": "integer",
+          "default": 180,
+          "description": "Per-consult timeout in seconds. Mandatory-with-a-default: a synchronous in-band consult with no timeout can hang a loop indefinitely."
+        },
+        "triggers": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Keywords identifying when the advisor is consulted, e.g. confidence_gate, loop_stall, pre_done."
+        }
+      },
+      "additionalProperties": false
+    },
     "design_tokens": {
       "type": "object",
       "description": "Design system tokens consumed by built-in artifact-generating loops",

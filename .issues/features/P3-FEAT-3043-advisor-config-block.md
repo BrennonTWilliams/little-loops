@@ -4,12 +4,19 @@ title: Advisor configuration - AdvisorConfig block
 type: FEAT
 parent: FEAT-3037
 priority: P3
-status: open
+status: done
 testable: true
 discovered_date: 2026-08-04
+completed_at: '2026-08-08T17:29:19Z'
 labels:
 - planning-hub
 verify_verdict: VALID
+confidence_score: 100
+outcome_confidence: 96
+score_complexity: 24
+score_test_coverage: 25
+score_ambiguity: 24
+score_change_surface: 23
 ---
 
 # FEAT-3043: Advisor configuration - AdvisorConfig block
@@ -39,6 +46,20 @@ Decomposed from FEAT-3037: Host-agnostic advisor. FEAT-3037 scored Very Large
 concerns (shared transport, config plumbing, advisor core + CLI). This child
 covers the config plumbing concern.
 
+## Use Case
+
+A project maintainer wants to enable the advisor for a specific project
+without touching any advisor consult code (that ships separately in
+FEAT-3044). They add an `advisor:` block to `.ll/ll-config.json` — setting
+`host`, `model`, `min_tier`, `timeout_seconds`, and `triggers` — and expect
+`ll-config get advisor.*` to read it back without an "unknown section"
+warning, and a malformed `host` value to fail schema validation immediately
+rather than surfacing as a confusing runtime error once FEAT-3044 lands. A
+second maintainer overrides `advisor.timeout_seconds` for their own machine
+via `.ll/ll.local.md` and expects the override to take effect on next
+session start, using the same deep-merge semantics every other config block
+already gets for free.
+
 ## Current Behavior
 
 - There is no `advisor` configuration block. `OrchestrationConfig`
@@ -53,6 +74,14 @@ covers the config plumbing concern.
   over the whole raw config in `hooks/session_start.py:145` — this is
   automatic once a block is added to the raw config dict; no per-block merge
   code is needed.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-08 — based on codebase analysis:_
+
+- `BRConfig._parse_config` spans `config/core.py:242-289`; lines `229-240` are the preceding `_load_config` method (reads `.ll/ll-config.json` only — no `.ll/ll.local.md` merge happens there). This section's earlier `229-289` citation combined both methods.
+- `to_dict()`'s `"orchestration"` entry is confirmed at `core.py:784-801` (matches this issue's own Program Design → Call Path citation) — this section's separate `786-803` citation has drifted 2 lines from current source.
+- BUG-3012 (status `done`, completed 2026-08-03) reconfirmed unchanged as of this pass: it added more hand-rolled `to_dict()` sections plus a schema/`to_dict()` parity guard (`test_config_schema.py:1082` `test_to_dict_emits_every_schema_section`, `:1104` `test_to_dict_emits_no_key_absent_from_schema`) — it did not add a generic dataclass serializer. `AdvisorConfig` still needs a fully hand-rolled `to_dict()` entry, exactly as this issue already assumes.
 
 ## Expected Behavior
 
@@ -120,6 +149,18 @@ class AdvisorConfig:
 
 ## Program Design
 
+### Deviations
+
+- 2026-08-08: `AdvisorConfig` was implemented as a plain `@dataclass` (mutable,
+  with field defaults) rather than the `@dataclass(frozen=True)` shown in the
+  API/Interface sketch. This matches `OrchestrationConfig`'s actual shape in
+  `config/orchestration.py` (also plain, mutable, with defaults) — the pattern
+  this issue's own Proposed Solution says to mirror exactly. None of the
+  sibling dataclasses in that module (`ComposerConfig`, `ClusterConfig`, etc.)
+  are frozen, so a frozen `AdvisorConfig` would have been inconsistent with
+  its neighbors for no behavioral benefit (nothing in this issue's scope
+  mutates an `AdvisorConfig` instance after construction either way).
+
 ### Types
 
 - `AdvisorConfig: {enabled: bool, host: str | None, model: str, min_tier: str | None, timeout_seconds: int, triggers: list[str]}`
@@ -163,21 +204,67 @@ class AdvisorConfig:
 
 ### Tests
 
+_Wiring pass added by `/ll:wire-issue`:_
+
 - `scripts/tests/test_config.py` — mirror `TestOrchestrationConfig`
-  (~line 3404) and `TestBRConfigOrchestration` (~line 3474) exactly for
-  `AdvisorConfig`'s defaults/override/`.ll/ll.local.md`-merge coverage; the
+  (~line 3406) and `TestBRConfigOrchestration` (~line 3476) exactly for
+  `AdvisorConfig`'s defaults/override coverage; the
   `deep_merge` arrays-replace/nested-merge/`None`-removes cases are already
-  tested generically starting ~line 3315 and don't need advisor-specific
-  duplicates — just a round-trip test confirming `advisor` participates in
-  the existing generic merge.
+  tested generically in `TestDeepMerge` (`:3316-3379`) and don't need
+  advisor-specific duplicates — just one `deep_merge()`-direct test
+  (raw-dict style, not through `BRConfig`, since `BRConfig._load_config`
+  reads only `ll-config.json`) confirming `advisor` participates in the
+  existing generic merge.
+- `scripts/tests/test_config.py` — additionally mirror
+  `test_to_dict_orchestration` (`:1011`) and
+  `test_to_dict_orchestration_defaults_when_unset` (`:1035`) — these, not
+  `TestBRConfigOrchestration`, are the actual parse → `to_dict()` → reparse
+  round-trip pattern AC #1 requires.
+- `scripts/tests/test_config_schema.py` — `test_to_dict_emits_every_schema_section`
+  (`:1082`) and `test_to_dict_emits_no_key_absent_from_schema` (`:1104`) will
+  fail if `advisor` lands in the schema and `to_dict()` out of lockstep;
+  land both in the same change.
+- `scripts/tests/test_config_cli.py` — `test_every_to_dict_key_is_a_known_root`
+  (`:148`) and `test_every_schema_top_level_property_is_a_known_root` (`:164`)
+  iterate live schema/`to_dict()` roots and will auto-cover `advisor` once
+  it's added to both sides — no source or test-file edits needed here beyond
+  keeping schema and `to_dict()` in sync.
+- `scripts/tests/test_config_properties.py` — `TestBRConfigProperties.test_to_dict_idempotent`
+  (`:59`, Hypothesis-based) round-trips `to_dict()` generically; `advisor`
+  is covered automatically, no edit needed.
 
 ### Documentation
 
-- `docs/reference/API.md` — `AdvisorConfig` under the config reference.
+_Wiring pass added by `/ll:wire-issue`:_
+
+- `docs/reference/API.md` — `AdvisorConfig` under the config reference; exact
+  anchor is the `BRConfig` → `#### Properties` table, add an `advisor` row
+  immediately after the `orchestration` row (`:151`).
+- `docs/reference/CONFIGURATION.md` — not previously listed. Add a new
+  `### \`advisor\`` section following the `### \`orchestration\`` section's
+  `| Key | Default | Description |` table pattern, inserted after
+  `orchestration` ends and before `### \`hooks\`` (`:1202-1274`).
 
 ### Configuration
 
 - `.ll/ll-config.json` — new optional `advisor` block (absent = disabled).
+
+### Dependent Files (Callers/Importers)
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+- No consumer files — confirmed `AdvisorConfig` has zero callers in this
+  issue's scope (consult logic and CLI are FEAT-3044). `host_runner.py:1625-1643`
+  (`resolve_host()` reading `config.orchestration.host_cli`) and
+  `cli/loop/config_cmds.py:23`, `cli/loop/run.py:592`, `cli/loop/lifecycle.py:586`
+  (reading `.orchestration` off `BRConfig`) are `OrchestrationConfig`
+  consumers only — informational precedent for FEAT-3044's future
+  `config.advisor` consumer, not wiring required by this issue.
+- `scripts/little_loops/cli/config.py`'s `_warn_if_unknown_section()`
+  (`:83-101`) computes known config roots as the union of
+  `cfg.to_dict().keys()` and the schema's top-level `properties` — no code
+  change needed there; `ll-config get advisor.*` stops warning automatically
+  once `advisor` is in both schema and `to_dict()`.
 
 ### Codebase Research Findings
 
@@ -188,6 +275,13 @@ _Added by `/ll:refine-issue` — 2026-08-07 — based on codebase analysis:_
 - **`to_dict()` does not strip `None`**: `config/core.py:785` emits `"host_cli": null` when unset; `AdvisorConfig`'s `host: str | None` / `min_tier: str | None` fields round-trip as `null` in the `"advisor"` entry, matching existing convention.
 - **`ll.local.md` merge is raw-dict level only**: `deep_merge()` (`config/core.py:57-84`) merges `.ll/ll.local.md` into the session-context payload dict at `hooks/session_start.py:146`; `BRConfig._load_config` (`config/core.py:229-240`) reads only the JSON config file. A `BRConfig(...).advisor` property reflects `ll-config.json` only — the advisor ll.local.md-merge test must exercise `deep_merge()` on the raw dict, not through `BRConfig`.
 - **Consumer idiom**: existing blocks are read as `BRConfig(project_root).<block>` (`cli/loop/run.py:231`, `cli/loop/lifecycle.py:570`, `cli/loop/config_cmds.py:23`); FEAT-3044's advisor core will consume `advisor` the same way.
+
+_Added by `/ll:refine-issue` — 2026-08-08 — based on codebase analysis:_
+
+- Line-number reconfirmation (2026-08-08 pass): `config-schema.json`'s `orchestration.host_cli` enum block is now at `1568-1576` with the enum literal on line `1574` (property `1572-1576`) — drifted ~14-16 lines from this issue's earlier `~1558-1562`/`~1560` citations. The enum values themselves (`claude-code | codex | opencode | pi | gemini | omp | kimi-code`) and the no-`$ref`/no-`$defs` duplication requirement are unchanged.
+- `scripts/tests/test_config.py`'s `TestOrchestrationConfig` and `TestBRConfigOrchestration` are now at lines `3406` and `3476` respectively (2-line drift from this issue's `~3404`/`~3474`) — same classes, same shape, still the correct mirror target.
+- `config/__init__.py` import block (`79-84`) and `__all__` start (`86`) confirmed exact, no drift.
+- `deep_merge()` (`core.py:57-84`) and its call site in `scripts/little_loops/hooks/session_start.py:145-146` (`if local_overrides:` / `merged_config = deep_merge(base_config, local_overrides)`) confirmed exact, no drift.
 
 ## Acceptance Criteria
 
@@ -224,6 +318,8 @@ _Added by `/ll:refine-issue` — 2026-08-07 — based on codebase analysis:_
 
 - `docs/reference/API.md`
 - `docs/reference/HOST_COMPATIBILITY.md#orchestration-cli`
+- `docs/reference/CONFIGURATION.md#orchestration` — added by `/ll:wire-issue`;
+  template section for the new `advisor` documentation entry.
 
 ## Status
 

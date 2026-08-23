@@ -24,7 +24,7 @@ import pytest
 # spawn count). expected routed count is spawns - markers.
 _TASK_PATH_MODULES: dict[str, tuple[int, int]] = {
     "little_loops/fsm/runners.py": (1, 0),
-    "little_loops/fsm/evaluators.py": (4, 1),
+    "little_loops/fsm/evaluators.py": (3, 1),
     "little_loops/runner_spec.py": (3, 0),
     "little_loops/subprocess_utils.py": (1, 0),
     "little_loops/mcp_call.py": (1, 0),
@@ -40,10 +40,11 @@ _TASK_PATH_MODULES: dict[str, tuple[int, int]] = {
     "little_loops/cli/action.py": (1, 1),
     "little_loops/cli/doctor.py": (1, 1),
     "little_loops/init/install_check.py": (5, 5),
-    # Holds the helper itself; spawns nothing (host_runner.py:1837's
-    # `dict(os.environ)` is a snapshot of the parent's own env for reading
-    # LL_HOST_CLI/LL_HOOK_HOST, never passed as a child env=).
-    "little_loops/host_runner.py": (0, 0),
+    # Holds the helper itself plus run_blocking_json's spawn (FEAT-3042 moved
+    # evaluate_llm_structured's subprocess.run here; it routes through
+    # project_child_env). The `dict(os.environ)` snapshot is for reading
+    # LL_HOST_CLI/LL_HOOK_HOST, never passed as a child env=.
+    "little_loops/host_runner.py": (1, 0),
 }
 
 _SPAWN_ATTRS = {"run", "Popen", "check_output", "call"}

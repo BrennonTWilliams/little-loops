@@ -80,6 +80,7 @@ from little_loops.config.features import (
     WebhookEventsConfig,
 )
 from little_loops.config.orchestration import (
+    AdvisorConfig,
     ClusterConfig,
     ComposerAdaptiveConfig,
     ComposerConfig,
@@ -89,6 +90,7 @@ from little_loops.config.orchestration import (
 __all__ = [
     "BRConfig",
     "CLConfig",
+    "AdvisorConfig",
     "ClusterConfig",
     "ComposerAdaptiveConfig",
     "ComposerConfig",
