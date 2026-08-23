@@ -14,13 +14,16 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import os
 import warnings
 from collections.abc import Iterator
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from little_loops.host_runner import (
+    BlockingJsonError,
     CapabilityEntry,
     CapabilityNotSupported,
     CapabilityReport,
@@ -37,6 +40,8 @@ from little_loops.host_runner import (
     PiRunner,
     apply_host_cli_from_config,
     resolve_host,
+    resolve_host_named,
+    run_blocking_json,
 )
 
 
@@ -1417,3 +1422,137 @@ class TestApplyHostCliFromConfig:
         import os
 
         assert os.environ.get("LL_HOST_CLI") is None
+
+
+class TestResolveHostNamed:
+    """FEAT-3042: per-call host resolution ignoring ambient LL_HOST_CLI."""
+
+    @pytest.mark.parametrize(
+        "name,expected_cls",
+        [
+            ("claude-code", ClaudeCodeRunner),
+            ("codex", CodexRunner),
+            ("opencode", OpenCodeRunner),
+            ("pi", PiRunner),
+            ("gemini", GeminiRunner),
+            ("omp", OmpRunner),
+            ("kimi-code", KimiRunner),
+        ],
+    )
+    def test_resolves_every_registered_host(
+        self, name: str, expected_cls: type, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("LL_HOST_CLI", "claude-code")
+        runner = resolve_host_named(name)
+        assert isinstance(runner, expected_cls)
+        # Ambient LL_HOST_CLI must not have been consulted or mutated.
+        assert os.environ.get("LL_HOST_CLI") == "claude-code"
+
+    def test_unregistered_name_raises_host_not_configured(self) -> None:
+        with pytest.raises(HostNotConfigured):
+            resolve_host_named("not-a-real-host")
+
+    def test_does_not_mutate_os_environ(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("LL_HOST_CLI", raising=False)
+        resolve_host_named("codex")
+        assert "LL_HOST_CLI" not in os.environ
+
+
+class TestRunBlockingJson:
+    """FEAT-3042: shared blocking invocation + JSON-envelope parsing helper."""
+
+    def _envelope(self, **overrides: object) -> str:
+        payload = {
+            "type": "result",
+            "subtype": "success",
+            "structured_output": {
+                "verdict": "yes",
+                "confidence": 0.9,
+                "reason": "ok",
+                "evidence": "quote",
+            },
+        }
+        payload.update(overrides)
+        return json.dumps(payload)
+
+    def test_claude_code_structured_output_success(self) -> None:
+        invocation = ClaudeCodeRunner().build_blocking_json(prompt="hi")
+        with patch("little_loops.host_runner.subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(
+                returncode=0, stdout=self._envelope(), stderr=""
+            )
+            result = run_blocking_json(invocation, schema={"type": "object"}, timeout=30)
+        assert result["verdict"] == "yes"
+        # Inline schema flag appended host-gated for claude-code.
+        args = mock_run.call_args[0][0]
+        assert "--json-schema" in args
+        assert "--no-session-persistence" in args
+
+    def test_codex_output_schema_success_and_cleanup(self, tmp_path: Path) -> None:
+        schema = {"type": "object"}
+        invocation = CodexRunner().build_blocking_json(prompt="hi", json_schema=schema)
+        assert invocation.cleanup_paths
+        with patch("little_loops.host_runner.subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(
+                returncode=0,
+                stdout=json.dumps({"result": {"verdict": "yes", "confidence": 1.0}}),
+                stderr="",
+            )
+            result = run_blocking_json(invocation, timeout=30)
+        assert result["verdict"] == "yes"
+        for p in invocation.cleanup_paths:
+            assert not p.exists()
+
+    def test_codex_cleanup_paths_unlinked_on_failure(self) -> None:
+        invocation = CodexRunner().build_blocking_json(
+            prompt="hi", json_schema={"type": "object"}
+        )
+        with patch("little_loops.host_runner.subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=1, stdout="", stderr="boom")
+            with pytest.raises(BlockingJsonError):
+                run_blocking_json(invocation, timeout=30)
+        for p in invocation.cleanup_paths:
+            assert not p.exists()
+
+    def test_codex_cleanup_paths_unlinked_on_timeout(self) -> None:
+        import subprocess
+
+        invocation = CodexRunner().build_blocking_json(
+            prompt="hi", json_schema={"type": "object"}
+        )
+        with patch("little_loops.host_runner.subprocess.run") as mock_run:
+            mock_run.side_effect = subprocess.TimeoutExpired(cmd="codex", timeout=30)
+            with pytest.raises(BlockingJsonError) as exc_info:
+                run_blocking_json(invocation, timeout=30)
+        assert exc_info.value.details["timeout"] is True
+        for p in invocation.cleanup_paths:
+            assert not p.exists()
+
+    def test_prompt_and_parse_tag_fallback_success(self) -> None:
+        """Hosts without structured_output (e.g. gemini) rely on tag fallback."""
+        invocation = GeminiRunner().build_blocking_json(prompt="hi")
+        tagged = (
+            "<StructuredOutput><verdict>yes</verdict><confidence>0.8</confidence>"
+            "<reason>ok</reason><evidence>quote</evidence></StructuredOutput>"
+        )
+        with patch("little_loops.host_runner.subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(
+                returncode=0, stdout=self._envelope(structured_output=None, result=tagged), stderr=""
+            )
+            result = run_blocking_json(invocation, timeout=30)
+        assert result["verdict"] == "yes"
+        args = mock_run.call_args[0][0]
+        assert "--json-schema" not in args
+
+    def test_file_not_found_raises_missing_dependency(self) -> None:
+        invocation = ClaudeCodeRunner().build_blocking_json(prompt="hi")
+        with patch("little_loops.host_runner.subprocess.run") as mock_run:
+            mock_run.side_effect = FileNotFoundError("claude")
+            with pytest.raises(BlockingJsonError) as exc_info:
+                run_blocking_json(invocation, timeout=30)
+        assert exc_info.value.details["missing_dependency"] is True
+
+    def test_opencode_and_pi_fail_soft_at_build_time(self) -> None:
+        for runner in (OpenCodeRunner(), PiRunner()):
+            with pytest.raises(HostNotConfigured):
+                runner.build_blocking_json(prompt="hi")

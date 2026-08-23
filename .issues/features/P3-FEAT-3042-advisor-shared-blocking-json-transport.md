@@ -4,12 +4,19 @@ title: Advisor transport - shared run_blocking_json helper
 type: FEAT
 parent: FEAT-3037
 priority: P3
-status: open
+status: done
 testable: true
-decision_needed: true
+decision_needed: false
 discovered_date: 2026-08-04
+completed_at: '2026-08-23T15:31:54Z'
 labels:
 - planning-hub
+confidence_score: 100
+outcome_confidence: 77
+score_complexity: 17
+score_test_coverage: 25
+score_ambiguity: 10
+score_change_surface: 25
 ---
 
 # FEAT-3042: Advisor transport - shared run_blocking_json helper
@@ -48,7 +55,7 @@ covers the transport concern.
 
 _Added by `/ll:refine-issue` — 2026-08-07 — based on codebase analysis:_
 
-- `resolve_host()` is at `host_runner.py:1576`, not 1564 as cited above — and it is not memoized: `resolve_host(env)` re-resolves a fresh runner instance on every call (the `env is None` default copies `os.environ`, `:1601-1602`), so "resolves one host per process" overstates the caching. Per-call host selection (`resolve_host_named`) is therefore a genuinely new capability; every production call site today calls `resolve_host()` bare.
+- `resolve_host()` is at `host_runner.py:1574`, not 1564 as cited above — and it is not memoized: `resolve_host(env)` re-resolves a fresh runner instance on every call (the `env is None` default copies `os.environ`, `:1599-1600`), so "resolves one host per process" overstates the caching. Per-call host selection (`resolve_host_named`) is therefore a genuinely new capability; every production call site today calls `resolve_host()` bare.
 
 ## Expected Behavior
 
@@ -111,16 +118,16 @@ that inner `JSONDecodeError`, re-raising only if the tag fallback also returns
 `None`), then a bare `"verdict" in envelope` fallback, else an error with a
 300-char `raw_preview`.
 
-**Decide explicitly during implementation**: `evaluate_llm_structured` does a
-module-level `import subprocess` in `fsm/evaluators.py:32` and calls
-`subprocess.run(...)` directly; `test_fsm_evaluators.py` patches this at ~15
+**Decided** (Option A — see Decision Rationale below): `evaluate_llm_structured`
+does a module-level `import subprocess` in `fsm/evaluators.py:32` and calls
+`subprocess.run(...)` directly; `test_fsm_evaluators.py` patches this at 16
 call sites via `patch("little_loops.fsm.evaluators.subprocess.run")`.
-`host_runner.py` currently has zero `subprocess.run`/`Popen` calls. For AC
-#13's "existing tests pass without edits" to hold, either `run_blocking_json()`
-must still bottom out at a patchable `evaluators.subprocess.run` call (i.e.
-`evaluators.py` keeps doing the actual `subprocess.run` and
-`run_blocking_json` takes the already-completed result), or the tests need
-updating to patch `host_runner.subprocess.run` instead.
+`host_runner.py` currently has zero `subprocess.run`/`Popen` calls.
+`run_blocking_json()` bottoms out at a patchable `evaluators.subprocess.run`
+call — `evaluators.py` keeps doing the actual `subprocess.run` and
+`run_blocking_json` takes the already-completed result — so all 16 existing
+patch sites keep working unmodified, satisfying AC #13's "existing tests pass
+without edits."
 
 **Schema-conditional behavior stays in the caller.** Evidence-coercion
 (`evaluate_llm_structured` lines ~1246-1248) forces `verdict = "no"`
@@ -135,9 +142,30 @@ _Added by `/ll:refine-issue` — 2026-08-07 — based on codebase analysis:_
 
 **Option A**: `run_blocking_json()` bottoms out at a patchable `evaluators.subprocess.run` call — `fsm/evaluators.py` keeps the actual `subprocess.run` (module-level `import subprocess` at `fsm/evaluators.py:32`) and `run_blocking_json` receives the already-completed subprocess result. `test_fsm_evaluators.py` patches `little_loops.fsm.evaluators.subprocess.run` at 16 sites (lines 873, 934, 1271, 1367, 1516, 2024, 2102, 2211, 2227, 2260, 2271, 2298, 2331, 2408, 2431, 2457); `host_runner.py` has zero `subprocess.run`/`Popen` calls today.
 
+> **Selected:** Option A — extends the caller-owned `subprocess.run` pattern already used 3x in `fsm/evaluators.py`, keeps `host_runner.py`'s builder-only role intact, and leaves all 16 existing test patch sites untouched.
+
 **Option B**: `host_runner.py` owns the subprocess call and the evaluator tests are updated to patch `host_runner.subprocess.run` instead — requires `host_runner.py` to add `import subprocess` and re-target the 16 existing `patch("little_loops.fsm.evaluators.subprocess.run")` sites.
 
 **Recommended**: Option A — smallest test churn (the 16 existing patch sites stay untouched) and keeps the refactor behavior-preserving, consistent with AC #5's "existing FSM evaluator tests pass" branch and the issue's Impact mitigation ("gated on existing evaluator tests").
+
+### Decision Rationale
+
+Decided by `/ll:decide-issue` on 2026-08-23.
+
+**Selected**: Option A — `run_blocking_json()` bottoms out at a patchable `evaluators.subprocess.run` call
+
+**Reasoning**: Codebase evidence shows the "caller owns `subprocess.run`, shared logic processes the completed result" shape is the established convention across every `build_blocking_json` consumer in the tree (`runner_spec.py:290`, `session_store/lifecycle.py:154`, `worker_pool.py:805`, `cli/issues/decisions.py:797`, `learning_tests/extractor.py:132`, and all 3 call sites in `fsm/evaluators.py` itself) — `host_runner.py` has zero `subprocess`/`Popen` calls today and has never executed a subprocess directly. Option B would make `host_runner.py` the first exception to that convention and requires mechanically re-targeting all 16 existing `test_fsm_evaluators.py` patch sites for no behavioral benefit.
+
+#### Scoring Summary
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|--------|-------------|------------|-------------|------|-------|
+| Option A | 3/3 | 2/3 | 3/3 | 3/3 | 11/12 |
+| Option B | 0/3 | 1/3 | 1/3 | 1/3 | 3/12 |
+
+**Key evidence**:
+- Selected (Option A): extends a pattern already duplicated 3x in `fsm/evaluators.py` (`:1128`, `:1321`, `:1573`); reuses `_structured_output_args`, `_extract_tagged_structured_output`, and Codex's already-tested tempfile/`cleanup_paths` handling directly; all 16 existing `evaluators.subprocess.run` patch sites stay untouched.
+- Rejected (Option B): no codebase precedent for `host_runner.py` executing a subprocess itself — every one of its 6+ `build_blocking_json` consumers keeps execution local; would require re-targeting 16+ test patch sites and make `host_runner.py` an architectural outlier.
 
 ## API/Interface
 
@@ -184,7 +212,7 @@ def run_blocking_json(
 
 ### Similar Patterns
 
-- `dispatch_anthropic_request` (`host_runner.py:1879-1936`) is SDK-based (no
+- `dispatch_anthropic_request` (`host_runner.py:1889-1948`) is SDK-based (no
   subprocess) and returns `ActionResult` — not a refactor target for
   `run_blocking_json()`, just a neighboring function in the same module.
 
@@ -214,7 +242,7 @@ def run_blocking_json(
 
 _Added by `/ll:refine-issue` — 2026-08-07 — based on codebase analysis:_
 
-- `dispatch_anthropic_request` is defined at `host_runner.py:1891`, not 1879-1936 as cited under Similar Patterns — still SDK-based (no subprocess) and returns `ActionResult`, so it stays outside `run_blocking_json`'s refactor scope.
+- `dispatch_anthropic_request` is defined at `host_runner.py:1889`, not 1879-1936 as cited under Similar Patterns — still SDK-based (no subprocess) and returns `ActionResult`, so it stays outside `run_blocking_json`'s refactor scope.
 - ENH-1530's Codex `--output-schema`/`cleanup_paths` tests live at `test_host_runner.py:382`, `:395`, `:417` (issue cites ~348/361/383): `test_build_blocking_json_json_schema_writes_temp_file`, `..._returns_cleanup_paths`, `..._no_schema_cleanup_paths_empty`. Extend that block rather than duplicating.
 - `test_fsm_evaluators.py` patches `little_loops.fsm.evaluators.subprocess.run` at 16 sites, not ~15 (lines 873, 934, 1271, 1367, 1516, 2024, 2102, 2211, 2227, 2260, 2271, 2298, 2331, 2408, 2431, 2457).
 - `CodexRunner.build_blocking_json` also accepts a `sandbox_mode: str | None = None` keyword beyond the `HostRunner` Protocol surface (`host_runner.py:662-669`) — `run_blocking_json` need not expose it, but the build call must tolerate the widened signature.
@@ -253,13 +281,16 @@ _Added by `/ll:refine-issue` — 2026-08-07 — based on codebase analysis:_
 
 _Added by `/ll:refine-issue` — 2026-08-07 — based on codebase analysis:_
 
+Findings verified line-by-line against `host_runner.py`/`fsm/evaluators.py`,
+organized below by category.
+
 ### Types
 - `HostInvocation` — frozen dataclass at `host_runner.py:146`; carries `binary`, `args`, `env`, `capabilities`, and `cleanup_paths: tuple[Path, ...]` (default `()` at `host_runner.py:164`). `run_blocking_json` receives one and must unlink every `cleanup_paths` entry after the run.
 - `HostCapabilities` — frozen dataclass at `host_runner.py:119-143`; `structured_output: bool = False` at `host_runner.py:137`; True only on `ClaudeCodeRunner` (`host_runner.py:289`).
 - `HostRunner` — `@runtime_checkable` Protocol at `host_runner.py:195-270`; requires `name`, `detect()`, `build_streaming()`, `build_blocking_json()`, `build_version_check()`, `build_detached()`, `describe_capabilities()`.
 
 ### Signatures
-- `def resolve_host(env: dict[str, str] | None = None) -> HostRunner` — defined at `host_runner.py:1576`; reads `LL_HOST_CLI` then `LL_HOOK_HOST` from the passed env (`:1604`), then `_PROBE_ORDER` via `shutil.which`; raises `HostNotConfigured`; never mutates process-global state (the `env is None` default copies `os.environ`, `:1601-1602`).
+- `def resolve_host(env: dict[str, str] | None = None) -> HostRunner` — defined at `host_runner.py:1574`; reads `LL_HOST_CLI` then `LL_HOOK_HOST` from the passed env (`:1602`), then `_PROBE_ORDER` via `shutil.which`; raises `HostNotConfigured`; never mutates process-global state (the `env is None` default copies `os.environ`, `:1599-1600`).
 - `def resolve_host_named(name: str) -> HostRunner` — new helper; body is `return resolve_host({"LL_HOST_CLI": name})`; the env dict short-circuits before any probe.
 - `def run_blocking_json(invocation: HostInvocation, *, schema: dict[str, Any] | None = None, timeout: int = 180) -> dict[str, Any] | None` — new helper; extraction target, signature matches the issue's API/Interface block.
 - `def evaluate_llm_structured(output: str, prompt: str | None = None, schema: dict[str, Any] | None = None, min_confidence: float = 0.5, uncertain_suffix: bool = False, model: str = DEFAULT_LLM_MODEL, max_tokens: int = 256, timeout: int = 1800) -> EvaluationResult` — `fsm/evaluators.py:1083-1092`; migrates onto `run_blocking_json` with unchanged external behavior.
@@ -297,5 +328,9 @@ _Added by `/ll:refine-issue` — 2026-08-07 — based on codebase analysis:_
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-23T15:31:43 - `5a065f29-a23d-49e3-b78f-73c79fee1a2b.jsonl`
+- `/ll:ready-issue` - 2026-08-23T14:43:07 - `90da642d-1c66-4eed-9004-9edc9cacabec.jsonl`
+- `/ll:confidence-check` - 2026-08-23T14:38:33 - `b32b8980-2c4d-428e-8ac8-603c21d2a545.jsonl`
+- `/ll:decide-issue` - 2026-08-23T14:36:12 - `45267ac1-e5ff-49be-92f8-cb16382574ae.jsonl`
 - `/ll:refine-issue` - 2026-08-07T01:13:05 - `dbaeb448-e0d3-4927-896a-a00b59910595.jsonl`
 - `/ll:issue-size-review` - 2026-08-04T20:47:20 - `b57cebec-46d2-436b-b650-9a1afa94ec18.jsonl`

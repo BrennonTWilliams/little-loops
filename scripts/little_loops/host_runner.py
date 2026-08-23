@@ -24,7 +24,9 @@ Public exports:
 from __future__ import annotations
 
 import json
+import re
 import shutil
+import subprocess
 import sys
 import tempfile
 import tomllib
@@ -42,6 +44,7 @@ if TYPE_CHECKING:
     from little_loops.subprocess_utils import TokenUsage
 
 __all__ = [
+    "BlockingJsonError",
     "CapabilityEntry",
     "CapabilityNotSupported",
     "CapabilityReport",
@@ -63,7 +66,9 @@ __all__ = [
     "dispatch_batch_request",
     "poll_batch_result",
     "resolve_host",
+    "resolve_host_named",
     "resolve_model_alias",
+    "run_blocking_json",
 ]
 
 
@@ -1617,6 +1622,239 @@ def resolve_host(env: dict[str, str] | None = None) -> HostRunner:
             return runner_cls()
 
     raise HostNotConfigured(f"No host CLI detected on PATH. {_remediation_hint()}")
+
+
+def resolve_host_named(name: str) -> HostRunner:
+    """Resolve a specific registered host, ignoring ambient LL_HOST_CLI.
+
+    Unlike :func:`resolve_host`, this never falls back to a PATH probe — an
+    unregistered *name* raises :class:`HostNotConfigured` immediately. Useful
+    for callers (e.g. the advisor) that need a specific host regardless of
+    what the ambient environment would otherwise resolve to.
+    """
+    return resolve_host({"LL_HOST_CLI": name})
+
+
+class BlockingJsonError(RuntimeError):
+    """Raised by :func:`run_blocking_json` when a blocking invocation fails.
+
+    ``details`` mirrors the exact per-failure-mode dict shape
+    ``evaluate_llm_structured`` has always embedded in its
+    ``EvaluationResult`` (``timeout``, ``missing_dependency``, ``api_error``,
+    ``empty_output``, ``raw_preview``), so callers can pass it straight
+    through without re-deriving flags.
+    """
+
+    def __init__(self, message: str, details: dict[str, Any]) -> None:
+        super().__init__(message)
+        self.details = details
+
+
+def _structured_output_args(invocation: HostInvocation, schema: dict[str, Any]) -> list[str]:
+    """Build the CLI args, appending inline structured-output flags host-gated.
+
+    ENH-2627: the ``--json-schema`` flag (and the claude-only
+    ``--no-session-persistence``) are honored only by hosts that advertise
+    ``HostCapabilities.structured_output``. For hosts that ignore or reject an
+    inline schema flag we skip both and rely on the prompt-and-parse path (the
+    BUG-2626 ``_extract_tagged_structured_output`` tag fallback stays as the
+    safety net for :func:`run_blocking_json`).
+    """
+    args = list(invocation.args)
+    if getattr(invocation.capabilities, "structured_output", False):
+        args += ["--json-schema", json.dumps(schema), "--no-session-persistence"]
+    return args
+
+
+def _extract_tagged_structured_output(text: str) -> dict[str, Any] | None:
+    """Mine a ``<StructuredOutput>`` tag block for a verdict dict.
+
+    Anthropic's ``claude`` CLI honors ``--json-schema`` and returns the parsed
+    verdict in the envelope's ``structured_output`` field. Non-Anthropic hosts
+    reached through the same CLI (e.g. a MiniMax backend) ignore the flag and
+    instead emit the verdict as ``<StructuredOutput><verdict>…</verdict>…`` tags
+    inside the envelope's ``result`` string. This fallback recovers the verdict
+    from that tag format so the same evaluators work host-agnostically.
+
+    Args:
+        text: The raw ``result`` string that failed JSON parsing.
+
+    Returns:
+        A dict shaped like the default LLM schema output (``verdict``,
+        ``confidence``, ``reason``, ``evidence``) when a ``<verdict>`` tag is
+        present, else ``None``. Fields absent from the tags are omitted so the
+        caller's downstream defaults/coercion apply unchanged.
+    """
+    # Strip a ```json / ``` fence if a proxy wrapped the tags in one.
+    fenced = re.search(r"```(?:json)?\s*(.*?)\s*```", text, re.DOTALL | re.IGNORECASE)
+    if fenced:
+        text = fenced.group(1)
+
+    verdict_match = re.search(r"<verdict>\s*(.*?)\s*</verdict>", text, re.DOTALL | re.IGNORECASE)
+    if not verdict_match:
+        return None
+
+    result: dict[str, Any] = {"verdict": verdict_match.group(1).strip().lower()}
+
+    conf_match = re.search(r"<confidence>\s*(.*?)\s*</confidence>", text, re.DOTALL | re.IGNORECASE)
+    if conf_match:
+        try:
+            result["confidence"] = float(conf_match.group(1).strip())
+        except ValueError:
+            pass  # leave unset; caller defaults confidence to 1.0
+
+    reason_match = re.search(r"<reason>\s*(.*?)\s*</reason>", text, re.DOTALL | re.IGNORECASE)
+    if reason_match:
+        result["reason"] = reason_match.group(1).strip()
+
+    evidence_match = re.search(r"<evidence>\s*(.*?)\s*</evidence>", text, re.DOTALL | re.IGNORECASE)
+    if evidence_match:
+        result["evidence"] = evidence_match.group(1).strip()
+
+    return result
+
+
+def run_blocking_json(
+    invocation: HostInvocation,
+    *,
+    schema: dict[str, Any] | None = None,
+    timeout: int = 180,
+) -> dict[str, Any] | None:
+    """Execute a blocking invocation and return the parsed structured verdict.
+
+    Handles the three structured-output paths (claude-code inline
+    ``--json-schema``, codex ``--output-schema`` temp file, and
+    prompt-and-parse tag fallback for hosts that support neither), the
+    empty-stdout-with-exit-0 guard, the JSON envelope extraction chain
+    (whole-string parse -> last-non-blank-line JSONL fallback -> tag
+    fallback), and unlinking every ``invocation.cleanup_paths`` entry —
+    including when the subprocess fails or times out.
+
+    On any failure this raises :class:`BlockingJsonError` (never returns
+    ``None`` in practice; the ``| None`` return type is kept for forward
+    compatibility) carrying a ``details`` dict with the same flags
+    ``evaluate_llm_structured`` has always surfaced, so callers can pass it
+    straight through into their own result type unchanged.
+
+    Args:
+        invocation: The invocation to execute (from a host's
+            ``build_blocking_json``).
+        schema: When set and the host advertises
+            ``HostCapabilities.structured_output``, appended as an inline
+            ``--json-schema`` flag. Hosts that need a schema file (e.g.
+            codex) must instead receive it via
+            ``build_blocking_json(json_schema=...)`` at build time.
+        timeout: Seconds before the subprocess is killed.
+
+    Raises:
+        BlockingJsonError: on timeout, missing binary, non-zero exit,
+            empty stdout, or an unparseable/empty structured result.
+    """
+    if schema is not None:
+        args = _structured_output_args(invocation, schema)
+    else:
+        args = list(invocation.args)
+
+    try:
+        try:
+            proc = subprocess.run(
+                [invocation.binary, *args], capture_output=True, text=True, timeout=timeout
+            )
+        except subprocess.TimeoutExpired:
+            raise BlockingJsonError(
+                "LLM evaluation timeout", {"error": "LLM evaluation timeout", "timeout": True}
+            ) from None
+        except FileNotFoundError:
+            raise BlockingJsonError(
+                f"{invocation.binary} CLI not found. Install the active host CLI (see LL_HOST_CLI).",
+                {
+                    "error": (
+                        f"{invocation.binary} CLI not found. Install the active host CLI "
+                        "(see LL_HOST_CLI)."
+                    ),
+                    "missing_dependency": True,
+                },
+            ) from None
+    finally:
+        for cleanup_path in invocation.cleanup_paths:
+            cleanup_path.unlink(missing_ok=True)
+
+    if proc.returncode != 0:
+        error_msg = f"{invocation.binary} CLI error: {proc.stderr.strip()}"
+        raise BlockingJsonError(error_msg, {"error": error_msg, "api_error": True})
+
+    # Guard: empty stdout with exit 0 (API error not reflected in exit code)
+    if not proc.stdout.strip():
+        stderr_info = proc.stderr.strip()[:200] if proc.stderr else ""
+        error_msg = f"{invocation.binary} CLI returned empty output"
+        if stderr_info:
+            error_msg += f" (stderr: {stderr_info})"
+        raise BlockingJsonError(error_msg, {"error": error_msg, "empty_output": True})
+
+    # Parse the CLI JSON envelope and extract structured result.
+    # With --json-schema the envelope is:
+    #   success: {"type":"result","subtype":"success","structured_output":{...},...}
+    #   failure: {"type":"result","subtype":"error_max_structured_output_retries",...}
+    # If stdout is JSONL (multiple JSON objects), use the last non-empty line.
+    try:
+        stdout = proc.stdout.strip()
+        try:
+            envelope = json.loads(stdout)
+        except json.JSONDecodeError:
+            # Try JSONL: take the last non-empty line
+            lines = [line for line in stdout.split("\n") if line.strip()]
+            if not lines:
+                raise
+            envelope = json.loads(lines[-1])
+
+        # Check structured-output retry exhaustion (--json-schema failure mode)
+        if envelope.get("subtype") == "error_max_structured_output_retries":
+            error_msg = "Claude CLI could not produce valid structured output after retries"
+            raise BlockingJsonError(error_msg, {"error": error_msg, "api_error": True})
+
+        # Check legacy is_error flag (some CLI versions exit 0 but report error in envelope)
+        if envelope.get("is_error", False):
+            err_text = str(envelope.get("result", "") or "")[:200]
+            error_msg = f"Claude CLI reported error: {err_text}"
+            raise BlockingJsonError(error_msg, {"error": error_msg, "api_error": True})
+
+        # --json-schema mode returns validated dict in "structured_output"
+        if isinstance(envelope.get("structured_output"), dict):
+            llm_result: dict[str, Any] = envelope["structured_output"]
+        else:
+            raw_result = envelope.get("result", "")
+            if isinstance(raw_result, dict):
+                llm_result = raw_result
+            elif raw_result:
+                try:
+                    llm_result = json.loads(raw_result)
+                except json.JSONDecodeError:
+                    # Non-Anthropic hosts (e.g. MiniMax via the claude CLI) ignore
+                    # --json-schema and emit the verdict as <StructuredOutput> tags
+                    # inside "result" rather than a JSON string. Recover it before
+                    # treating the response as unparseable.
+                    tagged = _extract_tagged_structured_output(raw_result)
+                    if tagged is None:
+                        raise
+                    llm_result = tagged
+            elif "verdict" in envelope:
+                llm_result = envelope
+            else:
+                raw_preview = proc.stdout[:300]
+                error_msg = "Empty result field in Claude CLI response"
+                raise BlockingJsonError(error_msg, {"error": error_msg, "raw_preview": raw_preview})
+    except (json.JSONDecodeError, TypeError, ValueError) as e:
+        raw_preview = proc.stdout[:300] if proc.stdout else "(empty)"
+        error_msg = f"Failed to parse LLM response: {e}"
+        raise BlockingJsonError(error_msg, {"error": error_msg, "raw_preview": raw_preview}) from e
+
+    # Stash the raw stdout under a leading-underscore key so callers that want
+    # a debug preview (e.g. evaluate_llm_structured's "llm_raw_output" detail,
+    # read by `ll-loop info`) can pop it without polluting the schema-shaped
+    # result any caller who doesn't care simply ignores.
+    llm_result = dict(llm_result)
+    llm_result["_raw_stdout"] = proc.stdout[:500] if proc.stdout else ""
+    return llm_result
 
 
 def apply_host_cli_from_config(config: object) -> None:
