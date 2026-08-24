@@ -3,8 +3,9 @@ discovered_date: 2026-02-13
 discovered_by: manual
 completed_date: 2026-02-13
 status: done
-completed_at: 2026-02-13T00:00:00Z
+completed_at: 2026-02-13 00:00:00+00:00
 priority: P3
+size: Large
 ---
 
 # ENH-409: Improve ll-sprint show output

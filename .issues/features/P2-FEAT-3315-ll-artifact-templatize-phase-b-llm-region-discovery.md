@@ -102,6 +102,39 @@ the region-map format.
    response volunteering a forbidden key must fail loud before anything is
    written to disk.
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Resolve the `load_regions()` contract conflict flagged above: either strip
+  `data`/`data_schema` from the LLM response before constructing a
+  `{regions, groups}`-only payload for `load_regions()`, or loosen
+  `load_regions()`'s `_MAP_ALLOWED_KEYS` — and if the latter, update
+  `test_rejects_data_key`/`test_rejects_data_schema_key`
+  (`test_artifact_templatize.py:56-65`), which currently assert this is
+  rejected
+- Update `scripts/little_loops/config/core.py` — thread the new
+  `artifacts` ceiling config key through `BRConfig.to_dict()`'s
+  hand-enumeration (`:917-920`)
+- Update `scripts/little_loops/cli/artifact/__init__.py` — update
+  `main_artifact()`'s `epilog=` example invocation and exit-codes block for
+  the optional (no-`--regions`) branch
+- Update `docs/reference/CONFIGURATION.md` — document the new `artifacts`
+  ceiling key
+- Add/extend `scripts/tests/test_config_schema.py` — `test_artifacts_in_schema`
+  and `TestSchemaValueParity.test_to_dict_values_match_schema_defaults`
+  (Guard 1) for the new ceiling key
+- Add `discover_regions` unit tests mocking `build_blocking_json`/
+  `run_blocking_json`, following `test_advisor.py`'s `TestConsult` pattern
+- Add a CLI-level default-branch (no `--regions`) test in
+  `test_artifact_templatize.py`, monkeypatching `discover_regions` the way
+  `verify_round_trip` is monkeypatched at `:467-471`
+- Add the input-size-ceiling test asserting no host call issued, following
+  `test_render_makes_no_llm_call` (`test_feat3036_artifact_templates.py:345-353`)
+- Add the UTF-8 byte-offset-vs-character-index adversarial regression test
+  (no existing coverage — see Tests subsection)
+- Add the manifest `source`/`extraction`-present, `theme`-omitted test
+
 ### Codebase Research Findings
 
 This codebase holds two disagreeing conventions for an LLM-driven
@@ -198,6 +231,13 @@ _Added by `/ll:refine-issue` — 2026-08-24 — based on codebase analysis:_
 - `scripts/little_loops/cli/artifact/templatize.py` — add `discover_regions`
   call path, wired as the default (no `--regions`) branch of `cmd_templatize`
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/cli/artifact/__init__.py` — `main_artifact()`'s
+  `epilog=` string hardcodes an example invocation showing `--regions` as
+  required-looking and an `Exit codes:` block scoped only to round-trip
+  rejection (`0`/`1`/`2`); both need the optional (no-`--regions`) variant
+  documented [Agent 2 finding]
+
 ### Tests
 - Extend `scripts/tests/test_artifact_templatize.py` — schema validation
   failure test (mocked `discover_regions` response containing
@@ -205,9 +245,52 @@ _Added by `/ll:refine-issue` — 2026-08-24 — based on codebase analysis:_
   (mocked host call), input-size-ceiling test (oversized combined input,
   assert no host call issued).
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_advisor.py` — reuse `TestConsult`'s
+  `resolve_host_named`/`run_blocking_json` patch-pair pattern (`:101-119`,
+  `:210-250`, `pytest.raises(BlockingJsonError)`) for mocking
+  `discover_regions`'s host call in the schema-validation and
+  missing-required-keys tests, rather than hand-rolling a new `FakeRunner`
+  [Agent 3 finding]
+- `scripts/tests/test_feat3036_artifact_templates.py` — reuse
+  `test_render_makes_no_llm_call` (`:345-353`,
+  `resolve_host.assert_not_called()`) as the pattern for asserting the
+  input-size-ceiling test issues no host call [Agent 3 finding]
+- New test: UTF-8 byte-offset-vs-character-index adversarial regression test
+  — no existing coverage found anywhere in the suite;
+  `test_non_ascii_round_trips` (`test_artifact_templatize.py:582-606`) only
+  exercises the *correct*-offset case via `bytes.index`, never a
+  character-index-computed (wrong) region on non-ASCII content [Agent 3
+  finding — gap]
+- New test: manifest carries `source`/`extraction` and omits `theme` —
+  model after `TestBuildManifest.test_builds_expected_shape`
+  (`test_artifact_templatize.py:333-347`, which already asserts
+  `"theme" not in manifest`) [Agent 3 finding]
+- `scripts/tests/test_config_schema.py` — extend `test_artifacts_in_schema`
+  (`:473-493`) and `TestSchemaValueParity.test_to_dict_values_match_schema_defaults`
+  (`:1268-1290`, "BUG-3192 Guard 1") for the new input-size-ceiling config
+  key; Guard 1 walks every `BRConfig().to_dict()` leaf against
+  `config_mod.schema_default(path)` and raises if a new `artifacts.<key>`
+  leaf has no matching schema default [Agent 2 finding]
+
 ### Documentation
 - `docs/reference/CLI.md` § `ll-artifact` — extend the `templatize` section
   for the default (LLM-driven) invocation
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/CONFIGURATION.md` — `### \`artifacts\`` section (table +
+  JSON example) needs a row added for the new input-size ceiling key
+  [Agent 2 finding]
+
+### Configuration
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/config/core.py` — `BRConfig.to_dict()` (`:917-920`)
+  hand-enumerates the `artifacts` keys (`default_output_dir`,
+  `templates_dir`); the new ceiling field must be added there explicitly or
+  it silently never appears in `to_dict()`/`ll-config show` output, and
+  `test_config_schema.py`'s Guard 1 (above) will fail on the resulting
+  schema/dataclass mismatch [Agent 2 finding]
 
 ### Codebase Research Findings
 
@@ -230,6 +313,7 @@ _Added by `/ll:refine-issue` — 2026-08-24 — based on codebase analysis:_
 
 - [ ] The emitted `data_schema` passes `_validate_schema_shape()`; a test feeds a `discover_regions` response containing `additionalProperties`/`minItems` and asserts the command fails loud before writing anything.
 - [ ] A `discover_regions` response missing required keys raises rather than degrading to an empty result (Option A contract), asserted with a mocked host call — routed through FEAT-3314's `load_regions()`, not a Phase-B-local validator.
+  > ⚠ Superseded — load_regions() rejects data/data_schema keys today
 - [ ] A `discover_regions` response whose offsets are character indices rather than UTF-8 byte offsets is caught: a mocked-response test over a non-ASCII artifact asserts the run fails (round-trip rejection) rather than silently emitting an off-by-N template.
 - [ ] A combined artifact+source input over the configured ceiling exits non-zero naming the measured size, with no host call issued.
 - [ ] The emitted manifest carries `source` and `extraction`, and omits `theme`.
@@ -256,6 +340,7 @@ _Added by `/ll:refine-issue` — 2026-08-24 — based on codebase analysis:_
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-08-24T21:10:03 - `bf6a3113-6115-4098-8fb1-1cdb2c5eeb4c.jsonl`
 - `/ll:refine-issue` - 2026-08-24T20:56:38 - `de9e1af4-5c22-4ebf-87ee-74fb60da3cea.jsonl`
 - `/ll:refine-issue` - 2026-08-24T18:58:03 - `ffa41e96-ab11-4f72-8513-f6153385423a.jsonl`
 - `/ll:format-issue` - 2026-08-24T18:48:18 - `837a85ca-8f14-41e3-a67f-9059d7bcff74.jsonl`
