@@ -6,6 +6,10 @@ priority: P2
 status: open
 discovered_date: '2026-08-23'
 parent: EPIC-3127
+blocked_by:
+- ENH-3307
+related:
+- ENH-3035
 labels:
 - mcp
 - artifact
@@ -22,6 +26,10 @@ score_change_surface: 22
 ## Summary
 
 Add an interactive-resource content type to `ll-mcp`: resources that resolve to interactive HTML with event callbacks, rendered by the host session rather than a browser tab. This is an MCP Apps–compliant content type layered onto `ll-mcp`'s existing resource surface — not a new server or transport.
+
+**Concrete deliverable (first view):** one `ui://issues/view` resource, linked from the existing `issue_get` tool via `_meta.ui.resourceUri`, whose HTML renders the `issue_get` result (frontmatter table + body) and implements the minimal MCP Apps handshake on the view side. The "event callbacks" half is scoped to exactly that handshake — receiving `ui/notifications/tool-result` and emitting level-1 (`ui/message`) interactions per ENH-3307; no level-2/3 re-entry into the FSM is built here.
+
+**Dependency decision:** this issue is `blocked_by: ENH-3307` (the contract must exist before the view emits anything). It is deliberately *not* blocked by ENH-3035 / FEAT-3036 — those build the browser-tab `ll-artifact` template kit, a different render target. If ENH-3035 lands first, the view's page shell/token stamping should adopt the kit; otherwise the template stays a small standalone file (`related:` only).
 
 ## Current Behavior
 
@@ -43,6 +51,14 @@ Add an interactive-resource content type to `ll-mcp`: resources that resolve to 
 - **Capability negotiation**: a client only renders these resources if it declared the `io.modelcontextprotocol/ui` extension at `initialize`, with the supported `mimeTypes` listed. Real host adoption of this capability is the actual gate on payoff here — most current hosts do not declare it yet.
 - **Host↔view messaging** is JSON-RPC 2.0 over `postMessage`: the view can request `tools/call`, `resources/read`, `ui/open-link`, `ui/message`, `ui/request-display-mode`, `ui/update-model-context`; the host pushes `ui/notifications/tool-input`, `ui/notifications/tool-result`, `ui/notifications/tool-cancelled`, `ui/notifications/size-changed`, and a `ui/resource-teardown` cleanup signal.
 
+## Design decisions (resolved 2026-08-23 review)
+
+- **Which view / which tool**: `ui://issues/view`, declared on `issue_get` (`tools.py:601`) via `_meta.ui.resourceUri`. One view only; no generic per-tool registry.
+- **Where the HTML lives**: package data at `scripts/little_loops/mcp_server/templates/issues-view.html` (mirrors the `scripts/little_loops/templates/` package-data convention in CLAUDE.md; add to `pyproject.toml` package-data if not glob-covered). This keeps `_ResourceEntry.path: Path` (`resources.py:63`) **unchanged** — the new kind reads from disk like every existing kind. Do not widen `path` to `Path | None` or pass inline `html: str`.
+- **Enumeration gating**: `resources/list` advertises `ui://` entries **unconditionally**. The spec permits it, clients that did not negotiate `io.modelcontextprotocol/ui` ignore unknown MIME types, and it avoids threading per-request client capabilities into `build_resource_index()`. Capability negotiation is *not* ENH-3307's concern (that is a journey-ownership contract, not protocol negotiation); it is simply out of scope here. `mcp.server.apps._require_ui_scheme` may be reused for URI validation; `client_supports_apps()` is not wired.
+- **Staleness/refresh**: the `ui://` entry is static — do not add it to `_watched_paths()`. It must be counted in pagination totals (`test_enh_3174_mcp_resources_pagination.py`) and the exact-set assertion in `test_mcp_server.py:372-376`.
+- **View-side messaging**: the template's inline JS must (a) handle `ui/notifications/tool-result` by rendering the payload, (b) emit only `ui/message` (ENH-3307 level 1 — notify), (c) handle `ui/resource-teardown`. No `tools/call` from the view in this issue.
+
 ## Impact
 
 - **Priority**: P2 - additive capability gated on host adoption of the `io.modelcontextprotocol/ui` capability, which is not yet common; not urgent, but cheap to land ahead of demand.
@@ -54,8 +70,10 @@ Add an interactive-resource content type to `ll-mcp`: resources that resolve to 
 
 ### Files to Modify
 
-- `scripts/little_loops/mcp_server/resources.py` — add a new `_interactive_resource_entry(config, tool_name, html)` helper following the existing `_<kind>_entries`/`_<kind>_entry` convention (`_issue_entries` @ :69, `_goals_entry` @ :121, `_docs_entries` @ :136); extend `build_resource_index()` (:167) to merge its results into the flat `uri -> _ResourceEntry` dict; extend `_read_body()`'s `entry.kind` dispatch (:269-274) with a new kind for interactive HTML bodies
-- `scripts/little_loops/mcp_server/tools.py` — add `_meta.ui.resourceUri` to whichever tool(s) render through this view; no `types.Tool(...)` call site in this codebase sets a `meta`/`_meta` field today (the only other `_meta` handling, `tasks.py:280`, reads a client-supplied request `_meta`, not a server-declared `Tool._meta`) — this is new ground, not an extension of an existing pattern
+- `scripts/little_loops/mcp_server/resources.py` — add a new `_ui_entries(config)` helper following the existing `_<kind>_entries`/`_<kind>_entry` convention (`_issue_entries` @ :69, `_goals_entry` @ :121, `_docs_entries` @ :136), returning the single `ui://issues/view` entry with `kind="ui"` and `path` pointing at the package-data template; extend `build_resource_index()` (:167) to merge it into the flat `uri -> _ResourceEntry` dict; extend `_read_body()`'s `entry.kind` dispatch (:269-274) with `"ui"` (reads `entry.path`, same as docs); update the `kind` comment on the dataclass (:65)
+- `scripts/little_loops/mcp_server/templates/issues-view.html` — **new** package-data file: the view HTML + inline JS handshake
+- `scripts/little_loops/mcp_server/tools.py:601` — add `_meta={"ui": {"resourceUri": "ui://issues/view"}}` to the `issue_get` tool definition; no `types.Tool(...)` call site in this codebase sets a `meta`/`_meta` field today (the only other `_meta` handling, `tasks.py:280`, reads a client-supplied request `_meta`, not a server-declared `Tool._meta`) — this is new ground, not an extension of an existing pattern. Confirm the SDK 2.0.0 `Tool` field name (`meta` vs `_meta` alias) via the learning test before writing it
+- `scripts/pyproject.toml` — ensure `mcp_server/templates/*.html` is included in package data
 
 ### Dependent Files (Callers/Importers)
 
@@ -83,11 +101,14 @@ _Wiring pass added by `/ll:wire-issue`:_
 - New test: `resources/list` assertion that a `ui://`-scheme entry appears with `mime_type == "text/html;profile=mcp-app"`, following the pattern at `test_mcp_server.py:357-383` [Agent 3 finding]
 - New test: `resources/read` assertion that the HTML body round-trips through `TextResourceContents.text` (MCP Apps HTML transports as `text`, not `blob` — no `BlobResourceContents` precedent exists in this codebase), following the pattern at `test_mcp_server.py:416-427` [Agent 3 finding]
 - New test: negative-path coverage for an unregistered `ui://` URI, extending the parametrized bad-URI loop in `test_read_resource_outside_enumeration_is_rejected` (`test_mcp_server.py:430-447`) [Agent 3 finding]
-- New test: `list_tools` assertion that `_meta.ui.resourceUri` is present on the tool(s) that render through this view — no existing test in `test_feat_3149_mcp_mutation_tools.py` or elsewhere inspects `Tool._meta`/`Tool.meta`, so this is new ground with no in-repo template [Agent 3 finding]
+- New test: `list_tools` assertion that `_meta.ui.resourceUri == "ui://issues/view"` is present on `issue_get` — no existing test in `test_feat_3149_mcp_mutation_tools.py` or elsewhere inspects `Tool._meta`/`Tool.meta`, so this is new ground with no in-repo template [Agent 3 finding]
+- New test: the served HTML contains the handshake markers — string assertions for `ui/notifications/tool-result`, `ui/message`, and `ui/resource-teardown` in the `resources/read` body — so the view-side contract is enforced without a browser
+- New test: `ui://issues/view` is **not** in `_watched_paths()` and pagination totals include it (extend `test_enh_3174_mcp_resources_pagination.py`)
+- New test: `pytest.importorskip("mcp")` guard on all of the above, matching the existing pattern
 
 ### Documentation
 
-- `docs/guides/MCP_SERVER_GUIDE.md` — describes the resource surface (`ll://` scheme, staleness/refresh, `resources/read` usage); would need a section for the new `ui://` scheme and its capability-negotiation gate
+- `docs/guides/MCP_SERVER_GUIDE.md` — describes the resource surface (`ll://` scheme, staleness/refresh, `resources/read` usage); needs a section for the new `ui://` scheme, the unconditional-advertise decision, and a cross-link to ENH-3307's contract doc (`docs/reference/ARTIFACT_CONTROL_LEVELS.md`) stating the view operates at level 1
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `docs/reference/API.md:103` — the `little_loops.mcp_server` package-index row enumerates the `ll://` resource surface by scheme/kind (`ll://issues/<ID>`, `ll://goals`, `ll://docs/<relative-path>`); needs a `ui://` clause added [Agent 2 finding]
@@ -101,22 +122,37 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ### Types
 
-- `_ResourceEntry.mime_type: str` (existing field; new call sites pass `"text/html;profile=mcp-app"`)
+- `_ResourceEntry` — unchanged shape; new call site passes `mime_type="text/html;profile=mcp-app"`, `kind="ui"`, `path=<package template path>`
 
 ### Signatures
 
-- `_interactive_resource_entry(config: BRConfig, tool_name: str, html: str) -> _ResourceEntry`
-- `build_resource_index(config: BRConfig) -> dict[str, _ResourceEntry]` (existing; gains `ui://`-scheme entries)
+- `_ui_entries(config: BRConfig) -> list[_ResourceEntry]`
+- `_read_ui_body(entry: _ResourceEntry) -> str`
+- `build_resource_index(config: BRConfig) -> dict[str, _ResourceEntry]` (existing; gains the `ui://issues/view` entry)
 
 ### Call Path
 
-`build_resource_index` -> `_interactive_resource_entry` -> `make_list_resources_handler` / `_read_body` (existing `resources/list` and `resources/read` handlers, unchanged dispatch)
+`build_resource_index` -> `_ui_entries` -> `make_list_resources_handler` / `_read_body` -> `_read_ui_body` (existing `resources/list` and `resources/read` handlers, one new `kind` branch)
+
+## Acceptance Criteria
+
+- [ ] `resources/list` includes `ui://issues/view` with `mimeType == "text/html;profile=mcp-app"`, unconditionally (no capability gating).
+- [ ] `resources/read` on `ui://issues/view` returns the template as `TextResourceContents.text`; any other `ui://` URI is rejected like other unregistered URIs.
+- [ ] `list_tools` shows `issue_get` with `_meta.ui.resourceUri == "ui://issues/view"`; no other tool carries `_meta.ui`.
+- [ ] The template's inline JS handles `ui/notifications/tool-result` and `ui/resource-teardown`, and emits only `ui/message` (ENH-3307 level 1).
+- [ ] `_ResourceEntry` dataclass fields are unchanged; `ui://` is not in `_watched_paths()`.
+- [ ] Existing tests (`test_mcp_server.py` exact-set, `test_enh_3174_*` pagination) updated and green; new tests per the Tests subsection.
+- [ ] `MCP_SERVER_GUIDE.md`, `API.md:103`, `CLI.md:4773-4783` updated; guide cross-links `docs/reference/ARTIFACT_CONTROL_LEVELS.md`.
+- [ ] Template file ships in the wheel (package-data check).
 
 ## Scope Boundaries
 
 - Out of scope: implementing a new transport, server, or browser-tab render target — this is a content type on the existing resource surface only.
 - Out of scope: defining host↔view interaction ownership semantics — that contract is ENH-3307's scope, not this issue's.
 - Out of scope: building ahead of host support; land the plumbing but do not invest in host-specific rendering workarounds while `io.modelcontextprotocol/ui` adoption remains rare.
+- Out of scope: client capability negotiation (`client_supports_apps()` / `MCPServer(extensions=[...])`) — entries are advertised unconditionally; negotiation is a follow-up if a real host needs it.
+- Out of scope: level-2/level-3 interactions (`tools/call` from the view, FSM re-entry) — the first view is level-1 notify only.
+- Out of scope: depending on the `ll-artifact` template kit (ENH-3035) or the artifact-templates design (FEAT-3036); adopt the kit opportunistically if it lands first.
 
 ## Scope
 
@@ -135,7 +171,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ## Status
 
-Open.
+Open — blocked by ENH-3307 (contract doc must exist before the view's messaging is written).
 
 
 ## Session Log

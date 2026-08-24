@@ -23,6 +23,7 @@ score_complexity: 18
 score_test_coverage: 25
 score_ambiguity: 18
 score_change_surface: 25
+decision_needed: false
 ---
 
 # FEAT-3122: ll-doctor advisor-reachability check
@@ -143,12 +144,40 @@ _Added by `/ll:refine-issue` — 2026-08-24 — based on codebase analysis:_
 `_advisor_check` should set `severity="informational"` for
 `advisory`/`unknown` floor results, mirroring the existing
 `_ADVISORY_CAPABILITIES = frozenset({"claude_md_suppression"})` pattern
-(`doctor.py:95`). Follow the non-`@register_check` pattern used by
-`_capability_check_results()` (fold its results into `main_doctor`'s
-`results = _capability_check_results(report) + _run_registered_checks()`
-at `doctor.py:1088`), or resolve the advisor host inside a thin
-`@register_check` wrapper — either is acceptable, since the constraint is
-"needs the resolved `HostRunner` at call time," not a specific mechanism.
+(`doctor.py:95`). Per the Decision Rationale below, `_advisor_check` is a
+self-resolving `@register_check` function (Option B): it takes no
+arguments, resolves the advisor's `config.advisor.host`/`.model` and
+`HostRunner` internally, and registers into `_CHECKS` like every other
+default check — not the `_capability_check_results()` fold pattern.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-24 — based on codebase analysis:_
+
+**Option A**: Fold pattern, mirroring `_capability_check_results()` (`doctor.py:76-113`). `main_doctor()` resolves the advisor's `HostRunner` via `resolve_host_named(config.advisor.host)` and calls a plain `_advisor_check(runner, config)` function by hand — not `@register_check`-registered — concatenating its results into `results` the same way `_capability_check_results(report) + _run_registered_checks()` (`doctor.py:1219`) already does. This is the only pattern precedent for a check needing call-time state from outside its own body, but every existing dual-host resolution (`consult()`, `advisor.py:256,265`) is self-contained and does not depend on anything `main_doctor()` has already resolved — the advisor's own host and config are independently resolvable, so the "needs a value only available inside `main_doctor()`'s body" rationale that motivates the fold pattern does not strictly apply here.
+
+**Option B**: Self-resolving `@register_check`, following the `_schema_drift_check`/`_loop_validity_check` triad shape (`doctor.py:398-523`, `:526-606`) and severity shape 1 (`data["severity"]`, no default — the shape both of the two most recently added checks use). `_advisor_check()` takes no arguments, resolves `config.advisor.host`/`.model` internally (e.g. via `BRConfig()`), calls `resolve_host_named(config.advisor.host)` itself, and registers into `_CHECKS` via `@register_check` like every other default check. No existing `@register_check` function resolves a `HostRunner` today (confirmed by grep — only `_capability_check_results`, which is unregistered, and `_probe_version`, which receives its runner as a parameter, touch host resolution), so this would be the first, but it keeps `_advisor_check` participating automatically in the exit-code path via the same mechanism as every other default check, and avoids introducing a second unregistered-check code path alongside the existing single `_capability_check_results` special case.
+
+> **Selected:** Option B — matches the two most recently established check triads exactly and integrates with the exit-code path via the existing registry, with zero special-casing.
+
+### Decision Rationale
+
+**Selected**: Option B — self-resolving `@register_check`, following the `_schema_drift_check`/`_loop_validity_check` triad shape and severity shape 1.
+
+**Reasoning**: Option B reuses the exact `_xxx_data()`/`_print_xxx_section()`/`@register_check def _xxx_check()` triad and `data["severity"]` (no default) convention already established twice by the two most recently added checks (`_schema_drift_check`, `_loop_validity_check`), and reuses `resolve_host_named(config.advisor.host)` exactly as `advisor.py:consult()` already does. It requires zero changes to `main_doctor()`'s registry plumbing — `register_check()` accepts any no-arg `Callable[[], list[CheckResult]]`, so `_advisor_check` participates in `_run_registered_checks()`/`_exit_code_for()` automatically, the same as every other default check. Option A instead extends `_capability_check_results()`, the codebase's one explicitly-acknowledged exception to the registry convention (comment at `doctor.py:76-80` states new checks should register against `_CHECKS`), compounding that special case with a second hand-concatenated, unregistered function at `main_doctor()`'s `results = ...` line. A guard for the unconfigured-advisor case (mirroring `_schema_drift_data`/`_loop_validity_data`'s "prerequisite absent → informational" branch, and `consult()`'s `AdvisorNotConfigured` handling) is required regardless of option, so it is not a differentiator.
+
+**Scoring Summary**:
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|---|---|---|---|---|---|
+| A — Fold pattern | 1 | 1 | 1 | 1 | 4/12 |
+| B — Self-resolving `@register_check` | 3 | 2 | 3 | 2 | **10/12** |
+
+**Key evidence**:
+- `register_check()`/`_CHECKS` (`doctor.py:81-87`) accept any no-arg check with zero registry changes; `_run_registered_checks()`/`_exit_code_for()` (`:116-127`) already iterate `_CHECKS` uniformly — Option B needs none of `main_doctor()`'s manual concatenation.
+- `_schema_drift_data`/`_loop_validity_data` (`doctor.py:398-523`, `:526-606`) both guard an absent prerequisite by returning `{"status": "unsupported", "severity": "informational", ...}` — the exact shape an unconfigured-advisor guard needs.
+- `_capability_check_results()`'s own comment (`doctor.py:76-80`) states it is deliberately *not* registered and that new checks should use the registry — Option A works against its own cited precedent's stated intent.
+- `test_cli_doctor_install_checks.py::TestSchemaDrift` (~`:227`) is a direct testability precedent for Option B: bare `_data()`-level assertions, no `main_doctor()`/host mocking required.
 
 ## API/Interface
 
@@ -165,8 +194,7 @@ Uses `little_loops.advisor.check_floor` (FEAT-3108) and
 
 ### Call Path
 
-`ll-doctor` -> `_run_registered_checks` (or `main_doctor` folding, per
-the `_capability_check_results` precedent) -> `_advisor_check` ->
+`ll-doctor` -> `_run_registered_checks` -> `_advisor_check` ->
 `check_floor` (FEAT-3108) / `HostRunner.build_version_check`
 
 ### Decision Rules
@@ -587,6 +615,8 @@ _Added by `/ll:confidence-check` on 2026-08-23_
   copy verbatim) — well-specified as new work, but still first-of-kind.
 
 ## Session Log
+- `/ll:decide-issue` - 2026-08-24T01:18:56 - `7df0ca0e-4499-4040-a086-85c39d5f9acd.jsonl`
+- `/ll:refine-issue` - 2026-08-24T01:15:16 - `7df0ca0e-4499-4040-a086-85c39d5f9acd.jsonl`
 - `/ll:confidence-check` - 2026-08-24T01:11:19 - `4aa588b6-d571-428b-abc0-116ac8a698f4.jsonl`
 - `/ll:reconcile-issue` - 2026-08-24T00:47:50 - `5bab6687-c2bc-4078-8ae9-3de7877b2157.jsonl`
 - `/ll:refine-issue` - 2026-08-24T00:26:43 - `5d705364-6b23-4e84-9557-2084c10e8caf.jsonl`

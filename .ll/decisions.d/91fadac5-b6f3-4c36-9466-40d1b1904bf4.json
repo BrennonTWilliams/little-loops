@@ -1,0 +1,12 @@
+{
+  "id": "6772466d-b632-486b-a9df-a217762ddba6",
+  "type": "decision",
+  "timestamp": "2026-08-24T01:17:32Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Matches the two most recently established check triads (_schema_drift_check/_loop_validity_check) exactly, reuses resolve_host_named as consult() already does, and integrates with the exit-code path via the existing _CHECKS registry with zero special-casing.",
+  "rule": "Option B \u2014 self-resolving @register_check for _advisor_check",
+  "scope": "issue",
+  "alternatives_rejected": "Option A (fold pattern mirroring _capability_check_results): extends the codebase's one acknowledged exception to the registry convention rather than the intended extension point for new checks; scored 4/12 vs Option B's 10/12.",
+  "issue": "FEAT-3122"
+}
