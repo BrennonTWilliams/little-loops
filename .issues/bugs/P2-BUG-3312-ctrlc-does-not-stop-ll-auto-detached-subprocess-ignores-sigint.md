@@ -34,10 +34,17 @@ notices the flag and exits.
 
 ## Expected Behavior
 
-Pressing Ctrl+C during an `ll-auto` run should stop the run promptly: the
-active `claude` subprocess should be killed (via the existing process-group
-kill path) as soon as the interrupt is caught, rather than being left to run
-to completion or timeout before shutdown proceeds.
+Pressing Ctrl+C during an `ll-auto` run should stop the run promptly:
+
+1. The active `claude` subprocess is killed (via the existing process-group
+   kill path) as soon as the interrupt is caught, rather than being left to
+   run to completion or timeout.
+2. The in-flight issue's remaining phases do **not** run. Killing the Phase 2
+   subprocess alone is not sufficient — see "Shutdown must be observed at
+   phase boundaries" under Root Cause.
+3. A second Ctrl+C forces immediate exit, matching the `ll-loop` precedent
+   (`_loop_signal_handler`, ENH-2516).
+4. The interrupted run is recorded as *interrupted*, not as a Phase 2 crash.
 
 ## Motivation
 
@@ -50,20 +57,87 @@ for a long-running CLI tool.
 
 ## Proposed Solution
 
-Propagate the interrupt into the running subprocess rather than relying on a
-flag the outer loop only consults between issues. Options:
-- Have `_signal_handler` reach the currently active `Popen` (e.g. via the
-  existing `on_process_start`/`on_process_end` callback hooks already
-  threaded through `run_claude_command`) and call `_kill_process_group()` on
-  it when a shutdown signal fires.
-- Have the `run_claude_command` read loop poll a shutdown flag/event each
-  iteration (it already loops every ~1s via `sel.select(timeout=1.0)`) and
-  break out to kill the process group when set.
+Propagate the interrupt into the running subprocess *and* into the phase
+sequencing, rather than relying on a flag the outer loop only consults
+between issues.
 
-Either way, `start_new_session=True` is required for the idle/wall-clock
-timeout kill path (`_kill_process_group` uses `os.killpg`), so the fix must
-route SIGINT through the same process-group kill machinery rather than
-removing `start_new_session`.
+### Decision 1 — shutdown signalling mechanism: module-level Event (settled)
+
+Two options were considered; **option B is chosen**.
+
+- **Option A (rejected)** — have `_signal_handler` reach the currently active
+  `Popen` via the `on_process_start`/`on_process_end` hooks, as `ll-loop` and
+  `WorkerPool` do. Rejected because `ll-auto`'s call chain crosses two
+  *module-level, shared* functions — the local `run_claude_command` wrapper
+  (`issue_manager.py:140`) and `run_with_continuation`
+  (`issue_manager.py:256`) — that ll-parallel and sprint workers also call.
+  There is no `self` to hang a `_current_process` attribute on across that
+  boundary, so this option requires widening two shared signatures and still
+  does nothing for Decision 3 (phase boundaries).
+- **Option B (chosen)** — a module-level shutdown `threading.Event` in
+  `subprocess_utils`, polled by the `run_claude_command` read loop alongside
+  its existing wall-clock/idle-timeout checks (`subprocess_utils.py:504-526`).
+  `_signal_handler` sets the event; the loop observes it within ≤1s via the
+  existing `sel.select(timeout=1.0)` cadence and kills the process group.
+
+Option B is preferred because it: requires no signature changes; covers every
+caller of `run_claude_command` at once (ll-parallel and sprint workers get the
+same behavior for free); performs the kill in normal loop context rather than
+inside the signal handler — which matters, because
+`_kill_process_group(grace_seconds>0)` calls `process.wait()`
+(`subprocess_utils.py:330`) and blocking on a child inside a signal handler is
+unsafe; and supplies the same readable signal that Decision 3's phase-boundary
+checks need.
+
+### Decision 2 — kill mechanism: `_kill_process_group` (settled)
+
+Use `_kill_process_group()`, **not** the bare `proc.kill()` that `ll-loop`'s
+`_loop_signal_handler` uses (`cli/loop/_helpers.py:123-174`). With
+`start_new_session=True`, a bare `.kill()` reaps only the `claude` process and
+orphans its Task/Workflow grandchildren — which is precisely the "orphaned
+child processes" harm this issue's Motivation cites. The `ll-loop` precedent is
+arguably a latent bug on its side and should not be copied here. This
+supersedes the "contested convention" left open under Program Design.
+
+`start_new_session=True` is required for the idle/wall-clock timeout kill path
+(`_kill_process_group` uses `os.killpg`), so the fix must route SIGINT through
+the same process-group kill machinery rather than removing
+`start_new_session`.
+
+### Decision 3 — abort the in-flight issue at phase boundaries (new scope)
+
+Killing the Phase 2 subprocess is **not** sufficient to stop the run.
+`_shutdown_requested` is read in exactly two places today —
+`issue_manager.py:1951` (outer loop head) and `:1981` (cleanup guard) — so a
+killed Phase 2 falls straight through to Phase 3 verify (`:1420-1423`), which
+spawns a *fresh* `claude` subprocess. The fix must additionally:
+
+- Check shutdown at each phase boundary in `process_issue_inplace` (before
+  Phase 2 at `:1251`, before Phase 3 at `:1420`) and return an interrupted
+  result instead of advancing.
+- Check shutdown at the top of `run_with_continuation`'s continuation loop
+  (`:348`) so a killed session is not retried or continued.
+- Ensure the Phase-2-exited-non-zero branch (`:1342-1354`) does not treat a
+  SIGINT kill as ordinary failure and auto-commit a killed session's partial
+  work.
+
+### Decision 4 — second signal forces exit (new scope)
+
+`AutoManager._signal_handler` has no escalation tier. Mirror
+`_loop_signal_handler` (ENH-2516): first signal requests graceful shutdown,
+second signal exits immediately. Without this, any hang after the kill (Phase
+3, a `process.wait(timeout=10)`, cleanup) leaves the user in exactly the state
+this issue reports.
+
+### Decision 5 — attribute the interrupt correctly (new scope)
+
+ENH-2522 solved this for `ll-loop` by marking `_signal_handler_killed_subproc`
+so `exit_code=-9` is reported as `interrupted` rather than `system_signal`.
+`ll-auto` has no equivalent, so an interrupted issue would be recorded as a
+Phase 2 failure. Note also that `mark_attempted` already fired at
+`issue_manager.py:2068` *before* the kill, so the interrupted issue is burned
+for `--resume` unless explicitly un-marked. The implementation must decide and
+document whether an interrupted issue stays in `attempted_issues`.
 
 ### Codebase Research Findings
 
@@ -76,25 +150,48 @@ _Added by `/ll:refine-issue` — 2026-08-24 — based on codebase analysis:_
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/issue_manager.py` (`_signal_handler`,
-  `IssueManager.__init__` signal registration)
-- `scripts/little_loops/subprocess_utils.py` (`run_claude_command` read loop,
-  `_kill_process_group`)
+- `scripts/little_loops/issue_manager.py` — `AutoManager._signal_handler`
+  (`:1741`) and its signal registration in `AutoManager.__init__`
+  (`:1738-1739`); phase-boundary shutdown checks in `process_issue_inplace`
+  (`:1251`, `:1420`); continuation-loop shutdown check in
+  `run_with_continuation` (`:348`); Phase-2-non-zero branch (`:1342-1354`)
+- `scripts/little_loops/subprocess_utils.py` — module-level shutdown `Event`,
+  read-loop poll alongside the existing timeout checks (`:504-526`), reusing
+  `_kill_process_group` (`:311-344`)
+
+> **Note:** there is no `IssueManager` class. The class that registers the
+> signal handlers is **`AutoManager`** (`issue_manager.py:1631`). An earlier
+> revision of this issue named `IssueManager` throughout; that was wrong.
 
 ### Dependent Files (Callers/Importers)
-- `scripts/little_loops/issue_manager.py` — `_process_issue()` ->
-  `run_with_continuation()` -> `run_claude_command()` call chain that must
-  keep working for non-interrupted runs
+- `scripts/little_loops/issue_manager.py` — `AutoManager._process_issue()`
+  (`:2056`) -> `process_issue_inplace()` (`:689`) ->
+  `run_with_continuation()` (`:256`) -> local `run_claude_command()` wrapper
+  (`:140`) -> `subprocess_utils.run_claude_command` (`:347`) call chain that
+  must keep working for non-interrupted runs
+- Other callers of `subprocess_utils.run_claude_command` (ll-parallel worker
+  pool, sprint workers, `fsm/runners.py`) inherit the module-level shutdown
+  Event under Decision 1 — verify none of them regress
 
 ### Similar Patterns
 - Existing idle/wall-clock timeout kill path in `run_claude_command`
   (`_kill_process_group` via `os.killpg`) is the pattern to reuse for the
   SIGINT case rather than inventing a second kill mechanism
+- `_loop_signal_handler` (`cli/loop/_helpers.py:123-174`) is the template for
+  the two-tier (graceful / force) handler shape — but **not** for its kill
+  mechanism (see Decision 2)
 
 ### Tests
-- `scripts/tests/` — tests covering `IssueManager` shutdown handling and
-  `run_claude_command` timeout/kill behavior (add a case simulating SIGINT
-  during an active subprocess)
+- `scripts/tests/test_issue_manager.py:4102-4138` (`TestSignalHandler`) —
+  extend; today it covers only the flag-flip behavior
+- `scripts/tests/test_cli_loop_background.py:13-108`
+  (`TestLoopSignalHandler`) — the direct template, specifically
+  `test_signal_handler_kills_current_process` (BUG-592),
+  `test_signal_handler_kills_fsm_executor_current_process` (BUG-818), and
+  `test_signal_handler_no_current_process_is_safe` (BUG-592)
+- New cases required: subprocess killed on first signal; phase-boundary abort
+  (no Phase 3 spawn after an interrupted Phase 2); second-signal force exit;
+  interrupt attributed as `interrupted` not a crash
 
 ### Documentation
 - N/A
@@ -117,12 +214,13 @@ _Added by `/ll:refine-issue` — 2026-08-24 — based on codebase analysis:_
 
 ### Signatures
 
-- `_signal_handler(self, signum: int, frame: FrameType | None) -> None` (existing, `issue_manager.py:1741`)
-- `_kill_process_group(process: subprocess.Popen) -> None` (existing, `subprocess_utils.py`)
+- `AutoManager._signal_handler(self, signum: int, frame: FrameType | None) -> None` (existing, `issue_manager.py:1741`) — gains the two-tier graceful/force behavior of Decision 4
+- `_kill_process_group(process: subprocess.Popen, grace_seconds: float = 0.0) -> None` (existing, `subprocess_utils.py:311`)
+- New module-level shutdown `Event` in `subprocess_utils` plus its set/clear/read accessors (Decision 1) — exact names to be chosen at implementation time
 
 ### Call Path
 
-`_signal_handler` -> `run_claude_command` -> `_kill_process_group`
+`AutoManager._signal_handler` -> sets module-level shutdown Event -> `subprocess_utils.run_claude_command` read loop observes it (≤1s) -> `_kill_process_group`; the same Event is then read at the `process_issue_inplace` phase boundaries and the `run_with_continuation` loop head so the in-flight issue aborts rather than advancing to Phase 3.
 
 ### Codebase Research Findings
 
@@ -130,29 +228,49 @@ _Added by `/ll:refine-issue` — 2026-08-24 — based on codebase analysis:_
 
 - Refined Call Path (codebase-analyzer, supersedes the earlier one-line version — the intermediate hops matter for where a shutdown check or hook-forwarding change actually lands): `AutoManager._signal_handler` (`issue_manager.py:1741`) -> [currently dead-ends; needs to reach] -> `_run_claude_base` (`subprocess_utils.run_claude_command`, `subprocess_utils.py:347`)'s active `Popen` (`subprocess_utils.py:457`), traversing `run_with_continuation` (`issue_manager.py:256`) -> local `run_claude_command` wrapper (`issue_manager.py:140`) -> `_run_claude_base`.
 - Read-loop insertion point (codebase-analyzer): the selector loop `while sel.get_map():` (`subprocess_utils.py:502-627`) already checks wall-clock timeout and idle timeout once per iteration before calling `sel.select(timeout=1.0)` (line 528) — a shutdown check inserted alongside those two would fire within ≤1s of a signal using the loop's existing polling cadence, no new blocking primitive needed.
+- **RESOLVED by Decision 2 (Proposed Solution).** The finding below is retained for its evidence; the decision is settled — use `_kill_process_group()`, because a bare `.kill()` orphans the Task/Workflow grandchildren that `start_new_session=True` places in the child's process group.
 - Contested convention — kill mechanism (codebase-pattern-finder): the issue's own Proposed Solution requires routing through `_kill_process_group()` (process-group SIGTERM/SIGKILL escalation, `subprocess_utils.py:311-344`). But the only existing precedent for "external signal handler reaches into an active `Popen` and kills it" — `ll-loop`'s `_loop_signal_handler` (`cli/loop/_helpers.py:123-174`) — calls bare `proc.kill()` directly on the `Popen` (single process, not the process group), bypassing `_kill_process_group()` entirely. The two conventions disagree: `_kill_process_group` is used today only for the timeout/idle-timeout paths *inside* `run_claude_command` itself (`subprocess_utils.py:505,516,643`), never from an external signal handler. Whether the SIGINT fix should reuse `_kill_process_group` (as the issue proposes) or follow the `ll-loop` precedent of bare `.kill()` is an open implementation decision, not settled by existing convention.
 
 ## Implementation Steps
 
-1. Track the currently active `Popen` (or a shutdown event) so it's
-   reachable from `_signal_handler` or pollable from the
-   `run_claude_command` read loop.
-2. On SIGINT/SIGTERM, kill the active process group via
-   `_kill_process_group()` instead of only setting `_shutdown_requested`.
-3. Verify: reproduce the Ctrl+C-during-Phase-2 scenario from Steps to
-   Reproduce and confirm the run exits promptly instead of running to
-   completion/timeout.
+1. Add a module-level shutdown `Event` to `subprocess_utils` (Decision 1),
+   with accessors to set, clear, and read it.
+2. Poll it in the `run_claude_command` read loop next to the existing
+   wall-clock/idle-timeout checks (`subprocess_utils.py:504-526`); on set,
+   kill via `_kill_process_group()` (Decision 2) and return an interrupted
+   result distinguishable from a timeout.
+3. Have `AutoManager._signal_handler` set the Event in addition to
+   `_shutdown_requested` — and make it two-tier, so a second signal forces
+   immediate exit (Decision 4), mirroring `_loop_signal_handler`/ENH-2516.
+4. Add shutdown checks at the `process_issue_inplace` phase boundaries
+   (before Phase 2 `:1251`, before Phase 3 `:1420`) and at the head of
+   `run_with_continuation`'s continuation loop (`:348`), returning an
+   interrupted result rather than advancing (Decision 3).
+5. Ensure the Phase-2-exited-non-zero branch (`:1342-1354`) recognizes an
+   interrupt and does not auto-commit a killed session's partial work.
+6. Attribute the interrupt as `interrupted` rather than a Phase 2 crash, and
+   decide + document whether the interrupted issue stays in
+   `attempted_issues` given `mark_attempted` already fired at `:2068`
+   (Decision 5).
+7. Add the tests listed under Integration Map > Tests.
+8. Verify manually: reproduce the Ctrl+C-during-Phase-2 scenario from Steps
+   to Reproduce and confirm the run exits promptly, with no Phase 3 spawn,
+   and no orphaned `claude` descendants (`pgrep -f claude`).
 
 ## Impact
 
 - **Priority**: P2 - Interrupting a long-running automated run is a basic
   usability expectation; not data-loss-critical but a frequent annoyance
   that can force `kill -9` and orphaned processes.
-- **Effort**: Small - Reuses the existing `_kill_process_group` /
-  `os.killpg` machinery already used for timeout kills; no new kill
-  mechanism needed.
-- **Risk**: Low - Change is additive (wiring SIGINT to an existing kill
-  path); non-interrupted runs are unaffected.
+- **Effort**: Medium - The kill wiring alone is small and reuses the existing
+  `_kill_process_group` / `os.killpg` machinery, but the fix is not complete
+  without the phase-boundary aborts (Decision 3), the two-tier handler
+  (Decision 4), and outcome attribution (Decision 5), which touch several
+  call sites across `issue_manager.py`.
+- **Risk**: Medium - The kill wiring is additive, but a mis-placed
+  phase-boundary shutdown check could abort healthy runs, and the
+  module-level Event is shared with ll-parallel / sprint / FSM callers of
+  `run_claude_command`.
 - **Breaking Change**: No
 
 ## Root Cause
@@ -160,7 +278,7 @@ _Added by `/ll:refine-issue` — 2026-08-24 — based on codebase analysis:_
 Three things combine to make the interrupt a no-op for the currently running
 work:
 
-1. `IssueManager.__init__` (`scripts/little_loops/issue_manager.py:1738-1739`)
+1. `AutoManager.__init__` (`scripts/little_loops/issue_manager.py:1738-1739`)
    registers a custom `SIGINT`/`SIGTERM` handler,
    `_signal_handler` (`scripts/little_loops/issue_manager.py:1741-1744`), that
    only does `self._shutdown_requested = True` and logs the message. Python's
@@ -192,6 +310,21 @@ executing looks at. The detached subprocess is unaffected by the signal and
 runs to completion; only then does control return to the outer loop, which
 finally observes `_shutdown_requested` and stops picking up new issues.
 
+### Shutdown must be observed at phase boundaries, not just in the read loop
+
+A fourth factor makes "kill the subprocess" insufficient on its own.
+`_shutdown_requested` is read in exactly two places in the entire file:
+`issue_manager.py:1951` (outer loop head) and `:1981` (cleanup guard). So even
+once SIGINT kills the Phase 2 subprocess, `process_issue_inplace` treats the
+resulting `-9` as an ordinary non-zero Phase 2 exit and falls through to
+Phase 3 verify (`:1420-1423`), which spawns a **fresh** `claude` subprocess.
+From the user's seat the run visibly continues after the interrupt. The
+Phase-2-non-zero branch at `:1342-1354` can additionally auto-commit the
+killed session's partial work, and `run_with_continuation`'s own loop
+(`:348`) has no shutdown check either. Any complete fix therefore has to
+propagate the shutdown signal into the phase sequencing, not only into the
+subprocess.
+
 ## Steps to Reproduce
 
 1. Run `ll-auto` against a project with at least one processable issue.
@@ -201,6 +334,35 @@ finally observes `_shutdown_requested` and stops picking up new issues.
    printed, but the run does not stop; the current issue's implementation
    subprocess keeps running to completion (or timeout) before the process
    actually exits.
+
+## Acceptance Criteria
+
+1. **Subprocess dies on first signal.** With an active `claude` subprocess in
+   Phase 2, a SIGINT causes `run_claude_command` to kill it within ~1s via
+   `_kill_process_group()` and return an interrupted result that is
+   distinguishable from a wall-clock or idle timeout.
+2. **No orphaned descendants.** After the interrupt, no `claude` process from
+   the killed process group survives (the group, not just the direct child,
+   is reaped — Decision 2).
+3. **No further phases run.** An interrupt during Phase 2 does not spawn a
+   Phase 3 verify subprocess, and `run_with_continuation` does not start
+   another continuation round.
+4. **No partial-work auto-commit.** The Phase-2-non-zero branch
+   (`:1342-1354`) does not commit a killed session's working tree as if it
+   were a completed deliverable.
+5. **Second signal forces exit.** A second SIGINT exits immediately rather
+   than waiting on any in-progress cleanup or `process.wait()`.
+6. **Correct attribution.** The run's recorded outcome for the interrupted
+   issue reads as `interrupted`, not as a Phase 2 crash or `system_signal`;
+   the behavior of `attempted_issues` under `--resume` is documented and
+   tested (Decision 5).
+7. **No regression for uninterrupted runs.** Existing `ll-auto`, ll-parallel,
+   sprint, and FSM paths through `subprocess_utils.run_claude_command` behave
+   identically when no shutdown signal fires; the shared module-level Event
+   does not leak state between runs in the same process (it is cleared at run
+   start).
+8. **Tests.** The cases listed under Integration Map > Tests exist and pass;
+   `python -m pytest scripts/tests/` exits 0.
 
 ## Related Key Documentation
 
