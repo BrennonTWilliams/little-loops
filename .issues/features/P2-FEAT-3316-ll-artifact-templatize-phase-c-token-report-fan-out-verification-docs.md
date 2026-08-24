@@ -18,6 +18,7 @@ labels:
 - ll-artifact
 - templates
 decision_needed: false
+testable: true
 ---
 
 # FEAT-3316: `ll-artifact templatize` Phase C: token report, fan-out verification, docs
@@ -40,6 +41,36 @@ FEAT-3314 (Phase A) — this phase reports against and fan-out-tests the
 template directory Phase A's `build_manifest`/`verify_round_trip` flow
 produces. Independent of FEAT-3315 (Phase B); can proceed in parallel with
 it once Phase A lands.
+
+## Current Behavior
+
+Phase A produces a working, byte-exact template but gives no signal about
+design-token coverage: baked literal hex values in the artifact's CSS that
+match the resolved token map go unreported, so a template can ship
+permanently un-themeable with no warning. Nor is there any verification
+that a produced template actually generalizes to a second source document —
+Phase A's round trip only proves it reproduces the *original* artifact.
+
+## Expected Behavior
+
+After a successful `templatize` promote, an `unlifted-tokens.json` report is
+written alongside the template listing every baked literal that matches the
+resolved token map (with all candidate token names when a value is
+ambiguous), plus a non-silent `logger.warn` naming the count. Separately, a
+fixture proves the produced template renders correctly against a *second*,
+different source document using a hand-authored `data.json` for that
+document, matching a checked-in expected output. `docs/reference/CLI.md`,
+`docs/reference/CONFIGURATION.md`, and `docs/ARCHITECTURE.md` reflect the
+completed subcommand.
+
+## Use Case
+
+A user has run Phase A/B `templatize` successfully and has a working
+template. Before adopting it for fan-out across many source documents, they
+want to know two things without inspecting the output by hand: whether the
+template is still carrying hard-coded colors that won't pick up a theme
+change, and whether it actually generalizes past the one document it was
+extracted from — both of which this phase answers automatically.
 
 ## Proposed Solution
 
@@ -181,4 +212,5 @@ from and so a lossy template is never silently accepted in the meantime.
 
 
 ## Session Log
+- `/ll:format-issue` - 2026-08-24T18:48:19 - `837a85ca-8f14-41e3-a67f-9059d7bcff74.jsonl`
 - `/ll:issue-size-review` - 2026-08-24T18:42:58 - `837a85ca-8f14-41e3-a67f-9059d7bcff74.jsonl`

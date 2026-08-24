@@ -68,6 +68,20 @@ reachable by path only. If `-o` is given without the suffix, `templatize`
 appends `.llat` and logs the resolved path. With no `-o`, the default is
 `config.artifacts.templates_dir/<artifact-stem>.llat`.
 
+## Use Case
+
+A user has generated an artifact (e.g. a `docs/ARCHITECTURE.md` review page)
+via an existing HTML loop and wants to re-run the same layout against a
+different source document without re-invoking the loop or hand-writing a new
+template. They already know which spans of the artifact came from the
+source (they can point at the headings/body text) and hand-write a region
+map (`map.json`) locating those spans. Running `ll-artifact templatize
+<artifact> <source> -o <name>.llat --regions map.json` gives them a
+`templates_dir`-resolvable template they can immediately `ll-artifact
+render <name>` against new `data.json`, with a hard guarantee (byte-exact
+round trip) that the extraction did not silently drop or corrupt anything
+from the original.
+
 ## Proposed Solution
 
 1. **Region types.** `Region: {start: int, end: int, expr: str, group: str |
@@ -249,4 +263,5 @@ appends `.llat` and logs the resolved path. With no `-o`, the default is
 
 
 ## Session Log
+- `/ll:format-issue` - 2026-08-24T18:48:18 - `837a85ca-8f14-41e3-a67f-9059d7bcff74.jsonl`
 - `/ll:issue-size-review` - 2026-08-24T18:42:58 - `837a85ca-8f14-41e3-a67f-9059d7bcff74.jsonl`

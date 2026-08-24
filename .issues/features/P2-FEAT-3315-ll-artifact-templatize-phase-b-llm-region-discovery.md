@@ -43,6 +43,35 @@ and the temp-build/promote/round-trip flow Phase A implements, and extends
 the `cmd_templatize` CLI scaffold Phase A wires up (making `--regions`
 optional: when absent, `discover_regions` runs instead).
 
+## Current Behavior
+
+`ll-artifact templatize` (Phase A, [FEAT-3314](P2-FEAT-3314-ll-artifact-templatize-phase-a-deterministic-templating.md))
+only accepts `--regions <map.json>` — a hand-written region map. There is no
+way to templatize an artifact without first manually locating and typing out
+every region's byte offsets and Jinja2 expression.
+
+## Expected Behavior
+
+```bash
+ll-artifact templatize .loops/runs/html-anything/index.html docs/ARCHITECTURE.md \
+    -o artifacts/templates/arch-review.llat
+```
+
+(no `--regions` flag) calls `discover_regions` to have the LLM identify the
+source-derived spans, producing the same `DiscoveryResult` shape Phase A's
+`apply_regions` consumes. A `data_schema` that fails `_validate_schema_shape()`
+or a response missing required keys fails loud before anything is written to
+disk; a combined artifact+source input over the configured size ceiling exits
+non-zero naming the measured size, with no host call issued.
+
+## Use Case
+
+The same user from Phase A's use case, but without the time or domain
+knowledge to hand-locate every region by byte offset — they just want to run
+`templatize` against an artifact and its source and get a working template.
+`discover_regions` is what makes `templatize` usable without first learning
+the region-map format.
+
 ## Proposed Solution
 
 1. **`discover_regions` via schema-forced structured output.** Use
@@ -132,9 +161,10 @@ the codebase's only precedent that actually fails loud.
 ### Call Path
 
 `cmd_templatize` (from FEAT-3314, `cli/artifact/templatize.py`) -> [no
-`--regions` given] -> `discover_regions` -> [same downstream flow as Phase A:
-`apply_regions` -> `build_manifest` -> temp build -> `verify_round_trip` ->
-promote]
+`--regions` given] -> `discover_regions` -> `build_blocking_json`
+(`host_runner.py:442`, `json_schema=` path) -> [same downstream flow as
+Phase A: `apply_regions` -> `build_manifest` -> temp build ->
+`verify_round_trip` -> promote]
 
 `discover_regions` must not live in `artifact_templates.py` — that module
 must never import `host_runner` or `anthropic` (module docstring, design
@@ -186,4 +216,5 @@ principle 2).
 
 
 ## Session Log
+- `/ll:format-issue` - 2026-08-24T18:48:18 - `837a85ca-8f14-41e3-a67f-9059d7bcff74.jsonl`
 - `/ll:issue-size-review` - 2026-08-24T18:42:58 - `837a85ca-8f14-41e3-a67f-9059d7bcff74.jsonl`
