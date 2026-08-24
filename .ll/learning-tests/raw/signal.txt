@@ -1,0 +1,4 @@
+claim1_prev_handler_returned: True
+claim2_restore_ok: True True
+claim5_detached_child_received_parent_sigint: False
+claim6_non_main_thread_raises_valueerror: True signal only works in main thread of the main interpreter

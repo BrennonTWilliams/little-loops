@@ -1,0 +1,13 @@
+claim1_literal_roundtrip: PASS
+'<html><body>Hello world</body></html>'
+claim2 raw output: 'before\nmiddle\nafter'
+claim2_block_strips_line: PASS
+claim3_no_autoescape: PASS
+'&amp; &#39;'
+claim4_trailing_newline_kept: PASS
+'line1\nline2\n'
+claim5_strict_undefined_raises: PASS
+claim6_comment_removed: PASS
+'beforeafter'
+claim7 raw output: 'start\nCARD:A\nCARD:B\nend'
+claim7_loop_roundtrip_n2: PASS
