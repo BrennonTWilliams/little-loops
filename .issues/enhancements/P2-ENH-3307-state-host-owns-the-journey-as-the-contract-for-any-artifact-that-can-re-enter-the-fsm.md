@@ -4,8 +4,9 @@ title: State "host owns the journey" as the contract for any artifact that can r
   the FSM
 type: ENH
 priority: P2
-status: open
+status: done
 discovered_date: '2026-08-23'
+completed_at: '2026-08-24T18:52:29Z'
 parent: EPIC-3127
 relates_to:
 - ENH-3306
@@ -199,6 +200,7 @@ Open.
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-24T18:52:05 - `837a85ca-8f14-41e3-a67f-9059d7bcff74.jsonl`
 - `/ll:ready-issue` - 2026-08-24T18:41:59 - `86f811ec-bd0b-4154-b91f-c1d1fbae8eb5.jsonl`
 - `/ll:confidence-check` - 2026-08-24T18:38:25 - `6f852972-0707-41ab-9d42-e7358936b796.jsonl`
 - `/ll:confidence-check` - 2026-08-24T18:31:03 - `fc7f522d-5285-4cfe-80ae-165743f58e1d.jsonl`
