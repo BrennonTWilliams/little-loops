@@ -36,6 +36,37 @@ that goes stale when its source document changes; refreshing it re-pays the
 entire refinement cost. The fix is to separate presentation (paid once at
 template creation) from data (cheap to refresh).
 
+## Current Behavior
+
+Each artifact produced by an FSM loop (e.g. `ll-artifact policy-builder`,
+loop-generated HTML dashboards) is a one-off snapshot: presentation and data are
+baked together at generation time. When the source document changes, refreshing
+the artifact re-pays the full LLM refinement cost — there is no template that
+can be re-rendered cheaply. The only in-repo precedent for template/data
+separation, `ll-artifact policy-builder`'s hand-built `/*__TOKEN__*/` stamp
+scheme, is not reusable or user-creatable.
+
+## Expected Behavior
+
+A `.llat/` artifact template directory (manifest + Jinja2 body + optional
+assets) can be authored once and rendered deterministically against arbitrary
+`data.json` via `ll-artifact render`, with zero LLM cost per render. Templates
+declare a data contract (`manifest.yaml`'s `data_schema`) validated before
+render, so a template can be reused across many source documents (EPIC-3299's
+primary use case) or refreshed cheaply against one bound source over time (the
+secondary use case).
+
+## Use Case
+
+A user maintains a loop-generated HTML dashboard (e.g. a quarterly risk report
+rendered from `docs/risk-register.md`). Today, refreshing it after the register
+changes means re-running the full FSM loop from scratch. With artifact
+templates, they instead author `quarterly-risk-report.llat/` once (extracting
+the existing dashboard's presentation into `template.html.j2` plus a
+`manifest.yaml` data contract), then run `ll-artifact extract` + `ll-artifact
+render` (or `refresh`) whenever the register changes — one small LLM call plus
+a zero-cost deterministic render, instead of a full loop run.
+
 ## Insight
 
 The expensive thing the FSM loop refines is mostly **presentation and structure** —
@@ -475,6 +506,20 @@ depend on FSM run context.
   template → PNG rasterization). Manifest `renderer` field is the extension
   point; out of scope for v1.
 
+## Impact
+
+- **Priority**: P3 - Planning/design hub for EPIC-3299's artifact-template
+  initiative; blocks FEAT-3308, FEAT-3309, FEAT-3304, and ENH-3035 from
+  starting, but is not itself urgent user-facing work.
+- **Effort**: Large - new Jinja2 dependency, new `ll-artifact` subcommand
+  family, config schema changes, and a `cli/artifact/` package restructure,
+  though scoped to Phase 1 only (template format + `render`).
+- **Risk**: Medium - introduces a new third-party dependency (`jinja2`) and
+  restructures `cli/artifact.py`; mitigated by keeping `policy-builder` /
+  `design-md export` behavior unchanged with their existing tests passing
+  untouched.
+- **Breaking Change**: No
+
 ## Acceptance Criteria
 
 Scoped to **Phase 1** — the template format plus `render`, which is the hard
@@ -825,7 +870,12 @@ attribute blocking, delimiter collision on literal `{{ }}`-like content, custom
 delimiters avoiding that collision, and loader-free `from_string()` rendering
 are all confirmed against the installed jinja2 3.1.6._
 
+## Status
+
+**Open** | Created: 2026-08-03 | Priority: P3
+
 ## Session Log
+- `/ll:ready-issue` - 2026-08-24T03:45:46 - `c65f5828-5738-4ffa-9215-73b22b8fcbaa.jsonl`
 - `/ll:confidence-check` - 2026-08-24T03:27:57 - `75fd46f8-3745-4383-ae9f-e2749df5c760.jsonl`
 - `/ll:confidence-check` - 2026-08-24T03:14:39 - `073198e9-3f33-4b28-94f3-e0a8ed10b406.jsonl`
 - `/ll:wire-issue` - 2026-08-24T03:08:29 - `c3165230-5d93-4a9d-934b-c7e96cbc8715.jsonl`

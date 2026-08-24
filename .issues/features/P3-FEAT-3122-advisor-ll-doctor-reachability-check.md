@@ -158,21 +158,41 @@ two `✗` rows on its next `ll-doctor`. That matches how the other opt-in
 subsystems already render, and the `(optional)` in the note is what carries the
 "deliberate, not broken" signal — keep it verbatim.
 
-**D2 — Memoize `_advisor_data()`.** Every `_xxx_data()` is invoked twice per
-`ll-doctor` run: once by the output path (`_print_report`'s JSON dict
-`doctor.py:1093`, or `_print_xxx_section()` `:1208`) and again by its
-`_xxx_check()` (`:518`). For every existing default check that is a
-`Path.exists()` plus a local read. For this one it is `_probe_version` →
-`subprocess.run(..., timeout=10)` plus up to two `resolve_host*` calls — so an
-unreachable advisor host would add **up to 20s** to a default `ll-doctor` run.
-No default-registered check has ever paid subprocess cost. Cache the result
-(module-level cache or a cached probe helper) so the probe runs **once** per
-process, and pin it with a test asserting a single `_probe_version` call per
-`main_doctor()`.
+**D2 — Memoize the *probe*, keyed by host name — not `_advisor_data()`
+itself.** Every `_xxx_data()` is invoked twice per `ll-doctor` run: once by the
+output path (`_print_report`'s JSON dict `doctor.py:1093`, or
+`_print_xxx_section()` `:1208`) and again by its `_xxx_check()` (`:518`). For
+every existing default check that is a `Path.exists()` plus a local read; this
+is the first default-registered check to pay subprocess cost at all.
+
+*Scale of the cost, stated accurately.* `_probe_version` short-circuits on
+`runner.detect()`, which is `shutil.which(...)` (`host_runner.py:350,596`) — so
+an advisor host that is **not installed** costs ~0ms and never reaches
+`subprocess.run`. The `timeout=10` only bites an installed-but-hung binary. The
+real saving is one redundant `--version` subprocess (~100–500ms) on the common
+installed path, not the 20s a naive reading suggests. Memoize, but do not
+over-engineer around a latency cliff that only exists for a wedged binary.
+
+*Shape.* Cache a **keyed** helper, e.g.
+`@lru_cache def _probe_advisor_version(host: str) -> str` wrapping
+`_probe_version(resolve_host_named(host))`. Do **not** put `@lru_cache` on the
+no-arg `_advisor_data()`: it would be keyed on nothing while its result depends
+on `Path.cwd()` and on whichever `BRConfig` patch is active, so it leaks across
+every test that `monkeypatch.chdir(tmp_path)` and across the ~28 patched-config
+sites — a cross-test-pollution bug, not a cache.
+
+*Invalidation is part of this rule.* An `lru_cache` is process-global and
+pytest runs many cases per process. Ship an autouse fixture in the doctor test
+modules that calls `_probe_advisor_version.cache_clear()` before each test, and
+pin it (test 7a below).
 
 **D3 — Type-check the config guard, do not test truthiness.** Guard with
-`isinstance(config.advisor.host, str)` (or equivalent explicit type check)
-before any resolution. ~27 sites in `test_cli_doctor.py` /
+`isinstance(cfg.advisor.host, str)` **and** `cfg.advisor.enabled is True`
+before any resolution — identity, not truthiness, on `enabled` too. `enabled`
+is declared `bool = False` (`config/orchestration.py`), so `is True` is exact
+for real config and closes the same MagicMock hole the `isinstance` closes;
+a bare `if cfg.advisor.enabled` leaves half the guard open. ~28 sites in
+`test_cli_doctor.py` /
 `test_cli_doctor_full.py` patch `little_loops.config.BRConfig` with a bare
 `MagicMock()` and never set `.advisor` — MagicMock auto-attributes are truthy,
 so **both** `config.advisor.enabled` and `config.advisor.host` evaluate truthy
@@ -181,21 +201,37 @@ there. A plain `if not enabled or not host:` guard would fall through and call
 `HostNotConfigured` in tests that have no `pytest.raises`. This is an
 implementation constraint, not a test-authoring note.
 
-**D4 — Main host/model source, and its known divergence.** `ll-doctor` has no
-notion of a "main model", so mirror `consult()`'s fallbacks verbatim
-(`advisor.py:256-257`): `main_host = resolve_host().name`, `main_model =
-DEFAULT_LLM_MODEL` (`fsm/schema.py:24`, currently `"sonnet"`), importing
-`DEFAULT_LLM_MODEL` inside the function body as `consult()` does.
-- **Known divergence to pin, not to debug**: `main_doctor()` calls
+**D4 — Main host/model source: resolve explicitly from config, do not inherit
+ambient env.** `ll-doctor` has no notion of a "main model", so take
+`main_model = DEFAULT_LLM_MODEL` (`fsm/schema.py:24`, currently `"sonnet"`)
+exactly as `consult()` does (`advisor.py:256-257`), importing it inside the
+function body.
+
+For `main_host`, **diverge from `consult()`'s bare `resolve_host()`**:
+
+```python
+main_host = (
+    resolve_host_named(cfg.orchestration.host_cli)
+    if isinstance(cfg.orchestration.host_cli, str)
+    else resolve_host()
+).name
+```
+
+- *Why not the bare `resolve_host()`.* `main_doctor()` calls
   `apply_host_cli_from_config(cfg)` (`doctor.py:1180`, definition
   `host_runner.py:2250`) — which mutates `os.environ["LL_HOST_CLI"]` — *before*
-  `resolve_host()`. Inside `main_doctor()`, `_advisor_data()`'s bare
-  `resolve_host()` inherits that. Called standalone (the `_data()`-level tests
-  recommended below), it falls through to `resolve_host()`'s PATH probe
-  (`host_runner.py:1985-2004`) and can resolve a **different** main host, so
-  the floor result differs between test and production. Read
-  `cfg.orchestration.host_cli` explicitly, or accept ambient resolution as the
-  contract and add a test pinning it. Do not paper over it.
+  `resolve_host()`. Inside `main_doctor()`, a bare `resolve_host()` inherits
+  that mutation; called standalone (the `_data()`-level tests below) it falls
+  through to `resolve_host()`'s PATH probe (`host_runner.py:1985-2004`) and can
+  resolve a **different** main host, so the floor result would differ between
+  test and production. Reading `cfg.orchestration.host_cli` (`str | None`,
+  `config/orchestration.py:90`) *removes* that divergence instead of pinning a
+  known-divergent behavior with a test, and keeps `_advisor_data()`
+  self-contained and deterministic — consistent with D5's isolation rule, which
+  already forbids reading or mutating ambient `LL_HOST_CLI` for the advisor
+  side. The `resolve_host()` fallback covers the unset case only.
+- This is a deliberate, documented divergence from `consult()`. Do not
+  "fix" it back to a bare `resolve_host()` for symmetry.
 - Consequence to expect: with stock config (`advisor.model="opus"`,
   `advisor.host="claude-code"`, main `claude-code`/`sonnet`) `check_floor`
   returns `"ok"`. The floor check is near-vacuous until someone configures a
@@ -231,6 +267,13 @@ the two-row informational-unsupported shape.
   `"partial"` otherwise discards the only signal this check produces — a
   consumer could not distinguish "advisor is weaker than main" from "cross-host,
   ranks incomparable" without regexing prose.
+- **Both rows carry the key; the `advisor_host` row sets it to `None`.** A
+  heterogeneous row schema (key present on one row, absent on the other) forces
+  every JSON consumer into `.get()` guards and breaks the
+  `list[dict[str, str]]` annotation `_entry_points_data()` uses
+  (`doctor.py:185`). Annotate `_advisor_data() -> list[dict[str, Any]]` and
+  emit all four keys plus `floor_status` on **both** rows, `None` on
+  `advisor_host` and in the "not configured" / `HostNotConfigured` guards.
 
 **D8 — `rank_model` normalizes model aliases** through `resolve_model_alias()`
 (`advisor.py:81-88`), so `"opus"` and `"claude-opus-5"` rank identically. Tests
@@ -307,10 +350,17 @@ All five surfaces below are gated by AC5.
   `ll-doctor --json`'s install-surface keys (`entry_points`, `skills_commands`,
   `decisions_store`, `history_db`, `loop_validity`); add `schema_drift` and
   `advisor`.
-- `CHANGELOG.md:182-183` — the existing unreleased entry claims "**Advisor
-  core.** `ll-advise` CLI, a capability floor, and an `ll-doctor` check ship
-  together (FEAT-3044)". Since this check lands separately, either add a
-  standalone FEAT-3122 line or correct that entry's scope.
+- `CHANGELOG.md:181-182` — **two separate edits; the entry is *released*, not
+  unreleased.** The "**Advisor core.** `ll-advise` CLI, a capability floor, and
+  an `ll-doctor` check ship together (FEAT-3044)" text sits inside
+  `## [1.156.0] - 2026-08-16`, a shipped section. So:
+  1. Narrow the 1.156.0 entry — drop "and an `ll-doctor` check" — it over-claims
+     something that did not ship in 1.156.0. Do not fold FEAT-3122 into it
+     retroactively.
+  2. Add a standalone FEAT-3122 line under the **current in-progress version
+     section** (`## [1.157.0] - 2026-08-23` or its successor, whichever is open
+     at implementation time). Per project convention, do **not** route it
+     through an `[Unreleased]` heading.
 
 > **Pre-existing drift, not this issue's regression.** CLI.md is current, but
 > HOST_COMPATIBILITY.md:568, ARCHITECTURE.md:850, and API.md's
@@ -330,8 +380,20 @@ fields. `min_tier` is explicitly out of scope.
 **Home**: add a `TestAdvisor` class to
 `scripts/tests/test_cli_doctor_install_checks.py`, sibling to `TestSchemaDrift`
 (`:227`) — the lightest-weight convention: `monkeypatch.chdir(tmp_path)`, call
-the bare `_advisor_data()` directly (no `main_doctor()`, no host mocking),
-assert on the returned rows. Exit-code and output-path cases belong in
+the bare `_advisor_data()` directly (no `main_doctor()`), assert on the
+returned rows.
+
+> **The "no mocking" part of that convention only covers the guard cases.**
+> `test_cli_doctor_install_checks.py` currently has **zero**
+> `patch("little_loops.config.BRConfig", ...)` sites, because every check there
+> reads the filesystem, not config. Cases 1, 2, and 8 below genuinely need no
+> mocks — a real `BRConfig` on an empty `tmp_path` has `advisor.enabled=False`
+> and trips the guard. Cases 3, 5, and 6 need **both** a `BRConfig` patch (to
+> set `enabled`/`host`/`model`) **and** `resolve_host` / `resolve_host_named` /
+> `_probe_advisor_version` patches. Introduce that patching into this module
+> deliberately; don't assume the sibling classes model it.
+
+Exit-code and output-path cases belong in
 `test_cli_doctor.py` near `test_exit_code_ignores_informational_unsupported`
 (`:716`), using the `_CHECKS` save/clear/restore isolation from
 `test_register_check_appends_and_runs` (`:699`).
@@ -353,16 +415,23 @@ first-of-kind decisions are pinned rather than re-derived later:
 5. Advisor binary absent (`_probe_version` → `""`) → `advisor_host` row is
    `status="unsupported"`, `severity="informational"`.
 6. Independent main-vs-advisor resolution: assert `check_floor` received the
-   advisor host/model from config and the main host from `resolve_host().name`,
-   not the same runner twice. **First `side_effect=[...]`-style dual-host mock
+   advisor host/model from `cfg.advisor` and the main host from
+   `cfg.orchestration.host_cli` (D4), not the same runner twice. Include one
+   case with `orchestration.host_cli=None` exercising the `resolve_host()`
+   fallback. **First `side_effect=[...]`-style dual-host mock
    in the suite** — a suite-wide grep for `side_effect=[` returns exactly one
    unrelated hit (`test_issue_manager.py:403`); every `resolve_host` /
    `resolve_host_named` patch uses a single `return_value=`. Prefer giving
    `_advisor_data()` distinct patch targets for the two calls (lighter, avoids
    ordering coupling) over `side_effect=[...]`.
 7. **D2 memoization**: one `main_doctor()` run performs exactly **one**
-   `_probe_version` call for the advisor host (assert call count), in both text
-   and `--json` mode.
+   advisor-host probe (assert call count on the wrapped `_probe_version`), as
+   two separate cases — text mode and `--json` mode — since the two output
+   paths reach `_advisor_data()` differently.
+7a. **D2 invalidation**: the autouse `_probe_advisor_version.cache_clear()`
+   fixture is present and effective — two tests in the same module with
+   *different* advisor hosts each get their own probe result, not the first
+   one's cached value. Without this the memoization silently poisons the suite.
 8. **D3 guard**: `_advisor_data()` with a bare `MagicMock()` config attempts no
    host resolution — directly pins the ~27-site regression risk.
 9. `ll-doctor --json` payload contains an `advisor` key holding two rows; text
@@ -388,10 +457,11 @@ first-of-kind decisions are pinned rather than re-derived later:
    error) for **every** floor classification — `ok`, `advisory`, `unknown`, and
    `violation`. The exit code is unchanged by any advisor finding, including a
    `violation`.
-2. When `config.advisor.enabled` is false or `.host` is not a `str`,
-   `ll-doctor` reports a non-failing "advisor not configured" result for both
-   rows instead of attempting resolution (see D3 — the guard is a type check,
-   not a truthiness test).
+2. When `cfg.advisor.enabled is not True` or `.host` is not a `str`,
+   `ll-doctor` reports a non-failing `status="unsupported"`,
+   `severity="informational"`, `note="not configured (optional)"` result for
+   **both** rows instead of attempting resolution (see D3 — both halves of the
+   guard are identity/type checks, not truthiness tests).
 3. When the advisor is enabled but neither host can be resolved
    (`HostNotConfigured` from `resolve_host()` or `resolve_host_named()`),
    `ll-doctor` still completes and exits on its other checks' merits — the
@@ -402,7 +472,11 @@ first-of-kind decisions are pinned rather than re-derived later:
 5. All five doc surfaces updated in lockstep: `docs/reference/CLI.md`,
    `docs/reference/API.md`, `docs/reference/HOST_COMPATIBILITY.md`,
    `docs/ARCHITECTURE.md`, and `CHANGELOG.md` (see Documentation).
-6. A single `main_doctor()` run probes the advisor host at most once (D2).
+6. A single `main_doctor()` run probes the advisor host at most once — in
+   **both** text and `--json` mode — via a host-keyed memoized probe helper,
+   not an `@lru_cache` on `_advisor_data()` itself, and the doctor test modules
+   carry an autouse `cache_clear()` fixture so the cache cannot leak across
+   tests (D2).
 7. `python -m pytest scripts/tests/`, `ruff check scripts/`, and
    `python -m mypy scripts/little_loops/` all pass.
 
@@ -424,16 +498,21 @@ first-of-kind decisions are pinned rather than re-derived later:
    `done` on `main` as of 2026-08-23. Target `main`, **not** the
    `epic/epic-3041-host-agnostic-advisor` branch (~448 commits stale, slated
    for retirement).
-2. Write `_advisor_data() -> list[dict]` per D1: guard first (D3), then main
-   host/model (D4), `check_floor` (D7), advisor `_probe_version` (D5), all
-   wrapped per D6, memoized per D2.
+2. Write `_advisor_data() -> list[dict[str, Any]]` per D1 — no-arg, sourcing
+   its own `BRConfig(Path.cwd())` via a function-body import: guard first (D3),
+   then main host/model from `cfg.orchestration.host_cli` (D4), `check_floor`
+   (D7, including `floor_status` on both rows), advisor probe (D5), all wrapped
+   per D6.
+2a. Add the host-keyed `@lru_cache def _probe_advisor_version(host: str) -> str`
+   helper per D2, and the autouse `cache_clear()` fixture in the doctor test
+   modules alongside it.
 3. Write `_print_advisor_section()` (one `_STATUS_SYMBOLS` line per row) and
    `@register_check def _advisor_check()` (one `CheckResult` per row, severity
    from `data["severity"]` with no default).
 4. Add the `_print_advisor_section()` call to `main_doctor()`'s print sequence
    (`doctor.py:1201-1213`) and the `"advisor"` key to `_print_report`'s JSON
    dict (`doctor.py:1064-1101`).
-5. Add the ten-case coverage above. The dual-host mock and the
+5. Add the eleven-case coverage above. The dual-host mock and the
    `FloorResult`→`CheckResult` translation are both new to the codebase —
    introduce them deliberately, not copied.
 6. Update the five doc surfaces per AC5; re-grep their line numbers rather than
@@ -492,6 +571,32 @@ into `"partial"` discarded the check's only signal → `floor_status` added in
 D7; (6) AC5 omitted `docs/ARCHITECTURE.md` and `CHANGELOG.md` → both added.
 File condensed 823 → ~330 lines; superseded research archaeology dropped (git
 history retains it).
+
+**2026-08-23 (second pre-implementation review)**: re-verified against `main`;
+design still sound, no structural change. Nine defects fixed in place — (1)
+`_advisor_data()`'s config source was never stated (it must self-construct
+`BRConfig(Path.cwd())`; a `config` param would break `register_check`'s no-arg
+contract) → now spelled out in Proposed Solution; (2) D2 prescribed an
+unkeyed cache on a no-arg, cwd-dependent function, which would leak across
+`monkeypatch.chdir` and the ~28 patched-config tests → now a host-keyed
+`_probe_advisor_version` helper; (3) D2 had no invalidation contract for a
+process-global `lru_cache` → autouse `cache_clear()` fixture added, pinned by
+new test 7a; (4) D2's "up to 20s" was factually wrong — `_probe_version`
+short-circuits on `runner.detect()` = `shutil.which` (`host_runner.py:350`), so
+a missing binary costs ~0ms and the 10s timeout only bites a hung one → wording
+corrected so the fix isn't over-engineered; (5) D4 left a live either/or
+decision despite `decision_needed: false` → resolved to explicit
+`cfg.orchestration.host_cli` resolution, which removes the production-vs-test
+divergence instead of pinning it; (6) `CHANGELOG.md:182` was described as an
+*unreleased* entry but sits inside the shipped `## [1.156.0]` section → split
+into two edits (narrow 1.156.0's over-claim; add FEAT-3122 to the open version
+section); (7) the test home said "no host mocking" while prescribing three
+cases that require both config and host mocks, in a module with zero existing
+`BRConfig` patches → split explicitly; (8) the "not configured" guard never
+pinned a `status` value → `"unsupported"` + `note="not configured (optional)"`,
+with the two-`✗`-rows-on-every-install consequence stated; (9) `floor_status`
+made the two row dicts heterogeneous → now present on both rows, `None` on
+`advisor_host`, with the annotation widened to `dict[str, Any]`.
 
 ## Confidence Check Notes
 
