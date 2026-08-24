@@ -3,8 +3,9 @@ id: ENH-3306
 title: Add an interactive-resource content type to ll-mcp (HTML with event callbacks)
 type: ENH
 priority: P2
-status: open
+status: done
 discovered_date: '2026-08-23'
+completed_at: '2026-08-24T20:16:11Z'
 parent: EPIC-3127
 blocked_by:
 - ENH-3307
@@ -232,6 +233,7 @@ Open — no longer blocked; ENH-3307 is `done` and its contract doc (`docs/refer
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-24T20:15:56 - `7f5298a9-684e-4e01-a282-d2112e18f747.jsonl`
 - `/ll:confidence-check` - 2026-08-24T19:31:59 - `e1cc4296-ee28-47c9-bc20-a4dc3f372a09.jsonl`
 - `/ll:confidence-check` - 2026-08-24T19:20:04 - `848282c0-0b6c-443d-872b-4aeef5e9eeab.jsonl`
 - `/ll:refine-issue` - 2026-08-24T19:01:36 - `d2894239-e4a9-46b6-b02b-e19d64169f3a.jsonl`

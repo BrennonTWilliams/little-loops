@@ -31,7 +31,7 @@ a little-loops project over the Model Context Protocol. It advertises three surf
 |---------|------------------------|
 | **Tools (read)** | `issues_query`, `issue_get`, `history_search`, `deps_check`, `capabilities` |
 | **Tools (write)** | `issue_capture`, `issue_set_status`, `issue_link`, `issue_append_log` — dry-run by default, see [below](#the-mutation-surface-and-its-guards) |
-| **Resources** | Issue files, `.ll/ll-goals.md`, and `docs/**/*.md` under an `ll://` scheme |
+| **Resources** | Issue files, `.ll/ll-goals.md`, and `docs/**/*.md` under an `ll://` scheme; one interactive `ui://issues/view` MCP Apps resource (ENH-3306) |
 | **Prompts** | Every discovered `SKILL.md`, listed as an invocable MCP prompt |
 | **Tasks** | `tasks/get` / `tasks/cancel` — poll or stop an in-flight `ll-loop` run, see [below](#polling-and-stopping-a-run-tasks) |
 
@@ -374,6 +374,31 @@ Two more practical notes:
 
 Resource and prompt listings carry `ttlMs`/`cacheScope` cache hints (5 minutes, public),
 so a well-behaved client will not re-enumerate on every request.
+
+### The `ui://` interactive-resource scheme (ENH-3306)
+
+Alongside the `ll://` data resources, `resources/list` always advertises one
+MCP Apps–compliant interactive resource: `ui://issues/view`, with
+`mimeType: "text/html;profile=mcp-app"`. `issue_get` links to it via
+`_meta.ui.resourceUri` on its tool definition, so a client that negotiated the
+`io.modelcontextprotocol/ui` extension at `initialize` can `resources/read` the view and
+render it inline instead of raw JSON. Clients that never negotiated that capability just
+never resolve it — it costs an unconditional `resources/list` entry, nothing more.
+
+Unlike every other resource kind, `ui://issues/view`:
+
+- Is **static package data**, not a project file — it's read via `importlib.resources`
+  from inside the installed wheel, not from `config.project_root`, and is therefore never
+  in `_watched_paths()` / never goes stale from a project-side edit.
+- Carries **no resource-level `_meta.ui`** (no CSP or permissions declaration) — the
+  template is fully self-contained (no external stylesheets, fonts, images, or
+  `fetch`/`XHR`), so the host's default sandbox applies.
+- Speaks a minimal view-side handshake only: it renders `ui/notifications/tool-result`
+  (reading `structuredContent`, falling back to `JSON.parse(content[0].text)`), tears
+  down cleanly on `ui/resource-teardown`, and emits only `ui/message` — level 1
+  ("notify") on the [Artifact Control Levels](../reference/ARTIFACT_CONTROL_LEVELS.md)
+  taxonomy. It never issues `tools/call` back into the FSM; level-2/3 interactions are
+  out of this scope.
 
 ---
 

@@ -611,6 +611,12 @@ _TOOLS: list[types.Tool] = [
             "required": ["issue_id"],
             "additionalProperties": False,
         },
+        # ENH-3306: links to the `ui://issues/view` MCP Apps resource — a host that
+        # negotiated `io.modelcontextprotocol/ui` renders this instead of raw JSON.
+        # `meta=` is the correct runtime kwarg (verified: both `meta=` and `_meta=`
+        # construct identically, see .ll/learning-tests/mcp-extension-mechanism.md) —
+        # mypy's stub for this one field disagrees and expects the alias `_meta`.
+        meta={"ui": {"resourceUri": "ui://issues/view"}},  # type: ignore[call-arg]
     ),
     types.Tool(
         name="history_search",

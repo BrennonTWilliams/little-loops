@@ -373,6 +373,7 @@ def test_list_resources_returns_issues_goals_and_docs_with_cache_metadata(
                 "ll://issues/FEAT-3135",
                 "ll://goals",
                 "ll://docs/ARCHITECTURE.md",
+                "ui://issues/view",
             }
             issue_entry = next(r for r in result.resources if r.uri == "ll://issues/FEAT-3135")
             assert issue_entry.description == "Sample issue"
@@ -440,11 +441,164 @@ def test_read_resource_outside_enumeration_is_rejected(tmp_path, monkeypatch) ->
                 "ll://issues/FEAT-999999",
                 "ll://docs/../../etc/passwd",
                 "ll://not-a-real-scheme",
+                "ui://not-registered",
             ):
                 with pytest.raises(MCPError):
                     await client.read_resource(bad_uri)
 
     anyio.run(run)
+
+
+def test_ui_issues_view_listed_with_mcp_apps_mime_type(tmp_path, monkeypatch) -> None:
+    """ENH-3306: `ui://issues/view` is advertised unconditionally with the MCP Apps MIME
+    type, alongside the pre-existing `ll://` kinds."""
+    _make_project(tmp_path, monkeypatch)
+
+    async def run() -> None:
+        server = build_server(transport="stdio")
+        async with Client(server) as client:
+            result = await client.list_resources()
+            entry = next(r for r in result.resources if r.uri == "ui://issues/view")
+            assert entry.mime_type == "text/html;profile=mcp-app"
+
+    anyio.run(run)
+
+
+def test_ui_issues_view_read_returns_html_as_text(tmp_path, monkeypatch) -> None:
+    """`resources/read` returns the MCP Apps HTML as `TextResourceContents.text`, not
+    `BlobResourceContents` — the codebase has no blob-resource precedent."""
+    _make_project(tmp_path, monkeypatch)
+
+    async def run() -> None:
+        server = build_server(transport="stdio")
+        async with Client(server) as client:
+            result = await client.read_resource("ui://issues/view")
+            html = result.contents[0].text
+            assert "<!doctype html>" in html.lower()
+
+    anyio.run(run)
+
+
+def test_ui_issues_view_html_implements_the_view_side_handshake(tmp_path, monkeypatch) -> None:
+    """The template's inline JS must be able to receive `ui/notifications/tool-result` and
+    `ui/resource-teardown`, and emit only `ui/message` — asserted without a browser via
+    string presence, since this is a static template rather than executable-in-pytest JS."""
+    _make_project(tmp_path, monkeypatch)
+
+    async def run() -> None:
+        server = build_server(transport="stdio")
+        async with Client(server) as client:
+            result = await client.read_resource("ui://issues/view")
+            html = result.contents[0].text
+            assert "ui/notifications/tool-result" in html
+            assert "ui/resource-teardown" in html
+            assert "ui/message" in html
+            assert "structuredContent" in html
+
+    anyio.run(run)
+
+
+def test_ui_issues_view_html_is_self_contained_with_no_network_references(
+    tmp_path, monkeypatch
+) -> None:
+    """Deliberate no-CSP decision (ENH-3306): the template must never request anything
+    off-origin, since no resource-level `_meta.ui` CSP declaration exists to sandbox it."""
+    _make_project(tmp_path, monkeypatch)
+
+    async def run() -> None:
+        server = build_server(transport="stdio")
+        async with Client(server) as client:
+            result = await client.read_resource("ui://issues/view")
+            html = result.contents[0].text
+            assert "http://" not in html
+            assert "https://" not in html
+            assert "fetch(" not in html
+            assert "XMLHttpRequest" not in html
+
+    anyio.run(run)
+
+
+def test_issue_get_tool_declares_ui_resource_uri_and_no_other_tool_does(
+    tmp_path, monkeypatch
+) -> None:
+    """`list_tools` shows `issue_get` linking to the view via `_meta.ui.resourceUri` on the
+    wire (declared server-side as `meta=`, serialized under the `_meta` alias); no other
+    tool declares `_meta.ui`."""
+    _make_project(tmp_path, monkeypatch)
+
+    async def run() -> None:
+        server = build_server(transport="stdio")
+        async with Client(server) as client:
+            result = await client.list_tools()
+            tools = {t.name: t for t in result.tools}
+            issue_get_meta = tools["issue_get"].meta or {}
+            assert issue_get_meta.get("ui") == {"resourceUri": "ui://issues/view"}
+            for name, tool in tools.items():
+                if name == "issue_get":
+                    continue
+                meta = tool.meta or {}
+                assert "ui" not in meta
+
+    anyio.run(run)
+
+
+def test_ui_issues_view_is_not_watched_for_staleness(tmp_path, monkeypatch) -> None:
+    """`ui://` is static package data, not a project file — it must not be in
+    `_watched_paths()`, which drives the on-demand staleness refresh (ENH-3172)."""
+    from little_loops.config import BRConfig
+    from little_loops.mcp_server import resources as resources_module
+
+    project = _make_project(tmp_path, monkeypatch)
+    config = BRConfig(project)
+    watched = resources_module._watched_paths(config)
+    assert not any(p.name == "issues-view.html" for p in watched)
+
+
+def test_ui_issues_view_path_resolves_via_importlib_not_project_root(tmp_path, monkeypatch) -> None:
+    """`_ui_entries`' `path` must resolve under the installed package, not under
+    `config.project_root` — the template ships inside the wheel, unlike every other
+    `_<kind>_entries` helper's project-relative `path`."""
+    from little_loops.config import BRConfig
+    from little_loops.mcp_server import resources as resources_module
+
+    project = _make_project(tmp_path, monkeypatch)
+    config = BRConfig(project)
+    entries = resources_module._ui_entries(config)
+    assert len(entries) == 1
+    entry = entries[0]
+    assert entry.uri == "ui://issues/view"
+    assert not str(entry.path).startswith(str(project))
+    assert entry.path.is_file()
+
+
+def test_ui_issues_view_missing_template_errors_on_read_but_stays_listed(
+    tmp_path, monkeypatch
+) -> None:
+    """A missing package asset is a packaging bug, not a legitimately-empty project — it
+    must surface as an `MCPError` naming the URI on `resources/read` while the entry still
+    appears in `resources/list` (unlike `_goals_entry`'s "vanish when absent" behavior)."""
+    from little_loops.mcp_server import resources as resources_module
+
+    _make_project(tmp_path, monkeypatch)
+
+    async def run() -> None:
+        server = build_server(transport="stdio")
+        async with Client(server) as client:
+            list_result = await client.list_resources()
+            assert any(r.uri == "ui://issues/view" for r in list_result.resources)
+
+    anyio.run(run)
+
+    broken_entry = resources_module._ResourceEntry(
+        uri="ui://issues/view",
+        name="issues-view",
+        description=None,
+        mime_type="text/html;profile=mcp-app",
+        kind="ui",
+        path=tmp_path / "does-not-exist.html",
+    )
+    with pytest.raises(MCPError):
+        resources_module._read_ui_body(broken_entry)
 
 
 def _bump_mtime(path: Path) -> None:
@@ -463,7 +617,7 @@ def test_list_resources_reflects_issue_created_after_server_build(tmp_path, monk
         server = build_server(transport="stdio")
         async with Client(server) as client:
             before = await client.list_resources()
-            assert {r.uri for r in before.resources} == set()
+            assert {r.uri for r in before.resources} == {"ui://issues/view"}
 
             _write_issue(project, "features", "P2-FEAT-3135-sample.md", ISSUE_BODY)
             _bump_mtime(project / ".issues" / "features")
@@ -474,7 +628,10 @@ def test_list_resources_reflects_issue_created_after_server_build(tmp_path, monk
             # Option 3 (list_changed notifications) exists to address, exercised separately
             # below in test_resources_list_changed_event_delivered_on_subscription.
             after = await client.list_resources(cache_mode="bypass")
-            assert {r.uri for r in after.resources} == {"ll://issues/FEAT-3135"}
+            assert {r.uri for r in after.resources} == {
+                "ll://issues/FEAT-3135",
+                "ui://issues/view",
+            }
             # This particular response is known-fresh right after a rebuild — the 5-minute
             # public CacheHint would otherwise let a client keep serving `before`'s answer.
             assert after.ttl_ms == 0
@@ -512,13 +669,16 @@ def test_list_resources_drops_issue_deleted_after_server_build(tmp_path, monkeyp
         server = build_server(transport="stdio")
         async with Client(server) as client:
             before = await client.list_resources()
-            assert {r.uri for r in before.resources} == {"ll://issues/FEAT-3135"}
+            assert {r.uri for r in before.resources} == {
+                "ll://issues/FEAT-3135",
+                "ui://issues/view",
+            }
 
             issue_path.unlink()
             _bump_mtime(project / ".issues" / "features")
 
             after = await client.list_resources(cache_mode="bypass")
-            assert {r.uri for r in after.resources} == set()
+            assert {r.uri for r in after.resources} == {"ui://issues/view"}
 
     anyio.run(run)
 

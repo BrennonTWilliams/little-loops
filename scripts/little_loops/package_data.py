@@ -46,6 +46,9 @@ PACKAGE_DATA_ASSETS: Final[tuple[tuple[str, ...], ...]] = (
     ("templates", "java-gradle.json"),
     ("templates", "dotnet.json"),
     ("session_store", "schema_manifest.json"),
+    # ENH-3306: `ui://issues/view` MCP Apps resource template, read via
+    # importlib.resources (not config.project_root — it ships inside the wheel).
+    ("mcp_server", "templates", "issues-view.html"),
     # ENH-3268: `ll-artifact design-md export --profile <name>` resolves a
     # packaged built-in profile via importlib.resources when it is not
     # materialized in the project. Manifest hygiene, not a shipping fix —

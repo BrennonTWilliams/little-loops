@@ -25,6 +25,14 @@ assertions:
 - claim: INPUT_REQUIRED_METHODS covers prompts/get, resources/read, and tools/call,
     and is_input_required is a TypeGuard over the MRTR input_required interim result
   result: pass
+- claim: types.Tool's meta field is declared with alias "_meta"; both meta={...} and
+    _meta={...} construct successfully and model_dump(by_alias=True) emits "_meta"
+    either way (ENH-3306)
+  result: pass
+- claim: types.Resource.uri and types.ReadResourceRequestParams.uri annotate as plain
+    str, not AnyUrl, in mcp 2.0.0 — the reason a ui:// authority round-trips without
+    normalization or rejection (ENH-3306)
+  result: pass
 raw_output_path: .ll/learning-tests/raw/mcp-extension-mechanism.txt
 proven_package: mcp
 proven_version: 2.0.0

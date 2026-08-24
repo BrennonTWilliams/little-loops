@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Issue View</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 0; padding: 1rem; color: #1a1a1a; }
+  table { border-collapse: collapse; width: 100%; margin-bottom: 1rem; }
+  th, td { text-align: left; padding: 0.25rem 0.5rem; border-bottom: 1px solid #ddd; }
+  th { width: 10rem; color: #555; }
+  #body { white-space: pre-wrap; }
+  #empty { color: #777; }
+</style>
+</head>
+<body>
+<div id="root">
+  <p id="empty">Waiting for issue data&hellip;</p>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  // Minimal MCP Apps handshake (ENH-3306): JSON-RPC 2.0 messages exchanged with the
+  // host over postMessage. This view only reacts to "ui/notifications/tool-result"
+  // and "ui/resource-teardown", and only ever emits "ui/message" (ENH-3307 level 1 —
+  // notify, no tools/call re-entry into the FSM). Every other host->view push method
+  // (ui/notifications/tool-input, ui/notifications/tool-cancelled,
+  // ui/notifications/size-changed, or anything unrecognized) is ignored silently.
+
+  function postToHost(method, params) {
+    window.parent.postMessage(
+      { jsonrpc: "2.0", method: method, params: params || {} },
+      "*"
+    );
+  }
+
+  function render(payload) {
+    var root = document.getElementById("root");
+    if (!payload || typeof payload !== "object") {
+      root.innerHTML = '<p id="empty">No issue data.</p>';
+      return;
+    }
+    var rows = [];
+    ["issue_id", "title", "type", "priority", "status"].forEach(function (key) {
+      if (payload[key] !== undefined && payload[key] !== null) {
+        rows.push(
+          "<tr><th>" + escapeHtml(key) + "</th><td>" + escapeHtml(String(payload[key])) + "</td></tr>"
+        );
+      }
+    });
+    var body = payload.body ? escapeHtml(String(payload.body)) : "";
+    root.innerHTML =
+      "<table>" + rows.join("") + "</table>" +
+      '<div id="body">' + body + "</div>";
+  }
+
+  function escapeHtml(value) {
+    return value
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  function extractPayload(toolResult) {
+    // Primary payload path: structuredContent. Fall back to parsing content[0].text
+    // only when structuredContent is absent (tools.py's make_call_tool_handler
+    // attaches both for a dict-returning tool like issue_get).
+    if (toolResult && toolResult.structuredContent) {
+      return toolResult.structuredContent;
+    }
+    try {
+      var first = toolResult && toolResult.content && toolResult.content[0];
+      if (first && typeof first.text === "string") {
+        return JSON.parse(first.text);
+      }
+    } catch (err) {
+      // Malformed payload — render the empty state rather than throwing.
+    }
+    return null;
+  }
+
+  function handleMessage(event) {
+    var message = event.data;
+    if (!message || typeof message !== "object" || message.jsonrpc !== "2.0") {
+      return;
+    }
+
+    switch (message.method) {
+      case "ui/notifications/tool-result":
+        render(extractPayload(message.params && message.params.result));
+        postToHost("ui/message", { text: "issue view rendered" });
+        break;
+      case "ui/resource-teardown":
+        window.removeEventListener("message", handleMessage);
+        break;
+      default:
+        // Unrecognized methods (ui/notifications/tool-input,
+        // ui/notifications/tool-cancelled, ui/notifications/size-changed, or any
+        // future addition) are ignored silently — this view acts on none of them.
+        break;
+    }
+  }
+
+  window.addEventListener("message", handleMessage);
+})();
+</script>
+</body>
+</html>

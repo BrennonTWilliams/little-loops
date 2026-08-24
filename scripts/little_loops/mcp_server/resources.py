@@ -36,12 +36,14 @@ from __future__ import annotations
 
 import dataclasses
 import fnmatch
+import importlib.resources
 import json
 import re
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import mcp_types as types
+from mcp.server.apps import APP_MIME_TYPE
 from mcp.shared.exceptions import MCPError
 
 from little_loops.mcp_server._staleness import Signature, dir_signature
@@ -62,7 +64,7 @@ class _ResourceEntry:
     name: str
     description: str | None
     mime_type: str
-    kind: str  # "issue" | "goals" | "docs"
+    kind: str  # "issue" | "goals" | "docs" | "ui"
     path: Path
 
 
@@ -164,6 +166,35 @@ def _docs_entries(config: BRConfig) -> list[_ResourceEntry]:
     return entries
 
 
+def _ui_entries(config: BRConfig) -> list[_ResourceEntry]:
+    """Enumerate the single `ui://issues/view` MCP Apps interactive-resource entry (ENH-3306).
+
+    Takes `config` for signature consistency with the other `_<kind>_entries` helpers but
+    does not read it — the template path is package-relative, not project-relative, since
+    the template ships inside the wheel rather than living in the project tree. Advertised
+    unconditionally regardless of client capability negotiation (see the issue's Design
+    decisions): a client that has not negotiated `io.modelcontextprotocol/ui` at `initialize`
+    simply ignores a `ui://`-scheme resource with an unrecognized MIME type.
+    """
+    del config
+    path = (
+        Path(str(importlib.resources.files("little_loops")))
+        / "mcp_server"
+        / "templates"
+        / "issues-view.html"
+    )
+    return [
+        _ResourceEntry(
+            uri="ui://issues/view",
+            name="issues-view",
+            description="Interactive view for issue_get results (MCP Apps).",
+            mime_type=APP_MIME_TYPE,
+            kind="ui",
+            path=path,
+        )
+    ]
+
+
 def build_resource_index(config: BRConfig) -> dict[str, _ResourceEntry]:
     """Build the discovery-time enumeration once: the full `uri -> _ResourceEntry` map.
 
@@ -176,6 +207,8 @@ def build_resource_index(config: BRConfig) -> dict[str, _ResourceEntry]:
     if goals_entry is not None:
         index[goals_entry.uri] = goals_entry
     for entry in _docs_entries(config):
+        index[entry.uri] = entry
+    for entry in _ui_entries(config):
         index[entry.uri] = entry
     return index
 
@@ -266,11 +299,25 @@ def _read_docs_body(entry: _ResourceEntry) -> str:
         ) from exc
 
 
+def _read_ui_body(entry: _ResourceEntry) -> str:
+    """Mirrors `_read_docs_body` verbatim — same package-relative `read_text()` shape."""
+    try:
+        return entry.path.read_text()
+    except OSError as exc:
+        raise MCPError(
+            code=types.INVALID_PARAMS,
+            message=f"UI resource unreadable: {exc}",
+            data={"uri": entry.uri},
+        ) from exc
+
+
 def _read_body(entry: _ResourceEntry, config: BRConfig) -> str:
     if entry.kind == "issue":
         return _read_issue_body(entry, config)
     if entry.kind == "goals":
         return _read_goals_body(entry)
+    if entry.kind == "ui":
+        return _read_ui_body(entry)
     return _read_docs_body(entry)
 
 

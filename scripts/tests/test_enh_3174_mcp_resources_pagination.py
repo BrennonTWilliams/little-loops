@@ -84,7 +84,7 @@ def test_list_resources_paginates_when_page_size_is_smaller_than_the_index(
             assert page3.next_cursor is None
 
             seen = {r.uri for r in page1.resources + page2.resources + page3.resources}
-            assert len(seen) == 5
+            assert len(seen) == 6
 
     import anyio
 
@@ -104,7 +104,7 @@ def test_list_resources_default_page_size_returns_everything_in_one_page(
         server = build_server(transport="stdio")
         async with Client(server) as client:
             result = await client.list_resources()
-            assert len(result.resources) == 5
+            assert len(result.resources) == 6
             assert result.next_cursor is None
 
     import anyio

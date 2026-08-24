@@ -4806,7 +4806,11 @@ filesystem read. `resources/list` returns name/description from frontmatter only
 bodies); `resources/read` returns a resource's full body — the same summary-card field dict
 `issue_get` returns for issues, `ProductGoals.raw_content` for `ll://goals`, and raw file
 text for docs. Both `resources/list` and `resources/read` responses carry `ttlMs`/
-`cacheScope` per SEP-2549.
+`cacheScope` per SEP-2549. It also unconditionally advertises one interactive `ui://`-scheme
+resource, `ui://issues/view` (ENH-3306), `mimeType: "text/html;profile=mcp-app"` per the
+MCP Apps extension — a static package-data template (not project data), linked from
+`issue_get` via `_meta.ui.resourceUri`, for hosts that negotiated the
+`io.modelcontextprotocol/ui` capability at `initialize`.
 
 Also advertises a `prompts` capability (FEAT-3137): every discovered `SKILL.md` — walked
 recursively so a nested `SKILL.md` registers as its own independent prompt rather than being

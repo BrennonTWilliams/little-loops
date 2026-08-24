@@ -4751,7 +4751,7 @@ class TestPriorityRegexCompletenessAllowlist:
         },
         "mcp_server/tools.py": {
             588: "JSON-schema pattern for a priority argument, not a filename read",
-            683: "JSON-schema pattern for a priority argument, not a filename read",
+            689: "JSON-schema pattern for a priority argument, not a filename read",
         },
         "session_store/writers.py": {
             2521: "_FILENAME_PRIORITY_RE: the deliberately-preserved filename fallback in "
