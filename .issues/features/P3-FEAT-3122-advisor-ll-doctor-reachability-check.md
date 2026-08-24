@@ -83,9 +83,21 @@ already-resolved `HostRunner` as a parameter from `main_doctor()`
 Option B (selected — see Decision Rationale): a self-resolving
 `@register_check` triad modeled on `_schema_drift_*` (`doctor.py:398-523`) for
 the function shape and on `_entry_points_*` (`doctor.py:185-249`) for the
-multi-row data shape. `_advisor_data()` takes no arguments, reads
-`config.advisor.enabled`/`.host`/`.model`, resolves the advisor's own
-`HostRunner` via `resolve_host_named()`, and returns two rows.
+multi-row data shape. `_advisor_data()` takes no arguments — `register_check()`
+types its argument as `Callable[[], list[CheckResult]]` (`doctor.py:81,84`), so
+**do not add a `config` parameter**. It sources config itself with a
+function-body import, exactly as `main_doctor()` does at `doctor.py:1127,1179`:
+
+```python
+from little_loops.config import BRConfig
+cfg = BRConfig(Path.cwd())
+```
+
+This is a *second* `BRConfig` construction, independent of `main_doctor()`'s
+own `cfg` — accepted for self-containment, and it is what makes the ~28
+`patch("little_loops.config.BRConfig", ...)` sites reach this function (D3).
+It then reads `cfg.advisor.enabled`/`.host`/`.model`, resolves the advisor's
+own `HostRunner` via `resolve_host_named()`, and returns two rows.
 `severity="informational"` on **every** emitted `CheckResult`, mirroring
 `_ADVISORY_CAPABILITIES` (`doctor.py:95,110`) where `informational` means
 "reported but never fails the run".
@@ -136,7 +148,15 @@ needs). Row names: `advisor_host` (reachability) and `advisor_floor`
 (capability floor), so a consumer can tell "advisor binary missing" from
 "advisor model is weaker". The `--json` `advisor` key carries the list
 verbatim; `_print_advisor_section()` prints one `_STATUS_SYMBOLS` line per row.
-The "not configured" guard returns **both** rows, not one.
+The "not configured" guard returns **both** rows, not one, each with
+`status="unsupported"`, `severity="informational"`, and
+`note="not configured (optional)"` — the established optional-absent shape
+(`_decisions_store_data` `:291-296`, `_history_db_data` `:361-362`). Pin the
+status value explicitly: `_STATUS_SYMBOLS` has no "not applicable" member, so
+because `advisor.enabled` defaults to `False`, *every* existing install grows
+two `✗` rows on its next `ll-doctor`. That matches how the other opt-in
+subsystems already render, and the `(optional)` in the note is what carries the
+"deliberate, not broken" signal — keep it verbatim.
 
 **D2 — Memoize `_advisor_data()`.** Every `_xxx_data()` is invoked twice per
 `ll-doctor` run: once by the output path (`_print_report`'s JSON dict
