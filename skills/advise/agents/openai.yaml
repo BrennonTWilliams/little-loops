@@ -1,0 +1,3 @@
+interface:
+  display_name: "Advise"
+  short_description: "Use when asked for a second opinion from a different, stronger model on a decisi"

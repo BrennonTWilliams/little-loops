@@ -7,6 +7,12 @@ status: open
 discovered_by: ll-issues-create
 discovered_date: '2026-08-24'
 captured_at: '2026-08-24T16:07:51Z'
+confidence_score: 98
+outcome_confidence: 75
+score_complexity: 19
+score_test_coverage: 22
+score_ambiguity: 12
+score_change_surface: 22
 ---
 
 # BUG-3312: Ctrl+C does not stop ll-auto — detached subprocess ignores SIGINT
@@ -59,6 +65,14 @@ timeout kill path (`_kill_process_group` uses `os.killpg`), so the fix must
 route SIGINT through the same process-group kill machinery rather than
 removing `start_new_session`.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-24 — based on codebase analysis:_
+
+- Both listed options have direct codebase precedent (codebase-pattern-finder): the first option (reach the active `Popen` from the signal handler via `on_process_start`/`on_process_end`) is the exact idiom already used by `ll-loop`'s FSM path (`ActionRunner._current_process` in `fsm/runners.py:114,205-215,237-238`; `FSMExecutor._current_process` in `fsm/executor.py:290,2484,2540`; consumed by `_loop_signal_handler` in `cli/loop/_helpers.py:123-174` via `getattr(obj, "_current_process", None)` then `.kill()`) and by `WorkerPool._active_processes` (`parallel/worker_pool.py:189,939-947,967-968`, consumed by `terminate_all_processes()` at `:249-276`). `ll-auto`'s call chain (`issue_manager.py`) is the one place these hooks are unused end-to-end (see Integration Map finding above).
+- Kill-mechanism discrepancy: the `ll-loop` precedent kills with bare `proc.kill()`, not `_kill_process_group()` — see the "Contested convention" finding under Program Design. If this issue's fix reuses the `on_process_start`/`on_process_end` wiring pattern but insists on process-group kill (per this section's existing requirement), it will be a variant of the `ll-loop` idiom rather than a literal copy of it; that divergence should be a deliberate choice, not an oversight.
+- Second option (poll a shutdown flag/event inside the `run_claude_command` read loop) is also directly actionable: the loop already re-enters its top once per second via `sel.select(timeout=1.0)` (`subprocess_utils.py:528`), alongside its existing per-iteration wall-clock/idle-timeout checks (`subprocess_utils.py:504-526`) — a shutdown check would slot in next to those with no new blocking primitive required. No existing precedent in the codebase threads a `threading.Event` (or similar) into this specific read loop for cancellation; both `ll-auto` and `ll-loop`'s existing shutdown paths use plain module/instance-level boolean flags, not `threading.Event`.
+
 ## Integration Map
 
 ### Files to Modify
@@ -85,6 +99,15 @@ removing `start_new_session`.
 ### Documentation
 - N/A
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-24 — based on codebase analysis:_
+
+- Precise call chain confirmed (codebase-analyzer): `AutoManager.run()` loop (`issue_manager.py:1951`) -> `AutoManager._process_issue()` (`issue_manager.py:2056`) -> `process_issue_inplace()` (`issue_manager.py:689`, Phase 2 call at `:1293`) -> `run_with_continuation()` (`issue_manager.py:256`, its own loop at `:348`) -> local `run_claude_command()` wrapper (`issue_manager.py:140-222`) -> `subprocess_utils.run_claude_command` (imported aliased as `_run_claude_base`, `issue_manager.py:66-68`) -> `subprocess_utils.py:347`, where the `Popen` is created (`subprocess_utils.py:457`).
+- At every hop in that chain, **none of the call sites pass `on_process_start`/`on_process_end`** — the local `run_claude_command()` wrapper at `issue_manager.py:140` does not even declare those two parameters, so it has no way to forward them even if a caller wanted to. This is the concrete reason `_signal_handler` (`issue_manager.py:1741`) has nothing to reach into: the `Popen` created at `subprocess_utils.py:457` is a pure local variable of that function's stack frame for the entire `ll-auto` path.
+- Existing precedent that DOES wire this up (codebase-pattern-finder + codebase-analyzer): `ll-loop`'s FSM path already tracks the active `Popen` via paired `on_process_start`/`on_process_end` callbacks — `ActionRunner._current_process` (`fsm/runners.py:114`, set/cleared by `_on_proc_start`/`_on_proc_end` closures at `fsm/runners.py:205-215`, wired into its `run_claude_command()` call at `fsm/runners.py:237-238`) and `FSMExecutor._current_process` (`fsm/executor.py:290`, set at `:2484`, cleared at `:2540`) for its own subprocess path. `WorkerPool._active_processes` (`parallel/worker_pool.py:189`, populated via `on_start`/`on_end` closures at `:939-947`, wired at `:967-968`) is a second, dict-keyed instance of the same idiom. `ll-auto`'s `AutoManager`/`issue_manager.py` call chain is the one place in the codebase where these hooks are defined-but-unused end-to-end.
+- Test coverage: `scripts/tests/test_issue_manager.py:4102-4138` (`TestSignalHandler`, docstring cites ENH-207) covers only the flag-flip behavior of `_signal_handler` — no test in that file exercises killing an active subprocess. The analogous already-solved case has its own test class: `scripts/tests/test_cli_loop_background.py:13-108` (`TestLoopSignalHandler`), with `test_signal_handler_kills_current_process` (BUG-592) and `test_signal_handler_kills_fsm_executor_current_process` (BUG-818) as direct templates for a new `ll-auto` equivalent, plus `test_signal_handler_no_current_process_is_safe` (BUG-592) as the template for the "no active process yet" case.
+
 ## Program Design
 
 ### Types
@@ -100,6 +123,14 @@ removing `start_new_session`.
 ### Call Path
 
 `_signal_handler` -> `run_claude_command` -> `_kill_process_group`
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-24 — based on codebase analysis:_
+
+- Refined Call Path (codebase-analyzer, supersedes the earlier one-line version — the intermediate hops matter for where a shutdown check or hook-forwarding change actually lands): `AutoManager._signal_handler` (`issue_manager.py:1741`) -> [currently dead-ends; needs to reach] -> `_run_claude_base` (`subprocess_utils.run_claude_command`, `subprocess_utils.py:347`)'s active `Popen` (`subprocess_utils.py:457`), traversing `run_with_continuation` (`issue_manager.py:256`) -> local `run_claude_command` wrapper (`issue_manager.py:140`) -> `_run_claude_base`.
+- Read-loop insertion point (codebase-analyzer): the selector loop `while sel.get_map():` (`subprocess_utils.py:502-627`) already checks wall-clock timeout and idle timeout once per iteration before calling `sel.select(timeout=1.0)` (line 528) — a shutdown check inserted alongside those two would fire within ≤1s of a signal using the loop's existing polling cadence, no new blocking primitive needed.
+- Contested convention — kill mechanism (codebase-pattern-finder): the issue's own Proposed Solution requires routing through `_kill_process_group()` (process-group SIGTERM/SIGKILL escalation, `subprocess_utils.py:311-344`). But the only existing precedent for "external signal handler reaches into an active `Popen` and kills it" — `ll-loop`'s `_loop_signal_handler` (`cli/loop/_helpers.py:123-174`) — calls bare `proc.kill()` directly on the `Popen` (single process, not the process group), bypassing `_kill_process_group()` entirely. The two conventions disagree: `_kill_process_group` is used today only for the timeout/idle-timeout paths *inside* `run_claude_command` itself (`subprocess_utils.py:505,516,643`), never from an external signal handler. Whether the SIGINT fix should reuse `_kill_process_group` (as the issue proposes) or follow the `ll-loop` precedent of bare `.kill()` is an open implementation decision, not settled by existing convention.
 
 ## Implementation Steps
 
@@ -181,5 +212,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-24T16:39:51 - `9960f916-2441-4af1-90fa-4a886fc8f95c.jsonl`
+- `/ll:refine-issue` - 2026-08-24T16:21:11 - `e5f4e5f1-003d-4663-97d4-27dbe660784d.jsonl`
 - `/ll:format-issue` - 2026-08-24T16:12:01 - `b85ae83c-887b-4e17-9a4e-1911475585d3.jsonl`
 - `/ll:capture-issue` - 2026-08-24T16:07:57 - `69c375ac-5c89-44f2-a3fc-ad8aa6520c60.jsonl`

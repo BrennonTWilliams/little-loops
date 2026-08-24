@@ -370,9 +370,15 @@ See [templates.md](templates.md) for example additions by issue type (BUG, FEAT,
 
 ### 6. Finalize
 
+**Skip steps 3-4 entirely if `AUTO_MODE` is true.** Auto mode is
+non-interactive by contract — never present a question, including the commit
+question below. Instead emit the Auto Mode / Batch Mode output from
+[templates.md](templates.md), whose `## NEXT STEPS` block reports
+`Run /ll:commit to commit changes` as a follow-up for the caller.
+
 1. Read the updated issue file to confirm changes
 2. Display summary of formatting changes made
-3. Offer to commit changes:
+3. Offer to commit changes (interactive mode only):
 
 ```yaml
 questions:
@@ -386,11 +392,14 @@ questions:
         description: "Leave changes uncommitted"
 ```
 
-If commit approved:
+4. If commit approved (interactive mode only):
 ```bash
 git add "[issue-file-path]"
 ```
 Then invoke `/ll:commit` to create the commit.
+
+**Never stage or commit when `DRY_RUN` is true** — no file was modified, so
+there is nothing to stage.
 
 ## Output Format
 
