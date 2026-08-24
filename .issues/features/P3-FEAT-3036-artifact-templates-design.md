@@ -16,6 +16,14 @@ relates_to:
 - ENH-3035
 - FEAT-3304
 verify_verdict: VALID
+learning_tests_required:
+- jinja2
+confidence_score: 80
+outcome_confidence: 67
+score_complexity: 14
+score_test_coverage: 18
+score_ambiguity: 10
+score_change_surface: 25
 ---
 
 # FEAT-3036: Artifact templates design
@@ -265,6 +273,277 @@ in the hub, so ENH-3035 can extract against a fixed target and FEAT-3304's
   point; out of scope for v1.
 
 
+## Integration Map
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-24 — based on codebase analysis:_
+
+### Files to Modify
+
+- `scripts/little_loops/cli/artifact.py` — the existing `ll-artifact` CLI (currently
+  `policy-builder` + `design-md export`, two inline subcommands with a manual
+  `if args.command == ...` dispatch chain, `main_artifact()` at lines 275-357). New
+  `render`/`extract`/`refresh`/`status`/`templatize` subcommands land here or in
+  new per-command modules (see Program Design → Call Path for the two competing
+  in-repo conventions).
+- `scripts/little_loops/config/features.py:369-384` — `ArtifactsConfig` needs a
+  `templates_dir` field (and an `export` sub-block per the 2026-07-31 decisions) added
+  to the dataclass and its `from_dict()`.
+- `scripts/little_loops/config/core.py:339,476,916-918` — `BRConfig` construction,
+  `.artifacts` property, and the config-dump serialization dict all need the matching
+  new field(s); the serialization dict at :916-918 is easy to miss since it silently
+  drops any dataclass field not explicitly re-listed there.
+- `scripts/little_loops/config-schema.json:1870-1880` — the `artifacts` block's
+  `additionalProperties: false` (line 1879) rejects any new key until added under
+  `properties` here.
+- `scripts/pyproject.toml:40-59` — `jinja2` is not currently a dependency; adding it
+  needs a justifying comment in the `anthropic`/`psutil` style (see Program Design →
+  Decision Rules).
+
+### Dependent Files (Callers/Importers)
+
+- `scripts/little_loops/cli/__init__.py` — registers the `ll-artifact` CLI entry-point
+  dispatch; any new subcommand surfaces through this registration.
+- `scripts/little_loops/design_tokens.py` — `load_design_tokens` /
+  `render_as_css_vars_themed` are imported by `cli/artifact.py`'s `_themed_css_vars` and
+  would be the reuse point for a template's `theme: design-tokens` stamping.
+- `scripts/little_loops/frontmatter.py` (`parse_skill_frontmatter`) and
+  `scripts/little_loops/fsm/policy_rules.py` (`grammar_spec`) — consumed by
+  `cmd_policy_builder` for its two other stamp values; relevant only if
+  `policy-builder` is later migrated onto the new template pipeline per the issue's
+  "long-term it becomes a bundled template" note.
+
+### Conventions in Force
+
+- Placeholder substitution in this codebase is always flat, single-pass, no
+  repeated/conditional regions — true of all three existing schemes (`sed`-based
+  `{{name}}` in `loops/cli-anything-bootstrap.yaml:441-467`, Python `.replace()`
+  token-stamping in `cli/artifact.py:132-137`, and regex `{{config.xxx}}` substitution
+  in `skill_expander.py:55-69`). None contradicts the design's Jinja2 rationale, but
+  none validates it either — the codebase has no existing case of a
+  loop/conditional templating need being met by a hand-rolled substitution scheme.
+- New CLI handler functions in this file family follow `(args: argparse.Namespace,
+  logger: Logger) -> int`, build their own `BRConfig(Path.cwd())`, and wrap the body in
+  a blanket `try/except Exception` returning 0/1 — evidence: `cmd_policy_builder`,
+  `cmd_design_md_export` (`cli/artifact.py`).
+- Third-party dependency pins that need justification carry a multi-line comment above
+  the pin citing the originating issue and the specific risk being guarded against —
+  evidence: `anthropic>=0.104,<1.0` and `psutil>=5.9` (`scripts/pyproject.toml:46-58`).
+  Unjustified pins (`pyyaml`, `ruamel.yaml`, `wcwidth`, `questionary`, `rich`) carry no
+  such comment and use a bare lower bound.
+- Machine-derived state synced beside (not into) a human-owned file is precedented by
+  `decisions_sync.py::sync_to_local_md()`, which rewrites only the `## Active Rules`
+  section of `.ll/ll.local.md` in place via `atomic_write`, leaving the rest of the file
+  untouched — the model this issue cites for keeping template hashes in a lockfile
+  rather than writing them into `manifest.yaml`.
+- sha256 content-hash staleness detection is precedented once, in
+  `codequery/codegraph.py:124-189` (`_sha256_file` + `_content_aware_head_moved`), but
+  that precedent stores its comparison baseline inside an existing SQLite index column,
+  not a standalone lockfile file — the two disagree on where the baseline lives, so this
+  is not a clean precedent for a `.llat` lockfile's storage format.
+- LLM extraction into structured JSON has two disagreeing in-repo shapes: `advisor.py`'s
+  `_VERDICT_SCHEMA` passed as a `json_schema=` generation constraint to
+  `build_blocking_json`, versus `learning_tests/extractor.py`'s prose-marker
+  (`TARGETS_JSON:{...}`) + regex parse, routed through `resolve_host()` and fail-soft on
+  any parse/host error. Either shape is available as precedent for Phase 2's `extract`
+  subcommand; the issue's own open question ("does `extract` reuse loop/agent machinery
+  or call the host directly") is not resolved by either precedent alone.
+
+### Tests
+
+- `scripts/tests/test_policy_builder_emit.py`, `test_policy_builder_corpus.py`,
+  `test_policy_builder_node_gate.py` — existing coverage for `cmd_policy_builder`; no
+  `test_*artifact*.py`-named file exists, so new `render`/`extract`/`refresh`/`status`/
+  `templatize` coverage would need a new test module or an extension of these.
+  `test_enh3268_design_md_export.py` and `test_design_tokens.py` cover the other two
+  reuse points (`design-md export`, design-token stamping). Both existing dispatch
+  tests (`test_policy_builder_emit.py::TestArtifactCLIDispatch`,
+  `test_enh3268_design_md_export.py::TestArtifactCLIDispatchDesignMd`) mock
+  `cmd_<name>` and assert only argv-routing/return-code propagation — new
+  `cmd_render`/`cmd_extract`/`cmd_refresh`/`cmd_status`/`cmd_templatize` need both a
+  handler-level test (direct call with `argparse.Namespace` + `Logger`, asserting
+  exit code and output, per `TestCmdDesignMdExport`) and a dispatch-level mock test.
+- `scripts/tests/test_config_schema.py` — the file's dominant pattern for schema keys is
+  structural sentinel assertion (`test_*_in_schema` methods, ~30+ instances,
+  explicitly documented as not invoking a runtime validator) — the precedent a new
+  `templates_dir`/`export` schema test would follow.
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_config_schema.py::test_artifacts_in_schema` (~line 473) — only
+  asserts `default_output_dir`'s type/default today; will keep passing unmodified
+  after `templates_dir`/`export` are added unless extended with matching assertions
+  (mirror `test_design_tokens_in_schema`'s per-field pattern) — it will not fail-closed
+  on its own. [Agent 3 finding]
+- `scripts/tests/test_config_schema.py::TestSchemaValueParity` (`test_to_dict_values_match_schema_defaults`,
+  `test_guard_is_non_vacuous`) — automatic safety net (BUG-3192) that diffs
+  `BRConfig(...).to_dict()` leaves against `config-schema.json` defaults; will catch a
+  `templates_dir`/`export` field added to the dataclass + `to_dict()` but omitted from
+  the schema (or vice versa) without further edits, unless a field is deliberately
+  schema-less, in which case it needs an entry in `_SCHEMA_DEFAULT_ALLOWLIST`. [Agent 2
+  finding]
+- `scripts/tests/test_design_tokens.py` (lines 664, 673, 682) — existing coverage of
+  `_themed_css_vars` imported from `cli/artifact.py`; not previously listed as touching
+  this file. [Agent 1 finding]
+- `scripts/tests/test_codequery_codegraph.py` (`test_commit_of_already_indexed_content_stays_fresh`,
+  `test_commit_of_genuinely_new_content_reports_stale`,
+  `test_auto_sync_not_triggered_when_content_matches`) — the one in-repo test pattern for
+  sha256 content-hash staleness detection (temp git repo + sqlite fixture with a
+  `content_hash` column, `monkeypatch.chdir`, assert on a `.status()` call); the closest
+  structural template for a new lockfile-staleness test in Phase 3. [Agent 3 finding]
+- No `jinja2` test coverage exists anywhere in the repo (confirmed: zero references
+  under `scripts/`) — new Jinja2-rendering tests have no in-repo precedent to extend,
+  only the `.replace()`-token-stamping tests (`test_policy_builder_emit.py`,
+  `test_policy_builder_corpus.py`) as a structural analogue (string-containment
+  assertions on rendered output). [Agent 3 finding]
+- No subprocess-invoked end-to-end test exists for the `ll-artifact` CLI — both existing
+  dispatch tests mock the handler rather than shelling out to the installed
+  `ll-artifact` entry point. [Agent 3 finding]
+- No test enforces the "justification comment above unusual pins" convention this issue
+  cites for the `jinja2` pin — it is a CLAUDE.md/code-review norm only, not an automated
+  gate (searched `scripts/tests/` broadly, no match). [Agent 3 finding]
+
+### Documentation
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/CLI.md` (`### ll-artifact` section, ~lines 4455-4502) — describes only
+  `policy-builder` and `design-md export` today, including a subcommand table and an
+  `--output`/`-o` row referencing `config.artifacts.default_output_dir`; needs matching
+  `####` sections and table rows for `render`/`extract`/`refresh`/`status`/`templatize`.
+  [Agent 2 finding]
+- `docs/reference/CONFIGURATION.md` (`### artifacts` section, lines 910-924) — documents
+  the `artifacts` block with a one-row key table (`default_output_dir` only) and a JSON
+  example, plus a "Currently backs the `policy-builder` subcommand..." sentence; needs
+  new rows for `templates_dir`/`export` and an updated prose sentence. [Agent 2 finding]
+
+Confirmed no-touch (checked, not needed): `docs/reference/API.md`, `docs/ARCHITECTURE.md`
+(no `ArtifactsConfig`/artifact-CLI-specific section in either — matches were generic uses
+of the word "artifact"); `skills/configure/areas.md` and its per-host mirrors (no
+artifacts-config prompts exist to update); `scripts/little_loops/init/writers.py`'s
+`_LL_PERMISSIONS` (already has a `"Bash(ll-artifact:*)"` wildcard covering new
+subcommands); `config/core.py::_DATACLASS_SECTION_MAP` (only needs an entry for a *new*
+dataclass, not new fields on `ArtifactsConfig`). [Agents 1–3]
+
+## Program Design
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-24 — based on codebase analysis:_
+
+### Types
+
+- `ArtifactsConfig` (`scripts/little_loops/config/features.py:369-384`) — currently one
+  field, `default_output_dir: str = "."` (line 377); `from_dict()` at :380-383 does
+  `data.get("default_output_dir", ".")`. Adding `templates_dir` (and the `artifacts.export`
+  block from the 2026-07-31 decisions) requires: (1) a new dataclass field here, (2) a
+  matching `.get()` line in `from_dict()`, and (3) a matching key in the serialization dict
+  at `scripts/little_loops/config/core.py:916-918` (`BRConfig`'s config-dump path), which
+  today only emits `"default_output_dir": self._artifacts.default_output_dir` — a field
+  added to the dataclass but not to this dump silently vanishes on any config round-trip.
+- `scripts/little_loops/config-schema.json:1870-1880` — the `artifacts` object block sets
+  `additionalProperties: false` (line 1879, same pattern as the sibling `design_tokens`
+  block's own `additionalProperties: false` at line 1868). A new key (`templates_dir`,
+  `export`) is rejected by schema validation until added under `properties` here — this is
+  a hard schema-level blocker independent of the dataclass change above.
+
+### Signatures
+
+- `cmd_policy_builder(args: argparse.Namespace, logger: Logger) -> int` and
+  `cmd_design_md_export(args: argparse.Namespace, logger: Logger) -> int`
+  (`scripts/little_loops/cli/artifact.py`) are the two existing handler signatures; both
+  construct their own `BRConfig(Path.cwd())` internally, wrap their body in a blanket
+  `try/except Exception` returning 0/1, and resolve output paths against
+  `config.project_root` / `config.artifacts.default_output_dir`. New handlers
+  (`cmd_render`, `cmd_extract`, `cmd_refresh`, `cmd_status`, `cmd_templatize`) would need
+  the same signature and error-handling shape to stay consistent with this file.
+- `render_as_css_vars_themed(light: DesignTokens, dark: DesignTokens) -> str`
+  (`scripts/little_loops/design_tokens.py:688-707`) is the function a `theme:
+  design-tokens` manifest field would need to invoke for CSS-var stamping, same as
+  `policy-builder`'s `_themed_css_vars` helper (`cli/artifact.py:64-95`) does today.
+- No `jinja2` symbols exist anywhere in the codebase to cite — `jinja2` is not currently a
+  dependency (confirmed: zero hits in `scripts/pyproject.toml` and zero imports under
+  `scripts/little_loops/`), so `SandboxedEnvironment` has no existing call site to anchor
+  against yet.
+
+### Call Path
+
+`main_artifct()`'s dispatch is a flat `if args.command == ...: return cmd_*(args, logger)`
+chain (`scripts/little_loops/cli/artifact.py:275-357`), not a registry/dict-based command
+table. Today: `main_artifact` -> `cmd_policy_builder` -> `_themed_css_vars` ->
+`design_tokens.load_design_tokens` -> `design_tokens.render_as_css_vars_themed`, then back
+in `cmd_policy_builder`: five `.replace()` stamps against the loaded
+`policy-router-builder.html.tmpl` string -> output-dir resolution against
+`config.artifacts.default_output_dir` -> file write. Each new subcommand
+(`render`/`extract`/`refresh`/`status`/`templatize`) would need its own
+`subparsers.add_parser(...)` block plus a new branch in this same dispatch chain
+(precedent: `cli/issues/__init__.py` and `cli/loop/__init__.py` instead use one
+`add_*_parser`/`cmd_*` pair per file, imported into the group's `__init__.py` — the
+codebase holds both the inline-in-one-file convention (`ll-artifact` today, 2 commands)
+and the per-file convention (`ll-issues`, `ll-loop`, dozens of commands each) at
+comparable subcommand counts; which one `ll-artifact` should grow into at 5+ subcommands
+is unresolved by precedent alone).
+
+### Decision Rules
+
+- **Template-substitution engine choice**: three placeholder-substitution schemes already
+  exist in this codebase and none of them attempts repeated/iterated regions or
+  conditionals — `sed`-based `{{name}}` (`loops/cli-anything-bootstrap.yaml:441-467`),
+  Python `.replace()` token-stamping with `/*__TOKEN__*/` markers
+  (`cli/artifact.py:132-137`), and a regex-based `{{config.xxx}}` single-pass substitution
+  (`skill_expander.py:55-69`, used by skill/command markdown expansion, not by generated
+  artifacts). None of the three is contradicted by the design's Jinja2 rationale, since
+  none of them was ever asked to do what Jinja2's loops/conditionals do — but the codebase
+  has no existing case of a `{{`/`{%`-delimited template colliding with literal `{{`/`{%`
+  in generated content to validate the "delimiters must be chosen against generated
+  content" concern against; `policy-router-builder.html.tmpl` contains zero `{{`/`{%`
+  occurrences today, so the collision risk is real but currently unobserved in-repo.
+- **Manifest schema validation**: `jsonschema` (the PyPI validator library) is not a
+  dependency and has no runtime-validate-arbitrary-data-against-a-schema precedent in this
+  codebase — existing "JSON Schema" usages are either structural sentinel tests against
+  `config-schema.json`'s own shape (`test_config_schema.py`, ~30+ `test_*_in_schema`
+  methods, explicitly documented as "not runtime validation") or schema-as-generation-
+  constraint for LLM structured output (`advisor.py:142-158`'s `_VERDICT_SCHEMA`, passed to
+  `build_blocking_json(json_schema=...)`). Validating a template's `data_schema` against a
+  user-supplied `data.json` at CLI-invocation time is a new operation with no in-repo
+  precedent to anchor an implementation decision to.
+
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-08-23_
+
+**Readiness Score**: 80/100 → PROCEED WITH CAUTION
+**Outcome Confidence**: 67/100 → MODERATE
+
+### Concerns
+- Architecture Compliance: the Call Path research found this codebase holds both
+  an inline-dispatch convention (`ll-artifact` today, 2 commands) and a per-file
+  `add_*_parser`/`cmd_*` convention (`ll-issues`, `ll-loop`) at comparable
+  subcommand counts; which one `ll-artifact` should grow into at 5+ subcommands
+  is unresolved by precedent alone and should be decided before scaffolding the
+  new subcommands.
+- Issue Well-Specified (capped at 10/20): `format-check` flags two
+  `stale_cli_flag` references (`ll-artifact render --local`, `ll-artifact
+  templatize` — neither subcommand exists yet) and two missing directive
+  sections (`Summary`, `Acceptance Criteria`). Both are expected for a
+  forward-looking planning-hub design document rather than a defect, but they
+  cap this criterion per the rubric.
+- Ambiguity: two open decisions remain in scope for Phase 1 — the exact
+  delimiter/region-marker convention to avoid collision with `{{`/`{%` in
+  generated JS/CSS content (now confirmed real via the jinja2 learning test
+  below — default delimiters raise `TemplateSyntaxError` on JS-object-literal-
+  like content), and how `extract` should invoke the LLM (existing loop/agent
+  machinery vs. a direct host call) — the issue's own "Open questions" section
+  leaves this unresolved.
+
+_jinja2 learning test provisioned this run: `.ll/learning-tests/jinja2.md`,
+status `proven`, 5/5 claims passed — repeated/conditional regions, sandboxed
+attribute blocking, delimiter collision on literal `{{ }}`-like content, custom
+delimiters avoiding that collision, and loader-free `from_string()` rendering
+are all confirmed against the installed jinja2 3.1.6._
+
 ## Session Log
+- `/ll:confidence-check` - 2026-08-24T03:14:39 - `073198e9-3f33-4b28-94f3-e0a8ed10b406.jsonl`
+- `/ll:wire-issue` - 2026-08-24T03:08:29 - `c3165230-5d93-4a9d-934b-c7e96cbc8715.jsonl`
+- `/ll:refine-issue` - 2026-08-24T03:02:07 - `8e84ed7c-557b-45a9-a518-b89638519037.jsonl`
 - `/ll:verify-issues` - 2026-08-13T03:05:58 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-04T20:31:47 - `ec47aff0-f647-498d-ad44-7606e8c8054f.jsonl`

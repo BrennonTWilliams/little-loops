@@ -1,0 +1,22 @@
+== jinja2 version ==
+3.1.6
+
+== Claim 1: repeated/conditional regions via for-loop and if ==
+"<div class='high'>Risk A - desc A</div><div class='low'>Risk B</div>"
+PASS: repeated regions rendered N items from a loop
+
+== Claim 2: SandboxedEnvironment blocks unsafe attribute access ==
+SecurityError raised: access to attribute '__class__' of 'str' object is unsafe.
+PASS: SandboxedEnvironment blocks unsafe attribute access
+
+== Claim 3: default {{ }} delimiters collide with literal JS/CSS content ==
+TemplateSyntaxError raised: expected token 'end of print statement', got ':'
+PASS: default {{ }} delimiters collide/error on literal JS-object-literal-like content
+
+== Claim 4: custom delimiters avoid the collision ==
+'<script>var x = {{ notATemplateVar: 1 }};</script>hello'
+PASS: custom delimiters leave literal {{ }} untouched and still substitute vars
+
+== Claim 5: from_string works without a FileSystemLoader ==
+'hi world'
+PASS: from_string renders without any loader configured

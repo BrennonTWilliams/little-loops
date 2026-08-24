@@ -19,6 +19,8 @@ labels:
 decision_needed: false
 learning_tests_required:
 - jinja2
+verify_verdict: EVIDENCE_UNVERIFIED
+size: Very Large
 ---
 
 # FEAT-3308: `ll-artifact templatize`: save a generated artifact as a reusable template
@@ -205,6 +207,13 @@ above) — `cmd_templatize` must run the round-trip check before any `mkdir`/`wr
 template output to match that existing no-partial-writes-before-failure convention, since
 neither handler shows how to undo a completed write.
 
+_Added by `/ll:refine-issue` — 2026-08-24 — based on codebase analysis:_
+
+- **Error-handling/return-code convention** (analyzer, gap-fill): `cmd_policy_builder` (`cli/artifact.py:106-150`) and `cmd_design_md_export` (`:208-272`) share one shape: whole-body `try/except Exception as exc:  # noqa: BLE001` -> `logger.error(str(exc)); return 1` as the only catch-all; expected/anticipated failures get inline `logger.error(...); return 1` *inside* the try (not raised) — e.g. unresolvable `--profile` (`:217-222`), no design tokens available (`:229-233`); a narrower `except DesignMdColorCollisionError` (`:240-244`) shows the pattern for a domain-specific exception needing a domain-specific message; success is `logger.success(...); return 0`; both call `.mkdir(parents=True, exist_ok=True)` immediately before `Path.write_text` (`:142/144`, `:263/264`) with no rollback if the write fails. `cmd_templatize` should follow this exact shape rather than raising custom exceptions.
+- **Subparser registration shape** (analyzer, gap-fill): `policy-builder`'s flat registration is `pb = subparsers.add_parser("policy-builder", help=...)` (`:301-304`) plus `pb.add_argument(...)` calls (`:305-311`); dispatch is `if args.command == "policy-builder": return cmd_policy_builder(...)` appended to the if-chain at `:351-356` before the `parser.error(...)` fallback. A `templatize` subcommand follows this same flat shape.
+- **Atomic-write helpers exist but are unused by `artifact.py`** (analyzer, gap-fill — corrects/narrows the earlier "no round-trip/rollback pattern exists anywhere" finding): `scripts/little_loops/file_utils.py` defines `atomic_write(path, content, encoding="utf-8")` (`:16-32`, temp-file-then-`os.replace`, unlinks temp on exception) and `atomic_write_json(path, data)` (`:35-57`, JSON-serialize + round-trip-validate + delegate to `atomic_write`) — both **single-file** only, not currently imported by `cli/artifact.py` (which calls `Path.write_text` directly at `:144`/`:264`). No multi-file, directory-scoped write-then-verify-then-rollback helper exists anywhere in the codebase (checked `init/writers.py` too, which has no cleanup logic). `cmd_templatize`'s "write template dir; if round-trip fails, clean up" requirement has only the per-file primitive to build on; any multi-file transaction wrapper is new code.
+- **Render call-site positioning for `lift_token_literals`** (analyzer, gap-fill): `render_as_css_vars_themed` (`design_tokens.py:688`) has exactly one production call site, `_themed_css_vars()` (`cli/artifact.py:64-95`, called only from `cmd_policy_builder:109`); `render_as_prompt_context` (`design_tokens.py:572`) is called only from `cli/loop/_helpers.py:1423`, unrelated to `artifact.py`. Neither renderer is called anywhere in `artifact.py` today outside `_themed_css_vars`. `lift_token_literals` needs a resolved `DesignTokens` object in hand (via `load_design_tokens`) before either renderer runs — i.e. it slots in exactly where `_themed_css_vars` currently resolves tokens, not inside the renderers themselves.
+
 ## Integration Map
 
 ### Files to Modify
@@ -259,6 +268,11 @@ _Added by `/ll:refine-issue` — 2026-08-24 — based on codebase analysis:_
 - Confirmed via `grep -rn "^def render(" scripts/little_loops/` (no hits) and a repo-wide `grep -rln "FEAT-3036"` (matches only `.issues/` markdown, no source module): FEAT-3036 Phase 1's `render()`, manifest loader, and Jinja2 environment are wholly unimplemented — this issue's Implementation Step 1 ("Land FEAT-3036 Phase 1 — hard dependency") blocks on code that does not exist yet, not merely on an unmerged PR.
 - `jinja2` is not present in `scripts/pyproject.toml`'s dependency list (confirmed absent) — adding it requires a justifying comment in the `anthropic`-pin style per `CLAUDE.md`'s minimize-dependencies rule. The only current in-repo placeholder-substitution precedent is `cmd_policy_builder`'s literal `.replace()` scheme (`cli/artifact.py:132-137`), which this issue's own text already cites as insufficient for repeated-region templating.
 
+_Added by `/ll:refine-issue` — 2026-08-24 — based on codebase analysis:_
+
+- `scripts/little_loops/file_utils.py:16-32,35-57` — `atomic_write`/`atomic_write_json`, existing single-file atomic-write helpers not currently imported by `cli/artifact.py` (which writes via `Path.write_text` directly); reusable per-file primitive for `cmd_templatize`'s output writes, though no multi-file/directory-scoped rollback helper exists to build the "write dir; clean up on round-trip failure" requirement from [Agent 2 gap-fill finding]
+- `scripts/pyproject.toml:70` — `main_artifact`'s only true "caller" is the `ll-artifact` console-script entry point (`ll-artifact = "little_loops.cli:main_artifact"`); confirms the existing `cli/__init__.py:52,110` finding is complete (import + re-export + entry point are the entire reference set, no in-repo Python call site) [Agent 2 gap-fill finding]
+
 ## Implementation Steps
 
 1. Land FEAT-3036 Phase 1 (`render` + manifest format) — hard dependency.
@@ -294,6 +308,41 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - **Risk**: Medium — round-trip fidelity is a hard, automatable gate, which bounds the risk of a lossy result shipping silently.
 - **Breaking Change**: No — new subcommand.
 
+## Verification Notes
+
+_Added by `/ll:verify-issues --check --auto` — 2026-08-23:_
+
+- **Verdict: EVIDENCE_UNVERIFIED** (BUG-3282 check B7). `ll-verify-evidence` flags
+  the span `` `grep -rn templatize scripts/` `` (Current Behavior, line 44) as
+  attributed to FEAT-3036, unverifiable in any revision of that artifact.
+  Independently re-ran the command against the current tree: it still returns
+  nothing, so the underlying claim is true. The flag is very likely a
+  misattribution artifact of the detector's proximity heuristic (the nearest
+  preceding artifact reference, "Split out of FEAT-3036 Phase 4," line 28, gets
+  credited with a span that is actually the issue author's own shell-command
+  output, not a quote sourced from FEAT-3036). Per the command's documented
+  precision (~0.13–0.20 on the paraphrase/misattribution class), this reads as a
+  false positive rather than fabricated evidence. Persisted per spec regardless,
+  since the check is advisory (no `reconcile_issue` routing) — no content change
+  needed on this basis.
+- All 21 spot-checked code/doc citations (`cli/artifact.py`, `design_tokens.py`,
+  `host_runner.py`, `advisor.py`, `learning_tests/extractor.py`,
+  `config/features.py`, `config/core.py`, `config-schema.json`, test files,
+  `CONFIGURATION.md`, `CLI.md`) still match at HEAD. A few (design-md `export`
+  registration cited at `:313` vs. actual `:319`; `cmd_design_md_export` cited
+  body range `:208-272` vs. actual def start `:192`; `advisor.py:147-190` cited
+  as enforcement context vs. the raise itself at `:267-278`) are off by a small
+  number of lines within the same function/block — normal drift tolerance, not
+  flagged as OUTDATED.
+- Dependencies (FEAT-3036, ENH-3035, FEAT-3309, EPIC-3299) all open; no
+  completed-issue match, so no regression analysis applies. `depends_on`/
+  `relates_to`/`parent` backlinks all confirmed present in the referenced files.
+- No active required decision rules in the decisions log — DECISIONS_VIOLATION
+  does not apply.
+- Confirmed `grep -rn templatize scripts/` still returns nothing and `jinja2`
+  is still absent from `scripts/pyproject.toml` — the issue's core "no code
+  exists yet" premise holds.
+
 ## Related Key Documentation
 
 - `.issues/features/P3-FEAT-3036-artifact-templates-design.md` — design hub; read first
@@ -305,6 +354,8 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-08-24T02:49:23 - `9abc72d4-6fec-4dd7-b8b5-0bb4825d634b.jsonl`
+- `/ll:verify-issues` - 2026-08-24T02:45:59 - `7bc562d1-bc37-48e1-a2c6-eed764be416d.jsonl`
 - `/ll:decide-issue` - 2026-08-24T02:30:33 - `231886c3-196b-4c6d-973f-a50e5f1e0fea.jsonl`
 - `/ll:refine-issue` - 2026-08-24T02:26:50 - `967e4306-7dca-4e12-8af9-2d4291dc72fb.jsonl`
 - `/ll:wire-issue` - 2026-08-24T02:37:01 - `0846a3fe-556d-4b20-b884-efdd9a3fc6d7.jsonl`
