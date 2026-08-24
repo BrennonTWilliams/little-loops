@@ -145,34 +145,34 @@ def _parse_group(raw: dict[str, Any], index: int) -> RegionGroup:
     )
 
 
-def load_regions(path: Path) -> DiscoveryResult:
-    """Fail-closed parse of the ``--regions`` map.
+def _parse_region_map(raw: dict[str, Any], where: str) -> DiscoveryResult:
+    """Fail-closed parse of an in-memory region-map dict.
 
     Rejects unknown keys, missing required fields, and non-integer offsets.
     Returns ``data={}`` / ``data_schema={}`` — both are derived, never
     supplied (§ Proposed Solution 1); a map carrying either key is rejected.
-    """
-    try:
-        raw = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
-        raise RegionMapError(f"{path}: could not read/parse region map: {exc}") from exc
 
+    Extracted from ``load_regions()`` (FEAT-3315 Proposed Solution 4) so
+    ``discover_regions``'s resolved-offset payload can be validated through
+    the same fail-closed checks as a hand-written ``--regions`` map, without
+    a round trip through the filesystem.
+    """
     if not isinstance(raw, dict):
-        raise RegionMapError(f"{path}: expected a top-level object")
+        raise RegionMapError(f"{where}: expected a top-level object")
 
     unknown = set(raw.keys()) - _MAP_ALLOWED_KEYS
     if unknown:
         raise RegionMapError(
-            f"{path}: unknown top-level key(s) {sorted(unknown)} — only 'regions' and "
+            f"{where}: unknown top-level key(s) {sorted(unknown)} — only 'regions' and "
             "'groups' are accepted; 'data'/'data_schema' are derived outputs, not inputs"
         )
 
     regions_raw = raw.get("regions", [])
     groups_raw = raw.get("groups", [])
     if not isinstance(regions_raw, list):
-        raise RegionMapError(f"{path}: 'regions' must be a list")
+        raise RegionMapError(f"{where}: 'regions' must be a list")
     if not isinstance(groups_raw, list):
-        raise RegionMapError(f"{path}: 'groups' must be a list")
+        raise RegionMapError(f"{where}: 'groups' must be a list")
 
     regions = [_parse_region(r, i) for i, r in enumerate(regions_raw)]
     groups = [_parse_group(g, i) for i, g in enumerate(groups_raw)]
@@ -183,6 +183,19 @@ def load_regions(path: Path) -> DiscoveryResult:
             raise RegionMapError(f"regions[{i}].group: unknown group id {r.group!r}")
 
     return DiscoveryResult(data_schema={}, data={}, regions=regions, groups=groups)
+
+
+def load_regions(path: Path) -> DiscoveryResult:
+    """Fail-closed parse of the ``--regions`` map file.
+
+    Thin file-reading wrapper over :func:`_parse_region_map` (FEAT-3315).
+    """
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise RegionMapError(f"{path}: could not read/parse region map: {exc}") from exc
+
+    return _parse_region_map(raw, where=str(path))
 
 
 # --------------------------------------------------------------------------
@@ -221,7 +234,13 @@ def extract_data(artifact: bytes, result: DiscoveryResult) -> dict[str, Any]:
 
     for region in result.regions:
         if region.group is None:
-            value = artifact[region.start : region.end].decode("utf-8")
+            try:
+                value = artifact[region.start : region.end].decode("utf-8")
+            except UnicodeDecodeError as exc:
+                raise SpliceError(
+                    f"region {region.expr!r} at [{region.start}, {region.end}) is not valid "
+                    f"UTF-8 (span lands mid-multibyte-sequence): {exc}"
+                ) from exc
             if region.expr in seen_top_level:
                 prev_start, prev_end, prev_value = seen_top_level[region.expr]
                 if prev_value != value:
@@ -239,7 +258,13 @@ def extract_data(artifact: bytes, result: DiscoveryResult) -> dict[str, Any]:
             if region.group != group.id:
                 continue
             idx = _region_iteration_index(region, group)
-            value = artifact[region.start : region.end].decode("utf-8")
+            try:
+                value = artifact[region.start : region.end].decode("utf-8")
+            except UnicodeDecodeError as exc:
+                raise SpliceError(
+                    f"region {region.expr!r} at [{region.start}, {region.end}) (group "
+                    f"{group.id!r}) is not valid UTF-8 (span lands mid-multibyte-sequence): {exc}"
+                ) from exc
             per_iteration[idx][region.expr] = value
         _set_nested(data, group.array_path, per_iteration)
         groups_by_id.pop(group.id, None)
@@ -354,7 +379,9 @@ def _is_whitespace_only(b: bytes) -> bool:
     return b == b"" or b.strip(b" \t") == b""
 
 
-def _splice_group(artifact: bytes, group: RegionGroup, result: DiscoveryResult) -> tuple[bytes, int]:
+def _splice_group(
+    artifact: bytes, group: RegionGroup, result: DiscoveryResult
+) -> tuple[bytes, int]:
     """Return (replacement_bytes, extra_bytes_consumed_past group.end)."""
     if not group.iterations:
         raise SpliceError(f"group {group.id!r}: no iterations declared")
@@ -424,12 +451,10 @@ def _splice_group(artifact: bytes, group: RegionGroup, result: DiscoveryResult) 
     prefix_is_ws = _is_whitespace_only(prefix)
 
     if prefix_is_ws and suffix_is_newline:
-        content_after_indent = artifact[group.start:iter0_end].lstrip(b" \t")
+        content_after_indent = artifact[group.start : iter0_end].lstrip(b" \t")
         indent_width = (iter0_end - group.start) - len(content_after_indent)
         indent = artifact[group.start : group.start + indent_width]
-        replacement = (
-            indent + for_tag + b"\n" + bytes(body) + b"\n" + indent + endfor_tag + b"\n"
-        )
+        replacement = indent + for_tag + b"\n" + bytes(body) + b"\n" + indent + endfor_tag + b"\n"
         return bytes(replacement), 1  # consume the trailing newline too
     if not prefix_is_ws and not suffix_is_newline:
         replacement = for_tag + bytes(body) + endfor_tag
@@ -465,7 +490,9 @@ def apply_regions(artifact: bytes, result: DiscoveryResult) -> bytes:
         if start < 0 or end > n or end < start:
             raise SpliceError(f"span [{start}, {end}) is out of bounds for artifact of length {n}")
         if start < prev_end:
-            raise SpliceError(f"span [{start}, {end}) overlaps a preceding span ending at {prev_end}")
+            raise SpliceError(
+                f"span [{start}, {end}) overlaps a preceding span ending at {prev_end}"
+            )
         out += escape_literal_delimiters(artifact[cursor:start])
         if kind == "region":
             out += f"[[= {obj.expr} =]]".encode()
@@ -610,10 +637,14 @@ def _resolve_output_dir(args: argparse.Namespace, config: object, artifact_path:
 
 
 def cmd_templatize(args: argparse.Namespace, logger: Logger) -> int:
-    """Deterministic templating: artifact + --regions map -> a .llat/ template.
+    """Templating: artifact + (--regions map | LLM discovery) -> a .llat/ template.
 
-    Returns 0 on success, 1 on malformed input / IO failure, 2 on round-trip
-    rejection.
+    With ``--regions``, runs the deterministic Phase A (FEAT-3314) path — no
+    host call, no size-ceiling check, no ``source`` read. Without it, calls
+    ``discover_regions`` (FEAT-3315 Phase B) to identify the regions by LLM.
+
+    Returns 0 on success, 1 on malformed input / IO failure / discovery
+    failure, 2 on round-trip rejection.
     """
     from little_loops.config.core import BRConfig
 
@@ -624,13 +655,6 @@ def cmd_templatize(args: argparse.Namespace, logger: Logger) -> int:
 
         if not artifact_path.is_file():
             logger.error(f"artifact not found: {artifact_path}")
-            return 1
-        if not args.regions:
-            logger.error("--regions <map.json> is required for Phase A (deterministic) templating")
-            return 1
-        regions_path = Path(args.regions)
-        if not regions_path.is_file():
-            logger.error(f"regions map not found: {regions_path}")
             return 1
 
         artifact_bytes = artifact_path.read_bytes()
@@ -655,11 +679,63 @@ def cmd_templatize(args: argparse.Namespace, logger: Logger) -> int:
             logger.error(f"{out_dir} already exists (use --force to overwrite)")
             return 1
 
-        try:
-            result = load_regions(regions_path)
-        except RegionMapError as exc:
-            logger.error(str(exc))
-            return 1
+        rejected_dir = out_dir.with_name(out_dir.name + ".rejected")
+        if rejected_dir.exists():
+            shutil.rmtree(rejected_dir)
+
+        discovery_raw: dict[str, Any] | None = None
+        discovery_resolved: dict[str, Any] | None = None
+
+        if args.regions:
+            regions_path = Path(args.regions)
+            if not regions_path.is_file():
+                logger.error(f"regions map not found: {regions_path}")
+                return 1
+            try:
+                result = load_regions(regions_path)
+            except RegionMapError as exc:
+                logger.error(str(exc))
+                return 1
+            extraction = {"method": "regions", "regions_map": str(regions_path)}
+        else:
+            if not source_path.is_file():
+                logger.error(f"source not found: {source_path}")
+                return 1
+            try:
+                source_text = source_path.read_text(encoding="utf-8")
+            except (OSError, UnicodeDecodeError) as exc:
+                logger.error(f"{source_path}: could not read source document: {exc}")
+                return 1
+
+            combined_size = len(artifact_bytes) + len(source_text.encode("utf-8"))
+            max_input_bytes = config.artifacts.templatize_max_input_bytes
+            if combined_size > max_input_bytes:
+                logger.error(
+                    f"combined artifact+source size ({combined_size} bytes) exceeds "
+                    f"artifacts.templatize_max_input_bytes ({max_input_bytes}) — no discovery "
+                    "call issued"
+                )
+                return 1
+
+            from little_loops.cli.artifact.discover import discover_regions
+
+            try:
+                response = discover_regions(artifact_bytes, source_text, config)
+            except RegionMapError as exc:
+                discovery_raw = getattr(exc, "raw", None)
+                discovery_resolved = getattr(exc, "resolved", None)
+                logger.error(str(exc))
+                _write_rejected_discovery(rejected_dir, discovery_raw, discovery_resolved)
+                return 1
+
+            result = response.result
+            discovery_raw = response.raw
+            discovery_resolved = response.resolved
+            extraction = {
+                "method": "llm_discovery",
+                "host": response.host,
+                "model": response.model,
+            }
 
         try:
             data = extract_data(artifact_bytes, result)
@@ -671,15 +747,12 @@ def cmd_templatize(args: argparse.Namespace, logger: Logger) -> int:
                 output=artifact_path.name,
                 schema=schema,
                 source=source_path,
-                extraction={"method": "regions", "regions_map": str(regions_path)},
+                extraction=extraction,
             )
         except (SpliceError, RegionMapError) as exc:
             logger.error(str(exc))
+            _write_rejected_discovery(rejected_dir, discovery_raw, discovery_resolved)
             return 1
-
-        rejected_dir = out_dir.with_name(out_dir.name + ".rejected")
-        if rejected_dir.exists():
-            shutil.rmtree(rejected_dir)
 
         out_dir.parent.mkdir(parents=True, exist_ok=True)
         tmp_dir = Path(tempfile.mkdtemp(prefix=f"{out_dir.name}.tmp-", dir=out_dir.parent))
@@ -694,6 +767,7 @@ def cmd_templatize(args: argparse.Namespace, logger: Logger) -> int:
                 validate_top_level_data(data, manifest["data_schema"])
             except DataValidationError as exc:
                 logger.error(str(exc))
+                _write_rejected_discovery(rejected_dir, discovery_raw, discovery_resolved)
                 return 1
 
             diff = verify_round_trip(tmp_dir, data, artifact_bytes, config)
@@ -701,6 +775,7 @@ def cmd_templatize(args: argparse.Namespace, logger: Logger) -> int:
                 rejected_dir.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copytree(tmp_dir, rejected_dir)
                 (rejected_dir / "roundtrip.diff").write_text(diff, encoding="utf-8")
+                _write_rejected_discovery(rejected_dir, discovery_raw, discovery_resolved)
                 logger.error(
                     f"round-trip verification failed — candidate + diff written to {rejected_dir}"
                 )
@@ -721,6 +796,28 @@ def cmd_templatize(args: argparse.Namespace, logger: Logger) -> int:
         return 1
 
 
+def _write_rejected_discovery(
+    rejected_dir: Path, raw: dict[str, Any] | None, resolved: dict[str, Any] | None
+) -> None:
+    """Preserve the discovery response on a post-call failure (FEAT-3315 Proposed Solution 7).
+
+    No-op on the ``--regions`` (non-discovery) path, where *raw* is always
+    ``None``. ``rejected_dir`` may or may not already exist — the round-trip
+    branch creates it via ``shutil.copytree`` before calling this; every
+    other branch never reaches that copytree, so this creates it directly.
+    """
+    if raw is None:
+        return
+    rejected_dir.mkdir(parents=True, exist_ok=True)
+    (rejected_dir / "discovery.json").write_text(
+        json.dumps(raw, indent=2, ensure_ascii=False), encoding="utf-8"
+    )
+    if resolved is not None:
+        (rejected_dir / "regions.json").write_text(
+            json.dumps(resolved, indent=2, ensure_ascii=False), encoding="utf-8"
+        )
+
+
 def _dump_manifest_yaml(manifest: dict[str, Any]) -> str:
     import yaml
 
@@ -731,15 +828,21 @@ def add_templatize_parser(subparsers: argparse._SubParsersAction) -> None:
     """Register the ``templatize`` subcommand parser."""
     templatize = subparsers.add_parser(
         "templatize",
-        help="Save a generated artifact as a reusable .llat/ template (Phase A: deterministic)",
+        help=(
+            "Save a generated artifact as a reusable .llat/ template — deterministic with "
+            "--regions, or LLM-discovered region map without it"
+        ),
     )
-    templatize.add_argument("artifact", type=str, help="Path to the generated artifact to templatize")
+    templatize.add_argument(
+        "artifact", type=str, help="Path to the generated artifact to templatize"
+    )
     templatize.add_argument(
         "source",
         type=str,
         help=(
-            "Path to the source document. Recorded into manifest.source but not read in "
-            "Phase A — every data.json value is captured from an artifact span."
+            "Path to the source document. With --regions, recorded into manifest.source but "
+            "not read (every data.json value is captured from an artifact span). Without "
+            "--regions, read and sent to the LLM discovery call."
         ),
     )
     templatize.add_argument(
@@ -756,7 +859,10 @@ def add_templatize_parser(subparsers: argparse._SubParsersAction) -> None:
         "--regions",
         type=str,
         default=None,
-        help="Path to a hand-written region map (required for Phase A)",
+        help=(
+            "Path to a hand-written region map. When omitted, an LLM discovery call identifies "
+            "the regions instead (subject to artifacts.templatize_max_input_bytes)."
+        ),
     )
     templatize.add_argument(
         "--force",

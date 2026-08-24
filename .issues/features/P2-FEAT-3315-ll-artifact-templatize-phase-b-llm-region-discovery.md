@@ -3,9 +3,10 @@ id: FEAT-3315
 title: '`ll-artifact templatize` Phase B: LLM region discovery'
 type: FEAT
 priority: P2
-status: open
+status: done
 discovered_by: manual
 discovered_date: '2026-08-24'
+completed_at: '2026-08-24T22:40:03Z'
 parent: FEAT-3308
 depends_on:
 - FEAT-3314
@@ -781,6 +782,8 @@ class, the two-file rejection artifact) relative to the version scored at 86.
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-24T22:39:40 - `5364b8ad-f6dd-42bb-9321-160dbbd665cf.jsonl`
+- `/ll:ready-issue` - 2026-08-24T22:18:10 - `0cbcd103-f93b-4df0-a102-e2d724f28e91.jsonl`
 - `/ll:confidence-check` - 2026-08-24T21:59:38 - `e9d964d9-67ff-4d09-b50d-9eccaed8ef33.jsonl`
 - `/ll:confidence-check` - 2026-08-24T21:24:57 - `4c963e2d-de26-4bbd-81d9-9a468cb16596.jsonl`
 - `/ll:confidence-check` - 2026-08-24T21:15:01 - `f6542b25-721a-49ab-ba69-b9d4746b6ed4.jsonl`

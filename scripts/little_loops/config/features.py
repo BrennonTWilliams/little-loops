@@ -372,10 +372,18 @@ class ArtifactsConfig:
     `default_output_dir` is the directory where generated human-facing
     artifacts (HTML builders, diagrams, exporters) are written when no
     `--output` override is given. Shared across all `ll-artifact` subcommands.
+
+    `templatize_max_input_bytes` (FEAT-3315) is the combined
+    artifact-plus-source-document size ceiling `ll-artifact templatize`
+    enforces before issuing its LLM discovery call, measured in **bytes**
+    (`len(artifact_bytes) + len(source_bytes)`) — deliberately not tokens,
+    since bytes are measurable before any host call and need no tokenizer.
+    v1 uses this flat default only; `context_window_for()` is not consulted.
     """
 
     default_output_dir: str = "."
     templates_dir: str = "artifacts/templates"
+    templatize_max_input_bytes: int = 400000
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> ArtifactsConfig:
@@ -383,6 +391,7 @@ class ArtifactsConfig:
         return cls(
             default_output_dir=data.get("default_output_dir", "."),
             templates_dir=data.get("templates_dir", "artifacts/templates"),
+            templatize_max_input_bytes=data.get("templatize_max_input_bytes", 400000),
         )
 
 

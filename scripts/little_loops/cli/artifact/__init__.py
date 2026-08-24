@@ -59,11 +59,14 @@ Examples:
   %(prog)s render my-report.llat -o build/      # Render a template given as a path
   %(prog)s templatize out/index.html docs/ARCHITECTURE.md \\
       -o arch-review.llat --regions map.json    # Splice a hand-written region map into a template
+  %(prog)s templatize out/index.html docs/ARCHITECTURE.md \\
+      -o arch-review.llat                       # No --regions: LLM discovers the regions
 
 Exit codes:
   0 - Artifact generated successfully
-  1 - Error occurred
-  2 - templatize: round-trip verification rejected the extraction (see <out>.rejected/)
+  1 - Error occurred (including: templatize discovery input over the configured size ceiling,
+      missing/unreadable source, or a malformed/unresolvable LLM discovery response)
+  2 - templatize: round-trip verification rejected the extraction (see <out>.llat.rejected/)
 """,
         )
         subparsers = parser.add_subparsers(dest="command", required=True)

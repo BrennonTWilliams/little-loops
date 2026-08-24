@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -16,6 +17,7 @@ from little_loops.cli.artifact.templatize import (
     RegionGroup,
     RegionMapError,
     SpliceError,
+    _parse_region_map,
     apply_regions,
     build_manifest,
     derive_schema,
@@ -24,12 +26,30 @@ from little_loops.cli.artifact.templatize import (
     load_regions,
     promote,
 )
+from little_loops.host_runner import HostInvocation
 
 
 def _write(path: Path, content: bytes) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(content)
     return path
+
+
+def load_regions_from_dict(resolved: dict) -> DiscoveryResult:
+    return _parse_region_map(resolved, where="test")
+
+
+def _fake_host_runner(name: str = "claude-code"):
+    return type(
+        "FakeRunner",
+        (),
+        {
+            "name": name,
+            "build_blocking_json": lambda self, *, prompt, model=None, json_schema=None: (
+                HostInvocation(binary="claude", args=["-p", prompt])
+            ),
+        },
+    )()
 
 
 def _write_regions(path: Path, regions=None, groups=None) -> Path:
@@ -40,14 +60,18 @@ def _write_regions(path: Path, regions=None, groups=None) -> Path:
 
 class TestLoadRegions:
     def test_minimal_map_loads(self, tmp_path):
-        path = _write_regions(tmp_path / "map.json", regions=[{"start": 0, "end": 3, "expr": "title"}])
+        path = _write_regions(
+            tmp_path / "map.json", regions=[{"start": 0, "end": 3, "expr": "title"}]
+        )
         result = load_regions(path)
         assert result.regions == [Region(start=0, end=3, expr="title")]
         assert result.data == {}
         assert result.data_schema == {}
 
     def test_anchors_optional(self, tmp_path):
-        path = _write_regions(tmp_path / "map.json", regions=[{"start": 0, "end": 3, "expr": "title"}])
+        path = _write_regions(
+            tmp_path / "map.json", regions=[{"start": 0, "end": 3, "expr": "title"}]
+        )
         result = load_regions(path)
         assert result.regions[0].anchor_before is None
         assert result.regions[0].anchor_after is None
@@ -133,7 +157,12 @@ class TestExtractData:
     def test_group_extracts_array(self):
         artifact = b"<li>A</li><li>B</li>"
         group = RegionGroup(
-            id="cards", binding="card", array_path="cards", start=0, end=20, iterations=[(0, 10), (10, 20)]
+            id="cards",
+            binding="card",
+            array_path="cards",
+            start=0,
+            end=20,
+            iterations=[(0, 10), (10, 20)],
         )
         regions = [
             Region(start=4, end=5, expr="text", group="cards"),
@@ -250,17 +279,18 @@ class TestApplyRegions:
         result = DiscoveryResult(data_schema={}, data={}, regions=regions, groups=[group])
         out = apply_regions(artifact, result)
         assert out == (
-            b"<ul>\n"
-            b"  [[% for li in items %]]\n"
-            b"  <li>[[= li.n =]]</li>\n"
-            b"  [[% endfor %]]\n"
-            b"</ul>"
+            b"<ul>\n  [[% for li in items %]]\n  <li>[[= li.n =]]</li>\n  [[% endfor %]]\n</ul>"
         )
 
     def test_mismatched_iteration_literal_text_errors(self):
         artifact = b'<li id="a">1</li><li id="b">2</li>'
         group = RegionGroup(
-            id="items", binding="li", array_path="items", start=0, end=34, iterations=[(0, 17), (17, 34)]
+            id="items",
+            binding="li",
+            array_path="items",
+            start=0,
+            end=34,
+            iterations=[(0, 17), (17, 34)],
         )
         regions = [
             Region(start=11, end=12, expr="n", group="items"),
@@ -714,3 +744,207 @@ class TestCmdTemplatizeEndToEnd:
         body = (out_dir / "template.html.j2").read_text()
         assert "[[% for item in items %]]" in body
         assert body.count("<li>") == 1
+
+
+class TestCmdTemplatizeDiscoveryBranch:
+    """FEAT-3315: the default (no `--regions`) LLM-discovery branch."""
+
+    def _run(self, argv):
+        old_argv = sys.argv
+        sys.argv = ["ll-artifact"] + argv
+        try:
+            return main_artifact()
+        finally:
+            sys.argv = old_argv
+
+    def _make_response(self, artifact: bytes):
+        from little_loops.cli.artifact.discover import DiscoveryResponse
+
+        raw = {"regions": [{"text": "Hello", "expr": "title"}], "groups": []}
+        resolved = {
+            "regions": [{"start": 4, "end": 9, "expr": "title", "group": None}],
+            "groups": [],
+        }
+        result = load_regions_from_dict(resolved)
+        return DiscoveryResponse(
+            result=result, raw=raw, resolved=resolved, host="claude-code", model="sonnet"
+        )
+
+    def test_happy_path_promotes_and_round_trips(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        artifact = _write(tmp_path / "out" / "index.html", b"<h1>Hello</h1>\n")
+        source = _write(tmp_path / "docs" / "SRC.md", b"# Hello\n")
+        out_dir = tmp_path / "artifacts" / "templates" / "greet.llat"
+
+        with patch(
+            "little_loops.cli.artifact.discover.discover_regions",
+            return_value=self._make_response(artifact.read_bytes()),
+        ):
+            code = self._run(["templatize", str(artifact), str(source), "-o", str(out_dir)])
+        assert code == 0
+        assert out_dir.is_dir()
+        manifest = load_manifest(out_dir)
+        assert manifest["extraction"]["method"] == "llm_discovery"
+        assert manifest["extraction"]["host"] == "claude-code"
+        assert manifest["extraction"]["model"] == "sonnet"
+        assert "theme" not in manifest
+        data = json.loads((out_dir / "data.json").read_text())
+        assert data == {"title": "Hello"}
+
+    def test_malformed_response_raises_not_silent(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        artifact = _write(tmp_path / "out" / "index.html", b"<h1>Hello</h1>\n")
+        source = _write(tmp_path / "docs" / "SRC.md", b"# Hello\n")
+        out_dir = tmp_path / "artifacts" / "templates" / "greet.llat"
+
+        with (
+            patch(
+                "little_loops.cli.artifact.discover.resolve_host",
+                return_value=_fake_host_runner(),
+            ),
+            patch(
+                "little_loops.cli.artifact.discover.run_blocking_json",
+                return_value={"regions": []},  # missing required 'groups' key
+            ),
+        ):
+            code = self._run(["templatize", str(artifact), str(source), "-o", str(out_dir)])
+        assert code == 1
+        assert not out_dir.exists()
+
+    def test_input_size_ceiling_no_host_call(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / ".ll").mkdir()
+        (tmp_path / ".ll" / "ll-config.json").write_text(
+            json.dumps({"artifacts": {"templatize_max_input_bytes": 10}}), encoding="utf-8"
+        )
+        artifact = _write(tmp_path / "out" / "index.html", b"<h1>Hello</h1>\n")
+        source = _write(tmp_path / "docs" / "SRC.md", b"# Hello\n")
+        out_dir = tmp_path / "artifacts" / "templates" / "greet.llat"
+
+        with patch("little_loops.cli.artifact.discover.resolve_host") as resolve_host:
+            code = self._run(["templatize", str(artifact), str(source), "-o", str(out_dir)])
+        resolve_host.assert_not_called()
+        assert code == 1
+        assert not out_dir.exists()
+
+    def test_missing_source_no_host_call(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        artifact = _write(tmp_path / "out" / "index.html", b"<h1>Hello</h1>\n")
+        source = tmp_path / "docs" / "MISSING.md"
+        out_dir = tmp_path / "artifacts" / "templates" / "greet.llat"
+
+        with patch("little_loops.cli.artifact.discover.resolve_host") as resolve_host:
+            code = self._run(["templatize", str(artifact), str(source), "-o", str(out_dir)])
+        resolve_host.assert_not_called()
+        assert code == 1
+        assert not out_dir.exists()
+
+    def test_rejected_dir_preserved_on_exit1_splice_error(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        artifact = _write(tmp_path / "out" / "index.html", b"<h1>Hello</h1>\n")
+        source = _write(tmp_path / "docs" / "SRC.md", b"# Hello\n")
+        out_dir = tmp_path / "artifacts" / "templates" / "greet.llat"
+
+        from little_loops.cli.artifact.discover import DiscoveryResponse
+
+        # Overlapping spans -> apply_regions raises SpliceError downstream of the call.
+        raw = {
+            "regions": [
+                {"text": "Hello", "expr": "a"},
+                {"text": "Hello", "expr": "b"},
+            ],
+            "groups": [],
+        }
+        resolved = {
+            "regions": [
+                {"start": 4, "end": 9, "expr": "a", "group": None},
+                {"start": 4, "end": 9, "expr": "b", "group": None},
+            ],
+            "groups": [],
+        }
+        result = load_regions_from_dict(resolved)
+        response = DiscoveryResponse(
+            result=result, raw=raw, resolved=resolved, host="claude-code", model="sonnet"
+        )
+
+        with patch("little_loops.cli.artifact.discover.discover_regions", return_value=response):
+            code = self._run(["templatize", str(artifact), str(source), "-o", str(out_dir)])
+        assert code == 1
+        rejected_dir = out_dir.with_name(out_dir.name + ".rejected")
+        assert (rejected_dir / "discovery.json").is_file()
+        assert (rejected_dir / "regions.json").is_file()
+        assert json.loads((rejected_dir / "discovery.json").read_text()) == raw
+
+    def test_rejected_dir_preserved_on_exit2_roundtrip_rejection(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        artifact = _write(tmp_path / "out" / "index.html", b"<h1>Hello</h1>\n")
+        source = _write(tmp_path / "docs" / "SRC.md", b"# Hello\n")
+        out_dir = tmp_path / "artifacts" / "templates" / "greet.llat"
+
+        import little_loops.cli.artifact.templatize as templatize_mod
+
+        # Splicing is byte-exact by construction (FEAT-3315 § Decision Rationale ->
+        # Offset resolution) — force rejection the same way Phase A's own test does.
+        monkeypatch.setattr(
+            templatize_mod, "verify_round_trip", lambda *a, **k: "--- fake diff ---"
+        )
+
+        from little_loops.cli.artifact.discover import DiscoveryResponse
+
+        raw = {"regions": [{"text": "Hello", "expr": "title"}], "groups": []}
+        resolved = {
+            "regions": [{"start": 4, "end": 9, "expr": "title", "group": None}],
+            "groups": [],
+        }
+        result = load_regions_from_dict(resolved)
+        response = DiscoveryResponse(
+            result=result, raw=raw, resolved=resolved, host="claude-code", model="sonnet"
+        )
+
+        with patch("little_loops.cli.artifact.discover.discover_regions", return_value=response):
+            code = self._run(["templatize", str(artifact), str(source), "-o", str(out_dir)])
+        assert code == 2
+        rejected_dir = out_dir.with_name(out_dir.name + ".rejected")
+        assert (rejected_dir / "roundtrip.diff").is_file()
+        assert (rejected_dir / "discovery.json").is_file()
+        assert (rejected_dir / "regions.json").is_file()
+
+    def test_regions_flag_takes_precedence_no_host_call(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        artifact = _write(tmp_path / "out" / "index.html", b"<h1>Hello</h1>\n")
+        source = _write(tmp_path / "docs" / "SRC.md", b"# Hello\n")
+        regions = _write_regions(
+            tmp_path / "map.json", regions=[{"start": 4, "end": 9, "expr": "title"}]
+        )
+        out_dir = tmp_path / "artifacts" / "templates" / "greet.llat"
+
+        with patch("little_loops.cli.artifact.discover.resolve_host") as resolve_host:
+            code = self._run(
+                [
+                    "templatize",
+                    str(artifact),
+                    str(source),
+                    "-o",
+                    str(out_dir),
+                    "--regions",
+                    str(regions),
+                ]
+            )
+        resolve_host.assert_not_called()
+        assert code == 0
+
+    def test_templatize_module_imports_nothing_from_host_runner_or_anthropic(self) -> None:
+        import ast
+
+        module_path = (
+            Path(__file__).parent.parent / "little_loops" / "cli" / "artifact" / "templatize.py"
+        )
+        tree = ast.parse(module_path.read_text())
+        imported_modules: set[str] = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                imported_modules.update(alias.name for alias in node.names)
+            elif isinstance(node, ast.ImportFrom) and node.module:
+                imported_modules.add(node.module)
+        assert not any("host_runner" in name for name in imported_modules)
+        assert not any("anthropic" in name for name in imported_modules)
