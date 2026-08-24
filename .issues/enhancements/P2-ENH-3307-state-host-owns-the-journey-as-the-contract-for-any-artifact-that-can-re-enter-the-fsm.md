@@ -158,7 +158,24 @@ Open.
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-08-24T18:20:18 - `bf2ea761-d864-4b19-8078-67d47afee296.jsonl`
 - `/ll:confidence-check` - 2026-08-24T01:05:48 - `b39154ec-0980-409b-84ab-ed4ad74fd627.jsonl`
 - `/ll:wire-issue` - 2026-08-24T00:59:50 - `4cd71d49-8da8-4dc9-852e-8f17b59fed46.jsonl`
 - `/ll:refine-issue` - 2026-08-24T00:51:43 - `9c480c31-6e54-4a77-8e21-d400559417c0.jsonl`
 - `/ll:format-issue` - 2026-08-24T00:04:16 - `9d912d1c-def8-4ac1-b2d0-73ed036e9de0.jsonl`
+
+## Tests
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-24 — based on codebase analysis:_
+
+- Contested test-file convention: this codebase has two competing shapes for issue-driven doc tests, and both are actively used, not one superseding the other. (a) One-off `test_enh_NNNN_*.py` files per issue — e.g. `test_enh_3171_mcp_project_root.py`, `test_enh_3174_mcp_resources_pagination.py` — but every one of those exercises actual code (CLI parsers, MCP tools), not pure doc existence/structure. (b) A single consolidated `scripts/tests/test_wiring_reference_docs.py` holding parametrized `DOC_STRINGS_PRESENT` (doc_path, expected_string, issue_id) and `DOC_FILES_MUST_EXIST` (doc_path, issue_id) tuples — that file's own docstring says it was produced by consolidating 28 originally-separate per-issue doc-wiring test files (ENH-1963). No pure doc-existence/doc-structure test in the current test suite lives in a standalone `test_enh_NNNN_*.py` file; that shape has moved to the consolidated file. The issue's own Integration Map/Tests section proposes a new standalone `test_enh_3307_artifact_control_levels.py` — that is a valid choice but runs counter to the more recent consolidation precedent; adding parametrized entries to `test_wiring_reference_docs.py` instead is the alternative the implementer should weigh.
+
+## Documentation
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-24 — based on codebase analysis:_
+
+- `docs/index.md` placement is not settled by precedent the way the issue implies: the file's "Reference" section (lines 25-49) does not list `HOST_COMPATIBILITY.md` or `DEFERRAL_CODES.md` at all (both `docs/reference/*.md` files), while `EVENT-SCHEMA.md` — also a `docs/reference/*.md` file — is listed instead under a separate "Developer Documentation" section (line 57), not "Reference". The issue's Integration Map says to add a "Reference bullet" for `ARTIFACT_CONTROL_LEVELS.md`; given `EVENT-SCHEMA.md`'s actual placement under "Developer Documentation" rather than "Reference", confirm which section is intended before adding the index entry — the two existing docs/reference/*.md precedents disagree on which section a reference doc belongs in.

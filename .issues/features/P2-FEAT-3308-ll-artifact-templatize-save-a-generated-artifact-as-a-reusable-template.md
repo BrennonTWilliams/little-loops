@@ -7,11 +7,11 @@ status: open
 discovered_by: manual
 discovered_date: '2026-08-23'
 parent: EPIC-3299
-depends_on:
-- FEAT-3036
+depends_on: []
 relates_to:
 - FEAT-3309
 - ENH-3035
+- FEAT-3036
 labels:
 - artifact
 - ll-artifact
@@ -19,8 +19,9 @@ labels:
 decision_needed: false
 learning_tests_required:
 - jinja2
-verify_verdict: EVIDENCE_UNVERIFIED
+verify_verdict: NON_VALID
 size: Very Large
+reconcile_attempted: true
 ---
 
 # FEAT-3308: `ll-artifact templatize`: save a generated artifact as a reusable template
@@ -136,6 +137,12 @@ Option B's silent-degrade contract. A silently-empty `data_schema` would pass Op
 handling but fail this issue's round-trip verify stage in a way that looks like the LLM found
 nothing, not that the LLM call itself failed.
 
+_Added by `/ll:refine-issue` — 2026-08-24 — based on codebase analysis:_
+
+- **`cmd_render`'s Jinja2 environment is the frozen contract `templatize` must reuse, not re-derive** (analyzer, gap-fill, supersedes prior "FEAT-3036 Phase 1... wholly unimplemented" finding): `render()` now exists as `cmd_render` (`scripts/little_loops/cli/artifact/render.py:27`), delegating the actual Jinja2 mechanics to `scripts/little_loops/artifact_templates.py`. `build_environment()` (`artifact_templates.py:242-262`) constructs a `jinja2.sandbox.SandboxedEnvironment` with the frozen delimiter set (`[[= =]]`/`[[% %]]`/`[[# #]]`), `trim_blocks=True`, `lstrip_blocks=True`, `keep_trailing_newline=True`, `undefined=StrictUndefined`, `autoescape=False` — its own docstring states changing any of these is a template-format version bump that breaks FEAT-3308's byte-exact round-trip requirement. `apply_regions`/`verify_round_trip` must import and call `build_environment()` unchanged (it is a zero-argument factory) rather than constructing a separate `Environment`, or round-trip fidelity cannot be guaranteed by construction.
+- **Manifest and template-body constraints `apply_regions`'s output must satisfy** (analyzer, gap-fill): `load_manifest()` (`artifact_templates.py:142-189`) requires exactly `_MANIFEST_REQUIRED_KEYS = {"name", "version", "renderer", "output", "data_schema"}` with `renderer` literally `"jinja2"` and, if present, `theme` literally `"design-tokens"` (no other value accepted); `data_schema` is validated by `_validate_schema_shape()` (`:85-140`) against a restricted JSON-Schema subset (`{type, required, properties, items, enum, description}` keys only) and forbids a top-level `ll` key (reserved for the render context — same check applied to `data.json` payloads by `validate_top_level_data()`, `:233-239`). `find_template_body()` (`:265-275`) requires exactly one `template.*.j2` file at the template root — zero or multiple matches raises `ManifestError`. Any template `apply_regions` emits must satisfy both constraints to be renderable by the existing `render` command.
+- **Binary assets are out of scope for the extraction side too** (analyzer, gap-fill): `load_assets()` (`artifact_templates.py:278-291`) reads every file under `root/assets/` as UTF-8 text only — its own docstring states "Binary assets (data-URI encoding) are out of scope for v1." An artifact with inlined images/fonts as data URIs can still be templatized (the data URI is just a long string literal within the HTML), but `discover_regions`/`apply_regions` cannot extract them into separate binary asset files under the current loader.
+
 ### Decision Rationale
 
 **Selected**: Option A — schema-forced structured output via `build_blocking_json(json_schema=...)`,
@@ -214,10 +221,16 @@ _Added by `/ll:refine-issue` — 2026-08-24 — based on codebase analysis:_
 - **Atomic-write helpers exist but are unused by `artifact.py`** (analyzer, gap-fill — corrects/narrows the earlier "no round-trip/rollback pattern exists anywhere" finding): `scripts/little_loops/file_utils.py` defines `atomic_write(path, content, encoding="utf-8")` (`:16-32`, temp-file-then-`os.replace`, unlinks temp on exception) and `atomic_write_json(path, data)` (`:35-57`, JSON-serialize + round-trip-validate + delegate to `atomic_write`) — both **single-file** only, not currently imported by `cli/artifact.py` (which calls `Path.write_text` directly at `:144`/`:264`). No multi-file, directory-scoped write-then-verify-then-rollback helper exists anywhere in the codebase (checked `init/writers.py` too, which has no cleanup logic). `cmd_templatize`'s "write template dir; if round-trip fails, clean up" requirement has only the per-file primitive to build on; any multi-file transaction wrapper is new code.
 - **Render call-site positioning for `lift_token_literals`** (analyzer, gap-fill): `render_as_css_vars_themed` (`design_tokens.py:688`) has exactly one production call site, `_themed_css_vars()` (`cli/artifact.py:64-95`, called only from `cmd_policy_builder:109`); `render_as_prompt_context` (`design_tokens.py:572`) is called only from `cli/loop/_helpers.py:1423`, unrelated to `artifact.py`. Neither renderer is called anywhere in `artifact.py` today outside `_themed_css_vars`. `lift_token_literals` needs a resolved `DesignTokens` object in hand (via `load_design_tokens`) before either renderer runs — i.e. it slots in exactly where `_themed_css_vars` currently resolves tokens, not inside the renderers themselves.
 
+_Added by `/ll:refine-issue` — 2026-08-24 — based on codebase analysis:_
+
+- **Re-anchored call path and signatures** (analyzer, gap-fill — corrects the stale `cli/artifact.py:275` citation in the Call Path above, which pre-dates FEAT-3036's package split): `main_artifact` now lives at `cli/artifact/__init__.py:38-125`, with the dispatch if-chain at `:118-124` (`policy-builder` → `cmd_policy_builder`, `design-md export` → `cmd_design_md_export`, `render` → `cmd_render`; a `templatize` branch is a fourth arm inserted in this chain, order not semantically significant). The corrected call path is: `main_artifact` (`cli/artifact/__init__.py:38`) -> `cmd_templatize` (new, e.g. `cli/artifact/templatize.py`) -> `discover_regions` -> `apply_regions` -> `verify_round_trip` -> `render_template` (`artifact_templates.py:304-328`, NOT a bare top-level `render` — this is the actual FEAT-3036 Phase 1 entry point) -> `build_environment` (`artifact_templates.py:242-262`) -> (if `manifest.theme == "design-tokens"`) `build_ll_namespace` (`artifact_templates.py:294-301`) -> `_themed_css_vars` (`cli/artifact/policy_builder.py:56-87`) -> `render_as_css_vars_themed` (`design_tokens.py:688`, citation confirmed still current).
+- **`ArtifactTemplate` is the cross-cutting data-carrier type `Program Design § Types` is missing** (analyzer, gap-fill): `ArtifactTemplate` (`artifact_templates.py:47-64`, dataclass with `root: Path`, `manifest: dict[str, Any]`, plus derived properties `name`/`output`/`data_schema`) is what `load_manifest()`+`resolve_template()` produce and `render_template()` consumes. Any `TemplatizeResult` a new `cmd_templatize` builds must be able to construct/serialize an equivalent `manifest` dict satisfying `load_manifest()`'s required-keys/schema-shape validation (see Proposed Solution findings) for a subsequent `render` call to consume it — this is the concrete shape `apply_regions`'s manifest-writing output is constrained to.
+- **New subparser wiring point, current line numbers** (analyzer, gap-fill): subparser registration for the three existing subcommands is `policy-builder` at `cli/artifact/__init__.py:66-76`, `design-md export` (nested `add_subparsers`) at `:78-109`, and `render` via a factored-out `add_render_parser(subparsers)` call at `:111` (parser-building logic itself lives in `cli/artifact/render.py:91-114`). A `templatize` subparser follows the `render` precedent exactly: a new `add_templatize_parser(subparsers)` function in a new `cli/artifact/templatize.py` module, called from `__init__.py` immediately after line 111 (before `args = parser.parse_args()` at `:113`). The epilog `Examples:`/`Exit codes:` block (`:49-62`) and the `__all__` export list (`:29-35`, currently `main_artifact`, `cmd_policy_builder`, `cmd_design_md_export`, `cmd_render`, `_themed_css_vars`) both need a `templatize`/`cmd_templatize` addition to stay consistent with the `render` precedent.
+
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/cli/artifact.py` — new `templatize` subparser + handler alongside `policy-builder` (`:301`) and `design-md export` (`:313`)
+- `scripts/little_loops/cli/artifact/templatize.py` (new module) — `add_templatize_parser` subparser + `cmd_templatize` handler, registered from `cli/artifact/__init__.py:111` immediately after `add_render_parser(subparsers)`; also add to `__all__` (`:29-35`) and the epilog `Examples:`/`Exit codes:` block (`:49-62`)
 - `docs/reference/CLI.md` § `ll-artifact` (line ~4455) — new subcommand section
 
 _Wiring pass added by `/ll:wire-issue`:_
@@ -232,7 +245,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_enh3268_design_md_export.py:354,367,378,394,410` — imports `cmd_design_md_export`, `main_artifact` directly; the closest existing sibling-subcommand test to model `test_artifact_templatize.py`'s dispatch tests after [Agent 1/3 finding]
 
 ### Similar Patterns
-- `cmd_policy_builder` (`cli/artifact.py:98`) — the existing stamp-and-write shape
+- `cmd_policy_builder` (`cli/artifact/policy_builder.py:90`) — the existing stamp-and-write shape
 - `hitl-md.yaml:256-263`, `vega-viz.yaml:505-513` — hand-written loop states that already copy `${run_dir}/index.html` out; prior art for wanting artifacts to outlive a run
 
 ### Tests
@@ -252,7 +265,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `docs/reference/CONFIGURATION.md` § `artifacts` (`:910-924`) — add a table row + JSON example entry for the new field; the prose at `:912` ("Currently backs the `policy-builder` subcommand...") stops being accurate once `templatize` also reads this block and needs updating [Agent 2 finding]
 
 ### Configuration
-- `scripts/little_loops/config-schema.json` § `artifacts` (`:1870-1880`) — currently exactly one field (`default_output_dir`) with `additionalProperties: false`; a templates directory setting needs adding there before this lands
+- `scripts/little_loops/config-schema.json` § `artifacts` — `templates_dir` field already landed by FEAT-3036 (`config-schema.json:127,1883`, `ArtifactsConfig.templates_dir` at `config/features.py:212,378`, default `"artifacts/templates"`); `cmd_templatize` reads `config.artifacts.templates_dir` at the same site `cmd_render` does (`cli/artifact/render.py:38`) rather than adding a new field — see Scope Boundary below
 
 ### Codebase Research Findings
 
@@ -272,13 +285,19 @@ _Added by `/ll:refine-issue` — 2026-08-24 — based on codebase analysis:_
 - `scripts/little_loops/file_utils.py:16-32,35-57` — `atomic_write`/`atomic_write_json`, existing single-file atomic-write helpers not currently imported by `cli/artifact.py` (which writes via `Path.write_text` directly); reusable per-file primitive for `cmd_templatize`'s output writes, though no multi-file/directory-scoped rollback helper exists to build the "write dir; clean up on round-trip failure" requirement from [Agent 2 gap-fill finding]
 - `scripts/pyproject.toml:70` — `main_artifact`'s only true "caller" is the `ll-artifact` console-script entry point (`ll-artifact = "little_loops.cli:main_artifact"`); confirms the existing `cli/__init__.py:52,110` finding is complete (import + re-export + entry point are the entire reference set, no in-repo Python call site) [Agent 2 gap-fill finding]
 
+_Added by `/ll:refine-issue` — 2026-08-24 — based on codebase analysis:_
+
+- **`cli/artifact.py` no longer exists — full re-anchoring to the package layout** (locator+analyzer, gap-fill, supersedes every stale `cli/artifact.py:NNN` citation in this issue including the "Files to Modify" entry below): FEAT-3036 split the flat file into `scripts/little_loops/cli/artifact/__init__.py` (dispatch, `main_artifact` at `:38-125`, dispatch if-chain `:118-124`), `render.py` (`cmd_render`/`add_render_parser` at `:27`/`:91`), `policy_builder.py` (`cmd_policy_builder` at `:90`, `_themed_css_vars` at `:56-87`), and `design_md.py` (`cmd_design_md_export` at `:57`). A new `templatize` subcommand's handler belongs in a new sibling module `cli/artifact/templatize.py`, registered from `__init__.py:111` (see Program Design findings for the exact wiring point) — not in `policy_builder.py`, contrary to this section's original "alongside `policy-builder`" framing.
+- **`artifact_templates.py` is the actual FEAT-3036 Phase 1 dependency, not part of `cli/artifact/`** (locator+analyzer, gap-fill): `scripts/little_loops/artifact_templates.py` holds every template primitive `cmd_templatize` builds on — `ArtifactTemplate` (`:47-64`), `resolve_template` (`:67`), `load_manifest` (`:142`), `build_environment` (`:242-262`), `find_template_body` (`:265-275`), `load_assets` (`:278-291`), `build_ll_namespace` (`:294-301`), `render_template` (`:304-328`), `load_data` (`:331-336`), `validate_top_level_data` (`:233-239`), plus `ManifestError`/`DataValidationError`/`TemplateResolutionError`. Its own module docstring states it must never import `host_runner` or `anthropic` — a constraint any `discover_regions`/`apply_regions` code sharing this module (or a sibling module importing it) needs to respect if the LLM-driven `discover_regions` stage is factored differently.
+- **Config loading is per-handler, not shared** (analyzer, gap-fill): every `cmd_*` handler independently constructs `config = BRConfig(Path.cwd())` inside its own function body (no shared config instance passed from `main_artifact()`); `cmd_render` resolves `templates_dir = config.project_root / config.artifacts.templates_dir` at `render.py:38`, the single current read site for `ArtifactsConfig.templates_dir` (`config/features.py:378`, default `"artifacts/templates"`) — `cmd_templatize` would follow the same per-handler `BRConfig` construction and, if writing its output under `templates_dir`, would be the first `cli/artifact/` writer to that directory (`render` only reads from it).
+- **Existing dispatch test to extend, current line numbers** (locator, gap-fill, corrects prior citation): `TestArtifactCLIDispatch` lives in `scripts/tests/test_policy_builder_emit.py`, class at `:204`, importing `cmd_policy_builder, main_artifact` at `:15` — confirmed still current under the package split (imports `main_artifact` from the package's `__init__.py`, transparent to the flat-vs-package layout change).
+
 ## Implementation Steps
 
-1. Land FEAT-3036 Phase 1 (`render` + manifest format) — hard dependency.
-2. Implement `apply_regions` + `verify_round_trip` deterministically, driven by a hand-written region map fixture (no LLM in the test path).
-3. Implement `discover_regions` as the LLM stage, fail-closed against the emitted schema.
-4. Add token-literal lifting and the unlifted-literals report.
-5. Wire the subcommand, docs, and the fixture round-trip test.
+1. Implement `apply_regions` + `verify_round_trip` deterministically, driven by a hand-written region map fixture (no LLM in the test path), reusing `build_environment()` (`artifact_templates.py:242-262`) unchanged rather than constructing a separate Jinja2 `Environment`.
+2. Implement `discover_regions` as the LLM stage using schema-forced structured output via `build_blocking_json(json_schema=...)` (Option A — see Decision Rationale above), fail-closed against the emitted schema by replicating `advisor.consult()`'s `issubset` key-check (`advisor.py:267-278`), since `json_schema=` build-time enforcement is Codex-only.
+3. Add token-literal lifting and the unlifted-literals report.
+4. Wire the `templatize` subcommand (`cli/artifact/templatize.py`, registered from `cli/artifact/__init__.py:111`), docs, and the fixture round-trip test.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
@@ -315,6 +334,50 @@ trip to a normalized diff without a matching change in FEAT-3036.
 - **Breaking Change**: No — new subcommand.
 
 ## Verification Notes
+
+_Added by `/ll:verify-issues --check --auto` — 2026-08-24:_
+
+- **Verdict: OUTDATED.** FEAT-3036 landed since the last verification pass
+  (status now `done`, commit `36f097ae7 feat(artifact): add ll-artifact render
+  for FEAT-3036 Phase 1 artifact templates`) and this issue's "hard dependency"
+  premise no longer holds:
+  - `scripts/little_loops/cli/artifact.py` no longer exists as a flat file —
+    FEAT-3036 split it into a package: `cli/artifact/__init__.py` (dispatch),
+    `render.py` (new `cmd_render`/`add_render_parser`), `policy_builder.py`,
+    `design_md.py`. Every `cli/artifact.py:NNN` citation across Proposed
+    Solution, Program Design, and Integration Map (e.g. `:275`, `:301`,
+    `:313`, `:106-150`, `:208-272`, `:132-137`) now points at a nonexistent
+    file/line and needs re-anchoring to the package layout, most likely
+    alongside `cli/artifact/render.py` rather than `policy_builder.py`.
+  - `render()` now exists (`ll-artifact render` / `cmd_render` at
+    `cli/artifact/render.py:27`), contradicting Codebase Research Findings'
+    claim that "FEAT-3036 Phase 1's `render()`... [is] wholly unimplemented."
+    Implementation Step 1 ("Land FEAT-3036 Phase 1 — hard dependency") is
+    satisfied.
+  - `jinja2>=3.1` is now pinned in `scripts/pyproject.toml` with a justifying
+    comment, contradicting the finding that it is "confirmed absent." The
+    Wiring Phase / Integration Map items noting the pin is FEAT-3036's
+    responsibility remain correctly scoped-out, just now actually landed
+    rather than pending.
+  - `ArtifactsConfig.templates_dir` is confirmed present in both
+    `config/features.py:212,378` and `config-schema.json:127,1883` — the
+    Scope Boundary note ("already landed by FEAT-3036") still holds.
+  - `depends_on: [FEAT-3036]` should be reconsidered: the blocking work has
+    shipped, so this issue is very likely unblocked, not merely still
+    "Open"-blocked as `ll-issues show FEAT-3036` status implies without
+    checking dependency semantics — status remains `done`, so `depends_on`
+    already resolves per this repo's status rules; flagging in case the
+    author still intends work sequencing beyond dependency status.
+  - Re-verify `ll-verify-evidence` result unchanged from the prior pass (same
+    single flagged span, `grep -rn templatize scripts/` at Current Behavior
+    line 46, still misattributed to FEAT-3036 by the detector's proximity
+    heuristic — independently re-confirmed the underlying grep still returns
+    nothing). Not re-litigated further; see prior note below.
+
+  **Recommended action**: run `/ll:refine-issue FEAT-3308` to re-anchor every
+  `cli/artifact.py` citation to the new package paths and confirm the
+  Proposed Solution/Program Design sections against the landed `render()`
+  implementation before this issue is picked up for implementation.
 
 _Added by `/ll:verify-issues --check --auto` — 2026-08-23:_
 
@@ -366,6 +429,9 @@ _Added by `/ll:verify-issues --check --auto` — 2026-08-23:_
 
 
 ## Session Log
+- `/ll:reconcile-issue` - 2026-08-24T18:21:58 - `bf2ea761-d864-4b19-8078-67d47afee296.jsonl`
+- `/ll:refine-issue` - 2026-08-24T18:16:50 - `4cf0eddb-35dc-406e-937b-500628a507cf.jsonl`
+- `/ll:verify-issues` - 2026-08-24T18:08:33 - `0ba47155-a1c2-4ae2-a900-cfc8dd2149a3.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-24T16:11:04 - `b85ae83c-887b-4e17-9a4e-1911475585d3.jsonl`
 - `/ll:refine-issue` - 2026-08-24T02:49:23 - `9abc72d4-6fec-4dd7-b8b5-0bb4825d634b.jsonl`
 - `/ll:verify-issues` - 2026-08-24T02:45:59 - `7bc562d1-bc37-48e1-a2c6-eed764be416d.jsonl`

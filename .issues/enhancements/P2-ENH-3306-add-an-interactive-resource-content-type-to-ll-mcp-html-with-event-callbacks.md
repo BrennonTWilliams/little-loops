@@ -29,7 +29,7 @@ Add an interactive-resource content type to `ll-mcp`: resources that resolve to 
 
 **Concrete deliverable (first view):** one `ui://issues/view` resource, linked from the existing `issue_get` tool via `_meta.ui.resourceUri`, whose HTML renders the `issue_get` result (frontmatter table + body) and implements the minimal MCP Apps handshake on the view side. The "event callbacks" half is scoped to exactly that handshake — receiving `ui/notifications/tool-result` and emitting level-1 (`ui/message`) interactions per ENH-3307; no level-2/3 re-entry into the FSM is built here.
 
-**Dependency decision:** this issue is `blocked_by: ENH-3307` (the contract must exist before the view emits anything). It is deliberately *not* blocked by ENH-3035 / FEAT-3036 — those build the browser-tab `ll-artifact` template kit, a different render target. If ENH-3035 lands first, the view's page shell/token stamping should adopt the kit; otherwise the template stays a small standalone file (`related:` only).
+**Dependency decision:** this issue is `blocked_by: ENH-3307` (the contract must exist before the view emits anything). ENH-3035 / FEAT-3036 are deliberately excluded from that edge — those build the browser-tab `ll-artifact` template kit, a different render target. If ENH-3035 lands first, the view's page shell/token stamping should adopt the kit; otherwise the template stays a small standalone file (`related:` only).
 
 ## Current Behavior
 
@@ -74,6 +74,7 @@ Add an interactive-resource content type to `ll-mcp`: resources that resolve to 
 - `scripts/little_loops/mcp_server/templates/issues-view.html` — **new** package-data file: the view HTML + inline JS handshake
 - `scripts/little_loops/mcp_server/tools.py:601` — add `_meta={"ui": {"resourceUri": "ui://issues/view"}}` to the `issue_get` tool definition; no `types.Tool(...)` call site in this codebase sets a `meta`/`_meta` field today (the only other `_meta` handling, `tasks.py:280`, reads a client-supplied request `_meta`, not a server-declared `Tool._meta`) — this is new ground, not an extension of an existing pattern. Confirm the SDK 2.0.0 `Tool` field name (`meta` vs `_meta` alias) via the learning test before writing it
 - `scripts/pyproject.toml` — ensure `mcp_server/templates/*.html` is included in package data
+  > ⚠ Superseded — plain glob insufficient; needs `hatch_build.py` wiring, see § Codebase Research Findings under Integration Map
 
 ### Dependent Files (Callers/Importers)
 
@@ -118,6 +119,12 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 - N/A — no new config knob is implied by this issue's scope; existing `mcp.resources.*` keys (`config-schema.json:629-650`) scope enumeration for the existing kinds only
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-24 — based on codebase analysis:_
+
+- `scripts/pyproject.toml` package-data for `mcp_server/templates/*.html` cannot be a plain static `force-include` glob addition: `pyproject.toml:210-215` documents that this repo already needed a custom Hatchling build hook (`hatch_build.py`) for package-data inclusion, specifically because Hatchling's `force-include` table hard-fails at build-config time when a referenced path doesn't exist in-place — called out there for the analogous `skills/` package-data case. Since `scripts/little_loops/mcp_server/templates/` does not exist in the repo today (confirmed absent), the new `issues-view.html` template's inclusion needs to go through the same `hatch_build.py` mechanism rather than a bare glob entry, or the build will fail exactly the way that comment describes. `hatch_build.py` should be added to the Files to Modify list alongside `pyproject.toml`.
+
 ## Program Design
 
 ### Types
@@ -152,7 +159,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 - Out of scope: building ahead of host support; land the plumbing but do not invest in host-specific rendering workarounds while `io.modelcontextprotocol/ui` adoption remains rare.
 - Out of scope: client capability negotiation (`client_supports_apps()` / `MCPServer(extensions=[...])`) — entries are advertised unconditionally; negotiation is a follow-up if a real host needs it.
 - Out of scope: level-2/level-3 interactions (`tools/call` from the view, FSM re-entry) — the first view is level-1 notify only.
-- Out of scope: depending on the `ll-artifact` template kit (ENH-3035) or the artifact-templates design (FEAT-3036); adopt the kit opportunistically if it lands first.
+- Out of scope: taking on the `ll-artifact` template kit (ENH-3035) or the artifact-templates design (FEAT-3036) as a prerequisite; adopt the kit opportunistically if it lands first.
 
 ## Scope
 
@@ -175,7 +182,16 @@ Open — blocked by ENH-3307 (contract doc must exist before the view's messagin
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-08-24T18:20:18 - `bf2ea761-d864-4b19-8078-67d47afee296.jsonl`
 - `/ll:confidence-check` - 2026-08-24T01:05:48 - `b39154ec-0980-409b-84ab-ed4ad74fd627.jsonl`
 - `/ll:wire-issue` - 2026-08-24T00:58:35 - `4cd71d49-8da8-4dc9-852e-8f17b59fed46.jsonl`
 - `/ll:refine-issue` - 2026-08-24T00:51:42 - `9c480c31-6e54-4a77-8e21-d400559417c0.jsonl`
 - `/ll:format-issue` - 2026-08-24T00:04:16 - `9d912d1c-def8-4ac1-b2d0-73ed036e9de0.jsonl`
+
+## Documentation
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-24 — based on codebase analysis:_
+
+- Stale line reference: the issue's Integration Map cites `docs/reference/CLI.md:4773-4783` for the `ll-mcp` resources-capability paragraph; as of this pass it now resolves to lines 4800-4808 (doc drift since the last refine pass). Verify the current line range before editing rather than trusting the cited numbers.
