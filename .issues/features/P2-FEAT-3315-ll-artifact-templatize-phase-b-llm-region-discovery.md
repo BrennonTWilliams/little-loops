@@ -17,6 +17,12 @@ labels:
 - ll-artifact
 - templates
 decision_needed: false
+confidence_score: 85
+outcome_confidence: 70
+score_complexity: 10
+score_test_coverage: 25
+score_ambiguity: 10
+score_change_surface: 25
 ---
 
 # FEAT-3315: `ll-artifact templatize` Phase B: LLM region discovery
@@ -334,12 +340,24 @@ _Added by `/ll:refine-issue` — 2026-08-24 — based on codebase analysis:_
 - `.issues/features/P2-FEAT-3314-ll-artifact-templatize-phase-a-deterministic-templating.md` — dependency (Phase A)
 - `.issues/features/P3-FEAT-3036-artifact-templates-design.md` — design hub
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-08-24_
+
+**Readiness Score**: 85/100 → PROCEED WITH CAUTION
+**Outcome Confidence**: 70/100 → MODERATE
+
+### Concerns
+- AC #2 is marked `⚠ Superseded — load_regions() rejects data/data_schema keys today`: the Codebase Research Findings section confirms `load_regions()`'s `_MAP_ALLOWED_KEYS` check hard-rejects a `data`/`data_schema`-bearing payload, directly contradicting AC #2's "routed through FEAT-3314's `load_regions()`" requirement. The Wiring Phase section names two candidate resolutions (strip `data`/`data_schema` before calling `load_regions()`, or loosen `load_regions()`'s allowed-key set) but does not select one — this must be decided before AC #2 can be implemented as written.
+- `stale_cli_flag` flagged `ll-config show (no such subcommand)` in the Codebase Research Findings' claim about `to_dict()`/`ll-config show` output — verify or correct this claim before relying on it.
+
 ## Status
 
 **Open** | Created: 2026-08-24 | Priority: P2
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-24T21:15:01 - `f6542b25-721a-49ab-ba69-b9d4746b6ed4.jsonl`
 - `/ll:wire-issue` - 2026-08-24T21:10:03 - `bf6a3113-6115-4098-8fb1-1cdb2c5eeb4c.jsonl`
 - `/ll:refine-issue` - 2026-08-24T20:56:38 - `de9e1af4-5c22-4ebf-87ee-74fb60da3cea.jsonl`
 - `/ll:refine-issue` - 2026-08-24T18:58:03 - `ffa41e96-ab11-4f72-8513-f6153385423a.jsonl`
