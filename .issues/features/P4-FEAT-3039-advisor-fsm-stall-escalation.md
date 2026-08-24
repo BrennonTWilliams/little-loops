@@ -74,17 +74,42 @@ verdict to a prompt-repair state instead of another refine iteration.
 ## Proposed Solution
 
 Add `advisor_consult` alongside the existing evaluator types in
-`fsm/evaluators.py` (registered in the dispatch at `evaluators.py:~1830-1944`,
-where `score_stall` and friends are wired), delegating to
-`consult_for_trigger()` (FEAT-3116) with the signal derived from the state
-that routed into it — never calling `little_loops.advisor.consult()`
-directly, per the exclusivity contract settled 2026-08-23 (see Scope
-Boundary).
+`fsm/evaluators.py` (registered in the dispatch `elif` chain where
+`score_stall` and friends are wired — `score_stall` now at
+`evaluators.py:1833`), delegating to `consult_for_trigger()` (FEAT-3116,
+landed — `advisor.py:451`) — never calling
+`little_loops.advisor.consult()` directly, per the exclusivity contract
+settled 2026-08-23 (see Scope Boundary).
 
-Verdict mapping: the evaluator's routable verdict comes from a configurable
-map on the state (e.g. `proceed` / `revise` / `abort`), with `confidence`
-surfaced in `details` for threshold routing. Falling back to a neutral verdict
-on consult failure keeps a failed consult from stranding the loop.
+**Trigger gating (settled 2026-08-24)**: `consult_for_trigger()` gates on
+`trigger in config.advisor.triggers` *and* passes the trigger through as the
+consult signal. Deriving the trigger from the routing state's name would
+force users to allowlist every state name in `advisor.triggers` and would
+otherwise silently skip (`trigger_not_allowed` → neutral verdict). The
+evaluator therefore always gates under the fixed trigger **`"loop_stall"`**
+(already the example in config-schema's `triggers` description); the routing
+state's name is carried in the assembled question/context and in
+`EvaluationResult.details["state"]`, not as the trigger. The optional
+`signal` config field overrides the trigger for advanced cases; whatever it
+names must then appear in `advisor.triggers` or the consult skips.
+
+**Verdict mapping (settled 2026-08-24)**: `AdvisorVerdict` carries only
+free-text `recommendation` plus `confidence`/`risks`/`dissent` — there is no
+closed-set field to map through `verdict_map`. The evaluator injects
+`verdict_map`'s keys into the consult question as the allowed decision set
+("Answer with exactly one `decision` from: proceed, revise, abort") and
+parses the decision out of the structured response; `verdict_map` then maps
+decision → FSM verdict. A response naming no known decision (or any parse
+failure) falls back to the configured neutral verdict. Either way
+`confidence` is surfaced in `details` for threshold routing, and a failed
+consult never strands the loop.
+
+**Per-state timeout (settled 2026-08-24)**: neither `consult_for_trigger()`
+nor `consult()` accepts a timeout parameter — the timeout comes from
+`config.advisor.timeout_seconds`. An optional per-state `timeout` is applied
+by overriding `timeout_seconds` on a *copied* config object before the
+`consult_for_trigger` call (the `cli/advise.py` direct-mutation pattern,
+applied to a copy so the ambient config is untouched).
 
 Budget and signal accounting flow through FEAT-3038's `should_consult` /
 `record_consult`, so loop-driven consults count against the same per-task cap.
@@ -96,11 +121,11 @@ Determinism: consults stay excluded from the resume/replay input hash
 
 ### Types
 
-- `AdvisorConsultConfig: {question: str, context_from: list[str], verdict_map: dict[str, str], signal: str | None}`
+- `AdvisorConsultConfig: {question: str, verdict_map: dict[str, str], signal: str | None (default "loop_stall"), timeout: int | None, context_from: list[str] | None}` — these five keys must land in `EvaluateConfig` and `fsm-loop-schema.json` together (lockstep test, see Tests)
 
 ### Signatures
 
-- `evaluate_advisor_consult(output: str, *, question: str, verdict_map: dict[str, str], signal: str, timeout: int) -> EvaluationResult`
+- `evaluate_advisor_consult(output: str, *, question: str, verdict_map: dict[str, str], signal: str | None, timeout: int | None, context_from: list[str] | None, state_name: str) -> EvaluationResult`
 - `_advisor_context(state_name: str, output: str, details: dict) -> str`
 
 ### Call Path
@@ -126,7 +151,7 @@ Determinism: consults stay excluded from the resume/replay input hash
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/little_loops/fsm/fsm-loop-schema.json` — add `advisor_consult` to
   the `evaluateConfig.type` enum and add `question`/`verdict_map`/`signal`/
-  `timeout` to `evaluateConfig.properties`. Hard lockstep requirement, not
+  `timeout`/`context_from` to `evaluateConfig.properties`. Hard lockstep requirement, not
   optional: `test_schema_json_evaluate_config_properties_match_dataclass_fields`
   (`test_fsm_schema.py:261-277`) asserts this JSON schema's property keys
   exactly equal `EvaluateConfig`'s dataclass field names — adding the new
@@ -233,24 +258,40 @@ _Added by `/ll:refine-issue` — 2026-08-08 — based on codebase analysis:_
   `_is_llm_judged()`@165-181, `info.py` `_EVALUATE_TYPE_DISPLAY`@1443/
   `score_stall`@1452) were re-verified and remain accurate.
 
+_Anchor refresh — 2026-08-24 (pre-implementation review):_
+
+- `fsm/schema.py` `EvaluateConfig.type` Literal is now at **lines 86-102**
+  (15 types, `classify` last) — the 77-93 figures below are stale.
+- `fsm/evaluators.py` is now 1898 lines; the dispatch `elif` chain ends well
+  before the previously cited 2005 — `score_stall` dispatch is at **:1833**.
+- `cli/loop/info.py` `_EVALUATE_TYPE_DISPLAY`: `score_stall` entry now at
+  **:1463**.
+- `_base.py` anchors still hold: `NON_LLM_EVALUATOR_TYPES`@65,
+  `_is_llm_judged()`@168.
+- `AdvisorConfig` gained `max_consults_per_task: int = 3` (FEAT-3116) — now
+  7 fields.
+- `consult_for_trigger()` (`advisor.py:451`) signature:
+  `(trigger, *, question, context="", config=None, main_host=None,
+  main_model=None, manual=False) -> ConsultOutcome`; `ConsultOutcome`
+  carries `verdict: AdvisorVerdict | None` and `skipped_reason` ∈
+  `{disabled, trigger_not_allowed, budget_exhausted, not_configured,
+  floor_violation, failed, timeout}` — the evaluator's neutral-verdict
+  fallback maps every non-`None` `skipped_reason` uniformly.
+
 ### Wiring Phase (added by `/ll:wire-issue`)
 
 _These touchpoints were identified by wiring analysis and must be included in the implementation:_
 
-- **Sequencing blocker**: `little_loops.advisor.consult()`, `AdvisorVerdict`,
-  `AdvisorConfig`, `should_consult`, `resolve_task_key`, and `record_consult`
-  do not exist in `scripts/little_loops/advisor.py` yet — as of this pass it
-  contains only `MODEL_RANKS`/`rank_model`/`check_floor` (FEAT-3108).
-  `FEAT-3038` (this issue's `depends_on` entry) carries `status: done` in its
-  frontmatter, but its own Session Log records it was decomposed into
-  FEAT-3116 (budget/task-identity), FEAT-3117 (confidence_gate wiring), and
-  FEAT-3118 (pre_done wiring) — all currently open. `evaluate_advisor_consult`
-  cannot be implemented or tested against real symbols until at least
-  FEAT-3116 lands `should_consult`/`record_consult` and FEAT-3044 lands
-  `consult()`. [Agent 3 finding]
+- **Sequencing blocker — RESOLVED 2026-08-24**: FEAT-3044, FEAT-3116,
+  FEAT-3117, FEAT-3118, and FEAT-3120 are all `done`.
+  `scripts/little_loops/advisor.py` now ships `consult()` (`:190`),
+  `AdvisorVerdict` (`:162`), `resolve_task_key` (`:338`), `record_consult`
+  (`:378`), `should_consult` (`:408`), and `consult_for_trigger` (`:451`,
+  returning `ConsultOutcome`). No dependency blocks implementation.
 - Update `scripts/little_loops/fsm/fsm-loop-schema.json` — add
   `advisor_consult` to `evaluateConfig.type`'s enum and add
-  `question`/`verdict_map`/`signal`/`timeout` to `evaluateConfig.properties`,
+  `question`/`verdict_map`/`signal`/`timeout`/`context_from` to
+  `evaluateConfig.properties`,
   in the same change as the `EvaluateConfig` dataclass fields (hard lockstep
   gate, see Tests).
 - Update `_is_llm_judged()` in
@@ -270,11 +311,17 @@ _These touchpoints were identified by wiring analysis and must be included in th
    through the ordinary transition table — no new schema key is introduced.
 4. A failed, timed-out, or budget-exhausted consult returns the configured
    neutral verdict; the loop never strands.
-5. Loop-driven consults increment the FEAT-3038 per-task counter and carry a
-   signal naming the routing state.
+5. Loop-driven consults increment the FEAT-3038 per-task counter and are
+   gated/recorded under the fixed `loop_stall` trigger (or the state's
+   explicit `signal` override); the routing state's name is carried in the
+   consult context and in `EvaluationResult.details`, not as the trigger.
 6. `ll-loop validate` accepts the type, and MR-1 does not flag a
    stall-evaluator→advisor route as an unpaired LLM judgment.
-7. A resumed run does not re-issue a consult recorded before the resume point.
+7. A resumed run does not re-bill an unbounded number of consults: consults
+   stay excluded from the resume/replay input hash, and `record_consult`'s
+   per-task budget (`max_consults_per_task`) bounds re-execution across
+   resumes. At most one additional consult per resume of an advisor state is
+   acceptable; no state-level consult cache is required.
 8. `python -m pytest scripts/tests/`, `ruff check scripts/`, and
    `python -m mypy scripts/little_loops/` pass.
 
@@ -376,6 +423,12 @@ is a hard blocker for correctness, not just a minor deduction. Re-run this
 check after `FEAT-3044` and `FEAT-3116` (at minimum) reach `done`.
 
 - 2026-08-16: `depends_on` lists FEAT-3044 (done), FEAT-3038 (done), FEAT-3120 (open), FEAT-3116 (open). FEAT-3038 was decomposed into FEAT-3116/FEAT-3117/FEAT-3118, all of which are still `status: open` — so despite FEAT-3038 itself showing `status: done` in frontmatter, the real successor work it was split into is NOT done, meaning this issue's actual blockers (FEAT-3120, FEAT-3116, and transitively FEAT-3117/FEAT-3118) remain unresolved. Verdict: DEP_ISSUES.
+
+_Update 2026-08-24: **superseded.** All listed dependencies (FEAT-3044,
+FEAT-3116, FEAT-3117, FEAT-3118, FEAT-3120) are `done` and every required
+symbol exists in `advisor.py` (see the resolved sequencing-blocker note under
+Wiring Phase). The STOP recommendation and the 2026-08-16 DEP_ISSUES verdict
+above no longer apply — the issue is implementable now._
 
 ## Session Log
 - `/ll:verify-issues` - 2026-08-16T16:40:26 - `688cfc38-322a-447f-94a0-315f2c2aee33.jsonl`

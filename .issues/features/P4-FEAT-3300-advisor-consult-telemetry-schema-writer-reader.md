@@ -12,11 +12,11 @@ depends_on:
 labels:
 - planning-hub
 verify_verdict: VALID
-confidence_score: 95
-outcome_confidence: 89
-score_complexity: 14
+confidence_score: 98
+outcome_confidence: 87
+score_complexity: 13
 score_test_coverage: 25
-score_ambiguity: 25
+score_ambiguity: 24
 score_change_surface: 25
 relates_to:
 - FEAT-3040
@@ -66,9 +66,11 @@ Decomposed from FEAT-3040: Advisor consult telemetry in history.db.
 
 1. `CREATE TABLE IF NOT EXISTS advisor_consults` — append a new DDL entry to
    `_MIGRATIONS` in `session_store/schema.py` (the append *is* the version
-   bump, `SCHEMA_VERSION` 38 -> 39; the top-of-file constant is
-   documentation-only). Register the table in `VALID_KINDS` (`:23-47`) and
-   `_KIND_TABLE` (`:49-73`); exclude it from `_REBUILD_TABLES`/
+   bump, current `SCHEMA_VERSION` N -> N+1 — **44 -> 45 as of 2026-08-24**
+   (`schema.py:25`); do not hardcode 38/39 from earlier drafts; the
+   top-of-file constant is documentation-only). Register the table in
+   `VALID_KINDS` (`:27`) and
+   `_KIND_TABLE` (`:53`); exclude it from `_REBUILD_TABLES`/
    `_REBUILD_SEARCH_KINDS` (it's live-write-only, no JSONL source — document
    the exclusion per the `hook_events` comment pattern at `:668-673`).
 2. `write_advisor_consult` in `session_store/writers.py`. Resolve the writer
@@ -86,20 +88,34 @@ Decomposed from FEAT-3040: Advisor consult telemetry in history.db.
    `consult_stats(db_path, *, days=30)` in `history_reader.py`, following the
    `_row_to_dataclass` + `_<NAME>_COLUMNS` convention (e.g.
    `_VERDICT_EVENT_COLUMNS` at `:2980-2983`).
-4. Verdict-body opt-in (AC 6): design and land the config surface. No
+4. Verdict-body opt-in (AC 5): design and land the config surface. No
    existing precedent gates a single column while writing the rest of the
    row — every current `analytics.capture.*` toggle is whole-row/whole-table.
-   Add a new `AdvisorConfig` field (`config/orchestration.py:107-137`, flat
+   Add a new `AdvisorConfig` field (`config/orchestration.py:109-140`, flat
    dataclass with an explicit `from_dict` mapping — add both the field and
    the `data.get(...)` line) plus a matching property in the `advisor` block
-   of `config-schema.json` (`:1647-1684`, `additionalProperties: false`, so a
+   of `config-schema.json` (now ~`:1770-1815`, `triggers` at `:1801`;
+   `additionalProperties: false`, so a
    new key must be declared or validation rejects it).
+5. **Call-site wiring (added to scope 2026-08-24)**: FEAT-3044/FEAT-3116/
+   FEAT-3120 all landed *without* telemetry (the table didn't exist), and no
+   other open issue owns the call site — FEAT-3301 is reporting-only. Wire
+   `write_advisor_consult` into `consult_for_trigger()`
+   (`advisor.py:451`), the contractual single caller of `consult()`, so one
+   edit covers every outcome: write exactly one row per invocation —
+   issued, every `skipped_reason`, failed, and timeout. Measure latency as
+   wall-clock around the `consult()` call inside `consult_for_trigger`;
+   `consult()`/`AdvisorVerdict` currently expose no latency or token usage
+   (confirmed by grep), so the token columns stay nullable and NULL until a
+   host surfaces usage — do **not** extend the host transport in this
+   issue. The write is fail-soft and never affects the returned
+   `ConsultOutcome`.
 
 ## Program Design
 
 ### Types
 
-- `AdvisorConsultRow: {id: int, ts: str, session_id: str, task_key: str, signal: str, advisor_host: str, advisor_model: str, main_model: str, floor_status: str, outcome: Literal["issued", "skipped_budget", "skipped_floor", "failed", "timeout"], latency_ms: int | None, input_tokens: int | None, output_tokens: int | None, confidence: float | None}`
+- `AdvisorConsultRow: {id: int, ts: str, session_id: str, task_key: str, signal: str, advisor_host: str, advisor_model: str, main_model: str, floor_status: str, outcome: Literal["issued", "disabled", "trigger_not_allowed", "budget_exhausted", "not_configured", "floor_violation", "failed", "timeout"], latency_ms: int | None, input_tokens: int | None, output_tokens: int | None, confidence: float | None}` — the non-`"issued"` values mirror the shipped `ConsultOutcome.skipped_reason` Literal (`advisor.py`, FEAT-3116) **verbatim**; do not invent a second vocabulary (the earlier draft's `skipped_budget`/`skipped_floor` predates FEAT-3116 landing)
 - `ConsultStats: {by_signal: dict[str, int], total: int, total_tokens: int, skipped: int}`
 
 ### Signatures
@@ -110,21 +126,18 @@ Decomposed from FEAT-3040: Advisor consult telemetry in history.db.
 
 ### Call Path
 
-Future (post FEAT-3044): `little_loops.advisor.consult` -> `write_advisor_consult` -> `.ll/history.db`
-
-This issue's actual, testable-now call path: test code -> `write_advisor_consult`
--> `.ll/history.db`, following the same fail-soft insert shape as the existing
+`consult_for_trigger` (`advisor.py:451`) -> `write_advisor_consult` ->
+`.ll/history.db`, following the same fail-soft insert shape as the existing
 `record_context_pressure_event` (`writers.py:1692-1753`) — `conn = None` before
 `try`, `except sqlite3.Error: logger.warning(..., exc_info=True); return False`,
 `finally: conn.close()`.
 
-**Note**: `little_loops.advisor.consult()` is prospective — FEAT-3044 hasn't
-landed `advisor.py` yet. Wiring the actual call site (and the FEAT-3116
-budget/floor skip-recording call site) is explicitly **out of scope for this
-issue** and deferred until FEAT-3044/FEAT-3116 land; this issue delivers a
-standalone, directly-testable table/writer/reader that those issues call into
-once they exist. AC1 below is scoped accordingly: exercised via direct writer
-calls in tests, not end-to-end through a live `consult()`.
+**Note (updated 2026-08-24)**: the earlier draft deferred call-site wiring to
+"FEAT-3044/FEAT-3116's job" — both are now `done` and (necessarily) shipped
+without it, so this issue owns the wiring (Proposed Solution step 5).
+`consult_for_trigger()` is the single choke point per FEAT-3116's exclusivity
+contract, so it is the sole call site. AC1 is exercised both via direct
+writer calls in tests and through a mocked-host `consult_for_trigger` path.
 
 ### Codebase Research Findings
 
@@ -198,9 +211,9 @@ _These touchpoints were identified by wiring analysis and must be included in th
 ## Acceptance Criteria
 
 1. `write_advisor_consult` produces exactly one `advisor_consults` row per
-   call, including an `outcome` value distinguishing issued from
-   budget/floor/failure skips. (Exercised directly in tests — wiring the real
-   `consult()` call site is FEAT-3044/FEAT-3116's job, not this issue's.)
+   call, with `outcome` drawn verbatim from `"issued"` +
+   `ConsultOutcome.skipped_reason`'s Literal values. (Exercised directly in
+   tests and via `consult_for_trigger` with a mocked host — see AC 7.)
 2. The table is created on a fresh DB and added cleanly to a pre-existing DB
    without data loss.
 3. A DB write failure logs and is dropped — it does not raise into the
@@ -210,7 +223,12 @@ _These touchpoints were identified by wiring analysis and must be included in th
 5. The verdict body is absent from the DB unless the opt-in is set.
 6. No automatic pruning or compaction of these rows is added; deletion
    remains a manually-run CLI action (no code required — verify none exists).
-7. `python -m pytest scripts/tests/`, `ruff check scripts/`, and
+7. `consult_for_trigger()` writes exactly one row per invocation — issued,
+   every `skipped_reason`, failed, or timeout — with wall-clock `latency_ms`
+   populated for issued consults; token columns remain NULL (no host usage
+   surface yet); a failing write never raises into or alters the returned
+   `ConsultOutcome`.
+8. `python -m pytest scripts/tests/`, `ruff check scripts/`, and
    `python -m mypy scripts/little_loops/` pass.
 
 ## Integration Map
@@ -225,6 +243,10 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - `scripts/little_loops/config/orchestration.py` — `AdvisorConfig`
   verdict-body opt-in field.
 - `scripts/little_loops/config-schema.json` — matching `advisor.*` property.
+- `scripts/little_loops/advisor.py` — `consult_for_trigger()` (`:451`) gains
+  the single `write_advisor_consult` call site (Proposed Solution step 5,
+  added to scope 2026-08-24) plus wall-clock latency measurement around
+  `consult()`.
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/little_loops/session_store/__init__.py:104-149,151-239` —
@@ -304,9 +326,12 @@ in-tree precedent for this issue's scope boundary with FEAT-3301.
   `test_advisor_consults_columns`, `test_advisor_consults_indexes_exist`,
   `test_v38_db_upgrade_gains_advisor_consults`, `test_kind_registration`,
   `test_excluded_from_rebuild`, `test_not_kindless`. Bump `SCHEMA_VERSION`
-  38 -> 39 and all 16 `assert SCHEMA_VERSION == 38` literals in this file
-  (lines 650, 664, 716, 812, 1034, 1075, 1413, 1453, 1497, 1547, 1619, 1679,
-  1747, 1812, 1880, 1925) — mechanical but file-wide.
+  N -> N+1 (44 -> 45 as of 2026-08-24) and sweep every hardcoded
+  `assert SCHEMA_VERSION == N` literal **by grep, not by the stale line
+  lists in this file** — as of 2026-08-24: 20 in this file, 5 in
+  `test_session_store_writers.py` (incl. one non-symbolic
+  `int(row[0]) == N`), 1 in `test_assistant_messages.py`. Mechanical but
+  file-wide.
 - `scripts/tests/test_session_store_writers.py` — new
   `TestRecordAdvisorConsult` class. If idiom (b) is chosen, follow
   `TestRecordContextPressureEvent.test_graceful_when_store_unwritable`
@@ -325,13 +350,20 @@ in-tree precedent for this issue's scope boundary with FEAT-3301.
   author from scratch alongside the config field.
 
 _Wiring pass added by `/ll:wire-issue`:_
-- `scripts/tests/test_session_store_writers.py:470-471,1153,1455,1653` — 4
-  more hardcoded `assert SCHEMA_VERSION == 38` literals (plus a non-symbolic
-  `assert int(row[0]) == 38` at `:471`) outside the 16 already flagged in
-  `test_session_store_schema.py`; bump all to 39 alongside those.
-- `scripts/tests/test_assistant_messages.py:88` — one more `assert
-  SCHEMA_VERSION == 38` literal (`test_schema_version_is_12`, a stale test
-  name from an older schema era) to bump to 39.
+- `scripts/tests/test_session_store_writers.py` — additional hardcoded
+  `SCHEMA_VERSION == N` literals (5 as of 2026-08-24, incl. one
+  non-symbolic `int(row[0]) == N`); the specific line numbers from the
+  original draft are stale — locate by grep and bump alongside the schema
+  test sweep above.
+- `scripts/tests/test_assistant_messages.py` — one more `assert
+  SCHEMA_VERSION == N` literal (`test_schema_version_is_12`, a stale test
+  name from an older schema era) in the same sweep.
+- `scripts/tests/test_advisor.py` — new tests for the
+  `consult_for_trigger` call-site wiring (Proposed Solution step 5 / AC 7):
+  mocked-host issued path writes one row with `latency_ms` set; each
+  skip/failure path writes one row with the matching `outcome`; a patched
+  failing `write_advisor_consult` does not alter the returned
+  `ConsultOutcome`.
 - `scripts/tests/test_ll_session.py` — existing per-`VALID_KINDS`-entry
   acceptance-test pattern (`test_recent_kind_learning_test_accepted:340`,
   `test_recent_kind_subagent_run_accepted:361`,
@@ -415,6 +447,29 @@ _Added by `/ll:refine-issue` — 2026-08-23 — based on codebase analysis:_
   ALTER — the new `advisor_consults` CREATE TABLE entry appends there to
   become v39.
 
+_Anchor refresh — 2026-08-24 (pre-implementation review; supersedes the
+version-specific figures above):_
+
+- `SCHEMA_VERSION` is now **44** (`schema.py:25`) — this issue lands **v45**.
+  Every "38 -> 39" figure in earlier sections is stale; treat the bump as
+  N -> N+1 and sweep test literals by grep (counts: 20 / 5 / 1, see Tests).
+- `VALID_KINDS` now starts at `schema.py:27`; `_KIND_TABLE` at `:53`.
+- `AdvisorConfig` (`config/orchestration.py:109-140`) now has **7 fields** —
+  `max_consults_per_task: int = 3` was added by FEAT-3116 — so the
+  verdict-body opt-in lands as the **8th** field, and the "6 fields / 7th
+  scalar field" phrasing above is stale. `config-schema.json`'s `advisor`
+  block moved to ~`:1770-1815` (`triggers` at `:1801`);
+  `additionalProperties: false` still confirmed.
+- FEAT-3044/FEAT-3116/FEAT-3120 are `done`: `consult()`, `AdvisorVerdict`,
+  `consult_for_trigger()`, `should_consult`, `record_consult`,
+  `resolve_task_key` all exist in `advisor.py`. `ConsultOutcome.skipped_reason`
+  values are `disabled | trigger_not_allowed | budget_exhausted |
+  not_configured | floor_violation | failed | timeout` — the row `outcome`
+  enum mirrors these verbatim (see Types).
+- `consult()`/`AdvisorVerdict` capture **no latency or token usage**
+  (grep-confirmed) — latency is measured at the `consult_for_trigger` call
+  site; token columns stay NULL until a host surfaces usage.
+
 ## Impact
 
 - **Priority**: P4 — pure observability. Nothing depends on it, but it makes
@@ -435,6 +490,7 @@ _Added by `/ll:refine-issue` — 2026-08-23 — based on codebase analysis:_
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-24T15:09:16 - `ef749c15-ddb1-464a-b14c-0fa8179bf893.jsonl`
 - `/ll:confidence-check` - 2026-08-23T18:13:52 - `e0525866-2b9f-414b-a9af-4d4eaed8dd5c.jsonl`
 - `/ll:verify-issues` - 2026-08-23T18:12:26 - `8d2ef6d7-3cb8-4361-a1f1-13b1e34ddf40.jsonl`
 - `/ll:refine-issue` - 2026-08-23T18:07:46 - `566c27e8-dca1-40cd-b847-431a80e3f740.jsonl`
