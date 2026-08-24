@@ -87,10 +87,14 @@ _TYPE = r"[\w.]+(?:" + _SUBSCRIPT + r")?(?:\s*\|\s*[\w.]+(?:" + _SUBSCRIPT + r")
 
 # Leading bullet + optional backtick fence, trailing backtick + punctuation.
 _LEAD = r"^[ \t]*(?:[-*+][ \t]+)?`?"
-# Trailing backtick, optional punctuation, and an optional separator-delimited
-# description clause (` — does a thing`). The separator is mandatory for the
-# description branch so a bare sentence containing parens still fails to match.
-_TAIL = r"`?[ \t]*[.:;]?[ \t]*(?:(?:—|--|–|:)[ \t]*\S.*)?$"
+# A trailing parenthesized citation, e.g. `` (`advisor.py:190`) ``, sitting between the
+# signature and its description clause — a convention issues commonly use to anchor a
+# signature to its exact file:line.
+_CITATION = r"(?:[ \t]*\([^()]*\))?"
+# Trailing backtick, optional citation, optional punctuation, and an optional
+# separator-delimited description clause (` — does a thing`). The separator is mandatory
+# for the description branch so a bare sentence containing parens still fails to match.
+_TAIL = r"`?" + _CITATION + r"[ \t]*[.:;]?[ \t]*(?:(?:—|--|–|:)[ \t]*\S.*)?$"
 
 # Call-shaped: `def foo(a: int) -> Bar`, `Class.method(self, x)`, `foo() -> None`.
 _SIG_CALL = re.compile(

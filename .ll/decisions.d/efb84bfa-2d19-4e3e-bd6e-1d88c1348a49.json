@@ -1,0 +1,12 @@
+{
+  "id": "b114ffa7-9898-4b06-ac3d-c8470dab136e",
+  "type": "decision",
+  "timestamp": "2026-08-24T02:30:02Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Option B's fail-soft-to-empty-result contract contradicts the fail-closed-against-emitted-schema requirement; Option A's BlockingJsonError raise-on-mismatch is the codebase's only precedent that fails loud.",
+  "rule": "Option A: schema-forced structured output via build_blocking_json(json_schema=...), matching advisor.consult()'s raise-on-mismatch contract",
+  "scope": "issue",
+  "alternatives_rejected": "Option B: prompt-embedded schema with regex-scraped envelope (learning_tests/extractor.py), silently degrades to empty result on failure",
+  "issue": "FEAT-3308"
+}

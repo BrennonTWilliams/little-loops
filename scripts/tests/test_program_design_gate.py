@@ -215,6 +215,27 @@ class TestSignatureShape:
         ):
             assert parse_signature_lines(line), line
 
+    def test_accepts_file_line_citation_before_description(self) -> None:
+        """A `` (`file.py:12-34`) `` citation between the signature and its
+        em-dash description must not break the match — this is a common
+        issue-authoring convention (FEAT-3121's confidence-check pass) and
+        previously caused every signature line in an otherwise well-specified
+        section to read as non-specific.
+        """
+        from little_loops.issues.program_design import parse_signature_lines
+
+        assert parse_signature_lines(
+            "- `foo(a: int) -> Bar` (`module.py:12-34`) — does a thing"
+        )
+        assert parse_signature_lines("- `x: int` (`module.py:5`) — a field")
+
+    def test_citation_alone_does_not_rescue_a_prose_sentence(self) -> None:
+        from little_loops.issues.program_design import parse_signature_lines
+
+        assert not parse_signature_lines(
+            "It returns a verdict (specific or not) to the caller."
+        )
+
 
 class TestDuplicateCallPathAnchors:
     """A duplicated ``### Call Path`` heading unions anchors rather than breaking.
