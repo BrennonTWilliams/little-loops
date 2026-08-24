@@ -221,8 +221,7 @@ _Added by `/ll:refine-issue` — 2026-08-24 — based on codebase analysis:_
 - `docs/reference/CLI.md` § `ll-artifact` (line ~4455) — new subcommand section
 
 _Wiring pass added by `/ll:wire-issue`:_
-- `scripts/little_loops/config/features.py:369-384` — `ArtifactsConfig` dataclass needs the new templates-directory field alongside `default_output_dir` [Agent 2 finding]
-- `scripts/little_loops/config/core.py:916-918` — `BRConfig.to_dict()`'s `"artifacts": {"default_output_dir": ...}` block must add the new field's key/value, or it's invisible to any code walking `to_dict()`; also see `test_to_dict_values_match_schema_defaults` guard below [Agent 2 finding]
+- ~~`scripts/little_loops/config/features.py:369-384` — `ArtifactsConfig` dataclass needs the new templates-directory field alongside `default_output_dir`~~ / ~~`scripts/little_loops/config/core.py:916-918` — `BRConfig.to_dict()`'s `"artifacts": {"default_output_dir": ...}` block must add the new field's key/value~~ — **FEAT-3036 already landed `artifacts.templates_dir`** in both `config-schema.json` and `ArtifactsConfig`; this issue inherits it and must not re-add it (see Scope Boundary below).
 - `scripts/pyproject.toml:40-51` — add a `jinja2` dependency pin with a justifying comment above it, following the `anthropic` pin's shape (`CLAUDE.md`'s minimize-dependencies rule); confirmed `jinja2` has zero matches anywhere in the repo today [Agent 2/3 finding]
 
 ### Dependent Files (Callers/Importers)
@@ -285,8 +284,7 @@ _Added by `/ll:refine-issue` — 2026-08-24 — based on codebase analysis:_
 
 _These touchpoints were identified by wiring analysis and must be included in the implementation:_
 
-- Add the new templates-directory field to `ArtifactsConfig` (`config/features.py:369-384`) and `config-schema.json` § `artifacts` (`:1870-1880`) together, with matching defaults
-- Update `BRConfig.to_dict()` (`config/core.py:916-918`) to serialize the new field
+- ~~Add the new templates-directory field to `ArtifactsConfig` (`config/features.py:369-384`) and `config-schema.json` § `artifacts` (`:1870-1880`) together, with matching defaults~~ / ~~Update `BRConfig.to_dict()` (`config/core.py:916-918`) to serialize the new field~~ — **already landed by FEAT-3036**; this issue inherits `artifacts.templates_dir`, not re-adds it (see Scope Boundary below).
 - Update `docs/reference/CONFIGURATION.md` § `artifacts` (`:910-924`) — table row, JSON example, and the now-stale "Currently backs the `policy-builder` subcommand" prose
 - Extend `test_config_schema.py::test_artifacts_in_schema` (`:473-491`) for the new field; verify `TestSchemaValueParity.test_to_dict_values_match_schema_defaults` (`:1243-1265`) passes with matching defaults
 - ~~Add a `jinja2` dependency pin to `scripts/pyproject.toml` (`:40-51`) with a justifying comment, following the `anthropic` pin's shape~~ — **FEAT-3036 Phase 1 lands the pin** (it is an acceptance criterion there); this issue inherits it. If Phase 1 has not landed, this issue is blocked, not the place to add the pin.
@@ -360,8 +358,15 @@ _Added by `/ll:verify-issues --check --auto` — 2026-08-23:_
 
 **Open** | Created: 2026-08-23 | Priority: P2
 
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): `artifacts.templates_dir` was already added to `config-schema.json` and `ArtifactsConfig` by FEAT-3036 (done). This issue inherits that field rather than re-adding it — the earlier Wiring Phase / Integration Map entries claiming ownership of it are struck through above. FEAT-3304 owns the separate `artifacts.export` block.
+
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-08-24T16:11:04 - `b85ae83c-887b-4e17-9a4e-1911475585d3.jsonl`
 - `/ll:refine-issue` - 2026-08-24T02:49:23 - `9abc72d4-6fec-4dd7-b8b5-0bb4825d634b.jsonl`
 - `/ll:verify-issues` - 2026-08-24T02:45:59 - `7bc562d1-bc37-48e1-a2c6-eed764be416d.jsonl`
 - `/ll:decide-issue` - 2026-08-24T02:30:33 - `231886c3-196b-4c6d-973f-a50e5f1e0fea.jsonl`

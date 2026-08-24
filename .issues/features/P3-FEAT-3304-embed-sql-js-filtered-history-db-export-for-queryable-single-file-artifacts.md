@@ -12,6 +12,9 @@ relates_to:
 labels:
 - artifact
 - history-db
+depends_on:
+- FEAT-3309
+- ENH-3035
 ---
 
 # FEAT-3304: Embed sql.js + filtered history.db export for queryable single-file artifacts
@@ -63,7 +66,7 @@ source with a variable number of sections needs loops. Jinja2 is boring,
 ubiquitous, sandboxable (`SandboxedEnvironment`), and Python-native.
 `policy-builder` can migrate to it later or stay as-is — for this
 issue, the dashboard template is the first new consumer and is built on
-the shared template kit (per ENH-074), not a copy of `policy-builder`.
+the shared template kit (per ENH-3035), not a copy of `policy-builder`.
 
 **Phased plan.** This issue lands the snapshot tier of the dashboard on
 top of Phase-1 (`render`) plus the export-filter primitive. `extract`/
@@ -168,7 +171,7 @@ live bridge.**
 - A minimal query surface in the page: run a query, render a table,
   and at least one predefined view so the artifact is useful without
   the user writing SQL.
-- Built on the shared template kit (per ENH-074), not a copy of the
+- Built on the shared template kit (per ENH-3035), not a copy of the
   `policy-builder` template.
 
 ## Non-goals
@@ -248,7 +251,7 @@ live bridge.**
       rendered page.
 - [ ] An export exceeding the defined size budget behaves as specified,
       with a test.
-- [ ] The artifact is rendered through the ENH-074 template kit; no
+- [ ] The artifact is rendered through the ENH-3035 template kit; no
       template code is copied from `policy-builder`.
 - [ ] `sql.js` version, source, and license are recorded in-repo.
 - [ ] `.ll/ll-config.json` accepts an `artifacts.export` block — schema updated,
@@ -260,6 +263,11 @@ live bridge.**
 - **ENH-075** — export scope/redaction rules must be decided before
   the export filter is implemented. *Decided 2026-07-31; see Decisions
   section above.*
-- **ENH-074** — should land alongside or just before, so this artifact
+- **ENH-3035** — should land alongside or just before, so this artifact
   is the kit's first consumer rather than a second copy of
   `policy-builder`.
+
+
+## Session Log
+- `/ll:audit-issue-conflicts` - 2026-08-24T16:12:08 - `69c375ac-5c89-44f2-a3fc-ad8aa6520c60.jsonl`
+- `/ll:audit-issue-conflicts` - 2026-08-24T16:09:47 - `e9d09067-3305-47ef-b629-2fdf32a510b0.jsonl`
