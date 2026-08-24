@@ -7,8 +7,7 @@ priority: P3
 status: open
 testable: true
 discovered_date: 2026-08-08
-depends_on:
-- FEAT-3120
+depends_on: []
 labels:
 - planning-hub
 verify_verdict: VALID
@@ -20,6 +19,8 @@ score_ambiguity: 18
 score_change_surface: 25
 size: Small
 reconcile_attempted: true
+relates_to:
+- FEAT-3120
 ---
 
 # FEAT-3121: `/ll:advise` skill wrapping the `ll-advise` CLI
@@ -211,6 +212,11 @@ _Added by `/ll:refine-issue` — 2026-08-08 — based on codebase analysis:_
 - `skills/go-no-go/SKILL.md` (481 lines) confirmed to have **no** advisor/`Bash(ll-advise:*)` reference today — its "second opinion" is produced via same-model `Agent`-tool subagent spawns (`go-no-go/SKILL.md:172-337`), not a distinct advisor host/model. The overlap this issue's Out of Scope section defers to Slice 2 is real and still unresolved as of this research pass. `skills/ll-go-no-go/SKILL.md` is an unrelated 27-line Codex-bridge pointer to the same file, not a second implementation.
 - `scripts/little_loops/cli/doctor.py`'s `CheckResult` dataclass (`doctor.py:54-73`, fields `name/status/note/severity/findings`) is the "structured JSON, never hard-fail" shape this issue's Expected Behavior cites; `severity: Literal["error","informational"]` decides exit-code impact independently of `status` (`doctor.py:60-67`), and `_capability_check_results` (`doctor.py:98-113`) is a deliberately non-`@register_check` function because it needs a resolved `HostRunner` at call time — the same shape `/ll:advise`'s Bash invocation needs for a resolved advisor host.
 
+_Added by `/ll:refine-issue` — 2026-08-24 — based on codebase analysis:_
+
+- `skills/configure/areas.md:862` (not `:849` as previously noted — file has grown since) — the "All ll- commands" preset-tools list. `ll-advise` is **already present** in this list's allow-entries string, alphabetically between `ll-adapt-skills-for-codex` and `ll-artifact`. This issue's remaining work here is unchanged: the *skill's own* `allowed-tools` frontmatter still needs `Bash(ll-advise:*)`, and `/ll:advise` itself still needs adding to any command-catalog list — only the CLI-name entry in this specific preset string was already done as a side effect of FEAT-3120 landing.
+- `docs/reference/COMMANDS.md:1070` (not `:1067`) — the `go-no-go`^ row in the Quick Reference table has shifted by 3 lines; insertion point is still immediately after that row.
+
 ## Acceptance Criteria
 
 1. `/ll:advise` exists at `skills/advise/SKILL.md`, follows the
@@ -251,11 +257,24 @@ _Added by `/ll:refine-issue` — 2026-08-08 — based on codebase analysis:_
 
 - Dependency-chain check (2026-08-08; **corrected 2026-08-23** — the original note was written against a shadow issue tree, see the provenance note at the top of this file): `depends_on: FEAT-3120` is `status: open` with `depends_on: [FEAT-3042, FEAT-3043, FEAT-3108]`. `FEAT-3042` and `FEAT-3043` **do** exist as canonical issue files under `.issues/features/`, both `status: open`; `FEAT-3108` is `done`. The blocking chain for this skill's end-to-end smoke test is therefore ordinary open-issue sequencing (FEAT-3042 → FEAT-3043 → FEAT-3120 → this), not missing tracker entries.
 
+_Added by `/ll:refine-issue` — 2026-08-24 — based on codebase analysis:_
+
+- **FEAT-3120 status correction**: listed above as an Out-of-Scope dependency this skill wraps — it is now `status: done` (landed 2026-08-23, commit `3c9c42b1`), not `open` as the `## Confidence Check Notes` and earlier research passes describe. `blocked_by` is empty and `depends_on: [FEAT-3120]` now resolves per the repo's dependency semantics (`.claude/CLAUDE.md` § Issue File Format: only `done`/`cancelled` resolve `depends_on`), so this issue is no longer blocked on CLI/core availability. The landing-order risk noted in `## Outcome Risk Factors` ("authoring the skill today references a CLI entry point that doesn't exist yet") no longer applies — `scripts/little_loops/cli/advise.py` and `skills/advise/SKILL.md`'s dependency, `scripts/little_loops/advisor.py`'s `consult()`, are both implemented and covered by `scripts/tests/test_cli_advise.py`. A real end-to-end smoke test of `/ll:advise` against the live CLI is now possible, not blocked.
+
 ## Program Design
 
 ### Codebase Research Findings
 
 _Added by `/ll:refine-issue` — 2026-08-08 — based on codebase analysis:_
+
+_Added by `/ll:refine-issue` — 2026-08-24 — based on codebase analysis:_
+
+- **FEAT-3120 has landed** (`status: done`, commit `3c9c42b1`, 2026-08-23). `scripts/little_loops/advisor.py` is now 523 lines with the full `consult()`/`consult_for_trigger()`/budget pipeline implemented, and `scripts/little_loops/cli/advise.py` (150 lines) plus `scripts/tests/test_cli_advise.py` both exist. The `## Confidence Check Notes` and earlier `## Program Design` research below describing these as "not yet implemented" / "113 lines total" is now stale.
+- **Real `ll-advise` CLI flags** (`cli/advise.py:main_advise`, lines 87-149): `--signal` (required, `argparse` `required=True`, no default — confirmed by `test_requires_signal`), `--question` (required), `--context-file` (optional; an `OSError` reading it returns exit `2` before any consult attempt), `--main-host`, `--main-model`, `--host`, `--model`, `--json` (via shared `add_json_arg`).
+- **`consult()`'s real signature** (`advisor.py:190`) includes `main_host: str | None = None` in addition to the fields this issue's Signatures subsection already lists — the prior signature citation omitted it.
+- **Correction — fail-soft output is NOT JSON.** This issue's Call Path and AC 4 assume `ll-advise`'s fail-soft failures surface via a JSON `"error"` key mirroring `cli/harness.py:454-464`. That is not what the shipped CLI does: `cmd_invoke()`'s failure branch (`advise.py:55-61`) looks up `outcome.skipped_reason` in `_SKIP_MESSAGES` (`disabled`, `trigger_not_allowed`, `budget_exhausted`, `not_configured`, `floor_violation`, `failed`, `timeout`), appends `outcome.error` if set, calls `logger.error(message)` (plain stderr text), and exits `2` — **regardless of `--json`**. There is no JSON-shaped error payload on this path; `harness.py`'s `"error"` key pattern lives in a different function (`_report()`, `harness.py:799-818`) that `advise.py` does not follow. `/ll:advise`'s own fail-soft surfacing (Proposed Solution item 4) must read `ll-advise`'s stderr/exit-code-2 text, not parse a JSON error field that will not be present.
+- **Confirmed on the success path**: `AdvisorVerdict`'s dataclass fields match this issue's claimed shape exactly (`recommendation: str`, `risks: list[str]`, `confidence: float`, `dissent: str`, `signal: str`, `host: str`, `model: str`, `advisor.py:161-171`), and `--json` output is exactly those 7 keys (`test_success_prints_exact_json_keys`, `test_cli_advise.py:53-89`).
+- Test coverage for the CLI layer this skill wraps already exists and is not something FEAT-3121 needs to add: `scripts/tests/test_cli_advise.py` covers required `--signal`, the 7-key JSON payload, unwired-host/unconfigured/floor-violation/budget-exhausted fail-soft paths (all exit `2`, no traceback), and manual-mode bypass of `advisor.enabled`. This issue's proposed `scripts/tests/test_advise_skill.py` is still needed, but only for the skill markdown's own frontmatter shape — not for re-testing the CLI.
 
 ### Types
 - `AdvisorVerdict` (target shape, not yet implemented in `advisor.py`) — frozen dataclass: `recommendation: str`, `risks: list[str]`, `confidence: float`, `dissent: str`, `signal: str`, `host: str`, `model: str` (per FEAT-3044's `## API/Interface`; these are the fields `/ll:advise`'s `## Process` must parse out of `ll-advise --json` stdout)
@@ -316,6 +335,8 @@ corrected inline in brackets._
 Corrected in place the two stale claims the provenance note flagged (the shadow-tree "FEAT-3042/FEAT-3043 have no issue files" research note; two "FEAT-3120 is deferred" mentions — it is `open`). Frontmatter `size: Very Large` corrected to `Small`: the deliverable is one skill markdown file plus catalog wiring, matching this issue's own Impact section ("Effort: Small") — the prior value was minted against the shadow tree and would have invited a pointless decomposition pass. Refreshed the plugin.json version note (now 1.156.0).
 
 ## Session Log
+- `/ll:refine-issue` - 2026-08-24T00:20:43 - `68b44843-12dc-4a31-a007-13664d319cc4.jsonl`
+- `/ll:refine-issue` - 2026-08-24T00:20:30 - `2d526007-ac76-47ba-8e11-570bf6448f6e.jsonl`
 - `/ll:verify-issues` - 2026-08-13T03:05:57 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
 - `/ll:confidence-check` - 2026-08-08T20:31:09 - `f7f77e97-8e98-40b1-b864-f9f127450dd0.jsonl`
 - `/ll:reconcile-issue` - 2026-08-08T20:28:55 - `60022333-35ea-4687-9164-fa8ca5988a9f.jsonl`

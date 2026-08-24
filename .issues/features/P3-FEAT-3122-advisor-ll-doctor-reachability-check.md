@@ -17,11 +17,11 @@ labels:
 verify_verdict: VALID
 size: Large
 reconcile_attempted: true
-confidence_score: 50
-outcome_confidence: 58
-score_complexity: 10
-score_test_coverage: 18
-score_ambiguity: 5
+confidence_score: 85
+outcome_confidence: 86
+score_complexity: 18
+score_test_coverage: 25
+score_ambiguity: 18
 score_change_surface: 25
 ---
 
@@ -124,6 +124,12 @@ _Added by `/ll:refine-issue` — 2026-08-10 — based on codebase analysis:_
   repointing**. The prior "Recommended action: repoint depends_on" notes
   below are now moot.
 
+_Added by `/ll:refine-issue` — 2026-08-24 — based on codebase analysis:_
+
+- **Dependency chain now fully resolved (2026-08-23 refine pass)**: `FEAT-3108`, `FEAT-3120`, `FEAT-3043`, and `FEAT-3042` — every ID in this issue's `depends_on` — are all `status: done`. `scripts/little_loops/advisor.py` is now 522 lines and contains `consult()`, `AdvisorVerdict`, `resolve_task_key`, `should_consult`, `consult_for_trigger` in addition to FEAT-3108's `check_floor`/`rank_model`/`MODEL_RANKS`. `resolve_host_named(name: str) -> HostRunner` exists at `host_runner.py:2008-2016` (`return resolve_host({"LL_HOST_CLI": name})`) — the exact "resolve without mutating `LL_HOST_CLI`" primitive this issue's Decision Rules require, and it is not test-only: `consult()` is its one production caller (`advisor.py:265`). `config.advisor` (`AdvisorConfig`, `config/orchestration.py:108-140`) exists with `enabled`/`host`/`model`/`min_tier`/`timeout_seconds`/`triggers`/`max_consults_per_task` fields, exposed via `BRConfig.advisor` (`config/core.py:465-468`). This issue is no longer blocked by any missing primitive.
+- **`cli/doctor.py` now registers 6 default checks, not 5** (`docs/reference/CLI.md:319` — a "Schema Drift" check, `_schema_drift_data`/`_print_schema_drift_section`/`_schema_drift_check` at `doctor.py:398-523`, was added by ENH-3242 since this issue was last refined). No `_advisor_check`/`_advisor_data`/`_print_advisor_section` symbol exists in `doctor.py` — confirmed by grep.
+- **The four disagreeing severity-threading shapes have not converged into one, but the two newest checks agree**: `_schema_drift_check` and `_loop_validity_check` both thread `severity` through their own `_xxx_data()` dict (`data["severity"]`, no default) — the same shape #1 this issue's prior research already identified, now with a second, more recent instance following it.
+
 ## Expected Behavior
 
 - `ll-doctor` reports advisor host reachability.
@@ -176,6 +182,16 @@ the `_capability_check_results` precedent) -> `_advisor_check` ->
 
 _Added by `/ll:refine-issue` — 2026-08-08 — based on codebase analysis:_
 
+_Added by `/ll:refine-issue` — 2026-08-24 — based on codebase analysis:_
+
+- **`AdvisorConfig` exact fields** (`config/orchestration.py:108-140`): `enabled: bool = False`, `host: str | None = None`, `model: str = "opus"`, `min_tier: str | None = None`, `timeout_seconds: int = 180`, `triggers: list[str] = field(default_factory=list)`, `max_consults_per_task: int = 3`. `enabled`/`host`/`model` are sufficient for `_advisor_check` — no new config surface is needed (this issue's earlier "config surface doesn't exist" concern no longer applies).
+- **`check_floor` classification order** (`advisor.py:91-139`): (1) `advisor_host != main_host` -> `"advisory"` (checked before any rank lookup, cross-host ranks are incomparable); (2) same host, either model unrankable via `rank_model()` -> `"unknown"`; (3) same host, `advisor_rank < main_rank` -> `"violation"`; (4) same host, `advisor_rank >= main_rank` -> `"ok"`. `rank_model()` only has a populated table for `"claude-code"` (haiku=1, sonnet=2, opus=3, fable=4); every other host maps every model to `None`.
+- **`resolve_host_named` mechanics confirmed**: `resolve_host_named(name)` calls `resolve_host({"LL_HOST_CLI": name})` — an explicit one-key env dict, so ambient `os.environ`/`LL_HOST_CLI` is never read or mutated. An unregistered host name raises `HostNotConfigured` immediately (no PATH-probe fallback). `consult()` demonstrates the exact dual-host pattern this issue needs: ambient `resolve_host().name` for the main host (`advisor.py:256`) alongside named `resolve_host_named(advisor_host)` for the advisor host (`advisor.py:265`).
+- **`cli/doctor.py` has converged on a three-function triad for every default-registered check**, confirmed across `_schema_drift_data`/`_print_schema_drift_section`/`_schema_drift_check` (`doctor.py:398-523`, the newest and cleanest exemplar) and `_loop_validity_data`/`_print_loop_validity_section`/`_loop_validity_check` (`doctor.py:526-606`): a pure `_xxx_data() -> dict` (never touches `CheckResult`, returns at minimum `status`/`severity`/`note`), a `_print_xxx_section() -> None` (renders the dict in text mode), and an `@register_check def _xxx_check() -> list[CheckResult]` (wraps the dict into `CheckResult`(s)). `_advisor_check` fits this triad directly.
+- **Reachability probe can reuse `_probe_version` verbatim**: `_probe_version(runner: HostRunner) -> str` (`doctor.py:1040-1061`) already does `runner.detect()` guard + `runner.build_version_check()` + `subprocess.run(..., timeout=10)`, swallowing `(subprocess.TimeoutExpired, FileNotFoundError, OSError, HostNotConfigured)` to `""`. Calling `_probe_version(resolve_host_named(advisor_host))` reuses this without modification.
+- **No existing dict-mapping/dispatch translates `FloorResult.status` into `CheckResult`'s vocabulary anywhere in the codebase** (confirmed by grep across doctor.py/advisor.py/host_runner.py) — `consult()`'s own handling of `FloorResult.status` (raise on `"violation"`, print-to-stderr on `"advisory"`/`"unknown"`) is the only existing consumer, and it does not produce a `CheckResult`. This translation is still net-new, as the issue's Decision Rules already state.
+- **Two hand-enumerated call sites still need a line added, not just `@register_check`**: `main_doctor()`'s text-mode print sequence (`doctor.py:1201-1213`, one `_print_xxx_section()` call per check) and `_print_report`'s JSON dict assembly (`doctor.py:1064-1101`, one key per check's `_data()` output) are both hand-enumerated rather than derived from `_CHECKS` — `@register_check` alone makes `_advisor_check` participate in the exit-code path but not in either output path.
+
 ### Signatures
 
 - `check_floor(advisor_host: str, advisor_model: str, main_host: str, main_model: str) -> FloorResult` — `advisor.py:64-112`
@@ -190,7 +206,12 @@ _Added by `/ll:refine-issue` — 2026-08-08 — based on codebase analysis:_
 
 ### Files to Modify
 
-- `scripts/little_loops/cli/doctor.py` — `_advisor_check`.
+- `scripts/little_loops/cli/doctor.py` — add the `_advisor_data()`/
+  `_print_advisor_section()`/`@register_check def _advisor_check()` triad
+  (model: `_schema_drift_data`/`_print_schema_drift_section`/
+  `_schema_drift_check`, `doctor.py:398-523`); add one line to
+  `main_doctor()`'s text print sequence (`doctor.py:1201-1213`) and one
+  key to `_print_report`'s JSON dict (`doctor.py:1064-1101`).
 
 ### Documentation
 
@@ -237,11 +258,18 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 - `scripts/tests/test_cli_doctor.py` — model `_advisor_check`'s
   "informational severity never fails exit code" behavior after
-  `test_exit_code_ignores_informational_unsupported` (~line 699), and use
+  `test_exit_code_ignores_informational_unsupported` (`:716`), and use
   the save/clear/restore-`_CHECKS` isolation pattern from
-  `test_register_check_appends_and_runs` (~line 682) /
+  `test_register_check_appends_and_runs` (`:699`) /
   `test_mixed_severity_registered_check_affects_exit_code_via_main_doctor`
-  (~line 715) if `_advisor_check` needs a fake-check test double.
+  (`:732`) if `_advisor_check` needs a fake-check test double.
+- `scripts/tests/test_cli_doctor_install_checks.py::TestSchemaDrift`
+  (~`:227`) is a lighter-weight alternative: call the bare `_advisor_data()`
+  helper directly (no `main_doctor()`, no host mocking) and assert on its
+  `status`/`severity`/`note` keys.
+- `scripts/tests/test_advisor.py::TestConsult::test_cross_host_advisory_proceeds`
+  (`:181-201`) / `::test_capability_floor_violation_refuses_consult`
+  (`:164-179`) are the closest existing dual-host/floor-status analogs.
 
 ### Codebase Research Findings
 
@@ -272,6 +300,14 @@ _Added by `/ll:refine-issue` — 2026-08-10 — based on codebase analysis:_
   suite (not just `test_cli_doctor.py`) uses a single `return_value=`. A test
   asserting `_advisor_check` resolves an independent advisor host would be
   introducing this pattern for the first time in the codebase.
+
+_Added by `/ll:refine-issue` — 2026-08-24 — based on codebase analysis:_
+
+- **Files to Modify, current anchors**: `scripts/little_loops/cli/doctor.py` — add an `_advisor_data()`/`_print_advisor_section()`/`@register_check def _advisor_check()` triad (model on `_schema_drift_data`/`_print_schema_drift_section`/`_schema_drift_check`, `doctor.py:398-523`); add one line to the text-mode print sequence in `main_doctor()` (`doctor.py:1201-1213`) and one key to `_print_report`'s JSON dict assembly (`doctor.py:1064-1101`) — `@register_check` alone wires the exit-code path but not either output path.
+- **Conventions in Force — dual-host resolution**: `resolve_host_named(name)` (`host_runner.py:2008-2016`) is the codebase's only host-resolution primitive that never reads or mutates ambient `os.environ`/`LL_HOST_CLI`; `consult()` (`advisor.py:256,265`) is the only production caller and the only existing dual-host pattern (ambient `resolve_host()` for main, named `resolve_host_named()` for advisor) — `_advisor_check` would be the second.
+- **Conventions in Force — no status-vocabulary translation convention exists**: confirmed by grep across doctor.py/advisor.py/host_runner.py that no dict-mapping or dispatch table translates one closed `Literal` status type into another anywhere in the tree; `_advisor_check`'s `FloorResult.status` -> `CheckResult` translation is a new pattern, not an application of an existing one.
+- **Tests, current line numbers (2026-08-23 re-check)**: `test_cli_doctor.py` — `test_register_check_appends_and_runs` (`:699`), `test_exit_code_ignores_informational_unsupported` (`:716`), `test_exit_code_flips_on_error_unsupported` (`:726`), `test_mixed_severity_registered_check_affects_exit_code_via_main_doctor` (`:732`). `test_cli_doctor_install_checks.py::TestSchemaDrift` (~`:227`) is the newest `_data()`-level test convention: `monkeypatch.chdir(tmp_path)`, call the bare `_data()` helper directly (no `main_doctor()`, no host mocking), assert on the returned dict's `status`/`severity`/`note` keys — a lighter-weight template than the full `main_doctor()` integration test.
+- **Tests — dual-host/floor-status precedent**: `test_advisor.py::TestConsult::test_cross_host_advisory_proceeds` (`:181-201`) and `::test_capability_floor_violation_refuses_consult` (`:164-179`) are the closest existing analogs — both call `consult()` with distinct `main_host`/`main_model` vs `AdvisorConfig(host=..., model=...)` pairs and patch `little_loops.advisor.resolve_host_named` with a single `return_value=`. No test anywhere in the suite (confirmed by a suite-wide grep for `side_effect=[`, one unrelated hit in `test_issue_manager.py:403`) mocks two independent `resolve_host`/`resolve_host_named` calls returning different runners — a `_advisor_check` test asserting independent main+advisor resolution would introduce that pattern for the first time.
 
 ### Conventions in Force
 
@@ -310,15 +346,16 @@ _Added by `/ll:refine-issue` — 2026-08-10 — based on codebase analysis:_
 
 ### Tests (confirmed structure, from `test_cli_doctor.py`)
 
-- `test_register_check_appends_and_runs` (`:682-697`) — save/clear/restore
+- `test_register_check_appends_and_runs` (`:699`) — save/clear/restore
   `doctor._CHECKS` via the `doctor` module object (not the imported names
   directly): snapshot `list(doctor._CHECKS)`, `.clear()` inside `try`,
   restore with `.clear()` + `.extend(original)` inside `finally`.
-- `test_exit_code_ignores_informational_unsupported` (`:699-707`) — calls
+- `test_exit_code_ignores_informational_unsupported` (`:716`) /
+  `test_exit_code_flips_on_error_unsupported` (`:726`) — call
   `_exit_code_for()` directly with a hand-built `CheckResult` list, no
   fixture needed.
 - `test_mixed_severity_registered_check_affects_exit_code_via_main_doctor`
-  (`:715-754`) — combines the `_CHECKS` save/clear/restore with a
+  (`:732`) — combines the `_CHECKS` save/clear/restore with a
   `main_doctor()` call under a fixed five-`patch()` block: `sys.argv`,
   `little_loops.host_runner.resolve_host` (patched at its *definition*
   module — `doctor.py` imports it locally inside the function body),
@@ -357,7 +394,10 @@ _Wiring pass added by `/ll:wire-issue`:_
 1. `ll-doctor` reports advisor host reachability and emits a warning (not
    an error) when the floor is `advisory` or `unknown`; exit code is
    unaffected by an advisory-only finding.
-2. `python -m pytest scripts/tests/`, `ruff check scripts/`, and
+2. When `config.advisor.enabled` is false or `.host` is unset, `ll-doctor`
+   reports a non-failing "advisor not configured" result instead of
+   attempting resolution.
+3. `python -m pytest scripts/tests/`, `ruff check scripts/`, and
    `python -m mypy scripts/little_loops/` all pass.
 
 ## Out of Scope (covered by sibling children of FEAT-3044)
@@ -374,40 +414,12 @@ Also unresolved and deferred (from FEAT-3044, unchanged):
 
 ## Implementation Steps
 
-### Codebase Research Findings
-
-_Added by `/ll:refine-issue` — 2026-08-08 — based on codebase analysis:_
-
-1. The advisor's own `HostRunner` is resolved independently of the main
-   orchestration host (`resolve_host()` at `doctor.py:1051`), without
-   mutating `os.environ["LL_HOST_CLI"]` and without calling
-   `apply_host_cli_from_config()` — no existing helper does this today
-   (see Current Behavior); `resolve_host(env=...)` accepts an explicit env
-   dict but that path is currently test-only.
-2. `FloorResult.status` (`ok`/`violation`/`advisory`/`unknown`,
-   `advisor.py:39-51`) is mapped onto `CheckResult.status`
-   (`full`/`partial`/`unsupported`, `doctor.py:55-73`) — the two are
-   distinct closed `Literal`s with no shared members, and this mapping is
-   not specified anywhere in existing code; `advisory`/`unknown` results
-   carry `severity="informational"` so `_exit_code_for`
-   (`doctor.py:124-127`) never fails on them.
-3. Reachability uses the same shape as `_probe_version`
-   (`doctor.py:912-932`): `runner.detect()` guard, then
-   `runner.build_version_check()` shelled out via `subprocess.run(...,
-   timeout=10)`, with `TimeoutExpired`/`FileNotFoundError`/`OSError`/
-   `HostNotConfigured` swallowed rather than raised.
-4. The resulting `list[CheckResult]` reaches `_exit_code_for` — either
-   folded by hand into `main_doctor()`'s `results` alongside
-   `_capability_check_results(report)` at `doctor.py:1088`, or via a thin
-   `@register_check` wrapper that resolves the advisor host internally
-   (either is acceptable per Proposed Solution).
-5. `python -m pytest scripts/tests/test_cli_doctor.py -v` passes, with new
-   coverage modeled on
-   `test_mixed_severity_registered_check_affects_exit_code_via_main_doctor`
-   (`:715`) for the "informational severity never fails exit code"
-   behavior, using the `doctor._CHECKS` save/clear/restore pattern from
-   `test_register_check_appends_and_runs` (`:682`) if a fake-check test
-   double is needed.
+1. All four `depends_on` issues (FEAT-3108, FEAT-3120, FEAT-3043, FEAT-3042) are `done` on `main` as of 2026-08-23 — no further dependency landing is required before starting.
+2. Resolve the advisor's own `HostRunner` via `resolve_host_named(config.advisor.host)` (`host_runner.py:2008-2016`) — never mutating `os.environ["LL_HOST_CLI"]` and never calling `apply_host_cli_from_config()`. `_advisor_check` reads `config.advisor.enabled`/`.host`/`.model` (`config/orchestration.py:108-140` via `config/core.py:465-468`); when `enabled` is false or `host` is unset, report a non-failing "advisor not configured" result rather than attempting resolution (mirrors `AdvisorNotConfigured` handling in `consult()`, `advisor.py:251-254`).
+3. Reachability reuses `_probe_version(resolve_host_named(config.advisor.host))` (`doctor.py:1040-1061`, `host_runner.py:2008-2016`) — same swallowed-exception tuple `(subprocess.TimeoutExpired, FileNotFoundError, OSError, HostNotConfigured)` as the existing main-host probe.
+4. `check_floor(advisor_host, advisor_model, main_host, main_model)` (`advisor.py:91-139`) result maps to `CheckResult` with `severity="informational"` unconditionally (all four `FloorResult.status` values — `ok`/`violation`/`advisory`/`unknown` — must warn, never fail, per Expected Behavior AC #1); no existing code specifies this exact mapping, so the mapping itself is this issue's implementation.
+5. Follow the `_schema_drift_data`/`_print_schema_drift_section`/`_schema_drift_check` triad shape (`doctor.py:398-523`) for the new `_advisor_data`/`_print_advisor_section`/`_advisor_check` functions; add the new check to `main_doctor()`'s hand-enumerated text print sequence (`doctor.py:1201-1213`) and `_print_report`'s JSON dict (`doctor.py:1064-1101`) — `@register_check` registration alone does not populate either output path.
+6. `python -m pytest scripts/tests/test_cli_doctor.py scripts/tests/test_advisor.py -v` passes, with new coverage modeled on `test_cli_doctor_install_checks.py::TestSchemaDrift` (bare `_data()`-level assertions) and `test_advisor.py::TestConsult::test_cross_host_advisory_proceeds`/`test_capability_floor_violation_refuses_consult` (dual main/advisor host + floor-status assertions) — a `side_effect=[...]` dual-`resolve_host_named` mock is new to the suite and should be introduced deliberately, not copied from an existing test.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
@@ -556,7 +568,28 @@ only).
 
 Performed the pruning/consolidation the 2026-08-16 pass requested: the two superseded 2026-08-08 verification blocks and their corroborating research note are condensed into the summary above (full text in git history); the shadow-tree "Dependency-status discrepancy" research note is condensed in place; the two wiring-pass claims that FEAT-3042/FEAT-3043 were "not in this issue's `depends_on`" are corrected (both were added to `depends_on` after those notes were written). `verify_verdict` reset `NON_VALID` → `VALID`: the core claim (no `_advisor_check`; genuinely gated by FEAT-3120 (since done) — FEAT-3042 and FEAT-3043 landed via the epic merge 2026-08-23) was already re-confirmed 2026-08-16 and the NEEDS_UPDATE consolidation is now done. Note: the epic branch this file's confidence-check notes reference (`epic/epic-3041-host-agnostic-advisor`) is ~448 commits behind `main` and slated for retirement — target `main`'s tree state, not that branch's.
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-08-23_
+
+**Readiness Score**: 85/100 → PROCEED WITH CAUTION
+**Outcome Confidence**: 86/100 → HIGH CONFIDENCE
+
+### Concerns
+- `stale_symbol_ref` flags `_advisor_check` (claimed in `doctor.py`) since the
+  symbol doesn't exist yet — expected for forward-looking implementation work,
+  but this caps Criterion 4 (Issue Well-Specified) at 10/20 per the rubric's
+  Parity/Claim/Structure cap.
+- Proposed Solution leaves the fold-vs-`@register_check` architecture choice
+  explicitly open ("either is acceptable"), and the `FloorResult.status` →
+  `CheckResult.status` translation and dual-`resolve_host_named` test-mocking
+  pattern are both genuinely new to the codebase (no existing precedent to
+  copy verbatim) — well-specified as new work, but still first-of-kind.
+
 ## Session Log
+- `/ll:confidence-check` - 2026-08-24T01:11:19 - `4aa588b6-d571-428b-abc0-116ac8a698f4.jsonl`
+- `/ll:reconcile-issue` - 2026-08-24T00:47:50 - `5bab6687-c2bc-4078-8ae9-3de7877b2157.jsonl`
+- `/ll:refine-issue` - 2026-08-24T00:26:43 - `5d705364-6b23-4e84-9557-2084c10e8caf.jsonl`
 - `/ll:verify-issues` - 2026-08-16T16:40:24 - `688cfc38-322a-447f-94a0-315f2c2aee33.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-13T22:00:51 - `e21c16b3-391d-4ef2-80c4-decd2dced91f.jsonl`
 - `/ll:verify-issues` - 2026-08-13T03:05:57 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`

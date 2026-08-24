@@ -32,6 +32,8 @@ relates_to:
 - BUG-3178
 - BUG-3180
 - BUG-3181
+- ENH-3306
+- ENH-3307
 ---
 
 ## Summary
