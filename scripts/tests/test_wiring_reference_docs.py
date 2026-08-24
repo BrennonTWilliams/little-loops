@@ -201,6 +201,16 @@ DOC_STRINGS_PRESENT: list[tuple[str, str, str]] = [
     ("docs/reference/WORKTREES.md", ".ll/ll.local.md", "ENH-3115"),
     ("docs/reference/WORKTREES.md", "LL_HISTORY_DB", "ENH-3115"),
     ("docs/reference/WORKTREES.md", "copy_files=[]", "ENH-3115"),
+    ("docs/reference/ARTIFACT_CONTROL_LEVELS.md", "notify", "ENH-3307"),
+    ("docs/reference/ARTIFACT_CONTROL_LEVELS.md", "ask-to-run-prompt", "ENH-3307"),
+    ("docs/reference/ARTIFACT_CONTROL_LEVELS.md", "host-owned", "ENH-3307"),
+    ("docs/reference/ARTIFACT_CONTROL_LEVELS.md", "artifact_interaction", "ENH-3307"),
+    ("docs/reference/ARTIFACT_CONTROL_LEVELS.md", "_meta.ui.visibility", "ENH-3307"),
+    ("docs/reference/EVENT-SCHEMA.md", "artifact_interaction", "ENH-3307"),
+    ("docs/reference/EVENT-SCHEMA.md", "Reserved Event Names", "ENH-3307"),
+    ("docs/index.md", "ARTIFACT_CONTROL_LEVELS.md", "ENH-3307"),
+    ("docs/ARCHITECTURE.md", "Artifact Control Layer", "ENH-3307"),
+    ("docs/guides/MCP_SERVER_GUIDE.md", "ARTIFACT_CONTROL_LEVELS.md", "ENH-3307"),
 ]
 
 
@@ -268,6 +278,7 @@ DOC_FILES_MUST_EXIST: list[tuple[str, str]] = [
     ("docs/reference/CONFIGURATION.md", "ENH-1401"),
     ("docs/reference/COMMANDS.md", "ENH-1859"),
     ("docs/reference/WORKTREES.md", "ENH-3115"),
+    ("docs/reference/ARTIFACT_CONTROL_LEVELS.md", "ENH-3307"),
 ]
 
 
