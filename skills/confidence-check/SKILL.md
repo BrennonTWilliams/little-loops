@@ -417,6 +417,15 @@ After presenting the output, determine whether there are findings to write back.
 - **Gaps to Address** (present when readiness score < 70)
 - **Outcome Risk Factors** (present when outcome confidence < config.commands.confidence_gate.outcome_threshold, default: 75)
 
+**Advisor consult on sub-threshold ll-auto runs (FEAT-3117)**: when `ll-auto` hits this
+same readiness score below `commands.confidence_gate.readiness_threshold` in its own
+pre-Phase-1 gate (`issue_manager.py`, independent of this skill's interactive run), and
+`advisor.enabled: true` with `confidence_gate` listed in `advisor.triggers`, it now
+auto-fires one advisor consult carrying the gap analysis (current confidence vs.
+threshold) alongside the existing `CONFIDENCE_GATE_BLOCKED` block. The consult is
+fail-soft and purely informational — it never changes the block itself, and is skipped
+entirely when the trigger isn't armed or the per-task consult budget is exhausted.
+
 If `HAS_FINDINGS` is false: skip (clean bill of health — no update needed).
 
 If `HAS_FINDINGS` is true, append a `## Confidence Check Notes` section to the issue file using the Edit tool. Insert it before `## Session Log` (or before `## Status` if no session log exists):

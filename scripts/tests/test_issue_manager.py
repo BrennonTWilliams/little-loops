@@ -5599,6 +5599,134 @@ class TestConfidenceGatePreCheck:
         # check_impl_reached discriminator catches this route too.
         assert "PHASE1_NOT_STARTED BUG-001 confidence_gate" in out
 
+    def test_sub_threshold_with_trigger_enabled_consults_once(
+        self, mock_config: BRConfig, sample_issue: IssueInfo
+    ) -> None:
+        """FEAT-3117: a sub-threshold score with `confidence_gate` in
+        advisor.triggers fires exactly one consult carrying the gap analysis,
+        without changing the gate's blocking outcome."""
+        from little_loops.advisor import AdvisorVerdict, ConsultOutcome, TaskKey
+        from little_loops.config.orchestration import AdvisorConfig
+        from little_loops.issue_manager import process_issue_inplace
+
+        mock_config.advisor = AdvisorConfig(enabled=True, triggers=["confidence_gate"])
+        status = self._status(confidence=80, readiness_threshold=85)
+        verdict = AdvisorVerdict(
+            recommendation="proceed with caution",
+            risks=[],
+            confidence=0.5,
+            dissent="",
+            signal="confidence_gate",
+            host="claude-code",
+            model="opus",
+        )
+        outcome = ConsultOutcome(
+            task_key=TaskKey(kind="issue", value="BUG-001"), verdict=verdict
+        )
+        with (
+            patch(
+                "little_loops.cli.issues.check_readiness.readiness_status",
+                return_value=status,
+            ),
+            patch("little_loops.issue_manager.run_claude_command") as mock_ready,
+            patch(
+                "little_loops.advisor.consult_for_trigger", return_value=outcome
+            ) as mock_consult,
+        ):
+            result = process_issue_inplace(sample_issue, mock_config, MagicMock())
+
+        mock_ready.assert_not_called()
+        mock_consult.assert_called_once()
+        call_kwargs = mock_consult.call_args
+        assert call_kwargs.args[0] == "confidence_gate"
+        assert "80" in call_kwargs.kwargs["context"]
+        assert "85" in call_kwargs.kwargs["context"]
+        assert result.success is False
+        assert result.failure_reason == "below_readiness_threshold (80 < 85)"
+        assert result.was_gated is True
+
+    def test_sub_threshold_trigger_absent_fires_no_consult(
+        self, mock_config: BRConfig, sample_issue: IssueInfo
+    ) -> None:
+        """FEAT-3117 AC #2: `confidence_gate` absent from advisor.triggers
+        skips the consult entirely — `consult_for_trigger` is still called
+        (fail-soft wrapper), but its internal `should_consult` gate prevents
+        the actual host-calling `consult()` from ever running."""
+        from little_loops.config.orchestration import AdvisorConfig
+        from little_loops.issue_manager import process_issue_inplace
+
+        mock_config.advisor = AdvisorConfig(enabled=True, triggers=[])
+        status = self._status(confidence=80, readiness_threshold=85)
+        with (
+            patch(
+                "little_loops.cli.issues.check_readiness.readiness_status",
+                return_value=status,
+            ),
+            patch("little_loops.issue_manager.run_claude_command"),
+            patch("little_loops.advisor.consult") as mock_consult,
+        ):
+            process_issue_inplace(sample_issue, mock_config, MagicMock())
+
+        mock_consult.assert_not_called()
+
+    def test_sub_threshold_advisor_disabled_fires_no_consult(
+        self, mock_config: BRConfig, sample_issue: IssueInfo
+    ) -> None:
+        """FEAT-3117 AC #2: advisor.enabled=False skips the consult entirely
+        (same fail-soft shape as the trigger-absent case above)."""
+        from little_loops.config.orchestration import AdvisorConfig
+        from little_loops.issue_manager import process_issue_inplace
+
+        mock_config.advisor = AdvisorConfig(enabled=False, triggers=["confidence_gate"])
+        status = self._status(confidence=80, readiness_threshold=85)
+        with (
+            patch(
+                "little_loops.cli.issues.check_readiness.readiness_status",
+                return_value=status,
+            ),
+            patch("little_loops.issue_manager.run_claude_command"),
+            patch("little_loops.advisor.consult") as mock_consult,
+        ):
+            process_issue_inplace(sample_issue, mock_config, MagicMock())
+
+        mock_consult.assert_not_called()
+
+    def test_sub_threshold_consult_failure_does_not_change_gate_outcome(
+        self, mock_config: BRConfig, sample_issue: IssueInfo
+    ) -> None:
+        """FEAT-3117 AC #3: a failed/timed-out consult never blocks the gate —
+        it completes with the original below_readiness_threshold verdict."""
+        from little_loops.advisor import ConsultOutcome, TaskKey
+        from little_loops.config.orchestration import AdvisorConfig
+        from little_loops.issue_manager import process_issue_inplace
+
+        mock_config.advisor = AdvisorConfig(enabled=True, triggers=["confidence_gate"])
+        status = self._status(confidence=80, readiness_threshold=85)
+        outcome = ConsultOutcome(
+            task_key=TaskKey(kind="issue", value="BUG-001"),
+            skipped_reason="timeout",
+            error="host timed out",
+        )
+        mock_logger = MagicMock()
+        with (
+            patch(
+                "little_loops.cli.issues.check_readiness.readiness_status",
+                return_value=status,
+            ),
+            patch("little_loops.issue_manager.run_claude_command") as mock_ready,
+            patch(
+                "little_loops.advisor.consult_for_trigger", return_value=outcome
+            ),
+        ):
+            result = process_issue_inplace(sample_issue, mock_config, mock_logger)
+
+        mock_ready.assert_not_called()
+        assert result.success is False
+        assert result.failure_reason == "below_readiness_threshold (80 < 85)"
+        assert result.was_gated is True
+        warning_text = " ".join(str(call.args[0]) for call in mock_logger.warning.call_args_list)
+        assert "timeout" in warning_text
+
     def test_readiness_outcome_parity_matches_manage_issue(
         self, mock_config: BRConfig, sample_issue: IssueInfo
     ) -> None:

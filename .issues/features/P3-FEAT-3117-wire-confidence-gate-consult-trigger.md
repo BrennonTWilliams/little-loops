@@ -4,9 +4,10 @@ title: Wire confidence_gate consult trigger into the ll-auto readiness gate
 type: FEAT
 parent: FEAT-3038
 priority: P3
-status: open
+status: done
 testable: true
 discovered_date: 2026-08-08
+completed_at: '2026-08-24T00:17:34Z'
 depends_on:
 - FEAT-3116
 - FEAT-3120
@@ -66,6 +67,18 @@ consult is skipped (not attempted) when `confidence_gate` is absent from
 `max_consults_per_task` budget is exhausted. A failed or timed-out consult
 never blocks the gate — it completes with its original
 `below_readiness_threshold` verdict and a logged warning.
+
+## Use Case
+
+An operator has `advisor.enabled: true` and `confidence_gate` listed in
+`advisor.triggers`. `ll-auto` reaches an issue whose `confidence-check`
+readiness score is below `commands.confidence_gate.readiness_threshold`. Today
+the pre-Phase-1 gate blocks the issue with `CONFIDENCE_GATE_BLOCKED` and no
+further signal. With this issue wired, the same block now also fires one
+advisor consult carrying the gap analysis (current confidence vs. threshold),
+so the operator gets an advisor opinion on the readiness gap alongside the
+block — without changing the block itself or risking the gate on a slow/failed
+consult.
 
 ## Proposed Solution
 
@@ -167,6 +180,10 @@ _Added by `/ll:refine-issue` — 2026-08-23 — based on codebase analysis:_
 ### Decision Rules
 N/A — no new decision logic. This issue calls two existing, already-tested gating functions (`should_consult`/`consult_for_trigger`) with the existing `"confidence_gate"` trigger name; it introduces no new gap kind, threshold, keyword list, or classification rule of its own.
 
+### Deviations
+
+_2026-08-23 — implementation:_ Design said to call `should_consult("confidence_gate", config)` first and only call `consult_for_trigger(...)` if it returns `True`. Implemented as a single direct call to `consult_for_trigger(...)` — it already re-invokes `should_consult` internally (`advisor.py:477`) before spending budget or consulting, so the separate pre-check was redundant with the same one-consult outcome and no double budget-spend risk. Skip-path logging only fires a warning for non-`disabled`/non-`trigger_not_allowed` skip reasons (budget exhausted, consult failure/timeout), matching AC #2's "no consult" intent without extra log noise for the common off-by-default case.
+
 ## Impact
 
 - **Priority**: P3 — matches parent FEAT-3038.
@@ -199,6 +216,8 @@ The `issue_manager.py` line citation for the pre-Phase-1 confidence gate had dri
 Leftover `verify_verdict: NON_VALID` frontmatter (stale since the 2026-08-12 anchor fix above) reset to `VALID`. Gate anchor re-confirmed: `CONFIDENCE_GATE_BLOCKED` prints at `issue_manager.py:817`, within the cited `:808-833` span. This issue already routes through `consult_for_trigger` and is unaffected by the consult()-exclusivity contract settled today (see FEAT-3116).
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-24T00:17:17 - `9633295b-0695-4a85-bb2d-d5cae862f23c.jsonl`
+- `/ll:ready-issue` - 2026-08-24T00:03:18 - `b936713e-b759-47eb-8a66-5659ba1da77c.jsonl`
 - `/ll:confidence-check` - 2026-08-23T23:26:11 - `fd937648-60a8-4f04-9d18-902b8ed3e35c.jsonl`
 - `/ll:wire-issue` - 2026-08-23T23:18:09 - `f59dd85f-2874-4175-8e19-14065db141ec.jsonl`
 - `/ll:refine-issue` - 2026-08-23T23:07:25 - `3925a429-4d69-4fac-9476-7e210db838ca.jsonl`

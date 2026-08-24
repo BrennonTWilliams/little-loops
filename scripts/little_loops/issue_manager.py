@@ -817,6 +817,39 @@ def process_issue_inplace(
                     f"({status.confidence} < {status.readiness_threshold})"
                 )
             logger.warning(f"{gate_message} — run /ll:confidence-check {info.issue_id}")
+
+            # FEAT-3117: auto-consult the advisor with the gap analysis on
+            # this block. `consult_for_trigger` is fail-soft and internally
+            # re-checks `should_consult` (disabled/trigger-not-allowed/budget
+            # all no-op it), so this never affects the gate's outcome below.
+            from little_loops.advisor import consult_for_trigger
+
+            gap_context = (
+                f"confidence={status.confidence} "
+                f"readiness_threshold={status.readiness_threshold} "
+                f"raw_confidence={status.raw_confidence} "
+                f"gate_reason={gate_reason}"
+            )
+            consult_outcome = consult_for_trigger(
+                "confidence_gate",
+                question=gate_message,
+                context=gap_context,
+                config=config,
+            )
+            if consult_outcome.verdict is not None:
+                logger.warning(
+                    f"{info.issue_id}: advisor consult (confidence_gate) — "
+                    f"recommendation: {consult_outcome.verdict.recommendation}"
+                )
+            elif consult_outcome.skipped_reason not in (
+                "disabled",
+                "trigger_not_allowed",
+            ):
+                logger.warning(
+                    f"{info.issue_id}: advisor consult (confidence_gate) skipped: "
+                    f"{consult_outcome.skipped_reason}"
+                )
+
             # Stable, greppable marker for FSM loops that implement via
             # `ll-auto --only` — mirrors LEARNING_GATE_BLOCKED
             # (issue_manager.py:991-997). Without it, a gate refusal is
