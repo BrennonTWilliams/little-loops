@@ -131,9 +131,10 @@ jobs:
             done ) > mem.log 2>&1 &
           SAMPLER=$!
           set +e
-          PYTHONUNBUFFERED=1 timeout --signal=TERM --kill-after=30s 48m \
+          PYTHONUNBUFFERED=1 timeout --signal=TERM --kill-after=30s 30m \
             .venv/bin/python -m pytest scripts/tests/ \
               -m "not integration and not conformance" \
+              -v \
               --tb=line \
               "${EXTRA[@]}" \
               --junit-xml=pytest-junit.xml \
