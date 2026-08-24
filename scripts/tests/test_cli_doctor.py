@@ -729,6 +729,45 @@ class TestCheckRegistry:
 
         assert _exit_code_for([CheckResult(name="core", status="unsupported")]) == 1
 
+    def test_json_payload_includes_advisor_key(self) -> None:
+        """ll-doctor --json includes an 'advisor' key carrying both rows (FEAT-3122 AC4)."""
+        report = CapabilityReport(host="claude-code", binary="claude", version="", capabilities=[])
+        runner = _make_runner(report)
+        captured: dict = {}
+
+        def _fake_print_json(data: dict) -> None:
+            captured.update(data)
+
+        with (
+            patch("sys.argv", ["ll-doctor", "--json"]),
+            patch("little_loops.host_runner.resolve_host", return_value=runner),
+            patch("little_loops.host_runner.apply_host_cli_from_config"),
+            patch("little_loops.config.BRConfig", return_value=_json_safe_config()),
+            patch("little_loops.cli.doctor.print_json", side_effect=_fake_print_json),
+        ):
+            main_doctor()
+
+        assert "advisor" in captured
+        assert len(captured["advisor"]) == 2
+        assert {row["name"] for row in captured["advisor"]} == {"advisor_host", "advisor_floor"}
+
+    def test_text_mode_prints_advisor_section(self) -> None:
+        """ll-doctor text mode prints a matching Advisor section (FEAT-3122 AC4)."""
+        report = CapabilityReport(host="claude-code", binary="claude", version="", capabilities=[])
+        runner = _make_runner(report)
+        lines, side_effect = _capture_print()
+
+        with (
+            patch("sys.argv", ["ll-doctor"]),
+            patch("little_loops.host_runner.resolve_host", return_value=runner),
+            patch("little_loops.host_runner.apply_host_cli_from_config"),
+            patch("little_loops.config.BRConfig", return_value=_json_safe_config()),
+            patch("builtins.print", side_effect=side_effect),
+        ):
+            main_doctor()
+
+        assert "Advisor" in lines
+
     def test_mixed_severity_registered_check_affects_exit_code_via_main_doctor(self) -> None:
         """A registered error-tier unsupported check flips main_doctor()'s exit code to 1
         even when the host-capability report itself is fully supported — mirrors

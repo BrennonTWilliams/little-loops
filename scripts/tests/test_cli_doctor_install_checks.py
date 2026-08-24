@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 from pathlib import Path
+from unittest.mock import MagicMock
+
+import pytest
 
 from little_loops.cli.doctor import (
     _decisions_store_data,
@@ -486,3 +489,380 @@ class TestLoopValidity:
         assert data["status"] == "unsupported"
         assert data["severity"] == "error"
         assert data["invalid"]
+
+
+class _FakeAdvisorConfig:
+    def __init__(self, *, enabled: bool = False, host: str | None = None, model: str = "opus") -> None:
+        self.enabled = enabled
+        self.host = host
+        self.model = model
+
+
+class _FakeOrchestrationConfig:
+    def __init__(self, *, host_cli: str | None = None) -> None:
+        self.host_cli = host_cli
+
+
+class _FakeBRConfig:
+    def __init__(self, advisor: _FakeAdvisorConfig, orchestration: _FakeOrchestrationConfig) -> None:
+        self.advisor = advisor
+        self.orchestration = orchestration
+
+    def __call__(self, *_args, **_kwargs) -> _FakeBRConfig:
+        return self
+
+
+class _FakeHostRunner:
+    def __init__(self, name: str) -> None:
+        self.name = name
+
+
+@pytest.fixture(autouse=True)
+def _clear_advisor_probe_cache():
+    from little_loops.cli.doctor import _probe_advisor_version
+
+    _probe_advisor_version.cache_clear()
+    yield
+    _probe_advisor_version.cache_clear()
+
+
+class TestAdvisor:
+    """Tests for the `_advisor_data()` / `_advisor_check()` triad (FEAT-3122)."""
+
+    def test_disabled_reports_two_informational_unsupported_rows(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        import little_loops.cli.doctor as doctor_mod
+        from little_loops import host_runner as host_runner_mod
+
+        monkeypatch.chdir(tmp_path)
+        called = {"resolve_host": False, "resolve_host_named": False}
+        monkeypatch.setattr(
+            host_runner_mod,
+            "resolve_host",
+            lambda *a, **k: called.__setitem__("resolve_host", True),
+        )
+        monkeypatch.setattr(
+            host_runner_mod,
+            "resolve_host_named",
+            lambda *a, **k: called.__setitem__("resolve_host_named", True),
+        )
+
+        rows = doctor_mod._advisor_data()
+
+        assert len(rows) == 2
+        assert all(r["severity"] == "informational" for r in rows)
+        assert all("not configured" in r["note"] for r in rows)
+        assert not called["resolve_host"]
+        assert not called["resolve_host_named"]
+
+    def test_enabled_without_host_reports_unconfigured(self, tmp_path: Path, monkeypatch) -> None:
+        import little_loops.cli.doctor as doctor_mod
+
+        monkeypatch.chdir(tmp_path)
+        fake_cfg = _FakeBRConfig(_FakeAdvisorConfig(enabled=True, host=None), _FakeOrchestrationConfig())
+        monkeypatch.setattr("little_loops.config.BRConfig", lambda *a, **k: fake_cfg)
+
+        rows = doctor_mod._advisor_data()
+
+        assert len(rows) == 2
+        assert all(r["status"] == "unsupported" for r in rows)
+        assert all(r["severity"] == "informational" for r in rows)
+
+    def test_floor_violation_is_informational_and_does_not_fail_exit_code(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        import little_loops.cli.doctor as doctor_mod
+
+        monkeypatch.chdir(tmp_path)
+        fake_cfg = _FakeBRConfig(
+            _FakeAdvisorConfig(enabled=True, host="claude-code", model="claude-haiku-4-5"),
+            _FakeOrchestrationConfig(host_cli="claude-code"),
+        )
+        monkeypatch.setattr("little_loops.config.BRConfig", lambda *a, **k: fake_cfg)
+        monkeypatch.setattr(doctor_mod, "_probe_advisor_version", lambda host: "1.0.0")
+        monkeypatch.setattr(
+            "little_loops.host_runner.resolve_host_named",
+            lambda name: _FakeHostRunner(name),
+        )
+        monkeypatch.setattr(
+            "little_loops.host_runner.resolve_host",
+            lambda *a, **k: _FakeHostRunner("claude-code"),
+        )
+        from little_loops.advisor import FloorResult
+
+        monkeypatch.setattr(
+            "little_loops.advisor.check_floor",
+            lambda *a, **k: FloorResult(status="violation", detail="advisor weaker than main"),
+        )
+
+        rows = doctor_mod._advisor_data()
+        floor_row = next(r for r in rows if r["name"] == "advisor_floor")
+
+        assert floor_row["severity"] == "informational"
+        assert floor_row["status"] == "partial"
+        assert floor_row["floor_status"] == "violation"
+        assert doctor_mod._exit_code_for(doctor_mod._advisor_check()) == 0
+
+    def test_advisor_side_host_not_configured_returns_both_rows_unsupported(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        import little_loops.cli.doctor as doctor_mod
+        from little_loops.host_runner import HostNotConfigured
+
+        monkeypatch.chdir(tmp_path)
+        fake_cfg = _FakeBRConfig(
+            _FakeAdvisorConfig(enabled=True, host="codex", model="opus"),
+            _FakeOrchestrationConfig(),
+        )
+        monkeypatch.setattr("little_loops.config.BRConfig", lambda *a, **k: fake_cfg)
+
+        def _raise(host: str) -> str:
+            raise HostNotConfigured("codex not found")
+
+        monkeypatch.setattr(doctor_mod, "_probe_advisor_version", _raise)
+
+        rows = doctor_mod._advisor_data()
+
+        assert all(r["status"] == "unsupported" for r in rows)
+        assert all(r["severity"] == "informational" for r in rows)
+        assert all(r["floor_status"] is None for r in rows)
+
+    def test_main_side_host_not_configured_only_degrades_floor_row(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        import little_loops.cli.doctor as doctor_mod
+        from little_loops.host_runner import HostNotConfigured
+
+        monkeypatch.chdir(tmp_path)
+        fake_cfg = _FakeBRConfig(
+            _FakeAdvisorConfig(enabled=True, host="claude-code", model="opus"),
+            _FakeOrchestrationConfig(),
+        )
+        monkeypatch.setattr("little_loops.config.BRConfig", lambda *a, **k: fake_cfg)
+        monkeypatch.setattr(doctor_mod, "_probe_advisor_version", lambda host: "1.0.0")
+
+        def _raise(*_a, **_k):
+            raise HostNotConfigured("no host on PATH")
+
+        monkeypatch.setattr("little_loops.host_runner.resolve_host", _raise)
+        monkeypatch.setattr("little_loops.host_runner.resolve_host_named", _raise)
+        monkeypatch.delenv("LL_HOST_CLI", raising=False)
+
+        rows = doctor_mod._advisor_data()
+        host_row = next(r for r in rows if r["name"] == "advisor_host")
+        floor_row = next(r for r in rows if r["name"] == "advisor_floor")
+
+        assert host_row["status"] == "full"
+        assert floor_row["status"] == "partial"
+        assert floor_row["severity"] == "informational"
+        assert floor_row["floor_status"] is None
+        assert floor_row["note"] == "main host unresolved"
+
+    def test_advisor_binary_absent_reports_unsupported_host_row(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        import little_loops.cli.doctor as doctor_mod
+
+        monkeypatch.chdir(tmp_path)
+        fake_cfg = _FakeBRConfig(
+            _FakeAdvisorConfig(enabled=True, host="codex", model="opus"),
+            _FakeOrchestrationConfig(host_cli="claude-code"),
+        )
+        monkeypatch.setattr("little_loops.config.BRConfig", lambda *a, **k: fake_cfg)
+        monkeypatch.setattr(doctor_mod, "_probe_advisor_version", lambda host: "")
+        monkeypatch.setattr(
+            "little_loops.host_runner.resolve_host_named",
+            lambda name: _FakeHostRunner(name),
+        )
+
+        rows = doctor_mod._advisor_data()
+        host_row = next(r for r in rows if r["name"] == "advisor_host")
+
+        assert host_row["status"] == "unsupported"
+        assert host_row["severity"] == "informational"
+
+    def test_independent_main_vs_advisor_resolution_env_first(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        import little_loops.cli.doctor as doctor_mod
+
+        monkeypatch.chdir(tmp_path)
+        fake_cfg = _FakeBRConfig(
+            _FakeAdvisorConfig(enabled=True, host="claude-code", model="opus"),
+            _FakeOrchestrationConfig(host_cli="codex"),
+        )
+        monkeypatch.setattr("little_loops.config.BRConfig", lambda *a, **k: fake_cfg)
+        monkeypatch.setattr(doctor_mod, "_probe_advisor_version", lambda host: "1.0.0")
+        monkeypatch.setenv("LL_HOST_CLI", "opencode")
+        seen = {}
+        monkeypatch.setattr(
+            "little_loops.host_runner.resolve_host_named",
+            lambda name: (seen.__setitem__("main_host_name", name), _FakeHostRunner(name))[1],
+        )
+
+        doctor_mod._advisor_data()
+
+        assert seen["main_host_name"] == "opencode"
+
+    def test_independent_main_vs_advisor_resolution_config_second(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        import little_loops.cli.doctor as doctor_mod
+
+        monkeypatch.chdir(tmp_path)
+        fake_cfg = _FakeBRConfig(
+            _FakeAdvisorConfig(enabled=True, host="claude-code", model="opus"),
+            _FakeOrchestrationConfig(host_cli="codex"),
+        )
+        monkeypatch.setattr("little_loops.config.BRConfig", lambda *a, **k: fake_cfg)
+        monkeypatch.setattr(doctor_mod, "_probe_advisor_version", lambda host: "1.0.0")
+        monkeypatch.delenv("LL_HOST_CLI", raising=False)
+        seen = {}
+        monkeypatch.setattr(
+            "little_loops.host_runner.resolve_host_named",
+            lambda name: (seen.__setitem__("main_host_name", name), _FakeHostRunner(name))[1],
+        )
+
+        doctor_mod._advisor_data()
+
+        assert seen["main_host_name"] == "codex"
+
+    def test_independent_main_vs_advisor_resolution_both_unset_falls_back(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        import little_loops.cli.doctor as doctor_mod
+
+        monkeypatch.chdir(tmp_path)
+        fake_cfg = _FakeBRConfig(
+            _FakeAdvisorConfig(enabled=True, host="claude-code", model="opus"),
+            _FakeOrchestrationConfig(host_cli=None),
+        )
+        monkeypatch.setattr("little_loops.config.BRConfig", lambda *a, **k: fake_cfg)
+        monkeypatch.setattr(doctor_mod, "_probe_advisor_version", lambda host: "1.0.0")
+        monkeypatch.delenv("LL_HOST_CLI", raising=False)
+        seen = {"resolve_host_called": False}
+        monkeypatch.setattr(
+            "little_loops.host_runner.resolve_host",
+            lambda *a, **k: (seen.__setitem__("resolve_host_called", True), _FakeHostRunner("claude-code"))[1],
+        )
+
+        doctor_mod._advisor_data()
+
+        assert seen["resolve_host_called"]
+
+    def test_probe_memoized_once_per_run_text_mode(self, tmp_path: Path, monkeypatch) -> None:
+        import little_loops.cli.doctor as doctor_mod
+
+        monkeypatch.chdir(tmp_path)
+        fake_cfg = _FakeBRConfig(
+            _FakeAdvisorConfig(enabled=True, host="claude-code", model="opus"),
+            _FakeOrchestrationConfig(host_cli="claude-code"),
+        )
+        monkeypatch.setattr("little_loops.config.BRConfig", lambda *a, **k: fake_cfg)
+        monkeypatch.setattr(
+            "little_loops.host_runner.resolve_host_named",
+            lambda name: _FakeHostRunner(name),
+        )
+        monkeypatch.setattr(
+            "little_loops.host_runner.resolve_host",
+            lambda *a, **k: _FakeHostRunner("claude-code"),
+        )
+        calls = {"n": 0}
+
+        def _fake_probe_version(runner) -> str:
+            calls["n"] += 1
+            return "1.0.0"
+
+        monkeypatch.setattr(doctor_mod, "_probe_version", _fake_probe_version)
+
+        doctor_mod._advisor_data()
+        doctor_mod._advisor_data()
+
+        assert calls["n"] == 1
+
+    def test_probe_memoized_once_per_run_json_mode(self, tmp_path: Path, monkeypatch) -> None:
+        import little_loops.cli.doctor as doctor_mod
+
+        monkeypatch.chdir(tmp_path)
+        fake_cfg = _FakeBRConfig(
+            _FakeAdvisorConfig(enabled=True, host="claude-code", model="opus"),
+            _FakeOrchestrationConfig(host_cli="claude-code"),
+        )
+        monkeypatch.setattr("little_loops.config.BRConfig", lambda *a, **k: fake_cfg)
+        monkeypatch.setattr(
+            "little_loops.host_runner.resolve_host_named",
+            lambda name: _FakeHostRunner(name),
+        )
+        monkeypatch.setattr(
+            "little_loops.host_runner.resolve_host",
+            lambda *a, **k: _FakeHostRunner("claude-code"),
+        )
+        calls = {"n": 0}
+
+        def _fake_probe_version(runner) -> str:
+            calls["n"] += 1
+            return "1.0.0"
+
+        monkeypatch.setattr(doctor_mod, "_probe_version", _fake_probe_version)
+
+        for _ in range(2):
+            doctor_mod._advisor_data()
+
+        assert calls["n"] == 1
+
+    def test_probe_cache_invalidated_across_tests_with_different_hosts(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        import little_loops.cli.doctor as doctor_mod
+
+        monkeypatch.setattr(
+            "little_loops.host_runner.resolve_host_named",
+            lambda name: _FakeHostRunner(name),
+        )
+        monkeypatch.setattr(doctor_mod, "_probe_version", lambda runner: f"v-{runner.name}")
+
+        assert doctor_mod._probe_advisor_version("claude-code") == "v-claude-code"
+        assert doctor_mod._probe_advisor_version("codex") == "v-codex"
+
+    def test_magicmock_config_guard_attempts_no_resolution(self, tmp_path: Path, monkeypatch) -> None:
+        import little_loops.cli.doctor as doctor_mod
+
+        monkeypatch.chdir(tmp_path)
+        fake_cfg = MagicMock()
+        monkeypatch.setattr("little_loops.config.BRConfig", lambda *a, **k: fake_cfg)
+        called = {"resolve_host": False, "resolve_host_named": False}
+        monkeypatch.setattr(
+            "little_loops.host_runner.resolve_host",
+            lambda *a, **k: called.__setitem__("resolve_host", True),
+        )
+        monkeypatch.setattr(
+            "little_loops.host_runner.resolve_host_named",
+            lambda *a, **k: called.__setitem__("resolve_host_named", True),
+        )
+
+        rows = doctor_mod._advisor_data()
+
+        assert len(rows) == 2
+        assert all(r["status"] == "unsupported" for r in rows)
+        assert not called["resolve_host"]
+        assert not called["resolve_host_named"]
+
+    def test_json_and_text_output_include_advisor_section(self, tmp_path: Path, monkeypatch) -> None:
+        import io
+        from contextlib import redirect_stdout
+
+        import little_loops.cli.doctor as doctor_mod
+
+        monkeypatch.chdir(tmp_path)
+
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            doctor_mod._print_advisor_section()
+        assert "Advisor" in buf.getvalue()
+        assert "advisor_host" in buf.getvalue()
+        assert "advisor_floor" in buf.getvalue()
+
+        rows = doctor_mod._advisor_data()
+        assert isinstance(rows, list)
+        assert len(rows) == 2

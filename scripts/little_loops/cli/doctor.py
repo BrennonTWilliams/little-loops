@@ -10,8 +10,9 @@ import subprocess
 import sys
 from collections.abc import Callable
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 import yaml
 
@@ -606,6 +607,135 @@ def _loop_validity_check() -> list[CheckResult]:
     ]
 
 
+@lru_cache
+def _probe_advisor_version(host: str) -> str:
+    """Memoized `_probe_version(resolve_host_named(host))`, keyed on host name.
+
+    Keyed (not on the no-arg `_advisor_data()`) so it doesn't leak across
+    `monkeypatch.chdir` / patched-`BRConfig` test boundaries (D2). Exceptions
+    are not memoized by `lru_cache`; a `HostNotConfigured` re-raises on every
+    call, which is acceptable — see D2's note on exception-path cost.
+    """
+    from little_loops.host_runner import resolve_host_named
+
+    return _probe_version(resolve_host_named(host))
+
+
+_ADVISOR_UNCONFIGURED_ROW: dict[str, Any] = {
+    "status": "unsupported",
+    "severity": "informational",
+    "note": "not configured (optional)",
+    "floor_status": None,
+}
+
+
+def _advisor_data() -> list[dict[str, Any]]:
+    """Two rows — `advisor_host` reachability and `advisor_floor` capability.
+
+    No-arg (per `register_check`'s `Callable[[], list[CheckResult]]`
+    contract) — sources its own `BRConfig(Path.cwd())`. Always informational
+    severity: an unconfigured or cross-host advisor is a deliberate
+    configuration, not a broken install (D1-D8).
+    """
+    import os
+
+    from little_loops.advisor import check_floor
+    from little_loops.config import BRConfig
+    from little_loops.fsm.schema import DEFAULT_LLM_MODEL
+    from little_loops.host_runner import HostNotConfigured, resolve_host, resolve_host_named
+
+    cfg = BRConfig(Path.cwd())
+    advisor = cfg.advisor
+
+    if not (isinstance(advisor.host, str) and advisor.enabled is True):
+        return [
+            {"name": "advisor_host", **_ADVISOR_UNCONFIGURED_ROW},
+            {"name": "advisor_floor", **_ADVISOR_UNCONFIGURED_ROW},
+        ]
+
+    advisor_host = advisor.host
+    advisor_model = advisor.model
+
+    try:
+        advisor_version = _probe_advisor_version(advisor_host)
+    except HostNotConfigured as exc:
+        note = f"advisor host {advisor_host!r} unresolvable: {exc}"
+        return [
+            {
+                "name": "advisor_host",
+                "status": "unsupported",
+                "severity": "informational",
+                "note": note,
+                "floor_status": None,
+            },
+            {
+                "name": "advisor_floor",
+                "status": "unsupported",
+                "severity": "informational",
+                "note": note,
+                "floor_status": None,
+            },
+        ]
+
+    host_row = {
+        "name": "advisor_host",
+        "status": "full" if advisor_version else "unsupported",
+        "severity": "informational",
+        "note": advisor_version or f"{advisor_host} binary not detected",
+        "floor_status": None,
+    }
+
+    main_model = DEFAULT_LLM_MODEL
+    name = os.environ.get("LL_HOST_CLI") or cfg.orchestration.host_cli
+    try:
+        main_host = (resolve_host_named(name) if name else resolve_host()).name
+    except HostNotConfigured:
+        floor_row = {
+            "name": "advisor_floor",
+            "status": "partial",
+            "severity": "informational",
+            "note": "main host unresolved",
+            "floor_status": None,
+        }
+        return [host_row, floor_row]
+
+    floor = check_floor(advisor_host, advisor_model, main_host, main_model)
+    floor_row = {
+        "name": "advisor_floor",
+        "status": "full" if floor.status == "ok" else "partial",
+        "severity": "informational",
+        "note": floor.detail,
+        "floor_status": floor.status,
+    }
+    return [host_row, floor_row]
+
+
+def _print_advisor_section() -> None:
+    """Print the Advisor section."""
+    rows = _advisor_data()
+    print()
+    print("Advisor")
+    print("─" * 40)
+    for row in rows:
+        symbol = _STATUS_SYMBOLS.get(row["status"], "?")
+        note = f"  {row['note']}" if row["note"] else ""
+        print(f"  {symbol}  {row['name']}{note}")
+
+
+@register_check
+def _advisor_check() -> list[CheckResult]:
+    """Registered check: advisor findings are always informational severity."""
+    return [
+        CheckResult(
+            name=row["name"],
+            status=row["status"],
+            note=row["note"],
+            severity=row["severity"],
+        )
+        for row in _advisor_data()
+    ]
+
+
 # --full-gated checks: one adapter per ll-verify-* / ll-check-links checker,
 # aggregating the FEAT-2795 target family. Kept separate from `_CHECKS` so the
 # default (non-`--full`) run never executes them.
@@ -1092,6 +1222,7 @@ def _print_report(
             "history_db": _history_db_data(),
             "schema_drift": _schema_drift_data(),
             "loop_validity": _loop_validity_data(),
+            "advisor": _advisor_data(),
         }
         if full:
             data["full"] = _full_section_data()
@@ -1207,6 +1338,7 @@ not a broken install.
             _print_history_db_section()
             _print_schema_drift_section()
             _print_loop_validity_section()
+            _print_advisor_section()
             if args.full:
                 _print_full_section()
             if trim_report is not None:

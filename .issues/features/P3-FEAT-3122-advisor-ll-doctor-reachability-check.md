@@ -4,9 +4,10 @@ title: ll-doctor advisor-reachability check
 type: FEAT
 parent: FEAT-3044
 priority: P3
-status: open
+status: done
 testable: true
 discovered_date: 2026-08-08
+completed_at: '2026-08-24T05:47:19Z'
 depends_on:
 - FEAT-3108
 - FEAT-3120
@@ -710,6 +711,7 @@ _Added by `/ll:confidence-check` on 2026-08-23_
   both are now fully specified in Decision Rules rather than left to judgment.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-24T05:46:57 - `32476eb8-9e5a-4de2-882a-b5cb71c68424.jsonl`
 - `/ll:confidence-check` - 2026-08-24T04:34:00 - `44cb34cb-e67f-4213-8fc0-68692fbc3773.jsonl`
 - `/ll:confidence-check` - 2026-08-24T03:31:44 - `092141f3-2c2e-43df-bd96-552d482c1a40.jsonl`
 - `/ll:confidence-check` - 2026-08-24T03:18:13 - `d2cc1ea2-75e9-4d1e-b4a0-3a77ec9f999f.jsonl`

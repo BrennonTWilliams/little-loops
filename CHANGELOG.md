@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.157.0] - 2026-08-23
 
 ### Added
+- **FEAT-3122**: `ll-doctor` advisor-reachability check — reports the configured advisor host's reachability and capability-floor result as warnings that never affect the exit code
 - **FEAT-3297**: mechanize-skills: built-in FSM loop to offload mechanical SKILL.md prose into scripts/CLIs
 - feat: wire ll-verify-evidence into CLI registry and init writers (3d08fff7b)
 - feat: track enclosing skill in scan-failures output (7638996ee)
@@ -179,8 +180,8 @@ that spawn a host CLI now build their environment through a single
 (ENH-3184). FSM LLM-judged gates also gained a `cannot_judge` abstention
 verdict with a fixed verdict grammar (ENH-3185).
 
-**Advisor core.** `ll-advise` CLI, a capability floor, and an `ll-doctor`
-check ship together (FEAT-3044).
+**Advisor core.** `ll-advise` CLI and a capability floor ship together
+(FEAT-3044).
 
 ### Fixed
 
