@@ -38,10 +38,12 @@ artifact as a reusable template.
 
 ## Depends On
 
-FEAT-3314 (Phase A) — this phase calls `apply_regions`, `build_manifest`,
-and the temp-build/promote/round-trip flow Phase A implements, and extends
-the `cmd_templatize` CLI scaffold Phase A wires up (making `--regions`
-optional: when absent, `discover_regions` runs instead).
+**Resolved** — FEAT-3314 (Phase A) is **done**; dependency satisfied. This phase calls
+`apply_regions`, `build_manifest`, and the temp-build/promote/round-trip
+flow Phase A implements.
+
+It also extends the `cmd_templatize` CLI scaffold Phase A wires up: when
+`--regions` is absent, `discover_regions` runs instead.
 
 ## Current Behavior
 
@@ -181,6 +183,15 @@ Phase A: `apply_regions` -> `build_manifest` -> temp build ->
 must never import `host_runner` or `anthropic` (module docstring, design
 principle 2).
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-24 — based on codebase analysis:_
+
+- **`load_regions()`'s actual current contract is narrower than "validate a populated `DiscoveryResult`"** (`scripts/little_loops/cli/artifact/templatize.py:148-185`): it takes a file `Path`, `json.loads()`s it, and its top-level key check (`_MAP_ALLOWED_KEYS = {"regions", "groups"}`, line 86) hard-rejects any input carrying `data`/`data_schema` — `RegionMapError: "unknown top-level key(s) ... 'data'/'data_schema' are derived outputs, not inputs"`, asserted by `TestLoadRegions.test_rejects_data_schema_key` (`scripts/tests/test_artifact_templatize.py:61-65`). Every successful `load_regions()` call returns `DiscoveryResult(data_schema={}, data={}, regions=..., groups=...)` — `data`/`data_schema` are always zeroed, never populated from the input.
+- **Consequence for this issue's stated design**: `discover_regions`'s LLM response (which per this issue's Proposed Solution *does* carry a populated `data_schema`) cannot be routed through `load_regions()` unmodified — that function's own fail-closed check exists specifically to reject a `data_schema`-bearing input. Either (a) `discover_regions` must strip `data`/`data_schema` from the LLM response before constructing a `{regions, groups}`-only payload for `load_regions()` (matching Phase A's existing pattern, where `data`/`schema` are separately derived downstream via `extract_data`/`derive_schema`, not read off `DiscoveryResult.data`/`.data_schema` at all — confirmed: nothing in `extract_data`/`derive_schema`/`apply_regions`/`build_manifest` reads those two fields), or (b) `load_regions()` itself needs new surface area to accept them. This must be resolved explicitly; as written, "validated through FEAT-3314's `load_regions()`" and "the emitted `data_schema` passes `_validate_schema_shape()`" are two different validation paths that do not currently compose the way the Proposed Solution implies.
+- **`_validate_schema_shape()`** (the function the Acceptance Criteria cite for rejecting `additionalProperties`/`minItems`) lives in `scripts/little_loops/artifact_templates.py:85-140`, not in `templatize.py`, and today only runs inside `load_manifest()` (`artifact_templates.py:178`), itself only reached via `verify_round_trip()` deep in `cmd_templatize`'s temp-build phase (`templatize.py:699`) — after files are already written to `tmp_dir`, before promotion. It is a separate check from anything `load_regions()` does.
+- **`cmd_templatize`'s exception surface has no `host_runner` awareness today**: the outer `except (ManifestError, SpliceError, RegionMapError)` (`templatize.py:716-718`) does not include `BlockingJsonError` (`host_runner.py:2019-2031`), and `templatize.py` has a module-level constraint (docstring, line 9-10) against importing `host_runner`/`anthropic` directly — confirming the issue's existing Call Path note that `discover_regions` must live outside `artifact_templates.py`, and implying `cmd_templatize`'s except clause needs a `BlockingJsonError` arm (or `discover_regions`'s caller must translate it) for the new failure mode to surface as the documented exit codes rather than an uncaught traceback.
+
 ## Integration Map
 
 ### Files to Modify
@@ -205,6 +216,15 @@ _Added by `/ll:refine-issue` — 2026-08-24 — based on codebase analysis:_
 - **Per-host `json_schema=` behavior in `host_runner.py`, confirmed at the implementation level**: `ClaudeCodeRunner.build_blocking_json` (`:442-471`) discards the kwarg entirely (`_ = json_schema` at `:465`) — the claude CLI's inline `--json-schema` flag exists but is only reachable through the separate `run_blocking_json(schema=...)` path (`:2034-2052`, `:2139-2140`), never through `build_blocking_json`'s own parameter. `CodexRunner.build_blocking_json` (`:736-770`) is the *only* implementation that materializes `json_schema` — it writes it to a `tempfile.NamedTemporaryFile` and passes `--output-schema <path>`, returning the temp path in `HostInvocation.cleanup_paths` for later cleanup. `GeminiRunner`/`OmpRunner` also silently drop it; `OpenCodeRunner`/`PiRunner` raise `HostNotConfigured` (stubs). This is strictly more detailed than the issue's existing citation and confirms caller-side key-checking is required on every host except Codex, not just Claude Code.
 - **`context_window.py`'s `context_window_for()` (`:39-77`) is the existing "size a limit off the model/host" precedent** for the new input-size-ceiling config this issue proposes — five-tier precedence (explicit override → `LL_CONTEXT_LIMIT` env → `[1m]` model-id suffix → exact `MODEL_CONTEXT_WINDOW` lookup → 200k default floor). No existing `config-schema.json` key covers a raw combined-input-size ceiling (verified by grep — only an unrelated `hard_ceiling_pct` under compaction config exists); this ceiling is new schema, but `context_window_for()` is the pattern to model its model-awareness after.
 - **Reusable `build_blocking_json` test fakes already exist**: `scripts/tests/test_action.py:40`, `scripts/tests/test_cli_harness.py:37`, and `scripts/tests/test_runner_spec.py:37,160` each define a fake `build_blocking_json` stub — usable scaffolding for mocking `discover_regions`'s host call in the schema-validation-failure and missing-required-keys tests this issue's Acceptance Criteria require.
+
+_Added by `/ll:refine-issue` — 2026-08-24 — based on codebase analysis:_
+
+- `scripts/little_loops/host_runner.py` — `resolve_host()`/`resolve_host_named()` is the required entry point per CLAUDE.md's Host CLI Abstraction; `ClaudeCodeRunner.build_blocking_json` (`:442-471`, discards `json_schema` at `:465`) and `CodexRunner.build_blocking_json` (`:736-770`, materializes it via `--output-schema <tempfile>`) are the two implementations `discover_regions` will actually run against in practice.
+- `scripts/little_loops/advisor.py` — `consult()` (`:192-290`) is the concrete Option A precedent to model `discover_regions`'s call and raise-on-mismatch shape after: `_VERDICT_SCHEMA`/`_VERDICT_KEYS` module-level (`:149-160`), `build_blocking_json(..., json_schema=_VERDICT_SCHEMA)` call (`:269-271`), `_VERDICT_KEYS.issubset(result.keys())` check (`:274-280`, a subset check — extra keys tolerated, only missing required keys raise `BlockingJsonError`).
+- `scripts/little_loops/config-schema.json` — the `"artifacts"` object schema (`:1875-1890`) has exactly two properties today (`default_output_dir`, `templates_dir`) and `"additionalProperties": false` (`:1889`) — the new input-size-ceiling config key must be added here or it will be schema-rejected. Python-side counterpart: `ArtifactsConfig` dataclass (`scripts/little_loops/config/features.py:369-386`).
+- `scripts/little_loops/context_window.py` — `context_window_for(model, override)` (`:39-77`, five-tier precedence: explicit override → `LL_CONTEXT_LIMIT` env → `[1m]` model-id suffix → exact `MODEL_CONTEXT_WINDOW` lookup → 200k default floor) is the existing model-aware sizing precedent for the new combined-input ceiling.
+- `docs/reference/CLI.md` — the `#### ll-artifact templatize` section (`:4532-4559`, re-verified current as of this pass since it changed after the prior refine) already has a Phase B forward-reference at line 4534 naming `discover_regions`/FEAT-3315, but its flags table (`:4544-4548`) still lists `--regions <path>` as unconditionally "required for Phase A," and its exit-code note (`:4557`) documents only Phase A's 0/1/2 semantics — both need the optional/no-`--regions` variant added.
+- Existing `build_blocking_json`-backed test suites usable as a testing-pattern reference (not to modify): `scripts/tests/test_advisor.py`, `scripts/tests/test_host_runner.py`, `scripts/tests/test_learning_tests_extractor.py`, `scripts/tests/test_cli_advise.py`.
 
 ## Acceptance Criteria
 
@@ -236,6 +256,7 @@ _Added by `/ll:refine-issue` — 2026-08-24 — based on codebase analysis:_
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-08-24T20:56:38 - `de9e1af4-5c22-4ebf-87ee-74fb60da3cea.jsonl`
 - `/ll:refine-issue` - 2026-08-24T18:58:03 - `ffa41e96-ab11-4f72-8513-f6153385423a.jsonl`
 - `/ll:format-issue` - 2026-08-24T18:48:18 - `837a85ca-8f14-41e3-a67f-9059d7bcff74.jsonl`
 - `/ll:issue-size-review` - 2026-08-24T18:42:58 - `837a85ca-8f14-41e3-a67f-9059d7bcff74.jsonl`
