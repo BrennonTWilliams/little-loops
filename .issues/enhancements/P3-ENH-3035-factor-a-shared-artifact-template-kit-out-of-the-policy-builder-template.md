@@ -9,6 +9,11 @@ labels:
 - artifact
 - ll-artifact
 parent: EPIC-3299
+relates_to:
+- FEAT-3308
+- FEAT-3309
+- FEAT-3304
+- FEAT-3036
 verify_verdict: VALID
 ---
 
@@ -63,12 +68,45 @@ currently does inline.
 - [ ] Design-token stamping is a separately callable unit, not inlined in a template.
 - [ ] policy-builder renders byte-identically (or with reviewed, intentional diffs)
       after being ported onto the kit.
-- [ ] The sql.js dashboard's artifact is built on the kit rather than a copied template.
+- [ ] The sql.js dashboard's artifact (FEAT-3304) is built on the kit rather than a
+      copied template.
+- [ ] **At least one templatized loop-generated artifact renders through the kit**
+      (see Consumer mix below). A kit validated only by policy-builder and the sql.js
+      dashboard has been validated against the wrong workload.
+- [ ] The kit's token-stamping unit is reachable from the `templatize` token-lifting
+      path (FEAT-3308) — i.e. it accepts a body whose token values were baked in as
+      literals by a loop's prompt-time `design_tokens_context`, not only a body
+      authored with stamp points.
+
+## Consumer mix (added 2026-08-23)
+
+Both consumers named in the original scope — `policy-builder` and the sql.js
+dashboard — are hand-built data dashboards from the same lineage.
+`policy-builder` is a 727-line `.tmpl` rendered by four `str.replace()` calls
+(`cli/artifact.py:132-137`); the dashboard will be its sibling. A kit factored
+from one and validated by the other will encode dashboard conventions and fit the
+epic's primary workload — large, LLM-generated, self-contained artifacts from the
+HTML loop family — badly or not at all.
+
+The AC above therefore requires a third consumer from that family. If FEAT-3308
+has not landed when this issue is implemented, satisfy it with a hand-templatized
+loop artifact used as a fixture; the point is that the kit is exercised by a body
+it did not author.
 
 ## Sequencing
 
 Should land alongside or just before the sql.js dashboard — the first new artifact
 is the forcing function. Does not gate the write-bridge work.
+
+**Blocked on a hub decision (resolved 2026-08-23).** FEAT-3304 flagged that this
+kit and FEAT-3036's Phase-1 `render` pipeline overlap, and that extracting the kit
+before that is settled means "the kit gets extracted twice." FEAT-3036 now records
+the packaging/engine/hash decisions (`.llat/` directory, sandboxed Jinja2,
+separate lockfile), which is the fixed target this extraction builds against — the
+contradiction the 2026-08-12 verification note flagged between this issue's Design
+Context and FEAT-3036's Open Questions is closed in FEAT-3036's favour, matching
+what this issue already assumed. Do not start the extraction against a different
+shape.
 
 ## Verification Notes
 

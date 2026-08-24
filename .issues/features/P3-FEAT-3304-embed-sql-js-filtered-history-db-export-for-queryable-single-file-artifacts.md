@@ -1,11 +1,14 @@
 ---
-id: 3304
+id: FEAT-3304
 title: Embed sql.js + filtered history.db export for queryable single-file artifacts
 type: FEAT
 priority: P3
 status: open
 discovered_date: '2026-08-23'
 parent: EPIC-3299
+relates_to:
+- ENH-3035
+- FEAT-3036
 labels:
 - artifact
 - history-db
@@ -199,11 +202,24 @@ live bridge.**
 
 ## Open questions
 
-- The design doc proposes a manifest + Jinja2 `render` pipeline as the
+- ~~The design doc proposes a manifest + Jinja2 `render` pipeline as the
   general artifact system. ENH-074's "template kit" and that pipeline
   overlap. Decide whether this issue builds on the doc's Phase-1 render
   system or on a lighter kit, before ENH-074 extracts anything —
-  otherwise the kit gets extracted twice.
+  otherwise the kit gets extracted twice.~~
+  **Resolved 2026-08-23 in FEAT-3036** (§ Template packaging, engine, and hash
+  storage): one system, not two — `.llat/` directory templates rendered by
+  sandboxed Jinja2, hashes in a lockfile. ENH-3035's kit is the shared-parts
+  layer *of* that pipeline, not an alternative to it. This issue's dashboard
+  template is authored against that shape.
+
+- **Config schema blocker.** The 2026-07-31 ENH-075 decision reproduced above
+  assumes an `artifacts.export` block in `.ll/ll-config.json`. It does not
+  exist: `ArtifactsConfig` (`config/features.py:369-384`) has exactly one field,
+  `default_output_dir`, and `config-schema.json:1870-1880` sets
+  `additionalProperties: false`, so the schema will reject an `export` key
+  outright. Adding the block — mode, allowlist, allowlist version — is in scope
+  for this issue and must land before the export filter, since the filter reads it.
 
 ## Acceptance Criteria
 
@@ -223,6 +239,9 @@ live bridge.**
 - [ ] The artifact is rendered through the ENH-074 template kit; no
       template code is copied from `policy-builder`.
 - [ ] `sql.js` version, source, and license are recorded in-repo.
+- [ ] `.ll/ll-config.json` accepts an `artifacts.export` block — schema updated,
+      round-tripped by `BRConfig`, and covered by a test that an unknown key is
+      still rejected.
 
 ## Dependencies
 

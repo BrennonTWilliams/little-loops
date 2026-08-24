@@ -1,8 +1,8 @@
 ---
-id: 3036
+id: FEAT-3036
 title: Artifact templates design
 type: FEAT
-priority: P4
+priority: P3
 status: open
 discovered_date: 2026-08-03
 labels:
@@ -10,6 +10,11 @@ labels:
 parent: EPIC-3299
 depends_on:
 - FEAT-2301
+relates_to:
+- FEAT-3308
+- FEAT-3309
+- ENH-3035
+- FEAT-3304
 verify_verdict: VALID
 ---
 
@@ -147,10 +152,17 @@ zero LLM.
 `status` reporting with CI-friendly exit codes. This is where the stated drift
 problem is actually killed.
 
-**Phase 4 — `templatize` loop + native emission.** The artifact→template FSM
-loop with round-trip verification, and the `artifact_mode: template` loop-output
-contract. Gnarliest part, deliberately last; Phases 1–3 deliver the drift-killing
-value even if Phase 4 slips.
+**Phase 4 — `templatize` + native emission.** Split out into its own children:
+**FEAT-3308** (`ll-artifact templatize`, with round-trip verification) and
+**FEAT-3309** (loop→artifact handoff and the `artifact_mode: template`
+loop-output contract).
+
+**Phase ordering (revised 2026-08-23).** Phase 4 is no longer scheduled last. Per
+EPIC-3299 § Use Cases, `templatize` is the entry point for the primary use case
+(one template, many source documents); Phase 3's staleness detection serves the
+secondary one (one bound source over time). The earlier "Phases 1–3 deliver the
+value even if Phase 4 slips" framing held only for the secondary case. Phase 1
+(`render`) remains a hard prerequisite for everything, including FEAT-3308.
 
 ## Recorded decisions (2026-07-31)
 
@@ -203,14 +215,48 @@ snapshots; free-text fields embeddable only in local mode.
   the artifact falls back to snapshot-only rendering with a visible "live data
   unavailable" indicator.
 
+### Template packaging, engine, and hash storage (decided 2026-08-23)
+
+**Decision: a directory template (`.llat/`), Jinja2 via `SandboxedEnvironment`,
+and a separate lockfile for hashes.** These three were listed as open questions
+here while ENH-3035's Design Context already treated them as settled — a
+contradiction `/ll:verify-issues` flagged on 2026-08-12. They are settled here,
+in the hub, so ENH-3035 can extract against a fixed target and FEAT-3304's
+"the kit gets extracted twice" risk is closed.
+
+- **Packaging: directory (`.llat/`), not a single-file bundle.** Simpler for v1,
+  diffable, and lets `assets/` exist without an encoding scheme. A single-file
+  bundle travels better and stays a possible later addition — it is an export
+  format, not the authoring format.
+- **Engine: Jinja2, sandboxed.** The `.replace()` scheme in
+  `cli/artifact.py:132-137` cannot express repeated regions, which FEAT-3308's
+  round-trip requirement makes mandatory (N sections → N cards must be a loop,
+  not unrolled). **`jinja2` is not currently a dependency** —
+  `scripts/pyproject.toml:40-59` lists only pyyaml, ruamel.yaml, wcwidth,
+  questionary, rich, anthropic, psutil. Per CLAUDE.md's minimize-dependencies
+  rule, the pin must carry a justifying comment in the `anthropic` style. The
+  only in-repo precedent for placeholder rendering is `sed`-based `{{name}}`
+  substitution in `cli-anything-bootstrap.yaml:453-466`, which is not a
+  substitute.
+  - **Delimiters must be chosen against generated content.** Templates produced
+    by FEAT-3308 are carved out of self-contained HTML containing inline JS and
+    CSS; `{{`/`{%` can collide with template literals and style blocks. Fix the
+    delimiter set (or a region-marker convention) as part of Phase 1, and cover
+    it with a fixture that contains colliding content.
+- **Hashes: lockfile, not written back into `manifest.yaml`.** Keeps the manifest
+  human-owned and hand-editable; machine state lives beside it. This is the same
+  split as `.ll/ll.local.md`'s machine-written `## Active Rules` section.
+- **Template location: `artifacts/templates/` under the project root**,
+  configurable. Blocker: `ArtifactsConfig`
+  (`config/features.py:369-384`) has exactly one field, `default_output_dir`, and
+  `config-schema.json:1870-1880` sets `additionalProperties: false` — the schema
+  will reject a templates-dir key until it is added. Same blocker applies to the
+  `artifacts.export` block the 2026-07-31 decisions above assume.
+
+**Still open here:** how `extract` invokes the LLM (see below).
+
 ## Open questions
 
-- Template packaging: directory (`.llat/`) vs. single-file bundle? Directory is
-  simpler for v1; single-file travels better.
-- Where do templates live? Proposal: `artifacts/templates/` under project root,
-  configurable via `ArtifactsConfig`.
-- Lockfile vs. writing hashes back into `manifest.yaml`? Lockfile keeps the
-  manifest human-owned; leaning lockfile.
 - How does `extract` invoke the LLM — through existing loop/agent machinery or
   a direct call? Reusing loop machinery buys logging/session-store integration
   for free.
