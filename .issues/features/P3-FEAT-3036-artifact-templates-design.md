@@ -18,15 +18,17 @@ relates_to:
 verify_verdict: VALID
 learning_tests_required:
 - jinja2
-confidence_score: 80
-outcome_confidence: 67
-score_complexity: 14
-score_test_coverage: 18
-score_ambiguity: 10
-score_change_surface: 25
+confidence_score: 93
+outcome_confidence: 85
+score_complexity: 18
+score_test_coverage: 20
+score_ambiguity: 25
+score_change_surface: 22
 ---
 
 # FEAT-3036: Artifact templates design
+
+## Summary
 
 Generalize the `ll-artifact policy-builder` precedent into a reusable artifact
 template system. Today each artifact produced by an FSM loop is a one-off snapshot
@@ -120,9 +122,9 @@ ll-artifact refresh <template> [<source-file>]
     extract + render in one shot, against the bound source by default.
 
 ll-artifact status [<template> ...]
-    Compare bound-source hashes to last-render hashes; report FRESH /
-    STALE / SOURCE-MISSING per template. Exit non-zero if anything is
-    stale (CI-hookable).
+    Compare recorded source hashes to current ones; report FRESH /
+    STALE / SOURCE-MISSING per (template, source) pair. Exit non-zero if
+    anything is stale.
 
 ll-artifact templatize <artifact> <source-file> [-o template-dir]
     Post-hoc extraction loop (Phase 4): produce template + data from an
@@ -132,6 +134,17 @@ ll-artifact policy-builder
     Existing subcommand; unchanged. Long-term it becomes a bundled
     template rendered through the same pipeline.
 ```
+
+**Output path precedence.** The manifest's `output:` is a *filename*; `-o` is a
+*directory*. Effective path = `(-o DIR | config.artifacts.default_output_dir) /
+manifest.output`. If `-o` names an existing file or carries a suffix, that is an
+error rather than a silent reinterpretation — `policy-builder`'s existing
+`--output` semantics (a directory resolved against `default_output_dir`) stay
+authoritative for the family.
+
+**"CI-gated" here means the local suite.** Per CLAUDE.md there is no hosted CI:
+`status`'s non-zero exit is exercised by a pytest test that invokes it, not by a
+workflow file.
 
 ## Regeneration pipeline
 
@@ -179,11 +192,18 @@ value even if Phase 4 slips" framing held only for the secondary case. Phase 1
 **Decision: two export modes, shareable-allowlisted by default, with the mode
 and allowlist user-configurable in `.ll/ll-config.json`.**
 
-- Default export embeds only the registered shareable set. Explicit local mode
-  (`ll-artifact render --local`) may embed anything for personal use.
+**Scope correction (2026-08-23, second pass): this decision is recorded here but
+implemented in FEAT-3304, not in this issue's `render`.** See § Second-pass
+decisions → *Export modes and `artifacts.export` belong to FEAT-3304*. The mode
+flag is an export-side concern (`ll-artifact <dashboard-cmd> --local`), never a
+flag on `render`.
+
+- Default export embeds only the registered shareable set. An explicit local
+  mode may embed anything for personal use.
 - Every artifact is visibly stamped with the mode (and allowlist version) that
   produced it.
-- Configuration lives in `.ll/ll-config.json` (`artifacts.export` block).
+- Configuration lives in `.ll/ll-config.json` (`artifacts.export` block), added
+  by FEAT-3304.
 
 **Initial shareable export set:**
 
@@ -248,29 +268,215 @@ in the hub, so ENH-3035 can extract against a fixed target and FEAT-3304's
   substitute.
   - **Delimiters must be chosen against generated content.** Templates produced
     by FEAT-3308 are carved out of self-contained HTML containing inline JS and
-    CSS; `{{`/`{%` can collide with template literals and style blocks. Fix the
-    delimiter set (or a region-marker convention) as part of Phase 1, and cover
-    it with a fixture that contains colliding content.
+    CSS; `{{`/`{%` can collide with template literals and style blocks.
+    **Settled 2026-08-23 (second pass)** — see § Second-pass decisions →
+    *Delimiter set and render determinism contract*.
 - **Hashes: lockfile, not written back into `manifest.yaml`.** Keeps the manifest
   human-owned and hand-editable; machine state lives beside it. This is the same
-  split as `.ll/ll.local.md`'s machine-written `## Active Rules` section.
+  split as `.ll/ll.local.md`'s machine-written `## Active Rules` section. Lockfile
+  keying is settled below (§ Second-pass decisions → *Lockfile is keyed by source
+  path, not a scalar*).
 - **Template location: `artifacts/templates/` under the project root**,
   configurable. Blocker: `ArtifactsConfig`
   (`config/features.py:369-384`) has exactly one field, `default_output_dir`, and
   `config-schema.json:1870-1880` sets `additionalProperties: false` — the schema
-  will reject a templates-dir key until it is added. Same blocker applies to the
-  `artifacts.export` block the 2026-07-31 decisions above assume.
+  will reject a templates-dir key until it is added. **This issue adds
+  `templates_dir` only**; the `artifacts.export` block the 2026-07-31 decisions
+  assume is FEAT-3304's to add (same blocker, different owner).
 
-**Still open here:** how `extract` invokes the LLM (see below).
+## Second-pass decisions (2026-08-23)
+
+Recorded after a pre-implementation review. These close the remaining Phase-1
+ambiguities so scaffolding can start.
+
+### Delimiter set and render determinism contract
+
+**Decision: a fixed, non-colliding delimiter set and a frozen environment
+construction, both part of the Phase-1 render contract.**
+
+```python
+SandboxedEnvironment(
+    variable_start_string="[[=", variable_end_string="=]]",
+    block_start_string="[[%",   block_end_string="%]]",
+    comment_start_string="[[#", comment_end_string="#]]",
+    trim_blocks=True, lstrip_blocks=True, keep_trailing_newline=True,
+    undefined=StrictUndefined, autoescape=False,
+)
+```
+
+Verified empirically against the installed jinja2 3.1.6 (2026-08-23) on a source
+containing `${x}` template literals, a `{{a:1}}` object literal, a `m[[0]][1]`
+nested array index, and a literal `{% raw %}` string: all four survive rendering
+untouched, `[[= … =]]` / `[[% … %]]` substitute correctly, `__class__` traversal
+raises `SecurityError`, and an undefined name raises `UndefinedError`. This
+extends `.ll/learning-tests/jinja2.md`'s custom-delimiter claim to the specific
+set being adopted.
+
+Rationale for each setting:
+
+- `autoescape=False` — templates are carved out of already-rendered HTML by
+  FEAT-3308; escaping would corrupt the round trip. Escaping is the *data
+  producer's* job, and must be stated as such in the manifest spec.
+- `StrictUndefined` — a missing key must fail loudly, not silently render empty.
+  Schema validation (below) should catch this first; `StrictUndefined` is the
+  backstop for anything the subset validator does not model.
+- `trim_blocks` / `lstrip_blocks` / `keep_trailing_newline` — these three
+  determine whitespace, and therefore determine whether FEAT-3308's round-trip
+  diff can be byte-exact. **They are frozen here and are not per-template
+  configurable.** Changing them is a template-format version bump.
+
+**Round-trip fidelity is defined as byte-exact** on the rendered output versus
+the original artifact, under this environment. FEAT-3308 may not relax this to a
+normalized comparison without a matching change here — a normalized diff would
+let whitespace drift accumulate invisibly across refreshes.
+
+**Fixture requirement (Phase 1):** one checked-in template fixture whose body
+contains `{{ }}`, `{% %}`, `${…}`, and `[[…]]` literal content, asserting it
+renders through untouched.
+
+### `data.json` validation: a declared JSON Schema subset, hand-validated
+
+**Decision: no `jsonschema` dependency. `data_schema` is restricted to a
+documented subset, validated by an in-repo validator that rejects unknown
+constructs at manifest-load time.**
+
+Supported subset: `type` (`object`/`array`/`string`/`number`/`integer`/
+`boolean`/`null`), `required`, `properties`, `items`, `enum`, plus `description`
+(ignored). Anything else in a `data_schema` — `oneOf`, `$ref`, `patternProperties`,
+`additionalProperties`, `format`, numeric bounds — is a **manifest load error**,
+not a silently-unenforced key. Failing closed at load time is what keeps the
+subset honest: a template can never appear validated while carrying a construct
+the validator ignores.
+
+Rationale: `jinja2` is already one new dependency against CLAUDE.md's
+minimize-dependencies rule; `jsonschema` would be a second, for a validator whose
+used surface is roughly 60 lines. The same `data_schema` is also handed to the
+host as a `json_schema=` generation constraint by `extract`/FEAT-3308, and that
+path already constrains the usable shape. If a real template later needs a
+construct outside the subset, promoting to `jsonschema` is a contained swap
+behind the same call site — the subset validator must therefore live in one
+module with one entry point, not be inlined into `cmd_render`.
+
+### `ll-artifact` grows into the per-file subcommand convention
+
+**Decision: per-file `add_*_parser` / `cmd_*` modules, as in `cli/issues/` and
+`cli/loop/`.** At 5 new subcommands the inline `if args.command == …` chain in
+`cli/artifact.py:275-357` is past the point where the two-command inline
+convention holds. Move `cli/artifact.py` to a `cli/artifact/` package with
+`policy_builder.py` and `design_md.py` carrying the existing handlers unchanged,
+and one module per new subcommand. This is decided in the hub so FEAT-3308 and
+FEAT-3309 do not each re-litigate it.
+
+Handler signature and error shape stay as they are today:
+`cmd_<name>(args: argparse.Namespace, logger: Logger) -> int`, own
+`BRConfig(Path.cwd())`, blanket `try/except Exception` → 0/1.
+
+### Lockfile is keyed by source path, not a scalar
+
+**Decision: the lockfile records a mapping, not a single hash.** The manifest's
+`source:` block stays a *default* binding for the single-bound-source case
+(EPIC-3299's secondary use case), but the lockfile that tracks freshness is keyed
+by rendered source path:
+
+```yaml
+# my-report.llat.lock  (machine-written)
+version: 1
+renders:
+  docs/risk-register.md:   {sha256: …, rendered_at: …, output: …}
+  docs/risk-register-eu.md: {sha256: …, rendered_at: …, output: …}
+```
+
+A scalar `source.sha256` models only "one template, one source over time" and
+cannot express EPIC-3299's *primary* use case (one template, many source
+documents). Since the lockfile is new in Phase 3 and has no back-compat burden,
+it is cheaper to key it correctly now than to migrate it later.
+
+`status` reports per (template, source) pair.
+
+### Export modes and `artifacts.export` belong to FEAT-3304
+
+**Decision: `render` stays pure; no `--local` flag, no history.db access.**
+
+The 2026-07-31 export-mode decision (reproduced above) placed a `--local` flag on
+`ll-artifact render`. That contradicts design principle 2 — `render` is
+`template + data.json → artifact`, deterministic and reproducible — because it
+would make output depend on ambient database state. Data provenance and
+redaction are the *producer's* problem (`extract`, or FEAT-3304's export
+filter), never the renderer's.
+
+Consequently this issue adds **only** `artifacts.templates_dir` to
+`ArtifactsConfig` / `config-schema.json`. The `artifacts.export` block and its
+allowlist land in FEAT-3304, which is the only code that reads them; adding them
+here would ship config keys with no consumer.
+
+### `extract`'s LLM invocation — resolved by FEAT-3308
+
+Recorded for the hub: FEAT-3308 settled this as a **direct
+`build_blocking_json(json_schema=…)` host call that fails loud** (advisor.py's
+shape), explicitly rejecting `learning_tests/extractor.py`'s fail-soft
+prose-marker parse — a silently-empty `data_schema` would be indistinguishable
+from "the LLM found nothing" and would corrupt round-trip diagnosis. Phase 2's
+`extract` follows the same shape. The "reuse loop machinery for free logging"
+option is dropped: the logging benefit does not offset making a pure CLI step
+depend on FSM run context.
 
 ## Open questions
 
-- How does `extract` invoke the LLM — through existing loop/agent machinery or
-  a direct call? Reusing loop machinery buys logging/session-store integration
-  for free.
+- ~~How does `extract` invoke the LLM — through existing loop/agent machinery or
+  a direct call?~~ **Resolved 2026-08-23** — direct `build_blocking_json`,
+  fail-loud; see § Second-pass decisions.
 - Non-HTML artifact types (images, diagrams): render step differs (e.g. SVG
   template → PNG rasterization). Manifest `renderer` field is the extension
   point; out of scope for v1.
+
+## Acceptance Criteria
+
+Scoped to **Phase 1** — the template format plus `render`, which is the hard
+prerequisite for FEAT-3308, FEAT-3309, FEAT-3304 and ENH-3035. Phases 2 and 3
+should be split into their own child issues before implementation, the way
+Phase 4 was split into FEAT-3308/3309; this hub retains the design and the
+decisions, not their acceptance criteria.
+
+- [ ] `jinja2` is pinned in `scripts/pyproject.toml` with a justifying comment in
+      the `anthropic`/`psutil` style, citing FEAT-3036 and the
+      repeated-regions requirement that `.replace()` cannot meet.
+- [ ] A `.llat/` template directory (`manifest.yaml` + `template.html.j2` +
+      optional `assets/`) loads, validates, and renders through
+      `ll-artifact render <template> --data data.json`.
+- [ ] The Jinja2 environment is constructed exactly as frozen in § Second-pass
+      decisions, and a test asserts each of the six delimiter strings and the
+      three whitespace flags — a silent change to any of them breaks FEAT-3308's
+      byte-exact round trip, so it must fail a test rather than a review.
+- [ ] A fixture template whose body contains literal `{{ }}`, `{% %}`, `${…}`
+      and `[[…]]` renders with all four preserved byte-for-byte.
+- [ ] `render` performs no LLM call and no network access; rendering the same
+      template + data twice produces byte-identical output.
+- [ ] `data.json` is validated against `manifest.data_schema` before rendering;
+      a schema violation exits non-zero with the offending path, and nothing is
+      written.
+- [ ] A `data_schema` containing a construct outside the documented subset
+      (`oneOf`, `$ref`, `patternProperties`, `additionalProperties`, `format`,
+      numeric bounds) fails at **manifest load**, with a test per rejected
+      construct.
+- [ ] The subset validator lives in a single module behind a single entry point,
+      so a later swap to `jsonschema` is a one-call-site change.
+- [ ] `theme: design-tokens` stamps themed CSS vars via the existing
+      `load_design_tokens` / `render_as_css_vars_themed` path — no second copy of
+      `policy-builder`'s `_themed_css_vars`.
+- [ ] `artifacts.templates_dir` is added to `ArtifactsConfig`, its `from_dict()`,
+      `config/core.py`'s serialization dict (:916-918), and
+      `config-schema.json`'s `artifacts` block; `TestSchemaValueParity` passes
+      and `test_artifacts_in_schema` is extended to assert the new key.
+      **`artifacts.export` is explicitly not added here** — it is FEAT-3304's.
+- [ ] `cli/artifact.py` is a `cli/artifact/` package with one module per
+      subcommand; `policy-builder` and `design-md export` behaviour is unchanged
+      and their existing tests pass untouched.
+- [ ] Output path precedence (`-o` as directory, `manifest.output` as filename)
+      is implemented and tested, including the error case where `-o` names a file.
+- [ ] `docs/reference/CLI.md` (`### ll-artifact`) and
+      `docs/reference/CONFIGURATION.md` (`### artifacts`) document `render` and
+      `templates_dir`.
+- [ ] `python -m pytest scripts/tests/` exits 0.
 
 
 ## Integration Map
@@ -283,13 +489,13 @@ _Added by `/ll:refine-issue` — 2026-08-24 — based on codebase analysis:_
 
 - `scripts/little_loops/cli/artifact.py` — the existing `ll-artifact` CLI (currently
   `policy-builder` + `design-md export`, two inline subcommands with a manual
-  `if args.command == ...` dispatch chain, `main_artifact()` at lines 275-357). New
-  `render`/`extract`/`refresh`/`status`/`templatize` subcommands land here or in
-  new per-command modules (see Program Design → Call Path for the two competing
-  in-repo conventions).
+  `if args.command == ...` dispatch chain, `main_artifact()` at lines 275-357).
+  **Becomes a `cli/artifact/` package** (decided 2026-08-23, second pass), one module
+  per subcommand, following `cli/issues/` and `cli/loop/`.
 - `scripts/little_loops/config/features.py:369-384` — `ArtifactsConfig` needs a
-  `templates_dir` field (and an `export` sub-block per the 2026-07-31 decisions) added
-  to the dataclass and its `from_dict()`.
+  `templates_dir` field added to the dataclass and its `from_dict()`. (The `export`
+  sub-block from the 2026-07-31 decisions is **FEAT-3304's**, not this issue's — see
+  § Second-pass decisions.)
 - `scripts/little_loops/config/core.py:339,476,916-918` — `BRConfig` construction,
   `.artifacts` property, and the config-dump serialization dict all need the matching
   new field(s); the serialization dict at :916-918 is easy to miss since it silently
@@ -467,7 +673,7 @@ _Added by `/ll:refine-issue` — 2026-08-24 — based on codebase analysis:_
 
 ### Call Path
 
-`main_artifct()`'s dispatch is a flat `if args.command == ...: return cmd_*(args, logger)`
+`main_artifact()`'s dispatch is a flat `if args.command == ...: return cmd_*(args, logger)`
 chain (`scripts/little_loops/cli/artifact.py:275-357`), not a registry/dict-based command
 table. Today: `main_artifact` -> `cmd_policy_builder` -> `_themed_css_vars` ->
 `design_tokens.load_design_tokens` -> `design_tokens.render_as_css_vars_themed`, then back
@@ -480,8 +686,9 @@ in `cmd_policy_builder`: five `.replace()` stamps against the loaded
 `add_*_parser`/`cmd_*` pair per file, imported into the group's `__init__.py` — the
 codebase holds both the inline-in-one-file convention (`ll-artifact` today, 2 commands)
 and the per-file convention (`ll-issues`, `ll-loop`, dozens of commands each) at
-comparable subcommand counts; which one `ll-artifact` should grow into at 5+ subcommands
-is unresolved by precedent alone).
+comparable subcommand counts). **Resolved 2026-08-23 (second pass): the per-file
+convention.** See § Second-pass decisions → *`ll-artifact` grows into the per-file
+subcommand convention*.
 
 ### Decision Rules
 
@@ -505,7 +712,9 @@ is unresolved by precedent alone).
   constraint for LLM structured output (`advisor.py:142-158`'s `_VERDICT_SCHEMA`, passed to
   `build_blocking_json(json_schema=...)`). Validating a template's `data_schema` against a
   user-supplied `data.json` at CLI-invocation time is a new operation with no in-repo
-  precedent to anchor an implementation decision to.
+  precedent to anchor an implementation decision to. **Resolved 2026-08-23 (second
+  pass): no `jsonschema` dependency — a documented subset with an in-repo validator
+  that fails closed at manifest load.** See § Second-pass decisions.
 
 ## Confidence Check Notes
 
@@ -535,6 +744,17 @@ _Added by `/ll:confidence-check` on 2026-08-23_
   machinery vs. a direct host call) — the issue's own "Open questions" section
   leaves this unresolved.
 
+### Resolution (2026-08-23, second pass)
+
+All three concerns above are addressed in § Second-pass decisions: the CLI layout
+is decided (per-file package), the delimiter set and render determinism contract
+are fixed and empirically verified, `extract`'s LLM path is resolved via
+FEAT-3308, and `Summary` + `Acceptance Criteria` sections now exist. The
+`stale_cli_flag` hits for `ll-artifact templatize` / `render --local` are
+likewise settled — `templatize` is FEAT-3308's forward reference, and `--local`
+has been removed from the render path entirely as a violation of design
+principle 2. A re-run of `/ll:confidence-check` should re-score ambiguity.
+
 _jinja2 learning test provisioned this run: `.ll/learning-tests/jinja2.md`,
 status `proven`, 5/5 claims passed — repeated/conditional regions, sandboxed
 attribute blocking, delimiter collision on literal `{{ }}`-like content, custom
@@ -542,6 +762,7 @@ delimiters avoiding that collision, and loader-free `from_string()` rendering
 are all confirmed against the installed jinja2 3.1.6._
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-24T03:27:57 - `75fd46f8-3745-4383-ae9f-e2749df5c760.jsonl`
 - `/ll:confidence-check` - 2026-08-24T03:14:39 - `073198e9-3f33-4b28-94f3-e0a8ed10b406.jsonl`
 - `/ll:wire-issue` - 2026-08-24T03:08:29 - `c3165230-5d93-4a9d-934b-c7e96cbc8715.jsonl`
 - `/ll:refine-issue` - 2026-08-24T03:02:07 - `8e84ed7c-557b-45a9-a518-b89638519037.jsonl`

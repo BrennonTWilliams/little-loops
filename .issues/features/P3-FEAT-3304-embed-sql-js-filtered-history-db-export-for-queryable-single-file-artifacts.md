@@ -220,6 +220,18 @@ live bridge.**
   `additionalProperties: false`, so the schema will reject an `export` key
   outright. Adding the block — mode, allowlist, allowlist version — is in scope
   for this issue and must land before the export filter, since the filter reads it.
+  **Confirmed 2026-08-23**: FEAT-3036 explicitly scopes itself to
+  `artifacts.templates_dir` only and hands `artifacts.export` to this issue, as
+  the only code that reads it. Expect to hit the same
+  `additionalProperties: false` blocker FEAT-3036's `templates_dir` change opens
+  up — coordinate so the two schema edits do not collide.
+
+- **Export mode is not a `render` flag.** The ENH-075 text above sketches
+  `ll-artifact render --local`. FEAT-3036 rejected that (2026-08-23, second
+  pass): `render` is a pure `template + data.json → artifact` function and must
+  not read ambient database state. The mode flag belongs on this issue's
+  export-side subcommand (`ll-artifact <dashboard-cmd> --local`), where the
+  history.db read actually happens.
 
 ## Acceptance Criteria
 

@@ -17,12 +17,12 @@ labels:
 verify_verdict: VALID
 size: Medium
 reconcile_attempted: true
-confidence_score: 85
-outcome_confidence: 86
-score_complexity: 18
+confidence_score: 90
+outcome_confidence: 67
+score_complexity: 14
 score_test_coverage: 25
-score_ambiguity: 18
-score_change_surface: 25
+score_ambiguity: 10
+score_change_surface: 18
 decision_needed: false
 ---
 
@@ -795,6 +795,7 @@ _Added by `/ll:confidence-check` on 2026-08-23_
   both are now fully specified in Decision Rules rather than left to judgment.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-24T03:18:13 - `d2cc1ea2-75e9-4d1e-b4a0-3a77ec9f999f.jsonl`
 - `/ll:verify-issues` - 2026-08-24T03:11:53 - `d889ca3b-8283-4446-b128-5166bb5b2c8b.jsonl`
 - `/ll:wire-issue` - 2026-08-24T03:10:09 - `db62efbd-ccc9-4880-90d1-21e1837ca316.jsonl`
 - `/ll:refine-issue` - 2026-08-24T02:48:51 - `9abc72d4-6fec-4dd7-b8b5-0bb4825d634b.jsonl`

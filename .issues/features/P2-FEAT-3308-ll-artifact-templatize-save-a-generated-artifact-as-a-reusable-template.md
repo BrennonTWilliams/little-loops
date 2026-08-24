@@ -289,10 +289,18 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - Update `BRConfig.to_dict()` (`config/core.py:916-918`) to serialize the new field
 - Update `docs/reference/CONFIGURATION.md` § `artifacts` (`:910-924`) — table row, JSON example, and the now-stale "Currently backs the `policy-builder` subcommand" prose
 - Extend `test_config_schema.py::test_artifacts_in_schema` (`:473-491`) for the new field; verify `TestSchemaValueParity.test_to_dict_values_match_schema_defaults` (`:1243-1265`) passes with matching defaults
-- Add a `jinja2` dependency pin to `scripts/pyproject.toml` (`:40-51`) with a justifying comment, following the `anthropic` pin's shape
+- ~~Add a `jinja2` dependency pin to `scripts/pyproject.toml` (`:40-51`) with a justifying comment, following the `anthropic` pin's shape~~ — **FEAT-3036 Phase 1 lands the pin** (it is an acceptance criterion there); this issue inherits it. If Phase 1 has not landed, this issue is blocked, not the place to add the pin.
 - Write `test_artifact_templatize.py` following `test_policy_builder_emit.py`'s direct-`Namespace`/mock-handler dispatch conventions (`:204-230`) and `test_enh3268_design_md_export.py`'s `_make_config`/`_write_synthetic_profile`/`_reimport` fixture helpers (`:288-332,42-46`) for the round-trip fixture, since no checked-in artifact+source fixture pair exists to copy
 
 ## Acceptance Criteria
+
+**Inherited contract (do not re-decide here).** FEAT-3036 § Second-pass decisions
+freezes the delimiter set (`[[= =]]` / `[[% %]]` / `[[# #]]`) and the Jinja2
+environment settings that determine whitespace (`trim_blocks`, `lstrip_blocks`,
+`keep_trailing_newline`, `StrictUndefined`, `autoescape=False`). Byte-exact
+round-trip fidelity is only achievable *because* those are frozen — `templatize`
+must emit templates against that exact environment and may not relax the round
+trip to a normalized diff without a matching change in FEAT-3036.
 
 - [ ] `ll-artifact templatize <artifact> <source> -o <dir>` produces a template directory that `ll-artifact render` accepts.
 - [ ] Round-trip: rendering the produced template with the produced `data.json` reproduces the original artifact byte-identically, or the command exits non-zero and writes the diff.
