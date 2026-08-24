@@ -107,32 +107,46 @@ jobs:
           .venv/bin/python -c "import pytest, pytest_cov, xdist, pytest_timeout, syrupy, hypothesis; print('dev deps verified')"
 
       - name: Run unit tests (exclude integration + conformance)
-        # `tee` mirrors pytest output to `pytest.log` for upload without
-        # buffering the streamed CI log (which would break live-progress in
-        # the GH Actions UI). `--junit-xml` writes a structured report that
-        # GH Actions parses for the test summary table; also machine-readable
-        # for triage scripts. `set -o pipefail` is required: without it the
-        # pipeline's exit code is tee's (always 0), masking pytest's actual
-        # failure status. Both files are uploaded on every CI outcome below.
+        # Diagnostic instrumentation (ci/diagnose-unit-hang): a background
+        # sampler records `date + free -m + top-RSS` every 20s to mem.log, and a
+        # `timeout 48m` backstop SIGTERMs pytest BEFORE the hosted runner's
+        # ~52m resource-watchdog fires — so the step completes with exit 124 and
+        # the upload step (if: always()) runs, persisting pytest.log + mem.log
+        # + junit that a lost-communication death would otherwise wipe.
+        # A frozen tail in pytest.log + climbing RSS in mem.log = the hang/OOM
+        # point, captured instead of purged.
         run: |
           set -o pipefail
-          # Diagnostic flags (workflow_dispatch inputs) — defaults reproduce
-          # the shipped addopts exactly, so a bare dispatch == production.
           EXTRA=()
           [ "${{ inputs.disable_ll_history }}" = "true" ] && EXTRA+=("-p" "no:ll_history")
           if [ -n "${{ inputs.worker_count }}" ]; then
             EXTRA+=("-n" "${{ inputs.worker_count }}")
           fi
           EXTRA+=("--timeout-method" "${{ inputs.timeout_method }}")
-          # PYTHONUNBUFFERED + -s: emit the live test-name tail to the step log
-          # incrementally, so if the runner dies mid-run the last test before
-          # the hang survives in the GH Actions UI even without artifacts.
-          PYTHONUNBUFFERED=1 .venv/bin/python -m pytest scripts/tests/ \
-            -m "not integration and not conformance" \
-            --tb=line \
-            "${EXTRA[@]}" \
-            --junit-xml=pytest-junit.xml \
-            | tee pytest.log
+          ( while true; do \
+              echo "== $(date -u +%H:%M:%S) =="; \
+              free -m | awk 'NR==2{print "mem: used "$3"MB / "$2"MB"}'; \
+              ps -eo rss,comm --sort=-rss | head -6 | awk '{printf "  %6.0f MB  %s\n", $1/1024, $2}'; \
+              sleep 20; \
+            done ) > mem.log 2>&1 &
+          SAMPLER=$!
+          set +e
+          PYTHONUNBUFFERED=1 timeout --signal=TERM --kill-after=30s 48m \
+            .venv/bin/python -m pytest scripts/tests/ \
+              -m "not integration and not conformance" \
+              --tb=line \
+              "${EXTRA[@]}" \
+              --junit-xml=pytest-junit.xml \
+              | tee pytest.log
+          RC=$?
+          set -e
+          kill "$SAMPLER" 2>/dev/null || true
+          echo "pytest exit: $RC"
+          echo "=== pytest.log tail (last test before stop) ==="
+          tail -25 pytest.log || true
+          echo "=== mem.log tail (final memory samples) ==="
+          tail -30 mem.log || true
+          exit $RC
 
       - name: Upload unit-test artifacts
         # `if: always()` is the data-collection gate — green runs need to
@@ -148,6 +162,7 @@ jobs:
           path: |
             pytest.log
             pytest-junit.xml
+            mem.log
           retention-days: 7
           if-no-files-found: warn
 
