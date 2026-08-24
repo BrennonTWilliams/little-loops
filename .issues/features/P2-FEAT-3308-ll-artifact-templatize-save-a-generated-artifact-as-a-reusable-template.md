@@ -21,6 +21,12 @@ learning_tests_required:
 - jinja2-byte-exact-round-trip
 size: Very Large
 reconcile_attempted: true
+confidence_score: 90
+outcome_confidence: 58
+score_complexity: 5
+score_test_coverage: 18
+score_ambiguity: 10
+score_change_surface: 25
 ---
 
 # FEAT-3308: `ll-artifact templatize`: save a generated artifact as a reusable template
@@ -509,7 +515,25 @@ _Pruned 2026-08-24 during pre-implementation review; superseded notes removed._
 **Note** (added by `/ll:audit-issue-conflicts`): `artifacts.templates_dir` was already added to `config-schema.json` and `ArtifactsConfig` by FEAT-3036 (done). This issue inherits that field rather than re-adding it — the earlier Wiring Phase / Integration Map entries claiming ownership of it are struck through above. FEAT-3304 owns the separate `artifacts.export` block.
 
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-08-24_
+
+**Readiness Score**: 90/100 → PROCEED
+**Outcome Confidence**: 58/100 → LOW
+
+### Gaps to Address
+- `format-check`'s `unapplied_decision` detector flags ~35 identifiers (`discover_regions`, `apply_regions`, `load_manifest()`, `theme`, `[[= =]]`, etc.) across Proposed Solution/Program Design/Implementation Steps/Acceptance Criteria as belonging to the rejected Option B path from the Decision Rationale — this appears to be a proximity false-positive (these identifiers are Option A's own vocabulary, not Option B's `extractor.py` pattern), but it capped Criterion C (Ambiguity) at 10/25 per the Decision Cap rule; consider running `/ll:decide-issue` or manually re-confirming the decision block's phrasing so the detector stops matching, since the underlying decision (Option A) is not actually in question.
+- `format-check`'s `missing_behavior_parity` flags `cli/artifact/policy_builder.py` and `scripts/little_loops/artifact_templates.py` (no explicit "### Behavior Parity" subsection contrasting `templatize` against them) and `stale_cli_flag` flags the not-yet-implemented `ll-artifact templatize/refresh/extract` subcommands (expected — this issue is what adds them) — both capped Criterion 4 (Issue Well-Specified) at 10/20; the CLI-flag flags are inherent to a forward-looking FEAT and can be disregarded, but a short Behavior Parity note contrasting the new templating approach against `policy_builder.py`'s `.replace()` scheme (already discussed narratively in Proposed Solution) would clear that half of the cap.
+
+### Outcome Risk Factors
+- **Deep per-site complexity** (Criterion A: Complexity 5/25 — Breadth 5/12, Depth 0/13): the core deliverable (`discover_regions`, `apply_regions`, the temp-build → verify → promote transaction) is genuinely novel architecture with no in-repo precedent — the issue's own research explicitly states "No round-trip/rollback precedent exists... novel to this codebase." Expect the highest implementation risk to concentrate in the temp-build/promote flow and the region-splicing algorithm, not the CLI wiring.
+- **Ambiguity floor from the Decision Cap** (Criterion C: 10/25): see Gaps to Address above — resolve the `unapplied_decision` false-positive (or confirm it is not one) before treating ambiguity as fully closed.
+
+Learning test target `jinja2-byte-exact-round-trip` was `missing` at check time; auto-provisioned via `/ll:explore-api` this session — all 7 claims proven (`.ll/learning-tests/jinja2-byte-exact-round-trip.md`), no Phase 3 hard override triggered.
+
 ## Session Log
+- `/ll:confidence-check` - 2026-08-24T18:33:03 - `fc7f522d-5285-4cfe-80ae-165743f58e1d.jsonl`
 - `/ll:reconcile-issue` - 2026-08-24T18:21:58 - `bf2ea761-d864-4b19-8078-67d47afee296.jsonl`
 - `/ll:refine-issue` - 2026-08-24T18:16:50 - `4cf0eddb-35dc-406e-937b-500628a507cf.jsonl`
 - `/ll:verify-issues` - 2026-08-24T18:08:33 - `0ba47155-a1c2-4ae2-a900-cfc8dd2149a3.jsonl`

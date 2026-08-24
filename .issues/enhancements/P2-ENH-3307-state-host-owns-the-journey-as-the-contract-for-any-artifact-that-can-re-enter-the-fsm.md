@@ -44,9 +44,22 @@ _Added by `/ll:refine-issue` — 2026-08-24 — based on codebase analysis:_
 
 A written contract — the three-level control taxonomy (notify / ask-to-run-prompt / host-owned) described below — exists as a document/spec artifact that defines, per level, what an artifact may emit, what the host is obligated to do with it, and which layer (host session vs. FSM executor) owns the resulting state change. The contract is protocol- and render-target-agnostic, so it governs htmx-based artifacts over a local bridge, MCP Apps interactive resources (ENH-3306), and any future render target without modification.
 
-**Deliverable location (resolved 2026-08-23 review):** `docs/reference/ARTIFACT_CONTROL_LEVELS.md`, indexed from `docs/index.md` under "Reference" (required, not implementer's call), and cross-linked from `docs/ARCHITECTURE.md` (a short `## Artifact Control Layer` pointer following the Host Runner Layer precedent) and `docs/reference/EVENT-SCHEMA.md`.
+**Deliverable location (resolved 2026-08-24 review):** `docs/reference/ARTIFACT_CONTROL_LEVELS.md`, indexed from `docs/index.md` under **"Developer Documentation"** (required, not implementer's call), and cross-linked from `docs/ARCHITECTURE.md` (a short `## Artifact Control Layer` pointer following the Host Runner Layer precedent) and `docs/reference/EVENT-SCHEMA.md`.
 
-**Event naming (resolved):** the doc reserves the level-3 event name `artifact_interaction` and adds a placeholder row for it to `docs/reference/EVENT-SCHEMA.md` (marked *reserved, not yet emitted*) with the field shape `{artifact_id, level, action, payload}`. This is so ENH-3306's view and a future SSE bridge converge on one name rather than each inventing one; no executor code emits or consumes it in this issue.
+> **Index section (resolved 2026-08-24 review):** *not* "Reference". `docs/reference/EVENT-SCHEMA.md` — this doc's nearest sibling and its cross-link target — is listed under `docs/index.md`'s "Developer Documentation" heading (line 57), while the "Reference" heading is populated mostly with `docs/guides/*` entries and omits `HOST_COMPATIBILITY.md` and `DEFERRAL_CODES.md` entirely. Place the new bullet immediately after the `Event Schema Reference` bullet.
+
+**Event naming (resolved):** the doc reserves the level-3 event name `artifact_interaction` so ENH-3306's view and a future SSE bridge converge on one name rather than each inventing one. No executor code emits or consumes it in this issue, and `scripts/little_loops/generate_schemas.py` is **not** touched.
+
+**Where the reservation lands in `EVENT-SCHEMA.md` (resolved 2026-08-24 review):** a new, clearly-delimited `## Reserved Event Names` section — **not** a row in the `Event → Subsystem → Source` registry table (~`EVENT-SCHEMA.md:1490-1520`), and **not** an entry in the Machine-Readable Schemas file listing (~`:1367`). Rationale: that document asserts *"Every event type listed in this document has a corresponding JSON Schema (draft-07) file committed to `docs/reference/schemas/`"*, and `generate_schemas.py` hardcodes the full set with `scripts/tests/test_generate_schemas.py::test_all_41_event_types_defined` asserting the count is 41. A registry-table row would (a) require a `Source` cell for a file that emits nothing and (b) contradict the schema-parity claim. The implementation must therefore also **amend that sentence** to scope it to *emitted* event types, and the new `## Reserved Event Names` section must state that reserved names have no schema file and no emitter until a mechanism ships.
+
+**Reserved field shape (resolved 2026-08-24 review):** the payload fields below compose with the standard event envelope, not replace it — `_BASE_PROPS` / `_BASE_REQUIRED` in `generate_schemas.py:24-30` supply `event` and `ts` (both required) on every event, and an executor-emitted event additionally carries `state` and `loop` per the FSM Executor section's conventions.
+
+| Field | Type | Required | Meaning |
+|---|---|---|---|
+| `artifact_id` | `str` | yes | Stable identifier of the artifact instance that produced the interaction |
+| `level` | `str` | yes | One of the three level identifiers — `"notify"` \| `"ask-to-run-prompt"` \| `"host-owned"`; string, not an ordinal, matching the `terminated_by` / `reason` precedent elsewhere in `EVENT-SCHEMA.md` |
+| `action` | `str` | yes | Render-target-defined name of the interaction the user performed |
+| `payload` | `object` | optional | Free-form, render-target-defined interaction data; `additionalProperties: true` |
 
 ## Background / Motivation
 
@@ -72,15 +85,28 @@ The distinction that matters most is level 2 vs. level 3: level 2 hands control 
 
 The doc must also state two prohibitions, in the style of the Host Runner "MUST go through `resolve_host()`" rule: (a) a render target MUST declare which level(s) it supports and MUST NOT emit above its declared level; (b) no transport may consume a level-3 event itself — it must hand it to the executor.
 
+### Where a render target declares its level (resolved 2026-08-24 review)
+
+Prohibition (a) is unenforceable unless the doc names the declaration site, and no such site exists today: `_ResourceEntry` (`scripts/little_loops/mcp_server/resources.py:58`) has no level field, and `html-anything.yaml`'s artifact types have no level key. Since this issue is doc-only, the declaration is **prose-level and normative, with a named forward slot per render target**:
+
+- **Binding now:** every render target MUST declare its supported level(s) in prose, in its own canonical doc, and MUST link back to `ARTIFACT_CONTROL_LEVELS.md` for the definitions. `ARTIFACT_CONTROL_LEVELS.md` MUST carry a "Declared levels by render target" table listing each known target and its level — this table is the canonical registry, and a new render target landing without a row in it is a contract violation reviewers can point at. Seed it with the two known rows: `html-anything.yaml` dashboards → level 1; ENH-3306's `ui://` resources → level 1.
+- **Forward slot, non-binding (do not build here):** when a render target first needs a machine-readable declaration, it goes on that target's own registration record — an `ArtifactControlLevel`-valued field on `_ResourceEntry` for `ll-mcp`, and an artifact-type key for loop-YAML artifact types. The doc names these as the intended sites so two mechanisms do not invent two different ones; adding either field is out of scope for this issue.
+
+This gives ENH-3306 something concrete to conform to (a prose declaration plus a registry row) without pulling code changes into a documentation issue.
+
 ## Integration Map
 
 ### Files to Modify
 
 - No production code changes — Effort is Small, a document/spec artifact only (`program_design_not_applicable: true` is already set in frontmatter). This codebase's convention places single-topic canonical contract/taxonomy docs under `docs/reference/` (e.g. `docs/reference/EVENT-SCHEMA.md`, `docs/reference/HOST_COMPATIBILITY.md`, `docs/reference/DEFERRAL_CODES.md`) rather than `docs/guides/` (broader narrative "how to build X" docs, e.g. `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md`)
 - **New**: `docs/reference/ARTIFACT_CONTROL_LEVELS.md`
-- `docs/index.md` — add the Reference bullet
-- `docs/reference/EVENT-SCHEMA.md` — add the reserved `artifact_interaction` row
+- `docs/index.md` — add the bullet under **"Developer Documentation"**, immediately after the `Event Schema Reference` bullet (line 57); **not** under "Reference" (see resolution in Expected Behavior)
+- `docs/reference/EVENT-SCHEMA.md` — add a new `## Reserved Event Names` section holding `artifact_interaction`, **and** amend the Machine-Readable Schemas sentence ("Every event type listed in this document has a corresponding JSON Schema…", ~line 1367) to scope it to *emitted* event types. Do **not** add a row to the `Event → Subsystem → Source` registry table (~lines 1490-1520) and do **not** add a filename to the schemas listing
 - `docs/ARCHITECTURE.md` — add a short `## Artifact Control Layer` pointer section
+- `docs/guides/MCP_SERVER_GUIDE.md` — add the one-line forward pointer (ENH-3306 fills it in)
+- `scripts/tests/test_wiring_reference_docs.py` — add the parametrized entries (see Tests below)
+
+**Explicitly untouched:** `scripts/little_loops/generate_schemas.py` and `docs/reference/schemas/`. `scripts/tests/test_generate_schemas.py::test_all_41_event_types_defined` and `::test_creates_41_files` must remain green with the count unchanged at 41 — a reserved name is not an event type.
 
 ### Dependent Files (Callers/Importers)
 
@@ -97,7 +123,19 @@ The doc must also state two prohibitions, in the style of the Host Runner "MUST 
 
 ### Tests
 
-- Minimal existence/structure test only: a new `scripts/tests/test_enh_3307_artifact_control_levels.py` asserting the doc exists, contains the three level identifiers and the `artifact_interaction` name, and that `docs/index.md` links it. Full drift-enforcement against executor event names (the `HOST_COMPATIBILITY.md` precedent) is deferred until an executor actually emits `artifact_interaction`.
+**Resolved 2026-08-24 review — use the consolidated file, not a standalone one.** Do **not** create `scripts/tests/test_enh_3307_artifact_control_levels.py`. Pure doc existence/structure tests belong in `scripts/tests/test_wiring_reference_docs.py`, whose own docstring records that ENH-1963 consolidated 28 previously-separate per-issue doc-wiring test files into it; no pure doc test in the current suite lives in a standalone `test_enh_NNNN_*.py` file (those all exercise real code). Add:
+
+- one `DOC_FILES_MUST_EXIST` tuple (`scripts/tests/test_wiring_reference_docs.py:265`, shape `(doc_path, issue_id)`): `("docs/reference/ARTIFACT_CONTROL_LEVELS.md", "ENH-3307")`
+- `DOC_STRINGS_PRESENT` tuples (`:20`, shape `(doc_path, expected_string, issue_id)`), all tagged `"ENH-3307"`:
+  - `("docs/reference/ARTIFACT_CONTROL_LEVELS.md", "notify", ...)`, `"ask-to-run-prompt"`, `"host-owned"` — the three level identifiers
+  - `("docs/reference/ARTIFACT_CONTROL_LEVELS.md", "artifact_interaction", ...)`
+  - `("docs/reference/ARTIFACT_CONTROL_LEVELS.md", "_meta.ui.visibility", ...)` — the MCP-Apps disambiguation
+  - `("docs/reference/EVENT-SCHEMA.md", "artifact_interaction", ...)` and `("docs/reference/EVENT-SCHEMA.md", "Reserved Event Names", ...)`
+  - `("docs/index.md", "ARTIFACT_CONTROL_LEVELS.md", ...)`
+  - `("docs/ARCHITECTURE.md", "Artifact Control Layer", ...)`
+  - `("docs/guides/MCP_SERVER_GUIDE.md", "ARTIFACT_CONTROL_LEVELS.md", ...)`
+
+Full drift-enforcement against executor event names (the `HOST_COMPATIBILITY.md` pytest-enforced-table precedent) is deferred until an executor actually emits `artifact_interaction`.
 
 ### Documentation
 
@@ -106,7 +144,7 @@ The doc must also state two prohibitions, in the style of the Host Runner "MUST 
 - `docs/guides/MCP_SERVER_GUIDE.md` — user-facing docs for `ll-mcp`; would need a cross-link once ENH-3306's `ui://` resource type exists, since that mechanism must conform to this contract
 
 _Wiring pass added by `/ll:wire-issue`:_
-- `docs/index.md` — lists `docs/reference/*.md` under "Reference"; **required** new bullet for `ARTIFACT_CONTROL_LEVELS.md` (resolved: index it even though `HOST_COMPATIBILITY.md` / `DEFERRAL_CODES.md` are not — precedent is inconsistent, so follow the stricter path) [Agent 1 finding]
+- `docs/index.md` — **required** new bullet for `ARTIFACT_CONTROL_LEVELS.md` (resolved: index it even though `HOST_COMPATIBILITY.md` / `DEFERRAL_CODES.md` are not — precedent is inconsistent, so follow the stricter path) [Agent 1 finding]. *Superseded detail 2026-08-24:* this bullet originally said "under 'Reference'"; the correct section is **"Developer Documentation"**, beside `EVENT-SCHEMA.md` — see Expected Behavior.
 - `docs/guides/LOOPS_REFERENCE.md:1483-1582` and `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md:1200` — document `scripts/little_loops/loops/html-anything.yaml`, the concrete level-1 (notify) artifact type this contract's "one-way by construction" example refers to; candidate cross-link once the contract doc exists, though the connection is by example rather than by required coupling [Agent 1 finding]
 
 ### Configuration
@@ -138,14 +176,17 @@ The MCP Apps extension defines a different, narrower axis under similar-sounding
 
 ## Acceptance Criteria
 
-- [ ] `docs/reference/ARTIFACT_CONTROL_LEVELS.md` exists, opens with H1 + purpose paragraph + `> **Related Documentation:**` blockquote, and declares itself canonical.
+- [ ] `docs/reference/ARTIFACT_CONTROL_LEVELS.md` exists, opens with H1 + purpose paragraph + `> **Related Documentation:**` blockquote naming `docs/ARCHITECTURE.md`, `docs/reference/EVENT-SCHEMA.md`, and `docs/guides/MCP_SERVER_GUIDE.md`, and declares itself canonical.
 - [ ] Contains the per-level obligations table above (5 columns, 3 rows) followed by prose disambiguating level 2 vs. level 3.
 - [ ] States the two prohibitions (declared-level ceiling; transports never consume level-3 events).
+- [ ] Contains the "Declared levels by render target" registry table, seeded with `html-anything.yaml` dashboards → level 1 and ENH-3306's `ui://` resources → level 1, and names the forward slots (`_ResourceEntry` field for `ll-mcp`; artifact-type key for loop YAML) as out-of-scope-here.
 - [ ] States explicitly that MCP Apps `_meta.ui.visibility` is a different axis and does not map onto the levels.
-- [ ] Reserves the `artifact_interaction` event name with its field shape; `EVENT-SCHEMA.md` gains a matching *reserved* row.
-- [ ] `docs/index.md` lists the doc; `docs/ARCHITECTURE.md` cross-links it; `docs/guides/MCP_SERVER_GUIDE.md` gains a one-line forward pointer (ENH-3306 fills it in).
-- [ ] `scripts/tests/test_enh_3307_artifact_control_levels.py` passes.
-- [ ] Unblocks ENH-3306 (`blocked_by: [ENH-3307]`).
+- [ ] Reserves the `artifact_interaction` event name with the four-field shape above, stating that it composes with the standard `event`/`ts` envelope and that `level` is the string identifier, not an ordinal.
+- [ ] `EVENT-SCHEMA.md` gains a `## Reserved Event Names` section carrying `artifact_interaction` and stating reserved names have no schema file and no emitter; its Machine-Readable Schemas sentence is amended to scope the schema-parity claim to *emitted* event types. No registry-table row, no schemas-listing entry.
+- [ ] `docs/index.md` lists the doc under "Developer Documentation" after the `Event Schema Reference` bullet; `docs/ARCHITECTURE.md` cross-links it via a `## Artifact Control Layer` section; `docs/guides/MCP_SERVER_GUIDE.md` gains a one-line forward pointer (ENH-3306 fills it in).
+- [ ] The new entries in `scripts/tests/test_wiring_reference_docs.py` pass, and no standalone `test_enh_3307_*.py` file is added.
+- [ ] `scripts/tests/test_generate_schemas.py` still passes with the event-type count unchanged at 41 (`generate_schemas.py` untouched).
+- [ ] ENH-3306's "level-1 (`ui/message`)" claim uses the level identifiers exactly as this doc defines them (its `blocked_by: [ENH-3307]` frontmatter is already set — verify, do not re-add).
 
 ## Related Issues
 
@@ -164,19 +205,3 @@ Open.
 - `/ll:wire-issue` - 2026-08-24T00:59:50 - `4cd71d49-8da8-4dc9-852e-8f17b59fed46.jsonl`
 - `/ll:refine-issue` - 2026-08-24T00:51:43 - `9c480c31-6e54-4a77-8e21-d400559417c0.jsonl`
 - `/ll:format-issue` - 2026-08-24T00:04:16 - `9d912d1c-def8-4ac1-b2d0-73ed036e9de0.jsonl`
-
-## Tests
-
-### Codebase Research Findings
-
-_Added by `/ll:refine-issue` — 2026-08-24 — based on codebase analysis:_
-
-- Contested test-file convention: this codebase has two competing shapes for issue-driven doc tests, and both are actively used, not one superseding the other. (a) One-off `test_enh_NNNN_*.py` files per issue — e.g. `test_enh_3171_mcp_project_root.py`, `test_enh_3174_mcp_resources_pagination.py` — but every one of those exercises actual code (CLI parsers, MCP tools), not pure doc existence/structure. (b) A single consolidated `scripts/tests/test_wiring_reference_docs.py` holding parametrized `DOC_STRINGS_PRESENT` (doc_path, expected_string, issue_id) and `DOC_FILES_MUST_EXIST` (doc_path, issue_id) tuples — that file's own docstring says it was produced by consolidating 28 originally-separate per-issue doc-wiring test files (ENH-1963). No pure doc-existence/doc-structure test in the current test suite lives in a standalone `test_enh_NNNN_*.py` file; that shape has moved to the consolidated file. The issue's own Integration Map/Tests section proposes a new standalone `test_enh_3307_artifact_control_levels.py` — that is a valid choice but runs counter to the more recent consolidation precedent; adding parametrized entries to `test_wiring_reference_docs.py` instead is the alternative the implementer should weigh.
-
-## Documentation
-
-### Codebase Research Findings
-
-_Added by `/ll:refine-issue` — 2026-08-24 — based on codebase analysis:_
-
-- `docs/index.md` placement is not settled by precedent the way the issue implies: the file's "Reference" section (lines 25-49) does not list `HOST_COMPATIBILITY.md` or `DEFERRAL_CODES.md` at all (both `docs/reference/*.md` files), while `EVENT-SCHEMA.md` — also a `docs/reference/*.md` file — is listed instead under a separate "Developer Documentation" section (line 57), not "Reference". The issue's Integration Map says to add a "Reference bullet" for `ARTIFACT_CONTROL_LEVELS.md`; given `EVENT-SCHEMA.md`'s actual placement under "Developer Documentation" rather than "Reference", confirm which section is intended before adding the index entry — the two existing docs/reference/*.md precedents disagree on which section a reference doc belongs in.
