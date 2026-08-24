@@ -1068,6 +1068,7 @@ Synthesize workflow patterns into concrete automation proposals. Final step (Ste
 | `audit-issue-conflicts`^ | Scan open issues for conflicting requirements and architectural decisions |
 | `link-epics`^ | Assign parentless open issues to open epics, or synthesize new EPICs from them, via similarity scoring |
 | `go-no-go`^ | Adversarial go/no-go debate for issue implementation decisions |
+| `advise`^ | One-shot, signal-cited consult to a different (typically stronger) model |
 | `audit-architecture` | Analyze code structure |
 | `audit-docs`^ | Check documentation accuracy |
 | `update-docs`^ | Identify stale or missing docs from recent commits and completed issues |

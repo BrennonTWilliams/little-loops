@@ -30,6 +30,8 @@ trigger_fixtures:
 
 Evaluate whether one or more issues should be implemented by staging an adversarial debate between two research agents, with a neutral judge agent rendering a final GO/NO-GO verdict.
 
+**Distinct from `/ll:advise`**: go-no-go is a same-model adversarial debate via `Agent` subagents; `/ll:advise` is a one-shot consult to a different (typically stronger) model.
+
 ## Arguments
 
 ```

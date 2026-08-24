@@ -4,9 +4,10 @@ title: /ll:advise skill wrapping the ll-advise CLI
 type: FEAT
 parent: FEAT-3044
 priority: P3
-status: open
+status: done
 testable: true
 discovered_date: 2026-08-08
+completed_at: '2026-08-24T02:41:05Z'
 depends_on:
 - FEAT-3120
 labels:
@@ -532,6 +533,7 @@ changes applied:
 Corrected in place the two stale claims the provenance note flagged (the shadow-tree "FEAT-3042/FEAT-3043 have no issue files" research note; two "FEAT-3120 is deferred" mentions — it is `open`). Frontmatter `size: Very Large` corrected to `Small`: the deliverable is one skill markdown file plus catalog wiring, matching this issue's own Impact section ("Effort: Small") — the prior value was minted against the shadow tree and would have invited a pointless decomposition pass. Refreshed the plugin.json version note (now 1.156.0).
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-24T02:40:47 - `f963edb9-4f3d-466f-a2fe-dfc4e1139625.jsonl`
 - `/ll:confidence-check` - 2026-08-24T02:15:31 - `1b6a6218-c48a-41dc-8e35-19ce0c49ff36.jsonl`
 - `/ll:confidence-check` - 2026-08-24T02:02:45 - `71b7c246-2810-4260-a931-7b7ac8e9fba1.jsonl`
 - `/ll:refine-issue` - 2026-08-24T01:47:00 - `8963b656-d221-49d9-8449-7169844dd5fd.jsonl`
