@@ -182,6 +182,21 @@ from and so a lossy template is never silently accepted in the meantime.
   - Assert the generating FSM loop is never invoked by `templatize` or
     subsequent renders (no `host_runner`/loop-execution call in this path).
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-24 — based on codebase analysis:_
+
+- **Existing `.llat` fixture layout to extend for the fan-out fixture**: `scripts/tests/fixtures/artifact_templates/{simple,delimiters,theme}.llat/` (each with `manifest.yaml`, `template.html.j2`, `data.json`) is the existing checked-in template-fixture shape; a fan-out fixture (second source document + hand-authored `data.json` + checked-in expected render output) extends this layout.
+- **No CSS-parsing dependency exists anywhere in `scripts/pyproject.toml`** (no `tinycss2`, `cssutils`, `cssselect`, etc. — the only markup-parsing dependency, `BeautifulSoup`, is used solely by the unrelated `doc_scraper.py`). `report_token_literals` must do its own from-scratch value-matching (regex/substring scan of the CSS text against `tokens.resolved`'s values) — there is no existing CSS-aware helper to reuse.
+- **Precise mechanism for why literal token values get baked into generated artifacts**: `inject_design_context()` in `cli/loop/_helpers.py:1397-1430` (a more exact anchor than the issue's own `:1416-1424` citation) is guarded by `context.get("use_design_tokens", True)` with string-to-bool coercion at `:1419-1420` (`""`/`"0"`/`"false"`/`"no"`/`"off"` all disable it); when enabled it sets `context["design_tokens_context"] = render_as_prompt_context(_tokens)` (`:1423`), which emits `name: value` lines with literal resolved values (hex codes, sizes) — not CSS custom-property references. This confirms the exact seed point of the "baked literal" problem this phase reports on.
+- **Two divergent, unreconciled report/warning conventions exist in this codebase** — the implementer must pick one for `cmd_templatize`'s token-report warning, since precedent alone does not settle it:
+  - (a) `cli/verify_design_tokens.py`'s `lint_profile()`/`lint_profiles_dir()` (`:92-133`) build a `ThemeViolation` list, formatted via `_format_json_report()`/`_format_text_report()` (plain `json.dumps(..., indent=2)`) — but this convention *gates* (nonzero exit on any violation), which contradicts this phase's stated report-only, non-blocking requirement.
+  - (b) `design_tokens.py`/`cli/artifact/design_md.py`'s `cmd_design_md_export` (`:111-122`) computes `notes` via a pure function (`_design_md_dropped_groups`, `design_tokens.py:862-888`) and emits exactly one `sys.stderr.write(f"[little-loops] Warning: ...")` line while the command still succeeds — the closer behavioral match to "report-only ... plus a non-silent warning naming the count," but note this uses raw `sys.stderr.write` with a hand-built `[little-loops] Warning:` prefix, **not** `Logger.warning()` — which is what `cmd_policy_builder`/`cmd_design_md_export` otherwise use for everything else, since FEAT-3314's Program Design has `cmd_templatize` receive a `Logger` argument matching that error-handling shape. Which convention the new warning line follows is an open implementation choice, not a settled one.
+- **Existing JSON-report-to-disk write idiom**: `cli/verify_private_refs.py:461-474` (`write_baseline`) and `cli/verify_evidence.py:1234-1302` (`write_verdict_cache`/`write_baseline`) both use `path.parent.mkdir(parents=True, exist_ok=True)` then `path.write_text(json.dumps(payload, indent=2, ...) + "\n", encoding="utf-8")` — the closest existing write-idiom precedent for `unlifted-tokens.json`, though both existing examples exist for baseline/gating rather than pure reporting.
+- **Fan-out / cross-fixture test convention to model after**: `test_streaming_cache_parity.py` and `test_benchmark_fragment.py::TestHarborFixtures` both hardcode fixture IDs (not globbed, so a missing fixture fails at collection time rather than silently generating zero test cases) and pair a `TestXFixtures` structural sanity-check class with a parametrized assertion test. This is the established N-input/N-expected-output pattern the fan-out test should follow.
+- **`docs/reference/CLI.md`'s `### ll-artifact` section structure**: a subcommand table (`:4461-4465`) plus one `#### ll-artifact <subcommand>` subsection per subcommand (prose → Flags table → Examples → Exit codes → optional `> **Note:**` phase-status callout, e.g. `:4531` for `render`). `templatize` needs both a new table row and its own subsection in this shape.
+- **`docs/ARCHITECTURE.md` has no artifact-templates section yet** (confirmed via grep — zero hits for `.llat`, "artifact template", `FEAT-3036`, `manifest.yaml`). The nearest analog is the "Project-enriched artifacts" paragraph (`:1027-1029`), which folds new artifact-generator examples into existing prose rather than adding a new heading. Whether `templatize` gets its own `####` section or a clause added to this existing paragraph is not settled by precedent — both shapes exist elsewhere in the file for other subsystems.
+
 ## Acceptance Criteria
 
 - [ ] Baked design-token literals are reported as unlifted in `unlifted-tokens.json` and a non-silent log line; a test asserts the report is non-empty for a fixture with baked tokens and that a literal matching two token names reports both candidates.
@@ -212,5 +227,6 @@ from and so a lossy template is never silently accepted in the meantime.
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-08-24T18:58:03 - `ffa41e96-ab11-4f72-8513-f6153385423a.jsonl`
 - `/ll:format-issue` - 2026-08-24T18:48:19 - `837a85ca-8f14-41e3-a67f-9059d7bcff74.jsonl`
 - `/ll:issue-size-review` - 2026-08-24T18:42:58 - `837a85ca-8f14-41e3-a67f-9059d7bcff74.jsonl`

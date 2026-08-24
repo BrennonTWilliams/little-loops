@@ -158,6 +158,17 @@ the codebase's only precedent that actually fails loud.
 
 - `discover_regions(artifact_html: str, source_text: str, prompt: str | None) -> DiscoveryResult` — the LLM stage; the only function on this call path that touches `host_runner`
 
+**`DiscoveryResult` shape is defined by FEAT-3314, not here.** Phase A owns
+the contract and its fail-closed loader `load_regions()` (FEAT-3314 §
+Proposed Solution 3b); `discover_regions` must validate its LLM response
+through that same function rather than reimplementing the checks — that is
+what makes the `--regions` map and the LLM output the same artifact. Two
+constraints carry over and must be stated in the discovery prompt: `Region`/
+`RegionGroup` `start`/`end` are **UTF-8 byte offsets** (not character
+indices), and a `RegionGroup` additionally declares its own span plus the
+ordered `iterations` sub-spans, whose non-region literal text must be
+byte-identical across iterations.
+
 ### Call Path
 
 `cmd_templatize` (from FEAT-3314, `cli/artifact/templatize.py`) -> [no
@@ -187,10 +198,19 @@ principle 2).
 - `docs/reference/CLI.md` § `ll-artifact` — extend the `templatize` section
   for the default (LLM-driven) invocation
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-24 — based on codebase analysis:_
+
+- **Per-host `json_schema=` behavior in `host_runner.py`, confirmed at the implementation level**: `ClaudeCodeRunner.build_blocking_json` (`:442-471`) discards the kwarg entirely (`_ = json_schema` at `:465`) — the claude CLI's inline `--json-schema` flag exists but is only reachable through the separate `run_blocking_json(schema=...)` path (`:2034-2052`, `:2139-2140`), never through `build_blocking_json`'s own parameter. `CodexRunner.build_blocking_json` (`:736-770`) is the *only* implementation that materializes `json_schema` — it writes it to a `tempfile.NamedTemporaryFile` and passes `--output-schema <path>`, returning the temp path in `HostInvocation.cleanup_paths` for later cleanup. `GeminiRunner`/`OmpRunner` also silently drop it; `OpenCodeRunner`/`PiRunner` raise `HostNotConfigured` (stubs). This is strictly more detailed than the issue's existing citation and confirms caller-side key-checking is required on every host except Codex, not just Claude Code.
+- **`context_window.py`'s `context_window_for()` (`:39-77`) is the existing "size a limit off the model/host" precedent** for the new input-size-ceiling config this issue proposes — five-tier precedence (explicit override → `LL_CONTEXT_LIMIT` env → `[1m]` model-id suffix → exact `MODEL_CONTEXT_WINDOW` lookup → 200k default floor). No existing `config-schema.json` key covers a raw combined-input-size ceiling (verified by grep — only an unrelated `hard_ceiling_pct` under compaction config exists); this ceiling is new schema, but `context_window_for()` is the pattern to model its model-awareness after.
+- **Reusable `build_blocking_json` test fakes already exist**: `scripts/tests/test_action.py:40`, `scripts/tests/test_cli_harness.py:37`, and `scripts/tests/test_runner_spec.py:37,160` each define a fake `build_blocking_json` stub — usable scaffolding for mocking `discover_regions`'s host call in the schema-validation-failure and missing-required-keys tests this issue's Acceptance Criteria require.
+
 ## Acceptance Criteria
 
 - [ ] The emitted `data_schema` passes `_validate_schema_shape()`; a test feeds a `discover_regions` response containing `additionalProperties`/`minItems` and asserts the command fails loud before writing anything.
-- [ ] A `discover_regions` response missing required keys raises rather than degrading to an empty result (Option A contract), asserted with a mocked host call.
+- [ ] A `discover_regions` response missing required keys raises rather than degrading to an empty result (Option A contract), asserted with a mocked host call — routed through FEAT-3314's `load_regions()`, not a Phase-B-local validator.
+- [ ] A `discover_regions` response whose offsets are character indices rather than UTF-8 byte offsets is caught: a mocked-response test over a non-ASCII artifact asserts the run fails (round-trip rejection) rather than silently emitting an off-by-N template.
 - [ ] A combined artifact+source input over the configured ceiling exits non-zero naming the measured size, with no host call issued.
 - [ ] The emitted manifest carries `source` and `extraction`, and omits `theme`.
 
@@ -216,5 +236,6 @@ principle 2).
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-08-24T18:58:03 - `ffa41e96-ab11-4f72-8513-f6153385423a.jsonl`
 - `/ll:format-issue` - 2026-08-24T18:48:18 - `837a85ca-8f14-41e3-a67f-9059d7bcff74.jsonl`
 - `/ll:issue-size-review` - 2026-08-24T18:42:58 - `837a85ca-8f14-41e3-a67f-9059d7bcff74.jsonl`
