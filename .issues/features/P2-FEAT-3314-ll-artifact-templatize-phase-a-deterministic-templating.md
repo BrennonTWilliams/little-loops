@@ -3,9 +3,10 @@ id: FEAT-3314
 title: '`ll-artifact templatize` Phase A: deterministic templating (no LLM)'
 type: FEAT
 priority: P2
-status: open
+status: done
 discovered_by: manual
 discovered_date: '2026-08-24'
+completed_at: '2026-08-24T20:52:09Z'
 parent: FEAT-3308
 depends_on: []
 relates_to:
@@ -595,6 +596,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-24T20:51:51 - `13014800-8d7a-4804-8830-d1dc2a2e7e78.jsonl`
 - `/ll:confidence-check` - 2026-08-24T20:24:40 - `a9467d85-d4e4-4bc1-b81d-d6c20bcd2599.jsonl`
 - `/ll:confidence-check` - 2026-08-24T20:01:06 - `490de121-72ec-4c05-9269-025f0ef9af50.jsonl`
 - `/ll:confidence-check` - 2026-08-24T19:19:47 - `848282c0-0b6c-443d-872b-4aeef5e9eeab.jsonl`

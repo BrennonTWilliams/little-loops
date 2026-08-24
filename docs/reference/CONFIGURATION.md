@@ -915,7 +915,7 @@ Output settings for `ll-artifact`, the generator of self-contained human-facing 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | `default_output_dir` | `str` | `"."` | Directory where `ll-artifact` writes generated artifacts when no `--output`/`-o` override is given. Relative paths resolve against the project root. |
-| `templates_dir` | `str` | `"artifacts/templates"` | Directory (relative to the project root) where named `.llat/` artifact templates are looked up by `ll-artifact render <name>` when the given argument does not resolve as a filesystem path. |
+| `templates_dir` | `str` | `"artifacts/templates"` | Directory (relative to the project root) where named `.llat/` artifact templates are looked up by `ll-artifact render <name>` when the given argument does not resolve as a filesystem path. Also the default write target for `ll-artifact templatize`'s `-o` resolution (FEAT-3314) — when `-o` is omitted, `templatize` writes `<templates_dir>/<artifact-stem>.llat`. |
 
 ```json
 "artifacts": {

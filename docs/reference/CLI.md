@@ -4454,7 +4454,7 @@ python -m pytest tests/   # Run starter tests
 
 ### ll-artifact
 
-Generate self-contained, human-facing artifacts from project data. `policy-builder` stamps project-derived inputs into an HTML page at generation time, so the output works over `file://` with no runtime fetch. `design-md export` renders a design-token profile as a portable DESIGN.md document. `render` (FEAT-3036 Phase 1) deterministically stamps a user-authored `.llat/` artifact template against a `data.json`, with zero LLM cost per render.
+Generate self-contained, human-facing artifacts from project data. `policy-builder` stamps project-derived inputs into an HTML page at generation time, so the output works over `file://` with no runtime fetch. `design-md export` renders a design-token profile as a portable DESIGN.md document. `render` (FEAT-3036 Phase 1) deterministically stamps a user-authored `.llat/` artifact template against a `data.json`, with zero LLM cost per render. `templatize` (FEAT-3314 Phase A) turns a generated artifact back into a reusable `.llat/` template via a hand-written region map, with a byte-exact round-trip guarantee.
 
 **Subcommands:**
 
@@ -4463,8 +4463,9 @@ Generate self-contained, human-facing artifacts from project data. `policy-build
 | `policy-builder` | Emit a visual builder for policy-router / rubric FSM loop YAML |
 | `design-md export` | Export a design-token profile as a single-theme DESIGN.md document |
 | `render` | Deterministic `template + data.json -> artifact` stamp for a `.llat/` artifact template |
+| `templatize` | Save a generated artifact as a reusable `.llat/` template (Phase A: deterministic, `--regions` map) |
 
-**Exit codes:** `0` = artifact generated successfully, `1` = error
+**Exit codes:** `0` = artifact generated successfully, `1` = error (see `templatize` below for its distinct `2`)
 
 #### ll-artifact policy-builder
 
@@ -4527,6 +4528,33 @@ ll-artifact render ./my-report.llat --data data.json -o build/
 ```
 
 **Exit codes:** `0` = artifact rendered, `1` = template not found, an invalid manifest, missing/malformed/schema-invalid data, or `-o` naming an existing file.
+
+#### ll-artifact templatize
+
+Decomposed from FEAT-3308; this is Phase A, the deterministic half (no LLM call). Given an artifact plus a hand-written region map (`--regions <map.json>`), splices the located spans into Jinja2 expressions/blocks, derives `data.json` and `data_schema` from the artifact bytes at each span, and verifies a **byte-exact round trip** before promoting the result into a `.llat/` template directory. Phase B (FEAT-3315) adds LLM-driven `discover_regions` on top of this same pipeline — this command's `--regions` map is the shared seam.
+
+`<artifact>` is the generated file to templatize; `<source>` is the document it was generated from — recorded into `manifest.source` but **not read** on this path, since every `data.json` value is captured from an artifact byte span, never from the source. `-o` resolves to a `<name>.llat` directory (`.llat` is appended if omitted); default is `config.artifacts.templates_dir/<artifact-stem>.llat`. An existing `-o` is an error unless `--force` is given.
+
+The `--regions` map's top level carries only `regions` and `groups` (both required; either may be empty). A `Region` is `{start, end, expr, group?, anchor_before?, anchor_after?}` — `start`/`end` are **UTF-8 byte offsets** (not `str` indices — non-ASCII artifacts diverge under the two), `expr` is the dotted `data.json` path the extracted bytes bind to, and `group` names an owning `RegionGroup` for a repeated element. A `RegionGroup` is `{id, binding, array_path, start, end, iterations}`, where `iterations` is an ordered list of `[start, end]` sub-spans; iteration 1 becomes the Jinja2 loop body (its member regions rewritten to `[[= <binding>.<field> =]]`), and iterations 2..N are deleted from the template (their extracted values populate the `array_path` array in `data.json` instead). `data`/`data_schema` are derived outputs, never map inputs — a map supplying either key is rejected.
+
+The artifact is read and processed as raw `bytes` throughout, never via `read_text`/`write_text` — a CRLF or lone-CR artifact is rejected up front (exit `1`) because the frozen renderer's own body read (`render_template`) applies universal-newline translation and cannot round-trip one. An extensionless artifact is also rejected (exit `1`): the template body name is derived from `Path(artifact).suffix`, and an empty suffix would produce a nonsensical `template..j2`.
+
+**Flags:**
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--regions <path>` | | Path to the hand-written region map (required for Phase A) |
+| `--output <dir>` | `-o` | Output `<name>.llat` directory (default: `config.artifacts.templates_dir/<artifact-stem>.llat`). Note this `-o` names a **template directory**, unlike `render`'s `-o`, which names an **output directory** — the two subcommands sit adjacent in this reference deliberately. |
+| `--force` | | Overwrite an existing template at the resolved `-o` path |
+
+**Examples:**
+```bash
+ll-artifact templatize out/index.html docs/ARCHITECTURE.md \
+    -o arch-review.llat --regions map.json
+ll-artifact templatize out/index.html docs/ARCHITECTURE.md --regions map.json --force
+```
+
+**Exit codes:** `0` = template written and round-trip verified, `1` = malformed input / IO failure (missing artifact/source/regions map, CRLF artifact, extensionless artifact, malformed `--regions` map, an existing `-o` without `--force`), `2` = round-trip verification rejected the extraction — the candidate plus a `roundtrip.diff` are written to `<out>.rejected/` and any pre-existing `-o` template is left untouched.
 
 > **Note:** `render` is Phase 1 of FEAT-3036 (see `.issues/features/P3-FEAT-3036-artifact-templates-design.md`). `extract`/`refresh` (Phase 2) and `status` (Phase 3, staleness detection) are not yet implemented.
 
