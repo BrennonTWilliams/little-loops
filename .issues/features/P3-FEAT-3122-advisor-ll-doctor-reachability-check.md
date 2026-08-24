@@ -18,11 +18,11 @@ verify_verdict: VALID
 size: Medium
 reconcile_attempted: true
 confidence_score: 90
-outcome_confidence: 67
+outcome_confidence: 84
 score_complexity: 14
 score_test_coverage: 25
-score_ambiguity: 10
-score_change_surface: 18
+score_ambiguity: 20
+score_change_surface: 25
 decision_needed: false
 ---
 
@@ -146,7 +146,12 @@ dict, which cannot carry two results. `_advisor_check()` maps one
 `CheckResult` dataclass default is `"error"`, the opposite of what this check
 needs). Row names: `advisor_host` (reachability) and `advisor_floor`
 (capability floor), so a consumer can tell "advisor binary missing" from
-"advisor model is weaker". The `--json` `advisor` key carries the list
+"advisor model is weaker". **The emitted `CheckResult.name` is the row name
+verbatim — `"advisor_host"` / `"advisor_floor"`, no prefix.** Pin these; do
+*not* adopt `_entry_points_check`'s `f"entry_point:{row['name']}"` prefixing
+(`doctor.py:239-249`), which exists only because that check's row names are
+arbitrary third-party entry-point names needing a namespace. These two are
+fixed and already namespaced by their `advisor_` stem. The `--json` `advisor` key carries the list
 verbatim; `_print_advisor_section()` prints one `_STATUS_SYMBOLS` line per row.
 The "not configured" guard returns **both** rows, not one, each with
 `status="unsupported"`, `severity="informational"`, and
@@ -181,6 +186,13 @@ on `Path.cwd()` and on whichever `BRConfig` patch is active, so it leaks across
 every test that `monkeypatch.chdir(tmp_path)` and across the ~28 patched-config
 sites — a cross-test-pollution bug, not a cache.
 
+*Exceptions are not memoized.* `lru_cache` caches return values only, so a
+`HostNotConfigured` raised out of `resolve_host_named(host)` inside the wrapper
+re-raises — and re-attempts resolution — on the second call. That is two failed
+`shutil.which` lookups per run, not a memoization defect; leave it. D6's
+`try`/`except` sits *outside* the cached helper, at the `_advisor_data()` call
+site, so the wrapper stays a pure `host -> str` function.
+
 *Invalidation is part of this rule.* An `lru_cache` is process-global and
 pytest runs many cases per process. Ship an autouse fixture in the doctor test
 modules that calls `_probe_advisor_version.cache_clear()` before each test, and
@@ -191,9 +203,9 @@ pin it (test 7a below).
 before any resolution — identity, not truthiness, on `enabled` too. `enabled`
 is declared `bool = False` (`config/orchestration.py`), so `is True` is exact
 for real config and closes the same MagicMock hole the `isinstance` closes;
-a bare `if cfg.advisor.enabled` leaves half the guard open. ~28 sites in
-`test_cli_doctor.py` /
-`test_cli_doctor_full.py` patch `little_loops.config.BRConfig` with a bare
+a bare `if cfg.advisor.enabled` leaves half the guard open. **27** sites
+(25 in `test_cli_doctor.py`, 2 in `test_cli_doctor_full.py`; counted on `main`
+2026-08-23) patch `little_loops.config.BRConfig` with a bare
 `MagicMock()` and never set `.advisor` — MagicMock auto-attributes are truthy,
 so **both** `config.advisor.enabled` and `config.advisor.host` evaluate truthy
 there. A plain `if not enabled or not host:` guard would fall through and call
@@ -207,14 +219,13 @@ ambient env.** `ll-doctor` has no notion of a "main model", so take
 exactly as `consult()` does (`advisor.py:256-257`), importing it inside the
 function body.
 
-For `main_host`, **diverge from `consult()`'s bare `resolve_host()`**:
+For `main_host`, **diverge from `consult()`'s bare `resolve_host()`** — but
+resolve the name **env-first, config-second**, mirroring the documented
+precedence order:
 
 ```python
-main_host = (
-    resolve_host_named(cfg.orchestration.host_cli)
-    if isinstance(cfg.orchestration.host_cli, str)
-    else resolve_host()
-).name
+name = os.environ.get("LL_HOST_CLI") or cfg.orchestration.host_cli
+main_host = (resolve_host_named(name) if name else resolve_host()).name
 ```
 
 - *Why not the bare `resolve_host()`.* `main_doctor()` calls
@@ -224,12 +235,25 @@ main_host = (
   that mutation; called standalone (the `_data()`-level tests below) it falls
   through to `resolve_host()`'s PATH probe (`host_runner.py:1985-2004`) and can
   resolve a **different** main host, so the floor result would differ between
-  test and production. Reading `cfg.orchestration.host_cli` (`str | None`,
-  `config/orchestration.py:90`) *removes* that divergence instead of pinning a
-  known-divergent behavior with a test, and keeps `_advisor_data()`
+  test and production. Reading the config key *removes* that divergence instead
+  of pinning a known-divergent behavior with a test, and keeps `_advisor_data()`
   self-contained and deterministic — consistent with D5's isolation rule, which
   already forbids reading or mutating ambient `LL_HOST_CLI` for the advisor
-  side. The `resolve_host()` fallback covers the unset case only.
+  side. The `resolve_host()` fallback covers the both-unset case only.
+- *Why env-first, and not `cfg.orchestration.host_cli` first.*
+  `apply_host_cli_from_config()` documents and implements env-var precedence:
+  "The env var takes precedence if already set — callers that set `LL_HOST_CLI`
+  explicitly in their environment are not overridden" (`host_runner.py:2257-2259`),
+  matching the documented resolution order **env var > config key > binary
+  probe**. A config-first read would compute a main host that production never
+  uses whenever `LL_HOST_CLI` and `orchestration.host_cli` disagree (e.g.
+  `LL_HOST_CLI=codex` with `orchestration.host_cli: claude-code`) — the same
+  production/test divergence this rule exists to remove, pointing the other way.
+  Env-first is *exactly* production's behavior inside `main_doctor()`, where the
+  config value has already been stamped into the env by the time this check
+  runs, and is still deterministic standalone. Do not reorder these two reads.
+- Read the env var directly; do **not** call `apply_host_cli_from_config()`
+  here (D5 forbids the mutation).
 - This is a deliberate, documented divergence from `consult()`. Do not
   "fix" it back to a bare `resolve_host()` for symmetry.
 - Consequence to expect: with stock config (`advisor.model="opus"`,
@@ -251,8 +275,23 @@ ambient env is never read or mutated). Never call
 (`:2008-2016`) raise it, and `_run_registered_checks()` (`doctor.py:116-121`)
 has no `try`/`except` — an uncaught raise takes down all of `ll-doctor`.
 `_probe_version` swallows it, but only *after* it already holds a runner, so it
-is not a safety net for either resolution call. Wrap both; on failure return
-the two-row informational-unsupported shape.
+is not a safety net for either resolution call. Wrap both — but **with separate
+`try` blocks and different fallbacks**, because the two failures mean different
+things:
+
+- **Advisor-side failure** (`resolve_host_named(cfg.advisor.host)` raises): the
+  advisor is unreachable and no floor comparison is meaningful. Return the
+  two-row informational-unsupported shape, `floor_status=None`, note naming the
+  unresolvable advisor host.
+- **Main-side failure** (the D4 resolution raises): says nothing about advisor
+  reachability. The `advisor_host` row still probes and reports normally; only
+  `advisor_floor` degrades — `status="partial"`, `severity="informational"`,
+  `floor_status=None`, `note="main host unresolved"`. Do **not** collapse both
+  rows here; a blanked reachability row on a main-host misconfiguration is a
+  false negative for the exact failure this check exists to catch.
+
+`check_floor` is skipped entirely on the main-side failure path (it takes a
+`str` main host, and there is none).
 
 **D7 — Status mapping (net-new; no structural precedent in the tree).**
 - Reachability: `_probe_version(...)` non-empty → `status="full"`; empty →
@@ -336,7 +375,16 @@ All five surfaces below are gated by AC5.
 
 - `docs/reference/CLI.md:319` — reads "6 default install-surface checks"; bump
   to **7** and add the Advisor check to the enumeration. Add `advisor` to the
-  `--json` key list (`:322`).
+  `--json` key list (`:322`) — **and document its row shape explicitly, because
+  it is unlike every key already documented there.** The existing list describes
+  `entry_points` as a list of `{name, status, note}`; advisor rows carry two
+  extra keys. Document it as: `advisor` (list of `{name, status, note, severity,
+  floor_status}`, one row for `advisor_host` and one for `advisor_floor`;
+  `floor_status` is the raw `FloorResult.status` on the floor row and `null` on
+  the host row). Note that `severity` is surfaced per-row here — `_entry_points_data`
+  emits no `severity` key at all (`doctor.py:185-221`); its check hardcodes
+  error severity — so this is a deliberate shape extension, not an accident to
+  be normalized away in review.
 - `docs/reference/API.md` — `describe_capabilities` (~`:9708`) duplicates the
   `--json` key enumeration in prose and must stay in lockstep with CLI.md; it
   is missing both `advisor` and `schema_drift`. A `## little_loops.advisor`
@@ -409,16 +457,25 @@ first-of-kind decisions are pinned rather than re-derived later:
    `floor_status="violation"`, and `_exit_code_for([...])` still returns `0`.
    This is the AC1 divergence from `consult()` and the single most important
    regression guard here.
-4. `HostNotConfigured` raised from `resolve_host()` **and** from
-   `resolve_host_named()` (two cases) → two informational-unsupported rows;
-   nothing propagates out of `_run_registered_checks()`.
+4. `HostNotConfigured`, **two cases with different expected shapes** (D6):
+   (a) raised from the advisor-side `resolve_host_named()` → two
+   informational-unsupported rows, `floor_status=None`; (b) raised from the
+   main-side resolution → `advisor_host` still probes and reports its real
+   status, only `advisor_floor` degrades to `status="partial"`,
+   `severity="informational"`, `floor_status=None`,
+   `note="main host unresolved"`. In both cases nothing propagates out of
+   `_run_registered_checks()`.
 5. Advisor binary absent (`_probe_version` → `""`) → `advisor_host` row is
    `status="unsupported"`, `severity="informational"`.
 6. Independent main-vs-advisor resolution: assert `check_floor` received the
    advisor host/model from `cfg.advisor` and the main host from
-   `cfg.orchestration.host_cli` (D4), not the same runner twice. Include one
-   case with `orchestration.host_cli=None` exercising the `resolve_host()`
-   fallback. **First `side_effect=[...]`-style dual-host mock
+   the D4 env-first chain, not the same runner twice. Three sub-cases pinning
+   the precedence order: (a) `LL_HOST_CLI` set and
+   `orchestration.host_cli` set to a *different* host → the env value wins
+   (`monkeypatch.setenv`); (b) `LL_HOST_CLI` unset, `orchestration.host_cli`
+   set → the config value is used; (c) both unset → the `resolve_host()`
+   fallback. Sub-case (a) is the AC9 guard and the one that fails if the two
+   reads are ever reordered. **First `side_effect=[...]`-style dual-host mock
    in the suite** — a suite-wide grep for `side_effect=[` returns exactly one
    unrelated hit (`test_issue_manager.py:403`); every `resolve_host` /
    `resolve_host_named` patch uses a single `return_value=`. Prefer giving
@@ -479,6 +536,19 @@ first-of-kind decisions are pinned rather than re-derived later:
    tests (D2).
 7. `python -m pytest scripts/tests/`, `ruff check scripts/`, and
    `python -m mypy scripts/little_loops/` all pass.
+8. The `FloorResult` → `CheckResult` translation is implemented per D7 and
+   pinned by test: `FloorResult.status == "ok"` maps to `status="full"`;
+   `"advisory"`, `"unknown"`, and `"violation"` all map to `status="partial"`;
+   `FloorResult.detail` carries through verbatim into `note`. Both rows carry a
+   `floor_status` key in the returned data *and* in the `--json` payload — the
+   raw `FloorResult.status` on `advisor_floor`, `None` on `advisor_host` and in
+   every guard path (unconfigured, advisor-side `HostNotConfigured`, main-side
+   `HostNotConfigured`). This is the only signal the check produces that the
+   three-way collapse into `"partial"` would otherwise discard.
+9. `main_host` is derived env-first, config-second (D4): `LL_HOST_CLI` when set,
+   otherwise `cfg.orchestration.host_cli`, otherwise the `resolve_host()` PATH
+   probe — matching the documented `env var > config key > binary probe` order
+   that `apply_host_cli_from_config()` implements.
 
 ## Out of Scope (covered by sibling children of FEAT-3044)
 
@@ -500,9 +570,9 @@ first-of-kind decisions are pinned rather than re-derived later:
    for retirement).
 2. Write `_advisor_data() -> list[dict[str, Any]]` per D1 — no-arg, sourcing
    its own `BRConfig(Path.cwd())` via a function-body import: guard first (D3),
-   then main host/model from `cfg.orchestration.host_cli` (D4), `check_floor`
-   (D7, including `floor_status` on both rows), advisor probe (D5), all wrapped
-   per D6.
+   then main host/model env-first-then-config (D4), `check_floor` (D7, including
+   `floor_status` on both rows), advisor probe (D5), with the two
+   `HostNotConfigured` paths caught separately per D6.
 2a. Add the host-keyed `@lru_cache def _probe_advisor_version(host: str) -> str`
    helper per D2, and the autouse `cache_clear()` fixture in the doctor test
    modules alongside it.
@@ -598,6 +668,32 @@ with the two-`✗`-rows-on-every-install consequence stated; (9) `floor_status`
 made the two row dicts heterogeneous → now present on both rows, `None` on
 `advisor_host`, with the annotation widened to `dict[str, Any]`.
 
+**2026-08-23 (third pre-implementation review)**: re-verified every structural
+claim against `main` — anchors, `check_floor` semantics, `MODEL_RANKS`/
+`resolve_model_alias` behavior, `main_doctor()`'s own `BRConfig(Path.cwd())`,
+CLI.md's "6 default checks", and the open `## [1.157.0]` CHANGELOG section. All
+accurate; no structural change. Six defects fixed in place — (1) **D4 inverted
+the documented host precedence**: it read `cfg.orchestration.host_cli` *first*,
+but `apply_host_cli_from_config` gives ambient `LL_HOST_CLI` precedence
+(`host_runner.py:2257-2259`, order `env > config > probe`), so a disagreeing
+env/config pair would have computed a main host production never uses —
+reintroducing the very divergence D4 exists to remove → now env-first,
+config-second, with AC9 and test 6(a) pinning it; (2) D6 collapsed **both** rows
+on *either* `HostNotConfigured`, so a main-host misconfiguration would blank the
+advisor reachability row — a false negative for this check's whole purpose →
+split into separate advisor-side / main-side fallbacks, test 4 split to match;
+(3) AC5 said only "add `advisor` to the `--json` key list", but advisor rows
+carry `severity` + `floor_status` and no documented key has that shape
+(`_entry_points_data` emits no `severity` at all) → CLI.md row shape now spelled
+out; (4) D7's `FloorResult`→`CheckResult` mapping and `floor_status` — the
+check's only real output, and net-new work by the file's own admission — had no
+acceptance criterion → now AC8; (5) the emitted `CheckResult.name` values were
+unspecified, leaving `_entry_points_check`'s `entry_point:`-style prefixing as a
+live ambiguity → pinned to bare `advisor_host` / `advisor_floor` in D1; (6) nits
+— D3's "~28 patch sites" corrected to the actual 27 (25 + 2), and D2 now states
+that `lru_cache` does not memoize exceptions, so the `HostNotConfigured` path
+resolves twice per run by design rather than reading as a cache defect.
+
 ## Confidence Check Notes
 
 _Added by `/ll:confidence-check` on 2026-08-23_
@@ -614,6 +710,7 @@ _Added by `/ll:confidence-check` on 2026-08-23_
   both are now fully specified in Decision Rules rather than left to judgment.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-24T04:34:00 - `44cb34cb-e67f-4213-8fc0-68692fbc3773.jsonl`
 - `/ll:confidence-check` - 2026-08-24T03:31:44 - `092141f3-2c2e-43df-bd96-552d482c1a40.jsonl`
 - `/ll:confidence-check` - 2026-08-24T03:18:13 - `d2cc1ea2-75e9-4d1e-b4a0-3a77ec9f999f.jsonl`
 - `/ll:verify-issues` - 2026-08-24T03:11:53 - `d889ca3b-8283-4446-b128-5166bb5b2c8b.jsonl`
