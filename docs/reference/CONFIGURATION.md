@@ -910,7 +910,7 @@ The design token loader supports the [W3C Design Tokens Community Group](https:/
 
 ### `artifacts`
 
-Output settings for `ll-artifact`, the generator of self-contained human-facing HTML artifacts (FEAT-2390). Backs the `policy-builder` subcommand (stamps design-token CSS vars, the canonical predicate grammar, and the skill/command catalog into a `file://`-safe policy-router / rubric loop builder page) and `render` (FEAT-3036 Phase 1), which resolves and deterministically renders user-authored `.llat/` artifact templates.
+Output settings for `ll-artifact`, the generator of self-contained human-facing HTML artifacts (FEAT-2390). Backs the `policy-builder` subcommand (stamps design-token CSS vars, the canonical predicate grammar, and the skill/command catalog into a `file://`-safe policy-router / rubric loop builder page), `render` (FEAT-3036 Phase 1), which resolves and deterministically renders user-authored `.llat/` artifact templates, and `templatize` (FEAT-3308), which both reads and writes `templates_dir`: it splices a generated artifact into a reusable `.llat/` template and promotes the result there.
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|

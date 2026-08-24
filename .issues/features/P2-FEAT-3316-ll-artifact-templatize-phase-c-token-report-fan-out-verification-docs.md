@@ -3,9 +3,10 @@ id: FEAT-3316
 title: '`ll-artifact templatize` Phase C: token report, fan-out verification, docs'
 type: FEAT
 priority: P2
-status: open
+status: done
 discovered_by: manual
 discovered_date: '2026-08-24'
+completed_at: '2026-08-24T23:47:00Z'
 parent: FEAT-3308
 depends_on:
 - FEAT-3314
@@ -341,14 +342,14 @@ _Added by `/ll:refine-issue` — 2026-08-24 — based on codebase analysis:_
 
 ## Acceptance Criteria
 
-- [ ] Baked design-token color literals in the **spliced template body** are reported as unlifted in `unlifted-tokens.json` and a non-silent log line; a test asserts the report is non-empty for a fixture with baked tokens and that a literal matching two token names reports both candidates.
-- [ ] The scan follows the decided matching rule (§ Matching rule): colors only, case-insensitive with `#abc`→`#aabbcc` normalization, whole-value/word-boundary anchored, non-overlapping occurrence counts — each covered by a test, including the negative cases (`#fff` not matched inside `#fff000`; `0`/`4px` not reported).
-- [ ] Tokens are loaded via `load_design_tokens(config)` with **no theme argument**, matching the map that `inject_design_context` baked into the artifact.
-- [ ] The report is written into the staging dir and promoted atomically with the template; **no failure in the report path changes the exit code, blocks the promote, or suppresses the success line** — covered by a test that forces a failure inside the report step and asserts exit 0 with a valid promoted template.
-- [ ] Degradation is explicit: tokens unconfigured/disabled → no file, no warning, exit 0; tokens loaded with zero matches → file written with an empty list, no warning.
-- [ ] The resulting template renders correctly against a *second, different* source document of the same kind — the fan-out case. **Oracle:** the test runs `templatize` on artifact 1 to produce the template, then renders it against a hand-authored `data.json` for document 2 and asserts the render matches a checked-in expected output. The document-2 render must additionally contain **none** of document-1's region values (leak check), and document 2 must diverge from document 1 in schema shape — differing list length, an empty-string region, and a region requiring escaping — not merely in wording.
-- [ ] The **artifact-generating FSM loop** is never invoked by `templatize` or by any subsequent `render`. The Phase B region-discovery host call is the only host invocation on this path and is explicitly exempt; the `--regions` path makes no host call at all.
-- [ ] `docs/reference/CLI.md`, `docs/reference/CONFIGURATION.md`, and `docs/ARCHITECTURE.md` reflect the completed `templatize` subcommand.
+- [x] Baked design-token color literals in the **spliced template body** are reported as unlifted in `unlifted-tokens.json` and a non-silent log line; a test asserts the report is non-empty for a fixture with baked tokens and that a literal matching two token names reports both candidates.
+- [x] The scan follows the decided matching rule (§ Matching rule): colors only, case-insensitive with `#abc`→`#aabbcc` normalization, whole-value/word-boundary anchored, non-overlapping occurrence counts — each covered by a test, including the negative cases (`#fff` not matched inside `#fff000`; `0`/`4px` not reported).
+- [x] Tokens are loaded via `load_design_tokens(config)` with **no theme argument**, matching the map that `inject_design_context` baked into the artifact.
+- [x] The report is written into the staging dir and promoted atomically with the template; **no failure in the report path changes the exit code, blocks the promote, or suppresses the success line** — covered by a test that forces a failure inside the report step and asserts exit 0 with a valid promoted template.
+- [x] Degradation is explicit: tokens unconfigured/disabled → no file, no warning, exit 0; tokens loaded with zero matches → file written with an empty list, no warning.
+- [x] The resulting template renders correctly against a *second, different* source document of the same kind — the fan-out case. **Oracle:** the test runs `templatize` on artifact 1 to produce the template, then renders it against a hand-authored `data.json` for document 2 and asserts the render matches a checked-in expected output. The document-2 render must additionally contain **none** of document-1's region values (leak check), and document 2 must diverge from document 1 in schema shape — differing list length, an empty-string region, and a region requiring escaping — not merely in wording.
+- [x] The **artifact-generating FSM loop** is never invoked by `templatize` or by any subsequent `render`. The Phase B region-discovery host call is the only host invocation on this path and is explicitly exempt; the `--regions` path makes no host call at all.
+- [x] `docs/reference/CLI.md`, `docs/reference/CONFIGURATION.md`, and `docs/ARCHITECTURE.md` reflect the completed `templatize` subcommand.
 
 ## Impact
 
@@ -373,6 +374,8 @@ _Added by `/ll:refine-issue` — 2026-08-24 — based on codebase analysis:_
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-24T23:46:29 - `24ee9cfe-f170-49b6-8033-1fd3d4cb16c3.jsonl`
+- `/ll:ready-issue` - 2026-08-24T23:22:40 - `5a144609-b870-4cb5-957a-299a3147d587.jsonl`
 - `/ll:confidence-check` - 2026-08-24T23:17:57 - `cbd1afbc-5d29-4047-86cf-cd522b3ae2d9.jsonl`
 - `/ll:confidence-check` - 2026-08-24T23:10:36 - `0983d3ba-ecbc-4009-a3a3-518ba4c0fda1.jsonl`
 - `/ll:refine-issue` - 2026-08-24T22:47:27 - `76c2d0e1-e226-4945-b3a3-bc157df99f76.jsonl`

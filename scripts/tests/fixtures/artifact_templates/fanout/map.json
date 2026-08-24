@@ -1,0 +1,45 @@
+{
+  "regions": [
+    {
+      "start": 9,
+      "end": 19,
+      "expr": "title"
+    },
+    {
+      "start": 27,
+      "end": 43,
+      "expr": "desc"
+    },
+    {
+      "start": 55,
+      "end": 60,
+      "expr": "text",
+      "group": "items"
+    },
+    {
+      "start": 69,
+      "end": 74,
+      "expr": "text",
+      "group": "items"
+    }
+  ],
+  "groups": [
+    {
+      "id": "items",
+      "binding": "item",
+      "array_path": "items",
+      "start": 51,
+      "end": 79,
+      "iterations": [
+        [
+          51,
+          65
+        ],
+        [
+          65,
+          79
+        ]
+      ]
+    }
+  ]
+}

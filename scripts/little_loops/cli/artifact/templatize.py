@@ -15,11 +15,12 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import shutil
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any, TypedDict
 
 from little_loops.artifact_templates import (
     ArtifactTemplate,
@@ -30,6 +31,9 @@ from little_loops.artifact_templates import (
     validate_top_level_data,
 )
 from little_loops.logger import Logger
+
+if TYPE_CHECKING:
+    from little_loops.design_tokens import DesignTokens
 
 _DELIMITER_TOKENS = (b"[[=", b"[[%", b"[[#")
 _RAW_START = b"[[% raw %]]"
@@ -605,6 +609,138 @@ def promote(tmp_dir: Path, out_dir: Path, force: bool) -> None:
 
 
 # --------------------------------------------------------------------------
+# report_token_literals (FEAT-3316) — baked design-token color literals
+# --------------------------------------------------------------------------
+
+
+class UnliftedToken(TypedDict):
+    literal: str
+    candidate_names: list[str]
+    occurrences: int
+
+
+# Colors only (§ Matching rule) — every other tokens.resolved namespace
+# (space, radius, font, bare numbers) is out of scope for v1.
+_HEX_LITERAL_RE = re.compile(r"#[0-9a-fA-F]+")
+_FUNCTIONAL_COLOR_RE = re.compile(r"\b(?:rgba?|hsla?)\s*\([^)]*\)", re.IGNORECASE)
+_TOKEN_SCAN_RE = re.compile(
+    f"{_HEX_LITERAL_RE.pattern}|{_FUNCTIONAL_COLOR_RE.pattern}", re.IGNORECASE
+)
+
+
+def _normalize_hex(value: str) -> str | None:
+    lowered = value.strip().lower()
+    if not lowered.startswith("#"):
+        return None
+    digits = lowered[1:]
+    if not digits or any(c not in "0123456789abcdef" for c in digits):
+        return None
+    if len(digits) in (3, 4):
+        digits = "".join(c * 2 for c in digits)
+    elif len(digits) not in (6, 8):
+        return None
+    return "#" + digits
+
+
+def _normalize_color_value(value: str) -> str | None:
+    """Normalize *value* for color-literal comparison, or None if not a color.
+
+    Hex forms are lowercased with `#abc`/`#abcd` shorthand expanded to
+    `#aabbcc`/`#aabbccdd`. Functional forms (`rgb()`/`rgba()`/`hsl()`/
+    `hsla()`) are compared case-insensitively with whitespace runs collapsed
+    — no component parsing or cross-notation equivalence (§ Matching rule).
+    """
+    stripped = value.strip()
+    if stripped.startswith("#"):
+        return _normalize_hex(stripped)
+    lowered = stripped.lower()
+    if re.match(r"^(?:rgba?|hsla?)\s*\(", lowered):
+        return re.sub(r"\s+", " ", lowered)
+    return None
+
+
+def report_token_literals(template_text: str, tokens: DesignTokens) -> list[UnliftedToken]:
+    """Report baked design-token color literals in *template_text* (FEAT-3316).
+
+    Report-only — this does not rewrite anything. *template_text* must be
+    the spliced template body (never the original artifact), since extracted
+    data regions are not part of the template (§ Scan input). The value ->
+    token-name inversion of ``tokens.resolved`` is not injective, so a
+    matched literal maps to every candidate name (§ Matching rule).
+    """
+    value_to_names: dict[str, list[str]] = {}
+    for name, value in tokens.resolved.items():
+        normalized = _normalize_color_value(str(value))
+        if normalized is None:
+            continue
+        value_to_names.setdefault(normalized, []).append(name)
+
+    if not value_to_names:
+        return []
+
+    counts: dict[str, int] = {}
+    for match in _TOKEN_SCAN_RE.finditer(template_text):
+        normalized = _normalize_color_value(match.group(0))
+        if normalized is None or normalized not in value_to_names:
+            continue
+        counts[normalized] = counts.get(normalized, 0) + 1
+
+    return [
+        UnliftedToken(
+            literal=literal,
+            candidate_names=sorted(value_to_names[literal]),
+            occurrences=count,
+        )
+        for literal, count in sorted(counts.items())
+    ]
+
+
+def _write_unlifted_tokens_report(tmp_dir: Path, unlifted: list[UnliftedToken]) -> Path:
+    """Write ``unlifted-tokens.json`` into *tmp_dir*, pre-promote (FEAT-3316)."""
+    payload = {
+        "_comment": (
+            "Design-token color literals baked into the spliced template body "
+            "that match the resolved token map. Report-only — not rewritten, "
+            "and the manifest does not set theme: design-tokens. Colors only "
+            "(#rgb/#rgba/#rrggbb/#rrggbbaa and rgb()/rgba()/hsl()/hsla() "
+            "functional forms) — other token namespaces (space, radius, font, "
+            "bare numbers) are out of scope for v1. Regenerate by re-running "
+            "`ll-artifact templatize`."
+        ),
+        "unlifted": unlifted,
+    }
+    path = tmp_dir / "unlifted-tokens.json"
+    path.write_text(json.dumps(payload, indent=2, sort_keys=False) + "\n", encoding="utf-8")
+    return path
+
+
+def _report_unlifted_tokens(tmp_dir: Path, spliced: bytes, config: object, logger: Logger) -> None:
+    """Run the token report step, fully contained (FEAT-3316).
+
+    No exception raised anywhere in this step may change cmd_templatize's
+    exit code, block promote, or suppress the success line — a failure here
+    surfaces only as a warning line.
+    """
+    try:
+        from little_loops.design_tokens import load_design_tokens
+
+        tokens = load_design_tokens(config)  # type: ignore[arg-type]
+        if tokens is None:
+            return
+        template_text = spliced.decode("utf-8", errors="replace")
+        unlifted = report_token_literals(template_text, tokens)
+        _write_unlifted_tokens_report(tmp_dir, unlifted)
+        if unlifted:
+            names = sorted({name for entry in unlifted for name in entry["candidate_names"]})
+            logger.warning(
+                f"{len(unlifted)} unlifted design-token color literal(s) baked into "
+                f"template body: {', '.join(names)}"
+            )
+    except Exception as exc:  # noqa: BLE001 — report step must never affect exit code
+        logger.warning(f"token report failed (non-blocking): {exc}")
+
+
+# --------------------------------------------------------------------------
 # cmd_templatize
 # --------------------------------------------------------------------------
 
@@ -780,6 +916,8 @@ def cmd_templatize(args: argparse.Namespace, logger: Logger) -> int:
                     f"round-trip verification failed — candidate + diff written to {rejected_dir}"
                 )
                 return 2
+
+            _report_unlifted_tokens(tmp_dir, spliced, config, logger)
 
             promote(tmp_dir, out_dir, force=bool(args.force))
         finally:

@@ -4541,6 +4541,10 @@ The `--regions` map's top level carries only `regions` and `groups` (both requir
 
 The artifact is read and processed as raw `bytes` throughout, never via `read_text`/`write_text` — a CRLF or lone-CR artifact is rejected up front (exit `1`) because the frozen renderer's own body read (`render_template`) applies universal-newline translation and cannot round-trip one. An extensionless artifact is also rejected (exit `1`): the template body name is derived from `Path(artifact).suffix`, and an empty suffix would produce a nonsensical `template..j2`.
 
+**Design-token report (Phase C / FEAT-3316).** After round-trip verification succeeds and before promote, `templatize` scans the *spliced template body* (never the original artifact — extracted data regions are not part of the template) for baked color literals (`#rgb`/`#rgba`/`#rrggbb`/`#rrggbbaa`, `rgb()`/`rgba()`/`hsl()`/`hsla()` — every other token namespace, e.g. `space.*`/`radius.*`/`font.*`, is out of scope for v1) that match the project's resolved design tokens (`load_design_tokens(config)`, no theme argument — the same map `inject_design_context` baked into the artifact). A match writes `unlifted-tokens.json` into the template directory (a `value -> [candidate token names]` inversion, since two tokens can share one hex value) and a non-silent warning naming the count; this is **report-only** — nothing is rewritten and the manifest never sets `theme: design-tokens`. Degradation is explicit: tokens unconfigured/disabled writes no file and no warning; tokens loaded with zero matches writes the file with an empty `unlifted` list and no warning. No failure in this step can change the exit code, block promote, or suppress the success line.
+
+**Fan-out verification.** The template kit's payoff is reuse: a template produced from one artifact is expected to render correctly against a *different* source document of the same kind by supplying a new `data.json` to `render --data`, not by re-running `templatize`. `scripts/tests/test_artifact_templatize.py::TestCmdTemplatizeFanOut` exercises exactly this — templatizing one document, then rendering the produced template against a second, structurally-divergent document's hand-authored data — as the project's regression coverage for that contract.
+
 **Flags:**
 
 | Flag | Short | Description |
@@ -4559,7 +4563,7 @@ ll-artifact templatize out/index.html docs/ARCHITECTURE.md -o arch-review.llat  
 
 **Exit codes:** `0` = template written and round-trip verified, `1` = malformed input / IO failure (missing artifact/source/regions map, CRLF artifact, extensionless artifact, malformed `--regions` map or discovery response, oversized discovery input, an existing `-o` without `--force`), `2` = round-trip verification rejected the extraction — the candidate plus a `roundtrip.diff` (and, on the discovery branch, `discovery.json`/`regions.json`) are written to `<out>.llat.rejected/` and any pre-existing `-o` template is left untouched.
 
-> **Note:** `render` is Phase 1 of FEAT-3036 (see `.issues/features/P3-FEAT-3036-artifact-templates-design.md`). `extract`/`refresh` (Phase 2) and `status` (Phase 3, staleness detection) are not yet implemented.
+> **Note:** `templatize` (FEAT-3308, Phases A–C) and `render` (Phase 1 of FEAT-3036) are implemented (see `.issues/features/P3-FEAT-3036-artifact-templates-design.md`). `extract` (FEAT-3309, deriving a `data.json` automatically for fan-out) and `status` (staleness detection) are not yet implemented.
 
 ---
 

@@ -25,6 +25,7 @@ from little_loops.cli.artifact.templatize import (
     extract_data,
     load_regions,
     promote,
+    report_token_literals,
 )
 from little_loops.host_runner import HostInvocation
 
@@ -948,3 +949,350 @@ class TestCmdTemplatizeDiscoveryBranch:
                 imported_modules.add(node.module)
         assert not any("host_runner" in name for name in imported_modules)
         assert not any("anthropic" in name for name in imported_modules)
+
+
+# ---------------------------------------------------------------------------
+# report_token_literals / unlifted-tokens.json (FEAT-3316)
+# ---------------------------------------------------------------------------
+
+
+def _write_design_tokens(
+    project_root: Path,
+    *,
+    primitives: dict | None = None,
+    semantic: dict | None = None,
+    theme: dict | None = None,
+    theme_name: str = "dark",
+) -> Path:
+    """Materialize a flat-layout design-token profile under *project_root*.
+
+    `design_tokens.enabled` defaults to True with no `.ll/ll-config.json`
+    present (`DesignTokensConfig.enabled: bool = True`), so no config file
+    is written here — only the token files `load_design_tokens` resolves.
+    """
+    token_dir = project_root / ".ll" / "design-tokens"
+    token_dir.mkdir(parents=True, exist_ok=True)
+    (token_dir / "primitives.json").write_text(json.dumps(primitives or {}))
+    (token_dir / "semantic.json").write_text(json.dumps(semantic or {}))
+    themes_dir = token_dir / "themes"
+    themes_dir.mkdir(exist_ok=True)
+    (themes_dir / f"{theme_name}.json").write_text(json.dumps(theme or {}))
+    return token_dir
+
+
+def _make_design_tokens(resolved: dict[str, str]):
+    from little_loops.design_tokens import DesignTokens
+
+    return DesignTokens(
+        primitives={},
+        semantic={},
+        theme={},
+        resolved=resolved,
+        source_path=Path("."),
+    )
+
+
+class TestReportTokenLiterals:
+    """Unit tests for the matching rule (§ Matching rule) directly."""
+
+    def test_reports_baked_hex_literal(self):
+        tokens = _make_design_tokens({"color.brand.500": "#4F46E5"})
+        result = report_token_literals("body { color: #4F46E5; }", tokens)
+        assert result == [
+            {"literal": "#4f46e5", "candidate_names": ["color.brand.500"], "occurrences": 1}
+        ]
+
+    def test_non_injective_reports_all_candidate_names(self):
+        tokens = _make_design_tokens(
+            {"color.brand.500": "#4F46E5", "color.alias.primary": "#4f46e5"}
+        )
+        result = report_token_literals("color: #4F46E5;", tokens)
+        assert len(result) == 1
+        assert result[0]["candidate_names"] == ["color.alias.primary", "color.brand.500"]
+
+    def test_shorthand_hex_normalized_to_match(self):
+        tokens = _make_design_tokens({"color.short": "#aabbcc"})
+        result = report_token_literals("color: #abc;", tokens)
+        assert result == [
+            {"literal": "#aabbcc", "candidate_names": ["color.short"], "occurrences": 1}
+        ]
+
+    def test_substring_not_matched_as_whole_value(self):
+        tokens = _make_design_tokens({"color.short": "#fff"})
+        result = report_token_literals("color: #fff000;", tokens)
+        assert result == []
+
+    def test_non_color_token_values_not_reported(self):
+        tokens = _make_design_tokens({"space.sm": "4px", "radius.none": "0"})
+        result = report_token_literals("margin: 4px; border-radius: 0;", tokens)
+        assert result == []
+
+    def test_occurrences_counted_non_overlapping(self):
+        tokens = _make_design_tokens({"color.brand.500": "#4F46E5"})
+        result = report_token_literals("a { color: #4f46e5 } b { color: #4F46E5 }", tokens)
+        assert result[0]["occurrences"] == 2
+
+    def test_functional_rgb_form_matched_case_insensitive_whitespace_collapsed(self):
+        tokens = _make_design_tokens({"color.brand.500": "rgb(10, 20, 30)"})
+        result = report_token_literals("color: RGB(10, 20, 30);", tokens)
+        assert result == [
+            {
+                "literal": "rgb(10, 20, 30)",
+                "candidate_names": ["color.brand.500"],
+                "occurrences": 1,
+            }
+        ]
+
+    def test_no_matching_tokens_returns_empty(self):
+        tokens = _make_design_tokens({"color.brand.500": "#4F46E5"})
+        result = report_token_literals("no colors here", tokens)
+        assert result == []
+
+    def test_empty_resolved_map_returns_empty(self):
+        tokens = _make_design_tokens({})
+        result = report_token_literals("color: #4F46E5;", tokens)
+        assert result == []
+
+
+class TestCmdTemplatizeTokenReport:
+    def _run(self, argv):
+        old_argv = sys.argv
+        sys.argv = ["ll-artifact"] + argv
+        try:
+            return main_artifact()
+        finally:
+            sys.argv = old_argv
+
+    def test_report_non_empty_with_ambiguous_candidates(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        _write_design_tokens(
+            tmp_path,
+            primitives={"color": {"brand": {"500": "#4F46E5"}, "alias": {"500": "#4F46E5"}}},
+        )
+        artifact = _write(
+            tmp_path / "out" / "index.html",
+            b'<div style="color:#4F46E5">Hello</div>\n',
+        )
+        source = _write(tmp_path / "docs" / "SRC.md", b"# Hello\n")
+        regions = _write_regions(
+            tmp_path / "map.json", regions=[{"start": 26, "end": 31, "expr": "title"}]
+        )
+        out_dir = tmp_path / "artifacts" / "templates" / "greet.llat"
+
+        code = self._run(
+            [
+                "templatize",
+                str(artifact),
+                str(source),
+                "-o",
+                str(out_dir),
+                "--regions",
+                str(regions),
+            ]
+        )
+        assert code == 0
+        report = json.loads((out_dir / "unlifted-tokens.json").read_text())
+        assert report["unlifted"]
+        entry = report["unlifted"][0]
+        assert entry["literal"] == "#4f46e5"
+        assert sorted(entry["candidate_names"]) == ["color.alias.500", "color.brand.500"]
+
+    def test_scan_excludes_extracted_data_region(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        _write_design_tokens(tmp_path, primitives={"color": {"brand": {"500": "#4F46E5"}}})
+        # The hex literal lives entirely inside the extracted "title" region,
+        # so it is absent from the spliced template body (§ Scan input).
+        artifact = _write(tmp_path / "out" / "index.html", b"<h1>#4F46E5</h1>\n")
+        source = _write(tmp_path / "docs" / "SRC.md", b"# Hello\n")
+        regions = _write_regions(
+            tmp_path / "map.json", regions=[{"start": 4, "end": 11, "expr": "title"}]
+        )
+        out_dir = tmp_path / "artifacts" / "templates" / "greet.llat"
+
+        code = self._run(
+            [
+                "templatize",
+                str(artifact),
+                str(source),
+                "-o",
+                str(out_dir),
+                "--regions",
+                str(regions),
+            ]
+        )
+        assert code == 0
+        report = json.loads((out_dir / "unlifted-tokens.json").read_text())
+        assert report["unlifted"] == []
+
+    def test_degradation_tokens_disabled_writes_no_file(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / ".ll").mkdir()
+        (tmp_path / ".ll" / "ll-config.json").write_text(
+            json.dumps({"design_tokens": {"enabled": False}})
+        )
+        artifact = _write(tmp_path / "out" / "index.html", b"<h1>Hello</h1>\n")
+        source = _write(tmp_path / "docs" / "SRC.md", b"# Hello\n")
+        regions = _write_regions(
+            tmp_path / "map.json", regions=[{"start": 4, "end": 9, "expr": "title"}]
+        )
+        out_dir = tmp_path / "artifacts" / "templates" / "greet.llat"
+
+        code = self._run(
+            [
+                "templatize",
+                str(artifact),
+                str(source),
+                "-o",
+                str(out_dir),
+                "--regions",
+                str(regions),
+            ]
+        )
+        assert code == 0
+        assert not (out_dir / "unlifted-tokens.json").exists()
+
+    def test_degradation_zero_matches_writes_empty_list_no_warning(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        monkeypatch.chdir(tmp_path)
+        _write_design_tokens(tmp_path, primitives={"color": {"brand": {"500": "#4F46E5"}}})
+        artifact = _write(tmp_path / "out" / "index.html", b"<h1>Hello</h1>\n")
+        source = _write(tmp_path / "docs" / "SRC.md", b"# Hello\n")
+        regions = _write_regions(
+            tmp_path / "map.json", regions=[{"start": 4, "end": 9, "expr": "title"}]
+        )
+        out_dir = tmp_path / "artifacts" / "templates" / "greet.llat"
+
+        code = self._run(
+            [
+                "templatize",
+                str(artifact),
+                str(source),
+                "-o",
+                str(out_dir),
+                "--regions",
+                str(regions),
+            ]
+        )
+        assert code == 0
+        report = json.loads((out_dir / "unlifted-tokens.json").read_text())
+        assert report["unlifted"] == []
+        assert "unlifted" not in capsys.readouterr().err
+
+    def test_containment_forced_failure_still_promotes_exit_0(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        _write_design_tokens(tmp_path, primitives={"color": {"brand": {"500": "#4F46E5"}}})
+        artifact = _write(
+            tmp_path / "out" / "index.html", b'<div style="color:#4F46E5">Hello</div>\n'
+        )
+        source = _write(tmp_path / "docs" / "SRC.md", b"# Hello\n")
+        regions = _write_regions(
+            tmp_path / "map.json", regions=[{"start": 26, "end": 31, "expr": "title"}]
+        )
+        out_dir = tmp_path / "artifacts" / "templates" / "greet.llat"
+
+        with patch(
+            "little_loops.cli.artifact.templatize.report_token_literals",
+            side_effect=RuntimeError("boom"),
+        ):
+            code = self._run(
+                [
+                    "templatize",
+                    str(artifact),
+                    str(source),
+                    "-o",
+                    str(out_dir),
+                    "--regions",
+                    str(regions),
+                ]
+            )
+        assert code == 0
+        assert out_dir.is_dir()
+        assert (out_dir / "manifest.yaml").is_file()
+        assert not (out_dir / "unlifted-tokens.json").exists()
+
+
+# ---------------------------------------------------------------------------
+# Fan-out verification (FEAT-3316 § Fan-out verification)
+# ---------------------------------------------------------------------------
+
+_FANOUT_FIXTURE_DIR = Path(__file__).parent / "fixtures" / "artifact_templates" / "fanout"
+
+# Document 1's region values (leak check) — must match
+# fixtures/artifact_templates/fanout/doc1.html.
+_DOC1_TITLE = "Doc1 Title"
+_DOC1_DESC = "Doc1 description"
+_DOC1_ITEMS = ["Item1", "Item2"]
+
+
+class TestFanOutFixture:
+    """Structural sanity check for the checked-in fan-out fixture set."""
+
+    def test_fixture_files_present(self):
+        assert _FANOUT_FIXTURE_DIR.is_dir()
+        for name in ("doc1.html", "map.json", "doc2_data.json", "doc2_expected.html"):
+            assert (_FANOUT_FIXTURE_DIR / name).is_file(), name
+
+
+class TestCmdTemplatizeFanOut:
+    def _run(self, argv):
+        old_argv = sys.argv
+        sys.argv = ["ll-artifact"] + argv
+        try:
+            return main_artifact()
+        finally:
+            sys.argv = old_argv
+
+    def test_produced_template_generalizes_to_second_document(self, tmp_path, monkeypatch):
+        if not _FANOUT_FIXTURE_DIR.is_dir():
+            pytest.skip("fan-out fixture directory missing")
+        monkeypatch.chdir(tmp_path)
+        artifact_path = _write(
+            tmp_path / "out" / "index.html", (_FANOUT_FIXTURE_DIR / "doc1.html").read_bytes()
+        )
+        source = _write(tmp_path / "docs" / "SRC.md", b"# Doc1\n")
+        out_dir = tmp_path / "artifacts" / "templates" / "fanout.llat"
+
+        # Step 1: templatize document 1 (the checked-in fixture) to produce
+        # the template — a checked-in `.llat` would test the fixture, not
+        # the subcommand.
+        code = self._run(
+            [
+                "templatize",
+                str(artifact_path),
+                str(source),
+                "-o",
+                str(out_dir),
+                "--regions",
+                str(_FANOUT_FIXTURE_DIR / "map.json"),
+            ]
+        )
+        assert code == 0
+
+        # Step 2: render the *produced* template against document 2's
+        # hand-authored data.json — structural divergence (§ Fan-out
+        # verification): a different list length (3 vs. 2), an empty-string
+        # region, and a region requiring JSON-escaping (quote, backslash,
+        # newline).
+        render_out = tmp_path / "rendered_doc2"
+        with patch("little_loops.cli.artifact.discover.resolve_host") as resolve_host:
+            code2 = self._run(
+                [
+                    "render",
+                    "fanout",
+                    "--data",
+                    str(_FANOUT_FIXTURE_DIR / "doc2_data.json"),
+                    "-o",
+                    str(render_out),
+                ]
+            )
+        resolve_host.assert_not_called()
+        assert code2 == 0
+
+        rendered = (render_out / "index.html").read_bytes().decode("utf-8")
+        expected = (_FANOUT_FIXTURE_DIR / "doc2_expected.html").read_text(encoding="utf-8")
+        assert rendered == expected
+
+        # Leak assertion: none of document 1's region values survive.
+        for leaked in (_DOC1_TITLE, _DOC1_DESC, *_DOC1_ITEMS):
+            assert leaked not in rendered
