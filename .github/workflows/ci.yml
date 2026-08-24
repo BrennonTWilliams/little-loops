@@ -108,9 +108,11 @@ jobs:
         # `if: always()` is the data-collection gate — green runs need to
         # upload too, because the clean-finish signal (junit pass, no busy-spin
         # tail) is exactly the verification surface for the BUG-3208 stack.
-        # `if-no-files-found: warn` is deliberate: if pytest hangs at 98-99%
-        # (the BUG-3208 failure mode) junit XML never gets written, and the
-        # upload step should not turn a hung run into a *double* failure.
+        # `if-no-files-found: error` is deliberate: if pytest hangs (the
+        # BUG-3208 failure mode) junit XML never gets written, and the upload
+        # step must surface that as a real failure — not as a silent warning
+        # that's easy to miss in the run summary. The previous `warn` setting
+        # hid hang-mode behind an annotation nobody reads.
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -119,7 +121,7 @@ jobs:
             pytest.log
             pytest-junit.xml
           retention-days: 7
-          if-no-files-found: warn
+          if-no-files-found: error
 
   conformance:
     name: Host conformance (Thinky)
@@ -164,7 +166,10 @@ jobs:
         # (`pytest-conformance-failures-*`) so the two jobs' artifacts don't
         # collide on the artifact store. `if: always()` so a clean green
         # conformance produces a junit-paper-trail alongside failure capture;
-        # `if-no-files-found: warn` handles the FEAT-992 host-CLI stub case.
+        # `if-no-files-found: error` mirrors the unit-job policy — missing
+        # artifacts should be loud, not silent. (FEAT-992 host-CLI stub case
+        # still ends up as `error` here; if that becomes an active problem we
+        # can switch this job back to `warn` while keeping `error` on unit.)
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -173,7 +178,7 @@ jobs:
             /tmp/conformance.log
             pytest-conformance-junit.xml
           retention-days: 7
-          if-no-files-found: warn
+          if-no-files-found: error
 
       - name: Surface conformance summary
         if: always()
