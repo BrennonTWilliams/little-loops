@@ -1464,6 +1464,7 @@ _EVALUATE_TYPE_DISPLAY: dict[str, str] = {
     "open_question_stall": "open question stall",
     "action_stall": "action stall",
     "comparator": "blind comparator",
+    "advisor_consult": "advisor consult",
 }
 
 

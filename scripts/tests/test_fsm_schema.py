@@ -2124,6 +2124,39 @@ class TestMcpToolSchema:
         restored = EvaluateConfig.from_dict(d)
         assert restored.type == "harbor_scorer"
 
+    def test_advisor_consult_evaluator_type_is_valid(self) -> None:
+        """EvaluateConfig accepts type='advisor_consult' (FEAT-3039)."""
+        config = EvaluateConfig(
+            type="advisor_consult", question="stuck?", verdict_map={"proceed": "yes"}
+        )
+        assert config.type == "advisor_consult"
+
+    def test_advisor_consult_round_trips_through_dict(self) -> None:
+        """advisor_consult evaluator serializes and deserializes all new fields."""
+        config = EvaluateConfig(
+            type="advisor_consult",
+            question="are we stuck?",
+            verdict_map={"proceed": "yes", "revise": "no"},
+            signal="custom_signal",
+            timeout=42,
+            context_from=["prev.verdict"],
+        )
+        d = config.to_dict()
+        assert d["type"] == "advisor_consult"
+        assert d["question"] == "are we stuck?"
+        assert d["verdict_map"] == {"proceed": "yes", "revise": "no"}
+        assert d["signal"] == "custom_signal"
+        assert d["timeout"] == 42
+        assert d["context_from"] == ["prev.verdict"]
+
+        restored = EvaluateConfig.from_dict(d)
+        assert restored.type == "advisor_consult"
+        assert restored.question == "are we stuck?"
+        assert restored.verdict_map == {"proceed": "yes", "revise": "no"}
+        assert restored.signal == "custom_signal"
+        assert restored.timeout == 42
+        assert restored.context_from == ["prev.verdict"]
+
     def test_action_stall_evaluator_type_is_valid(self) -> None:
         """EvaluateConfig accepts type='action_stall'."""
         config = EvaluateConfig(type="action_stall")

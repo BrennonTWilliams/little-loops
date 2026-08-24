@@ -713,7 +713,8 @@
             "harbor_scorer",
             "comparator",
             "contract",
-            "classify"
+            "classify",
+            "advisor_consult"
           ]
         },
         "operator": {
@@ -861,6 +862,28 @@
         "key": {
           "type": "string",
           "description": "For output_numeric, extract the value from a '<key>=<number>' field in output instead of parsing the whole output as a number (last match wins)"
+        },
+        "question": {
+          "type": "string",
+          "description": "For advisor_consult: the consult prompt"
+        },
+        "verdict_map": {
+          "type": "object",
+          "description": "For advisor_consult: maps a parsed decision word to the FSM verdict routed on",
+          "additionalProperties": { "type": "string" }
+        },
+        "signal": {
+          "type": "string",
+          "description": "For advisor_consult: overrides the fixed 'loop_stall' trigger used to gate/record the consult (must then appear in advisor.triggers)"
+        },
+        "timeout": {
+          "type": "integer",
+          "description": "For advisor_consult: overrides advisor.timeout_seconds for this state's consult only"
+        },
+        "context_from": {
+          "type": "array",
+          "description": "For advisor_consult: interpolation paths (e.g. 'prev.verdict') whose resolved values are assembled into the consult context",
+          "items": { "type": "string" }
         }
       },
       "additionalProperties": false,

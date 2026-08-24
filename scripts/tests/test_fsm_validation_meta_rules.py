@@ -121,6 +121,36 @@ class TestMetaLoopValidation:
         mr1_errors = [e for e in errors if e.severity == ValidationSeverity.ERROR]
         assert mr1_errors == [], f"Unexpected MR-1 ERROR: {mr1_errors}"
 
+    def test_mr1_passes_for_stall_to_advisor_consult_route(self) -> None:
+        """MR-1 does not fire when a score_stall state routes into an advisor_consult
+        state (FEAT-3039) — the stall evaluator is the external non-LLM signal;
+        advisor_consult is LLM-judged but not counted as the meta-loop's sole gate.
+        """
+        fsm = self._meta_fsm(
+            states={
+                "optimize": make_state(
+                    action="run.sh",
+                    evaluate=EvaluateConfig(type="score_stall"),
+                    on_yes="optimize",
+                    on_no="advise",
+                ),
+                "advise": make_state(
+                    action="echo advising",
+                    evaluate=EvaluateConfig(
+                        type="advisor_consult",
+                        question="stuck — what now?",
+                        verdict_map={"proceed": "optimize", "abort": "done"},
+                    ),
+                    on_yes="optimize",
+                    on_no="done",
+                ),
+                "done": make_state(terminal=True),
+            }
+        )
+        errors = _validate_meta_loop_evaluation(fsm)
+        mr1_errors = [e for e in errors if e.severity == ValidationSeverity.ERROR]
+        assert mr1_errors == [], f"Unexpected MR-1 ERROR: {mr1_errors}"
+
     def test_mr1_suppressed_by_meta_self_eval_ok(self) -> None:
         """meta_self_eval_ok: true suppresses MR-1."""
         fsm = self._meta_fsm(

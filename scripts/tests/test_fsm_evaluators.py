@@ -18,6 +18,7 @@ from little_loops.fsm.evaluators import (
     _extract_json_path,
     evaluate,
     evaluate_action_stall,
+    evaluate_advisor_consult,
     evaluate_blind_comparator,
     evaluate_classify,
     evaluate_contract,
@@ -2765,3 +2766,194 @@ class TestContractEvaluator:
         ctx = InterpolationContext()
         result = evaluate(config, output="", exit_code=0, context=ctx)
         assert result.verdict == "yes"
+
+
+class TestAdvisorConsultDisplay:
+    """_EVALUATE_TYPE_DISPLAY has the new evaluator's label (FEAT-3039)."""
+
+    def test_display_label_in_info(self) -> None:
+        from little_loops.cli.loop.info import _EVALUATE_TYPE_DISPLAY
+
+        assert "advisor_consult" in _EVALUATE_TYPE_DISPLAY
+
+
+class TestMR1LlmJudgedForAdvisorConsult:
+    """MR-1 holds: advisor_consult is LLM-judged, unlike open_question_stall (FEAT-3039)."""
+
+    def test_llm_judged_classification(self) -> None:
+        from little_loops.fsm.schema import StateConfig
+        from little_loops.fsm.validation import (
+            EVALUATOR_REQUIRED_FIELDS,
+            NON_LLM_EVALUATOR_TYPES,
+            _is_llm_judged,
+        )
+
+        assert "advisor_consult" in EVALUATOR_REQUIRED_FIELDS
+        assert "advisor_consult" not in NON_LLM_EVALUATOR_TYPES
+
+        state = StateConfig(
+            action="noop",
+            evaluate=EvaluateConfig(
+                type="advisor_consult", question="stuck?", verdict_map={"proceed": "yes"}
+            ),
+        )
+        assert _is_llm_judged(state)
+
+    def test_required_fields(self) -> None:
+        from little_loops.fsm.validation import EVALUATOR_REQUIRED_FIELDS
+
+        assert EVALUATOR_REQUIRED_FIELDS["advisor_consult"] == ["question", "verdict_map"]
+
+
+class TestAdvisorConsultEvaluator:
+    """evaluate_advisor_consult routes on a parsed decision, never strands (FEAT-3039)."""
+
+    def _outcome(self, *, verdict=None, skipped_reason=None):
+        from little_loops.advisor import ConsultOutcome, TaskKey
+
+        return ConsultOutcome(
+            task_key=TaskKey(kind="session", value="s1"),
+            verdict=verdict,
+            skipped_reason=skipped_reason,
+        )
+
+    def _verdict(self, recommendation: str, confidence: float = 0.85):
+        from little_loops.advisor import AdvisorVerdict
+
+        return AdvisorVerdict(
+            recommendation=recommendation,
+            risks=["risk"],
+            confidence=confidence,
+            dissent="",
+            signal="loop_stall",
+            host="claude-code",
+            model="opus",
+        )
+
+    def test_dispatch_requires_question_and_verdict_map(self) -> None:
+        config = EvaluateConfig(type="advisor_consult")
+        ctx = InterpolationContext()
+        with pytest.raises(ValueError, match="question"):
+            evaluate(config, output="", exit_code=0, context=ctx)
+
+    def test_routes_on_parsed_decision(self) -> None:
+        with patch("little_loops.advisor.consult_for_trigger") as mock_consult:
+            mock_consult.return_value = self._outcome(
+                verdict=self._verdict("proceed: the criteria look fine")
+            )
+            result = evaluate_advisor_consult(
+                output="",
+                question="are we stuck?",
+                verdict_map={"proceed": "yes", "revise": "no"},
+                signal=None,
+                timeout=None,
+                context_from=None,
+                state_name="score_check",
+            )
+
+        assert result.verdict == "yes"
+        assert result.details["confidence"] == 0.85
+        assert result.details["state"] == "score_check"
+        mock_consult.assert_called_once()
+        assert mock_consult.call_args.args[0] == "loop_stall"
+
+    def test_signal_override_used_as_trigger(self) -> None:
+        with patch("little_loops.advisor.consult_for_trigger") as mock_consult:
+            mock_consult.return_value = self._outcome(verdict=self._verdict("revise: fix it"))
+            evaluate_advisor_consult(
+                output="",
+                question="are we stuck?",
+                verdict_map={"proceed": "yes", "revise": "no"},
+                signal="custom_signal",
+                timeout=None,
+                context_from=None,
+                state_name="score_check",
+            )
+
+        assert mock_consult.call_args.args[0] == "custom_signal"
+
+    def test_neutral_verdict_on_skipped_consult(self) -> None:
+        with patch("little_loops.advisor.consult_for_trigger") as mock_consult:
+            mock_consult.return_value = self._outcome(skipped_reason="budget_exhausted")
+            result = evaluate_advisor_consult(
+                output="",
+                question="are we stuck?",
+                verdict_map={"proceed": "yes", "revise": "no"},
+                signal=None,
+                timeout=None,
+                context_from=None,
+                state_name="score_check",
+            )
+
+        assert result.verdict == "neutral"
+        assert result.details["confidence"] == 0.0
+        assert result.details["skipped_reason"] == "budget_exhausted"
+
+    def test_neutral_verdict_on_unparseable_decision(self) -> None:
+        with patch("little_loops.advisor.consult_for_trigger") as mock_consult:
+            mock_consult.return_value = self._outcome(
+                verdict=self._verdict("I have no idea what to do here")
+            )
+            result = evaluate_advisor_consult(
+                output="",
+                question="are we stuck?",
+                verdict_map={"proceed": "yes", "revise": "no"},
+                signal=None,
+                timeout=None,
+                context_from=None,
+                state_name="score_check",
+            )
+
+        assert result.verdict == "neutral"
+        assert result.details["confidence"] == pytest.approx(0.85)
+
+    def test_context_from_assembled_into_consult_context(self) -> None:
+        ctx = InterpolationContext(context={"note": "third stall"})
+        with patch("little_loops.advisor.consult_for_trigger") as mock_consult:
+            mock_consult.return_value = self._outcome(verdict=self._verdict("proceed: go"))
+            evaluate_advisor_consult(
+                output="recent output text",
+                question="are we stuck?",
+                verdict_map={"proceed": "yes"},
+                signal=None,
+                timeout=None,
+                context_from=["context.note"],
+                state_name="score_check",
+                context=ctx,
+            )
+
+        consult_context = mock_consult.call_args.kwargs["context"]
+        assert "third stall" in consult_context
+        assert "recent output text" in consult_context
+        assert "score_check" in consult_context
+
+    def test_timeout_override_passes_copied_config(self) -> None:
+        with patch("little_loops.advisor.consult_for_trigger") as mock_consult:
+            mock_consult.return_value = self._outcome(verdict=self._verdict("proceed: go"))
+            evaluate_advisor_consult(
+                output="",
+                question="are we stuck?",
+                verdict_map={"proceed": "yes"},
+                signal=None,
+                timeout=42,
+                context_from=None,
+                state_name="score_check",
+            )
+
+        passed_config = mock_consult.call_args.kwargs["config"]
+        assert passed_config is not None
+        assert passed_config.advisor.timeout_seconds == 42
+
+    def test_dispatch_routes_through_evaluate(self) -> None:
+        with patch("little_loops.advisor.consult_for_trigger") as mock_consult:
+            mock_consult.return_value = self._outcome(verdict=self._verdict("proceed: go"))
+            config = EvaluateConfig(
+                type="advisor_consult",
+                question="are we stuck?",
+                verdict_map={"proceed": "yes"},
+            )
+            ctx = InterpolationContext(state_name="score_check")
+            result = evaluate(config, output="", exit_code=0, context=ctx)
+
+        assert result.verdict == "yes"
+        assert result.details["state"] == "score_check"

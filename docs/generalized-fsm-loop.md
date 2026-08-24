@@ -306,7 +306,7 @@ states:                         # State definitions
       type: string              # exit_code, output_numeric, output_json,
                                 # output_contains, llm_structured, convergence,
                                 # diff_stall, score_stall, action_stall, mcp_result,
-                                # harbor_scorer, comparator
+                                # harbor_scorer, comparator, advisor_consult
       # ... type-specific fields (see Evaluator Types)
     
     # --- Routing Layer ---

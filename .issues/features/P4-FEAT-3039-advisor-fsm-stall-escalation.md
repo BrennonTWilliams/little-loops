@@ -4,9 +4,10 @@ title: Advisor FSM stall escalation and routable verdicts
 type: FEAT
 parent: EPIC-3041
 priority: P4
-status: open
+status: done
 testable: true
 discovered_date: 2026-08-03
+completed_at: '2026-08-24T16:19:34Z'
 depends_on:
 - FEAT-3044
 - FEAT-3120
@@ -77,7 +78,7 @@ Add `advisor_consult` alongside the existing evaluator types in
 `fsm/evaluators.py` (registered in the dispatch `elif` chain where
 `score_stall` and friends are wired — `score_stall` now at
 `evaluators.py:1833`), delegating to `consult_for_trigger()` (FEAT-3116,
-landed — `advisor.py:451`) — never calling
+landed — `advisor.py:497`) — never calling
 `little_loops.advisor.consult()` directly, per the exclusivity contract
 settled 2026-08-23 (see Scope Boundary).
 
@@ -131,6 +132,29 @@ Determinism: consults stay excluded from the resume/replay input hash
 ### Call Path
 
 `FSM executor` -> evaluator dispatch (`eval_type == "advisor_consult"`) -> `evaluate_advisor_consult` -> `consult_for_trigger` (FEAT-3116; runs `should_consult` internally, then `little_loops.advisor.consult`) -> `EvaluationResult`
+
+### Deviations
+
+_Added during implementation — 2026-08-24:_
+
+- `evaluate_advisor_consult` gained an extra `context: InterpolationContext | None = None`
+  keyword param beyond the documented signature — needed so the dispatcher can pass
+  the FSM's `InterpolationContext` for `context_from` path resolution and for
+  reading `state_name` from `context.state_name` at the call site. `_advisor_context`
+  itself was implemented exactly as documented.
+- "The configured neutral verdict" (Expected Behavior / AC #4) has no backing field in
+  `AdvisorConsultConfig` — implemented as a fixed sentinel string `"neutral"` returned
+  on any skipped/failed/unparseable consult, rather than a per-state configurable
+  value. Loop authors route it via a normal `on_neutral:`/`default:` entry in the
+  state's route table.
+- Decision parsing: since `AdvisorVerdict` has no closed-set field, the evaluator
+  asks the advisor to lead its `recommendation` with one decision word, then falls
+  back to a whole-word search anywhere in the text; no match maps to the neutral
+  verdict above.
+- Per-state `timeout` override loads a fresh `BRConfig(Path.cwd())` and mutates its
+  `advisor.timeout_seconds` directly (rather than deep-copying the ambient config
+  object) — functionally equivalent isolation since it's a freshly constructed
+  instance, never the shared ambient config.
 
 ## Integration Map
 
@@ -270,7 +294,7 @@ _Anchor refresh — 2026-08-24 (pre-implementation review):_
   `_is_llm_judged()`@168.
 - `AdvisorConfig` gained `max_consults_per_task: int = 3` (FEAT-3116) — now
   7 fields.
-- `consult_for_trigger()` (`advisor.py:451`) signature:
+- `consult_for_trigger()` (`advisor.py:497`) signature:
   `(trigger, *, question, context="", config=None, main_host=None,
   main_model=None, manual=False) -> ConsultOutcome`; `ConsultOutcome`
   carries `verdict: AdvisorVerdict | None` and `skipped_reason` ∈
@@ -431,6 +455,7 @@ Wiring Phase). The STOP recommendation and the 2026-08-16 DEP_ISSUES verdict
 above no longer apply — the issue is implementable now._
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-24T16:19:20 - `69c375ac-5c89-44f2-a3fc-ad8aa6520c60.jsonl`
 - `/ll:confidence-check` - 2026-08-24T15:51:48 - `9a745035-e613-4baa-8b35-80f0deb3f330.jsonl`
 - `/ll:verify-issues` - 2026-08-24T15:48:18 - `432e855e-0a45-44e5-bb27-09be81602426.jsonl`
 - `/ll:verify-issues` - 2026-08-16T16:40:26 - `688cfc38-322a-447f-94a0-315f2c2aee33.jsonl`

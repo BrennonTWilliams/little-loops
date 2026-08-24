@@ -58,6 +58,7 @@ EVALUATOR_REQUIRED_FIELDS: dict[str, list[str]] = {
     "comparator": ["baseline_path"],
     "contract": ["pairs"],
     "classify": [],
+    "advisor_consult": ["question", "verdict_map"],
 }
 
 # Non-LLM evaluator types: all evaluator types except llm_structured
@@ -66,6 +67,7 @@ NON_LLM_EVALUATOR_TYPES: frozenset[str] = frozenset(EVALUATOR_REQUIRED_FIELDS.ke
     "llm_structured",
     "comparator",
     "contract",
+    "advisor_consult",
 }
 
 # Valid comparison operators
@@ -181,7 +183,7 @@ def _is_llm_judged(state: StateConfig) -> bool:
         if action_type is None and state.action and state.action.lstrip().startswith("/"):
             return True
         return False
-    return state.evaluate.type in ("llm_structured", "check_semantic")
+    return state.evaluate.type in ("llm_structured", "check_semantic", "advisor_consult")
 
 
 _SKILL_INVOKE_RE = re.compile(r"/ll:([a-zA-Z0-9_-]+)")

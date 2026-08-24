@@ -5837,6 +5837,7 @@ class EvaluateConfig:
         "comparator",       # Blind A/B comparison against stored baseline via LLM judge
         "contract",         # Validate producer/consumer pairs
         "classify",         # Classify a single line of output
+        "advisor_consult",  # Consult the advisor and route on its verdict
     ]
     operator: str | None = None        # Comparison: eq, ne, lt, le, gt, ge
     target: int | float | str | None = None  # Target value
@@ -5864,6 +5865,11 @@ class EvaluateConfig:
     line: str | int | None = None      # For classify: which line to read (last/first/<int index>)
     error_patterns: list[str] | None = None  # For output_contains: patterns that yield verdict="error"
     key: str | None = None            # For output_numeric: extract value from a `<key>=<number>` field
+    question: str | None = None        # For advisor_consult: the consult prompt
+    verdict_map: dict[str, str] | None = None  # For advisor_consult: decision -> FSM verdict
+    signal: str | None = None          # For advisor_consult: overrides the fixed "loop_stall" trigger
+    timeout: int | None = None         # For advisor_consult: per-state override of advisor.timeout_seconds
+    context_from: list[str] | None = None  # For advisor_consult: interpolation paths assembled into consult context
 ```
 
 #### RouteConfig

@@ -1670,6 +1670,140 @@ def evaluate_comparator(
     )
 
 
+# advisor_consult's fallback verdict on any skipped/failed/unparseable consult
+# (FEAT-3039 AC #4) — never a bare "error", so a stall-escalation route always
+# has somewhere to go without also tripping on_error retry semantics.
+_ADVISOR_NEUTRAL_VERDICT = "neutral"
+
+
+def _advisor_context(state_name: str, output: str, details: dict[str, str]) -> str:
+    """Assemble the consult context string from the stuck-state's output and details.
+
+    Explicit-only (FEAT-3039): never auto-slurps the FSM context — ``details``
+    is pre-resolved by the caller from ``context_from``'s interpolation paths.
+    """
+    parts = [f"State: {state_name}"]
+    if output.strip():
+        parts.append(f"Recent output:\n{output.strip()[:2000]}")
+    if details:
+        detail_block = "\n".join(f"  {k}: {v}" for k, v in details.items())
+        parts.append(f"Context:\n{detail_block}")
+    return "\n\n".join(parts)
+
+
+def _parse_advisor_decision(recommendation: str, verdict_map: dict[str, str]) -> str | None:
+    """Extract a verdict_map decision word from the advisor's free-text recommendation.
+
+    ``AdvisorVerdict`` has no closed-set decision field (FEAT-3116's schema is
+    fixed), so the evaluator asks the advisor to lead with the decision word
+    and falls back to a whole-word search anywhere in the text.
+    """
+    lowered = recommendation.strip().lower()
+    lead_word = re.split(r"[\s:,.]", lowered, maxsplit=1)[0]
+    if lead_word in verdict_map:
+        return lead_word
+    for decision in verdict_map:
+        if re.search(rf"\b{re.escape(decision.lower())}\b", lowered):
+            return decision
+    return None
+
+
+def evaluate_advisor_consult(
+    output: str,
+    *,
+    question: str,
+    verdict_map: dict[str, str],
+    signal: str | None,
+    timeout: int | None,
+    context_from: list[str] | None,
+    state_name: str,
+    context: InterpolationContext | None = None,
+) -> EvaluationResult:
+    """Consult the advisor and route on a decision parsed from its recommendation (FEAT-3039).
+
+    Delegates exclusively to ``consult_for_trigger()`` (FEAT-3116's budget/
+    allowlist gate) under the fixed ``"loop_stall"`` trigger unless *signal*
+    overrides it — never calls ``little_loops.advisor.consult()`` directly,
+    per the FEAT-3116 AC #5 exclusivity contract. A skipped, failed, or
+    unparseable consult returns ``_ADVISOR_NEUTRAL_VERDICT`` rather than
+    stranding the loop; ``confidence`` is always present in ``details``.
+
+    Args:
+        output: Current action output (for consult context; typically small
+            or empty for an advisor-only state).
+        question: Base consult prompt; the allowed decision set from
+            *verdict_map* is appended.
+        verdict_map: Maps a parsed decision word to the FSM verdict routed on.
+        signal: Overrides the fixed ``"loop_stall"`` trigger; must then be in
+            ``advisor.triggers`` or the consult is skipped.
+        timeout: Per-state override of ``advisor.timeout_seconds``.
+        context_from: Interpolation paths (e.g. ``"prev.verdict"``) resolved
+            against *context* and assembled into the consult context.
+        state_name: Name of the routing state (carried in context/details,
+            never used as the trigger).
+        context: FSM interpolation context, for resolving *context_from*.
+
+    Returns:
+        EvaluationResult with verdict from *verdict_map* (or
+        ``_ADVISOR_NEUTRAL_VERDICT``) and details including ``confidence``,
+        ``state``, and (on skip) ``skipped_reason``.
+    """
+    from little_loops.advisor import consult_for_trigger
+    from little_loops.config import BRConfig
+
+    details: dict[str, str] = {}
+    if context_from and context is not None:
+        for path in context_from:
+            try:
+                details[path] = interpolate(f"${{{path}}}", context)
+            except InterpolationError:
+                continue
+
+    consult_context = _advisor_context(state_name, output, details)
+    decision_options = ", ".join(verdict_map.keys())
+    full_question = (
+        f"{question}\n\nBegin your recommendation with exactly one decision word from: "
+        f"{decision_options}."
+    )
+
+    config = None
+    if timeout is not None:
+        config = BRConfig(Path.cwd())
+        config.advisor.timeout_seconds = timeout
+
+    outcome = consult_for_trigger(
+        signal or "loop_stall",
+        question=full_question,
+        context=consult_context,
+        config=config,
+    )
+
+    if outcome.verdict is None:
+        return EvaluationResult(
+            verdict=_ADVISOR_NEUTRAL_VERDICT,
+            details={
+                "confidence": 0.0,
+                "state": state_name,
+                "skipped_reason": outcome.skipped_reason,
+            },
+        )
+
+    decision = _parse_advisor_decision(outcome.verdict.recommendation, verdict_map)
+    verdict = verdict_map[decision] if decision is not None else _ADVISOR_NEUTRAL_VERDICT
+
+    return EvaluationResult(
+        verdict=verdict,
+        details={
+            "confidence": outcome.verdict.confidence,
+            "state": state_name,
+            "recommendation": outcome.verdict.recommendation,
+            "risks": outcome.verdict.risks,
+            "dissent": outcome.verdict.dissent,
+            "decision": decision,
+        },
+    )
+
+
 def evaluate(
     config: EvaluateConfig,
     output: str,
@@ -1893,6 +2027,22 @@ def evaluate(
 
     elif eval_type == "classify":
         return evaluate_classify(output=output, line=config.line)
+
+    elif eval_type == "advisor_consult":
+        if not config.question or not config.verdict_map:
+            raise ValueError(
+                "advisor_consult evaluator requires 'question' and 'verdict_map' to be set"
+            )
+        return evaluate_advisor_consult(
+            output=output,
+            question=config.question,
+            verdict_map=config.verdict_map,
+            signal=config.signal,
+            timeout=config.timeout,
+            context_from=config.context_from,
+            state_name=context.state_name if context else "",
+            context=context,
+        )
 
     else:
         raise ValueError(f"Unknown evaluator type: {eval_type}")

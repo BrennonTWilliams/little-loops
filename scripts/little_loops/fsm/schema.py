@@ -81,6 +81,15 @@ class EvaluateConfig:
         line: Line selector for classify evaluator (last/first/<int index>)
         key: For output_numeric, extract the value from a `<key>=<number>` field
             in the output instead of parsing the whole output as a number
+        question: Consult prompt for advisor_consult evaluator
+        verdict_map: For advisor_consult, maps a parsed decision word to the FSM
+            verdict routed on
+        signal: For advisor_consult, overrides the fixed "loop_stall" trigger used
+            to gate/record the consult (must then appear in advisor.triggers)
+        timeout: For advisor_consult, overrides advisor.timeout_seconds for this
+            state's consult only
+        context_from: For advisor_consult, interpolation paths (e.g. "prev.verdict")
+            whose resolved values are assembled into the consult context
     """
 
     type: Literal[
@@ -99,6 +108,7 @@ class EvaluateConfig:
         "comparator",
         "contract",
         "classify",
+        "advisor_consult",
     ]
     operator: str | None = None
     target: int | float | str | None = None
@@ -129,6 +139,11 @@ class EvaluateConfig:
         None  # for output_contains: patterns that yield verdict="error"
     )
     key: str | None = None  # for output_numeric: extract value from a `<key>=<number>` field
+    question: str | None = None  # for advisor_consult: consult prompt
+    verdict_map: dict[str, str] | None = None  # for advisor_consult: decision -> FSM verdict
+    signal: str | None = None  # for advisor_consult: overrides the fixed "loop_stall" trigger
+    timeout: int | None = None  # for advisor_consult: per-state override of advisor timeout
+    context_from: list[str] | None = None  # for advisor_consult: interpolation paths for context
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON/YAML serialization."""
@@ -189,6 +204,16 @@ class EvaluateConfig:
             result["error_patterns"] = self.error_patterns
         if self.key is not None:
             result["key"] = self.key
+        if self.question is not None:
+            result["question"] = self.question
+        if self.verdict_map is not None:
+            result["verdict_map"] = self.verdict_map
+        if self.signal is not None:
+            result["signal"] = self.signal
+        if self.timeout is not None:
+            result["timeout"] = self.timeout
+        if self.context_from is not None:
+            result["context_from"] = self.context_from
 
         return result
 
@@ -224,6 +249,11 @@ class EvaluateConfig:
             line=data.get("line"),
             error_patterns=data.get("error_patterns"),
             key=data.get("key"),
+            question=data.get("question"),
+            verdict_map=data.get("verdict_map"),
+            signal=data.get("signal"),
+            timeout=data.get("timeout"),
+            context_from=data.get("context_from"),
         )
 
 
