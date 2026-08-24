@@ -95,8 +95,9 @@ data_schema:                  # JSON Schema for data.json
           body: {type: string}
           severity: {enum: [low, medium, high]}
 source:
-  path: docs/risk-register.md   # default bound source
-  sha256: <hash at last render> # staleness detection
+  path: docs/risk-register.md   # default bound source (hashes live in the
+                                # sibling lockfile, never here — see § Second-pass
+                                # decisions → Lockfile)
 extraction:
   prompt: |                     # guidance for the LLM extraction step
     Map the risk register document to the schema. One section per
@@ -135,12 +136,17 @@ ll-artifact policy-builder
     template rendered through the same pipeline.
 ```
 
+**Template argument resolution.** `<template>` is tried first as a filesystem
+path (a `.llat/` directory); if that does not exist it is resolved as a name,
+`<config.artifacts.templates_dir>/<name>.llat`. If neither exists, exit non-zero
+naming both paths tried.
+
 **Output path precedence.** The manifest's `output:` is a *filename*; `-o` is a
 *directory*. Effective path = `(-o DIR | config.artifacts.default_output_dir) /
-manifest.output`. If `-o` names an existing file or carries a suffix, that is an
-error rather than a silent reinterpretation — `policy-builder`'s existing
-`--output` semantics (a directory resolved against `default_output_dir`) stay
-authoritative for the family.
+manifest.output`. The only error case is `-o` naming an **existing file**; a
+directory name with a dot in it (`out.v2/`) is valid — no suffix heuristic.
+`policy-builder`'s existing `--output` semantics (a directory resolved against
+`default_output_dir`) stay authoritative for the family.
 
 **"CI-gated" here means the local suite.** Per CLAUDE.md there is no hosted CI:
 `status`'s non-zero exit is exercised by a pytest test that invokes it, not by a
@@ -332,7 +338,40 @@ let whitespace drift accumulate invisibly across refreshes.
 
 **Fixture requirement (Phase 1):** one checked-in template fixture whose body
 contains `{{ }}`, `{% %}`, `${…}`, and `[[…]]` literal content, asserting it
-renders through untouched.
+renders through untouched. This fixture is **test-only**, under
+`scripts/tests/fixtures/`. The hand-authored *reference* template (Phased plan,
+Phase 1) is likewise test-only in v1; nothing ships as package data under
+`scripts/little_loops/templates/` until `policy-builder` itself migrates.
+
+### Template context: reserved `ll` namespace, no loader, `assets/` as text
+
+**Decision: the template is loaded with `Environment.from_string()` and no
+loader.** Consequently `include`/`extends`/`import` are unavailable and a
+template is exactly one file; this is deliberate — a single body is what
+FEAT-3308's round-trip carves out and diffs.
+
+The render context is `data.json`'s top-level keys plus one reserved key, `ll`:
+
+- `ll.theme_css` — the themed CSS-vars block produced by `load_design_tokens` +
+  `render_as_css_vars_themed` over the project's active token set (the same
+  light+dark pair `policy-builder`'s `_themed_css_vars` builds). Present only
+  when `theme: design-tokens`; templates stamp it as `[[= ll.theme_css =]]`.
+- `ll.assets` — a `dict[str, str]` of every file under `assets/`, keyed by
+  relative path, read as UTF-8 text. Binary assets (data-URI encoding) are v2.
+
+`data.json` containing a top-level `ll` key, or a `data_schema` declaring one,
+is a validation error.
+
+### Manifest strictness
+
+`manifest.yaml` is validated on load with the same fail-closed posture as
+`data_schema`: unknown top-level keys are a load error; `name`, `version`,
+`renderer` (must be `jinja2`), `output`, and `data_schema` are required;
+`theme` (only `design-tokens`), `source`, and `extraction` are optional.
+The subset validator also checks **schema well-formedness**, not only data:
+`items` must be a single schema object (no tuple form), `required`/`properties`
+are permitted only under `type: object`, `items` only under `type: array`,
+`enum` must be a non-empty list of scalars.
 
 ### `data.json` validation: a declared JSON Schema subset, hand-validated
 
@@ -370,6 +409,13 @@ FEAT-3309 do not each re-litigate it.
 Handler signature and error shape stay as they are today:
 `cmd_<name>(args: argparse.Namespace, logger: Logger) -> int`, own
 `BRConfig(Path.cwd())`, blanket `try/except Exception` → 0/1.
+
+The package's `__init__.py` **must re-export** `main_artifact`,
+`cmd_policy_builder`, `cmd_design_md_export`, and `_themed_css_vars` — existing
+tests import and patch them at `little_loops.cli.artifact.*`
+(`test_policy_builder_emit.py:15,215`, `test_design_tokens.py:664`,
+`test_enh3268_design_md_export.py:354`). The `pyproject.toml:70` entry point
+(`little_loops.cli:main_artifact`) is unaffected.
 
 ### Lockfile is keyed by source path, not a scalar
 
@@ -449,8 +495,19 @@ decisions, not their acceptance criteria.
       byte-exact round trip, so it must fail a test rather than a review.
 - [ ] A fixture template whose body contains literal `{{ }}`, `{% %}`, `${…}`
       and `[[…]]` renders with all four preserved byte-for-byte.
-- [ ] `render` performs no LLM call and no network access; rendering the same
+- [ ] `render` performs no LLM call: the render module imports nothing from
+      `host_runner` or `anthropic`, asserted by a test that patches
+      `resolve_host` and verifies it is never called. Rendering the same
       template + data twice produces byte-identical output.
+- [ ] The environment uses `from_string()` with no loader; a template using
+      `[[% include %]]` fails with a clear error (test).
+- [ ] `ll.theme_css` and `ll.assets` are populated per § Template context; a
+      top-level `ll` key in `data.json` or `data_schema` is rejected (test).
+- [ ] Manifest load rejects unknown top-level keys, missing required keys,
+      `renderer` ≠ `jinja2`, and each malformed-schema shape listed under
+      § Manifest strictness (test per case).
+- [ ] `<template>` resolves path-first, then `templates_dir/<name>.llat`; the
+      not-found error names both paths tried (test).
 - [ ] `data.json` is validated against `manifest.data_schema` before rendering;
       a schema violation exits non-zero with the offending path, and nothing is
       written.
@@ -463,16 +520,23 @@ decisions, not their acceptance criteria.
 - [ ] `theme: design-tokens` stamps themed CSS vars via the existing
       `load_design_tokens` / `render_as_css_vars_themed` path — no second copy of
       `policy-builder`'s `_themed_css_vars`.
-- [ ] `artifacts.templates_dir` is added to `ArtifactsConfig`, its `from_dict()`,
+- [ ] `artifacts.templates_dir` (default `"artifacts/templates"`, identical in
+      the dataclass and the schema) is added to `ArtifactsConfig`, its `from_dict()`,
       `config/core.py`'s serialization dict (:916-918), and
       `config-schema.json`'s `artifacts` block; `TestSchemaValueParity` passes
       and `test_artifacts_in_schema` is extended to assert the new key.
       **`artifacts.export` is explicitly not added here** — it is FEAT-3304's.
 - [ ] `cli/artifact.py` is a `cli/artifact/` package with one module per
-      subcommand; `policy-builder` and `design-md export` behaviour is unchanged
-      and their existing tests pass untouched.
+      subcommand; `__init__.py` re-exports `main_artifact`, `cmd_policy_builder`,
+      `cmd_design_md_export`, `_themed_css_vars`; `policy-builder` and
+      `design-md export` behaviour is unchanged and their existing tests pass
+      untouched.
 - [ ] Output path precedence (`-o` as directory, `manifest.output` as filename)
-      is implemented and tested, including the error case where `-o` names a file.
+      is implemented and tested, including the error case where `-o` names an
+      existing file and the non-error case of a dotted directory name (`out.v2`).
+- [ ] Phase 2 (`extract` + `refresh`) and Phase 3 (`status` + lockfile) are
+      filed as child issues of EPIC-3299 before this issue is marked done, so the
+      hub keeps design and decisions only.
 - [ ] `docs/reference/CLI.md` (`### ll-artifact`) and
       `docs/reference/CONFIGURATION.md` (`### artifacts`) document `render` and
       `templates_dir`.
