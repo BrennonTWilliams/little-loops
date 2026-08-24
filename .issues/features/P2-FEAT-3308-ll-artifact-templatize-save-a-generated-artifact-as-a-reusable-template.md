@@ -3,7 +3,7 @@ id: FEAT-3308
 title: '`ll-artifact templatize`: save a generated artifact as a reusable template'
 type: FEAT
 priority: P2
-status: open
+status: done
 discovered_by: manual
 discovered_date: '2026-08-23'
 parent: EPIC-3299
@@ -506,7 +506,20 @@ _Pruned 2026-08-24 during pre-implementation review; superseded notes removed._
 
 ## Status
 
-**Open** | Created: 2026-08-23 | Priority: P2
+**Done** | Created: 2026-08-23 | Priority: P2
+
+---
+
+## Resolution
+
+- **Status**: Decomposed
+- **Completed**: 2026-08-24
+- **Reason**: Issue too large for single session (size score 11/11, Very Large); the issue's own text names the split axis ("If this issue needs splitting for size, split on the A/B boundary").
+
+### Decomposed Into
+- FEAT-3314: `ll-artifact templatize` Phase A: deterministic templating (no LLM)
+- FEAT-3315: `ll-artifact templatize` Phase B: LLM region discovery
+- FEAT-3316: `ll-artifact templatize` Phase C: token report, fan-out verification, docs
 
 ---
 
@@ -533,6 +546,7 @@ _Added by `/ll:confidence-check` on 2026-08-24_
 Learning test target `jinja2-byte-exact-round-trip` was `missing` at check time; auto-provisioned via `/ll:explore-api` this session — all 7 claims proven (`.ll/learning-tests/jinja2-byte-exact-round-trip.md`), no Phase 3 hard override triggered.
 
 ## Session Log
+- `/ll:issue-size-review` - 2026-08-24T18:42:59 - `837a85ca-8f14-41e3-a67f-9059d7bcff74.jsonl`
 - `/ll:confidence-check` - 2026-08-24T18:33:03 - `fc7f522d-5285-4cfe-80ae-165743f58e1d.jsonl`
 - `/ll:reconcile-issue` - 2026-08-24T18:21:58 - `bf2ea761-d864-4b19-8078-67d47afee296.jsonl`
 - `/ll:refine-issue` - 2026-08-24T18:16:50 - `4cf0eddb-35dc-406e-937b-500628a507cf.jsonl`

@@ -199,6 +199,7 @@ Open.
 
 
 ## Session Log
+- `/ll:ready-issue` - 2026-08-24T18:41:59 - `86f811ec-bd0b-4154-b91f-c1d1fbae8eb5.jsonl`
 - `/ll:confidence-check` - 2026-08-24T18:38:25 - `6f852972-0707-41ab-9d42-e7358936b796.jsonl`
 - `/ll:confidence-check` - 2026-08-24T18:31:03 - `fc7f522d-5285-4cfe-80ae-165743f58e1d.jsonl`
 - `/ll:refine-issue` - 2026-08-24T18:20:18 - `bf2ea761-d864-4b19-8078-67d47afee296.jsonl`

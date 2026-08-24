@@ -55,6 +55,7 @@ Documentation for contributing to and developing little-loops.
 - [Architecture Overview](ARCHITECTURE.md) - System design, component relationships, and diagrams
 - [API Reference](reference/API.md) - Python module documentation with detailed class and method references
 - [Event Schema Reference](reference/EVENT-SCHEMA.md) - All LLEvent types plus hook intent types (`LLHookEvent`, `LLHookResult`), wire format, and machine-readable JSON schemas — primary reference for extension authors and external consumers
+- [Artifact Control Levels](reference/ARTIFACT_CONTROL_LEVELS.md) - The three-level control taxonomy (notify / ask-to-run-prompt / host-owned) for any artifact that can route a user interaction back into the FSM
 - [Write a Hook](claude-code/write-a-hook.md) - Authoring guide for `LLHookIntentExtension`: the Protocol, adapter flow, and pure-function + subprocess testing patterns
 - [Testing Guide](development/TESTING.md) - Testing patterns, conventions, and best practices
 - [E2E Testing](development/E2E_TESTING.md) - End-to-end testing guide for CLI workflows

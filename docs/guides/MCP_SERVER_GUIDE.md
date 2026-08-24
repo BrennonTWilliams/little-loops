@@ -615,3 +615,6 @@ printf '%s\n' \
 - [Host Compatibility](../reference/HOST_COMPATIBILITY.md) — which hosts support what
 - [Issue Management Guide](ISSUE_MANAGEMENT_GUIDE.md) — the write path the MCP surface
   deliberately omits
+- [Artifact Control Levels](../reference/ARTIFACT_CONTROL_LEVELS.md) — the three-level
+  control taxonomy any interactive resource this server exposes must conform to
+  (ENH-3306 fills in the concrete `ui://` resource details)

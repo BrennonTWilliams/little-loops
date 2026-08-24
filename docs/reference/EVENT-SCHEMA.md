@@ -1360,9 +1360,21 @@ The following conventions apply to little-loops CLI tools that emit JSON output.
 
 ---
 
+## Reserved Event Names
+
+Some event names are reserved ahead of a mechanism that will emit them, so that
+future implementations converge on one name rather than each inventing one.
+Reserved names have **no schema file** and **no emitter** until a mechanism
+ships — they are not event types, and do not count toward the schema-parity
+claim below.
+
+| Event | Reserved for | Meaning |
+|---|---|---|
+| `artifact_interaction` | Level-3 (host-owned) artifact re-entry — see [ARTIFACT_CONTROL_LEVELS.md](ARTIFACT_CONTROL_LEVELS.md#reserved-event-artifact_interaction) | A user interaction with a rendered artifact that the FSM executor consumes directly, delivered unchanged to the executor's inbound channel. Carries `artifact_id` (`str`), `level` (`str`, one of `"notify"` \| `"ask-to-run-prompt"` \| `"host-owned"`), `action` (`str`), and optional `payload` (`object`), composing with the standard `event`/`ts` envelope. |
+
 ## Machine-Readable Schemas
 
-Every event type listed in this document has a corresponding JSON Schema (draft-07) file committed to `docs/reference/schemas/`. These files can be used for programmatic validation, IDE autocomplete, and external tooling.
+Every *emitted* event type listed in this document has a corresponding JSON Schema (draft-07) file committed to `docs/reference/schemas/`. Reserved names (above) are excluded from this claim — they have no schema file until a mechanism actually emits them. These files can be used for programmatic validation, IDE autocomplete, and external tooling.
 
 ```
 docs/reference/schemas/
