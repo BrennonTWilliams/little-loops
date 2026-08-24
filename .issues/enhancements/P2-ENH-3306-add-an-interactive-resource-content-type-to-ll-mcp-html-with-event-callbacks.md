@@ -8,7 +8,7 @@ discovered_date: '2026-08-23'
 parent: EPIC-3127
 blocked_by:
 - ENH-3307
-related:
+relates_to:
 - ENH-3035
 labels:
 - mcp

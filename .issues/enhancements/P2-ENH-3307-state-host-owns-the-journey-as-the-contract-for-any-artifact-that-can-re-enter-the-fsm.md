@@ -7,6 +7,9 @@ priority: P2
 status: open
 discovered_date: '2026-08-23'
 parent: EPIC-3127
+relates_to:
+- ENH-3306
+- ENH-3035
 labels:
 - artifact
 - fsm
@@ -41,6 +44,10 @@ _Added by `/ll:refine-issue` — 2026-08-24 — based on codebase analysis:_
 
 A written contract — the three-level control taxonomy (notify / ask-to-run-prompt / host-owned) described below — exists as a document/spec artifact that defines, per level, what an artifact may emit, what the host is obligated to do with it, and which layer (host session vs. FSM executor) owns the resulting state change. The contract is protocol- and render-target-agnostic, so it governs htmx-based artifacts over a local bridge, MCP Apps interactive resources (ENH-3306), and any future render target without modification.
 
+**Deliverable location (resolved 2026-08-23 review):** `docs/reference/ARTIFACT_CONTROL_LEVELS.md`, indexed from `docs/index.md` under "Reference" (required, not implementer's call), and cross-linked from `docs/ARCHITECTURE.md` (a short `## Artifact Control Layer` pointer following the Host Runner Layer precedent) and `docs/reference/EVENT-SCHEMA.md`.
+
+**Event naming (resolved):** the doc reserves the level-3 event name `artifact_interaction` and adds a placeholder row for it to `docs/reference/EVENT-SCHEMA.md` (marked *reserved, not yet emitted*) with the field shape `{artifact_id, level, action, payload}`. This is so ENH-3306's view and a future SSE bridge converge on one name rather than each inventing one; no executor code emits or consumes it in this issue.
+
 ## Background / Motivation
 
 The FSM executor is authoritative over transitions; artifacts today (dashboards, markdown reports) are one-way — a loop renders an artifact and hands it to a human or another agent, but the artifact cannot re-enter the engine. The event stream the engine already emits is the substrate an interactive artifact would plug into; the missing piece is defining what an artifact is allowed to do when a user acts on it, and who owns the resulting transition.
@@ -55,11 +62,25 @@ This is little-loops' own vocabulary for the contract — informal framing chose
 
 The distinction that matters most is level 2 vs. level 3: level 2 hands control to the host session (a human- or agent-mediated step), level 3 keeps the executor authoritative over the transition with no intermediate hand-off. A queue-backed command-execution path that lets a live artifact trigger execution implies level 3 without saying so explicitly — naming the levels here is what stops that kind of path from defining the contract implicitly, after the fact.
 
+### Per-level obligations (the table the doc must contain)
+
+| Level | Artifact may emit | Host is obligated to | Owner of resulting state change | Existing / planned example |
+|---|---|---|---|---|
+| 1 notify | Display-only signals (`ui/message`, status text) | Surface it; nothing else | Nobody — no state change | `html-anything.yaml` dashboards; ENH-3306 first view |
+| 2 ask-to-run-prompt | A prompt/command request addressed to the host session | Decide whether to run it; if run, run it as its own session action | Host session (human/agent), *not* the executor | `HandoffBehavior.SPAWN` (closest analog) |
+| 3 host-owned | An `artifact_interaction` event | Deliver it to the executor's inbound channel unchanged | FSM executor (`FSMExecutor`) | None today — reserved for a future SSE bridge / queue path |
+
+The doc must also state two prohibitions, in the style of the Host Runner "MUST go through `resolve_host()`" rule: (a) a render target MUST declare which level(s) it supports and MUST NOT emit above its declared level; (b) no transport may consume a level-3 event itself — it must hand it to the executor.
+
 ## Integration Map
 
 ### Files to Modify
 
 - No production code changes — Effort is Small, a document/spec artifact only (`program_design_not_applicable: true` is already set in frontmatter). This codebase's convention places single-topic canonical contract/taxonomy docs under `docs/reference/` (e.g. `docs/reference/EVENT-SCHEMA.md`, `docs/reference/HOST_COMPATIBILITY.md`, `docs/reference/DEFERRAL_CODES.md`) rather than `docs/guides/` (broader narrative "how to build X" docs, e.g. `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md`)
+- **New**: `docs/reference/ARTIFACT_CONTROL_LEVELS.md`
+- `docs/index.md` — add the Reference bullet
+- `docs/reference/EVENT-SCHEMA.md` — add the reserved `artifact_interaction` row
+- `docs/ARCHITECTURE.md` — add a short `## Artifact Control Layer` pointer section
 
 ### Dependent Files (Callers/Importers)
 
@@ -76,7 +97,7 @@ The distinction that matters most is level 2 vs. level 3: level 2 hands control 
 
 ### Tests
 
-- N/A — no code changes; nothing to test directly. If the contract doc is later drift-enforced (following the `HOST_COMPATIBILITY.md` precedent above), that would be a new `scripts/tests/test_*.py` asserting the doc's levels stay in sync with wherever FSM event names are enumerated (`scripts/little_loops/fsm/executor.py`, `scripts/little_loops/fsm/types.py`) — a decision left to the implementer, not asserted here
+- Minimal existence/structure test only: a new `scripts/tests/test_enh_3307_artifact_control_levels.py` asserting the doc exists, contains the three level identifiers and the `artifact_interaction` name, and that `docs/index.md` links it. Full drift-enforcement against executor event names (the `HOST_COMPATIBILITY.md` precedent) is deferred until an executor actually emits `artifact_interaction`.
 
 ### Documentation
 
@@ -85,7 +106,7 @@ The distinction that matters most is level 2 vs. level 3: level 2 hands control 
 - `docs/guides/MCP_SERVER_GUIDE.md` — user-facing docs for `ll-mcp`; would need a cross-link once ENH-3306's `ui://` resource type exists, since that mechanism must conform to this contract
 
 _Wiring pass added by `/ll:wire-issue`:_
-- `docs/index.md` — lists `docs/reference/*.md` under "Reference"; would need a new bullet for the contract doc once created. Note: neither `docs/reference/HOST_COMPATIBILITY.md` nor `docs/reference/DEFERRAL_CODES.md` (this issue's own cited precedents) currently appear there either, so precedent for indexing new reference docs is inconsistent — implementer's call [Agent 1 finding]
+- `docs/index.md` — lists `docs/reference/*.md` under "Reference"; **required** new bullet for `ARTIFACT_CONTROL_LEVELS.md` (resolved: index it even though `HOST_COMPATIBILITY.md` / `DEFERRAL_CODES.md` are not — precedent is inconsistent, so follow the stricter path) [Agent 1 finding]
 - `docs/guides/LOOPS_REFERENCE.md:1483-1582` and `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md:1200` — document `scripts/little_loops/loops/html-anything.yaml`, the concrete level-1 (notify) artifact type this contract's "one-way by construction" example refers to; candidate cross-link once the contract doc exists, though the connection is by example rather than by required coupling [Agent 1 finding]
 
 ### Configuration
@@ -114,6 +135,22 @@ The MCP Apps extension defines a different, narrower axis under similar-sounding
 - The contract must be protocol- and render-target-agnostic: it must hold for htmx-based artifacts over a local bridge, for MCP Apps interactive resources, and for whatever render target follows.
 - Write the contract as a document/spec artifact defining, per control level, what an artifact may emit, what the host is obligated to do with it, and which layer (host session vs. FSM executor) owns the resulting state change.
 - This should land ahead of the transport mechanisms that will need it, not be reverse-engineered out of a shipped mechanism afterward.
+
+## Acceptance Criteria
+
+- [ ] `docs/reference/ARTIFACT_CONTROL_LEVELS.md` exists, opens with H1 + purpose paragraph + `> **Related Documentation:**` blockquote, and declares itself canonical.
+- [ ] Contains the per-level obligations table above (5 columns, 3 rows) followed by prose disambiguating level 2 vs. level 3.
+- [ ] States the two prohibitions (declared-level ceiling; transports never consume level-3 events).
+- [ ] States explicitly that MCP Apps `_meta.ui.visibility` is a different axis and does not map onto the levels.
+- [ ] Reserves the `artifact_interaction` event name with its field shape; `EVENT-SCHEMA.md` gains a matching *reserved* row.
+- [ ] `docs/index.md` lists the doc; `docs/ARCHITECTURE.md` cross-links it; `docs/guides/MCP_SERVER_GUIDE.md` gains a one-line forward pointer (ENH-3306 fills it in).
+- [ ] `scripts/tests/test_enh_3307_artifact_control_levels.py` passes.
+- [ ] Unblocks ENH-3306 (`blocked_by: [ENH-3307]`).
+
+## Related Issues
+
+- ENH-3306 — first mechanism to conform (level 1 only); blocked by this issue.
+- ENH-3035 / FEAT-3036 — browser-tab artifact template kit; a level-1 render target by construction, not a dependency.
 
 ## Status
 
