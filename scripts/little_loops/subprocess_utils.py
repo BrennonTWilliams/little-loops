@@ -13,6 +13,7 @@ import re
 import selectors
 import signal
 import subprocess
+import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -308,6 +309,33 @@ def _list_scratch_files() -> str:
         return "None"
 
 
+_shutdown_event = threading.Event()
+
+
+def request_shutdown() -> None:
+    """Signal every in-flight ``run_claude_command()`` read loop to abort (BUG-3312).
+
+    Set by an external SIGINT/SIGTERM handler. The read loop observes this
+    within ~1s (its existing ``sel.select(timeout=1.0)`` cadence) and kills
+    the active process group via ``_kill_process_group()``. Module-level so
+    it covers every caller of ``run_claude_command`` (ll-auto, ll-parallel,
+    sprint workers, the FSM executor) without threading a new parameter
+    through each call chain.
+    """
+    _shutdown_event.set()
+
+
+def clear_shutdown() -> None:
+    """Reset the shutdown signal. Callers should invoke this at run start so
+    state doesn't leak between runs in the same process (e.g. tests)."""
+    _shutdown_event.clear()
+
+
+def is_shutdown_requested() -> bool:
+    """Whether ``request_shutdown()`` has been called and not yet cleared."""
+    return _shutdown_event.is_set()
+
+
 def _kill_process_group(process: subprocess.Popen, grace_seconds: float = 0.0) -> None:
     """SIGTERM the process group, then SIGKILL after grace_seconds if still alive.
 
@@ -431,8 +459,10 @@ def run_claude_command(
         CompletedProcess with stdout/stderr captured
 
     Raises:
-        subprocess.TimeoutExpired: If command exceeds timeout or idle timeout.
-            When triggered by idle timeout, the output field is set to "idle_timeout".
+        subprocess.TimeoutExpired: If command exceeds timeout or idle timeout,
+            or if request_shutdown() was called (BUG-3312). When triggered by
+            idle timeout, the output field is set to "idle_timeout"; when
+            triggered by a shutdown request, it is set to "interrupted".
     """
     effective_idle_timeout: float = (automation.idle_timeout or 0) if automation else 0
 
@@ -501,6 +531,17 @@ def run_claude_command(
         try:
             while sel.get_map():
                 now = time.time()
+                if _shutdown_event.is_set():
+                    _kill_process_group(process, grace_seconds=timeout_kill_grace_seconds)
+                    try:
+                        process.wait(timeout=10)
+                    except subprocess.TimeoutExpired:
+                        logger.warning(
+                            "Process %s did not terminate within 10s after kill",
+                            process.pid,
+                        )
+                    raise subprocess.TimeoutExpired(cmd_args, 0, output="interrupted")
+
                 if timeout and (now - start_time) > timeout:
                     _kill_process_group(process, grace_seconds=timeout_kill_grace_seconds)
                     try:

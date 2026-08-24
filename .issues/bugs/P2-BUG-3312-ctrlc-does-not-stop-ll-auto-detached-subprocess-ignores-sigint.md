@@ -3,10 +3,11 @@ id: BUG-3312
 type: BUG
 title: "Ctrl+C does not stop ll-auto \u2014 detached subprocess ignores SIGINT"
 priority: P2
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-08-24'
 captured_at: '2026-08-24T16:07:51Z'
+completed_at: '2026-08-24T17:24:15Z'
 confidence_score: 95
 outcome_confidence: 75
 score_complexity: 14
@@ -374,6 +375,8 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-24T17:23:52 - `8fa6ad25-06d2-4755-aec9-4be3d7428376.jsonl`
+- `/ll:ready-issue` - 2026-08-24T16:58:51 - `0f974fac-ad32-471d-97f9-75e34da794da.jsonl`
 - `/ll:confidence-check` - 2026-08-24T16:56:17 - `a004c617-912f-49b1-90dd-64ce4fe53f29.jsonl`
 - `/ll:confidence-check` - 2026-08-24T16:39:51 - `9960f916-2441-4af1-90fa-4a886fc8f95c.jsonl`
 - `/ll:refine-issue` - 2026-08-24T16:21:11 - `e5f4e5f1-003d-4663-97d4-27dbe660784d.jsonl`

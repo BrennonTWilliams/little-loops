@@ -2885,6 +2885,85 @@ class TestProcessGroupKill:
         mock_process.kill.assert_called_once()
 
 
+class TestShutdownEvent:
+    """Tests for the module-level shutdown Event (BUG-3312)."""
+
+    def _make_mock_process(self, pid: int = 12345) -> Mock:
+        mock_process = Mock()
+        mock_process.stdout = io.StringIO("")
+        mock_process.stderr = io.StringIO("")
+        mock_process.returncode = None
+        mock_process.wait.return_value = None
+        mock_process.kill = Mock()
+        mock_process.pid = pid
+        return mock_process
+
+    def setup_method(self) -> None:
+        from little_loops.subprocess_utils import clear_shutdown
+
+        clear_shutdown()
+
+    def teardown_method(self) -> None:
+        from little_loops.subprocess_utils import clear_shutdown
+
+        clear_shutdown()
+
+    def test_accessors_round_trip(self) -> None:
+        from little_loops.subprocess_utils import (
+            clear_shutdown,
+            is_shutdown_requested,
+            request_shutdown,
+        )
+
+        assert is_shutdown_requested() is False
+        request_shutdown()
+        assert is_shutdown_requested() is True
+        clear_shutdown()
+        assert is_shutdown_requested() is False
+
+    def test_shutdown_event_kills_process_group_and_raises_interrupted(self) -> None:
+        """A shutdown request observed mid-read-loop kills via killpg and raises
+        TimeoutExpired(output="interrupted"), distinguishable from a timeout."""
+        from little_loops.subprocess_utils import request_shutdown
+
+        mock_process = self._make_mock_process(pid=99999)
+
+        with patch("subprocess.Popen", return_value=mock_process):
+            with patch("selectors.DefaultSelector") as mock_selector:
+                _patch_selector_cm(mock_selector)
+                mock_selector.return_value.get_map.return_value = {"stdout": True}
+                mock_selector.return_value.select.return_value = []
+                mock_selector.return_value.register = Mock()
+                mock_selector.return_value.unregister = Mock()
+
+                request_shutdown()
+
+                with patch("os.getpgid", return_value=42) as mock_getpgid:
+                    with patch("os.killpg") as mock_killpg:
+                        with pytest.raises(subprocess.TimeoutExpired) as exc_info:
+                            run_claude_command("test", timeout=3600)
+
+        mock_getpgid.assert_called_once_with(99999)
+        mock_killpg.assert_called_once_with(42, signal.SIGKILL)
+        assert exc_info.value.output == "interrupted"
+
+    def test_no_shutdown_no_effect_on_normal_run(self) -> None:
+        """With the shutdown Event clear, a normal run completes without any kill."""
+        mock_process = self._make_mock_process(pid=11122)
+        mock_process.returncode = 0
+
+        with patch("subprocess.Popen", return_value=mock_process):
+            with patch("selectors.DefaultSelector") as mock_selector:
+                _patch_selector_cm(mock_selector)
+                mock_selector.return_value.get_map.return_value = {}
+
+                with patch("os.killpg") as mock_killpg:
+                    result = run_claude_command("test")
+
+        mock_killpg.assert_not_called()
+        assert result.returncode == 0
+
+
 class TestKillProcessGroupGraceEscalation:
     """Tests for _kill_process_group's SIGTERM-then-SIGKILL escalation (ENH-3130)."""
 

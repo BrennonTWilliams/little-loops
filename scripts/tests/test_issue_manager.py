@@ -1361,6 +1361,50 @@ class TestRunWithContinuation:
         assert result.returncode == 0
         assert "Normal output" in result.stdout
 
+    def test_shutdown_between_rounds_raises_interrupted(self, temp_project_dir: Path) -> None:
+        """BUG-3312 Decision 3: a shutdown requested between continuation
+        rounds (e.g. right after Option J's guillotine round returns) must
+        stop run_with_continuation from starting another round, raising the
+        same TimeoutExpired(output="interrupted") shape as a mid-round kill."""
+        import subprocess
+
+        from little_loops.issue_manager import run_with_continuation
+        from little_loops.subprocess_utils import clear_shutdown, request_shutdown
+
+        mock_logger = MagicMock()
+
+        # First round: no handoff signal, but the "prompt is too long" trigger
+        # (Option J) drives the loop back to its top for a second round.
+        mock_result = MagicMock()
+        mock_result.returncode = 1
+        mock_result.stdout = ""
+        mock_result.stderr = "Prompt is too long"
+
+        call_count = [0]
+
+        def fake_run_claude_command(*args: object, **kwargs: object) -> MagicMock:
+            call_count[0] += 1
+            # Simulate the signal landing after this round returns, before the
+            # loop re-enters for the next round.
+            request_shutdown()
+            return mock_result
+
+        clear_shutdown()
+        try:
+            with patch(
+                "little_loops.issue_manager.run_claude_command",
+                side_effect=fake_run_claude_command,
+            ):
+                with patch("little_loops.issue_manager.detect_context_handoff", return_value=False):
+                    with pytest.raises(subprocess.TimeoutExpired) as exc_info:
+                        run_with_continuation("test command", mock_logger, max_continuations=3)
+        finally:
+            clear_shutdown()
+
+        assert exc_info.value.output == "interrupted"
+        # Exactly one round ran before the loop-head check aborted the next.
+        assert call_count[0] == 1
+
     def test_forwards_on_result_seen(self, temp_project_dir: Path) -> None:
         """BUG-3026: on_result_seen fires with the last round's result_seen value."""
         from little_loops.issue_manager import run_with_continuation
@@ -2317,6 +2361,104 @@ READY
 
         assert not result.success
         assert "Path mismatch persisted" in result.failure_reason
+
+
+class TestShutdownInterrupt:
+    """Tests for signal-driven shutdown at phase boundaries (BUG-3312)."""
+
+    @pytest.fixture
+    def mock_config(self, temp_project_dir: Path) -> BRConfig:
+        """Create a mock BRConfig for testing."""
+        config = MagicMock(spec=BRConfig)
+        config.project_root = temp_project_dir
+        config.repo_path = temp_project_dir
+        config.automation = MagicMock()
+        config.automation.timeout_seconds = 60
+        config.automation.stream_output = False
+        config.automation.max_continuations = 3
+        config.automation.ready_issue_unknown_retries = 1
+        config.get_category_action.return_value = "fix"
+        config.get_state_file.return_value = temp_project_dir / ".auto-state.json"
+        return config
+
+    @pytest.fixture
+    def sample_issue(self, temp_project_dir: Path) -> IssueInfo:
+        """Create a sample issue for testing."""
+        issues_dir = temp_project_dir / ".issues" / "bugs"
+        issues_dir.mkdir(parents=True)
+        issue_file = issues_dir / "P1-BUG-001-test-bug.md"
+        issue_file.write_text("# BUG-001: Test Bug\n\n## Summary\nTest")
+        return IssueInfo(
+            path=issue_file,
+            issue_type="bugs",
+            priority="P1",
+            issue_id="BUG-001",
+            title="Test Bug",
+        )
+
+    @pytest.fixture(autouse=True)
+    def _clear_shutdown_event(self) -> Any:
+        from little_loops.subprocess_utils import clear_shutdown
+
+        clear_shutdown()
+        yield
+        clear_shutdown()
+
+    def test_shutdown_before_phase_2_skips_implement_subprocess(
+        self, mock_config: BRConfig, sample_issue: IssueInfo
+    ) -> None:
+        """A shutdown requested during Phase 1 aborts before Phase 2 spawns
+        run_with_continuation, and the result is flagged was_interrupted."""
+        from little_loops.issue_manager import process_issue_inplace
+        from little_loops.subprocess_utils import request_shutdown
+
+        mock_logger = MagicMock()
+        mock_ready_result = MagicMock()
+        mock_ready_result.returncode = 1
+        mock_ready_result.stdout = ""
+        mock_ready_result.stderr = "Some error"
+
+        with patch("little_loops.issue_manager.run_claude_command", return_value=mock_ready_result):
+            with patch("little_loops.issue_manager.check_git_status", return_value=False):
+                with patch("little_loops.issue_manager.run_with_continuation") as mock_impl:
+                    request_shutdown()
+                    result = process_issue_inplace(sample_issue, mock_config, mock_logger)
+
+        mock_impl.assert_not_called()
+        assert result.was_interrupted is True
+        assert not result.success
+
+    def test_shutdown_after_phase_2_skips_verify_subprocess(
+        self, mock_config: BRConfig, sample_issue: IssueInfo
+    ) -> None:
+        """A shutdown that fires during Phase 2 aborts before Phase 3's verify
+        subprocess is spawned, even though Phase 2 itself returned cleanly."""
+        from little_loops.issue_manager import process_issue_inplace
+        from little_loops.subprocess_utils import request_shutdown
+
+        mock_logger = MagicMock()
+        mock_ready_result = MagicMock()
+        mock_ready_result.returncode = 1
+        mock_ready_result.stdout = ""
+        mock_ready_result.stderr = "Some error"
+
+        def _mocked_phase2(*args: Any, **kwargs: Any) -> MagicMock:
+            # Simulate the signal landing while Phase 2's subprocess was running.
+            request_shutdown()
+            return MagicMock(returncode=0, stdout="", stderr="")
+
+        with patch("little_loops.issue_manager.run_claude_command", return_value=mock_ready_result):
+            with patch("little_loops.issue_manager.check_git_status", return_value=False):
+                with patch(
+                    "little_loops.issue_manager.run_with_continuation",
+                    side_effect=_mocked_phase2,
+                ):
+                    with patch("little_loops.issue_manager.verify_issue_completed") as mock_verify:
+                        result = process_issue_inplace(sample_issue, mock_config, mock_logger)
+
+        mock_verify.assert_not_called()
+        assert result.was_interrupted is True
+        assert not result.success
 
 
 class TestCorrectionsAndConcerns:
@@ -4042,6 +4184,43 @@ class TestAutoManagerRun:
         assert "BUG-001" in manager.state_manager.state.failed_issues
         assert "timeout after 60s" in manager.state_manager.state.failed_issues["BUG-001"]
 
+    def test_interrupt_without_finalization_is_skipped_not_failed(self, full_project: Path) -> None:
+        """BUG-3312: TimeoutExpired(output="interrupted") -- raised when a
+        shutdown signal kills the subprocess mid-round -- shares the
+        "already finalized?" recovery check with a real timeout, but on the
+        not-finalized path must be attributed as interrupted (skipped), not a
+        generic timeout failure that could spawn a bug issue.
+        """
+        import subprocess
+
+        from little_loops.config import BRConfig
+        from little_loops.issue_manager import AutoManager
+
+        issue_path = full_project / ".issues" / "bugs" / "P1-BUG-001-test-issue.md"
+        issue_path.write_text(
+            "---\nstatus: open\n---\n\n# BUG-001: Test\n\n## Summary\nKilled by signal\n"
+        )
+
+        config = BRConfig(full_project)
+
+        def side_effect(info: Any, *args: Any, **kwargs: Any) -> Any:
+            raise subprocess.TimeoutExpired(cmd="claude", timeout=0, output="interrupted")
+
+        with patch("little_loops.issue_manager.process_issue_inplace", side_effect=side_effect):
+            with patch("little_loops.issue_manager.check_git_status", return_value=False):
+                with patch("little_loops.issue_manager.verify_work_was_done", return_value=True):
+                    manager = AutoManager(
+                        config,
+                        dry_run=False,
+                        db_path=config.project_root / ".ll" / "history.db",
+                    )
+                    manager.run()
+
+        assert manager.processed_count == 0
+        assert "BUG-001" not in manager.state_manager.state.failed_issues
+        assert "BUG-001" in manager.state_manager.state.skipped_issues
+        assert "interrupted" in manager.state_manager.state.skipped_issues["BUG-001"]
+
     def test_run_preserves_state_file_after_fatal_exception(self, full_project: Path) -> None:
         """BUG-2976: a fatal (non-timeout) exception must not delete resume state.
 
@@ -4098,6 +4277,88 @@ class TestAutoManagerRun:
         assert not manager.state_manager.state_file.exists()
 
 
+class TestInterruptedAttribution:
+    """Tests for BUG-3312 Decision 5: an interrupted issue is recorded as
+    skipped (not failed) and its attempted_issues mark is undone so --resume
+    retries it rather than treating it as a burned attempt."""
+
+    @pytest.fixture
+    def full_project(self, temp_project_dir: Path) -> Path:
+        ll_dir = temp_project_dir / ".ll"
+        ll_dir.mkdir(exist_ok=True)
+        config_content = {
+            "project": {"name": "test-project"},
+            "issues": {
+                "base_dir": ".issues",
+                "categories": {"bugs": {"prefix": "BUG", "dir": "bugs", "action": "fix"}},
+                "completed_dir": "completed",
+            },
+            "automation": {"timeout_seconds": 60, "state_file": ".auto-manage-state.json"},
+        }
+        (ll_dir / "ll-config.json").write_text(json.dumps(config_content))
+        issues_dir = temp_project_dir / ".issues" / "bugs"
+        issues_dir.mkdir(parents=True)
+        (temp_project_dir / ".issues" / "completed").mkdir(parents=True)
+        (issues_dir / "P1-BUG-001-test-issue.md").write_text(
+            "# BUG-001: Test Issue\n\n## Summary\nTest"
+        )
+        return temp_project_dir
+
+    def test_interrupted_result_is_skipped_not_failed(self, full_project: Path) -> None:
+        from little_loops.config import BRConfig
+        from little_loops.issue_manager import AutoManager, IssueProcessingResult
+
+        config = BRConfig(full_project)
+
+        with patch(
+            "little_loops.issue_manager.process_issue_inplace",
+            return_value=IssueProcessingResult(
+                success=False,
+                was_interrupted=True,
+                duration=1.0,
+                issue_id="BUG-001",
+                failure_reason="Interrupted by signal before Phase 3",
+            ),
+        ):
+            manager = AutoManager(
+                config, dry_run=False, db_path=config.project_root / ".ll" / "history.db"
+            )
+            issue = manager._get_next_issue()
+            assert issue is not None
+            success = manager._process_issue(issue)
+
+        assert success is False
+        assert "BUG-001" not in manager.state_manager.state.failed_issues
+        assert "BUG-001" in manager.state_manager.state.skipped_issues
+
+    def test_interrupted_result_unmarks_attempted(self, full_project: Path) -> None:
+        from little_loops.config import BRConfig
+        from little_loops.issue_manager import AutoManager, IssueProcessingResult
+
+        config = BRConfig(full_project)
+
+        with patch(
+            "little_loops.issue_manager.process_issue_inplace",
+            return_value=IssueProcessingResult(
+                success=False,
+                was_interrupted=True,
+                duration=1.0,
+                issue_id="BUG-001",
+                failure_reason="Interrupted by signal before Phase 3",
+            ),
+        ):
+            manager = AutoManager(
+                config, dry_run=False, db_path=config.project_root / ".ll" / "history.db"
+            )
+            issue = manager._get_next_issue()
+            assert issue is not None
+            # mark_attempted() fires before process_issue_inplace is even called.
+            manager._process_issue(issue)
+
+        assert "BUG-001" not in manager.state_manager.state.attempted_issues
+        assert "BUG-001" not in manager._run_attempted
+
+
 class TestSignalHandler:
     """Tests for graceful shutdown signal handling (ENH-207)."""
 
@@ -4136,6 +4397,79 @@ class TestSignalHandler:
 
         # Flag should be set
         assert manager._shutdown_requested is True
+
+    def test_signal_handler_sets_shutdown_event(self, temp_project_dir: Path) -> None:
+        """First signal also sets the module-level subprocess_utils shutdown
+        Event (BUG-3312 Decision 1), so an in-flight run_claude_command read
+        loop observes it and kills the active subprocess."""
+        import signal
+
+        from little_loops.config import BRConfig
+        from little_loops.issue_manager import AutoManager
+        from little_loops.subprocess_utils import clear_shutdown, is_shutdown_requested
+
+        ll_dir = temp_project_dir / ".ll"
+        ll_dir.mkdir(exist_ok=True)
+        config_content = {
+            "project": {"name": "test"},
+            "issues": {
+                "base_dir": ".issues",
+                "categories": {"bugs": {"prefix": "BUG", "dir": "bugs", "action": "fix"}},
+                "completed_dir": "completed",
+            },
+            "automation": {"timeout_seconds": 60, "state_file": ".state.json"},
+        }
+        (ll_dir / "ll-config.json").write_text(json.dumps(config_content))
+        (temp_project_dir / ".issues" / "bugs").mkdir(parents=True, exist_ok=True)
+
+        clear_shutdown()
+        try:
+            config = BRConfig(temp_project_dir)
+            manager = AutoManager(config, dry_run=True)
+
+            assert is_shutdown_requested() is False
+            manager._signal_handler(signal.SIGINT, None)
+            assert is_shutdown_requested() is True
+        finally:
+            clear_shutdown()
+
+    def test_second_signal_forces_immediate_exit(self, temp_project_dir: Path) -> None:
+        """Second signal escalates to an immediate os._exit (BUG-3312 Decision 4,
+        mirrors ll-loop's _loop_signal_handler / ENH-2516) rather than waiting on
+        any in-progress cleanup."""
+        import signal
+
+        from little_loops.config import BRConfig
+        from little_loops.issue_manager import AutoManager
+        from little_loops.subprocess_utils import clear_shutdown
+
+        ll_dir = temp_project_dir / ".ll"
+        ll_dir.mkdir(exist_ok=True)
+        config_content = {
+            "project": {"name": "test"},
+            "issues": {
+                "base_dir": ".issues",
+                "categories": {"bugs": {"prefix": "BUG", "dir": "bugs", "action": "fix"}},
+                "completed_dir": "completed",
+            },
+            "automation": {"timeout_seconds": 60, "state_file": ".state.json"},
+        }
+        (ll_dir / "ll-config.json").write_text(json.dumps(config_content))
+        (temp_project_dir / ".issues" / "bugs").mkdir(parents=True, exist_ok=True)
+
+        clear_shutdown()
+        try:
+            config = BRConfig(temp_project_dir)
+            manager = AutoManager(config, dry_run=True)
+
+            manager._signal_handler(signal.SIGINT, None)
+            assert manager._shutdown_requested is True
+
+            with patch("little_loops.issue_manager.os._exit") as mock_exit:
+                manager._signal_handler(signal.SIGINT, None)
+                mock_exit.assert_called_once_with(1)
+        finally:
+            clear_shutdown()
 
 
 class TestTimingSummaryAndStateUpdates:
@@ -5620,18 +5954,14 @@ class TestConfidenceGatePreCheck:
             host="claude-code",
             model="opus",
         )
-        outcome = ConsultOutcome(
-            task_key=TaskKey(kind="issue", value="BUG-001"), verdict=verdict
-        )
+        outcome = ConsultOutcome(task_key=TaskKey(kind="issue", value="BUG-001"), verdict=verdict)
         with (
             patch(
                 "little_loops.cli.issues.check_readiness.readiness_status",
                 return_value=status,
             ),
             patch("little_loops.issue_manager.run_claude_command") as mock_ready,
-            patch(
-                "little_loops.advisor.consult_for_trigger", return_value=outcome
-            ) as mock_consult,
+            patch("little_loops.advisor.consult_for_trigger", return_value=outcome) as mock_consult,
         ):
             result = process_issue_inplace(sample_issue, mock_config, MagicMock())
 
@@ -5714,9 +6044,7 @@ class TestConfidenceGatePreCheck:
                 return_value=status,
             ),
             patch("little_loops.issue_manager.run_claude_command") as mock_ready,
-            patch(
-                "little_loops.advisor.consult_for_trigger", return_value=outcome
-            ),
+            patch("little_loops.advisor.consult_for_trigger", return_value=outcome),
         ):
             result = process_issue_inplace(sample_issue, mock_config, mock_logger)
 

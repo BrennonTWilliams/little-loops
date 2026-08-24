@@ -7,6 +7,7 @@ Claude CLI integration and state persistence for resume capability.
 from __future__ import annotations
 
 import json
+import os
 import re
 import signal
 import subprocess
@@ -59,9 +60,12 @@ from little_loops.subprocess_utils import (
     ResultSeenCallback,
     TokenUsage,
     assemble_guillotine_prompt,
+    clear_shutdown,
     detect_context_handoff,
+    is_shutdown_requested,
     read_continuation_prompt,
     read_sentinel,
+    request_shutdown,
 )
 from little_loops.subprocess_utils import (
     run_claude_command as _run_claude_base,
@@ -346,6 +350,13 @@ def run_with_continuation(
         _last_result_seen[0] = result_seen
 
     while continuation_count <= max_continuations:
+        # BUG-3312: a shutdown signal may have fired between rounds (e.g. right
+        # after a round returned cleanly but before the next --continue/Option J
+        # round is spawned). Raise the same TimeoutExpired(output="interrupted")
+        # signal run_claude_command's own read loop raises on a mid-round
+        # interrupt, so callers have exactly one shape to handle.
+        if is_shutdown_requested():
+            raise subprocess.TimeoutExpired(result.args, 0, output="interrupted")
         this_is_fresh = _just_ran_fresh_session
         _just_ran_fresh_session = False
         result = run_claude_command(
@@ -639,6 +650,10 @@ class IssueProcessingResult:
     was_closed: bool = False
     was_blocked: bool = False
     was_gated: bool = False
+    # BUG-3312: a shutdown signal aborted this issue at a phase boundary or
+    # inside run_claude_command's read loop — distinguishes a Ctrl+C from a
+    # genuine Phase 2 crash so it's recorded/attributed correctly.
+    was_interrupted: bool = False
     failure_reason: str = ""
     corrections: list[str] = field(default_factory=list)
     plan_created: bool = False
@@ -1248,6 +1263,20 @@ def process_issue_inplace(
                     corrections=corrections,
                 )
 
+    # BUG-3312: a shutdown signal may have fired while Phase 1 (learning gate,
+    # confidence gate, etc.) was running. Abort here rather than spawning the
+    # Phase 2 subprocess into a run that's already shutting down.
+    if is_shutdown_requested():
+        logger.warning(f"Shutdown requested; aborting {info.issue_id} before Phase 2")
+        return _stamped_result(
+            success=False,
+            was_interrupted=True,
+            duration=time.time() - issue_start_time,
+            issue_id=info.issue_id,
+            failure_reason="Interrupted by signal before Phase 2",
+            corrections=corrections,
+        )
+
     # Phase 2: Implement the issue (with automatic continuation on context handoff)
     # `action` was already resolved by the pre-Phase-1 confidence gate above.
     logger.info(f"Phase 2: Implementing {info.issue_id}...")
@@ -1416,6 +1445,20 @@ def process_issue_inplace(
                 failure_reason=failure_reason,
                 corrections=corrections,
             )
+
+    # BUG-3312: a shutdown signal may have fired between Phase 2's subprocess
+    # exiting cleanly and this check — do not spawn Phase 3's verify subprocess
+    # into a run that's already shutting down.
+    if is_shutdown_requested():
+        logger.warning(f"Shutdown requested; aborting {info.issue_id} before Phase 3")
+        return _stamped_result(
+            success=False,
+            was_interrupted=True,
+            duration=time.time() - issue_start_time,
+            issue_id=info.issue_id,
+            failure_reason="Interrupted by signal before Phase 3",
+            corrections=corrections,
+        )
 
     # Phase 3: Verify completion
     logger.info(f"Phase 3: Verifying {info.issue_id} completion...")
@@ -1739,8 +1782,24 @@ class AutoManager:
         signal.signal(signal.SIGTERM, self._signal_handler)
 
     def _signal_handler(self, signum: int, frame: FrameType | None) -> None:
-        """Handle shutdown signals gracefully."""
+        """Handle shutdown signals gracefully (BUG-3312: two-tier, mirrors
+        ``_loop_signal_handler`` / ENH-2516).
+
+        First signal: request graceful shutdown — the module-level
+        ``subprocess_utils`` shutdown Event is set so the active
+        ``run_claude_command`` read loop kills its process group within ~1s,
+        and phase-boundary checks in ``process_issue_inplace`` /
+        ``run_with_continuation`` stop the in-flight issue from advancing.
+        Second signal: force immediate exit via ``os._exit`` rather than
+        waiting on any in-progress cleanup or ``process.wait()`` — a signal
+        handler is not a safe place to call ``sys.exit()``/normal teardown
+        when the goal is "stop waiting right now".
+        """
+        if self._shutdown_requested:
+            self.logger.warning(f"Received signal {signum} again, forcing immediate exit...")
+            os._exit(1)
         self._shutdown_requested = True
+        request_shutdown()
         self.logger.warning(f"Received signal {signum}, shutting down gracefully...")
 
     def _get_next_issue(self) -> IssueInfo | None:
@@ -1926,6 +1985,11 @@ class AutoManager:
             in a cycle, not found, or already terminal).
         """
         run_start_time = time.time()
+        # BUG-3312: the shutdown Event is module-level (shared with
+        # ll-parallel/sprint/FSM callers of run_claude_command), so clear it at
+        # run start — otherwise a leftover set Event from an earlier run/test in
+        # the same process would abort every issue before Phase 2 even starts.
+        clear_shutdown()
         self.logger.info("Starting automated issue management...")
 
         if self.dry_run:
@@ -2115,9 +2179,28 @@ class AutoManager:
             # abort the whole backlog. Narrow catch (TimeoutExpired only, not
             # a blanket Exception) so ll_auto_auth_check's auth-fast-fail
             # detection (ENH-2353/BUG-2355) still propagates per-issue.
-            kind = "idle timeout" if exc.output == "idle_timeout" else "timeout"
-            reason = f"{kind} after {exc.timeout:.0f}s"
-            self.logger.error(f"{info.issue_id}: {reason}")
+            # BUG-3312: a shutdown-signal kill raises this same exception type
+            # (output="interrupted") so it shares the "already finalized?"
+            # recovery check below, but must NOT be attributed as a timeout or
+            # routed to create_issue_from_failure — it's a user-requested stop,
+            # not a code defect.
+            interrupted = exc.output == "interrupted"
+            if interrupted:
+                kind = "interrupted"
+                reason = "interrupted by signal"
+                self.logger.warning(f"{info.issue_id}: {reason}")
+                # BUG-3312: this exception shape only ever originates from the
+                # module-level shutdown Event, so _shutdown_requested must
+                # already be True in the normal (signal handler) path. Set it
+                # defensively anyway: unmark_attempted() below (via the
+                # was_interrupted branch) puts this issue back in the ready
+                # pool, and without this the outer run() loop would pick it
+                # straight back up and reprocess it forever instead of exiting.
+                self._shutdown_requested = True
+            else:
+                kind = "idle timeout" if exc.output == "idle_timeout" else "timeout"
+                reason = f"{kind} after {exc.timeout:.0f}s"
+                self.logger.error(f"{info.issue_id}: {reason}")
             # BUG-3131: the kill is a SIGKILL to the process group at an
             # arbitrary instant, which can land *after* the agent finished the
             # lifecycle and committed but before its turn ended. Recording an
@@ -2153,6 +2236,7 @@ class AutoManager:
                     )
                 result = IssueProcessingResult(
                     success=False,
+                    was_interrupted=interrupted,
                     duration=exc.timeout or 0.0,
                     issue_id=info.issue_id,
                     failure_reason=reason,
@@ -2182,6 +2266,21 @@ class AutoManager:
             self._gated_issue_ids.add(info.issue_id)
         elif result.success:
             self.state_manager.mark_completed(info.issue_id, {"total": result.duration})
+        elif result.was_interrupted:
+            # BUG-3312 Decision 5: a signal aborted this issue, not a Phase 2
+            # crash — record it as skipped (not failed, so it doesn't spawn a
+            # bug issue via create_issue_from_failure's path) and un-mark it
+            # from attempted_issues (mark_attempted already fired above, before
+            # Phase 2 started) so --resume retries it rather than treating it
+            # as a burned attempt. Force _shutdown_requested here too: since
+            # this issue is no longer in attempted_issues, an unset flag would
+            # let run()'s outer loop pick it straight back up and reprocess it
+            # forever instead of exiting.
+            self._shutdown_requested = True
+            self.logger.warning(f"{info.issue_id} interrupted — {result.failure_reason}")
+            self.state_manager.mark_skipped(info.issue_id, result.failure_reason or "interrupted")
+            self.state_manager.unmark_attempted(info.issue_id)
+            self._run_attempted.discard(info.issue_id)
         elif result.plan_created:
             # Don't mark as failed if a plan was created (awaiting approval)
             self.logger.info(
@@ -2200,7 +2299,7 @@ class AutoManager:
             if result.was_closed or result.success:
                 orchestration_status = "completed"
                 orchestration_reason = None
-            elif result.was_blocked or result.plan_created:
+            elif result.was_blocked or result.plan_created or result.was_interrupted:
                 orchestration_status = "skipped"
                 orchestration_reason = result.failure_reason or None
             else:

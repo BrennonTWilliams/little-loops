@@ -190,6 +190,21 @@ class StateManager:
         if save:
             self.save()
 
+    def unmark_attempted(self, issue_id: str, *, save: bool = True) -> None:
+        """Remove an issue from attempted_issues (BUG-3312).
+
+        Used when a signal interrupts an issue mid-processing: mark_attempted()
+        already fired before Phase 2 started, but an interrupted issue should
+        not be treated as a burned attempt — --resume should pick it up again.
+
+        Args:
+            issue_id: Issue identifier
+            save: Whether to persist state immediately (default True)
+        """
+        self.state.attempted_issues.discard(issue_id)
+        if save:
+            self.save()
+
     def mark_completed(self, issue_id: str, timing: dict[str, float] | None = None) -> None:
         """Mark an issue as completed.
 
