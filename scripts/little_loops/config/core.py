@@ -886,6 +886,7 @@ class BRConfig:
                 "timeout_seconds": self._advisor.timeout_seconds,
                 "triggers": list(self._advisor.triggers),
                 "max_consults_per_task": self._advisor.max_consults_per_task,
+                "store_verdict_body": self._advisor.store_verdict_body,
             },
             # --- never-modelled sections: raw passthrough, no BRConfig dataclass (BUG-3012) ---
             **{

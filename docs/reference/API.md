@@ -156,7 +156,7 @@ BRConfig(project_root: Path)
 | `cli` | `CliConfig` | CLI output settings (color toggle and color overrides) |
 | `design_tokens` | `DesignTokensConfig` | Design system token settings |
 | `orchestration` | `OrchestrationConfig` | Orchestration settings (host CLI selection, composer config, cluster config) |
-| `advisor` | `AdvisorConfig` | Advisor settings (host, model, capability floor, per-consult timeout, triggers); config plumbing only, absent means disabled (FEAT-3043) |
+| `advisor` | `AdvisorConfig` | Advisor settings (host, model, capability floor, per-consult timeout, triggers, per-task budget, `store_verdict_body` opt-in for `advisor_consults` telemetry); config plumbing only, absent means disabled (FEAT-3043, FEAT-3300) |
 | `events` | `EventsConfig` | Event transport/emission settings |
 | `decisions` | `DecisionsConfig` | Decisions and rules log configuration |
 | `learning_tests` | `LearningTestsConfig` | Learning test registry settings |
@@ -8659,6 +8659,53 @@ def review_velocity(
 
 Read-side API for `review_events` rows (ENH-2512's schema, written by `record_review_event()`) — one row per invocation of the seven `ll-action`-bridged audits/reviews (`review-epic`, `review-loop`, `audit-architecture`, `audit-claude-config`, `audit-docs`, `audit-loop-run`, `review-sprint`). `recent_review_events()` returns rows newest first, optionally filtered by exact `reviewer_skill`/`target_id` and/or a `since` lower bound on `ts`; returns `[]` on a missing/unreadable DB. `review_velocity()` buckets rows by ISO week and sums each `severity_counts` bucket (`p0`/`p1`/`p2`/`info`), returning `{week, reviews, p0, p1, p2, info}` dicts sorted by week ascending — the velocity-tracking rollup ("how many P0 findings this week").
 
+### AdvisorConsultRow / query_advisor_consults / ConsultStats / consult_stats
+
+```python
+@dataclass
+class AdvisorConsultRow:
+    ts: str
+    session_id: str | None
+    task_key: str | None
+    signal: str | None
+    advisor_host: str | None
+    advisor_model: str | None
+    main_model: str | None
+    floor_status: str | None
+    outcome: str
+    latency_ms: int | None
+    input_tokens: int | None
+    output_tokens: int | None
+    confidence: float | None
+    verdict_body: str | None
+```
+
+```python
+def query_advisor_consults(
+    db_path: Path | str = DEFAULT_DB_PATH,
+    *,
+    since: str | None = None,
+    limit: int = 500,
+) -> list[AdvisorConsultRow]
+
+@dataclass
+class ConsultStats:
+    by_signal: dict[str, int]
+    total: int
+    total_tokens: int
+    skipped: int
+
+def consult_stats(
+    db_path: Path | str = DEFAULT_DB_PATH,
+    *,
+    days: int = 30,
+) -> ConsultStats
+```
+
+Read-side API for `advisor_consults` rows (FEAT-3300's schema, written by `write_advisor_consult()`) — one row per `consult_for_trigger()` invocation (`advisor.py`), covering issued consults and every `skipped_reason` (`disabled`, `trigger_not_allowed`, `budget_exhausted`, `not_configured`, `floor_violation`, `failed`, `timeout`). `query_advisor_consults()` returns rows newest first, optionally filtered by a `since` lower bound on `ts`; returns `[]` on a missing/unreadable DB. `consult_stats()` aggregates counts by `signal` and sums token usage over the trailing *days* window, returning an all-zero `ConsultStats` on a missing/unreadable DB or empty table. Token columns stay `NULL` until a host surfaces usage; `verdict_body` is `NULL` unless `advisor.store_verdict_body` was set at write time. This is the standalone, independently-testable persistence half of FEAT-3040 — no `ll-ctx-stats` report section ships with it, matching the `harness_events`/`verdict_events`/`review_events` precedent.
+
+**CLI:** `ll-session recent --kind advisor_consult` and `ll-session search --fts "<task_key>" --kind advisor_consult` work automatically via the generic `VALID_KINDS`/`_KIND_TABLE` dispatch — no CLI code change was needed for this read API.
+
 **CLI:** `ll-session recent --kind review` and `ll-session search --fts "<target_id>" --kind review` work automatically via the generic `VALID_KINDS`/`_KIND_TABLE` dispatch — no CLI code change was needed for this read API.
 
 ### ContextPressureEvent / context_pressure_curve / pressure_crossings / pressure_summary
@@ -8993,11 +9040,11 @@ class FragmentStore:
 
 ## little_loops.session_store
 
-Unified SQLite session store for `.ll/history.db`. Current schema version: **38**. All write-side helpers degrade gracefully and are safe to call on every session start via `ensure_db()`. The DB path resolves through a single precedence chain (ENH-2623): the `LL_HISTORY_DB` env var, then the `history.db_path` config key, then the default `.ll/history.db` — applied to default-shaped paths only; a deliberate explicit path is honored verbatim.
+Unified SQLite session store for `.ll/history.db`. Current schema version: **45**. All write-side helpers degrade gracefully and are safe to call on every session start via `ensure_db()`. The DB path resolves through a single precedence chain (ENH-2623): the `LL_HISTORY_DB` env var, then the `history.db_path` config key, then the default `.ll/history.db` — applied to default-shaped paths only; a deliberate explicit path is honored verbatim.
 
 ```python
 from little_loops.session_store import (
-    SCHEMA_VERSION,        # 38
+    SCHEMA_VERSION,        # 45
     VALID_KINDS,           # tuple of valid recent()/search --kind values — single source (ENH-2581)
     ensure_db,             # create/migrate the DB
     connect,               # open a write-capable connection
@@ -9021,6 +9068,7 @@ from little_loops.session_store import (
     record_verdict_event,  # write a verdict_events row (ENH-2504)
     record_context_pressure_event, # write a context_pressure_events row (ENH-2507)
     record_review_event,   # write a review_events row (ENH-2512)
+    write_advisor_consult, # write an advisor_consults row (FEAT-3300)
     record_retirement,     # mark a correction cluster as addressed (ENH-2046)
     list_retirements,      # return all correction_retirements rows (ENH-2046)
     backfill_raw_events,   # ingest JSONL lines into raw_events only (ENH-2581)

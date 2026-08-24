@@ -888,6 +888,29 @@ class TestConfigSchema:
         orch_host_cli = data["properties"]["orchestration"]["properties"]["host_cli"]
         assert set(advisor_host["enum"]) == set(orch_host_cli["enum"])
 
+    def test_advisor_store_verdict_body_declared_and_matches_dataclass(self) -> None:
+        """advisor.store_verdict_body (FEAT-3300) must be declared, boolean, defaulting false.
+
+        additionalProperties: false on the advisor block means an undeclared
+        field silently fails validation rather than erroring loudly — this
+        pins the schema/dataclass pairing so the two can't drift apart.
+        """
+        import dataclasses
+
+        from little_loops.config.orchestration import AdvisorConfig
+
+        field_names = {f.name for f in dataclasses.fields(AdvisorConfig)}
+        assert "store_verdict_body" in field_names
+
+        data = json.loads(_load_schema_text())
+        advisor = data["properties"]["advisor"]
+        assert "store_verdict_body" in advisor["properties"], (
+            "advisor.store_verdict_body is not declared in config-schema.json"
+        )
+        prop = advisor["properties"]["store_verdict_body"]
+        assert prop["type"] == "boolean"
+        assert prop["default"] is False
+
     def test_orchestration_cluster_in_schema(self) -> None:
         """orchestration.cluster must be declared with its three properties in config-schema.json.
 

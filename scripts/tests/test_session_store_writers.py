@@ -467,8 +467,8 @@ class TestCliEventContext:
         finally:
             conn.close()
         assert "cli_events" in names
-        assert SCHEMA_VERSION == 44
-        assert int(row[0]) == 44
+        assert SCHEMA_VERSION == 45
+        assert int(row[0]) == 45
 
     def test_cli_event_context_respects_LL_HISTORY_DB(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -1150,7 +1150,7 @@ class TestOrchestrationRuns:
         return recorder
 
     def test_v21_db_upgrades_gains_orchestration_runs(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 44
+        assert SCHEMA_VERSION == 45
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 21)
         ensure_db(db)
@@ -1280,7 +1280,7 @@ class TestPrepatchEvidence:
     """ENH-2997: prepatch_evidence table, writer, and reader round trip."""
 
     def test_v39_db_upgrades_gains_prepatch_evidence(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 44
+        assert SCHEMA_VERSION == 45
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 39)
         ensure_db(db)
@@ -1537,7 +1537,7 @@ class TestLoopRuns:
         return updater
 
     def test_v22_db_upgrades_gains_loop_runs(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 44
+        assert SCHEMA_VERSION == 45
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 22)
         ensure_db(db)
@@ -1735,7 +1735,7 @@ class TestRecordLearningTestEvent:
         assert recent(db, kind="learning_test") == []
 
     def test_v25_db_upgrades_gains_learning_test_events(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 44
+        assert SCHEMA_VERSION == 45
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 25)
         ensure_db(db)
@@ -2706,4 +2706,91 @@ class TestRecordContextPressureEvent:
         db = tmp_path / "history.db"
         assert not session_store.record_context_pressure_event(
             db, session_id="s1", used_pct=10.0, used_tokens_est=1000
+        )
+
+
+class TestWriteAdvisorConsult:
+    """FEAT-3300: write_advisor_consult() persists advisor_consults rows."""
+
+    def test_issued_consult_persists_all_fields(self, tmp_path: Path) -> None:
+        from little_loops.session_store import write_advisor_consult
+
+        db = tmp_path / "history.db"
+        assert write_advisor_consult(
+            db,
+            session_id="s1",
+            task_key="issue:FEAT-3300",
+            signal="confidence_gate",
+            advisor_host="claude-code",
+            advisor_model="claude-opus-5",
+            main_model="claude-sonnet-5",
+            outcome="issued",
+            floor_status="ok",
+            latency_ms=4200,
+            confidence=0.9,
+        )
+        rows = recent(db, kind="advisor_consult")
+        assert rows[0]["outcome"] == "issued"
+        assert rows[0]["task_key"] == "issue:FEAT-3300"
+        assert rows[0]["signal"] == "confidence_gate"
+        assert rows[0]["advisor_host"] == "claude-code"
+        assert rows[0]["latency_ms"] == 4200
+        assert rows[0]["input_tokens"] is None
+        assert rows[0]["output_tokens"] is None
+        assert rows[0]["verdict_body"] is None
+
+    def test_skipped_consult_persists_outcome_reason(self, tmp_path: Path) -> None:
+        from little_loops.session_store import write_advisor_consult
+
+        db = tmp_path / "history.db"
+        assert write_advisor_consult(
+            db,
+            session_id="s1",
+            task_key="session:abc",
+            signal="loop_stall",
+            advisor_host=None,
+            advisor_model=None,
+            main_model="claude-sonnet-5",
+            outcome="budget_exhausted",
+        )
+        rows = recent(db, kind="advisor_consult")
+        assert rows[0]["outcome"] == "budget_exhausted"
+        assert rows[0]["advisor_host"] is None
+        assert rows[0]["latency_ms"] is None
+
+    def test_verdict_body_absent_unless_passed(self, tmp_path: Path) -> None:
+        from little_loops.session_store import write_advisor_consult
+
+        db = tmp_path / "history.db"
+        write_advisor_consult(
+            db,
+            session_id="s1",
+            task_key="session:abc",
+            signal="pre_done",
+            advisor_host="claude-code",
+            advisor_model="claude-opus-5",
+            main_model="claude-sonnet-5",
+            outcome="issued",
+        )
+        rows = recent(db, kind="advisor_consult")
+        assert rows[0]["verdict_body"] is None
+
+    def test_graceful_when_store_unwritable(self, tmp_path: Path, monkeypatch) -> None:
+        import little_loops.session_store as session_store
+
+        def boom(*_args, **_kwargs):  # type: ignore[no-untyped-def]
+            raise sqlite3.OperationalError("database is locked")
+
+        monkeypatch.setattr(session_store, "connect", boom)
+
+        db = tmp_path / "history.db"
+        assert not session_store.write_advisor_consult(
+            db,
+            session_id="s1",
+            task_key="session:abc",
+            signal="pre_done",
+            advisor_host="claude-code",
+            advisor_model="claude-opus-5",
+            main_model="claude-sonnet-5",
+            outcome="issued",
         )

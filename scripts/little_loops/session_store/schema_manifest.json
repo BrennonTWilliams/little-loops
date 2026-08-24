@@ -1,5 +1,37 @@
 {
   "indexes": {
+    "idx_advisor_consults_outcome": {
+      "columns": [
+        "outcome"
+      ],
+      "origin": "c",
+      "partial": false,
+      "unique": false
+    },
+    "idx_advisor_consults_session": {
+      "columns": [
+        "session_id"
+      ],
+      "origin": "c",
+      "partial": false,
+      "unique": false
+    },
+    "idx_advisor_consults_signal": {
+      "columns": [
+        "signal"
+      ],
+      "origin": "c",
+      "partial": false,
+      "unique": false
+    },
+    "idx_advisor_consults_ts": {
+      "columns": [
+        "ts"
+      ],
+      "origin": "c",
+      "partial": false,
+      "unique": false
+    },
     "idx_assistant_messages_dedup": {
       "columns": [
         "session_id",
@@ -530,6 +562,101 @@
     }
   },
   "objects": {
+    "advisor_consults": {
+      "columns": [
+        {
+          "name": "id",
+          "notnull": false,
+          "pk": true,
+          "type": "INTEGER"
+        },
+        {
+          "name": "ts",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "session_id",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "task_key",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "signal",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "advisor_host",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "advisor_model",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "main_model",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "floor_status",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "outcome",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "latency_ms",
+          "notnull": false,
+          "pk": false,
+          "type": "INTEGER"
+        },
+        {
+          "name": "input_tokens",
+          "notnull": false,
+          "pk": false,
+          "type": "INTEGER"
+        },
+        {
+          "name": "output_tokens",
+          "notnull": false,
+          "pk": false,
+          "type": "INTEGER"
+        },
+        {
+          "name": "confidence",
+          "notnull": false,
+          "pk": false,
+          "type": "REAL"
+        },
+        {
+          "name": "verdict_body",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        }
+      ],
+      "type": "table"
+    },
     "assistant_messages": {
       "columns": [
         {
@@ -2440,5 +2567,5 @@
       "type": "table"
     }
   },
-  "schema_version": 44
+  "schema_version": 45
 }

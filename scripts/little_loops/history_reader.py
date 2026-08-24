@@ -3276,6 +3276,126 @@ def verdict_pass_rate(
 
 
 @dataclass
+class AdvisorConsultRow:
+    """An ``advisor_consults`` row — one ``consult_for_trigger()`` invocation (FEAT-3300).
+
+    ``outcome`` is ``"issued"`` or one of ``ConsultOutcome.skipped_reason``'s
+    Literal values (``advisor.py``): ``disabled``, ``trigger_not_allowed``,
+    ``budget_exhausted``, ``not_configured``, ``floor_violation``, ``failed``,
+    ``timeout``. Token columns are NULL until a host surfaces usage.
+    ``verdict_body`` is NULL unless the ``advisor.store_verdict_body`` opt-in
+    was set at write time.
+    """
+
+    ts: str
+    session_id: str | None
+    task_key: str | None
+    signal: str | None
+    advisor_host: str | None
+    advisor_model: str | None
+    main_model: str | None
+    floor_status: str | None
+    outcome: str
+    latency_ms: int | None
+    input_tokens: int | None
+    output_tokens: int | None
+    confidence: float | None
+    verdict_body: str | None
+
+
+_ADVISOR_CONSULT_COLUMNS = (
+    "ts, session_id, task_key, signal, advisor_host, advisor_model, main_model, "
+    "floor_status, outcome, latency_ms, input_tokens, output_tokens, confidence, "
+    "verdict_body"
+)
+
+
+def query_advisor_consults(
+    db_path: Path | str = DEFAULT_DB_PATH,
+    *,
+    since: str | None = None,
+    limit: int = 500,
+) -> list[AdvisorConsultRow]:
+    """Return recent advisor consult rows, newest first, optionally filtered by *since* (FEAT-3300).
+
+    Returns ``[]`` on any read failure or missing database (graceful degradation).
+    """
+    db_path = Path(db_path)
+    conn = _connect_readonly(db_path)
+    if conn is None:
+        return []
+    try:
+        sql = f"SELECT {_ADVISOR_CONSULT_COLUMNS} FROM advisor_consults "
+        params: list[Any] = []
+        if since is not None:
+            sql += "WHERE ts >= ? "
+            params.append(since)
+        sql += "ORDER BY ts DESC, id DESC LIMIT ?"
+        params.append(limit)
+        rows = conn.execute(sql, params).fetchall()
+    except sqlite3.Error:
+        logger.warning("history_reader: query_advisor_consults query failed", exc_info=True)
+        return []
+    finally:
+        conn.close()
+    return [_row_to_dataclass(row, AdvisorConsultRow) for row in rows]
+
+
+@dataclass
+class ConsultStats:
+    """Aggregate advisor-consult counts/tokens by signal (FEAT-3300)."""
+
+    by_signal: dict[str, int]
+    total: int
+    total_tokens: int
+    skipped: int
+
+
+def consult_stats(
+    db_path: Path | str = DEFAULT_DB_PATH,
+    *,
+    days: int = 30,
+) -> ConsultStats:
+    """Aggregate advisor-consult counts and token totals by signal over the last *days* (FEAT-3300).
+
+    Returns an all-zero :class:`ConsultStats` on any read failure, missing
+    database, or empty table (graceful degradation).
+    """
+    db_path = Path(db_path)
+    empty = ConsultStats(by_signal={}, total=0, total_tokens=0, skipped=0)
+    conn = _connect_readonly(db_path)
+    if conn is None:
+        return empty
+    try:
+        since = (datetime.now(UTC) - timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        rows = conn.execute(
+            "SELECT signal, outcome, input_tokens, output_tokens FROM advisor_consults "
+            "WHERE ts >= ?",
+            (since,),
+        ).fetchall()
+    except sqlite3.Error:
+        logger.warning("history_reader: consult_stats query failed", exc_info=True)
+        return empty
+    finally:
+        conn.close()
+
+    by_signal: dict[str, int] = {}
+    total = 0
+    total_tokens = 0
+    skipped = 0
+    for row in rows:
+        signal = row["signal"] or "unknown"
+        by_signal[signal] = by_signal.get(signal, 0) + 1
+        total += 1
+        total_tokens += (row["input_tokens"] or 0) + (row["output_tokens"] or 0)
+        if row["outcome"] != "issued":
+            skipped += 1
+    return ConsultStats(
+        by_signal=by_signal, total=total, total_tokens=total_tokens, skipped=skipped
+    )
+
+
+@dataclass
 class HighConfidenceAbstention:
     """A ``cannot_judge`` row whose ``confidence`` exceeds the manual-review threshold (ENH-230).
 

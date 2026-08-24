@@ -160,6 +160,7 @@ from little_loops.session_store.writers import (
     record_verdict_event,
     skill_event_context,
     update_loop_run_diagnostics,
+    write_advisor_consult,
     write_file_event,
 )
 
@@ -225,6 +226,7 @@ __all__ = [
     "record_harness_event",
     "record_prompt_opt_event",
     "record_verdict_event",
+    "write_advisor_consult",
     # Private functions re-exported for test access
     "_MIGRATIONS",
     "_KIND_TABLE",

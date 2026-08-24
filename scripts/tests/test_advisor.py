@@ -273,9 +273,7 @@ class TestResolveTaskKey:
         assert key == TaskKey(kind="session", value="sess-abc")
 
     def test_no_env_vars_falls_back_to_session_lookup(self):
-        with patch(
-            "little_loops.session_log.get_current_session_id", return_value="fallback-sess"
-        ):
+        with patch("little_loops.session_log.get_current_session_id", return_value="fallback-sess"):
             key = resolve_task_key(env={})
         assert key == TaskKey(kind="session", value="fallback-sess")
 
@@ -360,18 +358,14 @@ class TestShouldConsult:
     def test_manual_ignores_disabled(self):
         config = _FakeConfig(AdvisorConfig(enabled=False, triggers=[]))
         assert (
-            should_consult(
-                "user_requested", config, task_key=TaskKey("session", "s1"), manual=True
-            )
+            should_consult("user_requested", config, task_key=TaskKey("session", "s1"), manual=True)
             is True
         )
 
     def test_manual_ignores_trigger_allowlist(self):
         config = _FakeConfig(AdvisorConfig(enabled=True, triggers=["pre_done"]))
         assert (
-            should_consult(
-                "user_requested", config, task_key=TaskKey("session", "s1"), manual=True
-            )
+            should_consult("user_requested", config, task_key=TaskKey("session", "s1"), manual=True)
             is True
         )
 
@@ -388,7 +382,10 @@ class TestShouldConsult:
             def advisor(self):
                 raise RuntimeError("config read failed")
 
-        assert should_consult("confidence_gate", _BrokenConfig(), task_key=TaskKey("session", "s1")) is False
+        assert (
+            should_consult("confidence_gate", _BrokenConfig(), task_key=TaskKey("session", "s1"))
+            is False
+        )
 
 
 class TestConsultForTrigger:
@@ -479,7 +476,12 @@ class TestConsultForTrigger:
         "exc,expected_reason",
         [
             (AdvisorNotConfigured("nope"), "not_configured"),
-            (CapabilityFloorViolation(check_floor("claude-code", "haiku", "claude-code", "opus")), "floor_violation"),
+            (
+                CapabilityFloorViolation(
+                    check_floor("claude-code", "haiku", "claude-code", "opus")
+                ),
+                "floor_violation",
+            ),
             (HostNotConfigured("no host"), "failed"),
             (BlockingJsonError("timed out", {"timeout": True}), "timeout"),
             (BlockingJsonError("boom", {}), "failed"),
@@ -556,6 +558,128 @@ class TestConsultForTrigger:
             )
         mock_consult.assert_called_once()
         assert outcome.verdict is not None
+
+
+class TestConsultForTriggerTelemetry:
+    """FEAT-3300: consult_for_trigger() writes exactly one advisor_consults row."""
+
+    def _rows(self, db_path: Path) -> list:
+        from little_loops.history_reader import query_advisor_consults
+
+        return query_advisor_consults(db_path)
+
+    def test_issued_consult_writes_one_row_with_latency(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        monkeypatch.chdir(tmp_path)
+        config = _FakeConfig(
+            AdvisorConfig(
+                enabled=True, host="claude-code", model="opus", triggers=["confidence_gate"]
+            )
+        )
+        verdict_dict = {
+            "recommendation": "do X",
+            "risks": [],
+            "confidence": 0.9,
+            "dissent": "",
+        }
+        with (
+            patch("little_loops.advisor.resolve_host_named", return_value=_make_runner()),
+            patch("little_loops.advisor.run_blocking_json", return_value=verdict_dict),
+        ):
+            consult_for_trigger(
+                "confidence_gate",
+                question="q",
+                config=config,
+                main_host="claude-code",
+                main_model="opus",
+            )
+
+        from little_loops.session_store import DEFAULT_DB_PATH
+
+        rows = self._rows(DEFAULT_DB_PATH)
+        assert len(rows) == 1
+        assert rows[0].outcome == "issued"
+        assert rows[0].latency_ms is not None
+        assert rows[0].input_tokens is None
+        assert rows[0].output_tokens is None
+
+    @pytest.mark.parametrize(
+        "exc,expected_reason",
+        [
+            (AdvisorNotConfigured("nope"), "not_configured"),
+            (
+                CapabilityFloorViolation(
+                    check_floor("claude-code", "haiku", "claude-code", "opus")
+                ),
+                "floor_violation",
+            ),
+            (HostNotConfigured("no host"), "failed"),
+            (BlockingJsonError("timed out", {"timeout": True}), "timeout"),
+            (BlockingJsonError("boom", {}), "failed"),
+        ],
+    )
+    def test_each_exception_path_writes_one_row(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, exc, expected_reason
+    ):
+        monkeypatch.chdir(tmp_path)
+        config = _FakeConfig(
+            AdvisorConfig(
+                enabled=True, host="claude-code", model="opus", triggers=["confidence_gate"]
+            )
+        )
+        with patch("little_loops.advisor.consult", side_effect=exc):
+            consult_for_trigger("confidence_gate", question="q", config=config)
+
+        from little_loops.session_store import DEFAULT_DB_PATH
+
+        rows = self._rows(DEFAULT_DB_PATH)
+        assert len(rows) == 1
+        assert rows[0].outcome == expected_reason
+
+    def test_disabled_skip_writes_one_row(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.chdir(tmp_path)
+        config = _FakeConfig(AdvisorConfig(enabled=False, triggers=["confidence_gate"]))
+        consult_for_trigger("confidence_gate", question="q", config=config)
+
+        from little_loops.session_store import DEFAULT_DB_PATH
+
+        rows = self._rows(DEFAULT_DB_PATH)
+        assert len(rows) == 1
+        assert rows[0].outcome == "disabled"
+
+    def test_failing_write_does_not_alter_outcome(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        monkeypatch.chdir(tmp_path)
+        config = _FakeConfig(
+            AdvisorConfig(
+                enabled=True, host="claude-code", model="opus", triggers=["confidence_gate"]
+            )
+        )
+        verdict_dict = {
+            "recommendation": "do X",
+            "risks": [],
+            "confidence": 0.9,
+            "dissent": "",
+        }
+        with (
+            patch("little_loops.advisor.resolve_host_named", return_value=_make_runner()),
+            patch("little_loops.advisor.run_blocking_json", return_value=verdict_dict),
+            patch(
+                "little_loops.session_store.write_advisor_consult",
+                side_effect=RuntimeError("boom"),
+            ),
+        ):
+            outcome = consult_for_trigger(
+                "confidence_gate",
+                question="q",
+                config=config,
+                main_host="claude-code",
+                main_model="opus",
+            )
+        assert outcome.verdict is not None
+        assert outcome.verdict.recommendation == "do X"
 
 
 class TestConsultExclusivity:

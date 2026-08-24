@@ -1959,6 +1959,65 @@ class TestNewEventReaders:
         assert rates[0]["successes"] == 1
         assert rates[0]["success_rate"] == 0.5
 
+    def test_query_advisor_consults_and_consult_stats(self, tmp_path: Path) -> None:
+        from little_loops.history_reader import consult_stats, query_advisor_consults
+        from little_loops.session_store import write_advisor_consult
+
+        db = tmp_path / "history.db"
+        write_advisor_consult(
+            db,
+            session_id="s1",
+            task_key="issue:FEAT-3300",
+            signal="confidence_gate",
+            advisor_host="claude-code",
+            advisor_model="claude-opus-5",
+            main_model="claude-sonnet-5",
+            outcome="issued",
+            latency_ms=4200,
+            input_tokens=500,
+            output_tokens=200,
+            ts="2026-08-24T10:00:00Z",
+        )
+        write_advisor_consult(
+            db,
+            session_id="s1",
+            task_key="issue:FEAT-3300",
+            signal="loop_stall",
+            advisor_host=None,
+            advisor_model=None,
+            main_model="claude-sonnet-5",
+            outcome="budget_exhausted",
+            ts="2026-08-24T11:00:00Z",
+        )
+
+        rows = query_advisor_consults(db)
+        assert len(rows) == 2
+        assert rows[0].ts > rows[1].ts
+        assert rows[0].outcome == "budget_exhausted"
+
+        since_rows = query_advisor_consults(db, since="2026-08-24T10:30:00Z")
+        assert len(since_rows) == 1
+        assert since_rows[0].outcome == "budget_exhausted"
+
+        stats = consult_stats(db, days=30)
+        assert stats.total == 2
+        assert stats.skipped == 1
+        assert stats.total_tokens == 700
+        assert stats.by_signal == {"confidence_gate": 1, "loop_stall": 1}
+
+    def test_consult_stats_empty_db_returns_zeros(self, tmp_path: Path) -> None:
+        from little_loops.history_reader import consult_stats
+
+        db = tmp_path / "history.db"
+        from little_loops.session_store import ensure_db
+
+        ensure_db(db)
+        stats = consult_stats(db)
+        assert stats.total == 0
+        assert stats.by_signal == {}
+        assert stats.total_tokens == 0
+        assert stats.skipped == 0
+
     def test_recent_review_events_and_velocity(self, tmp_path: Path) -> None:
         from little_loops.history_reader import recent_review_events, review_velocity
         from little_loops.session_store import record_review_event

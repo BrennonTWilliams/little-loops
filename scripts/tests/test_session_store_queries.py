@@ -167,6 +167,45 @@ class TestExportContextPressureEvent:
         assert rows[0]["session_id"] == "s1"
 
 
+class TestExportAdvisorConsultEvent:
+    """FEAT-3300 wiring: advisor_consult_event participates in export_history()."""
+
+    def test_included_in_default_export(self, tmp_path: Path) -> None:
+        from little_loops.session_store import export_history, write_advisor_consult
+
+        db = tmp_path / "history.db"
+        write_advisor_consult(
+            db,
+            session_id="s1",
+            task_key="session:abc",
+            signal="pre_done",
+            advisor_host="claude-code",
+            advisor_model="claude-opus-5",
+            main_model="claude-sonnet-5",
+            outcome="issued",
+        )
+        types = {row["type"] for row in export_history(db)}
+        assert "advisor_consult_event" in types
+
+    def test_explicit_table_selection(self, tmp_path: Path) -> None:
+        from little_loops.session_store import export_history, write_advisor_consult
+
+        db = tmp_path / "history.db"
+        write_advisor_consult(
+            db,
+            session_id="s1",
+            task_key="session:abc",
+            signal="pre_done",
+            advisor_host="claude-code",
+            advisor_model="claude-opus-5",
+            main_model="claude-sonnet-5",
+            outcome="issued",
+        )
+        rows = list(export_history(db, tables=["advisor_consult_event"]))
+        assert len(rows) == 1
+        assert rows[0]["session_id"] == "s1"
+
+
 class TestExportTableRegistration:
     """BUG-3197: the advertised table set must not drift from the accepted one."""
 

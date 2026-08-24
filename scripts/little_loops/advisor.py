@@ -24,6 +24,8 @@ import json
 import logging
 import os
 import sys
+import time
+from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
@@ -448,6 +450,50 @@ def should_consult(
     return True
 
 
+def _task_key_str(task_key: TaskKey) -> str:
+    return f"{task_key.kind}:{task_key.value}"
+
+
+def _write_consult_telemetry(
+    *,
+    task_key: TaskKey,
+    signal: str,
+    config: BRConfig,
+    outcome: str,
+    floor_status: str | None = None,
+    latency_ms: int | None = None,
+    verdict: AdvisorVerdict | None = None,
+) -> None:
+    """Best-effort write of one `advisor_consults` row (FEAT-3300).
+
+    Never raises into the caller — `write_advisor_consult` is itself
+    fail-soft against `sqlite3.Error`, and this wrapper additionally
+    suppresses any other exception (e.g. db-path resolution) so a
+    telemetry failure can never alter `consult_for_trigger`'s return value.
+    """
+    with suppress(Exception):
+        from little_loops.session_store import DEFAULT_DB_PATH, write_advisor_consult
+
+        verdict_body = None
+        if verdict is not None and config.advisor.store_verdict_body:
+            verdict_body = verdict.recommendation
+
+        write_advisor_consult(
+            DEFAULT_DB_PATH,
+            session_id=os.environ.get("CLAUDE_SESSION_ID"),
+            task_key=_task_key_str(task_key),
+            signal=signal,
+            advisor_host=config.advisor.host,
+            advisor_model=config.advisor.model,
+            main_model=None,
+            outcome=outcome,
+            floor_status=floor_status,
+            latency_ms=latency_ms,
+            confidence=verdict.confidence if verdict is not None else None,
+            verdict_body=verdict_body,
+        )
+
+
 def consult_for_trigger(
     trigger: str,
     *,
@@ -466,6 +512,10 @@ def consult_for_trigger(
     Never raises — `AdvisorNotConfigured`, `CapabilityFloorViolation`,
     `HostNotConfigured`, and `BlockingJsonError` each map to a
     `skipped_reason` with `error=str(exc)`, logged at warning level.
+
+    Writes exactly one `advisor_consults` telemetry row per invocation
+    (FEAT-3300) — issued, every `skipped_reason`, failed, or timeout. The
+    write is fail-soft and never affects the returned `ConsultOutcome`.
     """
     if config is None:
         from little_loops.config import BRConfig as _BRConfig
@@ -481,10 +531,12 @@ def consult_for_trigger(
             reason = "trigger_not_allowed"
         else:
             reason = "budget_exhausted"
+        _write_consult_telemetry(task_key=task_key, signal=trigger, config=config, outcome=reason)
         return ConsultOutcome(task_key=task_key, skipped_reason=reason)
 
     record_consult(task_key)
 
+    start = time.monotonic()
     try:
         verdict = consult(
             question=question,
@@ -497,18 +549,31 @@ def consult_for_trigger(
     except AdvisorNotConfigured as exc:
         logger.warning("advisor: consult skipped, not configured: %s", exc)
         not_configured_reason: Literal["not_configured"] = "not_configured"
+        _write_consult_telemetry(
+            task_key=task_key, signal=trigger, config=config, outcome=not_configured_reason
+        )
         return ConsultOutcome(
             task_key=task_key, skipped_reason=not_configured_reason, error=str(exc)
         )
     except CapabilityFloorViolation as exc:
         logger.warning("advisor: consult skipped, floor violation: %s", exc)
         floor_violation_reason: Literal["floor_violation"] = "floor_violation"
+        _write_consult_telemetry(
+            task_key=task_key,
+            signal=trigger,
+            config=config,
+            outcome=floor_violation_reason,
+            floor_status=exc.floor.status,
+        )
         return ConsultOutcome(
             task_key=task_key, skipped_reason=floor_violation_reason, error=str(exc)
         )
     except HostNotConfigured as exc:
         logger.warning("advisor: consult failed, host not configured: %s", exc)
         host_not_configured_reason: Literal["failed"] = "failed"
+        _write_consult_telemetry(
+            task_key=task_key, signal=trigger, config=config, outcome=host_not_configured_reason
+        )
         return ConsultOutcome(
             task_key=task_key, skipped_reason=host_not_configured_reason, error=str(exc)
         )
@@ -517,6 +582,18 @@ def consult_for_trigger(
             "timeout" if exc.details.get("timeout") else "failed"
         )
         logger.warning("advisor: consult %s: %s", skipped_reason, exc)
+        _write_consult_telemetry(
+            task_key=task_key, signal=trigger, config=config, outcome=skipped_reason
+        )
         return ConsultOutcome(task_key=task_key, skipped_reason=skipped_reason, error=str(exc))
 
+    latency_ms = int((time.monotonic() - start) * 1000)
+    _write_consult_telemetry(
+        task_key=task_key,
+        signal=trigger,
+        config=config,
+        outcome="issued",
+        latency_ms=latency_ms,
+        verdict=verdict,
+    )
     return ConsultOutcome(task_key=task_key, verdict=verdict)

@@ -22,7 +22,7 @@ from little_loops.session_store.db import DEFAULT_DB_PATH, _resolve_db_path
 
 logger = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 44
+SCHEMA_VERSION = 45
 
 VALID_KINDS: tuple[str, ...] = (
     "tool",
@@ -48,6 +48,7 @@ VALID_KINDS: tuple[str, ...] = (
     "verdict",
     "context_pressure",
     "review",
+    "advisor_consult",
 )
 
 _KIND_TABLE = {
@@ -74,6 +75,7 @@ _KIND_TABLE = {
     "verdict": "verdict_events",
     "context_pressure": "context_pressure_events",
     "review": "review_events",
+    "advisor_consult": "advisor_consults",
 }
 
 _KINDLESS_TABLES = frozenset(
@@ -1222,6 +1224,42 @@ _MIGRATIONS: list[str] = [
     CREATE INDEX IF NOT EXISTS idx_verdict_kind ON verdict_events(verdict_kind);
     CREATE INDEX IF NOT EXISTS idx_verdict_target ON verdict_events(target_id);
     CREATE INDEX IF NOT EXISTS idx_verdict_session ON verdict_events(session_id);
+    """,
+    # v45 (FEAT-3300): advisor consult telemetry. One row per
+    # `consult_for_trigger()` invocation (advisor.py) -- issued, every
+    # `skipped_reason`, failed, or timeout -- so consult frequency, skip
+    # reasons, and cost become queryable instead of leaving no trace.
+    # `outcome` mirrors `ConsultOutcome.skipped_reason`'s Literal verbatim,
+    # plus `"issued"` for a successful consult. `verdict_body` is nullable
+    # and only ever populated when `advisor.store_verdict_body` opts in
+    # (config/orchestration.py) -- the write call site is responsible for
+    # leaving it NULL otherwise, matching the opt-in posture of other
+    # private-content storage. token columns stay NULL until a host surfaces
+    # usage (`consult()`/`AdvisorVerdict` capture none today). Live-write-only,
+    # like verdict_events/context_pressure_events/review_events -- excluded
+    # from _REBUILD_TABLES/_REBUILD_SEARCH_KINDS (session_store/lifecycle.py).
+    """
+    CREATE TABLE IF NOT EXISTS advisor_consults (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        ts TEXT NOT NULL,
+        session_id TEXT,
+        task_key TEXT,
+        signal TEXT,
+        advisor_host TEXT,
+        advisor_model TEXT,
+        main_model TEXT,
+        floor_status TEXT,
+        outcome TEXT NOT NULL,
+        latency_ms INTEGER,
+        input_tokens INTEGER,
+        output_tokens INTEGER,
+        confidence REAL,
+        verdict_body TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_advisor_consults_session ON advisor_consults(session_id);
+    CREATE INDEX IF NOT EXISTS idx_advisor_consults_ts ON advisor_consults(ts);
+    CREATE INDEX IF NOT EXISTS idx_advisor_consults_signal ON advisor_consults(signal);
+    CREATE INDEX IF NOT EXISTS idx_advisor_consults_outcome ON advisor_consults(outcome);
     """,
 ]
 

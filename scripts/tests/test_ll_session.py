@@ -370,6 +370,20 @@ class TestMainSession:
             assert main_session() == 0
         assert "No subagent_run events" in capsys.readouterr().out
 
+    def test_recent_kind_advisor_consult_accepted(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """recent --kind advisor_consult is accepted (advisor_consult in VALID_KINDS, FEAT-3300)."""
+        db = tmp_path / "session.db"
+        from little_loops.session_store import ensure_db
+
+        ensure_db(db)
+        with patch(
+            "sys.argv", ["ll-session", "--db", str(db), "recent", "--kind", "advisor_consult"]
+        ):
+            assert main_session() == 0
+        assert "No advisor_consult events" in capsys.readouterr().out
+
     def test_search_kind_subagent_run_accepted(self) -> None:
         with patch(
             "sys.argv", ["ll-session", "search", "--fts", "Explore", "--kind", "subagent_run"]

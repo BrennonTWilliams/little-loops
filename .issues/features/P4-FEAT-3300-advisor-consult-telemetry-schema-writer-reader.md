@@ -4,9 +4,10 @@ title: Advisor consult telemetry - schema, writer, reader
 type: FEAT
 parent: EPIC-3041
 priority: P4
-status: open
+status: done
 testable: true
 discovered_date: 2026-08-23
+completed_at: 2026-08-24
 depends_on:
 - FEAT-3044
 labels:
@@ -36,6 +37,14 @@ independently-testable core — it does not require `ll-ctx-stats` reporting
 (FEAT-3301) to be useful, matching the existing precedent of
 `harness_events`/`verdict_events`/`review_events`, all of which shipped with a
 reader and no report section.
+
+## Use Case
+
+An operator running `ll-ctx-stats` (or querying `.ll/history.db` directly)
+wants to know how often the advisor is consulted, which signals trigger it
+most, how often it's skipped (budget/floor/failure) vs. issued, and its
+token/latency cost — none of which is currently observable, since consults
+leave no durable trace.
 
 ## Parent Issue
 
@@ -490,6 +499,8 @@ version-specific figures above):_
 
 
 ## Session Log
+- `/ll:ready-issue` - 2026-08-24T15:12:28 - `aa7960d0-8f10-44d0-842e-cecd356fc0b1.jsonl`
+- `/ll:ready-issue` - 2026-08-24T15:12:09 - `aa7960d0-8f10-44d0-842e-cecd356fc0b1.jsonl`
 - `/ll:confidence-check` - 2026-08-24T15:09:16 - `ef749c15-ddb1-464a-b14c-0fa8179bf893.jsonl`
 - `/ll:confidence-check` - 2026-08-23T18:13:52 - `e0525866-2b9f-414b-a9af-4d4eaed8dd5c.jsonl`
 - `/ll:verify-issues` - 2026-08-23T18:12:26 - `8d2ef6d7-3cb8-4361-a1f1-13b1e34ddf40.jsonl`

@@ -1820,6 +1820,81 @@ def record_context_pressure_event(
     return True
 
 
+def write_advisor_consult(
+    db_path: Path | str,
+    *,
+    session_id: str | None,
+    task_key: str | None,
+    signal: str | None,
+    advisor_host: str | None,
+    advisor_model: str | None,
+    main_model: str | None,
+    outcome: str,
+    floor_status: str | None = None,
+    latency_ms: int | None = None,
+    input_tokens: int | None = None,
+    output_tokens: int | None = None,
+    confidence: float | None = None,
+    verdict_body: str | None = None,
+    ts: str | None = None,
+) -> bool:
+    """Write one row to ``advisor_consults`` and index it in ``search_index`` (FEAT-3300).
+
+    Fail-soft, mirroring :func:`record_context_pressure_event`: returns
+    ``False`` (never raises) on any ``sqlite3.Error`` so a consult's outcome
+    is never blocked or altered by a missing/locked database. ``outcome`` is
+    ``"issued"`` or one of ``ConsultOutcome.skipped_reason``'s Literal values
+    (``advisor.py``). ``verdict_body`` MUST be ``None`` unless the caller has
+    already checked the ``advisor.store_verdict_body`` opt-in — this writer
+    performs no gating of its own.
+    """
+    ts = ts or _now()
+    conn: sqlite3.Connection | None = None
+    try:
+        conn = _pkg.connect(db_path)
+        conn.execute(
+            "INSERT INTO advisor_consults"
+            "(ts, session_id, task_key, signal, advisor_host, advisor_model, main_model,"
+            " floor_status, outcome, latency_ms, input_tokens, output_tokens, confidence,"
+            " verdict_body)"
+            " VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                ts,
+                session_id,
+                task_key,
+                signal,
+                advisor_host,
+                advisor_model,
+                main_model,
+                floor_status,
+                outcome,
+                latency_ms,
+                input_tokens,
+                output_tokens,
+                confidence,
+                verdict_body,
+            ),
+        )
+        _index(
+            conn,
+            content=f"{task_key or ''} {signal or ''} {outcome}"[:512],
+            kind="advisor_consult",
+            ref=task_key or "",
+            anchor=outcome,
+            ts=ts,
+        )
+        conn.commit()
+    except sqlite3.Error:
+        logger.warning(
+            "write_advisor_consult: insert failed for task_key=%r", task_key, exc_info=True
+        )
+        return False
+    finally:
+        if conn is not None:
+            conn.close()
+    return True
+
+
 def record_subagent_run_start(
     db_path: Path | str,
     *,

@@ -1085,9 +1085,7 @@ class TestBRConfig:
         assert result["orchestration"]["cluster"]["max_batch_size"] == 5
         assert result["orchestration"]["disable_background_tasks"] is False
 
-    def test_to_dict_advisor(
-        self, temp_project_dir: Path, sample_config: dict[str, Any]
-    ) -> None:
+    def test_to_dict_advisor(self, temp_project_dir: Path, sample_config: dict[str, Any]) -> None:
         """to_dict emits advisor block with configured values (FEAT-3043)."""
         sample_config["advisor"] = {
             "enabled": True,
@@ -1132,6 +1130,7 @@ class TestBRConfig:
         assert result["advisor"]["timeout_seconds"] == 180
         assert result["advisor"]["triggers"] == []
         assert result["advisor"]["max_consults_per_task"] == 3
+        assert result["advisor"]["store_verdict_body"] is False
 
     def test_to_dict_never_modelled_sections_raw_passthrough(
         self, temp_project_dir: Path, sample_config: dict[str, Any]
@@ -3764,6 +3763,7 @@ class TestAdvisorConfig:
         assert config.timeout_seconds == 180
         assert config.triggers == []
         assert config.max_consults_per_task == 3
+        assert config.store_verdict_body is False
 
     def test_from_dict_with_values(self) -> None:
         data = {
@@ -3774,6 +3774,7 @@ class TestAdvisorConfig:
             "timeout_seconds": 60,
             "triggers": ["confidence_gate", "loop_stall", "pre_done"],
             "max_consults_per_task": 5,
+            "store_verdict_body": True,
         }
         config = AdvisorConfig.from_dict(data)
         assert config.enabled is True
@@ -3783,6 +3784,7 @@ class TestAdvisorConfig:
         assert config.timeout_seconds == 60
         assert config.triggers == ["confidence_gate", "loop_stall", "pre_done"]
         assert config.max_consults_per_task == 5
+        assert config.store_verdict_body is True
 
     def test_from_dict_partial_override_defaults_rest(self) -> None:
         config = AdvisorConfig.from_dict({"max_consults_per_task": 7})
