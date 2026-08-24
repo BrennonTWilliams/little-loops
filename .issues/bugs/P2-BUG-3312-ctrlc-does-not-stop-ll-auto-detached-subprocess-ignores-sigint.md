@@ -7,12 +7,12 @@ status: open
 discovered_by: ll-issues-create
 discovered_date: '2026-08-24'
 captured_at: '2026-08-24T16:07:51Z'
-confidence_score: 98
+confidence_score: 95
 outcome_confidence: 75
-score_complexity: 19
-score_test_coverage: 22
-score_ambiguity: 12
-score_change_surface: 22
+score_complexity: 14
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 18
 ---
 
 # BUG-3312: Ctrl+C does not stop ll-auto — detached subprocess ignores SIGINT
@@ -374,6 +374,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-24T16:56:17 - `a004c617-912f-49b1-90dd-64ce4fe53f29.jsonl`
 - `/ll:confidence-check` - 2026-08-24T16:39:51 - `9960f916-2441-4af1-90fa-4a886fc8f95c.jsonl`
 - `/ll:refine-issue` - 2026-08-24T16:21:11 - `e5f4e5f1-003d-4663-97d4-27dbe660784d.jsonl`
 - `/ll:format-issue` - 2026-08-24T16:12:01 - `b85ae83c-887b-4e17-9a4e-1911475585d3.jsonl`
