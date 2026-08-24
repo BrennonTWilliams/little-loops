@@ -142,9 +142,14 @@ rule as:
   `#rrggbbaa`, `rgb()`/`rgba()`, `hsl()`/`hsla()`. Every other token
   namespace is out of scope for v1, and the report's `_comment` key states
   that scope so the deferred lift phase knows what was *not* covered.
-- **Case-insensitive**, with `#abc` normalized to `#aabbcc` on both sides
-  before comparison — otherwise the report silently misses roughly half of
-  real matches.
+- **Case-insensitive**, with `#abc` normalized to `#aabbcc` (and `#abcd` to
+  `#aabbccdd`) on both sides before comparison — otherwise the report
+  silently misses roughly half of real matches.
+- **Functional forms match by literal**: `rgb()`/`rgba()`/`hsl()`/`hsla()`
+  literals are compared case-insensitively with runs of whitespace collapsed
+  on both sides — no component parsing, no `rgb`↔`hex` value equivalence
+  (that would need a CSS/color library; none exists in the dependency set).
+  The report's `_comment` states this limit.
 - **Whole CSS values, word-boundary anchored** — never bare substring.
   `#fff` substring-matches inside `#fff000`.
 - `occurrences` counts non-overlapping matches in the template body.
@@ -222,7 +227,7 @@ from and so a lossy template is never silently accepted in the meantime.
 
 ### Signatures
 
-- `report_token_literals(template_text: str, tokens: DesignTokens) -> list[UnliftedToken]` — report-only in v1; *template_text* is the spliced template body, never the original artifact (see § Scan input)
+- `report_token_literals(template_text: str, tokens: DesignTokens) -> list[UnliftedToken]` — report-only in v1; *template_text* is the spliced template body, never the original artifact (see § Scan input). `spliced` is `bytes` (`templatize.py` writes it via `write_bytes`); the caller decodes with `spliced.decode("utf-8", errors="replace")` **inside** the containment-wrapped report step, so a decode failure falls under the existing failure-containment rule.
 
 ### Call Path
 
@@ -245,8 +250,8 @@ selection for why `_themed_css_vars`'s light+dark double load
 
 _Added by `/ll:refine-issue` — 2026-08-24 — based on codebase analysis:_
 
-- **Warning-convention decision, sharpened**: `Logger.warning()` (`logger.py:91-94`) is the *broader codebase's* dominant convention for a report-only, non-blocking warning carrying a count — confirmed at 4 call sites: `cli/sprint/edit.py:130`, `cli/sprint/_helpers.py:249`, `cli/parallel.py:303`, `cli/deps.py:351`, all a single f-string positional arg, no gating side effect. `cmd_templatize` already receives `logger: Logger` (`templatize.py:639`) but every existing call in that function today is `logger.error(...)` (lines 657-795) — there is no `logger.warning(...)` call anywhere in this file yet. This does not settle the choice between `Logger.warning()` and the `design_md.py`-style raw `sys.stderr.write` (both remain open per the issue's own findings above), but the count of independent `Logger.warning()` precedents elsewhere in `cli/` now outweighs the single `sys.stderr.write` example.
-- **JSON-write idiom to follow for `unlifted-tokens.json`**: `write_baseline` shape (`verify_private_refs.py:461-474`, `verify_evidence.py:1288-1302`) — `path.parent.mkdir(parents=True, exist_ok=True)`, a `dict` payload with a `"_comment"` self-documenting key naming what regenerates the file, `json.dumps(payload, indent=2, sort_keys=False) + "\n"`, `path.write_text(..., encoding="utf-8")`, returns `Path`. Write target is `out_dir` (post-promote), consistent with the insertion point above.
+- **Warning convention (decided — not an implementer choice)**: use `Logger.warning()` (`logger.py:91-94`) — the dominant `cli/` convention for a report-only, non-blocking warning carrying a count (4 precedents: `cli/sprint/edit.py:130`, `cli/sprint/_helpers.py:249`, `cli/parallel.py:303`, `cli/deps.py:351`), and `cmd_templatize` already receives `logger: Logger`. The artifact CLI constructs `Logger` with the default `verbose=True` (`cli/artifact/__init__.py:125`), so `warning` satisfies "non-silent." Do **not** use the `design_md.py`-style raw `sys.stderr.write`.
+- **JSON-write idiom to follow for `unlifted-tokens.json`**: `write_baseline` shape (`verify_private_refs.py:461-474`, `verify_evidence.py:1288-1302`) — `path.parent.mkdir(parents=True, exist_ok=True)`, a `dict` payload with a `"_comment"` self-documenting key naming what regenerates the file, `json.dumps(payload, indent=2, sort_keys=False) + "\n"`, `path.write_text(..., encoding="utf-8")`, returns `Path`. Write target is `tmp_dir` (pre-promote) — see the corrected insertion-point finding below; an earlier revision said `out_dir` post-promote, which is wrong.
 - **Shared token-loading entry point**: `load_design_tokens(config: BRConfig, theme: str | None = None) -> DesignTokens | None` (`design_tokens.py:412`) is what `report_token_literals`'s caller should invoke to obtain a resolved `DesignTokens` — the same function `policy_builder.py`'s `_themed_css_vars` (lines 56-87) already uses, though **only the entry point is shared, not its light+dark call pattern** (§ Theme selection). It can return `None` when tokens aren't configured, which the caller must handle (skip the report, write no file, no error).
 - **Module import constraint reconfirmed**: `templatize.py`'s module docstring (lines 1-11) forbids importing `host_runner`/`anthropic`; `design_tokens.py` imports neither, so `report_token_literals` stays compliant by depending only on it. Existing test `test_templatize_module_imports_nothing_from_host_runner_or_anthropic` (`test_artifact_templatize.py:936`) already enforces this and must keep passing.
 
@@ -307,9 +312,7 @@ _Added by `/ll:refine-issue` — 2026-08-24 — based on codebase analysis:_
 - **Existing `.llat` fixture layout to extend for the fan-out fixture**: `scripts/tests/fixtures/artifact_templates/{simple,delimiters,theme}.llat/` (each with `manifest.yaml`, `template.html.j2`, `data.json`) is the existing checked-in template-fixture shape; a fan-out fixture (second source document + hand-authored `data.json` + checked-in expected render output) extends this layout.
 - **No CSS-parsing dependency exists anywhere in `scripts/pyproject.toml`** (no `tinycss2`, `cssutils`, `cssselect`, etc. — the only markup-parsing dependency, `BeautifulSoup`, is used solely by the unrelated `doc_scraper.py`). `report_token_literals` must do its own from-scratch value-matching (regex/substring scan of the CSS text against `tokens.resolved`'s values) — there is no existing CSS-aware helper to reuse.
 - **Precise mechanism for why literal token values get baked into generated artifacts**: `inject_design_context()` in `cli/loop/_helpers.py:1397-1430` (a more exact anchor than the issue's own `:1416-1424` citation) is guarded by `context.get("use_design_tokens", True)` with string-to-bool coercion at `:1419-1420` (`""`/`"0"`/`"false"`/`"no"`/`"off"` all disable it); when enabled it sets `context["design_tokens_context"] = render_as_prompt_context(_tokens)` (`:1423`), which emits `name: value` lines with literal resolved values (hex codes, sizes) — not CSS custom-property references. This confirms the exact seed point of the "baked literal" problem this phase reports on.
-- **Two divergent, unreconciled report/warning conventions exist in this codebase** — the implementer must pick one for `cmd_templatize`'s token-report warning, since precedent alone does not settle it:
-  - (a) `cli/verify_design_tokens.py`'s `lint_profile()`/`lint_profiles_dir()` (`:92-133`) build a `ThemeViolation` list, formatted via `_format_json_report()`/`_format_text_report()` (plain `json.dumps(..., indent=2)`) — but this convention *gates* (nonzero exit on any violation), which contradicts this phase's stated report-only, non-blocking requirement.
-  - (b) `design_tokens.py`/`cli/artifact/design_md.py`'s `cmd_design_md_export` (`:111-122`) computes `notes` via a pure function (`_design_md_dropped_groups`, `design_tokens.py:862-888`) and emits exactly one `sys.stderr.write(f"[little-loops] Warning: ...")` line while the command still succeeds — the closer behavioral match to "report-only ... plus a non-silent warning naming the count," but note this uses raw `sys.stderr.write` with a hand-built `[little-loops] Warning:` prefix, **not** `Logger.warning()` — which is what `cmd_policy_builder`/`cmd_design_md_export` otherwise use for everything else, since FEAT-3314's Program Design has `cmd_templatize` receive a `Logger` argument matching that error-handling shape. Which convention the new warning line follows is an open implementation choice, not a settled one.
+- **Warning convention**: settled — `Logger.warning()`; see the decided finding above. (The `cli/verify_design_tokens.py` gating convention and `design_md.py`'s raw `sys.stderr.write` were both considered and rejected.)
 
 - **Existing JSON-report-to-disk write idiom**: `cli/verify_private_refs.py:461-474` (`write_baseline`) and `cli/verify_evidence.py:1234-1302` (`write_verdict_cache`/`write_baseline`) both use `path.parent.mkdir(parents=True, exist_ok=True)` then `path.write_text(json.dumps(payload, indent=2, ...) + "\n", encoding="utf-8")` — the closest existing write-idiom precedent for `unlifted-tokens.json`, though both existing examples exist for baseline/gating rather than pure reporting.
 - **Fan-out / cross-fixture test convention to model after**: `test_streaming_cache_parity.py` and `test_benchmark_fragment.py::TestHarborFixtures` both hardcode fixture IDs (not globbed, so a missing fixture fails at collection time rather than silently generating zero test cases) and pair a `TestXFixtures` structural sanity-check class with a parametrized assertion test. This is the established N-input/N-expected-output pattern the fan-out test should follow.
@@ -370,6 +373,7 @@ _Added by `/ll:refine-issue` — 2026-08-24 — based on codebase analysis:_
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-24T23:17:57 - `cbd1afbc-5d29-4047-86cf-cd522b3ae2d9.jsonl`
 - `/ll:confidence-check` - 2026-08-24T23:10:36 - `0983d3ba-ecbc-4009-a3a3-518ba4c0fda1.jsonl`
 - `/ll:refine-issue` - 2026-08-24T22:47:27 - `76c2d0e1-e226-4945-b3a3-bc157df99f76.jsonl`
 - `/ll:refine-issue` - 2026-08-24T18:58:03 - `ffa41e96-ab11-4f72-8513-f6153385423a.jsonl`
