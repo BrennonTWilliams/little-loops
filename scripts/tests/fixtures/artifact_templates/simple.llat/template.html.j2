@@ -1,0 +1,14 @@
+<html>
+<head><title>[[= title =]]</title></head>
+<body>
+[[% for section in sections %]]
+<section class="[[= section.severity =]]">
+<h2>[[= section.heading =]]</h2>
+<p>[[= section.body =]]</p>
+</section>
+[[% endfor %]]
+[[% if ll.assets.get("note.txt") %]]
+<footer>[[= ll.assets["note.txt"] =]]</footer>
+[[% endif %]]
+</body>
+</html>

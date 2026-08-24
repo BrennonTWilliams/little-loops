@@ -375,12 +375,14 @@ class ArtifactsConfig:
     """
 
     default_output_dir: str = "."
+    templates_dir: str = "artifacts/templates"
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> ArtifactsConfig:
         """Create ArtifactsConfig from dictionary."""
         return cls(
             default_output_dir=data.get("default_output_dir", "."),
+            templates_dir=data.get("templates_dir", "artifacts/templates"),
         )
 
 

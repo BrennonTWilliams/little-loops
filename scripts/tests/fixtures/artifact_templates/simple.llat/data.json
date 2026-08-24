@@ -1,0 +1,7 @@
+{
+  "title": "Quarterly Risk Report",
+  "sections": [
+    {"heading": "Auth outage", "body": "Recovered in 4h.", "severity": "high"},
+    {"heading": "Latency creep", "body": "P99 up 12%.", "severity": "medium"}
+  ]
+}

@@ -489,6 +489,8 @@ class TestConfigSchema:
         props = artifacts["properties"]
         assert props["default_output_dir"]["type"] == "string"
         assert props["default_output_dir"]["default"] == "."
+        assert props["templates_dir"]["type"] == "string"
+        assert props["templates_dir"]["default"] == "artifacts/templates"
 
     def test_analytics_in_schema(self) -> None:
         """analytics block must be declared in config-schema.json (FEAT-1624).

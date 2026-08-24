@@ -179,7 +179,8 @@ For interactive editing, use `/ll:configure`.
   },
 
   "artifacts": {
-    "default_output_dir": "."
+    "default_output_dir": ".",
+    "templates_dir": "artifacts/templates"
   },
 
   "loops": {
@@ -909,19 +910,21 @@ The design token loader supports the [W3C Design Tokens Community Group](https:/
 
 ### `artifacts`
 
-Output settings for `ll-artifact`, the generator of self-contained human-facing HTML artifacts (FEAT-2390). Currently backs the `policy-builder` subcommand, which stamps design-token CSS vars, the canonical predicate grammar, and the skill/command catalog into a `file://`-safe policy-router / rubric loop builder page.
+Output settings for `ll-artifact`, the generator of self-contained human-facing HTML artifacts (FEAT-2390). Backs the `policy-builder` subcommand (stamps design-token CSS vars, the canonical predicate grammar, and the skill/command catalog into a `file://`-safe policy-router / rubric loop builder page) and `render` (FEAT-3036 Phase 1), which resolves and deterministically renders user-authored `.llat/` artifact templates.
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | `default_output_dir` | `str` | `"."` | Directory where `ll-artifact` writes generated artifacts when no `--output`/`-o` override is given. Relative paths resolve against the project root. |
+| `templates_dir` | `str` | `"artifacts/templates"` | Directory (relative to the project root) where named `.llat/` artifact templates are looked up by `ll-artifact render <name>` when the given argument does not resolve as a filesystem path. |
 
 ```json
 "artifacts": {
-  "default_output_dir": "."
+  "default_output_dir": ".",
+  "templates_dir": "artifacts/templates"
 }
 ```
 
-Per-project config only needs an `artifacts` block to override the default output directory; the dataclass default suffices otherwise.
+Per-project config only needs an `artifacts` block to override these defaults; the dataclass defaults suffice otherwise.
 
 ### `decisions`
 

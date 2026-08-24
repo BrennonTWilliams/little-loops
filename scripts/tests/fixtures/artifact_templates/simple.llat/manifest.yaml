@@ -1,0 +1,18 @@
+name: simple-report
+version: 1
+renderer: jinja2
+output: report.html
+data_schema:
+  type: object
+  required: [title, sections]
+  properties:
+    title: {type: string}
+    sections:
+      type: array
+      items:
+        type: object
+        required: [heading, body, severity]
+        properties:
+          heading: {type: string}
+          body: {type: string}
+          severity: {enum: [low, medium, high]}

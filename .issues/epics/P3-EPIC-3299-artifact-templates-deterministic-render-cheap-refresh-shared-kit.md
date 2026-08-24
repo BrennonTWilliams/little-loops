@@ -190,6 +190,10 @@ dashboards and leaves the loop-generated artifacts (use case A) untouched.
 
 FEAT-3036's Phases 1–3 are expected to decompose into further children as they
 are scoped; Phase 4 is now FEAT-3308.
+- **FEAT-3310** — Artifact templates: extract + refresh (Phase 2) (open)
+- **FEAT-3311** — Artifact templates: status + lockfile staleness detection (Phase 3) (open)
+
+
 
 ## Success Metrics
 

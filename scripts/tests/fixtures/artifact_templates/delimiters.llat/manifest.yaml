@@ -1,0 +1,7 @@
+name: delimiter-fixture
+version: 1
+renderer: jinja2
+output: out.html
+data_schema:
+  type: object
+  properties: {}

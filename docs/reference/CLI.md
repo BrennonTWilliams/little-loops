@@ -4454,7 +4454,7 @@ python -m pytest tests/   # Run starter tests
 
 ### ll-artifact
 
-Generate self-contained, human-facing artifacts from project data. `policy-builder` stamps project-derived inputs into an HTML page at generation time, so the output works over `file://` with no runtime fetch. `design-md export` renders a design-token profile as a portable DESIGN.md document.
+Generate self-contained, human-facing artifacts from project data. `policy-builder` stamps project-derived inputs into an HTML page at generation time, so the output works over `file://` with no runtime fetch. `design-md export` renders a design-token profile as a portable DESIGN.md document. `render` (FEAT-3036 Phase 1) deterministically stamps a user-authored `.llat/` artifact template against a `data.json`, with zero LLM cost per render.
 
 **Subcommands:**
 
@@ -4462,6 +4462,7 @@ Generate self-contained, human-facing artifacts from project data. `policy-build
 |------------|-------------|
 | `policy-builder` | Emit a visual builder for policy-router / rubric FSM loop YAML |
 | `design-md export` | Export a design-token profile as a single-theme DESIGN.md document |
+| `render` | Deterministic `template + data.json -> artifact` stamp for a `.llat/` artifact template |
 
 **Exit codes:** `0` = artifact generated successfully, `1` = error
 
@@ -4503,6 +4504,31 @@ ll-artifact design-md export --profile warm-paper --theme dark -o DESIGN.md
 ```
 
 **Exit codes:** `0` = export written, `1` = no design tokens available (`design_tokens.enabled: false`, missing path, missing active profile, or an unresolvable `--profile`), or a color-name collision in the export.
+
+#### ll-artifact render
+
+Deterministic stamp: `template + data.json -> artifact`. No LLM call — rendering the same template + data twice always produces byte-identical output. `<template>` resolves path-first (a `.llat/` directory); if that path does not exist it is resolved as a name under `config.artifacts.templates_dir` (default `artifacts/templates`). If neither exists, exits non-zero naming both paths tried.
+
+A `.llat/` template directory contains `manifest.yaml` (identity, `data_schema`, optional `theme`/`source`/`extraction`), a single `template.<ext>.j2` Jinja2 body, and an optional `assets/` directory. The Jinja2 environment uses a fixed non-default delimiter set (`[[= =]]` for variables, `[[% %]]` for blocks, `[[# #]]` for comments) chosen to avoid colliding with `{{`/`{%`/`${...}` in generated HTML/JS/CSS content, `StrictUndefined`, `autoescape=False`, and is loaded with `Environment.from_string()` — there is no loader, so `{% include/extends/import %}` are unavailable and a template is exactly one file. `data.json` is validated against `manifest.data_schema` (a documented JSON Schema subset: `type`, `required`, `properties`, `items`, `enum`, `description`) before rendering; a schema violation, or an unsupported schema construct at manifest load time, exits non-zero and writes nothing.
+
+The render context is `data.json`'s top-level keys plus a reserved `ll` namespace: `ll.theme_css` (themed CSS custom properties, populated only when `manifest.theme: design-tokens`) and `ll.assets` (every file under `assets/`, keyed by relative path, read as UTF-8 text). A top-level `ll` key in `data.json` or `data_schema` is a validation error.
+
+**Flags:**
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--data <path>` | | Path to `data.json` (default: `<template>/data.json`) |
+| `--output <dir>` | `-o` | Output directory (default: `config.artifacts.default_output_dir`). The manifest's `output:` is a filename; the effective path is `(-o DIR \| default_output_dir) / manifest.output`. The only error case is `-o` naming an existing file. |
+
+**Examples:**
+```bash
+ll-artifact render my-report                 # Resolve artifacts/templates/my-report.llat, render against its data.json
+ll-artifact render ./my-report.llat --data data.json -o build/
+```
+
+**Exit codes:** `0` = artifact rendered, `1` = template not found, an invalid manifest, missing/malformed/schema-invalid data, or `-o` naming an existing file.
+
+> **Note:** `render` is Phase 1 of FEAT-3036 (see `.issues/features/P3-FEAT-3036-artifact-templates-design.md`). `extract`/`refresh` (Phase 2) and `status` (Phase 3, staleness detection) are not yet implemented.
 
 ---
 

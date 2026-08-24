@@ -56,6 +56,13 @@ dependencies = [
     # today (a latent ImportError risk on a bare `pip install little-loops`);
     # this promotion also fixes that.
     "psutil>=5.9",
+    # FEAT-3036: artifact templates (`ll-artifact render`) need repeated/
+    # conditional template regions (N data sections -> N rendered cards as a
+    # loop) that the codebase's existing flat, single-pass substitution
+    # schemes (sed `{{name}}`, `.replace()` token-stamping, regex
+    # `{{config.xxx}}`) cannot express. jinja2 is sandboxable
+    # (SandboxedEnvironment) and Python-native.
+    "jinja2>=3.1",
 ]
 
 [project.urls]

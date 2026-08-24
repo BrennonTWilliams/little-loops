@@ -3,7 +3,7 @@ id: FEAT-3036
 title: Artifact templates design
 type: FEAT
 priority: P3
-status: open
+status: done
 discovered_date: 2026-08-03
 labels:
 - planning-hub
@@ -15,7 +15,10 @@ relates_to:
 - FEAT-3309
 - ENH-3035
 - FEAT-3304
+- FEAT-3310
+- FEAT-3311
 verify_verdict: VALID
+completed_at: '2026-08-24T04:16:48Z'
 learning_tests_required:
 - jinja2
 confidence_score: 93
@@ -875,6 +878,7 @@ are all confirmed against the installed jinja2 3.1.6._
 **Open** | Created: 2026-08-03 | Priority: P3
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-24T04:16:28 - `330c8faf-d041-4098-aec0-965ac9b99312.jsonl`
 - `/ll:ready-issue` - 2026-08-24T03:45:46 - `c65f5828-5738-4ffa-9215-73b22b8fcbaa.jsonl`
 - `/ll:confidence-check` - 2026-08-24T03:27:57 - `75fd46f8-3745-4383-ae9f-e2749df5c760.jsonl`
 - `/ll:confidence-check` - 2026-08-24T03:14:39 - `073198e9-3f33-4b28-94f3-e0a8ed10b406.jsonl`

@@ -39,7 +39,7 @@ class DesignTokens:
     # Prose body (frontmatter stripped) for a design_md source; "" otherwise.
     # Populated even on degraded design_md paths (ENH-3264/ENH-3267).
     guidance: str = ""
-    # "profile" | "design_md" — public, not informational: cli/artifact.py's
+    # "profile" | "design_md" — public, not informational: cli/artifact/policy_builder.py's
     # _themed_css_vars() branches on it to decide whether a second themed
     # load is needed (DESIGN.md has no theme mechanism).
     source: str = "profile"
@@ -404,7 +404,7 @@ def load_profile_tokens_from_root(
 
     Used by `ll-artifact design-md export --profile <name>` (ENH-3268), whose
     named profile may be a packaged built-in never materialized in the
-    project (see `cli/artifact.py::_resolve_export_profile_root`).
+    project (see `cli/artifact/design_md.py::_resolve_export_profile_root`).
     """
     return _load_profile_from_root(config.design_tokens, token_root, theme)
 

@@ -1874,6 +1874,11 @@
           "type": "string",
           "default": ".",
           "description": "Directory where ll-artifact writes generated human-facing artifacts (e.g. the policy-router builder HTML). Relative paths resolve against the project root."
+        },
+        "templates_dir": {
+          "type": "string",
+          "default": "artifacts/templates",
+          "description": "Directory (relative to the project root) where named `.llat/` artifact templates are looked up by `ll-artifact render <name>` when the given argument does not resolve as a filesystem path (FEAT-3036)."
         }
       },
       "additionalProperties": false

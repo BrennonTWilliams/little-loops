@@ -1,0 +1,8 @@
+name: theme-fixture
+version: 1
+renderer: jinja2
+output: out.html
+theme: design-tokens
+data_schema:
+  type: object
+  properties: {}
