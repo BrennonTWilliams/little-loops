@@ -20,7 +20,7 @@ labels:
 decision_needed: false
 learning_tests_required:
 - jinja2-byte-exact-round-trip
-confidence_score: 90
+confidence_score: 93
 outcome_confidence: 85
 score_complexity: 10
 score_test_coverage: 25
@@ -100,8 +100,9 @@ from the original.
 ## Proposed Solution
 
 1. **Region types.** `Region: {start: int, end: int, expr: str, group: str |
-   None, anchor_before: str, anchor_after: str}` — one located span; `start`/
-   `end` are the authoritative location, anchors are diagnostics only.
+   None, anchor_before: str | None, anchor_after: str | None}` — one located
+   span; `start`/`end` are the authoritative location, anchors are optional
+   diagnostics only.
    `RegionGroup: {id: str, binding: str, array_path: str, start: int, end:
    int, iterations: list[[int, int]]}` — a repeat group: the `for` binding
    name, the path in `data` to the array it iterates, the group's own span,
@@ -109,6 +110,32 @@ from the original.
    `DiscoveryResult: {data_schema: dict, data: dict, regions: list[Region],
    groups: list[RegionGroup]}` is the shared contract Phase B will also
    produce.
+
+   **`data` and `data_schema` are outputs, not map inputs.** The `--regions`
+   map supplies only `regions` and `groups` — spans and expression paths.
+   `load_regions` returns a `DiscoveryResult` with `data={}` and
+   `data_schema={}`; `extract_data` then fills `data[expr]` from the artifact
+   bytes at each span (`artifact[start:end].decode("utf-8")`) and
+   `derive_schema` builds the schema from the expression paths. This is not a
+   convenience: it is *why* the round-trip guarantee holds. If the map
+   supplied values, an author could hand-write `&` where the artifact has
+   `&amp;` and the failure would surface as an opaque render diff. Deriving
+   both by construction makes §5's escaped-entity rule automatic rather than
+   a discipline the author must remember, and it keeps Phase B's LLM
+   responsible only for *locating* spans — never for transcribing their
+   contents.
+
+   `anchor_before`/`anchor_after` are **optional** in the on-disk map. They
+   are diagnostics only (see §1's own "`start`/`end` are the authoritative
+   location"), so requiring them would make every hand-written map carry dead
+   weight. When present they are echoed into error messages; when absent,
+   errors name byte offsets alone.
+
+   **Duplicate `expr`.** Two regions may bind the same path. If their
+   extracted bytes are identical, they collapse to one schema property and
+   one `data` value, and both spans render from it. If they differ, that is a
+   hard error naming both offsets — silently keeping the last write would
+   guarantee a round-trip failure at a span the diff does not point at.
 
    **Offsets are UTF-8 byte offsets, and the whole pipeline operates on
    `bytes`.** The artifact is read with `Path.read_bytes()`, spliced as
@@ -131,28 +158,63 @@ from the original.
    `data.json` *renders* the original bytes", not "every future `render`
    invocation writes them".
 
+   **CRLF artifacts are rejected up front — this is settled, not a choice.**
+   `render_template` reads the template body with
+   `body_path.read_text(encoding="utf-8")` (`artifact_templates.py:315`),
+   which applies universal-newline translation *inside the frozen renderer*.
+   Verified: a body written as `b'A\r\n[[= x =]]\r\n'` renders `b'A\nv\n'`.
+   No amount of byte-exact splicing on `templatize`'s side can survive that,
+   and `render_template` is the shared contract this phase must not fork. So
+   `cmd_templatize` scans the artifact for any `\r` byte before doing any
+   work and exits **1** with a message saying CRLF/CR artifacts are
+   unsupported and why. Leaving this as "round-trips or is rejected" would
+   send an implementer to discover the read-mode translation the hard way,
+   via a diff that points at the render.
+
 2. **`apply_regions`.** A pure, LLM-free splice over sorted, non-overlapping
    spans: overlapping or out-of-bounds spans are a hard error, not a
    best-effort merge.
 
    **2a. Block-tag placement is a hard invariant, not a formatting
    preference.** `build_environment()` freezes `trim_blocks=True` and
-   `lstrip_blocks=True`, which means the whitespace *around* an emitted
-   `[[% ... %]]` tag is consumed by the renderer. Verified against the real
-   environment: a block tag that occupies its **own line — preceded only by
-   whitespace, followed immediately by a newline** — round-trips
-   byte-exactly, because `lstrip_blocks` eats the indent and `trim_blocks`
-   eats the trailing newline, exactly cancelling the line the splice added.
-   The same tag written with Jinja2's `+` whitespace-control markers
-   (`[[%+ ... +%]]`) *injects spurious blank lines* and fails the round
-   trip — do not reach for them. A tag placed mid-line, or one whose body
-   begins with a newline, loses that newline.
+   `lstrip_blocks=True`. `lstrip_blocks` fires only when the text from the
+   line start to the tag is **whitespace-only**; `trim_blocks` fires only
+   when the character immediately after the tag is a **newline**. So the two
+   strips are independent triggers, and an emitted tag is safe exactly when
+   **both fire or neither does**:
 
-   Therefore: **every emitted block tag must occupy its own line, preceded
-   only by whitespace and followed immediately by a newline.** A group
-   boundary that falls mid-line (e.g. repeated `<span>`s inlined on one
-   line) cannot satisfy this and is a hard error naming the offset — not a
-   best-effort splice.
+   - **Own-line** — whitespace-only prefix **and** immediate newline. Both
+     strips fire and exactly cancel the line the splice added. Round-trips
+     byte-exactly (indented tags included).
+   - **Fully mid-line** — non-whitespace prefix **and** non-newline suffix.
+     Neither strip fires, so the tag vanishes leaving its surroundings
+     untouched. Also round-trips byte-exactly. Verified:
+     `<p>[[% for i in it %]]<span>[[= i =]]</span>[[% endfor %]]</p>\n`
+     renders `<p><span>1</span><span>2</span></p>\n`.
+
+   The **mixed** forms are the failure mode, because exactly one strip fires
+   and there is nothing to cancel it:
+
+   - whitespace-only prefix, no immediate newline → the leading indent
+     *and* the line's trailing newline are both eaten
+     (`A\n  [[% for … %]]<li>…[[% endfor %]]\nB\n` →
+     `A\n<li>1</li><li>2</li>B\n`).
+   - non-whitespace prefix, immediate newline → the newline after the tag is
+     eaten (`<p>[[% for … %]]\n<li>…` → `<p><li>1</li>…`).
+
+   Therefore: **every emitted block tag must be either fully own-line or
+   fully mid-line; a mixed placement is a hard error naming the offset.** An
+   inline group boundary (repeated `<span>`s on one line) is a *supported*
+   case, handled by the mid-line form — not an error. Jinja2's `+`
+   whitespace-control markers (`[[%+ … +%]]`) inject spurious blank lines and
+   fail the round trip in every position — do not reach for them.
+
+   In practice the splicer picks the form from the boundary it is given: if
+   the bytes from the preceding newline to `start` are whitespace-only and
+   the byte at `end` is a newline, emit own-line (and consume that newline);
+   otherwise emit mid-line. Only a boundary that is whitespace-prefixed
+   *without* a following newline, or newline-followed *without* a
+   whitespace-only prefix, has no safe form and errors.
 
    **2b. Repeat groups are not a splice.** Turning N cards into one loop
    body requires *deleting* iterations 2..N, not substituting within them, so
@@ -161,8 +223,9 @@ from the original.
      iteration sub-spans covering it;
    - iteration 1's span becomes the loop body, with the `Region`s inside it
      rewritten to `[[= <binding>.<field> =]]`; iterations 2..N are dropped;
-   - the loop is wrapped in own-line `[[% for <binding> in <array_path> %]]`
-     / `[[% endfor %]]` tags per 2a;
+   - the loop is wrapped in `[[% for <binding> in <array_path> %]]` /
+     `[[% endfor %]]` tags placed per 2a — own-line when the group boundary
+     sits on its own line, mid-line when the iterations are inlined;
    - **hard check:** the non-region literal text of iterations 2..N must be
      byte-identical to iteration 1's. Mismatch is an error naming the first
      differing byte offset. Without this check a per-card `id="card-2"` or an
@@ -173,12 +236,24 @@ from the original.
    pre-existing `[[=`, `[[%`, `[[#` (plausible in inlined JS/CSS string
    content) and wrap them in `[[% raw %]]`/`[[% endraw %]]`. Missing this is
    a silent round-trip failure whose diff points nowhere near the real cause.
-   The `raw`/`endraw` wrapper is itself two block tags and is subject to the
-   2a own-line invariant — a literal `[[=` inside a **single-line**
-   `<script>` (the exact fixture the Acceptance Criteria demand) has no
-   own-line position available, so the escaper must either split the line in
-   a way that survives `trim_blocks`/`lstrip_blocks` cancellation or fail
-   loudly. Only literal, non-region text needs escaping: a *value* containing
+   The `raw`/`endraw` wrapper is itself two block tags and is subject to 2a —
+   but in its **mid-line** form, which is the common case and works.
+   Verified: `<script>var a = "[[% raw %]][[= x =]][[% endraw %]]";</script>`
+   round-trips byte-exactly. A single-line `<script>` therefore needs no
+   line-splitting and no special case; the escaper wraps in place.
+
+   **One literal is genuinely unescapable: `[[% endraw %]]`.** It terminates
+   the wrapper from inside, and Jinja2 offers no escape for it — verified:
+   `[[% raw %]]lit [[% endraw %]] more[[% endraw %]]` raises
+   `TemplateSyntaxError: Encountered unknown tag 'endraw'`. Phase A
+   **hard-errors naming the byte offset** rather than emitting a template
+   that cannot parse. (The general escape hatch — binding the literal as a
+   data value, which renders verbatim per the next sentence — is deliberately
+   deferred: it would put splicer-generated keys into `data.json`, a
+   `DiscoveryResult` contract change Phase B shares. Revisit only if a real
+   artifact hits it.)
+
+   Only literal, non-region text needs escaping: a *value* containing
    `[[= ... =]]` renders verbatim without re-evaluation (verified against the
    frozen environment), so extracted data needs no escaping.
 
@@ -191,6 +266,12 @@ from the original.
    (`artifact_templates.py:85-140`). Phase B validates its LLM response
    through this same function rather than reimplementing the checks.
 
+   The map's top level carries **only** `regions` and `groups`. `data` and
+   `data_schema` are derived (§1), so a map supplying either is rejected as
+   an unknown key — that keeps the Phase A/B seam narrow: Phase B's LLM
+   returns spans, never transcribed content, which is the one thing an LLM
+   cannot be trusted to reproduce byte-exactly.
+
 4. **`build_manifest`.** Emits `{name, version: 1, renderer: "jinja2",
    output, data_schema, source, extraction}`, `theme` omitted. Must validate
    against `_validate_schema_shape()` (`artifact_templates.py:85-140`) before
@@ -200,7 +281,13 @@ from the original.
    - `template.<ext>.j2` — the spliced body. `find_template_body()`
      (`artifact_templates.py:265-275`) requires **exactly one**
      `template.*.j2` at the template root, so the name is derived from the
-     artifact's extension (`index.html` -> `template.html.j2`).
+     artifact's extension (`index.html` -> `template.html.j2`). Because
+     `find_template_body` globs `template.*.j2`, the derived suffix must be
+     non-empty and dot-free: use **`Path(artifact).suffix` minus its leading
+     dot** (`report.min.html` -> `template.html.j2`, not
+     `template.min.html.j2`). An **extensionless** artifact would yield
+     `template..j2`, which globs but is nonsense — reject it, directing the
+     user to rename the artifact or pass `-o` with an explicit extension.
    - `manifest.yaml` with `output` set to the original artifact's basename
      (`index.html`), since `cmd_render` writes `output_dir / manifest["output"]`
      (`render.py:81`).
@@ -250,7 +337,10 @@ from the original.
    without it, an existing `-o` is an error before any work is done. A stale
    `<out>.rejected/` from a previous run is removed at the start of a run
    that is about to write one (it is a diagnostic artifact, not user state).
-   Both temp and backup dirs are cleaned up on every exit path.
+   Both temp and backup dirs are cleaned up on every exit path — **and a run
+   also sweeps stale `<out>.tmp-*` / `<out>.bak-*` siblings at start**, since
+   a `SIGKILL`ed or crashed previous run leaves them behind and no exit-path
+   cleanup can cover that.
 
 7. **CLI wiring.** `templatize` follows the `render` precedent
    (`cli/artifact/__init__.py:111`): `add_templatize_parser(subparsers)` in
@@ -280,29 +370,33 @@ from the original.
 
 ### Types
 
-- `Region: {start: int, end: int, expr: str, group: str | None, anchor_before: str, anchor_after: str}` — `start`/`end` are UTF-8 **byte** offsets
+- `Region: {start: int, end: int, expr: str, group: str | None, anchor_before: str | None, anchor_after: str | None}` — `start`/`end` are UTF-8 **byte** offsets; anchors are optional diagnostics
 - `RegionGroup: {id: str, binding: str, array_path: str, start: int, end: int, iterations: list[tuple[int, int]]}` — byte offsets throughout; `iterations` are ordered, contiguous sub-spans covering `[start, end)`
-- `DiscoveryResult: {data_schema: dict, data: dict, regions: list[Region], groups: list[RegionGroup]}`
+- `DiscoveryResult: {data_schema: dict, data: dict, regions: list[Region], groups: list[RegionGroup]}` — `regions`/`groups` come from the map; `data`/`data_schema` are derived outputs
 - `ArtifactTemplate` (`artifact_templates.py:47-64`) — existing; `cmd_templatize` must emit a `manifest` dict that `load_manifest()` accepts
 
 ### Signatures
 
 - `cmd_templatize(args: argparse.Namespace, logger: Logger) -> int` — 0 success, 1 error, 2 round-trip rejection
-- `load_regions(path: Path) -> DiscoveryResult` — fail-closed parse of the `--regions` map; rejects unknown keys, missing required fields, non-integer offsets. The Phase A/B seam: Phase B validates its LLM response through this same function.
-- `apply_regions(artifact: bytes, result: DiscoveryResult) -> bytes` — bytes in, bytes out (see Proposed Solution 1). Raises on overlap, out-of-bounds, a mid-line block-tag boundary, or iterations 2..N whose literal text differs from iteration 1's.
+- `load_regions(path: Path) -> DiscoveryResult` — fail-closed parse of the `--regions` map; rejects unknown keys, missing required fields, non-integer offsets. Returns `data={}` / `data_schema={}` (both are derived, not supplied — see Proposed Solution 1); `anchor_before`/`anchor_after` are optional. The Phase A/B seam: Phase B validates its LLM response through this same function.
+- `extract_data(artifact: bytes, result: DiscoveryResult) -> dict` — fills `data` from the artifact bytes at each region span (`artifact[start:end].decode("utf-8")`), nesting group regions under their `array_path`. Raises on a duplicate `expr` whose two spans differ, naming both offsets.
+- `derive_schema(result: DiscoveryResult) -> dict` — builds `data_schema` from the region expression paths: every leaf `type: string`, every group an `array` of `object`. Must satisfy `_validate_schema_shape()` (`artifact_templates.py:85-140`) by construction.
+- `apply_regions(artifact: bytes, result: DiscoveryResult) -> bytes` — bytes in, bytes out (see Proposed Solution 1). Raises on overlap, out-of-bounds, a **mixed** block-tag boundary (per 2a: whitespace-prefixed without a following newline, or newline-followed without a whitespace-only prefix), an unescapable literal `[[% endraw %]]`, or iterations 2..N whose literal text differs from iteration 1's.
 - `escape_literal_delimiters(text: bytes) -> bytes`
 - `build_manifest(name: str, output: str, schema: dict, source: Path, extraction: dict) -> dict`
-- `verify_round_trip(template_dir: Path, data: dict, original: bytes) -> str | None` — renders via `render_template`, encodes the result UTF-8, diffs bytes; returns a unified diff or `None`. Runs against the temp build dir, before promotion.
+- `verify_round_trip(template_dir: Path, data: dict, original: bytes, config: object) -> str | None` — constructs an `ArtifactTemplate(root=template_dir, manifest=load_manifest(template_dir))`, renders via `render_template(template, data, config)`, encodes the result UTF-8, diffs bytes; returns a unified diff or `None`. `config` is required because `render_template`'s third parameter is threaded to `build_ll_namespace` (`artifact_templates.py:292-302`); it is unused while `theme` is omitted, but the parameter is not optional. Runs against the temp build dir, before promotion, **after** `validate_top_level_data(data, manifest["data_schema"])` — a template that round-trips but fails its own `cmd_render` data-validation path (`render.py:61`) is a shippable defect.
 - `promote(tmp_dir: Path, out_dir: Path, force: bool) -> None` — sibling-temp-dir promotion with backup/restore (see Proposed Solution 6); not a bare `os.replace`.
 
 ### Call Path
 
 `main_artifact` (`cli/artifact/__init__.py:38`) -> `cmd_templatize` (new,
-`cli/artifact/templatize.py`) -> `load_regions` (`--regions <map.json>`) ->
-`apply_regions` (+ `escape_literal_delimiters`) -> `build_manifest` ->
-*write sibling temp dir `<out>.tmp-<pid>`* -> `verify_round_trip` ->
-`render_template` (`artifact_templates.py:304-328`) -> `build_environment`
-(`:242-262`) -> `promote` (backup existing -> `os.replace` -> drop backup)
+`cli/artifact/templatize.py`) -> *reject any `\r` byte in the artifact* ->
+`load_regions` (`--regions <map.json>`) -> `extract_data` -> `derive_schema`
+-> `apply_regions` (+ `escape_literal_delimiters`) -> `build_manifest` ->
+*write sibling temp dir `<out>.tmp-<pid>`* -> `validate_top_level_data` ->
+`verify_round_trip` -> `render_template` (`artifact_templates.py:304-328`)
+-> `build_environment` (`:242-262`) -> `promote` (backup existing ->
+`os.replace` -> drop backup)
 
 ### Codebase Research Findings
 
@@ -387,11 +481,13 @@ _Wiring pass added by `/ll:wire-issue`:_
   must deliberately contain: a repeated region (N=2 and N=5 variants), a
   literal `[[=`/`[[%` inside a single-line inlined `<script>` or CSS block,
   HTML entities (`&amp;`, `&#39;`) inside a templatized region, non-ASCII
-  text (em dash / smart quotes) both inside and outside a region, and a
-  mid-line repeat group — the silent-failure classes this phase's ACs gate
-  on. Driven via `--regions <map.json>` with **no LLM in the test path**.
-  Fixture artifacts are read and asserted as `bytes`; a CRLF variant guards
-  the universal-newline-translation path.
+  text (em dash / smart quotes) both inside and outside a region, a
+  **mid-line repeat group** (a supported case — inline `<span>`s on one
+  line), one fixture per **mixed** block-tag boundary (both hard errors), and
+  a literal `[[% endraw %]]` (a hard error) — the silent-failure classes this
+  phase's ACs gate on. Driven via `--regions <map.json>` with **no LLM in the
+  test path**. Fixture artifacts are read and asserted as `bytes`; a CRLF
+  variant asserts up-front *rejection*, not a round trip.
 - Model dispatch tests on `TestArtifactCLIDispatch`
   (`test_policy_builder_emit.py:204-230`) — mock-handler dispatch (patch
   `sys.argv` + target `cmd_*`, assert `main_artifact()` routes correctly)
@@ -418,9 +514,12 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `docs/reference/CLI.md` § `ll-artifact` (line ~4455) — new subcommand
   section (Phase A surface: `--regions`, `--force`), including the
   `--regions` map's documented JSON shape (the Phase A/B seam), the
-  UTF-8-byte-offset convention, the exit-code table (`0`/`1`/`2`), and the
-  note that `<source>` is recorded into `manifest.source` but not read in
-  Phase A
+  UTF-8-byte-offset convention, the exit-code table (`0`/`1`/`2`), the CRLF
+  rejection rule, and the note that `<source>` is recorded into
+  `manifest.source` but not read in Phase A. Must also call out that `-o`
+  means a **template directory** here while `render`'s `-o` means an
+  **output directory** — the two subcommands sit adjacent in the same
+  epilog, so the overload needs to read as deliberate
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `docs/reference/CONFIGURATION.md:918` — `templates_dir` is currently
@@ -437,7 +536,7 @@ _Added by `/ll:refine-issue` — 2026-08-24 — based on codebase analysis:_
 - **Two coexisting subcommand-registration shapes exist in `cli/artifact/__init__.py`** — not one uniform pattern: `render`'s parser is built by an exported `add_render_parser(subparsers)` helper defined in `render.py:91-114` and called once from `__init__.py:111`; `policy-builder`/`design-md`'s parser args are instead built inline inside `main_artifact()` itself (`__init__.py:66-109`). The issue's cited precedent (`render`, `:111`) is the exported-helper shape — `templatize` following it means a real `add_templatize_parser` export, not inline argparse calls.
 - **No directory-scoped temp-build-then-promote helper exists anywhere in the codebase** (confirms the issue's own claim). The nearest adjacent pattern is `git_operations.py:~726`, which uses `tempfile.TemporaryDirectory()` to stage an isolated `GIT_INDEX_FILE` for a scoped `git add -A` — a temp-dir-scoped git-index trick, not a build-then-`os.replace`-a-directory helper. `verify_round_trip`'s promote step is genuinely new code with no reusable helper to call.
 - **`cmd_render`'s own output write is NOT atomic**: `render.py:81-82` does a plain `out_path.write_text(rendered, encoding="utf-8")` with no temp-file/replace step. `templatize`'s build-in-temp-then-promote requirement is a strictly higher fidelity bar than its own sibling command already meets — do not look to `cmd_render`'s write step as a promotion-flow precedent.
-- **Existing learning-test evidence already proves the frozen-environment primitives round-trip byte-identically**: `.ll/learning-tests/jinja2-byte-exact-round-trip.md` (raw log at `.ll/learning-tests/raw/jinja2-byte-exact-round-trip.txt`) records passing assertions for `build_environment()`'s delimiter/trim/autoescape settings on literal-only templates — directly relevant proof `apply_regions`/`verify_round_trip` can build on rather than re-deriving from scratch. **It covers only the easy half** (literal-only bodies) and must be extended before implementation with the three block-tag whitespace cases probed against the real environment during this review: own-line tag round-trips exactly; `+` whitespace-control markers (`[[%+ ... +%]]`) inject spurious blank lines and fail; a value containing `[[= ... =]]` renders verbatim without re-evaluation (so only literal, non-region text needs `raw`-escaping).
+- **Existing learning-test evidence already proves the frozen-environment primitives round-trip byte-identically**: `.ll/learning-tests/jinja2-byte-exact-round-trip.md` (raw log at `.ll/learning-tests/raw/jinja2-byte-exact-round-trip.txt`) records passing assertions for `build_environment()`'s delimiter/trim/autoescape settings on literal-only templates — directly relevant proof `apply_regions`/`verify_round_trip` can build on rather than re-deriving from scratch. **Extended 2026-08-24 during issue review** (claims 8-15) with the cases this phase's invariants rest on, each probed against the real environment: fully mid-line block tags round-trip byte-exactly; both *mixed* placements silently corrupt; a mid-line `raw` wrapper escapes a literal delimiter on a single-line `<script>`; a literal `[[% endraw %]]` is unescapable (`TemplateSyntaxError`); a value containing delimiters renders verbatim; `render_template`'s `read_text` destroys CRLF; `[[%+ ... +%]]` injects blank lines. **Implement against these claims, not against intuition about `trim_blocks`/`lstrip_blocks`** — two of them contradict the reading this issue originally shipped with.
 - **Closest checked-in-pair fixture convention in the test suite**: `scripts/tests/fixtures/streaming_parity/trace_*/` (`recorded.jsonl` + `expected.jsonl` per case, documented by a `README.md` with a `rebuild.sh` regeneration script) — but that suite asserts a relative-diff *tolerance*, not byte-exactness. The new `test_artifact_templatize.py` round-trip fixture needs a stricter byte-exact assertion; the directory-pair *layout* convention transfers, the diff-tolerance assertion does not.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
@@ -456,11 +555,19 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - [ ] Promotion over an existing `-o` template works: re-running `templatize --force` against a populated `-o` succeeds (guarding against the `os.replace`-onto-a-non-empty-directory `ENOTEMPTY` failure), and without `--force` an existing `-o` is an error raised before any build work. A test asserts no `<out>.tmp-*` or `<out>.bak-*` directory survives either path.
 - [ ] A repeated region in the source (N sections → N cards) is templatized as a Jinja2 loop over an array, not unrolled — asserted by a test with N=2 and N=5 data.
 - [ ] A repeat group whose iterations 2..N differ from iteration 1 in non-region literal text (e.g. `id="card-2"`, an alternating CSS class) fails loudly, naming the first differing byte offset, rather than producing a template that fails the round trip with a diff pointing at the render.
-- [ ] An artifact containing a literal `[[=` / `[[%` / `[[#` in inlined JS or CSS still round-trips byte-exactly — asserted by a fixture that includes one **on a single-line `<script>`**, the case where the `raw`/`endraw` wrapper has no own-line position available.
-- [ ] Block-tag placement: an emitted `[[% ... %]]` tag occupies its own line (whitespace-only prefix, newline suffix), so `trim_blocks`/`lstrip_blocks` cancel the added line exactly; a group boundary falling mid-line is a hard error naming the offset, not a best-effort splice. Asserted by a fixture with inline repeated elements on one line.
+- [ ] An artifact containing a literal `[[=` / `[[%` / `[[#` in inlined JS or CSS still round-trips byte-exactly — asserted by a fixture that includes one **on a single-line `<script>`**, wrapped by a mid-line `[[% raw %]]`/`[[% endraw %]]` pair.
+- [ ] An artifact containing a literal `[[% endraw %]]` in non-region text is a hard error naming the byte offset — never an emitted template that raises `TemplateSyntaxError` at render time.
+- [ ] Block-tag placement: every emitted `[[% ... %]]` tag is **either** fully own-line (whitespace-only prefix **and** immediate newline) **or** fully mid-line (non-whitespace prefix **and** non-newline suffix); both round-trip byte-exactly. Asserted by two fixtures — block-level repeated elements (own-line form) and inline repeated `<span>`s on one line (mid-line form), which is a **supported** case, not an error.
+- [ ] A **mixed** block-tag boundary — whitespace-only prefix without a following newline, or newline-followed without a whitespace-only prefix — is a hard error naming the offset, not a best-effort splice. Asserted by a fixture for each of the two mixed forms.
 - [ ] An artifact containing HTML entities (`&amp;`, `&#39;`) in a templatized region round-trips byte-exactly; the test asserts `data.json` stores the escaped form.
 - [ ] A non-ASCII artifact (em dash / smart quotes outside and inside a region) round-trips byte-exactly — the regression test for byte-offset vs. `str`-index divergence.
-- [ ] A CRLF artifact round-trips byte-exactly, or is rejected explicitly — never "passes" via universal-newline translation masking the difference.
+- [ ] A CRLF (or lone-`CR`) artifact is **rejected before any build work**, exit **1**, with a message naming the unsupported line ending — because `render_template` reads its body via `read_text` (`artifact_templates.py:315`), no such artifact can round-trip through the frozen renderer. A test asserts the rejection and that no `<out>`, `<out>.tmp-*`, or `<out>.rejected/` directory is created.
+- [ ] The produced `data.json` passes `validate_top_level_data(data, manifest["data_schema"])` — the same check `cmd_render` runs at `render.py:61` — asserted inside the temp-dir gate, before promotion, so a template cannot ship that round-trips but fails its own render path.
+- [ ] `data.json` values are extracted from the artifact byte stream by `extract_data`, never supplied by the `--regions` map; a map that carries a `data` or `data_schema` key is rejected by `load_regions` as an unknown key.
+- [ ] Two regions binding the same `expr` collapse to one value when their spans' bytes are identical, and are a hard error naming both offsets when they differ.
+- [ ] `anchor_before`/`anchor_after` are optional in the `--regions` map: a map omitting them loads and templatizes successfully.
+- [ ] An extensionless artifact is rejected (it would derive a `template..j2` body name); a multi-dot artifact (`report.min.html`) derives `template.html.j2` from `Path.suffix`, and `find_template_body()` resolves it.
+- [ ] A stale `<out>.tmp-*` / `<out>.bak-*` left by a crashed run is swept at the start of the next run — asserted by a test that pre-creates both and confirms a successful `templatize` removes them.
 - [ ] `apply_regions` raises on overlapping or out-of-bounds spans rather than merging best-effort.
 - [ ] `load_regions` fails closed on a malformed `--regions` map (unknown key, missing required field, non-integer offset) with a message naming the offending field — the Phase A/B seam contract FEAT-3315 validates its LLM response through.
 - [ ] A region expression binding a top-level `ll` name fails in `build_manifest` with a message naming the offending region, not as a downstream `ManifestError` at `load_manifest` time.

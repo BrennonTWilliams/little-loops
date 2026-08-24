@@ -11,3 +11,19 @@ claim6_comment_removed: PASS
 'beforeafter'
 claim7 raw output: 'start\nCARD:A\nCARD:B\nend'
 claim7_loop_roundtrip_n2: PASS
+claim8_midline_block_tags_roundtrip raw output: '<p><span>1</span><span>2</span></p>\n'
+claim8_midline_block_tags_roundtrip: PASS
+claim9_mixed_ws_prefix_no_newline_corrupts raw output: 'A\n<li>1</li><li>2</li>B\n'
+claim9_mixed_ws_prefix_no_newline_corrupts: PASS
+claim10_mixed_text_prefix_with_newline_corrupts raw output: '<p><li>1</li><li>2</li></p>\n'
+claim10_mixed_text_prefix_with_newline_corrupts: PASS
+claim11_midline_raw_escapes_literal_delimiter raw output: '<script>var a = "[[= x =]]";</script>\n'
+claim11_midline_raw_escapes_literal_delimiter: PASS
+claim12 raw output: "ERR TemplateSyntaxError: Encountered unknown tag 'endraw'."
+claim12_literal_endraw_is_unescapable: PASS
+claim13_value_delimiters_render_verbatim raw output: '[[= inner =]] and [[% for %]]'
+claim13_value_delimiters_render_verbatim: PASS
+claim14 raw output: b'A\nv\n'
+claim14_crlf_destroyed_by_read_text: PASS
+claim15_plus_markers_inject_blank_line raw output: 'A\n\n<li>1</li>\n\nB\n'
+claim15_plus_markers_inject_blank_line: PASS
