@@ -2256,6 +2256,31 @@ class TestPrecompactState:
         assert state["preserved"] is True
 
 
+class TestPreDoneStop:
+    """Test the pre_done Stop adapter end to end (FEAT-3118)."""
+
+    @pytest.fixture
+    def hook_script(self) -> Path:
+        """Path to the Claude Code stop adapter (FEAT-3118)."""
+        return Path(__file__).parent.parent.parent / "hooks/adapters/claude-code/stop.sh"
+
+    def test_exits_zero_outside_a_git_repo(
+        self, hook_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        """No .git ancestor -> the handler no-ops, exit 0, no consult attempted."""
+        monkeypatch.chdir(tmp_path)
+
+        result = subprocess.run(
+            [str(hook_script)],
+            input=json.dumps({"session_id": "session-1"}),
+            capture_output=True,
+            text=True,
+            timeout=20,
+        )
+
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+
+
 class TestPrecompactHandoff:
     """Integration tests for precompact-handoff.sh shell adapter.
 

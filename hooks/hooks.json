@@ -226,6 +226,17 @@
             "statusMessage": "Recording hook telemetry..."
           }
         ]
+      },
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/adapters/claude-code/stop.sh",
+            "timeout": 190,
+            "statusMessage": "Consulting advisor on working diff..."
+          }
+        ]
       }
     ],
     "SessionEnd": [

@@ -34,6 +34,8 @@ exits with the handler's exit code. Today it routes:
 
 - ``subagent_stop`` → :mod:`little_loops.hooks.subagent_stop` (closes out the matching ``subagent_runs`` row)
 
+- ``pre_done`` → :mod:`little_loops.hooks.pre_done` (Stop hook; auto-consults the advisor on the working diff, deduped per distinct diff state, FEAT-3118)
+
 Future intent handlers will be wired by adding entries to the dispatch table
 in :func:`main_hooks`.
 
@@ -77,6 +79,7 @@ _INTENT_EVENT_NAME = {
     "edit_batch_nudge": "PostToolUse",
     "subagent_start": "SubagentStart",
     "subagent_stop": "SubagentStop",
+    "pre_done": "Stop",
 }
 
 
@@ -112,7 +115,7 @@ _USAGE = (
     "Usage: python -m little_loops.hooks <intent>\n\n"
     "Available intents: pre_compact, pre_compact_handoff, session_start, user_prompt_submit,"
     " post_tool_use, pre_tool_use, edit_batch_nudge, session_end, drift_check, subagent_start,"
-    " subagent_stop"
+    " subagent_stop, pre_done"
 )
 
 _HOOK_INTENT_REGISTRY: dict[str, Callable[[LLHookEvent], LLHookResult]] = {}
@@ -140,6 +143,7 @@ def _dispatch_table() -> dict[str, Callable[[LLHookEvent], LLHookResult]]:
         post_tool_use,
         pre_compact,
         pre_compact_handoff,
+        pre_done,
         pre_tool_use,
         session_start,
         subagent_start,
@@ -160,6 +164,7 @@ def _dispatch_table() -> dict[str, Callable[[LLHookEvent], LLHookResult]]:
         "edit_batch_nudge": edit_batch_nudge.handle,
         "subagent_start": subagent_start.handle,
         "subagent_stop": subagent_stop.handle,
+        "pre_done": pre_done.handle,
     }
     # Built-ins shadow extension-provided intents on collision.
     return {**_HOOK_INTENT_REGISTRY, **built_ins}

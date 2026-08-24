@@ -122,6 +122,7 @@ changelog-data.json
 .ll/user-messages-*.jsonl
 .ll/export*.jsonl
 .ll/stray-quarantine-*/
+.ll/advisor-budget/
 .claude/ll-continue-prompt.md
 .claude/loop-suggestions/
 loop-catalog.*

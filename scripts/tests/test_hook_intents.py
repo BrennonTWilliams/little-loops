@@ -543,6 +543,30 @@ class TestHooksMainModule:
         )
         assert result.returncode == 0
 
+    def test_dispatch_pre_done_happy_path(self, tmp_path) -> None:
+        """``pre_done`` intent runs the handler and exits 0 outside a git repo (FEAT-3118)."""
+        result = subprocess.run(
+            [sys.executable, "-m", "little_loops.hooks", "pre_done"],
+            input=json.dumps({"session_id": "session-1"}),
+            capture_output=True,
+            text=True,
+            timeout=10,
+            cwd=str(tmp_path),
+        )
+        assert result.returncode == 0, f"returncode={result.returncode}; stderr={result.stderr!r}"
+
+    def test_dispatch_pre_done_malformed_payload(self, tmp_path) -> None:
+        """A missing session_id is a fail-soft no-op, not a failure (FEAT-3118)."""
+        result = subprocess.run(
+            [sys.executable, "-m", "little_loops.hooks", "pre_done"],
+            input="{}",
+            capture_output=True,
+            text=True,
+            timeout=10,
+            cwd=str(tmp_path),
+        )
+        assert result.returncode == 0
+
     def test_dispatch_subagent_stop_happy_path(self, tmp_path) -> None:
         """``subagent_stop`` intent runs the handler and exits 0 (ENH-2505)."""
         result = subprocess.run(

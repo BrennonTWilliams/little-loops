@@ -262,6 +262,63 @@ class TestClaudeCodeAdapterIntegration:
             f"adapter exited {result.returncode}; stderr={result.stderr!r}"
         )
 
+    def test_stop_adapter_exists_and_executable(self) -> None:
+        """hooks/adapters/claude-code/stop.sh must exist and be executable (FEAT-3118)."""
+        adapter = ADAPTER_DIR / "stop.sh"
+        assert adapter.is_file(), f"{adapter} does not exist"
+        assert os.access(adapter, os.X_OK), f"{adapter} is not executable"
+
+    def test_hooks_json_has_pre_done_stop_entry(self) -> None:
+        """hooks/hooks.json must have a Stop entry pointing to stop.sh (FEAT-3118)."""
+        data = json.loads(HOOKS_JSON.read_text())
+        assert "Stop" in data["hooks"], "hooks.json is missing Stop key"
+        cmds = [
+            h["command"]
+            for group in data["hooks"]["Stop"]
+            for h in group.get("hooks", [])
+            if h.get("type") == "command"
+        ]
+        assert any("stop.sh" in cmd for cmd in cmds), (
+            f"expected stop.sh in a Stop command; got {cmds!r}"
+        )
+
+    def test_hooks_json_pre_done_timeout_covers_advisor_default(self) -> None:
+        """The Stop/stop.sh timeout must be >= AdvisorConfig().timeout_seconds' default.
+
+        A killed hook has already spent budget (record_consult reserves before the
+        host call), so this coupling must not drift silently (FEAT-3118 AC #8).
+        """
+        from little_loops.config.orchestration import AdvisorConfig
+
+        data = json.loads(HOOKS_JSON.read_text())
+        entry = next(
+            group
+            for group in data["hooks"]["Stop"]
+            for h in group.get("hooks", [])
+            if h.get("type") == "command" and "stop.sh" in h["command"]
+        )
+        timeout = entry["hooks"][0]["timeout"]
+        assert timeout >= AdvisorConfig().timeout_seconds, (
+            f"Stop/stop.sh timeout ({timeout}) must be >= "
+            f"AdvisorConfig().timeout_seconds ({AdvisorConfig().timeout_seconds})"
+        )
+
+    def test_stop_adapter_round_trip(self, tmp_path: Path) -> None:
+        """stop.sh pipes stdin through the Python dispatcher and exits 0 outside a git repo."""
+        adapter = ADAPTER_DIR / "stop.sh"
+        payload = json.dumps({"session_id": "session-1", "hook_event_name": "Stop"})
+        result = subprocess.run(
+            [BASH, str(adapter)],
+            input=payload,
+            capture_output=True,
+            text=True,
+            timeout=20,
+            cwd=str(tmp_path),
+        )
+        assert result.returncode == 0, (
+            f"adapter exited {result.returncode}; stderr={result.stderr!r}"
+        )
+
     def test_subagent_stop_adapter_round_trip(self, tmp_path: Path) -> None:
         """subagent-stop.sh pipes stdin through the Python dispatcher and exits 0."""
         adapter = ADAPTER_DIR / "subagent-stop.sh"

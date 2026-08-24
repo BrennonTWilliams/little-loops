@@ -9536,7 +9536,7 @@ def main_hooks() -> int: ...
 4. Calls the handler; writes `result.stdout` to stdout if non-`None`, prints `result.feedback` to stderr if truthy, and returns `result.exit_code` (the `__main__` shim raises `SystemExit(...)`).
 
 **Adapter integration:**
-- Claude Code adapters (`hooks/adapters/claude-code/precompact.sh`, `precompact-handoff.sh`, `post-tool-use.sh`, `session-start.sh`, `session-end.sh`, `drift-check.sh`) invoke `python -m little_loops.hooks <intent>` directly — `LL_HOOK_HOST` defaults to `"claude-code"`.
+- Claude Code adapters (`hooks/adapters/claude-code/precompact.sh`, `precompact-handoff.sh`, `post-tool-use.sh`, `session-start.sh`, `session-end.sh`, `drift-check.sh`, `stop.sh`) invoke `python -m little_loops.hooks <intent>` directly — `LL_HOOK_HOST` defaults to `"claude-code"`.
 - The OpenCode adapter (`hooks/adapters/opencode/index.ts`) sets `LL_HOOK_HOST=opencode` before invoking the same CLI.
 - The Codex CLI adapter (`scripts/little_loops/hooks/adapters/codex/session-start.sh`, `pre-compact.sh`, `drift-check.sh`) sets `LL_HOOK_HOST=codex` before invoking the same CLI. The `hooks.json` template restricts `SessionStart` to `"matcher": "startup"` per FEAT-957's policy (avoids re-emitting identifiers on `resume`/`clear` and minimizes trust-hash churn); the `drift_check` intent (ENH-2888) reuses this same convention.
 

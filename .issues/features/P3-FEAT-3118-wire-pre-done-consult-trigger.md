@@ -4,10 +4,11 @@ title: Wire pre_done consult trigger into the Stop hook
 type: FEAT
 parent: FEAT-3038
 priority: P3
-status: open
+status: done
 testable: true
 verify_verdict: VALID
 discovered_date: 2026-08-08
+completed_at: '2026-08-24T02:06:25Z'
 depends_on:
 - FEAT-3116
 - FEAT-3120
@@ -393,6 +394,22 @@ _These touchpoints were identified by wiring analysis and must be included in th
 _Populated by `/ll:refine-issue` (2026-08-24), revised by the 2026-08-25
 pre-implementation review._
 
+### Deviations
+
+- **2026-08-23** — The Decision Rules below list `CLAUDE_SESSION_ID` seeding
+  as part of step 5 (alongside the consult call), after the step-3 dedup
+  check. The implementation seeds it earlier — immediately after the
+  timeout-clamp config is loaded, before `resolve_task_key()` is called for
+  the step-3 dedup lookup. Reason: the dedup file path is keyed on
+  `TaskKey.value`, and `resolve_task_key()` falls back to
+  `session_log.get_current_session_id()` (a nondeterministic "most recently
+  modified session JSONL" guess) whenever `CLAUDE_SESSION_ID` is unset. If
+  seeding happened after the dedup check as originally ordered, the dedup
+  file's key could resolve inconsistently between two `Stop` fires of the
+  same session — the exact hazard the session-ID plumbing section is meant to
+  close. Seeding before task-key resolution (used by both the dedup check and
+  the consult) closes it for both call sites, not just the consult.
+
 ### Types
 - `LLHookEvent` fields: `host: str`, `intent: str = ""`, `timestamp: str = ""`, `payload: dict = {}`, `session_id: str | None = None`, `cwd: str | None = None` (`scripts/little_loops/hooks/types.py`)
 - `LLHookResult` fields: `exit_code: int = 0`, `feedback: str | None = None`, `decision: str | None = None`, `data: dict = {}`, `stdout: str | None = None` (same file) — `exit_code` 0 = pass, 2 = block + inject `feedback` for Claude Code
@@ -452,6 +469,7 @@ Supporting constants and shapes:
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-24T02:06:03 - `8963b656-d221-49d9-8449-7169844dd5fd.jsonl`
 - `/ll:confidence-check` - 2026-08-24T01:04:54 - `b39154ec-0980-409b-84ab-ed4ad74fd627.jsonl`
 - `/ll:verify-issues` - 2026-08-24T01:01:13 - `cc9bd000-037b-4a44-932a-dc4ed454ef42.jsonl`
 - `/ll:confidence-check` - 2026-08-24T00:47:22 - `ac4ebe86-c119-4653-93c7-fc3fe0b64d39.jsonl`

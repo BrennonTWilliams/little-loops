@@ -69,6 +69,7 @@ This adapter→handler split is why the same hook logic runs across Claude Code,
 | **Stop** | context-handoff-sentinel | Drops a sentinel if the session ended context-heavy | — | on |
 | **Stop** | session-cleanup | Removes locks, state, scratch, orphaned worktrees | — | on |
 | **Stop** | record-hook-event | Telemetry shim: records the session-cleanup fire to `hook_events` | — | on |
+| **Stop** | pre_done | Auto-consults the advisor on the working diff, deduped per distinct diff state | — | off |
 | **SessionEnd** | scratch-cleanup | Prunes dead-PID scratch files from `.loops/tmp/scratch` | — | on |
 | **SessionEnd** | record-hook-event | Telemetry shim: records the scratch-cleanup fire to `hook_events` | — | on |
 | **PreCompact** | precompact | Snapshots task state before compaction (rubric-gated when `hooks.pre_compact.rubric.enabled: true`) | exit 2 | on |
@@ -404,7 +405,7 @@ silently clears an earlier error — the log records net state, not history.
 
 ## Stop
 
-Three hooks run after each assistant turn (Claude Code's `Stop` event). All are advisory and must never fail.
+Four hooks run after each assistant turn (Claude Code's `Stop` event). All are advisory and must never fail.
 
 ### Context handoff sentinel
 
@@ -432,6 +433,27 @@ in hook telemetry.
 Gated by `analytics.enabled` **and** `analytics.capture.hooks` (both default
 `true`, but `analytics.enabled` is off unless you turn it on). Records only —
 never blocks, never alters the shadowed hook's behavior.
+
+### PreDone advisor consult
+
+**Hook:** `stop.sh` → `little_loops.hooks.pre_done.handle` (FEAT-3118)
+
+Opt-in: fires only when `advisor.enabled: true` **and** `pre_done` is listed
+in `advisor.triggers`. Because `Stop` fires after *every* turn rather than at
+task completion, the handler dedups on a SHA-256 of the capped working diff
+(`git diff HEAD` + `git status --porcelain`, capped at 400 lines / 96,000
+bytes) — it consults once per distinct diff state, not once per turn. A
+consult whose result actually reached the advisor host records the new hash
+to `.ll/advisor-budget/<kind>-<value>.pre_done.json`; a skipped or failed
+consult never poisons the dedup.
+
+An empty diff, a non-git-work-tree root, or `advisor.timeout_seconds > 190`
+(the hook's own timeout margin) all short-circuit to a silent no-op. v1 is
+advisory only: a successful verdict is surfaced via **exit 0 + `feedback`**
+(the recommendation, confidence, risks, and dissent, printed to stderr) —
+never via blocking (`exit_code=2`). A failed or timed-out consult logs a
+warning and never blocks the turn. Bounded by `advisor.max_consults_per_task`
+like every other advisor trigger.
 
 ---
 
@@ -552,6 +574,8 @@ A few quick controls:
 | `hooks.stale_ref_fix` | SessionStart | `report` | `report` or `auto` |
 | `hooks.doc_drift_throttle_days` | SessionStart (drift-check) | `7` | Minimum days between doc-drift checks per project; `LL_DOC_DRIFT_DISABLE` opts out entirely |
 | `parallel.worktree_base` | Stop | `.worktrees` | Worktree cleanup scope (distinct from `automation.worktree_base`, which `ll-auto`/FSM sub-loops use and this hook does not read) |
+| `advisor.enabled` | Stop (pre_done) | `false` | Master switch for advisor auto-consults |
+| `advisor.triggers` | Stop (pre_done) | `[]` | Must include `"pre_done"` for the Stop hook to fire |
 
 Full schema and substitution rules: [Configuration Reference](../reference/CONFIGURATION.md).
 
