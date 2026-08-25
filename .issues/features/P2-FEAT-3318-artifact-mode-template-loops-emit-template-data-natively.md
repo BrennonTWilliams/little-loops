@@ -215,8 +215,11 @@ driver of this issue's Large/Medium-risk rating. Fusing them makes the two sets 
 acceptance criteria untestable in isolation — the same argument that split this
 issue out of FEAT-3309.
 
-Recommended: keep steps 1–4 + the round-trip test here (Medium / Low risk); file the
-`html-anything` prompt variant as a child of EPIC-3299 depending on this issue.
+Done: steps 1–6 + the round-trip test stay here (Medium / Low risk); the
+`html-anything` prompt variant is **FEAT-3320**, a child of EPIC-3299 depending on
+this issue. FEAT-3320 also carries the finding that surfaced while scoping it — the
+oracle's screenshot/rubric cycle has nothing to screenshot in template mode, so the
+pilot needs a per-iteration `ll-artifact render` rather than just a prompt rewrite.
 
 ## Use Case
 
@@ -312,7 +315,7 @@ _Added by `/ll:refine-issue` — 2026-08-25 — based on codebase analysis:_
 4. Default the destination to `<templates_dir>/{run_id}-{loop_name}.llat/`, always appending `.llat` rather than deriving it from `source.suffix`.
 5. Add the runtime gate via `load_manifest`/`find_template_body`/`validate_top_level_data`, plus the explicit source-is-a-file rejection, with the non-failing-the-run disposition.
 6. Round-trip test through `ll-artifact render` against a hand-written `.llat/` fixture (no LLM); docs.
-7. *(Split out — see § Generate-prompt variant)* the `html-anything` template-emitting generate-prompt variant, selected by the `artifact_mode` context var.
+7. *(Split out to **FEAT-3320**)* the `html-anything` template-emitting generate-prompt variant, selected by the `artifact_mode` context var. Not in scope here.
 
 ## Acceptance Criteria
 
@@ -324,7 +327,7 @@ _Added by `/ll:refine-issue` — 2026-08-25 — based on codebase analysis:_
 - [ ] `promote_run_artifact` still never raises and never changes the run's exit status in `template` mode, including when the destination already exists (`promote()` raises `SpliceError` unless `force=True`) and when the destination is on another filesystem.
 - [ ] `artifact_mode` survives a `to_dict()`/`from_dict()` round-trip and does not trip the unknown-top-level-key WARNING in `structural_rules.py::load_and_validate()`.
 - [ ] `artifact_mode` defaults to `"file"`; every loop that declares nothing behaves exactly as today, and the `artifact_versioning_ok` MR-5 tests stay green.
-- [ ] *(Split out — see § Generate-prompt variant)* `html-anything` runs in both `file` (default, unchanged) and `template` mode, selected per-run via the existing `ll-loop run --context artifact_mode=template`.
+- [ ] *(Split out to **FEAT-3320** — not an AC of this issue)* `html-anything` runs in both `file` (default, unchanged) and `template` mode, selected per-run via the existing `ll-loop run --context artifact_mode=template`.
 
 ## Impact
 

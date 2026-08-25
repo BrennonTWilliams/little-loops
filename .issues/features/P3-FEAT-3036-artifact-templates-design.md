@@ -17,6 +17,7 @@ relates_to:
 - FEAT-3304
 - FEAT-3310
 - FEAT-3311
+- FEAT-3320
 verify_verdict: VALID
 completed_at: '2026-08-24T04:16:48Z'
 learning_tests_required:
