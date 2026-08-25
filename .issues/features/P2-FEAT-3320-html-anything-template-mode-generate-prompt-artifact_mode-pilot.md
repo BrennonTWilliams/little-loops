@@ -18,6 +18,9 @@ depends_on:
 - FEAT-3318
 relates_to:
 - FEAT-3036
+learning_tests_required:
+- playwright
+- jinja2
 ---
 
 # FEAT-3320: html-anything template-mode generate prompt (artifact_mode pilot)
@@ -106,6 +109,16 @@ the existing `ll-loop run --context artifact_mode=template`
 The generate prompt branches by interpolating that var. FSM prompts are static
 text, so this is a conditional block in the prompt body, not two prompts.
 
+**`html-anything.yaml` has no `artifact_output` block today** — `hitl-md.yaml` is
+the only loop that declares one. FEAT-3318's static gate requires one whenever
+the effective mode is `template`, so this issue must add it. Consequence to
+handle deliberately: an `artifact_output` block is mode-independent, so adding it
+makes `html-anything` start promoting `index.html` into `promotion_dir` on
+**every** run — including default `file`-mode runs that this issue otherwise
+leaves untouched. That is a behavior change to the unmodified path, and it needs
+either an explicit sign-off or an `on:` allowlist narrow enough to keep the
+default path quiet.
+
 ### Scope bound
 
 `html-anything` only. The remaining eight HTML-family loops are a follow-up,
@@ -136,7 +149,37 @@ scoped once this pilot reports an actual success rate.
 - `docs/reference/CLI.md`, `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` — the
   template-mode invocation
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-25 — based on codebase analysis:_
+
+- **No existing loop invokes `ll-artifact render` as a state**: a grep for `ll-artifact render` across `scripts/little_loops/loops/**/*.yaml` returns zero hits. This issue's per-iteration render step has no direct precedent to model after — it is a genuinely new wiring shape, not an established convention.
+- **Mode-branch conventions this codebase already holds** (two live, non-superseding shapes — pick one knowingly rather than defaulting):
+  - *Inline conditional prose*: `oracles/research-coverage.yaml:29-39,57-65,110,150,248,280` interpolates the raw context value directly into prompt text (`${context.academic_mode}`) and phrases the branch as natural-language instructions ("If academic_mode is true: ... If false: ..."). There is no `{% if %}`/Jinja conditional syntax anywhere in the FSM prompt-rendering path (confirmed against `fsm/interpolation.py`) — this matches the issue's own Proposed Solution statement that "FSM prompts are static text, so this is a conditional block in the prompt body, not two prompts."
+  - *Dedicated dispatch state*: `rn-implement.yaml:183-194` (`dequeue_next`) uses a `shell`/`exit_code`-evaluated state (`test "${context.schedule_mode}" = "value_ranked" && exit 0 || exit 1`) to route to one of two full downstream states (`fifo_pop` vs `select_next`), with both `on_no` and `on_error` falling back to the pre-existing legacy path.
+  - Default-preservation guard convention (BUG-1947): a runner-injected context default that is an empty string (like `design_tokens_context: ""` in this same file) must be checked for **truthiness**, not key-existence, since the key is always declared — the same shape applies if `artifact_mode` is given an empty-string/`"file"` default rather than being absent when unset.
+- **`artifact_path` override precedent**: two sibling wrapper loops already override the oracle's `artifact_path` parameter via their `with:` block — `svg-image-generator.yaml:71` (`artifact_path: "image.svg"`) and `flux-image-generator.yaml:111` (`artifact_path: "image.png"`) — confirming the mechanism this issue proposes reusing (repoint `artifact_path` at a rendered file) is the established way consumers customize the oracle's screenshot target without forking it.
+- **ENH-2903's abandon gate has no cause-distinction mechanism today**: `evaluate`'s `on_yes`/`on_no`/`on_error` all route to the same `snapshot` state (`generator-evaluator.yaml:83-85`); a miss is tracked only as a consecutive-count (`.screenshot_misses`), with no signal anywhere for *why* a screenshot was missed. ENH-2903's own resolution explicitly rejected a harder `on_error: failed` split as "too blunt." A render-failure-specific message (this issue's Acceptance Criteria) has no existing mechanism to build on within the oracle's current routing shape, and the oracle is out of bounds to fork.
+- **No existing conformance test asserts byte-for-byte-unchanged prompt text**: `test_builtin_loops.py`'s current `html-anything` coverage (and the closest analog, `academic_mode` coverage for `research-coverage.yaml`) asserts structural facts and text-fragment presence/absence, never full-string/hash equality on a `generate_prompt` value. This issue's "file-mode regression must stay byte-for-byte unchanged" acceptance criterion has no existing test shape to copy — the regression test will need a new assertion style (e.g. exact-string or hash comparison), not an extension of the existing fragment-presence style.
+
 ## Program Design
+
+### Types
+
+N/A — no new data shape is introduced; `artifact_mode` is a plain string context
+var, not a new dataclass/schema.
+
+### Signatures
+
+- `cmd_render(args: argparse.Namespace, logger: Logger) -> int`
+  (`scripts/little_loops/cli/artifact/render.py:72`) — exit `0` on success, exit
+  `1` uniformly for every failure category (unresolvable template, invalid
+  manifest, missing/malformed/schema-invalid data, output-path collision, bad
+  `--source`, lockfile-write failure).
+- `run_gen_eval`'s existing `with:` binding (`html-anything.yaml:122,148,182`)
+  passes `run_dir`, `generate_prompt`, `rubric`, `pass_threshold` into
+  `oracles/generator-evaluator`; this issue adds `artifact_path` as a new key in
+  that same binding.
 
 ### Call Path
 
@@ -146,6 +189,17 @@ template-shaped `generate_prompt` + a rendered `artifact_path` ->
 `ll-artifact render` (per iteration, for the screenshot) -> Playwright screenshot ->
 rubric score -> `finalize_done` -> `promote_run_artifact` (FEAT-3318) ->
 `<templates_dir>/{run_id}-html-anything.llat/`
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-25 — based on codebase analysis:_
+
+- **Current `context:` block** (`html-anything.yaml:24-28`) declares exactly `description`, `pass_threshold: 7`, `design_tokens_context: ""` — no `artifact_mode` key exists yet. FEAT-3318 (this issue's dependency) is itself still `status: open` with zero code hits for `artifact_mode` anywhere in the tree.
+- **Current `run_gen_eval` `with:` block** (`html-anything.yaml:122,148,182`) passes exactly `run_dir`, `generate_prompt`, `rubric`, `pass_threshold` into `oracles/generator-evaluator` — it does **not** currently pass `artifact_path`, so the oracle's own default (`"index.html"`, `generator-evaluator.yaml:52`) applies implicitly today. Adding template mode means adding an `artifact_path` binding here for the first time.
+- `cmd_render(args: argparse.Namespace, logger: Logger) -> int` (`scripts/little_loops/cli/artifact/render.py:72`) — exit `0` on success, exit `1` (uniformly, no distinct codes) for every failure category: unresolvable template, invalid manifest, missing/malformed/schema-invalid data, an existing-file collision at the output path, a bad `--source`, or a lockfile-write failure.
+- **Rendered filename is manifest-controlled, not caller-controlled**: `render_to_disk` (`render.py:36-69`) writes to `output_dir / template.manifest["output"]` — only the containing directory is settable via `-o`, the filename itself comes from `manifest.yaml`'s `output` key. Consequence for this issue: the per-iteration `artifact_path` value passed to the oracle must be `<rendered-output-dir>/<manifest.output>`, not an arbitrary fixed name the wrapper chooses.
+- **`promote_run_artifact` is currently a no-op for this loop**: it returns `None` whenever `fsm.artifact_output is None` (`fsm/persistence.py:753`), and `html-anything.yaml` declares no top-level `artifact_output:` key today. FEAT-3318 must land the `artifact_output`/`artifact_mode`-aware promotion logic before this issue's generate-prompt work has anything to promote into a `.llat/` directory — confirms the existing `depends_on: FEAT-3318` frontmatter edge is load-bearing, not incidental.
+- `--context KEY=VALUE` (`cli/loop/__init__.py:294`, applied in `cli/loop/run.py:184-188`) is a fully generic mechanism — it does a plain `fsm.context[key] = value` string assignment with no artifact-specific dispatch. Setting `artifact_mode=template` today would only add an undeclared context key; nothing currently reads it.
 
 ## Implementation Steps
 
@@ -187,7 +241,10 @@ month — no LLM call, no `templatize` round trip, no fidelity loss.
       `.llat/` directory that passes FEAT-3318's runtime gate and is rendered by
       `ll-artifact render` with no `templatize` step.
 - [ ] The default (`file`) path is unchanged — same prompt, same `index.html`, same
-      reported outputs; a regression test pins this.
+      reported outputs; a regression test pins this. This includes the promotion
+      side effect of the newly-required `artifact_output` block: either
+      default-mode runs do not promote, or the change is explicitly signed off and
+      documented.
 - [ ] `oracles/generator-evaluator.yaml` is **not** forked or branched on artifact
       mode; template mode is expressed entirely through its existing
       `artifact_path` / `generate_prompt` parameters.
@@ -210,3 +267,8 @@ month — no LLM call, no `templatize` round trip, no fidelity loss.
 ## Status
 
 **Open** | Created: 2026-08-25 | Priority: P2
+
+
+## Session Log
+- `/ll:refine-issue` - 2026-08-25T16:33:23 - `057ec3b7-ff77-4991-8763-e77045d2afc1.jsonl`
+- `/ll:refine-issue` - 2026-08-25T16:33:14 - `057ec3b7-ff77-4991-8763-e77045d2afc1.jsonl`
