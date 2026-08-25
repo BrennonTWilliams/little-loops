@@ -186,9 +186,21 @@ jobs:
             echo "::warning::SINK_ISSUE env var is unset; Path E diagnostic stream disabled for this run"
           else
             INITIAL_BODY="Path E diagnostic stream for run $GITHUB_RUN_ID. Updates every ~30s; 65KB cap handled by drop-oldest meta-lines. Last successful PATCH before runner death is the snapshot we want."
-            COMMENT_URL=$(gh issue comment "$SINK_ISSUE" --repo "${GITHUB_REPOSITORY:-BrennonTWilliams/little-loops}" --body "$INITIAL_BODY" 2>/dev/null || echo "")
-            # gh issue comment outputs the URL like https://github.com/.../issues/11#issuecomment-12345
-            COMMENT_ID=$(echo "$COMMENT_URL" | grep -oE '#[0-9]+$' | tr -d '#' || echo "")
+            # Path E POST-once-then-PATCH comment_id extraction.
+            # Use `gh api` POST + `--jq .id` so the comment_id comes from the JSON
+            # response field directly. URL-based parsing (e.g. `grep -oE '#[0-9]+$'`
+            # on `https://github.com/.../issues/11#issuecomment-12345`) FAILS because
+            # `#` is preceded by `issuecomment-`, not digits — the regex matches
+            # nothing and the `|| echo ""` fallback silently fires. Result: Path E
+            # would spam ~90 new comments per 45-min dispatch instead of PATCHing one,
+            # opposite of the design intent at :172-175.
+            #
+            # JSON contract (`id` field on issue comment) is stable across GH URL
+            # format changes. `--jq .id` returns the comment_id (numeric) or empty
+            # on failure; `|| echo ""` normalizes the empty case.
+            COMMENT_ID=$(gh api -X POST "/repos/${GITHUB_REPOSITORY:-BrennonTWilliams/little-loops}/issues/${SINK_ISSUE}/comments" \
+              -f body="$INITIAL_BODY" --jq .id 2>/dev/null || echo "")
+            COMMENT_URL="https://github.com/${GITHUB_REPOSITORY:-BrennonTWilliams/little-loops}/issues/${SINK_ISSUE}#issuecomment-${COMMENT_ID}"
             echo "Path E initial comment: issue=$SINK_ISSUE id=$COMMENT_ID url=$COMMENT_URL"
             ( while true; do
                 {
