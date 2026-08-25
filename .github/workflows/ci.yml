@@ -168,6 +168,7 @@ jobs:
             pytest-junit.xml
             mem.log
             heartbeat.log
+            sigprobe.log
           retention-days: 30
           if-no-files-found: error
 
