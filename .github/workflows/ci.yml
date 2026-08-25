@@ -85,7 +85,7 @@ jobs:
     # (no inputs.sink_issue), env.SINK_ISSUE is empty → Path E guard at :185
     # emits ::warning:: and stays off (correct). On dispatch, defaults to '11'.
     env:
-      SINK_ISSUE: ${{ inputs.sink_issue }}
+      SINK_ISSUE: ${{ github.event.inputs.sink_issue }}
     steps:
       - uses: actions/checkout@v4
 
