@@ -145,9 +145,42 @@ scoped once this pilot reports an actual success rate.
   `html-anything.yaml` (both modes parse, validate, and route)
 - A `file`-mode regression asserting the default path is unchanged
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_enh3035_artifact_template_kit.py:62-68`
+  (`test_policy_builder_renders_byte_identically_to_golden_fixture`) — the
+  byte-for-byte-unchanged pattern to model the file-mode regression test after
+  (golden fixture + exact `.read_bytes()` equality). Corrects the earlier
+  refine-issue research note claiming no such shape exists in this codebase —
+  it exists for CLI-command output, not loop YAML, so still needs adapting.
+  [Agent 3 finding]
+- `scripts/tests/test_builtin_loops.py:~13230-13269`
+  (`test_snapshot_routes_to_score_gate`, `test_snapshot_writes_screenshot_misses_counter`,
+  `test_score_gate_routes_fresh_screenshot_to_score`,
+  `test_check_screenshot_abandon_routes_to_summary_on_cap`,
+  `test_record_screenshot_skip_falls_through_to_stall_chain`,
+  `test_screenshot_abandoned_summary_emits_abandoned_key`) — existing
+  ENH-2903 abandon-gate coverage on `oracles/generator-evaluator.yaml`; must
+  keep passing unmodified since the oracle is not forked. None currently
+  assert on the literal abandon message text
+  (`generator-evaluator.yaml:301`), so a render-failure-specific message can
+  be added alongside it without touching these assertions. [Agent 3 finding]
+
 ### Documentation
 - `docs/reference/CLI.md`, `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` — the
   template-mode invocation
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/guides/LOOPS_REFERENCE.md` (`html-anything` section, ~lines 1510-1582)
+  — the `run_dir` context-var row lists file-mode-only outputs (`index.html`,
+  `brief.md`, `rubric.md`, `critique.md`, `screenshot.png`), the context-variables
+  table has no `artifact_mode` row, and the usage examples/override block show
+  only the `file`-mode invocation. Needs an `artifact_mode` row plus a
+  template-mode example. [Agent 2 finding]
+- `docs/reference/loops.md` (`oracles/generator-evaluator` section, ~line 474)
+  — the `artifact_path` parameter description and its `run_gen_eval`
+  invocation example are file-mode only; add a note or example for the
+  template-mode `with:` override (mechanism itself is unchanged — the oracle
+  is not forked). [Agent 2 finding]
 
 ### Codebase Research Findings
 
@@ -283,6 +316,7 @@ month — no LLM call, no `templatize` round trip, no fidelity loss.
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-08-25T17:31:29 - `f8fad891-fb12-4a0c-8abb-8d32e08edbbf.jsonl`
 - `/ll:refine-issue` - 2026-08-25T17:24:56 - `93455bb6-59d7-4ea1-9471-0a612ecdba4d.jsonl`
 - `/ll:refine-issue` - 2026-08-25T16:33:23 - `057ec3b7-ff77-4991-8763-e77045d2afc1.jsonl`
 - `/ll:refine-issue` - 2026-08-25T16:33:14 - `057ec3b7-ff77-4991-8763-e77045d2afc1.jsonl`
