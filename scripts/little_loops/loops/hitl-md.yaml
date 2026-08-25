@@ -40,6 +40,15 @@ scope:
   - "hitl-md-review.html"
 max_steps: 20
 timeout: 7200
+# FEAT-3309: promotes the working index.html to ./hitl-md-review.html in the
+# invocation cwd on the `done` terminal — replaces the hand-written `finalize` cp
+# state. `on: [done]` preserves today's reachability: only score's on_yes route
+# (and max-iterations exhaustion, which also lands in `done`) promotes; the
+# `finalize_failed -> failed` diagnostic path does not.
+artifact_output:
+  from: index.html
+  to: ./hitl-md-review.html
+  "on": [done]
 
 # HARNESS: Context variables for input.
 # input is populated from the CLI positional arg via input_key: input.
@@ -151,7 +160,7 @@ states:
   run_gen_eval:
     # HARNESS: Thin-wrapper delegation — runs generate → evaluate (Playwright screenshot) →
     # score (LLM rubric) inside oracles/generator-evaluator until ALL_PASS or max_iterations.
-    # Routes to finalize on success; failed on error or exhausted retries (ENH-1869).
+    # Routes to finalize_done on success; failed on error or exhausted retries (ENH-1869).
     loop: oracles/generator-evaluator
     with:
       run_dir: "${captured.run_dir.output}"
@@ -248,25 +257,9 @@ states:
         If ALL seven criterion scores meet their individual thresholds, output exactly: ALL_PASS
         Otherwise output: ITERATE
       pass_threshold: 7
-    on_yes: finalize
+    on_yes: finalize_done
     on_no: finalize_failed
     on_error: finalize_failed
-
-  finalize:
-    # HARNESS: Final-copy step — promotes the working index.html out of the
-    # timestamped build directory into ./hitl-md-review.html in the loop's
-    # invocation cwd, so the reviewable artifact is discoverable at the top
-    # level of the directory the user ran the loop from. Best-effort: on
-    # error we still route to done so the user gets the build-artifact paths.
-    action_type: shell
-    action: |
-      cp "${captured.run_dir.output}/index.html" "./hitl-md-review.html" && echo "FINALIZED"
-    evaluate:
-      type: output_contains
-      pattern: "FINALIZED"
-    on_yes: finalize_done
-    on_no: finalize_done
-    on_error: finalize_done
 
   finalize_done:
     action_type: prompt
@@ -327,4 +320,8 @@ states:
     # HARNESS: Explicit failure terminal — reached when an unrecoverable error occurs
     # (e.g. LLM failure in the score state). Provides a clear signal distinct from a
     # max_iterations timeout, making failure mode visible in ll-loop history.
+    # FEAT-3309: failure: true added — was previously terminal-only despite the
+    # comment above; this is the latent defect fix that lets the `on:` allowlist
+    # (not this flag) be what actually gates promotion.
     terminal: true
+    failure: true

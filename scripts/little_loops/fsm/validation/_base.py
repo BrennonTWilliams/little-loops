@@ -113,6 +113,7 @@ KNOWN_TOP_LEVEL_KEYS: frozenset[str] = frozenset(
         "partial_route_ok",
         "artifact_versioning",
         "artifact_versioning_ok",
+        "artifact_output",
         "generator_fix_ok",
         "bash_default_ok",
         "shell_pid_ok",

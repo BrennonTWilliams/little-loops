@@ -726,6 +726,7 @@ def cmd_resume(
         loops_dir=loops_dir,
         circuit=circuit,
         instance_id=instance_id,
+        config=config,
         orchestration_config=config.orchestration,
     )
 

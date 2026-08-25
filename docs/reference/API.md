@@ -5559,6 +5559,7 @@ class FSMLoop:
     partial_route_ok: bool = False        # Suppress MR-4 partial-route dead-end lint rule (ENH-1917)
     artifact_versioning: bool = False     # Declare that this loop versions artifacts per-iteration (satisfies MR-5)
     artifact_versioning_ok: bool = False  # Suppress MR-5 artifact-versioning lint rule (ENH-1957)
+    artifact_output: ArtifactOutput | None = None  # Loop->artifact handoff: promote run_dir deliverable to a durable path on terminal (FEAT-3309)
     generator_fix_ok: bool = False        # Suppress MR-6 generator-fix discipline lint rule (ENH-2079)
     bash_default_ok: bool = False         # Suppress MR-7 bash-default interpolation lint rule (ENH-2348)
     evidence_contract_ok: bool = False    # Suppress MR-8 evidence-contract lint rule (ENH-2342)

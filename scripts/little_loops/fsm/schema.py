@@ -1306,6 +1306,57 @@ class CircuitConfig:
 
 
 @dataclass
+class ArtifactOutput:
+    """Loop→artifact handoff declaration (FEAT-3309).
+
+    Declares the run deliverable to promote out of the transient ``run_dir``
+    into a durable path on an authorized terminal. ``from`` is required and
+    resolved relative to ``fsm.context["run_dir"]``; ``to`` defaults to a
+    run-identified name (``{run_id}-{loop_name}{suffix}``, mirroring
+    ``archive_run()``'s naming) under ``config.artifacts.promotion_dir``, or
+    may name a fixed path (e.g. ``./hitl-md-review.html``) honoured relative
+    to the invocation cwd. ``on`` names the terminal states that authorize
+    promotion; defaults to all non-failure terminals.
+    """
+
+    from_path: str
+    to: str | None = None
+    on: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for JSON/YAML serialization."""
+        result: dict[str, Any] = {"from": self.from_path}
+        if self.to is not None:
+            result["to"] = self.to
+        if self.on:
+            result["on"] = list(self.on)
+        return result
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any] | str) -> ArtifactOutput:
+        """Create from dictionary or scalar shorthand (JSON/YAML deserialization).
+
+        A bare string (``artifact_output: index.html``) is shorthand for
+        ``from:`` with the default ``to:`` and ``on:``.
+
+        PyYAML resolves an *unquoted* ``on:`` mapping key as the Python
+        boolean ``True`` (YAML 1.1's bareword-boolean resolver, same
+        landmine as ``no``/``yes``/``off``). Authors should write ``"on":``,
+        but this falls back to the ``True`` key so a loop author who forgets
+        the quotes still gets the declared allowlist instead of "on: []".
+        """
+        if isinstance(data, str):
+            return cls(from_path=data)
+        untyped_data: dict[Any, Any] = data
+        raw_on = untyped_data.get("on", untyped_data.get(True, []))
+        return cls(
+            from_path=data["from"],
+            to=data.get("to"),
+            on=list(raw_on),
+        )
+
+
+@dataclass
 class FSMLoop:
     """Complete FSM loop definition.
 
@@ -1391,6 +1442,8 @@ class FSMLoop:
     partial_route_ok: bool = False
     artifact_versioning: bool = False
     artifact_versioning_ok: bool = False
+    # FEAT-3309: loop→artifact handoff declaration; None (default) = no promotion.
+    artifact_output: ArtifactOutput | None = None
     generator_fix_ok: bool = False
     bash_default_ok: bool = False
     evidence_contract_ok: bool = False
@@ -1527,6 +1580,8 @@ class FSMLoop:
             result["artifact_versioning"] = self.artifact_versioning
         if self.artifact_versioning_ok:
             result["artifact_versioning_ok"] = self.artifact_versioning_ok
+        if self.artifact_output is not None:
+            result["artifact_output"] = self.artifact_output.to_dict()
         if self.generator_fix_ok:
             result["generator_fix_ok"] = self.generator_fix_ok
         if self.bash_default_ok:
@@ -1652,6 +1707,11 @@ class FSMLoop:
             partial_route_ok=data.get("partial_route_ok", False),
             artifact_versioning=data.get("artifact_versioning", False),
             artifact_versioning_ok=data.get("artifact_versioning_ok", False),
+            artifact_output=(
+                ArtifactOutput.from_dict(data["artifact_output"])
+                if data.get("artifact_output") is not None
+                else None
+            ),
             generator_fix_ok=data.get("generator_fix_ok", False),
             bash_default_ok=data.get("bash_default_ok", False),
             evidence_contract_ok=data.get("evidence_contract_ok", False),

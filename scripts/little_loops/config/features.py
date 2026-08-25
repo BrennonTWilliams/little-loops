@@ -379,11 +379,18 @@ class ArtifactsConfig:
     (`len(artifact_bytes) + len(source_bytes)`) — deliberately not tokens,
     since bytes are measurable before any host call and need no tokenizer.
     v1 uses this flat default only; `context_window_for()` is not consulted.
+
+    `promotion_dir` (FEAT-3309) is the destination directory for loop→artifact
+    handoff promotion (``promote_run_artifact``) — deliberately distinct from
+    `default_output_dir`, which defaults to `.` and would drop a file into the
+    project root on every promoting loop's run. Relative to the project root,
+    created on demand, and inside the gitignored `.loops/` tree by default.
     """
 
     default_output_dir: str = "."
     templates_dir: str = "artifacts/templates"
     templatize_max_input_bytes: int = 400000
+    promotion_dir: str = ".loops/artifacts"
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> ArtifactsConfig:
@@ -392,6 +399,7 @@ class ArtifactsConfig:
             default_output_dir=data.get("default_output_dir", "."),
             templates_dir=data.get("templates_dir", "artifacts/templates"),
             templatize_max_input_bytes=data.get("templatize_max_input_bytes", 400000),
+            promotion_dir=data.get("promotion_dir", ".loops/artifacts"),
         )
 
 

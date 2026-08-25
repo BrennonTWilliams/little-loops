@@ -10,7 +10,7 @@ import re
 from collections import deque
 from pathlib import Path
 
-from little_loops.fsm.loop_paths import resolve_loop_path
+from little_loops.fsm.loop_paths import get_builtin_loops_dir, resolve_loop_path
 from little_loops.fsm.schema import FSMLoop
 from little_loops.fsm.validation._base import (
     ValidationError,
@@ -96,6 +96,53 @@ def _validate_loop_references(fsm: FSMLoop, loop_dir: Path) -> list[ValidationEr
                 )
             )
     return errors
+
+
+_LOOP_REF_RE_TEMPLATE = r"^\s*loop:\s*['\"]?{name}['\"]?\s*$"
+
+
+def _validate_artifact_output_subloop_reachability(
+    fsm: FSMLoop, loop_dir: Path
+) -> list[ValidationError]:
+    """Warn when a loop declaring ``artifact_output`` (FEAT-3309) is reachable
+    as a sub-loop from another loop file.
+
+    A child loop launched by a ``loop:`` state runs through a plain
+    ``Executor``, never ``PersistentExecutor``, so it never reaches the
+    promotion hook — a declared ``artifact_output`` is silently ignored
+    there. This is a best-effort static text scan (raw ``loop: <name>``
+    line match) across loop YAML files under *loop_dir* and the built-in
+    loops directory; it cannot see dynamic (``${...}``) loop names.
+    """
+    if fsm.artifact_output is None:
+        return []
+
+    pattern = re.compile(_LOOP_REF_RE_TEMPLATE.format(name=re.escape(fsm.name)), re.MULTILINE)
+    roots = {loop_dir, get_builtin_loops_dir()}
+    for root in roots:
+        if not root.is_dir():
+            continue
+        for yaml_path in root.rglob("*.yaml"):
+            if yaml_path.resolve() == (loop_dir / f"{fsm.name}.yaml").resolve():
+                continue
+            try:
+                text = yaml_path.read_text()
+            except OSError:
+                continue
+            if pattern.search(text):
+                return [
+                    ValidationError(
+                        message=(
+                            f"'{fsm.name}' declares artifact_output but is referenced as a "
+                            f"sub-loop from '{yaml_path.name}'. Sub-loops run through a "
+                            "plain Executor, not PersistentExecutor, so artifact_output "
+                            "has no effect there."
+                        ),
+                        path="artifact_output",
+                        severity=ValidationSeverity.WARNING,
+                    )
+                ]
+    return []
 
 
 def _validate_policy_dimensions_scored(fsm: FSMLoop) -> list[ValidationError]:

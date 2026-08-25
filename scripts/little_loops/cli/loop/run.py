@@ -576,6 +576,7 @@ def cmd_run(
             circuit=circuit,
             instance_id=instance_id,
             pid=os.getpid(),
+            config=_config,
             run_model=getattr(args, "run_model", None) or None,
             run_effort=getattr(args, "run_effort", None) or None,
             compression_config=_config.compression,

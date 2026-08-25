@@ -32,13 +32,16 @@ import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from little_loops.events import EventBus
 from little_loops.fsm.concurrency import _process_alive
 from little_loops.fsm.executor import EventCallback, ExecutionResult, FSMExecutor
 from little_loops.fsm.schema import FSMLoop
 from little_loops.fsm.validation import _is_meta_loop
+
+if TYPE_CHECKING:
+    from little_loops.config import BRConfig
 
 RUNNING_DIR = ".running"
 HISTORY_DIR = ".history"
@@ -672,6 +675,70 @@ def _reconcile_stale_runs(loops_dir: Path) -> int:
     return archived
 
 
+def promote_run_artifact(
+    fsm: FSMLoop,
+    run_dir: Path,
+    config: BRConfig,
+    result: ExecutionResult,
+    started_at: str,
+) -> Path | None:
+    """Promote a run's declared deliverable to a durable path (FEAT-3309).
+
+    No-op (returns ``None``, never raises) when: the loop declares no
+    ``artifact_output``; the terminal is a failure terminal
+    (``result.failure_terminal``); the terminal is outside the declared
+    ``on:`` allowlist (default: any non-failure terminal); or the declared
+    ``from:`` source does not exist under *run_dir* (e.g. max-iterations
+    exhaustion before the deliverable was written). A copy failure is logged
+    and treated the same as a missing source — promotion never fails the run,
+    mirroring hitl-md's best-effort ``cp``.
+
+    *run_dir* and a fixed ``to:`` are resolved the same way: an absolute path
+    passes through, a relative path is anchored to the process's current
+    working directory (matching ``hitl-md.yaml``'s own resolution). A
+    relative ``config.artifacts.promotion_dir`` (the run-identified default
+    naming path) is anchored to ``config.project_root`` instead, since it is
+    a project-level config default rather than a loop-authored value.
+    """
+    spec = fsm.artifact_output
+    if spec is None or result.failure_terminal:
+        return None
+    if spec.on and result.final_state not in spec.on:
+        return None
+
+    source = run_dir / spec.from_path
+    if not source.exists():
+        logger.info(
+            "promote_run_artifact: declared source %s does not exist; skipping promotion",
+            source,
+        )
+        return None
+
+    if spec.to is not None:
+        dest = Path(spec.to)
+    else:
+        run_id = (
+            started_at.replace(":", "").replace(".", "").replace("+", "")[:17]
+            if started_at
+            else datetime.now(UTC).strftime("%Y-%m-%dT%H%M%S")
+        )
+        promotion_dir = Path(config.artifacts.promotion_dir)
+        if not promotion_dir.is_absolute():
+            promotion_dir = config.project_root / promotion_dir
+        dest = promotion_dir / f"{run_id}-{fsm.name}{source.suffix}"
+
+    try:
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, dest)
+    except OSError as e:
+        logger.warning(
+            "promote_run_artifact: failed to promote %s to %s: %s", source, dest, e
+        )
+        return None
+
+    return dest
+
+
 class PersistentExecutor:
     """FSM Executor with state persistence and event streaming.
 
@@ -689,6 +756,7 @@ class PersistentExecutor:
         loops_dir: Path | None = None,
         instance_id: str | None = None,
         pid: int | None = None,
+        config: BRConfig | None = None,
         **executor_kwargs: Any,
     ) -> None:
         """Initialize persistent executor.
@@ -699,6 +767,10 @@ class PersistentExecutor:
             loops_dir: Base directory for loops (default: .loops)
             instance_id: Optional unique instance identifier for file path scoping
             pid: OS PID of the running process; stored in saved state for reconciliation
+            config: Project config, used by ``promote_run_artifact`` (FEAT-3309) to
+                resolve ``artifacts.promotion_dir``. When ``None`` (e.g. tests that
+                construct ``PersistentExecutor`` directly), a default-valued
+                ``BRConfig`` is loaded lazily on first use.
             **executor_kwargs: Additional kwargs for FSMExecutor
         """
         from little_loops.fsm.handoff_handler import HandoffBehavior, HandoffHandler
@@ -707,6 +779,7 @@ class PersistentExecutor:
         self.fsm = fsm
         self.loops_dir = loops_dir
         self._run_pid = pid
+        self._config = config
         self.persistence = persistence or StatePersistence(
             fsm.name, loops_dir or Path(".loops"), instance_id=instance_id
         )
@@ -977,6 +1050,25 @@ class PersistentExecutor:
             self.persistence.clear_all()
 
         result = self._executor.run()
+
+        # FEAT-3309: promote before the context snapshot below so the promoted
+        # path reaches persisted state / archive, not just the terminal print.
+        if self.fsm.artifact_output is not None:
+            run_dir_for_promotion = self.fsm.context.get("run_dir", "")
+            if run_dir_for_promotion:
+                if self._config is None:
+                    from little_loops.config import BRConfig
+
+                    self._config = BRConfig(Path.cwd())
+                promoted = promote_run_artifact(
+                    self.fsm,
+                    Path(run_dir_for_promotion),
+                    self._config,
+                    result,
+                    self._executor.started_at,
+                )
+                if promoted is not None:
+                    self.fsm.context["promoted_artifact"] = str(promoted)
 
         # Update final state
         final_status = map_final_status(

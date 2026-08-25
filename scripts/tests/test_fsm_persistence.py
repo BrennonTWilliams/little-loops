@@ -9,7 +9,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from little_loops.fsm.executor import ActionResult
+from little_loops.fsm.executor import ActionResult, ExecutionResult
 from little_loops.fsm.persistence import (
     LoopState,
     PersistentExecutor,
@@ -20,8 +20,9 @@ from little_loops.fsm.persistence import (
     get_loop_history,
     list_run_history,
     list_running_loops,
+    promote_run_artifact,
 )
-from little_loops.fsm.schema import FSMLoop, StateConfig
+from little_loops.fsm.schema import ArtifactOutput, FSMLoop, StateConfig
 
 
 class TestLoopState:
@@ -1454,6 +1455,221 @@ class TestPersistentExecutor:
         assert (archive_path / "meta-eval.jsonl").exists()
         entry = json.loads((archive_path / "meta-eval.jsonl").read_text().strip())
         assert entry["agreed"] is True
+
+
+class _StubArtifactsConfig:
+    def __init__(self, promotion_dir: str) -> None:
+        self.promotion_dir = promotion_dir
+
+
+class _StubConfig:
+    def __init__(self, promotion_dir: str, project_root: Path | None = None) -> None:
+        self.artifacts = _StubArtifactsConfig(promotion_dir)
+        self.project_root = project_root or Path("/tmp")
+
+
+def _make_result(
+    final_state: str = "done", failure_terminal: bool = False
+) -> ExecutionResult:
+    return ExecutionResult(
+        final_state=final_state,
+        iterations=1,
+        terminated_by="terminal",
+        duration_ms=10,
+        captured={},
+        failure_terminal=failure_terminal,
+    )
+
+
+class TestPromoteRunArtifact:
+    """Unit tests for promote_run_artifact (FEAT-3309)."""
+
+    def test_no_op_when_no_artifact_output_declared(self, tmp_path: Path) -> None:
+        fsm = FSMLoop(name="l", initial="s", states={"s": StateConfig(terminal=True)})
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        (run_dir / "index.html").write_text("<html></html>")
+        result = promote_run_artifact(
+            fsm, run_dir, _StubConfig(str(tmp_path / "promoted")), _make_result(), ""
+        )
+        assert result is None
+
+    def test_no_op_on_failure_terminal(self, tmp_path: Path) -> None:
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        (run_dir / "index.html").write_text("<html></html>")
+        fsm = FSMLoop(
+            name="l",
+            initial="s",
+            states={"s": StateConfig(terminal=True)},
+            artifact_output=ArtifactOutput(from_path="index.html"),
+        )
+        result = promote_run_artifact(
+            fsm,
+            run_dir,
+            _StubConfig(str(tmp_path / "promoted")),
+            _make_result(failure_terminal=True),
+            "",
+        )
+        assert result is None
+
+    def test_no_op_when_terminal_outside_on_allowlist(self, tmp_path: Path) -> None:
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        (run_dir / "index.html").write_text("<html></html>")
+        fsm = FSMLoop(
+            name="l",
+            initial="s",
+            states={"s": StateConfig(terminal=True)},
+            artifact_output=ArtifactOutput(from_path="index.html", on=["done"]),
+        )
+        result = promote_run_artifact(
+            fsm,
+            run_dir,
+            _StubConfig(str(tmp_path / "promoted")),
+            _make_result(final_state="other_terminal"),
+            "",
+        )
+        assert result is None
+
+    def test_no_op_when_declared_source_missing(self, tmp_path: Path) -> None:
+        """Max-iterations-exhaustion-without-output case: clean no-op, not an error."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        fsm = FSMLoop(
+            name="l",
+            initial="s",
+            states={"s": StateConfig(terminal=True)},
+            artifact_output=ArtifactOutput(from_path="index.html", on=["done"]),
+        )
+        result = promote_run_artifact(
+            fsm, run_dir, _StubConfig(str(tmp_path / "promoted")), _make_result(), ""
+        )
+        assert result is None
+
+    def test_promotes_to_run_identified_default_name(self, tmp_path: Path) -> None:
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        (run_dir / "index.html").write_text("<html>hi</html>")
+        fsm = FSMLoop(
+            name="my-loop",
+            initial="s",
+            states={"s": StateConfig(terminal=True)},
+            artifact_output=ArtifactOutput(from_path="index.html", on=["done"]),
+        )
+        promotion_dir = tmp_path / "promoted"
+        dest = promote_run_artifact(
+            fsm,
+            run_dir,
+            _StubConfig(str(promotion_dir)),
+            _make_result(),
+            "2026-01-15T10:30:00.123456+00:00",
+        )
+        assert dest is not None
+        assert dest.parent == promotion_dir
+        assert dest.name.endswith("-my-loop.html")
+        assert dest.read_text() == "<html>hi</html>"
+
+    def test_promotes_to_fixed_to_path(self, tmp_path: Path) -> None:
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        (run_dir / "index.html").write_text("<html>hi</html>")
+        fixed_dest = tmp_path / "fixed.html"
+        fsm = FSMLoop(
+            name="my-loop",
+            initial="s",
+            states={"s": StateConfig(terminal=True)},
+            artifact_output=ArtifactOutput(
+                from_path="index.html", to=str(fixed_dest), on=["done"]
+            ),
+        )
+        dest = promote_run_artifact(
+            fsm, run_dir, _StubConfig(str(tmp_path / "promoted")), _make_result(), ""
+        )
+        assert dest == fixed_dest
+        assert fixed_dest.read_text() == "<html>hi</html>"
+
+    def test_no_op_when_on_empty_promotes_any_non_failure_terminal(self, tmp_path: Path) -> None:
+        """Default on: (empty list) authorizes any non-failure terminal."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        (run_dir / "index.html").write_text("hi")
+        fsm = FSMLoop(
+            name="my-loop",
+            initial="s",
+            states={"s": StateConfig(terminal=True)},
+            artifact_output=ArtifactOutput(from_path="index.html"),
+        )
+        dest = promote_run_artifact(
+            fsm,
+            run_dir,
+            _StubConfig(str(tmp_path / "promoted")),
+            _make_result(final_state="whatever_terminal"),
+            "",
+        )
+        assert dest is not None
+
+
+class TestPromoteRunArtifactE2E:
+    """PersistentExecutor.run() integration coverage (FEAT-3309)."""
+
+    def test_promoted_path_readable_from_saved_state(self, tmp_path: Path) -> None:
+        """The promoted path must land in persisted state, not just stdout/context."""
+        from little_loops.config import BRConfig
+
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        (run_dir / "index.html").write_text("<html>done</html>")
+
+        fsm = FSMLoop(
+            name="artifact-loop",
+            initial="done",
+            states={"done": StateConfig(terminal=True)},
+            artifact_output=ArtifactOutput(from_path="index.html", on=["done"]),
+            context={"run_dir": str(run_dir)},
+        )
+        loops_dir = tmp_path / ".loops"
+        config = BRConfig(tmp_path)
+        mock_runner = MockActionRunner()
+        executor = PersistentExecutor(
+            fsm, loops_dir=loops_dir, action_runner=mock_runner, config=config
+        )
+        executor.run()
+
+        promoted_dir = tmp_path / ".loops" / "artifacts"
+        promoted_files = list(promoted_dir.glob("*-artifact-loop.html"))
+        assert len(promoted_files) == 1
+
+        saved_state = executor.persistence.load_state()
+        assert saved_state is not None
+        assert saved_state.context.get("promoted_artifact") == str(promoted_files[0])
+
+    def test_quiet_run_still_promotes(self, tmp_path: Path) -> None:
+        """Promotion happens at the persistence layer, independent of --quiet display."""
+        from little_loops.config import BRConfig
+
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        (run_dir / "index.html").write_text("<html>done</html>")
+
+        fsm = FSMLoop(
+            name="artifact-loop-quiet",
+            initial="done",
+            states={"done": StateConfig(terminal=True)},
+            artifact_output=ArtifactOutput(from_path="index.html", on=["done"]),
+            context={"run_dir": str(run_dir)},
+        )
+        loops_dir = tmp_path / ".loops"
+        config = BRConfig(tmp_path)
+        mock_runner = MockActionRunner()
+        executor = PersistentExecutor(
+            fsm, loops_dir=loops_dir, action_runner=mock_runner, config=config
+        )
+        # --quiet only affects run_foreground's display layer, never constructed here;
+        # this confirms promotion itself has no dependency on it.
+        executor.run()
+
+        assert fsm.context.get("promoted_artifact") is not None
 
 
 class TestUtilityFunctions:

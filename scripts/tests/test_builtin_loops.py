@@ -10671,10 +10671,14 @@ class TestHitlMdLoop:
 
     def test_required_states_exist(self, data: dict) -> None:
         """Thin wrapper must retain pre-generate states and add run_gen_eval delegation."""
-        required = {"init", "segment", "run_gen_eval", "finalize", "done", "failed"}
+        required = {"init", "segment", "run_gen_eval", "finalize_done", "done", "failed"}
         actual = set(data["states"].keys())
         missing = required - actual
         assert not missing, f"Missing states: {missing}"
+
+    def test_finalize_state_retired(self, data: dict) -> None:
+        """finalize's hand-written cp is retired in favor of artifact_output (FEAT-3309)."""
+        assert "finalize" not in data["states"]
 
     def test_inline_generate_evaluate_score_states_removed(self, data: dict) -> None:
         """Inline generate, evaluate, and score states must be absent in the thin wrapper."""
@@ -10736,10 +10740,15 @@ class TestHitlMdLoop:
         assert "pass_threshold" in with_, "run_gen_eval.with must contain 'pass_threshold'"
 
     def test_run_gen_eval_routes_to_finalize_on_yes(self, data: dict) -> None:
-        """run_gen_eval must route to finalize when sub-loop succeeds (ALL_PASS)."""
+        """run_gen_eval must route to finalize_done when sub-loop succeeds (ALL_PASS).
+
+        FEAT-3309: the hand-written `finalize` cp state was retired in favor of
+        the declarative `artifact_output` header field, so on_yes now routes
+        directly to finalize_done.
+        """
         state = data["states"].get("run_gen_eval", {})
-        assert state.get("on_yes") == "finalize", (
-            f"run_gen_eval.on_yes should be 'finalize', got {state.get('on_yes')!r}"
+        assert state.get("on_yes") == "finalize_done", (
+            f"run_gen_eval.on_yes should be 'finalize_done', got {state.get('on_yes')!r}"
         )
 
     def test_run_gen_eval_routes_to_failed_on_failure(self, data: dict) -> None:
@@ -10760,10 +10769,19 @@ class TestHitlMdLoop:
             f"segment.next should be 'run_gen_eval', got {state.get('next')!r}"
         )
 
-    def test_finalize_state_routes_to_done(self, data: dict) -> None:
-        """finalize state must route to done (via finalize_done) after copying the output HTML."""
-        state = data["states"].get("finalize", {})
-        assert state.get("on_yes") == "finalize_done"
+    def test_artifact_output_declares_promotion(self, data: dict) -> None:
+        """FEAT-3309: artifact_output replaces the hand-written finalize cp state."""
+        spec = data.get("artifact_output", {})
+        assert spec.get("from") == "index.html"
+        assert spec.get("to") == "./hitl-md-review.html"
+        # NOTE: PyYAML resolves an unquoted `on:` key to the bool True (YAML 1.1
+        # bareword-boolean gotcha) — the loop file quotes it as "on":.
+        assert spec.get("on") == ["done"]
+
+    def test_failed_terminal_has_failure_flag(self, data: dict) -> None:
+        """FEAT-3309: failed terminal gains failure: true (latent defect fix)."""
+        state = data["states"].get("failed", {})
+        assert state.get("failure") is True
 
     def test_context_has_input(self, data: dict) -> None:
         """context block must define input (singular); output_dir is runner-injected run_dir."""

@@ -59,6 +59,7 @@ from little_loops.fsm.validation.meta_rules import (
     _validate_partial_route_dead_end,
 )
 from little_loops.fsm.validation.reachability import (
+    _validate_artifact_output_subloop_reachability,
     _validate_capture_reachability,
     _validate_loop_references,
     _validate_policy_dimensions_scored,
@@ -1753,6 +1754,7 @@ def load_and_validate(
     errors.extend(_validate_with_bindings(fsm, path.parent))
     errors.extend(_validate_loop_references(fsm, path.parent))
     errors.extend(_validate_fragment_bindings(fsm, path.parent))
+    errors.extend(_validate_artifact_output_subloop_reachability(fsm, path.parent))
 
     # Filter to errors only (not warnings) for raising
     error_list = [e for e in errors if e.severity == ValidationSeverity.ERROR]

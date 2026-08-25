@@ -17,6 +17,7 @@ import yaml
 
 from little_loops.fsm.schema import (
     DEFAULT_LLM_MODEL,
+    ArtifactOutput,
     CircuitConfig,
     CommandEntry,
     CostCeilingConfig,
@@ -3925,6 +3926,91 @@ class TestFSMLoopArtifactVersioning:
         restored = FSMLoop.from_dict(original.to_dict())
         assert restored.artifact_versioning is True
         assert restored.artifact_versioning_ok is True
+
+
+class TestFSMLoopArtifactOutput:
+    """Tests for FSMLoop.artifact_output (FEAT-3309)."""
+
+    def test_defaults_to_none(self) -> None:
+        fsm = FSMLoop(
+            name="test",
+            initial="start",
+            states={"start": StateConfig(terminal=True)},
+        )
+        assert fsm.artifact_output is None
+
+    def test_to_dict_omits_when_none(self) -> None:
+        fsm = FSMLoop(
+            name="test",
+            initial="start",
+            states={"start": StateConfig(terminal=True)},
+        )
+        assert "artifact_output" not in fsm.to_dict()
+
+    def test_to_dict_includes_when_set(self) -> None:
+        fsm = FSMLoop(
+            name="test",
+            initial="start",
+            states={"start": StateConfig(terminal=True)},
+            artifact_output=ArtifactOutput(from_path="index.html", to="out.html", on=["done"]),
+        )
+        d = fsm.to_dict()
+        assert d["artifact_output"] == {"from": "index.html", "to": "out.html", "on": ["done"]}
+
+    def test_from_dict_full_mapping(self) -> None:
+        data = {
+            "name": "test",
+            "initial": "start",
+            "states": {"start": {"terminal": True}},
+            "artifact_output": {"from": "index.html", "to": "out.html", "on": ["done"]},
+        }
+        fsm = FSMLoop.from_dict(data)
+        assert fsm.artifact_output == ArtifactOutput(
+            from_path="index.html", to="out.html", on=["done"]
+        )
+
+    def test_from_dict_scalar_shorthand(self) -> None:
+        """A bare string is shorthand for from: with default to:/on:."""
+        data = {
+            "name": "test",
+            "initial": "start",
+            "states": {"start": {"terminal": True}},
+            "artifact_output": "index.html",
+        }
+        fsm = FSMLoop.from_dict(data)
+        assert fsm.artifact_output == ArtifactOutput(from_path="index.html")
+
+    def test_from_dict_defaults_to_none_when_absent(self) -> None:
+        data = {
+            "name": "test",
+            "initial": "start",
+            "states": {"start": {"terminal": True}},
+        }
+        assert FSMLoop.from_dict(data).artifact_output is None
+
+    def test_round_trip(self) -> None:
+        original = FSMLoop(
+            name="my-loop",
+            initial="start",
+            states={"start": StateConfig(terminal=True)},
+            artifact_output=ArtifactOutput(from_path="index.html", to="out.html", on=["done"]),
+        )
+        restored = FSMLoop.from_dict(original.to_dict())
+        assert restored.artifact_output == original.artifact_output
+
+    def test_from_dict_bareword_on_key_yaml_gotcha_fallback(self) -> None:
+        """PyYAML resolves an unquoted `on:` mapping key to the bool True.
+
+        A loop author who forgets to quote `"on":` still gets the declared
+        allowlist rather than a silently empty one (FEAT-3309).
+        """
+        fsm = ArtifactOutput.from_dict({"from": "index.html", True: ["done"]})
+        assert fsm.on == ["done"]
+
+    def test_artifact_output_is_known_top_level_key(self) -> None:
+        from little_loops.fsm.validation._base import KNOWN_TOP_LEVEL_KEYS
+
+        assert "artifact_output" in KNOWN_TOP_LEVEL_KEYS
 
 
 class TestGeneratorFixOk:

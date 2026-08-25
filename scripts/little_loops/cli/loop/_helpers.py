@@ -1894,6 +1894,12 @@ def run_foreground(
                 _using_alt_screen = False
             _restore_sigwinch_handler()
 
+        # FEAT-3309: deliberately unguarded — --quiet suppresses live decoration,
+        # not the one line naming the file the run's loop→artifact handoff produced.
+        promoted_artifact = fsm.context.get("promoted_artifact")
+        if promoted_artifact:
+            print(f"Promoted artifact: {colorize(_relativize_to_cwd(str(promoted_artifact)), '32')}")
+
         if not renderer.quiet:
             print()
             duration_sec = result.duration_ms / 1000

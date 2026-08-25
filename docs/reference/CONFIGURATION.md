@@ -180,7 +180,8 @@ For interactive editing, use `/ll:configure`.
 
   "artifacts": {
     "default_output_dir": ".",
-    "templates_dir": "artifacts/templates"
+    "templates_dir": "artifacts/templates",
+    "promotion_dir": ".loops/artifacts"
   },
 
   "loops": {
@@ -917,12 +918,14 @@ Output settings for `ll-artifact`, the generator of self-contained human-facing 
 | `default_output_dir` | `str` | `"."` | Directory where `ll-artifact` writes generated artifacts when no `--output`/`-o` override is given. Relative paths resolve against the project root. |
 | `templates_dir` | `str` | `"artifacts/templates"` | Directory (relative to the project root) where named `.llat/` artifact templates are looked up by `ll-artifact render <name>` when the given argument does not resolve as a filesystem path. Also the default write target for `ll-artifact templatize`'s `-o` resolution (FEAT-3314) — when `-o` is omitted, `templatize` writes `<templates_dir>/<artifact-stem>.llat`. |
 | `templatize_max_input_bytes` | `int` | `400000` | Combined artifact+source-document size ceiling, in **bytes** (not tokens), that `ll-artifact templatize` enforces before issuing its LLM region-discovery call when `--regions` is omitted (FEAT-3315). Exceeding it exits `1` naming the measured size, with no host call issued. |
+| `promotion_dir` | `str` | `".loops/artifacts"` | Destination directory for loop→artifact handoff promotion (FEAT-3309) — where a loop's declared `artifact_output` deliverable is copied on an authorized terminal (`ll-loop run`/`resume`). Relative to the project root, created on demand. **Deliberately distinct from `default_output_dir`**, which defaults to `.` — promotion never uses `default_output_dir`, so it never drops a file into the project root by default. |
 
 ```json
 "artifacts": {
   "default_output_dir": ".",
   "templates_dir": "artifacts/templates",
-  "templatize_max_input_bytes": 400000
+  "templatize_max_input_bytes": 400000,
+  "promotion_dir": ".loops/artifacts"
 }
 ```
 

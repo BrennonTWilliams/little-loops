@@ -1171,3 +1171,110 @@ class TestPolicyDimensionsScored:
         )
         errors = _validate_policy_dimensions_scored(fsm)
         assert errors == []
+
+
+class TestArtifactOutputSubloopReachability:
+    """FEAT-3309: warn when a loop declaring artifact_output is reachable as a
+    sub-loop — sub-loops run through a plain Executor and never reach the
+    PersistentExecutor promotion hook."""
+
+    def _write_yaml(self, path: Path, body: str) -> Path:
+        path.write_text(body)
+        return path
+
+    def test_warns_when_referenced_as_subloop(self, tmp_path: Path) -> None:
+        child = self._write_yaml(
+            tmp_path / "child-loop.yaml",
+            (
+                "name: child-loop\n"
+                "description: test\n"
+                "initial: work\n"
+                "artifact_output:\n"
+                "  from: index.html\n"
+                "states:\n"
+                "  work:\n"
+                "    action: run.sh\n"
+                "    on_yes: done\n"
+                "    on_no: done\n"
+                "  done:\n"
+                "    terminal: true\n"
+            ),
+        )
+        self._write_yaml(
+            tmp_path / "parent-loop.yaml",
+            (
+                "name: parent-loop\n"
+                "description: test\n"
+                "initial: launch\n"
+                "states:\n"
+                "  launch:\n"
+                "    loop: child-loop\n"
+                "    on_complete: done\n"
+                "  done:\n"
+                "    terminal: true\n"
+            ),
+        )
+        _, diagnostics = load_and_validate(child, raise_on_error=False)
+        subloop_warnings = [
+            d
+            for d in diagnostics
+            if d.severity == ValidationSeverity.WARNING and d.path == "artifact_output"
+        ]
+        assert len(subloop_warnings) == 1, f"Expected 1 warning, got: {diagnostics}"
+        assert "parent-loop.yaml" in subloop_warnings[0].message
+
+    def test_no_warning_when_never_referenced_as_subloop(self, tmp_path: Path) -> None:
+        child = self._write_yaml(
+            tmp_path / "standalone-loop.yaml",
+            (
+                "name: standalone-loop\n"
+                "description: test\n"
+                "initial: work\n"
+                "artifact_output:\n"
+                "  from: index.html\n"
+                "states:\n"
+                "  work:\n"
+                "    action: run.sh\n"
+                "    on_yes: done\n"
+                "    on_no: done\n"
+                "  done:\n"
+                "    terminal: true\n"
+            ),
+        )
+        _, diagnostics = load_and_validate(child, raise_on_error=False)
+        subloop_warnings = [d for d in diagnostics if d.path == "artifact_output"]
+        assert subloop_warnings == []
+
+    def test_no_warning_when_artifact_output_absent(self, tmp_path: Path) -> None:
+        child = self._write_yaml(
+            tmp_path / "child-loop.yaml",
+            (
+                "name: child-loop\n"
+                "description: test\n"
+                "initial: work\n"
+                "states:\n"
+                "  work:\n"
+                "    action: run.sh\n"
+                "    on_yes: done\n"
+                "    on_no: done\n"
+                "  done:\n"
+                "    terminal: true\n"
+            ),
+        )
+        self._write_yaml(
+            tmp_path / "parent-loop.yaml",
+            (
+                "name: parent-loop\n"
+                "description: test\n"
+                "initial: launch\n"
+                "states:\n"
+                "  launch:\n"
+                "    loop: child-loop\n"
+                "    on_complete: done\n"
+                "  done:\n"
+                "    terminal: true\n"
+            ),
+        )
+        _, diagnostics = load_and_validate(child, raise_on_error=False)
+        subloop_warnings = [d for d in diagnostics if d.path == "artifact_output"]
+        assert subloop_warnings == []

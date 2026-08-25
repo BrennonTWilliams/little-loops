@@ -3,9 +3,10 @@ id: FEAT-3309
 title: "Loop\u2192artifact handoff: promote a run artifact to a durable path"
 type: FEAT
 priority: P2
-status: open
+status: done
 discovered_by: manual
 discovered_date: '2026-08-23'
+completed_at: '2026-08-25T01:18:33Z'
 parent: EPIC-3299
 depends_on: []
 relates_to:
@@ -55,7 +56,7 @@ Verified against the tree:
 - `FSMPersistence.archive_run` (`fsm/persistence.py:552-598`) copies only
   `summary.json`. The artifact is not even retained by the archive path.
 - `artifact_versioning_ok` is **only** a lint concept: declared at
-  `fsm/schema.py:1363`, consumed solely by the meta-rule at
+  `fsm/schema.py:1393`, consumed solely by the meta-rule at
   `fsm/validation/meta_rules.py:270-350`. It is not a registry, not a handoff, and
   not read by any runtime code.
 
@@ -199,6 +200,31 @@ apply — this is a deliberate deviation, not an omission.
 
 - `promote_run_artifact(fsm: FSMLoop, run_dir: Path, config: BRConfig) -> Path | None`
 
+### Deviations
+
+- 2026-08-25 (`/ll:manage-issue`): `promote_run_artifact`'s implemented signature is
+  `(fsm, run_dir, config, result: ExecutionResult, started_at: str) -> Path | None`,
+  two params beyond the cited `(fsm, run_dir, config)`. The design's own Terminal
+  Gating and Hook Point sections require `result.failure_terminal`,
+  `result.final_state` (the `on:` allowlist check), and `started_at` (the
+  run-identified default name, mirroring `archive_run()`'s `state.started_at`
+  usage) — passing `result` and `started_at` explicitly avoids re-deriving them
+  from executor internals inside the function. Also: `config.artifacts.promotion_dir`
+  is resolved against `config.project_root` when relative (not the process cwd) —
+  the design's "anchored to the invocation cwd" resolution note applies to `run_dir`
+  and a fixed `to:` (loop-authored values), not to this project-level config default;
+  anchoring it to cwd caused a real bug in initial implementation (writes landed in
+  whatever directory the test/process happened to run from instead of the project
+  root) caught by the E2E test in `test_fsm_persistence.py`.
+- 2026-08-25: `artifact_output.on` is written unquoted (`on: [done]`) in the design's
+  own example YAML, but PyYAML resolves an unquoted `on:` mapping key to the Python
+  boolean `True` (YAML 1.1 bareword-boolean resolver) — a landmine that bit the
+  `hitl-md.yaml` implementation directly (`ll-loop validate` round-tripped it as
+  `{True: ['done']}`). Fixed by quoting `"on":` in `hitl-md.yaml`, and
+  `ArtifactOutput.from_dict` now falls back to the `True` key when `"on"` is absent,
+  so a loop author who forgets to quote it still gets the declared allowlist instead
+  of a silently-empty one.
+
 ### Call Path
 
 `PersistentExecutor.run()` -> `promote_run_artifact` ->
@@ -305,7 +331,7 @@ truth with no reconciliation path.
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/fsm/schema.py` — new `artifact_output` header field beside `artifact_versioning_ok` (`:1362-1363`), serialize (`:1498`), parse (`:1624`)
+- `scripts/little_loops/fsm/schema.py` — new `artifact_output` header field beside `artifact_versioning_ok` (`:1393`), serialize (`:1528-1529`), parse (`:1654`)
 - `scripts/little_loops/fsm/validation/_base.py:113` — register `artifact_output` in `KNOWN_TOP_LEVEL_KEYS`
 - `scripts/little_loops/fsm/persistence.py:967-1004` — call `promote_run_artifact` in `PersistentExecutor.run()`
 - `scripts/little_loops/cli/loop/run.py` / `_helpers.py` — thread the promotion config scalars; add the one post-run print
@@ -407,6 +433,8 @@ _Added by `/ll:refine-issue` — 2026-08-25; revised at the 2026-08-24 split rev
 **Open** | Created: 2026-08-23 | Priority: P2
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-25T01:18:14 - `c0b9fe69-0e8b-4aa4-850b-b9fc74a99fe4.jsonl`
+- `/ll:ready-issue` - 2026-08-25T00:48:41 - `6b9d2b35-5899-4da0-a89c-c5c8e28da0ba.jsonl`
 - `/ll:confidence-check` - 2026-08-25T00:41:40 - `0e80376c-027e-4f90-86a7-35c1d4c043e1.jsonl`
 - Pre-implementation review - 2026-08-24 - added `artifact_output.on:` terminal gating (hitl-md declares no `failure: true` state, so "non-failure terminal" was not a safe default), pinned the hook to `persistence.py:979` ahead of the `:997` context snapshot, added missing-source and sub-loop/simulate semantics, renamed the context key to `promoted_artifact`
 - `/ll:confidence-check` - 2026-08-25T00:30:25 - `050c493c-d9d9-4791-a094-bde43a4931f1.jsonl`

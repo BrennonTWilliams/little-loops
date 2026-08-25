@@ -1889,6 +1889,11 @@
           "type": "integer",
           "default": 400000,
           "description": "Combined artifact+source-document size ceiling, in bytes, that `ll-artifact templatize` enforces before issuing its LLM region-discovery call (FEAT-3315). Deliberately measured in bytes, not tokens. Exceeding it exits 1 naming the measured size, with no host call issued."
+        },
+        "promotion_dir": {
+          "type": "string",
+          "default": ".loops/artifacts",
+          "description": "Destination directory for loop→artifact handoff promotion (FEAT-3309) — where a loop's declared `artifact_output` deliverable is copied on an authorized terminal. Relative to the project root, created on demand. Deliberately distinct from `default_output_dir` (which defaults to `.`) so promotion never drops a file into the project root by default."
         }
       },
       "additionalProperties": false
