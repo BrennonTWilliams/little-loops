@@ -15,7 +15,7 @@ labels:
 - planning-hub
 learning_tests_required:
 - yaml
-confidence_score: 80
+confidence_score: 90
 outcome_confidence: 86
 score_complexity: 18
 score_test_coverage: 18
@@ -605,6 +605,7 @@ _Added by `/ll:confidence-check` on 2026-08-24_
   (`status.py` and `render.py --source` both import `lockfile.py`).
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-25T14:23:01 - `6f7c0860-0a4f-4797-a714-893d8c560ffe.jsonl`
 - `/ll:confidence-check` - 2026-08-25T03:54:55 - `67559544-9757-4873-8ba3-963fe9f9ebb2.jsonl`
 - `/ll:confidence-check` - 2026-08-25T03:42:12 - `3906fc07-f9f6-4960-99f5-5a221177c28d.jsonl`
 - `/ll:confidence-check` - 2026-08-25T03:27:46 - `ea0c7571-8966-43cb-ad8b-4e022c051b10.jsonl`
