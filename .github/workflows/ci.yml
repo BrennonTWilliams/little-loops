@@ -203,34 +203,31 @@ jobs:
             COMMENT_URL="https://github.com/${GITHUB_REPOSITORY:-BrennonTWilliams/little-loops}/issues/${SINK_ISSUE}#issuecomment-${COMMENT_ID}"
             echo "Path E initial comment: issue=$SINK_ISSUE id=$COMMENT_ID url=$COMMENT_URL"
             # Silent-fallback hardening: if the initial POST returned no comment_id
-            # (auth failure, rate limit, network, malformed SINK_ISSUE), skip the
-            # PATCH loop entirely. Without this guard, the loop enters with
-            # COMMENT_ID="" and falls into the POST-many fallback at every
-            # iteration (~90 spam comments on the public tracker). Logging an
-            # explicit ::error:: surfaces the failure mode for triage.
-            if [ -z "$COMMENT_ID" ] || [ "$COMMENT_ID" = "null" ]; then
-              echo "::error::Path E POST returned empty/null comment_id; PATCH loop disabled to avoid POST-many spam. Check SINK_ISSUE=$SINK_ISSUE, auth, and rate limits."
-              # Exit the ( while true; do ... ) & subshell cleanly
-              exit 0
-            fi
-            ( while true; do
-                {
-                  echo "Path E snapshot stream — run_id=$GITHUB_RUN_ID run_attempt=$GITHUB_RUN_ATTEMPT step=unit-tests"
-                  echo "snapshot T=$(date -u +%H:%M:%S) (last update wins; older meta-lines truncated by 65KB cap)"
-                  echo ""
-                  echo "--- mem.log (last 3 lines) ---"
-                  tail -3 mem.log 2>/dev/null || echo "(mem.log not present)"
-                  echo ""
-                  echo "--- heartbeat.log (last 3 lines) ---"
-                  tail -3 heartbeat.log 2>/dev/null || echo "(heartbeat.log not present)"
-                  echo ""
-                  echo "--- sigprobe.log (last 3 lines) ---"
-                  tail -3 sigprobe.log 2>/dev/null || echo "(sigprobe.log not present)"
-                  echo ""
-                  echo "--- reaper.log (last 3 lines) ---"
-                  tail -3 reaper.log 2>/dev/null || echo "(reaper.log not present)"
-                } > /tmp/pathE_snapshot.txt
-                if [ -n "$COMMENT_ID" ]; then
+            # (auth failure, rate limit, network, malformed SINK_ISSUE), skip ONLY
+            # the PATCH loop. Do NOT `exit 0` — that would short-circuit the entire
+            # CI step, killing pytest before it runs (silent test-coverage loss).
+            # Wrap the PATCH loop in a positive guard (Option A from QA event d744c310).
+            # POST fails → loop never starts, pytest runs normally. POST succeeds → loop
+            # runs as designed. Logging ::error:: surfaces the failure mode for triage.
+            if [ -n "$COMMENT_ID" ] && [ "$COMMENT_ID" != "null" ]; then
+              ( while true; do
+                  {
+                    echo "Path E snapshot stream — run_id=$GITHUB_RUN_ID run_attempt=$GITHUB_RUN_ATTEMPT step=unit-tests"
+                    echo "snapshot T=$(date -u +%H:%M:%S) (last update wins; older meta-lines truncated by 65KB cap)"
+                    echo ""
+                    echo "--- mem.log (last 3 lines) ---"
+                    tail -3 mem.log 2>/dev/null || echo "(mem.log not present)"
+                    echo ""
+                    echo "--- heartbeat.log (last 3 lines) ---"
+                    tail -3 heartbeat.log 2>/dev/null || echo "(heartbeat.log not present)"
+                    echo ""
+                    echo "--- sigprobe.log (last 3 lines) ---"
+                    tail -3 sigprobe.log 2>/dev/null || echo "(sigprobe.log not present)"
+                    echo ""
+                    echo "--- reaper.log (last 3 lines) ---"
+                    tail -3 reaper.log 2>/dev/null || echo "(reaper.log not present)"
+                  } > /tmp/pathE_snapshot.txt
+                  if [ -n "$COMMENT_ID" ]; then
                   # Path E drop-oldest body assembly.
                   # Server-as-source-of-truth: GET current body, append new snapshot,
                   # truncate from middle if approaching GitHub's 65536-char comment
@@ -257,7 +254,10 @@ jobs:
                 fi
                 sleep 30
               done ) &
-            SNAPSHOTTER=$!
+              SNAPSHOTTER=$!
+            else
+              echo "::error::Path E POST returned empty/null comment_id; PATCH loop disabled to avoid POST-many spam. Check SINK_ISSUE=$SINK_ISSUE, auth, and rate limits."
+            fi
           fi
           set +e
           PYTHONUNBUFFERED=1 timeout --signal=TERM --kill-after=30s 45m \
