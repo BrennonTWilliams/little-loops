@@ -1,8 +1,8 @@
 ---
 id: BUG-3317
 type: BUG
-title: 'Orphaned ''running'' state with no resolvable PID never reconciles — dead runs
-  show as live indefinitely in ll-loop list --running and dashboards'
+title: "Orphaned 'running' state with no resolvable PID never reconciles \u2014 dead\
+  \ runs show as live indefinitely in ll-loop list --running and dashboards"
 priority: P3
 status: open
 discovered_by: ci-agent-report
@@ -13,6 +13,12 @@ labels:
 - persistence
 - observability
 testable: true
+confidence_score: 100
+outcome_confidence: 97
+score_complexity: 25
+score_test_coverage: 22
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # BUG-3317: Orphaned 'running' state with no resolvable PID never reconciles
@@ -167,14 +173,28 @@ Both numbers were correct; only the *liveness* claim was false.
   `STALE_RUNNING_THRESHOLD_S`
 
 ### Dependent Files (Callers/Importers)
-- `scripts/little_loops/cli/loop/info.py` — `cmd_list` (via `list_running_loops`),
-  `cmd_status`; no code change expected, behavior change only
-- `scripts/little_loops/fsm/executor.py` — startup sweep call site for
-  `_reconcile_stale_runs`
-- `scripts/little_loops/mcp_server/tasks.py` — reads `accumulated_ms`/status from
-  disk status; benefits from correct statuses
-- `scripts/little_loops/transport.py` — dashboard-seed callback consumes the
-  unfiltered run list
+- `scripts/little_loops/cli/loop/info.py` — `cmd_list` (via `list_running_loops`);
+  no code change expected, behavior change only
+  > ⚠ Superseded — `cmd_status` lives in `lifecycle.py`, not here
+- `scripts/little_loops/cli/loop/lifecycle.py` — `cmd_status` (calls
+  `_reconcile_stale_running` at lines ~161, ~223, ~312, ~348 via
+  `_build_status_dict`/`_status_single`); no code change expected, behavior change
+  only [Agent 1 finding, graph-confirmed]
+- `scripts/little_loops/cli/loop/run.py` — `cmd_run` (line ~347, function-local
+  import) calls `_reconcile_stale_runs` — this is the actual startup sweep call
+  site [Agent 1 finding, graph-confirmed]
+  > ⚠ Superseded — was misattributed to `fsm/executor.py`, which has zero
+  > references to any reconciliation symbol (confirmed by grep)
+- `scripts/little_loops/fsm/__init__.py` — re-exports `list_running_loops` in
+  `__all__` (line ~247) [Agent 1 finding]
+- `scripts/little_loops/mcp_server/tasks.py` — `handle_tasks_get()` reads
+  `accumulated_ms`/status via `read_run_status()` (`lifecycle.py`), which calls
+  `_build_status_dict()` → `_reconcile_stale_running()` — a documented transitive
+  dependency (`lifecycle.py`'s `read_run_status` docstring cites Decision 1:
+  PID-liveness reconciliation); benefits from correct statuses [Agent 1/2 finding]
+- `scripts/little_loops/transport.py` — `_make_seed_callback()` (line ~591) calls
+  `list_running_loops()` directly to seed dashboard clients on connect; genuine
+  direct dependency, no code change expected [Agent 1 finding, graph-confirmed]
 
 ### Similar Patterns
 - `LockManager.find_conflict()` stale-lock cleanup in
@@ -188,13 +208,68 @@ Both numbers were correct; only the *liveness* claim was false.
   PID + old `updated_at` → left `running`; (d) empty/malformed `updated_at` → left
   alone
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_fsm_persistence.py` `TestReconcileStaleRuns` (startup path,
+  lines ~3009-3121) — extend `_write_state()` (line ~3012) with an `updated_at`
+  param (currently hardcoded to `""`) and add cases (a)-(d) above. This class has
+  no direct unit test for `_reconcile_stale_running()` (the read path) at all
+  [Agent 3 finding — confirmed gap].
+- `scripts/tests/test_cli_loop_lifecycle.py` `TestReconcileStaleRunning` (line
+  ~2734) — an existing class already exercising `_reconcile_stale_running()`
+  indirectly via `cmd_status`, not previously listed in this issue. Extend its
+  `_make_state()` helper (line ~2737) with an `updated_at` param the same way.
+  [Agent 3 finding]
+- `scripts/tests/test_cli_loop_lifecycle.py::TestReconcileStaleRunning::test_no_reconcile_no_pid_anywhere`
+  (line ~2852) — **will break** under this fix: its fixture hardcodes
+  `updated_at="2026-05-24T10:05:00Z"`, which is now >6h stale, so the state will
+  flip to `interrupted` and its `assert state.status == "running"` /
+  `assert state.reconciled_at is None` assertions will fail. Must be updated to
+  either use a fresh relative timestamp or split into an explicit stale-case
+  variant. [Agent 3 finding — confirmed breaking test]
+- No `freezegun`/`freeze_time` dependency exists in this repo. Follow the
+  relative-timestamp pattern from `scripts/tests/test_cli_loop_next.py` (lines
+  ~127-178): `(datetime.now(UTC) - timedelta(hours=7)).isoformat()` for stale,
+  `timedelta(minutes=5)` for fresh — no `datetime` monkeypatching needed for
+  ordinary threshold cases. [Agent 3 finding]
+- `scripts/tests/test_transport.py`, `test_json_output_contracts.py`,
+  `test_ll_loop_commands.py` all mock `list_running_loops` directly and bypass
+  `_reconcile_stale_running()`'s internal logic entirely — unaffected by this
+  change, no update needed. [Agent 1/3 finding, informational]
+
 ### Documentation
 - `docs/reference/CLI.md` — `ll-loop list --running` reconciliation note, if it
   documents the current PID-only rule
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/CLI.md:924` — confirmed: the `ll-loop status` note describes only
+  the PID-dead rewrite ("If a state file claims `status: running` but its PID … is
+  provably dead …"); needs an additive sentence for the new `updated_at`-age
+  fallback. [Agent 2 finding]
+- `docs/reference/CLI.md:4812-4816` — the `tasks/get` MCP doc's "reconciles PID
+  liveness before ever reporting `working`" line is accurate but incomplete after
+  this fix (reconciliation now also covers no-PID/stale-`updated_at`). [Agent 2
+  finding]
+- `docs/guides/MCP_SERVER_GUIDE.md:550` — same wording duplicated from CLI.md's MCP
+  section; same additive update needed. [Agent 2 finding]
+- `skills/cleanup-loops/SKILL.md:69` — Note documents only the PID-dead rewrite,
+  same incompleteness. Also worth flagging to skill authors: the skill implements
+  its own independent 15-minute `updated_at` staleness check (lines ~91-114) for
+  no-PID `running` loops, which now partially overlaps with the new 6h fallback for
+  loops stuck 15min-6h without a resolvable PID (the skill's tighter threshold
+  still does non-redundant work outside that window, so no behavior change is
+  required — informational only). [Agent 2 finding]
+
 ### Configuration
 - N/A (threshold is a module constant; promote to `.ll/ll-config.json` only if a real
   need appears)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- Precedent confirmed for the "module constant, not config" choice:
+  `scripts/little_loops/session_store/writers.py:2000` —
+  `STALE_SUBAGENT_MIN_AGE_SECONDS = 6 * 3600`, the *same* 6-hour value, used as the
+  identical age-fallback threshold shape for `reconcile_stale_subagent_runs()` in a
+  sibling subsystem, also kept as a bare constant rather than config-schema-exposed.
+  [Agent 2 finding — supports the existing N/A decision, no action needed]
 
 ## Program Design
 
@@ -222,6 +297,17 @@ Both numbers were correct; only the *liveness* claim was false.
 5. Verify against a real orphaned artifact: a months-old `pid: null` running entry
    read via `ll-loop list --running` now flips to `interrupted` and drops off the
    running list.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Update `scripts/tests/test_cli_loop_lifecycle.py::TestReconcileStaleRunning::test_no_reconcile_no_pid_anywhere` — its fixture's hardcoded `updated_at` is now stale under the new threshold and the test will fail without a fix
+- Extend `scripts/tests/test_fsm_persistence.py::TestReconcileStaleRuns._write_state()` with an `updated_at` parameter to support the new fresh/stale/malformed test cases
+- Extend `scripts/tests/test_cli_loop_lifecycle.py::TestReconcileStaleRunning._make_state()` with an `updated_at` parameter for the same reason
+- Add a direct unit test for `_reconcile_stale_running()` (read path) — no such test exists today; coverage is only indirect via `cmd_status`
+- Update `docs/reference/CLI.md` (both the `ll-loop status` note at ~line 924 and the `tasks/get` MCP section at ~lines 4812-4816) and `docs/guides/MCP_SERVER_GUIDE.md:550` to describe the new age-fallback path, not just the PID-dead rewrite
+- Update `skills/cleanup-loops/SKILL.md:69`'s reconciliation Note for the same reason
 
 ## Impact
 
@@ -256,4 +342,6 @@ Both numbers were correct; only the *liveness* claim was false.
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-25T01:07:07 - `c0b9fe69-0e8b-4aa4-850b-b9fc74a99fe4.jsonl`
+- `/ll:wire-issue` - 2026-08-25T00:59:30 - `35df48ee-1624-44f3-9b90-d443ec0fa011.jsonl`
 - `/ll:refine-issue` - 2026-08-25T00:27:16 - `b31fdb34-d45a-44b4-81b6-d5f34a9cf389.jsonl`
