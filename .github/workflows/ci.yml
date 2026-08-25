@@ -125,6 +125,21 @@ jobs:
               sleep 30; \
             done ) > heartbeat.log 2>&1 &
           HEARTBEAT=$!
+          # BUG-3208 Path A fix — background orphan-reaper, fires at T+46m
+          # INDEPENDENT of the pipeline below. When `timeout` SIGKILLs the
+          # wedged pytest controller, its surviving xdist workers / execnet
+          # gateways keep the pipe's write-end open, so `tee` never sees EOF and
+          # the `| tee pytest.log` pipeline never returns. A reap sequenced AFTER
+          # the pipeline is therefore dead code — `RC=$?`, the kill/tail block,
+          # and `exit` all sit unreachable behind a pipe that can't close, so the
+          # step hangs at `in_progress` until the runner watchdog purges every
+          # log as BlobNotFound (observed in dispatch 32879994072). This reaper
+          # kills the orphaned processes on a timer (the `[p]ytest` bracket idiom
+          # also matches `tee pytest.log`, so the read-end closes too), which
+          # unblocks the pipeline, lets `RC=$?` fire, and lets the upload step
+          # (`if: always()`) persist the evidence bundle.
+          ( sleep 2760; pkill -9 -f '[p]ytest' 2>/dev/null; pkill -9 -f '[e]xecnet' 2>/dev/null ) &
+          REAPER=$!
           set +e
           PYTHONUNBUFFERED=1 timeout --signal=TERM --kill-after=30s 45m \
             .venv/bin/python -m pytest scripts/tests/ \
@@ -138,7 +153,7 @@ jobs:
           # Reap orphaned xdist workers that survive the controller kill — they
           # would otherwise hold the step's stdout pipe open until the runner
           # watchdog fires (~52m) and purges every log as BlobNotFound.
-          kill "$SAMPLER" "$HEARTBEAT" 2>/dev/null || true
+          kill "$SAMPLER" "$HEARTBEAT" "$REAPER" 2>/dev/null || true
           pkill -9 -f 'pytest' 2>/dev/null || true
           pkill -9 -f 'execnet' 2>/dev/null || true
           echo "pytest exit: $RC"
