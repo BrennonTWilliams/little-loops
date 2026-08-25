@@ -8,10 +8,16 @@ Provides:
   little-loops project.
 - ``render`` (FEAT-3036 Phase 1): deterministic ``template + data.json ->
   artifact`` rendering for user-authored ``.llat/`` artifact templates.
+- ``extract`` / ``refresh`` (FEAT-3310 Phase 2): LLM-driven
+  ``source-document -> data.json`` mapping, and the ``extract`` + ``render``
+  compose against a template's bound source.
 
 One module per subcommand (``policy_builder.py``, ``design_md.py``,
 ``render.py``), following the ``cli/issues/`` / ``cli/loop/`` convention
-(decided 2026-08-23, FEAT-3036 § Second-pass decisions).
+(decided 2026-08-23, FEAT-3036 § Second-pass decisions) — with one
+deliberate exception: ``extract`` and ``refresh`` both live in
+``extract.py``, since ``refresh`` is a thin compose over ``extract`` +
+``render`` with no independent logic of its own (FEAT-3310).
 """
 
 from __future__ import annotations
@@ -20,6 +26,12 @@ import argparse
 import sys
 
 from little_loops.cli.artifact.design_md import cmd_design_md_export
+from little_loops.cli.artifact.extract import (
+    add_extract_parser,
+    add_refresh_parser,
+    cmd_extract,
+    cmd_refresh,
+)
 from little_loops.cli.artifact.policy_builder import _themed_css_vars, cmd_policy_builder
 from little_loops.cli.artifact.render import add_render_parser, cmd_render
 from little_loops.cli.artifact.templatize import add_templatize_parser, cmd_templatize
@@ -33,6 +45,8 @@ __all__ = [
     "cmd_design_md_export",
     "cmd_render",
     "cmd_templatize",
+    "cmd_extract",
+    "cmd_refresh",
     "_themed_css_vars",
 ]
 
@@ -61,11 +75,16 @@ Examples:
       -o arch-review.llat --regions map.json    # Splice a hand-written region map into a template
   %(prog)s templatize out/index.html docs/ARCHITECTURE.md \\
       -o arch-review.llat                       # No --regions: LLM discovers the regions
+  %(prog)s extract my-report docs/risk-register.md   # LLM: source -> data.json, schema-checked
+  %(prog)s refresh my-report                    # extract + render against the bound source
+  %(prog)s refresh my-report docs/risk-register.md -o build/   # ...against an explicit source
 
 Exit codes:
   0 - Artifact generated successfully
-  1 - Error occurred (including: templatize discovery input over the configured size ceiling,
-      missing/unreadable source, or a malformed/unresolvable LLM discovery response)
+  1 - Error occurred (including: templatize/extract input over the configured size ceiling,
+      missing/unreadable source, a malformed/unresolvable LLM response, a manifest with no
+      usable extraction.prompt, or — for refresh — a render that succeeded but whose
+      lockfile write then failed)
   2 - templatize: round-trip verification rejected the extraction (see <out>.llat.rejected/)
 """,
         )
@@ -118,6 +137,8 @@ Exit codes:
 
         add_render_parser(subparsers)
         add_templatize_parser(subparsers)
+        add_extract_parser(subparsers)
+        add_refresh_parser(subparsers)
 
         args = parser.parse_args()
 
@@ -132,5 +153,9 @@ Exit codes:
             return cmd_render(args, logger)
         if args.command == "templatize":
             return cmd_templatize(args, logger)
+        if args.command == "extract":
+            return cmd_extract(args, logger)
+        if args.command == "refresh":
+            return cmd_refresh(args, logger)
         parser.error(f"unknown command: {args.command}")
         return 1

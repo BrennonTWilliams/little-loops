@@ -3,10 +3,11 @@ id: FEAT-3310
 type: FEAT
 title: 'Artifact templates: extract + refresh (Phase 2)'
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-08-24'
 captured_at: '2026-08-24T03:57:16Z'
+completed_at: '2026-08-25T04:19:57Z'
 parent: EPIC-3299
 depends_on:
 - FEAT-3036
@@ -394,10 +395,6 @@ extension of `test_feat3036_artifact_templates.py`), following the
 handler-level + dispatch-level test pattern established by
 `cmd_render`/`TestArtifactCLIDispatchRender` in FEAT-3036.
 
-### Codebase Research Findings
-
-_Added by `/ll:refine-issue` — 2026-08-25 — based on codebase analysis:_
-
 ### Types
 
 - `ArtifactTemplate.data_schema` (`artifact_templates.py:63`, thin accessor over `manifest["data_schema"]`) — the schema `extract`'s `build_blocking_json(json_schema=...)` call and post-call validation both key off.
@@ -473,53 +470,53 @@ _Third-review additions (2026-08-25):_
 
 ## Acceptance Criteria
 
-- [ ] `ll-artifact extract` invokes the host directly via
+- [x] `ll-artifact extract` invokes the host directly via
       `build_blocking_json(json_schema=manifest.data_schema)`, fails loud (no
       fail-soft prose-marker fallback), and writes a `data.json` that passes
       `artifact_templates.validate_top_level_data` before considering the
       command successful.
-- [ ] `ll-artifact extract` builds its prompt from a module-level
+- [x] `ll-artifact extract` builds its prompt from a module-level
       `_PROMPT_TEMPLATE` composing `extraction.prompt` + the serialized
       `data_schema` + the source text — `extraction.prompt` is never used as
       the entire prompt.
-- [ ] `ll-artifact extract` carries `--model` and `--timeout` flags, and
+- [x] `ll-artifact extract` carries `--model` and `--timeout` flags, and
       rejects a source file over `artifacts.templatize_max_input_bytes` with a
       typed error naming the measured size and the limit, before the host call
       is built. No new config knob is added; the existing key's schema
       `description` is widened to name `extract` **and to state that the
       measured quantity differs per subcommand** — combined artifact+source for
       `templatize`, source document alone for `extract`.
-- [ ] Model resolution is `--model` > `manifest.extraction.model` >
+- [x] Model resolution is `--model` > `manifest.extraction.model` >
       `fsm.schema.DEFAULT_LLM_MODEL`, and `manifest.extraction.host` never
       overrides `resolve_host()`'s ambient host selection. Unit-tested at each
       precedence level.
-- [ ] `extract` takes `--data <path>` (default `<template>/data.json`) for its
+- [x] `extract` takes `--data <path>` (default `<template>/data.json`) for its
       output; `-o` is not registered on `extract`. `refresh` takes both
       `--data <path>` (same default) and `-o <dir>` (passed through to the
       render half with `render`'s semantics and
       `config.artifacts.default_output_dir` default).
-- [ ] `load_manifest` validates the inner shape of `source` (non-empty string,
+- [x] `load_manifest` validates the inner shape of `source` (non-empty string,
       **when present** — `source` stays optional per
       `_MANIFEST_OPTIONAL_KEYS`, `artifact_templates.py:26`, and the three
       `scripts/tests/fixtures/artifact_templates/*.llat` manifests that declare
       neither key must keep loading) and `extraction` (mapping, if present); a manifest whose `extraction`
       carries no `prompt` fails `extract` with a typed error naming the
       template and the missing key — never a synthesized default prompt.
-- [ ] `ll-artifact refresh` composes `extract` + `render`, defaulting the
+- [x] `ll-artifact refresh` composes `extract` + `render`, defaulting the
       source file to the manifest's scalar `source` (project-root-relative if
       not absolute) when no `<source-file>` is given — see § Pre-implementation
       decisions; **not** `source.path`. A `source` that does not resolve to an
       existing file fails loud with a typed error naming the resolved absolute
       path; there is no cwd-relative fallback.
-- [ ] `templatize` normalizes the `source` it stores in `manifest.yaml` to a
+- [x] `templatize` normalizes the `source` it stores in `manifest.yaml` to a
       project-root-relative path (absolute stays absolute), so a `templatize`
       run from a subdirectory produces a manifest `refresh` can resolve. Tested
       with a `templatize` invocation from a subdirectory of the project root.
-- [ ] `refresh` writes its extracted `data.json` to `<template>/data.json` by
+- [x] `refresh` writes its extracted `data.json` to `<template>/data.json` by
       default and accepts a `--data <path>` override, so refreshing a committed
       template need not mutate the tracked file in place. The write target is
       stated in `--help` and in `docs/reference/CLI.md`.
-- [ ] A new `cli/artifact/lockfile.py` holds the format's single definition —
+- [x] A new `cli/artifact/lockfile.py` holds the format's single definition —
       `LockfileError`, `load_lockfile` (fail-closed on unparseable YAML,
       non-mapping top level, missing/non-mapping `renders`, unknown
       `version`), `write_lockfile` (atomic, merging), `lock_path_for`,
@@ -527,7 +524,7 @@ _Third-review additions (2026-08-25):_
       to FEAT-3311 § Expected Behavior, which governs on any disagreement.
       FEAT-3311's `status`/`render --source` import it rather than redefining
       the shape.
-- [ ] `refresh` writes/updates `<template>.llat.lock` after a successful render
+- [x] `refresh` writes/updates `<template>.llat.lock` after a successful render
       (moved here from FEAT-3311 so this issue is independently testable),
       recording `sha256` of the **same source bytes the extraction consumed**,
       `rendered_at` as ISO-8601 UTC, and `output` as the path of the rendered
@@ -535,7 +532,7 @@ _Third-review additions (2026-08-25):_
       re-derived, never the `-o` directory). The write is atomic (temp sibling
       + `os.replace`) and merges into any existing `renders` mapping rather
       than replacing it.
-- [ ] Every path written to the lockfile (`renders` keys and `output`) and to
+- [x] Every path written to the lockfile (`renders` keys and `output`) and to
       `manifest.source` goes through a single exported
       `lockfile.relativize_path(path, project_root)`: project-root-relative
       when inside the project root, absolute otherwise, never `..`-prefixed.
@@ -544,23 +541,23 @@ _Third-review additions (2026-08-25):_
       absolute). This resolves the collision between "absolute sources are
       stored absolute" (§ Pre-implementation decisions, second review) and
       FEAT-3311's "keys are project-root-relative".
-- [ ] `render.py` exposes `render_to_disk(template, data, config, output) ->
+- [x] `render.py` exposes `render_to_disk(template, data, config, output) ->
       Path` holding the `-o` resolution, existing-file guard, `mkdir`, and
       write; `cmd_render` is refactored onto it with no behaviour change (the
       existing `TestCmdRender` / `TestArtifactCLIDispatchRender` suites pass
       unmodified), and `cmd_refresh` uses its return value for the lockfile's
       `output`. `cmd_refresh` does not re-derive `output_dir /
       manifest["output"]` anywhere.
-- [ ] `extract` and `refresh` resolve a relative `--data` against
+- [x] `extract` and `refresh` resolve a relative `--data` against
       `config.project_root`, exactly as `cmd_render` does (`render.py:52-54`).
       Tested by a `refresh` run from a subdirectory of the project root with a
       relative `--data`, asserting the extraction and the render use the same
       file.
-- [ ] A lockfile-write failure exits 1 with a message stating that the render
+- [x] A lockfile-write failure exits 1 with a message stating that the render
       succeeded and only the lock write failed — so the user does not re-pay
       for an LLM call to fix a filesystem problem. Tested against an
       unwritable template directory.
-- [ ] Tests cover: successful extraction + validation, a host call that
+- [x] Tests cover: successful extraction + validation, a host call that
       returns data violating `data_schema` (fails loud, no partial write),
       `refresh`'s default-source resolution against a scalar `source`, a
       manifest with `extraction` but no `prompt`, a manifest with a
@@ -568,12 +565,12 @@ _Third-review additions (2026-08-25):_
       `ManifestError`, not an `AttributeError` via the backstop), and a
       `refresh` against a template whose lockfile already carries a *different*
       source's entry (asserting that entry survives the merge).
-- [ ] `docs/reference/CLI.md` documents `extract` and `refresh`, including the
+- [x] `docs/reference/CLI.md` documents `extract` and `refresh`, including the
       `--data`/`-o` split, the `--model`/`--timeout` flags and their precedence
       rules, the size ceiling, and `refresh`'s lockfile write.
-- [ ] `cli/artifact/__init__.py`'s "One module per subcommand" docstring
+- [x] `cli/artifact/__init__.py`'s "One module per subcommand" docstring
       sentence records `extract.py`'s deliberate two-verb exception.
-- [ ] `python -m pytest scripts/tests/` exits 0.
+- [x] `python -m pytest scripts/tests/` exits 0.
 
 ## Related Key Documentation
 
@@ -585,6 +582,8 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-25T04:19:50 - `3f18fc2b-9eac-4cf9-99e6-0f9af7dec0fe.jsonl`
+- `/ll:ready-issue` - 2026-08-25T03:59:21 - `f02a0053-5e48-4e3f-a16f-f239643f3fba.jsonl`
 - `/ll:confidence-check` - 2026-08-25T03:54:54 - `67559544-9757-4873-8ba3-963fe9f9ebb2.jsonl`
 - `/ll:confidence-check` - 2026-08-25T03:42:12 - `3906fc07-f9f6-4960-99f5-5a221177c28d.jsonl`
 - `/ll:confidence-check` - 2026-08-25T03:27:46 - `ea0c7571-8966-43cb-ad8b-4e022c051b10.jsonl`

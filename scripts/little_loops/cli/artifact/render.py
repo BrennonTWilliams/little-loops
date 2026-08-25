@@ -24,6 +24,46 @@ from little_loops.artifact_templates import (
 from little_loops.logger import Logger
 
 
+class OutputPathError(ValueError):
+    """Raised when the resolved output path names an existing file, not a directory."""
+
+
+def render_to_disk(
+    template: ArtifactTemplate,
+    data: dict,
+    config: object,
+    output: str | None,
+) -> Path:
+    """Render *template* against *data* and write it under the resolved output directory.
+
+    Holds the ``-o`` resolution / existing-file guard / ``mkdir`` / write
+    sequence that used to live inline in ``cmd_render`` — the single home
+    for it, so ``cmd_refresh`` (FEAT-3310) and FEAT-3311's ``render
+    --source`` can record the same path in the lockfile's ``output`` field
+    without re-deriving it.
+
+    Returns the written file's path. Raises OutputPathError if the
+    resolved output directory names an existing file, or
+    ManifestError/DataValidationError on a render failure (unchanged from
+    ``render_template``).
+    """
+    from little_loops.config.core import BRConfig
+
+    assert isinstance(config, BRConfig)
+    output_dir = Path(output) if output else Path(config.artifacts.default_output_dir)
+    if not output_dir.is_absolute():
+        output_dir = config.project_root / output_dir
+    if output_dir.is_file():
+        raise OutputPathError(f"-o names an existing file, not a directory: {output_dir}")
+
+    rendered = render_template(template, data, config)
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    out_path = output_dir / template.manifest["output"]
+    out_path.write_text(rendered, encoding="utf-8")
+    return out_path
+
+
 def cmd_render(args: argparse.Namespace, logger: Logger) -> int:
     """Render an artifact template against a data file.
 
@@ -65,21 +105,13 @@ def cmd_render(args: argparse.Namespace, logger: Logger) -> int:
 
         template = ArtifactTemplate(root=root, manifest=manifest)
         try:
-            rendered = render_template(template, data, config)
+            out_path = render_to_disk(template, data, config, args.output)
+        except OutputPathError as exc:
+            logger.error(str(exc))
+            return 1
         except (ManifestError, DataValidationError) as exc:
             logger.error(str(exc))
             return 1
-
-        output_dir = Path(args.output) if args.output else Path(config.artifacts.default_output_dir)
-        if not output_dir.is_absolute():
-            output_dir = config.project_root / output_dir
-        if output_dir.is_file():
-            logger.error(f"-o names an existing file, not a directory: {output_dir}")
-            return 1
-
-        output_dir.mkdir(parents=True, exist_ok=True)
-        out_path = output_dir / manifest["output"]
-        out_path.write_text(rendered, encoding="utf-8")
 
         logger.success(f"Wrote {out_path}")
         return 0

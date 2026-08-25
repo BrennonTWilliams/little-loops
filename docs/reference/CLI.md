@@ -4454,7 +4454,7 @@ python -m pytest tests/   # Run starter tests
 
 ### ll-artifact
 
-Generate self-contained, human-facing artifacts from project data. `policy-builder` stamps project-derived inputs into an HTML page at generation time, so the output works over `file://` with no runtime fetch. `design-md export` renders a design-token profile as a portable DESIGN.md document. `render` (FEAT-3036 Phase 1) deterministically stamps a user-authored `.llat/` artifact template against a `data.json`, with zero LLM cost per render. `templatize` (FEAT-3314 Phase A) turns a generated artifact back into a reusable `.llat/` template via a hand-written region map, with a byte-exact round-trip guarantee.
+Generate self-contained, human-facing artifacts from project data. `policy-builder` stamps project-derived inputs into an HTML page at generation time, so the output works over `file://` with no runtime fetch. `design-md export` renders a design-token profile as a portable DESIGN.md document. `render` (FEAT-3036 Phase 1) deterministically stamps a user-authored `.llat/` artifact template against a `data.json`, with zero LLM cost per render. `templatize` (FEAT-3314 Phase A) turns a generated artifact back into a reusable `.llat/` template via a hand-written region map, with a byte-exact round-trip guarantee. `extract` (FEAT-3310 Phase 2) derives `data.json` from a source document via one LLM call, schema-checked; `refresh` composes `extract` + `render` against a template's bound source and records the render in `<template>.llat.lock`.
 
 **Subcommands:**
 
@@ -4464,6 +4464,8 @@ Generate self-contained, human-facing artifacts from project data. `policy-build
 | `design-md export` | Export a design-token profile as a single-theme DESIGN.md document |
 | `render` | Deterministic `template + data.json -> artifact` stamp for a `.llat/` artifact template |
 | `templatize` | Save a generated artifact as a reusable `.llat/` template (Phase A: deterministic, `--regions` map) |
+| `extract` | LLM extraction: source document -> `data.json`, schema-checked |
+| `refresh` | `extract` + `render` composed against a template's bound source, recording `<template>.llat.lock` |
 
 **Exit codes:** `0` = artifact generated successfully, `1` = error (see `templatize` below for its distinct `2`)
 
@@ -4563,7 +4565,56 @@ ll-artifact templatize out/index.html docs/ARCHITECTURE.md -o arch-review.llat  
 
 **Exit codes:** `0` = template written and round-trip verified, `1` = malformed input / IO failure (missing artifact/source/regions map, CRLF artifact, extensionless artifact, malformed `--regions` map or discovery response, oversized discovery input, an existing `-o` without `--force`), `2` = round-trip verification rejected the extraction — the candidate plus a `roundtrip.diff` (and, on the discovery branch, `discovery.json`/`regions.json`) are written to `<out>.llat.rejected/` and any pre-existing `-o` template is left untouched.
 
-> **Note:** `templatize` (FEAT-3308, Phases A–C) and `render` (Phase 1 of FEAT-3036) are implemented (see `.issues/features/P3-FEAT-3036-artifact-templates-design.md`). `extract` (FEAT-3309, deriving a `data.json` automatically for fan-out) and `status` (staleness detection) are not yet implemented.
+> **Note:** `templatize` (FEAT-3308, Phases A–C), `render` (Phase 1 of FEAT-3036), and `extract`/`refresh` (Phase 2 of FEAT-3036, FEAT-3310) are implemented (see `.issues/features/P3-FEAT-3036-artifact-templates-design.md`). `status` (staleness detection) is not yet implemented.
+
+#### ll-artifact extract
+
+LLM extraction: maps a source document to `data.json` per the template's `manifest.data_schema` + `extraction.prompt`, via a direct `build_blocking_json(json_schema=...)` host call — the same shape `templatize`'s discovery call and `advisor.consult()` use. Fails loud: any host-call failure (timeout, missing binary, non-zero exit, unparseable output), an empty response, or a response that fails `artifact_templates.validate_top_level_data` against `manifest.data_schema` exits `1` and writes nothing — there is no fail-soft fallback. `json_schema` enforcement is host-dependent (Claude Code drops it silently; Codex materializes it), so the post-call schema validation is the only guarantee on the Claude Code path, not defense in depth.
+
+The prompt sent to the host is not `manifest.extraction.prompt` verbatim: a module-level template composes the author's `extraction.prompt` (what to extract) with the serialized `data_schema` (the shape to return) and the source document text (the material). A manifest with no usable `extraction.prompt` fails loud, naming the template and the missing key — `templatize`-produced manifests need a hand-added `prompt` before `extract` works on them, since `templatize` writes `extraction` as `{"method": ..., ...}`, never `{"prompt": ...}`.
+
+Model resolution: `--model` > `manifest.extraction.model` > the fsm default model. `manifest.extraction.host` is diagnostic only and never overrides `resolve_host()`'s ambient host selection (`LL_HOST_CLI` / `orchestration.host_cli`) — a manifest committed on one machine must not silently redirect another machine's host. The source document is guarded against `artifacts.templatize_max_input_bytes` (default `400000` bytes; for `extract` this measures the source document alone, unlike `templatize`'s combined artifact+source measurement) before the host call is built — over the ceiling exits `1` naming the measured size, with no host call issued.
+
+**Flags:**
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--data <path>` | | Path to write `data.json` (default: `<template>/data.json`). Relative paths resolve against the project root, exactly like `render`'s `--data`. |
+| `--model <name>` | | LLM model for the extraction call (default: `manifest.extraction.model`, else the fsm default model). New CLI surface — no other artifact subcommand exposes `--model`. |
+| `--timeout <seconds>` | | Host call timeout in seconds (default: `180`) |
+
+**Examples:**
+```bash
+ll-artifact extract my-report docs/risk-register.md
+ll-artifact extract my-report docs/risk-register.md --data out/data.json --model opus
+```
+
+**Exit codes:** `0` = `data.json` written and schema-validated, `1` = template not found, an invalid manifest, missing/oversized/undecodable source, no usable `extraction.prompt`, a host-call failure, or a schema-invalid response (no partial write in any of these cases).
+
+#### ll-artifact refresh
+
+Composes `extract` + `render` in one shot: extracts `data.json` from a source document, validates and writes it, renders the template against it, then writes/updates `<template>.llat.lock` recording the render. When `<source-file>` is omitted, the source defaults to the manifest's bound `source` (project-root-relative if not absolute) — a `source` that doesn't resolve to an existing file fails loud naming the resolved absolute path, with no cwd-relative fallback.
+
+The lockfile write happens only after the render's output-file write succeeds, and only records the **same source bytes the extraction consumed** (never a re-read, which would open a TOCTOU window against a source edited mid-refresh). The write is atomic (temp sibling + `os.replace`) and merges into any existing `renders` mapping — refreshing one source's entry never drops another source's entry for the same template (EPIC-3299's one-template-many-sources case). A lock-write failure after a successful render still exits `1`, but the message states that the render already succeeded and only the lock write failed, so a filesystem problem doesn't cost a re-paid LLM call to fix.
+
+Every path recorded in the lockfile (`renders` keys and `output`) goes through the same path-storage rule as `manifest.source`: project-root-relative (POSIX separators) when inside the project root, absolute otherwise, never `..`-prefixed.
+
+**Flags:**
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--data <path>` | | Path to write `data.json` (default: `<template>/data.json`), same semantics as `extract`'s `--data` |
+| `--output <dir>` | `-o` | Output directory for the rendered artifact (default: `config.artifacts.default_output_dir`), passed through to the render half with `render`'s exact semantics |
+| `--model <name>` | | LLM model for the extraction call (default: `manifest.extraction.model`, else the fsm default model) |
+| `--timeout <seconds>` | | Host call timeout in seconds (default: `180`) |
+
+**Examples:**
+```bash
+ll-artifact refresh my-report                              # extract + render against manifest.source
+ll-artifact refresh my-report docs/risk-register.md -o build/   # ...against an explicit source
+```
+
+**Exit codes:** `0` = artifact rendered and lockfile updated, `1` = any `extract` failure, a render failure, an unresolvable default source, or a render that succeeded but whose lockfile write then failed.
 
 ---
 

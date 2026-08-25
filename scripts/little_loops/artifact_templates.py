@@ -144,9 +144,11 @@ def load_manifest(root: Path) -> dict[str, Any]:
 
     Fails closed with ManifestError on: missing file, invalid YAML, unknown
     top-level keys, missing required keys, ``renderer`` != ``jinja2``, an
-    invalid ``theme``, a ``data_schema`` construct outside the documented
-    subset, or a top-level ``ll`` key in ``data_schema.properties`` (the
-    render context's reserved namespace, § Template context).
+    invalid ``theme``, a non-empty-string violation on ``source`` (if
+    present), a non-mapping ``extraction`` (if present), a ``data_schema``
+    construct outside the documented subset, or a top-level ``ll`` key in
+    ``data_schema.properties`` (the render context's reserved namespace,
+    § Template context).
     """
     manifest_path = root / "manifest.yaml"
     if not manifest_path.is_file():
@@ -174,6 +176,14 @@ def load_manifest(root: Path) -> dict[str, Any]:
     theme = data.get("theme")
     if theme is not None and theme != "design-tokens":
         raise ManifestError(f"manifest.yaml: theme must be 'design-tokens' if set, got {theme!r}")
+
+    source = data.get("source")
+    if source is not None and (not isinstance(source, str) or not source):
+        raise ManifestError("manifest.yaml: 'source' must be a non-empty string")
+
+    extraction = data.get("extraction")
+    if extraction is not None and not isinstance(extraction, dict):
+        raise ManifestError("manifest.yaml: 'extraction' must be a mapping")
 
     _validate_schema_shape(data["data_schema"])
 

@@ -878,11 +878,14 @@ def cmd_templatize(args: argparse.Namespace, logger: Logger) -> int:
             schema = derive_schema(result)
             spliced = apply_regions(artifact_bytes, result)
             name = out_dir.stem
+            from little_loops.cli.artifact.lockfile import relativize_path
+
+            normalized_source = Path(relativize_path(source_path, config.project_root))
             manifest = build_manifest(
                 name=name,
                 output=artifact_path.name,
                 schema=schema,
-                source=source_path,
+                source=normalized_source,
                 extraction=extraction,
             )
         except (SpliceError, RegionMapError) as exc:

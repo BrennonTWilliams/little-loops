@@ -1888,7 +1888,7 @@
         "templatize_max_input_bytes": {
           "type": "integer",
           "default": 400000,
-          "description": "Combined artifact+source-document size ceiling, in bytes, that `ll-artifact templatize` enforces before issuing its LLM region-discovery call (FEAT-3315). Deliberately measured in bytes, not tokens. Exceeding it exits 1 naming the measured size, with no host call issued."
+          "description": "Size ceiling, in bytes, guarding the input to `ll-artifact templatize`'s LLM region-discovery call (FEAT-3315) and `ll-artifact extract`'s LLM extraction call (FEAT-3310) before either is issued. The measured quantity differs per subcommand: `templatize` measures the combined artifact+source-document size; `extract` measures the source document alone (it has no artifact input). Deliberately measured in bytes, not tokens. Exceeding it exits 1 naming the measured size, with no host call issued."
         },
         "promotion_dir": {
           "type": "string",
