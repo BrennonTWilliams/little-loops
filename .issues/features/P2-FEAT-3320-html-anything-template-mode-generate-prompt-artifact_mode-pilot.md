@@ -85,11 +85,44 @@ rendered path rather than the template directory. This keeps the entire
 evaluate/score/critique cycle unchanged and untouched — the template becomes an
 extra upstream step, not a fork of the oracle.
 
-Open question for implementation: whether the render runs as a state inside the
-wrapper or as an addition to the generate prompt's own instructions (i.e. the
-model runs `ll-artifact render` itself as its last action). Prefer the former —
-a deterministic shell step is cheaper and cannot be skipped by a model that
-decides it is done early.
+**Decided (2026-08-25 pre-implementation review) — the render is a
+`pre_evaluate_cmd` oracle parameter, prepended to `evaluate`'s existing shell
+action.** This closes what was previously left as an open question, and it
+resolves a contradiction the issue carried: Acceptance Criterion 3 forbids
+forking or branching `oracles/generator-evaluator.yaml`, while § Program Design's
+research below proposed **a new `render` state inside that oracle**, between
+`generate` and `evaluate`. A new state is an edit to the shared oracle: all nine
+consumers inherit it, and at `max_steps: 40` over a ~9-state cycle it silently
+costs every consumer roughly half an iteration of budget.
+
+The three options considered:
+
+- **(a) Prepend to `evaluate`'s action — chosen.** Add an optional
+  `pre_evaluate_cmd` parameter to the oracle (`parameters:` +
+  `context: {pre_evaluate_cmd: ""}`), interpolated at the top of `evaluate`'s
+  existing shell action (`generator-evaluator.yaml:78-82`). Zero new states, zero
+  `max_steps` impact, and the parameter is generic — it is not a branch on
+  artifact mode, so AC 3 holds in letter and spirit. All eight other consumers
+  leave it unset and their behavior is byte-identical.
+
+  **Caveat on `evaluate`'s routing — the prepended command's stdout must be
+  quieted.** `evaluate` inherits `fragment: playwright_screenshot`, whose
+  `evaluate:` block is `type: output_contains, pattern: "CAPTURED"`
+  (`lib/harness.yaml:12-14`) — routing is **text-matched on stdout, not on exit
+  code**. An earlier revision of this bullet said the render's stdout "lands in
+  `evaluate`'s own output, which the failure-message work uses"; that is true but
+  incomplete, and the phrasing understated the risk. Today the mismatch is
+  harmless (all three of `on_yes`/`on_no`/`on_error` route to `snapshot`,
+  `:83-85`), but any future routing change on this state would silently depend on
+  render chatter. Redirect the render's stdout (`>/dev/null`) so it can never
+  perturb the `CAPTURED` match; keep stderr, which is what the render-failure
+  message (step 6) needs.
+- **(b) A new optional-no-op `render` state.** Honest, but pays the `max_steps`
+  tax for every consumer; would require bumping `max_steps` and re-checking
+  ENH-2903's cap arithmetic against the longer cycle.
+- **(c) The generate prompt instructs the model to run `ll-artifact render`
+  itself.** Rejected: a deterministic step is cheaper and cannot be skipped by a
+  model that decides it is done early.
 
 Consequence worth checking against ENH-2903: a render failure produces no HTML,
 which produces no screenshot, which the oracle already models as a
@@ -111,13 +144,190 @@ text, so this is a conditional block in the prompt body, not two prompts.
 
 **`html-anything.yaml` has no `artifact_output` block today** — `hitl-md.yaml` is
 the only loop that declares one. FEAT-3318's static gate requires one whenever
-the effective mode is `template`, so this issue must add it. Consequence to
-handle deliberately: an `artifact_output` block is mode-independent, so adding it
-makes `html-anything` start promoting `index.html` into `promotion_dir` on
-**every** run — including default `file`-mode runs that this issue otherwise
-leaves untouched. That is a behavior change to the unmodified path, and it needs
-either an explicit sign-off or an `on:` allowlist narrow enough to keep the
-default path quiet.
+the effective mode is `template`, so this issue must add it.
+
+**Resolved: declare `from: artifact.llat`, and the file-mode path stays quiet by
+itself.** The earlier concern here — that a mode-independent `artifact_output`
+block would make *every* run, including default `file`-mode runs, start promoting
+`index.html` into `promotion_dir` — does not materialize.
+`promote_run_artifact` returns `None` when `run_dir / spec.from` does not exist
+(`fsm/persistence.py:757-763`, before any mode dispatch). `artifact.llat` is only
+written in template mode, so a `file`-mode run finds no source and skips
+promotion silently. No `on:` allowlist is needed and no sign-off on a
+default-path behavior change is needed — the default path genuinely does not
+change. AC 2's second clause should be read as satisfied by this mechanism, and
+the file-mode regression test should pin it (a `file`-mode run promotes nothing).
+
+Note the corollary: `spec.from` is a single static path, so it cannot name both
+`index.html` (file mode) and a `.llat/` directory (template mode). Naming the
+directory is what makes the mode-independence harmless; naming `index.html`
+instead would both promote on every file-mode run *and* fail template-mode
+promotion, since `_promote_template_artifact` requires `from` to resolve to a
+directory (`persistence.py:828-836`).
+
+### The generate prompt must mandate `output: index.html`
+
+_Added at the 2026-08-25 pre-implementation review._
+
+§ Program Design's research notes the problem twice without resolving it: the
+rendered filename is manifest-controlled (`render_to_disk` writes to
+`output_dir / manifest["output"]`, `render.py:36-69`), while the oracle's
+`artifact_path` is bound once at invocation time and never re-read from a
+captured value. A model-authored manifest therefore picks a filename the wrapper
+cannot know in advance.
+
+Fixing the filename in the prompt resolves this completely. The template-mode
+branch mandates `output: index.html` in `manifest.yaml`; the render runs with
+`-o <run_dir>`; `artifact_path` then keeps the oracle's own default
+(`"index.html"`, `generator-evaluator.yaml:52`).
+
+Three consequences that shrink this issue's scope:
+
+- **No `artifact_path` key is added to the `with:` block.** The § Signatures
+  claim that this issue "adds `artifact_path` as a new key in that binding", and
+  the § Files to Modify mention of it, are both withdrawn — `with:` is unchanged
+  except for `pre_evaluate_cmd`.
+- The `rubric` prompt's existing *fallback* — "Otherwise read
+  `${captured.run_dir.output}/index.html` directly" (`html-anything.yaml:157-158`)
+  — keeps working in template mode without a branch, because the mandated
+  `output: index.html` puts the rendered file exactly where the fallback looks.
+  **This does not mean the `rubric` prompt needs no branch at all** — see
+  § The `rubric` prompt needs its own template-mode branch below. The fallback is
+  fine; the criterion set is not.
+- `snapshot`'s per-iteration `cp "$RUN_DIR/${context.artifact_path}"`
+  (`generator-evaluator.yaml:106`) still copies a single file. Accept knowingly
+  that `iter-N/` archives the *rendered* HTML, not the `.llat/` source: the
+  score-plateau and diff-stall guards operate on what was scored, which is the
+  right signal, and the live `.llat/` is what gets promoted.
+
+### The prompt must also state three contract details that are currently omitted
+
+_Added at the 2026-08-25 pre-implementation review._
+
+§ Program Design's `.llat/` contract summary is otherwise accurate, but each of
+these omissions produces a hard render failure:
+
+- **`ll.theme_css` exists only when `manifest.yaml` declares `theme:
+  design-tokens`** (`build_ll_namespace`, `artifact_templates.py:311-318`).
+  `theme` is not one of the required manifest keys, so it is absent from the
+  contract summary below. Under `StrictUndefined`, a body referencing
+  `[[= ll.theme_css =]]` without it raises at render time. Beyond the mechanics:
+  when `design_tokens_context` is non-empty, the template-mode branch must
+  instruct the model to declare `theme: design-tokens` and reference
+  `ll.theme_css`, **not** to inline the resolved token values. Inlining them
+  freezes today's theme into the promoted template and destroys the
+  render-it-again-next-month benefit that is this issue's own § Use Case.
+- **`ll-artifact render` resolves a relative `--data` and `-o` against
+  `config.project_root`, not the process cwd** (`render.py:96-97`,
+  `render_to_disk` `:58-60`). `run_dir` is captured absolute at `init`
+  (`html-anything.yaml:31-44`), so the render invocation must pass absolute
+  paths.
+- The generate prompt must state the non-default Jinja delimiters
+  (`[[= =]]` / `[[% %]]` / `[[# #]]`) explicitly — already captured in the
+  contract notes below, repeated here because it is the single most likely way a
+  first-try template fails.
+
+### Nothing currently forces a *meaningful* template/data split
+
+_Added at the 2026-08-25 pre-implementation review — scope gap._
+
+Every acceptance criterion as originally written is satisfiable by a template
+with all content hardcoded in `template.html.j2` and a `data.json` of `{}`. That
+shape is schema-valid, renders, screenshots, and scores 10/10 against the current
+rubric — while delivering none of the epic's value. There is no criterion
+anywhere, in the rubric or in the runtime gate, for parameterization.
+
+This is the pilot's real failure mode, and measuring "schema-valid emission
+rate" (step 7) without it would report a success number that means nothing.
+
+Fix, in two layers:
+
+- **Rubric layer.** The `plan` state's rubric-writing prompt
+  (`html-anything.yaml:46-114`) needs a template-mode branch that adds a
+  `data_parameterization` criterion: every piece of run-specific content
+  (headings, copy, figures, table rows, links) reaches the template through
+  `data.json`, and `data_schema` describes it. This makes a hardcoded template
+  score badly and get critiqued and regenerated — the existing iterate cycle then
+  does the work. **`plan` was not in § Files to Modify; it now is.**
+- **Deterministic backstop, at the terminal — *not* inside `pre_evaluate_cmd`.**
+  A shell assertion that `data.json` has at least a few top-level keys and that
+  the template body references them, so a degenerate `{}` never reaches
+  promotion regardless of what the rubric scored. **Placement corrected below** —
+  the earlier "after render (or inside `pre_evaluate_cmd`)" phrasing is
+  withdrawn; see § The backstop must not live inside the iterate cycle.
+
+### The backstop must not live inside the iterate cycle
+
+_Added at the 2026-08-25 pre-implementation review — corrects the placement
+suggested in the bullet above._
+
+If the degenerate-`data.json` assertion runs inside `pre_evaluate_cmd` and exits
+nonzero, the render is skipped (or its output is stale), so `evaluate` captures
+no fresh screenshot, `snapshot` records a miss (`generator-evaluator.yaml:97-130`),
+and three consecutive misses hit `check_screenshot_abandon`'s hardcoded cap
+(`:156-179`) and terminate the run at `screenshot_abandoned`. That is *abandoning*
+the run, which directly contradicts this issue's own acceptance criterion that "a
+low-scoring template is critiqued and regenerated, not abandoned." It also wastes
+the critique loop: a shell exit code produces no `critique.md` entry, so the model
+is never told what was wrong.
+
+The two layers therefore live in two different places, and the split is the point:
+
+- **Iterating layer = the rubric.** The `data_parameterization` criterion is the
+  only mechanism that can turn "this template is hardcoded" into a `critique.md`
+  line the next `generate` pass reads and fixes. All in-cycle enforcement goes
+  here.
+- **Gating layer = the terminal.** The deterministic assertion runs once, in
+  `finalize_done` (or a shell state immediately before it), as a hard gate on
+  promotion — after the iterate cycle has already had every chance to fix the
+  problem. A failure here routes to `failed`/`diagnose` with an explicit message,
+  rather than being laundered as a screenshot miss.
+
+`pre_evaluate_cmd` stays a pure render step. Its only non-render responsibility
+is the `.miss_reason` side-channel of step 6.
+
+### The `rubric` prompt needs its own template-mode branch
+
+_Added at the 2026-08-25 pre-implementation review — a fifth `html-anything.yaml`
+edit that § Files to Modify was missing._
+
+Adding a `data_parameterization` criterion to `rubric.md` (via `plan`) is only
+half the mechanism. The **scoring** prompt — `run_gen_eval`'s `rubric` binding
+(`html-anything.yaml:149-159`) — tells the scorer to read exactly three things:
+`rubric.md`, then `screenshot.png` *or* `index.html`, then `brief.md`. It never
+reads `manifest.yaml`, `template.*.j2`, or `data.json`. In template mode all
+three of those are the *only* evidence that could support a parameterization
+score, and the scorer would be looking solely at the rendered HTML — where a
+hardcoded template and a fully parameterized one are indistinguishable by
+construction.
+
+Left unbranched, the scorer either invents a `data_parameterization` score with
+no evidence or omits the criterion and breaks `critique.md`'s mandated format,
+which the `ALL_PASS`/`ITERATE` decision is parsed from.
+
+Fix: the `rubric` binding gets a template-mode branch instructing the scorer to
+additionally read `<run_dir>/artifact.llat/manifest.yaml`,
+`<run_dir>/artifact.llat/template.*.j2`, and `<run_dir>/artifact.llat/data.json`,
+and to score `data_parameterization` from those sources — while continuing to
+score every visual criterion from the screenshot as today. Same inline-conditional
+prose convention as the `generate_prompt` branch.
+
+### Promotion destination is overwritten on every run
+
+_Added at the 2026-08-25 pre-implementation review — decide explicitly._
+
+Post-correction (see § Program Design), the default template-mode destination is
+`<templates_dir>/html-anything.llat`, keyed by **loop name only**
+(`_promote_template_artifact`, `persistence.py:843-846`). `artifact_output.to` is
+static YAML with no interpolation, so a run-scoped destination is not available
+without new plumbing. Every template-mode run therefore clobbers the previous
+one; because `produced_by` matches, it does so without even a warning
+(`persistence.py:869-881`).
+
+For a pilot whose whole point is comparing outputs across runs, that is worth
+deciding rather than discovering. Land the overwrite behavior, document it in
+LOOPS_REFERENCE.md, and note run-scoped naming as a follow-up if the pilot
+proceeds to the other eight loops.
 
 ### Scope bound
 
@@ -136,23 +346,75 @@ _Added by `/ll:refine-issue` — 2026-08-25 — based on codebase analysis:_
 ## Integration Map
 
 ### Files to Modify
+
+_Revised at the 2026-08-25 pre-implementation review — `artifact_path` removed
+(§ The generate prompt must mandate `output: index.html`), `plan` and the oracle
+parameter added._
+
+- `scripts/little_loops/loops/html-anything.yaml:24-28` — the `artifact_mode`
+  context var and the new top-level `artifact_output:` block
+  (`from: artifact.llat`)
+- `scripts/little_loops/loops/html-anything.yaml:46-114` — `plan`'s
+  rubric-writing prompt: a template-mode branch adding the
+  `data_parameterization` criterion (§ Nothing currently forces a meaningful
+  template/data split). **Not in the original map.**
 - `scripts/little_loops/loops/html-anything.yaml:117-186` — the `generate_prompt`
-  template-mode branch, the `artifact_mode` context var, the per-iteration render
-  step, and the `artifact_path` passed through `with:`
+  template-mode branch and the new `pre_evaluate_cmd` value passed through
+  `with:`. Note `artifact_path` is **not** added to `with:` — the mandated
+  `output: index.html` means the oracle's own default already points at the
+  rendered file.
+- `scripts/little_loops/loops/html-anything.yaml:149-159` — `run_gen_eval`'s
+  `rubric` binding: a template-mode branch pointing the scorer at the `.llat/`
+  sources so `data_parameterization` is scoreable (§ The `rubric` prompt needs its
+  own template-mode branch). **Not in the original map.**
 - `scripts/little_loops/loops/html-anything.yaml:187-201` — `finalize_done` reports
-  `index.html`; template mode reports the `.llat/` contents instead
+  `index.html`; template mode reports the `.llat/` contents and the promotion
+  destination instead, **and** hosts the deterministic degenerate-`data.json`
+  gate (§ The backstop must not live inside the iterate cycle)
+- `scripts/little_loops/loops/oracles/generator-evaluator.yaml:30-52,74-85` — the
+  new optional `pre_evaluate_cmd` parameter (`parameters:` entry + `context:`
+  default `""`) interpolated at the top of `evaluate`'s shell action. This is the
+  *only* oracle edit; it is a generic parameter, not an artifact-mode branch, and
+  the other eight consumers leave it unset. **Do not fork the oracle** and do not
+  add a state to it.
 
 ### Dependent Files (Callers/Importers)
-- `scripts/little_loops/loops/oracles/generator-evaluator.yaml:43,52,82` —
-  `artifact_path`; the screenshot target this issue repoints. **Do not fork the
-  oracle** — eight other loops delegate to it.
+- `scripts/little_loops/loops/oracles/generator-evaluator.yaml:43,52,82,106` —
+  `artifact_path` stays at its `index.html` default in both modes; the screenshot
+  target is not repointed. Eight other loops delegate to this oracle.
 - `scripts/little_loops/cli/artifact/render.py:72` — `cmd_render`, invoked per
-  iteration
+  iteration via `pre_evaluate_cmd` with absolute `--data`/`-o` paths
 
 ### Tests
 - `scripts/tests/test_builtin_loops.py` — conformance for the modified
   `html-anything.yaml` (both modes parse, validate, and route)
 - A `file`-mode regression asserting the default path is unchanged
+
+_Added at the 2026-08-25 pre-implementation review:_
+- A test that a `file`-mode terminal promotes **nothing** given
+  `artifact_output.from: artifact.llat` (the missing-source skip,
+  `persistence.py:757-763`) — this is what makes the mode-independent
+  `artifact_output` block safe, so it needs pinning rather than assuming.
+- A test that `oracles/generator-evaluator.yaml`'s `pre_evaluate_cmd` defaults to
+  `""` and that `evaluate`'s action is a no-op prefix when unset, so the eight
+  non-template consumers are provably unchanged.
+- Conformance on `plan`'s template-mode rubric branch (the
+  `data_parameterization` criterion appears in template mode and is absent in
+  `file` mode) — fragment-presence style, per `TestResearchCoverageOracle`.
+- Conformance on `run_gen_eval`'s `rubric` binding: the template-mode branch
+  names the `.llat/` sources (`manifest.yaml`, `template`, `data.json`) and the
+  `file`-mode text does not — otherwise `data_parameterization` is scored with no
+  evidence (§ The `rubric` prompt needs its own template-mode branch).
+- Conformance that the template-mode `generate_prompt` states `index.html` is a
+  render output that must not be edited directly (fragment-presence).
+- A check that the bound `pre_evaluate_cmd` string survives both interpolation
+  passes — i.e. it contains no bare `${` and no singly-escaped `$${` (§
+  `pre_evaluate_cmd` is interpolated TWICE). A static string assertion on the
+  YAML value is enough and catches the failure at test time rather than at run
+  time, where it surfaces as an opaque `expected namespace.path`.
+- A test that the `.miss_reason` side-channel is cleared on a successful render,
+  not only written on failure (step 6) — otherwise the abandon message reports a
+  stale cause.
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_enh3035_artifact_template_kit.py:62-68`
@@ -221,21 +483,33 @@ var, not a new dataclass/schema.
 - `cmd_render(args: argparse.Namespace, logger: Logger) -> int`
   (`scripts/little_loops/cli/artifact/render.py:72`) — exit `0` on success, exit
   `1` uniformly for every failure category (unresolvable template, invalid
-  manifest, missing/malformed/schema-invalid data, output-path collision, bad
-  `--source`, lockfile-write failure).
+  manifest, missing/malformed/schema-invalid data, an `-o` that names an existing
+  *file*, bad `--source`, lockfile-write failure).
 - `run_gen_eval`'s existing `with:` binding (`html-anything.yaml:122,148,182`)
   passes `run_dir`, `generate_prompt`, `rubric`, `pass_threshold` into
-  `oracles/generator-evaluator`; this issue adds `artifact_path` as a new key in
-  that same binding.
+  `oracles/generator-evaluator`; this issue adds **`pre_evaluate_cmd`** as the one
+  new key in that binding.
+
+_Correction (2026-08-25 pre-implementation review):_ an earlier revision of this
+section said the issue adds `artifact_path` to that binding. It does not — see
+§ The generate prompt must mandate `output: index.html`.
 
 ### Call Path
 
 `ll-loop run html-anything --context artifact_mode=template` ->
 `run_gen_eval` (`html-anything.yaml:117`) -> `oracles/generator-evaluator` with a
-template-shaped `generate_prompt` + a rendered `artifact_path` ->
-`ll-artifact render` (per iteration, for the screenshot) -> Playwright screenshot ->
-rubric score -> `finalize_done` -> `promote_run_artifact` (FEAT-3318) ->
-`<templates_dir>/{run_id}-html-anything.llat/`
+template-shaped `generate_prompt` + `pre_evaluate_cmd` ->
+`generate` (model writes `<run_dir>/artifact.llat/`) -> `evaluate`, whose action
+now begins with `ll-artifact render <run_dir>/artifact.llat -o <run_dir>`
+(rendering `index.html`, per the mandated `manifest.output`) -> Playwright
+screenshot of the unchanged `artifact_path` default -> `snapshot` / `score_gate` /
+`score` -> `finalize_done` -> `promote_run_artifact` (FEAT-3318) ->
+`<templates_dir>/html-anything.llat/`
+
+_Correction (2026-08-25 pre-implementation review): the earlier
+`{run_id}-html-anything.llat/` destination in this path was wrong — see the
+research finding below on `_promote_template_artifact` keying by loop name only,
+and § Promotion destination is overwritten on every run._
 
 ### Codebase Research Findings
 
@@ -243,7 +517,7 @@ _Added by `/ll:refine-issue` — 2026-08-25 — based on codebase analysis:_
 
 - **Current `context:` block** (`html-anything.yaml:24-28`) declares exactly `description`, `pass_threshold: 7`, `design_tokens_context: ""` — no `artifact_mode` key exists yet. FEAT-3318 (this issue's dependency) is itself still `status: open` with zero code hits for `artifact_mode` anywhere in the tree.
 - **Current `run_gen_eval` `with:` block** (`html-anything.yaml:122,148,182`) passes exactly `run_dir`, `generate_prompt`, `rubric`, `pass_threshold` into `oracles/generator-evaluator` — it does **not** currently pass `artifact_path`, so the oracle's own default (`"index.html"`, `generator-evaluator.yaml:52`) applies implicitly today. Adding template mode means adding an `artifact_path` binding here for the first time.
-- `cmd_render(args: argparse.Namespace, logger: Logger) -> int` (`scripts/little_loops/cli/artifact/render.py:72`) — exit `0` on success, exit `1` (uniformly, no distinct codes) for every failure category: unresolvable template, invalid manifest, missing/malformed/schema-invalid data, an existing-file collision at the output path, a bad `--source`, or a lockfile-write failure.
+- `cmd_render(args: argparse.Namespace, logger: Logger) -> int` (`scripts/little_loops/cli/artifact/render.py:72`) — exit `0` on success, exit `1` (uniformly, no distinct codes) for every failure category: unresolvable template, invalid manifest, missing/malformed/schema-invalid data, an existing-file collision at the output path, a bad `--source`, or a lockfile-write failure. **Corrected 2026-08-25 (pre-implementation review):** "existing-file collision at the output path" overstates the guard. `OutputPathError` fires only when `-o` *itself* names an existing file (`render_to_disk`, `render.py:59-61`); the rendered artifact is written with `out_path.write_text` (`:67-68`), which overwrites. Re-rendering into the same directory every iteration is fine — no fresh-output-dir-per-iteration workaround is needed.
 - **Rendered filename is manifest-controlled, not caller-controlled**: `render_to_disk` (`render.py:36-69`) writes to `output_dir / template.manifest["output"]` — only the containing directory is settable via `-o`, the filename itself comes from `manifest.yaml`'s `output` key. Consequence for this issue: the per-iteration `artifact_path` value passed to the oracle must be `<rendered-output-dir>/<manifest.output>`, not an arbitrary fixed name the wrapper chooses.
 - **`promote_run_artifact` is currently a no-op for this loop**: it returns `None` whenever `fsm.artifact_output is None` (`fsm/persistence.py:753`), and `html-anything.yaml` declares no top-level `artifact_output:` key today. FEAT-3318 must land the `artifact_output`/`artifact_mode`-aware promotion logic before this issue's generate-prompt work has anything to promote into a `.llat/` directory — confirms the existing `depends_on: FEAT-3318` frontmatter edge is load-bearing, not incidental.
 - `--context KEY=VALUE` (`cli/loop/__init__.py:294`, applied in `cli/loop/run.py:184-188`) is a fully generic mechanism — it does a plain `fsm.context[key] = value` string assignment with no artifact-specific dispatch. Setting `artifact_mode=template` today would only add an undeclared context key; nothing currently reads it.
@@ -267,29 +541,174 @@ _Added by `/ll:refine-issue` — 2026-08-25 — based on codebase analysis:_
 - **No other loop in the repo declares `artifact_mode: template`** — confirmed by both research passes (grep across `scripts/little_loops/loops/**/*.yaml` for `artifact_mode` returns zero hits). `hitl-md.yaml` remains the only loop with an `artifact_output:` block, and it is `file`-mode only (`hitl-md.yaml:48-51`). FEAT-3320 will be the first loop in the repo to actually exercise template mode — there is no landed example loop to model the wiring after, only FEAT-3318's own synthetic test fixtures.
 - **Canonical minimal `.llat/` fixture** (ground truth for the generate-prompt's wording target): `test_fsm_persistence.py:1620-1636`, `_write_llat_fixture()` — writes `manifest.yaml` (`name: t`, `version: 1`, `renderer: jinja2`, `output: out.txt`, a one-field `data_schema`), exactly one `template.txt.j2` (`Hello [[= title =]]`), and `data.json` (`{"title": "World"}`). Agrees with the pre-existing `scripts/tests/fixtures/artifact_templates/{simple,theme,delimiters}.llat/` fixtures (FEAT-3036/ENH-3035) on required manifest keys and `renderer: jinja2`.
 
+_Added by the 2026-08-25 pre-implementation review — verified directly against
+the landed code:_
+
+- **`ll.theme_css` is conditional on a manifest key that is not required**:
+  `build_ll_namespace` (`artifact_templates.py:311-318`) always populates
+  `ll.assets`, but populates `ll.theme_css` **only** when
+  `manifest.get("theme") == "design-tokens"`. `theme` is absent from the required
+  manifest key list (`name, version, renderer, output, data_schema`), so a model
+  following the contract summary alone will omit it; a body referencing
+  `[[= ll.theme_css =]]` then hits `StrictUndefined` and the render fails with a
+  `DataValidationError`.
+- **`ll-artifact render`'s relative-path anchor is `config.project_root`, not
+  cwd**: `data_path` (`render.py:105-107`) and the `-o` output dir
+  (`render_to_disk`, `:58-60`) both resolve a relative value against
+  `config.project_root`. `html-anything`'s `init` state already captures
+  `run_dir` as an absolute path (`html-anything.yaml:31-44`), so passing
+  `${captured.run_dir.output}` satisfies this — but only because it is absolute.
+- **`render_to_disk` overwrites, it does not collide**: `out_path.write_text`
+  (`render.py:67-68`). The only path-collision guard is `OutputPathError` when
+  `-o` itself names an existing file (`:59-61`).
+- **`snapshot` copies a single file, so `iter-N/` archives the render, not the
+  source**: `cp "$RUN_DIR/${context.artifact_path}"`
+  (`generator-evaluator.yaml:106`) is a plain file copy — a `.llat/` directory
+  would not be archived by it even if `artifact_path` pointed at one. With the
+  mandated `output: index.html` this is a non-issue: the rendered HTML is what
+  gets versioned per iteration, which is also what `check_stall` /
+  `check_diff_stall` (`:246-279`) reason about. The live `.llat/` under `run_dir`
+  is what `promote_run_artifact` reads at terminal.
+- **`html-anything`'s `rubric` prompt already falls back to reading
+  `index.html`** when no screenshot exists (`html-anything.yaml:157-158`). The
+  mandated `output: index.html` keeps that fallback correct in template mode with
+  no branch — though note the fallback then scores the *rendered* output, so a
+  template-specific critique still depends on the `data_parameterization`
+  criterion, which reads the `.llat/` sources directly.
+- **`evaluate` carries `timeout: 120`** (`generator-evaluator.yaml:75`), shared by
+  the prepended `pre_evaluate_cmd`. A deterministic Jinja render is
+  sub-second, so the existing budget is ample; no timeout change needed.
+
+### `pre_evaluate_cmd` is interpolated TWICE — the escaping rule is different here
+
+_Added at the 2026-08-25 pre-implementation review. This is the single most
+likely way steps 5 and 6 fail on the first attempt, and nothing else in this
+issue flags it._
+
+A value bound through a `with:` block is interpolated **twice**, not once:
+
+1. At sub-loop invocation, `interpolate_dict(state.with_, ctx)`
+   (`fsm/executor.py:873-877`) resolves the whole `with:` mapping against the
+   *parent's* context — this is what turns `${captured.run_dir.output}` into the
+   absolute run directory.
+2. The resolved string lands in the child's `context` (`executor.py:893`), and the
+   oracle's `evaluate` action then interpolates `${context.pre_evaluate_cmd}` on
+   its own — a second full pass over the already-substituted text.
+
+The consequence is that the usual escaping rule from the repo's shell states is
+**wrong for this value**. `$${VAR}` un-escapes to a literal `${VAR}` on pass 1
+(`fsm/interpolation.py:213,228,284`), and pass 2 then reads that as a namespace
+path and raises `expected namespace.path`. A bare `${VAR}` fails on pass 1 for
+the same reason. Correct forms inside a `with:`-bound shell snippet:
+
+- **`${VAR}` → `$$$${VAR}`** (double-escaped: survives pass 1 as `$${VAR}`, pass 2
+  as `${VAR}`).
+- **Preferred: avoid brace syntax entirely.** Interpolation only scans `${`, so
+  `$VAR`, `$?`, and `$(...)` pass through both passes untouched. Write
+  `pre_evaluate_cmd` brace-free and the problem disappears rather than being
+  managed.
+
+This applies to step 6's `.miss_reason` logic specifically, which is the only
+part of `pre_evaluate_cmd` that needs shell variables at all. The render
+invocation itself uses only interpolated absolute paths and is unaffected.
+
 ## Implementation Steps
 
-1. Add the `artifact_mode` context var to `html-anything.yaml` and thread the
-   effective mode into the `with:` block.
-2. Branch the `generate_prompt` on it: template mode instructs the model to write
-   `manifest.yaml` + exactly one `template.*.j2` + `data.json` under a `.llat/`
-   directory in `run_dir`, per the contract `artifact_templates.py` enforces.
-3. Add the per-iteration `ll-artifact render` step and repoint `artifact_path` at
-   its output so the screenshot/score/critique cycle runs unchanged.
-4. Make a render failure surface as a render error through the ENH-2903 abandon
-   path rather than a bare screenshot-miss.
-5. Update `finalize_done`'s reported output paths for template mode.
-6. Conformance + `file`-mode regression tests; docs.
-7. **Report the observed reliability** — how often the model produced a
-   schema-valid template first try, and after critique. This number is the input
-   to the follow-up decision about the other eight loops.
+_Revised at the 2026-08-25 pre-implementation review._
+
+1. Add the `artifact_mode` context var and the `artifact_output:` block
+   (`from: artifact.llat`) to `html-anything.yaml`. Verify the static gate is
+   satisfied and that a `file`-mode run promotes nothing (missing source).
+2. Add the optional `pre_evaluate_cmd` parameter to
+   `oracles/generator-evaluator.yaml` (default `""`, prepended to `evaluate`'s
+   shell action). Confirm the eight other consumers are behaviorally unchanged.
+3. Branch the `generate_prompt` on the mode: template mode instructs the model to
+   write `manifest.yaml` + exactly one `template.*.j2` + `data.json` under
+   `<run_dir>/artifact.llat/`, per the contract `artifact_templates.py` enforces
+   — including `output: index.html`, the `[[= =]]` / `[[% %]]` / `[[# #]]`
+   delimiters, no top-level `ll` key, and (when `design_tokens_context` is
+   non-empty) `theme: design-tokens` + `[[= ll.theme_css =]]` rather than inlined
+   token values. **The prompt must also state that `index.html` is a build
+   output**: it is (re)generated by `ll-artifact render` before every screenshot,
+   so any direct edit to it is silently clobbered on the next iteration. The
+   model reads `critique.md`, which scores the *rendered* HTML, and will otherwise
+   be strongly tempted to "fix" `index.html` directly — producing a critique that
+   never resolves and an iterate cycle that runs to `max_steps`. Instruct
+   explicitly: fix `template.*.j2` or `data.json`, never `index.html`.
+4. Branch `plan`'s rubric-writing prompt to add the `data_parameterization`
+   criterion in template mode (§ Nothing currently forces a meaningful
+   template/data split), **and** branch `run_gen_eval`'s `rubric` scoring prompt
+   so the scorer actually reads the `.llat/` sources that criterion is about
+   (§ The `rubric` prompt needs its own template-mode branch). Both halves are
+   required — the criterion is unscoreable without the second.
+5. Pass `pre_evaluate_cmd` from `html-anything`'s `with:` block:
+   `ll-artifact render <abs run_dir>/artifact.llat -o <abs run_dir> >/dev/null` —
+   absolute paths, since relative ones resolve against `config.project_root`, not
+   cwd; stdout quieted so it cannot perturb `evaluate`'s `output_contains:
+   "CAPTURED"` match (§ Caveat on `evaluate`'s routing). Mind the
+   double-interpolation escaping rule for anything in this value that uses shell
+   variables — see § `pre_evaluate_cmd` is interpolated TWICE.
+6. Make a render failure surface as a render error through the ENH-2903 abandon
+   path rather than a bare screenshot-miss: `pre_evaluate_cmd` writes
+   `.miss_reason` under `run_dir` on nonzero exit **and removes it on exit 0**,
+   and `screenshot_abandoned_summary` (`generator-evaluator.yaml:287-303`)
+   includes it in its message when present. The removal-on-success half is not
+   optional: `.miss_reason` is otherwise never cleared, so a render failure at
+   iteration 1 followed by successful renders would leave a stale file that gets
+   reported verbatim if the run later abandons for an unrelated screenshot
+   reason — a message that is actively wrong, which is worse than the generic one
+   this step replaces. No routing change; `evaluate`'s undifferentiated
+   `on_yes`/`on_no`/`on_error` → `snapshot` (`:83-85`) is untouched, so the
+   existing ENH-2903 tests keep passing (none assert the literal message text).
+7. Update `finalize_done`'s reported output paths for template mode, including the
+   promotion destination, and add the deterministic degenerate-`data.json` gate
+   there (§ The backstop must not live inside the iterate cycle) — at the
+   terminal, not inside `pre_evaluate_cmd`.
+8. Conformance + `file`-mode regression tests; docs (LOOPS_REFERENCE.md's
+   `artifact_mode` row and template-mode example, the overwrite-per-run note,
+   CLI.md, HARNESS_OPTIMIZATION_GUIDE.md).
+9. **Report the observed reliability** — see § Measuring the reliability number
+   below for what to run and where to record it. This number is the input to the
+   follow-up decision about the other eight loops.
+
+### Measuring the reliability number
+
+_Added at the 2026-08-25 pre-implementation review — the last acceptance
+criterion previously had no method, and cannot be satisfied by the test suite._
+
+It needs live host-CLI runs, which are manual, billable, and slow. Concretely:
+
+- **N = 5** template-mode runs across at least three different artifact types
+  (e.g. one dashboard, one résumé, one social card), so the number is not a
+  single-prompt artifact.
+- **First-try success** = the `.llat/` written by the first `generate` pass
+  survives the runtime gate (`load_manifest` / `find_template_body` / `load_data`
+  / `validate_top_level_data` / a discarded `render_template`) **and** clears the
+  `data_parameterization` criterion. A template that is schema-valid but
+  hardcoded counts as a failure, not a success — that distinction is the whole
+  point of the measurement.
+- **Post-critique success** = the same, at the run's terminal state.
+- **Recorded in this issue** (a `## Pilot Results` section), not only in
+  `postmortems/` — the follow-up scoping decision reads the issue.
+- **Early-abort clause.** If the first **three** runs produce zero first-try
+  successes, stop there. Record `0/3` and the observed failure modes as the
+  result and close the measurement — the follow-up decision about the other eight
+  loops is already answered, and the remaining two runs would only re-confirm it
+  at cost. The abort is a valid outcome for this criterion, not a skipped one.
+- Close-out is blocked on this section existing. It is the deliverable, not a
+  nice-to-have.
 
 ## Impact
 
 - **Priority**: P2 — without a producer, FEAT-3318's plumbing is inert and every
   loop→template route stays on the lossy `templatize` path.
-- **Effort**: Medium — one loop file, but the per-iteration render step and its
-  failure path are real work.
+- **Effort**: Medium — revised upward at the 2026-08-25 review. Not "one loop
+  file": five separate edits to `html-anything.yaml` (context/`artifact_output`,
+  `plan`'s rubric-writing branch, `generate_prompt`, the `rubric` scoring branch,
+  `finalize_done` + its promotion gate), one generic
+  parameter added to the shared oracle (plus one message-only edit to
+  `screenshot_abandoned_summary`), and N=5 live runs for the reliability
+  number, which is wall-clock and billable rather than code.
 - **Risk**: Medium — the reliability of LLM-emitted schema-valid templates is
   unproven; that is what this issue measures. Contained: the default mode is
   untouched and the shared oracle is not forked.
@@ -307,20 +726,47 @@ month — no LLM call, no `templatize` round trip, no fidelity loss.
       `.llat/` directory that passes FEAT-3318's runtime gate and is rendered by
       `ll-artifact render` with no `templatize` step.
 - [ ] The default (`file`) path is unchanged — same prompt, same `index.html`, same
-      reported outputs; a regression test pins this. This includes the promotion
-      side effect of the newly-required `artifact_output` block: either
-      default-mode runs do not promote, or the change is explicitly signed off and
-      documented.
-- [ ] `oracles/generator-evaluator.yaml` is **not** forked or branched on artifact
-      mode; template mode is expressed entirely through its existing
-      `artifact_path` / `generate_prompt` parameters.
+      reported outputs; a regression test pins this. Includes the promotion side
+      effect of the newly-required `artifact_output` block: a `file`-mode run
+      promotes **nothing**, because `from: artifact.llat` does not exist in that
+      mode (`persistence.py:757-763`). The regression test asserts this explicitly.
+- [ ] `oracles/generator-evaluator.yaml` is **not** forked, branched on artifact
+      mode, or given a new state. Exactly two changes are permitted: (a) one
+      generic optional parameter, `pre_evaluate_cmd`, default `""`, prepended to
+      `evaluate`'s existing action; and (b) a message-only edit to
+      `screenshot_abandoned_summary` that appends `.miss_reason`'s contents when
+      that file exists. Both are inert when unused: with `pre_evaluate_cmd` unset
+      and no `.miss_reason` on disk, the eight other consumers are behaviorally
+      unchanged and their existing conformance tests pass unmodified.
+      _(Revised at the 2026-08-25 pre-implementation review: the earlier "the only
+      oracle change is one generic optional parameter" wording contradicted
+      Implementation Step 6, which requires (b).)_
+- [ ] `artifact_path` keeps its `index.html` default in both modes — the template's
+      `manifest.output` is mandated to `index.html` rather than the wrapper
+      overriding the screenshot target.
+- [ ] The emitted template is genuinely parameterized: run-specific content lives
+      in `data.json` and is referenced from the body, not hardcoded. Enforced in
+      two places: a `data_parameterization` rubric criterion in template mode
+      (written by `plan`, **and** scoreable because the `rubric` prompt's
+      template-mode branch reads the `.llat/` sources), plus a deterministic
+      terminal gate that rejects a degenerate `data.json` before promotion. The
+      deterministic gate runs at `finalize_done`, **not** inside
+      `pre_evaluate_cmd` — an in-cycle failure would surface as a screenshot miss
+      and abandon the run, contradicting the criterion below.
+- [ ] When `design_tokens_context` is non-empty, the emitted `manifest.yaml`
+      declares `theme: design-tokens` and the body references `[[= ll.theme_css =]]`
+      rather than inlining resolved token values — so the promoted template is
+      re-renderable under a different theme.
 - [ ] The screenshot/rubric/critique iterate cycle works in template mode — a
       low-scoring template is critiqued and regenerated, not abandoned.
 - [ ] A template that fails to render surfaces the render error, not a generic
       missing-screenshot message.
 - [ ] `test_builtin_loops.py` conformance passes for both modes.
-- [ ] The issue records an observed first-try and post-critique success rate for
-      schema-valid template emission.
+- [ ] A `## Pilot Results` section in this issue records the observed first-try
+      and post-critique success rates over N=5 live runs across ≥3 artifact types,
+      per § Measuring the reliability number. A schema-valid but hardcoded
+      template counts as a failure. An early abort at 0/3 first-try successes,
+      recorded with its failure modes, satisfies this criterion.
 
 ## Related Key Documentation
 
