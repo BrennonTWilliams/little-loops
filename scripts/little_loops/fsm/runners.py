@@ -187,7 +187,11 @@ class DefaultActionRunner:
         # forward the resolved context as-is (see the call below). Only the
         # idle timeout survives decomposition here — it's also read by this
         # method's own shell-branch below, which has no automation= of its own.
-        resolved_idle_timeout = int(automation.idle_timeout or 0) if automation else 0
+        # BUG-3208 DIAGNOSTIC (diagnostic branch — do not merge as-is): default
+        # the idle timeout to 300s so the sibling shell-branch subprocess.Popen
+        # below fails fast on a silent-subprocess wedge instead of blocking
+        # indefinitely when automation.idle_timeout is unset/0.
+        resolved_idle_timeout = int(automation.idle_timeout or 300) if automation else 300
 
         if is_slash_command:
             # Execute via Claude CLI using run_claude_command() so that the
