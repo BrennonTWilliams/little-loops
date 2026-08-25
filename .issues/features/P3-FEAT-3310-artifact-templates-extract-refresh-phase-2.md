@@ -37,8 +37,52 @@ derive `data.json` from a source document without hand-authoring it.
   *`extract`'s LLM invocation — resolved by FEAT-3308*: `advisor.py`'s shape,
   not `learning_tests/extractor.py`'s fail-soft prose-marker parse). Fails
   loudly if the output doesn't validate against `data_schema`.
+  Carries `--model` and `--timeout` flags, matching the LLM-boundary precedent
+  it copies (`discover.py:395-464`, whose `build_blocking_json`/`run_blocking_json`
+  pair takes both). Guards source size before the host call: a source file above
+  a documented byte ceiling is rejected with a typed error naming the limit,
+  rather than being fed whole into a blocking host invocation.
 - `ll-artifact refresh <template> [<source-file>]` — `extract` + `render` in
   one shot, against the manifest's bound `source:` by default.
+
+### Pre-implementation decisions (2026-08-25 review)
+
+These close ambiguities found in a pre-implementation review of this issue and
+FEAT-3311. They are decisions, not open questions.
+
+**`manifest.source` is a scalar string, not a mapping.** FEAT-3036's design
+sketch (`P3-FEAT-3036-...md:131-132`) writes `source: {path: ...}`, but the only
+existing writer — `templatize.build_manifest` (`templatize.py:519-535`) — emits
+`"source": str(source)`, a plain path string, and every `.llat/` produced to
+date carries that shape. The scalar wins: it is what ships. `refresh` resolves
+its default source as `manifest["source"]` (project-root-relative if not
+absolute), **not** `manifest["source"]["path"]`.
+
+**`load_manifest` gains inner-shape validation for `source` and `extraction`.**
+Today `load_manifest` (`artifact_templates.py:142`) checks only that these are
+allowed top-level keys. `extract.py` is their first reader, so a hand-written
+manifest with `source: {path: ...}` (or an `extraction` that is not a mapping)
+currently surfaces as an `AttributeError`/`TypeError` swallowed by
+`cmd_*`'s trailing `except Exception` backstop and reported as an opaque exit 1.
+Validation belongs in `load_manifest` — the module that owns every other
+manifest shape rule — not locally in `extract.py`: `source` must be a non-empty
+string; `extraction`, if present, must be a mapping. This resolves the open
+question recorded under § Program Design → Decision Rules (wiring pass).
+
+**A manifest with no usable `extraction.prompt` is a loud, typed failure.**
+`extract` raises its module error naming the template and the missing key; it
+never falls back to a synthesized default prompt. Note that
+`templatize.build_manifest` writes `extraction` as `{"method": ..., "regions_map": ...}`
+or `{"method": ..., "host": ..., "model": ...}` — neither carries `prompt`, so
+templatize-produced templates need a hand-added `prompt` before `extract` works
+on them. Say so in the error message.
+
+**`json_schema` enforcement is host-dependent, so post-call validation is
+load-bearing.** Claude Code drops `json_schema` silently
+(`host_runner.py:442-465`); Codex materializes it (`:736-770`). The
+`validate_top_level_data` call after the host returns is the *only* guarantee on
+the Claude Code path — it is not defense in depth, and must not be skipped or
+downgraded to a warning on the grounds that the schema was already passed.
 
 ## Use Case
 
@@ -137,7 +181,8 @@ _Added by `/ll:refine-issue` — 2026-08-25 — based on codebase analysis:_
 - No partial write: if `validate_top_level_data` rejects the extracted data, `data.json` must not be written (or left partially written) — `render.py`'s `cmd_render` establishes the precedent of validating fully before any output-path write occurs (`render.py`'s data validate step precedes the render/write step).
 
 _Wiring pass added by `/ll:wire-issue`:_
-- `load_manifest` (`artifact_templates.py:142`) validates only that `extraction` is an allowed top-level manifest key — it does not validate the inner shape of `extraction.prompt`. `extract.py` will be the first consumer of `manifest.get("extraction", {}).get("prompt")`; whether `load_manifest` should gain inner-shape validation for this new key, or whether `extract.py` validates it locally, is an open implementation decision not resolved by existing code.
+- `load_manifest` (`artifact_templates.py:142`) validates only that `extraction` is an allowed top-level manifest key — it does not validate the inner shape of `extraction.prompt`. `extract.py` will be the first consumer of `manifest.get("extraction", {}).get("prompt")`. **Resolved 2026-08-25** (§ Expected Behavior → Pre-implementation decisions): inner-shape validation for `source` and `extraction` lands in `load_manifest`, not locally in `extract.py`; a missing `extraction.prompt` is a typed loud failure at `extract` time.
+- **Manifest `source` shape — resolved 2026-08-25.** FEAT-3036's design sketch and this issue's original AC said `source.path` (a mapping); `templatize.build_manifest` (`templatize.py:519-535`) writes `"source": str(source)` (a scalar). The scalar is authoritative. See § Expected Behavior → Pre-implementation decisions.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
@@ -153,7 +198,10 @@ _These touchpoints were identified by wiring analysis and must be included in th
   use case from EPIC-3299; FEAT-3036 Phase 1 (`render`) is a hard
   prerequisite.
 - **Effort**: Medium
-- **Risk**: Low — pure addition, no changes to Phase 1's render path.
+- **Risk**: Low — additive on the CLI surface. The one non-additive change is
+  tightening `load_manifest` to validate `source`/`extraction` inner shape,
+  which rejects a mapping-shaped `source` that previously loaded silently; no
+  `templatize`-produced manifest is affected (it writes the scalar form).
 
 ## Acceptance Criteria
 
@@ -162,12 +210,27 @@ _These touchpoints were identified by wiring analysis and must be included in th
       fail-soft prose-marker fallback), and writes a `data.json` that passes
       `artifact_templates.validate_top_level_data` before considering the
       command successful.
+- [ ] `ll-artifact extract` carries `--model` and `--timeout` flags, and
+      rejects a source file over a documented byte ceiling with a typed error
+      before the host call is built.
+- [ ] `load_manifest` validates the inner shape of `source` (non-empty string)
+      and `extraction` (mapping, if present); a manifest whose `extraction`
+      carries no `prompt` fails `extract` with a typed error naming the
+      template and the missing key — never a synthesized default prompt.
 - [ ] `ll-artifact refresh` composes `extract` + `render`, defaulting the
-      source file to the manifest's `source.path` when no `<source-file>` is
-      given.
+      source file to the manifest's scalar `source` (project-root-relative if
+      not absolute) when no `<source-file>` is given — see § Pre-implementation
+      decisions; **not** `source.path`.
+- [ ] `refresh` writes its extracted `data.json` to `<template>/data.json` by
+      default and accepts a `--data <path>` override, so refreshing a committed
+      template need not mutate the tracked file in place. The write target is
+      stated in `--help` and in `docs/reference/CLI.md`.
 - [ ] Tests cover: successful extraction + validation, a host call that
       returns data violating `data_schema` (fails loud, no partial write),
-      and `refresh`'s default-source resolution.
+      `refresh`'s default-source resolution against a scalar `source`, a
+      manifest with `extraction` but no `prompt`, and a manifest with a
+      mapping-shaped `source` (rejected by `load_manifest` with a
+      `ManifestError`, not an `AttributeError` via the backstop).
 - [ ] `docs/reference/CLI.md` documents `extract` and `refresh`.
 - [ ] `python -m pytest scripts/tests/` exits 0.
 

@@ -15,7 +15,6 @@ labels:
 - planning-hub
 learning_tests_required:
 - yaml
-- jinja2
 ---
 
 # FEAT-3311: Artifact templates: status + lockfile staleness detection (Phase 3)
@@ -53,6 +52,62 @@ renders:
   docs/risk-register.md: {sha256: ..., rendered_at: ..., output: ...}
 ```
 
+### Pre-implementation decisions (2026-08-25 review)
+
+These close ambiguities found in a pre-implementation review of this issue and
+FEAT-3310. They are decisions, not open questions.
+
+**The lockfile writer belongs to `extract`/`refresh`, not to `render`.**
+`cmd_render` (`render.py:27-88`) receives only `template`, `--data`, and `-o` —
+it never reads a source document. To record `renders[<source path>].sha256` it
+would have to *assume* that `manifest["source"]` produced the current
+`data.json`, which is false whenever `data.json` was hand-authored (the entire
+Phase-1 workflow) or extracted from a different source. A render-side write
+would stamp `FRESH` against bytes render never read, and `status` would then
+certify a stale artifact — inverting the feature. So:
+
+- `cmd_refresh` (FEAT-3310) writes/updates the lockfile after a successful
+  render, using the source path and bytes it already holds.
+- `cmd_render` writes a lockfile entry **only** when given a new explicit
+  `--source <path>` flag, which asserts "this data.json came from this file."
+  Bare `ll-artifact render` writes no lockfile and stays byte-for-byte the
+  pure Phase-1 stamp it is today.
+
+Consequences for the rest of this issue: the `cmd_render` docstring/exit-code
+edits and the read-only-`templates_dir` failure-path test now apply to the
+`--source` path only, and bare `render` cannot regress from 0 to 1.
+
+**`NO-LOCK` is a fourth reported state.** FRESH / STALE / SOURCE-MISSING are
+per-`(template, source)` pairs and presuppose a lockfile. An explicitly named
+template with no `.llat.lock` (never refreshed — the default state in a fresh
+clone if the lockfile is gitignored) reports `NO-LOCK` and exits non-zero,
+because "I cannot tell whether this is fresh" must not read as "it is fresh."
+In discovery mode (no positional args) templates without a lockfile stay
+skipped, per AC below — discovery reports on what is tracked; an explicit
+argument asserts the caller expects tracking.
+
+**Exit code: non-zero for STALE, SOURCE-MISSING, and NO-LOCK alike.** Only an
+all-FRESH report exits 0. The decision lives in one `_exit_code_for(results)`
+function per `doctor.py:125-128`, so it is explicit and directly testable. This
+resolves the gap recorded under § Program Design → Decision Rules. Exit code is
+`1` (not a new code `2`), leaving `CLI.md:4468`'s `templatize`-only framing of
+`2` untouched.
+
+**The lockfile is committed, not gitignored.** The CI use case in § Use Case
+only works if the lockfile is in the tree the build checks out; a gitignored
+lockfile makes `status` report `NO-LOCK` for everything on a fresh clone. Add
+no `.gitignore` entry. Accept that `rendered_at` re-churns the file on every
+refresh — it is diagnostic, worth its diff noise, and only `sha256` is
+load-bearing for classification.
+
+**`output:` is recorded project-root-relative**, resolved the same way
+`cmd_render` resolves `-o` today. One `renders[<source>]` entry holds one
+`output`, so re-rendering the same source to a different `-o` is last-write-wins
+on that entry; `status` classifies on `sha256` and reports `output` as
+diagnostic context only. Document this rather than keying on `(source, output)`
+— multi-destination rendering is not an EPIC-3299 use case, and the simpler key
+matches FEAT-3036 § Second-pass decisions.
+
 ## Use Case
 
 A user maintains `quarterly-risk-report.llat/`, refreshed periodically
@@ -69,7 +124,8 @@ _Added by `/ll:refine-issue` — 2026-08-25 — based on codebase analysis:_
 
 ### Files to Modify
 - `scripts/little_loops/cli/artifact/status.py` (new) — `cmd_status`, `add_status_parser`, per this issue's own Program Design → Call Path.
-- `scripts/little_loops/cli/artifact/render.py` (`cmd_render`, render.py:27-88) — gains a lockfile-write step after `out_path.write_text(...)` and before `logger.success`/`return 0`; currently no lockfile write occurs anywhere in this function (confirmed by direct read — the function logs success and returns immediately after the file write).
+- `scripts/little_loops/cli/artifact/render.py` (`cmd_render`, render.py:27-88) — gains a new `--source <path>` flag and, when it is supplied, a lockfile-write step after `out_path.write_text(...)` and before `logger.success`/`return 0`; currently no lockfile write occurs anywhere in this function (confirmed by direct read — the function logs success and returns immediately after the file write). Note `cmd_render` today has no access to any source document — `--source` is what supplies it, and without the flag no lockfile is written (§ Expected Behavior → Pre-implementation decisions).
+- `scripts/little_loops/cli/artifact/extract.py` (`cmd_refresh`, FEAT-3310) — the primary lockfile writer; `refresh` already holds the source path and bytes.
 - `scripts/little_loops/cli/artifact/__init__.py` (`main_artifact`, :40-136) — needs `add_status_parser(subparsers)` wired alongside `add_render_parser`/`add_templatize_parser` (:119-120) and a new `args.command == "status"` arm in the dispatch chain (:127-135); the module docstring (:1-15) enumerates every subcommand by originating FEAT ID and needs a `status`/FEAT-3311 entry.
 - `docs/reference/CLI.md:4566` — the existing not-yet-implemented note names `status` directly and must be updated/removed once this lands. Unrelated to this issue but visible on the same line: that note also misattributes `extract` to FEAT-3309 (a different, already-completed issue) rather than FEAT-3310.
 
@@ -99,7 +155,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/little_loops/config-schema.json:1875-1895` — `artifacts.templates_dir` (default `artifacts/templates`), read via `BRConfig(Path.cwd())`; no lockfile-related config knob currently exists (e.g., no override for the lockfile's naming/location).
 
 _Wiring pass added by `/ll:wire-issue`:_
-- `.gitignore:47-49` — the only existing lock-file patterns (`**/.*.lock`, `**/.*.lock.lock`) are dotfile-prefixed globs scoped to "the hook system" (per the file's own comment) and do **not** match `<template-name>.llat.lock` (no leading dot). No `.gitignore` entry currently covers `artifacts/templates/**/*.llat.lock` — confirm intentionally whether the lockfile should be tracked (committed alongside the template) or ignored, and add an entry if the latter.
+- `.gitignore:47-49` — the only existing lock-file patterns (`**/.*.lock`, `**/.*.lock.lock`) are dotfile-prefixed globs scoped to "the hook system" (per the file's own comment) and do **not** match `<template-name>.llat.lock` (no leading dot). No `.gitignore` entry currently covers `artifacts/templates/**/*.llat.lock`. **Resolved 2026-08-25**: the lockfile is committed — leave `.gitignore` untouched. Rationale: § Use Case's CI check only works against a checked-out lockfile; a gitignored one makes `status` report NO-LOCK for everything on a fresh clone.
 
 ### Documentation
 - `docs/reference/CLI.md:4509-4530` (`#### ll-artifact render`) — the prose → `**Flags:**` table → `**Examples:**` → `**Exit codes:**` shape a new `#### ll-artifact status` section must follow, per this issue's own AC.
@@ -119,10 +175,12 @@ _Wiring pass added by `/ll:wire-issue`:_
 sibling file(s) beside each resolved template (via
 `little_loops.artifact_templates.resolve_template`, unchanged from
 FEAT-3036), computes current sha256 of each recorded source path, and
-compares. `render`/`refresh` (FEAT-3036/FEAT-3310) gain a lockfile-write step
-after a successful render — the sha256/rendered_at/output triple keyed by
-source path, per § Second-pass decisions -> *Lockfile is keyed by source
-path, not a scalar*.
+compares. `refresh` (FEAT-3310) gains a lockfile-write step after a successful
+render — the sha256/rendered_at/output triple keyed by source path, per
+FEAT-3036 § Second-pass decisions -> *Lockfile is keyed by source path, not a
+scalar*. `render` gains the same step **only behind a new `--source` flag**,
+since bare `cmd_render` never reads a source document and cannot honestly hash
+one (§ Expected Behavior -> Pre-implementation decisions).
 
 ### Tests
 
@@ -153,7 +211,8 @@ _Added by `/ll:refine-issue` — 2026-08-25 — based on codebase analysis:_
 
 - FRESH/STALE classification per `(template, source)` pair: FRESH iff the source path exists on disk and its current sha256 equals the `renders[source_path].sha256` recorded in the lockfile; STALE iff the source path exists but the current sha256 differs from the recorded one.
 - SOURCE-MISSING: the issue's own Expected Behavior names this as a distinct third state (not folded into STALE) for a recorded source path that no longer exists on disk — this differs from `_sha256_file`'s precedent (`codequery/codegraph.py:124-130`), which returns `None` on a missing/unreadable file and lets the caller collapse that into "changed" (2-way). This issue's own tri-state vocabulary is not fully pinned by the codebase precedent it cites.
-- Exit-code scope not fully specified by the issue text: § Expected Behavior states "Exits non-zero if anything is stale" and the Acceptance Criteria restate "exits non-zero iff anything is stale," but neither states whether a SOURCE-MISSING pair also triggers the non-zero exit, or whether only STALE does. This is a genuine gap in the issue's own text, not resolvable from the codebase — left open for the implementer/operator to pin down, per `doctor.py`'s precedent (`:125-128`) of a dedicated `_exit_code_for(results)` function making this decision explicit and testable in one place.
+- NO-LOCK: a fourth state for an explicitly named template with no `.llat.lock` sibling (**added 2026-08-25**, § Expected Behavior → Pre-implementation decisions). Discovery mode skips lockfile-less templates instead.
+- Exit-code scope — **resolved 2026-08-25**: `status` exits non-zero unless every reported item is FRESH; STALE, SOURCE-MISSING, and NO-LOCK all fail, via a single `_exit_code_for(results)` function per `doctor.py`'s precedent (`:125-128`). The exit code is `1`, so `CLI.md:4468`'s framing of `2` as a `templatize`-only carve-out needs no change. (Earlier text left this open; the issue's § Expected Behavior and ACs now pin it.)
 
 _Wiring pass added by `/ll:wire-issue`:_
 - No existing test asserts exhaustive output-directory contents on `cmd_render` (`test_feat3036_artifact_templates.py`'s `TestCmdRender` checks only targeted `(out_dir / "report.html")` existence/content, never directory-listing counts) — the planned lockfile-write step will not break any existing assertion there. However, no existing `TestCmdRender` case exercises a read-only/unwritable `templates_dir`, so a lockfile-write failure turning a previously-0 render into a 1 is currently untested — add this case.
@@ -164,10 +223,10 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 _Added by `/ll:refine-issue` — 2026-08-25 — based on codebase analysis:_
 
-1. `render.py::cmd_render` writes/updates a `<template>.llat.lock` sibling YAML file recording `{sha256, rendered_at, output}` for the rendered source path(s), added after its existing output-file write and before its success log/return — `test_feat3036_artifact_templates.py`'s existing `TestCmdRender`/`TestArtifactCLIDispatchRender` suites continue to pass unmodified alongside new lockfile-specific assertions.
+1. `extract.py::cmd_refresh` (FEAT-3310) writes/updates a `<template>.llat.lock` sibling YAML file recording `{sha256, rendered_at, output}` for the source it just extracted from, after the render's output-file write and before its success log/return. `render.py::cmd_render` gains the same write **only** when a new `--source <path>` flag is supplied; bare `render` is untouched, so `test_feat3036_artifact_templates.py`'s existing `TestCmdRender`/`TestArtifactCLIDispatchRender` suites pass unmodified (§ Expected Behavior → Pre-implementation decisions).
 2. `ll-artifact status` is wired into `main_artifact()` via a new `add_status_parser`/`cmd_status` in `cli/artifact/status.py`, following the `add_<name>_parser` + `cmd_<name>(args, logger) -> int` convention every other artifact subcommand uses (`render.py:91`, `render.py:27`, `templatize.py:965`).
-3. `cmd_status` reads each resolved template's `<template>.llat.lock`, computes a current sha256 per recorded source path, and classifies each `(template, source)` pair as FRESH/STALE/SOURCE-MISSING per `## Program Design` → Decision Rules — including deciding the still-open question there of whether SOURCE-MISSING triggers the non-zero exit.
-4. With no `<template>` positional args, `status` enumerates every template under `config.artifacts.templates_dir` that has a `.llat.lock` sibling — no in-repo precedent for this discovery shape exists (`render`/`templatize` both require a positional template), so this is new surface rather than an extension of an existing pattern.
+3. `cmd_status` reads each resolved template's `<template>.llat.lock`, computes a current sha256 per recorded source path, and classifies each `(template, source)` pair as FRESH/STALE/SOURCE-MISSING — or the whole template as NO-LOCK when explicitly named without a lockfile — per `## Program Design` → Decision Rules. A single `_exit_code_for(results)` maps the report to the exit code: 0 only if every item is FRESH.
+4. With no `<template>` positional args, `status` enumerates every template under `config.artifacts.templates_dir` that has a `.llat.lock` sibling, skipping the rest — no in-repo precedent for this discovery shape exists (`render`/`templatize` both require a positional template), so this is new surface rather than an extension of an existing pattern.
 5. `docs/reference/CLI.md` gains a `#### ll-artifact status` section (flags/examples/exit codes, following the `render`/`templatize` section shape) and its existing not-yet-implemented note at line 4566 no longer names `status`.
 6. `python -m pytest scripts/tests/` exits 0.
 
@@ -177,9 +236,9 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 - Update `docs/reference/CLI.md:4459-4466` — add a `status` row to the `**Subcommands:**` table.
 - Update `scripts/little_loops/cli/artifact/__init__.py:65-69` — add a `status` bullet to the `main_artifact()` argparse epilog `Exit codes:` block.
-- Update `scripts/little_loops/cli/artifact/render.py:27-32` — add a lockfile-write-failure bullet to `cmd_render`'s docstring.
-- Add a `TestCmdRender` case exercising a read-only/unwritable `templates_dir` to confirm the lockfile-write failure path exits 1.
-- Decide and record whether `<template>.llat.lock` should be gitignored or committed; update `.gitignore` if the former (see Configuration above).
+- Update `scripts/little_loops/cli/artifact/render.py:27-32` — add a `--source` flag and a lockfile-write-failure bullet to `cmd_render`'s docstring, scoped to the `--source` path only.
+- Add a `TestCmdRender` case exercising a read-only/unwritable `templates_dir` **with `--source`** to confirm the lockfile-write failure path exits 1, plus a case confirming bare `render` on the same read-only tree still exits 0.
+- **Resolved 2026-08-25**: `<template>.llat.lock` is committed, not gitignored — no `.gitignore` change (see § Expected Behavior → Pre-implementation decisions).
 - Coordinate `docs/reference/CLI.md:4566` edit with FEAT-3310, which independently edits the same line.
 
 ## Impact
@@ -188,23 +247,39 @@ _These touchpoints were identified by wiring analysis and must be included in th
   one bound source refreshed over time); this is where the stated
   content-drift problem is actually killed.
 - **Effort**: Medium
-- **Risk**: Low — additive; no changes to Phase 1's render path or Phase 2's
-  extract path.
+- **Risk**: Low — additive. `render` gains an opt-in `--source` flag but its
+  default path is byte-for-byte unchanged; the lockfile write attaches to
+  `refresh` (FEAT-3310), which must land first.
 
 ## Acceptance Criteria
 
-- [ ] `render` (and Phase 2's `refresh`) write/update a
-      `<template-name>.llat.lock` sibling file recording sha256 + rendered_at
-      + output per rendered source path.
-- [ ] `ll-artifact status [<template> ...]` reports FRESH/STALE/SOURCE-MISSING
-      per `(template, source)` pair and exits non-zero iff anything is stale.
+- [ ] Phase 2's `refresh` writes/updates a `<template-name>.llat.lock` sibling
+      file recording sha256 + rendered_at + project-root-relative output per
+      rendered source path.
+- [ ] `render` writes a lockfile entry only when given a new explicit
+      `--source <path>` flag; bare `ll-artifact render` writes no lockfile and
+      is behaviourally unchanged from Phase 1 (see § Expected Behavior →
+      Pre-implementation decisions).
+- [ ] `ll-artifact status [<template> ...]` reports
+      FRESH/STALE/SOURCE-MISSING per `(template, source)` pair, and `NO-LOCK`
+      for an explicitly named template with no lockfile.
+- [ ] `status` exits non-zero unless every reported item is FRESH — STALE,
+      SOURCE-MISSING, and NO-LOCK all fail. The rule lives in a single
+      `_exit_code_for(results)` function and is unit-tested per state.
 - [ ] With no `<template>` args, `status` reports on every template
-      discovered under `config.artifacts.templates_dir` that has a lockfile.
+      discovered under `config.artifacts.templates_dir` that has a lockfile;
+      lockfile-less templates are skipped in this mode (not NO-LOCK).
 - [ ] A pytest test invokes `ll-artifact status` end-to-end (subprocess or
       direct `cmd_status` call) and asserts the non-zero exit on a stale
       source — this is the "CI gate" per CLAUDE.md's local-suite policy, not
       a hosted workflow.
-- [ ] `docs/reference/CLI.md` documents `status` and the lockfile format.
+- [ ] The lockfile is committed, not gitignored: no `.gitignore` entry is
+      added, and a test asserts a refreshed template's `.llat.lock` is not
+      matched by the repo's ignore rules (or, minimally, that no ignore
+      pattern for `*.llat.lock` exists).
+- [ ] `docs/reference/CLI.md` documents `status`, the four reported states,
+      the exit-code rule, and the lockfile format including `output`'s
+      project-root-relative base and last-write-wins semantics.
 - [ ] `python -m pytest scripts/tests/` exits 0.
 
 ## Related Key Documentation
