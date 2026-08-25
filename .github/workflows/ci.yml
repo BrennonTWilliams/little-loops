@@ -84,8 +84,16 @@ jobs:
     # BUG-3208 Path E — propagate sink_issue input to step env. On push events
     # (no inputs.sink_issue), env.SINK_ISSUE is empty → Path E guard at :185
     # emits ::warning:: and stays off (correct). On dispatch, defaults to '11'.
+    #
+    # GH_TOKEN + GITHUB_TOKEN explicit at JOB level — covers both auth-path
+    # conventions for `gh` CLI. Some gh versions prefer `GH_TOKEN` over
+    # `GITHUB_TOKEN` for write-path API calls; setting both at job level
+    # ensures the `gh api PATCH` in step 6's PATCH loop (which is in step 7
+    # since the lift) sees an auth pathway that gh recognizes.
     env:
       SINK_ISSUE: ${{ github.event.inputs.sink_issue }}
+      GH_TOKEN: ${{ github.token }}
+      GITHUB_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
 
