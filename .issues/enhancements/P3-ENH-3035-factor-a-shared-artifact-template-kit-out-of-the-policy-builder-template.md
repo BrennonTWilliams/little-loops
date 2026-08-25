@@ -17,6 +17,12 @@ relates_to:
 verify_verdict: VALID
 learning_tests_required:
 - jinja2
+confidence_score: 90
+outcome_confidence: 82
+score_complexity: 14
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 18
 ---
 
 # ENH-3035: Factor a shared artifact template kit out of the policy-builder template
@@ -282,6 +288,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - Update `docs/reference/CONFIGURATION.md`'s `_themed_css_vars` reference and `### artifacts` section narrative to describe the kit as the stamping owner.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-25T15:49:55 - `c21d7697-754b-4fd4-b9a9-d9d051bebcc4.jsonl`
 - `/ll:wire-issue` - 2026-08-25T15:24:37 - `b117138e-ea1a-4c48-86b4-f79804f6b111.jsonl`
 - `/ll:refine-issue` - 2026-08-25T15:05:45 - `c104c28f-0ba5-4573-827d-9ff9ac6d6eb8.jsonl`
 - `/ll:verify-issues` - 2026-08-16T16:40:23 - `688cfc38-322a-447f-94a0-315f2c2aee33.jsonl`
