@@ -21,6 +21,12 @@ relates_to:
 learning_tests_required:
 - playwright
 - jinja2
+confidence_score: 96
+outcome_confidence: 78
+score_complexity: 16
+score_test_coverage: 22
+score_ambiguity: 20
+score_change_surface: 20
 ---
 
 # FEAT-3320: html-anything template-mode generate prompt (artifact_mode pilot)
@@ -1254,6 +1260,7 @@ month — no LLM call, no `templatize` round trip, no fidelity loss.
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-25T19:38:24 - `57ef804f-0971-4904-a357-1b87749b6c61.jsonl`
 - `/ll:refine-issue` - 2026-08-25T18:05:42 - `15c28d79-5759-4915-8931-cf98fd12b048.jsonl`
 - `/ll:wire-issue` - 2026-08-25T17:31:29 - `f8fad891-fb12-4a0c-8abb-8d32e08edbbf.jsonl`
 - `/ll:refine-issue` - 2026-08-25T17:24:56 - `93455bb6-59d7-4ea1-9471-0a612ecdba4d.jsonl`
