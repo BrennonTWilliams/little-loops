@@ -760,3 +760,77 @@ def _reset_deprecated_key_warnings() -> Generator[None, None, None]:
     reset_deprecated_key_warnings()
     yield
     reset_deprecated_key_warnings()
+
+
+# =============================================================================
+# BUG-3208 DIAGNOSTIC — Path C: fixture SIGALRM probe
+# =============================================================================
+#
+# Diagnostic-only: do NOT merge as-is, do NOT cherry-pick to fix branches.
+# Canonical fix lives on ci/fix-unit-test-hang 7c3380f64.
+#
+# Detects fixture- or library-level SIGALRM override that would silently
+# absorb pytest-timeout's per-worker SIGALRM handler. If a fixture installs
+# its own handler (e.g., `signal.signal(SIGALRM, SIG_IGN)` or a callable
+# handler) in test setup, pytest-timeout's TimeoutExpired never fires —
+# the worker swallows the signal, the controller keeps waiting, pytest hangs.
+#
+# Mechanism: an autouse fixture reads `signal.getsignal(SIGALRM)` at test
+# setup and stashes the result on the test node. A `pytest_terminal_summary`
+# hook aggregates per-test results into `sigprobe.log` at run end. Diagnostic
+# upload (Cooper to add to ci.yml path list) preserves the log with the rest
+# of the BUG-3208 evidence bundle.
+
+
+@pytest.fixture(autouse=True)
+def _bug3208_sigprobe(request: pytest.FixtureRequest) -> Generator[None, None, None]:
+    """BUG-3208 DIAGNOSTIC: log installed SIGALRM handler at test setup.
+
+    Surfaces fixture/library override of pytest-timeout's per-worker SIGALRM
+    handler. Diagnostic-scope, do not merge as-is.
+    """
+    import signal
+
+    handler = signal.getsignal(signal.SIGALRM)
+    # SIG_DFL (0) and SIG_IGN (1) are the only "no override" sentinels —
+    # pytest-timeout installs a callable handler. Anything else means a
+    # fixture or library has installed its own handler.
+    is_override = handler not in (signal.SIG_DFL, signal.SIG_IGN)
+    request.node._bug3208_sigprobe = {
+        "handler_repr": repr(handler),
+        "is_override": is_override,
+    }
+    yield
+
+
+def pytest_terminal_summary(terminalreporter, exitstatus, config) -> None:
+    """BUG-3208 DIAGNOSTIC: aggregate SIGALRM probe results into sigprobe.log.
+
+    Diagnostic-scope, do not merge as-is. Writes to the runner cwd; Cooper
+    to add `sigprobe.log` to the upload step's path list.
+    """
+    overrides: list[tuple[str, str]] = []
+    total = 0
+    for node in getattr(terminalreporter, "_items", []):
+        probe = getattr(node, "_bug3208_sigprobe", None)
+        if probe is None:
+            continue
+        total += 1
+        if probe.get("is_override"):
+            overrides.append((node.nodeid, probe["handler_repr"]))
+
+    sigprobe_path = Path(os.getcwd()) / "sigprobe.log"
+    try:
+        with open(sigprobe_path, "w", encoding="utf-8") as f:
+            f.write("=== BUG-3208 SIGALRM probe (Path C diagnostic) ===\n")
+            f.write(f"Total tests probed: {total}\n")
+            f.write(f"Overrides detected: {len(overrides)}\n\n")
+            if overrides:
+                f.write("Tests with SIGALRM handler override:\n")
+                for nodeid, handler_repr in sorted(overrides):
+                    f.write(f"  {nodeid}\n    handler: {handler_repr}\n")
+            else:
+                f.write("No SIGALRM overrides detected.\n")
+    except OSError:
+        # Diagnostic write failure must not break the test run.
+        pass
