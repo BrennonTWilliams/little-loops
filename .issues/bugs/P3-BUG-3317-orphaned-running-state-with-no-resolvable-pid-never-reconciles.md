@@ -33,7 +33,16 @@ called from `list_running_loops` and the `ll-loop status` command path) and
 `_reconcile_stale_runs()`
 (startup path) — deliberately bail when liveness cannot be proven, so the entry
 never self-heals. The run then appears as an active loop in `ll-loop list --running`
-and in every consumer that seeds off that list, indefinitely.
+indefinitely, and as a `running` state in every consumer that filters that list on
+status.
+
+> Scope of the visible fix: `cmd_list` is the only in-repo consumer that filters on
+> `ACTIVE_RUN_STATUSES` (`cli/loop/info.py:122`). `list_running_loops()` itself is
+> unfiltered *by documented contract*, and `transport.py`'s dashboard-seed callback
+> forwards everything it returns. After this fix these entries still reach every
+> seeded dashboard client — they just carry `status: "interrupted"` instead of
+> `"running"`. Consumers that render by status are fixed; consumers that render every
+> seeded entry see no reduction in row count.
 
 Observed live in a downstream consuming project: an
 `.loops/.running/<loop>.state.json` has been `status: "running"` since **2026-04-26**
@@ -157,10 +166,55 @@ def _running_state_is_stale(state: LoopState, threshold_s: int = STALE_RUNNING_T
         ts = datetime.fromisoformat(state.updated_at.replace("Z", "+00:00"))
     except ValueError:
         return False
-    if ts.tzinfo is None:            # tolerate legacy naive timestamps
-        ts = ts.replace(tzinfo=UTC)
+    if ts.tzinfo is None:
+        return False  # naive timestamp — provenance unknown, cannot judge; leave alone
     return (datetime.now(UTC) - ts).total_seconds() > threshold_s
 ```
+
+#### Naive timestamps must abstain, not be assumed UTC
+
+An earlier revision of this helper did `ts.replace(tzinfo=UTC)` to "tolerate legacy
+naive timestamps." That is wrong and is a live false-positive source:
+`StatePersistence.save_state()` writes `updated_at` via `_iso_now()`
+(`fsm/persistence.py:117-119`), which is **always** `datetime.now(UTC).isoformat()` —
+tz-aware, no exceptions. So a naive `updated_at` cannot have come from this codebase;
+it can only come from a legacy or foreign writer, and the most likely such writer
+emits **local** time. Reading a local timestamp as UTC inflates the computed age by
+the writer's UTC offset — 7h in US/Pacific — which flips a run that is barely an hour
+old. Abstaining (`return False`) matches the malformed-timestamp branch directly
+above it and costs nothing: the entry stays `running` and is still reachable by
+`/ll:cleanup-loops`. (`.astimezone()` is an acceptable alternative only if the local
+zone is genuinely the writer's zone, which is not knowable here.)
+
+#### `save_state()` rewrites `updated_at` — the flip is not evidence-preserving
+
+`StatePersistence.save_state()` unconditionally sets `state.updated_at = _iso_now()`
+before writing (`fsm/persistence.py:482`). The flip therefore **destroys the last-real-
+activity timestamp**, which for these orphans is the only record of when the process
+actually died. Two consequences the implementer must not be surprised by:
+
+- The death time is still reconstructible from `started_at + accumulated_ms`, and
+  `reconciled_at` records when the flip happened. Nothing is unrecoverable, but
+  `updated_at` stops meaning "last activity" for a reconciled entry.
+- `/ll:cleanup-loops`'s independent 15-minute `updated_at` heuristic (see the
+  Documentation section below) will see a freshly-flipped entry as **fresh**. This is
+  harmless in practice — that heuristic only applies to `running` loops and the entry
+  is now `interrupted` — but it is the reason the two thresholds must not later be
+  "unified" by keying both off `updated_at` alone.
+
+This behavior is inherited from the existing dead-PID flip, which has the same
+property; consistency is the reason to accept it rather than hand-write the file to
+preserve `updated_at`. Accepted deliberately — do not "fix" it as part of this issue.
+
+#### Orphaned `.lock` files are left in place — deliberately
+
+The fallback only fires when `_resolve_live_pid()` returns `None`, which by definition
+means there is no `.pid` file to unlink. A `.lock` file *can* still survive the flip:
+one that is malformed, unreadable, or missing its `pid` key falls through
+`_resolve_live_pid()`'s `except` clause to `state.pid` (`persistence.py:240-250`) and
+yields `None`. Do **not** add speculative `.lock`/`.pid` unlinks to the flip —
+`LockManager.find_conflict()` already owns stale-lock cleanup, and `cmd_stop` has its
+own orphaned-lock branch. The flip's job is the status field only.
 
 In `_reconcile_stale_running()`, replace the bare `if pid is None: return state`
 with: if `pid is None` and `_running_state_is_stale(state)` → flip to `interrupted`,
@@ -178,8 +232,21 @@ and leaves the file in `.running/`** — it does *not* call `clear_all()`. Ratio
   is overwritten by the process's next `state_enter` save.
 
 The entry stops polluting `ll-loop list --running` immediately, because `interrupted`
-is not in `ACTIVE_RUN_STATUSES`. It is archived later by the ordinary path once it
-reaches a terminal status, or by the user via `/ll:cleanup-loops`.
+is not in `ACTIVE_RUN_STATUSES`.
+
+**Accepted cost: a flipped orphan stays in `.running/` permanently.** An earlier
+revision claimed it "is archived later by the ordinary path once it reaches a terminal
+status" — that is false for exactly the entries this fix targets. The process is dead,
+so it will never reach a terminal status, and `_reconcile_stale_runs()` deliberately
+skips `interrupted` files so users can resume them. Nothing will ever sweep these; the
+only removal path is a human running `/ll:cleanup-loops` (or deleting the file).
+
+This is accepted rather than solved: the population is bounded by the number of runs
+that ever died with no resolvable PID, the entries are invisible to
+`ll-loop list --running`, and any automatic archive would reintroduce the
+false-positive hazard that flip-not-archive exists to avoid. Do **not** add a
+second-stage "archive once `reconciled_at` is old enough" sweep under this issue —
+file it separately if `.running/` growth is ever observed to matter.
 
 > Note for the implementer: `_reconcile_stale_runs()` returns a count of **archived**
 > files, and `TestReconcileStaleRuns` asserts on it. A flip is not an archive — do not
@@ -268,11 +335,24 @@ Both numbers were correct; only the *liveness* claim was false.
 - `scripts/tests/` FSM persistence tests — add cases: (a) unresolvable PID + fresh
   `updated_at` → left `running`; (b) unresolvable PID + `updated_at` older than
   threshold → flipped to `interrupted` with `reconciled_at` set; (c) resolvable live
-  PID + old `updated_at` → left `running`; (d) empty/malformed `updated_at` → left
-  alone. Case (d) also covers the synthetic `status: "starting"` entries
-  `list_running_loops()` fabricates from a PID-file-only instance, which carry
-  `updated_at=""` — assert one of those explicitly, since it reaches the guard by a
-  different route than a malformed timestamp.
+  PID + old `updated_at` → left `running`; (d) empty `updated_at`, malformed
+  `updated_at`, and **naive (tz-less) `updated_at` older than the threshold** → all
+  left alone (three assertions; the naive case guards the abstain rule above).
+
+> **Correction — the synthetic `starting` entries are not a test case here.** An
+> earlier revision asked case (d) to assert against the `status: "starting"` entries
+> `list_running_loops()` fabricates for PID-file-only instances, on the theory that
+> their `updated_at=""` reaches the staleness guard by a second route. It does not,
+> for three independent reasons: those entries are constructed *after* the
+> reconcile loop, from `.pid` files only, and are appended directly to `states`
+> without ever being passed to `_reconcile_stale_running()`
+> (`fsm/persistence.py:1262-1280`); they are only built at all when
+> `_process_alive(pid)` is **true**, so they are by construction live; and
+> `"starting"` is never persisted to a state file anywhere in the codebase (the only
+> producers are `cli/loop/lifecycle.py:515` and `mcp_server/tasks.py:155`, both
+> synthesizing it for a response payload). The scenario is unconstructible — do not
+> write a test for it. The empty-`updated_at` assertion in case (d) should use an
+> ordinary `status: "running"` state file.
 
 Additional cases required by the clarifications above:
 (e) startup path, unresolvable PID + stale `updated_at` → flipped to `interrupted`,
@@ -384,6 +464,16 @@ _Wiring pass added by `/ll:wire-issue`:_
 4. Add the age fallback to that same branch, with a **flip-in-place** terminal
    (`status = "interrupted"`, `reconciled_at` stamped, `save_state()`) rather than
    `clear_all()`, tracked in a counter separate from `archived`.
+
+   > **Structural warning — this is not another `is_stale = True`.**
+   > `_reconcile_stale_runs()` currently funnels every stale case through a single
+   > `is_stale` boolean into one archive block (`fsm/persistence.py:642-670`, ending
+   > in `persistence.clear_all()` + `.pid` unlink + `archived += 1`). Setting
+   > `is_stale = True` for the age-fallback case would archive the entry — the exact
+   > outcome AC 2 forbids. The flip must be its own branch that performs the
+   > save and then `continue`s, placed **before** the `if not is_stale: continue`
+   > guard so control never reaches the archive block. Getting this wrong is silent:
+   > the tests that would catch it are case (e) and the `count == N` assertions.
 5. Repair `test_no_reconcile_no_pid_anywhere` and add the regression tests (a)-(g)
    above.
 6. Verify against a real orphaned artifact: a months-old `pid: null` running entry
@@ -406,9 +496,12 @@ _These touchpoints were identified by wiring analysis and must be included in th
 ## Impact
 
 - **Priority**: P3 — Misleading observability only. No data loss, no execution
-  impact; the state file stays resumable either way. Visible because dead runs
-  pollute `--running` and every dashboard seeded from it, and the entries accumulate
-  permanently.
+  impact; the state file stays resumable either way (`running` is already in
+  `RESUMABLE_STATUSES`, so the flip does not change what `ll-loop resume` can select).
+  Visible because dead runs pollute `--running` and any consumer that filters on
+  status, and the entries accumulate permanently. The fix corrects the *status* those
+  entries report; it does not remove them from `.running/` or from the unfiltered
+  dashboard seed (see the Summary note and the flip-in-place rationale).
 - **Effort**: Small-to-medium — one helper plus two call-site branches, all inside a
   single module and reusing the existing flip-and-save path, but the startup path
   additionally needs its PID lookup widened to `_resolve_live_pid()` and a new
@@ -438,9 +531,11 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - [ ] The read path calls `save_state()` only when a flip actually occurs; a
       non-stale entry causes no disk write (`list_running_loops()` runs on every
       dashboard client connect via `transport.py`'s seed callback).
-- [ ] Regression tests covering cases (a)-(g) — including the empty/malformed
-      `updated_at` guard and the synthetic `starting` entry — pass under
-      `python -m pytest scripts/tests/`.
+- [ ] A `running` state with no resolvable PID and a **naive (tz-less)**
+      `updated_at`, however old, is left untouched — the helper abstains rather than
+      assuming UTC.
+- [ ] Regression tests covering cases (a)-(g) — including the empty, malformed, and
+      naive `updated_at` guards — pass under `python -m pytest scripts/tests/`.
 - [ ] `started_at` semantics are unchanged; no test asserts it advances on resume.
 
 ## Status
