@@ -195,14 +195,64 @@ Three consequences that shrink this issue's scope:
   § The `rubric` prompt needs its own template-mode branch below. The fallback is
   fine; the criterion set is not.
 - `snapshot`'s per-iteration `cp "$RUN_DIR/${context.artifact_path}"`
-  (`generator-evaluator.yaml:106`) still copies a single file. Accept knowingly
-  that `iter-N/` archives the *rendered* HTML, not the `.llat/` source: the
-  score-plateau and diff-stall guards operate on what was scored, which is the
-  right signal, and the live `.llat/` is what gets promoted.
+  (`generator-evaluator.yaml:106`) still copies a single file. `iter-N/` therefore
+  archives the *rendered* HTML, not the `.llat/` source. That is the right signal
+  for the score-plateau and diff-stall guards, which reason about what was scored
+  — but it is **not** harmless the way an earlier revision of this bullet
+  ("accept knowingly") claimed. See § `iter-N/` loses the template, which breaks
+  best-iteration recovery.
 
-### The prompt must also state three contract details that are currently omitted
+### `iter-N/` loses the template, which breaks best-iteration recovery
 
-_Added at the 2026-08-25 pre-implementation review._
+_Added at the second pre-implementation review — corrects the "accept knowingly"
+disposition above._
+
+In `file` mode, "the artifact that gets promoted" and "the artifact the operator
+is told was best" can diverge in *score* but never in *identity*: `index.html` is
+both the live artifact and the thing archived under `iter-N/`, so an operator told
+"iter-3 scored highest" can simply copy `iter-3/index.html` and have the real
+thing. Template mode breaks that equivalence.
+
+Two facts combine:
+
+1. `max_steps_summary` (`generator-evaluator.yaml:315-335`) explicitly instructs
+   the model to "identify the highest-scoring iteration from the score history and
+   name it explicitly, along with its score" — pointing the operator at `iter-N/`.
+2. `iter-N/` in template mode contains only the rendered HTML for iteration N. The
+   `.llat/` that produced it was overwritten in place by iteration N+1's
+   `generate`.
+
+So a run that plateaus or exhausts `max_steps` promotes the **last** template,
+tells the operator the **best** iteration was some earlier N, and leaves no way to
+recover the template behind N. The operator's only recourse would be
+`ll-artifact templatize` on the archived HTML — the exact lossy path this issue
+exists to avoid.
+
+**Decide one of two, and do it explicitly:**
+
+- **(a) Archive the source too — preferred.** `pre_evaluate_cmd` reads
+  `.iter_counter` the same way `snapshot` does and copies the template alongside:
+  `cp -R <abs run_dir>/artifact.llat <abs run_dir>/iter-$N/` . Note the ordering
+  hazard: `snapshot` *increments* `.iter_counter` and creates `iter-$COUNTER/`
+  itself (`generator-evaluator.yaml:97-101`), and `pre_evaluate_cmd` runs
+  **before** `snapshot` in the same cycle, so the counter it reads is
+  `N-1`. Either `mkdir -p` the `N+1` directory from `pre_evaluate_cmd` (fragile —
+  it duplicates the oracle's counter arithmetic) or, more robustly, copy the
+  `.llat/` into a flat `<run_dir>/llat-history/<timestamp-or-hash>/` and have
+  `finalize_done` explain the mapping. Do not add a state or a second parameter to
+  the oracle to solve this — AC 3 permits exactly two oracle edits.
+- **(b) Document the limitation.** `finalize_done`'s template-mode branch states
+  that only the final `.llat/` survives and that `iter-N/` archives renders only,
+  so best-iteration recovery is unavailable in template mode.
+
+(a) is preferred because the pilot's whole purpose is comparing template outputs
+across iterations; (b) is acceptable if (a)'s counter coupling proves ugly in
+practice. What is *not* acceptable is shipping the current silent divergence.
+
+### The prompt must also state four contract details that are currently omitted
+
+_Added at the 2026-08-25 pre-implementation review. Retitled from "three" at the
+second pre-implementation review — the `assets/` bullet is new._
 
 § Program Design's `.llat/` contract summary is otherwise accurate, but each of
 these omissions produces a hard render failure:
@@ -211,12 +261,42 @@ these omissions produces a hard render failure:
   design-tokens`** (`build_ll_namespace`, `artifact_templates.py:311-318`).
   `theme` is not one of the required manifest keys, so it is absent from the
   contract summary below. Under `StrictUndefined`, a body referencing
-  `[[= ll.theme_css =]]` without it raises at render time. Beyond the mechanics:
-  when `design_tokens_context` is non-empty, the template-mode branch must
-  instruct the model to declare `theme: design-tokens` and reference
-  `ll.theme_css`, **not** to inline the resolved token values. Inlining them
-  freezes today's theme into the promoted template and destroys the
+  `[[= ll.theme_css =]]` without it raises at render time. The template-mode
+  branch must therefore instruct the model to declare `theme: design-tokens` and
+  reference `ll.theme_css`, **not** to inline the resolved token values. Inlining
+  them freezes today's theme into the promoted template and destroys the
   render-it-again-next-month benefit that is this issue's own § Use Case.
+
+  **Declare `theme: design-tokens` unconditionally — do not gate it on
+  `design_tokens_context`.** _(Corrected at the second pre-implementation review;
+  supersedes the earlier "when `design_tokens_context` is non-empty" phrasing
+  here, in Implementation Step 3, and in the Acceptance Criteria.)_
+  `themed_css_vars(config)` (`artifact_template_kit.py:18-42`) already degrades
+  gracefully: when no tokens are configured for the project it returns neutral
+  empty scoped blocks (`":root {\n}\n[data-theme=dark] {\n}"`) rather than raising
+  or emitting garbage. Gating the declaration on a runner-injected context var
+  therefore buys nothing and costs a nested conditional inside the single most
+  conditional prompt string in the file. Always declare it; instruct the model to
+  supply concrete CSS fallbacks alongside every `var(--…)` reference so the
+  no-tokens render still looks right.
+- **`assets/` is read as UTF-8 text, so a binary file there is a hard failure**
+  (`load_assets`, `artifact_templates.py:296-308` — `path.read_text(encoding="utf-8")`
+  over `assets_dir.rglob("*")`, every file, unconditionally). _(Added at the second
+  pre-implementation review.)_ This is the second-most-likely first-try failure
+  after the delimiters, and it is specific to *this* loop: a model asked for a
+  poster, social card, or résumé will very plausibly write `assets/logo.png`. The
+  resulting `UnicodeDecodeError` fires inside `build_ll_namespace`, which means it
+  breaks **both** `pre_evaluate_cmd`'s per-iteration render *and* FEAT-3318's
+  promotion runtime gate — and it is not a `ManifestError`/`DataValidationError`,
+  so in the promotion path it lands in `_promote_template_artifact`'s generic
+  `except Exception` degrade-to-warning branch (`persistence.py:802-897`) and the
+  promotion silently does not happen. The prompt must state: images are inline
+  `<svg>` or `data:` URIs embedded in the template body; if an `assets/` directory
+  is created at all it holds UTF-8 text only (`.css`, `.svg`, `.js`, `.txt`).
+  Note that `ll.assets` is a plain dict keyed by relative POSIX path and is `{}`
+  when no `assets/` dir exists, so under `StrictUndefined` any
+  `[[= ll.assets['x'] =]]` for a file the model did not write also fails — the
+  simplest correct instruction is to not use `assets/` at all for this loop.
 - **`ll-artifact render` resolves a relative `--data` and `-o` against
   `config.project_root`, not the process cwd** (`render.py:96-97`,
   `render_to_disk` `:58-60`). `run_dir` is captured absolute at `init`
@@ -296,6 +376,49 @@ reintroduces exactly the skippability that option (c) was rejected for. Add a ne
 tail). Wording elsewhere in this issue that puts the gate "in `finalize_done`" is
 superseded by this paragraph.
 
+**Why `on_yes` is the right edge to intercept — a `max_steps` exhaustion arrives
+there too.** _(Added at the second pre-implementation review — this is the
+load-bearing reason for the placement, and it was unstated.)_ The intuitive
+reading is that `run_gen_eval`'s `on_yes` means "ALL_PASS" and that a run which
+burns its budget goes to `on_no: diagnose`. It does not. The oracle declares
+`on_max_steps: max_steps_summary` (`generator-evaluator.yaml:19-20`), and
+`max_steps_summary` is `terminal: true` **without** `failure: true`
+(`:315-335`). Sub-loop dispatch (`fsm/executor.py:1087-1092`) routes on
+`terminated_by == "terminal"` plus the child's explicit `failure_terminal` flag —
+so a budget-exhausted oracle run is a **non-failure terminal** and takes the
+parent's `on_yes`. The same is true of both plateau exits (`check_stall` `on_no:
+done`, `check_diff_stall` `on_no: done`, `:246-279`). Only `failed` and
+`screenshot_abandoned` (which does declare `failure: true`) take `on_no`/`on_error`
+into `diagnose`.
+
+Consequences, both of which the design depends on:
+
+- Every route that can promote a `.llat/` passes through `on_yes`, so a gate on
+  that edge is exhaustive. A gate placed anywhere else would let plateau and
+  max_steps runs promote unchecked.
+- Conversely, § A failed render is invisible after iteration 1's claim that a
+  broken run "burns to `max_steps` and promotes whatever `.llat/` last survived"
+  is **correct**, not pessimistic — max_steps is a success route, not a failure
+  one. Pin this with a test rather than re-deriving it; it is counter-intuitive
+  enough that a future reader will assume the opposite.
+
+**The gate's state shape, explicitly.** The issue previously said only "routes
+failure to `diagnose`", leaving the rest to implementation time:
+
+```yaml
+gate_template:
+  action_type: shell
+  action: |
+    ...predicate, exit 0 = pass, exit 1 = fail...
+  on_yes: finalize_done
+  on_no: diagnose
+  on_error: diagnose
+```
+
+`on_error: diagnose` matters as much as `on_no`: a malformed `data.json` makes the
+JSON parse in the predicate itself fail, and that must be a gate rejection, not an
+unrouted state error.
+
 **Why routing the gate's failure to `diagnose` suppresses promotion.**
 `promote_run_artifact` returns `None` whenever `result.failure_terminal`
 (`fsm/persistence.py:753`), evaluated before any mode dispatch. `failed` is in
@@ -310,6 +433,15 @@ terminal-gate placement work; pin it with a test rather than assuming it.
 implementable and would be invented at implementation time — unacceptable for the
 one check that decides whether this pilot's success rate means anything. The rule:
 
+0. `<run_dir>/artifact.llat` exists and is a **directory**, and contains exactly
+   one `template.*.j2` plus a readable `data.json`. _(Added at the second
+   pre-implementation review.)_ Without this, a template-mode run in which the
+   model wrote nothing at all satisfies rules 1–3 vacuously or fails them by
+   accident depending on how the shell happens to be written — and the failure
+   message would describe degenerate parameterization rather than a missing
+   artifact. Rule 0 is also what makes the gate's `file`-mode no-op unambiguous:
+   in `file` mode the directory does not exist, so the mode guard must be checked
+   *before* rule 0 rather than relying on it.
 1. `<run_dir>/artifact.llat/data.json` parses as a JSON **object** with **>= 3**
    top-level keys (excluding none — a top-level `ll` key is already a validation
    error upstream, `artifact_templates.py:190-197`).
@@ -363,6 +495,36 @@ dead code from iteration 2 onward.
 Note the ordering constraint this creates: the `rm -f` must precede the render and
 must not be conditional on the render's exit code, and the `.miss_reason` write
 must not resurrect a stale `index.html`.
+
+### `ll-artifact` on PATH becomes a hard dependency of a general-purpose harness
+
+_Added at the second pre-implementation review._
+
+`pre_evaluate_cmd` shells out to `ll-artifact`, a console script from the pip
+package. There is precedent for a built-in loop invoking an `ll-*` CLI —
+`rn-remediate.yaml:113-116,467-495` calls `ll-issues` and `ll-auto` — but those
+are automation loops for maintainers. `html-anything` is a general-purpose harness
+that a consumer whose `install_source` is `project-claude-code` or
+`global-claude-code` (plugin only, no pip package) can run today with no `ll-*`
+binary anywhere on PATH.
+
+In that environment a template-mode run fails at *every* iteration with
+`ll-artifact: command not found`. Post-`rm -f` that is indistinguishable from any
+other render failure: no `index.html`, `snapshot` records `MISS=1`, and after
+three iterations the run abandons — having spent three full `generate` passes to
+report a generic screenshot problem.
+
+Fix, one line inside `pre_evaluate_cmd`: probe `command -v ll-artifact` before
+rendering and write a distinct `.miss_reason` naming the missing binary and the
+`pip install little-loops` remedy when it is absent. This costs nothing, reuses
+the step-6 side-channel already being built, and is what makes the pilot's failure
+data honest — a run abandoned for a missing binary must not be counted as an
+LLM template-emission failure in § Pilot Results.
+
+Scope note: this is a *reporting* fix, not a packaging one. Making template mode
+work without the pip package (vendoring the renderer, or a plugin-side shim) is
+out of scope here and belongs with the follow-up that rolls the variant out to the
+other eight loops — flag it there.
 
 ### The `rubric` prompt needs its own template-mode branch
 
@@ -451,7 +613,8 @@ parameter added._
   deterministic gate (correction below).
 - `scripts/little_loops/loops/html-anything.yaml` — a **new `gate_template` shell
   state** between `run_gen_eval`'s `on_yes` and `finalize_done`, hosting the
-  deterministic degenerate-`data.json` gate and routing failure to `diagnose`
+  deterministic degenerate-`data.json` gate, with
+  `on_yes: finalize_done` / `on_no: diagnose` / `on_error: diagnose`
   (§ The backstop must not live inside the iterate cycle). **Not in the original
   map**, and it supersedes the earlier plan to put the gate in `finalize_done` —
   a prompt state cannot run a deterministic shell assertion.
@@ -539,11 +702,40 @@ _Added at the 2026-08-25 pre-implementation review:_
   evidence (§ The `rubric` prompt needs its own template-mode branch).
 - Conformance that the template-mode `generate_prompt` states `index.html` is a
   render output that must not be edited directly (fragment-presence).
-- A check that the bound `pre_evaluate_cmd` string survives both interpolation
-  passes — i.e. it contains no bare `${` and no singly-escaped `$${` (§
-  `pre_evaluate_cmd` is interpolated TWICE). A static string assertion on the
-  YAML value is enough and catches the failure at test time rather than at run
-  time, where it surfaces as an opaque `expected namespace.path`.
+- A check that **every** value in `run_gen_eval`'s `with:` mapping survives both
+  interpolation passes — no `${` other than a resolvable `${captured.*}` /
+  `${context.*}` reference, and no `$${` anywhere (§ `pre_evaluate_cmd` is
+  interpolated TWICE). _(Widened at the second pre-implementation review from
+  `pre_evaluate_cmd` alone: the double pass is a property of the `with:`
+  mechanism, and the new `generate_prompt` / `rubric` branches are prose *about*
+  templating — the likeliest place a stray `${` lands.)_ A static string assertion
+  over the whole mapping is enough, and the existing bindings already satisfy it,
+  so it needs no new-keys-only carve-out. It catches the failure at test time
+  rather than at run time, where it surfaces as an opaque
+  `expected namespace.path`.
+- Conformance that the template-mode `generate_prompt` forbids an `assets/`
+  directory and mandates inline `<svg>` / `data:` URIs for images
+  (fragment-presence), plus a unit test that a `.llat/` containing a binary file
+  under `assets/` fails `build_ll_namespace` — pinning *why* the instruction
+  exists, since the failure is a bare `UnicodeDecodeError` that
+  `_promote_template_artifact`'s generic `except Exception` degrades to a silent
+  warning.
+- Conformance that the template-mode `generate_prompt` mandates
+  `theme: design-tokens` **unconditionally** — i.e. the mandate is not phrased as
+  conditional on `design_tokens_context` (fragment-presence, asserting the
+  conditional phrasing is absent).
+- A test pinning that the oracle's `max_steps_summary` is a terminal **without**
+  `failure: true`, and therefore that a budget-exhausted `run_gen_eval` routes to
+  `on_yes` (`executor.py:1087-1092`) — the counter-intuitive fact the
+  `gate_template` placement depends on (§ Why `on_yes` is the right edge to
+  intercept). Same for `check_stall` / `check_diff_stall`'s `on_no: done` exits.
+- A test of whichever § `iter-N/` loses the template option is chosen: under (a),
+  that a template-mode iteration archives the `.llat/` source somewhere
+  recoverable; under (b), fragment-presence that `finalize_done`'s template-mode
+  branch states the limitation.
+- Conformance that `pre_evaluate_cmd` probes for `ll-artifact` and writes a
+  binary-specific `.miss_reason` when it is missing (fragment-presence), so a
+  plugin-only install does not silently contaminate § Pilot Results.
 - A test that the `.miss_reason` side-channel is cleared on a successful render,
   not only written on failure (step 6) — otherwise the abandon message reports a
   stale cause.
@@ -557,9 +749,12 @@ _Added at the 2026-08-25 pre-implementation review:_
   between `run_gen_eval` and `finalize_done`, routes failure to `diagnose`, and
   that `finalize_done` remains `action_type: prompt` (i.e. nobody moved the gate
   back into it).
-- A unit test of the gate predicate itself against three fixtures: a fully
-  parameterized `.llat/` (passes), a `data.json` of `{}` (fails rule 1), and a
-  hardcoded body with populated-but-unreferenced data (fails rules 2 and 3).
+- A unit test of the gate predicate itself against four fixtures: a fully
+  parameterized `.llat/` (passes), a missing/empty `artifact.llat/` (fails rule
+  0), a `data.json` of `{}` (fails rule 1), and a hardcoded body with
+  populated-but-unreferenced data (fails rules 2 and 3). Plus a routing
+  conformance check that `gate_template` declares `on_error: diagnose`, not only
+  `on_no`.
 - Conformance that `diagnose`'s prompt names the `.llat/` sources in template mode
   and `index.html` in `file` mode (fragment-presence).
 
@@ -763,6 +958,28 @@ This applies to step 6's `.miss_reason` logic specifically, which is the only
 part of `pre_evaluate_cmd` that needs shell variables at all. The render
 invocation itself uses only interpolated absolute paths and is unaffected.
 
+**The rule is not specific to `pre_evaluate_cmd` — it governs every new
+`with:`-bound value.** _(Added at the second pre-implementation review; the
+section title and the test in § Tests both scoped this too narrowly.)_ The two
+passes are a property of the `with:` mechanism, not of shell text. The
+template-mode `generate_prompt` branch and the `rubric` branch are bound the same
+way and get the same double pass, and both are *prose about templating* — exactly
+the kind of text that attracts a stray `${`:
+
+- a sample template body or CSS snippet in the prompt,
+- any mention of an environment variable or shell form,
+- a `data.json` example whose values look like placeholders.
+
+`[[= =]]` / `[[% %]]` / `[[# #]]` are safe by construction — interpolation only
+scans `${` — which is a quiet argument for the non-default delimiters, but it does
+not protect the surrounding prose. Widen the static test accordingly: **no new
+`with:`-bound value may contain a `${` sequence other than a resolvable
+`${captured.*}` / `${context.*}` reference, and none may contain `$${`.** Note the
+existing bindings already satisfy this (`generate_prompt` and `rubric` contain
+only `${captured.run_dir.output}` and `${context.design_tokens_context}`), so the
+assertion can be written over the whole `with:` mapping rather than a
+new-keys-only subset.
+
 ## Implementation Steps
 
 _Revised at the 2026-08-25 pre-implementation review._
@@ -777,9 +994,14 @@ _Revised at the 2026-08-25 pre-implementation review._
    write `manifest.yaml` + exactly one `template.*.j2` + `data.json` under
    `<run_dir>/artifact.llat/`, per the contract `artifact_templates.py` enforces
    — including `output: index.html`, the `[[= =]]` / `[[% %]]` / `[[# #]]`
-   delimiters, no top-level `ll` key, and (when `design_tokens_context` is
-   non-empty) `theme: design-tokens` + `[[= ll.theme_css =]]` rather than inlined
-   token values. **The prompt must also state that `index.html` is a build
+   delimiters, no top-level `ll` key, `theme: design-tokens` +
+   `[[= ll.theme_css =]]` (declared **unconditionally**, not gated on
+   `design_tokens_context` — `themed_css_vars` degrades to neutral empty blocks;
+   pair it with concrete CSS fallbacks) rather than inlined token values, and **no
+   `assets/` directory** — images are inline `<svg>` or `data:` URIs, since
+   `load_assets` reads every file under `assets/` as UTF-8 and a binary file there
+   fails both the render and the promotion gate (§ The prompt must also state four
+   contract details). **The prompt must also state that `index.html` is a build
    output**: it is (re)generated by `ll-artifact render` before every screenshot,
    so any direct edit to it is silently clobbered on the next iteration. The
    model reads `critique.md`, which scores the *rendered* HTML, and will otherwise
@@ -808,8 +1030,20 @@ _Revised at the 2026-08-25 pre-implementation review._
    render is undetectable from iteration 2 onward. See § A failed render is
    invisible after iteration 1. It must precede the render unconditionally.
 
-   Mind the double-interpolation escaping rule for anything in this value that
-   uses shell variables — see § `pre_evaluate_cmd` is interpolated TWICE.
+   Also probe `command -v ll-artifact` first and write a distinct `.miss_reason`
+   when it is absent, so a plugin-only install reports the missing binary instead
+   of burning three iterations into a generic screenshot abandon
+   (§ `ll-artifact` on PATH becomes a hard dependency).
+
+   Decide § `iter-N/` loses the template here: either `pre_evaluate_cmd` also
+   archives the `.llat/` source per iteration (option a) or `finalize_done`
+   documents that best-iteration recovery is unavailable in template mode
+   (option b). Do not leave the divergence undocumented.
+
+   Mind the double-interpolation escaping rule — it applies to **every** value
+   bound through `with:`, not just this one, so the `generate_prompt` and `rubric`
+   branches written in steps 3 and 4 are subject to it too. See
+   § `pre_evaluate_cmd` is interpolated TWICE.
 6. Make a render failure surface as a render error through the ENH-2903 abandon
    path rather than a bare screenshot-miss. This depends on step 5's `rm -f`:
    with the stale `index.html` removed, a failed render leaves no artifact,
@@ -832,12 +1066,22 @@ _Revised at the 2026-08-25 pre-implementation review._
 
    Add the deterministic degenerate-`data.json` gate as a **new `gate_template`
    shell state** between `run_gen_eval`'s `on_yes` and `finalize_done`, using the
-   three-part predicate in § The backstop must not live inside the iterate cycle
-   (>= 3 top-level `data.json` keys; every key referenced in the body; >= 5 `[[=`
-   openers). `finalize_done` is `action_type: prompt` and cannot host it. Route
-   the gate's failure to `diagnose` -> `failed`, which suppresses promotion via
-   `promote_run_artifact`'s `result.failure_terminal` short-circuit
-   (`persistence.py:753`). In `file` mode the gate is a no-op.
+   four-part predicate in § The backstop must not live inside the iterate cycle
+   (rule 0: `artifact.llat/` is a directory holding one `template.*.j2` and a
+   readable `data.json`; then >= 3 top-level `data.json` keys; every key
+   referenced in the body; >= 5 `[[=` openers). `finalize_done` is
+   `action_type: prompt` and cannot host it. Wire it as
+   `on_yes: finalize_done` / `on_no: diagnose` / `on_error: diagnose` — the
+   `on_error` edge matters, since a malformed `data.json` fails the predicate's own
+   JSON parse and that must read as a gate rejection, not an unrouted state error.
+   `diagnose -> failed` suppresses promotion via `promote_run_artifact`'s
+   `result.failure_terminal` short-circuit (`persistence.py:753`). In `file` mode
+   the gate is a no-op — check the mode guard *before* rule 0, since
+   `artifact.llat/` legitimately does not exist there.
+
+   Note this edge is exhaustive precisely because a `max_steps` exhaustion and
+   both plateau exits are **non-failure** terminals in the oracle and therefore
+   arrive at `on_yes` too (§ Why `on_yes` is the right edge to intercept).
 8. Conformance + `file`-mode regression tests; docs (LOOPS_REFERENCE.md's
    `artifact_mode` row and template-mode example, the overwrite-per-run note,
    CLI.md, HARNESS_OPTIMIZATION_GUIDE.md).
@@ -940,11 +1184,44 @@ month — no LLM call, no `templatize` round trip, no fidelity loss.
       predicate is the concrete three-part rule in § The backstop must not live
       inside the iterate cycle, and a gate failure routes to `diagnose` ->
       `failed`, which suppresses promotion via `result.failure_terminal`
-      (`persistence.py:753`).
-- [ ] When `design_tokens_context` is non-empty, the emitted `manifest.yaml`
-      declares `theme: design-tokens` and the body references `[[= ll.theme_css =]]`
-      rather than inlining resolved token values — so the promoted template is
-      re-renderable under a different theme.
+      (`persistence.py:753`). The gate sits on `run_gen_eval`'s `on_yes` edge and
+      that placement is exhaustive: a `max_steps` exhaustion and both plateau
+      exits are non-failure terminals in the oracle and arrive at `on_yes` too
+      (§ Why `on_yes` is the right edge to intercept). Rule 0 (`artifact.llat/`
+      is a directory with one `template.*.j2` and a readable `data.json`) precedes
+      the three parameterization rules, and the state declares
+      `on_error: diagnose` as well as `on_no: diagnose`.
+- [ ] Best-iteration recovery in template mode is either supported or documented,
+      not silently broken. `snapshot` archives only the rendered HTML, while
+      `max_steps_summary` points the operator at `iter-N/` as "the highest-scoring
+      iteration" — in template mode the template behind iteration N no longer
+      exists (§ `iter-N/` loses the template). Either `pre_evaluate_cmd` archives
+      the `.llat/` source per iteration, or `finalize_done`'s template-mode branch
+      states the limitation explicitly. A test pins whichever was chosen.
+- [ ] A template-mode run in an environment without `ll-artifact` on PATH reports
+      the missing binary rather than abandoning after three iterations with a
+      generic screenshot message (§ `ll-artifact` on PATH becomes a hard
+      dependency). Runs abandoned for this reason are excluded from § Pilot
+      Results rather than counted as template-emission failures.
+- [ ] The emitted `manifest.yaml` declares `theme: design-tokens` and the body
+      references `[[= ll.theme_css =]]` rather than inlining resolved token values
+      — so the promoted template is re-renderable under a different theme.
+      _(Revised at the second pre-implementation review: previously gated on
+      `design_tokens_context` being non-empty. `themed_css_vars`
+      (`artifact_template_kit.py:18-42`) already degrades to neutral empty scoped
+      blocks when a project has no tokens configured, so the gate bought nothing
+      and cost a nested conditional in the most conditional prompt string in the
+      file. Declare it always; require concrete CSS fallbacks beside each
+      `var(--…)` so the no-tokens render still looks right.)_
+- [ ] The emitted template creates **no `assets/` directory**; images are inline
+      `<svg>` or `data:` URIs. `load_assets` (`artifact_templates.py:296-308`)
+      reads every file under `assets/` as UTF-8, so a model-written `logo.png`
+      raises `UnicodeDecodeError` in `build_ll_namespace` — breaking the
+      per-iteration render *and* silently aborting promotion, since that is not a
+      `ManifestError`/`DataValidationError` and lands in
+      `_promote_template_artifact`'s generic degrade-to-warning branch. The
+      template-mode `generate_prompt` states this; a conformance test pins the
+      instruction and a unit test pins the underlying failure.
 - [ ] The screenshot/rubric/critique iterate cycle works in template mode — a
       low-scoring template is critiqued and regenerated, not abandoned.
 - [ ] A template that fails to render surfaces the render error, not a generic
