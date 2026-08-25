@@ -45,6 +45,18 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    # BUG-3208 Path E — workflow_dispatch input for the snapshot sink issue.
+    # Path E reads \${{ env.SINK_ISSUE }} and streams diagnostic snapshots to
+    # that issue's comments. On push events, env.SINK_ISSUE is unset → Path E
+    # stays off (correct — push to main is normal CI, not a wedge probe).
+    # On dispatch, defaults to the sink issue #11 (the existing
+    # "BUG-3208 wedge diagnostic data" issue that already has accumulated
+    # diagnostic data from prior (d)-branch dispatches).
+    inputs:
+      sink_issue:
+        description: 'Issue number for Path E snapshot sink'
+        required: false
+        default: '11'
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -69,6 +81,11 @@ jobs:
     name: Unit tests (ubuntu-latest)
     runs-on: ubuntu-latest
     timeout-minutes: 120
+    # BUG-3208 Path E — propagate sink_issue input to step env. On push events
+    # (no inputs.sink_issue), env.SINK_ISSUE is empty → Path E guard at :185
+    # emits ::warning:: and stays off (correct). On dispatch, defaults to '11'.
+    env:
+      SINK_ISSUE: ${{ inputs.sink_issue }}
     steps:
       - uses: actions/checkout@v4
 
