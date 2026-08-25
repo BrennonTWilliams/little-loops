@@ -100,6 +100,38 @@ are two, and they are unrelated:
    declaration in the schema). Operates on the parsed `FSMLoop` only, consistent
    with every existing rule. This is the gate that surfaces in `ll-loop validate`.
 
+   **The gate fires on *selectability*, not just on the effective value.**
+   Reading only `fsm.artifact_mode` makes the gate blind in exactly the
+   scenario § Mode selection designs for: a loop that declares `artifact_mode`
+   as a `context:` var for per-run `--context` selection has
+   `fsm.artifact_mode == "file"`. But reading the effective mode
+   (`fsm.context.get("artifact_mode", fsm.artifact_mode)`) is *also* not
+   enough, and misses the more common shape: `html-anything` will declare
+   `context: {artifact_mode: file}` — keeping default behavior unchanged — and
+   be flipped per-run with `--context artifact_mode=template`. At validate
+   time there is no `--context`, so the effective mode is `"file"` and a
+   value-only gate never fires on the one loop template mode exists to serve.
+   `context: {artifact_mode: template}` (the shape AC #2 names) is the *rarer*
+   case.
+
+   Fire the gate when the effective mode is `"template"` **or** when
+   `"artifact_mode" in fsm.context` at any value — declaring the key as a
+   context var *is* the declaration that the loop can run in template mode,
+   and a loop that can run in template mode needs an `artifact_output` block.
+
+   The gate also emits a **WARNING** when `artifact_output.to` is set under a
+   template-capable loop and does not end in `.llat` — see § Default
+   destination on why a non-`.llat` destination is unresolvable by bare name.
+
+   **Registration is a call site, not an `__all__` entry.**
+   `fsm/validation/__init__.py:160`'s `__all__` is a re-export list for test
+   access and cross-module callers — adding a name to it does not make the rule
+   run. The live precedent is `_validate_artifact_output_subloop_reachability`
+   (`reachability.py:104`), which is *absent* from `__all__` yet runs, because it
+   is invoked from `load_and_validate()` at `structural_rules.py:1757`. The new
+   gate needs an equivalent call site — inside `validate_fsm()`
+   (`structural_rules.py:910+`) since it needs no filesystem access.
+
    **Severity: ERROR, with no paired `artifact_mode_ok` suppression flag.** Of the
    three live precedents surfaced in research (`on_handoff` — no validator;
    `tamper_guard` — WARNING + suppression flag; `visibility` — inline WARNING, no
@@ -123,13 +155,38 @@ integration point on the assumption the shape check was static; it isn't.
 
 - Failure terminal → no output expected; promotion and both gates are a no-op.
 - Non-failure terminal missing/malformed shape → a real defect. Surface the
-  `ManifestError` text and mark the run's promotion as failed **without** changing
+  loader's error text and mark the run's promotion as failed **without** changing
   the run's exit status (matching FEAT-3309's best-effort promotion contract).
+
+  **Catch `ManifestError` *and* `DataValidationError`.** They are siblings, not
+  a subclass pair — both derive from `ValueError` directly
+  (`artifact_templates.py:35,39`). `load_manifest()` / `find_template_body()`
+  raise `ManifestError`; `load_data()` and `validate_top_level_data()` raise
+  `DataValidationError` (unparseable JSON, a reserved top-level `ll` key,
+  a payload that fails `manifest.data_schema`). Catching only `ManifestError`
+  lets the single most likely defect — a malformed `data.json` from a
+  generating loop — escape the gate into the outer blanket handler, producing a
+  generic "promotion failed" with none of the diagnostic text. Catch
+  `(ManifestError, DataValidationError)` and log `str(exc)`.
 - `artifact_mode: template` but `artifact_output.from` resolves to a **file** →
   reject at the runtime gate with an explicit "template mode requires a directory"
   message. Do not rely on `load_manifest()` to catch it: handed a file path it
   fails on a path that does not exist rather than on the actual mistake, and the
   resulting `ManifestError` text is misleading.
+- Effective mode outside `{"file", "template"}` — reachable only via the context
+  var, since the field is a `Literal` — → log an explicit warning naming the bad
+  value and skip promotion. Do **not** silently fall back to `"file"`:
+  `--context artifact_mode=tmeplate` would then produce a normal-looking
+  file-mode run with no signal that template mode never engaged.
+
+### Validate before promoting, not after
+
+The runtime gate runs on the **staged temp directory**, before the `promote()`
+swap — not on the promoted result. Validating after the swap means a malformed
+`.llat/` has already landed in `templates_dir`, where it pollutes
+`resolve_template()` name resolution and `ll-artifact status` discovery even
+though promotion is then reported as failed. Load-then-swap keeps a rejected
+shape entirely out of the destination.
 
 ### Directory promotion — reuse `templatize.promote()`, but wrap it
 
@@ -147,6 +204,11 @@ be handled by the caller:**
    deliverable in `run_dir` intact. Template mode must not silently strip a finished
    run of its own output. → `shutil.copytree` the declared source into a sibling
    temp dir under the *destination* parent first, then `promote(tmp, dest, ...)`.
+   **Name that temp dir `f"{dest.name}.tmp-{os.getpid()}"`**, not an arbitrary
+   `mkdtemp` name: it is the name a same-pid retry and `cmd_templatize`'s own
+   `_sweep_stale_siblings` know how to reclaim (both key off the
+   `{out_dir.name}.tmp-` / `{out_dir.name}.bak-` prefixes), so any other name
+   leaks a full directory copy on a crash between copytree and swap.
 2. **`promote()` raises.** `SpliceError` when the destination exists and
    `force=False` (`:591`). `promote_run_artifact` is documented as never raising and
    never failing the run. → call with `force=True` and wrap the whole block in the
@@ -161,7 +223,25 @@ Also: `_sweep_stale_siblings` (`:574`) is **not** inside `promote()` — `cmd_te
 calls it separately at `:812`. Call it explicitly before promoting, or `.tmp-`/`.bak-`
 leftovers from a crashed promotion accumulate in `promotion_dir`.
 
-### Default destination — `templates_dir`, not `promotion_dir`
+**But do not call it unmodified — the stable destination makes it a race.**
+`_sweep_stale_siblings` rmtree's *every* `{dest.name}.tmp-*` and
+`{dest.name}.bak-*` sibling, and under a stable per-loop destination two
+concurrent runs of the same loop share `dest.name`. `ll-parallel`, `ll-sprint`,
+or simply two terminals then collide: run A's sweep deletes run B's in-flight
+`copytree` target out from under it, and B's promotion dies mid-copy. This
+hazard did not exist under FEAT-3309's run-stamped names, where `dest.name`
+differed per run — it is introduced by the stable-name decision below and must
+be paid for here.
+
+Disposition: **do not call `_sweep_stale_siblings(dest)`.** Before `copytree`,
+remove only *our own* `{dest.name}.tmp-{os.getpid()}` (a leftover from a prior
+crash by a recycled pid). Reclaiming another process's leftovers is not worth
+destroying a live one's staging directory; a crashed run leaks one directory
+that the next same-pid run or `cmd_templatize`'s own sweep reclaims.
+(`promote()`'s internal `.bak-{pid}` collision is benign by comparison — the
+worst case is last-writer-wins on `dest`, with no partial state.)
+
+### Default destination — `<templates_dir>/{loop_name}.llat/`, stable per loop
 
 FEAT-3309's `promotion_dir` (`.loops/artifacts`) is the wrong default here.
 `resolve_template()` (`artifact_templates.py:67-82`) resolves a template *by name*
@@ -170,16 +250,95 @@ path-first, so a `.llat/` anywhere is renderable by full path, but only one unde
 `templates_dir` is renderable as `ll-artifact render <name>`. A directory whose
 entire purpose is reuse should land where reuse-by-name works.
 
-Default: **`<templates_dir>/{run_id}-{loop_name}.llat/`**. An explicit
-`artifact_output.to` overrides as usual. Note this makes template mode's default
-destination key *differ* from file mode's — deliberate, and worth one line in the
+Default: **`<templates_dir>/{loop_name}.llat/`**. An explicit `artifact_output.to`
+overrides as usual. Note this makes template mode's default destination key
+*differ* from file mode's — deliberate, and worth one line in the
 `artifact_output` docstring.
 
-Naming: do **not** derive the suffix from the source the way file mode does
-(`dest = ... f"{run_id}-{fsm.name}{source.suffix}"`, `persistence.py:777`). A loop
-that writes a plain `template/` directory has no suffix and would promote to a
-directory that `resolve_template` will not find by name. Template mode always
-appends `.llat`, regardless of what the source directory is called.
+**Anchor `templates_dir` to `config.project_root`, not to the cwd.** The
+default value is the *relative* `"artifacts/templates"`
+(`config/features.py:391`), and `promote_run_artifact` already draws the
+distinction for file mode: a loop-authored `to:` is honoured relative to the
+invocation cwd, while the project-level config default `promotion_dir` is
+anchored to `config.project_root` (`persistence.py` docstring, `:771-773`).
+`templates_dir` is the same kind of value and gets the same treatment.
+Skipping this puts the template wherever the run happened to be launched from
+— and out of reach of `resolve_template()`, which is handed the
+project-root-anchored `templates_dir`.
+
+**An explicit `to:` is honoured verbatim — `.llat` is never appended to it.**
+Only the *default* destination synthesizes the suffix. Appending to an
+author's explicit path would silently rewrite a value they chose, and
+`resolve_template()` is path-first, so a non-`.llat` destination still renders
+by full path — it just cannot be named. That trade-off is the author's to
+make, but it is also the exact failure this section exists to prevent, so the
+static gate WARNs when a template-capable loop sets a `to:` not ending in
+`.llat` (see § Two gates, gate 1).
+
+**Deliberately *not* run-stamped** (`{run_id}-{loop_name}.llat`), unlike file
+mode's `{run_id}-{fsm.name}{suffix}` (`persistence.py:777`). A unique name per run
+breaks four things at once:
+
+- `templates_dir` is project-visible (`artifacts/templates`), not the gitignored
+  `.loops/` tree `promotion_dir` lives in — a new directory per run accumulates
+  unboundedly in tracked space.
+- `ll-artifact status` discovers every `*.llat` under `templates_dir`
+  (`status.py:102-107`); run-stamped siblings flood it.
+- Cheap refresh — re-render against an updated `data.json`, the epic's whole
+  premise — needs a stable name. A fresh name each run orphans the previous one.
+- It makes the atomic-swap machinery dead code: the destination never pre-exists,
+  so `force=True`, `promote()`'s backup/restore, and `_sweep_stale_siblings` are
+  all unreachable. `_sweep_stale_siblings` matches only `{dest.name}.tmp-`/`.bak-`
+  prefixes, and `dest.name` would differ every run.
+
+A stable name makes all of that load-bearing, and matches `templatize`'s own
+`templates_dir / f"{stem}.llat"` (`templatize.py:769`). Overwriting the previous
+run's template is the intended behavior — the run's own copy survives in
+`run_dir`, and `promote()`'s backup/rollback covers a mid-swap failure.
+
+**Overwriting someone *else's* template of the same name is not intended, and
+needs a guard.** `templatize` writes to `templates_dir/{stem}.llat` from the
+same namespace, so a hand-authored or `templatize`-derived
+`artifacts/templates/html-anything.llat` is indistinguishable, by path, from a
+prior promotion — and `force=True` (required by § Directory promotion item 2)
+destroys it without a word. This is the one destructive edge in an otherwise
+best-effort, never-fails path, and it lands in *tracked* project space.
+
+Guard, cheaply: `manifest.yaml` already carries an optional top-level `source`
+key (`artifact_templates.py:26`). Stamp it at promotion time to identify the
+producing loop, and before swapping, if the destination already exists, load
+its manifest and compare. On a mismatch — or an unreadable/absent `source` —
+log a WARNING naming both the destination and the foreign `source` before
+proceeding. Proceed rather than refuse: refusing would make a promoting loop
+permanently wedged behind a stale directory with no in-band way to clear it,
+and `promote()`'s backup is deleted only after a successful swap. The
+requirement is that the clobber is *never silent*, not that it is impossible.
+
+Suffix: always append `.llat`; do **not** derive it from the source the way file
+mode does. A loop that writes a plain `template/` directory has no suffix and
+would promote to a directory `resolve_template` cannot find by name.
+
+`manifest.name` is left untouched by promotion. `ll-artifact render <name>` keys
+on the *directory* name; the manifest's `name` is metadata and the two need not
+agree. Worth one line in the `artifact_output` docstring so the divergence isn't
+read as a bug.
+
+**Emitting a lockfile is out of scope; *inheriting a stale one* is not.**
+`ll-artifact status` only discovers `.llat` dirs that have a lockfile sibling
+(`status.py:103-107`), so a promoted template is invisible to `status` until
+someone runs a command that writes one. Emitting a lockfile at promotion time
+is a follow-up, not an AC here.
+
+The sibling case is different and does belong here. `lock_path_for` returns
+`root.parent / f"{root.name}.lock"` (`cli/artifact/lockfile.py:26-28`) — the
+lockfile lives *outside* the `.llat/` directory, so `promote()`'s swap replaces
+the template and leaves the lock untouched. A promotion over a previously
+`templatize`d or rendered template therefore inherits a lockfile describing the
+*old* template's renders, and `status` will classify the new one against it —
+reporting FRESH/STALE on evidence that no longer applies. Delete the sibling
+lockfile as part of a successful promotion (`lock_path_for(dest).unlink(
+missing_ok=True)`, after the swap): NO-LOCK is honest and self-correcting,
+a stale lock is neither.
 
 ### Mode selection — a context var, not a per-file constant
 
@@ -242,9 +401,21 @@ declarations.
 ### Signatures
 
 - `_validate_artifact_mode_deliverable(fsm: FSMLoop) -> list[ValidationError]` — the
-  static gate; must be registered in `fsm/validation/__init__.py`'s `__all__`.
+  static gate; registered by an `errors.extend(...)` **call site in
+  `validate_fsm()`** (`structural_rules.py:910+`), which is what makes a rule run.
+  Adding it to `fsm/validation/__init__.py`'s `__all__` is optional and only
+  affects direct import access from tests / cross-module callers.
   (`ValidationError` from `fsm/validation/_base.py` — there is no `Violation` type
   in this codebase; every rule returns `list[ValidationError]`.)
+- `_effective_artifact_mode(fsm: FSMLoop) -> str` — `fsm.context.get("artifact_mode",
+  fsm.artifact_mode)`, shared by the static gate and `promote_run_artifact` so the
+  two can never disagree about which mode a run is in.
+- `_is_template_capable(fsm: FSMLoop) -> bool` — `_effective_artifact_mode(fsm) ==
+  "template" or "artifact_mode" in fsm.context`. What the *static* gate keys off;
+  `promote_run_artifact` keys off `_effective_artifact_mode` alone, since at
+  runtime the mode has an actual value. Splitting the two is the point: validation
+  asks "can this loop ever run in template mode?", promotion asks "is it in
+  template mode right now?"
 - `promote_run_artifact(...)` — extended (from FEAT-3309) to branch on the effective
   `artifact_mode` (context var, falling back to the field) and run the runtime gate
 
@@ -262,14 +433,16 @@ _Added by `/ll:refine-issue` — 2026-08-25 — based on codebase analysis:_
 
 - The `_validate_artifact_mode_deliverable(fsm: FSMLoop) -> list[Violation]` signature above cites a `Violation` return type that does not exist anywhere in this codebase. Every validation rule returns `list[ValidationError]` (`fsm/validation/_base.py`) — e.g. `_validate_tamper_guard(fsm: FSMLoop) -> list[ValidationError]` (`evaluator_rules.py:378`). The new function's signature should be `-> list[ValidationError]`.
 - `promote_run_artifact` is already fully landed on this branch (not merely proposed by FEAT-3309): defined at `fsm/persistence.py:727-786`, called from `PersistentExecutor.run()` at `persistence.py:1103-1118`. It stashes the promoted path as `fsm.context["promoted_artifact"]` — not `fsm.context["promoted"]` as the Call Path above states.
-- Three existing, disagreeing conventions for a restricted-choice `FSMLoop` field, any of which `artifact_mode` could follow: `on_handoff: Literal["pause","spawn","terminate"]` (`schema.py:1401`) has no runtime validator at all; `tamper_guard: str | None` has a dedicated registered validator plus a WARNING severity and a suppression flag (`evaluator_rules.py:378-419`); `visibility: str` is checked inline against a frozenset inside `load_and_validate()` (`structural_rules.py:1725-1737`), also WARNING-only with no suppression flag. The issue does not currently specify whether the new static gate should be ERROR or WARNING severity, or whether a suppression flag is warranted — this is an open choice among three live precedents, not a settled convention.
+- Three existing, disagreeing conventions for a restricted-choice `FSMLoop` field, any of which `artifact_mode` could follow: `on_handoff: Literal["pause","spawn","terminate"]` (`schema.py:1401`) has no runtime validator at all; `tamper_guard: str | None` has a dedicated registered validator plus a WARNING severity and a suppression flag (`evaluator_rules.py:378-419`); `visibility: str` is checked inline against a frozenset inside `load_and_validate()` (`structural_rules.py:1725-1737`), also WARNING-only with no suppression flag. **Settled** in § Two gates, gate 1: ERROR, no suppression flag — none of the three precedents applies, because this is a behavior declaration that cannot work as written rather than a dismissable lint opinion.
 
 ## Integration Map
 
 ### Files to Modify
 - `scripts/little_loops/fsm/schema.py` — `artifact_mode` field beside `artifact_output`: `ArtifactOutput` dataclass at `:1308-1356`, `FSMLoop.artifact_output` field at `:1446`, serialize in `to_dict()` at `:1583-1584`, parse in `from_dict()` at `:1710-1714`
 - `scripts/little_loops/fsm/validation/_base.py:116` — register `artifact_mode` in `KNOWN_TOP_LEVEL_KEYS` (`_base.py:81-144`), alongside the existing `artifact_output` entry
-- `scripts/little_loops/fsm/validation/__init__.py:44-267` — **strict per-symbol re-export registry**; a new `_validate_*` function absent from `__all__` is invisible to `fsm/executor.py`/`fsm/persistence.py`/`fsm/route_table.py`
+- `scripts/little_loops/fsm/validation/structural_rules.py:910+` — `validate_fsm()`; **the registration point**: add an `errors.extend(_validate_artifact_mode_deliverable(fsm))` call beside the existing `_validate_parameters` / `_validate_targets` extends (`:948,951`). This, not `__all__`, is what makes the rule run
+- `scripts/little_loops/fsm/validation/__init__.py:44-267` — per-symbol re-export list for test access and cross-module callers (`fsm/executor.py`/`fsm/persistence.py`/`fsm/route_table.py`). Optional for this rule, which has no such caller — cf. `_validate_artifact_output_subloop_reachability`, absent from `__all__` and still live
+- `scripts/little_loops/fsm/validation/reachability.py:104-141` — `_validate_artifact_output_subloop_reachability`, the existing `artifact_output` rule and the closest precedent for the new gate's shape, severity choice, and registration style (invoked from `structural_rules.py:1757`)
 - `scripts/little_loops/fsm/validation/` — the new static gate (rule module TBD by category)
 - `scripts/little_loops/fsm/persistence.py:727-786` — `promote_run_artifact`, already landed (from FEAT-3309), called from `PersistentExecutor.run()` at `:1103-1118`; branch it on `artifact_mode` for directory promotion, calling `cli/artifact/templatize.py`'s `promote()` via a function-local import (no shared-module lift needed — see `cli/artifact/templatize.py:574-605` below)
 - `scripts/little_loops/loops/html-anything.yaml` — the pilot generate-prompt variant
@@ -278,7 +451,8 @@ _Added by `/ll:refine-issue` — 2026-08-25 — based on codebase analysis:_
 - `scripts/little_loops/fsm/validation/structural_rules.py:30` — imports `KNOWN_TOP_LEVEL_KEYS`
 - `scripts/little_loops/cli/artifact/render.py:72` — `cmd_render`; the consumer that must accept the output with no `templatize` step. It resolves via `resolve_template()` (`artifact_templates.py:67-82`), which is path-first but resolves *by name* only under `templates_dir` — the reason for the destination-directory decision above.
 - `scripts/little_loops/config/features.py:391,393` — `templates_dir` (`artifacts/templates`) vs `promotion_dir` (`.loops/artifacts`); template mode defaults to the former
-- `scripts/little_loops/cli/loop/_helpers.py:1899-1901` — prints `fsm.context["promoted_artifact"]`; must read sensibly when the promoted path is a directory
+- `scripts/little_loops/cli/loop/_helpers.py:1899-1901` — prints `Promoted artifact: <relativized path>` from `fsm.context["promoted_artifact"]`. Verified to need **no change**: it stringifies and relativizes whatever path it is handed, so a directory prints correctly. Listed for awareness only — deliberately not an AC
+- `scripts/little_loops/cli/artifact/lockfile.py:26-28` — `lock_path_for`; the sibling `{name}.llat.lock` that survives a `promote()` swap and must be unlinked on a successful promotion (see § Default destination)
 
 ### Similar Patterns
 - `cli/artifact/templatize.py:893-927` — writes `template.{suffix}.j2` + `data.json` + `manifest.yaml` into a temp dir then promotes; the exact output shape a `template`-mode loop must produce
@@ -288,7 +462,7 @@ _Added by `/ll:refine-issue` — 2026-08-25 — based on codebase analysis:_
 - `scripts/tests/test_fsm_schema.py:3788+` — `artifact_mode` field coverage
 - `scripts/tests/test_fsm_validation_meta_rules.py:843-860` — pattern for confirming `artifact_mode` doesn't trip the "Unknown top-level" warning
 - `scripts/tests/test_fsm_validation_structural.py` — 30+ existing `test_*_rejected` methods already exercise the "validator rejects a bad config" shape (e.g. `test_unknown_type_rejected` `:500-505`, `test_non_positive_exit_code_is_rejected` `:1463-1483`); the new `artifact_mode` rejection test should follow this existing pattern, not invent a new one.
-- `scripts/tests/test_fsm_persistence.py:1326-1342,1430+` — E2E templates for the runtime gate
+- `scripts/tests/test_fsm_persistence.py:1326-1342,1430+` — E2E templates for the runtime gate; also the home for the promotion-edge tests: a bad `data.json` (all three `DataValidationError` shapes), a pre-existing foreign-`source` destination, a stale sibling lockfile, a relative `templates_dir` under a non-cwd `project_root`, and a simulated concurrent `{dest.name}.tmp-<other-pid>` sibling that must survive promotion
 - Round-trip test: a `template`-mode run's output feeds `ll-artifact render` and produces the expected artifact with no `templatize` invocation
 - `scripts/tests/test_builtin_loops.py` — conformance for `html-anything.yaml`
 
@@ -310,20 +484,26 @@ _Added by `/ll:refine-issue` — 2026-08-25 — based on codebase analysis:_
 ## Implementation Steps
 
 1. Add `artifact_mode` to `FSMLoop` + `KNOWN_TOP_LEVEL_KEYS`, including `to_dict()`/`from_dict()` round-trip coverage (`test_fsm_schema.py` convention).
-2. Add the static gate (`artifact_mode: template` requires `artifact_output is not None`) at ERROR severity with no `_ok` flag + register it in `fsm/validation/__init__.py`'s `__all__` + the rejection test.
-3. Branch `promote_run_artifact` (`fsm/persistence.py:727-786`) on the effective `artifact_mode` (context var, field as default) for directory promotion: `_sweep_stale_siblings` → `shutil.copytree` to a sibling temp under the destination parent → `templatize.promote(..., force=True)`, the whole block wrapped so it degrades to a logged warning. `templatize` imported function-locally (following `fsm/executor.py:917`'s convention for `fsm/` reaching into `cli/`; no shared-module lift needed).
-4. Default the destination to `<templates_dir>/{run_id}-{loop_name}.llat/`, always appending `.llat` rather than deriving it from `source.suffix`.
-5. Add the runtime gate via `load_manifest`/`find_template_body`/`validate_top_level_data`, plus the explicit source-is-a-file rejection, with the non-failing-the-run disposition.
+2. Add the static gate — a **template-capable** loop (`_is_template_capable`: effective mode is `"template"`, *or* `artifact_mode` appears as a `context:` key at any value) requires `artifact_output is not None` — at ERROR severity with no `_ok` flag, plus the WARNING when its `artifact_output.to` is set and does not end in `.llat`. Register it by an `errors.extend(...)` call site in `validate_fsm()` (`structural_rules.py:910+`). The rejection test must assert `ll-loop validate` actually rejects — not that a symbol appears in `__all__` — and must cover the `context: {artifact_mode: file}` shape, which is what `html-anything` will actually declare.
+3. Branch `promote_run_artifact` (`fsm/persistence.py:727-786`) on the effective `artifact_mode` for directory promotion: unlink our own stale `{dest.name}.tmp-{os.getpid()}` (**not** `_sweep_stale_siblings(dest)` — it would rmtree a concurrent run's live staging dir) → `shutil.copytree` to `{dest.name}.tmp-{os.getpid()}` under the destination parent → runtime gate on the temp (step 5) → foreign-`source` clobber WARNING if `dest` exists → `templatize.promote(..., force=True)` → `lock_path_for(dest).unlink(missing_ok=True)`, the whole block wrapped so it degrades to a logged warning. `templatize` imported function-locally (following `fsm/executor.py:917`'s convention for `fsm/` reaching into `cli/`; no shared-module lift needed). An effective mode outside `{"file","template"}` logs a warning naming the value and skips promotion.
+4. Default the destination to `<templates_dir>/{loop_name}.llat/` — stable per loop, not run-stamped — always appending `.llat` rather than deriving it from `source.suffix`, with `templates_dir` anchored to `config.project_root` when relative (it is, by default). An explicit `artifact_output.to` is honoured verbatim; no suffix is appended to it. Stamp `manifest.source` with the producing loop so the clobber guard has something to compare.
+5. Add the runtime gate via `load_manifest`/`find_template_body`/`validate_top_level_data`, run **on the staged temp before the swap**, catching `(ManifestError, DataValidationError)` — both, they are sibling `ValueError` subclasses — plus the explicit source-is-a-file rejection, with the non-failing-the-run disposition.
 6. Round-trip test through `ll-artifact render` against a hand-written `.llat/` fixture (no LLM); docs.
 7. *(Split out to **FEAT-3320**)* the `html-anything` template-emitting generate-prompt variant, selected by the `artifact_mode` context var. Not in scope here.
 
 ## Acceptance Criteria
 
-- [ ] `ll-loop validate` rejects, at ERROR severity, a loop declaring `artifact_mode: template` with no `artifact_output` block, via a rule registered in `fsm/validation/__init__.py`'s `__all__`. No `artifact_mode_ok` suppression flag exists.
-- [ ] A `template`-mode loop's promoted directory contains `manifest.yaml`, exactly one `template.*.j2`, and a `data.json` valid against `manifest.data_schema` — verified at promotion time by the existing `artifact_templates.py` loaders, not by a reimplementation.
-- [ ] The promoted directory is accepted directly by `ll-artifact render` with no `templatize` step, **resolvable by bare name** (i.e. it lands under `artifacts.templates_dir` and is suffixed `.llat`), not only by full path.
-- [ ] A malformed/missing shape on a non-failure terminal surfaces the `ManifestError` text and marks promotion failed **without** changing the run's exit status; a failure terminal is a silent no-op. `artifact_output.from` resolving to a file (not a directory) under `template` mode produces an explicit "requires a directory" message, not a misleading `ManifestError`.
-- [ ] Directory promotion is atomic (temp + rollback), reusing `templatize.promote()` rather than a second implementation — and **the declared source survives in `run_dir`** (promotion copies; `promote()`'s bare `os.replace` would move it).
+- [ ] `ll-loop validate` rejects, at ERROR severity, a loop declaring `artifact_mode: template` with no `artifact_output` block. The test asserts the *rejection* (via `load_and_validate` / `ll-loop validate` exit status), not that a symbol appears in `__all__`. No `artifact_mode_ok` suppression flag exists.
+- [ ] That rejection also fires when the mode is declared as a `context:` var rather than the top-level field — for **both** `context: {artifact_mode: template}` and `context: {artifact_mode: file}`. The latter is the shape `html-anything` will actually ship (default-unchanged, flipped per-run by `--context`), and a gate keyed only on the effective *value* is blind to it.
+- [ ] A template-capable loop whose `artifact_output.to` does not end in `.llat` produces a WARNING (not an ERROR) naming the destination — it renders by path but cannot be resolved by bare name.
+- [ ] An effective `artifact_mode` outside `{"file","template"}` (reachable only via `--context`) logs a warning naming the bad value and skips promotion, rather than silently degrading to a normal-looking file-mode run.
+- [ ] A `template`-mode loop's promoted directory contains `manifest.yaml`, exactly one `template.*.j2`, and a `data.json` valid against `manifest.data_schema` — verified by the existing `artifact_templates.py` loaders, not by a reimplementation, and verified **on the staged temp before the swap**, so a malformed shape never lands under `templates_dir`.
+- [ ] The promoted directory is accepted directly by `ll-artifact render` with no `templatize` step, **resolvable by bare name** (i.e. it lands under `artifacts.templates_dir` — anchored to `config.project_root`, so the destination is independent of the invocation cwd — and is suffixed `.llat`), not only by full path. The default name is stable per loop (`{loop_name}.llat`), so a second run of the same loop overwrites rather than accumulating a new run-stamped directory.
+- [ ] A malformed/missing shape on a non-failure terminal surfaces the loader's error text and marks promotion failed **without** changing the run's exit status; a failure terminal is a silent no-op. `artifact_output.from` resolving to a file (not a directory) under `template` mode produces an explicit "requires a directory" message, not a misleading `ManifestError`.
+- [ ] The gate reports the diagnostic text for a bad **`data.json`** — unparseable JSON, a reserved top-level `ll` key, and a `manifest.data_schema` mismatch — not just for a bad `manifest.yaml`. (`DataValidationError` is a sibling of `ManifestError`, not a subclass; catching only the latter drops all three.)
+- [ ] Directory promotion is atomic (temp + rollback), reusing `templatize.promote()` rather than a second implementation — and **the declared source survives in `run_dir`** (promotion copies; `promote()`'s bare `os.replace` would move it). A second run over an existing destination overwrites it via the backup/restore path, and a crash between `copytree` and the swap leaves only a `{dest.name}.tmp-<pid>` sibling, reclaimed by the next same-pid promotion.
+- [ ] Two concurrent promotions of the same loop to the same stable destination do not destroy each other's staging directory: the outcome is last-writer-wins on `dest`, never a half-copied template or a promotion that dies mid-`copytree`. (Specifically: `_sweep_stale_siblings(dest)` is **not** called — its prefix match would rmtree the other run's live `{dest.name}.tmp-<pid>`.)
+- [ ] Promoting over a destination whose `manifest.source` names a different producer — a hand-authored or `templatize`-created template of the same name — logs a WARNING naming both before proceeding. The clobber may happen; it is never silent. A successful promotion also unlinks the sibling `{dest.name}.lock`, so `ll-artifact status` reports NO-LOCK rather than classifying the new template against the old one's render records.
 - [ ] `promote_run_artifact` still never raises and never changes the run's exit status in `template` mode, including when the destination already exists (`promote()` raises `SpliceError` unless `force=True`) and when the destination is on another filesystem.
 - [ ] `artifact_mode` survives a `to_dict()`/`from_dict()` round-trip and does not trip the unknown-top-level-key WARNING in `structural_rules.py::load_and_validate()`.
 - [ ] `artifact_mode` defaults to `"file"`; every loop that declares nothing behaves exactly as today, and the `artifact_versioning_ok` MR-5 tests stay green.
@@ -347,6 +527,8 @@ _Added by `/ll:refine-issue` — 2026-08-25 — based on codebase analysis:_
 **Open** | Created: 2026-08-24 | Priority: P2
 
 ## Session Log
+- Pre-implementation review (3rd pass) - 2026-08-25 - closed the static gate's remaining blind spot (it must key on template-*capability* — `artifact_mode` present as a `context:` key at any value — not on the effective value, since `html-anything` will ship `context: {artifact_mode: file}`); replaced `_sweep_stale_siblings(dest)` with a self-pid-only unlink after finding its prefix match rmtrees a concurrent same-loop run's live staging dir (a hazard the stable-name decision introduced); added a `manifest.source` clobber guard for overwriting a hand-authored/`templatize`d template of the same name in tracked space; widened the runtime gate to catch `DataValidationError` alongside `ManifestError` (siblings, not a subclass pair — a malformed `data.json` would have escaped); pinned `templates_dir` anchoring to `project_root` and `to:` as honoured verbatim (+ a non-`.llat` WARNING); required unlinking the stale sibling lockfile; verified `_helpers.py`'s promoted-artifact print needs no change; retired the now-settled severity question from the research findings.
+- Pre-implementation review (2nd pass) - 2026-08-25 - corrected the rule-registration mechanism (`__all__` is a re-export list, not the registry; `_validate_artifact_output_subloop_reachability` is the live counter-example), closed the static gate's blind spot on `context:`-declared modes, added a disposition for an invalid context value, replaced the run-stamped default destination with a stable `{loop_name}.llat` (four consequences: unbounded growth in tracked space, `ll-artifact status` pollution, no cheap-refresh target, and dead swap/sweep machinery), moved the runtime gate before the swap, pinned the temp-dir name to the sweep's prefix, and ruled lockfile emission out of scope.
 - Pre-implementation review - 2026-08-25 - resolved four blockers (promote() moves rather than copies and raises; mode selection via `--context`; default destination `templates_dir` not `promotion_dir`; "declared deliverable" = `artifact_output`), settled the static-gate severity, corrected four stale statements (`Violation`→`ValidationError`, `promoted`→`promoted_artifact`, retracted shared-module lift, `_sweep_stale_siblings` is caller-invoked), and split the `html-anything` prompt variant out of scope.
 - `/ll:reconcile-issue` - 2026-08-25T16:16:48 - `c4f85c08-09d9-48a9-8402-4bb54b80d902.jsonl`
 - `/ll:refine-issue` - 2026-08-25T16:12:50 - `2e6f3378-789f-46dc-8b61-adf0fc625fd4.jsonl`
