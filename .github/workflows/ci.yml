@@ -59,8 +59,20 @@ on:
         default: '11'
 
 concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  # Diagnostic-stack branch: every dispatch lands in its own concurrency group
+  # (keyed on run_id, not ref) so iterative dispatches don't self-cancel. The
+  # `cancel-in-progress: false` is explicit insurance. Only this v3 ci.yml
+  # has this configuration; main's ci.yml keeps the original
+  # `ci-${{ github.ref }}` + `cancel-in-progress: true` so main's cancel-on-push
+  # behavior is untouched.
+  #
+  # Forward merge-safety note: if v3's ci.yml is ever merged to main, this
+  # concurrency change rides along and main would lose its cancel-stale-run
+  # behavior. Before any such merge, revert this block to the original or
+  # gate it on `github.event_name == 'push'`. Not a now-problem; a
+  # don't-forget-later problem.
+  group: ci-diagnostic-${{ github.run_id }}
+  cancel-in-progress: false
 
 permissions:
   contents: read
