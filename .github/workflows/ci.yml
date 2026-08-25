@@ -169,7 +169,14 @@ jobs:
               -f body="$INITIAL_BODY" --jq .id 2>&1)
             RC=$?
             COMMENT_ID="$RESULT"
-            if [ -n "$COMMENT_ID" ] && [ "$COMMENT_ID" != "null" ]; then
+            # Cooper's empirical repro (visible in channel event ff43e52f / bug
+            # confirmed in cc9c98de): `2>&1` on a failed `gh api POST` folds the
+            # error JSON + stderr text into $RESULT, polluting $COMMENT_ID
+            # with non-empty / non-"null" text. The success guard must key
+            # off the exit code (RC=0) BEFORE the string non-emptiness check,
+            # otherwise a 4xx response silently passes the guard and exports
+            # the error text as $COMMENT_ID, neutering the fail-fast.
+            if [ "$RC" -eq 0 ] && [ -n "$COMMENT_ID" ] && [ "$COMMENT_ID" != "null" ]; then
               echo "Path E POST attempt $attempt succeeded: id=$COMMENT_ID (rc=$RC)"
               break
             fi
