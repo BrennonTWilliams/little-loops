@@ -73,6 +73,17 @@ PACKAGE_DATA_ASSETS: Final[tuple[tuple[str, ...], ...]] = (
     ("templates", "design-tokens", "profiles", "editorial-mono", "spacing.json"),
     ("templates", "design-tokens", "profiles", "editorial-mono", "themes", "light.json"),
     ("templates", "design-tokens", "profiles", "editorial-mono", "themes", "dark.json"),
+    # FEAT-3304: the vendored sql.js runtime `ll-artifact dashboard` inlines into
+    # every generated artifact, and the packaged `dashboard.llat` template it
+    # renders through — both resolved via importlib.resources so they work from an
+    # installed wheel, not only a source checkout. One tuple per file: the manifest
+    # has no directory-glob form. Provenance for the two vendored files (version,
+    # hashes, license, update procedure) is at assets/vendor/sql.js/PROVENANCE.md.
+    ("assets", "vendor", "sql.js", "sql-wasm.wasm"),
+    ("assets", "vendor", "sql.js", "sql-wasm.js"),
+    ("assets", "vendor", "sql.js", "PROVENANCE.md"),
+    ("templates", "dashboard.llat", "manifest.yaml"),
+    ("templates", "dashboard.llat", "template.html.j2"),
 )
 
 # BUG-3177: skills/ is force-included into the wheel by hatch_build.py rather than

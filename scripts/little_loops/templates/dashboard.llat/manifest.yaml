@@ -1,0 +1,35 @@
+name: history-dashboard
+version: 1
+renderer: jinja2
+output: history-dashboard.html
+theme: design-tokens
+data_schema:
+  type: object
+  required:
+    - snapshot_gzip_b64
+    - sql_wasm_b64
+    - sql_wasm_js
+    - exported_at
+    - filter_tables
+    - filter_since
+    - export_mode
+    - allowlist_version
+    - source_schema_version
+    - installed_schema_version
+    - schema_version_warning
+    - row_cap
+  properties:
+    snapshot_gzip_b64: {type: string}
+    sql_wasm_b64: {type: string}
+    sql_wasm_js: {type: string}
+    exported_at: {type: string}
+    filter_tables: {type: string}
+    filter_since: {type: string}
+    export_mode:
+      type: string
+      enum: [shareable, local]
+    allowlist_version: {type: integer}
+    source_schema_version: {type: string}
+    installed_schema_version: {type: integer}
+    schema_version_warning: {type: string}
+    row_cap: {type: integer}

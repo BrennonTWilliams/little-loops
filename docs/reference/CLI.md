@@ -4467,8 +4467,9 @@ Generate self-contained, human-facing artifacts from project data. `policy-build
 | `extract` | LLM extraction: source document -> `data.json`, schema-checked |
 | `refresh` | `extract` + `render` composed against a template's bound source, recording `<template>.llat.lock` |
 | `status` | Lockfile staleness detection: FRESH/STALE/SOURCE-MISSING/OUTPUT-MISSING/NO-LOCK per `(template, source)` pair |
+| `dashboard` | Export a filtered, redacted `.ll/history.db` snapshot into a single self-contained HTML page that runs read-only SQL client-side via an inlined `sql.js` |
 
-**Exit codes:** `0` = artifact generated successfully, `1` = error (see `templatize` below for its distinct `2`, and `status` below for its own exit-code rule)
+**Exit codes:** `0` = artifact generated successfully, `1` = error (see `templatize` below for its distinct `2`, and `status` / `dashboard` below for their own exit-code rules)
 
 #### ll-artifact policy-builder
 
@@ -4541,6 +4542,41 @@ with `ll-artifact render html-anything --data new-data.json`, no LLM call
 required. See [LOOPS_REFERENCE.md § html-anything](../guides/LOOPS_REFERENCE.md#html-anything--generalized-html-artifact-harness).
 
 **Exit codes:** `0` = artifact rendered (and, with `--source`, the lockfile updated), `1` = template not found, an invalid manifest, missing/malformed/schema-invalid data, `-o` naming an existing file, a `--source` that does not resolve to an existing file, or — with `--source` — a render that succeeded but whose lockfile write then failed.
+
+#### ll-artifact dashboard
+
+Export a filtered, ENH-075-redacted snapshot of `.ll/history.db` as a gzip+base64 blob embedded in `history-dashboard.html`, alongside an inlined `sql.js` (SQLite compiled to WASM). The page opens over `file://` with **zero network requests** — the WASM is handed to `initSqlJs({ wasmBinary })` directly rather than fetched — and lets the viewer run arbitrary read-only SQL against the snapshot, plus predefined views that need no SQL at all.
+
+Rendered as a real `.llat/` template (`theme: design-tokens`) that ships **inside the package** and is resolved via `importlib.resources`, so it works from an installed wheel, not only a source checkout.
+
+**Export scope is decided here, not in the page.** In the default `shareable` mode only the ENH-075 column allowlist is copied — `loop_runs` without `error` (free text) or `diagnostics_path` (absolute path), and `usage_events` without anything outside the allowlist — and `--tables` may select only from the types the allowlist covers. `--local` lifts the projection (`SELECT *`) and accepts any `ll-session export` type; the resulting page is stamped `mode: local` so a recipient can always tell.
+
+**Reading the source database is non-mutating by construction.** The snapshot is built by `ATTACH` + `CREATE TABLE … AS SELECT` over a raw `file:…?mode=ro` connection, never the store's normal open path (which migrates on open) — so generating an artifact cannot alter `.ll/history.db`. The resulting snapshot carries no indexes and no free pages, so no `VACUUM` step is needed.
+
+**Flags:**
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--tables <types>` | | Comma-separated `ll-session export` **type names** (`loop_run`, `usage_event`, …), not physical table names. Default: `loop_run,usage_event` — the shareable-allowlist types, in both modes. Deliberately **not** `ll-session export`'s 20-type default set, 18 of which have no allowlist entry. In `shareable` mode a type outside the allowlist exits `1`. |
+| `--since <when>` | | ISO 8601 or `YYYY-MM-DD` (matching `ll-session export`; no relative durations like `30d`). **No default** — omitting it embeds all history, which on a real database will exceed the size ceiling. For `loop_run` the predicate is `COALESCE(ended_at, started_at)`, so a run that *started* inside the window is kept even if it is still in flight and has no end timestamp. |
+| `--local` | | Export in local mode: no column projection, any export type selectable. Overrides `config.artifacts.export.mode`. |
+| `--db <path>` | | Path to the history database (default: `<project root>/.ll/history.db`). |
+| `--output <dir>` | `-o` | Output **directory** (default: `config.artifacts.promotion_dir`, i.e. `.loops/artifacts` — *not* `default_output_dir`, which is `.` and would drop a multi-MB file into the project root). The filename comes from the packaged manifest: `history-dashboard.html`. |
+
+**In the page:** `PRAGMA query_only = 1` is applied immediately after every database instantiation, which is what actually rejects writes at the engine level (`attempt to write a readonly database`). The submitted-text check that rejects multi-statement input and `PRAGMA` exists to give a clear error message — it is a UX guardrail, **not** a security boundary; the viewer owns the bytes and the console, and data scope was settled at export time. A "reset snapshot" action re-instantiates the database from the embedded bytes. Results are capped at 500 rendered rows with a truthful `showing 500 of N rows` line, applied at the render step via `prepare()`/`step()` — the submitted SQL is never rewritten with a `LIMIT`.
+
+**Stamped into the page:** export timestamp, the `--tables`/`--since` filter that produced it, the export mode, the ENH-075 allowlist version, and both the source database's recorded `schema_version` and the installed `SCHEMA_VERSION`, with a visible warning when they diverge. Divergence is detected at *export* time — once written the artifact contains its own snapshot and has nothing left to mismatch against.
+
+**Vendored `sql.js`** (1.14.2) lives at `scripts/little_loops/assets/vendor/sql.js/` with version, upstream URL, SHA-256 per file, license, and update procedure recorded in `PROVENANCE.md`. It contributes a fixed ~924 KB floor to every generated artifact.
+
+**Examples:**
+```bash
+ll-artifact dashboard --since 2026-07-26                       # shareable, both allowlist types
+ll-artifact dashboard --tables loop_run --since 2026-07-26 -o build/
+ll-artifact dashboard --local --since 2026-08-01               # unredacted, personal use
+```
+
+**Exit codes:** `0` = `history-dashboard.html` written, `1` = the raw snapshot or the final rendered HTML exceeded `artifacts.export.max_artifact_bytes` (default `8000000` — both messages name the measured size, the limit, and `--since` as the remedy, and **no file is written**), a `--tables` selection that would widen the ENH-075 allowlist in `shareable` mode, an unknown export type, an unparseable `--since`, a missing history database, or `-o` naming an existing file.
 
 #### ll-artifact templatize
 

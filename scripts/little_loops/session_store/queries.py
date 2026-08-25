@@ -132,6 +132,173 @@ _EXPORT_DEFAULT_TABLES = [
 ]
 
 
+# ENH-075 shareable export allowlist (FEAT-3304 D12) — keyed by PHYSICAL table
+# name, not the _EXPORT_TABLE_MAP type-name vocabulary. Columns not listed are
+# excluded from a `mode=shareable` export: `loop_runs.error` is free text and
+# `loop_runs.diagnostics_path` is an absolute filesystem path, neither of which
+# may ever appear in a shareable snapshot.
+#
+# Any edit to this constant MUST bump _SHAREABLE_ALLOWLIST_VERSION in the same
+# commit. A test enforces the lockstep by pinning a hash of the constant against
+# the version — without it, "stamped with the allowlist version" stamps an
+# unmanaged string and provides no control at all.
+_SHAREABLE_COLUMNS: dict[str, list[str]] = {
+    "loop_runs": [
+        "run_id",
+        "loop_name",
+        "started_at",
+        "ended_at",
+        "final_state",
+        "iterations",
+        "terminated_by",
+        "evaluator_score",
+        "failure_terminal",
+        "branch",
+        "head_sha",
+    ],
+    "usage_events": [
+        "ts",
+        "session_id",
+        "model",
+        "state",
+        "input_tokens",
+        "output_tokens",
+        "cache_read_input_tokens",
+        "cache_creation_input_tokens",
+        "cost_usd",
+        "provider_vendor",
+        "run_id",
+        "invocation_id",
+    ],
+}
+
+_SHAREABLE_ALLOWLIST_VERSION: int = 1
+
+# The export types the shareable allowlist covers — the default `--tables` set
+# for `ll-artifact dashboard` in BOTH modes (D16/D22). Deliberately NOT
+# _EXPORT_DEFAULT_TABLES, which is 20 types, 18 of them with no allowlist entry.
+_SHAREABLE_EXPORT_TYPES: list[str] = sorted(
+    type_name
+    for type_name, (table, _ts) in _EXPORT_TABLE_MAP.items()
+    if table in _SHAREABLE_COLUMNS
+)
+
+
+def _connect_readonly(db: Path) -> sqlite3.Connection:
+    """Open *db* through a raw ``file:…?mode=ro`` URI, bypassing the store's opener.
+
+    Deliberately not ``session_store.connect()``: the store's normal open path
+    **migrates on open** (schema.py), so routing a read-only export through it
+    would mutate the user's live history.db as a side effect of generating an
+    artifact (D19). ``mode=ro`` scopes read-only to the *main* database only — a
+    writable scratch DB can still be ATTACHed, which is what makes D2 work.
+    """
+    return sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+
+
+def read_schema_version(conn: sqlite3.Connection) -> str | None:
+    """Read the DB's recorded ``schema_version`` from ``meta`` (D19).
+
+    There is no public accessor: ``_current_version()`` is private and the
+    public schema-report dict that wraps it walks ``PRAGMA index_list`` for every
+    table — far too heavy for one integer. Returns None if the row is absent.
+    """
+    try:
+        row = conn.execute("SELECT value FROM meta WHERE key = 'schema_version'").fetchone()
+    except sqlite3.OperationalError:
+        return None
+    if row is None:
+        return None
+    return None if row[0] is None else str(row[0])
+
+
+def _snapshot_select(table: str, ts_col: str, local_mode: bool, since: str | None) -> str:
+    """Build the ``CREATE TABLE snap.<table> AS SELECT …`` statement for one type."""
+    # Local mode lifts the column projection entirely (D22) — it is for personal
+    # use, and a half-redacted local export would only be confusing.
+    if local_mode:
+        projection = "*"
+    else:
+        columns = _SHAREABLE_COLUMNS.get(table)
+        if columns is None:
+            raise ValueError(
+                f"table {table!r} has no shareable column allowlist; "
+                "use --local to export it without a column projection"
+            )
+        projection = ", ".join(columns)
+
+    # D13: a loop_runs row that is still executing (or crashed without writing an
+    # end timestamp) has ended_at IS NULL and would be silently dropped by any
+    # `ended_at >= ?` predicate. COALESCE keeps runs that *started* in the window.
+    predicate_col = "COALESCE(ended_at, started_at)" if table == "loop_runs" else ts_col
+
+    # noqa: S608 — table/column names come only from _EXPORT_TABLE_MAP and
+    # _SHAREABLE_COLUMNS, never from raw user text; the one user-supplied value
+    # (`since`) is bound as a parameter.
+    sql = f"CREATE TABLE snap.{table} AS SELECT {projection} FROM main.{table}"  # noqa: S608
+    if since:
+        sql += f" WHERE {predicate_col} >= ?"  # noqa: S608
+    return sql
+
+
+def build_snapshot_db(
+    db: Path,
+    dest: Path,
+    *,
+    tables: list[str],
+    since: str | None = None,
+    local_mode: bool = False,
+) -> str | None:
+    """ATTACH + ``CREATE TABLE … AS SELECT`` a filtered/redacted snapshot (D2).
+
+    A **sibling** of :func:`export_history`, not a wrapper: ``export_history``
+    yields dicts for JSONL, while sql.js needs a SQLite *file*, and there is no
+    path from one to the other short of re-inserting every row.
+
+    Opens *db* read-only via a raw ``file:…?mode=ro`` URI (never
+    ``session_store.connect()``, which migrates on open — D19) and ATTACHes
+    *dest* as a writable scratch database. No VACUUM or index stripping is
+    needed: a freshly created attached DB carries no indexes and no free pages.
+
+    Args:
+        db: Path to the source history database.
+        dest: Path the scratch snapshot is written to. Must not already exist.
+        tables: :data:`_EXPORT_TABLE_MAP` type names to materialize.
+        since: ISO 8601 timestamp; rows at or after it are kept. Filters on
+            ``COALESCE(ended_at, started_at)`` for ``loop_run`` (D13) and on the
+            type's :data:`_EXPORT_TABLE_MAP` timestamp column otherwise.
+        local_mode: When False (shareable), every selected type must have a
+            :data:`_SHAREABLE_COLUMNS` entry and is projected to it. When True,
+            types without an entry export all columns (D22).
+
+    Returns:
+        The source DB's recorded ``schema_version``, read on the same read-only
+        connection (D19), or None when it cannot be determined.
+    """
+    unknown = [t for t in tables if t not in _EXPORT_TABLE_MAP]
+    if unknown:
+        raise ValueError(
+            f"unknown export type(s) {sorted(unknown)}; choices: {', '.join(_EXPORT_TABLE_MAP)}"
+        )
+
+    conn = _connect_readonly(Path(db))
+    try:
+        schema_version = read_schema_version(conn)
+        conn.execute("ATTACH DATABASE ? AS snap", (str(dest),))
+        try:
+            for type_name in tables:
+                table, ts_col = _EXPORT_TABLE_MAP[type_name]
+                sql = _snapshot_select(table, ts_col, local_mode, since)
+                params = (since,) if since else ()
+                conn.execute(sql, params)
+            conn.commit()
+        finally:
+            conn.execute("DETACH DATABASE snap")
+    finally:
+        conn.close()
+    return schema_version
+
+
 def export_tables_help() -> str:
     """Build the ``--tables`` help text for ``ll-session export`` (BUG-3197).
 

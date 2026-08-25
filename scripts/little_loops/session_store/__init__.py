@@ -86,6 +86,7 @@ from little_loops.session_store.lifecycle import (
     record_retirement,
 )
 from little_loops.session_store.queries import (
+    build_snapshot_db,
     export_history,
     export_tables_help,
     fts_phrase,
@@ -182,6 +183,7 @@ __all__ = [
     "mine_corrections_from_messages",
     "compact_session",
     "compact_session_with_reasoning",
+    "build_snapshot_db",
     "export_history",
     "export_tables_help",
     "prune",

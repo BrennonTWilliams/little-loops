@@ -3,8 +3,9 @@ id: FEAT-3304
 title: Embed sql.js + filtered history.db export for queryable single-file artifacts
 type: FEAT
 priority: P3
-status: open
+status: done
 discovered_date: '2026-08-23'
+completed_at: '2026-08-25T00:00:00Z'
 parent: EPIC-3299
 relates_to:
 - ENH-3035
@@ -42,6 +43,44 @@ stamping so future artifacts (cost dashboard, backlog impact-effort
 board, loop-fleet history explorer) can reuse it. This is the foundation
 tier — Tier 2 (live bridge, FEAT-067) and Tier 3 (command execution,
 FEAT-068) both build on it.
+
+## Current Behavior
+
+`ll-artifact` templates are pre-baked-JSON stampers: `data.json` is computed
+once at generation time and rendered into a static HTML page. There is no
+way for a viewer to query or drill into `.ll/history.db` from within a
+shared artifact — they see only the specific views the generator predicted
+they would want, and any other question means re-running the generator (or
+having repo access to query `.ll/history.db` directly).
+
+## Expected Behavior
+
+`ll-artifact dashboard --tables … --since …` produces a single
+self-contained HTML file that embeds a filtered, ENH-075-redacted `sql.js`
+snapshot of `.ll/history.db`. Opened over `file://`, the page lets the
+viewer run arbitrary read-only SQL against the embedded snapshot and
+render results, with at least one predefined view requiring no SQL, while
+staying honest about its export timestamp, filter scope, and redaction
+mode (shareable vs. local).
+
+## Use Case
+
+As a maintainer sharing a run/cost snapshot with someone who does not have
+repo access to `.ll/history.db` (e.g. a teammate reviewing loop-fleet
+health), I want to hand them one HTML file they can open over `file://`
+and query/filter themselves — "loop runs since 2026-07-26, grouped by
+`final_state`" — instead of a fixed set of charts baked in at generation
+time.
+
+## Impact
+
+This is the foundation tier of the artifact-query roadmap: Tier 2 (live
+bridge, FEAT-067) and Tier 3 (command execution, FEAT-068) both build on
+the snapshot/export machinery this issue lands, and every future
+data-heavy artifact (cost dashboard, backlog impact-effort board,
+loop-fleet history explorer) reuses this issue's shared template kit and
+`sql.js` embedding instead of re-deriving embedded-DB export/redaction
+from scratch. Without it, those consumers have no substrate to build on.
 
 ## Background — `ll-artifact` template pipeline
 
@@ -983,7 +1022,18 @@ below are narrowed, not eliminated — see the resolution note).
 - `STRUCT_GAP` flags a missing `## Summary` header, but the issue opens with
   an equivalent summary paragraph directly under the title — cosmetic only.
 
+## Status
+
+Ready for implementation. Readiness 97/100 per `/ll:confidence-check`
+(2026-08-25); both `depends_on` edges (FEAT-3309, ENH-3035) are `done`;
+`sql.js` and `jinja2` learning tests are `proven`; `ll-issues check-design`
+passes clean. Four pre-implementation review passes (D1–D23) have resolved
+every open Program Design contradiction and measured every load-bearing
+size/behavior claim against this repo's live `.ll/history.db` and the
+vendored `sql.js` binary. No open blockers.
+
 ## Session Log
+- `/ll:ready-issue` - 2026-08-25T21:41:15 - `65b753a4-df50-40bd-a01b-b6c549d74fd2.jsonl`
 - `/ll:confidence-check` - 2026-08-25T21:36:37 - `41c23674-8ae1-4ab5-afa3-ad0ce2e1075c.jsonl`
 - fourth pre-implementation review - 2026-08-25 - added D21–D23 and amended D13/D17: pinned the `artifacts.export` v1 config shape to `{mode, max_artifact_bytes}` and deferred ENH-075's "additions" field (unversioned local widening would make the allowlist-version stamp ambiguous), stated local-mode table scope (any `_EXPORT_TABLE_MAP` type, `SELECT *`, same defaults), added the `</script>`-in-glue check the Node learning test cannot catch, gave D13 a test, and bounded the result-row cap's memory via `prepare()`/`step()`. Re-verified earlier passes' load-bearing claims against the code in the same review — all hold. Three ACs updated/added
 - third pre-implementation review - 2026-08-25 - added D14–D20 and five ACs from re-checking the issue's load-bearing claims against the code: corrected the Background's false "the renderer validates `data.json`" claim (validation is `cmd_render`'s, `render.py:119`) and the packaged-template handoff (`resolve_template()` takes `str`, `importlib.resources` yields a `Traversable`); specified the previously-open output filename/default directory (`promotion_dir`, not the `"."` project root), the `--tables`/`--since` defaults plus a cheap raw-snapshot size pre-check ahead of D7's final-HTML ceiling, the page's result-row cap (~150k rows would hang the tab), the `autoescape=False` escaping ownership rule, and the inline `schema_version` read with the reason D2's raw `mode=ro` connect matters (the store's normal open path migrates on open). Verified in the same pass: every ENH-075 allowlist column exists in the live schema, and D9's `importlib.resources` precedent is real

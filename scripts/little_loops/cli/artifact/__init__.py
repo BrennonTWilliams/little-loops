@@ -14,6 +14,10 @@ Provides:
 - ``status`` (FEAT-3311 Phase 3): lockfile staleness detection — reports
   FRESH/STALE/SOURCE-MISSING/OUTPUT-MISSING/NO-LOCK per `(template,
   source)` pair against `<template>.llat.lock`.
+- ``dashboard`` (FEAT-3304): a filtered, ENH-075-redacted snapshot of
+  ``.ll/history.db`` embedded gzip+base64 into a single HTML file alongside
+  an inlined ``sql.js``, so the page runs arbitrary read-only SQL over
+  ``file://`` with no network access.
 
 One module per subcommand (``policy_builder.py``, ``design_md.py``,
 ``render.py``, ``status.py``), following the ``cli/issues/`` / ``cli/loop/``
@@ -29,6 +33,7 @@ import argparse
 import sys
 
 from little_loops.artifact_template_kit import themed_css_vars as _themed_css_vars
+from little_loops.cli.artifact.dashboard import add_dashboard_parser, cmd_dashboard
 from little_loops.cli.artifact.design_md import cmd_design_md_export
 from little_loops.cli.artifact.extract import (
     add_extract_parser,
@@ -53,6 +58,7 @@ __all__ = [
     "cmd_extract",
     "cmd_refresh",
     "cmd_status",
+    "cmd_dashboard",
     "_themed_css_vars",
 ]
 
@@ -87,6 +93,9 @@ Examples:
   %(prog)s render my-report --data data.json --source docs/risk-register.md  # render + lock
   %(prog)s status                                # check every lockfile-bearing template
   %(prog)s status my-report                      # check one template (NO-LOCK if untracked)
+  %(prog)s dashboard --since 2026-07-26          # queryable history.db snapshot, shareable mode
+  %(prog)s dashboard --tables loop_run --since 2026-07-26 -o build/
+  %(prog)s dashboard --local --since 2026-08-01   # unredacted, personal use — stamped "local"
 
 Exit codes:
   0 - Artifact generated successfully
@@ -96,6 +105,13 @@ Exit codes:
       or — for refresh/render --source — a render that succeeded but whose lockfile write then
       failed)
   2 - templatize: round-trip verification rejected the extraction (see <out>.llat.rejected/)
+
+Dashboard exit codes (ll-artifact dashboard):
+  0 - history-dashboard.html written
+  1 - the snapshot or the rendered HTML exceeded artifacts.export.max_artifact_bytes
+      (default 8000000; narrow the window with --since — no file is written), a
+      --tables selection that would widen the ENH-075 allowlist in shareable mode, an
+      unparseable --since, or a missing history database
 
 Status exit codes (ll-artifact status):
   0 - every reported (template, source) pair is FRESH (an empty report is vacuously FRESH)
@@ -155,6 +171,7 @@ Status exit codes (ll-artifact status):
         add_extract_parser(subparsers)
         add_refresh_parser(subparsers)
         add_status_parser(subparsers)
+        add_dashboard_parser(subparsers)
 
         args = parser.parse_args()
 
@@ -175,5 +192,7 @@ Status exit codes (ll-artifact status):
             return cmd_refresh(args, logger)
         if args.command == "status":
             return cmd_status(args, logger)
+        if args.command == "dashboard":
+            return cmd_dashboard(args, logger)
         parser.error(f"unknown command: {args.command}")
         return 1

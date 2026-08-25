@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>little-loops history dashboard — [[= exported_at =]]</title>
+<style>
+[[= ll.theme_css =]]
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: var(--font-family-sans, ui-sans-serif, system-ui, sans-serif);
+  background: var(--color-background, #12141a);
+  color: var(--color-text, #e6e8ee);
+  line-height: 1.5;
+}
+main, header { max-width: 1100px; margin: 0 auto; padding: 1rem 1.25rem; }
+header { border-bottom: 1px solid var(--color-border, #2a2e3a); }
+h1 { font-size: 1.25rem; margin: 0 0 .5rem; }
+.stamps { display: flex; flex-wrap: wrap; gap: .4rem .5rem; margin: 0; padding: 0; list-style: none; }
+.stamps li {
+  font-size: .78rem;
+  border: 1px solid var(--color-border, #2a2e3a);
+  border-radius: 999px;
+  padding: .12rem .6rem;
+  white-space: nowrap;
+}
+.stamps li b { font-weight: 600; opacity: .7; margin-right: .3rem; }
+.mode-local { border-color: var(--color-warning, #d9a441); color: var(--color-warning, #d9a441); }
+.warn {
+  margin: .75rem 0 0;
+  padding: .55rem .75rem;
+  border-left: 3px solid var(--color-warning, #d9a441);
+  background: var(--color-surface, #1a1d26);
+  font-size: .85rem;
+}
+textarea {
+  width: 100%;
+  min-height: 5.5rem;
+  font-family: var(--font-family-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: .85rem;
+  padding: .6rem;
+  color: inherit;
+  background: var(--color-surface, #1a1d26);
+  border: 1px solid var(--color-border, #2a2e3a);
+  border-radius: 6px;
+  resize: vertical;
+}
+button {
+  font: inherit;
+  font-size: .85rem;
+  padding: .35rem .8rem;
+  margin: .5rem .4rem 0 0;
+  color: inherit;
+  background: var(--color-surface, #1a1d26);
+  border: 1px solid var(--color-border, #2a2e3a);
+  border-radius: 6px;
+  cursor: pointer;
+}
+button:hover { border-color: var(--color-accent, #6f9dff); }
+#status { font-size: .85rem; min-height: 1.4rem; }
+#status.error { color: var(--color-danger, #e2687a); }
+table { border-collapse: collapse; width: 100%; font-size: .8rem; }
+th, td {
+  border-bottom: 1px solid var(--color-border, #2a2e3a);
+  padding: .3rem .5rem;
+  text-align: left;
+  white-space: nowrap;
+}
+th { position: sticky; top: 0; background: var(--color-surface, #1a1d26); }
+.scroll { max-height: 60vh; overflow: auto; border: 1px solid var(--color-border, #2a2e3a); border-radius: 6px; }
+.muted { opacity: .65; font-size: .8rem; }
+</style>
+</head>
+<body>
+<header>
+  <h1>little-loops history dashboard</h1>
+  <ul class="stamps">
+    <li><b>exported</b>[[= exported_at =]]</li>
+    <li><b>tables</b>[[= filter_tables =]]</li>
+    <li><b>since</b>[[= filter_since =]]</li>
+    <li class="mode-[[= export_mode =]]"><b>mode</b>[[= export_mode =]]</li>
+    <li><b>allowlist</b>v[[= allowlist_version =]]</li>
+    <li><b>schema</b>source v[[= source_schema_version =]] / installed v[[= installed_schema_version =]]</li>
+  </ul>
+  [[% if schema_version_warning %]]
+  <p class="warn">[[= schema_version_warning =]]</p>
+  [[% endif %]]
+  <p class="muted">
+    This page is a point-in-time snapshot. It runs entirely offline against the
+    embedded SQLite database — nothing is fetched and nothing leaves this file.
+    A <code>--since</code> window on loop runs keeps runs that <em>started</em>
+    inside it, including still-in-flight runs with no end timestamp.
+  </p>
+</header>
+<main>
+  <section>
+    <h2 style="font-size:.95rem;margin:.5rem 0 .25rem;">Predefined views</h2>
+    <div id="views"></div>
+  </section>
+  <section>
+    <h2 style="font-size:.95rem;margin:1rem 0 .25rem;">Query</h2>
+    <textarea id="sql" spellcheck="false" aria-label="Read-only SQL query"></textarea>
+    <div>
+      <button id="run" type="button">Run</button>
+      <button id="reset" type="button">Reset snapshot</button>
+    </div>
+  </section>
+  <p id="status">Loading the embedded snapshot&hellip;</p>
+  <div id="results"></div>
+</main>
+
+<script>[[= sql_wasm_js =]]</script>
+<script>
+(function () {
+  "use strict";
+
+  var WASM_B64 = "[[= sql_wasm_b64 =]]";
+  var SNAPSHOT_B64 = "[[= snapshot_gzip_b64 =]]";
+  var ROW_CAP = [[= row_cap =]];
+
+  var PREDEFINED = [
+    {
+      label: "Loop runs by final state",
+      sql: "SELECT final_state, COUNT(*) AS n FROM loop_runs GROUP BY final_state ORDER BY n DESC"
+    },
+    {
+      label: "Cost by model",
+      sql: "SELECT model, COUNT(*) AS events, ROUND(SUM(cost_usd), 4) AS cost_usd" +
+        " FROM usage_events GROUP BY model ORDER BY cost_usd DESC"
+    }
+  ];
+
+  var SQL = null;
+  var db = null;
+  var snapshotBytes = null;
+
+  var statusEl = document.getElementById("status");
+  var resultsEl = document.getElementById("results");
+  var sqlEl = document.getElementById("sql");
+
+  function setStatus(text, isError) {
+    statusEl.textContent = text;
+    statusEl.className = isError ? "error" : "";
+  }
+
+  function decodeBase64(b64) {
+    var binary = atob(b64);
+    var out = new Uint8Array(binary.length);
+    for (var i = 0; i < binary.length; i++) {
+      out[i] = binary.charCodeAt(i);
+    }
+    return out;
+  }
+
+  function gunzip(bytes) {
+    var stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("gzip"));
+    return new Response(stream).arrayBuffer().then(function (buf) {
+      return new Uint8Array(buf);
+    });
+  }
+
+  // The real write rejection: PRAGMA query_only is honoured by sql.js and
+  // rejects writes at the engine level. It is reversible from the query box,
+  // which is exactly why this is a guardrail, not a security boundary — the
+  // viewer owns these bytes and the console. Data scope was settled at export
+  // time; nothing here is protecting anything from anyone.
+  function instantiate() {
+    db = new SQL.Database(snapshotBytes);
+    db.run("PRAGMA query_only = 1");
+  }
+
+  // Text check, for the error message only — NOT the enforcement. A leading
+  // SELECT check alone was measured insufficient: db.exec() runs every
+  // semicolon-separated statement, so "SELECT 1; DELETE FROM loop_runs;"
+  // passes such a check and deletes. PRAGMA query_only is what stops it.
+  function textCheck(text) {
+    var body = text.replace(/;\s*$/, "");
+    if (body.indexOf(";") !== -1) {
+      return "Only one statement at a time — remove the extra ';'.";
+    }
+    if (/\bpragma\b/i.test(body)) {
+      return "PRAGMA statements are not accepted here.";
+    }
+    return null;
+  }
+
+  function renderTable(columns, rows, total) {
+    resultsEl.textContent = "";
+    var wrap = document.createElement("div");
+    wrap.className = "scroll";
+    var table = document.createElement("table");
+    var thead = document.createElement("thead");
+    var headRow = document.createElement("tr");
+    columns.forEach(function (name) {
+      var th = document.createElement("th");
+      th.textContent = name;
+      headRow.appendChild(th);
+    });
+    thead.appendChild(headRow);
+    table.appendChild(thead);
+    var tbody = document.createElement("tbody");
+    rows.forEach(function (row) {
+      var tr = document.createElement("tr");
+      columns.forEach(function (name) {
+        var td = document.createElement("td");
+        var value = row[name];
+        td.textContent = value === null || value === undefined ? "" : String(value);
+        tr.appendChild(td);
+      });
+      tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+    wrap.appendChild(table);
+    resultsEl.appendChild(wrap);
+    var note = document.createElement("p");
+    note.className = "muted";
+    note.textContent = "showing " + rows.length + " of " + total + " rows";
+    if (total > ROW_CAP) {
+      note.textContent += " (render cap " + ROW_CAP + "; the query itself ran unmodified)";
+    }
+    resultsEl.appendChild(note);
+  }
+
+  // The submitted SQL is passed to sql.js verbatim — never rewritten with a
+  // LIMIT. The cap is applied here, at the render step: rows are collected
+  // only up to ROW_CAP while stepping continues to the end, so the reported
+  // total stays truthful and memory stays bounded (a 30-day snapshot holds
+  // ~150k usage_events rows, which db.exec() would materialize in full).
+  function runQuery(text) {
+    var problem = textCheck(text);
+    if (problem) {
+      setStatus(problem, true);
+      return;
+    }
+    var stmt;
+    try {
+      stmt = db.prepare(text);
+    } catch (err) {
+      setStatus(String(err.message || err), true);
+      return;
+    }
+    var columns = [];
+    var rows = [];
+    var total = 0;
+    try {
+      while (stmt.step()) {
+        total++;
+        if (rows.length < ROW_CAP) {
+          rows.push(stmt.getAsObject());
+        }
+      }
+      columns = stmt.getColumnNames();
+    } catch (err) {
+      stmt.free();
+      setStatus(String(err.message || err), true);
+      return;
+    }
+    stmt.free();
+    setStatus(
+      total > ROW_CAP
+        ? "showing " + ROW_CAP + " of " + total + " rows"
+        : total + (total === 1 ? " row" : " rows")
+    );
+    renderTable(columns, rows, total);
+  }
+
+  function buildViews() {
+    var host = document.getElementById("views");
+    PREDEFINED.forEach(function (view) {
+      var btn = document.createElement("button");
+      btn.type = "button";
+      btn.textContent = view.label;
+      btn.addEventListener("click", function () {
+        sqlEl.value = view.sql;
+        runQuery(view.sql);
+      });
+      host.appendChild(btn);
+    });
+  }
+
+  document.getElementById("run").addEventListener("click", function () {
+    runQuery(sqlEl.value.trim());
+  });
+
+  document.getElementById("reset").addEventListener("click", function () {
+    if (!snapshotBytes) {
+      return;
+    }
+    if (db) {
+      db.close();
+    }
+    instantiate();
+    resultsEl.textContent = "";
+    setStatus("Snapshot reset from the embedded bytes.");
+  });
+
+  // wasmBinary is mandatory: without it sql.js resolves sql-wasm.wasm through
+  // locateFile, and that fetch has nowhere to go over file://.
+  var ready = Promise.all([
+    gunzip(decodeBase64(SNAPSHOT_B64)),
+    initSqlJs({ wasmBinary: decodeBase64(WASM_B64) })
+  ]);
+
+  ready
+    .then(function (results) {
+      snapshotBytes = results[0];
+      SQL = results[1];
+      instantiate();
+      buildViews();
+      sqlEl.value = PREDEFINED[0].sql;
+      setStatus("Snapshot loaded. Run a read-only query, or pick a predefined view.");
+    })
+    .catch(function (err) {
+      setStatus("Failed to load the embedded snapshot: " + String(err.message || err), true);
+    });
+})();
+</script>
+</body>
+</html>

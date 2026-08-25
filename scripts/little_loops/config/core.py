@@ -919,6 +919,10 @@ class BRConfig:
                 "templates_dir": self._artifacts.templates_dir,
                 "templatize_max_input_bytes": self._artifacts.templatize_max_input_bytes,
                 "promotion_dir": self._artifacts.promotion_dir,
+                "export": {
+                    "mode": self._artifacts.export.mode,
+                    "max_artifact_bytes": self._artifacts.export.max_artifact_bytes,
+                },
             },
             "analytics": {
                 "enabled": self._raw_config.get("analytics", {}).get("enabled", False),

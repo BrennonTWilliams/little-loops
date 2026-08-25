@@ -918,14 +918,33 @@ Output settings for `ll-artifact`, the generator of self-contained human-facing 
 | `default_output_dir` | `str` | `"."` | Directory where `ll-artifact` writes generated artifacts when no `--output`/`-o` override is given. Relative paths resolve against the project root. |
 | `templates_dir` | `str` | `"artifacts/templates"` | Directory (relative to the project root) where named `.llat/` artifact templates are looked up by `ll-artifact render <name>` when the given argument does not resolve as a filesystem path. Also the default write target for `ll-artifact templatize`'s `-o` resolution (FEAT-3314) — when `-o` is omitted, `templatize` writes `<templates_dir>/<artifact-stem>.llat`. |
 | `templatize_max_input_bytes` | `int` | `400000` | Size ceiling, in **bytes** (not tokens), guarding `ll-artifact templatize`'s LLM region-discovery call when `--regions` is omitted (FEAT-3315) and `ll-artifact extract`'s LLM extraction call (FEAT-3310). The measured quantity differs per subcommand: `templatize` measures combined artifact+source-document size; `extract` measures the source document alone. Exceeding it exits `1` naming the measured size, with no host call issued. |
-| `promotion_dir` | `str` | `".loops/artifacts"` | Destination directory for loop→artifact handoff promotion (FEAT-3309) — where a loop's declared `artifact_output` deliverable is copied on an authorized terminal (`ll-loop run`/`resume`). Relative to the project root, created on demand. **Deliberately distinct from `default_output_dir`**, which defaults to `.` — promotion never uses `default_output_dir`, so it never drops a file into the project root by default. |
+| `promotion_dir` | `str` | `".loops/artifacts"` | Destination directory for loop→artifact handoff promotion (FEAT-3309) — where a loop's declared `artifact_output` deliverable is copied on an authorized terminal (`ll-loop run`/`resume`). Relative to the project root, created on demand. **Deliberately distinct from `default_output_dir`**, which defaults to `.` — promotion never uses `default_output_dir`, so it never drops a file into the project root by default. Also the default output directory for `ll-artifact dashboard`, for the same reason. |
+| `export` | `object` | see below | `history.db` snapshot export policy for `ll-artifact dashboard` (FEAT-3304). Exactly two keys in v1; `additionalProperties: false` applies to this nested block too. |
+
+#### `artifacts.export`
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `mode` | `str` | `"shareable"` | `"shareable"` \| `"local"`. In `shareable` mode the ENH-075 per-column allowlist is applied and `--tables` may select only from the types it covers — it cannot widen the allowlist. In `local` mode the column projection is lifted (`SELECT *`) and any `ll-session export` type may be selected, for personal use only. `ll-artifact dashboard --local` overrides this per invocation. Both modes stamp the mode and the allowlist version visibly into the generated page, so a recipient can always tell which produced the file. |
+| `max_artifact_bytes` | `int` | `8000000` | Size ceiling, in **bytes**, for a generated dashboard, measured on the **final rendered HTML** — the quantity that actually bites the user. Exceeding it exits `1` naming the measured size and the limit, and **writes no file**; narrowing `--since` is the only user-side fix. A cheap pre-check applies the same ceiling to the raw snapshot before gzip/base64/render so an all-history export fails fast instead of materializing hundreds of MB first. Calibrated against a measured 30-day export of a 6.6 GB `history.db`: ~4.1 MB gzip+base64 snapshot plus `sql.js`'s ~0.92 MB fixed floor ≈ 5.0 MB, leaving ~3 MB of headroom (roughly a 55–60-day window before the ceiling bites). |
+
+The ENH-075 allowlist itself is deliberately **not** configurable: it is a code
+constant with a version marker (`_SHAREABLE_COLUMNS` /
+`_SHAREABLE_ALLOWLIST_VERSION` in `session_store/queries.py`), so a shared
+artifact's stamp cannot be forged by editing local config. ENH-075's sketched
+"additions" field is deferred — an unversioned project-local widening would make
+the allowlist-version stamp ambiguous.
 
 ```json
 "artifacts": {
   "default_output_dir": ".",
   "templates_dir": "artifacts/templates",
   "templatize_max_input_bytes": 400000,
-  "promotion_dir": ".loops/artifacts"
+  "promotion_dir": ".loops/artifacts",
+  "export": {
+    "mode": "shareable",
+    "max_artifact_bytes": 8000000
+  }
 }
 ```
 

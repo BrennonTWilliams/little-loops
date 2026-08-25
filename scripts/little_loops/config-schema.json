@@ -1894,6 +1894,24 @@
           "type": "string",
           "default": ".loops/artifacts",
           "description": "Destination directory for loop→artifact handoff promotion (FEAT-3309) — where a loop's declared `artifact_output` deliverable is copied on an authorized terminal. Relative to the project root, created on demand. Deliberately distinct from `default_output_dir` (which defaults to `.`) so promotion never drops a file into the project root by default."
+        },
+        "export": {
+          "type": "object",
+          "description": "history.db snapshot export policy for `ll-artifact dashboard` (FEAT-3304). The v1 shape is exactly {mode, max_artifact_bytes}; ENH-075's \"additions\" field is deferred (D21), and the ENH-075 column allowlist itself is a versioned code constant, never config (D12).",
+          "properties": {
+            "mode": {
+              "type": "string",
+              "enum": ["shareable", "local"],
+              "default": "shareable",
+              "description": "Default redaction mode for `ll-artifact dashboard`. `shareable` applies the ENH-075 per-column allowlist and rejects any --tables selection it does not cover; `local` lifts the column projection (SELECT *) and accepts any export type, for personal use only. `--local` overrides this per invocation. Both modes stamp the mode and the allowlist version into the page."
+            },
+            "max_artifact_bytes": {
+              "type": "integer",
+              "default": 8000000,
+              "description": "Size ceiling, in bytes, for a generated `ll-artifact dashboard` HTML file, measured on the final rendered HTML (FEAT-3304 D7). Exceeding it exits 1 naming the measured size and the limit, writing no file; narrowing --since is the remedy. A cheap pre-check applies the same ceiling to the raw snapshot before gzip/base64/render. Calibrated so a ~30-day export of a 6.6 GB history.db (~4.1 MB snapshot + sql.js's ~0.92 MB fixed floor) fits with headroom."
+            }
+          },
+          "additionalProperties": false
         }
       },
       "additionalProperties": false

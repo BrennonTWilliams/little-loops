@@ -366,6 +366,42 @@ class DesignTokensConfig:
 
 
 @dataclass
+class ArtifactsExportConfig:
+    """`artifacts.export` — history.db snapshot export policy (FEAT-3304).
+
+    `mode` is the default redaction mode for `ll-artifact dashboard`:
+    `shareable` (the ENH-075 column allowlist is applied) or `local` (no column
+    projection, personal use only). `--local` overrides it per invocation.
+
+    `max_artifact_bytes` is the size ceiling for a generated dashboard, measured
+    on the **final rendered HTML** — the quantity that actually bites the user.
+    Hard-fail before write (D7), matching every other size ceiling here. The
+    default is calibrated against a measured 30-day export of a 6.6 GB
+    history.db: ~4.1 MB gzip+base64 snapshot plus sql.js's ~0.92 MB fixed floor
+    ≈ 5.0 MB, leaving ~3 MB of headroom (roughly a 55-60-day window).
+
+    The ENH-075 allowlist itself is deliberately *not* here: it is a code
+    constant with a version marker (`_SHAREABLE_COLUMNS` /
+    `_SHAREABLE_ALLOWLIST_VERSION`, session_store/queries.py) so a shared
+    artifact's stamp cannot be forged by editing local config (D12). The v1
+    shape is exactly {mode, max_artifact_bytes}; ENH-075's "additions" field is
+    deferred (D21) because an unversioned local widening would make the
+    allowlist-version stamp ambiguous.
+    """
+
+    mode: str = "shareable"
+    max_artifact_bytes: int = 8000000
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> ArtifactsExportConfig:
+        """Create ArtifactsExportConfig from dictionary."""
+        return cls(
+            mode=data.get("mode", "shareable"),
+            max_artifact_bytes=data.get("max_artifact_bytes", 8000000),
+        )
+
+
+@dataclass
 class ArtifactsConfig:
     """Configuration for `ll-artifact` artifact generators (FEAT-2301).
 
@@ -391,6 +427,7 @@ class ArtifactsConfig:
     templates_dir: str = "artifacts/templates"
     templatize_max_input_bytes: int = 400000
     promotion_dir: str = ".loops/artifacts"
+    export: ArtifactsExportConfig = field(default_factory=ArtifactsExportConfig)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> ArtifactsConfig:
@@ -400,6 +437,7 @@ class ArtifactsConfig:
             templates_dir=data.get("templates_dir", "artifacts/templates"),
             templatize_max_input_bytes=data.get("templatize_max_input_bytes", 400000),
             promotion_dir=data.get("promotion_dir", ".loops/artifacts"),
+            export=ArtifactsExportConfig.from_dict(data.get("export", {})),
         )
 
 

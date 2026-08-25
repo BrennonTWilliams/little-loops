@@ -493,6 +493,19 @@ class TestConfigSchema:
         assert props["templates_dir"]["default"] == "artifacts/templates"
         assert props["templatize_max_input_bytes"]["type"] == "integer"
         assert props["templatize_max_input_bytes"]["default"] == 400000
+        assert props["promotion_dir"]["type"] == "string"
+        assert props["promotion_dir"]["default"] == ".loops/artifacts"
+
+        # FEAT-3304: nested artifacts.export block, its own additionalProperties: false.
+        export = props["export"]
+        assert export["type"] == "object"
+        assert export.get("additionalProperties") is False
+        export_props = export["properties"]
+        assert export_props["mode"]["type"] == "string"
+        assert export_props["mode"]["default"] == "shareable"
+        assert export_props["mode"]["enum"] == ["shareable", "local"]
+        assert export_props["max_artifact_bytes"]["type"] == "integer"
+        assert export_props["max_artifact_bytes"]["default"] == 8000000
 
     def test_analytics_in_schema(self) -> None:
         """analytics block must be declared in config-schema.json (FEAT-1624).
@@ -1341,6 +1354,7 @@ _DATACLASS_SECTION_MAP: dict[str, str | None] = {
     "ScanConfig": "scan",
     "DesignTokensConfig": "design_tokens",
     "ArtifactsConfig": "artifacts",
+    "ArtifactsExportConfig": "artifacts",
     "SprintsConfig": "sprints",
     # Loaded directly by hooks/pre_compact.py from raw project config, not
     # wired through BRConfig/to_dict() — intentionally outside guard 1's walk.
