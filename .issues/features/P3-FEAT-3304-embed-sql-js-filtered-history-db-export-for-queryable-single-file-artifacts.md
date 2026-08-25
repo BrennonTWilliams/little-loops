@@ -64,12 +64,17 @@ source.md ──(extract: LLM, schema-checked)──> data.json ──(render: p
 
 A template is a directory containing `manifest.yaml` (identity, data
 schema, source binding, render config), `template.html.j2` (Jinja2 body),
-and optional `assets/`. The renderer is **deterministic and LLM-free**:
-it validates `data.json` against the manifest's `data_schema`, renders
-the Jinja2 body, then stamps themed CSS vars via the existing
+and optional `assets/`. The pipeline is **deterministic and LLM-free**:
+`data.json` is validated against the manifest's `data_schema`, the Jinja2
+body is rendered, and themed CSS vars are stamped via the existing
 `load_design_tokens` / `render_as_css_vars_themed` machinery that
 `policy-builder` already uses. Output lands in
 `config.artifacts.default_output_dir`.
+
+*Correction (2026-08-25, second review):* the **validation step is the
+CLI's, not the renderer's** — `render_template()`
+(`artifact_templates.py:317-341`) never calls `validate_top_level_data`;
+`cmd_render` does, at `cli/artifact/render.py:119`. See **D14**.
 
 **Template language: Jinja2, not invented.** The current `.replace()`
 token scheme cannot express repeated regions or conditionals, and any
@@ -412,6 +417,103 @@ stamp. If the implementer prefers the simpler `ended_at` semantics, that is
 acceptable — but it must then be stated in the CLI help and the page, not left
 as a silent omission.
 
+## Decisions (2026-08-25) — third pre-implementation review
+
+Seven findings from re-checking the load-bearing claims above against the
+code. Two corrections to what this issue asserts, five previously
+unspecified behaviours that would otherwise be decided at debug time.
+
+*Verified correct in the same pass (recorded so they are not re-checked):*
+every column in the ENH-075 allowlist exists in the live schema
+(`PRAGMA table_info` on `loop_runs` and `usage_events`, 2026-08-25), and D9's
+`importlib.resources` precedent is real — `cli/artifact/design_md.py` already
+does `Path(str(packaged))` on a `files(...).joinpath(...)` result.
+
+**D14 — `cmd_dashboard` must call `validate_top_level_data()` itself.**
+`render_template()` (`artifact_templates.py:317-341`) does **not** validate
+`data` against the manifest's `data_schema`; it builds the context and
+renders. The validation is the caller's, done by `cmd_render` at
+`cli/artifact/render.py:119`. If `cmd_dashboard` omits it, the dashboard
+manifest's `data_schema` is decorative — declared, never enforced, and a
+missing key surfaces only as a `StrictUndefined` error from deep inside the
+body. Call `validate_top_level_data(data, manifest["data_schema"])` before
+`render_template()`, matching `render.py`'s order.
+
+**D15 — The output filename comes from the manifest; the default directory
+must not be the project root.** `render` writes to `output_dir /
+template.manifest["output"]` (`render.py:67`), and `--output` there names a
+**directory**, not a file (`render.py:58-62`, `:193`). Two consequences this
+issue had left open:
+
+- The dashboard's `manifest.yaml` must declare an `output:` filename —
+  `history-dashboard.html`.
+- `config.artifacts.default_output_dir` defaults to `"."`
+  (`features.py:389`), so a no-flag `ll-artifact dashboard` drops a ~5 MB HTML
+  file into the project root. FEAT-3309 introduced `promotion_dir`
+  (`.loops/artifacts`, inside the gitignored tree) for exactly this reason.
+  The dashboard defaults to `config.artifacts.promotion_dir`, not
+  `default_output_dir`; `--output` (a directory, matching `render`) overrides.
+
+**D16 — `--tables` defaults to the shareable set, `--since` is effectively
+required, and the size ceiling gets a cheap pre-check.** Three coupled points:
+
+- `--tables` defaults to the keys the shareable allowlist covers
+  (`loop_run,usage_event`) — **not** `_EXPORT_DEFAULT_TABLES`
+  (`queries.py:112+`), which is 20 types and has no ENH-075 allowlist entry
+  for 18 of them.
+- `--since` has no default, and omitting it means all history: 353,544
+  `usage_events` on this repo, ~24× the measured 30-day export.
+- D7 measures the **final rendered HTML**, which means the all-history path
+  materializes the snapshot, gzips it, base64-encodes it and renders the
+  template — hundreds of MB of peak RSS — *before* it hard-fails. Add a cheap
+  pre-check: after `build_snapshot_db()` writes the scratch file, compare
+  `dest.stat().st_size` against `max_artifact_bytes` and fail there if the raw
+  snapshot alone already exceeds the ceiling. The final-HTML check (D7) stays
+  as the authoritative one; this is a fast path out, not a replacement.
+- Both failure messages name `--since` as the remedy, since narrowing the
+  window is the only user-side fix.
+
+**D17 — The page caps rendered result rows.** A 30-day snapshot holds
+~150,000 `usage_events` rows; `SELECT * FROM usage_events` in the query box
+builds 150,000 DOM rows and hangs the tab. This is the most likely first-use
+failure of the feature. The page renders at most `N` rows (500) and displays
+"showing 500 of 149,614 rows" above the table. Chosen over auto-appending a
+`LIMIT` to the user's SQL: rewriting submitted SQL fights D6's
+single-statement text check, breaks aggregate queries, and lies about what ran.
+Capping at the render step leaves the query honest and the count truthful.
+
+**D18 — `autoescape=False` means `cmd_dashboard` owns escaping.** D10 notes
+the setting is what lets the multi-megabyte blobs through byte-exact; the same
+setting means everything *else* in `data` — the filter stamp (`--since`,
+`--tables`), the export mode, the schema versions — is written into the page
+raw. Those values are constrained by parsing and allowlisting today, so there
+is no live defect; the rule is stated so it survives the next flag added:
+**any value placed in `data` must already be validated or escaped by
+`cmd_dashboard`, because the environment will not do it.**
+
+**D19 — Read `schema_version` inline on D2's read-only connection.** There is
+no public accessor: `_current_version()` is private (`schema.py:1299`) and the
+public schema-report dict that wraps it (`schema.py:1531`) walks `PRAGMA
+index_list` for every table — far too heavy for one integer. Issue
+`SELECT value FROM meta WHERE key = 'schema_version'` on the connection D2
+already opens.
+
+*And state why D2's raw `sqlite3.connect("file:…?mode=ro", uri=True)` matters:*
+the store's normal open path **migrates on open** (`schema.py:1340-1382`).
+Routing the export through it would mutate the user's `history.db` as a side
+effect of generating a read-only artifact. The raw read-only connection is not
+a convenience — it is the reason the export is safe to run against a live DB.
+
+**D20 — Convert the packaged template path to `Path` before handing it over.**
+`resolve_template(template_arg: str, templates_dir: Path)`
+(`artifact_templates.py:70`) takes a **`str`** and calls `Path(template_arg)`
+on it; `importlib.resources.files(...).joinpath(...)` returns a `Traversable`.
+Follow `design_md.py`'s `Path(str(packaged))` conversion. Simpler still, and
+preferred: skip `resolve_template()` entirely and call `load_manifest(root)`
+on the packaged path directly — the path is known at that point, so there is
+nothing to resolve, and `resolve_template()`'s `templates_dir` fallback branch
+is project-local (D9) and can only produce a misleading error message here.
+
 ## Must address
 
 - **Snapshot size.** *Resolved by D1 (gzip+base64), D2 (no `VACUUM`/index
@@ -543,6 +645,23 @@ _Added by `/ll:refine-issue` — 2026-08-25 — based on codebase analysis:_
 - [ ] `.ll/ll-config.json` accepts an `artifacts.export` block — schema updated,
       round-tripped by `BRConfig`, and covered by a test that an unknown key is
       still rejected.
+- [ ] `cmd_dashboard` validates its `data` payload against the dashboard
+      manifest's `data_schema` before rendering (per D14), with a test that a
+      payload missing a required key raises `DataValidationError` rather than
+      surfacing as a `StrictUndefined` render error.
+- [ ] A query returning more rows than the page's render cap displays at most
+      the cap and states the true total ("showing 500 of N rows"), per D17,
+      with a test asserting the submitted SQL is passed to `sql.js`
+      unmodified — the cap is applied at render, not by rewriting the query.
+- [ ] With no `--tables`, the export covers exactly the shareable-allowlist
+      types (`loop_run`, `usage_event`) and not `_EXPORT_DEFAULT_TABLES`'s
+      full set (per D16), asserted by a test on the recovered snapshot schema.
+- [ ] A raw snapshot that already exceeds `max_artifact_bytes` fails before
+      gzip/base64/render (per D16), with a test asserting no render occurred —
+      the final-HTML ceiling (D7) remains separately tested.
+- [ ] Generating a dashboard leaves the source `.ll/history.db` byte-identical
+      (per D19 — the export must not travel the migrating open path), asserted
+      by hashing the DB file before and after an export run.
 
 ## Dependencies
 
@@ -660,13 +779,17 @@ were wrong (see D2 and D5)._
 → `BRConfig(Path.cwd())` → `config.artifacts.export` (mode / allowlist / allowlist_version / max_artifact_bytes)
 → resolve `--tables` type names through `_EXPORT_TABLE_MAP` to `(table, ts_col)`; intersect with the effective ENH-075 column allowlist (in `shareable` mode `--tables` selects from the allowlist and cannot widen it)
 → open source DB read-only (`file:.ll/history.db?mode=ro`), `ATTACH` a scratch file DB, `CREATE TABLE snap.<table> AS SELECT <allowlisted cols> FROM <table> [WHERE <ts_col> >= ?]` per selected type (**D2** — no `VACUUM`, no index stripping: a freshly created DB has neither)
-→ read the source DB's recorded `schema_version` (`meta` table) and compare against `SCHEMA_VERSION` (`session_store/schema.py:25`); warn visibly on divergence (**D11** — the `meta` table is *not* copied into the snapshot, so the version must be read here and passed in `data`)
+→ default `--tables` to the shareable types (`loop_run,usage_event`) when the flag is absent (**D16**); the raw `sqlite3.connect("file:…?mode=ro", uri=True)` is deliberate — the store's normal open path migrates on open (`schema.py:1340-1382`) and would mutate the user's DB (**D19**)
+→ pre-check `dest.stat().st_size` against `max_artifact_bytes` and fail here if the raw snapshot alone already exceeds it, naming `--since` (**D16** — the D7 final-HTML check still runs, this is only the cheap early exit)
+→ read the source DB's recorded `schema_version` via `SELECT value FROM meta WHERE key = 'schema_version'` on that same read-only connection (no public accessor exists — `_current_version()` is private, **D19**) and compare against `SCHEMA_VERSION` (`session_store/schema.py:25`); warn visibly on divergence (**D11** — the `meta` table is *not* copied into the snapshot, so the version must be read here and passed in `data`)
 → read scratch DB bytes → `gzip.compress()` → `base64.b64encode()` (**D1**)
 → read vendored `sql-wasm.wasm` → base64 (**D8**: 658,410 B → 877,880 B). The `sql-wasm.js` glue is UTF-8 text and rides in the template's `assets/` as `ll.assets['sql-wasm.js']`, not through base64 (**D10**)
-→ resolve the packaged `dashboard.llat` via `importlib.resources` (**D9**) → `resolve_template()` / `render_template(template, data, config)` with `data` carrying: the gzip+base64 snapshot, the base64 WASM, export timestamp, filter args, export mode, allowlist version, source + installed schema versions (**D5** — only the WASM cannot go in `assets/`, which is UTF-8-text-only; the glue can, **D10**)
+→ resolve the packaged `dashboard.llat` via `importlib.resources` (**D9**), converting the `Traversable` with `Path(str(...))` and calling `load_manifest(root)` directly rather than `resolve_template()`, whose `templates_dir` fallback is project-local and can only mislead here (**D20**)
+→ `validate_top_level_data(data, manifest["data_schema"])` — the renderer does **not** do this; `cmd_render` does it at `render.py:119` and `cmd_dashboard` must too (**D14**)
+→ `render_template(template, data, config)` with `data` carrying: the gzip+base64 snapshot, the base64 WASM, export timestamp, filter args, export mode, allowlist version, source + installed schema versions (**D5** — only the WASM cannot go in `assets/`, which is UTF-8-text-only; the glue can, **D10**)
   — `manifest.yaml` declares `theme: design-tokens`, so `build_ll_namespace()` supplies `ll.theme_css` via `themed_css_vars()` implicitly; `cmd_dashboard` never calls `stamp_page_shell()` itself
 → measure `len(rendered_html)`; if `> config.artifacts.export.max_artifact_bytes`, log the measured size and the limit and `return 1` **without writing a file** (**D7**)
-→ write single HTML to `--output` or `config.artifacts.default_output_dir`
+→ write single HTML to `--output` (a **directory**, matching `render.py:58-62`) or `config.artifacts.promotion_dir`, under the manifest's declared `output:` filename `history-dashboard.html` (**D15** — not `default_output_dir`, which is `"."` and would drop ~5 MB into the project root)
 
 ### Decision Rules
 
@@ -691,6 +814,17 @@ were wrong (see D2 and D5)._
 - **`--since` on `loop_run`** — `COALESCE(ended_at, started_at)`, so in-flight
   runs are not silently dropped; whichever semantics is chosen is stated in
   the CLI help and the page's filter stamp (**D13**).
+- **Flag defaults** — `--tables` defaults to the shareable types
+  (`loop_run,usage_event`), never `_EXPORT_DEFAULT_TABLES`; `--since` has no
+  default and every size failure names it as the remedy (**D16**).
+- **Data validation** — the caller validates, not the renderer
+  (`render.py:119` is the precedent, `render_template()` does not) (**D14**).
+- **Escaping** — `autoescape=False`, so every value in `data` is validated or
+  escaped by `cmd_dashboard` before it goes in (**D18**).
+- **Result rows** — capped at the render step with a truthful total; the
+  user's SQL is never rewritten (**D17**).
+- **Source DB** — opened raw read-only and never through the migrating open
+  path, so an export cannot mutate `history.db` (**D19**).
 
 ## Wiring Phase (added by `/ll:wire-issue`)
 
@@ -707,6 +841,12 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - Update `docs/reference/CLI.md` (`dashboard` subcommand table row + subsection) and `docs/reference/CONFIGURATION.md:912-929` (`export` key row/JSON example)
 - Write the round-trip test: extract the embedded blob from the generated HTML, base64-decode, **gunzip** (per D1), open as SQLite, and assert on the recovered *schema* that excluded columns/tables are absent — no existing test in the repo does this, and an assert-absent substring check is not sufficient for the AC
 - Add the `artifacts.export.max_artifact_bytes` hard-fail test (D7) and the mode/allowlist-version stamp test for both `shareable` and `--local` (AC)
+- Call `validate_top_level_data()` in `cmd_dashboard` before `render_template()` (**D14**) — `render_template()` does not validate, and the dashboard manifest's `data_schema` is unenforced without this
+- Declare `output: history-dashboard.html` in the dashboard `manifest.yaml` and default the output directory to `config.artifacts.promotion_dir`, not `default_output_dir` (**D15**); `--output` names a *directory*, matching `render.py:58-62`
+- Default `--tables` to `loop_run,usage_event` and add the raw-snapshot size pre-check with a `--since`-naming error (**D16**)
+- Implement the page's result-row cap with a truthful "showing N of M" line, without rewriting submitted SQL (**D17**)
+- Read `schema_version` inline on the read-only connection; never route the export through the store's migrating open path, and add the before/after DB-hash test (**D19**)
+- Convert the `importlib.resources` `Traversable` with `Path(str(...))` and call `load_manifest()` directly instead of `resolve_template()` (**D20**)
 - Add `TestSchemaValueParity`'s `"ArtifactsConfig": "artifacts"` parity coverage (`test_config_schema.py:1343`) for the new `export` field, alongside the `test_artifacts_in_schema`/`test_analytics_in_schema` nested-block assertions already scoped
 
 ## Confidence Check Notes
@@ -775,6 +915,7 @@ below are narrowed, not eliminated — see the resolution note).
   an equivalent summary paragraph directly under the title — cosmetic only.
 
 ## Session Log
+- third pre-implementation review - 2026-08-25 - added D14–D20 and five ACs from re-checking the issue's load-bearing claims against the code: corrected the Background's false "the renderer validates `data.json`" claim (validation is `cmd_render`'s, `render.py:119`) and the packaged-template handoff (`resolve_template()` takes `str`, `importlib.resources` yields a `Traversable`); specified the previously-open output filename/default directory (`promotion_dir`, not the `"."` project root), the `--tables`/`--since` defaults plus a cheap raw-snapshot size pre-check ahead of D7's final-HTML ceiling, the page's result-row cap (~150k rows would hang the tab), the `autoescape=False` escaping ownership rule, and the inline `schema_version` read with the reason D2's raw `mode=ro` connect matters (the store's normal open path migrates on open). Verified in the same pass: every ENH-075 allowlist column exists in the live schema, and D9's `importlib.resources` precedent is real
 - second pre-implementation review - 2026-08-25 - cleared the learning-test hard override (`/ll:explore-api sql.js` → `.ll/learning-tests/sqljs.md`, proven), proved D2's ATTACH-from-`mode=ro` construction by spike, rewrote D6 (`PRAGMA query_only` + multi-statement check; a leading-`SELECT` check was measured insufficient) and D8 (measured ~924 KB floor, not ~2 MB), and added D9–D13: packaged `.llat` resolution via `importlib.resources`, the frozen Jinja delimiter/autoescape constraints, export-time schema-version comparison (the prior view-time AC was not implementable), the allowlist-constant + version-bump rule, and `COALESCE(ended_at, started_at)` for `--since`
 - `/ll:confidence-check` - 2026-08-25T20:56:17 - `57fafff8-bb8c-4f8b-a447-cf4d8ece9758.jsonl`
 - pre-implementation review - 2026-08-25 - added Decisions D1–D8 (measured a real 30-day export against the live 6.6 GB `.ll/history.db`: 17.4 MB raw / 23.3 MB base64 / 4.1 MB gzip+base64), resolved the Program Design contradiction toward the `.llat` pipeline, corrected the `export_history()` call path, retired the FEAT-3036 schema-collision concern, and added five ACs (mode/allowlist stamp, schema version, predefined view, size hard-fail, provenance path)
