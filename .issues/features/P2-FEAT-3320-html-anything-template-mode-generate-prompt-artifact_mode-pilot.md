@@ -109,7 +109,9 @@ The three options considered:
   existing shell action (`generator-evaluator.yaml:78-82`). Zero new states, zero
   `max_steps` impact, and the parameter is generic — it is not a branch on
   artifact mode, so AC 3 holds in letter and spirit. All eight other consumers
-  leave it unset and their behavior is byte-identical.
+  leave it unset and their behavior is byte-identical. `html-anything`'s own
+  `file`-mode runs also bind it, so the command carries its own mode guard —
+  see § `pre_evaluate_cmd` must be inert in `file` mode.
 
   **Caveat on `evaluate`'s routing — the prepended command's stdout must be
   quieted.** `evaluate` inherits `fragment: playwright_screenshot`, whose
@@ -170,6 +172,51 @@ directory is what makes the mode-independence harmless; naming `index.html`
 instead would both promote on every file-mode run *and* fail template-mode
 promotion, since `_promote_template_artifact` requires `from` to resolve to a
 directory (`persistence.py:828-836`).
+
+### `pre_evaluate_cmd` must be inert in `file` mode — the guard lives inside the command
+
+_Added at the third pre-implementation review — a design gap: nothing
+previously said how the render step is skipped in `file` mode._
+
+`with:` is static YAML, so `html-anything` binds `pre_evaluate_cmd`
+**unconditionally** — including in default `file` mode. Bound as previously
+specified (`rm -f <run_dir>/index.html; ll-artifact render ...`), every
+file-mode iteration would delete the model's freshly generated `index.html`
+and then fail the render — destroying exactly the default path AC 2 promises
+is untouched.
+
+The fix is a mode guard *inside* the command, with the mode value interpolated
+at binding time (invocation-time interpolation resolves
+`${context.artifact_mode}` against the parent's context, so at run time the
+guard compares two literals):
+
+```
+case "${context.artifact_mode}" in
+  template)
+    rm -f <abs run_dir>/index.html
+    ll-artifact render <abs run_dir>/artifact.llat -o <abs run_dir> >/dev/null || <write .miss_reason>
+    ;;
+esac
+```
+
+Two prerequisites this creates:
+
+- `artifact_mode` must be declared in `html-anything`'s `context:` block with
+  an explicit default of `file` (not left absent-when-unset), so the
+  interpolation always resolves. This also matches `_is_template_capable`'s
+  context-key trigger (`structural_rules.py:866-879`) and the BUG-1947
+  truthiness convention noted in § Codebase Research Findings.
+- The file-mode regression (§ Tests) must pin the guard: a `file`-mode run's
+  `pre_evaluate_cmd` neither deletes `index.html` nor invokes `ll-artifact` —
+  a fragment-presence check that the bound command wraps the `rm`/render in
+  the mode guard, plus the behavioral assertion that file mode still writes
+  and screenshots its own `index.html`.
+
+The same guard shape applies to `gate_template`'s mode check (§ The backstop
+must not live inside the iterate cycle already requires the mode guard before
+rule 0) — but there the action is authored directly in `html-anything.yaml`,
+not bound through `with:`, so it reads `${context.artifact_mode}` at state
+execution time; the effect is identical.
 
 ### The generate prompt must mandate `output: index.html`
 
@@ -382,31 +429,39 @@ reintroduces exactly the skippability that option (c) was rejected for. Add a ne
 tail). Wording elsewhere in this issue that puts the gate "in `finalize_done`" is
 superseded by this paragraph.
 
-**Why `on_yes` is the right edge to intercept — a `max_steps` exhaustion arrives
-there too.** _(Added at the second pre-implementation review — this is the
-load-bearing reason for the placement, and it was unstated.)_ The intuitive
-reading is that `run_gen_eval`'s `on_yes` means "ALL_PASS" and that a run which
-burns its budget goes to `on_no: diagnose`. It does not. The oracle declares
-`on_max_steps: max_steps_summary` (`generator-evaluator.yaml:19-20`), and
-`max_steps_summary` is `terminal: true` **without** `failure: true`
-(`:315-335`). Sub-loop dispatch (`fsm/executor.py:1087-1092`) routes on
-`terminated_by == "terminal"` plus the child's explicit `failure_terminal` flag —
-so a budget-exhausted oracle run is a **non-failure terminal** and takes the
-parent's `on_yes`. The same is true of both plateau exits (`check_stall` `on_no:
-done`, `check_diff_stall` `on_no: done`, `:246-279`). Only `failed` and
-`screenshot_abandoned` (which does declare `failure: true`) take `on_no`/`on_error`
-into `diagnose`.
+**Why `on_yes` is the right edge to intercept — both plateau exits arrive
+there.** _(Rewritten at the third pre-implementation review — the previous
+revision claimed a `max_steps` exhaustion also arrives at `on_yes`. It does
+not; verified against the executor and its tests, see below.)_ The oracle's
+plateau exits (`check_stall` `on_no: done`, `check_diff_stall` `on_no: done`,
+`:246-279`) terminate at `done`, a non-failure terminal, so the child finishes
+`terminated_by == "terminal"` with `failure_terminal` false and sub-loop
+dispatch (`fsm/executor.py:1087-1092`) takes the parent's `on_yes` — exactly as
+a genuine ALL_PASS does. A plateaued run can therefore promote an unvetted
+template, and a gate on the `on_yes` edge is what catches it.
+
+**A `max_steps` exhaustion does NOT arrive at `on_yes` — corrected.** The
+previous revision's chain (`max_steps_summary` is `terminal: true` without
+`failure: true` → `terminated_by == "terminal"` → parent `on_yes`) misses the
+cap-summary bookkeeping: when the step cap fires, the executor sets
+`_summary_state_executed`, lets the `on_max_steps` handler run its action once
+(BUG-158), and then finishes with `self._finish("max_steps")`
+(`fsm/executor.py:623-628,771-772`) — `terminated_by` is `"max_steps"`, not
+`"terminal"`. Sub-loop dispatch routes budget exhaustion to the `on_timeout`
+extra route when declared, else `on_no` (`executor.py:1100-1107`, ENH-3019).
+`test_fsm_executor.py:8745-8770` already pins exactly this dispatch behavior.
 
 Consequences, both of which the design depends on:
 
-- Every route that can promote a `.llat/` passes through `on_yes`, so a gate on
-  that edge is exhaustive. A gate placed anywhere else would let plateau and
-  max_steps runs promote unchecked.
-- Conversely, § A failed render is invisible after iteration 1's claim that a
-  broken run "burns to `max_steps` and promotes whatever `.llat/` last survived"
-  is **correct**, not pessimistic — max_steps is a success route, not a failure
-  one. Pin this with a test rather than re-deriving it; it is counter-intuitive
-  enough that a future reader will assume the opposite.
+- A budget-exhausted `run_gen_eval` goes `on_no -> diagnose -> failed` and
+  **never promotes** (`result.failure_terminal` short-circuit,
+  `persistence.py:753`). The gate does not need to cover it.
+- Every route that *can* promote a `.llat/` still passes through `on_yes` —
+  ALL_PASS plus the two plateau exits — so the gate placement stands
+  unchanged; only the rationale is corrected. Only `failed` and
+  `screenshot_abandoned` (which declares `failure: true`) take
+  `on_no`/`on_error` into `diagnose` as failures; `max_steps` joins them via
+  the budget-exhaustion dispatch branch.
 
 **The gate's state shape, explicitly.** The issue previously said only "routes
 failure to `diagnose`", leaving the rest to implementation time:
@@ -482,9 +537,15 @@ Consequences, all silent:
 - The scorer critiques the stale render, so `critique.md` describes output the
   model's current (broken) template did not produce. The next `generate` pass
   "fixes" phantom issues.
-- The run burns to `max_steps` and promotes whatever `.llat/` last survived the
-  terminal gate — or, if the template happens to be schema-valid but semantically
-  broken, promotes it outright.
+- The run either burns to `max_steps` — which routes `on_no -> diagnose ->
+  failed` and promotes **nothing**, reporting a generic diagnostic instead of
+  the render error _(corrected at the third pre-implementation review: an
+  earlier revision said it "promotes whatever `.llat/` last survived", but a
+  budget-exhausted child finishes `terminated_by="max_steps"` and never reaches
+  `on_yes` — see § Why `on_yes` is the right edge to intercept)_ — or plateaus
+  on the never-changing stale render (`check_stall`/`check_diff_stall`), which
+  IS a non-failure exit onto `on_yes` and can promote a schema-valid but
+  semantically broken template outright.
 
 **Fix: `pre_evaluate_cmd` deletes the render target before rendering.** Shape:
 
@@ -708,17 +769,22 @@ _Added at the 2026-08-25 pre-implementation review:_
   evidence (§ The `rubric` prompt needs its own template-mode branch).
 - Conformance that the template-mode `generate_prompt` states `index.html` is a
   render output that must not be edited directly (fragment-presence).
-- A check that **every** value in `run_gen_eval`'s `with:` mapping survives both
-  interpolation passes — no `${` other than a resolvable `${captured.*}` /
-  `${context.*}` reference, and no `$${` anywhere (§ `pre_evaluate_cmd` is
-  interpolated TWICE). _(Widened at the second pre-implementation review from
-  `pre_evaluate_cmd` alone: the double pass is a property of the `with:`
-  mechanism, and the new `generate_prompt` / `rubric` branches are prose *about*
-  templating — the likeliest place a stray `${` lands.)_ A static string assertion
-  over the whole mapping is enough, and the existing bindings already satisfy it,
-  so it needs no new-keys-only carve-out. It catches the failure at test time
-  rather than at run time, where it surfaces as an opaque
-  `expected namespace.path`.
+- A check that **every** value in `run_gen_eval`'s `with:` mapping interpolates
+  cleanly at invocation — no `${` sequence other than a resolvable
+  `${captured.*}` / `${context.*}` reference or an escaped `$${`
+  (§ Escaping in `with:`-bound values follows the normal single-escape rule).
+  _(Corrected at the third pre-implementation review: the earlier clause
+  additionally banned `$${` anywhere, on the since-disproved "interpolated
+  TWICE" theory — `$${` is the correct escape form and must stay permitted.)_
+  The new `generate_prompt` / `rubric` branches are prose *about* templating —
+  the likeliest place a stray `${` lands — and an unresolvable `${` raises
+  `expected namespace.path` at run time, mid-loop. A static string assertion
+  over the whole mapping is enough; the existing bindings already satisfy it.
+- A conformance check that the bound `pre_evaluate_cmd` wraps its `rm`/render
+  in the `case "${context.artifact_mode}" in template)` mode guard
+  (fragment-presence), plus a behavioral `file`-mode assertion that an
+  iteration leaves a pre-existing `index.html` untouched and never invokes
+  `ll-artifact` (§ `pre_evaluate_cmd` must be inert in `file` mode).
 - Conformance that the template-mode `generate_prompt` forbids an `assets/`
   directory and mandates inline `<svg>` / `data:` URIs for images
   (fragment-presence), plus a unit test that a `.llat/` containing a binary file
@@ -730,11 +796,17 @@ _Added at the 2026-08-25 pre-implementation review:_
   `theme: design-tokens` **unconditionally** — i.e. the mandate is not phrased as
   conditional on `design_tokens_context` (fragment-presence, asserting the
   conditional phrasing is absent).
-- A test pinning that the oracle's `max_steps_summary` is a terminal **without**
-  `failure: true`, and therefore that a budget-exhausted `run_gen_eval` routes to
-  `on_yes` (`executor.py:1087-1092`) — the counter-intuitive fact the
-  `gate_template` placement depends on (§ Why `on_yes` is the right edge to
-  intercept). Same for `check_stall` / `check_diff_stall`'s `on_no: done` exits.
+- A test pinning the routing facts the `gate_template` placement depends on
+  (§ Why `on_yes` is the right edge to intercept): a plateau exit
+  (`check_stall` / `check_diff_stall` `on_no: done` -> the `done` non-failure
+  terminal) finishes the child `terminated_by="terminal"` / non-failure and
+  routes to the parent's `on_yes`; a budget-exhausted child finishes
+  `terminated_by="max_steps"` and routes to `on_no`
+  (`executor.py:771-772,1100-1107` — `test_fsm_executor.py:8745-8770` already
+  pins the dispatch half; the new test pins it for this oracle/parent pair).
+  _(Corrected at the third pre-implementation review — the earlier version
+  asserted a budget-exhausted run routes to `on_yes`, which is false and would
+  have been a failing test as specified.)_
 - A test of whichever § `iter-N/` loses the template option is chosen: under (a),
   that a template-mode iteration archives the `.llat/` source somewhere
   recoverable; under (b), fragment-presence that `finalize_done`'s template-mode
@@ -931,60 +1003,56 @@ the landed code:_
   the prepended `pre_evaluate_cmd`. A deterministic Jinja render is
   sub-second, so the existing budget is ample; no timeout change needed.
 
-### `pre_evaluate_cmd` is interpolated TWICE — the escaping rule is different here
+### Escaping in `with:`-bound values follows the normal single-escape rule
 
-_Added at the 2026-08-25 pre-implementation review. This is the single most
-likely way steps 5 and 6 fail on the first attempt, and nothing else in this
-issue flags it._
+_Rewritten at the third pre-implementation review. The previous revision of
+this section ("`pre_evaluate_cmd` is interpolated TWICE — the escaping rule is
+different here") was factually wrong; the correction below was verified
+empirically by running both passes through the real `interpolate()`._
 
-A value bound through a `with:` block is interpolated **twice**, not once:
+A value bound through a `with:` block is interpolated once, at sub-loop
+invocation: `interpolate_dict(state.with_, ctx)` (`fsm/executor.py:876-877`)
+resolves the whole mapping against the *parent's* context — this is what turns
+`${captured.run_dir.output}` into the absolute run directory. The resolved
+string lands in the child's `context` (`executor.py:893`), and when the
+oracle's `evaluate` action later interpolates `${context.pre_evaluate_cmd}`,
+the value is inserted as `re.sub` replacement text — **replacement text is
+never re-scanned** (`interpolate`, `fsm/interpolation.py:229-282`: one
+`ESCAPED_PATTERN` pass and one `VARIABLE_PATTERN` pass over the action
+*template* only). There is no second pass over the substituted value.
+Verified:
 
-1. At sub-loop invocation, `interpolate_dict(state.with_, ctx)`
-   (`fsm/executor.py:873-877`) resolves the whole `with:` mapping against the
-   *parent's* context — this is what turns `${captured.run_dir.output}` into the
-   absolute run directory.
-2. The resolved string lands in the child's `context` (`executor.py:893`), and the
-   oracle's `evaluate` action then interpolates `${context.pre_evaluate_cmd}` on
-   its own — a second full pass over the already-substituted text.
+- `$${VAR}` in the `with:` YAML → invocation-time interpolation yields literal
+  `${VAR}` → survives the child's action interpolation untouched → bash sees
+  `${VAR}`. **The repo's normal shell-state escape works unchanged.**
+- The previously prescribed `$$$${VAR}` → yields `$$${VAR}` → bash sees `$$`
+  (the shell PID) followed by `{VAR}`. **Actively broken — do not use.**
 
-The consequence is that the usual escaping rule from the repo's shell states is
-**wrong for this value**. `$${VAR}` un-escapes to a literal `${VAR}` on pass 1
-(`fsm/interpolation.py:213,228,284`), and pass 2 then reads that as a namespace
-path and raises `expected namespace.path`. A bare `${VAR}` fails on pass 1 for
-the same reason. Correct forms inside a `with:`-bound shell snippet:
-
-- **`${VAR}` → `$$$${VAR}`** (double-escaped: survives pass 1 as `$${VAR}`, pass 2
-  as `${VAR}`).
-- **Preferred: avoid brace syntax entirely.** Interpolation only scans `${`, so
-  `$VAR`, `$?`, and `$(...)` pass through both passes untouched. Write
-  `pre_evaluate_cmd` brace-free and the problem disappears rather than being
-  managed.
-
-This applies to step 6's `.miss_reason` logic specifically, which is the only
-part of `pre_evaluate_cmd` that needs shell variables at all. The render
-invocation itself uses only interpolated absolute paths and is unaffected.
-
-**The rule is not specific to `pre_evaluate_cmd` — it governs every new
-`with:`-bound value.** _(Added at the second pre-implementation review; the
-section title and the test in § Tests both scoped this too narrowly.)_ The two
-passes are a property of the `with:` mechanism, not of shell text. The
-template-mode `generate_prompt` branch and the `rubric` branch are bound the same
-way and get the same double pass, and both are *prose about templating* — exactly
-the kind of text that attracts a stray `${`:
+What *is* real, and worth the static test in § Tests: a bare `${` in any
+`with:`-bound value that is not a resolvable `${captured.*}`/`${context.*}`
+reference (and not escaped `$${`) raises `expected namespace.path` at
+invocation — at run time, mid-loop. The template-mode `generate_prompt` and
+`rubric` branches are *prose about templating* — exactly the kind of text that
+attracts a stray `${`:
 
 - a sample template body or CSS snippet in the prompt,
 - any mention of an environment variable or shell form,
 - a `data.json` example whose values look like placeholders.
 
 `[[= =]]` / `[[% %]]` / `[[# #]]` are safe by construction — interpolation only
-scans `${` — which is a quiet argument for the non-default delimiters, but it does
-not protect the surrounding prose. Widen the static test accordingly: **no new
-`with:`-bound value may contain a `${` sequence other than a resolvable
-`${captured.*}` / `${context.*}` reference, and none may contain `$${`.** Note the
-existing bindings already satisfy this (`generate_prompt` and `rubric` contain
-only `${captured.run_dir.output}` and `${context.design_tokens_context}`), so the
+scans `${` — which is a quiet argument for the non-default delimiters, but it
+does not protect the surrounding prose. The static test: **no `with:`-bound
+value may contain a `${` sequence other than a resolvable `${captured.*}` /
+`${context.*}` reference or an escaped `$${`.** The existing bindings already
+satisfy this (`generate_prompt` and `rubric` contain only
+`${captured.run_dir.output}` and `${context.design_tokens_context}`), so the
 assertion can be written over the whole `with:` mapping rather than a
 new-keys-only subset.
+
+Writing `pre_evaluate_cmd`'s `.miss_reason` shell logic brace-free (`$VAR`,
+`$?`, `$(...)` all pass interpolation untouched) remains the simplest style
+because it sidesteps escaping entirely — but it is a style preference, not a
+correctness requirement as the previous revision claimed.
 
 ## Implementation Steps
 
@@ -1020,9 +1088,11 @@ _Revised at the 2026-08-25 pre-implementation review._
    so the scorer actually reads the `.llat/` sources that criterion is about
    (§ The `rubric` prompt needs its own template-mode branch). Both halves are
    required — the criterion is unscoreable without the second.
-5. Pass `pre_evaluate_cmd` from `html-anything`'s `with:` block:
-   `rm -f <abs run_dir>/index.html; ll-artifact render <abs run_dir>/artifact.llat
-   -o <abs run_dir> >/dev/null` — absolute paths, since relative ones resolve
+5. Pass `pre_evaluate_cmd` from `html-anything`'s `with:` block, **wrapped in
+   the file-mode guard** (§ `pre_evaluate_cmd` must be inert in `file` mode):
+   `case "${context.artifact_mode}" in template) rm -f <abs run_dir>/index.html;
+   ll-artifact render <abs run_dir>/artifact.llat -o <abs run_dir> >/dev/null ;;
+   esac` — absolute paths, since relative ones resolve
    against `config.project_root`, not cwd; stdout quieted so it cannot perturb
    `evaluate`'s `output_contains: "CAPTURED"` match (§ Caveat on `evaluate`'s
    routing). No `--data` flag is needed: `cmd_render` defaults `data_path` to
@@ -1046,10 +1116,12 @@ _Revised at the 2026-08-25 pre-implementation review._
    documents that best-iteration recovery is unavailable in template mode
    (option b). Do not leave the divergence undocumented.
 
-   Mind the double-interpolation escaping rule — it applies to **every** value
-   bound through `with:`, not just this one, so the `generate_prompt` and `rubric`
-   branches written in steps 3 and 4 are subject to it too. See
-   § `pre_evaluate_cmd` is interpolated TWICE.
+   Escaping inside the command follows the repo's normal single-escape rule
+   (`$${VAR}` → literal `${VAR}` for bash); brace-free shell remains the
+   simplest style. The real hazard is an unresolvable `${` in any
+   `with:`-bound value — the prose branches from steps 3 and 4 included —
+   which raises `expected namespace.path` at invocation. See § Escaping in
+   `with:`-bound values follows the normal single-escape rule.
 6. Make a render failure surface as a render error through the ENH-2903 abandon
    path rather than a bare screenshot-miss. This depends on step 5's `rm -f`:
    with the stale `index.html` removed, a failed render leaves no artifact,
@@ -1085,9 +1157,10 @@ _Revised at the 2026-08-25 pre-implementation review._
    the gate is a no-op — check the mode guard *before* rule 0, since
    `artifact.llat/` legitimately does not exist there.
 
-   Note this edge is exhaustive precisely because a `max_steps` exhaustion and
-   both plateau exits are **non-failure** terminals in the oracle and therefore
-   arrive at `on_yes` too (§ Why `on_yes` is the right edge to intercept).
+   Note the edge covers every promotable route because both plateau exits are
+   non-failure terminals arriving at `on_yes`; a `max_steps` exhaustion
+   finishes `terminated_by="max_steps"`, routes to `on_no`, and never promotes
+   (§ Why `on_yes` is the right edge to intercept, corrected).
 8. Conformance + `file`-mode regression tests; docs (LOOPS_REFERENCE.md's
    `artifact_mode` row and template-mode example, the overwrite-per-run note,
    CLI.md, HARNESS_OPTIMIZATION_GUIDE.md).
@@ -1152,7 +1225,10 @@ month — no LLM call, no `templatize` round trip, no fidelity loss.
       `ll-artifact render` with no `templatize` step.
 - [ ] The default (`file`) path is **behaviorally** unchanged — every file-mode
       instruction still present verbatim as a fragment, same `index.html`, same
-      reported outputs, `gate_template` a no-op; a regression test pins this.
+      reported outputs, `gate_template` a no-op, and `pre_evaluate_cmd` inert
+      (its mode guard neither deletes `index.html` nor invokes `ll-artifact` —
+      § `pre_evaluate_cmd` must be inert in `file` mode); a regression test
+      pins this.
       Includes the promotion side effect of the newly-required `artifact_output`
       block: a `file`-mode run promotes **nothing**, because `from: artifact.llat`
       does not exist in that mode (`persistence.py:757-763`). The regression test
@@ -1190,10 +1266,12 @@ month — no LLM call, no `templatize` round trip, no fidelity loss.
       predicate is the concrete three-part rule in § The backstop must not live
       inside the iterate cycle, and a gate failure routes to `diagnose` ->
       `failed`, which suppresses promotion via `result.failure_terminal`
-      (`persistence.py:753`). The gate sits on `run_gen_eval`'s `on_yes` edge and
-      that placement is exhaustive: a `max_steps` exhaustion and both plateau
-      exits are non-failure terminals in the oracle and arrive at `on_yes` too
-      (§ Why `on_yes` is the right edge to intercept). Rule 0 (`artifact.llat/`
+      (`persistence.py:753`). The gate sits on `run_gen_eval`'s `on_yes` edge;
+      that placement covers every route that can promote — ALL_PASS and both
+      plateau exits arrive there, while a `max_steps` exhaustion finishes
+      `terminated_by="max_steps"`, routes to `on_no`, and never promotes
+      (§ Why `on_yes` is the right edge to intercept, corrected at the third
+      pre-implementation review). Rule 0 (`artifact.llat/`
       is a directory with one `template.*.j2` and a readable `data.json`) precedes
       the three parameterization rules, and the state declares
       `on_error: diagnose` as well as `on_no: diagnose`.
