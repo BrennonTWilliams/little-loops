@@ -215,17 +215,20 @@ jobs:
             # JSON contract (`id` field on issue comment) is stable across GH URL
             # format changes. `--jq .id` returns the comment_id (numeric) or empty
             # on failure; `|| echo ""` normalizes the empty case.
-            COMMENT_ID=$(gh api -X POST "/repos/${GITHUB_REPOSITORY:-BrennonTWilliams/little-loops}/issues/${SINK_ISSUE}/comments" \
-              -f body="$INITIAL_BODY" --jq .id 2>/dev/null || echo "")
+            # Path E fail-fast diagnosis — capture gh api stderr (NOT 2>/dev/null) and
+            # bound with `timeout 30`. Dispatch 32896692685 showed the POST return an
+            # empty COMMENT_ID in ~2s (fast non-2xx); the error body was permanently
+            # lost to 2>/dev/null. stderr capture surfaces it on the next dispatch.
+            COMMENT_ID=$(timeout 30 gh api -X POST "/repos/${GITHUB_REPOSITORY:-BrennonTWilliams/little-loops}/issues/${SINK_ISSUE}/comments" \
+              -f body="$INITIAL_BODY" --jq .id 2>/tmp/pathE_post_stderr.txt || echo "")
             COMMENT_URL="https://github.com/${GITHUB_REPOSITORY:-BrennonTWilliams/little-loops}/issues/${SINK_ISSUE}#issuecomment-${COMMENT_ID}"
             echo "Path E initial comment: issue=$SINK_ISSUE id=$COMMENT_ID url=$COMMENT_URL"
-            # Silent-fallback hardening: if the initial POST returned no comment_id
-            # (auth failure, rate limit, network, malformed SINK_ISSUE), skip ONLY
-            # the PATCH loop. Do NOT `exit 0` — that would short-circuit the entire
-            # CI step, killing pytest before it runs (silent test-coverage loss).
-            # Wrap the PATCH loop in a positive guard (Option A from QA event d744c310).
-            # POST fails → loop never starts, pytest runs normally. POST succeeds → loop
-            # runs as designed. Logging ::error:: surfaces the failure mode for triage.
+            # FAIL-FAST (diagnostic branch): if the POST yields no comment_id, dump the
+            # captured gh api stderr and `exit 1` so the error is visible immediately
+            # (~5m) instead of being masked by the 52m runner-ceiling. This deliberately
+            # skips pytest on POST failure — the goal of THIS dispatch is to name the
+            # Path E error, not to run the test suite. (The production fix keeps the
+            # Option-A "skip loop, run pytest" behavior; this branch is diagnostic-only.)
             if [ -n "$COMMENT_ID" ] && [ "$COMMENT_ID" != "null" ]; then
               ( while true; do
                   {
@@ -273,7 +276,10 @@ jobs:
               done ) &
               SNAPSHOTTER=$!
             else
-              echo "::error::Path E POST returned empty/null comment_id; PATCH loop disabled to avoid POST-many spam. Check SINK_ISSUE=$SINK_ISSUE, auth, and rate limits."
+              echo "::error::Path E POST returned empty/null comment_id (id='$COMMENT_ID'). gh api stderr:"
+              cat /tmp/pathE_post_stderr.txt 2>/dev/null || echo "  (no stderr captured)"
+              echo "::error::FAILING FAST — Path E error surfaced instead of masked by 52m runner-ceiling."
+              exit 1
             fi
           fi
           set +e
