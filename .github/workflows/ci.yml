@@ -58,9 +58,11 @@ on:
         required: false
         default: '11'
 
+# Dispatch runs are independent diagnostic experiments — they must not cancel
+# each other. Push events (main) still cancel stale runs on the same ref.
 concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  group: ci-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
 
 permissions:
   contents: read
