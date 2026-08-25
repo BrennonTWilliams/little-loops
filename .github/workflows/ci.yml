@@ -57,6 +57,12 @@ permissions:
   # `none` — without this line the failure-upload step 403s with "Resource not
   # accessible by integration" and the paper trail silently never uploads.
   actions: write
+  # BUG-3208 Path E — diagnostic snapshot streaming needs `issues: write` for
+  # `gh issue comment` against the sink issue (Path A in-runner diagnostics
+  # failed three dispatches in a row; Path E writes to GitHub's servers via
+  # `GITHUB_TOKEN`, which survives runner death). Without this line, the
+  # snapshot writer 403s silently — same failure mode as the upload step.
+  issues: write
 
 jobs:
   unit-tests:
@@ -138,8 +144,83 @@ jobs:
           # also matches `tee pytest.log`, so the read-end closes too), which
           # unblocks the pipeline, lets `RC=$?` fire, and lets the upload step
           # (`if: always()`) persist the evidence bundle.
-          ( sleep 2760; pkill -9 -f '[p]ytest' 2>/dev/null; pkill -9 -f '[e]xecnet' 2>/dev/null ) &
+          #
+          # BUG-3208 Path A follow-up — `reaper.log` self-heartbeat. The reaper
+          # subshell writes its own timestamped trace to `reaper.log` (spawn,
+          # per-minute tick for 46 minutes, firing timestamp, pkill exit codes)
+          # so a future dispatch can disambiguate runner-death from reap-failure.
+          # If `reaper.log` survives to artifact upload → reap fired as expected
+          # (any exit code is informative). If `reaper.log` is missing or only
+          # has the spawn line → runner died before reap fired. This is the
+          # diagnostic that's needed to name the runner-after-X failure mode.
+          ( date -u +'reaper-spawned T=%H:%M:%S pid='$$ > reaper.log; \
+            for i in $(seq 1 46); do sleep 60; date -u +"reaper-tick$i T=%H:%M:%S" >> reaper.log; done; \
+            echo "reaper-firing T=$(date -u +%H:%M:%S)" >> reaper.log; \
+            pkill -9 -f '[p]ytest' 2>/dev/null; echo "pkill-pytest rc=$?" >> reaper.log; \
+            pkill -9 -f '[e]xecnet' 2>/dev/null; echo "pkill-execnet rc=$?" >> reaper.log; \
+            echo "reaper-done T=$(date -u +%H:%M:%S)" >> reaper.log ) &
           REAPER=$!
+          # BUG-3208 Path E — diagnostic snapshot streaming via GitHub issue comment
+          # PATCH. Path A's in-runner diagnostics died with the runner three dispatches
+          # in a row (no artifact upload reached GH storage because the upload step
+          # never ran). Path E streams diagnostic snapshots to a single GitHub issue
+          # comment via PATCH (the (d) branch pattern) — one comment, updated every
+          # ~30s. The comment lives on GitHub's servers, NOT the runner's ephemeral
+          # disk, so the most recent successful PATCH survives runner death. Same
+          # survival property as S3, zero new secrets, zero owner-side action.
+          #
+          # Pattern: POST-once-then-PATCH (not POST-many). 45-min dispatch produces ONE
+          # comment, updated every 30s, with the latest snapshot. Avoids spamming the
+          # public tracker with ~90 comments. 65KB cap is handled by drop-oldest
+          # meta-lines inside the comment body.
+          #
+          # Sink target: SINK_ISSUE env var. Not hardcoded — read from workflow_dispatch
+          # input or repo variable, so a future sink-issue re-creation doesn't need a
+          # YAML edit. Fails loud if unset (no comment gets created; the in-runner
+          # diagnostic files still upload if the runner reaches terminal state).
+          #
+          # Worst-case data loss with 30s cadence: ~30s of evidence (last successful
+          # PATCH before writer dies). Better than the previous 100% loss when Path A's
+          # in-runner artifacts died with the runner.
+          if [ -z "${SINK_ISSUE:-}" ]; then
+            echo "::warning::SINK_ISSUE env var is unset; Path E diagnostic stream disabled for this run"
+          else
+            INITIAL_BODY="Path E diagnostic stream for run $GITHUB_RUN_ID. Updates every ~30s; 65KB cap handled by drop-oldest meta-lines. Last successful PATCH before runner death is the snapshot we want."
+            COMMENT_URL=$(gh issue comment "$SINK_ISSUE" --repo "${GITHUB_REPOSITORY:-BrennonTWilliams/little-loops}" --body "$INITIAL_BODY" 2>/dev/null || echo "")
+            # gh issue comment outputs the URL like https://github.com/.../issues/11#issuecomment-12345
+            COMMENT_ID=$(echo "$COMMENT_URL" | grep -oE '#[0-9]+$' | tr -d '#' || echo "")
+            echo "Path E initial comment: issue=$SINK_ISSUE id=$COMMENT_ID url=$COMMENT_URL"
+            ( while true; do
+                {
+                  echo "Path E snapshot stream — run_id=$GITHUB_RUN_ID run_attempt=$GITHUB_RUN_ATTEMPT step=unit-tests"
+                  echo "snapshot T=$(date -u +%H:%M:%S) (last update wins; older meta-lines truncated by 65KB cap)"
+                  echo ""
+                  echo "--- mem.log (last 3 lines) ---"
+                  tail -3 mem.log 2>/dev/null || echo "(mem.log not present)"
+                  echo ""
+                  echo "--- heartbeat.log (last 3 lines) ---"
+                  tail -3 heartbeat.log 2>/dev/null || echo "(heartbeat.log not present)"
+                  echo ""
+                  echo "--- sigprobe.log (last 3 lines) ---"
+                  tail -3 sigprobe.log 2>/dev/null || echo "(sigprobe.log not present)"
+                  echo ""
+                  echo "--- reaper.log (last 3 lines) ---"
+                  tail -3 reaper.log 2>/dev/null || echo "(reaper.log not present)"
+                } > /tmp/pathE_snapshot.txt
+                if [ -n "$COMMENT_ID" ]; then
+                  gh api --method PATCH -H "Accept: application/vnd.github+json" \
+                    "/repos/$GITHUB_REPOSITORY/issues/comments/$COMMENT_ID" \
+                    -F body=@/tmp/pathE_snapshot.txt 2>/dev/null \
+                    || echo "PATCH failed at $(date -u +%H:%M:%S) exit=$?" >> /tmp/pathE_failures.log
+                else
+                  # Fallback: POST a new comment if initial POST failed to yield ID
+                  gh issue comment "$SINK_ISSUE" --repo "$GITHUB_REPOSITORY" --body-file /tmp/pathE_snapshot.txt 2>/dev/null \
+                    || echo "POST failed at $(date -u +%H:%M:%S) exit=$?" >> /tmp/pathE_failures.log
+                fi
+                sleep 30
+              done ) &
+            SNAPSHOTTER=$!
+          fi
           set +e
           PYTHONUNBUFFERED=1 timeout --signal=TERM --kill-after=30s 45m \
             .venv/bin/python -m pytest scripts/tests/ \
@@ -153,7 +234,7 @@ jobs:
           # Reap orphaned xdist workers that survive the controller kill — they
           # would otherwise hold the step's stdout pipe open until the runner
           # watchdog fires (~52m) and purges every log as BlobNotFound.
-          kill "$SAMPLER" "$HEARTBEAT" "$REAPER" 2>/dev/null || true
+          kill "$SAMPLER" "$HEARTBEAT" "$REAPER" "$SNAPSHOTTER" 2>/dev/null || true
           pkill -9 -f 'pytest' 2>/dev/null || true
           pkill -9 -f 'execnet' 2>/dev/null || true
           echo "pytest exit: $RC"
@@ -184,6 +265,7 @@ jobs:
             mem.log
             heartbeat.log
             sigprobe.log
+            reaper.log
           retention-days: 30
           if-no-files-found: error
 
