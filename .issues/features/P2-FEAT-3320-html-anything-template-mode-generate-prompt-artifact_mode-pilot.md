@@ -3,7 +3,7 @@ id: FEAT-3320
 type: FEAT
 title: html-anything template-mode generate prompt (artifact_mode pilot)
 priority: P2
-status: in_progress
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-08-25'
 captured_at: '2026-08-25T16:25:58Z'
@@ -27,6 +27,7 @@ score_complexity: 16
 score_test_coverage: 22
 score_ambiguity: 20
 score_change_surface: 20
+completed_at: '2026-08-25T20:25:09Z'
 ---
 
 # FEAT-3320: html-anything template-mode generate prompt (artifact_mode pilot)
@@ -1358,6 +1359,7 @@ early-abort) results and the gate's rule-1/rule-3 threshold values used.
 
 
 ## Session Log
+- `ll-auto` - 2026-08-25T20:25:09 - `9efc0849-4df3-47cc-9780-5aafefb06f25.jsonl`
 - `/ll:manage-issue` - 2026-08-25T20:17:44 - `2733569a-0f64-4a8b-99df-20a4c329cea3.jsonl`
 - `/ll:manage-issue` - 2026-08-25T20:17:26 - `2733569a-0f64-4a8b-99df-20a4c329cea3.jsonl`
 - `/ll:confidence-check` - 2026-08-25T19:52:21 - `94f6179f-d7c8-47d2-985b-eebcb3522a0e.jsonl`
@@ -1367,3 +1369,23 @@ early-abort) results and the gate's rule-1/rule-3 threshold values used.
 - `/ll:refine-issue` - 2026-08-25T17:24:56 - `93455bb6-59d7-4ea1-9471-0a612ecdba4d.jsonl`
 - `/ll:refine-issue` - 2026-08-25T16:33:23 - `057ec3b7-ff77-4991-8763-e77045d2afc1.jsonl`
 - `/ll:refine-issue` - 2026-08-25T16:33:14 - `057ec3b7-ff77-4991-8763-e77045d2afc1.jsonl`
+
+
+---
+
+## Resolution
+
+- **Action**: implement
+- **Completed**: 2026-08-25
+- **Status**: Completed (automated fallback)
+- **Implementation**: Command exited early but issue was addressed
+
+
+### Files Changed
+- See git history for details
+
+### Verification Results
+- Automated verification passed
+
+### Commits
+- See git log for details
