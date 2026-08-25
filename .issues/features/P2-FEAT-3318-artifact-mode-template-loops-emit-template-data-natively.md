@@ -18,6 +18,12 @@ labels:
 - fsm
 - templates
 reconcile_attempted: true
+confidence_score: 100
+outcome_confidence: 82
+score_complexity: 14
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 18
 ---
 
 # FEAT-3318: `artifact_mode: template` — loops emit template + data natively
@@ -143,9 +149,21 @@ are two, and they are unrelated:
    not knowable statically. That case is the runtime gate's (see § Failure-mode
    dispositions).
 2. **Runtime gate (`promote_run_artifact`)** — verify the promoted directory
-   actually loads. This is **not** an extension of the static-validation family; it
-   is a `load_manifest()` + `find_template_body()` + `validate_top_level_data()`
-   call at promotion time, and all three already exist and fail closed.
+   actually loads **and renders**. This is **not** an extension of the
+   static-validation family; it is a `load_manifest()` + `find_template_body()` +
+   `validate_top_level_data()` + `render_template()` call at promotion time, and
+   all four already exist and fail closed.
+
+   The render step is load-bearing, not belt-and-braces: the three loaders never
+   parse the Jinja body, so a `template.html.j2` with a syntax error — or an
+   undefined-name mismatch between the body and `data.json` — passes a
+   loaders-only gate, lands under `templates_dir`, and then fails at
+   `ll-artifact render`, defeating the "accepted directly by render" contract.
+   `render_template()` (`artifact_templates.py:319`) is pure, LLM-free, and
+   cheap, and raises exactly the two exception types the gate already catches
+   (`ManifestError` for a malformed body, `DataValidationError` for the
+   StrictUndefined backstop). Discard the rendered string — the gate cares that
+   the render *succeeds*, not what it produces.
 
 Consequence: **nothing needs splicing into `cli/loop/config_cmds.py::cmd_validate()`
 for the shape check.** FEAT-3309's wiring pass flagged that as the hardest
@@ -304,12 +322,35 @@ prior promotion — and `force=True` (required by § Directory promotion item 2)
 destroys it without a word. This is the one destructive edge in an otherwise
 best-effort, never-fails path, and it lands in *tracked* project space.
 
-Guard, cheaply: `manifest.yaml` already carries an optional top-level `source`
-key (`artifact_templates.py:26`). Stamp it at promotion time to identify the
-producing loop, and before swapping, if the destination already exists, load
-its manifest and compare. On a mismatch — or an unreadable/absent `source` —
-log a WARNING naming both the destination and the foreign `source` before
-proceeding. Proceed rather than refuse: refusing would make a promoting loop
+Guard, cheaply — via a **new optional `produced_by` manifest key, not `source`**.
+The 3rd-pass proposal stamped the producing loop into the existing `source` key,
+but that repurposes a field with settled, different semantics: `load_manifest`
+requires `source` to be a non-empty *string* (`artifact_templates.py:178-180`),
+and `templatize` records the **source document path** there
+(`templatize.py:535,883-888`; the `--source` help text says "recorded into
+manifest.source"). A template-mode loop would naturally emit its input-document
+path in `source` — overwriting it destroys loop-emitted provenance, and worse,
+makes the mismatch comparison noisy: the same loop promoting over its own prior
+output with a *different input document* would trip a spurious "foreign source"
+warning, indistinguishable from the genuinely foreign-template case the guard
+exists for. Instead: add `produced_by` to `_MANIFEST_OPTIONAL_KEYS`
+(`artifact_templates.py:26`) with the same non-empty-string validation shape as
+`source` (one line each in code this repo owns), stamp it with the producing
+loop's name at promotion time, and leave `source` untouched.
+
+**Stamp on the staged temp, before the runtime gate runs** — so the stamped
+manifest is exactly what `load_manifest()` validates (a stamp that somehow
+violates the manifest contract fails loudly at the gate instead of landing),
+and what the destination carries for the *next* promotion's comparison.
+Stamping implies a YAML re-dump of the loop-emitted `manifest.yaml`; formatting
+churn (key order, comments) is acceptable — the file is machine-consumed only.
+
+Comparison: before swapping, if the destination already exists, load its
+manifest and compare `produced_by`. On a mismatch — or an unreadable/absent
+`produced_by` (which covers every hand-authored or `templatize`-created
+template, since neither writes the key) — log a WARNING naming both the
+destination and the foreign producer (or its absence) before proceeding.
+Proceed rather than refuse: refusing would make a promoting loop
 permanently wedged behind a stale directory with no in-band way to clear it,
 and `promote()`'s backup is deleted only after a successful swap. The
 requirement is that the clobber is *never silent*, not that it is impossible.
@@ -357,6 +398,12 @@ generate prompt branches by interpolating the same var.
 Rejected: a new `--artifact-mode` run flag (duplicates `--context` for one field);
 shipping a second `html-anything-template.yaml` (doubles maintenance of a 220-line
 loop to vary one prompt block).
+
+Verified (4th pass): `--context KEY=VALUE` merges into `fsm.context`
+unconditionally at `cli/loop/run.py:184-188`, *before* run-time validation — so
+`ll-loop run --context artifact_mode=template` on a loop with no
+`artifact_output` trips the static gate at run time too, even when the YAML
+never declares the key. Desirable; worth one test line, no spec change.
 
 ### Generate-prompt variant — pilot one loop, and split it out
 
@@ -423,8 +470,10 @@ declarations.
 
 `PersistentExecutor.run()` (`persistence.py:1103-1118`) -> `promote_run_artifact`
 (`persistence.py:727-786`) -> `shutil.copytree` to a sibling temp under the
-destination parent -> `templatize.promote()` ->
-`load_manifest`/`find_template_body`/`validate_top_level_data` ->
+destination parent -> stamp `manifest.produced_by` on the temp ->
+`load_manifest`/`find_template_body`/`validate_top_level_data`/`render_template`
+(the runtime gate, on the temp) -> `produced_by` clobber comparison ->
+`templatize.promote()` -> unlink sibling lockfile ->
 `fsm.context["promoted_artifact"]` (the key `_helpers.py:1899` already reads)
 
 ### Codebase Research Findings
@@ -445,6 +494,7 @@ _Added by `/ll:refine-issue` — 2026-08-25 — based on codebase analysis:_
 - `scripts/little_loops/fsm/validation/reachability.py:104-141` — `_validate_artifact_output_subloop_reachability`, the existing `artifact_output` rule and the closest precedent for the new gate's shape, severity choice, and registration style (invoked from `structural_rules.py:1757`)
 - `scripts/little_loops/fsm/validation/` — the new static gate (rule module TBD by category)
 - `scripts/little_loops/fsm/persistence.py:727-786` — `promote_run_artifact`, already landed (from FEAT-3309), called from `PersistentExecutor.run()` at `:1103-1118`; branch it on `artifact_mode` for directory promotion, calling `cli/artifact/templatize.py`'s `promote()` via a function-local import (no shared-module lift needed — see `cli/artifact/templatize.py:574-605` below)
+- `scripts/little_loops/artifact_templates.py:25-26` — add `produced_by` to `_MANIFEST_OPTIONAL_KEYS` + a non-empty-string check in `load_manifest()` mirroring `source` (`:178-180`)
 - `scripts/little_loops/loops/html-anything.yaml` — the pilot generate-prompt variant
 
 ### Dependent Files (Callers/Importers)
@@ -462,7 +512,7 @@ _Added by `/ll:refine-issue` — 2026-08-25 — based on codebase analysis:_
 - `scripts/tests/test_fsm_schema.py:3788+` — `artifact_mode` field coverage
 - `scripts/tests/test_fsm_validation_meta_rules.py:843-860` — pattern for confirming `artifact_mode` doesn't trip the "Unknown top-level" warning
 - `scripts/tests/test_fsm_validation_structural.py` — 30+ existing `test_*_rejected` methods already exercise the "validator rejects a bad config" shape (e.g. `test_unknown_type_rejected` `:500-505`, `test_non_positive_exit_code_is_rejected` `:1463-1483`); the new `artifact_mode` rejection test should follow this existing pattern, not invent a new one.
-- `scripts/tests/test_fsm_persistence.py:1326-1342,1430+` — E2E templates for the runtime gate; also the home for the promotion-edge tests: a bad `data.json` (all three `DataValidationError` shapes), a pre-existing foreign-`source` destination, a stale sibling lockfile, a relative `templates_dir` under a non-cwd `project_root`, and a simulated concurrent `{dest.name}.tmp-<other-pid>` sibling that must survive promotion
+- `scripts/tests/test_fsm_persistence.py:1326-1342,1430+` — E2E templates for the runtime gate; also the home for the promotion-edge tests: a bad `data.json` (all three `DataValidationError` shapes), a Jinja-syntax-error and an undefined-name body (the render-check cases), a pre-existing foreign-`produced_by` destination plus a same-loop re-promotion with a changed `source` (must not warn), a stale sibling lockfile, a relative `templates_dir` under a non-cwd `project_root`, and a simulated concurrent `{dest.name}.tmp-<other-pid>` sibling that must survive promotion
 - Round-trip test: a `template`-mode run's output feeds `ll-artifact render` and produces the expected artifact with no `templatize` invocation
 - `scripts/tests/test_builtin_loops.py` — conformance for `html-anything.yaml`
 
@@ -485,9 +535,9 @@ _Added by `/ll:refine-issue` — 2026-08-25 — based on codebase analysis:_
 
 1. Add `artifact_mode` to `FSMLoop` + `KNOWN_TOP_LEVEL_KEYS`, including `to_dict()`/`from_dict()` round-trip coverage (`test_fsm_schema.py` convention).
 2. Add the static gate — a **template-capable** loop (`_is_template_capable`: effective mode is `"template"`, *or* `artifact_mode` appears as a `context:` key at any value) requires `artifact_output is not None` — at ERROR severity with no `_ok` flag, plus the WARNING when its `artifact_output.to` is set and does not end in `.llat`. Register it by an `errors.extend(...)` call site in `validate_fsm()` (`structural_rules.py:910+`). The rejection test must assert `ll-loop validate` actually rejects — not that a symbol appears in `__all__` — and must cover the `context: {artifact_mode: file}` shape, which is what `html-anything` will actually declare.
-3. Branch `promote_run_artifact` (`fsm/persistence.py:727-786`) on the effective `artifact_mode` for directory promotion: unlink our own stale `{dest.name}.tmp-{os.getpid()}` (**not** `_sweep_stale_siblings(dest)` — it would rmtree a concurrent run's live staging dir) → `shutil.copytree` to `{dest.name}.tmp-{os.getpid()}` under the destination parent → runtime gate on the temp (step 5) → foreign-`source` clobber WARNING if `dest` exists → `templatize.promote(..., force=True)` → `lock_path_for(dest).unlink(missing_ok=True)`, the whole block wrapped so it degrades to a logged warning. `templatize` imported function-locally (following `fsm/executor.py:917`'s convention for `fsm/` reaching into `cli/`; no shared-module lift needed). An effective mode outside `{"file","template"}` logs a warning naming the value and skips promotion.
-4. Default the destination to `<templates_dir>/{loop_name}.llat/` — stable per loop, not run-stamped — always appending `.llat` rather than deriving it from `source.suffix`, with `templates_dir` anchored to `config.project_root` when relative (it is, by default). An explicit `artifact_output.to` is honoured verbatim; no suffix is appended to it. Stamp `manifest.source` with the producing loop so the clobber guard has something to compare.
-5. Add the runtime gate via `load_manifest`/`find_template_body`/`validate_top_level_data`, run **on the staged temp before the swap**, catching `(ManifestError, DataValidationError)` — both, they are sibling `ValueError` subclasses — plus the explicit source-is-a-file rejection, with the non-failing-the-run disposition.
+3. Branch `promote_run_artifact` (`fsm/persistence.py:727-786`) on the effective `artifact_mode` for directory promotion: unlink our own stale `{dest.name}.tmp-{os.getpid()}` (**not** `_sweep_stale_siblings(dest)` — it would rmtree a concurrent run's live staging dir) → `shutil.copytree` to `{dest.name}.tmp-{os.getpid()}` under the destination parent → stamp `manifest.produced_by` on the temp → runtime gate on the temp (step 5) → foreign-`produced_by` clobber WARNING if `dest` exists → `templatize.promote(..., force=True)` → `lock_path_for(dest).unlink(missing_ok=True)`, the whole block wrapped so it degrades to a logged warning. `templatize` imported function-locally (following `fsm/executor.py:917`'s convention for `fsm/` reaching into `cli/`; no shared-module lift needed). An effective mode outside `{"file","template"}` logs a warning naming the value and skips promotion.
+4. Default the destination to `<templates_dir>/{loop_name}.llat/` — stable per loop, not run-stamped — always appending `.llat` rather than deriving it from `source.suffix`, with `templates_dir` anchored to `config.project_root` when relative (it is, by default). An explicit `artifact_output.to` is honoured verbatim; no suffix is appended to it. Add `produced_by` to `_MANIFEST_OPTIONAL_KEYS` (+ non-empty-string validation, mirroring `source`) and stamp it with the producing loop **on the staged temp, before the runtime gate** — never repurpose `source`, which carries the source-document path (see § Default destination). 
+5. Add the runtime gate via `load_manifest`/`find_template_body`/`validate_top_level_data` **plus a discarded `render_template()` call** (a loaders-only gate passes a Jinja syntax error or an undefined-name mismatch that then fails at `ll-artifact render`), run **on the staged temp, after the `produced_by` stamp and before the swap**, catching `(ManifestError, DataValidationError)` — both, they are sibling `ValueError` subclasses — plus the explicit source-is-a-file rejection, with the non-failing-the-run disposition.
 6. Round-trip test through `ll-artifact render` against a hand-written `.llat/` fixture (no LLM); docs.
 7. *(Split out to **FEAT-3320**)* the `html-anything` template-emitting generate-prompt variant, selected by the `artifact_mode` context var. Not in scope here.
 
@@ -498,12 +548,13 @@ _Added by `/ll:refine-issue` — 2026-08-25 — based on codebase analysis:_
 - [ ] A template-capable loop whose `artifact_output.to` does not end in `.llat` produces a WARNING (not an ERROR) naming the destination — it renders by path but cannot be resolved by bare name.
 - [ ] An effective `artifact_mode` outside `{"file","template"}` (reachable only via `--context`) logs a warning naming the bad value and skips promotion, rather than silently degrading to a normal-looking file-mode run.
 - [ ] A `template`-mode loop's promoted directory contains `manifest.yaml`, exactly one `template.*.j2`, and a `data.json` valid against `manifest.data_schema` — verified by the existing `artifact_templates.py` loaders, not by a reimplementation, and verified **on the staged temp before the swap**, so a malformed shape never lands under `templates_dir`.
+- [ ] The runtime gate also proves the template **renders**: a `template.*.j2` with a Jinja syntax error, or an undefined-name mismatch against `data.json`, fails the gate at promotion time (via a discarded `render_template()` call) rather than landing under `templates_dir` and failing later at `ll-artifact render`.
 - [ ] The promoted directory is accepted directly by `ll-artifact render` with no `templatize` step, **resolvable by bare name** (i.e. it lands under `artifacts.templates_dir` — anchored to `config.project_root`, so the destination is independent of the invocation cwd — and is suffixed `.llat`), not only by full path. The default name is stable per loop (`{loop_name}.llat`), so a second run of the same loop overwrites rather than accumulating a new run-stamped directory.
 - [ ] A malformed/missing shape on a non-failure terminal surfaces the loader's error text and marks promotion failed **without** changing the run's exit status; a failure terminal is a silent no-op. `artifact_output.from` resolving to a file (not a directory) under `template` mode produces an explicit "requires a directory" message, not a misleading `ManifestError`.
 - [ ] The gate reports the diagnostic text for a bad **`data.json`** — unparseable JSON, a reserved top-level `ll` key, and a `manifest.data_schema` mismatch — not just for a bad `manifest.yaml`. (`DataValidationError` is a sibling of `ManifestError`, not a subclass; catching only the latter drops all three.)
 - [ ] Directory promotion is atomic (temp + rollback), reusing `templatize.promote()` rather than a second implementation — and **the declared source survives in `run_dir`** (promotion copies; `promote()`'s bare `os.replace` would move it). A second run over an existing destination overwrites it via the backup/restore path, and a crash between `copytree` and the swap leaves only a `{dest.name}.tmp-<pid>` sibling, reclaimed by the next same-pid promotion.
 - [ ] Two concurrent promotions of the same loop to the same stable destination do not destroy each other's staging directory: the outcome is last-writer-wins on `dest`, never a half-copied template or a promotion that dies mid-`copytree`. (Specifically: `_sweep_stale_siblings(dest)` is **not** called — its prefix match would rmtree the other run's live `{dest.name}.tmp-<pid>`.)
-- [ ] Promoting over a destination whose `manifest.source` names a different producer — a hand-authored or `templatize`-created template of the same name — logs a WARNING naming both before proceeding. The clobber may happen; it is never silent. A successful promotion also unlinks the sibling `{dest.name}.lock`, so `ll-artifact status` reports NO-LOCK rather than classifying the new template against the old one's render records.
+- [ ] Promotion stamps `manifest.produced_by` (a new `_MANIFEST_OPTIONAL_KEYS` entry with `source`-style non-empty-string validation) with the producing loop, on the staged temp **before** the runtime gate — so the stamped manifest is what gets validated — and leaves `manifest.source` untouched (it carries the source-document path, `templatize`'s settled semantics). Promoting over a destination whose `produced_by` differs or is absent — a hand-authored or `templatize`-created template of the same name — logs a WARNING naming both before proceeding; a re-promotion by the same loop over its own prior output (even with a different input document in `source`) does **not** warn. The clobber may happen; it is never silent. A successful promotion also unlinks the sibling `{dest.name}.lock`, so `ll-artifact status` reports NO-LOCK rather than classifying the new template against the old one's render records.
 - [ ] `promote_run_artifact` still never raises and never changes the run's exit status in `template` mode, including when the destination already exists (`promote()` raises `SpliceError` unless `force=True`) and when the destination is on another filesystem.
 - [ ] `artifact_mode` survives a `to_dict()`/`from_dict()` round-trip and does not trip the unknown-top-level-key WARNING in `structural_rules.py::load_and_validate()`.
 - [ ] `artifact_mode` defaults to `"file"`; every loop that declares nothing behaves exactly as today, and the `artifact_versioning_ok` MR-5 tests stay green.
@@ -527,6 +578,8 @@ _Added by `/ll:refine-issue` — 2026-08-25 — based on codebase analysis:_
 **Open** | Created: 2026-08-24 | Priority: P2
 
 ## Session Log
+- Pre-implementation review (4th pass) - 2026-08-25 - re-verified all load-bearing claims against code (all held); replaced the `manifest.source` clobber-guard stamp with a new `produced_by` optional manifest key after finding `source` already carries the source-document path per `templatize`'s settled semantics (repurposing it destroys loop-emitted provenance and makes same-loop/different-input re-promotions warn spuriously); widened the runtime gate with a discarded `render_template()` call (loaders alone pass a Jinja syntax error or undefined-name mismatch that then fails at `ll-artifact render`); pinned stamp ordering (staged temp, before the gate, so the stamped manifest is what's validated); confirmed `--context` merges before run-time validation so the static gate also fires at `ll-loop run` time.
+- `/ll:confidence-check` - 2026-08-25T17:20:32 - `3e64b7dd-cbc1-426d-840e-8059b3a2dfd1.jsonl`
 - Pre-implementation review (3rd pass) - 2026-08-25 - closed the static gate's remaining blind spot (it must key on template-*capability* — `artifact_mode` present as a `context:` key at any value — not on the effective value, since `html-anything` will ship `context: {artifact_mode: file}`); replaced `_sweep_stale_siblings(dest)` with a self-pid-only unlink after finding its prefix match rmtrees a concurrent same-loop run's live staging dir (a hazard the stable-name decision introduced); added a `manifest.source` clobber guard for overwriting a hand-authored/`templatize`d template of the same name in tracked space; widened the runtime gate to catch `DataValidationError` alongside `ManifestError` (siblings, not a subclass pair — a malformed `data.json` would have escaped); pinned `templates_dir` anchoring to `project_root` and `to:` as honoured verbatim (+ a non-`.llat` WARNING); required unlinking the stale sibling lockfile; verified `_helpers.py`'s promoted-artifact print needs no change; retired the now-settled severity question from the research findings.
 - Pre-implementation review (2nd pass) - 2026-08-25 - corrected the rule-registration mechanism (`__all__` is a re-export list, not the registry; `_validate_artifact_output_subloop_reachability` is the live counter-example), closed the static gate's blind spot on `context:`-declared modes, added a disposition for an invalid context value, replaced the run-stamped default destination with a stable `{loop_name}.llat` (four consequences: unbounded growth in tracked space, `ll-artifact status` pollution, no cheap-refresh target, and dead swap/sweep machinery), moved the runtime gate before the swap, pinned the temp-dir name to the sweep's prefix, and ruled lockfile emission out of scope.
 - Pre-implementation review - 2026-08-25 - resolved four blockers (promote() moves rather than copies and raises; mode selection via `--context`; default destination `templates_dir` not `promotion_dir`; "declared deliverable" = `artifact_output`), settled the static-gate severity, corrected four stale statements (`Violation`→`ValidationError`, `promoted`→`promoted_artifact`, retracted shared-module lift, `_sweep_stale_siblings` is caller-invoked), and split the `html-anything` prompt variant out of scope.
