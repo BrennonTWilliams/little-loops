@@ -18,7 +18,7 @@ depends_on:
 learning_tests_required:
 - sql.js
 - jinja2
-confidence_score: 97
+confidence_score: 90
 outcome_confidence: 69
 score_complexity: 14
 score_test_coverage: 15
@@ -984,6 +984,7 @@ below are narrowed, not eliminated — see the resolution note).
   an equivalent summary paragraph directly under the title — cosmetic only.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-25T21:36:37 - `41c23674-8ae1-4ab5-afa3-ad0ce2e1075c.jsonl`
 - fourth pre-implementation review - 2026-08-25 - added D21–D23 and amended D13/D17: pinned the `artifacts.export` v1 config shape to `{mode, max_artifact_bytes}` and deferred ENH-075's "additions" field (unversioned local widening would make the allowlist-version stamp ambiguous), stated local-mode table scope (any `_EXPORT_TABLE_MAP` type, `SELECT *`, same defaults), added the `</script>`-in-glue check the Node learning test cannot catch, gave D13 a test, and bounded the result-row cap's memory via `prepare()`/`step()`. Re-verified earlier passes' load-bearing claims against the code in the same review — all hold. Three ACs updated/added
 - third pre-implementation review - 2026-08-25 - added D14–D20 and five ACs from re-checking the issue's load-bearing claims against the code: corrected the Background's false "the renderer validates `data.json`" claim (validation is `cmd_render`'s, `render.py:119`) and the packaged-template handoff (`resolve_template()` takes `str`, `importlib.resources` yields a `Traversable`); specified the previously-open output filename/default directory (`promotion_dir`, not the `"."` project root), the `--tables`/`--since` defaults plus a cheap raw-snapshot size pre-check ahead of D7's final-HTML ceiling, the page's result-row cap (~150k rows would hang the tab), the `autoescape=False` escaping ownership rule, and the inline `schema_version` read with the reason D2's raw `mode=ro` connect matters (the store's normal open path migrates on open). Verified in the same pass: every ENH-075 allowlist column exists in the live schema, and D9's `importlib.resources` precedent is real
 - second pre-implementation review - 2026-08-25 - cleared the learning-test hard override (`/ll:explore-api sql.js` → `.ll/learning-tests/sqljs.md`, proven), proved D2's ATTACH-from-`mode=ro` construction by spike, rewrote D6 (`PRAGMA query_only` + multi-statement check; a leading-`SELECT` check was measured insufficient) and D8 (measured ~924 KB floor, not ~2 MB), and added D9–D13: packaged `.llat` resolution via `importlib.resources`, the frozen Jinja delimiter/autoescape constraints, export-time schema-version comparison (the prior view-time AC was not implementable), the allowlist-constant + version-bump rule, and `COALESCE(ended_at, started_at)` for `--since`
