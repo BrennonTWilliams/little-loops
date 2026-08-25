@@ -85,7 +85,7 @@ jobs:
     # (no inputs.sink_issue), env.SINK_ISSUE is empty → Path E guard at :185
     # emits ::warning:: and stays off (correct). On dispatch, defaults to '11'.
     env:
-      SINK_ISSUE: ${{ inputs.sink_issue }}
+      SINK_ISSUE: ${{ github.event.inputs.sink_issue }}
     steps:
       - uses: actions/checkout@v4
 
@@ -129,10 +129,10 @@ jobs:
         # Skipped on push events (env.SINK_ISSUE empty). On dispatch events
         # (default sink_issue=11), runs POST + retry + fail-fast + capture.
         # COMMENT_ID is exported via $GITHUB_ENV for step 6 to read.
-        if: ${{ inputs.sink_issue != '' }}
+        if: ${{ github.event.inputs.sink_issue != '' }}
         timeout-minutes: 5
         env:
-          SINK_ISSUE: ${{ inputs.sink_issue }}
+          SINK_ISSUE: ${{ github.event.inputs.sink_issue }}
         run: |
           INITIAL_BODY="Path E diagnostic stream for run $GITHUB_RUN_ID. Updates every ~30s; 65KB cap handled by drop-oldest meta-lines. Last successful PATCH before runner death is the snapshot we want."
           COMMENT_ID=""
