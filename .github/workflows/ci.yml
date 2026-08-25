@@ -232,7 +232,11 @@ jobs:
               # wchan:32 captures the kernel function a process is blocked on
               # (load-bearing for storage-stall vs per-test subprocess/IO deadlock).
               # Combined with `args` (test name), correlates wedge location with test heaviness.
-              ps -eo pid,ppid,etime,rss,stat,wchan:32,args --sort=pid | grep -E '[p]ytest|[p]ython' || echo "  (no pytest/python processes)"; \
+              # Broadened grep: must match the background subshells too (they run as
+              # bash/sleep/date/gh/tail, NOT pytest/python), or wchan misses the
+              # reaper's `date >> reaper.log` D-state — the dispositive storage-stall
+              # signal. Narrow grep = the diagnostic answers the wrong question.
+              ps -eo pid,ppid,etime,rss,stat,wchan:32,args --sort=pid | grep -E '[p]ytest|[p]ython|[b]ash|[s]leep|[d]ate|[g]h|[t]ail|tee' || echo "  (no relevant processes)"; \
               sleep 30; \
             done
           ) > heartbeat.log 2>&1 &
