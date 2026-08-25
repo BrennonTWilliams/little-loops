@@ -338,11 +338,27 @@ jobs:
                 # into run, back half of dispatch lost. Same design-vs-implementation
                 # pathology as the grep bug.
                 CURRENT_BODY=$(gh api "/repos/$GITHUB_REPOSITORY/issues/comments/$COMMENT_ID" --jq .body 2>/dev/null) || CURRENT_BODY=""
-                # line 321 fix: `$(cat /tmp/pathE_snapshot.txt)` has no `||` chain in the
-                # original — if cat returns non-zero (file missing, fs error), `set -e`
-                # would kill the subshell. With `set +e` AND a fallback assignment, the
-                # loop survives snapshot-file errors and continues to PATCH.
-                NEW_BODY=$(cat /tmp/pathE_snapshot.txt 2>/dev/null) || NEW_BODY="${CURRENT_BODY}"
+                # line 345 fix (corrected): skip the iteration if the snapshot file is
+                # missing or zero-size, with a forensic heartbeat entry. The earlier
+                # `|| NEW_BODY="${CURRENT_BODY}"` fallback produced CURRENT_BODY +
+                # "\n\n" + CURRENT_BODY (doubled body) under partial-failure modes
+                # where `cat` fails but the subsequent `printf > /tmp/pathE_body.txt`
+                # succeeds — silent compounding hazard. Skipping keeps the loop a
+                # useful stall sensor rather than a corrupted-body PATCHer. The
+                # `missing` vs `zero-size` reason disambiguates "snapshotter failed to
+                # write" from "snapshotter opened for write but didn't close properly"
+                # — different bug classes if it persists across dispatches.
+                NEW_BODY=$(cat /tmp/pathE_snapshot.txt 2>/dev/null)
+                if [ ! -s /tmp/pathE_snapshot.txt ]; then
+                  if [ -e /tmp/pathE_snapshot.txt ]; then
+                    REASON="zero-size"
+                  else
+                    REASON="missing"
+                  fi
+                  echo "$(date -u +%H:%M:%S) snapshotter: pathE_snapshot.txt $REASON (D-state?)" >> /tmp/snapshotter_heartbeat.log 2>/dev/null || true
+                  sleep 30
+                  continue
+                fi
                 NEW_BODY="${CURRENT_BODY}"$'\n\n'"${NEW_BODY}"
                 # 60000 leaves 5536-char buffer for PATCH validation / future growth.
                 if [ "${#NEW_BODY}" -gt 60000 ]; then
