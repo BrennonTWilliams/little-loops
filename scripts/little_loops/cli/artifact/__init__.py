@@ -11,11 +11,14 @@ Provides:
 - ``extract`` / ``refresh`` (FEAT-3310 Phase 2): LLM-driven
   ``source-document -> data.json`` mapping, and the ``extract`` + ``render``
   compose against a template's bound source.
+- ``status`` (FEAT-3311 Phase 3): lockfile staleness detection — reports
+  FRESH/STALE/SOURCE-MISSING/OUTPUT-MISSING/NO-LOCK per `(template,
+  source)` pair against `<template>.llat.lock`.
 
 One module per subcommand (``policy_builder.py``, ``design_md.py``,
-``render.py``), following the ``cli/issues/`` / ``cli/loop/`` convention
-(decided 2026-08-23, FEAT-3036 § Second-pass decisions) — with one
-deliberate exception: ``extract`` and ``refresh`` both live in
+``render.py``, ``status.py``), following the ``cli/issues/`` / ``cli/loop/``
+convention (decided 2026-08-23, FEAT-3036 § Second-pass decisions) — with
+one deliberate exception: ``extract`` and ``refresh`` both live in
 ``extract.py``, since ``refresh`` is a thin compose over ``extract`` +
 ``render`` with no independent logic of its own (FEAT-3310).
 """
@@ -34,6 +37,7 @@ from little_loops.cli.artifact.extract import (
 )
 from little_loops.cli.artifact.policy_builder import _themed_css_vars, cmd_policy_builder
 from little_loops.cli.artifact.render import add_render_parser, cmd_render
+from little_loops.cli.artifact.status import add_status_parser, cmd_status
 from little_loops.cli.artifact.templatize import add_templatize_parser, cmd_templatize
 from little_loops.cli.output import configure_output, use_color_enabled
 from little_loops.logger import Logger
@@ -47,6 +51,7 @@ __all__ = [
     "cmd_templatize",
     "cmd_extract",
     "cmd_refresh",
+    "cmd_status",
     "_themed_css_vars",
 ]
 
@@ -78,14 +83,23 @@ Examples:
   %(prog)s extract my-report docs/risk-register.md   # LLM: source -> data.json, schema-checked
   %(prog)s refresh my-report                    # extract + render against the bound source
   %(prog)s refresh my-report docs/risk-register.md -o build/   # ...against an explicit source
+  %(prog)s render my-report --data data.json --source docs/risk-register.md  # render + lock
+  %(prog)s status                                # check every lockfile-bearing template
+  %(prog)s status my-report                      # check one template (NO-LOCK if untracked)
 
 Exit codes:
   0 - Artifact generated successfully
   1 - Error occurred (including: templatize/extract input over the configured size ceiling,
       missing/unreadable source, a malformed/unresolvable LLM response, a manifest with no
-      usable extraction.prompt, or — for refresh — a render that succeeded but whose
-      lockfile write then failed)
+      usable extraction.prompt, a render --source that does not resolve to an existing file,
+      or — for refresh/render --source — a render that succeeded but whose lockfile write then
+      failed)
   2 - templatize: round-trip verification rejected the extraction (see <out>.llat.rejected/)
+
+Status exit codes (ll-artifact status):
+  0 - every reported (template, source) pair is FRESH (an empty report is vacuously FRESH)
+  1 - any pair is STALE/SOURCE-MISSING/OUTPUT-MISSING/NO-LOCK, an unresolvable <template>, or a
+      malformed lockfile
 """,
         )
         subparsers = parser.add_subparsers(dest="command", required=True)
@@ -139,6 +153,7 @@ Exit codes:
         add_templatize_parser(subparsers)
         add_extract_parser(subparsers)
         add_refresh_parser(subparsers)
+        add_status_parser(subparsers)
 
         args = parser.parse_args()
 
@@ -157,5 +172,7 @@ Exit codes:
             return cmd_extract(args, logger)
         if args.command == "refresh":
             return cmd_refresh(args, logger)
+        if args.command == "status":
+            return cmd_status(args, logger)
         parser.error(f"unknown command: {args.command}")
         return 1

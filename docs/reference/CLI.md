@@ -4466,8 +4466,9 @@ Generate self-contained, human-facing artifacts from project data. `policy-build
 | `templatize` | Save a generated artifact as a reusable `.llat/` template (Phase A: deterministic, `--regions` map) |
 | `extract` | LLM extraction: source document -> `data.json`, schema-checked |
 | `refresh` | `extract` + `render` composed against a template's bound source, recording `<template>.llat.lock` |
+| `status` | Lockfile staleness detection: FRESH/STALE/SOURCE-MISSING/OUTPUT-MISSING/NO-LOCK per `(template, source)` pair |
 
-**Exit codes:** `0` = artifact generated successfully, `1` = error (see `templatize` below for its distinct `2`)
+**Exit codes:** `0` = artifact generated successfully, `1` = error (see `templatize` below for its distinct `2`, and `status` below for its own exit-code rule)
 
 #### ll-artifact policy-builder
 
@@ -4522,14 +4523,16 @@ The render context is `data.json`'s top-level keys plus a reserved `ll` namespac
 |------|-------|-------------|
 | `--data <path>` | | Path to `data.json` (default: `<template>/data.json`) |
 | `--output <dir>` | `-o` | Output directory (default: `config.artifacts.default_output_dir`). The manifest's `output:` is a filename; the effective path is `(-o DIR \| default_output_dir) / manifest.output`. The only error case is `-o` naming an existing file. |
+| `--source <path>` | | (FEAT-3311) Asserts "this `data.json` came from this file." When given, checked for existence *before* the render (a bad `--source` costs nothing), then after a successful render writes/updates `<template>.llat.lock` recording the source's sha256, an ISO-8601-UTC `rendered_at`, and the rendered `output` file path. Omit to render without touching any lockfile — the unchanged Phase-1 behavior. |
 
 **Examples:**
 ```bash
 ll-artifact render my-report                 # Resolve artifacts/templates/my-report.llat, render against its data.json
 ll-artifact render ./my-report.llat --data data.json -o build/
+ll-artifact render my-report --data data.json --source docs/risk-register.md  # render + lock
 ```
 
-**Exit codes:** `0` = artifact rendered, `1` = template not found, an invalid manifest, missing/malformed/schema-invalid data, or `-o` naming an existing file.
+**Exit codes:** `0` = artifact rendered (and, with `--source`, the lockfile updated), `1` = template not found, an invalid manifest, missing/malformed/schema-invalid data, `-o` naming an existing file, a `--source` that does not resolve to an existing file, or — with `--source` — a render that succeeded but whose lockfile write then failed.
 
 #### ll-artifact templatize
 
@@ -4565,7 +4568,7 @@ ll-artifact templatize out/index.html docs/ARCHITECTURE.md -o arch-review.llat  
 
 **Exit codes:** `0` = template written and round-trip verified, `1` = malformed input / IO failure (missing artifact/source/regions map, CRLF artifact, extensionless artifact, malformed `--regions` map or discovery response, oversized discovery input, an existing `-o` without `--force`), `2` = round-trip verification rejected the extraction — the candidate plus a `roundtrip.diff` (and, on the discovery branch, `discovery.json`/`regions.json`) are written to `<out>.llat.rejected/` and any pre-existing `-o` template is left untouched.
 
-> **Note:** `templatize` (FEAT-3308, Phases A–C), `render` (Phase 1 of FEAT-3036), and `extract`/`refresh` (Phase 2 of FEAT-3036, FEAT-3310) are implemented (see `.issues/features/P3-FEAT-3036-artifact-templates-design.md`). `status` (staleness detection) is not yet implemented.
+> **Note:** `templatize` (FEAT-3308, Phases A–C), `render` (Phase 1 of FEAT-3036), `extract`/`refresh` (Phase 2, FEAT-3310), and `status` (Phase 3, FEAT-3311, staleness detection) are all implemented (see `.issues/features/P3-FEAT-3036-artifact-templates-design.md`).
 
 #### ll-artifact extract
 
@@ -4615,6 +4618,37 @@ ll-artifact refresh my-report docs/risk-register.md -o build/   # ...against an 
 ```
 
 **Exit codes:** `0` = artifact rendered and lockfile updated, `1` = any `extract` failure, a render failure, an unresolvable default source, or a render that succeeded but whose lockfile write then failed.
+
+#### ll-artifact status
+
+Lockfile staleness detection (FEAT-3311 Phase 3): compares each recorded source's current sha256 against `<template>.llat.lock`, reporting one of five states per `(template, source)` pair — evaluated first-match-wins in this order:
+
+1. **SOURCE-MISSING** — the recorded source path no longer exists on disk.
+2. **STALE** — the source exists but its current sha256 differs from the recorded one.
+3. **OUTPUT-MISSING** — the source hash matches, but the recorded `output` artifact file no longer exists (deleted after the last render/refresh).
+4. **FRESH** — the source hash matches and the `output` file exists.
+5. **NO-LOCK** — reported per explicitly-named `<template>` (not per source): no `.llat.lock` sibling exists, or one exists but its `renders` mapping is empty. "I cannot tell whether this is fresh" must not read as "it is fresh."
+
+With `<template>` arguments, each is resolved via the same path-first `resolve_template` rule as `render`/`extract` — a template resolved by a path outside `config.artifacts.templates_dir` gets its lockfile read from beside it, wherever that is (the "lockfile is committed" guarantee only holds for in-repo templates). With no `<template>` arguments (**discovery mode**), `status` enumerates every `.llat/` template under `config.artifacts.templates_dir` that has a `.llat.lock` sibling and skips the rest — a lockfile-less template is silently omitted (not NO-LOCK) in this mode, and a missing/empty `templates_dir` produces an empty report plus a distinct info-level "no templates with a lockfile found under `<dir>`" log line, so a mistyped `templates_dir` is visible rather than passing silently.
+
+A `renders` key or its `output` value is resolved absolute-as-is when `os.path.isabs`, otherwise against `config.project_root` — **never against cwd**, so `status` run from a project subdirectory still resolves entries it wrote itself. `rendered_at` is diagnostic only (ISO-8601 UTC, trailing `Z`); it is never read back or classified on. A malformed `.llat.lock` (unparseable YAML, non-mapping top level, missing/non-mapping `renders`, or an unknown `version`) is an exit-1 `LockfileError`, not a sixth reported state.
+
+**Flags:**
+
+| Flag | Description |
+|------|-------------|
+| `<template>` (positional, 0+) | Template(s) to check (path or name under `config.artifacts.templates_dir`). Omit to discover every lockfile-bearing template under `templates_dir`. |
+
+**Examples:**
+```bash
+ll-artifact status                    # Discover every tracked template under templates_dir
+ll-artifact status my-report          # Check one template (NO-LOCK if it has never been refreshed)
+ll-artifact status my-report other    # Check several by name
+```
+
+**Exit codes:** `0` = every reported `(template, source)` pair is FRESH — an empty report (nothing discovered, or `templates_dir` missing) counts as vacuously FRESH; `1` = any pair is STALE/SOURCE-MISSING/OUTPUT-MISSING, an explicitly-named template is NO-LOCK, a `<template>` argument is unresolvable, or the lockfile is malformed (`LockfileError`). An explicitly-named untracked template (`NO-LOCK`) always exits non-zero even though the equivalent discovery-mode run (which just skips it) can exit `0` — an explicit argument asserts the caller expects tracking.
+
+> **Note:** the lockfile (`<template>.llat.lock`) is committed to version control, not gitignored — the CI use case above only works against a lockfile the build actually checks out.
 
 ---
 

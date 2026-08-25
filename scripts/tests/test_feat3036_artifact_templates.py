@@ -449,6 +449,64 @@ class TestCmdRender:
         assert code == 0
         assert (out_dir / "report.html").is_file()
 
+    def test_source_lockfile_write_failure_on_readonly_templates_dir_exits_1(
+        self, tmp_path: Path
+    ) -> None:
+        """FEAT-3311: `render --source` writes `<template>.llat.lock` beside the template
+        (inside `templates_dir`). A read-only `templates_dir` cannot receive that write, so a
+        render that itself succeeds still exits 1 once the lockfile write fails.
+        """
+        import os
+        import stat
+
+        from little_loops.cli.artifact.render import cmd_render
+
+        templates_dir = tmp_path / "templates"
+        templates_dir.mkdir()
+        root = _copy_fixture("simple", templates_dir)
+        _make_config(tmp_path)
+        source = tmp_path / "source.md"
+        source.write_text("v1")
+        out_dir = tmp_path / "out"
+
+        original_mode = templates_dir.stat().st_mode
+        os.chmod(templates_dir, stat.S_IREAD | stat.S_IEXEC)
+        try:
+            args = argparse.Namespace(
+                template=str(root), data=None, output=str(out_dir), source=str(source)
+            )
+            with patch("pathlib.Path.cwd", return_value=tmp_path):
+                code = cmd_render(args, Logger(use_color=False, verbose=True))
+            assert code == 1
+        finally:
+            os.chmod(templates_dir, original_mode)
+
+    def test_bare_render_on_readonly_templates_dir_still_exits_0(self, tmp_path: Path) -> None:
+        """Without `--source`, `render` never touches the lockfile, so a read-only
+        `templates_dir` (which would break a `--source` write) has no effect on it.
+        """
+        import os
+        import stat
+
+        from little_loops.cli.artifact.render import cmd_render
+
+        templates_dir = tmp_path / "templates"
+        templates_dir.mkdir()
+        root = _copy_fixture("simple", templates_dir)
+        _make_config(tmp_path)
+        out_dir = tmp_path / "out"
+
+        original_mode = templates_dir.stat().st_mode
+        os.chmod(templates_dir, stat.S_IREAD | stat.S_IEXEC)
+        try:
+            args = argparse.Namespace(template=str(root), data=None, output=str(out_dir))
+            with patch("pathlib.Path.cwd", return_value=tmp_path):
+                code = cmd_render(args, Logger(use_color=False, verbose=True))
+            assert code == 0
+            assert (out_dir / "report.html").is_file()
+        finally:
+            os.chmod(templates_dir, original_mode)
+
 
 # ---------------------------------------------------------------------------
 # CLI dispatch

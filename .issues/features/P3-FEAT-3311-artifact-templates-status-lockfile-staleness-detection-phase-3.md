@@ -3,10 +3,11 @@ id: FEAT-3311
 type: FEAT
 title: 'Artifact templates: status + lockfile staleness detection (Phase 3)'
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-08-24'
 captured_at: '2026-08-24T03:57:16Z'
+completed_at: '2026-08-25T14:38:47Z'
 parent: EPIC-3299
 depends_on:
 - FEAT-3036
@@ -605,6 +606,7 @@ _Added by `/ll:confidence-check` on 2026-08-24_
   (`status.py` and `render.py --source` both import `lockfile.py`).
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-25T14:38:23 - `831bd8a2-c37a-4552-a3b4-987cdb9a2bf3.jsonl`
 - `/ll:confidence-check` - 2026-08-25T14:23:01 - `6f7c0860-0a4f-4797-a714-893d8c560ffe.jsonl`
 - `/ll:confidence-check` - 2026-08-25T03:54:55 - `67559544-9757-4873-8ba3-963fe9f9ebb2.jsonl`
 - `/ll:confidence-check` - 2026-08-25T03:42:12 - `3906fc07-f9f6-4960-99f5-5a221177c28d.jsonl`
