@@ -514,6 +514,61 @@ on the packaged path directly — the path is known at that point, so there is
 nothing to resolve, and `resolve_template()`'s `templates_dir` fallback branch
 is project-local (D9) and can only produce a misleading error message here.
 
+## Decisions (2026-08-25) — fourth pre-implementation review
+
+Three previously unspecified surfaces, pinned so they are not decided at
+implementation time. The load-bearing claims from earlier passes were
+re-verified against the code in the same review (`_EXPORT_TABLE_MAP` keys,
+the `meta`/`schema_version` query at `schema.py:1308`, the frozen Jinja
+environment, `load_assets()` UTF-8-only, `promotion_dir`, `render_template()`
+not validating) — all hold.
+
+**D21 — `artifacts.export` v1 config shape is `{mode, max_artifact_bytes}`
+only; the ENH-075 "additions" field is deferred.** D12 pinned the base
+allowlist as a code constant but left the config side at "carries additions"
+with no shape — and `additionalProperties: false` means the schema must be
+written exactly, so an unpinned shape gets invented at implementation time.
+Deferring it is the better cut: no AC requires additions, and an unversioned
+project-local widening would muddy the allowlist-version stamp (base v1 +
+silent local additions makes the stamp ambiguous, undercutting the control it
+exists to provide). When a consumer actually needs additions, the field lands
+as its own small issue that must also answer how the stamp reflects them
+(e.g. "v1 + project additions"). This narrows ENH-075's recorded sketch; the
+narrowing is deliberate and recorded here rather than silently.
+
+**D22 — In `--local` mode, `--tables` may select any `_EXPORT_TABLE_MAP`
+type, exported as `SELECT *`.** ENH-075's "local mode may embed anything"
+implied this but no decision stated it. Shareable mode: `--tables` selects
+from the shareable types only (D16) with the column projection applied.
+Local mode: any of the 20 type names is accepted; types without a
+`_SHAREABLE_COLUMNS` entry export all columns; the `--since` predicate still
+uses that type's `_EXPORT_TABLE_MAP` timestamp column. The default when
+`--tables` is absent stays `loop_run,usage_event` in both modes — local mode
+widens what *may* be selected, not what is selected silently.
+
+**D23 — Verify the vendored `sql-wasm.js` glue contains no literal
+`</script>` before wiring it inline.** D10 covers the Jinja delimiters, but
+the glue is injected as text inside an inline `<script>` tag, and a
+`</script>` anywhere in the minified emscripten output truncates the script
+in the browser — a failure the Node learning test cannot catch. One grep of
+the vendored file at vendoring time, plus a test asserting the substring is
+absent from the vendored glue (so a future version bump re-proves it). If a
+future version ever hits, the fallback is embedding the glue base64 like the
+wasm.
+
+**D13 (amended) — the `COALESCE(ended_at, started_at)` semantics gets a
+test.** The fourth review noted D13 had a Decision Rule but no assertion:
+add a test that a `loop_runs` row with `ended_at IS NULL` and `started_at`
+inside the window is present in the recovered snapshot.
+
+**D17 (amended) — bound memory, not just DOM.** The render cap stops DOM
+explosion, but `db.exec()` still materializes every result row into JS
+arrays first (~150k on the measured 30-day snapshot). Use
+`db.prepare()`/`step()` instead: collect rows only up to the cap, keep
+stepping to count the true total, then `free()` the statement. Same honest
+"showing 500 of N" line, bounded memory, still no rewriting of the user's
+SQL.
+
 ## Must address
 
 - **Snapshot size.** *Resolved by D1 (gzip+base64), D2 (no `VACUUM`/index
@@ -642,9 +697,10 @@ _Added by `/ll:refine-issue` — 2026-08-25 — based on codebase analysis:_
 - [ ] The ENH-075 base allowlist is a module-level constant with a version
       marker beside it (per D12), and a test fails if the constant changes
       without the version being bumped in the same commit.
-- [ ] `.ll/ll-config.json` accepts an `artifacts.export` block — schema updated,
-      round-tripped by `BRConfig`, and covered by a test that an unknown key is
-      still rejected.
+- [ ] `.ll/ll-config.json` accepts an `artifacts.export` block with exactly
+      `mode` and `max_artifact_bytes` (per D21 — no "additions" field in v1) —
+      schema updated, round-tripped by `BRConfig`, and covered by a test that
+      an unknown key is still rejected.
 - [ ] `cmd_dashboard` validates its `data` payload against the dashboard
       manifest's `data_schema` before rendering (per D14), with a test that a
       payload missing a required key raises `DataValidationError` rather than
@@ -652,7 +708,8 @@ _Added by `/ll:refine-issue` — 2026-08-25 — based on codebase analysis:_
 - [ ] A query returning more rows than the page's render cap displays at most
       the cap and states the true total ("showing 500 of N rows"), per D17,
       with a test asserting the submitted SQL is passed to `sql.js`
-      unmodified — the cap is applied at render, not by rewriting the query.
+      unmodified — the cap is applied at render via `prepare()`/`step()`
+      (rows collected only up to the cap), not by rewriting the query.
 - [ ] With no `--tables`, the export covers exactly the shareable-allowlist
       types (`loop_run`, `usage_event`) and not `_EXPORT_DEFAULT_TABLES`'s
       full set (per D16), asserted by a test on the recovered snapshot schema.
@@ -662,6 +719,12 @@ _Added by `/ll:refine-issue` — 2026-08-25 — based on codebase analysis:_
 - [ ] Generating a dashboard leaves the source `.ll/history.db` byte-identical
       (per D19 — the export must not travel the migrating open path), asserted
       by hashing the DB file before and after an export run.
+- [ ] A `loop_runs` row with `ended_at IS NULL` and `started_at` inside the
+      `--since` window is present in the recovered snapshot (per D13's
+      `COALESCE` semantics), asserted by a test.
+- [ ] The vendored `sql-wasm.js` glue contains no literal `</script>`
+      substring (per D23), asserted by a test against the vendored file so a
+      version bump re-proves it.
 
 ## Dependencies
 
@@ -754,9 +817,9 @@ _Wiring pass added by `/ll:wire-issue`:_
 _Added by `/ll:refine-issue` — 2026-08-25 — based on codebase analysis:_
 
 ### Types
-- New `ArtifactsExportConfig`-shaped nested block on `ArtifactsConfig` (`scripts/little_loops/config/features.py:369-403`) — `mode: str` (`"shareable"` default | `"local"`), `max_artifact_bytes: int` (default `8000000`, **D7**), and project-specific *additions* to the shareable set, mirroring the two-level nesting `AnalyticsCaptureConfig` already uses (`config/core.py:340-342`). Per **D12** the allowlist **version** is not a config field — it is a code constant beside the base allowlist, so a shared artifact's stamp cannot be forged by editing local config
+- New `ArtifactsExportConfig`-shaped nested block on `ArtifactsConfig` (`scripts/little_loops/config/features.py:369-403`) — exactly two fields in v1 per **D21**: `mode: str` (`"shareable"` default | `"local"`) and `max_artifact_bytes: int` (default `8000000`, **D7**), mirroring the two-level nesting `AnalyticsCaptureConfig` already uses (`config/core.py:340-342`). The ENH-075 "additions" field is deferred (**D21**). Per **D12** the allowlist **version** is not a config field — it is a code constant beside the base allowlist, so a shared artifact's stamp cannot be forged by editing local config
 - The shareable allowlist itself is a `table -> [columns]` mapping; the closest existing typed precedent for a table-name allowlist is `_EXPORT_TABLE_MAP: dict[str, tuple[str, str]]` (`session_store/queries.py:89-110`), which maps a public type name to `(table_name, timestamp_column)` — column-level projection has no existing type to extend
-- Per **D12**, that mapping is a **code constant**, not config: `_SHAREABLE_COLUMNS: dict[str, list[str]]` keyed by physical table name, plus `_SHAREABLE_ALLOWLIST_VERSION: int = 1`, both module-level in `session_store/queries.py` beside `_EXPORT_TABLE_MAP`. `artifacts.export` config carries only *additions* to the base set, the default mode, and `max_artifact_bytes` — never the base set itself
+- Per **D12**, that mapping is a **code constant**, not config: `_SHAREABLE_COLUMNS: dict[str, list[str]]` keyed by physical table name, plus `_SHAREABLE_ALLOWLIST_VERSION: int = 1`, both module-level in `session_store/queries.py` beside `_EXPORT_TABLE_MAP`. `artifacts.export` config carries only the default mode and `max_artifact_bytes` (**D21** — additions deferred) — never the base set itself
 
 ### Signatures
 - `ArtifactsConfig.from_dict(cls, data: dict[str, Any]) -> ArtifactsConfig` (`config/features.py:396`) — extend to read `data.get("export", {})`
@@ -803,8 +866,11 @@ were wrong (see D2 and D5)._
   `CREATE TABLE … AS SELECT` construction (**D2**), which produces a DB
   with no indexes and no free pages by definition.
 - **Mode → allowlist** — `shareable` (default) projects only the ENH-075
-  columns; `--local` lifts the column projection for personal use. Both
-  stamp the mode and allowlist version into the page (**D6**, AC).
+  columns; `--local` lifts the column projection for personal use. In local
+  mode `--tables` may select any `_EXPORT_TABLE_MAP` type (`SELECT *` for
+  types without a `_SHAREABLE_COLUMNS` entry); the default table set stays
+  `loop_run,usage_event` in both modes (**D22**). Both modes stamp the mode
+  and allowlist version into the page (**D6**, AC).
 - **Write rejection** — `PRAGMA query_only = 1` at every instantiation is the
   enforcement; the submitted-text check (single statement, no `PRAGMA`) exists
   for the error message. A leading-`SELECT` check alone is insufficient
@@ -821,8 +887,9 @@ were wrong (see D2 and D5)._
   (`render.py:119` is the precedent, `render_template()` does not) (**D14**).
 - **Escaping** — `autoescape=False`, so every value in `data` is validated or
   escaped by `cmd_dashboard` before it goes in (**D18**).
-- **Result rows** — capped at the render step with a truthful total; the
-  user's SQL is never rewritten (**D17**).
+- **Result rows** — capped at the render step with a truthful total via
+  `prepare()`/`step()` (rows collected only up to the cap, stepping continues
+  to count); the user's SQL is never rewritten (**D17**, amended).
 - **Source DB** — opened raw read-only and never through the migrating open
   path, so an export cannot mutate `history.db` (**D19**).
 
@@ -844,7 +911,9 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - Call `validate_top_level_data()` in `cmd_dashboard` before `render_template()` (**D14**) — `render_template()` does not validate, and the dashboard manifest's `data_schema` is unenforced without this
 - Declare `output: history-dashboard.html` in the dashboard `manifest.yaml` and default the output directory to `config.artifacts.promotion_dir`, not `default_output_dir` (**D15**); `--output` names a *directory*, matching `render.py:58-62`
 - Default `--tables` to `loop_run,usage_event` and add the raw-snapshot size pre-check with a `--since`-naming error (**D16**)
-- Implement the page's result-row cap with a truthful "showing N of M" line, without rewriting submitted SQL (**D17**)
+- Implement the page's result-row cap with a truthful "showing N of M" line, without rewriting submitted SQL, using `prepare()`/`step()` so at most cap rows are materialized (**D17**, amended)
+- Grep the vendored `sql-wasm.js` for a literal `</script>` at vendoring time and add the assert-absent test (**D23**); fall back to base64-embedding the glue if a future version hits
+- Add the D13 `COALESCE` test: an `ended_at IS NULL` run started inside the window appears in the recovered snapshot
 - Read `schema_version` inline on the read-only connection; never route the export through the store's migrating open path, and add the before/after DB-hash test (**D19**)
 - Convert the `importlib.resources` `Traversable` with `Path(str(...))` and call `load_manifest()` directly instead of `resolve_template()` (**D20**)
 - Add `TestSchemaValueParity`'s `"ArtifactsConfig": "artifacts"` parity coverage (`test_config_schema.py:1343`) for the new `export` field, alongside the `test_artifacts_in_schema`/`test_analytics_in_schema` nested-block assertions already scoped
@@ -915,6 +984,7 @@ below are narrowed, not eliminated — see the resolution note).
   an equivalent summary paragraph directly under the title — cosmetic only.
 
 ## Session Log
+- fourth pre-implementation review - 2026-08-25 - added D21–D23 and amended D13/D17: pinned the `artifacts.export` v1 config shape to `{mode, max_artifact_bytes}` and deferred ENH-075's "additions" field (unversioned local widening would make the allowlist-version stamp ambiguous), stated local-mode table scope (any `_EXPORT_TABLE_MAP` type, `SELECT *`, same defaults), added the `</script>`-in-glue check the Node learning test cannot catch, gave D13 a test, and bounded the result-row cap's memory via `prepare()`/`step()`. Re-verified earlier passes' load-bearing claims against the code in the same review — all hold. Three ACs updated/added
 - third pre-implementation review - 2026-08-25 - added D14–D20 and five ACs from re-checking the issue's load-bearing claims against the code: corrected the Background's false "the renderer validates `data.json`" claim (validation is `cmd_render`'s, `render.py:119`) and the packaged-template handoff (`resolve_template()` takes `str`, `importlib.resources` yields a `Traversable`); specified the previously-open output filename/default directory (`promotion_dir`, not the `"."` project root), the `--tables`/`--since` defaults plus a cheap raw-snapshot size pre-check ahead of D7's final-HTML ceiling, the page's result-row cap (~150k rows would hang the tab), the `autoescape=False` escaping ownership rule, and the inline `schema_version` read with the reason D2's raw `mode=ro` connect matters (the store's normal open path migrates on open). Verified in the same pass: every ENH-075 allowlist column exists in the live schema, and D9's `importlib.resources` precedent is real
 - second pre-implementation review - 2026-08-25 - cleared the learning-test hard override (`/ll:explore-api sql.js` → `.ll/learning-tests/sqljs.md`, proven), proved D2's ATTACH-from-`mode=ro` construction by spike, rewrote D6 (`PRAGMA query_only` + multi-statement check; a leading-`SELECT` check was measured insufficient) and D8 (measured ~924 KB floor, not ~2 MB), and added D9–D13: packaged `.llat` resolution via `importlib.resources`, the frozen Jinja delimiter/autoescape constraints, export-time schema-version comparison (the prior view-time AC was not implementable), the allowlist-constant + version-bump rule, and `COALESCE(ended_at, started_at)` for `--since`
 - `/ll:confidence-check` - 2026-08-25T20:56:17 - `57fafff8-bb8c-4f8b-a447-cf4d8ece9758.jsonl`
