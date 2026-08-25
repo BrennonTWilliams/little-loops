@@ -429,7 +429,12 @@ def run_claude_command(
         subprocess.TimeoutExpired: If command exceeds timeout or idle timeout.
             When triggered by idle timeout, the output field is set to "idle_timeout".
     """
-    effective_idle_timeout: float = (automation.idle_timeout or 0) if automation else 0
+    # BUG-3208 DIAGNOSTIC (diagnostic branch — do not merge as-is): default the
+    # idle timeout to 300s so a silent subprocess fails fast with
+    # TimeoutExpired(output="idle_timeout") instead of blocking past the runner's
+    # ~52m kill threshold. If this run still hangs, the wedge is NOT in
+    # run_claude_command (it's the shell/mcp selector loop, a lock, or network).
+    effective_idle_timeout: float = (automation.idle_timeout or 300.0) if automation else 300.0
 
     runner = resolve_host()
     invocation = runner.build_streaming(
