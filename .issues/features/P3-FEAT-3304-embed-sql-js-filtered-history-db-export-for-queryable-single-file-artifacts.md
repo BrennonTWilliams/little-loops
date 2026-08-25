@@ -28,6 +28,8 @@ score_change_surface: 20
 
 # FEAT-3304: Embed sql.js + filtered history.db export for queryable single-file artifacts
 
+## Summary
+
 Extend `ll-artifact` from a pre-baked-JSON stamper into a real client-side
 query engine: inline `sql.js` (SQLite-to-WASM) plus a filtered/date-scoped
 export of `.ll/history.db` (e.g. `ll-artifact dashboard --tables
@@ -225,6 +227,14 @@ type's timestamp column. Read the resulting file's bytes.
 *This resolves the `VACUUM`/index-stripping question: neither is needed.*
 A freshly created attached DB carries no indexes and no free pages.
 
+*Proven 2026-08-25 by spike.* `ATTACH` of a writable scratch DB from a
+`file:…?mode=ro` connection succeeds — `mode=ro` scopes read-only to the *main*
+database, it does not set `query_only` on the connection — and
+`CREATE TABLE snap.<t> AS SELECT … FROM main.<t>` writes to the attachment. The
+resulting file carries `sqlite_master` entries for the tables only (no index
+rows) and `PRAGMA freelist_count` = 0, exactly as D2 assumes. Source-side
+indexes are not copied.
+
 *This also corrects the Call Path.* `export_history()`
 (`session_store/queries.py:151-211`) yields **dicts** for JSONL; `sql.js`
 needs a **SQLite file**. There is no path from one to the other short of
@@ -264,14 +274,37 @@ FEAT-3036 shared code for one consumer's benefit.
 boundary.** The user owns the bytes and the console; nothing about an
 in-memory `sql.js` DB can be enforced against them. It does not need to
 be — data scope is settled at export time, which is exactly ENH-069's
-point. Implement it as a leading-`SELECT`/`WITH` check plus a
-single-statement check, and pair it with a **"reset snapshot"** action
-that re-instantiates the DB from the embedded bytes, making any
-accidental mutation a non-event. Do not describe it as a boundary in
-code comments or in the page.
+point. Do not describe it as a boundary in code comments or in the page.
+
+*Mechanism revised 2026-08-25 by the `sql.js` learning test*
+(`.ll/learning-tests/sqljs.md`, sql.js 1.14.2). Three measured facts change
+the implementation:
+
+- sql.js has **no built-in read-only mode**: a bare `DELETE` mutates the
+  in-memory DB.
+- `db.exec()` runs **every** semicolon-separated statement in one call, so a
+  leading-`SELECT`/`WITH` check on its own is *not* sufficient — `SELECT 1;
+  DELETE FROM loop_runs;` passes that check and deletes.
+- `PRAGMA query_only = 1` **is** honoured by sql.js and rejects writes at the
+  engine level with `attempt to write a readonly database`. It is reversible
+  from the query box (`PRAGMA query_only = 0`), which is precisely why this is
+  a guardrail and not a boundary.
+
+Implement as: set `PRAGMA query_only = 1` immediately after every
+instantiation (the real enforcement), plus a submitted-text check that rejects
+multi-statement input and any `PRAGMA` — the text check exists to give a clear
+error message, not to be the enforcement. Pair both with the **"reset
+snapshot"** action that re-instantiates the DB from the embedded bytes;
+re-instantiation was proven to restore mutated rows.
 
 **D7 — Size budget: hard-fail before write, measured on final HTML
 bytes.** New `artifacts.export.max_artifact_bytes`, default `8000000`.
+*Calibration (added 2026-08-25):* the default is set against this repo's
+measured 30-day export — 4.1 MB gzip+base64 snapshot plus the measured
+~0.92 MB `sql.js` floor (D8) ≈ 5.0 MB, leaving ~3 MB of headroom, i.e. roughly
+a 55-60-day window on a 6.6 GB `history.db` before the ceiling bites. State
+this in the CLI help and the docs so the first hard-fail is read as the
+designed behaviour it is, not as a bug.
 Final rendered HTML size is the quantity that actually bites the user, so
 it is the one measured — not the raw snapshot. Hard-fail (exit 1, naming
 the measured size and the limit) matches every existing size ceiling in
@@ -285,36 +318,136 @@ version, upstream URL, SHA-256 of each vendored file, and the MIT license
 text (SQLite itself is public domain). This establishes the codebase's
 first vendored-binary provenance convention — there is no existing one to
 follow. The `.wasm` and its JS glue must also be registered in
-`PACKAGE_DATA_ASSETS` (`package_data.py`).
+`PACKAGE_DATA_ASSETS` (`package_data.py`), **one tuple per file** — the
+manifest has no directory-glob form.
+
+*Measured 2026-08-25 (learning test).* Pin **sql.js 1.14.2**, vendoring the
+two files from its `dist/`:
+
+| file | raw | as embedded |
+| --- | --- | --- |
+| `sql-wasm.wasm` | 658,410 B | 877,880 B (base64) |
+| `sql-wasm.js` (glue) | 46,535 B | 46,535 B (text, verbatim) |
+| **fixed floor per artifact** | | **~924 KB** |
+
+This corrects the "roughly 1–1.5 MB raw / ~2 MB base64" estimate under
+§ Must address → Snapshot size: the real floor is well under half that.
+`dist/` also ships `sql-wasm-browser.{js,wasm}` (644 KB wasm) — a build with
+the Node `fs` shims stripped. The universal `sql-wasm.js` is proven to work
+with `wasmBinary` and is the default choice; if the implementer prefers the
+browser build, the swap is a one-line provenance/`PACKAGE_DATA_ASSETS` change
+and saves ~20 KB, not a design decision. Also note that ~700 KB of vendored
+binary enters git, the sdist, and every wheel — a one-time repo-weight cost
+worth stating in the provenance file.
+
+**D9 — The dashboard `.llat/` template ships inside the package and is
+resolved by path, not by `templates_dir`.** `resolve_template()`
+(`artifact_templates.py:70-85`) tries a filesystem path, then
+`config.artifacts.templates_dir` — which is *project-local*
+(`artifacts/templates`, `render.py:85-88`). There is no built-in-template
+discovery path anywhere in the codebase today, so D5's "render it as a real
+`.llat/` template" has no home without this decision. The template ships at
+`scripts/little_loops/templates/dashboard.llat/` and `cmd_dashboard` resolves
+it with `importlib.resources.files("little_loops").joinpath("templates",
+"dashboard.llat")`, handing the resulting path to `resolve_template()`'s
+path-first branch. Precedent: `design_md.py:11,36` already resolves packaged
+built-in profiles exactly this way, and `mcp_server/templates/issues-view.html`
+is the precedent for a packaged HTML template. Every file of the template
+directory (`manifest.yaml`, `template.html.j2`, anything under `assets/`)
+needs its own `PACKAGE_DATA_ASSETS` tuple. A `--template` override that lets a
+project point at its own `.llat/` is optional and not required by any AC.
+
+**D10 — Template-engine constraints, pinned so they are not rediscovered at
+debug time.** `build_environment()` (`artifact_templates.py:267-279`) is
+frozen and non-default:
+
+- Delimiters are `[[= =]]`, `[[% %]]`, `[[# #]]` — **not** `{{ }}`. Inline JS
+  in the template body must not contain a literal `[[=` or `[[%`.
+- `autoescape=False`. This is what lets the multi-megabyte base64 blobs
+  through byte-exact; do not "fix" it, and do not rely on escaping anywhere in
+  the body.
+- `undefined=StrictUndefined`. Every key the body references must be present
+  in `data` or the render raises `DataValidationError`.
+
+Values passed through `data` are never scanned as template source, so the
+vendored glue's own contents cannot collide with the delimiters. Note also
+that `load_assets()` is UTF-8-text-only for the **`.wasm` only** — the
+`sql-wasm.js` glue *is* text and may live in the template's `assets/` (reached
+as `ll.assets['sql-wasm.js']`), which is cleaner than base64-encoding it. The
+Call Path's "read vendored `sql-wasm.wasm` + JS glue → base64" over-applies
+D5: only the `.wasm` needs base64.
+
+**D11 — Schema-version divergence is detected at export time, not view
+time.** The prior AC ("renders a visible mismatch warning when opened against
+a snapshot it was not built for") is not implementable: the artifact *contains*
+its snapshot, so there is nothing for it to mismatch against once written.
+Worse, D2's `CREATE TABLE … AS SELECT` copies only the selected tables, so the
+`meta` table that holds `schema_version` (`schema.py:1308`) is **not** in the
+snapshot at all. The implementable control is: read the source DB's recorded
+`schema_version`, compare it against the installed code's `SCHEMA_VERSION`
+(`session_store/schema.py:25`, currently `45`), stamp **both** into the page,
+and emit a visible export-time warning when they differ. The page shows the
+version it was built from as provenance; it does not attempt runtime
+detection.
+
+**D12 — The base ENH-075 allowlist is a code constant; config carries only
+additions plus a version.** ENH-075's `table -> [columns]` map has no home in
+the current design — config holds "additions" and an "allowlist version", but
+nothing defines the base set or what the version means. Land the base set as a
+module-level constant beside `_EXPORT_TABLE_MAP` (`session_store/queries.py:89`),
+e.g. `_SHAREABLE_COLUMNS: dict[str, list[str]]` keyed by physical table name,
+with `_SHAREABLE_ALLOWLIST_VERSION: int = 1` next to it. The rule: any edit to
+the constant bumps the version in the same commit, and a test asserts the two
+change together (hash the constant, pin the hash against the version). Without
+this, the AC's "stamped with the allowlist version" stamps an unmanaged string
+and the control it is supposed to provide does not exist.
+
+**D13 — `--since` on `loop_run` filters `ended_at`, which silently drops
+in-flight runs.** `_EXPORT_TABLE_MAP["loop_run"]` is `("loop_runs",
+"ended_at")`; a run that is still executing, or that crashed without writing
+an end timestamp, has `ended_at IS NULL` and is excluded by any `>=` predicate.
+Filter on `COALESCE(ended_at, started_at)` for `loop_run` so a windowed export
+includes runs that started inside the window, and say so in the page's filter
+stamp. If the implementer prefers the simpler `ended_at` semantics, that is
+acceptable — but it must then be stated in the CLI help and the page, not left
+as a silent omission.
 
 ## Must address
 
 - **Snapshot size.** *Resolved by D1 (gzip+base64), D2 (no `VACUUM`/index
   stripping needed), and D7 (hard-fail at
   `artifacts.export.max_artifact_bytes`, measured on final HTML).*
-  Remaining implementation note: `sql.js` contributes a **fixed floor** of
-  roughly 1–1.5 MB raw / ~2 MB base64 to *every* artifact and to the
-  wheel, independent of the data. Verify the real figure against the
-  pinned version and count it against the budget — the original size
-  discussion counted only the DB.
+  *Floor measured 2026-08-25 (D8):* `sql.js` 1.14.2 contributes a **fixed
+  floor of ~924 KB** to every artifact (877,880 B base64 `.wasm` + 46,535 B
+  glue) — not the 1–1.5 MB raw / ~2 MB base64 originally estimated. Counted
+  against D7's ceiling in that decision's calibration note.
 - **Staleness.** The page must display the export timestamp and the
   filter that produced it, prominently. A shared dashboard that
   silently shows month-old numbers is worse than no dashboard.
 - **Schema coupling.** The page's queries are written against
   `history.db`'s schema. The artifact records the schema version it was
-  exported from and surfaces a visible mismatch warning rather than
-  failing silently or rendering wrong numbers. See AC.
+  exported from. *Scoped by D11:* divergence is detected **at export time**
+  (source DB's recorded `schema_version` vs the installed `SCHEMA_VERSION`),
+  not at view time — the artifact contains its own snapshot and has nothing to
+  mismatch against once written, and the `meta` table holding the version is
+  not even copied by D2's `CREATE TABLE … AS SELECT`.
 - **`sql.js` provenance.** *Resolved by D8.* The WASM blob is a vendored
   third-party binary inlined into every artifact — a supply-chain
   surface, not an asset. Record source, version, hash, license, and the
   update procedure.
 - **Read-only enforcement** in the page, so a stray `DELETE` in the
   query box can't corrupt the in-memory DB mid-session and confuse the
-  user. *Scoped by D6: a guardrail plus a reset action, not a boundary.*
+  user. *Scoped by D6: `PRAGMA query_only = 1` (proven to work) plus a
+  multi-statement/`PRAGMA` text check for error messaging, plus a reset
+  action — a guardrail, not a boundary. A leading-`SELECT` check alone was
+  measured to be insufficient.*
 - **`wasmBinary` is mandatory.** Over `file://`, `sql.js`'s default
   `locateFile` fetch of the `.wasm` is blocked — initialize with
-  `wasmBinary: <decoded bytes>`. Pinned here so it is not rediscovered at
-  debug time.
+  `wasmBinary: <decoded bytes>`. *Proven 2026-08-25:* with `wasmBinary`,
+  `initSqlJs` completes and issues no `fetch()` at all; without it, sql.js
+  resolves `sql-wasm.wasm` through `locateFile` — the fetch that has nowhere
+  to go over `file://`. Note also that `initSqlJs` memoizes its module, so a
+  second call with different options returns the first instance.
 
 ### Codebase Research Findings
 
@@ -366,7 +499,10 @@ _Added by `/ll:refine-issue` — 2026-08-25 — based on codebase analysis:_
 - [ ] The page executes user-entered read-only SQL against the
       embedded snapshot and renders results; write statements are
       rejected client-side, and a "reset snapshot" action re-instantiates
-      the DB from the embedded bytes (per D6).
+      the DB from the embedded bytes (per D6). The rejection is enforced by
+      `PRAGMA query_only = 1`, and a test asserts that the multi-statement
+      input `SELECT 1; DELETE FROM loop_runs;` does not mutate the DB — the
+      case a leading-`SELECT` check alone was measured to miss.
 - [ ] Export scope honours the ENH-075 rules; a test **gunzips and
       base64-decodes the embedded blob back out of the generated HTML,
       opens it as a SQLite DB, and asserts the excluded columns/tables
@@ -380,9 +516,10 @@ _Added by `/ll:refine-issue` — 2026-08-25 — based on codebase analysis:_
       being shared unknowingly, so it is asserted by a test for both
       modes.
 - [ ] The artifact records the `history.db` **schema version** it was
-      exported from, and renders a visible mismatch warning when opened
-      against a snapshot it was not built for (per § Must address →
-      Schema coupling).
+      exported from, and the export emits a visible warning when the source
+      DB's recorded `schema_version` differs from the installed
+      `SCHEMA_VERSION` (per D11). Tested by exporting from a DB whose
+      recorded version has been altered.
 - [ ] The page ships **at least one predefined view** that renders
       without the user writing any SQL (per § Scope).
 - [ ] An export whose final HTML exceeds
@@ -394,7 +531,15 @@ _Added by `/ll:refine-issue` — 2026-08-25 — based on codebase analysis:_
       call `stamp_page_shell()` directly.
 - [ ] `sql.js` version, source, SHA-256, license, and update procedure are
       recorded at `scripts/little_loops/assets/vendor/sql.js/PROVENANCE.md`,
-      and every vendored file is registered in `PACKAGE_DATA_ASSETS`.
+      and every vendored file is registered in `PACKAGE_DATA_ASSETS` (one
+      tuple per file).
+- [ ] The dashboard `.llat/` template is resolved from **inside the package**
+      via `importlib.resources` (per D9) and renders from an installed wheel,
+      not only from a source checkout — every template file registered in
+      `PACKAGE_DATA_ASSETS`.
+- [ ] The ENH-075 base allowlist is a module-level constant with a version
+      marker beside it (per D12), and a test fails if the constant changes
+      without the version being bumped in the same commit.
 - [ ] `.ll/ll-config.json` accepts an `artifacts.export` block — schema updated,
       round-tripped by `BRConfig`, and covered by a test that an unknown key is
       still rejected.
@@ -490,8 +635,9 @@ _Wiring pass added by `/ll:wire-issue`:_
 _Added by `/ll:refine-issue` — 2026-08-25 — based on codebase analysis:_
 
 ### Types
-- New `ArtifactsExportConfig`-shaped nested block on `ArtifactsConfig` (`scripts/little_loops/config/features.py:369-403`) — mode: `str` (`"shareable"` default | `"local"`), allowlist additions, and an allowlist version marker, mirroring the two-level nesting `AnalyticsCaptureConfig` already uses (`config/core.py:340-342`)
+- New `ArtifactsExportConfig`-shaped nested block on `ArtifactsConfig` (`scripts/little_loops/config/features.py:369-403`) — `mode: str` (`"shareable"` default | `"local"`), `max_artifact_bytes: int` (default `8000000`, **D7**), and project-specific *additions* to the shareable set, mirroring the two-level nesting `AnalyticsCaptureConfig` already uses (`config/core.py:340-342`). Per **D12** the allowlist **version** is not a config field — it is a code constant beside the base allowlist, so a shared artifact's stamp cannot be forged by editing local config
 - The shareable allowlist itself is a `table -> [columns]` mapping; the closest existing typed precedent for a table-name allowlist is `_EXPORT_TABLE_MAP: dict[str, tuple[str, str]]` (`session_store/queries.py:89-110`), which maps a public type name to `(table_name, timestamp_column)` — column-level projection has no existing type to extend
+- Per **D12**, that mapping is a **code constant**, not config: `_SHAREABLE_COLUMNS: dict[str, list[str]]` keyed by physical table name, plus `_SHAREABLE_ALLOWLIST_VERSION: int = 1`, both module-level in `session_store/queries.py` beside `_EXPORT_TABLE_MAP`. `artifacts.export` config carries only *additions* to the base set, the default mode, and `max_artifact_bytes` — never the base set itself
 
 ### Signatures
 - `ArtifactsConfig.from_dict(cls, data: dict[str, Any]) -> ArtifactsConfig` (`config/features.py:396`) — extend to read `data.get("export", {})`
@@ -499,6 +645,7 @@ _Added by `/ll:refine-issue` — 2026-08-25 — based on codebase analysis:_
 - `export_history(db, *, tables=None, since=None, include_messages=False) -> Generator[dict, None, None]` (`session_store/queries.py:151-211`) — **not on this issue's call path.** It yields dicts for JSONL; `sql.js` needs a SQLite *file*, and there is no path from one to the other short of re-inserting every row (**D2**). The new snapshot builder is a **sibling** function sharing `_EXPORT_TABLE_MAP`, not a wrapper around `export_history()` — which also leaves `TestExportTableRegistration` and `export_history()`'s existing caller (`ll-session export`) untouched.
 - New snapshot builder, e.g. `build_snapshot_db(db: Path, dest: Path, *, tables: list[str], since: str | None, columns: dict[str, list[str]]) -> None` (`session_store/queries.py`) — `ATTACH` + `CREATE TABLE … AS SELECT` per **D2**; re-export alongside `export_history` in `session_store/__init__.py:89,185` if made public
 - `cmd_dashboard(args: argparse.Namespace, logger: Logger) -> int` / `add_dashboard_parser(subparsers) -> None` (new, `cli/artifact/dashboard.py`) — following the exact `(argparse.Namespace, Logger) -> int` contract used by `cmd_render` (`render.py:72-168`) and `cmd_status` (`status.py:119-165`): builds `config = BRConfig(Path.cwd())` inside the function body, wraps the body in `except Exception as exc: logger.error(str(exc)); return 1`
+- `importlib.resources.files("little_loops").joinpath("templates", "dashboard.llat")` — **how the built-in template is found** (**D9**). `resolve_template()` only knows a filesystem path and the *project-local* `config.artifacts.templates_dir`; `cmd_dashboard` supplies the packaged path so the path-first branch takes it. Precedent: `cli/artifact/design_md.py:11,36`
 - `render_template(template: ArtifactTemplate, data: dict[str, Any], config: object) -> str` / `resolve_template(...)` (`artifact_templates.py`) — **the rendering entry point** (**D5**). `themed_css_vars()` is reached implicitly via `build_ll_namespace()` (`artifact_templates.py:311-318`) because `manifest.yaml` declares `theme: design-tokens`; `cmd_dashboard` does **not** call `stamp_page_shell()` or `themed_css_vars()` directly — that direct-call idiom is `policy_builder.py:77-94`'s and is what the AC forbids copying.
 - `load_assets(root: Path) -> dict[str, str]` (`artifact_templates.py:296-306`) — **constraint, not a call site**: reads assets as UTF-8 text only and declares binary/data-URI assets out of scope for v1. The vendored `sql-wasm.wasm` therefore cannot live in the template's `assets/`; `cmd_dashboard` base64-encodes it into `data` instead (**D5**). Extending this function for binary assets was considered and rejected — it changes FEAT-3036 shared code for one consumer.
 
@@ -513,9 +660,10 @@ were wrong (see D2 and D5)._
 → `BRConfig(Path.cwd())` → `config.artifacts.export` (mode / allowlist / allowlist_version / max_artifact_bytes)
 → resolve `--tables` type names through `_EXPORT_TABLE_MAP` to `(table, ts_col)`; intersect with the effective ENH-075 column allowlist (in `shareable` mode `--tables` selects from the allowlist and cannot widen it)
 → open source DB read-only (`file:.ll/history.db?mode=ro`), `ATTACH` a scratch file DB, `CREATE TABLE snap.<table> AS SELECT <allowlisted cols> FROM <table> [WHERE <ts_col> >= ?]` per selected type (**D2** — no `VACUUM`, no index stripping: a freshly created DB has neither)
+→ read the source DB's recorded `schema_version` (`meta` table) and compare against `SCHEMA_VERSION` (`session_store/schema.py:25`); warn visibly on divergence (**D11** — the `meta` table is *not* copied into the snapshot, so the version must be read here and passed in `data`)
 → read scratch DB bytes → `gzip.compress()` → `base64.b64encode()` (**D1**)
-→ read vendored `sql-wasm.wasm` + JS glue → base64
-→ `resolve_template()` / `render_template(template, data, config)` with `data` carrying: the gzip+base64 snapshot, the base64 WASM, the JS glue, export timestamp, filter args, export mode, allowlist version, schema version (**D5** — the WASM cannot go in the template's `assets/`, which is UTF-8-text-only)
+→ read vendored `sql-wasm.wasm` → base64 (**D8**: 658,410 B → 877,880 B). The `sql-wasm.js` glue is UTF-8 text and rides in the template's `assets/` as `ll.assets['sql-wasm.js']`, not through base64 (**D10**)
+→ resolve the packaged `dashboard.llat` via `importlib.resources` (**D9**) → `resolve_template()` / `render_template(template, data, config)` with `data` carrying: the gzip+base64 snapshot, the base64 WASM, export timestamp, filter args, export mode, allowlist version, source + installed schema versions (**D5** — only the WASM cannot go in `assets/`, which is UTF-8-text-only; the glue can, **D10**)
   — `manifest.yaml` declares `theme: design-tokens`, so `build_ll_namespace()` supplies `ll.theme_css` via `themed_css_vars()` implicitly; `cmd_dashboard` never calls `stamp_page_shell()` itself
 → measure `len(rendered_html)`; if `> config.artifacts.export.max_artifact_bytes`, log the measured size and the limit and `return 1` **without writing a file** (**D7**)
 → write single HTML to `--output` or `config.artifacts.default_output_dir`
@@ -534,6 +682,15 @@ were wrong (see D2 and D5)._
 - **Mode → allowlist** — `shareable` (default) projects only the ENH-075
   columns; `--local` lifts the column projection for personal use. Both
   stamp the mode and allowlist version into the page (**D6**, AC).
+- **Write rejection** — `PRAGMA query_only = 1` at every instantiation is the
+  enforcement; the submitted-text check (single statement, no `PRAGMA`) exists
+  for the error message. A leading-`SELECT` check alone is insufficient
+  (**D6**, measured).
+- **Schema-version divergence** — export-time comparison and a visible
+  warning; never a view-time check (**D11**).
+- **`--since` on `loop_run`** — `COALESCE(ended_at, started_at)`, so in-flight
+  runs are not silently dropped; whichever semantics is chosen is stated in
+  the CLI help and the page's filter stamp (**D13**).
 
 ## Wiring Phase (added by `/ll:wire-issue`)
 
@@ -541,7 +698,11 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 - ~~Resolve the Program Design contradiction first: decide whether `cmd_dashboard` routes through `render_template()`/`resolve_template()` or stays a `policy_builder.py`-style direct stamp.~~ **Resolved 2026-08-25 by D5**: real `.llat/` template through `render_template()`; the WASM rides in `data`, not `assets/` (which is UTF-8-text-only). § Call Path and § Signatures updated to match.
 - ~~Add a column-allowlist wrapper around `export_history()`.~~ **Corrected 2026-08-25 by D2**: a *sibling* snapshot builder sharing `_EXPORT_TABLE_MAP`, not a wrapper — `export_history()` yields dicts and cannot produce the SQLite file `sql.js` needs. `TestExportTableRegistration` (`test_session_store_queries.py:209-257`) and the `session_id` projections at `test_session_store_queries.py:167,206` are untouched by construction, since `export_history()` is not modified at all.
-- Implement the gzip+base64 encoding (D1) and the `DecompressionStream('gzip')` inflate in-page; initialize `sql.js` with `wasmBinary` (the `file://` `locateFile` fetch is blocked)
+- Implement the gzip+base64 encoding (D1) and the `DecompressionStream('gzip')` inflate in-page; initialize `sql.js` with `wasmBinary` (the `file://` `locateFile` fetch is blocked). Both proven — see `.ll/learning-tests/sqljs.md`
+- Ship the `dashboard.llat` template inside the package and resolve it via `importlib.resources` (**D9**); register every template file *and* both vendored sql.js files in `PACKAGE_DATA_ASSETS` as one tuple each
+- Land `_SHAREABLE_COLUMNS` / `_SHAREABLE_ALLOWLIST_VERSION` beside `_EXPORT_TABLE_MAP` (**D12**) with the version-bump lockstep test
+- Read and stamp the source `schema_version` vs installed `SCHEMA_VERSION` at export time (**D11**); the `meta` table is not in the snapshot
+- Honour the frozen Jinja environment's non-default delimiters `[[= =]]` / `[[% %]]` in the template body (**D10**) — inline JS must not contain a literal `[[=` or `[[%`
 - Update `scripts/little_loops/cli/artifact/__init__.py:1-24` module docstring with a `dashboard` bullet (FEAT-3304 tag) and add a matching `Examples:`/exit-code entry to `main_artifact()`'s epilog (`__init__.py:71-104`)
 - Update `docs/reference/CLI.md` (`dashboard` subcommand table row + subsection) and `docs/reference/CONFIGURATION.md:912-929` (`export` key row/JSON example)
 - Write the round-trip test: extract the embedded blob from the generated HTML, base64-decode, **gunzip** (per D1), open as SQLite, and assert on the recovered *schema* that excluded columns/tables are absent — no existing test in the repo does this, and an assert-absent substring check is not sufficient for the AC
@@ -550,12 +711,13 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ## Confidence Check Notes
 
-**Readiness: 97/100 — but STOP — ADDRESS GAPS (Learning Test Hard Override).**
-**Outcome Confidence: 69/100.**
+**Readiness: 97/100 — Learning Test Hard Override CLEARED 2026-08-25.**
+**Outcome Confidence: 69/100** (unchanged as a score; the two risk factors
+below are narrowed, not eliminated — see the resolution note).
 
 ### Gaps to Address
 
-- **Learning test hard override.** `learning_tests_required` names `sql.js` and
+- ~~**Learning test hard override.** `learning_tests_required` names `sql.js` and
   `jinja2`. `jinja2` is proven (5/0/0, 2026-08-23). `sql.js` has **no record at
   all** in the Learning Test Registry (`ll-learning-tests check sql.js` →
   "no record found"). Every AC and Decision (D1, D6, "wasmBinary is mandatory")
@@ -566,7 +728,23 @@ _These touchpoints were identified by wiring analysis and must be included in th
   external third-party API surface (per the Confidence Check skill's exclusion
   heuristic), so the remedy is `/ll:explore-api sql.js` (or an equivalent
   learning-test spike) before implementation, not a spike routed through
-  `set-flags`.
+  `set-flags`.~~
+  **Resolved 2026-08-25**: `.ll/learning-tests/sqljs.md` — status `proven`,
+  10 claims `pass`, 1 `untested`, against sql.js 1.14.2 under node v22.22.3
+  (raw output at `.ll/learning-tests/raw/sqljs.txt`). It proved `wasmBinary`
+  init with zero `fetch()`, `DecompressionStream('gzip')` byte-exact
+  round-trip, snapshot open + column projection, `PRAGMA query_only`
+  enforcement, reset-by-re-instantiation, and the ~924 KB fixed floor — and
+  **refuted** two things the issue had assumed: that a leading-`SELECT` check
+  suffices (it does not; `db.exec()` runs every `;`-separated statement) and
+  that the floor is ~2 MB. D6 and D8 were rewritten accordingly.
+  *The one `untested` claim* is that the same behaviour holds in a browser
+  over `file://` — the proof ran under Node, which exercises the same sql.js
+  build and the same `DecompressionStream` API but is not the shipping
+  environment. First implementation step should be to open a generated
+  artifact in a real browser over `file://` before building out the UI.
+  The **ATTACH-from-`mode=ro`** assumption in D2 was separately proven by
+  spike (see D2's proof note).
 
 ### Outcome Risk Factors
 
@@ -597,6 +775,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
   an equivalent summary paragraph directly under the title — cosmetic only.
 
 ## Session Log
+- second pre-implementation review - 2026-08-25 - cleared the learning-test hard override (`/ll:explore-api sql.js` → `.ll/learning-tests/sqljs.md`, proven), proved D2's ATTACH-from-`mode=ro` construction by spike, rewrote D6 (`PRAGMA query_only` + multi-statement check; a leading-`SELECT` check was measured insufficient) and D8 (measured ~924 KB floor, not ~2 MB), and added D9–D13: packaged `.llat` resolution via `importlib.resources`, the frozen Jinja delimiter/autoescape constraints, export-time schema-version comparison (the prior view-time AC was not implementable), the allowlist-constant + version-bump rule, and `COALESCE(ended_at, started_at)` for `--since`
 - `/ll:confidence-check` - 2026-08-25T20:56:17 - `57fafff8-bb8c-4f8b-a447-cf4d8ece9758.jsonl`
 - pre-implementation review - 2026-08-25 - added Decisions D1–D8 (measured a real 30-day export against the live 6.6 GB `.ll/history.db`: 17.4 MB raw / 23.3 MB base64 / 4.1 MB gzip+base64), resolved the Program Design contradiction toward the `.llat` pipeline, corrected the `export_history()` call path, retired the FEAT-3036 schema-collision concern, and added five ACs (mode/allowlist stamp, schema version, predefined view, size hard-fail, provenance path)
 - `/ll:wire-issue` - 2026-08-25T20:20:31 - `c8f2587f-3ca1-4ca9-b1e5-e2886b741049.jsonl`

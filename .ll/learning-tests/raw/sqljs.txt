@@ -1,0 +1,33 @@
+=== proof.mjs (sql.js 1.14.2, node v22.22.3) ===
+sql.js version: 1.14.2
+wasm bytes=658410 base64=877880
+glue bytes=46535
+FIXED FLOOR (base64 wasm + raw glue) = 924415 bytes
+
+PASS  C1 initSqlJs({wasmBinary}) initializes
+PASS  C1b no fetch() was issued during init
+FAIL  C1c without wasmBinary, sql.js resolves the .wasm via locateFile (the file:// fetch that must be avoided)
+   locateFile asked for: null
+
+PASS  C2 DecompressionStream("gzip") inflates to the exact original bytes
+   gz=7752B -> inflated=49152B (expected 49152B)
+
+PASS  C3 new SQL.Database(inflatedBytes) opens the snapshot
+PASS  C3b excluded columns are absent from the snapshot schema
+   loop_runs cols: run_id,loop_name,started_at,ended_at,final_state,iterations
+   rows: 338
+
+PASS  C4 sql.js executes DELETE against the in-memory DB (no built-in read-only mode)
+
+PASS  C5 db.exec() runs every ;-separated statement (a leading-SELECT check alone is insufficient)
+
+PASS  C6 re-instantiating new SQL.Database(embeddedBytes) restores the deleted rows ("reset snapshot")
+
+PASS  C8 PRAGMA query_only=1 makes sql.js reject writes at the engine level
+   error: attempt to write a readonly database
+PASS  C8b ...but PRAGMA query_only is reversible from the query box (guardrail, not a boundary)
+locateFile asked for: sql-wasm.wasm
+PASS  C1c in a FRESH process, sql.js without wasmBinary resolves the .wasm through locateFile (the file:// fetch that must be avoided)
+
+=== snapshot fixture build (ATTACH + CREATE TABLE ... AS SELECT from a mode=ro source) ===
+snapshot_raw_bytes=49152 gzip_bytes=7752 gzip_b64_bytes=10336
