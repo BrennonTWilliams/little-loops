@@ -90,19 +90,65 @@ jobs:
           .venv/bin/python -c "import pytest, pytest_cov, xdist, pytest_timeout, syrupy, hypothesis; print('dev deps verified')"
 
       - name: Run unit tests (exclude integration + conformance)
-        # `tee` mirrors pytest output to `pytest.log` for upload without
-        # buffering the streamed CI log (which would break live-progress in
-        # the GH Actions UI). `--junit-xml` writes a structured report that
-        # GH Actions parses for the test summary table; also machine-readable
-        # for triage scripts. `set -o pipefail` is required: without it the
-        # pipeline's exit code is tee's (always 0), masking pytest's actual
-        # failure status. Both files are uploaded on every CI outcome below.
+        # BUG-3208 diagnostic instrumentation (Path A — controller heartbeat +
+        # resource sampler + log-survival backstop). `tee` mirrors pytest to
+        # pytest.log without buffering the streamed CI log. `set -o pipefail`
+        # is required: without it the pipeline's exit code is tee's (always 0),
+        # masking pytest's real failure status.
+        #
+        # Three additions make the wedge's evidence SURVIVE the hang:
+        #   1. mem.log sampler   — `free -m` + top-RSS every 30s. RSS climbing
+        #      into a frozen tail => OOM; RSS flat => logical wedge (not memory).
+        #   2. heartbeat.log     — full pytest process tree (PID/PPID/RSS/etime/
+        #      stat/args) every 30s. This is the controller-side heartbeat: a
+        #      live controller + idle workers => controller wait; controller
+        #      gone + orphaned workers still holding the pipe => xdist reaping.
+        #   3. `timeout 45m` backstop + orphan-reap — SIGTERM (+SIGKILL +30s)
+        #      BEFORE the hosted runner's ~52m resource-watchdog fires, then
+        #      `pkill -9 -f pytest` reaps any orphaned xdist workers that
+        #      survive the controller kill (they otherwise hold the step's
+        #      pipe open until the watchdog purges all logs as BlobNotFound).
+        #      The step exits and the upload step (if: always()) persists
+        #      pytest.log + mem.log + heartbeat.log + junit.
         run: |
           set -o pipefail
-          .venv/bin/python -m pytest scripts/tests/ \
-            -m "not integration and not conformance" \
-            --junit-xml=pytest-junit.xml \
-            | tee pytest.log
+          ( while true; do \
+              echo "== $(date -u +%H:%M:%S) =="; \
+              free -m | awk 'NR==2{print "mem: used "$3"MB / "$2"MB"}'; \
+              ps -eo rss,comm --sort=-rss | head -6 | awk '{printf "  %6.0f MB  %s\n", $1/1024, $2}'; \
+              sleep 30; \
+            done ) > mem.log 2>&1 &
+          SAMPLER=$!
+          ( while true; do \
+              echo "== $(date -u +%H:%M:%S) == pytest process tree =="; \
+              ps -eo pid,ppid,etime,rss,stat,args --sort=pid | grep -E '[p]ytest|[p]ython' || echo "  (no pytest/python processes)"; \
+              sleep 30; \
+            done ) > heartbeat.log 2>&1 &
+          HEARTBEAT=$!
+          set +e
+          PYTHONUNBUFFERED=1 timeout --signal=TERM --kill-after=30s 45m \
+            .venv/bin/python -m pytest scripts/tests/ \
+              -m "not integration and not conformance" \
+              -v \
+              --tb=line \
+              --junit-xml=pytest-junit.xml \
+              | tee pytest.log
+          RC=$?
+          set -e
+          # Reap orphaned xdist workers that survive the controller kill — they
+          # would otherwise hold the step's stdout pipe open until the runner
+          # watchdog fires (~52m) and purges every log as BlobNotFound.
+          kill "$SAMPLER" "$HEARTBEAT" 2>/dev/null || true
+          pkill -9 -f 'pytest' 2>/dev/null || true
+          pkill -9 -f 'execnet' 2>/dev/null || true
+          echo "pytest exit: $RC"
+          echo "=== pytest.log tail (last test before stop) ==="
+          tail -30 pytest.log || true
+          echo "=== mem.log tail (final memory samples) ==="
+          tail -15 mem.log || true
+          echo "=== heartbeat.log tail (final process tree) ==="
+          tail -40 heartbeat.log || true
+          exit $RC
 
       - name: Upload unit-test artifacts
         # `if: always()` is the data-collection gate — green runs need to
@@ -120,7 +166,9 @@ jobs:
           path: |
             pytest.log
             pytest-junit.xml
-          retention-days: 7
+            mem.log
+            heartbeat.log
+          retention-days: 30
           if-no-files-found: error
 
   conformance:
