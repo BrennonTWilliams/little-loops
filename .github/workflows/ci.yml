@@ -202,6 +202,17 @@ jobs:
               -f body="$INITIAL_BODY" --jq .id 2>/dev/null || echo "")
             COMMENT_URL="https://github.com/${GITHUB_REPOSITORY:-BrennonTWilliams/little-loops}/issues/${SINK_ISSUE}#issuecomment-${COMMENT_ID}"
             echo "Path E initial comment: issue=$SINK_ISSUE id=$COMMENT_ID url=$COMMENT_URL"
+            # Silent-fallback hardening: if the initial POST returned no comment_id
+            # (auth failure, rate limit, network, malformed SINK_ISSUE), skip the
+            # PATCH loop entirely. Without this guard, the loop enters with
+            # COMMENT_ID="" and falls into the POST-many fallback at every
+            # iteration (~90 spam comments on the public tracker). Logging an
+            # explicit ::error:: surfaces the failure mode for triage.
+            if [ -z "$COMMENT_ID" ] || [ "$COMMENT_ID" = "null" ]; then
+              echo "::error::Path E POST returned empty/null comment_id; PATCH loop disabled to avoid POST-many spam. Check SINK_ISSUE=$SINK_ISSUE, auth, and rate limits."
+              # Exit the ( while true; do ... ) & subshell cleanly
+              exit 0
+            fi
             ( while true; do
                 {
                   echo "Path E snapshot stream — run_id=$GITHUB_RUN_ID run_attempt=$GITHUB_RUN_ATTEMPT step=unit-tests"
