@@ -23,7 +23,7 @@ learning_tests_required:
 
 Extract the reusable parts of the policy-builder HTML template into a small shared
 template kit — page shell, design-token stamping, and the common head/asset-inlining
-path — so the sql.js dashboard, the loop-fleet dashboard, and future artifacts build
+path — so the sql.js dashboard, templatized loop artifacts, and future artifacts build
 on one set of conventions instead of each copying and drifting from policy-builder.
 This is a refactor with a known shape, not an open design question; it was bundled
 into the policy-builder template's decision gate and is split out because it pays
@@ -33,9 +33,15 @@ off the moment a second artifact template exists.
 
 The parent epic exists in part to stop artifacts "accreting inconsistent per-artifact
 conventions." Deferring this refactor until the Tier-3 gate guarantees exactly that:
-the sql.js dashboard and the loop-fleet dashboard each ship a template, both copied
-from policy-builder, and the kit is then extracted from three divergent copies
-rather than one.
+the sql.js dashboard and each subsequent artifact ship a template copied from
+policy-builder, and the kit is then extracted from several divergent copies rather
+than one.
+
+_(Earlier revisions of this section named a "loop-fleet dashboard" as a second
+motivating consumer. No such artifact exists or is planned — the name collides
+with the unrelated `ll-logs` loop-fleet **harvester** (`cli/logs.py`), a telemetry
+feature with no artifact-rendering surface. Removed to stop implementers chasing
+it.)_
 
 ## Design Context
 
@@ -68,50 +74,86 @@ currently does inline.
 
 - [ ] A shared template kit module exists with a documented entry point.
 - [ ] Design-token stamping is a separately callable unit, not inlined in a template.
-- [ ] policy-builder renders byte-identically (or with reviewed, intentional diffs)
-      after being ported onto the kit.
-- [ ] The sql.js dashboard's artifact (FEAT-3304) is built on the kit rather than a
-      copied template.
+- [ ] A golden HTML fixture of `cmd_policy_builder`'s output is captured **before**
+      the port, on a project with `design_tokens` configured (this repo's
+      `warm-paper` + `dark` config exercises the themed path, so the fixture covers
+      the token-stamping branch rather than the degraded empty-block branch).
+- [ ] policy-builder renders byte-identically to that fixture (or with reviewed,
+      intentional diffs) after being ported onto the kit.
 - [ ] **At least one templatized loop-generated artifact renders through the kit**
-      (see Consumer mix below). A kit validated only by policy-builder and the sql.js
-      dashboard has been validated against the wrong workload.
-- [ ] The kit's token-stamping unit is reachable from the `templatize` token-lifting
-      path (FEAT-3308) — i.e. it accepts a body whose token values were baked in as
-      literals by a loop's prompt-time `design_tokens_context`, not only a body
-      authored with stamp points.
+      (see Consumer mix below). A kit validated only by policy-builder has been
+      validated against the wrong workload.
+- [ ] The kit's token-stamping unit **accepts** a body whose token values were baked
+      in as literals by a loop's prompt-time `design_tokens_context` — i.e. stamping
+      such a body through the kit succeeds without error rather than requiring a body
+      authored with stamp points. This is the **narrow** reading: a test-level
+      guarantee, no `templatize.py` changes (see Decisions below).
+
+**Not an AC here:** "the sql.js dashboard is built on the kit." FEAT-3304 is still
+open with no code, and that obligation is already recorded as an AC *on FEAT-3304*
+("The artifact is rendered through the ENH-3035 template kit; no template code is
+copied from `policy-builder`"). Duplicating it here would make this issue
+unsatisfiable — it would require either building a throwaway sql.js fixture purely
+to check a box, or blocking on FEAT-3304. Treat it as a **sequencing note** (see
+Sequencing), not a gate on this issue.
+
+## Decisions
+
+**2026-08-25 — templatize reachability is the narrow reading.** The last AC asks
+only that the kit's stamping unit *accept* a body carrying baked-in token literals.
+It does **not** ask `templatize` to rewrite those literals into `var(--…)`
+references. The rejected broad reading — having `build_manifest()` set
+`manifest["theme"] = "design-tokens"` when `_report_unlifted_tokens` finds matching
+literals — is actively wrong as stated: it would stamp `theme_css` vars into a body
+that still carries the literals, leaving the vars unreferenced *and* the literals
+unlifted. That is dead weight, not token lifting. Real literal→`var()` rewriting is
+new feature work well beyond "extraction" and belongs in a separate ENH; file it
+rather than absorbing it here.
+
+Consequences: `build_manifest()` is unchanged, and
+`_write_unlifted_tokens_report()`'s `_comment` string stays accurate as written —
+the corresponding Wiring Phase item is void (see the strike-through there).
 
 ### Codebase Research Findings
 
 _Added by `/ll:refine-issue` — 2026-08-25 — based on codebase analysis:_
 
-- On the last AC ("kit's token-stamping unit is reachable from the templatize token-lifting path"): confirmed not yet true. `templatize.py`'s `build_manifest()` (line 519-537) never sets `manifest["theme"] = "design-tokens"`, and `_report_unlifted_tokens` (line 717-740, calling `load_design_tokens` at line 727) only *reports* baked-in color literals matching known tokens via `logger.warning` + `unlifted-tokens.json` — it never rewrites the spliced template body to reference the kit's stamping unit. Satisfying this AC requires either the templatize output to set `manifest["theme"]` when literals are found, or a body authored with kit stamp points before being templatized; extraction alone does not close this gap.
+- On the last AC ("kit's token-stamping unit is reachable from the templatize token-lifting path"): `templatize.py`'s `build_manifest()` (line 519-537) never sets `manifest["theme"] = "design-tokens"`, and `_report_unlifted_tokens` (line 717-740, calling `load_design_tokens` at line 727) only *reports* baked-in color literals matching known tokens via `logger.warning` + `unlifted-tokens.json` — it never rewrites the spliced template body to reference the kit's stamping unit.
+  - **Superseded by the 2026-08-25 Decision above.** This note framed the fix as "set `manifest["theme"]` when literals are found" — that option is rejected (it stamps unreferenced vars beside unlifted literals). Under the adopted narrow reading the AC is satisfied by a test proving the kit's stamping unit accepts such a body; `templatize.py` is unchanged, and literal→`var()` rewriting is deferred to a separate ENH.
 
 ## Consumer mix (added 2026-08-23)
 
 Both consumers named in the original scope — `policy-builder` and the sql.js
 dashboard — are hand-built data dashboards from the same lineage.
-`policy-builder` is a 727-line `.tmpl` rendered by four `str.replace()` calls
-(`cli/artifact.py:132-137`); the dashboard will be its sibling. A kit factored
-from one and validated by the other will encode dashboard conventions and fit the
-epic's primary workload — large, LLM-generated, self-contained artifacts from the
-HTML loop family — badly or not at all.
+`policy-builder` is a 727-line `.tmpl` rendered by **five** sequential
+`str.replace()` calls (`cli/artifact/policy_builder.py:124-129`); the dashboard
+will be its sibling. A kit factored from one and validated by the other will
+encode dashboard conventions and fit the epic's primary workload — large,
+LLM-generated, self-contained artifacts from the HTML loop family — badly or not
+at all.
 
-The AC above therefore requires a third consumer from that family. If FEAT-3308
-has not landed when this issue is implemented, satisfy it with a hand-templatized
-loop artifact used as a fixture; the point is that the kit is exercised by a body
-it did not author.
+The AC above therefore requires a consumer from that family. **FEAT-3308
+(templatize) and FEAT-3309 both landed on 2026-08-25**, so satisfy it with a real
+`ll-artifact templatize` output committed as a test fixture. The earlier
+"hand-templatized fallback if FEAT-3308 hasn't landed" escape hatch is moot — do
+not build that path. The point is that the kit is exercised by a body it did not
+author.
 
 ### Codebase Research Findings
 
 _Added by `/ll:refine-issue` — 2026-08-25 — based on codebase analysis:_
 
 - Stale reference: this section's own text cites the `str.replace()` stamping site as "`cli/artifact.py:132-137`" performing "four" replacements. The actual location is `scripts/little_loops/cli/artifact/policy_builder.py:124-129`, and it is **five** sequential `.replace()` calls (`data-theme`, `/*__THEMED_CSS_VARS__*/`, `/*__GRAMMAR_SPEC_JSON__*/`, `/*__SKILL_CATALOG_JSON__*/`, `/*__BUILDER_CORE_JS__*/`), not four.
-- Neither named consumer that motivates this issue exists in code yet: `Glob **/.llat/**` and repo-wide grep for `sql.js`/`sqljs`/`sql_js` and `loop-fleet`/`loop_fleet` found no implementation — the sql.js dashboard (FEAT-3304) and the "loop-fleet dashboard" mentioned in Motivation are both still design-only issue text (`.issues/features/P3-FEAT-3304-embed-sql-js-filtered-history-db-export-for-queryable-single-file-artifacts.md`, `.issues/epics/P3-EPIC-3299-artifact-templates-deterministic-render-cheap-refresh-shared-kit.md`). (The unrelated `ll-logs` "loop-fleet harvester" telemetry feature shares the name but is a different concern — `cli/logs.py`.) The AC requiring "The sql.js dashboard's artifact (FEAT-3304) is built on the kit" has no escape hatch analogous to the one already given for FEAT-3308/templatize above — implementing this issue may require either building a minimal sql.js dashboard fixture first, or waiting on FEAT-3304 to land, neither of which is currently decided here.
+- Neither named consumer that motivates this issue exists in code yet: `Glob **/.llat/**` and repo-wide grep for `sql.js`/`sqljs`/`sql_js` and `loop-fleet`/`loop_fleet` found no implementation — the sql.js dashboard (FEAT-3304) and the "loop-fleet dashboard" mentioned in Motivation are both still design-only issue text (`.issues/features/P3-FEAT-3304-embed-sql-js-filtered-history-db-export-for-queryable-single-file-artifacts.md`, `.issues/epics/P3-EPIC-3299-artifact-templates-deterministic-render-cheap-refresh-shared-kit.md`). (The unrelated `ll-logs` "loop-fleet harvester" telemetry feature shares the name but is a different concern — `cli/logs.py`.) The AC requiring "The sql.js dashboard's artifact (FEAT-3304) is built on the kit" had no escape hatch analogous to the one already given for FEAT-3308/templatize above.
+  - **Resolved 2026-08-25:** that AC is **removed** from this issue rather than given an escape hatch. FEAT-3304 already carries the reciprocal obligation as its own AC ("The artifact is rendered through the ENH-3035 template kit; no template code is copied from `policy-builder`"), so nothing is lost by dropping it here; building a throwaway sql.js fixture just to check the box would be waste. It survives here only as a sequencing note.
+- The FEAT-3308 escape hatch in Consumer mix is stale **in this issue's favour**: FEAT-3308 (templatize) and FEAT-3309 are both `status: done` as of 2026-08-25, so a real `ll-artifact templatize` output is available as the third-consumer fixture and the hand-templatized fallback path should not be built.
 
 ## Sequencing
 
 Should land alongside or just before the sql.js dashboard — the first new artifact
-is the forcing function. Does not gate the write-bridge work.
+is the forcing function. Does not gate the write-bridge work. **This issue does not
+wait on FEAT-3304**; the "built on the kit" obligation lives on FEAT-3304's own AC,
+so ENH-3035 lands first and FEAT-3304 consumes it.
 
 **Blocked on a hub decision (resolved 2026-08-23).** FEAT-3304 flagged that this
 kit and FEAT-3036's Phase-1 `render` pipeline overlap, and that extracting the kit
@@ -162,7 +204,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/little_loops/cli/artifact/render.py:18-25,64,124` — imports `ArtifactTemplate`, `render_template` from `artifact_templates.py`; same exposure as `extract.py`.
 - `scripts/little_loops/cli/artifact/status.py:20` — imports `TemplateResolutionError`, `resolve_template` from `artifact_templates.py`.
 - `scripts/little_loops/design_tokens.py` — `DesignTokens.source` field docstring names `cli/artifact/policy_builder.py`'s `_themed_css_vars()` by fully-qualified path ("`_themed_css_vars()` branches on it..."); goes stale once the function moves to the kit module.
-- `scripts/little_loops/cli/artifact/templatize.py` — `_write_unlifted_tokens_report()`'s persisted `_comment` string in `unlifted-tokens.json` ("Report-only — not rewritten, and the manifest does not set theme: design-tokens") becomes false once `build_manifest()` starts setting `manifest["theme"] = "design-tokens"` per the last AC — must be rewritten alongside that change.
+- ~~`scripts/little_loops/cli/artifact/templatize.py` — `_write_unlifted_tokens_report()`'s persisted `_comment` string in `unlifted-tokens.json` ("Report-only — not rewritten, and the manifest does not set theme: design-tokens") becomes false once `build_manifest()` starts setting `manifest["theme"] = "design-tokens"` per the last AC — must be rewritten alongside that change.~~ **Void under the narrow reading (Decision 2026-08-25):** `build_manifest()` is not changed, so the `_comment` string stays true as written. Leave it alone.
 
 ### Conventions in Force
 - New shared modules in this codebase get extracted when a **second consumer** needs the same logic, not proactively — evidence: `render_to_disk()` (`cli/artifact/render.py:36-53`) whose docstring states it "used to live inline in `cmd_render`" and was extracted once `cmd_refresh` (FEAT-3310) needed the same sequence.
@@ -228,12 +270,15 @@ N/A — no new decision logic. This issue is a refactor extracting existing beha
 
 _These touchpoints were identified by wiring analysis and must be included in the implementation:_
 
+- **Step 0 — capture the golden fixture BEFORE any extraction.** Run `cmd_policy_builder` on the unmodified tree, with `design_tokens` configured (this repo's `warm-paper` + `dark` config, so the themed branch is exercised, not the degraded empty-block branch), and commit the emitted bytes as a fixture. The byte-identical AC is unprovable if this is captured after the port — a post-hoc capture asserts the new code equals itself. Do this first, in its own commit.
 - Update `cli/artifact/__init__.py` — repoint the `_themed_css_vars` import (line 38) and `__all__` entry (line 55) at the new kit module, or re-export from there.
 - Update `test_feat3036_artifact_templates.py:337` — repoint the `patch("little_loops.cli.artifact.policy_builder._themed_css_vars", ...)` target at the new kit module path.
 - Preserve the `little_loops.cli.artifact` re-export of `_themed_css_vars` (or update `test_design_tokens.py:664,673,682`, which import it from there).
 - Update `design_tokens.py`'s `DesignTokens.source` field docstring — drop the fully-qualified `cli/artifact/policy_builder.py::_themed_css_vars()` reference.
-- Update `templatize.py`'s `_write_unlifted_tokens_report()` persisted `_comment` string once `build_manifest()` sets `manifest["theme"] = "design-tokens"` (required by the last AC) — the current text ("the manifest does not set theme: design-tokens") becomes false.
-- Write a new byte-identical regression test for `cmd_policy_builder`'s output (modeled on `test_artifact_templatize.py`'s `read_bytes()` round-trip pattern) — no such golden-comparison test exists today, and the AC requires proving byte-identical (or reviewed-diff) output post-port.
+- ~~Update `templatize.py`'s `_write_unlifted_tokens_report()` persisted `_comment` string once `build_manifest()` sets `manifest["theme"] = "design-tokens"`.~~ **Void** — see the Decision above; `templatize.py` is untouched by this issue.
+- Write a new byte-identical regression test for `cmd_policy_builder`'s output (modeled on `test_artifact_templatize.py`'s `read_bytes()` round-trip pattern) against the Step-0 fixture — no such golden-comparison test exists today, and the AC requires proving byte-identical (or reviewed-diff) output post-port.
+- Add a test that the kit's stamping unit accepts a body carrying baked-in token literals (real `ll-artifact templatize` output as fixture) and completes without error — this is what closes the last AC under the narrow reading.
+- File a follow-up ENH for literal→`var(--…)` rewriting in `templatize` (the rejected broad reading), so the deferred work is tracked rather than lost.
 - Update `docs/reference/CONFIGURATION.md`'s `_themed_css_vars` reference and `### artifacts` section narrative to describe the kit as the stamping owner.
 
 ## Session Log
