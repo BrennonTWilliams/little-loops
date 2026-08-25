@@ -283,8 +283,86 @@ The two layers therefore live in two different places, and the split is the poin
   problem. A failure here routes to `failed`/`diagnose` with an explicit message,
   rather than being laundered as a screenshot miss.
 
-`pre_evaluate_cmd` stays a pure render step. Its only non-render responsibility
-is the `.miss_reason` side-channel of step 6.
+`pre_evaluate_cmd` stays a pure render step. Its only non-render responsibilities
+are the `.miss_reason` side-channel of step 6 and the stale-render deletion of
+§ A failed render is invisible after iteration 1.
+
+**The gate is a new shell state, not `finalize_done`.** `finalize_done` is
+`action_type: prompt` (`html-anything.yaml:189`) — a prompt state cannot host a
+deterministic shell assertion, and asking the model to perform the check
+reintroduces exactly the skippability that option (c) was rejected for. Add a new
+`gate_template` shell state between `run_gen_eval`'s `on_yes` and `finalize_done`
+(`html-anything`'s `max_steps: 20` has room for one more state on the non-looping
+tail). Wording elsewhere in this issue that puts the gate "in `finalize_done`" is
+superseded by this paragraph.
+
+**Why routing the gate's failure to `diagnose` suppresses promotion.**
+`promote_run_artifact` returns `None` whenever `result.failure_terminal`
+(`fsm/persistence.py:753`), evaluated before any mode dispatch. `failed` is in
+`FAILURE_TERMINAL_NAMES` (`fsm/schema.py:26-32`), so `html-anything`'s bare
+`failed:` terminal is failure-flagged without declaring `failure: true`. A gate
+failure routed `gate_template -> diagnose -> failed` therefore blocks promotion
+with no new plumbing at all. This mechanism was unstated and is what makes the
+terminal-gate placement work; pin it with a test rather than assuming it.
+
+**The gate's predicate must be concrete, not "a few keys."** The earlier phrasing
+("at least a few top-level keys and the template references them") is not
+implementable and would be invented at implementation time — unacceptable for the
+one check that decides whether this pilot's success rate means anything. The rule:
+
+1. `<run_dir>/artifact.llat/data.json` parses as a JSON **object** with **>= 3**
+   top-level keys (excluding none — a top-level `ll` key is already a validation
+   error upstream, `artifact_templates.py:190-197`).
+2. **Every** top-level key of `data.json` appears somewhere in the
+   `template.*.j2` body.
+3. The body contains **>= 5** `[[=` substitution openers.
+
+Rule 2 catches dead data; rules 1 and 3 together catch the hardcoded-body
+degenerate case. Tune the two numbers if the pilot shows them mis-calibrated, but
+they must be numbers in this issue before implementation starts, and the values
+used must be recorded in § Pilot Results alongside the success rate.
+
+### A failed render is invisible after iteration 1
+
+_Added at the 2026-08-25 pre-implementation review — corrects a load-bearing
+assumption behind steps 5 and 6._
+
+Step 6 and § Promotion... both assume a render failure produces no HTML, hence no
+screenshot, hence a miss that the ENH-2903 abandon gate can report. **That is only
+true on the first iteration.**
+
+`evaluate`'s action carries no `set -e`, so a nonzero `pre_evaluate_cmd` falls
+through to the Playwright invocation, which finds the *previous* iteration's
+`index.html` still on disk — `render_to_disk` overwrites its output rather than
+creating it fresh (`render.py:67-68`), and nothing else removes it. Playwright
+captures that stale render successfully, so `snapshot` computes
+`SHOT_MTIME > ART_MTIME` and records `MISS=0` (`generator-evaluator.yaml:111-127`).
+Consequences, all silent:
+
+- `.screenshot_misses` never increments, `check_screenshot_abandon` never fires,
+  and the `.miss_reason` side-channel of step 6 is never read.
+- The scorer critiques the stale render, so `critique.md` describes output the
+  model's current (broken) template did not produce. The next `generate` pass
+  "fixes" phantom issues.
+- The run burns to `max_steps` and promotes whatever `.llat/` last survived the
+  terminal gate — or, if the template happens to be schema-valid but semantically
+  broken, promotes it outright.
+
+**Fix: `pre_evaluate_cmd` deletes the render target before rendering.** Shape:
+
+```
+rm -f <abs run_dir>/index.html
+ll-artifact render <abs run_dir>/artifact.llat -o <abs run_dir> >/dev/null || <write .miss_reason>
+```
+
+With the target removed first, a failed render genuinely leaves no artifact,
+`snapshot`'s `cp` fails, `MISS=1`, and the abandon path engages exactly as step 6
+assumes. This is not an optimization — without it, step 6's entire mechanism is
+dead code from iteration 2 onward.
+
+Note the ordering constraint this creates: the `rm -f` must precede the render and
+must not be conditional on the render's exit code, and the `.miss_reason` write
+must not resurrect a stale `index.html`.
 
 ### The `rubric` prompt needs its own template-mode branch
 
@@ -369,8 +447,21 @@ parameter added._
   own template-mode branch). **Not in the original map.**
 - `scripts/little_loops/loops/html-anything.yaml:187-201` — `finalize_done` reports
   `index.html`; template mode reports the `.llat/` contents and the promotion
-  destination instead, **and** hosts the deterministic degenerate-`data.json`
-  gate (§ The backstop must not live inside the iterate cycle)
+  destination instead. It is `action_type: prompt`, so it does **not** host the
+  deterministic gate (correction below).
+- `scripts/little_loops/loops/html-anything.yaml` — a **new `gate_template` shell
+  state** between `run_gen_eval`'s `on_yes` and `finalize_done`, hosting the
+  deterministic degenerate-`data.json` gate and routing failure to `diagnose`
+  (§ The backstop must not live inside the iterate cycle). **Not in the original
+  map**, and it supersedes the earlier plan to put the gate in `finalize_done` —
+  a prompt state cannot run a deterministic shell assertion.
+- `scripts/little_loops/loops/html-anything.yaml:207-218` — `diagnose`'s prompt is
+  file-mode only: it names `index.html` as the artifact and reads
+  `critique.md`/`rubric.md`, and its "most likely failure cause" hint names the
+  score state. In template mode the likely causes are a render failure or a
+  degenerate-data gate rejection, and the operator needs pointing at
+  `artifact.llat/` (plus `.miss_reason` when present). **Not in the original map**
+  — this is the sixth `html-anything.yaml` edit.
 - `scripts/little_loops/loops/oracles/generator-evaluator.yaml:30-52,74-85` — the
   new optional `pre_evaluate_cmd` parameter (`parameters:` entry + `context:`
   default `""`) interpolated at the top of `evaluate`'s shell action. This is the
@@ -388,7 +479,48 @@ parameter added._
 ### Tests
 - `scripts/tests/test_builtin_loops.py` — conformance for the modified
   `html-anything.yaml` (both modes parse, validate, and route)
-- A `file`-mode regression asserting the default path is unchanged
+- A `file`-mode regression asserting the default path is unchanged — but see
+  § The file-mode regression cannot be byte-for-byte on the prompt for what that
+  test can and cannot assert.
+
+#### The file-mode regression cannot be byte-for-byte on the prompt
+
+_Added at the 2026-08-25 pre-implementation review — resolves a contradiction
+between Acceptance Criterion 2, § Mode selection, and the wiring pass's test
+suggestion._
+
+AC 2 says the file-mode path is unchanged, "same prompt". The chosen mode-branch
+convention (§ Codebase Research: inline conditional prose, `research-coverage.yaml`'s
+`academic_mode`) puts both branches in **one static prompt string**. The
+file-mode `generate_prompt` value therefore *does* change by construction — the
+template-mode branch text is inside it — and the same is true of `plan`'s
+rubric-writing prompt and `run_gen_eval`'s `rubric` binding. This is inherent to
+the convention, not a defect in it.
+
+Consequences:
+
+- The wiring pass's pointer at `test_enh3035_artifact_template_kit.py:62-68`
+  (golden fixture + exact `.read_bytes()` equality) **does not transfer to the
+  prompt**. It remains a fine model for byte-equality on a *rendered artifact*,
+  which is a different assertion.
+- The earlier research finding that "no existing conformance test asserts
+  byte-for-byte-unchanged prompt text" was read as a gap to fill. It is not — it
+  is the correct state, and this issue should not introduce one.
+
+What the file-mode regression asserts instead:
+
+1. Every file-mode instruction present in today's `generate_prompt` is still
+   present verbatim as a fragment (fragment-presence style, per
+   `TestResearchCoverageOracle`), and no template-mode-only instruction is
+   reachable when `artifact_mode` is unset or `file`.
+2. A `file`-mode run still writes `index.html` and reports the same five output
+   paths from `finalize_done`.
+3. A `file`-mode terminal promotes **nothing** (the `from: artifact.llat`
+   missing-source skip, `persistence.py:757-763`).
+4. `gate_template` is a no-op / not reached in `file` mode.
+
+AC 2's "same prompt" clause should be read as behavioral equivalence in this
+sense. Byte-for-byte equality applies to the produced artifact, not the loop YAML.
 
 _Added at the 2026-08-25 pre-implementation review:_
 - A test that a `file`-mode terminal promotes **nothing** given
@@ -415,6 +547,21 @@ _Added at the 2026-08-25 pre-implementation review:_
 - A test that the `.miss_reason` side-channel is cleared on a successful render,
   not only written on failure (step 6) — otherwise the abandon message reports a
   stale cause.
+- A static assertion that the bound `pre_evaluate_cmd` deletes the render target
+  before invoking `ll-artifact render`, and unconditionally (§ A failed render is
+  invisible after iteration 1). Pair it with a behavioral test that drives
+  `evaluate` + `snapshot` with a stale `index.html` present and a failing render,
+  asserting `.screenshot_misses` increments — the regression this guards is
+  silent, so a fragment-presence check alone is not enough.
+- Conformance that `gate_template` exists as an `action_type: shell` state
+  between `run_gen_eval` and `finalize_done`, routes failure to `diagnose`, and
+  that `finalize_done` remains `action_type: prompt` (i.e. nobody moved the gate
+  back into it).
+- A unit test of the gate predicate itself against three fixtures: a fully
+  parameterized `.llat/` (passes), a `data.json` of `{}` (fails rule 1), and a
+  hardcoded body with populated-but-unreferenced data (fails rules 2 and 3).
+- Conformance that `diagnose`'s prompt names the `.llat/` sources in template mode
+  and `index.html` in `file` mode (fragment-presence).
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_enh3035_artifact_template_kit.py:62-68`
@@ -423,7 +570,9 @@ _Wiring pass added by `/ll:wire-issue`:_
   (golden fixture + exact `.read_bytes()` equality). Corrects the earlier
   refine-issue research note claiming no such shape exists in this codebase —
   it exists for CLI-command output, not loop YAML, so still needs adapting.
-  [Agent 3 finding]
+  [Agent 3 finding] **Superseded in part at the 2026-08-25 pre-implementation
+  review:** this shape does not transfer to prompt text at all — see
+  § The file-mode regression cannot be byte-for-byte on the prompt.
 - `scripts/tests/test_builtin_loops.py:~13230-13269`
   (`test_snapshot_routes_to_score_gate`, `test_snapshot_writes_screenshot_misses_counter`,
   `test_score_gate_routes_fresh_screenshot_to_score`,
@@ -464,12 +613,12 @@ _Added by `/ll:refine-issue` — 2026-08-25 — based on codebase analysis:_
   - Default-preservation guard convention (BUG-1947): a runner-injected context default that is an empty string (like `design_tokens_context: ""` in this same file) must be checked for **truthiness**, not key-existence, since the key is always declared — the same shape applies if `artifact_mode` is given an empty-string/`"file"` default rather than being absent when unset.
 - **`artifact_path` override precedent**: two sibling wrapper loops already override the oracle's `artifact_path` parameter via their `with:` block — `svg-image-generator.yaml:71` (`artifact_path: "image.svg"`) and `flux-image-generator.yaml:111` (`artifact_path: "image.png"`) — confirming the mechanism this issue proposes reusing (repoint `artifact_path` at a rendered file) is the established way consumers customize the oracle's screenshot target without forking it.
 - **ENH-2903's abandon gate has no cause-distinction mechanism today**: `evaluate`'s `on_yes`/`on_no`/`on_error` all route to the same `snapshot` state (`generator-evaluator.yaml:83-85`); a miss is tracked only as a consecutive-count (`.screenshot_misses`), with no signal anywhere for *why* a screenshot was missed. ENH-2903's own resolution explicitly rejected a harder `on_error: failed` split as "too blunt." A render-failure-specific message (this issue's Acceptance Criteria) has no existing mechanism to build on within the oracle's current routing shape, and the oracle is out of bounds to fork.
-- **No existing conformance test asserts byte-for-byte-unchanged prompt text**: `test_builtin_loops.py`'s current `html-anything` coverage (and the closest analog, `academic_mode` coverage for `research-coverage.yaml`) asserts structural facts and text-fragment presence/absence, never full-string/hash equality on a `generate_prompt` value. This issue's "file-mode regression must stay byte-for-byte unchanged" acceptance criterion has no existing test shape to copy — the regression test will need a new assertion style (e.g. exact-string or hash comparison), not an extension of the existing fragment-presence style.
+- **No existing conformance test asserts byte-for-byte-unchanged prompt text**: `test_builtin_loops.py`'s current `html-anything` coverage (and the closest analog, `academic_mode` coverage for `research-coverage.yaml`) asserts structural facts and text-fragment presence/absence, never full-string/hash equality on a `generate_prompt` value. This issue's "file-mode regression must stay byte-for-byte unchanged" acceptance criterion has no existing test shape to copy — the regression test will need a new assertion style (e.g. exact-string or hash comparison), not an extension of the existing fragment-presence style. **Corrected at the 2026-08-25 pre-implementation review:** the absence is correct, not a gap. Byte-equality on a prompt is unachievable under the inline-conditional-prose convention this issue chose, and no such assertion should be written — see § The file-mode regression cannot be byte-for-byte on the prompt. Fragment-presence *is* the right style here.
 
 _Added by `/ll:refine-issue` — 2026-08-25 — based on codebase analysis:_
 
 - **No prompt anywhere in this codebase currently instructs a model to emit a `manifest.yaml` + `template.*.j2` + `data.json` triple** — that shape is produced today only by deterministic code, `cli/artifact/templatize.py:899-903` (`Path.write_bytes`/`write_text`), never by an LLM-facing prompt. This issue's template-mode `generate_prompt` branch has zero prior art to model wording after, beyond the schema contract itself (see Program Design).
-- **`test_builtin_loops.py`'s established multi-mode conformance pattern** is `TestResearchCoverageOracle` (`:14025-14107`): a `parameters` block check (`"academic_mode" in params`, not-required) plus per-mode text-fragment presence checks on the raw `action` string (e.g. `"## BibTeX" in action`), never structural branch parsing or full-string equality. `TestHtmlAnythingLoop` (`:10303-10402`) already follows the same fixture/class shape but has no mode-branching tests yet — the new template-mode conformance test should extend it with fragment-presence assertions in this style, and the separate byte-for-byte file-mode regression (no existing shape to copy, confirmed absent by both research passes) needs its own exact-string/hash assertion, not an extension of the fragment-presence style.
+- **`test_builtin_loops.py`'s established multi-mode conformance pattern** is `TestResearchCoverageOracle` (`:14025-14107`): a `parameters` block check (`"academic_mode" in params`, not-required) plus per-mode text-fragment presence checks on the raw `action` string (e.g. `"## BibTeX" in action`), never structural branch parsing or full-string equality. `TestHtmlAnythingLoop` (`:10303-10402`) already follows the same fixture/class shape but has no mode-branching tests yet — the new template-mode conformance test should extend it with fragment-presence assertions in this style, and the file-mode regression should use the *same* fragment-presence style rather than an exact-string/hash assertion — **corrected at the 2026-08-25 pre-implementation review**, see § The file-mode regression cannot be byte-for-byte on the prompt.
 
 ## Program Design
 
@@ -500,10 +649,12 @@ section said the issue adds `artifact_path` to that binding. It does not — see
 `run_gen_eval` (`html-anything.yaml:117`) -> `oracles/generator-evaluator` with a
 template-shaped `generate_prompt` + `pre_evaluate_cmd` ->
 `generate` (model writes `<run_dir>/artifact.llat/`) -> `evaluate`, whose action
-now begins with `ll-artifact render <run_dir>/artifact.llat -o <run_dir>`
-(rendering `index.html`, per the mandated `manifest.output`) -> Playwright
-screenshot of the unchanged `artifact_path` default -> `snapshot` / `score_gate` /
-`score` -> `finalize_done` -> `promote_run_artifact` (FEAT-3318) ->
+now begins with `rm -f <run_dir>/index.html; ll-artifact render
+<run_dir>/artifact.llat -o <run_dir>` (rendering `index.html`, per the mandated
+`manifest.output`) -> Playwright screenshot of the unchanged `artifact_path`
+default -> `snapshot` / `score_gate` / `score` -> `gate_template` (deterministic
+degenerate-`data.json` check; failure -> `diagnose` -> `failed`, which suppresses
+promotion) -> `finalize_done` -> `promote_run_artifact` (FEAT-3318) ->
 `<templates_dir>/html-anything.llat/`
 
 _Correction (2026-08-25 pre-implementation review): the earlier
@@ -642,14 +793,28 @@ _Revised at the 2026-08-25 pre-implementation review._
    (§ The `rubric` prompt needs its own template-mode branch). Both halves are
    required — the criterion is unscoreable without the second.
 5. Pass `pre_evaluate_cmd` from `html-anything`'s `with:` block:
-   `ll-artifact render <abs run_dir>/artifact.llat -o <abs run_dir> >/dev/null` —
-   absolute paths, since relative ones resolve against `config.project_root`, not
-   cwd; stdout quieted so it cannot perturb `evaluate`'s `output_contains:
-   "CAPTURED"` match (§ Caveat on `evaluate`'s routing). Mind the
-   double-interpolation escaping rule for anything in this value that uses shell
-   variables — see § `pre_evaluate_cmd` is interpolated TWICE.
+   `rm -f <abs run_dir>/index.html; ll-artifact render <abs run_dir>/artifact.llat
+   -o <abs run_dir> >/dev/null` — absolute paths, since relative ones resolve
+   against `config.project_root`, not cwd; stdout quieted so it cannot perturb
+   `evaluate`'s `output_contains: "CAPTURED"` match (§ Caveat on `evaluate`'s
+   routing). No `--data` flag is needed: `cmd_render` defaults `data_path` to
+   `<template root>/data.json` (`render.py:105`). Note also that `cmd_render`
+   constructs `BRConfig(Path.cwd())` (`render.py:80`), so its notion of
+   `project_root` follows the loop shell's cwd — which `init`'s `$(pwd)` already
+   assumes is the project root; the absolute paths make this moot for the two
+   arguments that matter.
+
+   **The leading `rm -f` is load-bearing, not hygiene** — without it a failed
+   render is undetectable from iteration 2 onward. See § A failed render is
+   invisible after iteration 1. It must precede the render unconditionally.
+
+   Mind the double-interpolation escaping rule for anything in this value that
+   uses shell variables — see § `pre_evaluate_cmd` is interpolated TWICE.
 6. Make a render failure surface as a render error through the ENH-2903 abandon
-   path rather than a bare screenshot-miss: `pre_evaluate_cmd` writes
+   path rather than a bare screenshot-miss. This depends on step 5's `rm -f`:
+   with the stale `index.html` removed, a failed render leaves no artifact,
+   `snapshot`'s `cp` fails, and `MISS=1` is recorded — which is what puts the run
+   on the abandon path at all. Then: `pre_evaluate_cmd` writes
    `.miss_reason` under `run_dir` on nonzero exit **and removes it on exit 0**,
    and `screenshot_abandoned_summary` (`generator-evaluator.yaml:287-303`)
    includes it in its message when present. The removal-on-success half is not
@@ -661,9 +826,18 @@ _Revised at the 2026-08-25 pre-implementation review._
    `on_yes`/`on_no`/`on_error` → `snapshot` (`:83-85`) is untouched, so the
    existing ENH-2903 tests keep passing (none assert the literal message text).
 7. Update `finalize_done`'s reported output paths for template mode, including the
-   promotion destination, and add the deterministic degenerate-`data.json` gate
-   there (§ The backstop must not live inside the iterate cycle) — at the
-   terminal, not inside `pre_evaluate_cmd`.
+   promotion destination, and update `diagnose`'s prompt so a template-mode
+   failure points the operator at `artifact.llat/` and `.miss_reason` rather than
+   at `index.html` and the score state.
+
+   Add the deterministic degenerate-`data.json` gate as a **new `gate_template`
+   shell state** between `run_gen_eval`'s `on_yes` and `finalize_done`, using the
+   three-part predicate in § The backstop must not live inside the iterate cycle
+   (>= 3 top-level `data.json` keys; every key referenced in the body; >= 5 `[[=`
+   openers). `finalize_done` is `action_type: prompt` and cannot host it. Route
+   the gate's failure to `diagnose` -> `failed`, which suppresses promotion via
+   `promote_run_artifact`'s `result.failure_terminal` short-circuit
+   (`persistence.py:753`). In `file` mode the gate is a no-op.
 8. Conformance + `file`-mode regression tests; docs (LOOPS_REFERENCE.md's
    `artifact_mode` row and template-mode example, the overwrite-per-run note,
    CLI.md, HARNESS_OPTIMIZATION_GUIDE.md).
@@ -702,10 +876,11 @@ It needs live host-CLI runs, which are manual, billable, and slow. Concretely:
 
 - **Priority**: P2 — without a producer, FEAT-3318's plumbing is inert and every
   loop→template route stays on the lossy `templatize` path.
-- **Effort**: Medium — revised upward at the 2026-08-25 review. Not "one loop
-  file": five separate edits to `html-anything.yaml` (context/`artifact_output`,
-  `plan`'s rubric-writing branch, `generate_prompt`, the `rubric` scoring branch,
-  `finalize_done` + its promotion gate), one generic
+- **Effort**: Medium — revised upward twice at the 2026-08-25 review. Not "one loop
+  file": **seven** separate edits to `html-anything.yaml`
+  (context/`artifact_output`, `plan`'s rubric-writing branch, `generate_prompt`,
+  the `rubric` scoring branch, `finalize_done`'s reported paths, `diagnose`'s
+  template-mode branch, and a new `gate_template` shell state), one generic
   parameter added to the shared oracle (plus one message-only edit to
   `screenshot_abandoned_summary`), and N=5 live runs for the reliability
   number, which is wall-clock and billable rather than code.
@@ -725,11 +900,19 @@ month — no LLM call, no `templatize` round trip, no fidelity loss.
 - [ ] `ll-loop run html-anything --context artifact_mode=template` produces a
       `.llat/` directory that passes FEAT-3318's runtime gate and is rendered by
       `ll-artifact render` with no `templatize` step.
-- [ ] The default (`file`) path is unchanged — same prompt, same `index.html`, same
-      reported outputs; a regression test pins this. Includes the promotion side
-      effect of the newly-required `artifact_output` block: a `file`-mode run
-      promotes **nothing**, because `from: artifact.llat` does not exist in that
-      mode (`persistence.py:757-763`). The regression test asserts this explicitly.
+- [ ] The default (`file`) path is **behaviorally** unchanged — every file-mode
+      instruction still present verbatim as a fragment, same `index.html`, same
+      reported outputs, `gate_template` a no-op; a regression test pins this.
+      Includes the promotion side effect of the newly-required `artifact_output`
+      block: a `file`-mode run promotes **nothing**, because `from: artifact.llat`
+      does not exist in that mode (`persistence.py:757-763`). The regression test
+      asserts this explicitly.
+      _(Revised at the 2026-08-25 pre-implementation review: the earlier "same
+      prompt" wording implied byte-equality on the prompt string, which the
+      inline-conditional-prose convention makes impossible by construction — the
+      branch text lives in the same static string. Byte-equality applies to the
+      produced artifact, not the loop YAML. See § The file-mode regression cannot
+      be byte-for-byte on the prompt.)_
 - [ ] `oracles/generator-evaluator.yaml` is **not** forked, branched on artifact
       mode, or given a new state. Exactly two changes are permitted: (a) one
       generic optional parameter, `pre_evaluate_cmd`, default `""`, prepended to
@@ -750,9 +933,14 @@ month — no LLM call, no `templatize` round trip, no fidelity loss.
       (written by `plan`, **and** scoreable because the `rubric` prompt's
       template-mode branch reads the `.llat/` sources), plus a deterministic
       terminal gate that rejects a degenerate `data.json` before promotion. The
-      deterministic gate runs at `finalize_done`, **not** inside
-      `pre_evaluate_cmd` — an in-cycle failure would surface as a screenshot miss
-      and abandon the run, contradicting the criterion below.
+      deterministic gate runs in a new `gate_template` **shell** state immediately
+      before `finalize_done` (which is `action_type: prompt` and cannot host it),
+      **not** inside `pre_evaluate_cmd` — an in-cycle failure would surface as a
+      screenshot miss and abandon the run, contradicting the criterion below. Its
+      predicate is the concrete three-part rule in § The backstop must not live
+      inside the iterate cycle, and a gate failure routes to `diagnose` ->
+      `failed`, which suppresses promotion via `result.failure_terminal`
+      (`persistence.py:753`).
 - [ ] When `design_tokens_context` is non-empty, the emitted `manifest.yaml`
       declares `theme: design-tokens` and the body references `[[= ll.theme_css =]]`
       rather than inlining resolved token values — so the promoted template is
@@ -760,7 +948,14 @@ month — no LLM call, no `templatize` round trip, no fidelity loss.
 - [ ] The screenshot/rubric/critique iterate cycle works in template mode — a
       low-scoring template is critiqued and regenerated, not abandoned.
 - [ ] A template that fails to render surfaces the render error, not a generic
-      missing-screenshot message.
+      missing-screenshot message — **and does so on every iteration, not only the
+      first.** `pre_evaluate_cmd` removes the render target before rendering, so a
+      failed render leaves no `index.html` for Playwright to capture; without that
+      removal the previous iteration's render is screenshotted successfully,
+      `snapshot` records `MISS=0`, and the abandon path plus the entire
+      `.miss_reason` mechanism become unreachable (§ A failed render is invisible
+      after iteration 1). A test simulates a mid-run render failure and asserts
+      the miss is recorded.
 - [ ] `test_builtin_loops.py` conformance passes for both modes.
 - [ ] A `## Pilot Results` section in this issue records the observed first-try
       and post-critique success rates over N=5 live runs across ≥3 artifact types,
