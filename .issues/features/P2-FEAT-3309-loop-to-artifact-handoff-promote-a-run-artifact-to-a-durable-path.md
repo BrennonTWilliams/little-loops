@@ -1,6 +1,6 @@
 ---
 id: FEAT-3309
-title: 'Loop→artifact handoff: promote a run artifact to a durable path'
+title: "Loop\u2192artifact handoff: promote a run artifact to a durable path"
 type: FEAT
 priority: P2
 status: open
@@ -16,6 +16,12 @@ labels:
 - artifact
 - ll-artifact
 - fsm
+confidence_score: 100
+outcome_confidence: 86
+score_complexity: 18
+score_test_coverage: 23
+score_ambiguity: 24
+score_change_surface: 21
 ---
 
 # FEAT-3309: Loop→artifact handoff: promote a run artifact to a durable path
@@ -91,12 +97,51 @@ scalar cannot express both, so a fixed-name promotion must be expressible or
 artifact_output:
   from: index.html          # required; relative to run_dir
   to: hitl-md-review.html   # optional; default = "{run_id}-{loop_name}{suffix}"
+  on: [done]                # optional; default = all non-failure terminals
 ```
 
 The run-identified default follows `archive_run()`'s precedent
 (`fsm/persistence.py:552-589`: `run_id` from `state.started_at`, compact ISO
 truncated to 17 chars). A scalar shorthand (`artifact_output: index.html`) is
-accepted and means `from:` with the default `to:`.
+accepted and means `from:` with the default `to:` and the default `on:`.
+
+`from` is resolved against `fsm.context["run_dir"]`, which carries a **trailing
+`/`** and may be **cwd-relative** (`cli/loop/run.py:199`,
+`lifecycle.py:667`). `promote_run_artifact` resolves it exactly the way
+`hitl-md.yaml:59-63` does today — absolute paths pass through, relative paths are
+anchored to the invocation cwd — so the two agree on which directory
+`${captured.run_dir.output}` named.
+
+#### Terminal gating — why `on:` exists
+
+**Decision (2026-08-24 review):** "promote on any non-failure terminal" is not a
+safe default for the loop this issue retires. `hitl-md.yaml` declares **no
+`failure: true` state at all** — `grep failure: hitl-md.yaml` returns only
+comments; its `failed:` terminal (`:326-330`) is `terminal: true` only. So
+`get_failure_states()` is empty for that loop and *every* terminal is a
+non-failure terminal. Today's `cp` is reachable **only** via `score → on_yes →
+finalize` (`:251-253`), so an ungated promotion would newly fire on:
+
+- the `finalize_failed → failed` diagnostic path, and
+- max-iterations exhaustion, which lands in `done` (`:306` comment).
+
+Both would be behavior changes recorded as PRESERVED. `on:` names the terminal
+states that authorize promotion; `hitl-md` declares `on: [done]`, and the
+exhaustion case is handled below.
+
+Separately — and as an independent line item, not a substitute for `on:` —
+`hitl-md.yaml:326` gains `failure: true`. It is already documented as the
+"explicit failure terminal … making failure mode visible in `ll-loop history`",
+and the missing flag is a latent defect in its own right. This changes that
+loop's reported final status (and exit code) on the failure path, so it is
+tracked in the parity table rather than folded in silently.
+
+Max-iterations exhaustion still reaches `done`, which `on:` authorizes. That case
+is covered by the missing-source rule below: an exhausted run that never wrote
+`index.html` promotes nothing. An exhausted run that *did* write one promotes it
+— a deliberate, stated widening of today's behavior, on the grounds that a
+best-effort artifact is more useful on the user's disk than in a transient run
+dir.
 
 ### Destination directory
 
@@ -117,6 +162,12 @@ Overwrite semantics: promotion overwrites its destination unconditionally (match
 today's `cp`); no `--force` gate, because the destination is either run-identified
 (collision-free) or explicitly named by the loop author.
 
+Missing-source semantics: a declared `from:` that does not exist at the terminal
+is a **no-op, not an error** — log and return `None`, leave the run's exit status
+alone. This is a reachable state, not a defensive branch: a run that exhausts
+`max_iterations` before the generate state ever writes `index.html` terminates
+cleanly in an `on:`-authorized state with no deliverable on disk.
+
 ### Out of scope — `vega-viz.yaml`
 
 `vega-viz.yaml:494-515` is **not** retired by this issue. Its per-iteration
@@ -136,7 +187,7 @@ a durable path they can hand straight to `ll-artifact templatize`.
 
 ### Types
 
-- `FSMLoop.artifact_output: ArtifactOutput | None` — a `from`/`to` pair (see above)
+- `FSMLoop.artifact_output: ArtifactOutput | None` — a `from`/`to`/`on` triple (see above)
 
 No paired `_ok` suppression flag. The `tamper_guard`/`tamper_guard_ok`,
 `prepatch_check`/`prepatch_check_ok` convention (`fsm/schema.py:1373-1382`) exists
@@ -150,14 +201,19 @@ apply — this is a deliberate deviation, not an omission.
 
 ### Call Path
 
-`PersistentExecutor.run()` -> `promote_run_artifact` -> `fsm.context["promoted"]`
--> `_artifact_lines` (unchanged) -> new post-run print
+`PersistentExecutor.run()` -> `promote_run_artifact` ->
+`fsm.context["promoted_artifact"]` -> `_artifact_lines` (unchanged) -> new
+post-run print
+
+The context key is `promoted_artifact`, not `promoted`: `_artifact_lines`
+iterates the whole context, and a bare `promoted` is plausible enough as a loop's
+own capture/context name to collide.
 
 ### Reporting: `_artifact_lines` needs no change
 
 `_artifact_lines` (`_helpers.py:1258-1280`) iterates `fsm.context` generically and
 emits **any** path-like string value. So `promote_run_artifact` setting
-`fsm.context["promoted"] = str(dest)` surfaces the path for free:
+`fsm.context["promoted_artifact"] = str(dest)` surfaces the path for free:
 
 - no signature change to `_artifact_lines`;
 - the 8 exact-tuple-shape assertions in
@@ -172,11 +228,22 @@ CLI still needs **one new post-run print**. That is a line, not a refactor.
 
 ### Hook point
 
-`PersistentExecutor.run()` (`fsm/persistence.py:967-1004`): `result =
-self._executor.run()` (`:979`) is followed by `final_status = map_final_status(...)`
-(`:982-984`) and `self.persistence.archive_run(...)` (`:1002`) before `return
-result` (`:1004`). `promote_run_artifact` fits between those, with
-`result.failure_terminal`/`result.terminated_by` already resolved.
+`PersistentExecutor.run()` (`fsm/persistence.py:967-1004`).
+
+**Call it immediately after `result = self._executor.run()` (`:979`)** — before
+`final_status = map_final_status(...)` (`:982-984`), and specifically before the
+`final_state = LoopState(...)` construction (`:986-999`). That constructor
+snapshots the context by value at `:997` (`context=dict(self.fsm.context)`), and
+that snapshot is what `save_state` (`:1000`) persists and `archive_run` (`:1002`)
+archives. Promoting *after* it — anywhere in the "between `map_final_status` and
+`archive_run`" window a looser reading allows — sets
+`fsm.context["promoted_artifact"]` on a dict nobody reads again, so the promoted
+path reaches the terminal print but never the persisted state, and `ll-loop
+show`/`history` cannot surface it.
+
+`result.failure_terminal`, `result.terminated_by`, and `result.final_state` (for
+the `on:` allowlist check) are all resolved as of `:979`, so nothing about the
+earlier call site costs information.
 
 - `resume()` (`:1006-1073`) needs **no separate wiring** — it restores state then
   unconditionally `return self.run(clear_previous=False)` (`:1073`), so it inherits
@@ -188,6 +255,30 @@ result` (`:1004`). `promote_run_artifact` fits between those, with
 - The CLI-layer success check `_is_success = ...` (`_helpers.py:1909-1912`) is
   **not** the hook point: it sits inside `if not renderer.quiet:`, so keying
   promotion to it would silently skip `--quiet` runs.
+
+### Paths that deliberately do not promote
+
+- **Sub-loops.** A child loop launched by a `loop:` state runs through a plain
+  `Executor` inside `executor.py:~890-1000`, never a `PersistentExecutor`, so it
+  never reaches the hook — even though it *does* inherit the parent's `run_dir`
+  (`:903`, `:979-981`). A child declaring `artifact_output` is therefore silently
+  ignored. **Out of scope**, but not silently: `ll-loop validate` emits a warning
+  when a loop reachable only as a sub-loop declares `artifact_output`, so the
+  gap is discoverable rather than mysterious.
+- **`cmd_simulate`.** `cli/loop/testing.py:266` calls a bare `executor.run()`, so
+  simulate cannot promote — correct, since its `run_dir`
+  (`testing.py:217`, `{loop_name}-simulate`) is a fixture directory whose
+  `index.html` may be arbitrarily stale. Recorded here so a later reader does not
+  "fix" the omission.
+
+### `--quiet` and the post-run print
+
+Every print in `_helpers.py` is guarded by `if not renderer.quiet` — ~15 sites
+across `:1049-1206` and `:1792-1897`. The new post-run promotion print is
+**deliberately unguarded**, which is the point of AC-1: `--quiet` suppresses the
+live decoration, not the one line naming the file the run produced. Implementation
+must check for tests asserting that `--quiet` output is empty and update them
+with this rationale rather than re-guarding the print.
 
 `failure_terminal`/`terminated_by` are computed in `_finish()`
 (`fsm/executor.py:3661-3758`), where `failure_terminal = terminated_by ==
@@ -218,13 +309,14 @@ truth with no reconciliation path.
 - `scripts/little_loops/fsm/validation/_base.py:113` — register `artifact_output` in `KNOWN_TOP_LEVEL_KEYS`
 - `scripts/little_loops/fsm/persistence.py:967-1004` — call `promote_run_artifact` in `PersistentExecutor.run()`
 - `scripts/little_loops/cli/loop/run.py` / `_helpers.py` — thread the promotion config scalars; add the one post-run print
-- `scripts/little_loops/loops/hitl-md.yaml:255-269` — replace the hand-written `cp` state
+- `scripts/little_loops/loops/hitl-md.yaml:255-269` — replace the hand-written `cp` state; also add `failure: true` to the `failed` terminal (`:326-330`)
+- `scripts/little_loops/fsm/validation/` — warn when a sub-loop-only loop declares `artifact_output` (see Program Design → Paths that deliberately do not promote)
 - `scripts/little_loops/config/features.py:368-395` — `ArtifactsConfig.promotion_dir`
 - `scripts/little_loops/config/core.py:339,476` — `from_dict`/`.artifacts` property/`to_dict` wiring
 - `scripts/little_loops/config-schema.json` § `artifacts` (`:1875-1894`) — `additionalProperties: false`; add `promotion_dir` with `type`/`default`/issue-citing description, matching the dataclass default field-for-field
 
 **Not modified** (corrections to the pre-split wiring pass):
-- `cli/loop/config_cmds.py::cmd_validate()` — the Part B terminal-shape check moved to FEAT-3318 and is a *runtime* check there, so nothing needs splicing into `ll-loop validate` for it. Part A adds no new validation pass.
+- `cli/loop/config_cmds.py::cmd_validate()` — the Part B terminal-shape check moved to FEAT-3318 and is a *runtime* check there, so nothing needs splicing into `ll-loop validate` for it. (Part A does add one advisory rule — the sub-loop-only warning above — but it lands in `fsm/validation/`, which `cmd_validate` already dispatches to unchanged.)
 - `_artifact_lines` — see Program Design → Reporting.
 
 ### Dependent Files (Callers/Importers)
@@ -244,7 +336,9 @@ truth with no reconciliation path.
 - `scripts/tests/test_fsm_persistence.py:1326-1342` (`test_run_archives_to_history_on_completion`) and `:1430+` (`test_meta_eval_archived_after_run`) — E2E templates for `promote_run_artifact`: run a `PersistentExecutor` to completion and assert the finish-path filesystem side-effect; the meta-eval sibling also covers the "no-op when absent" shape
 - `scripts/tests/test_config_schema.py:473-493,1300-1343` — `test_artifacts_in_schema` enumerates `artifacts` keys by name; the BUG-3192 "Guard 1" parity test walks `BRConfig(...).to_dict()` against `config-schema.json` leaf-by-leaf and **auto-fails** on any default mismatch for `promotion_dir`
 - New coverage: promotion in a `--quiet` run (the reason the hook is in `persistence.py`, not the CLI success check)
-- `scripts/tests/test_builtin_loops.py` — loop YAML conformance for `hitl-md.yaml`
+- New coverage: promoted path readable back from **saved state**, not stdout — the regression gate for the `:979`-vs-`:997` ordering
+- New coverage: terminal outside `on:` promotes nothing; declared-but-absent `from:` is a clean no-op
+- `scripts/tests/test_builtin_loops.py` — loop YAML conformance for `hitl-md.yaml`, including its new `failure: true` terminal
 
 ### Documentation
 - `docs/reference/API.md:5520-5573` — the hand-maintained `FSMLoop` field-by-field reproduction with inline `#` comments per flag (e.g. `artifact_versioning_ok: bool = False  # ... (ENH-1957)` at `:5561`); nothing auto-generates it, so `artifact_output` needs a hand-written entry
@@ -256,7 +350,10 @@ truth with no reconciliation path.
 
 | Artifact | Behavior | Disposition | Notes |
 |---|---|---|---|
-| `hitl-md.yaml:255-269` (`finalize` state) | Bash `cp "${captured.run_dir.output}/index.html" "./hitl-md-review.html"`, gated by `output_contains: "FINALIZED"`; `on_yes`/`on_no`/`on_error` all route to `finalize_done` (best-effort, non-blocking) | PRESERVED | Reproduced as `artifact_output: {from: index.html, to: ./hitl-md-review.html}`. `promote_run_artifact` must reproduce the "never fail the run" routing — a promotion failure logs and returns `None`, it does not change the run's exit status. |
+| `hitl-md.yaml:255-269` (`finalize` state) | Bash `cp "${captured.run_dir.output}/index.html" "./hitl-md-review.html"`, gated by `output_contains: "FINALIZED"`; `on_yes`/`on_no`/`on_error` all route to `finalize_done` (best-effort, non-blocking) | PRESERVED | Reproduced as `artifact_output: {from: index.html, to: ./hitl-md-review.html, on: [done]}`. `promote_run_artifact` must reproduce the "never fail the run" routing — a promotion failure logs and returns `None`, it does not change the run's exit status. |
+| `hitl-md.yaml` reachability of the `cp` | Reachable **only** via `score → on_yes → finalize` (`:251-253`); a failing critique routes to `finalize_failed → failed` and no copy happens | PRESERVED **via `on: [done]`** | Not preserved by "promote on any non-failure terminal": the loop declares no `failure: true` state, so `get_failure_states()` is empty and `failed` reads as a clean terminal. See Proposed Solution → Terminal gating. |
+| `hitl-md.yaml:326-330` (`failed` terminal) | `terminal: true` with **no** `failure: true`, despite the comment calling it the "explicit failure terminal … visible in `ll-loop history`" | **CHANGED (intentional)** | Gains `failure: true`. Latent defect fixed on its own merits; `on:` — not this flag — is what protects promotion. Changes the loop's reported final status and exit code on the failure path, which is the intended correction. |
+| `hitl-md.yaml` max-iterations exhaustion | Lands in `done` (`:306`) without passing `finalize`, so no copy happens even when `index.html` exists | **CHANGED (intentional)** | `on: [done]` authorizes this terminal, so an exhausted run that produced an `index.html` now promotes it; one that never wrote the file is a no-op per the missing-source rule. Deliberate widening — a best-effort artifact is more useful on disk than in a transient run dir. |
 | `hitl-md.yaml:271-284` (`finalize_done` prompt) | Reports artifact paths as plain prose inside an LLM prompt action, independent of `_artifact_lines` | PRESERVED | A second, un-unified reporting convention. Reconciling it is out of scope; leaving it means the path is reported twice, which is harmless. |
 | `vega-viz.yaml:494-515` | Per-iteration `iter-N/` snapshots plus a running `best.html`/`best_score.txt`, updated in-place when an iteration beats the stored best | PRESERVED (out of scope) | See Proposed Solution → Out of scope. Iterative versioning, not one-shot promotion; not retired by this issue. |
 
@@ -272,17 +369,21 @@ _Added by `/ll:refine-issue` — 2026-08-25; revised at the 2026-08-24 split rev
 ## Implementation Steps
 
 1. Add `ArtifactsConfig.promotion_dir` + the `config-schema.json` key + `config/core.py` wiring, with the parity test green.
-2. Add the `artifact_output` header field (`from`/`to`, scalar shorthand) to `FSMLoop` + `KNOWN_TOP_LEVEL_KEYS`, with tests.
-3. Implement `promote_run_artifact` and call it from `PersistentExecutor.run()`; set `fsm.context["promoted"]`.
-4. Add the one post-run print in the CLI (outside the `quiet` guard).
-5. Retire the hand-written `cp` state in `hitl-md.yaml`, asserting identical user-visible output.
-6. Docs: `API.md` `FSMLoop` entry, `CONFIGURATION.md` `promotion_dir`, `CLI.md`/`HARNESS_OPTIMIZATION_GUIDE.md` header fields.
+2. Add the `artifact_output` header field (`from`/`to`/`on`, scalar shorthand) to `FSMLoop` + `KNOWN_TOP_LEVEL_KEYS`, with tests.
+3. Implement `promote_run_artifact` — terminal allowlist, `run_dir` resolution, missing-source no-op — and call it from `PersistentExecutor.run()` immediately after `result = self._executor.run()` (`persistence.py:979`), i.e. **before** the `final_state` context snapshot at `:997`; set `fsm.context["promoted_artifact"]`.
+4. Add the one post-run print in the CLI (outside the `quiet` guard), updating any test that asserts `--quiet` output is empty.
+5. Retire the hand-written `cp` state in `hitl-md.yaml` with `on: [done]`, and add `failure: true` to its `failed` terminal.
+6. Add the `ll-loop validate` advisory for `artifact_output` on a sub-loop-only loop.
+7. Docs: `API.md` `FSMLoop` entry, `CONFIGURATION.md` `promotion_dir`, `CLI.md`/`HARNESS_OPTIMIZATION_GUIDE.md` header fields.
 
 ## Acceptance Criteria
 
-- [ ] A loop declaring `artifact_output` has its deliverable promoted to the resolved destination on a non-failure terminal, and the promoted path is reported after the run — **including under `--quiet`**.
+- [ ] A loop declaring `artifact_output` has its deliverable promoted to the resolved destination on an `on:`-authorized terminal, and the promoted path is reported after the run — **including under `--quiet`**.
+- [ ] The promoted path is present in the **persisted** state and the archived run, not just the terminal output — i.e. promotion runs before the `final_state` context snapshot (`persistence.py:997`). Asserted by reading the path back from saved state, not from stdout.
 - [ ] `hitl-md.yaml` still produces `./hitl-md-review.html` in the invocation cwd after its hand-written `cp` state is removed, and a promotion failure still routes the run to a normal completion rather than failing it.
-- [ ] Promotion is a no-op (not an error) for loops that declare nothing, for failure terminals, and for the `archive_run_only()` force-exit path.
+- [ ] `hitl-md.yaml` promotes **nothing** on the `finalize_failed → failed` path, matching today's `on_yes`-gated `cp`; the `failed` terminal reports as a failure in `ll-loop history`.
+- [ ] Promotion is a no-op (not an error) for loops that declare nothing, for terminals outside `on:`, for failure terminals, for the `archive_run_only()` force-exit path, and for a **declared `from:` that does not exist** at the terminal (the max-iterations-without-output case).
+- [ ] A loop declaring `artifact_output` and run as a sub-loop promotes nothing and `ll-loop validate` says so.
 - [ ] `promotion_dir` defaults to a directory inside `.loops/`, and nothing is written to the project root by default; the `config-schema.json`/`ArtifactsConfig` default parity test is green.
 - [ ] `_artifact_lines`' return shape is unchanged — asserted by `TestArtifactLines` (`test_state_feed_renderer.py:369-501`) staying green with no edits.
 - [ ] The existing `artifact_versioning_ok` meta-rule behavior is unchanged — asserted by the current MR-5 tests staying green.
@@ -292,8 +393,8 @@ _Added by `/ll:refine-issue` — 2026-08-25; revised at the 2026-08-24 split rev
 
 - **Priority**: P2 — the epic's motivating loops have zero connection to the artifact system today; without this the epic improves only the hand-built dashboard lineage.
 - **Effort**: Medium.
-- **Risk**: Low — additive header field, a copy on a clean terminal, and one config key. The Medium-risk `vega-viz` retirement was cut from scope, and Part B moved to FEAT-3318.
-- **Breaking Change**: No — the field defaults to today's behavior.
+- **Risk**: Low — additive header field, a copy on an authorized terminal, and one config key. The Medium-risk `vega-viz` retirement was cut from scope, and Part B moved to FEAT-3318. The one non-additive change is `hitl-md`'s `failed` terminal gaining `failure: true`, scoped to that loop and tracked in the parity table.
+- **Breaking Change**: No for the field (defaults to today's behavior). `hitl-md`'s failure-path exit code changes — intentionally, as a defect fix.
 
 ## Related Key Documentation
 
@@ -306,6 +407,9 @@ _Added by `/ll:refine-issue` — 2026-08-25; revised at the 2026-08-24 split rev
 **Open** | Created: 2026-08-23 | Priority: P2
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-25T00:41:40 - `0e80376c-027e-4f90-86a7-35c1d4c043e1.jsonl`
+- Pre-implementation review - 2026-08-24 - added `artifact_output.on:` terminal gating (hitl-md declares no `failure: true` state, so "non-failure terminal" was not a safe default), pinned the hook to `persistence.py:979` ahead of the `:997` context snapshot, added missing-source and sub-loop/simulate semantics, renamed the context key to `promoted_artifact`
+- `/ll:confidence-check` - 2026-08-25T00:30:25 - `050c493c-d9d9-4791-a094-bde43a4931f1.jsonl`
 - Split review (Part B → FEAT-3318) - 2026-08-24
 - `/ll:wire-issue` - 2026-08-25T00:18:20 - `b8595162-30d1-4d8e-aa96-0405ac242701.jsonl`
 - `/ll:refine-issue` - 2026-08-25T00:09:15 - `e68d9c91-c92e-440c-bb0a-512c7293fa47.jsonl`
