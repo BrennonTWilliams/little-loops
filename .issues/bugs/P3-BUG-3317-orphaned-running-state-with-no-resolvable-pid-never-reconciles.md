@@ -63,6 +63,19 @@ if _process_alive(pid):
 `_reconcile_stale_runs()` has the mirrored guard on the startup path: "No `.pid`
 file → leave alone (can't confirm)."
 
+Two differences between the paths matter for the fix and are easy to miss:
+
+1. **Different terminals.** `_reconcile_stale_running()` flips to `interrupted` and
+   saves, leaving the file in `.running/`. `_reconcile_stale_runs()` *archives* —
+   `persistence.clear_all()` moves state to `.history/` and unlinks the `.pid`. It
+   never writes `interrupted`; its own docstring says `interrupted` files are left
+   alone so the user can resume them.
+2. **Different PID resolution.** The read path calls `_resolve_live_pid()`
+   (`.pid` → `.lock` → `state.pid`). The startup path reads **only** the sibling
+   `.pid` file (`persistence.py:645-652`) and ignores `.lock` and `state.pid`
+   entirely. "No PID resolvable" is therefore a strictly wider condition on the
+   startup path than on the read path.
+
 PID resolution fails permanently for any state written before PID tracking existed,
 and for any run whose `.pid`/`.lock` files were cleaned up (or removed by
 `ll-loop stop`) while the state file kept `status: "running"`. Once in that
@@ -78,10 +91,32 @@ Because `ACTIVE_RUN_STATUSES = {"running", "starting"}`, `cmd_list` in
 
 When no PID is resolvable, reconciliation falls back to an `updated_at` staleness
 check: a `running` state whose last write is older than a threshold (default 6h) is
-provably not a live loop — a live FSM writes state on every transition — and is
-flipped to `interrupted` with `reconciled_at` stamped, exactly as the dead-PID path
-does today. Genuinely long-running-but-quiet loops are protected by the threshold
-being far above any single action's runtime.
+treated as not-live and flipped to `interrupted` with `reconciled_at` stamped.
+
+**Both paths flip to `interrupted`; neither archives.** On the read path this already
+matches the dead-PID behavior. On the startup path it does *not* — see
+[Startup-path terminal](#startup-path-terminal-flip-do-not-archive) below, which
+resolves what was a contradiction in an earlier revision of this issue.
+
+### Why `updated_at` age is a valid liveness proxy — and its one limit
+
+`PersistentFSM._handle_event()` (`fsm/persistence.py:892-894`) saves state on
+`state_enter`, i.e. at the *start* of each state's action. So `now − updated_at`
+measures **time spent inside the currently-executing action**, not idle time. The
+threshold must therefore exceed the longest plausible single action, not the longest
+plausible run.
+
+- Human-in-the-loop waits are **not** exposed to this. `hitl-md.yaml` does not block
+  in-process on a human — it emits a review artifact and terminates. Waits for a
+  human go through handoff, which parks the state as `awaiting_continuation`, a
+  distinct status this fallback never touches (`running` only).
+- Residual exposure: `ActionSpec.timeout` defaults to `None` (`fsm/schema.py:708`),
+  so a `shell` action has no universal ceiling. An unbounded action running >6h under
+  a run whose `.pid`/`.lock` were both removed would be falsely flipped.
+- That false positive is **self-healing on both paths as specified**: the live FSM
+  rewrites `status: "running"` on its next `state_enter`. This is the load-bearing
+  reason the startup path must flip rather than archive — an archive of a live run is
+  not recoverable.
 
 ## Steps to Reproduce
 
@@ -130,12 +165,39 @@ def _running_state_is_stale(state: LoopState, threshold_s: int = STALE_RUNNING_T
 In `_reconcile_stale_running()`, replace the bare `if pid is None: return state`
 with: if `pid is None` and `_running_state_is_stale(state)` → flip to `interrupted`,
 stamp `reconciled_at`, `persistence.save_state(state)`; otherwise return unchanged.
-Apply the mirrored change to `_reconcile_stale_runs()`'s `status == "running"` branch
-so the startup sweep archives the same entries.
+
+### Startup-path terminal: flip, do not archive
+
+`_reconcile_stale_runs()`'s new fallback **flips the state to `interrupted` in place
+and leaves the file in `.running/`** — it does *not* call `clear_all()`. Rationale:
+
+- It matches AC 1 and the read path, so one rule describes both.
+- It matches that function's existing policy of leaving `interrupted` files resumable.
+- It is the only variant that survives a false positive. An archive of a
+  still-live-but-quiet run destroys the state file out from under the process; a flip
+  is overwritten by the process's next `state_enter` save.
+
+The entry stops polluting `ll-loop list --running` immediately, because `interrupted`
+is not in `ACTIVE_RUN_STATUSES`. It is archived later by the ordinary path once it
+reaches a terminal status, or by the user via `/ll:cleanup-loops`.
+
+> Note for the implementer: `_reconcile_stale_runs()` returns a count of **archived**
+> files, and `TestReconcileStaleRuns` asserts on it. A flip is not an archive — do not
+> increment `archived` for it. Add a separate counter (and, if useful, include it in
+> the existing summary log line) rather than conflating the two.
+
+### Startup path must adopt `_resolve_live_pid()`
+
+Before adding the age fallback there, change that branch's PID lookup from the bare
+`.pid`-file read to `_resolve_live_pid(running_dir, stem, state)`. Without this, "no
+`.pid` file" would trigger the age fallback on a run whose `.lock` or `state.pid`
+still names a **live** process. This is a real behavior change to
+`_reconcile_stale_runs()`, not just an added branch, and it also fixes a
+pre-existing narrowness in that path.
 
 Alternative considered and rejected: deleting/archiving unresolvable entries outright
 — `interrupted` is the correct terminal here because it stays resumable, matching how
-the dead-PID path already behaves.
+the read path's dead-PID branch already behaves.
 
 ### Not in scope: `accumulated_ms` vs `started_at`
 
@@ -169,8 +231,9 @@ Both numbers were correct; only the *liveness* claim was false.
 
 ### Files to Modify
 - `scripts/little_loops/fsm/persistence.py` — `_reconcile_stale_running()`,
-  `_reconcile_stale_runs()`, new `_running_state_is_stale()` +
-  `STALE_RUNNING_THRESHOLD_S`
+  `_reconcile_stale_runs()` (age fallback **plus** switching its PID lookup to
+  `_resolve_live_pid()` and flipping rather than archiving), new
+  `_running_state_is_stale()` + `STALE_RUNNING_THRESHOLD_S`
 
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/cli/loop/info.py` — `cmd_list` (via `list_running_loops`);
@@ -206,26 +269,43 @@ Both numbers were correct; only the *liveness* claim was false.
   `updated_at` → left `running`; (b) unresolvable PID + `updated_at` older than
   threshold → flipped to `interrupted` with `reconciled_at` set; (c) resolvable live
   PID + old `updated_at` → left `running`; (d) empty/malformed `updated_at` → left
-  alone
+  alone. Case (d) also covers the synthetic `status: "starting"` entries
+  `list_running_loops()` fabricates from a PID-file-only instance, which carry
+  `updated_at=""` — assert one of those explicitly, since it reaches the guard by a
+  different route than a malformed timestamp.
+
+Additional cases required by the clarifications above:
+(e) startup path, unresolvable PID + stale `updated_at` → flipped to `interrupted`,
+**still present in `.running/`** (not archived), and not counted in the function's
+archived return value; (f) startup path, no `.pid` file but a live PID in `.lock` or
+`state.pid` + stale `updated_at` → left `running` (regression guard for the
+`_resolve_live_pid()` adoption); (g) read path, non-stale state → `save_state` is
+**not** called (no write amplification — `list_running_loops()` runs on every
+dashboard client connect).
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_fsm_persistence.py` `TestReconcileStaleRuns` (startup path,
-  lines ~3009-3121) — extend `_write_state()` (line ~3012) with an `updated_at`
-  param (currently hardcoded to `""`) and add cases (a)-(d) above. This class has
-  no direct unit test for `_reconcile_stale_running()` (the read path) at all
-  [Agent 3 finding — confirmed gap].
+  **line 3226**, not ~3009-3121 as originally recorded) — extend `_write_state()`
+  (**line 3228**; `updated_at` hardcoded to `""` at line 3239) with an `updated_at`
+  param and add cases (a)-(g) above. This class has no direct unit test for
+  `_reconcile_stale_running()` (the read path) at all [Agent 3 finding — confirmed
+  gap]. Its existing `count == N` assertions bound the archived total — flips must
+  not perturb them.
 - `scripts/tests/test_cli_loop_lifecycle.py` `TestReconcileStaleRunning` (line
-  ~2734) — an existing class already exercising `_reconcile_stale_running()`
-  indirectly via `cmd_status`, not previously listed in this issue. Extend its
-  `_make_state()` helper (line ~2737) with an `updated_at` param the same way.
-  [Agent 3 finding]
+  2734) — an existing class already exercising `_reconcile_stale_running()`
+  indirectly via `cmd_status`, not previously listed in this issue. Its
+  `_make_state()` helper (line 2737) currently takes only `(status, pid)`; extend it
+  with an `updated_at` param. [Agent 3 finding — confirmed]
 - `scripts/tests/test_cli_loop_lifecycle.py::TestReconcileStaleRunning::test_no_reconcile_no_pid_anywhere`
-  (line ~2852) — **will break** under this fix: its fixture hardcodes
+  (line 2852) — **will break** under this fix: its fixture hardcodes
   `updated_at="2026-05-24T10:05:00Z"`, which is now >6h stale, so the state will
   flip to `interrupted` and its `assert state.status == "running"` /
-  `assert state.reconciled_at is None` assertions will fail. Must be updated to
-  either use a fresh relative timestamp or split into an explicit stale-case
-  variant. [Agent 3 finding — confirmed breaking test]
+  `assert state.reconciled_at is None` assertions will fail. [Agent 3 finding —
+  confirmed breaking test, verified against the current file]
+  **Preferred fix**: default `_make_state()`'s new `updated_at` param to a *fresh*
+  relative timestamp and add an explicit stale-case variant test. No other test in
+  the class depends on the fixture's `updated_at` age (the dead-PID cases short-
+  circuit before the fallback), so this repairs the break without touching them.
 - No `freezegun`/`freeze_time` dependency exists in this repo. Follow the
   relative-timestamp pattern from `scripts/tests/test_cli_loop_next.py` (lines
   ~127-178): `(datetime.now(UTC) - timedelta(hours=7)).isoformat()` for stale,
@@ -258,6 +338,12 @@ _Wiring pass added by `/ll:wire-issue`:_
   loops stuck 15min-6h without a resolvable PID (the skill's tighter threshold
   still does non-redundant work outside that window, so no behavior change is
   required — informational only). [Agent 2 finding]
+  **Record the rationale for the two thresholds** so a later reader does not try to
+  unify them: the skill's 15-minute rule is user-initiated and advisory (it proposes
+  `ll-loop stop` for a human to approve), so it can afford to be aggressive; the
+  reconciler's 6h rule fires automatically with no confirmation and must be
+  conservative enough that it never pre-empts a long single action. Same condition,
+  different blast radius, deliberately different numbers.
 
 ### Configuration
 - N/A (threshold is a module constant; promote to `.ll/ll-config.json` only if a real
@@ -281,7 +367,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 - `_running_state_is_stale(state: LoopState, threshold_s: int = STALE_RUNNING_THRESHOLD_S) -> bool`
 - `_reconcile_stale_running(state: LoopState, persistence: StatePersistence, running_dir: Path, stem: str) -> LoopState` — unchanged signature, new fallback branch
-- `_reconcile_stale_runs(loops_dir: Path) -> int` — unchanged signature, new fallback branch
+- `_reconcile_stale_runs(loops_dir: Path) -> int` — unchanged signature; new fallback branch, PID lookup switched to `_resolve_live_pid()`, and a flip-in-place terminal that does not count toward the archived total
 
 ### Call Path
 
@@ -292,9 +378,15 @@ _Wiring pass added by `/ll:wire-issue`:_
 1. Add `STALE_RUNNING_THRESHOLD_S` and `_running_state_is_stale()` to
    `fsm/persistence.py`.
 2. Wire the fallback into `_reconcile_stale_running()`'s `pid is None` branch.
-3. Mirror it in `_reconcile_stale_runs()`'s `status == "running"` branch.
-4. Add the four regression tests above.
-5. Verify against a real orphaned artifact: a months-old `pid: null` running entry
+   Confirm `save_state()` is still reached only on an actual flip.
+3. In `_reconcile_stale_runs()`'s `status == "running"` branch, switch the PID lookup
+   from the bare `.pid`-file read to `_resolve_live_pid(running_dir, stem, state)`.
+4. Add the age fallback to that same branch, with a **flip-in-place** terminal
+   (`status = "interrupted"`, `reconciled_at` stamped, `save_state()`) rather than
+   `clear_all()`, tracked in a counter separate from `archived`.
+5. Repair `test_no_reconcile_no_pid_anywhere` and add the regression tests (a)-(g)
+   above.
+6. Verify against a real orphaned artifact: a months-old `pid: null` running entry
    read via `ll-loop list --running` now flips to `interrupted` and drops off the
    running list.
 
@@ -308,6 +400,8 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - Add a direct unit test for `_reconcile_stale_running()` (read path) — no such test exists today; coverage is only indirect via `cmd_status`
 - Update `docs/reference/CLI.md` (both the `ll-loop status` note at ~line 924 and the `tasks/get` MCP section at ~lines 4812-4816) and `docs/guides/MCP_SERVER_GUIDE.md:550` to describe the new age-fallback path, not just the PID-dead rewrite
 - Update `skills/cleanup-loops/SKILL.md:69`'s reconciliation Note for the same reason
+- Switch `_reconcile_stale_runs()`'s running-branch PID lookup to `_resolve_live_pid()` — it currently reads only the sibling `.pid` file and would otherwise apply the age fallback to runs with a live PID in `.lock`/`state.pid`
+- Give the startup path a flip-in-place terminal (not `clear_all()`) and keep it out of the function's `archived` count, which `TestReconcileStaleRuns` asserts on
 
 ## Impact
 
@@ -315,12 +409,17 @@ _These touchpoints were identified by wiring analysis and must be included in th
   impact; the state file stays resumable either way. Visible because dead runs
   pollute `--running` and every dashboard seeded from it, and the entries accumulate
   permanently.
-- **Effort**: Small — one helper plus two call-site branches, all inside a single
-  module; reuses the existing flip-and-save path.
+- **Effort**: Small-to-medium — one helper plus two call-site branches, all inside a
+  single module and reusing the existing flip-and-save path, but the startup path
+  additionally needs its PID lookup widened to `_resolve_live_pid()` and a new
+  flip-in-place terminal alongside its existing archive terminal.
 - **Risk**: Low — the change only widens reconciliation for entries that today are
-  provably unreachable. Threshold is far above any real action runtime, and a
-  resolvable live PID still short-circuits. Worst case is an early flip to
-  `interrupted`, which is resumable.
+  provably unreachable. A resolvable live PID still short-circuits on both paths
+  after the `_resolve_live_pid()` adoption. The threshold exceeds any plausible
+  single action but is not formally bounded by one (`ActionSpec.timeout` defaults to
+  `None`), so a >6h unbounded action on a PID-less run can be flipped early; because
+  both paths flip rather than archive, the live FSM simply rewrites `running` on its
+  next `state_enter`, and the state is resumable regardless.
 - **Breaking Change**: No
 
 ## Acceptance Criteria
@@ -328,12 +427,20 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - [ ] A `running` state with no resolvable PID and `updated_at` older than the
       threshold is flipped to `interrupted` with `reconciled_at` set, on both the
       read path and the startup sweep.
+- [ ] The startup sweep **flips such an entry in place and leaves it in
+      `.running/`** — it does not archive it — and does not count it toward the
+      function's archived return value.
 - [ ] A `running` state with no resolvable PID but a recent `updated_at` is left
       untouched.
 - [ ] A `running` state with a resolvable, live PID is left untouched regardless of
-      `updated_at` age.
-- [ ] Regression tests covering all three cases plus the empty/malformed
-      `updated_at` guard pass under `python -m pytest scripts/tests/`.
+      `updated_at` age, on both paths — including a startup-path entry whose PID is
+      resolvable only from `.lock` or `state.pid` with no `.pid` file present.
+- [ ] The read path calls `save_state()` only when a flip actually occurs; a
+      non-stale entry causes no disk write (`list_running_loops()` runs on every
+      dashboard client connect via `transport.py`'s seed callback).
+- [ ] Regression tests covering cases (a)-(g) — including the empty/malformed
+      `updated_at` guard and the synthetic `starting` entry — pass under
+      `python -m pytest scripts/tests/`.
 - [ ] `started_at` semantics are unchanged; no test asserts it advances on resume.
 
 ## Status
