@@ -170,9 +170,11 @@ dashboards and leaves the loop-generated artifacts (use case A) untouched.
 - **FEAT-3308** — `ll-artifact templatize`: save a generated artifact as a
   reusable template *(split out of FEAT-3036 Phase 4; the epic's user-facing
   entry point)*
-- **FEAT-3309** — Loop→artifact handoff: promote a run artifact, and emit
-  template + data natively *(owns FEAT-3036 design principle 1, which was
-  previously unowned)*
+- **FEAT-3309** — Loop→artifact handoff: promote a run artifact to a durable path
+  *(Part A; makes a run artifact reachable at all)*
+- **FEAT-3318** — `artifact_mode: template`: loops emit template + data natively
+  *(split out of FEAT-3309 as Part B on 2026-08-24; owns FEAT-3036 design
+  principle 1, which was previously unowned — depends on FEAT-3309)*
 
 ### Platform / dashboard lineage — hand-built artifacts (use case B and shared plumbing)
 
