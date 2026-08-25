@@ -250,24 +250,49 @@ def _resolve_live_pid(running_dir: Path, stem: str, state: LoopState) -> int | N
     return state.pid
 
 
+STALE_RUNNING_THRESHOLD_S: int = 6 * 3600  # no state write in 6h ⇒ not a live loop
+
+
+def _running_state_is_stale(state: LoopState, threshold_s: int = STALE_RUNNING_THRESHOLD_S) -> bool:
+    """True when a running state's last write is older than threshold_s.
+
+    Naive (tz-less) ``updated_at`` abstains rather than assuming UTC: this
+    codebase's writer (``_iso_now()``) is always tz-aware, so a naive value can
+    only come from a legacy/foreign writer whose zone is unknown (BUG-3317).
+    """
+    if not state.updated_at:
+        return False  # never saved — cannot judge; leave alone
+    try:
+        ts = datetime.fromisoformat(state.updated_at.replace("Z", "+00:00"))
+    except (ValueError, AttributeError, TypeError):
+        return False
+    if ts.tzinfo is None:
+        return False  # naive timestamp — provenance unknown, cannot judge; leave alone
+    return (datetime.now(UTC) - ts).total_seconds() > threshold_s
+
+
 def _reconcile_stale_running(
     state: LoopState,
     persistence: StatePersistence,
     running_dir: Path,
     stem: str,
 ) -> LoopState:
-    """Flip a running-state entry to interrupted when its PID is provably dead.
+    """Flip a running-state entry to interrupted when it is provably dead or stale.
 
     Called on the read path in cmd_status and list_running_loops so orphaned
     foreground-crash entries self-heal without requiring manual cleanup-loops
-    intervention.
+    intervention. A resolvable, live PID always wins regardless of
+    ``updated_at`` age. When no PID is resolvable at all, falls back to an
+    ``updated_at``-age check (BUG-3317) so permanently PID-less entries do not
+    stay ``running`` forever.
     """
     if state.status != "running":
         return state
     pid = _resolve_live_pid(running_dir, stem, state)
     if pid is None:
-        return state  # no PID resolvable — cannot determine liveness, leave alone
-    if _process_alive(pid):
+        if not _running_state_is_stale(state):
+            return state  # no PID resolvable, not stale — cannot determine liveness
+    elif _process_alive(pid):
         return state
     state.status = "interrupted"
     state.reconciled_at = datetime.now(UTC).isoformat()
@@ -616,14 +641,20 @@ def _reconcile_stale_runs(loops_dir: Path) -> int:
     """Archive state files in .running/ that belong to dead or terminal processes.
 
     Called at loop startup to clean up files left by crashed or interrupted runs.
-    Returns the count of archived files.
+    Returns the count of archived files. Flip-in-place reconciliations
+    (BUG-3317) are not archives and are not counted here — see the flip-in-place
+    branch below.
 
     Strategy (mirrors LockManager.find_conflict() stale-lock cleanup):
     - Terminal-status files (completed/failed/timed_out) are archived
       unconditionally — they are definitionally stale by invariant.
     - status="interrupted" files are left alone so the user can resume them.
-    - status="running" files are checked via their sibling .pid file; archived
-      only if the PID is confirmed dead. No .pid file → leave alone (can't confirm).
+    - status="running" files are checked via _resolve_live_pid() (.pid → .lock
+      → state.pid); archived only if a resolved PID is confirmed dead. No
+      resolvable PID → fall back to an updated_at-age check (BUG-3317): stale
+      entries are flipped to "interrupted" in place (not archived, since an
+      archive of a still-live-but-quiet run would destroy the state file out
+      from under the process); fresh/unjudgeable entries are left alone.
     """
     running_dir = loops_dir / RUNNING_DIR
     if not running_dir.exists():
@@ -631,6 +662,7 @@ def _reconcile_stale_runs(loops_dir: Path) -> int:
 
     terminal_statuses = {"completed", "failed", "timed_out"}
     archived = 0
+    flipped = 0
 
     for state_file in running_dir.glob("*.state.json"):
         try:
@@ -640,21 +672,34 @@ def _reconcile_stale_runs(loops_dir: Path) -> int:
             continue
 
         is_stale = state.status in terminal_statuses
+        stem = state_file.name.removesuffix(".state.json")
 
         if not is_stale and state.status == "running":
-            stem = state_file.name.removesuffix(".state.json")
-            pid_file = running_dir / f"{stem}.pid"
-            if pid_file.exists():
-                try:
-                    pid = int(pid_file.read_text().strip())
-                    is_stale = not _process_alive(pid)
-                except (OSError, ValueError):
-                    pass
+            pid = _resolve_live_pid(running_dir, stem, state)
+            if pid is not None:
+                is_stale = not _process_alive(pid)
+            elif _running_state_is_stale(state):
+                # No PID resolvable from any source, and the last write is
+                # older than the threshold: flip in place rather than
+                # archive (BUG-3317). A flip is self-healing if the process
+                # is actually still alive (its next state_enter rewrites
+                # "running"); an archive would not be.
+                instance_id = stem if stem != state.loop_name else None
+                persistence = StatePersistence(
+                    loop_name=state.loop_name,
+                    loops_dir=loops_dir,
+                    instance_id=instance_id,
+                )
+                state.status = "interrupted"
+                state.reconciled_at = datetime.now(UTC).isoformat()
+                persistence.save_state(state)
+                flipped += 1
+                logger.debug("Flipped stale running entry to interrupted: %s", stem)
+                continue
 
         if not is_stale:
             continue
 
-        stem = state_file.name.removesuffix(".state.json")
         instance_id = stem if stem != state.loop_name else None
         persistence = StatePersistence(
             loop_name=state.loop_name,
@@ -669,8 +714,12 @@ def _reconcile_stale_runs(loops_dir: Path) -> int:
         except OSError as e:
             logger.warning("Failed to archive stale run %s: %s", stem, e)
 
-    if archived:
-        logger.info("Reconciliation sweep archived %d stale run(s) from .running/", archived)
+    if archived or flipped:
+        logger.info(
+            "Reconciliation sweep archived %d and flipped %d stale run(s) from .running/",
+            archived,
+            flipped,
+        )
 
     return archived
 
@@ -731,9 +780,7 @@ def promote_run_artifact(
         dest.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source, dest)
     except OSError as e:
-        logger.warning(
-            "promote_run_artifact: failed to promote %s to %s: %s", source, dest, e
-        )
+        logger.warning("promote_run_artifact: failed to promote %s to %s: %s", source, dest, e)
         return None
 
     return dest

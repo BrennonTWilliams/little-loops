@@ -921,7 +921,7 @@ The human-readable `Log:` line uses one of three labels:
 
 An `Events:` line follows whenever an `<instance-id>.events.jsonl` file is found, showing the event count and age of the most recent event regardless of run mode.
 
-> **Note**: `ll-loop status` is not a pure read — it may transparently rewrite orphaned state files. If a state file claims `status: running` but its PID (resolved via `.pid` → `.lock` → embedded `state.pid`) is provably dead, the file is updated in-place to `status: interrupted` with a `reconciled_at` timestamp. This is a no-op for live processes and is idempotent.
+> **Note**: `ll-loop status` is not a pure read — it may transparently rewrite orphaned state files. If a state file claims `status: running` but its PID (resolved via `.pid` → `.lock` → embedded `state.pid`) is provably dead, the file is updated in-place to `status: interrupted` with a `reconciled_at` timestamp. This is a no-op for live processes and is idempotent. When no PID is resolvable from any source, a fallback checks the state's last-write age: past a 6h threshold it is treated as not-live and flipped the same way; a fresher `updated_at` (or one that can't be judged — empty, malformed, or a naive/tz-less timestamp) is left alone (BUG-3317).
 
 #### `ll-loop stop <loop>`
 
@@ -4811,7 +4811,8 @@ advertise the extension itself.
 
 `tasks/get` returns `{taskId, status, runStatus, …}` — `status` reconciles PID liveness
 before ever reporting `"working"` (a run whose process died without updating its state
-file is reported not-running), and once terminal the result also carries the
+file is reported not-running); when no PID is resolvable at all, an `updated_at`-age
+fallback catches permanently PID-less orphans the same way (BUG-3317). Once terminal, the result also carries the
 `ExecutionResult` field set (`final_state`, `iterations`, `terminated_by`, `duration_ms`,
 `captured`). An unresolvable `taskId` is a distinct JSON-RPC error (`-32002`), never a
 default `"working"` shape. `tasks/cancel` returns `{taskId, status: "cancelled",

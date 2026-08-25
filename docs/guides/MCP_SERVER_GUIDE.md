@@ -549,7 +549,9 @@ $ mcp-call ll-mcp tasks/get '{"taskId": "rn-refine-20260811T140000"}'
 
 The `status` field reconciles PID liveness before ever reporting `"working"` — a run whose
 process died (OOM, kernel kill) without updating its state file is reported not-running,
-not left `"working"` forever. Once the run is terminal, the result also carries the
+not left `"working"` forever. When no PID is resolvable at all, an `updated_at`-age
+fallback (6h threshold) catches permanently PID-less orphans the same way (BUG-3317).
+Once the run is terminal, the result also carries the
 `ExecutionResult` fields (`final_state`, `iterations`, `terminated_by`, `duration_ms`,
 `captured`):
 

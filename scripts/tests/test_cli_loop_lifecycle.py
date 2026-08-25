@@ -7,7 +7,7 @@ import json
 import os
 import signal
 import time
-from datetime import UTC
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -2712,7 +2712,7 @@ class TestCmdListMultiInstance:
             "prev_result": None,
             "last_result": None,
             "started_at": "2026-05-03T12:23:06Z",
-            "updated_at": "2026-05-03T12:25:00Z",
+            "updated_at": (datetime.now(UTC) - timedelta(minutes=5)).isoformat(),
             "status": "running",
         }
         (running_dir / "autodev-20260503T122306.state.json").write_text(json.dumps(base_state))
@@ -2738,7 +2738,10 @@ class TestReconcileStaleRunning:
         self,
         status: str = "running",
         pid: int | None = None,
+        updated_at: str | None = None,
     ) -> LoopState:
+        if updated_at is None:
+            updated_at = (datetime.now(UTC) - timedelta(minutes=5)).isoformat()
         return LoopState(
             loop_name="test-loop",
             current_state="check",
@@ -2747,7 +2750,7 @@ class TestReconcileStaleRunning:
             prev_result=None,
             last_result=None,
             started_at="2026-05-24T10:00:00Z",
-            updated_at="2026-05-24T10:05:00Z",
+            updated_at=updated_at,
             status=status,
             pid=pid,
         )
@@ -2868,6 +2871,28 @@ class TestReconcileStaleRunning:
         assert result == 0
         assert state.status == "running"
         assert state.reconciled_at is None
+
+    def test_reconciles_no_pid_anywhere_when_updated_at_stale(self, tmp_path: Path) -> None:
+        """BUG-3317: no PID resolvable from any source, but updated_at is older
+        than the staleness threshold — reconciles to interrupted."""
+        logger = MagicMock()
+        running_dir = tmp_path / ".running"
+        stale_ts = (datetime.now(UTC) - timedelta(hours=7)).isoformat()
+        state = self._make_state(status="running", pid=None, updated_at=stale_ts)
+        self._write_state(running_dir, "test-loop", state)
+
+        with (
+            patch(
+                "little_loops.cli.loop.lifecycle._find_instances",
+                return_value=[(None, state)],
+            ),
+            patch("builtins.print"),
+        ):
+            result = cmd_status("test-loop", tmp_path, logger)
+
+        assert result == 0
+        assert state.status == "interrupted"
+        assert state.reconciled_at is not None
 
     def test_reconciles_in_multi_instance_human_readable(self, tmp_path: Path) -> None:
         """Multi-instance human-readable path reconciles dead-PID running entries."""

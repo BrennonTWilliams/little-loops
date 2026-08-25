@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock
@@ -14,7 +15,9 @@ from little_loops.fsm.persistence import (
     LoopState,
     PersistentExecutor,
     StatePersistence,
+    _reconcile_stale_running,
     _reconcile_stale_runs,
+    _running_state_is_stale,
     _verdict_is_yes,
     get_archived_events,
     get_loop_history,
@@ -1468,9 +1471,7 @@ class _StubConfig:
         self.project_root = project_root or Path("/tmp")
 
 
-def _make_result(
-    final_state: str = "done", failure_terminal: bool = False
-) -> ExecutionResult:
+def _make_result(final_state: str = "done", failure_terminal: bool = False) -> ExecutionResult:
     return ExecutionResult(
         final_state=final_state,
         iterations=1,
@@ -1579,9 +1580,7 @@ class TestPromoteRunArtifact:
             name="my-loop",
             initial="s",
             states={"s": StateConfig(terminal=True)},
-            artifact_output=ArtifactOutput(
-                from_path="index.html", to=str(fixed_dest), on=["done"]
-            ),
+            artifact_output=ArtifactOutput(from_path="index.html", to=str(fixed_dest), on=["done"]),
         )
         dest = promote_run_artifact(
             fsm, run_dir, _StubConfig(str(tmp_path / "promoted")), _make_result(), ""
@@ -1920,7 +1919,8 @@ class TestUtilityFunctions:
         assert states[0].reconciled_at is None
 
     def test_list_running_loops_does_not_reconcile_no_pid(self, tmp_path: Path) -> None:
-        """list_running_loops() leaves running status intact when no PID is resolvable."""
+        """list_running_loops() leaves running status intact when no PID is
+        resolvable but updated_at is fresh (BUG-3317 age fallback not triggered)."""
         loops_dir = tmp_path / ".loops"
         running_dir = loops_dir / ".running"
         running_dir.mkdir(parents=True)
@@ -1933,7 +1933,7 @@ class TestUtilityFunctions:
             "prev_result": None,
             "last_result": None,
             "started_at": "2026-05-01T10:00:00Z",
-            "updated_at": "2026-05-01T10:05:00Z",
+            "updated_at": (datetime.now(UTC) - timedelta(minutes=5)).isoformat(),
             "status": "running",
             "pid": None,
         }
@@ -3226,7 +3226,12 @@ class TestReconcileStaleRuns:
     """Tests for _reconcile_stale_runs() startup sweep (ENH-1399)."""
 
     def _write_state(
-        self, running_dir: Path, instance_id: str, status: str, loop_name: str = "test-loop"
+        self,
+        running_dir: Path,
+        instance_id: str,
+        status: str,
+        loop_name: str = "test-loop",
+        updated_at: str = "",
     ) -> Path:
         state = LoopState(
             loop_name=loop_name,
@@ -3236,7 +3241,7 @@ class TestReconcileStaleRuns:
             prev_result=None,
             last_result=None,
             started_at="2026-01-01T00:00:00Z",
-            updated_at="",
+            updated_at=updated_at,
             status=status,
         )
         running_dir.mkdir(parents=True, exist_ok=True)
@@ -3335,6 +3340,185 @@ class TestReconcileStaleRuns:
         assert not (tmp_path / ".running").exists()
         count = _reconcile_stale_runs(tmp_path)
         assert count == 0
+
+    # -- BUG-3317: updated_at-age fallback on the startup sweep ------------
+
+    def test_stale_no_pid_anywhere_is_flipped_not_archived(self, tmp_path: Path) -> None:
+        """(e) No .pid file, no live PID in .lock/state.pid, stale updated_at:
+        flipped to interrupted in place, NOT archived, NOT counted in the
+        function's return value."""
+        running_dir = tmp_path / ".running"
+        instance_id = "myloop-20260101T120000"
+        stale_ts = (datetime.now(UTC) - timedelta(hours=7)).isoformat()
+        state_file = self._write_state(running_dir, instance_id, "running", updated_at=stale_ts)
+
+        count = _reconcile_stale_runs(tmp_path)
+
+        assert count == 0  # flip is not an archive
+        assert state_file.exists()
+        data = json.loads(state_file.read_text())
+        assert data["status"] == "interrupted"
+        assert data["reconciled_at"] is not None
+
+    def test_fresh_no_pid_anywhere_left_alone(self, tmp_path: Path) -> None:
+        """No PID resolvable anywhere but updated_at is fresh: left as running."""
+        running_dir = tmp_path / ".running"
+        instance_id = "myloop-20260101T120000"
+        fresh_ts = (datetime.now(UTC) - timedelta(minutes=5)).isoformat()
+        state_file = self._write_state(running_dir, instance_id, "running", updated_at=fresh_ts)
+
+        count = _reconcile_stale_runs(tmp_path)
+
+        assert count == 0
+        data = json.loads(state_file.read_text())
+        assert data["status"] == "running"
+
+    def test_live_pid_via_lock_file_with_stale_updated_at_left_alone(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """(f) No .pid file, but a live PID resolvable from .lock: left running
+        regardless of a stale updated_at. Regression guard for the startup
+        path's adoption of _resolve_live_pid()."""
+        monkeypatch.setattr("little_loops.fsm.persistence._process_alive", lambda pid: True)
+
+        running_dir = tmp_path / ".running"
+        instance_id = "myloop-20260101T120000"
+        stale_ts = (datetime.now(UTC) - timedelta(hours=7)).isoformat()
+        state_file = self._write_state(running_dir, instance_id, "running", updated_at=stale_ts)
+        lock_file = running_dir / f"{instance_id}.lock"
+        lock_file.write_text(json.dumps({"pid": 12345}))
+
+        count = _reconcile_stale_runs(tmp_path)
+
+        assert count == 0
+        data = json.loads(state_file.read_text())
+        assert data["status"] == "running"
+
+
+class TestRunningStateIsStale:
+    """Tests for _running_state_is_stale() (BUG-3317)."""
+
+    def _state(self, updated_at: str) -> LoopState:
+        return LoopState(
+            loop_name="test-loop",
+            current_state="run",
+            iteration=1,
+            captured={},
+            prev_result=None,
+            last_result=None,
+            started_at="2026-01-01T00:00:00Z",
+            updated_at=updated_at,
+            status="running",
+        )
+
+    def test_fresh_timestamp_not_stale(self) -> None:
+        ts = (datetime.now(UTC) - timedelta(minutes=5)).isoformat()
+        assert _running_state_is_stale(self._state(ts)) is False
+
+    def test_old_timestamp_is_stale(self) -> None:
+        ts = (datetime.now(UTC) - timedelta(hours=7)).isoformat()
+        assert _running_state_is_stale(self._state(ts)) is True
+
+    def test_empty_updated_at_not_stale(self) -> None:
+        assert _running_state_is_stale(self._state("")) is False
+
+    def test_malformed_updated_at_not_stale(self) -> None:
+        assert _running_state_is_stale(self._state("not-a-timestamp")) is False
+
+    def test_naive_old_timestamp_abstains(self) -> None:
+        """A naive (tz-less) updated_at, however old, is left alone rather than
+        assumed to be UTC — the writer's zone is unknowable."""
+        ts = (datetime.now() - timedelta(days=30)).replace(tzinfo=None).isoformat()
+        assert _running_state_is_stale(self._state(ts)) is False
+
+
+class TestReconcileStaleRunningReadPath:
+    """Direct unit tests for _reconcile_stale_running() (read path, BUG-3317).
+
+    Previously covered only indirectly via cmd_status in
+    test_cli_loop_lifecycle.py::TestReconcileStaleRunning.
+    """
+
+    def _state(self, status: str, updated_at: str, pid: int | None = None) -> LoopState:
+        return LoopState(
+            loop_name="test-loop",
+            current_state="run",
+            iteration=1,
+            captured={},
+            prev_result=None,
+            last_result=None,
+            started_at="2026-01-01T00:00:00Z",
+            updated_at=updated_at,
+            status=status,
+            pid=pid,
+        )
+
+    def test_unresolvable_pid_fresh_updated_at_left_running(self, tmp_path: Path) -> None:
+        """(a) Unresolvable PID + fresh updated_at: left running."""
+        fresh_ts = (datetime.now(UTC) - timedelta(minutes=5)).isoformat()
+        state = self._state("running", fresh_ts)
+        persistence = MagicMock()
+
+        result = _reconcile_stale_running(state, persistence, tmp_path, "stem")
+
+        assert result.status == "running"
+        persistence.save_state.assert_not_called()
+
+    def test_unresolvable_pid_stale_updated_at_flipped(self, tmp_path: Path) -> None:
+        """(b) Unresolvable PID + stale updated_at: flipped to interrupted,
+        reconciled_at set."""
+        stale_ts = (datetime.now(UTC) - timedelta(hours=7)).isoformat()
+        state = self._state("running", stale_ts)
+        persistence = MagicMock()
+
+        result = _reconcile_stale_running(state, persistence, tmp_path, "stem")
+
+        assert result.status == "interrupted"
+        assert result.reconciled_at is not None
+        persistence.save_state.assert_called_once_with(state)
+
+    def test_resolvable_live_pid_old_updated_at_left_running(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """(c) Resolvable, live PID + old updated_at: left running (PID wins)."""
+        monkeypatch.setattr("little_loops.fsm.persistence._process_alive", lambda pid: True)
+        stale_ts = (datetime.now(UTC) - timedelta(hours=7)).isoformat()
+        state = self._state("running", stale_ts, pid=12345)
+        persistence = MagicMock()
+
+        result = _reconcile_stale_running(state, persistence, tmp_path, "stem")
+
+        assert result.status == "running"
+        persistence.save_state.assert_not_called()
+
+    def test_empty_malformed_naive_updated_at_left_running(self, tmp_path: Path) -> None:
+        """(d) Empty, malformed, and naive stale updated_at all left alone."""
+        for updated_at in (
+            "",
+            "not-a-timestamp",
+            (datetime.now() - timedelta(days=30)).replace(tzinfo=None).isoformat(),
+        ):
+            state = self._state("running", updated_at)
+            persistence = MagicMock()
+
+            result = _reconcile_stale_running(state, persistence, tmp_path, "stem")
+
+            assert result.status == "running"
+            persistence.save_state.assert_not_called()
+
+    def test_non_stale_entry_does_not_call_save_state(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """(g) A non-stale entry causes no disk write (list_running_loops runs
+        on every dashboard client connect)."""
+        monkeypatch.setattr("little_loops.fsm.persistence._process_alive", lambda pid: True)
+        fresh_ts = (datetime.now(UTC) - timedelta(minutes=5)).isoformat()
+        state = self._state("running", fresh_ts, pid=12345)
+        persistence = MagicMock()
+
+        _reconcile_stale_running(state, persistence, tmp_path, "stem")
+
+        persistence.save_state.assert_not_called()
 
 
 class TestVerdictIsYes:

@@ -4,10 +4,11 @@ type: BUG
 title: "Orphaned 'running' state with no resolvable PID never reconciles \u2014 dead\
   \ runs show as live indefinitely in ll-loop list --running and dashboards"
 priority: P3
-status: open
+status: done
 discovered_by: ci-agent-report
 discovered_date: '2026-08-24'
 captured_at: '2026-08-24T00:00:00Z'
+completed_at: '2026-08-25T02:49:39Z'
 labels:
 - fsm
 - persistence
@@ -517,26 +518,51 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ## Acceptance Criteria
 
-- [ ] A `running` state with no resolvable PID and `updated_at` older than the
+- [x] A `running` state with no resolvable PID and `updated_at` older than the
       threshold is flipped to `interrupted` with `reconciled_at` set, on both the
       read path and the startup sweep.
-- [ ] The startup sweep **flips such an entry in place and leaves it in
+- [x] The startup sweep **flips such an entry in place and leaves it in
       `.running/`** — it does not archive it — and does not count it toward the
       function's archived return value.
-- [ ] A `running` state with no resolvable PID but a recent `updated_at` is left
+- [x] A `running` state with no resolvable PID but a recent `updated_at` is left
       untouched.
-- [ ] A `running` state with a resolvable, live PID is left untouched regardless of
+- [x] A `running` state with a resolvable, live PID is left untouched regardless of
       `updated_at` age, on both paths — including a startup-path entry whose PID is
       resolvable only from `.lock` or `state.pid` with no `.pid` file present.
-- [ ] The read path calls `save_state()` only when a flip actually occurs; a
+- [x] The read path calls `save_state()` only when a flip actually occurs; a
       non-stale entry causes no disk write (`list_running_loops()` runs on every
       dashboard client connect via `transport.py`'s seed callback).
-- [ ] A `running` state with no resolvable PID and a **naive (tz-less)**
+- [x] A `running` state with no resolvable PID and a **naive (tz-less)**
       `updated_at`, however old, is left untouched — the helper abstains rather than
       assuming UTC.
-- [ ] Regression tests covering cases (a)-(g) — including the empty, malformed, and
+- [x] Regression tests covering cases (a)-(g) — including the empty, malformed, and
       naive `updated_at` guards — pass under `python -m pytest scripts/tests/`.
-- [ ] `started_at` semantics are unchanged; no test asserts it advances on resume.
+- [x] `started_at` semantics are unchanged; no test asserts it advances on resume.
+
+---
+
+## Resolution
+
+- **Action**: fix
+- **Completed**: 2026-08-25
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/fsm/persistence.py`: added `STALE_RUNNING_THRESHOLD_S` and `_running_state_is_stale()`; `_reconcile_stale_running()` (read path) falls back to the age check when no PID is resolvable, flipping to `interrupted` with `reconciled_at` set; `_reconcile_stale_runs()` (startup path) switched its PID lookup to `_resolve_live_pid()` and gained a flip-in-place terminal (not archived, not counted in the `archived` return value) for the same fallback.
+- `scripts/tests/test_fsm_persistence.py`: added `TestRunningStateIsStale`, `TestReconcileStaleRunningReadPath` (direct read-path coverage, cases a-d/g), and startup-path cases (e)-(f) on `TestReconcileStaleRuns`; extended `_write_state()` with an `updated_at` param; repaired a stale-fixture false failure in `test_list_running_loops_does_not_reconcile_no_pid`.
+- `scripts/tests/test_cli_loop_lifecycle.py`: extended `TestReconcileStaleRunning._make_state()` with an `updated_at` param (defaulting fresh); added `test_reconciles_no_pid_anywhere_when_updated_at_stale`; repaired `test_no_reconcile_no_pid_anywhere`'s now-stale hardcoded fixture timestamp and one multi-instance list fixture.
+- `scripts/tests/test_ll_loop_errors.py`, `scripts/tests/test_ll_loop_integration.py`: repaired hardcoded `updated_at` fixtures that had aged past the new 6h threshold and were incidentally flipping to `interrupted` under the fix.
+- `docs/reference/CLI.md`, `docs/guides/MCP_SERVER_GUIDE.md`, `skills/cleanup-loops/SKILL.md`: documented the `updated_at`-age fallback alongside the existing PID-dead rewrite note.
+
+### Deviations
+- `_running_state_is_stale()`'s malformed-timestamp guard was widened from `except ValueError` to `except (ValueError, AttributeError, TypeError)`. The Program Design's helper only anticipated a string `updated_at` that fails `datetime.fromisoformat()` parsing; several existing tests pass `LoopState.updated_at` as a `MagicMock` attribute, and `state.updated_at.replace(...)` on a non-string raises `TypeError`/`AttributeError` rather than `ValueError`, which the fallback must also abstain on rather than propagate.
+
+### Verification Results
+- Tests: PASS (`python -m pytest scripts/tests/ -m "not integration and not conformance"` — 20624 passed, 20 skipped, 2 pre-existing unrelated failures confirmed present on `main` before this change: `test_doc_counts_all_match`, `test_no_new_unverifiable_evidence`)
+- Lint: PASS (`ruff check`)
+- Format: PASS (`ruff format`)
+- Types: PASS (`mypy scripts/little_loops/fsm/persistence.py`)
+- Integration: PASS (touchpoints in `cli/loop/lifecycle.py`, `cli/loop/run.py`, `cli/loop/info.py`, `transport.py`, `mcp_server/tasks.py` are all unchanged-signature callers; behavior-only change, exercised via existing indirect tests)
 
 ## Status
 
@@ -544,6 +570,8 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-25T02:49:33 - `a28bb905-d21d-485a-a69c-9a948a7fec63.jsonl`
+- `/ll:ready-issue` - 2026-08-25T02:24:22 - `e0929c60-f5f4-42fa-aa3c-c4c8800c580b.jsonl`
 - `/ll:confidence-check` - 2026-08-25T02:16:13 - `61734527-3e26-4ea8-812d-93186175aab9.jsonl`
 - `/ll:confidence-check` - 2026-08-25T01:07:07 - `c0b9fe69-0e8b-4aa4-850b-b9fc74a99fe4.jsonl`
 - `/ll:wire-issue` - 2026-08-25T00:59:30 - `35df48ee-1624-44f3-9b90-d443ec0fa011.jsonl`

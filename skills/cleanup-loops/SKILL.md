@@ -66,7 +66,7 @@ For each loop returned in Step 1, run:
 ll-loop status <loop_name> --json 2>/dev/null
 ```
 
-> **Note**: `ll-loop status` performs first-pass reconciliation (ENH-1669). If a state file claims `running` but its PID is provably dead, it is automatically rewritten to `interrupted` with a `reconciled_at` timestamp. This means loops that were orphaned foreground crashes will already show `interrupted` by the time you reach Step 3, reducing the number of manual cleanup actions required.
+> **Note**: `ll-loop status` performs first-pass reconciliation (ENH-1669). If a state file claims `running` but its PID is provably dead, it is automatically rewritten to `interrupted` with a `reconciled_at` timestamp. When no PID is resolvable at all, a 6h `updated_at`-age fallback catches permanently PID-less orphans the same way (BUG-3317) — this skill's own 15-minute staleness check below still does non-redundant work inside that window, since it is a more aggressive, user-confirmed heuristic rather than an automatic one. This means loops that were orphaned foreground crashes will already show `interrupted` by the time you reach Step 3, reducing the number of manual cleanup actions required.
 
 This produces the same fields as Step 1 plus two additional fields:
 

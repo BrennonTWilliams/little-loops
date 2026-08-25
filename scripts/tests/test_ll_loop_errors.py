@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import sys
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING
 from unittest.mock import patch
@@ -93,7 +94,7 @@ states:
                     "prev_result": None,
                     "last_result": None,
                     "started_at": "2026-01-15T10:00:00Z",
-                    "updated_at": "2026-01-15T10:15:00Z",
+                    "updated_at": (datetime.now(UTC) - timedelta(minutes=5)).isoformat(),
                     "status": "running",
                 }
             )
