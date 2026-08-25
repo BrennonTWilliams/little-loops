@@ -1932,6 +1932,29 @@ class TestPromoteRunArtifactTemplateMode:
         assert "RoundTrip" in rendered
 
 
+class TestPromoteRunArtifactHtmlAnythingFileModeRegression:
+    """FEAT-3320: html-anything's mode-independent `artifact_output: {from:
+    artifact.llat}` block must not change file-mode (default) behavior — a
+    file-mode run never writes artifact.llat/, so promotion must find no
+    source and skip silently, exactly like any other missing-source run."""
+
+    def test_file_mode_run_with_no_llat_directory_promotes_nothing(self, tmp_path: Path) -> None:
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        (run_dir / "index.html").write_text("<html>file-mode output</html>")
+        fsm = FSMLoop(
+            name="html-anything",
+            initial="s",
+            states={"s": StateConfig(terminal=True)},
+            artifact_output=ArtifactOutput(from_path="artifact.llat"),
+        )
+        assert fsm.artifact_mode == "file"
+        dest = promote_run_artifact(
+            fsm, run_dir, _StubConfig(str(tmp_path / "promoted")), _make_result(), ""
+        )
+        assert dest is None
+
+
 class TestPromoteRunArtifactE2E:
     """PersistentExecutor.run() integration coverage (FEAT-3309)."""
 

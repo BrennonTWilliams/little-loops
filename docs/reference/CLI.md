@@ -4532,6 +4532,14 @@ ll-artifact render ./my-report.llat --data data.json -o build/
 ll-artifact render my-report --data data.json --source docs/risk-register.md  # render + lock
 ```
 
+**Producing a `.llat/` from a loop (FEAT-3320 pilot)**: `ll-loop run html-anything
+"a dashboard showing real-time server metrics" --context artifact_mode=template`
+writes a `manifest.yaml` + `template.*.j2` + `data.json` triple to
+`run_dir/artifact.llat/` (instead of a fused `index.html`) and, on success,
+promotes it to `<templates_dir>/html-anything.llat/` — render it again any time
+with `ll-artifact render html-anything --data new-data.json`, no LLM call
+required. See [LOOPS_REFERENCE.md § html-anything](../guides/LOOPS_REFERENCE.md#html-anything--generalized-html-artifact-harness).
+
 **Exit codes:** `0` = artifact rendered (and, with `--source`, the lockfile updated), `1` = template not found, an invalid manifest, missing/malformed/schema-invalid data, `-o` naming an existing file, a `--source` that does not resolve to an existing file, or — with `--source` — a render that succeeded but whose lockfile write then failed.
 
 #### ll-artifact templatize

@@ -3,7 +3,7 @@ id: FEAT-3320
 type: FEAT
 title: html-anything template-mode generate prompt (artifact_mode pilot)
 priority: P2
-status: open
+status: in_progress
 discovered_by: ll-issues-create
 discovered_date: '2026-08-25'
 captured_at: '2026-08-25T16:25:58Z'
@@ -1324,6 +1324,26 @@ month — no LLM call, no `templatize` round trip, no fidelity loss.
       template counts as a failure. An early abort at 0/3 first-try successes,
       recorded with its failure modes, satisfies this criterion.
 
+## Pilot Results
+
+_Added by `/ll:manage-issue` — implementation session, 2026-08-25._
+
+**Not yet measured.** All code/prompt/test/doc changes from the Implementation
+Steps landed in this session (see Resolution below), but § Measuring the
+reliability number requires N=5 **live, billable host-CLI runs** across ≥3
+artifact types — that is out of scope for an autonomous implementation turn and
+was not attempted here. Per this section's own close-out gate, the issue cannot
+be marked `done` until this section reports real numbers (or a documented 0/3
+early abort).
+
+**Follow-up required**: run `ll-loop run html-anything "<description>" --context
+artifact_mode=template` for at least 3 distinct artifact types (e.g. one
+dashboard, one résumé, one social card), recording first-try success (the
+`.llat/` from the first `generate` pass clears the runtime gate AND the
+`data_parameterization` criterion) and post-critique success (the same, at the
+run's terminal state) per run, then replace this section with the actual N=5 (or
+early-abort) results and the gate's rule-1/rule-3 threshold values used.
+
 ## Related Key Documentation
 
 - `.issues/features/P2-FEAT-3318-artifact-mode-template-loops-emit-template-data-natively.md`
@@ -1338,6 +1358,8 @@ month — no LLM call, no `templatize` round trip, no fidelity loss.
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-25T20:17:44 - `2733569a-0f64-4a8b-99df-20a4c329cea3.jsonl`
+- `/ll:manage-issue` - 2026-08-25T20:17:26 - `2733569a-0f64-4a8b-99df-20a4c329cea3.jsonl`
 - `/ll:confidence-check` - 2026-08-25T19:52:21 - `94f6179f-d7c8-47d2-985b-eebcb3522a0e.jsonl`
 - `/ll:confidence-check` - 2026-08-25T19:38:24 - `57ef804f-0971-4904-a357-1b87749b6c61.jsonl`
 - `/ll:refine-issue` - 2026-08-25T18:05:42 - `15c28d79-5759-4915-8931-cf98fd12b048.jsonl`

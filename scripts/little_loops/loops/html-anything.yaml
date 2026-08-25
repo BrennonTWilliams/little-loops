@@ -17,6 +17,15 @@ scope:
 max_steps: 20
 timeout: 7200
 
+# FEAT-3320: template-mode pilot. artifact_mode: template (set via
+# --context artifact_mode=template) writes a manifest.yaml + template.*.j2 +
+# data.json triple under run_dir/artifact.llat/ instead of a fused index.html.
+# from: artifact.llat is mode-independent by construction — promote_run_artifact
+# returns None when run_dir/artifact.llat does not exist (persistence.py:757-763),
+# so a default file-mode run finds no source and promotes nothing, silently.
+artifact_output:
+  from: artifact.llat
+
 # HARNESS: Context variables control quality threshold.
 # pass_threshold is set higher than SVG (7 vs 6) because platform constraints are
 # binary pass/fail — partial compliance with inline-style or dimensional requirements
@@ -25,6 +34,7 @@ context:
   description: ""             # populated from loop_input via input_key: description
   pass_threshold: 7           # minimum score per criterion (1-10) to pass
   design_tokens_context: ""   # runner-injected; resolved semantic token values or empty
+  artifact_mode: "file"       # "file" (default) or "template" (FEAT-3320 pilot)
 
 states:
 
@@ -110,6 +120,14 @@ states:
       - All types: weight=2 for the primary platform-constraint criterion, weight=1 for aesthetics
       - Thresholds: use 7–8 for platform constraints, 6–7 for aesthetic criteria
 
+      Template mode (artifact_mode = ${context.artifact_mode}): if artifact_mode is
+      "template", also include a `data_parameterization` criterion (weight 2,
+      threshold 7) checking that every piece of run-specific content (headings,
+      copy, figures, table rows, links) is genuinely parameterized through
+      data.json and referenced from the template body — not hardcoded directly
+      in the template. A template that is schema-valid and visually correct but
+      has all content hardcoded must score this criterion low.
+
       Be specific and opinionated. The generator will use brief.md as its primary reference,
       and score.md will enforce the thresholds in rubric.md on every iteration.
     next: run_gen_eval
@@ -130,6 +148,41 @@ states:
 
         ${context.design_tokens_context}
 
+        Output mode (artifact_mode = ${context.artifact_mode}):
+
+        If artifact_mode is "template": do NOT write a fused index.html directly. Instead
+        write a parameterized artifact template to ${captured.run_dir.output}/artifact.llat/:
+        - manifest.yaml with exactly these keys: name, version, renderer (must be
+          "jinja2"), output (must be exactly "index.html" — index.html under
+          ${captured.run_dir.output} is a BUILD OUTPUT, regenerated from the template by
+          `ll-artifact render` before every screenshot; never edit it directly, fix
+          template.*.j2 or data.json instead, or your fix will be silently clobbered on
+          the next iteration), data_schema (a JSON-Schema-like object describing every
+          data.json key; no top-level "ll" key — that name is reserved), and
+          theme: design-tokens (declare this always, even with no tokens configured — it
+          degrades to neutral empty CSS blocks and never breaks the render; never inline
+          resolved token values instead, which would freeze today's theme into the
+          template).
+        - Exactly one template.*.j2 file (zero or more than one both fail validation),
+          written using the non-default Jinja delimiters this renderer requires:
+          [[= expr =]] for variable substitution, [[% stmt %]] for statements/control
+          flow, [[# comment #]] for comments — plain {{ }} / {% %} Jinja syntax is
+          invalid here. Reference [[= ll.theme_css =]] once near the top of the
+          document's <style> block, and pair every var(--…) reference with a concrete
+          CSS fallback value so the render looks right even with no tokens configured.
+        - data.json: every piece of run-specific content (headings, copy, figures, table
+          rows, links — anything that is not structural chrome) MUST live in data.json
+          and be referenced from the template body via [[= ... =]], never hardcoded in
+          the template. data.json must be a JSON object with at least 3 top-level keys,
+          and every key must actually appear in the template body — a template with all
+          content hardcoded and an empty or near-empty data.json will be rejected
+          regardless of visual score.
+        - Create NO assets/ directory and reference no external files — every file under
+          assets/ is read as UTF-8 text, and a binary image there is a hard render
+          failure. Use inline <svg> markup or data: URIs for any imagery instead.
+
+        If artifact_mode is "file" (the default):
+
         Write a single self-contained HTML file to ${captured.run_dir.output}/index.html that:
         - Fully satisfies every platform constraint specified in brief.md for the artifact type
         - Embeds all CSS and JavaScript inline (no external dependencies, no CDN links)
@@ -148,6 +201,13 @@ states:
       rubric: |
         Read ${captured.run_dir.output}/rubric.md to load the artifact type and per-criterion
         thresholds. Parse the YAML fenced block to get the criteria list.
+
+        Template mode (artifact_mode = ${context.artifact_mode}): if artifact_mode is
+        "template", also read ${captured.run_dir.output}/artifact.llat/manifest.yaml,
+        ${captured.run_dir.output}/artifact.llat/template.*.j2, and
+        ${captured.run_dir.output}/artifact.llat/data.json, and score the
+        data_parameterization criterion from those sources — every other criterion is
+        still scored from the rendered screenshot/index.html exactly as below.
 
         If ${captured.run_dir.output}/screenshot.png exists, read it to view the rendered
         artifact. Otherwise read ${captured.run_dir.output}/index.html directly to evaluate
@@ -180,6 +240,115 @@ states:
         If ALL criterion scores are >= their individual rubric thresholds, output exactly: ALL_PASS
         Otherwise output: ITERATE
       pass_threshold: 7
+      # FEAT-3320: prepended to oracles/generator-evaluator's evaluate action.
+      # Interpolated once here, at sub-loop invocation, against html-anything's
+      # OWN context/captured values — so ${context.artifact_mode} and
+      # ${captured.run_dir.output} resolve to literals before the child ever
+      # sees this string. The child's evaluate then substitutes it verbatim
+      # (single-pass interpolation, never re-scanned).
+      pre_evaluate_cmd: |
+        case "${context.artifact_mode}" in
+          template)
+            N=$(( $(cat "${captured.run_dir.output}/.iter_counter" 2>/dev/null || echo 0) + 1 ))
+            mkdir -p "${captured.run_dir.output}/llat-history/iter-$N"
+            cp -R "${captured.run_dir.output}/artifact.llat" "${captured.run_dir.output}/llat-history/iter-$N/" 2>/dev/null || true
+            rm -f "${captured.run_dir.output}/index.html"
+            if command -v ll-artifact >/dev/null 2>&1; then
+              if ll-artifact render "${captured.run_dir.output}/artifact.llat" -o "${captured.run_dir.output}" >/dev/null; then
+                rm -f "${captured.run_dir.output}/.miss_reason"
+              else
+                echo "template render failed (ll-artifact render exited nonzero; see stderr above)" > "${captured.run_dir.output}/.miss_reason"
+              fi
+            else
+              echo "ll-artifact not found on PATH; install with: pip install little-loops" > "${captured.run_dir.output}/.miss_reason"
+            fi
+            ;;
+        esac
+    on_yes: gate_template
+    on_no: diagnose
+    on_error: diagnose
+
+  gate_template:
+    # FEAT-3320: deterministic degenerate-data.json gate. Runs once, on
+    # run_gen_eval's on_yes edge — every promotable route (ALL_PASS and both
+    # plateau exits) arrives there; a max_steps exhaustion routes to on_no and
+    # never promotes, so it does not need covering here. A no-op in file mode
+    # (checked before rule 0, since artifact.llat/ legitimately does not exist
+    # there). In template mode, rejects a schema-valid but hardcoded template
+    # before promotion: rule 0 requires artifact.llat/ to exist with exactly
+    # one template.*.j2 and a readable data.json; rules 1-3 require genuine
+    # parameterization. A failure routes through diagnose -> failed, which
+    # suppresses promotion via promote_run_artifact's failure_terminal
+    # short-circuit (persistence.py:753). This is a NEW state authored
+    # directly in html-anything.yaml, not inside oracles/generator-evaluator —
+    # the oracle is not forked.
+    action_type: shell
+    action: |
+      case "${context.artifact_mode}" in
+        template) ;;
+        *) exit 0 ;;
+      esac
+
+      LLAT="${captured.run_dir.output}/artifact.llat"
+      if [ ! -d "$LLAT" ]; then
+        echo "gate_template: $LLAT missing or not a directory (rule 0)" >&2
+        exit 1
+      fi
+      TEMPLATE_COUNT=$(find "$LLAT" -maxdepth 1 -name 'template.*.j2' | wc -l | tr -d ' ')
+      if [ "$TEMPLATE_COUNT" != "1" ]; then
+        echo "gate_template: expected exactly one template.*.j2 under $LLAT, found $TEMPLATE_COUNT (rule 0)" >&2
+        exit 1
+      fi
+      if [ ! -r "$LLAT/data.json" ]; then
+        echo "gate_template: $LLAT/data.json missing or unreadable (rule 0)" >&2
+        exit 1
+      fi
+
+      python3 - "$LLAT" << 'PYEOF'
+      import glob
+      import json
+      import sys
+
+      llat = sys.argv[1]
+      try:
+          with open(f"{llat}/data.json", encoding="utf-8") as f:
+              data = json.load(f)
+      except (OSError, json.JSONDecodeError) as exc:
+          print(f"gate_template: data.json does not parse: {exc}", file=sys.stderr)
+          sys.exit(1)
+
+      if not isinstance(data, dict):
+          print("gate_template: data.json is not a JSON object (rule 1)", file=sys.stderr)
+          sys.exit(1)
+      keys = list(data.keys())
+      if len(keys) < 3:
+          print(
+              f"gate_template: data.json has {len(keys)} top-level keys, need >= 3 (rule 1)",
+              file=sys.stderr,
+          )
+          sys.exit(1)
+
+      template_files = glob.glob(f"{llat}/template.*.j2")
+      with open(template_files[0], encoding="utf-8") as f:
+          body = f.read()
+
+      unreferenced = [k for k in keys if k not in body]
+      if unreferenced:
+          print(
+              f"gate_template: data.json keys not referenced in template body (rule 2): {unreferenced}",
+              file=sys.stderr,
+          )
+          sys.exit(1)
+
+      opener_count = body.count("[[=")
+      if opener_count < 5:
+          print(
+              f"gate_template: only {opener_count} '[[=' substitution openers in template "
+              "body, need >= 5 (rule 3)",
+              file=sys.stderr,
+          )
+          sys.exit(1)
+      PYEOF
     on_yes: finalize_done
     on_no: diagnose
     on_error: diagnose
@@ -189,7 +358,23 @@ states:
     action: |
       The html-anything loop has completed successfully.
 
-      Final output files:
+      Output mode (artifact_mode = ${context.artifact_mode}):
+
+      If artifact_mode is "template", report these paths:
+      - ${captured.run_dir.output}/artifact.llat/  — the generated template
+        (manifest.yaml, template.*.j2, data.json) — this is the deliverable
+      - ${captured.run_dir.output}/index.html       — the last rendered preview (a
+        build output regenerated by ll-artifact render; not the deliverable itself)
+      - ${captured.run_dir.output}/brief.md / rubric.md / critique.md / screenshot.png
+        — supporting artifacts, same as file mode
+      The template was promoted to the project's artifact templates directory as
+      html-anything.llat, overwriting any template previously promoted by this loop.
+      Re-render it any time — no LLM call required. Best-iteration recovery: each
+      iteration's template source is archived under
+      ${captured.run_dir.output}/llat-history/iter-N/, matching iter-N/'s rendered
+      HTML under the same run directory.
+
+      If artifact_mode is "file" (the default), report these paths:
       - ${captured.run_dir.output}/index.html    — the generated HTML artifact
       - ${captured.run_dir.output}/brief.md      — platform-specific constraints and visual brief
       - ${captured.run_dir.output}/rubric.md     — artifact-appropriate scoring rubric with thresholds
@@ -209,7 +394,21 @@ states:
     action: |
       The html-anything loop has terminated with an unrecoverable failure.
 
-      Diagnose what happened:
+      Output mode (artifact_mode = ${context.artifact_mode}):
+
+      If artifact_mode is "template", diagnose what happened:
+      - If ${captured.run_dir.output}/.miss_reason exists, read it — it names a
+        template render failure or a missing ll-artifact binary, not a generic
+        screenshot problem.
+      - If ${captured.run_dir.output}/artifact.llat/ exists, report whether it likely
+        failed the deterministic parameterization gate (exactly one template.*.j2 +
+        readable data.json; >= 3 data.json top-level keys; every key referenced in the
+        template body; >= 5 "[[=" substitution openers) — a gate rejection is the most
+        likely cause for a run that otherwise reached ALL_PASS or plateaued.
+      - If ${captured.run_dir.output}/critique.md exists, read it and summarize the last
+        scores, including data_parameterization.
+
+      If artifact_mode is "file" (the default), diagnose what happened:
       - If ${captured.run_dir.output}/critique.md exists, read it and summarize the last scores.
       - If ${captured.run_dir.output}/rubric.md exists, report the rubric dimensions that failed.
       - Identify the most likely failure cause (most commonly: LLM error in the score state).

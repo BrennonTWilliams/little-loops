@@ -473,6 +473,13 @@ Reusable iterative artifact generation oracle. Loops `generate → evaluate (Pla
 
 Used by `html-website-generator`, `html-anything`, `hitl-md`, `hitl-compare`, `svg-image-generator`, and `interactive-component-generator` as a `loop:` delegation state named `run_gen_eval` (ENH-1869).
 
+**Template-mode consumer (FEAT-3320)**: `html-anything` binds `pre_evaluate_cmd` to a
+mode-guarded render step — `case "${context.artifact_mode}" in template) rm -f
+<run_dir>/index.html; ll-artifact render <run_dir>/artifact.llat -o <run_dir>
+>/dev/null ;; esac` — so `evaluate`'s existing Playwright screenshot captures the
+freshly-rendered `index.html` on every iteration when `artifact_mode: template` is
+set, with no change to the oracle's own logic or the mechanism's `file`-mode default.
+
 ### Parameters
 
 | Parameter | Required | Default | Description |
@@ -482,6 +489,7 @@ Used by `html-website-generator`, `html-anything`, `hitl-md`, `hitl-compare`, `s
 | `rubric` | no | `""` | Rubric criteria markdown passed to the `score` state |
 | `pass_threshold` | no | `6` | Minimum score per criterion to accept (out of 10) |
 | `artifact_path` | no | `"index.html"` | Artifact filename relative to `run_dir` for Playwright screenshot capture |
+| `pre_evaluate_cmd` | no | `""` | (FEAT-3320) Shell snippet prepended to `evaluate`'s action, before the Playwright screenshot — e.g. a deterministic template render. Generic, not an artifact-mode branch; unset by every consumer except `html-anything`'s template-mode `with:` binding. Its stdout must stay quiet (redirect to `/dev/null`) since `evaluate`'s routing is text-matched on stdout containing `"CAPTURED"`, not on exit code. |
 
 ### Invocation (thin-wrapper pattern)
 

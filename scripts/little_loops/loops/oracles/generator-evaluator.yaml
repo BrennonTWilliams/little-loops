@@ -41,6 +41,15 @@ parameters:
     type: string
     required: false
     description: Artifact filename relative to run_dir for screenshot capture (default index.html)
+  pre_evaluate_cmd:
+    type: string
+    required: false
+    description: |
+      FEAT-3320: optional shell snippet prepended to evaluate's action, before the
+      Playwright screenshot. Generic — not an artifact-mode branch — so all 8
+      other consumers leave it unset and are behaviorally unchanged. Its stdout
+      must stay quiet: evaluate's routing is text-matched on stdout containing
+      "CAPTURED" (fragment: playwright_screenshot), not on exit code.
 
 import:
   - lib/harness.yaml
@@ -50,6 +59,7 @@ context:
   pass_threshold: 6
   rubric: ""
   artifact_path: "index.html"
+  pre_evaluate_cmd: ""
 
 states:
   generate:
@@ -75,6 +85,7 @@ states:
     fragment: playwright_screenshot
     timeout: 120
     action: |
+      ${context.pre_evaluate_cmd}
       case "${context.run_dir}" in
         /*) ABS_DIR="${context.run_dir}" ;;
         *) ABS_DIR="$(pwd)/${context.run_dir}" ;;
@@ -298,7 +309,12 @@ states:
     action: |
       MISS_COUNT=$(cat "${context.run_dir}/.screenshot_misses" 2>/dev/null || echo 0)
       printf '{"verdict":"abandoned-screenshot","abandoned":%s}\n' "$MISS_COUNT" > "${context.run_dir}/summary.json"
-      echo "generator-evaluator: abandoned after $MISS_COUNT consecutive screenshot misses"
+      if [ -s "${context.run_dir}/.miss_reason" ]; then
+        REASON=$(cat "${context.run_dir}/.miss_reason")
+        echo "generator-evaluator: abandoned after $MISS_COUNT consecutive screenshot misses ($REASON)"
+      else
+        echo "generator-evaluator: abandoned after $MISS_COUNT consecutive screenshot misses"
+      fi
     next: screenshot_abandoned
     on_error: screenshot_abandoned
 

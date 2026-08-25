@@ -1534,12 +1534,19 @@ ll-loop run html-anything "a dashboard showing real-time server metrics"
 | `run_dir` | runner-injected | Per-run artifact directory (`.loops/runs/html-anything-{instance_id}/`) containing `index.html`, `brief.md`, `rubric.md`, `critique.md`, and `screenshot.png`; created automatically. Override with `--context run_dir=path/`. |
 | `design_tokens_context` | runner-injected | Resolved semantic design-token values (empty string when `design_tokens.enabled: false` or tokens path is missing). |
 | `pass_threshold` | `7` | Minimum score per criterion (1–10); **all criteria** must meet their individual rubric thresholds |
+| `artifact_mode` | `"file"` | `"file"` (default, fused `index.html`) or `"template"` (FEAT-3320 pilot — writes a `manifest.yaml` + `template.*.j2` + `data.json` triple to `run_dir/artifact.llat/` instead, promoted to `<templates_dir>/html-anything.llat/` on success). |
 
 Override per-run:
 
 ```bash
 ll-loop run html-anything "SaaS subscription email" \
   --context pass_threshold=8
+
+# FEAT-3320 pilot: produce a reusable .llat/ template instead of a fused index.html.
+# Each run overwrites the previous html-anything.llat promotion (keyed by loop
+# name, not run id) — re-render any time with `ll-artifact render html-anything`.
+ll-loop run html-anything "a dashboard showing real-time server metrics" \
+  --context artifact_mode=template
 ```
 
 **FSM flow:**

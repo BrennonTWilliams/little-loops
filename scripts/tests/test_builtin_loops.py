@@ -10393,11 +10393,24 @@ class TestHtmlAnythingLoop:
         assert "rubric" in with_, "run_gen_eval.with must contain 'rubric'"
         assert "pass_threshold" in with_, "run_gen_eval.with must contain 'pass_threshold'"
 
-    def test_run_gen_eval_routes_to_done_on_yes(self, data: dict) -> None:
-        """run_gen_eval must route to done (via finalize_done) when sub-loop succeeds (ALL_PASS)."""
+    def test_run_gen_eval_with_bindings_include_pre_evaluate_cmd(self, data: dict) -> None:
+        """FEAT-3320: run_gen_eval.with must bind pre_evaluate_cmd (the render step),
+        wrapped in the file-mode guard so it is inert by default."""
         state = data["states"].get("run_gen_eval", {})
-        assert state.get("on_yes") == "finalize_done", (
-            f"run_gen_eval.on_yes should be 'finalize_done', got {state.get('on_yes')!r}"
+        with_ = state.get("with", {})
+        assert "pre_evaluate_cmd" in with_, "run_gen_eval.with must contain 'pre_evaluate_cmd'"
+        assert "artifact_path" not in with_, (
+            "artifact_path must NOT be added to with: -- the mandated output: index.html "
+            "means the oracle's own default already points at the rendered file"
+        )
+
+    def test_run_gen_eval_routes_to_gate_template_on_yes(self, data: dict) -> None:
+        """FEAT-3320: run_gen_eval routes through gate_template (not directly to
+        finalize_done) when sub-loop succeeds (ALL_PASS or a plateau exit) -- the
+        deterministic degenerate-data.json gate sits on this edge."""
+        state = data["states"].get("run_gen_eval", {})
+        assert state.get("on_yes") == "gate_template", (
+            f"run_gen_eval.on_yes should be 'gate_template', got {state.get('on_yes')!r}"
         )
 
     def test_run_gen_eval_routes_to_diagnose_on_failure(self, data: dict) -> None:
@@ -10465,6 +10478,266 @@ class TestHtmlAnythingLoop:
         assert "rubric.md" in action, "finalize_done.action must reference rubric.md"
         assert "critique.md" in action, "finalize_done.action must reference critique.md"
         assert "screenshot.png" in action, "finalize_done.action must reference screenshot.png"
+
+
+class TestHtmlAnythingTemplateModePilot:
+    """FEAT-3320: artifact_mode: template pilot on html-anything."""
+
+    LOOP_FILE = BUILTIN_LOOPS_DIR / "html-anything.yaml"
+    ORACLE_FILE = BUILTIN_LOOPS_DIR / "oracles/generator-evaluator.yaml"
+
+    @pytest.fixture
+    def data(self) -> dict:
+        return yaml.safe_load(self.LOOP_FILE.read_text())
+
+    @pytest.fixture
+    def oracle_data(self) -> dict:
+        return yaml.safe_load(self.ORACLE_FILE.read_text())
+
+    # --- artifact_output / artifact_mode wiring -----------------------------
+
+    def test_artifact_output_block_declares_llat_source(self, data: dict) -> None:
+        spec = data.get("artifact_output")
+        assert spec is not None, "html-anything must declare an artifact_output block"
+        assert spec.get("from") == "artifact.llat"
+
+    def test_context_declares_artifact_mode_default_file(self, data: dict) -> None:
+        ctx = data.get("context", {})
+        assert ctx.get("artifact_mode") == "file", (
+            "artifact_mode must be declared with an explicit 'file' default (not absent), "
+            "so ${context.artifact_mode} interpolation always resolves (BUG-1947 shape)"
+        )
+
+    def test_static_gate_reports_no_warnings_or_errors(self) -> None:
+        _, warnings = load_and_validate(self.LOOP_FILE)
+        errors = [w for w in warnings if w.severity.name == "ERROR"]
+        assert not errors, f"unexpected static-gate errors: {errors}"
+
+    # --- gate_template state --------------------------------------------------
+
+    def test_gate_template_is_shell_state_between_run_gen_eval_and_finalize_done(
+        self, data: dict
+    ) -> None:
+        states = data["states"]
+        assert "gate_template" in states, "a new gate_template state is required"
+        gate = states["gate_template"]
+        assert gate.get("action_type") == "shell"
+        assert gate.get("on_yes") == "finalize_done"
+        assert gate.get("on_no") == "diagnose"
+        assert gate.get("on_error") == "diagnose"
+        assert states["run_gen_eval"].get("on_yes") == "gate_template"
+
+    def test_finalize_done_remains_a_prompt_state(self, data: dict) -> None:
+        """A prompt state cannot host a deterministic shell assertion — the gate
+        must live in its own shell state, not be folded back into finalize_done."""
+        assert data["states"]["finalize_done"].get("action_type") == "prompt"
+
+    @staticmethod
+    def _run_gate_template(
+        data: dict, run_dir: Path, artifact_mode: str
+    ) -> subprocess.CompletedProcess:
+        action = data["states"]["gate_template"]["action"]
+        script = action.replace("${context.artifact_mode}", artifact_mode).replace(
+            "${captured.run_dir.output}", str(run_dir)
+        )
+        assert "${" not in script, f"unsubstituted interpolation token remains: {script}"
+        return subprocess.run(["bash", "-c", script], cwd=run_dir, capture_output=True, text=True)
+
+    def test_gate_template_is_noop_in_file_mode(self, data: dict, tmp_path: Path) -> None:
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        result = self._run_gate_template(data, run_dir, "file")
+        assert result.returncode == 0, result.stderr
+
+    def test_gate_template_rejects_missing_artifact_llat(self, data: dict, tmp_path: Path) -> None:
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        result = self._run_gate_template(data, run_dir, "template")
+        assert result.returncode == 1
+        assert "rule 0" in result.stderr
+
+    def test_gate_template_rejects_empty_data_json(self, data: dict, tmp_path: Path) -> None:
+        run_dir = tmp_path / "run"
+        llat = run_dir / "artifact.llat"
+        llat.mkdir(parents=True)
+        (llat / "template.html.j2").write_text(
+            "<html>[[= x =]][[= y =]][[= z =]][[= a =]][[= b =]]</html>"
+        )
+        (llat / "data.json").write_text("{}")
+        result = self._run_gate_template(data, run_dir, "template")
+        assert result.returncode == 1
+        assert "rule 1" in result.stderr
+
+    def test_gate_template_rejects_hardcoded_body_with_unreferenced_data(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        run_dir = tmp_path / "run"
+        llat = run_dir / "artifact.llat"
+        llat.mkdir(parents=True)
+        (llat / "template.html.j2").write_text(
+            "<html><body>Hardcoded content, no substitutions.</body></html>"
+        )
+        (llat / "data.json").write_text(json.dumps({"title": "t", "subtitle": "s", "body": "b"}))
+        result = self._run_gate_template(data, run_dir, "template")
+        assert result.returncode == 1
+        assert "rule 2" in result.stderr or "rule 3" in result.stderr
+
+    def test_gate_template_accepts_fully_parameterized_template(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        run_dir = tmp_path / "run"
+        llat = run_dir / "artifact.llat"
+        llat.mkdir(parents=True)
+        (llat / "template.html.j2").write_text(
+            "<html><h1>[[= title =]]</h1><p>[[= subtitle =]]</p>"
+            "<p>[[= body =]]</p><footer>[[= footer =]]</footer>"
+            "<span>[[= tag =]]</span></html>"
+        )
+        (llat / "data.json").write_text(
+            json.dumps({"title": "t", "subtitle": "s", "body": "b", "footer": "f", "tag": "g"})
+        )
+        result = self._run_gate_template(data, run_dir, "template")
+        assert result.returncode == 0, result.stderr
+
+    # --- pre_evaluate_cmd binding ----------------------------------------------
+
+    def test_pre_evaluate_cmd_bound_and_wraps_in_mode_guard(self, data: dict) -> None:
+        with_ = data["states"]["run_gen_eval"]["with"]
+        cmd = with_.get("pre_evaluate_cmd", "")
+        assert cmd, "run_gen_eval.with must bind pre_evaluate_cmd"
+        assert 'case "${context.artifact_mode}" in' in cmd
+        assert "template)" in cmd
+
+    def test_pre_evaluate_cmd_deletes_render_target_unconditionally(self, data: dict) -> None:
+        cmd = data["states"]["run_gen_eval"]["with"]["pre_evaluate_cmd"]
+        assert 'rm -f "${captured.run_dir.output}/index.html"' in cmd
+
+    def test_pre_evaluate_cmd_probes_for_ll_artifact_binary(self, data: dict) -> None:
+        cmd = data["states"]["run_gen_eval"]["with"]["pre_evaluate_cmd"]
+        assert "command -v ll-artifact" in cmd
+        assert "pip install little-loops" in cmd
+
+    def test_pre_evaluate_cmd_clears_miss_reason_on_success(self, data: dict) -> None:
+        cmd = data["states"]["run_gen_eval"]["with"]["pre_evaluate_cmd"]
+        assert 'rm -f "${captured.run_dir.output}/.miss_reason"' in cmd
+
+    def test_pre_evaluate_cmd_archives_llat_per_iteration(self, data: dict) -> None:
+        """FEAT-3320 § iter-N/ loses the template, option (a): the .llat/ source
+        behind each iteration is archived alongside the rendered HTML."""
+        cmd = data["states"]["run_gen_eval"]["with"]["pre_evaluate_cmd"]
+        assert "llat-history" in cmd
+        assert "cp -R" in cmd
+
+    def test_no_stray_interpolation_tokens_in_with_bindings(self, data: dict) -> None:
+        """A bare ${ that is not a resolvable ${captured.*}/${context.*} reference
+        or an escaped $${ raises 'expected namespace.path' at invocation time."""
+        with_ = data["states"]["run_gen_eval"]["with"]
+        pattern = re.compile(r"(?<!\$)\$\{(?!captured\.|context\.)")
+        for key, value in with_.items():
+            if not isinstance(value, str):
+                continue
+            assert not pattern.search(value), f"with_.{key} contains an unresolvable ${{ sequence"
+
+    # --- generate_prompt / rubric / plan template-mode branches ---------------
+
+    def test_generate_prompt_file_mode_instructions_still_present_verbatim(
+        self, data: dict
+    ) -> None:
+        action = data["states"]["run_gen_eval"]["with"]["generate_prompt"]
+        assert (
+            "Write a single self-contained HTML file to ${captured.run_dir.output}/index.html that:"
+            in action
+        )
+        assert "For html-email: uses table-based layout" in action
+        assert "Achieves a distinctive, high-quality aesthetic" in action
+
+    def test_generate_prompt_mandates_output_index_html(self, data: dict) -> None:
+        action = data["states"]["run_gen_eval"]["with"]["generate_prompt"]
+        assert 'output (must be exactly "index.html"' in action
+
+    def test_generate_prompt_forbids_editing_index_html_directly(self, data: dict) -> None:
+        action = data["states"]["run_gen_eval"]["with"]["generate_prompt"]
+        assert "BUILD OUTPUT" in action
+        assert "never edit it directly" in action
+
+    def test_generate_prompt_declares_jinja_delimiters(self, data: dict) -> None:
+        action = data["states"]["run_gen_eval"]["with"]["generate_prompt"]
+        assert "[[= expr =]]" in action
+        assert "[[% stmt %]]" in action
+        assert "[[# comment #]]" in action
+
+    def test_generate_prompt_forbids_assets_directory(self, data: dict) -> None:
+        action = data["states"]["run_gen_eval"]["with"]["generate_prompt"]
+        assert "Create NO assets/ directory" in action
+        assert "inline <svg>" in action
+
+    def test_generate_prompt_mandates_theme_unconditionally(self, data: dict) -> None:
+        """§ theme: design-tokens must be unconditional, not gated on
+        design_tokens_context — themed_css_vars degrades gracefully."""
+        action = data["states"]["run_gen_eval"]["with"]["generate_prompt"]
+        assert "theme: design-tokens (declare this always" in action
+        assert "if design_tokens_context" not in action.lower()
+
+    def test_generate_prompt_requires_data_parameterization(self, data: dict) -> None:
+        action = data["states"]["run_gen_eval"]["with"]["generate_prompt"]
+        assert "MUST live in data.json" in action
+        assert "at least 3 top-level keys" in action
+
+    def test_plan_rubric_prompt_adds_data_parameterization_criterion_in_template_mode(
+        self, data: dict
+    ) -> None:
+        action = data["states"]["plan"]["action"]
+        assert "data_parameterization" in action
+        assert 'artifact_mode is\n      "template"' in action or "artifact_mode is" in action
+
+    def test_rubric_binding_reads_llat_sources_in_template_mode(self, data: dict) -> None:
+        action = data["states"]["run_gen_eval"]["with"]["rubric"]
+        assert "artifact.llat/manifest.yaml" in action
+        assert "artifact.llat/template.*.j2" in action
+        assert "artifact.llat/data.json" in action
+        assert "data_parameterization" in action
+
+    # --- finalize_done / diagnose template-mode branches -----------------------
+
+    def test_finalize_done_branches_on_artifact_mode(self, data: dict) -> None:
+        action = data["states"]["finalize_done"]["action"]
+        assert "artifact.llat/" in action
+        assert "llat-history" in action
+
+    def test_diagnose_branches_on_artifact_mode(self, data: dict) -> None:
+        action = data["states"]["diagnose"]["action"]
+        assert ".miss_reason" in action
+        assert "artifact.llat/" in action
+
+    # --- oracle: pre_evaluate_cmd is the only behavioral edit ------------------
+
+    def test_oracle_pre_evaluate_cmd_parameter_optional_default_empty(
+        self, oracle_data: dict
+    ) -> None:
+        params = oracle_data.get("parameters", {})
+        assert "pre_evaluate_cmd" in params
+        assert params["pre_evaluate_cmd"].get("required") is not True
+        assert oracle_data.get("context", {}).get("pre_evaluate_cmd") == ""
+
+    def test_oracle_evaluate_action_prefixes_pre_evaluate_cmd(self, oracle_data: dict) -> None:
+        action = oracle_data["states"]["evaluate"]["action"]
+        assert action.strip().startswith("${context.pre_evaluate_cmd}")
+
+    def test_oracle_screenshot_abandoned_summary_reports_miss_reason(
+        self, oracle_data: dict
+    ) -> None:
+        action = oracle_data["states"]["screenshot_abandoned_summary"]["action"]
+        assert ".miss_reason" in action
+
+    def test_oracle_other_states_unmodified_by_pre_evaluate_cmd(self, oracle_data: dict) -> None:
+        """AC: the oracle is not forked or branched on artifact mode — only
+        evaluate's action and screenshot_abandoned_summary's message change."""
+        for name, state in oracle_data["states"].items():
+            if name in ("evaluate", "screenshot_abandoned_summary"):
+                continue
+            action = state.get("action", "")
+            assert "pre_evaluate_cmd" not in action
+            assert "artifact_mode" not in action
 
 
 class TestHitlCompareLoop:
