@@ -15,6 +15,8 @@ relates_to:
 - FEAT-3304
 - FEAT-3036
 verify_verdict: VALID
+learning_tests_required:
+- jinja2
 ---
 
 # ENH-3035: Factor a shared artifact template kit out of the policy-builder template
@@ -78,6 +80,12 @@ currently does inline.
       literals by a loop's prompt-time `design_tokens_context`, not only a body
       authored with stamp points.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-25 — based on codebase analysis:_
+
+- On the last AC ("kit's token-stamping unit is reachable from the templatize token-lifting path"): confirmed not yet true. `templatize.py`'s `build_manifest()` (line 519-537) never sets `manifest["theme"] = "design-tokens"`, and `_report_unlifted_tokens` (line 717-740, calling `load_design_tokens` at line 727) only *reports* baked-in color literals matching known tokens via `logger.warning` + `unlifted-tokens.json` — it never rewrites the spliced template body to reference the kit's stamping unit. Satisfying this AC requires either the templatize output to set `manifest["theme"]` when literals are found, or a body authored with kit stamp points before being templatized; extraction alone does not close this gap.
+
 ## Consumer mix (added 2026-08-23)
 
 Both consumers named in the original scope — `policy-builder` and the sql.js
@@ -92,6 +100,13 @@ The AC above therefore requires a third consumer from that family. If FEAT-3308
 has not landed when this issue is implemented, satisfy it with a hand-templatized
 loop artifact used as a fixture; the point is that the kit is exercised by a body
 it did not author.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-25 — based on codebase analysis:_
+
+- Stale reference: this section's own text cites the `str.replace()` stamping site as "`cli/artifact.py:132-137`" performing "four" replacements. The actual location is `scripts/little_loops/cli/artifact/policy_builder.py:124-129`, and it is **five** sequential `.replace()` calls (`data-theme`, `/*__THEMED_CSS_VARS__*/`, `/*__GRAMMAR_SPEC_JSON__*/`, `/*__SKILL_CATALOG_JSON__*/`, `/*__BUILDER_CORE_JS__*/`), not four.
+- Neither named consumer that motivates this issue exists in code yet: `Glob **/.llat/**` and repo-wide grep for `sql.js`/`sqljs`/`sql_js` and `loop-fleet`/`loop_fleet` found no implementation — the sql.js dashboard (FEAT-3304) and the "loop-fleet dashboard" mentioned in Motivation are both still design-only issue text (`.issues/features/P3-FEAT-3304-embed-sql-js-filtered-history-db-export-for-queryable-single-file-artifacts.md`, `.issues/epics/P3-EPIC-3299-artifact-templates-deterministic-render-cheap-refresh-shared-kit.md`). (The unrelated `ll-logs` "loop-fleet harvester" telemetry feature shares the name but is a different concern — `cli/logs.py`.) The AC requiring "The sql.js dashboard's artifact (FEAT-3304) is built on the kit" has no escape hatch analogous to the one already given for FEAT-3308/templatize above — implementing this issue may require either building a minimal sql.js dashboard fixture first, or waiting on FEAT-3304 to land, neither of which is currently decided here.
 
 ## Sequencing
 
@@ -120,6 +135,109 @@ issues, not resolved as part of this verification pass.
 
 - 2026-08-16: Issue body content is accurate and current; frontmatter carried a stale `verify_verdict: NON_VALID` left over from a prior --check run that contradicted the accurate body — corrected to `VALID` above. Verdict: NEEDS_UPDATE.
 
+## Integration Map
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-25 — based on codebase analysis:_
+
+Extraction targets, dependents, conventions, and behavior-parity obligations found below.
+
+### Files to Modify
+- `scripts/little_loops/cli/artifact/policy_builder.py` — `cmd_policy_builder()` (lines 90-142) currently reads `policy-router-builder.html.tmpl` and `policy_builder_core.mjs` from `_TEMPLATES_DIR` and stamps them via five sequential `str.replace()` calls (lines 124-129) — not four as the issue's Consumer mix section states (see stale-reference note below). `_themed_css_vars()` (lines 56-87) is the current single home of "load light+dark tokens, degrade gracefully."
+- `scripts/little_loops/templates/policy-router-builder.html.tmpl` (727 lines) — single monolithic file with no `{% include %}`/partials: head/style block (lines 1-116, injection point `/*__THEMED_CSS_VARS__*/` at line 9), body (117-217), data-globals script (129-134), core-logic module script with `/*__BUILDER_CORE_JS__*/` at line 219 followed by ~500 lines of UI glue.
+- `scripts/little_loops/templates/policy_builder_core.mjs` (667 lines) — inlined verbatim as raw text at the `/*__BUILDER_CORE_JS__*/` placeholder; no bundler, no minification.
+- `scripts/little_loops/artifact_templates.py` — `build_ll_namespace()` (lines 304-311) is the existing partial "kit" for `.llat/` Jinja2 templates: it already imports `_themed_css_vars` back out of `policy_builder.py` when `manifest.get("theme") == "design-tokens"`. This is the one existing coupling point and the specific inversion the kit extraction should undo — today the general-purpose module reaches into the CLI-command module for shared logic, not the reverse.
+
+### Dependent Files (Callers/Importers)
+- `scripts/little_loops/cli/artifact/__init__.py:38` — `from little_loops.cli.artifact.policy_builder import _themed_css_vars, cmd_policy_builder`; also registers all `ll-artifact` subcommands.
+- `scripts/little_loops/artifact_templates.py:304-311` (`build_ll_namespace`) — imports `_themed_css_vars` from `policy_builder.py` conditionally on `manifest["theme"] == "design-tokens"`.
+- `scripts/little_loops/cli/artifact/design_md.py:68,92` (`cmd_design_md_export`) — separate caller of `load_design_tokens`, single-theme (no `render_as_css_vars_themed`).
+- `scripts/little_loops/cli/loop/_helpers.py:1422` (`inject_design_context`) — caller of `load_design_tokens`, unrelated to artifact rendering.
+- `scripts/little_loops/cli/artifact/templatize.py:727` (`_report_unlifted_tokens`) — calls `load_design_tokens(config)` with no `theme` arg (single implicit active theme), for a report-only literal-color scan; does not call `render_as_css_vars_themed` or set `manifest["theme"]`.
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/cli/artifact/__init__.py:55` — `__all__` re-exports `_themed_css_vars` by name (alongside the `:38` import already noted); a rename/relocation to the kit module must update both the import and this `__all__` entry or the re-export silently breaks.
+- `scripts/little_loops/cli/artifact/extract.py:29-30,210,265` — imports `ArtifactTemplate` from `artifact_templates.py`, constructs it directly; a peer of the kit's entry point, not currently coupled to `_themed_css_vars` but shares the module the kit extraction touches.
+- `scripts/little_loops/cli/artifact/render.py:18-25,64,124` — imports `ArtifactTemplate`, `render_template` from `artifact_templates.py`; same exposure as `extract.py`.
+- `scripts/little_loops/cli/artifact/status.py:20` — imports `TemplateResolutionError`, `resolve_template` from `artifact_templates.py`.
+- `scripts/little_loops/design_tokens.py` — `DesignTokens.source` field docstring names `cli/artifact/policy_builder.py`'s `_themed_css_vars()` by fully-qualified path ("`_themed_css_vars()` branches on it..."); goes stale once the function moves to the kit module.
+- `scripts/little_loops/cli/artifact/templatize.py` — `_write_unlifted_tokens_report()`'s persisted `_comment` string in `unlifted-tokens.json` ("Report-only — not rewritten, and the manifest does not set theme: design-tokens") becomes false once `build_manifest()` starts setting `manifest["theme"] = "design-tokens"` per the last AC — must be rewritten alongside that change.
+
+### Conventions in Force
+- New shared modules in this codebase get extracted when a **second consumer** needs the same logic, not proactively — evidence: `render_to_disk()` (`cli/artifact/render.py:36-53`) whose docstring states it "used to live inline in `cmd_render`" and was extracted once `cmd_refresh` (FEAT-3310) needed the same sequence.
+- Shared "kit-shaped" modules in `scripts/little_loops/` follow one shape: a dataclass as the core value type plus free top-level functions operating on it, no class wrapping the logic — evidence: `design_tokens.py` (`DesignTokens` + `load_design_tokens()`/`render_as_css_vars_themed()`), `artifact_templates.py` (`ArtifactTemplate` + `render_template()`/`build_environment()`).
+- CLI subcommand modules pair a `cmd_*` handler with a same-file `add_*_parser` registration function, called from `cli/artifact/__init__.py:152-156` — evidence: `render.py:171`, `status.py:168`, `extract.py:328,366`, `templatize.py:968`. **Disagreement**: `policy-builder` and `design-md export` do not follow this — their `argparse.add_parser(...)` calls are inline in `cli/artifact/__init__.py:107-150` rather than factored into their own `add_*_parser` functions; `cli/artifact/__init__.py:18-23`'s "one module per subcommand" convention doesn't mention this as a documented exception, so it is a live, undocumented divergence between the older (policy-builder/design-md) and newer (render/status/extract/templatize) subcommands.
+- Shared format/logic modules are sometimes authored up front as "single home" rather than extracted from an existing inline implementation — evidence: `lockfile.py:1-8` docstring ("Single home for the lockfile's shape... FEAT-3311's `status` reader... import this module rather than redefining the format").
+
+### Tests
+- `scripts/tests/test_policy_builder_emit.py` — policy-builder emission tests; validates golden fixtures through the real pipeline (`load_and_validate`/`validate_fsm`) and asserts structural/regex properties over rendered HTML (`_strip_script_style_comments()`), not whole-file byte comparison.
+- `scripts/tests/test_policy_builder_corpus.py`, `scripts/tests/test_policy_builder_node_gate.py` — corpus and Node-side conformance gate for the stamped `policy_builder_core.mjs`.
+- `scripts/tests/test_feat3036_artifact_templates.py` — `.llat/` format/renderer tests (the module this kit will sit alongside).
+- `scripts/tests/test_artifact_templatize.py` — contains this codebase's only precedent for exact-byte round-trip assertions (`assert out == b"..."`, `test_non_ascii_round_trips`, `verify_round_trip()`), relevant to the "renders byte-identically" AC — no existing test does `assert new_html == old_html_captured_before_refactor` for policy-builder specifically.
+- `scripts/tests/test_design_tokens.py`, `scripts/tests/test_verify_design_tokens.py` — design-token unit/verification tests.
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_feat3036_artifact_templates.py:332-343` (`test_theme_css_stamped_via_design_tokens_path`) — **will break**: patches `"little_loops.cli.artifact.policy_builder._themed_css_vars"` by string path; a relocation to the kit module leaves this patch targeting a stale path (silent no-op, not an error) while `build_ll_namespace`'s real `from ... import` resolves the new location — update the patch target alongside the move.
+- `scripts/tests/test_design_tokens.py:664,673,682` (`test_design_md_source_no_crash_and_both_blocks_present`, `test_design_md_source_warns_exactly_once`, `test_profile_source_still_makes_two_calls`) — import `_themed_css_vars` via the re-export at `little_loops.cli.artifact` (not `.policy_builder` directly); survive only if `cli/artifact/__init__.py`'s re-export is preserved/repointed at the new kit module.
+- `scripts/tests/test_feat3310_artifact_extract.py:15,204,254` — imports and constructs `ArtifactTemplate` directly to exercise `extract.py`; no direct coupling to `_themed_css_vars` but shares `artifact_templates.py`, the module the kit's entry point sits beside.
+- No existing test snapshots policy-builder's pre-refactor output for byte-identical post-refactor comparison — closest precedent is `test_artifact_templatize.py:403-440` (`test_end_to_end_round_trip`)'s `assert (render_out / "index.html").read_bytes() == artifact.read_bytes()` pattern. A new test following that shape (capture `cmd_policy_builder`'s output bytes pre-port as a golden fixture, assert equality post-port) is needed to satisfy the "renders byte-identically (or with reviewed, intentional diffs)" AC — no golden HTML fixture currently exists for policy-builder's emitted page (only YAML input fixtures under `scripts/tests/fixtures/policy_builder/`).
+
+### Documentation
+- `docs/reference/CLI.md` (`### ll-artifact`, line 4455) — subcommand reference sections for `policy-builder`, `design-md export`, `render`, `templatize`, `extract`, `refresh`, `status`.
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/CONFIGURATION.md` — `design_tokens` section's "Not supported from DESIGN.md" bullet names `_themed_css_vars` verbatim ("only `_themed_css_vars`, used by `ll-artifact` HTML generators"); `### artifacts` section intro paragraph narrates policy-builder as the thing that "stamps design-token CSS vars... into a `file://`-safe policy-router / rubric loop builder page" — both describe stamping as policy-builder-owned, which the kit extraction changes.
+- `docs/ARCHITECTURE.md:1029,1031` — describes the "project-enriched artifacts" pattern and templatize round-trip design, naming `policy_builder.py`'s current role.
+
+### Behavior Parity
+| Artifact | Behavior | Disposition | Notes |
+|---|---|---|---|
+| `scripts/little_loops/cli/artifact/policy_builder.py::cmd_policy_builder` | Reads `.tmpl`+`.mjs`, stamps 5 placeholders via `str.replace()`, writes HTML unconditionally | PRESERVED (target) | AC requires byte-identical or reviewed-diff output after porting onto the kit |
+| `scripts/little_loops/cli/artifact/policy_builder.py::_themed_css_vars` | Loads light+dark tokens, degrades to neutral empty-CSS-block on `None` | PRESERVED (target) | Becomes the kit's token-stamping unit; same degrade behavior must hold |
+
+## Program Design
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-25 — based on codebase analysis:_
+
+Concrete types, signatures, and the call path the kit extraction touches, below.
+
+### Types
+- `DesignTokens` (`design_tokens.py:28-45`, frozen dataclass) — `primitives`, `semantic`, `theme` (nested dicts), `resolved` (flat dotted-name → value), `source_path`, `guidance`, `source` (`"profile"` | `"design_md"`). Existing type the kit's token-stamping unit wraps; not modified by this issue unless the unit needs a new parameter.
+- `ArtifactTemplate` (`artifact_templates.py`, plain dataclass) — the `.llat/` template's in-memory representation; the kit's entry point should be a peer of this, not a subclass or wrapper around it.
+
+### Signatures
+- `_themed_css_vars(config: object) -> str` (`cli/artifact/policy_builder.py:56-87`) — current single home of "load light+dark tokens, degrade gracefully to neutral empty-CSS-block on `None`, return themed CSS var blocks." This is the concrete function the kit's token-stamping unit factors out of.
+- `load_design_tokens(config: BRConfig, theme: str | None = None) -> DesignTokens | None` (`design_tokens.py:412-569`) — resolves `design_tokens.source` into a `DesignTokens` or `None` on degrade; raises `ValueError` only for circular/unknown token references on a `profile` source (a `design_md` source catches that internally).
+- `render_as_css_vars_themed(light: DesignTokens, dark: DesignTokens) -> str` (`design_tokens.py:688-707`) — builds `:root {...}` / `[data-theme=dark] {...}` blocks, skipping `_`-prefixed metadata keys in `resolved`.
+- `build_ll_namespace(root: Path, manifest: dict[str, Any], config: object) -> dict[str, Any]` (`artifact_templates.py:304-311`) — the existing `.llat/` render-context builder; currently imports `_themed_css_vars` from `policy_builder.py` when `manifest["theme"] == "design-tokens"`. The kit's stamping unit is the natural replacement for that inline import, called from both `build_ll_namespace` and a ported `cmd_policy_builder`.
+
+### Call Path
+`cmd_policy_builder` -> `_themed_css_vars` -> `load_design_tokens` (light, then conditionally dark) -> `render_as_css_vars_themed` -> stamped into `.tmpl` at `/*__THEMED_CSS_VARS__*/`
+
+Existing inverted coupling to unwind: `artifact_templates.build_ll_namespace` -> (imports) `cli/artifact/policy_builder._themed_css_vars` -> same `load_design_tokens`/`render_as_css_vars_themed` chain above. Post-extraction this becomes: `build_ll_namespace` -> kit's token-stamping unit -> `load_design_tokens`/`render_as_css_vars_themed`, and `cmd_policy_builder` calls the same kit unit rather than owning `_themed_css_vars` itself.
+
+Not yet wired (relevant to the last AC): `cmd_templatize` (`templatize.py`) -> `_report_unlifted_tokens` -> `load_design_tokens(config)` (no theme arg) is a report-only literal-color scan; `build_manifest()` (`templatize.py:519-537`) never sets `manifest["theme"] = "design-tokens"`, so a templatized body does not automatically opt into the kit's token-stamping unit today even when the report finds baked-in literals matching known tokens — the AC requiring the kit be "reachable from the templatize token-lifting path" is not yet satisfied by any existing call path and will need new wiring, not just extraction.
+
+### Decision Rules
+N/A — no new decision logic. This issue is a refactor extracting existing behavior into a shared module; it does not introduce a new gap kind, gate, threshold, or classification rule.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Update `cli/artifact/__init__.py` — repoint the `_themed_css_vars` import (line 38) and `__all__` entry (line 55) at the new kit module, or re-export from there.
+- Update `test_feat3036_artifact_templates.py:337` — repoint the `patch("little_loops.cli.artifact.policy_builder._themed_css_vars", ...)` target at the new kit module path.
+- Preserve the `little_loops.cli.artifact` re-export of `_themed_css_vars` (or update `test_design_tokens.py:664,673,682`, which import it from there).
+- Update `design_tokens.py`'s `DesignTokens.source` field docstring — drop the fully-qualified `cli/artifact/policy_builder.py::_themed_css_vars()` reference.
+- Update `templatize.py`'s `_write_unlifted_tokens_report()` persisted `_comment` string once `build_manifest()` sets `manifest["theme"] = "design-tokens"` (required by the last AC) — the current text ("the manifest does not set theme: design-tokens") becomes false.
+- Write a new byte-identical regression test for `cmd_policy_builder`'s output (modeled on `test_artifact_templatize.py`'s `read_bytes()` round-trip pattern) — no such golden-comparison test exists today, and the AC requires proving byte-identical (or reviewed-diff) output post-port.
+- Update `docs/reference/CONFIGURATION.md`'s `_themed_css_vars` reference and `### artifacts` section narrative to describe the kit as the stamping owner.
+
 ## Session Log
+- `/ll:wire-issue` - 2026-08-25T15:24:37 - `b117138e-ea1a-4c48-86b4-f79804f6b111.jsonl`
+- `/ll:refine-issue` - 2026-08-25T15:05:45 - `c104c28f-0ba5-4573-827d-9ff9ac6d6eb8.jsonl`
 - `/ll:verify-issues` - 2026-08-16T16:40:23 - `688cfc38-322a-447f-94a0-315f2c2aee33.jsonl`
 - `/ll:verify-issues` - 2026-08-13T03:04:59 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
