@@ -215,18 +215,27 @@ jobs:
         #      pytest.log + mem.log + heartbeat.log + junit.
         run: |
           set -o pipefail
-          ( while true; do \
+          ( set +e
+            while true; do \
+              echo "$(date -u +%H:%M:%S) sampler-tick" >> /tmp/sampler_heartbeat.log 2>/dev/null || true; \
               echo "== $(date -u +%H:%M:%S) =="; \
               free -m | awk 'NR==2{print "mem: used "$3"MB / "$2"MB"}'; \
               ps -eo rss,comm --sort=-rss | head -6 | awk '{printf "  %6.0f MB  %s\n", $1/1024, $2}'; \
               sleep 30; \
-            done ) > mem.log 2>&1 &
+            done
+          ) > mem.log 2>&1 &
           SAMPLER=$!
-          ( while true; do \
+          ( set +e
+            while true; do \
+              echo "$(date -u +%H:%M:%S) heartbeat-tick" >> /tmp/heartbeat_heartbeat.log 2>/dev/null || true; \
               echo "== $(date -u +%H:%M:%S) == pytest process tree =="; \
-              ps -eo pid,ppid,etime,rss,stat,args --sort=pid | grep -E '[p]ytest|[p]ython' || echo "  (no pytest/python processes)"; \
+              # wchan:32 captures the kernel function a process is blocked on
+              # (load-bearing for storage-stall vs per-test subprocess/IO deadlock).
+              # Combined with `args` (test name), correlates wedge location with test heaviness.
+              ps -eo pid,ppid,etime,rss,stat,wchan:32,args --sort=pid | grep -E '[p]ytest|[p]ython' || echo "  (no pytest/python processes)"; \
               sleep 30; \
-            done ) > heartbeat.log 2>&1 &
+            done
+          ) > heartbeat.log 2>&1 &
           HEARTBEAT=$!
           # BUG-3208 Path A fix — background orphan-reaper, fires at T+46m
           # INDEPENDENT of the pipeline below. When `timeout` SIGKILLs the
@@ -250,12 +259,17 @@ jobs:
           # (any exit code is informative). If `reaper.log` is missing or only
           # has the spawn line → runner died before reap fired. This is the
           # diagnostic that's needed to name the runner-after-X failure mode.
-          ( date -u +'reaper-spawned T=%H:%M:%S pid='$$ > reaper.log; \
-            for i in $(seq 1 46); do sleep 60; date -u +"reaper-tick$i T=%H:%M:%S" >> reaper.log; done; \
+          ( set +e
+            date -u +'reaper-spawned T=%H:%M:%S pid='$$ > reaper.log; \
+            for i in $(seq 1 46); do sleep 60; \
+              echo "$(date -u +%H:%M:%S) reaper-heartbeat" >> /tmp/reaper_heartbeat.log 2>/dev/null || true; \
+              date -u +"reaper-tick$i T=%H:%M:%S" >> reaper.log; \
+            done; \
             echo "reaper-firing T=$(date -u +%H:%M:%S)" >> reaper.log; \
             pkill -9 -f '[p]ytest' 2>/dev/null; echo "pkill-pytest rc=$?" >> reaper.log; \
             pkill -9 -f '[e]xecnet' 2>/dev/null; echo "pkill-execnet rc=$?" >> reaper.log; \
-            echo "reaper-done T=$(date -u +%H:%M:%S)" >> reaper.log ) &
+            echo "reaper-done T=$(date -u +%H:%M:%S)" >> reaper.log
+          ) &
           REAPER=$!
           # BUG-3208 Path E — diagnostic snapshot streaming via GitHub issue comment
           # PATCH. Path A's in-runner diagnostics died with the runner three dispatches
@@ -293,7 +307,9 @@ jobs:
             # COMMENT_ID captured by upstream 'Path E POST probe' step (per the lift).
             COMMENT_URL="https://github.com/${GITHUB_REPOSITORY:-BrennonTWilliams/little-loops}/issues/${SINK_ISSUE}#issuecomment-${COMMENT_ID}"
             echo "Path E POST captured by upstream probe: issue=$SINK_ISSUE id=$COMMENT_ID url=$COMMENT_URL"
-            ( while true; do
+            ( set +e
+              while true; do
+                echo "$(date -u +%H:%M:%S) snapshotter-tick" >> /tmp/snapshotter_heartbeat.log 2>/dev/null || true; \
                 {
                   echo "Path E snapshot stream — run_id=$GITHUB_RUN_ID run_attempt=$GITHUB_RUN_ATTEMPT step=unit-tests"
                   echo "snapshot T=$(date -u +%H:%M:%S) (last update wins; older meta-lines truncated by 65KB cap)"
@@ -309,7 +325,7 @@ jobs:
                   echo ""
                   echo "--- reaper.log (last 3 lines) ---"
                   tail -3 reaper.log 2>/dev/null || echo "(reaper.log not present)"
-                } > /tmp/pathE_snapshot.txt
+                } > /tmp/pathE_snapshot.txt 2>/dev/null || true
                 # Path E drop-oldest body assembly.
                 # Server-as-source-of-truth: GET current body, append new snapshot,
                 # truncate from middle if approaching GitHub's 65536-char comment
@@ -317,20 +333,26 @@ jobs:
                 # × 30s cadence = ~115KB over 45min, PATCH fails silently at ~25min
                 # into run, back half of dispatch lost. Same design-vs-implementation
                 # pathology as the grep bug.
-                CURRENT_BODY=$(gh api "/repos/$GITHUB_REPOSITORY/issues/comments/$COMMENT_ID" --jq .body 2>/dev/null || echo "")
-                NEW_BODY="${CURRENT_BODY}"$'\n\n'"$(cat /tmp/pathE_snapshot.txt)"
+                CURRENT_BODY=$(gh api "/repos/$GITHUB_REPOSITORY/issues/comments/$COMMENT_ID" --jq .body 2>/dev/null) || CURRENT_BODY=""
+                # line 321 fix: `$(cat /tmp/pathE_snapshot.txt)` has no `||` chain in the
+                # original — if cat returns non-zero (file missing, fs error), `set -e`
+                # would kill the subshell. With `set +e` AND a fallback assignment, the
+                # loop survives snapshot-file errors and continues to PATCH.
+                NEW_BODY=$(cat /tmp/pathE_snapshot.txt 2>/dev/null) || NEW_BODY="${CURRENT_BODY}"
+                NEW_BODY="${CURRENT_BODY}"$'\n\n'"${NEW_BODY}"
                 # 60000 leaves 5536-char buffer for PATCH validation / future growth.
                 if [ "${#NEW_BODY}" -gt 60000 ]; then
                   TRUNCATED_AT_T=$(date -u +%H:%M:%S)
                   NEW_BODY="[...older snapshots truncated at 60KB cap T=${TRUNCATED_AT_T}...]"$'\n\n'"${NEW_BODY: -60000}"
                 fi
-                printf '%s' "$NEW_BODY" > /tmp/pathE_body.txt
+                printf '%s' "$NEW_BODY" > /tmp/pathE_body.txt 2>/dev/null || true
                 gh api --method PATCH -H "Accept: application/vnd.github+json" \
                   "/repos/$GITHUB_REPOSITORY/issues/comments/$COMMENT_ID" \
                   -F body=@/tmp/pathE_body.txt 2>/dev/null \
                   || echo "PATCH failed at $(date -u +%H:%M:%S) exit=$?" >> /tmp/pathE_failures.log
                 sleep 30
-              done ) &
+              done
+            ) &
             SNAPSHOTTER=$!
           fi
           set +e
@@ -340,7 +362,7 @@ jobs:
               -v \
               --tb=line \
               --junit-xml=pytest-junit.xml \
-              | tee pytest.log
+              > pytest.log 2>&1
           RC=$?
           set -e
           # Reap orphaned xdist workers that survive the controller kill — they
