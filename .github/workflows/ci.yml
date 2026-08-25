@@ -112,6 +112,52 @@ jobs:
           # exactly the silent-skip class we must not let through.
           .venv/bin/python -c "import pytest, pytest_cov, xdist, pytest_timeout, syrupy, hypothesis; print('dev deps verified')"
 
+      - name: Path E POST probe
+        # BUG-3208 Path E — diagnostic snapshot streaming to GitHub issue.
+        # Lifted from step 6's preamble so POST failure surfaces as a step-level
+        # error instead of being silently swallowed by the inline Option A guard.
+        # Three improvements over the inline-POST design (per Cooper ff43e52f):
+        #   1. `timeout 30 gh api ...` bounds per-attempt wait — distinguishes
+        #      a hung POST (candidate 3 from QA's framing) from a slow one
+        #   2. `2>&1` captures BOTH streams — keeps gh api's exit code info
+        #   3. fail-fast assertion on empty/null COMMENT_ID — never silently degrade;
+        #      step exits 1 with the captured stderr in run log so we can finally
+        #      see what POST failure mode is actually in play (per Cooper's read:
+        #      2-second POST completed, but `2>/dev/null` masked a fast non-2xx;
+        #      the only way to surface it is this probe step).
+        #
+        # Skipped on push events (env.SINK_ISSUE empty). On dispatch events
+        # (default sink_issue=11), runs POST + retry + fail-fast + capture.
+        # COMMENT_ID is exported via $GITHUB_ENV for step 6 to read.
+        if: ${{ inputs.sink_issue != '' }}
+        timeout-minutes: 5
+        env:
+          SINK_ISSUE: ${{ inputs.sink_issue }}
+        run: |
+          INITIAL_BODY="Path E diagnostic stream for run $GITHUB_RUN_ID. Updates every ~30s; 65KB cap handled by drop-oldest meta-lines. Last successful PATCH before runner death is the snapshot we want."
+          COMMENT_ID=""
+          for attempt in 1 2 3; do
+            echo "Path E POST attempt $attempt starting..."
+            RESULT=$(timeout 30 gh api -X POST \
+              "/repos/${GITHUB_REPOSITORY:-BrennonTWilliams/little-loops}/issues/${SINK_ISSUE}/comments" \
+              -f body="$INITIAL_BODY" --jq .id 2>&1)
+            RC=$?
+            COMMENT_ID="$RESULT"
+            if [ -n "$COMMENT_ID" ] && [ "$COMMENT_ID" != "null" ]; then
+              echo "Path E POST attempt $attempt succeeded: id=$COMMENT_ID (rc=$RC)"
+              break
+            fi
+            echo "Path E POST attempt $attempt returned empty/null (rc=$RC); retrying in 5s"
+            sleep 5
+          done
+          if [ -z "$COMMENT_ID" ] || [ "$COMMENT_ID" = "null" ]; then
+            echo "::error::Path E POST returned empty/null comment_id after 3 retries; aborting dispatch before pytest runs (fail-loud). Last attempt output (multi-line, exit code captured above):"
+            echo "$COMMENT_ID"
+            exit 1
+          fi
+          echo "Path E POST captured: id=$COMMENT_ID"
+          echo "COMMENT_ID=$COMMENT_ID" >> "$GITHUB_ENV"
+
       - name: Run unit tests (exclude integration + conformance)
         # BUG-3208 diagnostic instrumentation (Path A — controller heartbeat +
         # resource sampler + log-survival backstop). `tee` mirrors pytest to
@@ -201,80 +247,57 @@ jobs:
           # in-runner artifacts died with the runner.
           if [ -z "${SINK_ISSUE:-}" ]; then
             echo "::warning::SINK_ISSUE env var is unset; Path E diagnostic stream disabled for this run"
+          elif [ -z "${COMMENT_ID:-}" ] || [ "${COMMENT_ID:-}" = "null" ]; then
+            # Defensive: probe step should have set COMMENT_ID for dispatch events.
+            # Reachable only when SINK_ISSUE is set (dispatch) but COMMENT_ID isn't —
+            # in practice the upstream 'Path E POST probe' step would have failed loud
+            # before we got here. If we DO reach here, it means the probe was skipped
+            # (push event) but SINK_ISSUE somehow made it to this job-level env
+            # (workflow_dispatch_inputs leak), so we log loud rather than silently degrading.
+            echo "::error::Path E COMMENT_ID not set despite SINK_ISSUE=$SINK_ISSUE; PATCH loop disabled. Upstream POST probe step either skipped (push event) or failed silently."
           else
-            INITIAL_BODY="Path E diagnostic stream for run $GITHUB_RUN_ID. Updates every ~30s; 65KB cap handled by drop-oldest meta-lines. Last successful PATCH before runner death is the snapshot we want."
-            # Path E POST-once-then-PATCH comment_id extraction.
-            # Use `gh api` POST + `--jq .id` so the comment_id comes from the JSON
-            # response field directly. URL-based parsing (e.g. `grep -oE '#[0-9]+$'`
-            # on `https://github.com/.../issues/11#issuecomment-12345`) FAILS because
-            # `#` is preceded by `issuecomment-`, not digits — the regex matches
-            # nothing and the `|| echo ""` fallback silently fires. Result: Path E
-            # would spam ~90 new comments per 45-min dispatch instead of PATCHing one,
-            # opposite of the design intent at :172-175.
-            #
-            # JSON contract (`id` field on issue comment) is stable across GH URL
-            # format changes. `--jq .id` returns the comment_id (numeric) or empty
-            # on failure; `|| echo ""` normalizes the empty case.
-            COMMENT_ID=$(gh api -X POST "/repos/${GITHUB_REPOSITORY:-BrennonTWilliams/little-loops}/issues/${SINK_ISSUE}/comments" \
-              -f body="$INITIAL_BODY" --jq .id 2>/dev/null || echo "")
+            # COMMENT_ID captured by upstream 'Path E POST probe' step (per the lift).
             COMMENT_URL="https://github.com/${GITHUB_REPOSITORY:-BrennonTWilliams/little-loops}/issues/${SINK_ISSUE}#issuecomment-${COMMENT_ID}"
-            echo "Path E initial comment: issue=$SINK_ISSUE id=$COMMENT_ID url=$COMMENT_URL"
-            # Silent-fallback hardening: if the initial POST returned no comment_id
-            # (auth failure, rate limit, network, malformed SINK_ISSUE), skip ONLY
-            # the PATCH loop. Do NOT `exit 0` — that would short-circuit the entire
-            # CI step, killing pytest before it runs (silent test-coverage loss).
-            # Wrap the PATCH loop in a positive guard (Option A from QA event d744c310).
-            # POST fails → loop never starts, pytest runs normally. POST succeeds → loop
-            # runs as designed. Logging ::error:: surfaces the failure mode for triage.
-            if [ -n "$COMMENT_ID" ] && [ "$COMMENT_ID" != "null" ]; then
-              ( while true; do
-                  {
-                    echo "Path E snapshot stream — run_id=$GITHUB_RUN_ID run_attempt=$GITHUB_RUN_ATTEMPT step=unit-tests"
-                    echo "snapshot T=$(date -u +%H:%M:%S) (last update wins; older meta-lines truncated by 65KB cap)"
-                    echo ""
-                    echo "--- mem.log (last 3 lines) ---"
-                    tail -3 mem.log 2>/dev/null || echo "(mem.log not present)"
-                    echo ""
-                    echo "--- heartbeat.log (last 3 lines) ---"
-                    tail -3 heartbeat.log 2>/dev/null || echo "(heartbeat.log not present)"
-                    echo ""
-                    echo "--- sigprobe.log (last 3 lines) ---"
-                    tail -3 sigprobe.log 2>/dev/null || echo "(sigprobe.log not present)"
-                    echo ""
-                    echo "--- reaper.log (last 3 lines) ---"
-                    tail -3 reaper.log 2>/dev/null || echo "(reaper.log not present)"
-                  } > /tmp/pathE_snapshot.txt
-                  if [ -n "$COMMENT_ID" ]; then
-                  # Path E drop-oldest body assembly.
-                  # Server-as-source-of-truth: GET current body, append new snapshot,
-                  # truncate from middle if approaching GitHub's 65536-char comment
-                  # limit, PATCH. Without this, body accumulates at ~1.3KB/snapshot
-                  # × 30s cadence = ~115KB over 45min, PATCH fails silently at ~25min
-                  # into run, back half of dispatch lost. Same design-vs-implementation
-                  # pathology as the grep bug.
-                  CURRENT_BODY=$(gh api "/repos/$GITHUB_REPOSITORY/issues/comments/$COMMENT_ID" --jq .body 2>/dev/null || echo "")
-                  NEW_BODY="${CURRENT_BODY}"$'\n\n'"$(cat /tmp/pathE_snapshot.txt)"
-                  # 60000 leaves 5536-char buffer for PATCH validation / future growth.
-                  if [ "${#NEW_BODY}" -gt 60000 ]; then
-                    TRUNCATED_AT_T=$(date -u +%H:%M:%S)
-                    NEW_BODY="[...older snapshots truncated at 60KB cap T=${TRUNCATED_AT_T}...]"$'\n\n'"${NEW_BODY: -60000}"
-                  fi
-                  printf '%s' "$NEW_BODY" > /tmp/pathE_body.txt
-                  gh api --method PATCH -H "Accept: application/vnd.github+json" \
-                    "/repos/$GITHUB_REPOSITORY/issues/comments/$COMMENT_ID" \
-                    -F body=@/tmp/pathE_body.txt 2>/dev/null \
-                    || echo "PATCH failed at $(date -u +%H:%M:%S) exit=$?" >> /tmp/pathE_failures.log
-                else
-                  # Fallback: POST a new comment if initial POST failed to yield ID
-                  gh issue comment "$SINK_ISSUE" --repo "$GITHUB_REPOSITORY" --body-file /tmp/pathE_snapshot.txt 2>/dev/null \
-                    || echo "POST failed at $(date -u +%H:%M:%S) exit=$?" >> /tmp/pathE_failures.log
+            echo "Path E POST captured by upstream probe: issue=$SINK_ISSUE id=$COMMENT_ID url=$COMMENT_URL"
+            ( while true; do
+                {
+                  echo "Path E snapshot stream — run_id=$GITHUB_RUN_ID run_attempt=$GITHUB_RUN_ATTEMPT step=unit-tests"
+                  echo "snapshot T=$(date -u +%H:%M:%S) (last update wins; older meta-lines truncated by 65KB cap)"
+                  echo ""
+                  echo "--- mem.log (last 3 lines) ---"
+                  tail -3 mem.log 2>/dev/null || echo "(mem.log not present)"
+                  echo ""
+                  echo "--- heartbeat.log (last 3 lines) ---"
+                  tail -3 heartbeat.log 2>/dev/null || echo "(heartbeat.log not present)"
+                  echo ""
+                  echo "--- sigprobe.log (last 3 lines) ---"
+                  tail -3 sigprobe.log 2>/dev/null || echo "(sigprobe.log not present)"
+                  echo ""
+                  echo "--- reaper.log (last 3 lines) ---"
+                  tail -3 reaper.log 2>/dev/null || echo "(reaper.log not present)"
+                } > /tmp/pathE_snapshot.txt
+                # Path E drop-oldest body assembly.
+                # Server-as-source-of-truth: GET current body, append new snapshot,
+                # truncate from middle if approaching GitHub's 65536-char comment
+                # limit, PATCH. Without this, body accumulates at ~1.3KB/snapshot
+                # × 30s cadence = ~115KB over 45min, PATCH fails silently at ~25min
+                # into run, back half of dispatch lost. Same design-vs-implementation
+                # pathology as the grep bug.
+                CURRENT_BODY=$(gh api "/repos/$GITHUB_REPOSITORY/issues/comments/$COMMENT_ID" --jq .body 2>/dev/null || echo "")
+                NEW_BODY="${CURRENT_BODY}"$'\n\n'"$(cat /tmp/pathE_snapshot.txt)"
+                # 60000 leaves 5536-char buffer for PATCH validation / future growth.
+                if [ "${#NEW_BODY}" -gt 60000 ]; then
+                  TRUNCATED_AT_T=$(date -u +%H:%M:%S)
+                  NEW_BODY="[...older snapshots truncated at 60KB cap T=${TRUNCATED_AT_T}...]"$'\n\n'"${NEW_BODY: -60000}"
                 fi
+                printf '%s' "$NEW_BODY" > /tmp/pathE_body.txt
+                gh api --method PATCH -H "Accept: application/vnd.github+json" \
+                  "/repos/$GITHUB_REPOSITORY/issues/comments/$COMMENT_ID" \
+                  -F body=@/tmp/pathE_body.txt 2>/dev/null \
+                  || echo "PATCH failed at $(date -u +%H:%M:%S) exit=$?" >> /tmp/pathE_failures.log
                 sleep 30
               done ) &
-              SNAPSHOTTER=$!
-            else
-              echo "::error::Path E POST returned empty/null comment_id; PATCH loop disabled to avoid POST-many spam. Check SINK_ISSUE=$SINK_ISSUE, auth, and rate limits."
-            fi
+            SNAPSHOTTER=$!
           fi
           set +e
           PYTHONUNBUFFERED=1 timeout --signal=TERM --kill-after=30s 45m \
