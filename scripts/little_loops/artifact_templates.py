@@ -23,7 +23,10 @@ from jinja2 import StrictUndefined, TemplateSyntaxError
 from jinja2.sandbox import SandboxedEnvironment
 
 _MANIFEST_REQUIRED_KEYS = {"name", "version", "renderer", "output", "data_schema"}
-_MANIFEST_OPTIONAL_KEYS = {"theme", "source", "extraction"}
+# "produced_by" (FEAT-3318): the promoting loop's name, stamped at promotion time.
+# Distinct from "source" (the source *document* path, templatize's settled
+# semantics) — do not conflate the two.
+_MANIFEST_OPTIONAL_KEYS = {"theme", "source", "extraction", "produced_by"}
 _MANIFEST_ALLOWED_KEYS = _MANIFEST_REQUIRED_KEYS | _MANIFEST_OPTIONAL_KEYS
 
 _SCHEMA_ALLOWED_TYPES = {"object", "array", "string", "number", "integer", "boolean", "null"}
@@ -180,6 +183,10 @@ def load_manifest(root: Path) -> dict[str, Any]:
     source = data.get("source")
     if source is not None and (not isinstance(source, str) or not source):
         raise ManifestError("manifest.yaml: 'source' must be a non-empty string")
+
+    produced_by = data.get("produced_by")
+    if produced_by is not None and (not isinstance(produced_by, str) or not produced_by):
+        raise ManifestError("manifest.yaml: 'produced_by' must be a non-empty string")
 
     extraction = data.get("extraction")
     if extraction is not None and not isinstance(extraction, dict):

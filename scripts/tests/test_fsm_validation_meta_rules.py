@@ -859,6 +859,27 @@ class TestArtifactVersioning:
         unknown_warnings = [w for w in warnings if "Unknown top-level" in w.message]
         assert unknown_warnings == []
 
+    def test_artifact_mode_recognized_as_top_level_key(self, tmp_path: Path) -> None:
+        """YAML with top-level artifact_mode produces no Unknown-top-level warning (FEAT-3318)."""
+        loop_yaml = tmp_path / "loop.yaml"
+        loop_yaml.write_text(
+            "name: test-loop\n"
+            "description: A loop that emits a template artifact\n"
+            "initial: work\n"
+            "artifact_mode: template\n"
+            "artifact_output:\n"
+            "  from: output.llat\n"
+            "states:\n"
+            "  work:\n"
+            "    action: run.sh\n"
+            "    on_yes: done\n"
+            "  done:\n"
+            "    terminal: true\n"
+        )
+        _, warnings = load_and_validate(loop_yaml)
+        unknown_warnings = [w for w in warnings if "Unknown top-level" in w.message]
+        assert unknown_warnings == []
+
 
 class TestGeneratorFixDiscipline:
     """MR-6 (ENH-2079): meta-loops should not hand-patch LLM-generator artifacts."""

@@ -1444,6 +1444,11 @@ class FSMLoop:
     artifact_versioning_ok: bool = False
     # FEAT-3309: loop→artifact handoff declaration; None (default) = no promotion.
     artifact_output: ArtifactOutput | None = None
+    # FEAT-3318: declares the promoted deliverable shape. "file" (default) = today's
+    # single-file promotion; "template" = a `.llat/` template directory, verified by
+    # the runtime gate in promote_run_artifact. No paired `_ok` suppression flag —
+    # this is a behavior declaration, not a dismissable lint opinion.
+    artifact_mode: Literal["file", "template"] = "file"
     generator_fix_ok: bool = False
     bash_default_ok: bool = False
     evidence_contract_ok: bool = False
@@ -1582,6 +1587,8 @@ class FSMLoop:
             result["artifact_versioning_ok"] = self.artifact_versioning_ok
         if self.artifact_output is not None:
             result["artifact_output"] = self.artifact_output.to_dict()
+        if self.artifact_mode != "file":
+            result["artifact_mode"] = self.artifact_mode
         if self.generator_fix_ok:
             result["generator_fix_ok"] = self.generator_fix_ok
         if self.bash_default_ok:
@@ -1712,6 +1719,7 @@ class FSMLoop:
                 if data.get("artifact_output") is not None
                 else None
             ),
+            artifact_mode=data.get("artifact_mode", "file"),
             generator_fix_ok=data.get("generator_fix_ok", False),
             bash_default_ok=data.get("bash_default_ok", False),
             evidence_contract_ok=data.get("evidence_contract_ok", False),

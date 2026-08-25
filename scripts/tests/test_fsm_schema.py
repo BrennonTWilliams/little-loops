@@ -4013,6 +4013,67 @@ class TestFSMLoopArtifactOutput:
         assert "artifact_output" in KNOWN_TOP_LEVEL_KEYS
 
 
+class TestFSMLoopArtifactMode:
+    """Tests for FSMLoop.artifact_mode (FEAT-3318)."""
+
+    def test_defaults_to_file(self) -> None:
+        fsm = FSMLoop(
+            name="test",
+            initial="start",
+            states={"start": StateConfig(terminal=True)},
+        )
+        assert fsm.artifact_mode == "file"
+
+    def test_to_dict_omits_when_default(self) -> None:
+        fsm = FSMLoop(
+            name="test",
+            initial="start",
+            states={"start": StateConfig(terminal=True)},
+        )
+        assert "artifact_mode" not in fsm.to_dict()
+
+    def test_to_dict_includes_when_template(self) -> None:
+        fsm = FSMLoop(
+            name="test",
+            initial="start",
+            states={"start": StateConfig(terminal=True)},
+            artifact_mode="template",
+        )
+        assert fsm.to_dict()["artifact_mode"] == "template"
+
+    def test_from_dict_parses(self) -> None:
+        data = {
+            "name": "test",
+            "initial": "start",
+            "states": {"start": {"terminal": True}},
+            "artifact_mode": "template",
+        }
+        assert FSMLoop.from_dict(data).artifact_mode == "template"
+
+    def test_from_dict_defaults_to_file_when_absent(self) -> None:
+        data = {
+            "name": "test",
+            "initial": "start",
+            "states": {"start": {"terminal": True}},
+        }
+        assert FSMLoop.from_dict(data).artifact_mode == "file"
+
+    def test_round_trip(self) -> None:
+        original = FSMLoop(
+            name="my-loop",
+            initial="start",
+            states={"start": StateConfig(terminal=True)},
+            artifact_mode="template",
+        )
+        restored = FSMLoop.from_dict(original.to_dict())
+        assert restored.artifact_mode == "template"
+
+    def test_artifact_mode_is_known_top_level_key(self) -> None:
+        from little_loops.fsm.validation._base import KNOWN_TOP_LEVEL_KEYS
+
+        assert "artifact_mode" in KNOWN_TOP_LEVEL_KEYS
+
+
 class TestGeneratorFixOk:
     """MR-6 (ENH-2079): generator_fix_ok field round-trip serialization."""
 

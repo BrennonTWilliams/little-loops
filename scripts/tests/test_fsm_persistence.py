@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import json
+import os
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
+import yaml
 
 from little_loops.fsm.executor import ActionResult, ExecutionResult
 from little_loops.fsm.persistence import (
@@ -1461,13 +1463,19 @@ class TestPersistentExecutor:
 
 
 class _StubArtifactsConfig:
-    def __init__(self, promotion_dir: str) -> None:
+    def __init__(self, promotion_dir: str, templates_dir: str | None = None) -> None:
         self.promotion_dir = promotion_dir
+        self.templates_dir = templates_dir or promotion_dir
 
 
 class _StubConfig:
-    def __init__(self, promotion_dir: str, project_root: Path | None = None) -> None:
-        self.artifacts = _StubArtifactsConfig(promotion_dir)
+    def __init__(
+        self,
+        promotion_dir: str,
+        project_root: Path | None = None,
+        templates_dir: str | None = None,
+    ) -> None:
+        self.artifacts = _StubArtifactsConfig(promotion_dir, templates_dir)
         self.project_root = project_root or Path("/tmp")
 
 
@@ -1607,6 +1615,321 @@ class TestPromoteRunArtifact:
             "",
         )
         assert dest is not None
+
+
+def _write_llat_fixture(root: Path, *, title_default: str = "World") -> None:
+    """Write a minimal, valid `.llat/` template directory under *root*."""
+    root.mkdir(parents=True, exist_ok=True)
+    (root / "manifest.yaml").write_text(
+        "name: t\n"
+        "version: 1\n"
+        "renderer: jinja2\n"
+        "output: out.txt\n"
+        "data_schema:\n"
+        "  type: object\n"
+        "  properties:\n"
+        "    title:\n"
+        "      type: string\n"
+    )
+    (root / "template.txt.j2").write_text("Hello [[= title =]]\n")
+    (root / "data.json").write_text(json.dumps({"title": title_default}))
+
+
+class TestPromoteRunArtifactTemplateMode:
+    """artifact_mode: template runtime gate + directory promotion (FEAT-3318)."""
+
+    def _template_fsm(self, **kwargs) -> FSMLoop:
+        kwargs.setdefault("artifact_output", ArtifactOutput(from_path="output.llat"))
+        return FSMLoop(
+            name="my-loop",
+            initial="s",
+            states={"s": StateConfig(terminal=True)},
+            artifact_mode="template",
+            **kwargs,
+        )
+
+    def test_promotes_directory_to_templates_dir_default_name(self, tmp_path: Path) -> None:
+        run_dir = tmp_path / "run"
+        _write_llat_fixture(run_dir / "output.llat")
+        fsm = self._template_fsm()
+        templates_dir = tmp_path / "artifacts" / "templates"
+        dest = promote_run_artifact(
+            fsm,
+            run_dir,
+            _StubConfig("unused", templates_dir=str(templates_dir)),
+            _make_result(),
+            "",
+        )
+        assert dest == templates_dir / "my-loop.llat"
+        assert dest.is_dir()
+        assert (dest / "manifest.yaml").is_file()
+        assert (dest / "template.txt.j2").is_file()
+        assert (dest / "data.json").is_file()
+
+    def test_source_survives_in_run_dir(self, tmp_path: Path) -> None:
+        """Template mode copies, it does not move — unlike promote()'s bare os.replace."""
+        run_dir = tmp_path / "run"
+        _write_llat_fixture(run_dir / "output.llat")
+        fsm = self._template_fsm()
+        templates_dir = tmp_path / "artifacts" / "templates"
+        promote_run_artifact(
+            fsm,
+            run_dir,
+            _StubConfig("unused", templates_dir=str(templates_dir)),
+            _make_result(),
+            "",
+        )
+        assert (run_dir / "output.llat" / "manifest.yaml").is_file()
+
+    def test_source_file_not_directory_rejected(self, tmp_path: Path) -> None:
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        (run_dir / "output.llat").write_text("not a directory")
+        fsm = self._template_fsm()
+        templates_dir = tmp_path / "artifacts" / "templates"
+        dest = promote_run_artifact(
+            fsm,
+            run_dir,
+            _StubConfig("unused", templates_dir=str(templates_dir)),
+            _make_result(),
+            "",
+        )
+        assert dest is None
+        assert not (templates_dir / "my-loop.llat").exists()
+
+    def test_bad_data_json_rejected(self, tmp_path: Path) -> None:
+        run_dir = tmp_path / "run"
+        _write_llat_fixture(run_dir / "output.llat")
+        (run_dir / "output.llat" / "data.json").write_text("{not valid json")
+        fsm = self._template_fsm()
+        templates_dir = tmp_path / "artifacts" / "templates"
+        dest = promote_run_artifact(
+            fsm,
+            run_dir,
+            _StubConfig("unused", templates_dir=str(templates_dir)),
+            _make_result(),
+            "",
+        )
+        assert dest is None
+        assert not (templates_dir / "my-loop.llat").exists()
+
+    def test_jinja_syntax_error_rejected_at_promotion(self, tmp_path: Path) -> None:
+        """The render step (not just the loaders) must catch a malformed body."""
+        run_dir = tmp_path / "run"
+        _write_llat_fixture(run_dir / "output.llat")
+        (run_dir / "output.llat" / "template.txt.j2").write_text("Hello [[= title\n")
+        fsm = self._template_fsm()
+        templates_dir = tmp_path / "artifacts" / "templates"
+        dest = promote_run_artifact(
+            fsm,
+            run_dir,
+            _StubConfig("unused", templates_dir=str(templates_dir)),
+            _make_result(),
+            "",
+        )
+        assert dest is None
+        assert not (templates_dir / "my-loop.llat").exists()
+
+    def test_undefined_name_rejected_at_promotion(self, tmp_path: Path) -> None:
+        """A body referencing an undefined var fails the discarded render_template call."""
+        run_dir = tmp_path / "run"
+        _write_llat_fixture(run_dir / "output.llat")
+        (run_dir / "output.llat" / "template.txt.j2").write_text("Hello [[= nonexistent =]]\n")
+        fsm = self._template_fsm()
+        templates_dir = tmp_path / "artifacts" / "templates"
+        dest = promote_run_artifact(
+            fsm,
+            run_dir,
+            _StubConfig("unused", templates_dir=str(templates_dir)),
+            _make_result(),
+            "",
+        )
+        assert dest is None
+
+    def test_stamps_produced_by(self, tmp_path: Path) -> None:
+        run_dir = tmp_path / "run"
+        _write_llat_fixture(run_dir / "output.llat")
+        fsm = self._template_fsm()
+        templates_dir = tmp_path / "artifacts" / "templates"
+        dest = promote_run_artifact(
+            fsm,
+            run_dir,
+            _StubConfig("unused", templates_dir=str(templates_dir)),
+            _make_result(),
+            "",
+        )
+        manifest = yaml.safe_load((dest / "manifest.yaml").read_text())
+        assert manifest["produced_by"] == "my-loop"
+        assert "source" not in manifest
+
+    def test_second_run_of_same_loop_overwrites_without_warning(
+        self, tmp_path: Path, caplog
+    ) -> None:
+        run_dir = tmp_path / "run"
+        _write_llat_fixture(run_dir / "output.llat", title_default="first")
+        fsm = self._template_fsm()
+        templates_dir = tmp_path / "artifacts" / "templates"
+        stub = _StubConfig("unused", templates_dir=str(templates_dir))
+        promote_run_artifact(fsm, run_dir, stub, _make_result(), "")
+
+        run_dir2 = tmp_path / "run2"
+        _write_llat_fixture(run_dir2 / "output.llat", title_default="second")
+        caplog.clear()
+        with caplog.at_level("WARNING"):
+            dest = promote_run_artifact(fsm, run_dir2, stub, _make_result(), "")
+        assert dest is not None
+        assert not any("overwriting" in r.message for r in caplog.records)
+        data = json.loads((dest / "data.json").read_text())
+        assert data["title"] == "second"
+
+    def test_foreign_produced_by_warns_but_proceeds(self, tmp_path: Path, caplog) -> None:
+        templates_dir = tmp_path / "artifacts" / "templates"
+        _write_llat_fixture(templates_dir / "my-loop.llat", title_default="hand-authored")
+
+        run_dir = tmp_path / "run"
+        _write_llat_fixture(run_dir / "output.llat", title_default="new")
+        fsm = self._template_fsm()
+        caplog.clear()
+        with caplog.at_level("WARNING"):
+            dest = promote_run_artifact(
+                fsm,
+                run_dir,
+                _StubConfig("unused", templates_dir=str(templates_dir)),
+                _make_result(),
+                "",
+            )
+        assert dest is not None
+        assert any("overwriting" in r.message for r in caplog.records)
+        data = json.loads((dest / "data.json").read_text())
+        assert data["title"] == "new"
+
+    def test_unlinks_stale_sibling_lockfile(self, tmp_path: Path) -> None:
+        from little_loops.cli.artifact.lockfile import lock_path_for
+
+        templates_dir = tmp_path / "artifacts" / "templates"
+        dest = templates_dir / "my-loop.llat"
+        _write_llat_fixture(dest)
+        lock_path = lock_path_for(dest)
+        lock_path.write_text("stale lock content")
+
+        run_dir = tmp_path / "run"
+        _write_llat_fixture(run_dir / "output.llat")
+        fsm = self._template_fsm()
+        promote_run_artifact(
+            fsm,
+            run_dir,
+            _StubConfig("unused", templates_dir=str(templates_dir)),
+            _make_result(),
+            "",
+        )
+        assert not lock_path.exists()
+
+    def test_concurrent_other_pid_staging_sibling_survives(self, tmp_path: Path) -> None:
+        """A concurrent run's own {dest.name}.tmp-<other-pid> is never swept."""
+        templates_dir = tmp_path / "artifacts" / "templates"
+        dest = templates_dir / "my-loop.llat"
+        other_pid_sibling = templates_dir / f"{dest.name}.tmp-{os.getpid() + 1}"
+        _write_llat_fixture(other_pid_sibling, title_default="in-flight")
+
+        run_dir = tmp_path / "run"
+        _write_llat_fixture(run_dir / "output.llat")
+        fsm = self._template_fsm()
+        promote_run_artifact(
+            fsm,
+            run_dir,
+            _StubConfig("unused", templates_dir=str(templates_dir)),
+            _make_result(),
+            "",
+        )
+        assert other_pid_sibling.is_dir()
+        data = json.loads((other_pid_sibling / "data.json").read_text())
+        assert data["title"] == "in-flight"
+
+    def test_explicit_to_honoured_verbatim_no_suffix_appended(self, tmp_path: Path) -> None:
+        run_dir = tmp_path / "run"
+        _write_llat_fixture(run_dir / "output.llat")
+        explicit_dest = tmp_path / "somewhere" / "custom-name"
+        fsm = self._template_fsm(
+            artifact_output=ArtifactOutput(from_path="output.llat", to=str(explicit_dest))
+        )
+        dest = promote_run_artifact(
+            fsm,
+            run_dir,
+            _StubConfig("unused", templates_dir=str(tmp_path / "templates")),
+            _make_result(),
+            "",
+        )
+        assert dest == explicit_dest
+
+    def test_effective_mode_unrecognized_value_skips_promotion(self, tmp_path: Path) -> None:
+        run_dir = tmp_path / "run"
+        _write_llat_fixture(run_dir / "output.llat")
+        fsm = FSMLoop(
+            name="my-loop",
+            initial="s",
+            states={"s": StateConfig(terminal=True)},
+            artifact_output=ArtifactOutput(from_path="output.llat"),
+            context={"artifact_mode": "tmeplate"},
+        )
+        dest = promote_run_artifact(
+            fsm,
+            run_dir,
+            _StubConfig("unused", templates_dir=str(tmp_path / "templates")),
+            _make_result(),
+            "",
+        )
+        assert dest is None
+
+    def test_context_var_overrides_field_to_template(self, tmp_path: Path) -> None:
+        """--context artifact_mode=template on a field-default file-mode loop."""
+        run_dir = tmp_path / "run"
+        _write_llat_fixture(run_dir / "output.llat")
+        fsm = FSMLoop(
+            name="my-loop",
+            initial="s",
+            states={"s": StateConfig(terminal=True)},
+            artifact_output=ArtifactOutput(from_path="output.llat"),
+            context={"artifact_mode": "template"},
+        )
+        templates_dir = tmp_path / "artifacts" / "templates"
+        dest = promote_run_artifact(
+            fsm,
+            run_dir,
+            _StubConfig("unused", templates_dir=str(templates_dir)),
+            _make_result(),
+            "",
+        )
+        assert dest == templates_dir / "my-loop.llat"
+
+    def test_round_trip_render_with_no_templatize_step(self, tmp_path: Path) -> None:
+        """The promoted directory is directly renderable — no `templatize` call."""
+        from little_loops.artifact_templates import (
+            ArtifactTemplate,
+            load_data,
+            load_manifest,
+            render_template,
+            resolve_template,
+            validate_top_level_data,
+        )
+
+        run_dir = tmp_path / "run"
+        _write_llat_fixture(run_dir / "output.llat", title_default="RoundTrip")
+        fsm = self._template_fsm()
+        templates_dir = tmp_path / "artifacts" / "templates"
+        promote_run_artifact(
+            fsm,
+            run_dir,
+            _StubConfig("unused", templates_dir=str(templates_dir)),
+            _make_result(),
+            "",
+        )
+
+        root = resolve_template("my-loop", templates_dir)
+        manifest = load_manifest(root)
+        data = load_data(root / "data.json")
+        validate_top_level_data(data, manifest["data_schema"])
+        rendered = render_template(ArtifactTemplate(root=root, manifest=manifest), data, object())
+        assert "RoundTrip" in rendered
 
 
 class TestPromoteRunArtifactE2E:

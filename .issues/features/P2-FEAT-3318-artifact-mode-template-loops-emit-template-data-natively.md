@@ -3,9 +3,10 @@ id: FEAT-3318
 title: '`artifact_mode: template`: loops emit template + data natively'
 type: FEAT
 priority: P2
-status: open
+status: done
 discovered_by: manual
 discovered_date: '2026-08-24'
+completed_at: '2026-08-25T17:55:26Z'
 parent: EPIC-3299
 depends_on:
 - FEAT-3309
@@ -88,11 +89,11 @@ what the check must call.
   `theme`, `source`, `extraction` (`:26`). Fails closed on unknown keys,
   `renderer != jinja2`, an invalid `theme`, a `data_schema` construct outside the
   documented subset, or a reserved top-level `ll` key.
-- **Exactly one** `template.*.j2` body — `find_template_body(root)` (`:265`), which
+- **Exactly one** `template.*.j2` body — `find_template_body(root)` (`:275`), which
   errors on both zero and multiple candidates.
-- `data.json` — `load_data` (`:331`) + `validate_top_level_data` (`:233`), validated
+- `data.json` — `load_data` (`:341`) + `validate_top_level_data` (`:243`), validated
   against `manifest.data_schema`.
-- Optional `assets/` — `load_assets` (`:278`), UTF-8 text only in v1.
+- Optional `assets/` — `load_assets` (`:288`), UTF-8 text only in v1.
 - Canonical directory name: `<stem>.llat/` (`templatize.py:769`).
 
 ### Two gates, two subsystems — do not conflate them
@@ -159,7 +160,7 @@ are two, and they are unrelated:
    undefined-name mismatch between the body and `data.json` — passes a
    loaders-only gate, lands under `templates_dir`, and then fails at
    `ll-artifact render`, defeating the "accepted directly by render" contract.
-   `render_template()` (`artifact_templates.py:319`) is pure, LLM-free, and
+   `render_template()` (`artifact_templates.py:314`) is pure, LLM-free, and
    cheap, and raises exactly the two exception types the gate already catches
    (`ManifestError` for a malformed body, `DataValidationError` for the
    StrictUndefined backstop). Discard the rendered string — the gate cares that
@@ -543,21 +544,21 @@ _Added by `/ll:refine-issue` — 2026-08-25 — based on codebase analysis:_
 
 ## Acceptance Criteria
 
-- [ ] `ll-loop validate` rejects, at ERROR severity, a loop declaring `artifact_mode: template` with no `artifact_output` block. The test asserts the *rejection* (via `load_and_validate` / `ll-loop validate` exit status), not that a symbol appears in `__all__`. No `artifact_mode_ok` suppression flag exists.
-- [ ] That rejection also fires when the mode is declared as a `context:` var rather than the top-level field — for **both** `context: {artifact_mode: template}` and `context: {artifact_mode: file}`. The latter is the shape `html-anything` will actually ship (default-unchanged, flipped per-run by `--context`), and a gate keyed only on the effective *value* is blind to it.
-- [ ] A template-capable loop whose `artifact_output.to` does not end in `.llat` produces a WARNING (not an ERROR) naming the destination — it renders by path but cannot be resolved by bare name.
-- [ ] An effective `artifact_mode` outside `{"file","template"}` (reachable only via `--context`) logs a warning naming the bad value and skips promotion, rather than silently degrading to a normal-looking file-mode run.
-- [ ] A `template`-mode loop's promoted directory contains `manifest.yaml`, exactly one `template.*.j2`, and a `data.json` valid against `manifest.data_schema` — verified by the existing `artifact_templates.py` loaders, not by a reimplementation, and verified **on the staged temp before the swap**, so a malformed shape never lands under `templates_dir`.
-- [ ] The runtime gate also proves the template **renders**: a `template.*.j2` with a Jinja syntax error, or an undefined-name mismatch against `data.json`, fails the gate at promotion time (via a discarded `render_template()` call) rather than landing under `templates_dir` and failing later at `ll-artifact render`.
-- [ ] The promoted directory is accepted directly by `ll-artifact render` with no `templatize` step, **resolvable by bare name** (i.e. it lands under `artifacts.templates_dir` — anchored to `config.project_root`, so the destination is independent of the invocation cwd — and is suffixed `.llat`), not only by full path. The default name is stable per loop (`{loop_name}.llat`), so a second run of the same loop overwrites rather than accumulating a new run-stamped directory.
-- [ ] A malformed/missing shape on a non-failure terminal surfaces the loader's error text and marks promotion failed **without** changing the run's exit status; a failure terminal is a silent no-op. `artifact_output.from` resolving to a file (not a directory) under `template` mode produces an explicit "requires a directory" message, not a misleading `ManifestError`.
-- [ ] The gate reports the diagnostic text for a bad **`data.json`** — unparseable JSON, a reserved top-level `ll` key, and a `manifest.data_schema` mismatch — not just for a bad `manifest.yaml`. (`DataValidationError` is a sibling of `ManifestError`, not a subclass; catching only the latter drops all three.)
-- [ ] Directory promotion is atomic (temp + rollback), reusing `templatize.promote()` rather than a second implementation — and **the declared source survives in `run_dir`** (promotion copies; `promote()`'s bare `os.replace` would move it). A second run over an existing destination overwrites it via the backup/restore path, and a crash between `copytree` and the swap leaves only a `{dest.name}.tmp-<pid>` sibling, reclaimed by the next same-pid promotion.
-- [ ] Two concurrent promotions of the same loop to the same stable destination do not destroy each other's staging directory: the outcome is last-writer-wins on `dest`, never a half-copied template or a promotion that dies mid-`copytree`. (Specifically: `_sweep_stale_siblings(dest)` is **not** called — its prefix match would rmtree the other run's live `{dest.name}.tmp-<pid>`.)
-- [ ] Promotion stamps `manifest.produced_by` (a new `_MANIFEST_OPTIONAL_KEYS` entry with `source`-style non-empty-string validation) with the producing loop, on the staged temp **before** the runtime gate — so the stamped manifest is what gets validated — and leaves `manifest.source` untouched (it carries the source-document path, `templatize`'s settled semantics). Promoting over a destination whose `produced_by` differs or is absent — a hand-authored or `templatize`-created template of the same name — logs a WARNING naming both before proceeding; a re-promotion by the same loop over its own prior output (even with a different input document in `source`) does **not** warn. The clobber may happen; it is never silent. A successful promotion also unlinks the sibling `{dest.name}.lock`, so `ll-artifact status` reports NO-LOCK rather than classifying the new template against the old one's render records.
-- [ ] `promote_run_artifact` still never raises and never changes the run's exit status in `template` mode, including when the destination already exists (`promote()` raises `SpliceError` unless `force=True`) and when the destination is on another filesystem.
-- [ ] `artifact_mode` survives a `to_dict()`/`from_dict()` round-trip and does not trip the unknown-top-level-key WARNING in `structural_rules.py::load_and_validate()`.
-- [ ] `artifact_mode` defaults to `"file"`; every loop that declares nothing behaves exactly as today, and the `artifact_versioning_ok` MR-5 tests stay green.
+- [x] `ll-loop validate` rejects, at ERROR severity, a loop declaring `artifact_mode: template` with no `artifact_output` block. The test asserts the *rejection* (via `load_and_validate` / `ll-loop validate` exit status), not that a symbol appears in `__all__`. No `artifact_mode_ok` suppression flag exists.
+- [x] That rejection also fires when the mode is declared as a `context:` var rather than the top-level field — for **both** `context: {artifact_mode: template}` and `context: {artifact_mode: file}`. The latter is the shape `html-anything` will actually ship (default-unchanged, flipped per-run by `--context`), and a gate keyed only on the effective *value* is blind to it.
+- [x] A template-capable loop whose `artifact_output.to` does not end in `.llat` produces a WARNING (not an ERROR) naming the destination — it renders by path but cannot be resolved by bare name.
+- [x] An effective `artifact_mode` outside `{"file","template"}` (reachable only via `--context`) logs a warning naming the bad value and skips promotion, rather than silently degrading to a normal-looking file-mode run.
+- [x] A `template`-mode loop's promoted directory contains `manifest.yaml`, exactly one `template.*.j2`, and a `data.json` valid against `manifest.data_schema` — verified by the existing `artifact_templates.py` loaders, not by a reimplementation, and verified **on the staged temp before the swap**, so a malformed shape never lands under `templates_dir`.
+- [x] The runtime gate also proves the template **renders**: a `template.*.j2` with a Jinja syntax error, or an undefined-name mismatch against `data.json`, fails the gate at promotion time (via a discarded `render_template()` call) rather than landing under `templates_dir` and failing later at `ll-artifact render`.
+- [x] The promoted directory is accepted directly by `ll-artifact render` with no `templatize` step, **resolvable by bare name** (i.e. it lands under `artifacts.templates_dir` — anchored to `config.project_root`, so the destination is independent of the invocation cwd — and is suffixed `.llat`), not only by full path. The default name is stable per loop (`{loop_name}.llat`), so a second run of the same loop overwrites rather than accumulating a new run-stamped directory.
+- [x] A malformed/missing shape on a non-failure terminal surfaces the loader's error text and marks promotion failed **without** changing the run's exit status; a failure terminal is a silent no-op. `artifact_output.from` resolving to a file (not a directory) under `template` mode produces an explicit "requires a directory" message, not a misleading `ManifestError`.
+- [x] The gate reports the diagnostic text for a bad **`data.json`** — unparseable JSON, a reserved top-level `ll` key, and a `manifest.data_schema` mismatch — not just for a bad `manifest.yaml`. (`DataValidationError` is a sibling of `ManifestError`, not a subclass; catching only the latter drops all three.)
+- [x] Directory promotion is atomic (temp + rollback), reusing `templatize.promote()` rather than a second implementation — and **the declared source survives in `run_dir`** (promotion copies; `promote()`'s bare `os.replace` would move it). A second run over an existing destination overwrites it via the backup/restore path, and a crash between `copytree` and the swap leaves only a `{dest.name}.tmp-<pid>` sibling, reclaimed by the next same-pid promotion.
+- [x] Two concurrent promotions of the same loop to the same stable destination do not destroy each other's staging directory: the outcome is last-writer-wins on `dest`, never a half-copied template or a promotion that dies mid-`copytree`. (Specifically: `_sweep_stale_siblings(dest)` is **not** called — its prefix match would rmtree the other run's live `{dest.name}.tmp-<pid>`.)
+- [x] Promotion stamps `manifest.produced_by` (a new `_MANIFEST_OPTIONAL_KEYS` entry with `source`-style non-empty-string validation) with the producing loop, on the staged temp **before** the runtime gate — so the stamped manifest is what gets validated — and leaves `manifest.source` untouched (it carries the source-document path, `templatize`'s settled semantics). Promoting over a destination whose `produced_by` differs or is absent — a hand-authored or `templatize`-created template of the same name — logs a WARNING naming both before proceeding; a re-promotion by the same loop over its own prior output (even with a different input document in `source`) does **not** warn. The clobber may happen; it is never silent. A successful promotion also unlinks the sibling `{dest.name}.lock`, so `ll-artifact status` reports NO-LOCK rather than classifying the new template against the old one's render records.
+- [x] `promote_run_artifact` still never raises and never changes the run's exit status in `template` mode, including when the destination already exists (`promote()` raises `SpliceError` unless `force=True`) and when the destination is on another filesystem.
+- [x] `artifact_mode` survives a `to_dict()`/`from_dict()` round-trip and does not trip the unknown-top-level-key WARNING in `structural_rules.py::load_and_validate()`.
+- [x] `artifact_mode` defaults to `"file"`; every loop that declares nothing behaves exactly as today, and the `artifact_versioning_ok` MR-5 tests stay green.
 - [ ] *(Split out to **FEAT-3320** — not an AC of this issue)* `html-anything` runs in both `file` (default, unchanged) and `template` mode, selected per-run via the existing `ll-loop run --context artifact_mode=template`.
 
 ## Impact
@@ -578,6 +579,8 @@ _Added by `/ll:refine-issue` — 2026-08-25 — based on codebase analysis:_
 **Open** | Created: 2026-08-24 | Priority: P2
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-25T17:55:20 - `d3c08747-72ba-4e53-8183-7bc6984c18cd.jsonl`
+- `/ll:ready-issue` - 2026-08-25T17:37:17 - `4a50eb8b-2928-4f11-b62d-ff43bb37386a.jsonl`
 - `/ll:confidence-check` - 2026-08-25T17:29:12 - `f8fad891-fb12-4a0c-8abb-8d32e08edbbf.jsonl`
 - Pre-implementation review (4th pass) - 2026-08-25 - re-verified all load-bearing claims against code (all held); replaced the `manifest.source` clobber-guard stamp with a new `produced_by` optional manifest key after finding `source` already carries the source-document path per `templatize`'s settled semantics (repurposing it destroys loop-emitted provenance and makes same-loop/different-input re-promotions warn spuriously); widened the runtime gate with a discarded `render_template()` call (loaders alone pass a Jinja syntax error or undefined-name mismatch that then fails at `ll-artifact render`); pinned stamp ordering (staged temp, before the gate, so the stamped manifest is what's validated); confirmed `--context` merges before run-time validation so the static gate also fires at `ll-loop run` time.
 - `/ll:confidence-check` - 2026-08-25T17:20:32 - `3e64b7dd-cbc1-426d-840e-8059b3a2dfd1.jsonl`

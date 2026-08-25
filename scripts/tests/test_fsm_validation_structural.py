@@ -11,6 +11,7 @@ from pathlib import Path
 import pytest
 
 from little_loops.fsm.schema import (
+    ArtifactOutput,
     CircuitConfig,
     CostCeilingConfig,
     EvaluateConfig,
@@ -840,6 +841,75 @@ class TestTargetsValidation:
         fsm = self._make_fsm([TargetFileSpec(file="not-yaml.json")])
         errors = validate_fsm(fsm)
         assert any("not-yaml.json" in e.message for e in errors)
+
+
+class TestArtifactModeValidation:
+    """FEAT-3318: a template-capable loop must declare artifact_output."""
+
+    def _make_fsm(self, **kwargs) -> FSMLoop:
+        return FSMLoop(
+            name="test",
+            initial="s",
+            states={"s": make_state(terminal=True)},
+            **kwargs,
+        )
+
+    def test_template_mode_without_artifact_output_rejected(self) -> None:
+        fsm = self._make_fsm(artifact_mode="template")
+        errors = validate_fsm(fsm)
+        error_errors = [e for e in errors if e.severity == ValidationSeverity.ERROR]
+        assert any("artifact_mode" in (e.path or "") for e in error_errors)
+
+    def test_template_mode_with_artifact_output_accepted(self) -> None:
+        fsm = self._make_fsm(
+            artifact_mode="template",
+            artifact_output=ArtifactOutput(from_path="output.llat"),
+        )
+        errors = validate_fsm(fsm)
+        assert not any("artifact_mode" in (e.path or "") for e in errors)
+
+    def test_context_template_var_without_artifact_output_rejected(self) -> None:
+        """context: {artifact_mode: template} is also template-capable."""
+        fsm = self._make_fsm(context={"artifact_mode": "template"})
+        errors = validate_fsm(fsm)
+        error_errors = [e for e in errors if e.severity == ValidationSeverity.ERROR]
+        assert any("artifact_mode" in (e.path or "") for e in error_errors)
+
+    def test_context_file_var_without_artifact_output_rejected(self) -> None:
+        """context: {artifact_mode: file} — the html-anything shape — is also
+        template-capable (selectable via --context), so it too requires
+        artifact_output even though its effective mode is "file"."""
+        fsm = self._make_fsm(context={"artifact_mode": "file"})
+        errors = validate_fsm(fsm)
+        error_errors = [e for e in errors if e.severity == ValidationSeverity.ERROR]
+        assert any("artifact_mode" in (e.path or "") for e in error_errors)
+
+    def test_file_mode_no_context_var_no_error(self) -> None:
+        """A plain file-mode loop with no artifact_mode context key is unaffected."""
+        fsm = self._make_fsm()
+        errors = validate_fsm(fsm)
+        assert not any("artifact_mode" in (e.path or "") for e in errors)
+
+    def test_no_suppression_flag_exists(self) -> None:
+        fsm = self._make_fsm(artifact_mode="template")
+        assert not hasattr(fsm, "artifact_mode_ok")
+
+    def test_non_llat_destination_warns(self) -> None:
+        fsm = self._make_fsm(
+            artifact_mode="template",
+            artifact_output=ArtifactOutput(from_path="output", to="somewhere-else"),
+        )
+        errors = validate_fsm(fsm)
+        warnings = [e for e in errors if e.severity == ValidationSeverity.WARNING]
+        assert any("artifact_output.to" in (e.path or "") for e in warnings)
+
+    def test_llat_destination_no_warning(self) -> None:
+        fsm = self._make_fsm(
+            artifact_mode="template",
+            artifact_output=ArtifactOutput(from_path="output", to="my-template.llat"),
+        )
+        errors = validate_fsm(fsm)
+        assert not any("artifact_output.to" in (e.path or "") for e in errors)
 
 
 class TestCircuitValidation:

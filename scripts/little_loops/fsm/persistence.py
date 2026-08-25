@@ -38,7 +38,7 @@ from little_loops.events import EventBus
 from little_loops.fsm.concurrency import _process_alive
 from little_loops.fsm.executor import EventCallback, ExecutionResult, FSMExecutor
 from little_loops.fsm.schema import FSMLoop
-from little_loops.fsm.validation import _is_meta_loop
+from little_loops.fsm.validation import _effective_artifact_mode, _is_meta_loop
 
 if TYPE_CHECKING:
     from little_loops.config import BRConfig
@@ -763,6 +763,19 @@ def promote_run_artifact(
         )
         return None
 
+    effective_mode = _effective_artifact_mode(fsm)
+
+    if effective_mode == "template":
+        return _promote_template_artifact(fsm, source, spec, config)
+
+    if effective_mode != "file":
+        logger.warning(
+            "promote_run_artifact: unrecognized artifact_mode %r (loop %s); skipping promotion",
+            effective_mode,
+            fsm.name,
+        )
+        return None
+
     if spec.to is not None:
         dest = Path(spec.to)
     else:
@@ -782,6 +795,104 @@ def promote_run_artifact(
     except OSError as e:
         logger.warning("promote_run_artifact: failed to promote %s to %s: %s", source, dest, e)
         return None
+
+    return dest
+
+
+def _promote_template_artifact(
+    fsm: FSMLoop,
+    source: Path,
+    spec: Any,
+    config: BRConfig,
+) -> Path | None:
+    """Promote a ``.llat/`` template directory (FEAT-3318, ``artifact_mode: template``).
+
+    Validate-then-swap: the runtime gate (loaders + a discarded render) runs on
+    a staged temp copy of *source*, before the atomic swap into the
+    destination — a malformed shape never lands under ``templates_dir``. Never
+    raises; a failure here degrades to a logged warning, matching the file-mode
+    contract.
+    """
+    import yaml
+
+    from little_loops.artifact_templates import (
+        ArtifactTemplate,
+        DataValidationError,
+        ManifestError,
+        find_template_body,
+        load_data,
+        load_manifest,
+        render_template,
+        validate_top_level_data,
+    )
+    from little_loops.cli.artifact.lockfile import lock_path_for
+    from little_loops.cli.artifact.templatize import promote as _templatize_promote
+
+    if not source.is_dir():
+        logger.warning(
+            "promote_run_artifact: artifact_mode: template requires artifact_output.from "
+            "to be a directory, got a file at %s (loop %s); skipping promotion",
+            source,
+            fsm.name,
+        )
+        return None
+
+    if spec.to is not None:
+        dest = Path(spec.to)
+    else:
+        templates_dir = Path(config.artifacts.templates_dir)
+        if not templates_dir.is_absolute():
+            templates_dir = config.project_root / templates_dir
+        dest = templates_dir / f"{fsm.name}.llat"
+
+    tmp_dir = dest.parent / f"{dest.name}.tmp-{os.getpid()}"
+
+    try:
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        if tmp_dir.exists():
+            shutil.rmtree(tmp_dir)
+        shutil.copytree(source, tmp_dir)
+
+        manifest_path = tmp_dir / "manifest.yaml"
+        raw_manifest = yaml.safe_load(manifest_path.read_text(encoding="utf-8")) or {}
+        raw_manifest["produced_by"] = fsm.name
+        manifest_path.write_text(yaml.safe_dump(raw_manifest, sort_keys=False), encoding="utf-8")
+
+        manifest = load_manifest(tmp_dir)
+        find_template_body(tmp_dir)
+        data = load_data(tmp_dir / "data.json")
+        validate_top_level_data(data, manifest["data_schema"])
+        template = ArtifactTemplate(root=tmp_dir, manifest=manifest)
+        render_template(template, data, config)
+
+        if dest.exists():
+            try:
+                existing_manifest = load_manifest(dest)
+                existing_producer = existing_manifest.get("produced_by")
+            except (ManifestError, DataValidationError):
+                existing_producer = None
+            if existing_producer != fsm.name:
+                logger.warning(
+                    "promote_run_artifact: overwriting %s, previously produced by %s (now: %s)",
+                    dest,
+                    existing_producer or "<unknown, not loop-produced>",
+                    fsm.name,
+                )
+
+        _templatize_promote(tmp_dir, dest, force=True)
+        lock_path_for(dest).unlink(missing_ok=True)
+    except (ManifestError, DataValidationError) as e:
+        logger.warning("promote_run_artifact: template at %s failed validation: %s", source, e)
+        return None
+    except OSError as e:
+        logger.warning("promote_run_artifact: failed to promote %s to %s: %s", source, dest, e)
+        return None
+    except Exception as e:  # noqa: BLE001 - promotion must never fail the run
+        logger.warning("promote_run_artifact: unexpected error promoting %s: %s", source, e)
+        return None
+    finally:
+        if tmp_dir.exists():
+            shutil.rmtree(tmp_dir, ignore_errors=True)
 
     return dest
 

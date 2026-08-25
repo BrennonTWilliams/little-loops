@@ -114,6 +114,7 @@ KNOWN_TOP_LEVEL_KEYS: frozenset[str] = frozenset(
         "artifact_versioning",
         "artifact_versioning_ok",
         "artifact_output",
+        "artifact_mode",
         "generator_fix_ok",
         "bash_default_ok",
         "shell_pid_ok",

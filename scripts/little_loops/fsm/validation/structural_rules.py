@@ -854,6 +854,79 @@ def _validate_targets(fsm: FSMLoop) -> list[ValidationError]:
     return errors
 
 
+def _effective_artifact_mode(fsm: FSMLoop) -> str:
+    """The mode a run is actually in: a `context:` var overrides the static field.
+
+    Shared by the static gate and `promote_run_artifact` (FEAT-3318) so the two
+    can never disagree about which mode a run is in.
+    """
+    return fsm.context.get("artifact_mode", fsm.artifact_mode)  # type: ignore[no-any-return]
+
+
+def _is_template_capable(fsm: FSMLoop) -> bool:
+    """Whether *fsm* can ever run in template mode.
+
+    True when the effective mode is already "template", or when
+    ``artifact_mode`` is declared as a `context:` key at any value — the
+    latter covers the common shape of a loop that ships
+    ``context: {artifact_mode: file}`` and is flipped per-run via
+    ``--context artifact_mode=template``, where the effective mode at
+    validate time is still "file". This is deliberately broader than
+    ``_effective_artifact_mode(fsm) == "template"``, which is what
+    `promote_run_artifact` keys off at runtime, when the mode has an actual
+    value.
+    """
+    return _effective_artifact_mode(fsm) == "template" or "artifact_mode" in fsm.context
+
+
+def _validate_artifact_mode_deliverable(fsm: FSMLoop) -> list[ValidationError]:
+    """A template-capable loop (FEAT-3318) must declare an `artifact_output` block.
+
+    ERROR, no `_ok` suppression flag: a loop that can run in template mode with
+    no declared deliverable cannot work as written, not a dismissable lint
+    opinion (same reasoning as omitting the flag on `artifact_output` itself).
+
+    Also WARNs when `artifact_output.to` is set on a template-capable loop and
+    does not end in `.llat` — `resolve_template()` only resolves a directory by
+    bare name under `templates_dir` when it carries that suffix; a non-`.llat`
+    destination still renders by full path, just not by name.
+    """
+    errors: list[ValidationError] = []
+    if not _is_template_capable(fsm):
+        return errors
+
+    if fsm.artifact_output is None:
+        errors.append(
+            ValidationError(
+                message=(
+                    "Loop can run in artifact_mode: template (declared as the top-level "
+                    "field or as a 'context:' key) but has no 'artifact_output' block. "
+                    "Template mode's promoted deliverable is the artifact_output.from "
+                    "directory; declare one."
+                ),
+                path="artifact_mode",
+                severity=ValidationSeverity.ERROR,
+            )
+        )
+        return errors
+
+    to = fsm.artifact_output.to
+    if to is not None and not to.endswith(".llat"):
+        errors.append(
+            ValidationError(
+                message=(
+                    f"artifact_output.to '{to}' does not end in '.llat'. A template-mode "
+                    "destination renders by full path but cannot be resolved by bare name "
+                    "under templates_dir unless it carries the .llat suffix."
+                ),
+                path="artifact_output.to",
+                severity=ValidationSeverity.WARNING,
+            )
+        )
+
+    return errors
+
+
 def _validate_failure_terminal_action(fsm: FSMLoop) -> list[ValidationError]:
     """Warn when a failure terminal state has no diagnostic predecessor.
 
@@ -949,6 +1022,9 @@ def validate_fsm(
 
     # Validate targets block (ENH-1552)
     errors.extend(_validate_targets(fsm))
+
+    # Validate artifact_mode: template requires a declared artifact_output (FEAT-3318)
+    errors.extend(_validate_artifact_mode_deliverable(fsm))
 
     # Check initial state exists
     if fsm.initial not in defined_states:
