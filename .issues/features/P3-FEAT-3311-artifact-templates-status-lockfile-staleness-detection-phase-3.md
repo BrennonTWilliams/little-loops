@@ -15,7 +15,7 @@ labels:
 - planning-hub
 learning_tests_required:
 - yaml
-confidence_score: 85
+confidence_score: 80
 outcome_confidence: 86
 score_complexity: 18
 score_test_coverage: 18
@@ -44,9 +44,10 @@ source(s).
 next to the template — never written into `manifest.yaml`, per FEAT-3036 §
 Second-pass decisions -> *Lockfile is keyed by source path, not a scalar*)
 against current source content hashes, reporting `FRESH` / `STALE` /
-`SOURCE-MISSING` per `(template, source)` pair. Exits non-zero if anything is
-stale (CI-friendly; per CLAUDE.md this is exercised by a pytest test that
-invokes it, not a hosted CI workflow).
+`SOURCE-MISSING` / `OUTPUT-MISSING` per `(template, source)` pair (plus
+`NO-LOCK` per template — see § Pre-implementation decisions). Exits non-zero if
+anything is stale (CI-friendly; per CLAUDE.md this is exercised by a pytest test
+that invokes it, not a hosted CI workflow).
 
 The lockfile is a mapping keyed by rendered source path (not a scalar), so it
 can express EPIC-3299's primary use case (one template, many source
@@ -61,9 +62,12 @@ renders:
     output: build/quarterly-risk-report.html          # the artifact FILE, project-root-relative
 ```
 
-Keys are project-root-relative source paths. `version` is `1`; an unknown
-`version` is a `LockfileError`, not a state (§ Pre-implementation decisions,
-second review).
+Keys are source paths under the shared path storage rule — project-root-relative
+when inside the project root, absolute otherwise, never `..`-prefixed
+(§ Pre-implementation decisions, third review; the rule and its
+`lockfile.relativize_path` helper are defined in FEAT-3310). `version` is `1`;
+an unknown `version` is a `LockfileError`, not a state (§ Pre-implementation
+decisions, second review).
 
 ### Pre-implementation decisions (2026-08-25 review)
 
@@ -91,7 +95,8 @@ Consequences for the rest of this issue: the `cmd_render` docstring/exit-code
 edits and the read-only-`templates_dir` failure-path test now apply to the
 `--source` path only, and bare `render` cannot regress from 0 to 1.
 
-**`NO-LOCK` is a fourth reported state.** FRESH / STALE / SOURCE-MISSING are
+**`NO-LOCK` is a fourth reported state.** (A fifth, `OUTPUT-MISSING`, is added
+by the third review below.) FRESH / STALE / SOURCE-MISSING are
 per-`(template, source)` pairs and presuppose a lockfile. An explicitly named
 template with no `.llat.lock` (never refreshed — the default state in a fresh
 clone if the lockfile is gitignored) reports `NO-LOCK` and exits non-zero,
@@ -117,8 +122,11 @@ load-bearing for classification.
 **`output:` is recorded project-root-relative**, resolved the same way
 `cmd_render` resolves `-o` today. One `renders[<source>]` entry holds one
 `output`, so re-rendering the same source to a different `-o` is last-write-wins
-on that entry; `status` classifies on `sha256` and reports `output` as
-diagnostic context only. Document this rather than keying on `(source, output)`
+on that entry. (**Amended by the third review:** `status` still classifies
+staleness on `sha256` alone, but it now also checks that the recorded `output`
+file *exists* — see § Pre-implementation decisions, third review → OUTPUT-MISSING.
+`output`'s value is still never compared to anything.)
+Document this rather than keying on `(source, output)`
 — multi-destination rendering is not an EPIC-3299 use case, and the simpler key
 matches FEAT-3036 § Second-pass decisions.
 
@@ -139,7 +147,7 @@ instead:
   bytes the extraction consumed — lives in FEAT-3310 § Pre-implementation
   decisions (second review).
 - This issue (`status.py`, `render.py`): the lockfile *format definition*, the
-  reader, the four-state classification, `_exit_code_for`, and `render`'s
+  reader, the five-state classification, `_exit_code_for`, and `render`'s
   opt-in `--source` writer.
 
 `depends_on: [FEAT-3036, FEAT-3310]` is unchanged — the format is defined here
@@ -196,6 +204,88 @@ resolution — narrowing `resolve_template` would be a Phase-1 behaviour change.
 Discovery mode (no positional args) scans only `config.artifacts.templates_dir`
 and so is unaffected.
 
+### Pre-implementation decisions (2026-08-25 third review)
+
+A third review found that the classifier certifies artifacts it never checks
+for, that the lockfile's key format is unimplementable as written, and that two
+smaller paths were unspecified. These close them. They are decisions, not open
+questions.
+
+**`OUTPUT-MISSING` is a fifth state: `status` must check that the recorded
+artifact still exists.** As specified through the second review, classification
+reads *only* the source's sha256. Delete `build/quarterly-risk-report.html`,
+leave `docs/risk-register.md` untouched, and `status` reports FRESH and exits 0
+— certifying a file that is not on disk. That inverts § Use Case ("before
+trusting the last-rendered artifact, run `ll-artifact status` in CI"), which is
+the entire reason the feature exists. The lockfile already records `output`
+precisely so this is checkable, at the cost of one `is_file()` per entry.
+
+Classification per `(template, source)` pair is a single state, evaluated in
+this order — first match wins, so a stale source is never masked by a missing
+output and vice versa:
+
+1. `SOURCE-MISSING` — the recorded source path does not exist on disk.
+2. `STALE` — the source exists and its current sha256 differs from the recorded one.
+3. `OUTPUT-MISSING` — the source hash matches, but the recorded `output` path does not exist.
+4. `FRESH` — source hash matches and the output file exists.
+
+`OUTPUT-MISSING` exits non-zero like the rest; `_exit_code_for` still returns 0
+only when every item is `FRESH`. Note the interaction with the second review's
+"`output` is last-write-wins on the entry": re-rendering the same source to a
+different `-o` and then deleting the newer artifact reports `OUTPUT-MISSING`
+against the newer path, which is correct — the entry records where the artifact
+*was last written*. `output` is therefore no longer purely diagnostic; its
+presence is classified on, though its *value* is still never compared to
+anything.
+
+**Lockfile keys follow the shared path storage rule, not "always
+project-root-relative".** § Expected Behavior above declares `renders` keys to
+be project-root-relative source paths, but FEAT-3310 permits an absolute
+`manifest.source` and an absolute `<source-file>` argument, and `-o` may resolve
+outside the project root. Under the stated rule those become `../../…` chains,
+which are fragile to interpret and useless as the diagnostic context `output`
+exists to be. FEAT-3310 § Pre-implementation decisions (third review) fixes one
+rule for both sides — relative when inside the project root, absolute
+otherwise, never `..`-prefixed — behind an exported
+`lockfile.relativize_path(path, project_root)`.
+
+This issue's obligation is the *inverse*: `status` resolves a `renders` key (and
+an `output` value) by using it as-is when `os.path.isabs`, and resolving it
+against `config.project_root` otherwise — **never against cwd**. A cwd-relative
+read would make `status` report `SOURCE-MISSING` for entries it wrote itself
+whenever it is invoked from a subdirectory. Tested with `status` run from a
+subdirectory of the project root, and with an out-of-root absolute source.
+
+**A parseable lockfile with an empty `renders` reports `NO-LOCK` for an
+explicitly named template.** `renders: {}` yields zero items, and
+`_exit_code_for([])` returns 0 — so `ll-artifact status my-report` exits 0 on an
+empty lockfile but 1 when the lockfile is absent, for the same amount of
+knowledge. The NO-LOCK rationale ("I cannot tell whether this is fresh must not
+read as fresh") covers both. An explicitly named template whose lockfile has no
+`renders` entries reports `NO-LOCK`. Discovery mode keeps skipping it, matching
+how it already skips lockfile-less templates.
+
+**`render --source <path>` fails loud on a missing source, before rendering.**
+`--source` is an assertion ("this data.json came from this file"), and the only
+thing it does is produce a sha256. A nonexistent path cannot be hashed, and
+writing an entry that is `SOURCE-MISSING` the instant it is written would be
+worse than useless. `cmd_render` validates `--source` resolves to an existing
+file immediately after resolving the template — before the render, so a bad
+`--source` costs nothing — and exits 1 with a typed error naming the resolved
+absolute path. Bare `render` (no `--source`) is unaffected.
+
+**`render --source` uses FEAT-3310's `render_to_disk` return value for
+`output`.** FEAT-3310 (§ Pre-implementation decisions, third review) extracts
+the `-o` resolution / guard / mkdir / write sequence out of `cmd_render` into a
+module-level `render_to_disk(...) -> Path`. The `--source` lockfile write here
+records that return value; it does not re-derive `output_dir /
+manifest["output"]`.
+
+**`learning_tests_required: [yaml]` is mirrored onto FEAT-3310.** The first
+machine-written YAML in this subsystem is `write_lockfile`, which ships in
+FEAT-3310. The marker stays here (this issue owns the format) but is duplicated
+there, where the writing code actually lands.
+
 ## Use Case
 
 A user maintains `quarterly-risk-report.llat/`, refreshed periodically
@@ -211,9 +301,9 @@ fails the build if the register changed without a re-render.
 _Added by `/ll:refine-issue` — 2026-08-25 — based on codebase analysis:_
 
 ### Files to Modify
-- `scripts/little_loops/cli/artifact/status.py` (new) — `cmd_status`, `add_status_parser`, the four-state classifier, and `_exit_code_for(results)`. Imports the format from `cli/artifact/lockfile.py`.
+- `scripts/little_loops/cli/artifact/status.py` (new) — `cmd_status`, `add_status_parser`, the five-state classifier (FRESH / STALE / SOURCE-MISSING / OUTPUT-MISSING / NO-LOCK), and `_exit_code_for(results)`. Imports the format from `cli/artifact/lockfile.py`.
 - `scripts/little_loops/cli/artifact/lockfile.py` — **created by FEAT-3310, not by this issue** (FEAT-3310 ships first and its `cmd_refresh` is the first writer). Holds `LockfileError(ValueError)`, `load_lockfile` (fail-closed, mirroring `load_manifest`'s frozenset-validation shape at `artifact_templates.py:142-189`), `write_lockfile` (atomic, merging), and `lock_path_for`. This issue specifies the format and is its only *reader*; if FEAT-3310's implementation diverges from § Expected Behavior here, this issue's spec governs.
-- `scripts/little_loops/cli/artifact/render.py` (`cmd_render`, render.py:27-88) — gains a new `--source <path>` flag and, when it is supplied, a lockfile-write step after `out_path.write_text(...)` and before `logger.success`/`return 0`; currently no lockfile write occurs anywhere in this function (confirmed by direct read — the function logs success and returns immediately after the file write). Note `cmd_render` today has no access to any source document — `--source` is what supplies it, and without the flag no lockfile is written (§ Expected Behavior → Pre-implementation decisions).
+- `scripts/little_loops/cli/artifact/render.py` (`cmd_render`, render.py:27-88) — gains a new `--source <path>` flag and, when it is supplied, an existence check on it before the render plus a lockfile-write step after the output write and before `logger.success`/`return 0`. **Third review (2026-08-25):** the output write itself moves into FEAT-3310's `render_to_disk(...) -> Path` helper, whose return value is what the `--source` path records as `output` — this issue must not re-derive `output_dir / manifest["output"]`. Today no lockfile write occurs anywhere in this function (confirmed by direct read — the function logs success and returns immediately after the file write). Note `cmd_render` today has no access to any source document — `--source` is what supplies it, and without the flag no lockfile is written (§ Expected Behavior → Pre-implementation decisions).
 - ~~`scripts/little_loops/cli/artifact/extract.py` (`cmd_refresh`, FEAT-3310) — the primary lockfile writer~~ — **moved to FEAT-3310** by the 2026-08-25 second review, so this issue is testable without FEAT-3310's CLI surface existing. This issue still defines the format (`status.py`'s `load_lockfile` + constants) that FEAT-3310's writer imports.
 - `scripts/little_loops/cli/artifact/__init__.py` (`main_artifact`, :40-136) — needs `add_status_parser(subparsers)` wired alongside `add_render_parser`/`add_templatize_parser` (:119-120) and a new `args.command == "status"` arm in the dispatch chain (:127-135); the module docstring (:1-15) enumerates every subcommand by originating FEAT ID and needs a `status`/FEAT-3311 entry.
 - `docs/reference/CLI.md:4566` — the existing not-yet-implemented note names `status` directly and must be updated/removed once this lands. Unrelated to this issue but visible on the same line: that note also misattributes `extract` to FEAT-3309 (a different, already-completed issue) rather than FEAT-3310.
@@ -278,7 +368,7 @@ that `render` half is this issue's, the `refresh` half is FEAT-3310's
 
 New coverage follows `test_codequery_codegraph.py`'s structural template for
 sha256 content-hash staleness detection (temp dir + a rendered lockfile
-fixture, assert on `.status()`'s FRESH/STALE/SOURCE-MISSING classification
+fixture, assert on `.status()`'s FRESH/STALE/SOURCE-MISSING/OUTPUT-MISSING classification
 and exit code) — the closest in-repo precedent (FEAT-3036 § Tests).
 
 ### Codebase Research Findings
@@ -308,6 +398,10 @@ _Added by `/ll:refine-issue` — 2026-08-25 — based on codebase analysis:_
 - Empty report (**added 2026-08-25, second review**): `_exit_code_for([])` returns 0 — zero results are vacuously all-FRESH, and a project with no templates is not stale. Stated in the function's docstring, pinned by a unit test, and paired with a distinct info-level "no templates with a lockfile found under `<dir>`" log line in discovery mode so a mistyped `templates_dir` is visible in the CI log rather than passing silently.
 - Malformed lockfile (**added 2026-08-25, second review**): not a fifth state. `load_lockfile` raises `LockfileError` on unparseable YAML, a non-mapping top level, a missing or non-mapping `renders`, or an unknown `version`; `cmd_status` catches it in a narrow arm and returns 1. Classification states presuppose a legible file.
 - `rendered_at` (**added 2026-08-25, second review**): ISO-8601 UTC with a trailing `Z`, second precision, diagnostic only. Never classified on, and no test asserts its value — only its format.
+- OUTPUT-MISSING (**added 2026-08-25, third review**): a fifth state. Classification per `(template, source)` is first-match-wins in the order SOURCE-MISSING → STALE → OUTPUT-MISSING → FRESH, so `status` never reports FRESH for an entry whose recorded `output` file has been deleted. `output`'s *presence* is now classified on; its *value* is still never compared to anything. Exits non-zero like STALE.
+- Path resolution on read (**added 2026-08-25, third review**): a `renders` key or `output` value that `os.path.isabs` is used as-is; anything else resolves against `config.project_root`, never against cwd — the exact inverse of FEAT-3310's `lockfile.relativize_path` writer rule. A cwd-relative read would make `status` invoked from a subdirectory report SOURCE-MISSING for entries it wrote itself.
+- Empty `renders` (**added 2026-08-25, third review**): an explicitly named template whose lockfile parses but carries zero `renders` entries reports NO-LOCK, not an empty exit-0 report. Discovery mode skips it, as it already skips lockfile-less templates.
+- `render --source` validation (**added 2026-08-25, third review**): a `--source` that does not resolve to an existing file exits 1 with a typed error naming the resolved absolute path, checked immediately after template resolution and before the render — a bad `--source` must not cost a render.
 
 _Wiring pass added by `/ll:wire-issue`:_
 - No existing test asserts exhaustive output-directory contents on `cmd_render` (`test_feat3036_artifact_templates.py`'s `TestCmdRender` checks only targeted `(out_dir / "report.html")` existence/content, never directory-listing counts) — the planned lockfile-write step will not break any existing assertion there. However, no existing `TestCmdRender` case exercises a read-only/unwritable `templates_dir`, so a lockfile-write failure turning a previously-0 render into a 1 is currently untested — add this case.
@@ -320,7 +414,7 @@ _Added by `/ll:refine-issue` — 2026-08-25 — based on codebase analysis:_
 
 1. `cli/artifact/lockfile.py` — created by **FEAT-3310** (it ships first and its `cmd_refresh` is the first writer), holding the whole format: the `{version, renders: {<source>: {sha256, rendered_at, output}}}` shape and its key frozensets, `LockfileError(ValueError)`, `load_lockfile(path) -> dict` (fail-closed), `write_lockfile(path, entries)` (atomic temp-sibling + `os.replace`, merging into any existing `renders`), and `lock_path_for(root) -> Path`. This issue *consumes* it from `status.py` and from `render.py`'s `--source` path, and owns its spec (§ Expected Behavior); it does not create the module. `render.py::cmd_render` calls `write_lockfile` **only** when a new `--source <path>` flag is supplied; bare `render` is untouched, so `test_feat3036_artifact_templates.py`'s existing `TestCmdRender`/`TestArtifactCLIDispatchRender` suites pass unmodified (§ Expected Behavior → Pre-implementation decisions).
 2. `ll-artifact status` is wired into `main_artifact()` via a new `add_status_parser`/`cmd_status` in `cli/artifact/status.py`, following the `add_<name>_parser` + `cmd_<name>(args, logger) -> int` convention every other artifact subcommand uses (`render.py:91`, `render.py:27`, `templatize.py:965`).
-3. `cmd_status` reads each resolved template's `<template>.llat.lock`, computes a current sha256 per recorded source path, and classifies each `(template, source)` pair as FRESH/STALE/SOURCE-MISSING — or the whole template as NO-LOCK when explicitly named without a lockfile — per `## Program Design` → Decision Rules. A single `_exit_code_for(results)` maps the report to the exit code: 0 only if every item is FRESH.
+3. `cmd_status` reads each resolved template's `<template>.llat.lock`, resolves each recorded source path (absolute as-is, otherwise against `config.project_root`), computes its current sha256, and classifies each `(template, source)` pair first-match-wins as SOURCE-MISSING → STALE → OUTPUT-MISSING → FRESH — or the whole template as NO-LOCK when explicitly named with no lockfile *or* with an empty `renders` — per `## Program Design` → Decision Rules. A single `_exit_code_for(results)` maps the report to the exit code: 0 only if every item is FRESH.
 4. With no `<template>` positional args, `status` enumerates every template under `config.artifacts.templates_dir` that has a `.llat.lock` sibling, skipping the rest — no in-repo precedent for this discovery shape exists (`render`/`templatize` both require a positional template), so this is new surface rather than an extension of an existing pattern. A missing or empty `templates_dir` yields an empty report, exit 0, plus a distinct info-level log line naming the directory scanned (§ Pre-implementation decisions, second review).
 4b. A `.llat.lock` that `load_lockfile` rejects raises `LockfileError`, caught by a narrow arm in `cmd_status` that logs and returns 1 — malformed is an error, not a fifth state.
 5. `docs/reference/CLI.md` gains a `#### ll-artifact status` section (flags/examples/exit codes, following the `render`/`templatize` section shape) and its existing not-yet-implemented note at line 4566 no longer names `status`.
@@ -339,6 +433,11 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 _Second-review additions (2026-08-25):_
 - The `#### ll-artifact status` CLI.md section must also document: `output`'s file-vs-directory semantics, `rendered_at`'s ISO-8601-UTC format and diagnostic-only status, that a malformed lockfile is an exit-1 `LockfileError` rather than a reported state, that an empty report exits 0, and that a template resolved by path outside `templates_dir` gets its lockfile beside it (so the "committed lockfile" guarantee holds only for in-repo templates).
+_Third-review additions (2026-08-25):_
+- `cmd_status` checks each entry's recorded `output` for existence (OUTPUT-MISSING), resolved by the same absolute-vs-project-root rule as the `renders` key.
+- `cmd_render` validates `--source` exists before rendering, and takes its lockfile `output` from FEAT-3310's `render_to_disk` return value rather than re-deriving it.
+- The `#### ll-artifact status` CLI.md section documents five states (FRESH / STALE / SOURCE-MISSING / OUTPUT-MISSING / NO-LOCK), that an empty `renders` on an explicitly named template reports NO-LOCK, and that lockfile paths are project-root-relative only when inside the project root (absolute otherwise) and are never resolved against cwd.
+- Add tests for: an OUTPUT-MISSING entry (unchanged source, deleted artifact) exiting non-zero; `status` run from a subdirectory of the project root resolving relative keys correctly; an out-of-root absolute source key; an explicitly named template with `renders: {}` reporting NO-LOCK; `render --source` naming a nonexistent file exiting 1 with no artifact written.
 - Do **not** add a test asserting the repo's `.gitignore` does not match `*.llat.lock` (dropped AC, see § Acceptance Criteria). little-loops ships into consuming projects whose ignore rules this repo does not control, so such a test proves nothing about the § Use Case CI scenario it would exist to protect. The decision stands as documentation.
 
 ## Impact
@@ -346,11 +445,13 @@ _Second-review additions (2026-08-25):_
 - **Priority**: P3 — serves EPIC-3299's secondary use case (one template,
   one bound source refreshed over time); this is where the stated
   content-drift problem is actually killed.
-- **Effort**: Medium — reduced slightly by the 2026-08-25 second review, which
-  moved the `refresh` lockfile write and the `lockfile.py` module itself to
-  FEAT-3310.
+- **Effort**: Medium — reduced by the 2026-08-25 second review, which moved the
+  `refresh` lockfile write and the `lockfile.py` module itself to FEAT-3310;
+  nudged back up by the third review's fifth state (`OUTPUT-MISSING`) and its
+  path-resolution tests.
 - **Risk**: Low — additive. `render` gains an opt-in `--source` flag but its
-  default path is byte-for-byte unchanged. FEAT-3310 must still land first
+  default path is byte-for-byte unchanged (FEAT-3310's `render_to_disk`
+  extraction is likewise behaviour-preserving). FEAT-3310 must still land first
   (it creates `lockfile.py`), but every AC here is now verifiable against
   `status` + `render --source` alone, without `extract`/`refresh` existing —
   which was this issue's top confidence-check concern.
@@ -358,16 +459,18 @@ _Second-review additions (2026-08-25):_
 ## Acceptance Criteria
 
 - [ ] The lockfile format has a single home in `cli/artifact/lockfile.py`
-      (created by FEAT-3310, specified here): `load_lockfile` fails closed with
+      (created by FEAT-3310, specified here), including the shared
+      `relativize_path(path, project_root)` path rule that `status` inverts on
+      read: `load_lockfile` fails closed with
       `LockfileError` on unparseable YAML, a non-mapping top level, a
       missing/non-mapping `renders`, and an unknown `version` — each
       unit-tested; `write_lockfile` writes atomically (temp sibling +
       `os.replace`) and merges into an existing `renders` mapping rather than
       replacing it. `status` and `render --source` both import it; neither
       redefines the shape.
-- [ ] `output` records the rendered artifact **file** path
-      (`output_dir / manifest.output`), project-root-relative — not the `-o`
-      directory. `rendered_at` is ISO-8601 UTC with a trailing `Z`; the
+- [ ] `output` records the rendered artifact **file** path — not the `-o`
+      directory — stored project-root-relative when inside the project root and
+      absolute otherwise (never `..`-prefixed), per the shared path rule. `rendered_at` is ISO-8601 UTC with a trailing `Z`; the
       round-trip test asserts its format only, never its value.
 - [ ] A malformed `.llat.lock` exits 1 via a narrow `except LockfileError` arm
       in `cmd_status` — it is not reported as a fifth classification state.
@@ -379,13 +482,28 @@ _Second-review additions (2026-08-25):_
 - [ ] `render` writes a lockfile entry only when given a new explicit
       `--source <path>` flag; bare `ll-artifact render` writes no lockfile and
       is behaviourally unchanged from Phase 1 (see § Expected Behavior →
-      Pre-implementation decisions).
+      Pre-implementation decisions). A `--source` that does not resolve to an
+      existing file exits 1 with a typed error naming the resolved absolute
+      path, checked *before* the render so no artifact is written.
+- [ ] `render --source` records `output` from FEAT-3310's `render_to_disk`
+      return value; it does not re-derive `output_dir / manifest.output`.
 - [ ] `ll-artifact status [<template> ...]` reports
-      FRESH/STALE/SOURCE-MISSING per `(template, source)` pair, and `NO-LOCK`
-      for an explicitly named template with no lockfile.
+      FRESH/STALE/SOURCE-MISSING/OUTPUT-MISSING per `(template, source)` pair,
+      first-match-wins in the order SOURCE-MISSING → STALE → OUTPUT-MISSING →
+      FRESH, and `NO-LOCK` for an explicitly named template with no lockfile
+      **or with a lockfile whose `renders` is empty**.
+- [ ] `OUTPUT-MISSING` is reported when the source hash matches but the
+      recorded `output` file no longer exists — `status` never certifies an
+      artifact that is not on disk (§ Pre-implementation decisions, third
+      review). Tested by deleting the rendered artifact and leaving the source
+      untouched: exit non-zero, state `OUTPUT-MISSING`.
+- [ ] `status` resolves a `renders` key and an `output` value as absolute when
+      `os.path.isabs`, otherwise against `config.project_root` — never against
+      cwd. Tested with `status` invoked from a subdirectory of the project root
+      (entries still resolve) and with an out-of-root absolute source key.
 - [ ] `status` exits non-zero unless every reported item is FRESH — STALE,
-      SOURCE-MISSING, and NO-LOCK all fail. The rule lives in a single
-      `_exit_code_for(results)` function and is unit-tested per state.
+      SOURCE-MISSING, OUTPUT-MISSING, and NO-LOCK all fail. The rule lives in a
+      single `_exit_code_for(results)` function and is unit-tested per state.
 - [ ] With no `<template>` args, `status` reports on every template
       discovered under `config.artifacts.templates_dir` that has a lockfile;
       lockfile-less templates are skipped in this mode (not NO-LOCK).
@@ -406,11 +524,15 @@ _Second-review additions (2026-08-25):_
       so a test over *this* repo's ignore rules proves nothing about the
       § Use Case CI scenario. The decision is carried as documentation in the
       `status` CLI.md section instead.
-- [ ] `docs/reference/CLI.md` documents `status`, the four reported states,
-      the exit-code rule (including the empty-report-exits-0 case), that a
+- [ ] `docs/reference/CLI.md` documents `status`, the five reported states
+      (FRESH / STALE / SOURCE-MISSING / OUTPUT-MISSING / NO-LOCK) and their
+      first-match-wins order, the exit-code rule (including the empty-report-exits-0 case), that a
       malformed lockfile is an error rather than a state, and the lockfile
       format — `output`'s project-root-relative **file** path and
-      last-write-wins semantics, `rendered_at`'s ISO-8601-UTC
+      last-write-wins semantics (and that its *presence* is classified on, via
+      OUTPUT-MISSING, while its value is never compared), the
+      relative-when-inside-the-project-root / absolute-otherwise path rule for
+      both keys and `output`, `rendered_at`'s ISO-8601-UTC
       diagnostic-only status, that the lockfile is committed rather than
       ignored, and that a template resolved by path outside `templates_dir`
       gets its lockfile beside it wherever that is.
@@ -448,7 +570,42 @@ _Added by `/ll:confidence-check` on 2026-08-24_
 - `status.py`'s Program Design imports `cli/artifact/lockfile.py`, which this issue's own Integration Map assigns to FEAT-3310 to create — FEAT-3310 is still `open`. The 2026-08-25 second review already decoupled AC *testability* (every AC here is verifiable via `status` + `render --source` alone), but implementation still needs FEAT-3310 to land first (or a stub `lockfile.py`) before `status.py` has a module to import.
 - Criterion 4 (Issue Well-Specified) is capped at 10/20 by `format-check`'s `stale_cli_flag` finding (`ll-artifact status` doesn't exist yet) — expected for a forward-looking design claim on unimplemented CLI surface, not a real specification gap.
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-08-24_
+
+**Readiness Score**: 80/100 → STOP - ADDRESS GAPS (hard override)
+**Outcome Confidence**: 86/100 → HIGH CONFIDENCE
+
+### Hard Override
+- **DEP_FAIL**: `depends_on` lists `FEAT-3310`, whose current status is `open`
+  (not `done`/`cancelled`). Confirmed by direct read: `scripts/little_loops/cli/artifact/`
+  contains only `__init__.py`, `design_md.py`, `discover.py`, `policy_builder.py`,
+  `render.py`, `templatize.py` — no `lockfile.py` and no `extract.py` exist yet, and
+  `render.py` has no `--source` flag. This issue's own Program Design has
+  `status.py` import `cli/artifact/lockfile.py`, which FEAT-3310 creates. Per the
+  dependency gate, an unresolved `depends_on` on a non-done issue is a hard
+  override to STOP regardless of score, even though the 2026-08-25 second-review
+  scope split makes every AC here independently *testable* without FEAT-3310's
+  CLI surface existing — the implementation still cannot land until FEAT-3310
+  ships `lockfile.py` (or a stub of it exists).
+
+### Gaps to Address
+- Land FEAT-3310 (or at minimum its `lockfile.py` module: `LockfileError`,
+  `load_lockfile`, `write_lockfile`, `lock_path_for`) before starting this
+  issue's implementation.
+
+### Concerns
+- Criterion 4 (Issue Well-Specified) is capped at 15/20 by `format-check`'s
+  `stale_cli_flag` finding (`ll-artifact status (no such subcommand)`) — expected
+  for a forward-looking design claim on unimplemented CLI surface, not a real
+  specification gap.
+- `format-check`'s `soft_dep_hard_edge: [FEAT-3310]` independently confirms the
+  dependency is not merely a soft/documentation coupling but a real import edge
+  (`status.py` and `render.py --source` both import `lockfile.py`).
+
 ## Session Log
+- `/ll:confidence-check` - 2026-08-25T03:54:55 - `67559544-9757-4873-8ba3-963fe9f9ebb2.jsonl`
 - `/ll:confidence-check` - 2026-08-25T03:42:12 - `3906fc07-f9f6-4960-99f5-5a221177c28d.jsonl`
 - `/ll:confidence-check` - 2026-08-25T03:27:46 - `ea0c7571-8966-43cb-ad8b-4e022c051b10.jsonl`
 - `/ll:wire-issue` - 2026-08-25T03:17:17 - `5da7f41e-bb5f-4d4a-b24d-114a6e916228.jsonl`

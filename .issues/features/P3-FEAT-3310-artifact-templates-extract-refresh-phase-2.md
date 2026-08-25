@@ -12,6 +12,8 @@ depends_on:
 - FEAT-3036
 labels:
 - planning-hub
+learning_tests_required:
+- yaml
 confidence_score: 90
 outcome_confidence: 82
 score_complexity: 14
@@ -186,14 +188,18 @@ write contract this issue must satisfy is:
 ```yaml
 version: 1
 renders:
-  <project-root-relative source path>:
+  <source path, per the path storage rule>:
     sha256: <hex sha256 of the source bytes extract consumed>
     rendered_at: <ISO-8601 UTC, e.g. 2026-08-25T04:12:33Z>
-    output: <project-root-relative path of the rendered artifact FILE>
+    output: <path of the rendered artifact FILE, per the path storage rule>
 ```
 
-`output` is the full rendered *file* path (`output_dir / manifest["output"]`),
-not the `-o` directory. `rendered_at` is ISO-8601 UTC with a trailing `Z`,
+Both the `renders` key and `output` go through `relativize_path` — project-root-relative
+when inside the project root, absolute otherwise, never `..`-prefixed
+(§ Pre-implementation decisions, third review).
+`output` is the full rendered *file* path, taken from `render_to_disk`'s return
+value (§ Pre-implementation decisions, third review), never re-derived from the
+`-o` directory. `rendered_at` is ISO-8601 UTC with a trailing `Z`,
 second precision, and is diagnostic only — nothing classifies on it and no test
 asserts its value, only its format (it is the one nondeterministic field in a
 subsystem otherwise built on byte-exact round-trips). The write is atomic —
@@ -210,8 +216,11 @@ Because this issue ships first, **this issue creates
 unparseable YAML, non-mapping top level, missing/non-mapping `renders`, or an
 unknown `version` — mirroring `load_manifest`'s frozenset-validation shape at
 `artifact_templates.py:142-189`), `write_lockfile(path, entries)` (the atomic
-merging write above), and `lock_path_for(root) -> Path` (`root.parent /
-f"{root.name}.lock"`). `cmd_refresh` is its first caller; FEAT-3311's `status`
+merging write above), `lock_path_for(root) -> Path` (`root.parent /
+f"{root.name}.lock"`), and `relativize_path(path, project_root) -> str` (the
+path storage rule — § Pre-implementation decisions, third review), which
+readers and writers on both sides of the split must share.
+`cmd_refresh` is its first caller; FEAT-3311's `status`
 reader and `render --source` writer import the same module rather than
 redefining the shape. **FEAT-3311 § Expected Behavior is the authoritative
 spec for this format** — implement to it, and if the two issues disagree,
@@ -225,6 +234,81 @@ independent logic, so a `refresh.py` that imports `cmd_extract` and
 `render_template` would be a file of glue. Keep both in `extract.py` and update
 the docstring to name the exception. This closes the "worth confirming at
 implementation time" note under § Codebase Research Findings.
+
+### Pre-implementation decisions (2026-08-25 third review)
+
+A third review found four load-bearing gaps the first two passes left open —
+three of them correctness holes rather than polish. These close them. They are
+decisions, not open questions.
+
+**Path storage rule: relative when under the project root, absolute otherwise —
+never `../`-prefixed.** The second review's rules collide. It permits an
+absolute `manifest.source` ("absolute paths are stored absolute") and permits
+`refresh` to consume one, while FEAT-3311 § Expected Behavior declares
+`renders` keys to be "project-root-relative source paths". Both cannot hold. The
+same collision applies to `output` whenever `-o` resolves outside the project
+root, where a naive `os.path.relpath` yields a `../../…` string that is
+fragile to interpret and useless as diagnostic context. Single rule, applied
+everywhere a path is written into the lockfile or the manifest:
+
+- If the resolved absolute path is inside `config.project_root`, store it
+  project-root-relative (POSIX separators).
+- Otherwise store the absolute path verbatim.
+- Never store a `..`-prefixed relative path.
+
+`lockfile.py` owns the helper — `relativize_path(path: Path, project_root:
+Path) -> str` — and exports it, so the writer here, FEAT-3311's `status` reader,
+and FEAT-3311's `render --source` writer cannot drift. The inverse rule is
+equally binding on readers: a key that `os.path.isabs` is used as-is; a
+relative key resolves against `config.project_root`, never against cwd.
+`templatize`'s source normalization (second review) follows the same helper —
+a source outside the project root is stored absolute, not as `../…`.
+
+**`render.py` gains a shared `render_to_disk` helper; `cmd_refresh` must not
+duplicate `-o` resolution.** The lockfile's `output` field is the rendered file
+path, but that path is computed inside `cmd_render` (`render.py:73-81` — `-o`
+vs `config.artifacts.default_output_dir`, absolute-vs-project-root resolution,
+the existing-file guard, `mkdir(parents=True)`, `output_dir /
+manifest["output"]`) and `cmd_render` returns only an `int`. As specified,
+`cmd_refresh` would have to re-derive it — a guaranteed drift source, and
+FEAT-3311's `render --source` writer needs the identical path. Resolution:
+
+- `render.py` grows a module-level
+  `render_to_disk(template: ArtifactTemplate, data: dict[str, Any], config:
+  BRConfig, output: str | None) -> Path` holding exactly the resolve → guard →
+  mkdir → write sequence that lives inline in `cmd_render` today, returning the
+  written file path.
+- `cmd_render` is refactored to call it. The refactor is behaviour-preserving:
+  same exit codes, same messages, same bytes on disk — `test_feat3036_artifact_templates.py`'s
+  existing `TestCmdRender` suite must pass unmodified, which is the test of
+  the refactor.
+- `cmd_refresh` (here) and `render --source` (FEAT-3311) call
+  `render_to_disk` and record its return value as the lockfile's `output`.
+
+`render.py` is therefore a file this issue modifies — added to § Files to
+Modify, where it was previously absent from both issues.
+
+**`--data` resolves relative paths against the project root on every verb.**
+`cmd_render` resolves a relative `--data` against `config.project_root`
+(`render.py:52-54`). Nothing in the second review pins `extract`/`refresh` to
+the same rule, and the cwd-relative reading is the more natural thing to write.
+If `extract` writes cwd-relative and the render half reads root-relative, then
+`ll-artifact refresh my-report --data out/data.json` run from a subdirectory
+writes one file and renders from another — silently, if a stale `data.json`
+happens to exist at the other path. `extract` and `refresh` both resolve
+`--data` exactly as `cmd_render` does, and the default (`<template>/data.json`)
+is already absolute via the resolved template root. Tested by a `refresh`
+invoked from a subdirectory of the project root.
+
+**`templatize_max_input_bytes` measures a different quantity per subcommand;
+its widened description must say so.** The existing description
+(`config-schema.json:1885-1889`) reads "Combined artifact+source-document size
+ceiling … that `ll-artifact templatize` enforces". `extract` has no artifact
+input — it would measure the source document alone. Reuse is still correct
+(same hazard, same order of magnitude, no second knob), but the widened
+description must state both measured quantities explicitly, or a user tuning
+the ceiling for `extract` will misjudge `templatize`'s remaining headroom by
+the size of an entire rendered artifact.
 
 ## Use Case
 
@@ -242,9 +326,10 @@ quarterly-risk-report`, which maps the changed register to a fresh
 _Added by `/ll:refine-issue` — 2026-08-25 — based on codebase analysis:_
 
 - `scripts/little_loops/cli/artifact/extract.py` (new) — `cmd_extract`, `cmd_refresh`, `add_extract_parser`, `add_refresh_parser`, per the issue's own Program Design → Call Path. **Resolved 2026-08-25** (§ Pre-implementation decisions, second review): both verbs stay in one module, and `__init__.py`'s one-module-per-subcommand docstring is amended to name the exception.
+- `scripts/little_loops/cli/artifact/render.py:73-85` (**added 2026-08-25, third review**) — the `-o` resolution / existing-file guard / `mkdir` / `write_text` / `output_dir / manifest["output"]` sequence is extracted into a module-level `render_to_disk(template, data, config, output) -> Path`, called by `cmd_render` (behaviour-preserving; the existing `TestCmdRender` suite must pass unmodified) and by `cmd_refresh` here, which records its return value as the lockfile's `output`. FEAT-3311's `render --source` writer calls the same helper. Previously absent from both issues' file lists, which left `cmd_refresh` to re-derive the output path.
 - `scripts/little_loops/cli/artifact/__init__.py:74-135` — `main_artifact()`'s subparser registration block (`add_render_parser(subparsers)` / `add_templatize_parser(subparsers)` at lines 119-120) and its flat `if args.command == "..."` dispatch chain (lines 127-135) both need new arms for `extract`/`refresh`. The module docstring (lines 1-15) enumerates every subcommand with its originating FEAT/ENH ID — needs an entry for FEAT-3310 **and** an amendment to its closing "One module per subcommand (`policy_builder.py`, `design_md.py`, `render.py`)" sentence (`:12-14`), which `extract.py`'s two verbs deliberately depart from.
 - `scripts/little_loops/cli/artifact/templatize.py:790` + `:885` — `source_path = Path(args.source)` is stored verbatim by `build_manifest`, i.e. cwd-relative. Normalize to project-root-relative before storing, per § Pre-implementation decisions (second review) → *`manifest.source` is normalized to project-root-relative on write*. Without this, `refresh`'s project-root-relative resolution silently misses the source whenever `templatize` was run from a subdirectory.
-- `scripts/little_loops/config-schema.json:1885-1889` — `artifacts.templatize_max_input_bytes` (default `400000`) is reused as `extract`'s source-size ceiling; widen its `description` to name `ll-artifact extract` alongside `templatize`. No new knob is added (the object is `additionalProperties: false`, so a new key would be a schema edit for no behavioural gain).
+- `scripts/little_loops/config-schema.json:1885-1889` — `artifacts.templatize_max_input_bytes` (default `400000`) is reused as `extract`'s source-size ceiling; widen its `description` to name `ll-artifact extract` alongside `templatize` **and to state that the measured quantity differs per subcommand** — combined artifact+source for `templatize`, source document alone for `extract` (§ Pre-implementation decisions, third review). No new knob is added (the object is `additionalProperties: false`, so a new key would be a schema edit for no behavioural gain).
 - `docs/reference/CLI.md:4509-4530` (`#### ll-artifact render`), `:4532-4564` (`#### ll-artifact templatize`) — the two-part doc pattern (prose → `**Flags:**` table → `**Examples:**` → `**Exit codes:**`) new `#### ll-artifact extract` / `#### ll-artifact refresh` sections must follow (AC requires this).
 - `docs/reference/CLI.md:4566` carries a note: `**Note:** ... \`extract\` (FEAT-3309, deriving a \`data.json\` automatically for fan-out) and \`status\` (staleness detection) are not yet implemented.` This note attributes the not-yet-built `extract` to FEAT-3309, but FEAT-3309 ("Loop→artifact handoff: promote a run artifact to a durable path") is a different, already-completed issue — the ID in that note appears stale/incorrect and should be corrected to FEAT-3310 (or removed) when this issue lands.
 
@@ -334,6 +419,9 @@ _Added by `/ll:refine-issue` — 2026-08-25 — based on codebase analysis:_
 - Model resolution (**added 2026-08-25, second review**): `--model` > `manifest["extraction"]["model"]` > `fsm.schema.DEFAULT_LLM_MODEL`. `manifest["extraction"]["host"]` is diagnostic only and never overrides `resolve_host()`'s ambient selection (`LL_HOST_CLI` / `orchestration.host_cli`) — a manifest committed on one machine must not silently redirect another machine's host. `--timeout` defaults to `180`, matching `discover.py:429`.
 - Prompt assembly (**added 2026-08-25, second review**): a module-level `_PROMPT_TEMPLATE` in `extract.py` composes `manifest["extraction"]["prompt"]` (what to extract) + the serialized `data_schema` (the shape to return) + the source text (the material), mirroring `discover.py:_PROMPT_TEMPLATE`. `extraction.prompt` is never used as the entire prompt.
 - Lockfile write ordering (**added 2026-08-25, second review**): `cmd_refresh` writes `<template>.llat.lock` only after the render's output-file write succeeds, atomically (temp sibling + `os.replace`), merging into any existing `renders` mapping rather than replacing it. A lockfile-write failure is an exit-1 failure of `refresh` — the artifact is already on disk, so the error message must say the render succeeded and only the lock write failed, otherwise the user re-runs a paid LLM call to fix a filesystem problem.
+- Path storage (**added 2026-08-25, third review**): every path written into the lockfile (`renders` keys and `output`) and into `manifest.source` goes through `lockfile.relativize_path(path, project_root)` — project-root-relative with POSIX separators when inside the project root, absolute otherwise, never `..`-prefixed. Readers invert it symmetrically: absolute keys as-is, relative keys against `config.project_root`, never against cwd.
+- Output path ownership (**added 2026-08-25, third review**): `cmd_refresh` obtains the rendered file path from `render.render_to_disk`'s return value. It must never re-derive `output_dir / manifest["output"]` itself — the `-o` / `default_output_dir` / absolute-vs-relative / existing-file-guard logic has exactly one home.
+- `--data` resolution (**added 2026-08-25, third review**): `extract` and `refresh` resolve a relative `--data` against `config.project_root`, identical to `cmd_render` (`render.py:52-54`). Never cwd-relative — a cwd-relative write paired with a root-relative read makes `refresh` render from a different file than it extracted to.
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `load_manifest` (`artifact_templates.py:142`) validates only that `extraction` is an allowed top-level manifest key — it does not validate the inner shape of `extraction.prompt`. `extract.py` will be the first consumer of `manifest.get("extraction", {}).get("prompt")`. **Resolved 2026-08-25** (§ Expected Behavior → Pre-implementation decisions): inner-shape validation for `source` and `extraction` lands in `load_manifest`, not locally in `extract.py`; a missing `extraction.prompt` is a typed loud failure at `extract` time.
@@ -353,6 +441,12 @@ _Second-review additions (2026-08-25):_
 - Update `scripts/little_loops/config-schema.json:1885-1889` — widen `templatize_max_input_bytes`'s `description` to cover `ll-artifact extract`.
 - `docs/reference/CLI.md` — the new `#### ll-artifact extract` section must document `--model`/`--timeout` as `extract`-only flags (no other artifact subcommand exposes them), the `--model` > `extraction.model` > `DEFAULT_LLM_MODEL` precedence, that `extraction.host` is diagnostic-only, and the reused `templatize_max_input_bytes` ceiling. The `#### ll-artifact refresh` section must document the `--data`/`-o` split and the lockfile write.
 
+_Third-review additions (2026-08-25):_
+- Update `scripts/little_loops/cli/artifact/render.py:73-85` — extract `render_to_disk(template, data, config, output) -> Path`; refactor `cmd_render` onto it without changing behaviour; `cmd_refresh` and (in FEAT-3311) `render --source` both call it.
+- `cli/artifact/lockfile.py` exports `relativize_path` alongside the reader/writer, since FEAT-3311's reader must invert exactly the rule this issue's writer applies.
+- `templatize`'s source normalization uses `relativize_path` too, so a source outside the project root is stored absolute rather than as a `../…` chain.
+- `docs/reference/CLI.md` — the `#### ll-artifact extract`/`refresh` sections must also state that a relative `--data` resolves against the project root, and that lockfile paths are project-root-relative only when inside the project root (absolute otherwise). The `templatize_max_input_bytes` mention must name the per-subcommand difference in what is measured.
+
 ## Impact
 
 - **Priority**: P3 — unblocks the "single bound source over time" secondary
@@ -370,7 +464,12 @@ _Second-review additions (2026-08-25):_
   which changes the manifest bytes `templatize` writes when it is invoked from
   a subdirectory (`test_artifact_templatize.py` asserts on manifest contents —
   check those cases);
-  (c) widening `templatize_max_input_bytes`'s documented scope.
+  (c) widening `templatize_max_input_bytes`'s documented scope;
+  (d) **added 2026-08-25, third review** — refactoring `cmd_render`'s output
+  write into a shared `render_to_disk` helper. This is the only change that
+  touches already-shipped `render` behaviour, and it is required to be
+  behaviour-preserving: the unmodified `TestCmdRender` /
+  `TestArtifactCLIDispatchRender` suites passing *is* the verification.
 
 ## Acceptance Criteria
 
@@ -387,7 +486,9 @@ _Second-review additions (2026-08-25):_
       rejects a source file over `artifacts.templatize_max_input_bytes` with a
       typed error naming the measured size and the limit, before the host call
       is built. No new config knob is added; the existing key's schema
-      `description` is widened to name `extract`.
+      `description` is widened to name `extract` **and to state that the
+      measured quantity differs per subcommand** — combined artifact+source for
+      `templatize`, source document alone for `extract`.
 - [ ] Model resolution is `--model` > `manifest.extraction.model` >
       `fsm.schema.DEFAULT_LLM_MODEL`, and `manifest.extraction.host` never
       overrides `resolve_host()`'s ambient host selection. Unit-tested at each
@@ -397,8 +498,11 @@ _Second-review additions (2026-08-25):_
       `--data <path>` (same default) and `-o <dir>` (passed through to the
       render half with `render`'s semantics and
       `config.artifacts.default_output_dir` default).
-- [ ] `load_manifest` validates the inner shape of `source` (non-empty string)
-      and `extraction` (mapping, if present); a manifest whose `extraction`
+- [ ] `load_manifest` validates the inner shape of `source` (non-empty string,
+      **when present** — `source` stays optional per
+      `_MANIFEST_OPTIONAL_KEYS`, `artifact_templates.py:26`, and the three
+      `scripts/tests/fixtures/artifact_templates/*.llat` manifests that declare
+      neither key must keep loading) and `extraction` (mapping, if present); a manifest whose `extraction`
       carries no `prompt` fails `extract` with a typed error naming the
       template and the missing key — never a synthesized default prompt.
 - [ ] `ll-artifact refresh` composes `extract` + `render`, defaulting the
@@ -418,17 +522,40 @@ _Second-review additions (2026-08-25):_
 - [ ] A new `cli/artifact/lockfile.py` holds the format's single definition —
       `LockfileError`, `load_lockfile` (fail-closed on unparseable YAML,
       non-mapping top level, missing/non-mapping `renders`, unknown
-      `version`), `write_lockfile` (atomic, merging), `lock_path_for` — built
+      `version`), `write_lockfile` (atomic, merging), `lock_path_for`,
+      `relativize_path` — built
       to FEAT-3311 § Expected Behavior, which governs on any disagreement.
       FEAT-3311's `status`/`render --source` import it rather than redefining
       the shape.
 - [ ] `refresh` writes/updates `<template>.llat.lock` after a successful render
       (moved here from FEAT-3311 so this issue is independently testable),
       recording `sha256` of the **same source bytes the extraction consumed**,
-      `rendered_at` as ISO-8601 UTC, and `output` as the project-root-relative
-      path of the rendered artifact *file* (`output_dir / manifest.output`, not
-      the `-o` directory). The write is atomic (temp sibling + `os.replace`)
-      and merges into any existing `renders` mapping rather than replacing it.
+      `rendered_at` as ISO-8601 UTC, and `output` as the path of the rendered
+      artifact *file* taken from `render_to_disk`'s return value (never
+      re-derived, never the `-o` directory). The write is atomic (temp sibling
+      + `os.replace`) and merges into any existing `renders` mapping rather
+      than replacing it.
+- [ ] Every path written to the lockfile (`renders` keys and `output`) and to
+      `manifest.source` goes through a single exported
+      `lockfile.relativize_path(path, project_root)`: project-root-relative
+      when inside the project root, absolute otherwise, never `..`-prefixed.
+      Unit-tested for an inside-root path, an absolute outside-root path, and
+      a source reachable only via `..` from the project root (must be stored
+      absolute). This resolves the collision between "absolute sources are
+      stored absolute" (§ Pre-implementation decisions, second review) and
+      FEAT-3311's "keys are project-root-relative".
+- [ ] `render.py` exposes `render_to_disk(template, data, config, output) ->
+      Path` holding the `-o` resolution, existing-file guard, `mkdir`, and
+      write; `cmd_render` is refactored onto it with no behaviour change (the
+      existing `TestCmdRender` / `TestArtifactCLIDispatchRender` suites pass
+      unmodified), and `cmd_refresh` uses its return value for the lockfile's
+      `output`. `cmd_refresh` does not re-derive `output_dir /
+      manifest["output"]` anywhere.
+- [ ] `extract` and `refresh` resolve a relative `--data` against
+      `config.project_root`, exactly as `cmd_render` does (`render.py:52-54`).
+      Tested by a `refresh` run from a subdirectory of the project root with a
+      relative `--data`, asserting the extraction and the render use the same
+      file.
 - [ ] A lockfile-write failure exits 1 with a message stating that the render
       succeeded and only the lock write failed — so the user does not re-pay
       for an LLM call to fix a filesystem problem. Tested against an
@@ -458,6 +585,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-25T03:54:54 - `67559544-9757-4873-8ba3-963fe9f9ebb2.jsonl`
 - `/ll:confidence-check` - 2026-08-25T03:42:12 - `3906fc07-f9f6-4960-99f5-5a221177c28d.jsonl`
 - `/ll:confidence-check` - 2026-08-25T03:27:46 - `ea0c7571-8966-43cb-ad8b-4e022c051b10.jsonl`
 - `/ll:wire-issue` - 2026-08-25T03:17:17 - `5da7f41e-bb5f-4d4a-b24d-114a6e916228.jsonl`
