@@ -220,9 +220,24 @@ jobs:
                   tail -3 reaper.log 2>/dev/null || echo "(reaper.log not present)"
                 } > /tmp/pathE_snapshot.txt
                 if [ -n "$COMMENT_ID" ]; then
+                  # Path E drop-oldest body assembly.
+                  # Server-as-source-of-truth: GET current body, append new snapshot,
+                  # truncate from middle if approaching GitHub's 65536-char comment
+                  # limit, PATCH. Without this, body accumulates at ~1.3KB/snapshot
+                  # × 30s cadence = ~115KB over 45min, PATCH fails silently at ~25min
+                  # into run, back half of dispatch lost. Same design-vs-implementation
+                  # pathology as the grep bug.
+                  CURRENT_BODY=$(gh api "/repos/$GITHUB_REPOSITORY/issues/comments/$COMMENT_ID" --jq .body 2>/dev/null || echo "")
+                  NEW_BODY="${CURRENT_BODY}"$'\n\n'"$(cat /tmp/pathE_snapshot.txt)"
+                  # 60000 leaves 5536-char buffer for PATCH validation / future growth.
+                  if [ "${#NEW_BODY}" -gt 60000 ]; then
+                    TRUNCATED_AT_T=$(date -u +%H:%M:%S)
+                    NEW_BODY="[...older snapshots truncated at 60KB cap T=${TRUNCATED_AT_T}...]"$'\n\n'"${NEW_BODY: -60000}"
+                  fi
+                  printf '%s' "$NEW_BODY" > /tmp/pathE_body.txt
                   gh api --method PATCH -H "Accept: application/vnd.github+json" \
                     "/repos/$GITHUB_REPOSITORY/issues/comments/$COMMENT_ID" \
-                    -F body=@/tmp/pathE_snapshot.txt 2>/dev/null \
+                    -F body=@/tmp/pathE_body.txt 2>/dev/null \
                     || echo "PATCH failed at $(date -u +%H:%M:%S) exit=$?" >> /tmp/pathE_failures.log
                 else
                   # Fallback: POST a new comment if initial POST failed to yield ID
