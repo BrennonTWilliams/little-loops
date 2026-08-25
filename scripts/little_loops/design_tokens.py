@@ -39,8 +39,8 @@ class DesignTokens:
     # Prose body (frontmatter stripped) for a design_md source; "" otherwise.
     # Populated even on degraded design_md paths (ENH-3264/ENH-3267).
     guidance: str = ""
-    # "profile" | "design_md" — public, not informational: cli/artifact/policy_builder.py's
-    # _themed_css_vars() branches on it to decide whether a second themed
+    # "profile" | "design_md" — public, not informational: artifact_template_kit.py's
+    # themed_css_vars() branches on it to decide whether a second themed
     # load is needed (DESIGN.md has no theme mechanism).
     source: str = "profile"
 

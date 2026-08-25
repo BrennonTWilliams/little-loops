@@ -3,8 +3,9 @@ id: ENH-3035
 title: Factor a shared artifact template kit out of the policy-builder template
 type: ENH
 priority: P3
-status: open
+status: done
 discovered_date: 2026-08-03
+completed_at: '2026-08-25T16:14:52Z'
 labels:
 - artifact
 - ll-artifact
@@ -27,6 +28,8 @@ score_change_surface: 18
 
 # ENH-3035: Factor a shared artifact template kit out of the policy-builder template
 
+## Summary
+
 Extract the reusable parts of the policy-builder HTML template into a small shared
 template kit — page shell, design-token stamping, and the common head/asset-inlining
 path — so the sql.js dashboard, templatized loop artifacts, and future artifacts build
@@ -34,6 +37,25 @@ on one set of conventions instead of each copying and drifting from policy-build
 This is a refactor with a known shape, not an open design question; it was bundled
 into the policy-builder template's decision gate and is split out because it pays
 off the moment a second artifact template exists.
+
+## Current Behavior
+
+Each artifact template (currently only `policy-builder`) owns its own copy of the
+page shell, design-token stamping, and head/asset-inlining logic inline. Design-token
+stamping (`_themed_css_vars`) lives inside
+`scripts/little_loops/cli/artifact/policy_builder.py`, and `artifact_templates.py`'s
+`build_ll_namespace()` already reaches back into that CLI-command module to reuse it —
+the general-purpose module depends on the single-consumer one, backwards from the
+intended shape.
+
+## Expected Behavior
+
+A shared template kit module exists as the single home for the page shell,
+design-token stamping (a separately callable unit), and the head/asset-inlining
+path. `policy-builder` is ported onto the kit and renders byte-identically (or with
+reviewed, intentional diffs) to its pre-port output. At least one templatized
+loop-generated artifact also renders through the kit, so it's validated against the
+epic's actual workload, not just the policy-builder dashboard shape.
 
 ## Motivation
 
@@ -76,20 +98,31 @@ currently does inline.
 - Introducing a template engine or build step; artifacts stay single-file and
   dependency-free at view time.
 
+## Scope Boundaries
+
+- Out of scope: building the sql.js dashboard (FEAT-3304) or porting it onto the
+  kit — that obligation lives on FEAT-3304's own AC, not here (see "Not an AC
+  here" above and Sequencing below).
+- Out of scope: `templatize.py` changes to auto-lift baked-in token literals into
+  `var(--…)` references (the rejected "broad reading" in Decisions) — that is
+  separate feature work to be filed as its own ENH, not extraction.
+- Out of scope: restyling/redesigning any existing artifact, or introducing a
+  template engine/build step (see Non-goals above).
+
 ## Acceptance Criteria
 
-- [ ] A shared template kit module exists with a documented entry point.
-- [ ] Design-token stamping is a separately callable unit, not inlined in a template.
-- [ ] A golden HTML fixture of `cmd_policy_builder`'s output is captured **before**
+- [x] A shared template kit module exists with a documented entry point.
+- [x] Design-token stamping is a separately callable unit, not inlined in a template.
+- [x] A golden HTML fixture of `cmd_policy_builder`'s output is captured **before**
       the port, on a project with `design_tokens` configured (this repo's
       `warm-paper` + `dark` config exercises the themed path, so the fixture covers
       the token-stamping branch rather than the degraded empty-block branch).
-- [ ] policy-builder renders byte-identically to that fixture (or with reviewed,
+- [x] policy-builder renders byte-identically to that fixture (or with reviewed,
       intentional diffs) after being ported onto the kit.
-- [ ] **At least one templatized loop-generated artifact renders through the kit**
+- [x] **At least one templatized loop-generated artifact renders through the kit**
       (see Consumer mix below). A kit validated only by policy-builder has been
       validated against the wrong workload.
-- [ ] The kit's token-stamping unit **accepts** a body whose token values were baked
+- [x] The kit's token-stamping unit **accepts** a body whose token values were baked
       in as literals by a loop's prompt-time `design_tokens_context` — i.e. stamping
       such a body through the kit succeeds without error rather than requiring a body
       authored with stamp points. This is the **narrow** reading: a test-level
@@ -102,6 +135,11 @@ copied from `policy-builder`"). Duplicating it here would make this issue
 unsatisfiable — it would require either building a throwaway sql.js fixture purely
 to check a box, or blocking on FEAT-3304. Treat it as a **sequencing note** (see
 Sequencing), not a gate on this issue.
+
+⚠ Superseded: the earlier "hand-templatized fallback if FEAT-3308 hasn't landed"
+escape hatch (referenced in Consumer mix) is moot — FEAT-3308 and FEAT-3309 both
+landed `status: done` on 2026-08-25, so the third-consumer AC above is satisfied
+with a real `ll-artifact templatize` output; do not build the fallback path.
 
 ## Decisions
 
@@ -287,7 +325,45 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - File a follow-up ENH for literal→`var(--…)` rewriting in `templatize` (the rejected broad reading), so the deferred work is tracked rather than lost.
 - Update `docs/reference/CONFIGURATION.md`'s `_themed_css_vars` reference and `### artifacts` section narrative to describe the kit as the stamping owner.
 
+## Impact
+
+- **Priority**: P3 — pays off once a second artifact template exists; not urgent
+  on its own, but deferring it compounds cost as more templates copy from
+  policy-builder (see Motivation).
+- **Effort**: Medium — well-scoped extraction with an established call path
+  (Program Design/Integration Map above), but touches five import sites and
+  requires a new byte-identical golden-fixture test with no existing precedent
+  for policy-builder specifically.
+- **Risk**: Low-medium — behavior-preserving refactor with an explicit
+  byte-identical AC as a regression backstop; main risk is the inverted
+  `build_ll_namespace` → `policy_builder` coupling being missed during the port.
+
+## Resolution
+
+Extracted `scripts/little_loops/artifact_template_kit.py` as the shared kit:
+`themed_css_vars()` (moved verbatim from `policy_builder.py`) and a new
+`stamp_page_shell()` for the two page-shell placeholders (`data-theme`,
+`/*__THEMED_CSS_VARS__*/`) common to design-token-aware templates.
+`policy_builder.cmd_policy_builder` and `artifact_templates.build_ll_namespace`
+both now call the kit — the latter fixes the inverted coupling this issue
+flagged (general-purpose module no longer reaches into the CLI-command
+module). A golden fixture of `cmd_policy_builder`'s pre-port output
+(`scripts/tests/fixtures/policy_builder/golden_policy_router_builder.html`)
+backs a byte-identical regression test; output is confirmed byte-identical.
+The third-consumer AC is satisfied by a real `ll-artifact templatize` output
+(deterministic, region-map driven, no LLM call) run through the kit's
+stamping unit and shown to complete without error despite carrying no stamp
+points of its own — the narrow reading recorded in this issue's Decisions.
+Filed ENH-3319 for the deferred literal→`var(--…)` rewriting (the rejected
+broad reading).
+
+## Status
+
+open
+
 ## Session Log
+- `/ll:manage-issue` - 2026-08-25T16:14:52 - `2e6f3378-789f-46dc-8b61-adf0fc625fd4.jsonl`
+- `/ll:ready-issue` - 2026-08-25T15:56:02 - `125c68ec-92ed-459a-ad33-99ec14728018.jsonl`
 - `/ll:confidence-check` - 2026-08-25T15:49:55 - `c21d7697-754b-4fd4-b9a9-d9d051bebcc4.jsonl`
 - `/ll:wire-issue` - 2026-08-25T15:24:37 - `b117138e-ea1a-4c48-86b4-f79804f6b111.jsonl`
 - `/ll:refine-issue` - 2026-08-25T15:05:45 - `c104c28f-0ba5-4573-827d-9ff9ac6d6eb8.jsonl`

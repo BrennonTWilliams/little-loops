@@ -831,8 +831,8 @@ namespaces (and, for role-mapped colors, an extra level deeper).
 - **Themes.** The spec has no theme mechanism (one flat `colors:` map, no light/dark
   split). A DESIGN.md source resolves to a single theme; `active_theme` is silently
   ignored for the default (`theme=None`) call path used by `ll-loop run`/`resume`, and
-  a caller that passes an explicit `theme=` (only `_themed_css_vars`, used by
-  `ll-artifact` HTML generators) gets a one-time stderr warning instead. Projects that
+  a caller that passes an explicit `theme=` (only `artifact_template_kit.themed_css_vars`,
+  used by `ll-artifact` HTML generators) gets a one-time stderr warning instead. Projects that
   need light/dark keep using profiles.
 - **`components:`.** Structural guidance, not tokens — it is dropped before token
   resolution and never appears in `render_as_prompt_context()`/`render_as_css_vars()`
@@ -911,7 +911,7 @@ The design token loader supports the [W3C Design Tokens Community Group](https:/
 
 ### `artifacts`
 
-Output settings for `ll-artifact`, the generator of self-contained human-facing HTML artifacts (FEAT-2390). Backs the `policy-builder` subcommand (stamps design-token CSS vars, the canonical predicate grammar, and the skill/command catalog into a `file://`-safe policy-router / rubric loop builder page), `render` (FEAT-3036 Phase 1), which resolves and deterministically renders user-authored `.llat/` artifact templates, and `templatize` (FEAT-3308), which both reads and writes `templates_dir`: it splices a generated artifact into a reusable `.llat/` template and promotes the result there.
+Output settings for `ll-artifact`, the generator of self-contained human-facing HTML artifacts (FEAT-2390). Backs the `policy-builder` subcommand (stamps design-token CSS vars, the canonical predicate grammar, and the skill/command catalog into a `file://`-safe policy-router / rubric loop builder page), `render` (FEAT-3036 Phase 1), which resolves and deterministically renders user-authored `.llat/` artifact templates, and `templatize` (FEAT-3308), which both reads and writes `templates_dir`: it splices a generated artifact into a reusable `.llat/` template and promotes the result there. The page shell and design-token stamping shared across these are factored into `artifact_template_kit.py` (ENH-3035), not owned by `policy-builder` alone.
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|

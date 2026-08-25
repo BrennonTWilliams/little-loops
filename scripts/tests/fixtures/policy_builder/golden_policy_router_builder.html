@@ -1,0 +1,1567 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Policy Router Builder</title>
+  <style>
+/* Stamped design-token CSS custom properties (light :root + [data-theme=dark]). */
+:root {
+  --border-width-medium: 2px;
+  --border-width-thick: 3px;
+  --border-width-thin: 1px;
+  --color-action-destructive: #9a3812;
+  --color-action-primary: #9a3812;
+  --color-action-primary-hover: #5c2208;
+  --color-border-strong: #b8a482;
+  --color-border-subtle: #e8dcc4;
+  --color-danger-300: #e06b3d;
+  --color-danger-500: #9a3812;
+  --color-moss-500: #5e7140;
+  --color-paper-0: #fdfbf6;
+  --color-paper-100: #f3eada;
+  --color-paper-200: #e8dcc4;
+  --color-paper-300: #d4c5a7;
+  --color-paper-400: #b8a482;
+  --color-paper-50: #f9f4ea;
+  --color-paper-500: #8c7a5e;
+  --color-paper-600: #6b5d47;
+  --color-paper-700: #4a4031;
+  --color-paper-800: #2e2820;
+  --color-paper-900: #1a1612;
+  --color-paper-950: #0d0b08;
+  --color-success-300: #8fae66;
+  --color-success-500: #5e7140;
+  --color-surface-primary: #fdfbf6;
+  --color-surface-raised: #f3eada;
+  --color-surface-secondary: #f9f4ea;
+  --color-terracotta-100: #fde6d5;
+  --color-terracotta-300: #f7b886;
+  --color-terracotta-500: #c84a1c;
+  --color-terracotta-700: #9a3812;
+  --color-terracotta-900: #5c2208;
+  --color-text-inverse: #fdfbf6;
+  --color-text-muted: #8c7a5e;
+  --color-text-primary: #1a1612;
+  --color-text-secondary: #4a4031;
+  --color-warning-300: #d9a44a;
+  --color-warning-500: #9a6b12;
+  --font-family-body: 'Lora', 'Charter', 'Iowan Old Style', Georgia, serif;
+  --font-family-code: 'iA Writer Mono', 'Courier Prime', monospace;
+  --font-family-display: 'Fraunces', 'Lora', Georgia, serif;
+  --font-family-heading: 'Fraunces', 'Lora', Georgia, serif;
+  --font-family-mono: 'iA Writer Mono', 'Courier Prime', monospace;
+  --font-family-sans: 'Work Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-family-serif: 'Lora', 'Charter', 'Iowan Old Style', Georgia, serif;
+  --font-letter-spacing-normal: 0;
+  --font-letter-spacing-tight: -0.015em;
+  --font-letter-spacing-wide: 0.03em;
+  --font-line-height-normal: 1.65;
+  --font-line-height-relaxed: 1.85;
+  --font-line-height-tight: 1.2;
+  --font-size-2xl: 1.6875rem;
+  --font-size-3xl: 2.125rem;
+  --font-size-4xl: 2.75rem;
+  --font-size-base: 1.0625rem;
+  --font-size-lg: 1.1875rem;
+  --font-size-sm: 0.9375rem;
+  --font-size-xl: 1.375rem;
+  --font-size-xs: 0.8125rem;
+  --font-weight-bold: 700;
+  --font-weight-medium: 500;
+  --font-weight-normal: 400;
+  --font-weight-semibold: 600;
+  --radius-full: 9999px;
+  --radius-lg: 1rem;
+  --radius-md: 0.625rem;
+  --radius-none: 0;
+  --radius-sm: 0.375rem;
+  --radius-xl: 1.5rem;
+  --shadow-lg: 0 8px 20px rgba(74, 64, 49, 0.12);
+  --shadow-md: 0 3px 8px rgba(74, 64, 49, 0.10);
+  --shadow-sm: 0 1px 2px rgba(74, 64, 49, 0.06);
+  --space-0: 0;
+  --space-1: 0.375rem;
+  --space-10: 3.75rem;
+  --space-12: 4.5rem;
+  --space-16: 6rem;
+  --space-2: 0.75rem;
+  --space-24: 9rem;
+  --space-3: 1.125rem;
+  --space-4: 1.5rem;
+  --space-5: 1.875rem;
+  --space-6: 2.25rem;
+  --space-8: 3rem;
+}
+[data-theme=dark] {
+  --border-width-medium: 2px;
+  --border-width-thick: 3px;
+  --border-width-thin: 1px;
+  --color-action-destructive: #e06b3d;
+  --color-action-primary: #c84a1c;
+  --color-action-primary-hover: #f7b886;
+  --color-border-strong: #6b5d47;
+  --color-border-subtle: #2e2820;
+  --color-danger-300: #e06b3d;
+  --color-danger-500: #9a3812;
+  --color-moss-500: #5e7140;
+  --color-paper-0: #fdfbf6;
+  --color-paper-100: #f3eada;
+  --color-paper-200: #e8dcc4;
+  --color-paper-300: #d4c5a7;
+  --color-paper-400: #b8a482;
+  --color-paper-50: #f9f4ea;
+  --color-paper-500: #8c7a5e;
+  --color-paper-600: #6b5d47;
+  --color-paper-700: #4a4031;
+  --color-paper-800: #2e2820;
+  --color-paper-900: #1a1612;
+  --color-paper-950: #0d0b08;
+  --color-success-300: #8fae66;
+  --color-success-500: #5e7140;
+  --color-surface-primary: #0d0b08;
+  --color-surface-raised: #2e2820;
+  --color-surface-secondary: #1a1612;
+  --color-terracotta-100: #fde6d5;
+  --color-terracotta-300: #f7b886;
+  --color-terracotta-500: #c84a1c;
+  --color-terracotta-700: #9a3812;
+  --color-terracotta-900: #5c2208;
+  --color-text-inverse: #0d0b08;
+  --color-text-muted: #b8a482;
+  --color-text-primary: #fdfbf6;
+  --color-text-secondary: #d4c5a7;
+  --color-warning-300: #d9a44a;
+  --color-warning-500: #9a6b12;
+  --font-family-body: 'Lora', 'Charter', 'Iowan Old Style', Georgia, serif;
+  --font-family-code: 'iA Writer Mono', 'Courier Prime', monospace;
+  --font-family-display: 'Fraunces', 'Lora', Georgia, serif;
+  --font-family-heading: 'Fraunces', 'Lora', Georgia, serif;
+  --font-family-mono: 'iA Writer Mono', 'Courier Prime', monospace;
+  --font-family-sans: 'Work Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-family-serif: 'Lora', 'Charter', 'Iowan Old Style', Georgia, serif;
+  --font-letter-spacing-normal: 0;
+  --font-letter-spacing-tight: -0.015em;
+  --font-letter-spacing-wide: 0.03em;
+  --font-line-height-normal: 1.65;
+  --font-line-height-relaxed: 1.85;
+  --font-line-height-tight: 1.2;
+  --font-size-2xl: 1.6875rem;
+  --font-size-3xl: 2.125rem;
+  --font-size-4xl: 2.75rem;
+  --font-size-base: 1.0625rem;
+  --font-size-lg: 1.1875rem;
+  --font-size-sm: 0.9375rem;
+  --font-size-xl: 1.375rem;
+  --font-size-xs: 0.8125rem;
+  --font-weight-bold: 700;
+  --font-weight-medium: 500;
+  --font-weight-normal: 400;
+  --font-weight-semibold: 600;
+  --radius-full: 9999px;
+  --radius-lg: 1rem;
+  --radius-md: 0.625rem;
+  --radius-none: 0;
+  --radius-sm: 0.375rem;
+  --radius-xl: 1.5rem;
+  --shadow-lg: 0 8px 20px rgba(0, 0, 0, 0.6);
+  --shadow-md: 0 3px 8px rgba(0, 0, 0, 0.55);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5);
+  --space-0: 0;
+  --space-1: 0.375rem;
+  --space-10: 3.75rem;
+  --space-12: 4.5rem;
+  --space-16: 6rem;
+  --space-2: 0.75rem;
+  --space-24: 9rem;
+  --space-3: 1.125rem;
+  --space-4: 1.5rem;
+  --space-5: 1.875rem;
+  --space-6: 2.25rem;
+  --space-8: 3rem;
+}
+
+:root {
+  color-scheme: light dark;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: var(--typography-font-family-base, system-ui, sans-serif);
+  background: var(--color-surface-base, #ffffff);
+  color: var(--color-text-primary, #1a1a1a);
+  line-height: 1.5;
+}
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid var(--color-border-default, #d0d0d0);
+}
+h1 { font-size: 1.25rem; margin: 0; }
+main {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+  padding: 1.5rem;
+}
+.panel {
+  border: 1px solid var(--color-border-default, #d0d0d0);
+  border-radius: 8px;
+  padding: 1rem;
+  background: var(--color-surface-raised, #fafafa);
+}
+fieldset {
+  border: 1px solid var(--color-border-default, #d0d0d0);
+  border-radius: 6px;
+  margin: 0 0 1rem;
+  padding: 0.75rem;
+}
+legend { font-weight: 600; padding: 0 0.4rem; }
+label { display: block; font-size: 0.85rem; margin: 0.4rem 0 0.15rem; }
+input, select, textarea, button {
+  font: inherit;
+  color: inherit;
+  background: var(--color-surface-base, #fff);
+  border: 1px solid var(--color-border-default, #ccc);
+  border-radius: 4px;
+  padding: 0.35rem 0.5rem;
+}
+input[type="text"], input[type="number"], textarea, select { width: 100%; }
+textarea { min-height: 4rem; resize: vertical; }
+button {
+  cursor: pointer;
+  background: var(--color-action-primary, #2563eb);
+  color: var(--color-action-primary-text, #ffffff);
+  border: none;
+}
+button.secondary {
+  background: transparent;
+  color: var(--color-text-primary, #1a1a1a);
+  border: 1px solid var(--color-border-default, #ccc);
+}
+.row { display: flex; gap: 0.5rem; align-items: flex-end; flex-wrap: wrap; }
+.row > * { flex: 1; }
+.row > button { flex: 0 0 auto; }
+.outcome-group { border: 1px dashed var(--color-border-default, #ccc); border-radius: 6px; padding: 0.6rem; margin-bottom: 0.75rem; }
+.rule-row { display: flex; gap: 0.4rem; align-items: center; margin-bottom: 0.35rem; flex-wrap: wrap; }
+.rule-card {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+  flex-wrap: wrap;
+  border: 1px solid var(--color-border-default, #ccc);
+  border-radius: 6px;
+  padding: 0.5rem;
+  margin-bottom: 0.4rem;
+  background: var(--color-surface-base, #fff);
+}
+.rule-card.rule-winner {
+  outline: 2px solid var(--color-action-primary, #2563eb);
+  background: var(--color-status-success-bg, #d4edda);
+}
+.rule-ord { font-weight: 700; min-width: 1.5rem; }
+.rule-move { flex: 0 0 auto; padding: 0.2rem 0.5rem; }
+.fallback-row { font-style: italic; opacity: 0.85; }
+.fallback-row select { max-width: 16rem; }
+pre {
+  background: var(--color-surface-sunken, #1e1e1e);
+  color: var(--color-text-on-sunken, #e0e0e0);
+  padding: 1rem;
+  border-radius: 6px;
+  overflow: auto;
+  max-height: 60vh;
+  white-space: pre;
+  font-family: var(--typography-font-family-mono, ui-monospace, monospace);
+  font-size: 0.8rem;
+}
+.messages { margin: 0.5rem 0; padding: 0; list-style: none; }
+.messages li { padding: 0.3rem 0.5rem; border-radius: 4px; margin-bottom: 0.25rem; font-size: 0.85rem; }
+.msg-warn { background: var(--color-status-warning-bg, #fff3cd); color: var(--color-status-warning-text, #856404); }
+.msg-error { background: var(--color-status-error-bg, #f8d7da); color: var(--color-status-error-text, #721c24); }
+.msg-ok { background: var(--color-status-success-bg, #d4edda); color: var(--color-status-success-text, #155724); }
+.hint { font-family: var(--typography-font-family-mono, monospace); font-size: 0.8rem; opacity: 0.8; }
+.theme-toggle { font-size: 1.1rem; padding: 0.3rem 0.6rem; }
+.del { flex: 0 0 auto; padding: 0.2rem 0.5rem; }
+small.help { display: block; opacity: 0.7; font-size: 0.75rem; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Policy Router Builder</h1>
+    <div>
+      <select id="mode-switch" aria-label="Builder mode">
+        <option value="decision_table">Decision Table</option>
+        <option value="rubric">Rubric</option>
+      </select>
+      <button class="secondary theme-toggle" id="theme-toggle" title="Toggle theme">🌙</button>
+    </div>
+  </header>
+
+  <!-- Stamped project-derived JSON globals (plain script, before the module). -->
+  <script>
+    window.__GRAMMAR_SPEC__ = {"ordered_ops": ["<", "<=", ">", ">="], "all_ops": ["!=", "<", "<=", "==", ">", ">="], "pred_pattern": "^(?<dim>[\\w][\\w\\s\\-]*?)\\s*:\\s*(?<op>>=|<=|==|!=|<|>)\\s*(?<value>\\S.*?)$"};
+    window.__SKILL_CATALOG__ = [{"name": "advise", "description": "Use when asked for a second opinion from a different, stronger model on a specific decision, question, or stalled judgment call."}, {"name": "analyze-history", "description": "Use when asked about project health, velocity, bug trends, or whether we're making progress."}, {"name": "audit-claude-config", "description": "Use when asked to audit Claude Code config, validate plugin settings, or diagnose plugin issues."}, {"name": "audit-docs", "description": "Use when asked to audit documentation accuracy, coverage, or find documentation gaps."}, {"name": "audit-issue-conflicts", "description": "Use when asked to detect conflicting requirements or incompatible decisions across open issues."}, {"name": "audit-loop-run", "description": "Use when asked to assess loop effectiveness, audit goal achievement, or detect phantom success."}, {"name": "capture-issue", "description": "Use when asked to capture or create an issue from conversation or natural language."}, {"name": "cleanup-loops", "description": "Use when asked to clean up stuck loops, kill dead loop processes, or troubleshoot loop state."}, {"name": "compact-session", "description": "Use when asked to manually compact a session's memory, trigger session summarization, or reduce a long session's context footprint."}, {"name": "confidence-check", "description": "Use when asked for a pre-implementation confidence check or whether an issue is ready to implement."}, {"name": "configure", "description": "Use when asked to configure little-loops, change settings, or update ll-config.json."}, {"name": "create-eval-from-issues", "description": "Use when asked to generate an FSM eval harness YAML from one or more issue IDs, or DSL eval tasks from a loop/issue file with --dsl."}, {"name": "create-loop", "description": "Use when asked to create an automation loop or automate a recurring task with an FSM."}, {"name": "debug-loop-run", "description": "Use when asked to analyze loop execution history, investigate loop failures, or find loop issues."}, {"name": "decide-issue", "description": "Use when asked to select the winning implementation option for an issue with decision_needed."}, {"name": "distill-traces", "description": "Use when asked to extract reusable loop patterns or YAML fragments from successful execution history."}, {"name": "explore-api", "description": "Use when exploring an external API/library and recording proof to the Learning Test Registry."}, {"name": "format-issue", "description": "Use when asked to format an issue or fix its template structure."}, {"name": "go-no-go", "description": "Use when asked for an adversarial go/no-go review or whether an issue is worth implementing."}, {"name": "improve-claude-md", "description": "Use when asked to improve or rewrite CLAUDE.md or increase LLM instruction adherence."}, {"name": "init", "description": "Use when asked to initialize little-loops, set up ll for a project, or bootstrap config."}, {"name": "issue-size-review", "description": "Use when asked to evaluate issue size, decompose large issues, or audit backlog complexity."}, {"name": "issue-workflow", "description": "Use when asked about the issue lifecycle, command order for issues, or how to manage issues."}, {"name": "link-epics", "description": "Assign orphaned issues to existing EPICs, or cluster them into new-EPIC proposals, via `ll-issues link-epics`."}, {"name": "ll-align-issues", "description": "Validate active issues against key documents for relevance and alignment"}, {"name": "ll-analyze-workflows", "description": "Analyze user message history to identify patterns, workflows, and automation opportunities"}, {"name": "ll-audit-architecture", "description": "Analyze codebase architecture for patterns, organization, and improvements"}, {"name": "ll-capture-issue", "description": "Use when asked to capture or create an issue from conversation or natural language."}, {"name": "ll-check-code", "description": "Run code quality checks (lint, format, types, build)"}, {"name": "ll-cleanup-worktrees", "description": "Clean orphaned git worktrees from interrupted ll-parallel/ll-loop runs"}, {"name": "ll-commit", "description": "Create git commits with user approval and no assistant attribution"}, {"name": "ll-compact-session", "description": "Use when asked to manually compact a session's memory, trigger session summarization, or reduce a long session's context footprint."}, {"name": "ll-create-sprint", "description": "Create a sprint definition with a curated list of issues"}, {"name": "ll-describe-pr", "description": "Generate comprehensive PR descriptions following repository templates"}, {"name": "ll-find-dead-code", "description": "Analyze codebase for deprecated, unused, or dead code that can be safely removed"}, {"name": "ll-go-no-go", "description": "Use when asked for an adversarial go/no-go review or whether an issue is worth implementing."}, {"name": "ll-handoff", "description": "Generate continuation prompt for session handoff"}, {"name": "ll-help", "description": "List all available little-loops commands with descriptions"}, {"name": "ll-iterate-plan", "description": "Iterate on existing implementation plans with thorough research and updates"}, {"name": "ll-loop-suggester", "description": "Analyze user message history to suggest FSM loop configurations automatically. Uses ll-messages output to identify repeated workflows and generate ready-to-use loop YAML. Also supports --from-commands mode to suggest loops from the available command/skill catalog without requiring message history, and --from-sequences mode to suggest loops from ll-logs sequences n-gram output.\n\nTrigger keywords: \"suggest loops\", \"loop from history\", \"automate workflow\", \"create loop from messages\", \"analyze messages for loops\", \"ll-messages loop\", \"suggest automation\", \"detect patterns for loops\", \"suggest loops from commands\", \"loop from catalog\", \"from-commands\", \"suggest loops from sequences\", \"from-sequences\", \"loop from ll-logs"}, {"name": "ll-manage-release", "description": "Manage releases - create git tags, generate changelogs, and manage GitHub releases.\nIntegrates with Issue Management to include completed issues in release notes.\n\nTrigger keywords: \"manage release\", \"create release\", \"new release\", \"tag release\", \"publish release\", \"make release\", \"bump version"}, {"name": "ll-normalize-issues", "description": "Find and fix issue filenames with missing or duplicate IDs across types (e.g., BUG-007 and FEAT-007)"}, {"name": "ll-open-pr", "description": "Open a pull request for the current branch.\n\nTrigger keywords: \"open pr\", \"create pull request\", \"submit pr\", \"create pr\", \"open pull request\", \"submit for review\", \"make a pr"}, {"name": "ll-prioritize-issues", "description": "Analyze issues and prepend priority levels (P0-P5) to filenames"}, {"name": "ll-ready-issue", "description": "Analyze and validate an issue file for accuracy, utility, and completeness, then auto-correct to make implementation-ready or close if invalid"}, {"name": "ll-reconcile-issue", "description": "Rewrite an issue's Implementation Steps, Acceptance Criteria, and Integration Map (Files to Modify, Dependent Files, Similar Patterns, Tests, Documentation) in place from its own accumulated research findings \u2014 plus, conditionally, a Scope Boundaries claim contradicted by those findings \u2014 without appending or bulldozing human prose"}, {"name": "ll-refine-issue", "description": "Refine issue files with codebase-driven research to fill knowledge gaps needed for implementation"}, {"name": "ll-resume", "description": "Resume from a previous session's continuation prompt"}, {"name": "ll-review-sprint", "description": "AI-guided sprint health check that analyzes a sprint's current state and suggests improvements - removing stale issues, adding related backlog issues, and identifying dependency or contention problems. Pairs with `ll-sprint edit` (mechanics) the way `/ll:create-sprint` pairs with `ll-sprint create` (intelligence).\n\nTrigger keywords: \"review sprint\", \"sprint health\", \"sprint review\", \"check sprint\", \"sprint suggestions\", \"optimize sprint\", \"sprint health check\", \"is my sprint still good"}, {"name": "ll-run-tests", "description": "Run test suites with common patterns"}, {"name": "ll-scan-codebase", "description": "Scan codebase to identify bugs, enhancements, and features, then create issue files"}, {"name": "ll-scan-product", "description": "Scan codebase for product-focused issues based on goals document"}, {"name": "ll-sync-issues", "description": "Sync local issues with GitHub Issues (push/pull/status).\n\nTrigger keywords: \"sync issues\", \"push to github\", \"pull from github\", \"github sync\", \"sync with github\", \"export issues\", \"import issues from github"}, {"name": "ll-toggle-autoprompt", "description": "Toggle automatic prompt optimization settings"}, {"name": "ll-tradeoff-review-issues", "description": "Evaluate active issues for utility vs complexity trade-offs and recommend which to implement, update, or close. Use this skill to sense-check your backlog before implementation, prune low-value issues, or during sprint planning to focus on high-value work.\n\nTrigger keywords: \"tradeoff review\", \"review issues\", \"utility review\", \"prune backlog\", \"issue tradeoff\", \"sense check issues\", \"evaluate issues\", \"backlog review\", \"worth implementing\", \"low value issues"}, {"name": "ll-verify-issues", "description": "Verify issue files for accuracy, relevance, and completeness by testing claims against actual code"}, {"name": "manage-issue", "description": "Use when asked to implement an issue end-to-end or start implementing FEAT-NNN."}, {"name": "map-dependencies", "description": "Use when asked to find dependencies between issues or prepare a dependency-aware sprint plan."}, {"name": "product-analyzer", "description": "Use when asked to analyze product goals, check feature gaps, or evaluate business value. Returns raw YAML findings. For full scan with issue file creation, use `/ll:scan-product`."}, {"name": "rename-loop", "description": "Rename a loop and update all references in YAMLs, tests, and docs."}, {"name": "review-epic", "description": "Use when asked to review epic health, audit stalled children, check scope drift, find missing coverage, or assess closure readiness. Produces a structured health report and actionable recommendations. Read-only."}, {"name": "review-loop", "description": "Use when asked to review loop config quality, validate loop YAML, or audit a loop definition."}, {"name": "scope-epic", "description": "Use when asked to decompose a theme or goal into an EPIC with 3\u20138 child issues. Creates the EPIC file, pre-wired child stubs, and stages everything for git."}, {"name": "simplify-loop", "description": "Use when asked to simplify a loop, decompose a loop into sub-loops, collapse state chains into flows, or refactor an FSM loop."}, {"name": "spike", "description": "Use when asked to prove an unproven internal mechanism with an isolated code spike before implementing."}, {"name": "update", "description": "Use when asked to update little-loops, the plugin, or the pip package."}, {"name": "update-docs", "description": "Use when asked to update docs, find stale documentation, or check doc coverage after a sprint."}, {"name": "verify-issue-loop", "description": "Use when asked to generate an FSM verification loop YAML from a single issue's acceptance criteria, or an adversarial variant that tries to break the feature via boundary/malformed/failure-mode probes."}, {"name": "wire-issue", "description": "Use when a refined issue is missing integration points or wiring in the implementation plan."}, {"name": "workflow-automation-proposer", "description": "Use when asked to propose automations or suggest automation opportunities from workflow patterns."}, {"name": "align-issues", "description": "Validate active issues against key documents for relevance and alignment"}, {"name": "analyze-workflows", "description": "Analyze user message history to identify patterns, workflows, and automation opportunities"}, {"name": "audit-architecture", "description": "Analyze codebase architecture for patterns, organization, and improvements"}, {"name": "check-code", "description": "Run code quality checks (lint, format, types, build)"}, {"name": "cleanup-worktrees", "description": "Clean orphaned git worktrees from interrupted ll-parallel/ll-loop runs"}, {"name": "commit", "description": "Create git commits with user approval and no assistant attribution"}, {"name": "create-sprint", "description": "Create a sprint definition with a curated list of issues"}, {"name": "describe-pr", "description": "Generate comprehensive PR descriptions following repository templates"}, {"name": "find-dead-code", "description": "Analyze codebase for deprecated, unused, or dead code that can be safely removed"}, {"name": "handoff", "description": "Generate continuation prompt for session handoff"}, {"name": "help", "description": "List all available little-loops commands with descriptions"}, {"name": "iterate-plan", "description": "Iterate on existing implementation plans with thorough research and updates"}, {"name": "loop-suggester", "description": "Analyze user message history to suggest FSM loop configurations automatically. Uses ll-messages output to identify repeated workflows and generate ready-to-use loop YAML. Also supports --from-commands mode to suggest loops from the available command/skill catalog without requiring message history, and --from-sequences mode to suggest loops from ll-logs sequences n-gram output.\n\nTrigger keywords: \"suggest loops\", \"loop from history\", \"automate workflow\", \"create loop from messages\", \"analyze messages for loops\", \"ll-messages loop\", \"suggest automation\", \"detect patterns for loops\", \"suggest loops from commands\", \"loop from catalog\", \"from-commands\", \"suggest loops from sequences\", \"from-sequences\", \"loop from ll-logs"}, {"name": "manage-release", "description": "Manage releases - create git tags, generate changelogs, and manage GitHub releases.\nIntegrates with Issue Management to include completed issues in release notes.\n\nTrigger keywords: \"manage release\", \"create release\", \"new release\", \"tag release\", \"publish release\", \"make release\", \"bump version"}, {"name": "normalize-issues", "description": "Find and fix issue filenames with missing or duplicate IDs across types (e.g., BUG-007 and FEAT-007)"}, {"name": "open-pr", "description": "Open a pull request for the current branch.\n\nTrigger keywords: \"open pr\", \"create pull request\", \"submit pr\", \"create pr\", \"open pull request\", \"submit for review\", \"make a pr"}, {"name": "prioritize-issues", "description": "Analyze issues and prepend priority levels (P0-P5) to filenames"}, {"name": "ready-issue", "description": "Analyze and validate an issue file for accuracy, utility, and completeness, then auto-correct to make implementation-ready or close if invalid"}, {"name": "reconcile-issue", "description": "Rewrite an issue's Implementation Steps, Acceptance Criteria, and Integration Map (Files to Modify, Dependent Files, Similar Patterns, Tests, Documentation) in place from its own accumulated research findings \u2014 plus, conditionally, a Scope Boundaries claim contradicted by those findings \u2014 without appending or bulldozing human prose"}, {"name": "refine-issue", "description": "Refine issue files with codebase-driven research to fill knowledge gaps needed for implementation"}, {"name": "resume", "description": "Resume from a previous session's continuation prompt"}, {"name": "review-sprint", "description": "AI-guided sprint health check that analyzes a sprint's current state and suggests improvements - removing stale issues, adding related backlog issues, and identifying dependency or contention problems. Pairs with `ll-sprint edit` (mechanics) the way `/ll:create-sprint` pairs with `ll-sprint create` (intelligence).\n\nTrigger keywords: \"review sprint\", \"sprint health\", \"sprint review\", \"check sprint\", \"sprint suggestions\", \"optimize sprint\", \"sprint health check\", \"is my sprint still good"}, {"name": "run-tests", "description": "Run test suites with common patterns"}, {"name": "scan-codebase", "description": "Scan codebase to identify bugs, enhancements, and features, then create issue files"}, {"name": "scan-product", "description": "Scan codebase for product-focused issues based on goals document"}, {"name": "sync-issues", "description": "Sync local issues with GitHub Issues (push/pull/status).\n\nTrigger keywords: \"sync issues\", \"push to github\", \"pull from github\", \"github sync\", \"sync with github\", \"export issues\", \"import issues from github"}, {"name": "toggle-autoprompt", "description": "Toggle automatic prompt optimization settings"}, {"name": "tradeoff-review-issues", "description": "Evaluate active issues for utility vs complexity trade-offs and recommend which to implement, update, or close. Use this skill to sense-check your backlog before implementation, prune low-value issues, or during sprint planning to focus on high-value work.\n\nTrigger keywords: \"tradeoff review\", \"review issues\", \"utility review\", \"prune backlog\", \"issue tradeoff\", \"sense check issues\", \"evaluate issues\", \"backlog review\", \"worth implementing\", \"low value issues"}, {"name": "verify-issues", "description": "Verify issue files for accuracy, relevance, and completeness by testing claims against actual code"}];
+    window.__ACTIVE_THEME__ = document.documentElement.getAttribute("data-theme") || "light";
+  </script>
+
+  <main>
+    <section class="panel" id="form-panel">
+      <fieldset>
+        <legend>Identity</legend>
+        <label for="f-name">Loop name</label>
+        <input type="text" id="f-name" value="my-policy-loop" />
+        <label for="f-subject">What are you grading?</label>
+        <input type="text" id="f-subject" value="artifact.md" placeholder="e.g. artifact.md" />
+        <label for="f-maxsteps">Max steps</label>
+        <input type="number" id="f-maxsteps" value="20" min="1" />
+        <label for="f-desc">Description (optional)</label>
+        <textarea id="f-desc"></textarea>
+      </fieldset>
+
+      <fieldset id="threshold-fieldset" hidden>
+        <legend>Thresholds (Rubric)</legend>
+        <label for="f-thigh">High threshold: <span id="thigh-val">85</span></label>
+        <input type="range" id="f-thigh" min="0" max="100" value="85" />
+        <label for="f-tmed">Medium threshold: <span id="tmed-val">65</span></label>
+        <input type="range" id="f-tmed" min="0" max="100" value="65" />
+      </fieldset>
+
+      <fieldset>
+        <legend>Dimensions</legend>
+        <div id="dim-list"></div>
+        <div class="row">
+          <input type="text" id="dim-name" placeholder="dimension name" />
+          <select id="dim-type">
+            <option value="numeric">numeric</option>
+            <option value="boolean">boolean</option>
+          </select>
+          <button id="add-dim" type="button">Add</button>
+        </div>
+        <small class="help">Boolean dimensions are scored 100/0 and compiled to numeric conditions.</small>
+      </fieldset>
+
+      <fieldset id="outcomes-fieldset">
+        <legend>Outcomes</legend>
+        <div id="outcome-list"></div>
+        <div class="row">
+          <input type="text" id="outcome-name" placeholder="new outcome name" />
+          <button id="add-outcome" type="button">Add outcome</button>
+        </div>
+        <small class="help">Name each destination once; rules below route to these outcomes by name.</small>
+      </fieldset>
+
+      <fieldset id="rules-fieldset">
+        <legend>Rules (Decision Table)</legend>
+        <div id="rule-list"></div>
+        <div class="row">
+          <button id="add-rule" type="button">+ Rule</button>
+        </div>
+        <div class="row fallback-row" id="fallback-row">
+          <span>Otherwise →</span>
+          <select id="f-fallback" aria-label="Fallback outcome" title="Fallback outcome"></select>
+        </div>
+      </fieldset>
+
+      <fieldset id="tryit-fieldset">
+        <legend>Try it</legend>
+        <div id="tryit-inputs"></div>
+        <small class="help">Enter sample values to see which rule wins — reordering rules above changes the winner live.</small>
+      </fieldset>
+    </section>
+
+    <section class="panel">
+      <h2 style="margin-top:0;font-size:1rem;">Result</h2>
+      <p id="yaml-summary"></p>
+      <ul class="messages" id="messages"></ul>
+      <div class="row" style="margin-bottom:0.5rem;">
+        <button id="copy-btn" type="button">Copy</button>
+        <button id="download-btn" type="button">Download &lt;name&gt;.yaml</button>
+        <button id="start-blank-btn" type="button" class="secondary">Start blank</button>
+      </div>
+      <p class="hint" id="validate-hint"></p>
+      <details id="yaml-details">
+        <summary>View generated file</summary>
+        <pre id="yaml-preview"></pre>
+      </details>
+    </section>
+  </main>
+
+  <script type="module">
+// policy_builder_core.mjs — FEAT-2301
+//
+// Pure (DOM-free) JS logic for the self-contained policy-router / rubric HTML
+// builder. This module mirrors the canonical Python grammar/evaluation in
+// little_loops/fsm/policy_rules.py (parse_rules, evaluate_rules, _eval_predicate)
+// and little_loops/fsm/route_table.py (_detect_shadows). It is imported directly
+// by node:test and inlined verbatim into the generated HTML page.
+//
+// ===========================================================================
+// serializeLoopYaml(model) — model shape contract
+// ===========================================================================
+// The serializer accepts a plain object describing a builder session. Both the
+// Python emit path and the browser UI build this shape. It is intentionally
+// flat and JSON-friendly (no classes). Fields:
+//
+// {
+//   mode: "decision_table" | "rubric",
+//   name: string,                 // loop name (also the output filename stem)
+//   description: string,          // optional; multi-line allowed
+//   subject: string,              // context.subject value
+//   maxSteps: number,             // max_steps (default 20 / 10)
+//   thresholdHigh: number,        // rubric high threshold (slider)
+//   thresholdMedium: number,      // rubric medium threshold (slider)
+//   dimensions: [                 // rubric dimensions / scored axes
+//     { name: string, type: "numeric" | "boolean" }
+//   ],
+//   rules: [                      // ordered decision-table rules (catch-all last)
+//     {
+//       predicates: [ { dim: string, op: string, value: string } ],
+//       target: string,          // outcome token this rule routes to
+//       isCatchall: boolean
+//     }
+//   ],
+//   fallback: string,            // catch-all target when no rule supplies one
+//                                // (decision_table only; the "Everything else"
+//                                //  outcome). If a catch-all rule already exists
+//                                //  in `rules`, that wins.
+//   outcomes: [                  // per-outcome state authoring
+//     {
+//       name: string,            // outcome token (matches a rule target)
+//       actionType: "prompt" | "slash_command" | "none",
+//       body: string,            // prompt text OR "/ll:skill-name" command
+//       transition: {            // Axis B
+//         kind: "rescore" | "goto" | "finish",
+//         target: string         // for kind==="goto": destination outcome/state
+//       }
+//     }
+//   ]
+// }
+//
+// Decision Table mode emits a policy-refine.yaml–shaped loop (imports
+// lib/rubric-router.yaml then lib/policy-router.yaml; score → parse_scores →
+// policy_dispatch route map → one state per outcome). Rubric mode emits a
+// rubric-refine.yaml–shaped loop. The serializer hand-rolls YAML (block scalars
+// `|` for multi-line actions) and is fully deterministic.
+// ===========================================================================
+
+// Canonical operator sets (kept in sync with policy_rules.grammar_spec()).
+const ORDERED_OPS = [">=", "<=", "<", ">"];
+
+// Default JS predicate regex literal mirroring _PRED_PATTERN after
+// _py_pattern_to_js translation: (?P<name>...) -> (?<name>...). Used when no
+// `grammar` arg is supplied (e.g. node tests that don't shell out to Python).
+const DEFAULT_PRED_RE = /^(?<dim>[\w][\w\s\-]*?)\s*:\s*(?<op>>=|<=|==|!=|<|>)\s*(?<value>\S.*?)$/;
+
+function _predRegex(grammar) {
+  if (grammar && typeof grammar.pred_pattern === "string") {
+    // Accept either an already-JS pattern or a Python one. Translate the named
+    // group syntax defensively; all other constructs are engine-identical.
+    const src = grammar.pred_pattern.replace(/\(\?P<([^>]+)>/g, "(?<$1>");
+    return new RegExp(src);
+  }
+  return DEFAULT_PRED_RE;
+}
+
+/**
+ * True if a rule is a catch-all (no predicates).
+ * @param {{predicates: Array}} rule
+ * @returns {boolean}
+ */
+export function isCatchall(rule) {
+  return !rule.predicates || rule.predicates.length === 0;
+}
+
+/**
+ * Normalize a dimension name: trim, lowercase, collapse whitespace runs to '-'.
+ * @param {string} name
+ * @returns {string}
+ */
+export function normalizeDimName(name) {
+  return String(name).trim().toLowerCase().replace(/\s+/g, "-");
+}
+
+/**
+ * Compile a boolean predicate operator into a numeric {op, value} pair.
+ * ==true -> >=50 ; ==false -> <50  (mirrors the 100/0 boolean encoding).
+ * @param {string} op  one of "==true", "==false"
+ * @returns {{op: string, value: string}}
+ */
+export function compileBooleanPredicate(op) {
+  const norm = String(op).replace(/\s+/g, "").toLowerCase();
+  if (norm === "==true") return { op: ">=", value: "50" };
+  if (norm === "==false") return { op: "<", value: "50" };
+  throw new Error(`compileBooleanPredicate: unsupported op ${op}`);
+}
+
+/**
+ * Evaluate a single predicate against a scores object. Mirrors _eval_predicate.
+ * @param {{dim: string, op: string, value: string}} pred
+ * @param {Object} scores
+ * @returns {boolean}
+ */
+function evalPredicate(pred, scores) {
+  const raw =
+    scores != null && Object.prototype.hasOwnProperty.call(scores, pred.dim)
+      ? scores[pred.dim]
+      : undefined;
+
+  if (raw === undefined || raw === null) {
+    // Missing dimension: only != matches.
+    return pred.op === "!=";
+  }
+
+  const op = pred.op;
+
+  if (ORDERED_OPS.includes(op)) {
+    const lhs = Number(String(raw));
+    const rhs = Number(String(pred.value));
+    if (Number.isNaN(lhs) || Number.isNaN(rhs)) return false;
+    if (op === ">") return lhs > rhs;
+    if (op === "<") return lhs < rhs;
+    if (op === ">=") return lhs >= rhs;
+    return lhs <= rhs; // "<="
+  }
+
+  // == or != : numeric coercion first, fall back to string compare.
+  const lhsF = Number(String(raw));
+  const rhsF = Number(String(pred.value));
+  // Python float() rejects "" and arbitrary strings; Number("") === 0 and
+  // Number(" ") === 0, so guard against empty-string coercion to match Python.
+  const lhsNumeric = !Number.isNaN(lhsF) && String(raw).trim() !== "";
+  const rhsNumeric = !Number.isNaN(rhsF) && String(pred.value).trim() !== "";
+  if (lhsNumeric && rhsNumeric) {
+    if (op === "==") return lhsF === rhsF;
+    return lhsF !== rhsF; // "!="
+  }
+  const lhsS = String(raw);
+  const rhsS = String(pred.value);
+  if (op === "==") return lhsS === rhsS;
+  return lhsS !== rhsS; // "!="
+}
+
+/**
+ * Return the target of the first matching rule, or null. Mirrors evaluate_rules.
+ * @param {Array} rules  array of {predicates, target, isCatchall}
+ * @param {Object} scores
+ * @returns {string|null}
+ */
+export function evaluateRules(rules, scores) {
+  for (const rule of rules) {
+    if (isCatchall(rule)) return rule.target;
+    if (rule.predicates.every((p) => evalPredicate(p, scores))) return rule.target;
+  }
+  return null;
+}
+
+/**
+ * Detect shadowed rules. Mirrors route_table._detect_shadows but returns
+ * structured objects (1-based ruleNumber).
+ * @param {Array} rules
+ * @returns {Array<{ruleNumber: number, target: string, reason: string}>}
+ */
+export function detectShadows(rules) {
+  const out = [];
+  for (let i = 0; i < rules.length; i++) {
+    const later = rules[i];
+    if (isCatchall(later)) continue;
+    const laterSet = new Set(later.predicates.map((p) => `${p.dim}\u0000${p.op}\u0000${p.value}`));
+    for (let j = 0; j < i; j++) {
+      const earlier = rules[j];
+      if (isCatchall(earlier)) {
+        out.push({
+          ruleNumber: i + 1,
+          target: later.target,
+          reason: `Rule ${i + 1} (→ ${later.target}) is shadowed by catch-all rule ${j + 1}`,
+        });
+        break;
+      }
+      const earlierSet = earlier.predicates.map(
+        (p) => `${p.dim}\u0000${p.op}\u0000${p.value}`
+      );
+      if (earlierSet.length > 0 && earlierSet.every((k) => laterSet.has(k))) {
+        out.push({
+          ruleNumber: i + 1,
+          target: later.target,
+          reason:
+            `Rule ${i + 1} (→ ${later.target}) may be shadowed by rule ${j + 1} ` +
+            `(→ ${earlier.target}): earlier rule has fewer/equal constraints`,
+        });
+        break;
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * Move a rule one position up or down in precedence order. Pure: returns a
+ * new object (shallow-copied `rules` array); never mutates `model.rules` or
+ * the rule objects it contains. A no-op (returns an equivalent copy) at
+ * either boundary — moving the first rule up, or the last rule down.
+ *
+ * FEAT-2301: this is the reorder half of the "ordered, numbered rule list"
+ * UX model. The template calls it from ↑/↓ buttons and re-derives the
+ * flattened rule order from the returned `.rules` for `buildModel()`,
+ * `evaluateRules()`, and `detectShadows()` — reordering therefore changes
+ * both precedence and the live "Try it" winner.
+ *
+ * @param {{rules: Array}} model  any object carrying a `.rules` array (the
+ *   full builder model, or a minimal `{rules}` shape — only `.rules` is read)
+ * @param {number} index  0-based index of the rule to move
+ * @param {number|'up'|'down'} direction  -1/'up' moves the rule earlier
+ *   (higher precedence); 1/'down' moves it later
+ * @returns {{rules: Array}} a new object with the same own keys as `model`,
+ *   plus a new `rules` array reflecting the move (or the original order,
+ *   copied, if the move would go out of bounds)
+ */
+export function moveRule(model, index, direction) {
+  const rules = (model && model.rules ? model.rules : []).slice();
+  const delta = direction === "up" || direction === -1 ? -1 : 1;
+  const target = index + delta;
+  if (index < 0 || index >= rules.length || target < 0 || target >= rules.length) {
+    return { ...model, rules };
+  }
+  const tmp = rules[index];
+  rules[index] = rules[target];
+  rules[target] = tmp;
+  return { ...model, rules };
+}
+
+/**
+ * A small, runnable Decision Table example model — the "never a blank form"
+ * seed (UX model §6). Non-empty: two dimensions, two ordered rules
+ * demonstrating precedence, three outcomes, and a fallback.
+ * @returns {Object} a builder model (see file-header model-shape contract)
+ */
+export function seedExample() {
+  return {
+    mode: "decision_table",
+    name: "my-policy-loop",
+    description: "",
+    subject: "artifact.md",
+    maxSteps: 20,
+    thresholdHigh: 85,
+    thresholdMedium: 65,
+    dimensions: [
+      { name: "quality", type: "numeric" },
+      { name: "has-citations", type: "boolean" },
+    ],
+    rules: [
+      {
+        predicates: [
+          { dim: "quality", op: ">=", value: "95" },
+          { dim: "has-citations", op: "==true", value: "" },
+        ],
+        target: "done",
+        isCatchall: false,
+      },
+      {
+        predicates: [{ dim: "quality", op: ">=", value: "80" }],
+        target: "light-repair",
+        isCatchall: false,
+      },
+    ],
+    fallback: "deep-repair",
+    outcomes: [
+      { name: "done", actionType: "none", body: "", transition: { kind: "finish" } },
+      {
+        name: "light-repair",
+        actionType: "prompt",
+        body: "Re-prompt for the lowest-scoring dimension, then re-score.",
+        transition: { kind: "rescore" },
+      },
+      {
+        name: "deep-repair",
+        actionType: "prompt",
+        body: "Apply comprehensive repairs across every dimension, then re-score.",
+        transition: { kind: "rescore" },
+      },
+    ],
+  };
+}
+
+/**
+ * An empty builder model — the target of the "Start blank" control (UX
+ * model §6). Every collection is empty; `serializeLoopYaml` can still accept
+ * it (it degrades to a single catch-all/fallback), but it authors nothing.
+ * @returns {Object} a builder model (see file-header model-shape contract)
+ */
+export function blankModel() {
+  return {
+    mode: "decision_table",
+    name: "my-policy-loop",
+    description: "",
+    subject: "",
+    maxSteps: 20,
+    thresholdHigh: 85,
+    thresholdMedium: 65,
+    dimensions: [],
+    rules: [],
+    fallback: "",
+    outcomes: [],
+  };
+}
+
+/**
+ * Parse one predicate string into {dim, op, value}. Mirrors _parse_predicate.
+ * @param {string} text
+ * @param {RegExp} re
+ * @returns {{dim: string, op: string, value: string}}
+ */
+function parsePredicate(text, re) {
+  const m = re.exec(text.trim());
+  if (!m || !m.groups) {
+    throw new Error(`Invalid predicate ${JSON.stringify(text)}`);
+  }
+  return {
+    dim: m.groups.dim.trim(),
+    op: m.groups.op,
+    value: m.groups.value.trim(),
+  };
+}
+
+/**
+ * Parse a newline-separated rule table into a rules array. Mirrors parse_rules.
+ * Skips blank/`#` lines; `*` LHS = catch-all; `&`-splits predicates.
+ * @param {string} text
+ * @param {Object} [grammar]  grammar_spec()-shaped object (optional)
+ * @returns {Array<{predicates: Array, target: string, isCatchall: boolean}>}
+ */
+export function parseRuleTable(text, grammar) {
+  const re = _predRegex(grammar);
+  const rules = [];
+  const lines = String(text).split("\n");
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (!line || line.startsWith("#")) continue;
+    const arrow = line.indexOf("->");
+    if (arrow === -1) {
+      throw new Error(`Rule is missing '->': ${JSON.stringify(line)}`);
+    }
+    const lhs = line.slice(0, arrow).trim();
+    const target = line.slice(arrow + 2).trim();
+    if (!target) {
+      throw new Error(`Empty target state in: ${JSON.stringify(line)}`);
+    }
+    if (lhs === "*") {
+      rules.push({ predicates: [], target, isCatchall: true });
+    } else {
+      const parts = lhs
+        .split("&")
+        .map((p) => p.trim())
+        .filter((p) => p.length > 0);
+      if (parts.length === 0) {
+        throw new Error(`Empty LHS in: ${JSON.stringify(line)}`);
+      }
+      const preds = parts.map((p) => parsePredicate(p, re));
+      rules.push({ predicates: preds, target, isCatchall: false });
+    }
+  }
+  return rules;
+}
+
+// ===========================================================================
+// YAML serialization
+// ===========================================================================
+
+function _yamlBlockScalar(value, indent) {
+  // Emit a `|` block scalar. `indent` is the spaces preceding child lines.
+  const pad = " ".repeat(indent);
+  const lines = String(value).replace(/\s+$/, "").split("\n");
+  return lines.map((l) => (l.length ? pad + l : "")).join("\n");
+}
+
+function _dq(value) {
+  // Double-quote a scalar, escaping backslashes and quotes. Deterministic.
+  return `"${String(value).replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+}
+
+// Build the canonical rule-table text for context.policy_rules. Numeric dims
+// pass through; boolean predicates are compiled to numeric (>=50 / <50).
+function _serializeRulesText(model) {
+  const boolDims = new Set(
+    (model.dimensions || [])
+      .filter((d) => d.type === "boolean")
+      .map((d) => normalizeDimName(d.name))
+  );
+  const lines = [];
+  let hasCatchall = false;
+  for (const rule of model.rules || []) {
+    if (rule.isCatchall || !rule.predicates || rule.predicates.length === 0) {
+      hasCatchall = true;
+      lines.push(`* -> ${rule.target}`);
+      continue;
+    }
+    const predStrs = rule.predicates.map((p) => {
+      const dim = normalizeDimName(p.dim);
+      let op = p.op;
+      let value = p.value;
+      if (boolDims.has(dim) && (op === "==" || op === "==true" || op === "==false")) {
+        const truth =
+          op === "==true" ||
+          (op === "==" && String(value).trim().toLowerCase() === "true");
+        const compiled = compileBooleanPredicate(truth ? "==true" : "==false");
+        op = compiled.op;
+        value = compiled.value;
+      }
+      return `${dim}:${op}${value}`;
+    });
+    lines.push(`${predStrs.join(" & ")} -> ${rule.target}`);
+  }
+  // Append the fallback catch-all last if the table didn't supply one.
+  if (!hasCatchall && model.fallback) {
+    lines.push(`* -> ${model.fallback}`);
+  }
+  return lines.join("\n");
+}
+
+// Pipe-joined, normalized dimension names for context.rubric_dimensions.
+function _serializeDimensions(model) {
+  return (model.dimensions || []).map((d) => normalizeDimName(d.name)).join("|");
+}
+
+// Does any dimension require the 100/0 boolean scoring instruction?
+function _hasBoolean(model) {
+  return (model.dimensions || []).some((d) => d.type === "boolean");
+}
+
+function _scoreActionBody(model) {
+  const dims = _serializeDimensions(model);
+  let body =
+    `Evaluate ${"${context.subject}"} on these dimensions: ${"${context.rubric_dimensions}"}.\n` +
+    `For each dimension output: DIMENSION: <name>: <score 0-100> — <one-sentence rationale>\n`;
+  if (_hasBoolean(model)) {
+    const boolNames = (model.dimensions || [])
+      .filter((d) => d.type === "boolean")
+      .map((d) => normalizeDimName(d.name))
+      .join(", ");
+    body +=
+      `For boolean dimensions (${boolNames}): score 100 if the condition holds, ` +
+      `0 if it does not.\n`;
+  }
+  body += `Final line: AGGREGATE: <int 0-100>`;
+  return body;
+}
+
+// Render a per-outcome state body action. Returns lines for the state.
+function _outcomeStateLines(outcome) {
+  const lines = [];
+  lines.push(`  ${outcome.name}:`);
+  const at = outcome.actionType || "none";
+  if (at === "prompt" || at === "slash_command") {
+    lines.push(`    action_type: ${at}`);
+    const body = at === "slash_command" ? (outcome.body || "").trim() : outcome.body || "";
+    if (at === "slash_command") {
+      lines.push(`    action: ${body}`);
+    } else {
+      lines.push(`    action: |`);
+      lines.push(_yamlBlockScalar(body, 6));
+    }
+  }
+  // Axis B transition.
+  const t = outcome.transition || { kind: "finish" };
+  if (t.kind === "rescore") {
+    lines.push(`    next: score`);
+  } else if (t.kind === "goto") {
+    lines.push(`    next: ${t.target}`);
+  } else {
+    lines.push(`    terminal: true`);
+  }
+  return lines;
+}
+
+function _serializeDecisionTable(model) {
+  const out = [];
+  const name = model.name || "policy-builder";
+  out.push(`name: ${name}`);
+  if (model.description) {
+    out.push(`description: |`);
+    out.push(_yamlBlockScalar(model.description, 2));
+  }
+  out.push(`max_steps: ${model.maxSteps != null ? model.maxSteps : 20}`);
+  out.push("");
+  out.push("import:");
+  out.push("  - lib/rubric-router.yaml");
+  out.push("  - lib/policy-router.yaml");
+  out.push("");
+  out.push("context:");
+  out.push(`  subject: ${_dq(model.subject || "")}`);
+  out.push(`  rubric_dimensions: ${_dq(_serializeDimensions(model))}`);
+  out.push(`  threshold_high: ${_dq(String(model.thresholdHigh != null ? model.thresholdHigh : 85))}`);
+  out.push(
+    `  threshold_medium: ${_dq(String(model.thresholdMedium != null ? model.thresholdMedium : 65))}`
+  );
+  out.push(`  policy_rules: |`);
+  out.push(_yamlBlockScalar(_serializeRulesText(model), 4));
+  out.push("");
+  out.push("initial: score");
+  out.push("");
+  out.push("states:");
+  // score
+  out.push("  score:");
+  out.push("    fragment: rubric_score");
+  out.push("    action: |");
+  out.push(_yamlBlockScalar(_scoreActionBody(model), 6));
+  out.push("    capture: scores");
+  out.push("    next: parse_scores");
+  out.push("");
+  // parse_scores
+  out.push("  parse_scores:");
+  out.push("    fragment: policy_parse_scores");
+  out.push("    next: policy_dispatch");
+  out.push("");
+  // policy_dispatch with route map covering every outcome + _/_error
+  out.push("  policy_dispatch:");
+  out.push("    fragment: policy_table_dispatch");
+  out.push("    route:");
+  // Collect every outcome token from rules + outcomes + fallback (dedup, ordered).
+  const tokens = [];
+  const seen = new Set();
+  const addToken = (tok) => {
+    if (tok && !seen.has(tok)) {
+      seen.add(tok);
+      tokens.push(tok);
+    }
+  };
+  for (const r of model.rules || []) addToken(r.target);
+  for (const o of model.outcomes || []) addToken(o.name);
+  if (model.fallback) addToken(model.fallback);
+  for (const tok of tokens) {
+    out.push(`      ${tok}: ${tok}`);
+  }
+  // Sentinels: default -> fallback (or first outcome), error -> first outcome.
+  const fallbackState = model.fallback || tokens[0] || "done";
+  const errorState = tokens[0] || fallbackState;
+  out.push(`      _: ${fallbackState}`);
+  out.push(`      _error: ${errorState}`);
+  out.push("");
+  // One state per outcome. Build outcome map for authoring; tokens not listed
+  // in `outcomes` get a default terminal state so the route never dead-ends.
+  const outcomeMap = new Map();
+  for (const o of model.outcomes || []) outcomeMap.set(o.name, o);
+  for (const tok of tokens) {
+    const outcome =
+      outcomeMap.get(tok) || { name: tok, actionType: "none", transition: { kind: "finish" } };
+    for (const line of _outcomeStateLines(outcome)) out.push(line);
+    out.push("");
+  }
+  return out.join("\n").replace(/\n+$/, "\n");
+}
+
+function _serializeRubric(model) {
+  const out = [];
+  const name = model.name || "rubric-builder";
+  out.push(`name: ${name}`);
+  if (model.description) {
+    out.push(`description: |`);
+    out.push(_yamlBlockScalar(model.description, 2));
+  }
+  out.push(`category: quality`);
+  out.push(`input_key: subject`);
+  out.push(`required_inputs: ["subject"]`);
+  out.push(`initial: score`);
+  out.push(`max_steps: ${model.maxSteps != null ? model.maxSteps : 10}`);
+  out.push("import:");
+  out.push("  - lib/rubric-router.yaml");
+  out.push("");
+  out.push("context:");
+  out.push(`  subject: ${_dq(model.subject || "")}`);
+  out.push(`  rubric_dimensions: ${_dq(_serializeDimensions(model))}`);
+  out.push(`  threshold_high: ${_dq(String(model.thresholdHigh != null ? model.thresholdHigh : 85))}`);
+  out.push(
+    `  threshold_medium: ${_dq(String(model.thresholdMedium != null ? model.thresholdMedium : 65))}`
+  );
+  out.push("");
+  out.push("states:");
+  // score
+  out.push("  score:");
+  out.push("    fragment: rubric_score");
+  out.push("    action: |");
+  out.push(_yamlBlockScalar(_scoreActionBody(model), 6));
+  out.push("    capture: scores");
+  out.push("    next: parse_scores");
+  out.push("");
+  // parse_scores
+  out.push("  parse_scores:");
+  out.push("    fragment: rubric_parse_scores");
+  out.push("    next: route_high");
+  out.push("");
+  // route_high
+  out.push("  route_high:");
+  out.push("    fragment: rubric_route_high");
+  out.push("    on_yes: done");
+  out.push("    on_no: route_medium");
+  out.push("");
+  // route_medium
+  out.push("  route_medium:");
+  out.push("    fragment: rubric_route_medium");
+  out.push("    on_yes: light_repair");
+  out.push("    on_no: deep_repair");
+  out.push("");
+  // Repair states: prefer authored outcomes for light_repair/deep_repair if present.
+  const outcomeMap = new Map();
+  for (const o of model.outcomes || []) outcomeMap.set(o.name, o);
+  for (const tok of ["light_repair", "deep_repair"]) {
+    const authored = outcomeMap.get(tok);
+    if (authored) {
+      for (const line of _outcomeStateLines(authored)) out.push(line);
+    } else {
+      out.push(`  ${tok}:`);
+      out.push(`    action_type: prompt`);
+      out.push(`    action: |`);
+      const body =
+        tok === "light_repair"
+          ? `Apply light refinements to ${"${context.subject}"}.\n` +
+            `Focus on the lowest-scoring dimensions to push the aggregate above ${"${context.threshold_high}"}.`
+          : `Apply comprehensive repairs to ${"${context.subject}"}.\n` +
+            `The aggregate is below ${"${context.threshold_medium}"}; rewrite the weakest sections.`;
+      out.push(_yamlBlockScalar(body, 6));
+      out.push(`    next: score`);
+    }
+    out.push("");
+  }
+  out.push("  done:");
+  out.push("    terminal: true");
+  return out.join("\n").replace(/\n+$/, "\n");
+}
+
+/**
+ * Serialize a builder model to loop YAML text (deterministic). See the
+ * model-shape contract in the file header.
+ * @param {Object} model
+ * @returns {string}
+ */
+export function serializeLoopYaml(model) {
+  if (model && model.mode === "rubric") {
+    return _serializeRubric(model);
+  }
+  return _serializeDecisionTable(model);
+}
+
+// Browser-only global so the inlined copy can expose the API without breaking
+// node import.
+if (typeof window !== "undefined") {
+  window.PolicyBuilderCore = {
+    evaluateRules,
+    detectShadows,
+    isCatchall,
+    parseRuleTable,
+    compileBooleanPredicate,
+    normalizeDimName,
+    serializeLoopYaml,
+    moveRule,
+    seedExample,
+    blankModel,
+  };
+}
+
+
+// ===========================================================================
+// UI glue — reads window.__GRAMMAR_SPEC__ / window.__SKILL_CATALOG__ and wires
+// a working (visually basic) form to the inlined core. State is a single model
+// object matching serializeLoopYaml's contract.
+// ===========================================================================
+const GRAMMAR = window.__GRAMMAR_SPEC__ || { all_ops: ["==", "!=", ">=", "<=", "<", ">"], ordered_ops: [">=", "<=", "<", ">"] };
+const CATALOG = window.__SKILL_CATALOG__ || [];
+
+// `state` is the template's own authoring model — same flat shape as the
+// serializer's model contract (see policy_builder_core.mjs header), so
+// buildModel() is close to identity and `seedExample()`/`blankModel()` can be
+// assigned to it directly (FEAT-2301). Rules are a single ordered array (not
+// nested per-outcome) so on-screen order *is* precedence order and moveRule()
+// can reorder it directly.
+let state = seedExample();
+
+function buildModel() {
+  return {
+    mode: state.mode,
+    name: state.name,
+    description: state.description,
+    subject: state.subject,
+    maxSteps: state.maxSteps,
+    thresholdHigh: state.thresholdHigh,
+    thresholdMedium: state.thresholdMedium,
+    dimensions: state.dimensions,
+    rules: state.rules.map((r) => ({ predicates: r.predicates, target: r.target, isCatchall: false })),
+    fallback: state.fallback,
+    outcomes: state.outcomes.map((o) => ({
+      name: o.name,
+      actionType: o.actionType,
+      body: o.body,
+      transition: o.transition,
+    })),
+  };
+}
+
+// One-line plain-language stand-in for the raw YAML (UX model §5 — the YAML
+// itself is demoted behind a collapsed <details>; this summary is the
+// default view).
+function computeSummary(model) {
+  const dims = (model.dimensions || []).length;
+  const subject = model.subject || "the artifact";
+  const steps = model.maxSteps != null ? model.maxSteps : 20;
+  if (model.mode === "rubric") {
+    return `Scores ${subject} on ${dims} signal${dims === 1 ? "" : "s"}, runs ≤${steps}×, routes to high/medium/low tiers.`;
+  }
+  const finishOutcome = (model.outcomes || []).find((o) => o.transition && o.transition.kind === "finish");
+  const firstOutcome = model.outcomes && model.outcomes[0];
+  const stopsAt = finishOutcome ? finishOutcome.name : model.fallback || (firstOutcome && firstOutcome.name) || "done";
+  return `Scores ${subject} on ${dims} signal${dims === 1 ? "" : "s"}, runs ≤${steps}×, stops at ${stopsAt}.`;
+}
+
+function opsForType(type) {
+  return type === "boolean" ? ["==true", "==false"] : GRAMMAR.all_ops;
+}
+
+// ---- renderers -----------------------------------------------------------
+const $ = (id) => document.getElementById(id);
+
+function renderDimensions() {
+  const host = $("dim-list");
+  host.innerHTML = "";
+  state.dimensions.forEach((d, i) => {
+    const row = document.createElement("div");
+    row.className = "rule-row";
+    row.innerHTML =
+      `<strong>${normalizeDimName(d.name)}</strong> <em>(${d.type})</em>`;
+    const del = document.createElement("button");
+    del.className = "secondary del";
+    del.textContent = "✕";
+    del.onclick = () => {
+      state.dimensions.splice(i, 1);
+      renderAll();
+    };
+    row.appendChild(del);
+    host.appendChild(row);
+  });
+}
+
+// The pinned fallback footer: a structured, non-input picker (no free text)
+// over the current outcome names. Non-deletable — it always exists and has
+// no remove control.
+function renderFallback() {
+  const sel = $("f-fallback");
+  const prev = state.fallback;
+  sel.innerHTML = "";
+  state.outcomes.forEach((oc) => {
+    const o = document.createElement("option");
+    o.value = oc.name; o.textContent = oc.name;
+    if (oc.name === prev) o.selected = true;
+    sel.appendChild(o);
+  });
+  if (!state.outcomes.some((oc) => oc.name === prev)) {
+    state.fallback = state.outcomes.length ? state.outcomes[0].name : "";
+  }
+  sel.value = state.fallback;
+  sel.onchange = () => { state.fallback = sel.value; updatePreview(); };
+}
+
+// Per-outcome action authoring only ("Do:" / "And then:"), named once. Rule
+// editing (predicates + precedence) lives in renderRules(); outcomes here
+// are just the destinations rules point at.
+function renderOutcomes() {
+  const host = $("outcome-list");
+  host.innerHTML = "";
+  state.outcomes.forEach((oc, oi) => {
+    const grp = document.createElement("div");
+    grp.className = "outcome-group";
+    const title = document.createElement("div");
+    title.className = "row";
+    title.innerHTML = `<strong>${oc.name}</strong>`;
+    const delOc = document.createElement("button");
+    delOc.className = "secondary del";
+    delOc.textContent = "✕ outcome";
+    const inUse = state.fallback === oc.name || state.rules.some((r) => r.target === oc.name);
+    delOc.disabled = inUse;
+    delOc.title = inUse
+      ? "Can't remove: still used by a rule or the fallback"
+      : "Remove this outcome";
+    delOc.onclick = () => { state.outcomes.splice(oi, 1); renderAll(); };
+    title.appendChild(delOc);
+    grp.appendChild(title);
+
+    // "Do:" / "And then:" authoring — plain language, no internal axis names.
+    const author = document.createElement("div");
+    author.innerHTML = `<label>Do:</label>`;
+    const aSel = document.createElement("select");
+    aSel.setAttribute("aria-label", "Action");
+    [["prompt", "Prompt"], ["slash_command", "Run a skill"], ["none", "Nothing"]].forEach(([v, t]) => {
+      const o = document.createElement("option"); o.value = v; o.textContent = t;
+      if (v === oc.actionType) o.selected = true; aSel.appendChild(o);
+    });
+    const bodyHost = document.createElement("div");
+    function renderBody() {
+      bodyHost.innerHTML = "";
+      if (oc.actionType === "prompt") {
+        const ta = document.createElement("textarea");
+        ta.value = oc.body || "";
+        ta.setAttribute("aria-label", "Prompt text");
+        ta.oninput = () => { oc.body = ta.value; updatePreview(); };
+        bodyHost.appendChild(ta);
+      } else if (oc.actionType === "slash_command") {
+        const sel = document.createElement("select");
+        sel.setAttribute("aria-label", "Skill");
+        const blank = document.createElement("option"); blank.value = ""; blank.textContent = "— choose skill —"; sel.appendChild(blank);
+        CATALOG.forEach((s) => {
+          const o = document.createElement("option");
+          o.value = "/ll:" + s.name; o.textContent = "/ll:" + s.name;
+          if (o.value === oc.body) o.selected = true; sel.appendChild(o);
+        });
+        sel.onchange = () => { oc.body = sel.value; updatePreview(); };
+        bodyHost.appendChild(sel);
+      }
+    }
+    aSel.onchange = () => { oc.actionType = aSel.value; renderBody(); updatePreview(); };
+    author.appendChild(aSel);
+    author.appendChild(bodyHost);
+
+    author.insertAdjacentHTML("beforeend", `<label>And then:</label>`);
+    const bSel = document.createElement("select");
+    bSel.setAttribute("aria-label", "Follow-up");
+    [["rescore", "Score again"], ["goto", "Go to…"], ["finish", "Stop here"]].forEach(([v, t]) => {
+      const o = document.createElement("option"); o.value = v; o.textContent = t;
+      if (v === (oc.transition && oc.transition.kind)) o.selected = true; bSel.appendChild(o);
+    });
+    const gotoSel = document.createElement("select");
+    gotoSel.setAttribute("aria-label", "Go to outcome");
+    function renderGoto() {
+      gotoSel.innerHTML = "";
+      state.outcomes.forEach((o2) => {
+        const o = document.createElement("option"); o.value = o2.name; o.textContent = o2.name;
+        if (oc.transition && oc.transition.target === o2.name) o.selected = true; gotoSel.appendChild(o);
+      });
+      gotoSel.style.display = (oc.transition && oc.transition.kind === "goto") ? "" : "none";
+    }
+    bSel.onchange = () => {
+      oc.transition = { kind: bSel.value, target: gotoSel.value || (state.outcomes[0] && state.outcomes[0].name) };
+      renderGoto(); updatePreview();
+    };
+    gotoSel.onchange = () => { oc.transition.target = gotoSel.value; updatePreview(); };
+    author.appendChild(bSel);
+    author.appendChild(gotoSel);
+    renderBody(); renderGoto();
+    grp.appendChild(author);
+
+    host.appendChild(grp);
+  });
+}
+
+// The ordered, numbered rule list — the primary surface (UX model §1). Each
+// row reads "N. When <conditions> → <outcome>" with ↑/↓ precedence controls.
+// On-screen order IS precedence order (first match wins), so reordering
+// mutates state.rules via the pure moveRule() and re-renders everything,
+// including the shadow-detection messages and the "Try it" winner.
+function renderRules() {
+  const host = $("rule-list");
+  host.innerHTML = "";
+  state.rules.forEach((r, i) => {
+    const card = document.createElement("div");
+    card.className = "rule-card";
+    card.dataset.ruleIndex = String(i);
+
+    const ord = document.createElement("span");
+    ord.className = "rule-ord";
+    ord.textContent = `${i + 1}.`;
+    card.appendChild(ord);
+
+    const whenLabel = document.createElement("span");
+    whenLabel.textContent = "When";
+    card.appendChild(whenLabel);
+
+    r.predicates.forEach((p, pi) => {
+      if (pi > 0) {
+        const and = document.createElement("span");
+        and.textContent = "and";
+        card.appendChild(and);
+      }
+      const dimSel = document.createElement("select");
+      dimSel.setAttribute("aria-label", "Signal");
+      state.dimensions.forEach((d) => {
+        const o = document.createElement("option");
+        o.value = normalizeDimName(d.name);
+        o.textContent = normalizeDimName(d.name);
+        if (o.value === p.dim) o.selected = true;
+        dimSel.appendChild(o);
+      });
+      const opSel = document.createElement("select");
+      opSel.setAttribute("aria-label", "Comparison");
+      const dimType = (state.dimensions.find((d) => normalizeDimName(d.name) === p.dim) || {}).type || "numeric";
+      opsForType(dimType).forEach((op) => {
+        const o = document.createElement("option");
+        o.value = op; o.textContent = op;
+        if (op === p.op) o.selected = true;
+        opSel.appendChild(o);
+      });
+      const valInput = document.createElement("input");
+      valInput.type = "text"; valInput.value = p.value; valInput.placeholder = "value";
+      valInput.setAttribute("aria-label", "Value");
+      if (p.op === "==true" || p.op === "==false") valInput.disabled = true;
+      dimSel.onchange = () => { p.dim = dimSel.value; renderAll(); };
+      opSel.onchange = () => { p.op = opSel.value; renderAll(); };
+      valInput.oninput = () => { p.value = valInput.value; updatePreview(); };
+      card.append(dimSel, opSel, valInput);
+      if (r.predicates.length > 1) {
+        const delPred = document.createElement("button");
+        delPred.className = "secondary del"; delPred.textContent = "✕";
+        delPred.title = "Remove this condition";
+        delPred.onclick = () => { r.predicates.splice(pi, 1); renderAll(); };
+        card.appendChild(delPred);
+      }
+    });
+
+    const addPred = document.createElement("button");
+    addPred.className = "secondary"; addPred.textContent = "+ and";
+    addPred.title = "Add another condition to this rule";
+    addPred.onclick = () => {
+      const firstDim = state.dimensions[0];
+      const dim = firstDim ? normalizeDimName(firstDim.name) : "";
+      const op = firstDim && firstDim.type === "boolean" ? "==true" : (GRAMMAR.all_ops[0] || "==");
+      r.predicates.push({ dim, op, value: "" });
+      renderAll();
+    };
+    card.appendChild(addPred);
+
+    const arrow = document.createElement("span");
+    arrow.textContent = "→";
+    card.appendChild(arrow);
+
+    const targetSel = document.createElement("select");
+    targetSel.setAttribute("aria-label", "Outcome");
+    state.outcomes.forEach((oc) => {
+      const o = document.createElement("option"); o.value = oc.name; o.textContent = oc.name;
+      if (oc.name === r.target) o.selected = true;
+      targetSel.appendChild(o);
+    });
+    targetSel.onchange = () => { r.target = targetSel.value; updatePreview(); };
+    card.appendChild(targetSel);
+
+    const upBtn = document.createElement("button");
+    upBtn.className = "secondary rule-move"; upBtn.textContent = "↑";
+    upBtn.title = "Move rule up (higher precedence)";
+    upBtn.disabled = i === 0;
+    upBtn.onclick = () => { state.rules = moveRule({ rules: state.rules }, i, "up").rules; renderAll(); };
+    const downBtn = document.createElement("button");
+    downBtn.className = "secondary rule-move"; downBtn.textContent = "↓";
+    downBtn.title = "Move rule down (lower precedence)";
+    downBtn.disabled = i === state.rules.length - 1;
+    downBtn.onclick = () => { state.rules = moveRule({ rules: state.rules }, i, "down").rules; renderAll(); };
+    card.append(upBtn, downBtn);
+
+    const del = document.createElement("button");
+    del.className = "secondary del"; del.textContent = "✕"; del.title = "Delete this rule";
+    del.onclick = () => { state.rules.splice(i, 1); renderAll(); };
+    card.appendChild(del);
+
+    host.appendChild(card);
+  });
+}
+
+// "Try it" (UX model §8, Decision Table only): one input per dimension,
+// highlighting the first-matching rule row live via the existing
+// evaluateRules(). Highlight-the-winner only — no state execution.
+function renderTryIt() {
+  const host = $("tryit-inputs");
+  host.innerHTML = "";
+  if (state.mode !== "decision_table") return;
+  state.dimensions.forEach((d) => {
+    const dimKey = normalizeDimName(d.name);
+    const row = document.createElement("div");
+    row.className = "row";
+    const label = document.createElement("label");
+    label.textContent = dimKey;
+    label.style.margin = "0";
+    row.appendChild(label);
+    let input;
+    if (d.type === "boolean") {
+      input = document.createElement("select");
+      [["", "—"], ["true", "true"], ["false", "false"]].forEach(([v, t]) => {
+        const o = document.createElement("option"); o.value = v; o.textContent = t; input.appendChild(o);
+      });
+    } else {
+      input = document.createElement("input");
+      input.type = "number";
+    }
+    input.setAttribute("aria-label", `${dimKey} sample value`);
+    input.dataset.dim = dimKey;
+    input.oninput = updateTryIt;
+    input.onchange = updateTryIt;
+    row.appendChild(input);
+    host.appendChild(row);
+  });
+  updateTryIt();
+}
+
+function updateTryIt() {
+  document.querySelectorAll(".rule-card").forEach((el) => el.classList.remove("rule-winner"));
+  if (state.mode !== "decision_table") return;
+  const scores = {};
+  document.querySelectorAll("#tryit-inputs [data-dim]").forEach((el) => {
+    if (el.value === "") return;
+    scores[el.dataset.dim] = el.tagName === "SELECT" ? (el.value === "true" ? 100 : 0) : Number(el.value);
+  });
+  const model = buildModel();
+  const winnerTarget = evaluateRules(model.rules, scores);
+  if (winnerTarget == null) return;
+  const idx = model.rules.findIndex((r) => r.target === winnerTarget);
+  const row = idx >= 0 ? document.querySelector(`.rule-card[data-rule-index="${idx}"]`) : null;
+  if (row) row.classList.add("rule-winner");
+}
+
+function renderMessages(model) {
+  const host = $("messages");
+  host.innerHTML = "";
+  const add = (cls, text) => {
+    const li = document.createElement("li"); li.className = cls; li.textContent = text; host.appendChild(li);
+  };
+  // Shadow detection (plain-language, tied to the visible rule numbers).
+  const shadows = detectShadows(model.rules);
+  shadows.forEach((s) => add("msg-warn", `Rule ${s.ruleNumber} (→ ${s.target}) never fires — an earlier rule already covers it.`));
+  if (state.mode === "decision_table") {
+    // Outcomes unreachable by any rule and not the fallback.
+    state.outcomes.forEach((oc) => {
+      const reached = model.rules.some((r) => r.target === oc.name) || model.fallback === oc.name;
+      if (!reached) add("msg-warn", `Outcome "${oc.name}" has no rule and isn't the fallback — it can only be reached via "Go to".`);
+    });
+  }
+  // Unknown skill actions.
+  const known = new Set(CATALOG.map((s) => "/ll:" + s.name));
+  state.outcomes.forEach((oc) => {
+    if (oc.actionType === "slash_command" && oc.body && !known.has(oc.body)) {
+      add("msg-error", `Outcome "${oc.name}" references an unknown skill: ${oc.body}`);
+    }
+  });
+  if (!host.children.length) add("msg-ok", "No issues detected.");
+}
+
+function updatePreview() {
+  const model = buildModel();
+  $("yaml-preview").textContent = serializeLoopYaml(model);
+  $("yaml-summary").textContent = computeSummary(model);
+  $("validate-hint").textContent = `Validate with:  ll-loop validate ${state.name}`;
+  renderMessages(model);
+  updateTryIt();
+}
+
+function renderAll() {
+  renderDimensions();
+  renderFallback();
+  if (state.mode === "decision_table") {
+    renderOutcomes();
+    renderRules();
+    renderTryIt();
+  } else {
+    // Rubric mode hides these fieldsets entirely (Mode asymmetry); clear
+    // stale DOM so a mode switch never leaves orphaned rows behind.
+    $("outcome-list").innerHTML = "";
+    $("rule-list").innerHTML = "";
+    $("tryit-inputs").innerHTML = "";
+  }
+  updatePreview();
+}
+
+function applyModeVisibility() {
+  $("threshold-fieldset").hidden = state.mode !== "rubric";
+  $("outcomes-fieldset").hidden = state.mode === "rubric";
+  $("rules-fieldset").hidden = state.mode === "rubric";
+  $("tryit-fieldset").hidden = state.mode !== "decision_table";
+}
+
+// ---- event wiring --------------------------------------------------------
+$("mode-switch").value = state.mode;
+$("mode-switch").onchange = (e) => {
+  state.mode = e.target.value;
+  applyModeVisibility();
+  $("f-maxsteps").value = state.maxSteps = state.mode === "rubric" ? 10 : 20;
+  renderAll();
+};
+$("f-name").oninput = (e) => { state.name = e.target.value; updatePreview(); };
+$("f-subject").oninput = (e) => { state.subject = e.target.value; updatePreview(); };
+$("f-maxsteps").oninput = (e) => { state.maxSteps = Number(e.target.value) || 1; updatePreview(); };
+$("f-desc").oninput = (e) => { state.description = e.target.value; updatePreview(); };
+$("f-thigh").oninput = (e) => { state.thresholdHigh = Number(e.target.value); $("thigh-val").textContent = e.target.value; updatePreview(); };
+$("f-tmed").oninput = (e) => { state.thresholdMedium = Number(e.target.value); $("tmed-val").textContent = e.target.value; updatePreview(); };
+
+$("add-dim").onclick = () => {
+  const name = $("dim-name").value.trim();
+  if (!name) return;
+  state.dimensions.push({ name, type: $("dim-type").value });
+  $("dim-name").value = "";
+  renderAll();
+};
+$("add-outcome").onclick = () => {
+  const name = normalizeDimName($("outcome-name").value);
+  if (!name) return;
+  state.outcomes.push({ name, actionType: "prompt", body: "", transition: { kind: "rescore" } });
+  $("outcome-name").value = "";
+  renderAll();
+};
+$("add-rule").onclick = () => {
+  if (!state.outcomes.length) return;
+  const firstDim = state.dimensions[0];
+  const dim = firstDim ? normalizeDimName(firstDim.name) : "";
+  const op = firstDim && firstDim.type === "boolean" ? "==true" : (GRAMMAR.all_ops[0] || "==");
+  state.rules.push({ predicates: [{ dim, op, value: "" }], target: state.outcomes[0].name });
+  renderAll();
+};
+
+$("copy-btn").onclick = () => {
+  const text = $("yaml-preview").textContent;
+  if (navigator.clipboard) navigator.clipboard.writeText(text);
+};
+$("download-btn").onclick = () => {
+  const text = $("yaml-preview").textContent;
+  const blob = new Blob([text], { type: "text/yaml" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = (state.name || "policy-loop") + ".yaml";
+  a.click();
+  URL.revokeObjectURL(a.href);
+};
+// "Never a blank form" (UX model §6): the page seeds with seedExample();
+// this clears it to blankModel() on demand.
+$("start-blank-btn").onclick = () => {
+  state = blankModel();
+  $("f-name").value = state.name;
+  $("f-subject").value = state.subject;
+  $("f-maxsteps").value = state.maxSteps;
+  $("f-desc").value = state.description;
+  $("mode-switch").value = state.mode;
+  applyModeVisibility();
+  renderAll();
+};
+
+// ---- theme resolution: stored toggle -> stamped active_theme -> OS preference -> light
+function initTheme() {
+  const stored = (() => { try { return localStorage.getItem("ll-policy-builder-theme"); } catch (e) { return null; } })();
+  let theme;
+  if (stored) {
+    theme = stored;
+  } else if (window.__ACTIVE_THEME__) {
+    theme = window.__ACTIVE_THEME__;
+  } else if (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) {
+    theme = "dark";
+  } else if (window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches) {
+    theme = "light";
+  } else {
+    theme = "light";
+  }
+  document.documentElement.setAttribute("data-theme", theme);
+  $("theme-toggle").textContent = theme === "dark" ? "☀️" : "🌙";
+}
+$("theme-toggle").onclick = () => {
+  const cur = document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "light";
+  const next = cur === "dark" ? "light" : "dark";
+  document.documentElement.setAttribute("data-theme", next);
+  $("theme-toggle").textContent = next === "dark" ? "☀️" : "🌙";
+  try { localStorage.setItem("ll-policy-builder-theme", next); } catch (e) { /* ignore */ }
+};
+
+// ---- bootstrap -----------------------------------------------------------
+initTheme();
+applyModeVisibility();
+renderAll();
+  </script>
+</body>
+</html>

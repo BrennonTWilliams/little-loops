@@ -53,52 +53,19 @@ def _load_skill_catalog(project_root: Path) -> list[dict[str, str]]:
     return catalog
 
 
-def _themed_css_vars(config: object) -> str:
-    """Return themed CSS custom properties, degrading gracefully to ``""``.
-
-    Loads light + dark design tokens; if either is unavailable (no tokens
-    configured for the project), emits empty/neutral scoped blocks so the page
-    still renders and the data-theme toggle keeps working.
-
-    DESIGN.md sources (ENH-3264) have no theme mechanism, so entering
-    load_design_tokens() twice would both duplicate work and emit its
-    theme-degradation warning twice. Enter it once, branch on the returned
-    DesignTokens.source, and only make the second themed call for a profile
-    source.
-    """
-    from little_loops.design_tokens import (
-        DesignTokens,
-        load_design_tokens,
-        render_as_css_vars_themed,
-    )
-
-    dark: DesignTokens | None
-    light = load_design_tokens(config, theme="light")  # type: ignore[arg-type]
-    if light is None:
-        # Neutral fallback: empty scoped blocks (CSS fallbacks in the template
-        # supply concrete colors).
-        return ":root {\n}\n[data-theme=dark] {\n}"
-    if light.source == "design_md":
-        dark = light
-    else:
-        dark = load_design_tokens(config, theme="dark")  # type: ignore[arg-type]
-        if dark is None:
-            return ":root {\n}\n[data-theme=dark] {\n}"
-    return render_as_css_vars_themed(light, dark)
-
-
 def cmd_policy_builder(args: argparse.Namespace, logger: Logger) -> int:
     """Emit the self-contained policy-router builder HTML page.
 
     Returns 0 on success, 1 on error.
     """
+    from little_loops.artifact_template_kit import stamp_page_shell, themed_css_vars
     from little_loops.config.core import BRConfig
     from little_loops.fsm.policy_rules import _py_pattern_to_js, grammar_spec
 
     try:
         config = BRConfig(Path.cwd())
 
-        css_vars = _themed_css_vars(config)
+        css_vars = themed_css_vars(config)
 
         spec = grammar_spec()
         # Stamp a JS-translated predicate regex source alongside the spec so the
@@ -121,9 +88,7 @@ def cmd_policy_builder(args: argparse.Namespace, logger: Logger) -> int:
         # prefers-color-scheme). Omitting this was the FEAT-2301 worktree theme bug.
         active_theme = config.design_tokens.active_theme or "light"
 
-        html = template
-        html = html.replace('data-theme="light"', f'data-theme="{active_theme}"', 1)
-        html = html.replace("/*__THEMED_CSS_VARS__*/", css_vars)
+        html = stamp_page_shell(template, active_theme=active_theme, css_vars=css_vars)
         html = html.replace("/*__GRAMMAR_SPEC_JSON__*/", grammar_json)
         html = html.replace("/*__SKILL_CATALOG_JSON__*/", catalog_json)
         html = html.replace("/*__BUILDER_CORE_JS__*/", core_js)

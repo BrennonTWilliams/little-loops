@@ -28,6 +28,7 @@ from __future__ import annotations
 import argparse
 import sys
 
+from little_loops.artifact_template_kit import themed_css_vars as _themed_css_vars
 from little_loops.cli.artifact.design_md import cmd_design_md_export
 from little_loops.cli.artifact.extract import (
     add_extract_parser,
@@ -35,7 +36,7 @@ from little_loops.cli.artifact.extract import (
     cmd_extract,
     cmd_refresh,
 )
-from little_loops.cli.artifact.policy_builder import _themed_css_vars, cmd_policy_builder
+from little_loops.cli.artifact.policy_builder import cmd_policy_builder
 from little_loops.cli.artifact.render import add_render_parser, cmd_render
 from little_loops.cli.artifact.status import add_status_parser, cmd_status
 from little_loops.cli.artifact.templatize import add_templatize_parser, cmd_templatize

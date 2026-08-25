@@ -335,7 +335,7 @@ class TestRenderTemplate:
         manifest = load_manifest(root)
         template = ArtifactTemplate(root=root, manifest=manifest)
         with patch(
-            "little_loops.cli.artifact.policy_builder._themed_css_vars",
+            "little_loops.artifact_template_kit.themed_css_vars",
             return_value=":root{--x:1}",
         ) as themed:
             rendered = render_template(template, {}, config)

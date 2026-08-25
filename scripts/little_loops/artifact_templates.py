@@ -305,9 +305,9 @@ def build_ll_namespace(root: Path, manifest: dict[str, Any], config: object) -> 
     """Build the reserved ``ll`` render-context namespace (§ Template context)."""
     namespace: dict[str, Any] = {"assets": load_assets(root)}
     if manifest.get("theme") == "design-tokens":
-        from little_loops.cli.artifact.policy_builder import _themed_css_vars
+        from little_loops.artifact_template_kit import themed_css_vars
 
-        namespace["theme_css"] = _themed_css_vars(config)
+        namespace["theme_css"] = themed_css_vars(config)
     return namespace
 
 
