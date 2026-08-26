@@ -89,7 +89,7 @@ jobs:
           # exactly the silent-skip class we must not let through.
           .venv/bin/python -c "import pytest, pytest_cov, xdist, pytest_timeout, syrupy, hypothesis; print('dev deps verified')"
 
-      - name: Run unit tests (exclude integration + conformance) [DIAG: BUG-3208 wedge capture]
+      - name: "Run unit tests (exclude integration + conformance) [DIAG: BUG-3208 wedge capture]"
         # `tee` mirrors pytest output to `pytest.log` for upload without
         # buffering the streamed CI log (which would break live-progress in
         # the GH Actions UI). `--junit-xml` writes a structured report that
