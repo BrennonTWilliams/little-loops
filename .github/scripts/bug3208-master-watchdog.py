@@ -103,8 +103,12 @@ def main():
     abrt_sent = False
     out.write("[" + time.strftime('%H:%M:%S', time.gmtime()) + "] watchdog alive; watching pid=" + str(args.pid) + "\n")
 
+    last_junit_mtime = 0.0
+    junit_path = Path("pytest-junit.xml")
+    out.write("junit-mtime tracking: enabled (path=" + str(junit_path) + ")\n")
+
     while proc_alive(args.pid):
-        # Progress signal: stdout line count growth
+        # Progress signal 1: stdout line count growth
         try:
             with open(args.stdout, "r", errors="replace") as f:
                 lines = f.readlines()
@@ -112,10 +116,32 @@ def main():
         except OSError:
             line_count = 0
 
+        # Progress signal 2: pytest-junit.xml mtime (when file exists).
+        # pytest-junit writes testsuite elements incrementally as tests
+        # complete, so mtime advances on test progress even if stdout is
+        # quiet (e.g., during xdist loadfile-distribution silences, where
+        # master-side stdout may pause while workers churn).
+        try:
+            if junit_path.exists():
+                current_junit_mtime = junit_path.stat().st_mtime
+            else:
+                current_junit_mtime = 0.0
+        except OSError:
+            current_junit_mtime = 0.0
+
+        progress_made = False
+        progress_reasons = []
         if line_count > last_line_count:
             last_line_count = line_count
+            progress_made = True
+            progress_reasons.append("lines=" + str(line_count))
+        if current_junit_mtime > last_junit_mtime:
+            last_junit_mtime = current_junit_mtime
+            progress_made = True
+            progress_reasons.append("junit_mtime=" + str(int(current_junit_mtime)))
+        if progress_made:
             last_progress_monotonic = time.monotonic()
-            out.write("[" + time.strftime('%H:%M:%S', time.gmtime()) + "] progress: lines=" + str(line_count) + "\n")
+            out.write("[" + time.strftime('%H:%M:%S', time.gmtime()) + "] progress: " + ",".join(progress_reasons) + "\n")
 
         now = time.monotonic()
         no_progress = now - last_progress_monotonic
