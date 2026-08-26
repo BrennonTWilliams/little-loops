@@ -2480,6 +2480,7 @@ class FSMExecutor:
             stderr=subprocess.PIPE,
             text=True,
             cwd=self.working_dir,
+            start_new_session=True,
         )
         self._current_process = process
         # FEAT-3033: timeout=0 means "no wall-clock cap" (BUG-3034 — a falsy
