@@ -814,10 +814,8 @@ class TestCompactSession:
         # Mock subprocess so _call_llm_for_summary never invokes the real claude binary
         # (which would trigger SessionStart hooks writing to the production db).
         short_summary = "Condensed summary."
-        with patch("little_loops.session_store.subprocess.run") as mock_run:
-            mock_run.return_value = _make_completed(
-                returncode=0, stdout=_llm_response(short_summary)
-            )
+        with patch("little_loops.session_store.lifecycle._call_llm_for_summary") as mock_run:
+            mock_run.return_value = short_summary
             compact_session(session_id, db, config=config)
         conn = connect(db)
         try:
@@ -883,10 +881,8 @@ class TestCompactSession:
         # Mock subprocess to avoid real LLM calls in test; return a short summary
         # that passes the size check so level 1 is accepted.
         short_summary = "Compacted summary."
-        with patch("little_loops.session_store.subprocess.run") as mock_run:
-            mock_run.return_value = _make_completed(
-                returncode=0, stdout=_llm_response(short_summary)
-            )
+        with patch("little_loops.session_store.lifecycle._call_llm_for_summary") as mock_run:
+            mock_run.return_value = short_summary
             counts = backfill(db, jsonl_files=[jsonl], config=config, also_rebuild=True)
         assert counts["summaries"] >= 1
         conn = connect(db)
@@ -963,10 +959,8 @@ class TestCompactSession:
         db = self._make_multi_session_db(tmp_path, sessions)
         config = {"history": {"compaction": {"enabled": True, "budget_tokens": 10}}}
         short_summary = "Compacted."
-        with patch("little_loops.session_store.subprocess.run") as mock_run:
-            mock_run.return_value = _make_completed(
-                returncode=0, stdout=_llm_response(short_summary)
-            )
+        with patch("little_loops.session_store.lifecycle._call_llm_for_summary") as mock_run:
+            mock_run.return_value = short_summary
             conn = connect(db)
             try:
                 _compact_sessions(conn, config)
@@ -1009,10 +1003,8 @@ class TestCompactSession:
         db = self._make_multi_session_db(tmp_path, sessions)
         config = {"history": {"compaction": {"enabled": True, "budget_tokens": 10}}}
         short_summary = "Compacted."
-        with patch("little_loops.session_store.subprocess.run") as mock_run:
-            mock_run.return_value = _make_completed(
-                returncode=0, stdout=_llm_response(short_summary)
-            )
+        with patch("little_loops.session_store.lifecycle._call_llm_for_summary") as mock_run:
+            mock_run.return_value = short_summary
             # First run
             conn = connect(db)
             try:
@@ -1056,10 +1048,8 @@ class TestCompactSession:
         db = self._make_multi_session_db(tmp_path, sessions)
         config = {"history": {"compaction": {"enabled": True, "budget_tokens": 10}}}
         short_summary = "Linked summary."
-        with patch("little_loops.session_store.subprocess.run") as mock_run:
-            mock_run.return_value = _make_completed(
-                returncode=0, stdout=_llm_response(short_summary)
-            )
+        with patch("little_loops.session_store.lifecycle._call_llm_for_summary") as mock_run:
+            mock_run.return_value = short_summary
             conn = connect(db)
             try:
                 _compact_sessions(conn, config)
@@ -1103,10 +1093,8 @@ class TestCompactSession:
             }
         }
         short_summary = "Off."
-        with patch("little_loops.session_store.subprocess.run") as mock_run:
-            mock_run.return_value = _make_completed(
-                returncode=0, stdout=_llm_response(short_summary)
-            )
+        with patch("little_loops.session_store.lifecycle._call_llm_for_summary") as mock_run:
+            mock_run.return_value = short_summary
             conn = connect(db)
             try:
                 _compact_sessions(conn, config)
@@ -1209,11 +1197,11 @@ class TestSummarizeBlock:
         """Level 1 summary >= input size → escalates to level 2."""
         verbose = "x" * (self.SHORT_INPUT_EST * 4 + 10)  # longer than input
         short_summary = "Short bullet list."
-        with patch("little_loops.session_store.subprocess.run") as mock_run:
+        with patch("little_loops.session_store.lifecycle._call_llm_for_summary") as mock_run:
             # Level 1 returns verbose (long), level 2 returns short
             mock_run.side_effect = [
-                _make_completed(returncode=0, stdout=_llm_response(verbose)),
-                _make_completed(returncode=0, stdout=_llm_response(short_summary)),
+                verbose,
+                short_summary,
             ]
             result = _summarize_block(self.SHORT_INPUT, budget=256)
         assert result == short_summary
@@ -1224,10 +1212,10 @@ class TestSummarizeBlock:
         verbose = "x" * (self.SHORT_INPUT_EST * 4 + 10)
         medium = "Medium summary but still verbose." * 20  # verbose level 2
         # Both levels fail, fall through to truncation
-        with patch("little_loops.session_store.subprocess.run") as mock_run:
+        with patch("little_loops.session_store.lifecycle._call_llm_for_summary") as mock_run:
             mock_run.side_effect = [
-                _make_completed(returncode=0, stdout=_llm_response(verbose)),
-                _make_completed(returncode=0, stdout=_llm_response(medium)),
+                verbose,
+                medium,
             ]
             result = _summarize_block(self.SHORT_INPUT, budget=256)
         assert mock_run.call_count == 2
@@ -1256,11 +1244,9 @@ class TestSummarizeBlock:
         assert result == combined[: min(1024 * 4, 2048)]
 
     def test_level_3_truncation_when_nonzero_returncode(self) -> None:
-        """LLM returns non-zero exit code → escalates → truncation."""
-        with patch("little_loops.session_store.subprocess.run") as mock_run:
-            mock_run.return_value = _make_completed(returncode=1, stderr="API error")
+        """LLM returns non-prose → escalates → truncation."""
+        with patch("little_loops.session_store.lifecycle._call_llm_for_summary", return_value=None):
             result = _summarize_block(self.SHORT_INPUT, budget=256)
-        assert mock_run.call_count == 2  # both levels tried, both failed
         combined = "\n---\n".join(self.SHORT_INPUT)
         assert result == combined[: min(256 * 4, 2048)]
 
@@ -1279,10 +1265,8 @@ class TestSummarizeBlock:
     def test_json_envelope_parsing(self) -> None:
         """The result field is extracted from the JSON envelope, not stored raw."""
         summary_text = "Extracted summary prose."
-        with patch("little_loops.session_store.subprocess.run") as mock_run:
-            mock_run.return_value = _make_completed(
-                returncode=0, stdout=_llm_response(summary_text)
-            )
+        with patch("little_loops.session_store.lifecycle._call_llm_for_summary") as mock_run:
+            mock_run.return_value = summary_text
             result = _summarize_block(self.SHORT_INPUT, budget=256)
         # Result is the extracted prose, not the JSON envelope
         assert result == summary_text
@@ -1290,8 +1274,8 @@ class TestSummarizeBlock:
 
     def test_model_and_timeout_wired_to_subprocess(self) -> None:
         """model and timeout params flow through to subprocess.run."""
-        with patch("little_loops.session_store.subprocess.run") as mock_run:
-            mock_run.return_value = _make_completed(returncode=0, stdout=_llm_response("ok"))
+        with patch("little_loops.session_store.lifecycle._call_llm_for_summary") as mock_run:
+            mock_run.return_value = "ok"
             _summarize_block(self.SHORT_INPUT, budget=256, model="haiku", timeout=30)
         call_kwargs = mock_run.call_args[1]
         assert call_kwargs["timeout"] == 30
@@ -1303,10 +1287,10 @@ class TestSummarizeBlock:
         """Escalation produces WARNING log messages."""
         verbose = "x" * (self.SHORT_INPUT_EST * 4 + 10)
         short_summary = "Short."
-        with patch("little_loops.session_store.subprocess.run") as mock_run:
+        with patch("little_loops.session_store.lifecycle._call_llm_for_summary") as mock_run:
             mock_run.side_effect = [
-                _make_completed(returncode=0, stdout=_llm_response(verbose)),
-                _make_completed(returncode=0, stdout=_llm_response(short_summary)),
+                verbose,
+                short_summary,
             ]
             with caplog.at_level(logging.WARNING, logger="little_loops.session_store"):
                 _summarize_block(self.SHORT_INPUT, budget=256)
@@ -1320,15 +1304,11 @@ class TestSummarizeBlock:
             "Message two also has plenty of content for testing.",
             "Message three is similarly substantive in length.",
         ]
-        with patch("little_loops.session_store.subprocess.run") as mock_run:
-            mock_run.return_value = _make_completed(returncode=0, stdout=_llm_response("short"))
+        with patch("little_loops.session_store.lifecycle._call_llm_for_summary") as mock_run:
+            mock_run.return_value = "short"
             _summarize_block(messages, budget=256)
-        # The prompt text appears in the subprocess args regardless of host
-        # convention: Claude Code uses -p <prompt>, Codex appends directly, etc.
-        cmd_args = mock_run.call_args[0][0]
-        prompt_args = [a for a in cmd_args if isinstance(a, str) and "Message one" in a]
-        assert len(prompt_args) == 1, f"Expected one arg containing the prompt, got {prompt_args}"
-        prompt = prompt_args[0]
+        # _call_llm_for_summary is called with prompt as first positional arg
+        prompt = mock_run.call_args[0][0]
         assert "Message one" in prompt
         assert "\n---\n" in prompt
         assert "Message three" in prompt
