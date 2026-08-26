@@ -1,13 +1,44 @@
 """Tests for the sft-corpus loop — enrich state and quality filter predicates."""
 
 import json
+import os
 import subprocess
 from pathlib import Path
 
 
+# `scripts/` is the source root for the ``little_loops`` package (the
+# ``scripts/pyproject.toml`` workspace). On a CI runner the bash subprocess
+# inherits ``python3`` from the system PATH, which does NOT have ``little_loops``
+# installed (only the venv pytest runs in does). The ``sys.path.insert(0,
+# "scripts")`` calls inside each test assume a cwd that contains ``scripts/``,
+# which is false when bash's cwd is a pytest ``tmp_path`` — so the import would
+# fail under clean CI. Prepending ``scripts/`` to ``PYTHONPATH`` in the
+# subprocess env makes ``import little_loops.*`` resolve regardless of which
+# ``python3`` bash finds or what cwd it runs in. Mirrors the pattern in
+# ``worktree_utils.py`` (PYTHONPATH prepend for branch-only modules) and
+# ``prepatch_check.py`` (PYTHONPATH prepend for the source dir).
+_TESTS_DIR = Path(__file__).resolve().parent
+_SCRIPTS_DIR = _TESTS_DIR.parent
+_LITTLE_LOOPS_PYTHONPATH = str(_SCRIPTS_DIR)
+
+
 def _bash(script: str, cwd: Path) -> subprocess.CompletedProcess[str]:
-    """Run a bash script in the given working directory, capturing output."""
-    return subprocess.run(["bash", "-c", script], cwd=cwd, capture_output=True, text=True)
+    """Run a bash script in the given working directory, capturing output.
+
+    Injects ``PYTHONPATH=<repo>/scripts`` so subprocess ``import little_loops.*``
+    resolves on clean CI runners (where system ``python3`` lacks the venv
+    install that pytest itself uses). Mirrors the PYTHONPATH-prepend pattern
+    used elsewhere in this codebase (see ``worktree_utils.py``,
+    ``prepatch_check.py``).
+    """
+    env = os.environ.copy()
+    existing = env.get("PYTHONPATH", "")
+    env["PYTHONPATH"] = (
+        f"{_LITTLE_LOOPS_PYTHONPATH}{os.pathsep}{existing}" if existing else _LITTLE_LOOPS_PYTHONPATH
+    )
+    return subprocess.run(
+        ["bash", "-c", script], cwd=cwd, capture_output=True, text=True, env=env
+    )
 
 
 # ---------------------------------------------------------------------------
