@@ -1067,6 +1067,7 @@ class TestDslSubcommandParser:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.conformance
 class TestCmdDsl:
     """Tests for cmd_dsl()."""
 
