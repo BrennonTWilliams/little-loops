@@ -121,6 +121,34 @@ discipline becomes an enforced gate rather than a documented intention.
 ### Configuration
 - N/A
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-26 — based on codebase analysis:_
+
+- Confirmed current line numbers: `capture_intent` state header at line 58 as cited; the raw unfenced interpolation itself is on line 63 (`Brief: ${context.description}`), one line after the "Distill this brief..." framing begins at line 65. `validate_intent` state header at line 82 as cited, action lines 86-94, `on_no: capture_intent` confirmed at line 98.
+- `${context.description}` is populated directly from the operator's raw CLI input: `run.py`'s input-binding logic assigns the typed-in string verbatim to `fsm.context[fsm.input_key]` when it isn't valid JSON matching context keys (`scripts/little_loops/cli/loop/run.py` ~line 169-176, via `_resolve_input_value` in `_helpers.py`). The interpolation engine itself (`scripts/little_loops/fsm/interpolation.py`, `VARIABLE_PATTERN`/`InterpolationContext.resolve()`) is pure text substitution with no concept of fencing or escaping — any framing must be hand-authored into the prompt string, which `capture_intent` does not do today.
+- `validate_intent` currently performs zero file-scope checking of any kind — its `python3 -c` body only asserts `intent.yaml` parses with non-empty `name`/`goal`/`steps`/`success_signal`. The loop's `scope:` block (lines 29-31) is unrelated to runtime enforcement: it is consumed only by `resolve_scope()` in `run.py` to acquire concurrency locks for parallel runs, not to audit what a prompt-driven state actually wrote to disk. The closest existing static check, MR-3 `_validate_artifact_isolation` in `meta_rules.py`, only scans literal `action:` YAML text for hardcoded `.loops/tmp/` writes at `ll-loop validate` time — it cannot see runtime writes an LLM agent improvises (like the `research/*.md` files from the source incident), since those paths never appear in the YAML source.
+
+### Scope survey — other loops with the same unfenced-brief pattern
+Confirmed as **not** workflow-generator-specific, matching the issue's own Scope section prediction. Meta/compiling loops (structurally analogous to `workflow-generator`, where the brief should be distilled, not executed) that interpolate their user-input context var unfenced:
+- `scripts/little_loops/loops/brainstorm.yaml` (`input_key: brief`) — `${context.brief}` unfenced at lines 60, 109, 295, 403
+- `scripts/little_loops/loops/loop-composer.yaml` (`input_key: goal`) — `${context.goal}` unfenced at lines 45, 231, 278, 451
+- `scripts/little_loops/loops/loop-composer-adaptive.yaml` (`input_key: goal`) — unfenced at lines 52, 240, 287, 678
+- `scripts/little_loops/loops/loop-router.yaml` (`input_key: goal`) — unfenced at lines 92, 158, 192, 218, 252, 275, 312, 345, 361, 385, 416
+
+Most other `description`-keyed loops (`generative-art.yaml`, `svg-image-generator.yaml`, `cua-agent-desktop.yaml`, etc.) are execution loops where performing the brief directly is the intended behavior — no fencing gap applies there.
+
+### Convention check — no existing fencing pattern exists
+No delimiter/framing convention for untrusted user-authored text exists anywhere in this codebase's loop YAMLs today — every site above interpolates the brief plainly (sometimes double-quoted, never delimited, never framed as "material not instructions"). The `<<<BRIEF ... BRIEF` delimiter this issue proposes in Expected Behavior is a novel pattern, not an existing one being applied — confirms the issue's own Scope section is correct that a shared `lib/` fragment would need to be authored fresh if the convention is meant to generalize.
+
+### Runtime file-scope assertion — no existing mechanism, closest analogs
+No loop implements a runtime "assert all changed files stay under `${context.run_dir}`" gate today. The closest analogs, both git-based:
+- **Baseline-ref + `git diff --name-only`**: `general-task.yaml`'s `check_provisional_markers` state captures `git rev-parse HEAD` at `init` into `baseline-ref.txt`, then diffs against it later (`git diff --name-only "$BASELINE_REF" -- .`) gated via `output_json`. The same loop's `final_verify_spin_gate` extends this with an explicit `.loops/` exclusion pathspec (`git diff "$BASELINE_REF" -- . ':(exclude).loops/'`) — the same directional idea BUG-3327 needs (treat the run-dir as expected churn), applied as an exclusion rather than the inverse containment assertion this issue needs.
+- `rn-refine.yaml`'s `snapshot_leaf_diff` (lines 455-469) repeats the baseline-then-diff shape per-leaf, though purely for observability there (never gates).
+- A `git status --porcelain` dirty-tree check exists in `mechanize-skills.yaml:206-210`, but runs *before* the pass (refusing to start against a dirty tree) — the inverse temporal direction from what `validate_intent` needs (checking *after* `capture_intent` ran).
+
+No existing gate asserts "changed-file-set ⊆ run_dir" as a subset/containment check; the closest structural template to build from is `check_provisional_markers`'s baseline-ref + `git diff --name-only` + `output_json` gate shape.
+
 ## Program Design
 
 ### Signatures
@@ -178,4 +206,5 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-08-26T19:14:21 - `0809cdb6-a88f-42a7-9e51-e57ee8a63f3a.jsonl`
 - `/ll:format-issue` - 2026-08-26T19:09:04 - `8c47cf34-66af-4a75-8c4b-c7a8efe5d7ec.jsonl`

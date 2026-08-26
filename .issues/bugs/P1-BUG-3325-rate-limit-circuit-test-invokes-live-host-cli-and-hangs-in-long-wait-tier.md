@@ -29,16 +29,18 @@ reconcile_attempted: true
 ## Summary
 
 `TestRateLimitCircuitIntegration::test_record_rate_limit_called_on_short_tier`
-(`scripts/tests/test_fsm_executor.py:7963`) has two fixture defects that compound.
+(`scripts/tests/test_fsm_executor.py:7963`) has one root fixture defect that
+cascades into a second symptom.
 
-**First**, its state uses `action="/work"`, which `_action_mode` classifies as
+**The root defect**: its state uses `action="/work"`, which `_action_mode` classifies as
 prompt mode, so `_evaluate` routes to `evaluate_llm_structured` → the real
 `claude` binary. `MockActionRunner` mocks the *action* but never the
 *evaluator*, so the test makes **live, billed API calls** — ~20s and real spend
 per iteration, on every full-suite run. Every sibling test in the class uses
 `action="work.sh"` and avoids this entirely.
 
-**Second**, `MockActionRunner` runs out of indexed results after two calls and
+**The cascade** (a consequence of the above, not an independent defect —
+verified 2026-08-26): `MockActionRunner` runs out of indexed results after two calls and
 its pattern-scan fallback returns the *first* `/work` match — the 429 — forever.
 The state therefore climbs the short-burst tier to exhaustion and drops into the
 **long-wait** tier, where it sleeps on the real unpatched ladder
@@ -76,14 +78,12 @@ explicitly:
 > and `_DEFAULT_RATE_LIMIT_MAX_WAIT_SECONDS=0` so the long-wait tier collapses
 > into an immediate exhaustion on first long-tier attempt.
 
-There are 16 such patch sites in the file (`grep -n LONG_WAIT_LADDER`); this test
-is not one of them.
+The file contains **4 such patch sites** — `test_fsm_executor.py:7175`, `:7202`,
+`:7223`, and `:7811` — plus the `TestRateLimitRetries` docstring reference at
+`:7077` (5 `LONG_WAIT_LADDER` occurrences total). This test is not one of them.
 
-### Codebase Research Findings
-
-_Added by `/ll:refine-issue` — 2026-08-26 — based on codebase analysis:_
-
-- The file currently contains 5 occurrences of `LONG_WAIT_LADDER` (verified via `grep -c 'LONG_WAIT_LADDER' scripts/tests/test_fsm_executor.py`), not the 16 this section's estimate cites. Does not change the root cause or the fix; noted for the operator.
+`:7811` is a deliberate exception: it patches the ladder to `[0.3]` on purpose,
+to observe a real short sleep. Any blanket ladder guard must not clobber it.
 
 ## Current Behavior
 
@@ -159,7 +159,17 @@ an inline FSM with a slash-command action. `"/work"` looks like a deliberate
 choice but nothing in the test depends on prompt mode; the assertion is purely
 about `RateLimitCircuit.get_estimated_recovery()`.
 
-### Defect 2 — the mock serves the 429 forever after its indexed results run out
+### Defect 2 (consequence, not an independent defect) — the mock serves the 429 forever after its indexed results run out
+
+**Verified 2026-08-26: this is downstream of Defect 1, not a second compounding
+defect.** The mock only exhausts its two indexed results because the live LLM
+verdicts (`no` / `cannot_judge`) keep the FSM cycling in `execute`. With the
+action switched to shell mode the run is **exactly two calls** — `runner.calls
+== ["work.sh", "work.sh"]` in the verified prototype — so the indexed results
+never run out and the pattern-scan fallback is never reached. Fixing Defect 1
+alone removes this. The mechanism is documented below because it explains the
+observed trace; the mock hardening in Proposed Solution is defensive hygiene,
+not a required fix.
 
 `MockActionRunner.run` uses indexed results only while
 `call_index < len(results)` (`test_fsm_executor.py:93`). After that it falls
@@ -195,36 +205,100 @@ circuit record it checks comes from an episode the fixture reaches by accident.
 
 ## Proposed Solution
 
-Test-only. No production change.
+Test-only. No production change. **This shape was prototyped end-to-end against
+`main` on 2026-08-26 and passes in 0.04s** (see Verified Fix Shape below).
 
 1. **Switch the action to shell mode**: `action="work.sh"`, matching every
    sibling in the class. This alone removes the live `claude` invocation, the
    ~20s-per-iteration latency, and the billed spend. Nothing in the assertion
    requires prompt mode.
-2. **Make the mock deterministic**: give the two results distinct patterns, or
-   supply enough indexed results that the pattern-scan fallback is never
-   reached, so the intended 429 → recovery sequence actually runs.
-3. **Add the missing tier patches** —
+2. **Add the missing tier patches** —
    `_DEFAULT_RATE_LIMIT_LONG_WAIT_LADDER=[0]` and
-   `_DEFAULT_RATE_LIMIT_MAX_WAIT_SECONDS=0` — as a belt-and-braces guard, per
-   the `TestRateLimitRetries` docstring convention
-   (`test_fsm_executor.py:7076-7079`).
-4. **Assert the tier**: the test claims short-tier behavior, so it should assert
-   `short_retries` advanced and that the long-wait tier was never entered —
-   otherwise it can silently regress back into the ladder.
+   `_DEFAULT_RATE_LIMIT_MAX_WAIT_SECONDS=0` — via the file's standard
+   `patch.multiple("little_loops.fsm.executor", ...)` idiom, per the
+   `TestRateLimitRetries` docstring convention (`test_fsm_executor.py:7076-7079`).
+3. **Assert no LLM evaluation happened**: `assert_not_called()` on a patched
+   `little_loops.fsm.executor.evaluate_llm_structured`.
+4. **Assert the tier**: spy `_interruptible_sleep` and assert the short tier ran
+   once and the ladder never did — see the observable caveat below.
+5. *(Optional, defensive)* Make the mock deterministic by over-provisioning
+   indexed results. Not required — with (1) the fallback is unreachable.
 
-### Follow-on hardening (worth splitting out)
+### Observable caveat — `_rate_limit_retries` is popped before the assertion runs
 
-Two structural gaps let this sit undetected, both broader than this test:
+**Do not assert on `executor._rate_limit_retries["execute"]` after `run()`.**
+Verified: it raises `KeyError: 'execute'`. The recovery else-branch at
+`executor.py:2041` pops the per-state record when call 2 returns `exit_code=0` —
+the same branch this issue's Root Cause explains. Use the sleep spy instead,
+which is already this class's idiom at `test_fsm_executor.py:7955-7962`.
+
+### Verified Fix Shape
+
+Prototyped against `main`, run serially, **passes in 0.04s**:
+
+```python
+runner.results = [
+    ("work.sh", {"output": "Error: 429 Too Many Requests rate limit exceeded", "exit_code": 1}),
+    ("work.sh", {"output": "ok", "exit_code": 0}),
+]
+runner.use_indexed_order = True
+sleeps: list[float] = []
+
+with patch.multiple(
+    "little_loops.fsm.executor",
+    _DEFAULT_RATE_LIMIT_BACKOFF_BASE=0,
+    _DEFAULT_RATE_LIMIT_LONG_WAIT_LADDER=[0],
+    _DEFAULT_RATE_LIMIT_MAX_WAIT_SECONDS=0,
+), patch("little_loops.fsm.executor.evaluate_llm_structured") as llm:
+    executor = FSMExecutor(fsm, action_runner=runner, circuit=circuit)
+    with patch.object(
+        executor, "_interruptible_sleep", side_effect=lambda d, **k: sleeps.append(d) or 0.0
+    ):
+        executor.run()
+
+llm.assert_not_called()                          # no live host CLI
+assert circuit.get_estimated_recovery() is not None
+assert runner.calls == ["work.sh", "work.sh"]    # no tier climbing
+assert sleeps == [0.0]                           # one short-tier sleep, ladder never entered
+```
+
+`circuit.record_rate_limit()` runs *before* the sleep in both tiers
+(`executor.py:3400`, `:3411`), so spying the sleep does not affect the circuit
+assertion.
+
+### Follow-on hardening — SPLIT OUT, not in scope here
+
+Two structural gaps let this sit undetected, both broader than this test. **They
+are the deliverable of a separate issue**; leaving them here contradicts this
+issue's "four test-only edits / Effort: Small / Risk: Very low" rating. See the
+scope note under Acceptance Criteria.
 
 - **No guard against tests invoking the real host CLI.** `conftest.py` sanitizes
   `LL_HOST_CLI` (`conftest.py:729`) but nothing fails a test that actually spawns
-  `claude`. An autouse fixture that makes `host_runner.run_blocking_json` raise
-  unless explicitly opted into would have caught this immediately, and would
-  catch the next one. This is the highest-value item here.
+  `claude`. This is the highest-value item.
+
+  **Do not implement this as an autouse patch of
+  `little_loops.fsm.executor.evaluate_llm_structured`.** Verified 2026-08-26: an
+  autouse fixture patching that name breaks tests that legitimately drive the
+  *real* evaluator with `subprocess.run` mocked —
+  `TestEvaluators::test_llm_structured_evaluator_routes_on_verdict` fails at
+  `test_fsm_executor.py:2827` (`assert 'check' == 'done'`) under such a guard.
+  The guard belongs at the host-CLI process boundary
+  (`host_runner.run_blocking_json` / the `resolve_host()` invocation) **with a
+  marker-based opt-out**, because `test_host_runner.py::TestRunBlockingJson`
+  (lines 1962-2030) legitimately exercises that function. This means the
+  `_guard_real_history_db` precedent (no opt-out) does **not** transfer — see the
+  correction in Program Design.
+
+  Note the guard's failure mode is quiet by default: the executor swallows the
+  raised exception into an `error` verdict rather than surfacing it, so the
+  fixture must record hits out-of-band (module-level collector +
+  `pytest_sessionfinish`) rather than relying on the raise alone.
+
 - **No guard against unpatched rate-limit ladders.** An autouse fixture scoped to
   the rate-limit classes patching the ladder to `[0]` makes the convention
-  structural rather than per-test discipline.
+  structural rather than per-test discipline. It must exempt
+  `test_fsm_executor.py:7808-7813`, which patches a non-zero ladder on purpose.
 
 ### Codebase Research Findings
 
@@ -236,20 +310,35 @@ _Added by `/ll:refine-issue` — 2026-08-26 — based on codebase analysis:_
 
 ## Acceptance Criteria
 
-- [ ] `test_record_rate_limit_called_on_short_tier` completes in under 1s.
-- [ ] The test spawns **no** live host CLI call — verified by asserting on a
-      patched `little_loops.fsm.executor.evaluate_llm_structured`, not
+- [ ] `test_record_rate_limit_called_on_short_tier` completes in under 1s
+      (prototype: 0.04s).
+- [ ] The test spawns **no** live host CLI call — verified by `assert_not_called()`
+      on a patched `little_loops.fsm.executor.evaluate_llm_structured`, not
       `little_loops.host_runner.run_blocking_json` (unreachable from
       `fsm/evaluators.py`, which imports `run_blocking_json` directly), and not
       by wall-clock alone.
-- [ ] The test asserts short-tier behavior explicitly: `short_retries` advanced,
-      long-wait tier never entered.
+- [ ] The test asserts short-tier behavior explicitly via a `_interruptible_sleep`
+      spy: `sleeps == [0.0]` (short tier ran once, ladder never entered) and
+      `runner.calls == ["work.sh", "work.sh"]` (no tier climbing). **Not** via
+      `executor._rate_limit_retries` — that record is popped on recovery before
+      the assertion runs (see Observable caveat).
 - [ ] `python -m pytest scripts/tests/test_fsm_executor.py -q -n 0` completes with
       no faulthandler timeout dump.
-- [ ] No rate-limit test can block on an unpatched
-      `_DEFAULT_RATE_LIMIT_LONG_WAIT_LADDER`.
 - [ ] Full suite `python -m pytest scripts/tests/` shows this test passing rather
       than among the pre-existing timeout failures.
+
+### Scope note (2026-08-26 review)
+
+The previously-listed AC "*No rate-limit test can block on an unpatched
+`_DEFAULT_RATE_LIMIT_LONG_WAIT_LADDER`*" has been **removed from this issue**. It
+is not deliverable by the test-only edits above — it requires the
+`_rate_limit_ladder_patched` autouse fixture that this issue explicitly defers to
+Follow-on hardening. Keeping it would have made the Impact section's "Effort:
+Small / Risk: Very low / four test-only edits" rating wrong. As worded it would
+also have forbidden the intentional non-zero ladder patch at
+`test_fsm_executor.py:7808-7813`. Both structural guards belong in a split-out
+hardening issue; if they are instead pulled back into this issue, re-rate Effort
+and Risk accordingly.
 
 ## Impact
 
@@ -297,8 +386,11 @@ _Added by `/ll:refine-issue` — 2026-08-26 — based on codebase analysis:_
 
 No production signatures change. Proposed test-side additions:
 
-- `_no_live_host_cli()` — autouse pytest fixture (session- or module-scoped) that patches `little_loops.host_runner.run_blocking_json` to raise, so any test that reaches the real host CLI fails loudly instead of silently spending money. Opt-out via an explicit marker for tests that genuinely exercise the host path.
-- `_rate_limit_ladder_patched()` — autouse fixture scoped to the rate-limit test classes, patching `_DEFAULT_RATE_LIMIT_LONG_WAIT_LADDER` to `[0]` and `_DEFAULT_RATE_LIMIT_MAX_WAIT_SECONDS` to `0`.
+Both fixtures below are **split-out follow-on work, not part of this fix** (see
+the Scope note under Acceptance Criteria).
+
+- `_no_live_host_cli()` — autouse pytest fixture (session- or module-scoped) that patches `little_loops.host_runner.run_blocking_json` to raise, so any test that reaches the real host CLI fails loudly instead of silently spending money. **Requires** an explicit marker opt-out for `test_host_runner.py::TestRunBlockingJson` (lines 1962-2030), which exercises that function legitimately with `subprocess.run` mocked. Must not be implemented by patching `executor.evaluate_llm_structured` instead — that breaks `TestEvaluators::test_llm_structured_evaluator_routes_on_verdict` (verified).
+- `_rate_limit_ladder_patched()` — autouse fixture scoped to the rate-limit test classes, patching `_DEFAULT_RATE_LIMIT_LONG_WAIT_LADDER` to `[0]` and `_DEFAULT_RATE_LIMIT_MAX_WAIT_SECONDS` to `0`. Must exempt `test_fsm_executor.py:7808-7813` (intentional non-zero ladder).
 
 ### Call Path
 
@@ -319,8 +411,10 @@ the short tier where it belongs.
 
 - Verify serially (`-n 0`) and under default xdist — the failure shows as a
   *hang* in the former and a *timeout* in the latter.
-- Assert on the patched `run_blocking_json` mock, not on elapsed time; a
-  wall-clock assertion would pass on a fast-but-still-live call.
+- Assert on the patched `little_loops.fsm.executor.evaluate_llm_structured` mock
+  — **not** `run_blocking_json`, which is unreachable from this patch target (see
+  the patch-target correction below) — and not on elapsed time; a wall-clock
+  assertion would pass on a fast-but-still-live call.
 - Re-run the whole `test_fsm_executor.py` file, not just `-k` the one test: the
   full-file serial run is the reproduction that proved this is unconditional.
 
@@ -333,11 +427,43 @@ _Added by `/ll:refine-issue` — 2026-08-26 — based on codebase analysis:_
 - **`_evaluate()` dispatch confirmed** at `scripts/little_loops/fsm/executor.py:2571-2621`; the prompt-mode branch calls `evaluate_llm_structured()` unconditionally on `action_result` truthiness — it does not first inspect `exit_code`, so a mocked 429-shaped `ActionResult` (still a truthy object) triggers the live-CLI call regardless of the mock's intended semantics. The rate-limit-specific text classification that routes into `_handle_rate_limit()` only happens afterward, at `executor.py:1997-2014` — the live-CLI call happens on every "execute" iteration in this test, not only the ones the mock intends as 429s.
 - **Existing fixture precedent for the proposed guard**: `_guard_real_history_db` (`scripts/tests/conftest.py:617-657`) is the closest existing analog — a session-scoped autouse fixture that monkeypatches a single choke point and asserts if it resolves to a real/production target, with no marker-based opt-out (legitimate calls are routed around it by a sibling isolation fixture). No fixture in this codebase currently guards the host-CLI subprocess boundary or the rate-limit ladder constants.
 
+  **Correction (2026-08-26 review): the "no marker-based opt-out" half of this precedent does not transfer.** `_guard_real_history_db` gets away without an opt-out because a sibling isolation fixture routes every legitimate call around it. There is no equivalent redirect for the host CLI: `test_host_runner.py::TestRunBlockingJson` (lines 1962-2030) calls `run_blocking_json` directly, and `TestEvaluators::test_llm_structured_evaluator_routes_on_verdict` calls through the real evaluator with `subprocess.run` mocked. A host-CLI guard therefore needs an explicit marker opt-out.
+
 ## Status
 
 **Open** | Created: 2026-08-26 | Priority: P1
 
 ## Notes
+
+### Pre-implementation review — 2026-08-26
+
+Diagnosis re-verified against `main`; Defect 1 and the root-cause trace hold.
+Six corrections were folded into the sections above:
+
+1. AC "no rate-limit test can block on an unpatched ladder" removed — not
+   deliverable by the test-only edits, and it forbade the intentional
+   `:7808-7813` ladder patch. See the Scope note under Acceptance Criteria.
+2. AC "`short_retries` advanced" replaced — `executor._rate_limit_retries["execute"]`
+   raises `KeyError` after `run()` (popped by the `executor.py:2041` recovery
+   branch). Replaced with the `_interruptible_sleep` spy the class already uses.
+3. Defect 2 demoted to a consequence of Defect 1 — with shell mode the run is
+   exactly two calls, so the pattern-scan fallback is unreachable.
+4. The proposed `_no_live_host_cli` guard must sit at the host-CLI process
+   boundary with a marker opt-out, not at `executor.evaluate_llm_structured`;
+   the latter breaks `TestEvaluators::test_llm_structured_evaluator_routes_on_verdict`
+   (verified: fails at `test_fsm_executor.py:2827`).
+5. Stale "16 patch sites" corrected to 4 (+1 docstring), and the contradicting
+   refine-findings bullet folded into the prose.
+6. Testing Strategy's "assert on the patched `run_blocking_json` mock" corrected
+   to `executor.evaluate_llm_structured`, matching the refine correction.
+
+**Scope evidence:** with `executor.evaluate_llm_structured` patched to raise,
+the other 444 tests in `test_fsm_executor.py` pass unchanged in a serial run —
+this is the only test in the file reaching the default LLM-eval path. A
+full-suite sweep under `-n 4` was inconclusive (the xdist controller does not
+run tests, so the detector's counter was never populated on the controller).
+
+### Origin
 
 Split out during review of PR #17 / PR #15 (both BUG-3208). Neither PR touches
 this path; both were verified against it. Filed as a sibling of BUG-3208 rather

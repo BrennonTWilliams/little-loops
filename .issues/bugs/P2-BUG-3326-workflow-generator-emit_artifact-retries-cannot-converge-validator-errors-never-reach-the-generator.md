@@ -121,6 +121,26 @@ retry mechanism actually do what its name promises.
 ### Configuration
 - N/A
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-26 — based on codebase analysis:_
+
+- Confirmed current line numbers match the issue exactly: `validate_artifact` (315), `emit_artifact` (280), `count_emit_retry` (329), `validate_evaluators` (202) with its `on_no: attach_evaluators` edge at line 231 (the `attach_evaluators` state header itself is at line 145 — the issue's "line 231" citation refers to the routing edge, not the state header).
+- Full state pipeline order (all under `${captured.run_dir.output}`, set in `init` via `capture: run_dir`): `init → capture_intent → validate_intent → sketch_state_graph → validate_sketch → attach_evaluators → validate_evaluators → resolve_routing → validate_routing → emit_artifact → validate_artifact → count_emit_retry`.
+- `count_emit_retry`'s current shell action is a pure retry-budget counter (persists `.emit_retry_count`, compares against `${context.max_emit_retries}`, default `3` — defaulted twice: once in `context:` at line 39, once again inline in the shell script). It performs no branching on *why* validation failed — `on_yes: emit_artifact`, `on_no: diagnose`. `diagnose` is a `prompt` state with `next: failed` and no `on_error` handling (contrast: `finalize_await_confirmation` does declare `on_error: failed`).
+- `validate_evaluators`'s fault-class routing works because its shell action is a `python3 -c` snippet that imports `NON_LLM_EVALUATOR_TYPES`/`EVALUATOR_REQUIRED_FIELDS` directly from `little_loops.fsm.validation` (not restated), asserts membership/field-completeness, and its single `on_no: attach_evaluators` edge routes straight back to the one state that owns that one fault class — there is no separate "count" state interposed. Reusing this edge for `count_emit_retry` means inserting a classification step between `validate_artifact` and `count_emit_retry` (or inside `count_emit_retry` itself) that greps the captured error text for a fault-class signature before deciding `emit_artifact` vs `attach_evaluators`.
+
+### Convention check — stderr capture and fault-class routing
+- No loop YAML in `scripts/little_loops/loops/` uses the literal `cmd 2>file; exit $?` one-liner the issue proposes. Two established idioms exist instead: (a) `cmd 2>&1 | tee file` combined with `set -o pipefail` (e.g. `fix-quality-and-tests.yaml:62-64`, `test-coverage-improvement.yaml`, `dead-code-cleanup.yaml`, `autodev.yaml`, `rn-remediate.yaml`), or (b) stderr-only redirect to a file plus explicit `$?` capture into a shell variable, used when the state needs to branch on the result rather than just log it (e.g. `vega-viz.yaml:298-320`, `cli-anything-bootstrap.yaml:271-279,324-325`). Idiom (b) is the closer structural match to what `validate_artifact` needs (preserve exit code for the `exit_code` evaluator while also persisting stderr for the next state to read).
+- Fault-class routing on a retry edge (grep prior output for a discriminator, route on `output_contains`) is an established, repeated pattern elsewhere: `lib/common.yaml:332-354` (`ll_auto_auth_check`), `lib/common.yaml:355-386` (`ll_auto_learning_gate_check`, three-way classification via sequential grep), and `cua-agent-desktop.yaml:344-391` (a full `_check_*`/`_route_*` chain, with an explicit comment noting this exists specifically because a flat retry edge would otherwise mask a distinct fault class).
+- Contrast case: `cli-anything-bootstrap.yaml:490-506` (`count-refine-cycle`) is structurally identical to `workflow-generator.yaml`'s current `count_emit_retry` — a flat, fault-agnostic counter with no discrimination. This confirms fault-class discrimination is consistently implemented as an *additional* layer on top of the counter shape, not folded into the counter state itself, in every codebase example that has it.
+
+### Prompt convention — reading a prior error file
+- The "if `<path>` exists and is non-empty, read it first" phrasing is an established, near-identical convention repeated verbatim across generator-family loops (`svg-image-generator.yaml:75-76`, `hitl-md.yaml:170`, `openscad-model-generator.yaml:97`, `pixi-data-viz.yaml:133`, `canvas-sketch-generator.yaml:126`, `pixi-generative-art.yaml:101`, `html-website-generator.yaml:70`, `generative-art.yaml:98`) and `rn-refine.yaml:438-441`/`general-task.yaml:987-989` for triage-style reads. `emit_artifact`'s prompt should follow this exact phrasing convention rather than inventing new wording.
+
+### Test shape conventions
+- `scripts/tests/test_builtin_loops.py` has two established shapes for this kind of assertion: a static dict-lookup shape for routing-target assertions (`test_shrink_gated_by_context_flag`, `test_promotion_gated_by_auto_promote_flag` — `data["states"][name].get("on_yes"/"on_no")` equality checks), and a behavioral subprocess-execution shape for proving a shell gate's logic actually discriminates (`test_validate_evaluators_enforces_required_companion_fields` — extracts the action string, substitutes a `tmp_path` fixture, runs it via `subprocess.run(["bash", "-c", action], ...)`, asserts on `returncode`/`stderr`). A new test for `count_emit_retry`'s fault-class routing should follow the behavioral shape since the point is proving the grep-based discrimination works, not just that a YAML key has a given value.
+
 ## Program Design
 
 ### Signatures
@@ -176,4 +196,5 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-08-26T19:14:21 - `0809cdb6-a88f-42a7-9e51-e57ee8a63f3a.jsonl`
 - `/ll:format-issue` - 2026-08-26T19:09:04 - `8c47cf34-66af-4a75-8c4b-c7a8efe5d7ec.jsonl`

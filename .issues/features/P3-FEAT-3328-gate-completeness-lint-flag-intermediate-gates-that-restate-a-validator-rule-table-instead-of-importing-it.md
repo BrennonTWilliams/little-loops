@@ -155,6 +155,18 @@ the existing `_validate_*` MR functions there (e.g.
 ### Configuration
 - N/A
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-26 — based on codebase analysis:_
+
+- Confirmed exact shape of `ValidationError`/`ValidationSeverity` in `scripts/little_loops/fsm/validation/_base.py`: `ValidationSeverity` is a two-value `Enum` (`ERROR`, `WARNING`); `ValidationError` is a `@dataclass` with `message: str`, `path: str | None = None`, `severity: ValidationSeverity = ValidationSeverity.ERROR`.
+- Confirmed MR registration pipeline: `validate_fsm(fsm, orchestration_request_path=None) -> list[ValidationError]` in `structural_rules.py` calls every `_validate_*` check via `errors.extend(_validate_XXX(fsm))` in a fixed sequence. Adding a new rule requires: (1) implement `_validate_gate_completeness(fsm: FSMLoop) -> list[ValidationError]` in `meta_rules.py`, (2) import it into `structural_rules.py`, (3) add its `errors.extend(...)` call inside `validate_fsm()`, (4) re-export the function and any new constants from `scripts/little_loops/fsm/validation/__init__.py` in both the `from ... import (...)` block and `__all__` (matches the issue's own citation of lines 47-49/164-166 for the existing re-exports).
+- Confirmed `_validate_artifact_isolation` (MR-3) and `_validate_meta_loop_evaluation` (MR-1/MR-2) shapes as the sibling pattern: both operate on `state.action` as a raw string via compiled module-level `re.Pattern` constants (`_SHARED_TMP_PATH_RE`, `_META_LOOP_ACTION_PATTERNS`) — **no rule in this package uses `ast.parse`, `ast`, or `shlex` on embedded shell/Python bodies today**; every action-text lint (MR-3, MR-5, MR-6, MR-7/9/11 in `shell_safety.py`) is regex-over-raw-string. A new rule wanting more than substring/regex matching on literal set/frozenset syntax would need to introduce its own detection utility — none is currently shared/reusable.
+- Confirmed `NON_LLM_EVALUATOR_TYPES` is *derived*, not hand-listed: `frozenset[str] = frozenset(EVALUATOR_REQUIRED_FIELDS.keys()) - {"llm_structured", "comparator", "contract", "advisor_consult"}` in `_base.py`. This directly supports the issue's rationale — a literal copy of this set drifts silently whenever `EVALUATOR_REQUIRED_FIELDS` changes, since the derived set updates automatically but a pasted literal does not.
+- **Escape-hatch convention correction**: no inline source-comment suppression convention (e.g. the issue's proposed `# gate-completeness: intentional-subset`) exists anywhere in `fsm/validation` today. Every existing MR rule's escape hatch is a top-level loop YAML boolean flag instead (e.g. `meta_self_eval_ok`, `shared_state_ok`, `generator_fix_ok`, `partial_route_ok`, all enumerated in `KNOWN_TOP_LEVEL_KEYS` in `_base.py`), referenced directly in the `ValidationError.message` text. A `gate_completeness_ok: true` top-level flag would match established convention; an inline comment marker would be a new, inconsistent suppression mechanism for this codebase.
+- `ll-loop validate` severity surfacing (`cmd_validate` in `scripts/little_loops/cli/loop/config_cmds.py`): plain-text mode raises on ERROR only and does not currently print WARNING-severity results in its success path (they're returned but unused); `--json` mode always includes warnings in the `violations` array with `"severity": "warning"` and `"valid": true`. A new WARNING-severity rule will be visible via `--json` immediately but silent in the default CLI success output until/unless that gap is separately addressed.
+- Reference implementation already in-repo: `workflow-generator.yaml`'s `validate_evaluators` state is the positive control this rule must not flag (imports `EVALUATOR_REQUIRED_FIELDS`/`NON_LLM_EVALUATOR_TYPES` directly, with an inline comment stating the import-not-restate rationale) — useful as the concrete "correct" fixture for the rule's negative test case.
+
 ## Program Design
 
 ### Types
@@ -241,4 +253,5 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-08-26T19:14:22 - `0809cdb6-a88f-42a7-9e51-e57ee8a63f3a.jsonl`
 - `/ll:format-issue` - 2026-08-26T19:09:04 - `8c47cf34-66af-4a75-8c4b-c7a8efe5d7ec.jsonl`
