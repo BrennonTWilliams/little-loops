@@ -97,9 +97,17 @@ jobs:
         # for triage scripts. `set -o pipefail` is required: without it the
         # pipeline's exit code is tee's (always 0), masking pytest's actual
         # failure status. Both files are uploaded on every CI outcome below.
+        # `source .venv/bin/activate` is required so subprocess pytest spawns
+        # inherit `.venv/bin` on PATH (so `ll-config`/`ll-loop`/etc. console
+        # scripts resolve) AND have VIRTUAL_ENV set (so the venv-Python finds
+        # site-packages when subprocessed as `python` rather than `.venv/bin/
+        # python`). Without activation, `ubuntu-latest` runs hit `command not
+        # found: ll-config` and `No module named 'little_loops'` for ~117 tests
+        # that subprocess `ll-*` CLIs — see BUG-3208 validation triage.
         run: |
           set -o pipefail
-          .venv/bin/python -m pytest scripts/tests/ \
+          source .venv/bin/activate
+          python -m pytest scripts/tests/ \
             -m "not integration and not conformance" \
             --junit-xml=pytest-junit.xml \
             | tee pytest.log
@@ -151,9 +159,13 @@ jobs:
         # Same pipefail + tee + junit pattern as the unit job. Without
         # `set -o pipefail` the pipeline's exit code is tee's (always 0),
         # masking pytest's actual failure status from the GH Actions summary.
+        # `source .venv/bin/activate` mirrors the unit-tests step — Thinky has
+        # host CLIs on PATH by default but subprocess `python` from venv still
+        # needs VIRTUAL_ENV to find site-packages. Same fix as unit-tests.
         run: |
           set -o pipefail
-          .venv/bin/python -m pytest scripts/tests/ \
+          source .venv/bin/activate
+          python -m pytest scripts/tests/ \
             -m conformance \
             -ra --tb=short \
             --junit-xml=pytest-conformance-junit.xml \
