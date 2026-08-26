@@ -338,6 +338,7 @@ class TestSoftThresholdSummary:
         assert thread is None
 
 
+@pytest.mark.conformance
 class TestMessageEventsUnchangedRegression:
     """Regression guard: compaction must never delete message_events rows (FEAT-2598 wiring)."""
 
@@ -376,6 +377,7 @@ class TestMessageEventsUnchangedRegression:
         assert count == 10
 
 
+@pytest.mark.conformance
 class TestAssistantMessagesUnchangedRegression:
     """FEAT-2747 Wiring Phase step 9: assistant-inclusive compaction must not
 

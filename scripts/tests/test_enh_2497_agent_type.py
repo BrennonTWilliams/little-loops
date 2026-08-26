@@ -212,6 +212,7 @@ class TestAgentUsageAggregation:
         ]
 
 
+@pytest.mark.conformance
 class TestBackfillAgentType:
     def test_backfill_populates_agent_type(self, tmp_path: Path) -> None:
         from little_loops.session_store import backfill

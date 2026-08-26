@@ -85,6 +85,7 @@ class TestSessionIdCapture:
         assert parse_session_id_from_stream_json("not json") is None
 
 
+@pytest.mark.conformance
 class TestBackfillThenCompact:
     """Risk (b): unproven synchronous in-process backfill+compact for a just-finished session."""
 
