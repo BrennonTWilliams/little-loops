@@ -77,6 +77,43 @@ def snapshot(out, pid, label):
     except (OSError, subprocess.TimeoutExpired) as e:
         out.write("(unavailable: " + str(e) + ")\n")
 
+    # FD count: single-line, easy to grep + trend across snapshots.
+    # identity-at-snap1-and-snap2 = no FD growth (file descriptors not leaking).
+    # snap2 > snap1 by N = N files opened during the stall window.
+    out.write("--- FD count (ls /proc/" + str(pid) + "/fd | wc -l) ---\n")
+    try:
+        result = subprocess.run(
+            ["bash", "-c", "ls /proc/" + str(pid) + "/fd 2>/dev/null | wc -l"],
+            capture_output=True, text=True, timeout=5,
+        )
+        out.write(result.stdout.strip() + "\n")
+        if result.stderr:
+            out.write("(stderr: " + result.stderr.strip() + ")\n")
+    except (OSError, subprocess.TimeoutExpired) as e:
+        out.write("(unavailable: " + str(e) + ")\n")
+
+    # smaps_rollup: heap vs stack vs mmap vs locked vs private.
+    # Available since kernel 3.10; 2>/dev/null covers the older-kernel gap.
+    # Names the heap-vs-mmap surface directly: cum-load leak in mmap'd
+    # objects shows up here as growing `Rss`/`Pss_Anon` deltas across snaps.
+    out.write("--- /proc/" + str(pid) + "/smaps_rollup ---\n")
+    try:
+        with open("/proc/" + str(pid) + "/smaps_rollup", "r") as f:
+            out.write(f.read())
+    except OSError as e:
+        out.write("(unavailable: " + str(e) + ")\n")
+
+    # I/O stats: cumulative read_bytes/write_bytes/syscr/syscw.
+    # If the wedge is I/O-bound (pipe wait, blocked syscall), the byte
+    # counter at snap1 vs snap2 reveals whether I/O is progressing.
+    # Subtracting snap1 from snap2 gives the stall-window I/O delta.
+    out.write("--- /proc/" + str(pid) + "/io ---\n")
+    try:
+        with open("/proc/" + str(pid) + "/io", "r") as f:
+            out.write(f.read())
+    except OSError as e:
+        out.write("(unavailable: " + str(e) + ")\n")
+
 
 def main():
     ap = argparse.ArgumentParser(description="BUG-3208 master-side hang watchdog")
@@ -104,8 +141,9 @@ def main():
     out.write("[" + time.strftime('%H:%M:%S', time.gmtime()) + "] watchdog alive; watching pid=" + str(args.pid) + "\n")
 
     last_junit_mtime = 0.0
+    last_junit_size = 0
     junit_path = Path("pytest-junit.xml")
-    out.write("junit-mtime tracking: enabled (path=" + str(junit_path) + ")\n")
+    out.write("junit-mtime+size tracking: enabled (path=" + str(junit_path) + ")\n")
 
     while proc_alive(args.pid):
         # Progress signal 1: stdout line count growth
@@ -129,6 +167,23 @@ def main():
         except OSError:
             current_junit_mtime = 0.0
 
+        # Progress signal 3: pytest-junit.xml file size.
+        # Edge case from QA: pytest-junit buffers per-testcase elements
+        # in memory and flushes them at the NEXT test's setup hook. A single
+        # test running >2min (rare but real: fixture-build tests, subprocess-
+        # spawn clusters, large mock factories) leaves mtime unchanged for
+        # the duration of that one test. File size advances incrementally
+        # as new testsuite/testcase elements are appended to the buffer,
+        # decoupled from filesystem-mtime resolution (1s on most ext4).
+        # OR-condition: any of the three signals advancing = progress.
+        try:
+            if junit_path.exists():
+                current_junit_size = junit_path.stat().st_size
+            else:
+                current_junit_size = 0
+        except OSError:
+            current_junit_size = 0
+
         progress_made = False
         progress_reasons = []
         if line_count > last_line_count:
@@ -139,6 +194,10 @@ def main():
             last_junit_mtime = current_junit_mtime
             progress_made = True
             progress_reasons.append("junit_mtime=" + str(int(current_junit_mtime)))
+        if current_junit_size > last_junit_size:
+            last_junit_size = current_junit_size
+            progress_made = True
+            progress_reasons.append("junit_size=" + str(current_junit_size))
         if progress_made:
             last_progress_monotonic = time.monotonic()
             out.write("[" + time.strftime('%H:%M:%S', time.gmtime()) + "] progress: " + ",".join(progress_reasons) + "\n")
