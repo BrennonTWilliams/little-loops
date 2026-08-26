@@ -4,10 +4,11 @@ type: BUG
 title: 'workflow-generator emit_artifact retries cannot converge: validator errors
   never reach the generator'
 priority: P2
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-08-26'
 captured_at: '2026-08-26T17:33:29Z'
+completed_at: '2026-08-26T22:04:16Z'
 confidence_score: 100
 outcome_confidence: 93
 score_complexity: 18
@@ -572,6 +573,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-26T22:04:05 - `3839dbf2-bb80-4473-88ee-4f1947f0d277.jsonl`
 - `/ll:confidence-check` - 2026-08-26T20:09:17 - `fdfe1063-50b8-41a2-aae7-c524a32eadad.jsonl`
 - `/ll:wire-issue` - 2026-08-26T19:21:20 - `3b6a461b-67ff-4f6b-9949-d834388d9cff.jsonl`
 - `/ll:refine-issue` - 2026-08-26T19:14:21 - `0809cdb6-a88f-42a7-9e51-e57ee8a63f3a.jsonl`

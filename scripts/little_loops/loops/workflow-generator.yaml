@@ -29,7 +29,7 @@ initial: init
 scope:
   - "${context.run_dir}"
   - "${context.loops_dir}"
-max_steps: 30
+max_steps: 40
 timeout: 5400
 
 context:
@@ -48,6 +48,8 @@ states:
       DIR="${context.run_dir}"
       mkdir -p "$DIR"
       mkdir -p "$DIR/probes"
+      : > "$DIR/.emit_errors.txt"
+      rm -f "$DIR/.emit_retry_count"
       case "$DIR" in
         /*) echo "$DIR" ;;
         *) echo "$(pwd)/$DIR" ;;
@@ -214,6 +216,7 @@ states:
       from little_loops.fsm.validation import (
           EVALUATOR_REQUIRED_FIELDS,
           NON_LLM_EVALUATOR_TYPES,
+          VALID_OPERATORS,
       )
       d = yaml.safe_load(open('${captured.run_dir.output}/graph-evaluators.yaml'))
       for s in d.get('states') or []:
@@ -224,6 +227,9 @@ states:
           assert etype in NON_LLM_EVALUATOR_TYPES, f\"state {s.get('name')!r} has disallowed evaluator {etype!r}\"
           missing = [f for f in EVALUATOR_REQUIRED_FIELDS.get(etype, []) if ev.get(f) is None]
           assert not missing, f\"state {s.get('name')!r} evaluator {etype!r} is missing required field(s): {missing}\"
+          op = ev.get('operator')
+          if op is not None:
+              assert op in VALID_OPERATORS, f\"state {s.get('name')!r} has invalid operator {op!r}\"
       "
     evaluate:
       type: exit_code
@@ -286,6 +292,10 @@ states:
       Read ${captured.run_dir.output}/intent.yaml and
       ${captured.run_dir.output}/graph-routed.yaml.
 
+      If ${captured.run_dir.output}/.emit_errors.txt exists and is
+      non-empty, read it first — treat it as the errors from your previous
+      attempt and fix every listed error specifically before re-emitting.
+
       Assemble a complete, runnable FSM-loop YAML file at
       ${captured.run_dir.output}/workflow.yaml with these top-level keys:
       `name` (from intent.yaml), `description` (from intent.goal),
@@ -320,7 +330,12 @@ states:
     # instead of looping forever.
     action_type: shell
     action: |
-      ll-loop validate "${captured.run_dir.output}/workflow.yaml"
+      set -o pipefail
+      ll-loop validate "${captured.run_dir.output}/workflow.yaml" 2>&1 \
+        | tee "${captured.run_dir.output}/.emit_errors.txt"
+      RC=$?
+      [ "$RC" -eq 0 ] && : > "${captured.run_dir.output}/.emit_errors.txt"
+      exit "$RC"
     evaluate:
       type: exit_code
     on_yes: check_shrink_enabled
@@ -587,7 +602,7 @@ states:
       Diagnose by reading whichever of these exist under
       ${captured.run_dir.output}/: intent.yaml, graph-sketch.yaml,
       graph-evaluators.yaml, graph-routed.yaml, workflow.yaml,
-      .emit_retry_count.
+      .emit_retry_count, .emit_errors.txt.
 
       Most common failure: emit_artifact could not produce a workflow.yaml
       that passes `ll-loop validate` within max_emit_retries attempts. Write

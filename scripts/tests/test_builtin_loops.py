@@ -17900,6 +17900,130 @@ class TestWorkflowGeneratorLoop:
             "{name: ...} entries to a mapping keyed by state name"
         )
 
+    # --- BUG-3326 regression guards: emit_artifact retries must converge.
+
+    def test_count_emit_retry_edges_unchanged(self, data: dict) -> None:
+        """Regression guard against the Rejected Alternative (fault-class routing).
+
+        count_emit_retry must stay a flat, fault-agnostic counter: on_yes back
+        to emit_artifact under budget, on_no to diagnose once exhausted.
+        """
+        state = data["states"]["count_emit_retry"]
+        assert state.get("on_yes") == "emit_artifact"
+        assert state.get("on_no") == "diagnose"
+
+    def test_validate_artifact_on_no_targets_count_emit_retry(self, data: dict) -> None:
+        state = data["states"]["validate_artifact"]
+        assert state.get("on_no") == "count_emit_retry"
+
+    def test_max_steps_is_at_least_40(self, data: dict) -> None:
+        """+9 productive retry steps once emit_artifact retries can converge."""
+        assert data.get("max_steps", 0) >= 40
+
+    def test_emit_artifact_reads_prior_errors(self, data: dict) -> None:
+        """emit_artifact must be told to read .emit_errors.txt from the prior attempt.
+
+        Without this, retries re-read identical unchanged inputs and produce
+        byte-identical output (BUG-3326).
+        """
+        action = data["states"]["emit_artifact"].get("action", "") or ""
+        assert ".emit_errors.txt" in action
+        assert "exists" in action and "non-empty" in action
+
+    def test_diagnose_reads_emit_errors_file(self, data: dict) -> None:
+        action = data["states"]["diagnose"].get("action", "") or ""
+        assert ".emit_errors.txt" in action
+
+    def test_validate_artifact_captures_output_and_preserves_exit_code(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        """Behavioral: validate_artifact tees ll-loop validate's output to
+        .emit_errors.txt while preserving the real exit code, and truncates
+        the file on success (ll-loop validate prints a success block to
+        stdout, so tee alone would leave it non-empty)."""
+        action = data["states"]["validate_artifact"]["action"].replace(
+            "${captured.run_dir.output}", str(tmp_path)
+        )
+
+        invalid_workflow = {
+            "name": "bad",
+            "initial": "start",
+            "states": {"start": {"action_type": "shell", "action": "echo hi"}},
+        }
+        (tmp_path / "workflow.yaml").write_text(yaml.safe_dump(invalid_workflow))
+        result = subprocess.run(["bash", "-c", action], capture_output=True, text=True)
+        assert result.returncode != 0
+        errors_file = tmp_path / ".emit_errors.txt"
+        assert errors_file.exists()
+        assert errors_file.read_text().strip() != ""
+
+        valid_workflow = {
+            "name": "good",
+            "initial": "start",
+            "states": {"start": {"terminal": True}},
+        }
+        (tmp_path / "workflow.yaml").write_text(yaml.safe_dump(valid_workflow))
+        result = subprocess.run(["bash", "-c", action], capture_output=True, text=True)
+        assert result.returncode == 0, result.stderr
+        # Pins the truncate-on-success branch, not tee behavior: ll-loop
+        # validate prints a success block to stdout, so a bare tee would
+        # leave this file non-empty.
+        assert errors_file.read_text() == ""
+
+    def test_init_resets_emit_errors_and_retry_count(self, data: dict, tmp_path: Path) -> None:
+        """Behavioral: init clears stale .emit_errors.txt/.emit_retry_count from
+        a reused run_dir, without disturbing the capture: run_dir stdout contract."""
+        action = data["states"]["init"]["action"].replace('DIR="${context.run_dir}"', f'DIR="{tmp_path}"')
+        (tmp_path).mkdir(exist_ok=True)
+        (tmp_path / ".emit_errors.txt").write_text("stale error text\n")
+        (tmp_path / ".emit_retry_count").write_text("9\n")
+
+        result = subprocess.run(["bash", "-c", action], capture_output=True, text=True)
+        assert result.returncode == 0, result.stderr
+        assert result.stdout.strip() == str(tmp_path)
+        assert (tmp_path / ".emit_errors.txt").read_text() == ""
+        assert not (tmp_path / ".emit_retry_count").exists()
+
+    @pytest.mark.parametrize(
+        "evaluate,expect_pass",
+        [
+            pytest.param({"type": "output_json", "path": "x", "operator": "greater", "target": 1}, False, id="required-invalid"),
+            pytest.param(
+                {"type": "output_contains", "pattern": "ok", "operator": "greater"},
+                False,
+                id="not-required-invalid",
+            ),
+            pytest.param(
+                {"type": "output_contains", "pattern": "ok", "operator": None}, True, id="explicit-null-ok"
+            ),
+        ],
+    )
+    def test_validate_evaluators_checks_operator_values(
+        self, data: dict, tmp_path: Path, evaluate: dict, expect_pass: bool
+    ) -> None:
+        """Behavioral: the intermediate gate mirrors structural_rules.py's
+        `operator is not None` predicate exactly, regardless of evaluator type."""
+        graph = {
+            "states": [
+                {"name": "s", "kind": "prompt", "evaluate": evaluate},
+                {"name": "done"},
+                {"name": "failed"},
+            ]
+        }
+        graph_file = tmp_path / "graph-evaluators.yaml"
+        graph_file.write_text(yaml.safe_dump(graph, sort_keys=False))
+
+        action = data["states"]["validate_evaluators"]["action"].replace(
+            "${captured.run_dir.output}/graph-evaluators.yaml", str(graph_file)
+        )
+        result = subprocess.run(["bash", "-c", action], capture_output=True, text=True)
+
+        if expect_pass:
+            assert result.returncode == 0, result.stderr
+        else:
+            assert result.returncode != 0, "gate passed an invalid operator value"
+            assert "invalid operator" in result.stderr
+
 
 class TestConfidenceGateThresholdsNotHardcoded:
     """BUG-2767: gate-driving loops must not pin thresholds in their context: block.
