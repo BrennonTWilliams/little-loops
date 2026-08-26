@@ -1,0 +1,11 @@
+{
+  "id": "373dd010-74ac-42ce-be4b-9e079a6a1360",
+  "type": "decision",
+  "timestamp": "2026-08-26T03:09:09Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Foundation tier for live bus consumption, analogous to FEAT-3304 for snapshots: SSE relay of the existing UnixSocketTransport stream plus the multi-producer socket-path fix and producer attribution in the envelope. Deliberately unparented from EPIC-3299, which declares live-query work out of scope.",
+  "rule": "Captured: Live event stream substrate \u2014 localhost SSE bridge over the EventBus",
+  "scope": "issue",
+  "issue": "FEAT-3323"
+}

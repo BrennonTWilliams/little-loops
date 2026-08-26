@@ -8,6 +8,8 @@ discovered_by: ll-issues-create
 discovered_date: '2026-08-26'
 captured_at: '2026-08-26T01:46:57Z'
 parent: EPIC-3299
+learning_tests_required:
+  - jinja2
 ---
 
 # ENH-3322: Chart layer for ll-artifact dashboard query results
@@ -60,27 +62,142 @@ second presentation concern, and EPIC-3299 names a "cost dashboard" and
 
 ## Proposed Solution
 
-TBD - requires investigation
+The codebase already has two non-reconciled conventions for embedding a chart
+library in a generated artifact: the vendor-and-inline pattern `sql.js`
+establishes (`assets/vendor/sql.js/`, base64/text into the `data` dict, zero
+network requests), and the CDN-`<script src>` pattern `loops/vega-viz.yaml`
+uses to load `vega`/`vega-lite`/`vega-embed` from `cdn.jsdelivr.net` at view
+time. The CDN route is incompatible with this issue's own acceptance
+criterion ("offline over `file://` with no network request"), so the
+vendor-and-inline route is the only one that satisfies the AC — this is a
+constraint the existing AC already settles, not an open choice.
+
+Within that constraint, whether the chosen library ships as pure UTF-8
+JS (can ride through `load_assets()`'s `assets/` dir, or verbatim in `data`
+like `sql_wasm_js`) or includes a WASM/binary component (must go through the
+manual `data`+base64 path `sql-wasm.wasm` uses today, since `load_assets()`
+has no bytes mode — `artifact_templates.py:295-308`) is a property of the
+library picked, not a design decision to resolve here.
+
+`PREDEFINED` entries are currently `{label, sql}` only
+(`template.html.j2:122-132`), consumed by `buildViews()`/`runQuery()`
+(`template.html.j2:230-280`) with no per-view metadata field — a view
+"declaring its own chart mapping" (Implementation Step 5) requires extending
+that object shape. Neither `renderTable()` nor `runQuery()` performs any
+shape validation on the stepped `columns`/`rows` today — they accept any
+column count/type combination unconditionally (`template.html.j2:188-266`).
+The "a result set that cannot be charted says so instead of erroring" AC has
+no existing groundwork to build on; the exact eligibility check (e.g. a
+minimum numeric-column count) is left to the implementer — research found no
+precedent for it in this codebase.
 
 ## Integration Map
 
 ### Files to Modify
-- TBD - requires codebase analysis
+- `scripts/little_loops/cli/artifact/dashboard.py` — `data` dict assembly
+  (`dashboard.py:217-230`) is where any new chart-data/vendor key is added;
+  size checks read the same `data`/rendered output (`dashboard.py:184-191`,
+  `:244-253`)
+- `scripts/little_loops/templates/dashboard.llat/template.html.j2` —
+  `renderTable()` (`:188-223`), `runQuery()` (`:230-266`),
+  `PREDEFINED`/`buildViews()` (`:122-132`, `:268-280`)
+- `scripts/little_loops/templates/dashboard.llat/manifest.yaml` —
+  `data_schema` (whole file; new required keys go here)
+- `scripts/little_loops/package_data.py` — `PACKAGE_DATA_ASSETS`
+  (`:82-84` is the sql.js registration block; a new vendored library needs
+  its own tuples here, one per file)
 
 ### Dependent Files (Callers/Importers)
-- TBD - use grep to find references
+- `scripts/little_loops/cli/artifact/__init__.py:196` — `main_artifact` calls
+  `cmd_dashboard`
+- `scripts/little_loops/artifact_templates.py` — `validate_top_level_data`
+  call site (`dashboard.py:233`) and `render_template` call site
+  (`dashboard.py:239`) both live in `cmd_dashboard`
+- `scripts/tests/test_feat3304_artifact_dashboard.py` — full existing
+  dashboard test suite (row cap, `PREDEFINED` views, package-data
+  registration, provenance, size ceilings, Node runtime gate)
+- `scripts/tests/test_package_data_manifest.py` — `PACKAGE_DATA_ASSETS`
+  completeness/no-duplicates checks
 
-### Similar Patterns
-- TBD - search for consistency
+### Conventions in Force
+- Third-party binaries vendor under `assets/vendor/<pkg>/` with a sibling
+  `PROVENANCE.md` (version/source/SHA-256/license/update-procedure tables) —
+  evidence: `assets/vendor/sql.js/PROVENANCE.md`
+- Every vendored/template file is registered as one tuple per file in
+  `PACKAGE_DATA_ASSETS` — no directory-glob form exists — evidence:
+  `package_data.py:79` (comment stating the rule), `:82-84`; enforced by the
+  set-equality check `test_every_template_and_vendor_file_is_registered_in_package_data`
+  (`test_feat3304_artifact_dashboard.py:544-557`)
+- `validate_top_level_data()` must run before `render_template()` — enforced
+  by a source-order assertion, `test_data_payload_is_validated_before_rendering`
+  (`test_feat3304_artifact_dashboard.py:571-580`)
+- Every `[[= key =]]` placeholder added to `template.html.j2` must have a
+  matching `data_schema` property — enforced by
+  `test_template_body_avoids_jinja_delimiters_in_inline_js`
+  (`test_feat3304_artifact_dashboard.py:596-607`)
+- A vendored JS glue blob inlined into an inline `<script>` tag must not
+  contain a literal `</script>` substring — enforced by
+  `test_glue_contains_no_literal_closing_script_tag`
+  (`test_feat3304_artifact_dashboard.py:616`); the same risk applies to any
+  new vendored chart library inlined the same way
 
 ### Tests
-- TBD - identify test files to update
+- `scripts/tests/test_feat3304_artifact_dashboard.py` — existing coverage to
+  extend (classes: `TestSizeCeilings`, `TestVendoredSqlJs`,
+  `TestTemplatePipeline`, `TestDashboardNodeRuntimeGate`, etc.)
+- `scripts/tests/test_package_data_manifest.py` — registry completeness
+- `scripts/tests/js/feat3304/feat3304_dashboard_runtime.test.mjs` — Node
+  `--test` runtime gate exercising the generated page's actual JS engine
+  behavior (skips gracefully without Node ≥ 22)
+- `scripts/tests/test_wheel_smoke.py` — installed-wheel smoke test; a grep
+  for `dashboard`/`sql.js`/`vendor` found no matches, so the AC "renders from
+  an installed wheel, not only a source checkout" currently has no test
+  coverage anywhere to extend — this AC needs new test coverage, not an
+  existing one to update
 
 ### Documentation
-- TBD - docs that need updates
+- `docs/reference/CLI.md:4548` — `ll-artifact dashboard` section (exit
+  codes, size ceiling, flags)
 
 ### Configuration
-- N/A or list config files
+- `scripts/little_loops/config/features.py:393,400` —
+  `ArtifactsExportConfig.max_artifact_bytes` (default `8_000_000`)
+
+## Program Design
+
+### Types
+N/A — no new data types beyond scalar chart-config string(s), unless a
+structured chart-data payload key is added to `data_schema` (the current
+`dashboard.llat` manifest has no precedent for an array/object-typed key —
+all its `data_schema` properties are scalar strings/integers, see
+`manifest.yaml:6-35`).
+
+### Signatures
+- `cmd_dashboard` (`dashboard.py:127`) — the `data` dict literal at
+  `dashboard.py:217-230` is the single site any new chart-data or vendored-
+  library key must be added to before the `validate_top_level_data` call
+- `validate_top_level_data(data, schema)` (`artifact_templates.py:250-256`)
+  — must run before `render_template`, source-order enforced (see Conventions
+  in Force above)
+- `render_template(template, data, config) -> str` (`artifact_templates.py:321-345`)
+  — pure function; must not import `host_runner`/`anthropic`
+  (`artifact_templates.py:321-327` docstring)
+- `load_assets(root) -> dict[str, str]` (`artifact_templates.py:295-308`) —
+  UTF-8 text only, no bytes mode ("Binary assets ... out of scope for v1")
+
+### Call Path
+`cmd_dashboard` (`data` dict assembly, `dashboard.py:217-230`) ->
+`validate_top_level_data` (`dashboard.py:233`) -> `render_template`
+(`dashboard.py:239`) -> `template.html.j2` `runQuery()`/`renderTable()`
+(client-side, `template.html.j2:188-266`)
+
+### Decision Rules
+N/A — no new decision logic. The chart-eligibility check ("a result set
+whose shape does not support the selected chart" per Expected Behavior) is a
+new judgment the page must make, but neither the issue nor research pins
+down its exact inputs/threshold (e.g. minimum numeric-column count) — this
+is an open implementer decision, not a rule this pass can specify from
+codebase evidence.
 
 ## Implementation Steps
 
@@ -100,12 +217,39 @@ TBD - requires investigation
    the same stepped rows, plus a column/axis picker.
 5. Extend `PREDEFINED` entries so a view can declare its own chart mapping.
 
+## Scope Boundaries
+
+Out of scope for this enhancement:
+
+- The export, redaction, or snapshot path — this is presentation only,
+  layered on top of the already-shipped `dashboard.llat` page.
+- The live bridge (FEAT-067) or command execution (FEAT-068) — no new
+  runtime capability, just a client-side rendering of the same stepped rows.
+- `ll-logs stats` telemetry (ENH-1921) — a different lineage and a different
+  surface; not touched or reused here.
+- The CDN-based (`vega`/`vega-lite`/`vega-embed` from `cdn.jsdelivr.net`)
+  charting pattern used by `loops/vega-viz.yaml` — ruled out by this issue's
+  own "no network request" acceptance criterion, not adopted or reconciled.
+- New CLI flags on `add_dashboard_parser` — the chart layer is a page-side
+  capability; a flag to omit the library for size reasons is left for a
+  future issue if wanted.
+- Defining the exact chart-eligibility threshold (e.g. minimum numeric-column
+  count) beyond "falls back to the table when the shape doesn't fit" — left
+  to the implementer, per Program Design § Decision Rules.
+
 ## Impact
 
-- **Priority**: [P0-P5] - [Justification]
-- **Effort**: [Small/Medium/Large] - [Justification]
-- **Risk**: [Low/Medium/High] - [Justification]
-- **Breaking Change**: [Yes/No]
+- **Priority**: P3 - Presentation-layer improvement to an already-shipped,
+  functional dashboard (FEAT-3304); no user is blocked without it, but it
+  meaningfully increases the dashboard's day-to-day value per Motivation.
+- **Effort**: Medium - Touches five files (`dashboard.py`, `template.html.j2`,
+  `manifest.yaml`, `package_data.py`, plus new vendor assets) and needs new
+  test coverage in three suites (Python, Node runtime gate, wheel smoke), but
+  reuses the established vendor-and-inline pattern from `sql.js` rather than
+  inventing one.
+- **Risk**: Low - Additive and opt-in; the table remains the default and
+  fallback, and no existing export/redaction/snapshot code path changes.
+- **Breaking Change**: No
 
 ## API/Interface
 
@@ -133,6 +277,26 @@ save bytes), it belongs on `add_dashboard_parser` in
   command execution (FEAT-068).
 - **Not ENH-1921.** That issue is an `ll-logs stats` telemetry dashboard — a
   different lineage and a different surface.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-26 — based on codebase analysis:_
+
+- **CDN route ruled out by AC, not by convention alone.** `loops/vega-viz.yaml`
+  loads `vega`/`vega-lite`/`vega-embed` from `cdn.jsdelivr.net` at view time —
+  a second, non-reconciled "chart in a generated artifact" pattern already in
+  this codebase. It conflicts with this issue's own "no network request" AC,
+  so the vendor-and-inline route (matching `sql.js`) is the only one that
+  satisfies the issue as written.
+- **Wheel-smoke coverage gap.** `scripts/tests/test_wheel_smoke.py` has no
+  `dashboard`/`sql.js`/`vendor` references today — the AC "still renders from
+  an installed wheel" has no existing test anywhere to extend; it needs new
+  coverage.
+- **No shape-eligibility precedent.** `renderTable()`/`runQuery()`
+  (`template.html.j2:188-266`) perform no column/row shape validation today —
+  the "chart-ineligible result falls back to the table" AC introduces new
+  logic with no existing groundwork, and its exact eligibility threshold is
+  unspecified by both the issue and this research pass.
 
 ## Acceptance Criteria
 
@@ -166,4 +330,6 @@ save bytes), it belongs on `add_dashboard_parser` in
 
 
 ## Session Log
+- `/ll:format-issue` - 2026-08-26T03:07:55 - `c2ae49bb-0dbe-4c5e-b4c2-48b717101019.jsonl`
+- `/ll:refine-issue` - 2026-08-26T01:57:24 - `c4a0c837-47fd-4eac-899a-346eee9fe946.jsonl`
 - `/ll:capture-issue` - 2026-08-26T01:47:05 - `eadc481c-e910-429b-9281-ccfbd253d4a9.jsonl`
