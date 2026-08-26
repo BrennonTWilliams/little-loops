@@ -414,10 +414,16 @@ jobs:
           else
             PYTEST_ARGS=(scripts/tests/ -m "not integration and not conformance")
           fi
-          # pytest-xdist bisect: when disable_xdist=true, run serially (omit
-          # the -n/--dist flags). Default behavior unchanged (parallel).
+          # pytest-xdist bisect: when disable_xdist=true, override the
+          # pyproject addopts (-n logical --dist loadfile) with -n 0, the
+          # pytest-xdist-documented "disable distribution, run in-process"
+          # switch. Default behavior unchanged (parallel).
+          #
+          # IMPORTANT: empty XDIST_FLAG would NOT disable xdist — pytest still
+          # applies the pyproject addopts, so -n logical would silently
+          # re-enable parallelism. -n 0 explicitly overrides.
           XDIST_FLAG='-n logical --dist loadfile'
-          [ "$DISABLE_XDIST" = "true" ] && XDIST_FLAG=''
+          [ "$DISABLE_XDIST" = "true" ] && XDIST_FLAG='-n 0'
           PYTHONUNBUFFERED=1 timeout --signal=TERM --kill-after=30s 45m \
             .venv/bin/python -m pytest "${PYTEST_ARGS[@]}" $XDIST_FLAG \
               -v \
