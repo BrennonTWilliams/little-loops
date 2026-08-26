@@ -1067,7 +1067,6 @@ class TestDslSubcommandParser:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.conformance
 class TestCmdDsl:
     """Tests for cmd_dsl()."""
 
@@ -1153,6 +1152,7 @@ class TestCmdDsl:
         out = capsys.readouterr().out
         assert "3/3" in out
 
+    @pytest.mark.conformance
     def test_cmd_dsl_all_abstain_excludes_from_ci_and_exits_3(
         self, tmp_path: Path, capsys: pytest.CaptureFixture
     ) -> None:
@@ -1401,9 +1401,10 @@ class TestCmdDsl:
         out = capsys.readouterr().out
         assert "malformed" in out
 
+    @pytest.mark.conformance
     def test_cmd_dsl_mismatch_outranks_abstain(
         self, tmp_path: Path, capsys: pytest.CaptureFixture
-    ) -> None:
+    ) -> None:</old_string>
         """AC6: an `expected` mismatch is a hard FAIL even when --semantic abstains."""
         task_file = self._make_task_yaml(tmp_path)
         args = _make_namespace(runner="dsl", path=str(task_file), semantic="some criterion")
@@ -1485,6 +1486,7 @@ class TestCmdDsl:
 
         assert "['on_yes']" not in str(captured["prompt"])
 
+    @pytest.mark.conformance
     def test_cmd_dsl_task_row_records_host_exit_code_and_verdict(self, tmp_path: Path) -> None:
         """AC10/10a/10b: exactly one dsl-task row, with the host rc/timed_out/verdict."""
         from little_loops.session_store import recent
