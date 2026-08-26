@@ -10,6 +10,14 @@ captured_at: '2026-08-26T03:08:21Z'
 relates_to:
 - FEAT-3321
 - FEAT-3304
+depends_on:
+- BUG-3324
+confidence_score: 92
+outcome_confidence: 58
+score_complexity: 14
+score_test_coverage: 14
+score_ambiguity: 14
+score_change_surface: 16
 ---
 
 # FEAT-3323: Live event stream substrate: localhost SSE bridge over the EventBus
@@ -17,14 +25,20 @@ relates_to:
 ## Summary
 
 Land the foundation tier for live consumption of `EventBus` events: a
-localhost HTTP/SSE endpoint that relays bus events to a browser in real time,
-plus the multi-producer fix that makes such a stream trustworthy when more
-than one little-loops process is running.
+localhost HTTP/SSE endpoint that relays bus events to a browser in real time.
 
 This is the event-stream analogue of FEAT-3304. FEAT-3304 built the
 substrate for *snapshot* consumption of `.ll/history.db` (export, redaction,
 embedding) and deliberately shipped a minimal surface on top. This issue does
 the same for *live* consumption of the event bus: the plumbing, not the UI.
+
+**Scope split (2026-08-26).** The multi-producer socket collision that
+originally travelled with this issue is now **BUG-3324**, and this issue
+`depends_on` it. That defect degrades today's documented `nc -U` consumer with
+no browser involved, it is fixable and testable on its own, and it carried the
+bulk of this issue's risk and change surface. FEAT-3323 is now scoped to the
+bridge alone: read the producer sockets, serve SSE. See BUG-3324 for the
+probe-and-claim fix and the multi-producer path shape this issue consumes.
 
 ## Current Behavior
 
@@ -43,18 +57,20 @@ Two things block building a live view on that:
 
 1. **A browser cannot open an `AF_UNIX` socket.** The documented consumer
    story is `nc -U .ll/events.sock | jq` (`docs/reference/CONFIGURATION.md`),
-   which serves TUIs and log tailers and nothing else.
-2. **Every producer binds the same path.** All four call sites resolve
-   `events.socket.path` through `_resolve_socket_path` to one socket, and the
-   constructor unlinks any stale file before binding
-   (`transport.py:157`). A second concurrent run therefore takes the socket
-   away from the first, whose already-connected clients are left attached to
-   an unlinked inode receiving only that dead producer's events.
+   which serves TUIs and log tailers and nothing else. This is what FEAT-3323
+   fixes.
+2. **Every producer binds the same path** and evicts the previous one
+   (`transport.py:157`). **Tracked separately as BUG-3324**, which this issue
+   depends on; after that fix a second concurrent producer binds a
+   pid-suffixed sibling path in the same directory, which is what this issue's
+   fan-in reads.
 
 The wire envelope is `{"event": ..., "ts": ..., ...payload}`
 (`docs/reference/EVENT-SCHEMA.md` § Wire Format) with no producer or run
 identifier, so even a correctly merged multi-producer stream cannot be
-demultiplexed by a consumer.
+demultiplexed by a consumer. Stamping that identifier stays in this issue: it
+is a wire-format change serving the merged stream, not part of the binding
+fix.
 
 ## Expected Behavior
 
@@ -67,11 +83,10 @@ connects mid-run is seeded with current state as it is today.
 ## Motivation
 
 The producer half of a live event stream is already built and tested; what is
-missing is the last hop to a consumer anyone can actually use, plus a
-correctness bug that makes the stream untrustworthy the moment two runs
-overlap. Both are cheap relative to what they unblock, and neither is served
-by any other issue: `ll-artifact dashboard` is frozen at export time by
-construction, and FEAT-3321 polls the database rather than watching the bus.
+missing is the last hop to a consumer anyone can actually use. That is cheap
+relative to what it unblocks, and it is not served by any other issue:
+`ll-artifact dashboard` is frozen at export time by construction, and
+FEAT-3321 polls the database rather than watching the bus.
 
 Left alone, the socket transport stays a feature with one documented consumer
 (`nc -U`), and every future live view — loop-fleet monitor, sprint progress,
@@ -79,55 +94,112 @@ a TUI — re-derives the same fan-in and bridging work.
 
 ## Proposed Solution
 
-Relay, do not re-emit. The bridge is a consumer of the existing
-`UnixSocketTransport` output, not a fifth transport and not a new emit path,
-so the tested backpressure and isolation properties on the producer side stay
-untouched and there is one serialization format end to end.
+Relay, do not re-emit. The bridge is an **out-of-process consumer** of the
+existing `UnixSocketTransport` output — not a fifth transport, not a new emit
+path, and not something `EventBus` ever holds a reference to. The tested
+backpressure and isolation properties on the producer side stay untouched and
+there is one serialization format end to end.
+
+That framing settles a property that was previously stated two ways in this
+issue: because the bridge is a separate process, a bridge that crashes or stops
+reading is indistinguishable, from the producer's side, from an ordinary slow
+or disconnected socket client. It is already handled by `_record_drop` /
+`_record_rejection` (`transport.py:242-278`). No `events.py` change and no
+`EventBus.emit` transport-isolation test are required for this issue.
 
 Two sub-problems, in order:
 
-1. **Fan-in.** Producers must stop competing for one socket path. Either give
-   each producer its own path under a directory the bridge watches, or stand up
-   a broker the producers connect to. The first has no daemon lifecycle to
-   manage and degrades to today's behavior with a single producer; the second
-   gives one stable endpoint and survives producer restarts. This is the
-   load-bearing decision and should be settled before any HTTP code exists.
-2. **Bridge.** A stdlib HTTP server bound to loopback, one SSE endpoint, each
-   event relayed as a `data:` frame. Slow clients are dropped rather than
-   buffered, mirroring the drop accounting already in `_record_drop`.
+1. **Fan-in.** BUG-3324 makes each concurrent producer bind its own
+   pid-suffixed path in the configured socket's directory. The bridge globs
+   that directory, connects to each socket as a client, and rescans
+   periodically to pick up producers that start later. Stale files (crashed
+   producer, `ECONNREFUSED`) are skipped.
+2. **Bridge.** A stdlib `ThreadingHTTPServer` bound to loopback, one SSE
+   endpoint, each event relayed as a `data:` frame. Slow clients are dropped
+   rather than buffered, mirroring the drop accounting already in
+   `_record_drop`.
 
 ## Program Design
 
-The multi-producer shape (per-producer sockets + fan-in, vs. a broker) is an
-open design decision (see § Open Questions); the signatures below assume the
-fan-in variant since it requires no new daemon lifecycle, and should be
-revised in place once that decision is settled.
+The multi-producer socket shape is settled in BUG-3324 (probe-and-claim:
+lone producer keeps the configured path; a concurrent second producer binds
+`events-<pid>.sock` beside it). The design below consumes that.
 
 ### Types
 
-- `ProducerId: str` — stable per-process/per-run identifier stamped onto the
-  relayed envelope alongside `event` and `ts`
+- `ProducerId: str` — stable per-process identifier, the producer's pid as
+  recovered from its socket filename, stamped onto the relayed envelope
+  alongside `event` and `ts`
 
 ### Signatures
 
-- `serve_sse_bridge(config: EventsConfig, host: str = "127.0.0.1", port: int = 0) -> None`
-- `_fan_in_producer_sockets(socket_dir: Path) -> Iterator[dict]`
+- `serve_sse_bridge(config: EventsConfig, host: str = "127.0.0.1", port: int = 8766) -> None`
+- `_fan_in_producer_sockets(socket_dir: Path, rescan_s: float = 2.0) -> Iterator[dict]`
+- `_is_loopback_host(header: str | None) -> bool` — `Host` header guard
 
 ### Call Path
 
-new bridge entry point -> `serve_sse_bridge` -> `_fan_in_producer_sockets` ->
-`UnixSocketTransport` (per-producer socket read, `transport.py:115`) -> SSE
-`data:` frame written to the connected browser client
+`ll-artifact serve` -> `serve_sse_bridge` -> `_fan_in_producer_sockets`
+(one reader thread per producer socket, merging into one bounded queue) ->
+per-SSE-client bounded queue -> `data:` frame written to the connected browser
+
+### Server mechanics
+
+These have no in-repo precedent (see § Codebase Research Findings), so they are
+specified here rather than inherited:
+
+- **`ThreadingHTTPServer`, not `HTTPServer`.** A single SSE response never
+  returns; on the single-threaded base class one connected tab would block the
+  whole server. Set `daemon_threads = True` so shutdown does not hang on
+  attached clients.
+- **Cap concurrent SSE clients**, mirroring `events.socket.max_clients`. Each
+  client holds a thread for the life of the connection, so an uncapped server
+  is a thread-exhaustion surface from one user opening tabs. Over the cap,
+  respond `503` rather than accepting and starving.
+- **Bounded per-client queue + drop-newest**, exactly mirroring
+  `_SocketClient` (`transport.py:207-280`). A tab that stops reading must never
+  grow an unbounded buffer in the bridge.
+- **Keepalive.** Emit an SSE comment frame (`: ping\n\n`) every ~15s. On
+  loopback there is no proxy to defeat, but this is how the bridge notices a
+  vanished tab (write raises `EPIPE`) and reclaims its thread and queue.
+- **Reconnect semantics.** Send `retry:` once at stream open. Do **not** emit
+  `id:` and do not implement `Last-Event-ID` replay — there is no durable
+  buffer to replay from, and pretending otherwise would silently lie about
+  completeness. Instead, re-run the seed on every connect, so a reconnecting
+  client resyncs to current state and resumes live traffic. Events emitted
+  during the disconnect gap are lost by design; say so in the docs.
+
+### Security
+
+Binding loopback is necessary but **not sufficient**: any page the user visits
+can resolve a hostname it controls to `127.0.0.1` and read the stream
+(DNS rebinding). Two cheap controls, both required:
+
+- **Validate the `Host` header** against `{127.0.0.1, localhost, ::1}` plus the
+  bound port; return `403` otherwise. Reuse the frozen-set shape from
+  `mcp_server/server.py:86` (`_LOOPBACK_HOSTS`).
+- **Send no `Access-Control-Allow-Origin`.** `EventSource` is subject to CORS,
+  so omitting the header blocks cross-origin reads; adding a permissive one
+  would undo the `Host` guard.
+
+### Port
+
+Default to a fixed port (`8766`, adjacent to `ll-mcp`'s `8765`) and print the
+full URL on startup, so § Use Case's "open `http://127.0.0.1:<port>/`" is
+actionable. Make it config-driven. `port=0` (OS-assigned) is for tests only —
+there is no `port=0` precedent in the codebase and a user cannot guess an
+OS-assigned port.
 
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/transport.py` — `UnixSocketTransport`
-  (`:115`), `_resolve_socket_path` (`:678`), and `wire_transports` (`:611`)
-  are where the shared-path collision is fixed and producer identity is
-  attached
-- `scripts/little_loops/events.py` — `EventBus.emit` (`:117`) if producer
-  attribution is stamped at emit time rather than at the transport
+- `scripts/little_loops/transport.py` — `UnixSocketTransport` (`:115`) stamps
+  the producer identifier onto each serialized envelope. The shared-path
+  collision itself is **BUG-3324**, not this issue; `_resolve_socket_path`
+  (`:678`) and `wire_transports` (`:611`) are touched there, not here.
+- ~~`scripts/little_loops/events.py`~~ — **not modified.** Producer attribution
+  is stamped at the transport, and the bridge is out-of-process, so
+  `EventBus.emit` (`:117`) needs no change. See § Proposed Solution.
 - `scripts/little_loops/config/features.py` — `SocketEventsConfig` (`:1115`),
   `EventsConfig` (`:1264`); a new gating block for the bridge
 - `scripts/little_loops/config-schema.json` — the `events` block is
@@ -135,14 +207,60 @@ new bridge entry point -> `serve_sse_bridge` -> `_fan_in_producer_sockets` ->
   accepted
 - A new module for the bridge, plus its CLI entry point
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/pyproject.toml:74-129` (`[project.scripts]`) — register the new
+  entry point following the `ll-<name> = "little_loops.<module>:main_<name>"`
+  convention
+- `scripts/pyproject.toml:140-198` (`[project.optional-dependencies]`) —
+  if the bridge pulls in a dependency, add a justified pin comment next to
+  it (per CLAUDE.md's minimize-dependencies rule) and a matching extras
+  group, following the `otel = [...]` / `webhooks = [...]` shape
+- `scripts/little_loops/cli/__init__.py` — export the bridge's `main_*`
+  function so `pyproject.toml` can reference it
+- `scripts/little_loops/config/__init__.py` — export any new bridge config
+  dataclass and add it to `__all__`
+
 ### Dependent Files (Callers/Importers)
-- The four `wire_transports` call sites: `cli/loop/run.py:593`,
-  `cli/loop/lifecycle.py:737`, `cli/parallel.py:322`, `cli/sprint/run.py:801`
-- `scripts/little_loops/__init__.py:63,117` — `wire_transports` is a public
-  export
+- The four `wire_transports` call sites (`cli/loop/run.py:593`,
+  `cli/loop/lifecycle.py:737`, `cli/parallel.py:322`, `cli/sprint/run.py:801`)
+  and `scripts/little_loops/__init__.py:63,117` — enumerated by **BUG-3324**.
+  This issue leaves all of them unchanged: the envelope gains a key, not a
+  signature.
 - `_make_seed_callback` (`transport.py:586`) and
   `fsm.persistence.list_running_loops` — the mid-run seeding path the SSE
   endpoint must preserve
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/config/__init__.py:53,69,75,80,124,127,128` — every
+  events sub-config dataclass (`SocketEventsConfig`, `OTelEventsConfig`,
+  `WebhookEventsConfig`) is re-exported here and listed in `__all__`; a new
+  bridge config dataclass needs the same two-line addition
+- `scripts/little_loops/config/core.py:328,451,937-952` — `BRConfig.to_dict()`
+  hand-enumerates `events.socket.{path,max_clients}` etc.; this dict is
+  load-bearing for the schema-parity guard below, not incidental
+- `scripts/tests/test_config_schema.py:1283-1336`
+  (`test_to_dict_values_match_schema_defaults`, `test_guard_is_non_vacuous`)
+  — BUG-3192 Guard 1: walks `BRConfig().to_dict()` and diffs every leaf
+  against `config-schema.json`'s declared default; fails fast if a new
+  events sub-block's default isn't mirrored in `core.py`'s `to_dict()`
+- `scripts/tests/test_config_schema.py:1346-1411` (`_DATACLASS_SECTION_MAP`)
+  — BUG-3192 Guard 2: every `@dataclass` in `config/features.py` must map to
+  its `to_dict()` section; a new bridge config dataclass must be added here
+  or this test fails
+- `scripts/little_loops/cli/__init__.py` — dispatch layer re-exporting each
+  `main_*` function (e.g. `main_config`, `main_history`) for
+  `pyproject.toml` entry points; a new bridge CLI module needs an analogous
+  `main_*` export wired here
+- `scripts/tests/test_cli_doctor_install_checks.py:45-51`
+  (`test_real_pyproject_all_entry_points_resolve`) — iterates every
+  `[project.scripts]` entry and imports its module; automatically covers a
+  new bridge entry point, but will fail if the bridge module eagerly
+  imports an optional dependency at module scope (see `main_mcp`'s
+  lazy-import pattern, `mcp_server/__init__.py:66-93`)
+- `docs/reference/HOST_COMPATIBILITY.md:99` — references
+  `UnixSocketTransport` as a deferred "sidecar" mitigation for hook
+  latency; check this framing still holds once the transport gains a
+  bridge consumer
 
 ### Similar Patterns
 - `UnixSocketTransport`'s per-client bounded queue + daemon thread + drop
@@ -156,6 +274,61 @@ new bridge entry point -> `serve_sse_bridge` -> `_fan_in_producer_sockets` ->
   drop accounting, and `wire_transports` registration is what a
   multi-producer change must keep green
 
+_Wiring pass added by `/ll:wire-issue`, revised by scope split:_
+- `::test_socket_registered_by_name` (`:323-335`),
+  `::test_socket_uses_socket_path_from_config` (`:338-351`),
+  `::test_socket_and_jsonl_both_registered` (`:354-368`),
+  `::test_init_unlinks_stale_socket_file`, `::test_close_unlinks_socket_file`
+  (`~:411-425`) — all socket-path-shape tests. **Owned by BUG-3324**, whose
+  probe-and-claim design keeps every one of them passing unmodified. Not this
+  issue's concern.
+- `scripts/tests/test_transport.py` slow-client / rejection log assertions
+  (`~:556-570`, `~:621`, keyed to `_record_drop`/`_record_rejection`,
+  `transport.py:242-278`) — must keep passing if drop/rejection logging is
+  touched
+- `scripts/tests/test_config.py::TestSocketEventsConfig` (`:2379-2394`),
+  `::TestWebhookEventsConfig` (`:2447-2477`) — pattern to follow
+  (`test_defaults` + `test_from_dict_with_overrides`) for a new bridge
+  config dataclass's test class
+- `scripts/tests/test_config_schema.py::test_events_in_schema` (`:752-814`)
+  — extend with a `bridge` (or equivalent) sub-block assertion following
+  the existing per-block `additionalProperties: false` shape
+- ~~`scripts/tests/test_events.py::TestEventBus`~~ — the
+  transport-exception-isolation test previously listed here is **dropped**: the
+  bridge is out-of-process and is never registered as an `EventBus` transport,
+  so there is nothing for `EventBus.emit` to isolate. See § Proposed Solution.
+- Two-concurrent-producers-reach-one-consumer at the *socket* layer is
+  **BUG-3324's** test. This issue's version asserts the same property one hop
+  later: two producer sockets in a directory, one connected *SSE* client,
+  events from both arrive with distinct producer identifiers.
+- New test needed, no existing precedent: binding a real
+  `HTTPServer(("127.0.0.1", 0), Handler)` on a background thread and
+  connecting a client via the OS-assigned port — the `flux_stub` fixture in
+  `scripts/tests/test_flux_image_generator.py:248-297` (stub server +
+  daemon thread + `shutdown()`/`server_close()` teardown) is the closest
+  transferable model; `test_feat_3143_mcp_http_transport.py`'s
+  `TestClient`-based pattern does NOT transfer (ASGI-only)
+- New test needed: `serve_sse_bridge`'s loopback default, modeled on
+  `test_run_http_defaults_to_loopback_not_public`
+  (`test_feat_3143_mcp_http_transport.py:60-64`, `inspect.signature`
+  introspection)
+- New test: a request carrying a non-loopback `Host` header (e.g.
+  `Host: evil.example.com`) gets `403` — the DNS-rebinding guard. Signature
+  introspection is not enough here; this needs a real request against the
+  bound server.
+- New test: no `Access-Control-Allow-Origin` header appears on the SSE
+  response.
+- New test: the SSE client cap — attach `max_clients` readers, assert the next
+  gets `503` and that the existing readers keep receiving. Model on
+  `test_max_clients_cap_rejects_extra_connection` (`test_transport.py:506-535`).
+- New test: a client that stops reading is dropped without the bridge's memory
+  growing without bound, and without disturbing a second, healthy client.
+- New test: a reconnecting SSE client receives the seed again before live
+  traffic (the documented no-replay contract).
+- New test: the bridge reports clearly when `events.transports` does not
+  include `"socket"` / no producer socket exists, rather than serving an empty
+  stream as success (§ Considerations).
+
 ### Documentation
 - `docs/reference/EVENT-SCHEMA.md` — § Wire Format gains the producer field
 - `docs/reference/CONFIGURATION.md:1559-1589` — `events.transports`,
@@ -164,9 +337,35 @@ new bridge entry point -> `serve_sse_bridge` -> `_fan_in_producer_sockets` ->
 - `docs/reference/API.md` — `UnixSocketTransport`, `wire_transports`
 - `docs/reference/CLI.md` — the new entry point
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/HOST_COMPATIBILITY.md:99` — mentions `UnixSocketTransport`
+  as a deferred hook-latency "sidecar" mitigation; verify this framing still
+  holds once the transport gains a bridge consumer
+
 ### Configuration
-- `events.transports` (default `[]`), `events.socket.path`
-  (default `.ll/events.sock`), `events.socket.max_clients` (default `32`)
+
+Existing keys consumed: `events.transports` (default `[]`),
+`events.socket.path` (default `.ll/events.sock`), `events.socket.max_clients`
+(default `32`).
+
+New block `events.bridge`, off by default, following the fixed three-part shape
+every existing `events.*` sub-block uses (schema object with
+`additionalProperties: false` + `<Name>EventsConfig` dataclass with `from_dict`
++ `field(default_factory=...)` member on `EventsConfig`):
+
+| Key | Default | Meaning |
+|---|---|---|
+| `enabled` | `false` | Gates the capability entirely |
+| `host` | `"127.0.0.1"` | Loopback only; non-loopback values rejected |
+| `port` | `8766` | Fixed so the printed URL is stable; `0` = OS-assigned, tests only |
+| `max_clients` | `8` | Concurrent SSE connections; over the cap returns `503` |
+| `keepalive_s` | `15` | SSE comment-frame interval |
+
+Note the `_TRANSPORT_REGISTRY` caveat in § Codebase Research Findings does
+**not** apply: `events.bridge` gates a server, not a transport, so there is no
+registry entry and no `wire_transports` dispatch branch to add. Confirm the
+schema-parity guards (`test_config_schema.py:1283-1336`, `:1346-1411`) treat it
+as an ordinary section.
 
 ### Codebase Research Findings
 
@@ -183,38 +382,72 @@ _Added by `/ll:refine-issue` — 2026-08-26 — based on codebase analysis:_
 
 ## Implementation Steps
 
-1. Decide and implement the multi-producer shape (per-producer socket paths +
-   fan-in, or a broker). This is the load-bearing design decision and should be
-   settled before any HTTP code is written.
-2. Add the producer identifier to the emitted envelope and document it in
-   `docs/reference/EVENT-SCHEMA.md` § Wire Format.
-3. Build the SSE bridge: subscribe to the merged stream, relay each event as an
-   SSE `data:` frame, bind loopback only, drop slow clients rather than
-   buffering without bound (mirroring `_record_drop`'s existing discipline at
-   `transport.py:237`).
-4. Preserve seeding: a newly connected SSE client gets the running-loop
-   `state_change` events before live traffic.
-5. Ship the smallest possible page that renders the stream, to prove it
+0. **Land BUG-3324 first.** The fan-in has nothing to read from until concurrent
+   producers stop evicting each other. Do not start here.
+1. Add the producer identifier to the emitted envelope (stamped in
+   `UnixSocketTransport`, recovered from the pid in the socket filename) and
+   document it in `docs/reference/EVENT-SCHEMA.md` § Wire Format. Pick a key
+   that cannot collide with a payload field — payloads are splatted at the top
+   level of the envelope; grep the event catalog before choosing.
+2. Add the `events.bridge` config block (schema + dataclass + `EventsConfig`
+   member + `to_dict()` mirror + `_DATACLASS_SECTION_MAP` entry), off by
+   default.
+3. Build `_fan_in_producer_sockets`: glob the socket directory, one reader
+   thread per producer socket merging into one bounded queue, periodic rescan
+   for late-starting producers, skip stale sockets on `ECONNREFUSED`.
+4. Build the SSE bridge on `ThreadingHTTPServer` per § Program Design —
+   loopback bind, `Host` guard, no CORS header, client cap, bounded per-client
+   queue with drop-newest, keepalive comment frames, `retry:` with no `id:`.
+5. Preserve seeding: a newly connected SSE client gets the running-loop
+   `state_change` events before live traffic, on every connect including
+   reconnects.
+6. Print the full URL on startup; report clearly when no producer socket exists
+   rather than serving an empty stream as success.
+7. Ship the smallest possible page that renders the stream, to prove it
    end-to-end.
-6. Add the config gate and document it.
+8. Document: `EVENT-SCHEMA.md` (envelope key), `CONFIGURATION.md`
+   (`events.bridge`, the redaction decision, the no-replay reconnect contract),
+   `CLI.md` (the entry point).
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Register the bridge CLI entry point in `scripts/pyproject.toml`
+  `[project.scripts]`, export its `main_*` function from
+  `scripts/little_loops/cli/__init__.py`, and use `main_mcp`'s lazy-import
+  pattern (`mcp_server/__init__.py:66-93`) if it pulls in any optional
+  dependency — the entry-point-resolution test
+  (`test_cli_doctor_install_checks.py::test_real_pyproject_all_entry_points_resolve`)
+  fails on an eager import of a missing extra
+- Export any new bridge config dataclass from
+  `scripts/little_loops/config/__init__.py` and add it to `__all__`
+- Add the new dataclass's `to_dict()` mirror to `BRConfig.to_dict()`
+  (`config/core.py:937-952`) and to `_DATACLASS_SECTION_MAP`
+  (`test_config_schema.py:1346-1411`) — both guard tests fail otherwise
+- ~~Update the socket-path-shape tests~~ — moved to BUG-3324, whose design
+  keeps them passing unmodified
+- ~~Add a transport-exception-isolation test for `EventBus.emit`~~ — dropped;
+  the bridge is out-of-process and is never an `EventBus` transport
+- Write the real-`HTTPServer`-on-port-0 harness — no existing precedent to
+  extend (see Tests subsection for the closest transferable model), and it is
+  the prerequisite for the `Host`-guard, CORS, client-cap, and slow-client
+  tests
 
 ## Impact
 
 - **Priority**: P3 — a developer-experience capability, not a correctness or
-  availability problem. The multi-producer collision inside it is a real
-  defect, but it only bites projects that have opted into
-  `events.transports: ["socket"]`, which is empty by default.
-- **Effort**: Medium — the bridge itself is small and stdlib-only; the
-  multi-producer fan-in touches a tested transport used from four call sites
-  and carries the bulk of the work and the risk.
-- **Risk**: Medium — changes a live path that runs inside every FSM loop.
-  Mitigated by `EventBus.emit` already isolating transport exceptions
-  (`events.py:134-138`), so a defect degrades the stream rather than failing a
-  run. That property must be preserved and asserted.
-- **Breaking Change**: Possibly, for external socket consumers. An additive
-  envelope key should be safe, but changing the socket path shape would not be
-  — hence the acceptance criterion requiring existing `nc -U` consumers to keep
-  working or the migration to be documented.
+  availability problem. (The correctness half is now BUG-3324.)
+- **Effort**: Small-Medium after the split. The bridge is stdlib-only and
+  self-contained; the cost is concentrated in building an HTTP/SSE test harness
+  from scratch, since nothing in the repo binds a real stdlib server.
+- **Risk**: Low-Medium after the split. This issue no longer changes the socket
+  binding path; it adds one envelope key and a new out-of-process server that
+  nothing else depends on. A bridge failure cannot reach a run — the producer
+  sees only an ordinary disconnected socket client.
+- **Breaking Change**: Additive envelope key only. Confirm no event payload
+  already uses the chosen key name, since payloads are splatted at the top
+  level of the envelope. Socket path shape is BUG-3324's concern.
 
 ## Use Case
 
@@ -233,17 +466,17 @@ because its snapshot is frozen at export time.
 - Consuming the existing `UnixSocketTransport` stream rather than adding a
   fifth transport type or a new emit path — the producer side already exists
   and is tested.
-- **Multi-producer safety**: concurrent producers must not evict each other.
-  Whatever shape this takes (per-producer socket paths under a directory that
-  the bridge watches and fans in, or a single long-lived broker the producers
-  connect to), the consumer-visible result is one merged stream.
+- **Fan-in over the producer socket directory**, so the consumer-visible result
+  is one merged stream including producers that start after the bridge does.
+  (Making concurrent producers stop evicting each other is **BUG-3324**, a
+  dependency, not part of this scope.)
 - **Producer attribution in the envelope** so a merged stream is
   demultiplexable — the minimum being a stable per-process/per-run identifier
   added alongside `event` and `ts`, documented in
   `docs/reference/EVENT-SCHEMA.md`.
 - Preserving current-state seeding for a client that connects mid-run.
-- A redaction decision for the live path, stated explicitly (see Open
-  Questions).
+- A `Host`-header guard against DNS rebinding, and no CORS header — the
+  compensating controls that make the no-redaction decision defensible.
 
 ### Out of scope
 
@@ -254,6 +487,9 @@ because its snapshot is frozen at export time.
 - Any write path or command execution from the browser.
 - Remote or multi-user access. Loopback only.
 - Replacing or deprecating `UnixSocketTransport`; TUI consumers keep working.
+- **The multi-producer socket binding fix — BUG-3324.**
+- Replay of events missed while an SSE client was disconnected. There is no
+  durable buffer; reconnect re-seeds current state and resumes live.
 
 ## Relationship to FEAT-3321
 
@@ -265,19 +501,26 @@ These are adjacent and must not be merged carelessly:
   right now") by pushing an event as it is emitted, with sub-second latency
   and no database round trip.
 
-They plausibly share a localhost server process and a config gate. Whoever
-implements the second one should reuse the first one's server rather than
-standing up a second listener. That reuse is a sequencing note, not a
-dependency: neither blocks the other.
+They share a localhost server process and a config gate. **Resolved
+2026-08-26**: since FEAT-3321 is still `open` and unimplemented, this issue
+claims `ll-artifact serve` and defines the server; FEAT-3321 mounts its
+read-only query route on the same server rather than standing up a second
+listener. Defining the server here rather than leaving it to whichever lands
+first is what makes that reuse actually happen. Still not a blocking
+dependency in either direction — if FEAT-3321 lands first it owns the server
+instead, and this issue adds the `/events` route.
 
 ## API/Interface
 
-- A new entry point or subcommand (working name unresolved — `ll-artifact
-  serve` is FEAT-3321's provisional name and a shared server would make it the
-  natural home). Naming is a decision for whoever picks this up.
-- A config block gating the capability, sibling to `events.socket` in
-  `config-schema.json` (which is `additionalProperties: false`, so the schema
-  must be extended before any new key is accepted).
+- **`ll-artifact serve`** — claimed here (see § Relationship to FEAT-3321),
+  serving the SSE stream at a dedicated route. Registered in
+  `[project.scripts]`, `main_*` exported from `cli/__init__.py`, using
+  `main_mcp`'s lazy-import pattern (`mcp_server/__init__.py:66-93`) if it ever
+  pulls an optional dependency.
+- **`events.bridge`** config block gating the capability, sibling to
+  `events.socket` in `config-schema.json` (which is
+  `additionalProperties: false`, so the schema must be extended before any new
+  key is accepted). Keys and defaults in § Integration Map → Configuration.
 
 ## Considerations
 
@@ -287,8 +530,11 @@ dependency: neither blocks the other.
 - **Backpressure is already solved on the producer side** and the same
   discipline has to hold at the HTTP hop: a browser tab that stops reading
   must not grow an unbounded buffer in the bridge or stall the FSM thread.
-  `EventBus.emit` isolates transport exceptions (`events.py:134-138`), so a
-  failing bridge cannot abort a run — that property must survive.
+  Because the bridge is out-of-process, a bridge that dies or wedges appears to
+  the producer as an ordinary slow/disconnected socket client and is handled by
+  the existing `_record_drop` / `_record_rejection` paths
+  (`transport.py:242-278`) — no new isolation machinery, and nothing for
+  `EventBus.emit` to catch.
 - **POSIX only.** `wire_transports` raises `RuntimeError` for `"socket"`
   where `AF_UNIX` is unavailable (`transport.py:646-651`). The bridge inherits
   that constraint; it should fail with the same clarity rather than a
@@ -296,46 +542,74 @@ dependency: neither blocks the other.
 - **Not `ll-logs`/`ll-session`.** Those read persisted history. This is the
   live bus.
 
+## Resolved Decisions
+
+_Settled 2026-08-26 during pre-implementation review. Previously § Open
+Questions._
+
+- **Redaction: none on the live path.** ENH-075's column allowlist is applied
+  at export time in `cli/artifact/dashboard.py`; there is no equivalent on the
+  bus and this issue does not add one. Rationale: the stream is the user's own
+  project data, the listener is loopback-only, the `Host` guard blocks DNS
+  rebinding, no CORS header is sent, and the whole capability is doubly
+  opt-in (`events.transports` is `[]` by default *and* `events.bridge.enabled`
+  is `false`). **Revisit trigger**, to be recorded alongside the decision in
+  `CONFIGURATION.md`: any change that makes the endpoint reachable off-host, or
+  any multi-user access.
+- **Multi-producer shape: probe-and-claim**, specified in BUG-3324. A lone
+  producer keeps the configured path (so `nc -U .ll/events.sock` is unaffected
+  and no migration doc is needed); a concurrent producer binds
+  `events-<pid>.sock` beside it. Chosen over a broker (no daemon lifecycle) and
+  over unconditional per-producer paths (which would break the documented
+  consumer and five existing tests).
+- **Producer attribution is additive, not breaking.** The envelope is
+  `{"event", "ts", ...payload}` and the named external consumer (loop-viz, per
+  `EVENT-SCHEMA.md`) reads by key. One caveat to check at implementation time:
+  payloads are splatted at the *top level*, so the new key must not collide
+  with any existing payload field — grep the event catalog before settling on
+  `producer_id` (or similar).
+
 ## Open Questions
 
-- **Redaction.** ENH-075's column allowlist is applied at export time in
-  `cli/artifact/dashboard.py`, and there is no equivalent on the bus. A
-  loopback-only stream of a user's own project is arguably fine unredacted —
-  but that needs to be a stated decision with a rationale, not an omission,
-  and it should be revisited the moment anything makes the endpoint reachable
-  off-host.
-- **Multi-producer shape.** Per-producer sockets + fan-in is simpler and has
-  no daemon lifecycle; a broker gives one stable endpoint and survives
-  producer restarts. Pick one with the reasoning recorded.
-- **Whether producer attribution is a breaking envelope change** for existing
-  consumers (`docs/reference/EVENT-SCHEMA.md` names loop-viz as an external
-  consumer). Additive keys should be safe; confirm before landing.
+- None blocking. Remaining choices (exact envelope key name, SSE route path)
+  are local to implementation.
 
 ## Acceptance Criteria
 
 - [ ] A browser page on loopback receives bus events over SSE as they are
       emitted by a running loop, with no polling and no page reload.
 - [ ] Two concurrent producers (e.g. `ll-loop run` and `ll-sprint run`) both
-      stream to a single connected consumer; a test starts two producers and
-      asserts events from both reach one client, and that the second producer
-      starting does not disconnect a client already attached to the first.
-- [ ] Every relayed event carries a stable producer identifier, and the
-      envelope addition is documented in `docs/reference/EVENT-SCHEMA.md`.
+      stream to a single connected **SSE** client, each event carrying its own
+      producer's identifier — asserted by a test over two producer sockets in
+      one directory. (The socket-layer half of this property is BUG-3324's AC.)
+- [ ] A producer that starts *after* the bridge is already serving is picked up
+      by the directory rescan and its events reach an attached client.
+- [ ] Every relayed event carries a stable producer identifier that does not
+      collide with any existing payload field, and the envelope addition is
+      documented in `docs/reference/EVENT-SCHEMA.md`.
 - [ ] An SSE client connecting while a loop is mid-run receives the
       current-state seed events before live traffic, matching today's
-      `UnixSocketTransport` behavior.
+      `UnixSocketTransport` behavior — on every connect, including reconnects.
 - [ ] A consumer that stops reading is dropped without unbounded buffering in
       the bridge and without stalling or failing the producing run — asserted
       by a test, mirroring the existing drop-accounting discipline.
 - [ ] The listener binds loopback only; a test asserts it is not reachable on a
       non-loopback interface.
-- [ ] The capability is gated by project config, the new block is added to
-      `config-schema.json` (which is `additionalProperties: false`), and it is
-      off by default.
-- [ ] Existing `AF_UNIX` consumers (`nc -U .ll/events.sock`) still work, or the
-      migration is documented if the multi-producer fix changes the path.
-- [ ] The redaction decision for the live path is recorded in the issue and in
-      `docs/reference/CONFIGURATION.md`.
+- [ ] A request with a non-loopback `Host` header is rejected with `403`, and
+      no `Access-Control-Allow-Origin` header is sent — both asserted by tests
+      against a really-bound server.
+- [ ] Concurrent SSE clients are capped; the connection over the cap gets `503`
+      and existing clients are undisturbed.
+- [ ] The server starts on a fixed default port and prints the full URL; with
+      no producer socket present it says so plainly rather than serving an
+      empty stream as success.
+- [ ] The capability is gated by `events.bridge` in project config, the new
+      block is added to `config-schema.json` (which is
+      `additionalProperties: false`) with a `to_dict()` mirror and a
+      `_DATACLASS_SECTION_MAP` entry so both BUG-3192 schema guards pass, and
+      it is off by default.
+- [ ] The redaction decision, its revisit trigger, and the no-replay reconnect
+      contract are recorded in `docs/reference/CONFIGURATION.md`.
 
 ## Related Key Documentation
 
@@ -344,12 +618,48 @@ dependency: neither blocks the other.
 - `docs/ARCHITECTURE.md` — transport fan-out and socket seeding
 - `docs/reference/API.md` — `UnixSocketTransport`, `wire_transports`
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-08-25_
+
+**Readiness Score**: 92/100 → PROCEED
+**Outcome Confidence**: 58/100 → LOW
+
+### Outcome Risk Factors
+- Unresolved load-bearing design decision: per-producer-sockets-fan-in vs. broker must be settled before any HTTP code is written — deep per-site complexity in whichever shape is chosen.
+- No in-repo precedent for a stdlib HTTP/SSE server or a real-`HTTPServer`-on-port-0 test harness — expect iteration building both from scratch.
+- Broad enumeration across 4 call sites plus public exports and 2 schema-guard tests on a live, tested transport path — regression risk if the fan-in change alters the existing socket-path shape.
+
+_Superseded 2026-08-26 by the scope split — the scores above predate it._
+Risk factors 1 and 3 no longer apply to this issue: the design decision is
+settled (§ Resolved Decisions) and the transport-path change moved to
+BUG-3324. Risk factor 2 stands and is now the dominant one. Re-run
+`/ll:confidence-check` on both issues before implementation to get current
+scores.
+
+## Revision History
+
+- **2026-08-26 — pre-implementation review.** Split the multi-producer socket
+  collision out to **BUG-3324** and added `depends_on`. Resolved all three open
+  questions (no redaction + revisit trigger; probe-and-claim; additive envelope
+  key with a collision caveat). Removed the `events.py` / `EventBus.emit`
+  transport-isolation work as inapplicable to an out-of-process bridge — it
+  contradicted § Proposed Solution. Specified the server mechanics that had no
+  in-repo precedent to inherit: `ThreadingHTTPServer`, client cap, bounded
+  per-client queues, keepalive frames, and no-replay reconnect. Added a
+  `Host`-header DNS-rebinding guard and a no-CORS rule. Replaced the
+  unguessable `port=0` default with a fixed `8766` plus a printed URL. Defined
+  the `events.bridge` config block. Claimed `ll-artifact serve` so the
+  FEAT-3321 server-sharing note is actionable.
+
 ## Status
 
 **Open** | Created: 2026-08-26 | Priority: P3
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-26T03:42:55 - `2361c366-3751-4d40-b3d8-0d881c047601.jsonl`
+- `/ll:wire-issue` - 2026-08-26T03:35:40 - `ad3eb4f0-b35e-4777-be61-e91603e9fcf0.jsonl`
 - `/ll:refine-issue` - 2026-08-26T03:22:33 - `39df27ac-4529-446c-ad77-2dd45a63f9c4.jsonl`
 - `/ll:format-issue` - 2026-08-26T03:13:36 - `07e3e6d6-b489-4e89-8655-3bde4b1da576.jsonl`
 - `/ll:capture-issue` - 2026-08-26T03:09:09 - `eadc481c-e910-429b-9281-ccfbd253d4a9.jsonl`
