@@ -8,12 +8,12 @@ discovered_by: ll-issues-create
 discovered_date: '2026-08-26'
 captured_at: '2026-08-26T19:31:41Z'
 program_design_not_applicable: true
-confidence_score: 100
-outcome_confidence: 95
+confidence_score: 98
+outcome_confidence: 91
 score_complexity: 24
-score_test_coverage: 22
-score_ambiguity: 25
-score_change_surface: 24
+score_test_coverage: 20
+score_ambiguity: 24
+score_change_surface: 23
 ---
 
 # BUG-3330: codebase-locator agent claims verified zero-hit grep for symbols that exist
@@ -366,6 +366,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-26T20:46:38 - `4d24c972-60e1-47a9-b765-76e05e1cd46b.jsonl`
 - `/ll:confidence-check` - 2026-08-26T20:33:37 - `e1dbeb25-e8a5-4187-bf3f-becfa88318fe.jsonl`
 - `/ll:wire-issue` - 2026-08-26T20:16:40 - `782fbb73-240e-4e96-ad04-a421c2fa5e7a.jsonl`
 - `/ll:refine-issue` - 2026-08-26T20:08:19 - `fdfe1063-50b8-41a2-aae7-c524a32eadad.jsonl`
