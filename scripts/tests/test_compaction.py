@@ -115,18 +115,15 @@ class TestSelectSlidingWindow:
 
 class TestSummarize6Section:
     def test_produces_all_six_section_headers(self) -> None:
-        with patch("little_loops.session_store.subprocess.run") as mock_run:
-            mock_run.return_value = _make_completed(
-                returncode=0,
-                stdout=_llm_response("\n".join(f"## {h}\ncontent" for h in SECTION_HEADERS)),
-            )
+        with patch("little_loops.session_store.lifecycle._call_llm_for_summary") as mock_run:
+            mock_run.return_value = "\n".join(f"## {h}\ncontent" for h in SECTION_HEADERS)
             result = summarize_6_section(["hello", "world"])
         for header in SECTION_HEADERS:
             assert f"## {header}" in result
 
     def test_falls_back_to_skeleton_when_llm_call_fails(self) -> None:
-        with patch("little_loops.session_store.subprocess.run") as mock_run:
-            mock_run.return_value = _make_completed(returncode=1, stderr="boom")
+        with patch("little_loops.session_store.lifecycle._call_llm_for_summary") as mock_run:
+            mock_run.return_value = None  # LLM failure → fallback to skeleton
             result = summarize_6_section(["hello"])
         for header in SECTION_HEADERS:
             assert f"## {header}" in result
@@ -360,10 +357,8 @@ class TestMessageEventsUnchangedRegression:
         finally:
             conn.close()
 
-        with patch("little_loops.session_store.subprocess.run") as mock_run:
-            mock_run.return_value = _make_completed(
-                returncode=0, stdout=_llm_response("Condensed.")
-            )
+        with patch("little_loops.session_store.lifecycle._call_llm_for_summary") as mock_run:
+            mock_run.return_value = "Condensed."
             config = {"history": {"compaction": {"enabled": True, "budget_tokens": 5}}}
             compact_session(session_id, db, config=config)
 
@@ -405,10 +400,8 @@ class TestAssistantMessagesUnchangedRegression:
         finally:
             conn.close()
 
-        with patch("little_loops.session_store.subprocess.run") as mock_run:
-            mock_run.return_value = _make_completed(
-                returncode=0, stdout=_llm_response("Condensed.")
-            )
+        with patch("little_loops.session_store.lifecycle._call_llm_for_summary") as mock_run:
+            mock_run.return_value = "Condensed."
             config = {"history": {"compaction": {"enabled": True, "budget_tokens": 5}}}
             compact_result_for_session_with_reasoning(session_id, db, config=config)
 
