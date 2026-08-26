@@ -94,12 +94,8 @@ class TestBackfillThenCompact:
         db = tmp_path / "history.db"
         jsonl_path = _write_transcript(tmp_path)
 
-        with patch("little_loops.session_store.subprocess.run") as mock_run:
-            mock_run.return_value.returncode = 0
-            mock_run.return_value.stdout = json.dumps(
-                {"type": "result", "subtype": "success", "result": "Mocked summary."}
-            )
-            mock_run.return_value.stderr = ""
+        with patch("little_loops.session_store.lifecycle._call_llm_for_summary") as mock_run:
+            mock_run.return_value = "Mocked summary."
             result = backfill_and_compact(
                 db,
                 SESSION_ID,
@@ -141,12 +137,8 @@ class TestSummaryOmitsAssistantContent:
         db = tmp_path / "history.db"
         jsonl_path = _write_transcript(tmp_path)
 
-        with patch("little_loops.session_store.subprocess.run") as mock_run:
-            mock_run.return_value.returncode = 0
-            mock_run.return_value.stdout = json.dumps(
-                {"type": "result", "subtype": "success", "result": "Mocked summary."}
-            )
-            mock_run.return_value.stderr = ""
+        with patch("little_loops.session_store.lifecycle._call_llm_for_summary") as mock_run:
+            mock_run.return_value = "Mocked summary."
             backfill_and_compact(
                 db,
                 SESSION_ID,
@@ -190,12 +182,8 @@ class TestSummaryIncludesAssistantContent:
         db = tmp_path / "history.db"
         jsonl_path = _write_transcript(tmp_path)
 
-        with patch("little_loops.session_store.subprocess.run") as mock_run:
-            mock_run.return_value.returncode = 0
-            mock_run.return_value.stdout = json.dumps(
-                {"type": "result", "subtype": "success", "result": "Mocked summary."}
-            )
-            mock_run.return_value.stderr = ""
+        with patch("little_loops.session_store.lifecycle._call_llm_for_summary") as mock_run:
+            mock_run.return_value = "Mocked summary."
 
             conn = connect(db)
             try:
@@ -211,11 +199,9 @@ class TestSummaryIncludesAssistantContent:
 
             result = compact_result_for_session_with_reasoning(SESSION_ID, db)
 
-            prompts_seen = [
-                call.args[0][call.args[0].index("-p") + 1]
-                for call in mock_run.call_args_list
-                if "-p" in call.args[0]
-            ]
+            # _call_llm_for_summary takes prompt as a positional arg; inspect
+            # all calls to extract the prompt text
+            prompts_seen = [call.args[0] for call in mock_run.call_args_list if call.args]
 
         assert result is not None
         combined_prompts = "\n".join(prompts_seen)
