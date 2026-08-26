@@ -1,0 +1,11 @@
+{
+  "id": "2cad1220-6fba-4267-89e1-da38055bf80b",
+  "type": "decision",
+  "timestamp": "2026-08-26T01:47:05Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "FEAT-3304 shipped a deliberately table-only query surface; add an opt-in chart layer with a vendored, inlined viz library following the sql.js pattern.",
+  "rule": "Captured: Chart layer for ll-artifact dashboard query results",
+  "scope": "issue",
+  "issue": "ENH-3322"
+}

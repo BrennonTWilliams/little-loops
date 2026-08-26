@@ -196,6 +196,8 @@ are scoped; Phase 4 is now FEAT-3308.
 - **FEAT-3311** — Artifact templates: status + lockfile staleness detection (Phase 3) (open)
 - **ENH-3319** — Rewrite baked-in design-token literals to var() references in templatize output (open)
 - **FEAT-3320** — html-anything template-mode generate prompt (artifact_mode pilot) (open)
+- **ENH-3322** — Chart layer for ll-artifact dashboard query results (open)
+
 
 
 
