@@ -5,6 +5,62 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.158.0] - 2026-08-25
+
+### Added
+
+- **FEAT-3036**: Artifact templates design — `ll-artifact render` Phase 1
+- **FEAT-3308**: `ll-artifact templatize` — save a generated artifact as a reusable template
+- **FEAT-3314**: `ll-artifact templatize` Phase A — deterministic templating (no LLM)
+- **FEAT-3315**: `ll-artifact templatize` Phase B — LLM region discovery
+- **FEAT-3316**: `ll-artifact templatize` Phase C — token report, fan-out verification, docs
+- **FEAT-3310**: Artifact templates: `extract` + `refresh` (Phase 2)
+- **FEAT-3311**: Artifact templates: `status` + lockfile staleness detection (Phase 3)
+- **FEAT-3318**: `artifact_mode: template` — loops emit template + data natively
+- **FEAT-3320**: html-anything template-mode generate prompt (`artifact_mode` pilot)
+- **FEAT-3309**: Loop→artifact handoff — promote a run artifact to a durable path
+- **FEAT-3304**: Embed sql.js + filtered `history.db` export for queryable single-file artifacts
+- **FEAT-3042**: Advisor transport — shared `run_blocking_json` helper
+- **FEAT-3116**: Advisor consult budget and task-identity infrastructure
+- **FEAT-3120**: Advisor `consult()` core and `ll-advise` CLI
+- **FEAT-3121**: `/ll:advise` skill wrapping the `ll-advise` CLI
+- **FEAT-3117**: Wire `confidence_gate` consult trigger into the `ll-auto` readiness gate
+- **FEAT-3118**: Wire `pre_done` consult trigger into the Stop hook
+- **FEAT-3039**: Advisor FSM stall escalation and routable verdicts
+- **FEAT-3040**: Advisor consult telemetry in `history.db`
+- **FEAT-3300**: Advisor consult telemetry — schema, writer, reader
+- feat(config): add advisor configuration block (6c29f69c6)
+- feat(skills): distribute the advise skill to all host-CLI configs — gemini, kimi-code, qwen (183481ba5)
+- feat(ENH-230): add `cannot_judge` abstention to `verdict_events` (8da0a754e)
+
+### Fixed
+
+- **BUG-3303**: Issue ID allocation inside worktrees collides with main-tree IDs
+- **BUG-3305**: Codegraph staleness never clears for unindexed file extensions
+- **BUG-3312**: Ctrl+C does not stop `ll-auto` — detached subprocess ignores SIGINT
+- **BUG-3313**: format-issue prompts for commit approval in `--auto` mode (unguarded Finalize step)
+- **BUG-3317**: Orphaned `running` state with no resolvable PID never reconciles — dead runs show as live indefinitely in `ll-loop list --running` and dashboards
+- fix(program-design): support `file:line` citations in signature descriptions (ab3b3ae1e)
+- fix(cli): add `__main__.py` so `python -m little_loops.cli` works (811d5bf33, #9)
+- fix(tests): inject PYTHONPATH in sft-corpus `_bash()` so subprocess imports resolve on clean CI runners (52de566ba, #10)
+- fix(tests): add `run_effort` to the BUG-2819 drift-guard `expected_propagated` set (6b68844c1, #13)
+
+### Changed
+
+- **ENH-3035**: Factor a shared artifact template kit out of the policy-builder template
+- **ENH-3319**: Rewrite baked-in design-token literals to `var()` references in templatize output
+- **ENH-3302**: Guard epic branch reuse against staleness relative to fork base
+- **ENH-3306**: Add an interactive-resource content type to `ll-mcp` (HTML with event callbacks)
+- **ENH-3307**: State "host owns the journey" as the contract for any artifact that can re-enter the FSM
+
+### Other
+
+- docs: add the artifact control-levels contract and update related specs (8af0a1f79)
+- docs: update skill count from 40 to 41 across README, CONTRIBUTING, ARCHITECTURE (d6b34c6f8)
+- chore(learning-tests): add jinja2-byte-exact-round-trip and signal test fixtures (4b6789048)
+- chore(artifact): remove stale `cli/artifact.py` left behind by the package split (20eb16377)
+- ci: split unit-tests to ubuntu-latest, keep conformance on Thinky (9d1fa2935, #6)
+
 ## [1.157.0] - 2026-08-23
 
 ### Added
@@ -1161,6 +1217,7 @@ beside a silently truncated list (BUG-3055).
 - ENH-2655: Standardize a .ll/ artifact directory for /ll:spike plan docs
 - refactor(runners): extract shared RunnerType/ActionSpec dispatch abstraction (c835911a)
 
+[1.158.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.157.0...v1.158.0
 [1.157.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.156.0...v1.157.0
 [1.156.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.155.0...v1.156.0
 [1.155.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.154.0...v1.155.0
