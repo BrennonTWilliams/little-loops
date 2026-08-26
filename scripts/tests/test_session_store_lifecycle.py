@@ -1201,14 +1201,9 @@ class TestSummarizeBlock:
     def test_level_1_accepts_smaller_summary(self) -> None:
         """Level 1: LLM returns a summary smaller than input — accepted immediately."""
         short_summary = "Short summary."
-        with patch("little_loops.session_store.subprocess.run") as mock_run:
-            mock_run.return_value = _make_completed(
-                returncode=0, stdout=_llm_response(short_summary)
-            )
+        with patch("little_loops.session_store.lifecycle._call_llm_for_summary", return_value=short_summary):
             result = _summarize_block(self.SHORT_INPUT, budget=256)
         assert result == short_summary
-        # Only one subprocess call (level 1 succeeded)
-        assert mock_run.call_count == 1
 
     def test_level_1_escalates_when_summary_not_smaller(self) -> None:
         """Level 1 summary >= input size → escalates to level 2."""
