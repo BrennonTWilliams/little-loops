@@ -89,7 +89,7 @@ jobs:
           # exactly the silent-skip class we must not let through.
           .venv/bin/python -c "import pytest, pytest_cov, xdist, pytest_timeout, syrupy, hypothesis; print('dev deps verified')"
 
-      - name: "Run unit tests (exclude integration + conformance) [DIAG: BUG-3208 wedge capture]"
+      - name: "Run unit tests (exclude integration + conformance) [DIAG: BUG-3208 wedge capture + master watchdog]"
         # `tee` mirrors pytest output to `pytest.log` for upload without
         # buffering the streamed CI log (which would break live-progress in
         # the GH Actions UI). `--junit-xml` writes a structured report that
@@ -111,13 +111,77 @@ jobs:
         #                           files are kept by xdist alongside the log.
         #   -v                      Per-test progress, makes the last-in-flight
         #                           test name visible in plain text.
+        #
+        # DIAG master-side hang watchdog (remove when the wedge is named):
+        #   The 89% pytest_sessionfinish wedge is qualitatively different from
+        #   the original runner-death wedge: workers all return, master is
+        #   stuck. `--max-worker-restart=0` does NOT fire on a master-side
+        #   hang (no worker dies), so we need a separate watchdog that
+        #   snapshots the master process itself.
+        #
+        #   Two-snapshot protocol (T+2min, T+5min of no stdout progress):
+        #     Identical stacks at both snapshots -> hard deadlock.
+        #     Different stacks                 -> slow finalization, not dead.
+        #   At T+7min, SIGABRT the master. Python's faulthandler registers
+        #   SIGABRT by default since 3.3, so this triggers a Python-level
+        #   traceback dump before the process aborts -- captures the userland
+        #   frame the kernel stack alone can't.
+        #
+        #   Tool: /proc/<pid>/stack + /proc/<pid>/fd/ + /proc/<pid>/wchan
+        #   (NOT py-spy -- silent fails empty on GH-hosted runners when
+        #   perf_event_open / ptrace aren't granted).
+        #
+        # QA-flag: py-spy-silent-fail-on-perf_event_open
         run: |
           set -o pipefail
-          .venv/bin/python -m pytest scripts/tests/ \
+          rm -f pytest-master-snapshot.log pytest.log pytest-junit.xml
+
+          # Wrapper records pytest's PID (after `exec`, the wrapper's PID is
+          # pytest's PID since exec preserves PID but replaces process image).
+          cat > /tmp/pytest-wrapper.sh <<'WRAPPER'
+          #!/bin/bash
+          echo $$ > /tmp/pytest.pid
+          exec .venv/bin/python -u -m pytest scripts/tests/ \
             -m "not integration and not conformance" \
             -n 4 --max-worker-restart=0 --tb=long --capture=no -v \
-            --junit-xml=pytest-junit.xml \
-            | tee pytest.log
+            --junit-xml=pytest-junit.xml
+          WRAPPER
+          chmod +x /tmp/pytest-wrapper.sh
+
+          # Start pytest via wrapper. Process substitution routes stdout/stderr
+          # through tee (file + live GH Actions stream) without blocking the
+          # pipeline. The wrapper's $! is captured here.
+          /tmp/pytest-wrapper.sh > >(tee pytest.log) 2>&1 &
+          SHELL_PID=$!
+          # Poll for the PID file (wrapper writes it before exec, but on a
+          # heavily-loaded runner the heredoc+chmod+start sequence can race).
+          for i in 1 2 3 4 5 6 7 8 9 10; do
+            if [ -s /tmp/pytest.pid ]; then break; fi
+            sleep 0.2
+          done
+          PYTEST_PID=$(cat /tmp/pytest.pid 2>/dev/null || echo "$SHELL_PID")
+          echo "[$(date -u +%H:%M:%S)] pytest master PID: $PYTEST_PID (shell: $SHELL_PID)"
+
+          # Start master-side hang watchdog in parallel.
+          .venv/bin/python .github/scripts/bug3208-master-watchdog.py \
+            --pid $PYTEST_PID \
+            --stdout pytest.log \
+            --out pytest-master-snapshot.log \
+            --snap1-at 120 \
+            --snap2-at 300 \
+            --abrt-at 420 \
+            2>&1 | tee -a pytest-master-snapshot.log &
+
+          # Wait for pytest (this is what blocks the GH Actions step until
+          # pytest exits or the runner ceiling kills the job).
+          wait $SHELL_PID
+          PYTEST_EXIT=$?
+
+          # Give watchdog a moment to notice pytest exit and write its summary.
+          sleep 1
+
+          # Surface pytest's exit code to GH Actions.
+          exit $PYTEST_EXIT
 
       - name: Upload unit-test artifacts
         # `if: always()` is the data-collection gate — green runs need to
@@ -126,6 +190,9 @@ jobs:
         # `if-no-files-found: warn` is deliberate: if pytest hangs at 98-99%
         # (the BUG-3208 failure mode) junit XML never gets written, and the
         # upload step should not turn a hung run into a *double* failure.
+        # `pytest-master-snapshot.log` is uploaded on every outcome: green
+        # runs prove the watchdog never fired (which is the falsification),
+        # wedged runs carry the master-side hang signature.
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -133,6 +200,7 @@ jobs:
           path: |
             pytest.log
             pytest-junit.xml
+            pytest-master-snapshot.log
           retention-days: 7
           if-no-files-found: warn
 
