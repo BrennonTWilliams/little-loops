@@ -168,39 +168,75 @@ Anything it cannot confidently resolve to a program name is a **pass-through**,
 not a failure — a guard that is noisy about unparseable input will be disabled.
 Add a unit test per form.
 
+**Accepted gap: `shell=True` string commands pass through**, so a shell-form host
+spawn is not caught. This is acceptable, not an oversight: verified there is no
+`shell=True` anywhere in production code — the only occurrence in the repo is
+`loops/mechanize-skills.yaml:534`, a loop YAML action, not a Python call path.
+State the gap in the guard's docstring so it is not rediscovered as a bug.
+
 **One patch pair covers the whole `subprocess` surface; do not add more.**
 `check_output` delegates to the module-global `run`, and `call` / `check_call` /
 `getoutput` / `getstatusoutput` reach the module-global `Popen`, so patching
 `subprocess.run` and `subprocess.Popen` already intercepts them. Redundant
 patches would double-record a single spawn.
 
-**Host binary basenames.** All eight exist as `binary="…"` literals in
-`host_runner.py` — verified at `:436` (`claude`), `:730` (`codex`), `:917`
-(`opencode`), `:993` (`pi`), `:1119` (`gemini`), `:1307` (`omp`), `:1503`
-(`kimi`), `:1703` (`qwen`). Do **not** source them from `_PROBE_ORDER` (seven
-entries, missing `opencode`) — `OpenCodeRunner.build_streaming` *does* build a
-real invocation (only its `build_blocking_json` / `build_detached` raise
-`HostNotConfigured`), so opencode genuinely can spawn and cannot be dropped.
-Instantiating `_HOST_RUNNER_REGISTRY` values and reading `.binary` off
-`build_version_check()` (catching `HostNotConfigured`) works for seven of eight
-but still misses opencode.
+**`run` is in fact redundant with `Popen` — this is deliberate, not a bug.**
+CPython's `subprocess.run` constructs its child via the *module-global* `Popen`
+(`with Popen(*popenargs, **kwargs) as process:`), so patching `Popen` alone
+already intercepts `run`. Keeping the pair is harmless — the `run` wrapper
+records and raises before it ever reaches `Popen`, so a host spawn is recorded
+exactly once — but say so explicitly, or an implementer will "fix" a phantom
+double-count that does not exist. The pair buys clearer attribution at the
+`run` boundary; a single `Popen` patch would also be a defensible choice.
 
-Either way this is **a production change** — the "no production change" claim in
-earlier revisions is false unless the list is hand-maintained in `conftest.py`,
-which is the worse trade. Two shapes; **prefer the first**:
+**Host binary basenames — all eight are derivable with no production change.**
+`describe_capabilities()` is wired on all eight runners and never raises;
+instantiating each `_HOST_RUNNER_REGISTRY` value and reading
+`.describe_capabilities().binary` yields, verified by direct execution
+(2026-08-26): `claude-code→claude`, `codex→codex`, `opencode→opencode`,
+`pi→pi`, `gemini→gemini`, `omp→omp`, `kimi-code→kimi`, `qwen→qwen`.
+
+Two sources that do **not** work, and why:
+
+- `_PROBE_ORDER` (`host_runner.py:1827-1835`) has seven entries and is missing
+  `opencode` — confirmed by execution:
+  `[('claude-code','claude'), ('codex','codex'), ('pi','pi'), ('gemini','gemini'),
+  ('omp','omp'), ('kimi-code','kimi'), ('qwen','qwen')]`.
+- `build_version_check()` raises `HostNotConfigured` for **both** `opencode`
+  (`host_runner.py:902-906`) and `pi` (`:978-982`), so it resolves only six of
+  eight.
+
+**Correction to earlier revisions:** those revisions claimed
+`OpenCodeRunner.build_streaming` "does build a real invocation (only its
+`build_blocking_json`/`build_detached` raise `HostNotConfigured`)". **That is
+false.** `host_runner.py:871-913`: *every* `OpenCodeRunner.build_*` method raises
+`HostNotConfigured`, `build_streaming` included; `PiRunner` (`:947-987`) is the
+same. Neither host can spawn at all. Their basenames are therefore inert
+entries in the guard's set — harmless to include, and cheap insurance if either
+stub is ever wired — but they are **not** an argument for anything.
+
+Consequently the "this must be a production change" framing of earlier revisions
+is also false. Two shapes; **prefer the first**, now on its own merits rather
+than on a forced-hand argument:
 
 1. **A module-level `HOST_BINARY_NAMES: frozenset[str]` in `host_runner.py`**
-   that the guard imports, with a unit test asserting every runner's
-   `build_version_check().binary` (and `build_streaming(...).binary` for
-   opencode) is a member. Single source of truth, one new symbol, no signature
-   churn.
-2. A `binary_name` class attribute on the `HostRunner` Protocol and its eight
-   implementations. Also additive, but a Protocol change ripples through mypy
-   and every conformance stub for the same guarantee.
+   that the guard imports, with a unit test asserting
+   `{cls().describe_capabilities().binary for cls in _HOST_RUNNER_REGISTRY.values()}
+   == HOST_BINARY_NAMES`. Single source of truth, one new symbol, no signature
+   churn, and the drift test is one line. **Do not write that test against
+   `build_version_check().binary`** — it raises for opencode and pi.
+2. Derive the set inside `conftest.py` from
+   `describe_capabilities().binary` at fixture-install time. Genuinely zero
+   production change, but puts a production invariant in test code and gives
+   the guard a silent-drift failure mode (a new runner is picked up
+   automatically, which is good; a renamed `describe_capabilities` binary
+   string silently changes the guard, which is not).
 
-Decide this deliberately rather than discovering it mid-implementation; the
-recommendation is (1) on churn grounds, and the rest of this issue is written
-against it.
+The rejected third option — a `binary_name` class attribute on the `HostRunner`
+Protocol and its eight implementations — is additive but ripples a Protocol
+change through mypy and every conformance stub for the same guarantee.
+
+The rest of this issue is written against (1).
 
 ### Failing the run: teardown fixture, NOT `pytest_sessionfinish`
 
@@ -225,14 +261,41 @@ a smell, not merely a gap.
 - removes the `pytest_sessionfinish` hook, the new-pattern session-fail, and the
   `test_conftest_cap.py` hook-unit-test wiring item entirely.
 
-**Snapshot the collector length; do not test it for truthiness.** The fixture
-must capture `len(collector)` before `yield` and compare against `len(collector)`
-after, failing only on the delta and reporting only the entries added in that
-window. A naive `if collector: pytest.fail(...)` cascade-fails every subsequent
-test on that worker once any test trips the guard, turning a single real finding
-into an unreadable wall of failures and obscuring which test actually spawned.
-(Clearing the collector in teardown would also work, but the snapshot is
-non-destructive and keeps the optional end-of-run summary complete.)
+**Advance a monotonic report cursor; do not test the collector for truthiness,
+and do not snapshot its length before `yield`.** A naive
+`if collector: pytest.fail(...)` cascade-fails every subsequent test on that
+worker once any test trips the guard, turning a single real finding into an
+unreadable wall of failures and obscuring which test actually spawned. But the
+obvious fix — capture `len(collector)` before `yield`, compare after — is
+**subtly lossy** and must not be used either: it silently drops any hit appended
+outside a given test's function-fixture window, and those hits are then never
+reported by any test. Three cases, all reachable:
+
+- **Higher-scope fixture setup.** pytest sets up session- and module-scoped
+  fixtures *before* function-scoped ones, so a spawn inside one is already in
+  the collector when the first test's pre-`yield` snapshot is taken and reads as
+  "not new".
+- **Collection / `pytest_configure` time**, before any fixture runs at all.
+- **A background thread whose append lands between two tests** — the issue
+  already anticipates thread hits (see Program Design § Background-thread
+  spawns), and the length snapshot is precisely the mechanism that loses them.
+
+Use instead a module-level `_reported_upto: int` cursor. In teardown the fixture
+reads `collector[_reported_upto:]`, and if that slice is non-empty it advances
+`_reported_upto = len(collector)` and `pytest.fail()`s reporting exactly that
+slice. This reports every entry exactly once, never cascades, and attributes an
+orphaned hit to the next test to finish rather than to nobody. It strictly
+dominates the snapshot; there is no case where the snapshot is better.
+
+**The collector is written from FSM worker threads — guard it with a lock.**
+Take the slice-and-advance under the same lock the wrapper appends under, so a
+concurrent append cannot land between the read and the cursor advance and be
+skipped.
+
+**Dedupe the reported slice by `(test_id, binary)`.** Retry-on-error paths can
+re-enter the spawn after the guard raises, so one offending test can record the
+same spawn N times; the failure message should name the distinct spawns, with a
+count, not print N identical lines.
 
 Keep a `pytest_sessionfinish` hook only if a **print-only** end-of-run summary is
 wanted; it must not be load-bearing for the failure.
@@ -259,10 +322,41 @@ stretch item — the subprocess paths are what BUG-3325 proved.
 
 ### Part 2 — `_rate_limit_ladder_patched` (ladder guard)
 
-A **module-scoped autouse fixture living in `test_fsm_executor.py` — not
-`conftest.py`** — patching `_DEFAULT_RATE_LIMIT_LONG_WAIT_LADDER` to `[0]` and
-`_DEFAULT_RATE_LIMIT_MAX_WAIT_SECONDS` to `0` for the whole file, making the
-convention structural rather than per-test discipline.
+An autouse fixture patching `_DEFAULT_RATE_LIMIT_LONG_WAIT_LADDER` to `[0]` and
+`_DEFAULT_RATE_LIMIT_MAX_WAIT_SECONDS` to `0`, making the convention structural
+rather than per-test discipline.
+
+**Open decision — file-local vs. suite-wide. Decide deliberately; do not default.**
+Earlier revisions specified "module-scoped, in `test_fsm_executor.py`, *not*
+`conftest.py`" without stating a reason. Both are safe: verified by grep
+(2026-08-26) that the only references to either constant anywhere in `scripts/`
+are `executor.py:91,94,3372,3377` and `test_fsm_executor.py` (one docstring, six
+intentional patch sites, the `[0.3]` site) — no test asserts the default values,
+and the only other files mentioning rate limiting at all
+(`test_ll_loop_display.py`, `test_generate_schemas.py`) never drive
+`_handle_rate_limit`. The in-body `patch.multiple` wins on ordering under either
+choice.
+
+The trade:
+
+- **Module-scoped in `test_fsm_executor.py`** — local, legible, no action at a
+  distance. But it only protects tests written *in that file*; a rate-limit test
+  added to a new file still wedges the worker, so the acceptance criterion "a
+  rate-limit test that omits the ladder patch cannot block" holds only
+  conditionally.
+- **Session-scoped autouse in `conftest.py`** — satisfies that AC as written,
+  for the same implementation cost, and has precedent: `_guard_real_history_db`
+  already patches production internals suite-wide from `conftest.py`. Costs
+  action at a distance for a constant most of the suite never touches.
+
+**Recommendation: `conftest.py`, suite-wide**, because the AC as written is the
+actual goal — structural protection against a contributor who does not know the
+convention — and file-locality does not deliver it. Whichever is chosen, narrow
+or keep the AC to match, and record the choice here.
+
+The rest of this section is written against a fixture that collapses both
+constants for the whole of `test_fsm_executor.py` at minimum; nothing in it
+changes if the fixture is hoisted to `conftest.py`.
 
 **Do not enumerate the rate-limit classes.** No test asserts the *default* values
 of either constant — the only references are the six intentional patch sites
@@ -279,8 +373,8 @@ this issue called for exempting `test_fsm_executor.py:7808-7813` (the
 intentional non-zero `[0.3]` ladder) via a registered marker. That is both
 impossible and unnecessary:
 
-- **Impossible at module scope.** A module-scoped fixture runs once for the
-  whole file and cannot observe per-test markers, so there is no mechanism to
+- **Impossible at module or session scope.** A module- or session-scoped fixture
+  runs once and cannot observe per-test markers, so there is no mechanism to
   skip it for a single test. Gating on a marker would require demoting the
   fixture to function scope for no benefit.
 - **Unnecessary.** Verified at `test_fsm_executor.py:7806-7813`: the test enters
@@ -311,16 +405,29 @@ patching the module attributes takes effect.
         hit still fails even when the raise was eaten inside the test body.
 - [ ] The wrapper does **not** fire on `build_version_check()` invocations
       (`argv == [<host binary>, "--version"]`), covered by a unit test. Verified:
-      all seven wired `build_version_check()` implementations emit exactly
-      `args=["--version"]`, so this single condition covers them.
+      all **six** wired `build_version_check()` implementations emit exactly
+      `args=["--version"]` — `claude` (`:473`), `codex` (`:772`), `gemini`
+      (`:1152`), `omp` (`:1335`), `kimi` (`:1537`), `qwen` (`:1739`); `opencode`
+      (`:902`) and `pi` (`:978`) raise `HostNotConfigured` instead. This single
+      condition therefore covers every implementation that can emit an argv.
 - [ ] The wrapper passes through, without raising an error of its own, every
       `argv` form CPython accepts: a `list`/`tuple` of `str`, a bare `str`
       command with `shell=True`, a `PathLike` (bare and as element 0), and an
-      empty sequence. One unit test per form.
+      empty sequence. One unit test per form. The `shell=True` pass-through is a
+      **stated accepted gap**, not a bug — no production code uses `shell=True`
+      (verified: the only repo occurrence is `loops/mechanize-skills.yaml:534`).
 - [ ] Two consecutive tests where only the first spawns a host CLI produce
-      **exactly one** failure — the teardown fixture compares a pre-`yield`
-      collector-length snapshot rather than testing the collector for
-      truthiness, so a single hit does not cascade across the worker.
+      **exactly one** failure — the teardown fixture advances a monotonic report
+      cursor rather than testing the collector for truthiness, so a single hit
+      does not cascade across the worker.
+- [ ] A hit appended **outside** any test's function-fixture window is still
+      reported exactly once, attributed to the next test to finish. Unit test:
+      append to the collector directly (simulating a higher-scope fixture or
+      background-thread spawn), then assert the *next* test's teardown fails and
+      the one after it passes. This is the property the rejected
+      `len()`-snapshot mechanism silently loses.
+- [ ] Repeated identical spawns within one test (retry loops) are reported as
+      one deduped `(test_id, binary)` entry with a count, not N lines.
 - [ ] The guard fires for all three spawn paths: `run_blocking_json` (blocking),
       `run_claude_command` (streaming), and `build_detached` →
       `handoff_handler.py:123` (detached).
@@ -352,16 +459,18 @@ patching the module attributes takes effect.
   detection signal. BUG-3325 fixes three known instances; nothing stops the
   fourth.
 - **Effort**: Medium. A session-scoped installer fixture plus a function-scoped
-  teardown-fail fixture in `conftest.py`, a module-scoped ladder fixture in
-  `test_fsm_executor.py`, and unit tests.
-  **One small production change** is expected: a module-level
+  teardown-fail fixture in `conftest.py`, a ladder fixture (scope TBD, see
+  Proposed Solution Part 2), and unit tests.
+  **One small production change is chosen, not forced**: a module-level
   `HOST_BINARY_NAMES: frozenset[str]` in `host_runner.py`, so the guard's
-  basename list has a single derivable source (see Proposed Solution § Host
-  binary basenames). Prior revisions of this issue claimed "no production
-  change"; that is false unless the basename list is hand-maintained in
-  `conftest.py`, which is the worse trade.
+  basename list has a single explicit source with a drift test. A
+  zero-production-change alternative exists and works — all eight basenames are
+  derivable from `describe_capabilities().binary` (verified by execution) — so
+  earlier revisions' claim that a production change is unavoidable was itself
+  wrong, as was the opencode premise it rested on (see Proposed Solution § Host
+  binary basenames).
   **No new marker is expected** — the ladder exemption was dropped as both
-  impossible at module scope and unnecessary.
+  impossible at fixture scope and unnecessary.
 - **Risk**: Medium-low, but larger than earlier revisions assumed. Because both
   modules `import subprocess` (so the patch is process-global), the false-positive
   surface is **the entire suite**, not the two named call paths — every
@@ -378,9 +487,10 @@ patching the module attributes takes effect.
   function-scoped teardown-fail fixture. Existing autouse fixtures live at
   `:553-762`; `pytest_configure` at `:77` and `pytest_collection_modifyitems` at
   `:98` show the hook conventions in force.
-- `scripts/tests/test_fsm_executor.py` — the module-scoped ladder fixture only;
-  the `[0.3]` heartbeat test (`:7806-7813`) needs no change, its in-body
-  `patch.multiple` already wins.
+- `scripts/tests/test_fsm_executor.py` — the ladder fixture, **if** the
+  file-local scope is chosen over `conftest.py` (open decision, see Proposed
+  Solution Part 2); the `[0.3]` heartbeat test (`:7806-7813`) needs no change
+  either way, its in-body `patch.multiple` already wins.
 - `scripts/pyproject.toml` — register a marker at `:280-285` **only if** one
   proves genuinely necessary; none is expected.
 - `scripts/little_loops/host_runner.py` — additive module-level
@@ -444,12 +554,13 @@ _Wiring pass added by `/ll:wire-issue`:_
   `kimi-code`, `qwen`), not the four (`claude`, `codex`, `opencode`, `pi`) the
   Proposed Solution's prose names — and its keys are host *names*, not CLI
   *binary basenames*. The binary-basename list the guard's `argv[0]` check
-  actually needs lives in `_PROBE_ORDER` (`host_runner.py:1827-1835`), which has
-  only **seven** entries and is **missing `opencode`**'s binary basename
-  entirely. "Derive from the `HostRunner` registry" therefore isn't a single
-  literal lookup — `opencode`'s binary name has no registry-derivable source and
-  must be sourced from `OpenCodeRunner` itself or filled in by hand. [Agent 2
-  finding]
+  actually needs is **not** in `_PROBE_ORDER` (`host_runner.py:1827-1835`),
+  which has only **seven** entries and is **missing `opencode`** entirely.
+  **Superseded in part by the third review**: the conclusion drawn here — that
+  `opencode`'s binary name "has no registry-derivable source and must be filled
+  in by hand" — is wrong. `cls().describe_capabilities().binary` is wired and
+  non-raising on all eight registry entries, opencode and pi included, and is
+  the derivable source. [Agent 2 finding, corrected]
 - `scripts/tests/test_conftest_cap.py:28-32` loads `conftest.py` as a **second,
   independent module** via `importlib.util.spec_from_file_location` /
   `exec_module`, separate from the plugin-loaded `conftest` pytest itself uses.
@@ -554,14 +665,17 @@ the implementation:_
 
 - ~~Resolve host binary basenames from `_PROBE_ORDER`~~ — **superseded.**
   `_PROBE_ORDER` (`host_runner.py:1827-1835`) has seven entries and is missing
-  `opencode`, and `OpenCodeRunner.build_streaming` *does* build a real invocation
-  (only its `build_blocking_json`/`build_detached` raise `HostNotConfigured`), so
-  opencode can spawn and cannot be dropped. All eight basenames — `claude`,
-  `codex`, `gemini`, `kimi`, `omp`, `opencode`, `pi`, `qwen` — exist as
-  `binary="…"` literals (`host_runner.py:436,730,917,993,1119,1307,1503,1703`).
+  `opencode` (confirmed by execution). The stated reason in earlier revisions —
+  that `OpenCodeRunner.build_streaming` builds a real invocation — is **false**:
+  every `OpenCodeRunner.build_*` method raises `HostNotConfigured`
+  (`host_runner.py:871-913`), as does every `PiRunner.build_*` (`:947-987`);
+  neither host can spawn. Include their basenames anyway as inert insurance.
+  All eight are derivable from `cls().describe_capabilities().binary` for
+  `cls in _HOST_RUNNER_REGISTRY.values()` (verified by execution 2026-08-26).
   Add an additive module-level `HOST_BINARY_NAMES: frozenset[str]` to
-  `host_runner.py` and derive from that, with a unit test asserting each
-  runner's `binary` literal is a member.
+  `host_runner.py` and derive the guard from that, with a drift test comparing
+  it against that set expression — **not** against `build_version_check()`,
+  which raises for two of the eight.
 - ~~Add a `TestPytestSessionFinish`-style unit test to `test_conftest_cap.py`~~ —
   **dropped.** The enforcement mechanism is a function-scoped teardown fixture,
   not a `pytest_sessionfinish` hook, so there is no hook logic to unit-test
@@ -588,9 +702,18 @@ the implementation:_
   unresolvable, with a unit test per form. The process-global patch means the
   wrapper is on the path of every subprocess call in the suite, so a `TypeError`
   from the guard itself would break unrelated tests.
-- Snapshot the collector length in the teardown fixture rather than testing it
-  for truthiness, so one hit fails one test instead of every subsequent test on
-  the worker.
+- Advance a monotonic `_reported_upto` cursor in the teardown fixture — not a
+  truthiness check (cascades) and not a pre-`yield` `len()` snapshot (silently
+  drops hits from higher-scope fixture setup, collection time, and background
+  threads). Take the slice and advance the cursor under the collector's lock,
+  and dedupe the reported slice by `(test_id, binary)`.
+- Decide the ladder fixture's scope explicitly — module-scoped in
+  `test_fsm_executor.py` (local, but only protects that file) vs. session-scoped
+  in `conftest.py` (satisfies the AC as written; recommended). Verified safe
+  either way: no test asserts the constants' defaults, and no other test file
+  drives `_handle_rate_limit`.
+- Note the `shell=True` pass-through as an accepted gap in the guard's
+  docstring; no production code uses `shell=True`.
 
 ### Codebase Research Findings
 
@@ -612,24 +735,34 @@ _Added by `/ll:refine-issue` — 2026-08-26 — based on codebase analysis:_
   normalize the command argument to a program name (pass through anything
   unresolvable), compare its basename against the eight host binary names, apply
   the `--version` carve-out, append `(test_id, binary)` to a module-level
-  collector on a match, then raise.
+  collector on a match **under a lock** (the collector is written from FSM
+  worker threads), then raise a dedicated exception whose message names the
+  binary, the test, and how to mock the spawn.
 - `_fail_on_live_host_cli()` — **function-scoped** autouse fixture in
-  `conftest.py`. Records `len(collector)` before `yield`, then `pytest.fail()`s
-  in teardown listing only the entries added since — never a bare truthiness
-  check, which would cascade across the worker. This is the enforcement
-  mechanism; it works under xdist where a `pytest_sessionfinish` exit-status
-  mutation does not.
+  `conftest.py`. In teardown, under the collector's lock, reads
+  `collector[_reported_upto:]`; if non-empty, advances the module-level
+  `_reported_upto` cursor to `len(collector)` and `pytest.fail()`s listing that
+  slice, deduped by `(test_id, binary)`. Never a bare truthiness check (cascades
+  across the worker) and never a pre-`yield` `len()` snapshot (silently drops
+  hits from higher-scope fixtures, collection time, and background threads).
+  This is the enforcement mechanism; it works under xdist where a
+  `pytest_sessionfinish` exit-status mutation does not.
 - `pytest_sessionfinish(session, exitstatus)` — **optional, print-only**
   end-of-run summary listing each `(test_id, binary)`. Must not be load-bearing.
-- `_collapse_rate_limit_ladder()` — module-scoped autouse fixture in
-  `test_fsm_executor.py` patching the two ladder constants file-wide. **No
-  marker exemption**: the one intentional non-zero ladder patches in-body and
-  therefore wins on ordering (see Proposed Solution Part 2).
+- `_collapse_rate_limit_ladder()` — autouse fixture patching the two ladder
+  constants; **scope is an open decision** (module-scoped in
+  `test_fsm_executor.py` vs. session-scoped in `conftest.py` — see Proposed
+  Solution Part 2, recommendation is `conftest.py`). **No marker exemption**
+  either way: the one intentional non-zero ladder patches in-body and therefore
+  wins on ordering.
 - `HOST_BINARY_NAMES: frozenset[str]` — new module-level constant in
-  `host_runner.py`, the guard's single derivable source for the basename list,
-  with a unit test asserting each runner's `binary` literal is a member. (See
-  Proposed Solution § Host binary basenames for the rejected `binary_name`
-  Protocol-attribute alternative.)
+  `host_runner.py`, the guard's single source for the basename list, with a
+  drift test asserting
+  `{cls().describe_capabilities().binary for cls in _HOST_RUNNER_REGISTRY.values()}
+  == HOST_BINARY_NAMES`. **Not** `build_version_check().binary`, which raises
+  `HostNotConfigured` for `opencode` and `pi`. (See Proposed Solution § Host
+  binary basenames for the zero-production-change and `binary_name`-Protocol
+  alternatives, and for the correction to the false opencode claim.)
 
 ### Call Path
 
@@ -709,8 +842,12 @@ the real evaluator with `subprocess.run` mocked (fails at
   FSM run.
 - Exercise all three spawn paths (blocking, streaming, detached), not just the
   blocking one, and assert the `--version` carve-out.
-- Cover the wrapper's `argv` normalization for every accepted form, and cover
-  the non-cascading property (two consecutive tests, one spawner, one failure).
+- Cover the wrapper's `argv` normalization for every accepted form; the
+  non-cascading property (two consecutive tests, one spawner, one failure); and
+  the orphaned-hit property (a collector entry appended outside any test's
+  fixture window is still reported exactly once, by the next test to finish).
+  The last one is what distinguishes the cursor from the rejected `len()`
+  snapshot — without it, a regression back to the snapshot passes every test.
 - Verify the failure actually surfaces **under the default `-n logical`
   addopts**, not only under `-n 0`. This is the mechanism check that rules out
   the `pytest_sessionfinish` dead end.
@@ -783,9 +920,10 @@ Five further changes, each verified against the code:
    and unnecessary, because `test_fsm_executor.py:7806-7813` patches the `[0.3]`
    ladder *inside the test body* and therefore already wins on ordering.
    Confirms no new marker is needed anywhere in this issue.
-2. **The teardown fixture must snapshot the collector length**, not test it for
-   truthiness; otherwise one real hit cascade-fails every subsequent test on the
-   worker and obscures the offender.
+2. **The teardown fixture must not test the collector for truthiness**;
+   otherwise one real hit cascade-fails every subsequent test on the worker and
+   obscures the offender. (This revision proposed a pre-`yield` length snapshot;
+   the third review replaced it with a cursor — see below.)
 3. **The wrapper must normalize `argv` across every form CPython accepts** and
    pass through anything unresolvable. The process-global patch puts it on the
    path of every subprocess call in the suite, so a guard-raised `TypeError` is a
@@ -794,8 +932,44 @@ Five further changes, each verified against the code:
    `HOST_BINARY_NAMES` frozenset** — same single-source guarantee, without
    rippling a Protocol change through mypy and every conformance stub.
 5. **Confirmed patchability and carve-out correctness**: the ladder constants are
-   resolved at call time (`executor.py:3372,3377`), and all seven wired
+   resolved at call time (`executor.py:3372,3377`), and all wired
    `build_version_check()` implementations emit exactly `args=["--version"]`.
+   (This revision said "seven"; it is six — see the third review below.)
+
+### Design revision — 2026-08-26 (third pre-implementation review)
+
+Six changes, each verified by reading or executing the code:
+
+1. **The opencode premise was false and is retracted.** Earlier revisions claimed
+   `OpenCodeRunner.build_streaming` builds a real invocation. It does not —
+   every `OpenCodeRunner.build_*` raises `HostNotConfigured`
+   (`host_runner.py:871-913`), as does every `PiRunner.build_*` (`:947-987`).
+   Neither host can spawn at all.
+2. **Consequently the "a production change is unavoidable" framing was also
+   false.** All eight basenames are derivable with zero production change from
+   `cls().describe_capabilities().binary` — verified by execution. The
+   `HOST_BINARY_NAMES` constant is retained as the *preferred* shape on its own
+   merits (explicit single source, one-line drift test), not as a forced hand.
+   The drift test must compare against `describe_capabilities()`, since
+   `build_version_check()` raises for opencode and pi.
+3. **Count correction**: six wired `build_version_check()` implementations, not
+   seven.
+4. **The collector report mechanism changed from a length snapshot to a
+   monotonic cursor.** The snapshot silently drops hits appended outside a
+   test's function-fixture window — higher-scope fixture setup, collection time,
+   and background threads — which is the same class of silent-no-op failure that
+   killed the `pytest_sessionfinish` design. The cursor also needs the
+   collector's lock, and the reported slice should be deduped by
+   `(test_id, binary)` so retry loops do not print N identical lines.
+5. **The ladder fixture's scope is now an explicit open decision** (file-local
+   vs. suite-wide `conftest.py`), with `conftest.py` recommended because it is
+   what the acceptance criterion actually asks for. Verified safe either way: no
+   test asserts the constants' defaults and no other file drives
+   `_handle_rate_limit`.
+6. **Two clarifications so an implementer does not chase phantoms**: `run` is
+   redundant with `Popen` (CPython's `run` builds its child via the module-global
+   `Popen`), and the `shell=True` string form is an accepted, stated
+   pass-through gap — no production code uses `shell=True`.
 
 
 ## Session Log

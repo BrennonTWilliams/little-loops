@@ -14,6 +14,8 @@ score_complexity: 10
 score_test_coverage: 25
 score_ambiguity: 18
 score_change_surface: 10
+blocked_by:
+- BUG-3326
 ---
 
 # BUG-3327: Unfenced brief interpolation makes capture_intent execute the object-level task
@@ -718,6 +720,7 @@ it was pricing are gone.**
 
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-08-26T21:32:02 - `2066e6fd-1452-49ff-9b3a-c31e7abc3907.jsonl`
 - `/ll:confidence-check` - 2026-08-26T20:09:17 - `fdfe1063-50b8-41a2-aae7-c524a32eadad.jsonl`
 - `/ll:wire-issue` - 2026-08-26T19:24:45 - `3b6a461b-67ff-4f6b-9949-d834388d9cff.jsonl`
 - `/ll:refine-issue` - 2026-08-26T19:14:21 - `0809cdb6-a88f-42a7-9e51-e57ee8a63f3a.jsonl`

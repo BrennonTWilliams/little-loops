@@ -109,6 +109,18 @@ manually re-exporting a dashboard every few minutes.
   `ll-history-server` entry point) — naming is a decision for whoever picks
   this up, not fixed here.
 
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): FEAT-3323 has already resolved
+the server-ownership question ("Resolved 2026-08-26: since FEAT-3321 is still
+`open` and unimplemented, this issue claims `ll-artifact serve` and defines the
+server; FEAT-3321 mounts its read-only query route on the same server rather
+than standing up a second listener"). If FEAT-3323 lands first, this issue
+should mount its query route on FEAT-3323's server rather than defining its own
+`ll-artifact serve` entry point.
+
 ## Related Key Documentation
 
 - `docs/reference/CLI.md` — `ll-artifact dashboard`
@@ -116,3 +128,7 @@ manually re-exporting a dashboard every few minutes.
 ## Status
 
 **Open** | Created: 2026-08-26 | Priority: P3
+
+
+## Session Log
+- `/ll:audit-issue-conflicts` - 2026-08-26T21:32:44 - `ce0d899f-b243-4b9b-9802-1a5047cda0de.jsonl`
