@@ -39,6 +39,20 @@ capture_intent:
     Distill this brief into a structured intent spec ...
 ```
 
+## Steps to Reproduce
+
+1. Run `workflow-generator` with a brief written in the imperative (e.g. "search
+   for X, write findings to Y") — the natural phrasing for describing what the
+   generated loop should do.
+2. `capture_intent` interpolates `${context.description}` raw into its prompt
+   with no delimiter distinguishing "material to analyze" from "instructions
+   to follow".
+3. Observe: the agent executes the brief's imperative verbs directly (runs
+   web searches, writes files) instead of only distilling it into
+   `intent.yaml`. In the source run this cost 296s / $0.089 (3x the next most
+   expensive state) and produced `research/rsi-sources.md` and
+   `research/rsi-oss-projects.md` outside `${context.run_dir}`.
+
 ## Expected Behavior
 
 Fence the brief so it reads as material, not instructions:
@@ -64,44 +78,85 @@ documented intention into an enforced gate.
 
 ## Motivation
 
-[Why this issue matters - business value, user impact, technical debt cost]
+A failed meta-loop run that leaves behind plausible-looking, unverified
+deliverables (research files with unchecked URLs/dates, produced by a prompt
+with no citation gate) is worse than an obviously-failed run: it can pass a
+casual glance as having "worked" while violating the loop's own MR-3
+artifact-isolation discipline and burning 3x the budget of the next most
+expensive state.
 
 ## Proposed Solution
 
-TBD - requires investigation
+Fence the brief in `capture_intent`'s prompt (line 58) so it reads as
+material, not instructions, per the block already drafted in Expected
+Behavior above (`<<<BRIEF ... BRIEF` delimiter plus an explicit "do NOT
+perform the work it describes" instruction). Pair this with a companion
+assertion in `validate_intent` (line 82) that no files were created outside
+`${captured.run_dir.output}` during the `capture_intent` pass, so MR-3 scope
+discipline becomes an enforced gate rather than a documented intention.
 
 ## Integration Map
 
 ### Files to Modify
-- TBD - requires codebase analysis
+- `scripts/little_loops/loops/workflow-generator.yaml` — `capture_intent`
+  (line 58), `validate_intent` (line 82)
 
 ### Dependent Files (Callers/Importers)
-- TBD - use grep to find references
+- N/A — loop is invoked by ID via the FSM runner, not imported
 
 ### Similar Patterns
-- TBD - search for consistency
+- Any other built-in loop that interpolates a raw `${context.<user-input>}`
+  brief into a `prompt` action shares this exposure (see Scope below); survey
+  needed before generalizing the fencing convention
 
 ### Tests
-- TBD - identify test files to update
+- `scripts/tests/test_builtin_loops.py` — add a case asserting
+  `capture_intent`'s action text contains the brief-fencing delimiter and
+  `validate_intent` asserts no out-of-scope files were written
 
 ### Documentation
-- TBD - docs that need updates
+- `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` — if brief-fencing becomes a
+  shared MR pattern (see Scope), document the convention there
 
 ### Configuration
-- N/A or list config files
+- N/A
+
+## Program Design
+
+### Signatures
+
+- `capture_intent.action: str` — prompt text; brief moves from raw
+  interpolation to a fenced `<<<BRIEF ... BRIEF` block with an explicit
+  do-not-execute instruction
+- `validate_intent.action: str` — gains an assertion that no files were
+  created outside `${captured.run_dir.output}` since `capture_intent` started
+
+### Call Path
+
+`capture_intent` (fenced brief, writes only `intent.yaml`) -> `validate_intent`
+(asserts scope: no files outside `run_dir`) -> `on_yes: attach_evaluators` /
+`on_no: capture_intent` (existing retry edge, line 98)
 
 ## Implementation Steps
 
-1. [Major phase 1]
-2. [Major phase 2]
-3. [Verification approach]
+1. Apply the brief-fencing delimiter to `capture_intent`'s prompt.
+2. Add the out-of-scope-file assertion to `validate_intent`.
+3. Verify with `ll-loop validate scripts/little_loops/loops/workflow-generator.yaml`
+   and a re-run using an imperative-phrased brief to confirm no files are
+   written outside `${context.run_dir}`.
+4. Survey other built-in loops per the Scope section and file follow-up
+   issues if the same raw-interpolation pattern is found elsewhere.
 
 ## Impact
 
-- **Priority**: [P0-P5] - [Justification]
-- **Effort**: [Small/Medium/Large] - [Justification]
-- **Risk**: [Low/Medium/High] - [Justification]
-- **Breaking Change**: [Yes/No]
+- **Priority**: P2 — a failed run can leave unverified deliverables that look
+  like success, and the loop violates its own documented MR-3 scope
+  discipline
+- **Effort**: Small — two localized changes to one loop YAML's prompt and
+  gate text
+- **Risk**: Low — additive fencing and an assertion; does not change the
+  loop's control flow or existing retry edges
+- **Breaking Change**: No
 
 ## Scope
 
@@ -120,3 +175,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 ## Status
 
 **Open** | Created: 2026-08-26 | Priority: P2
+
+
+## Session Log
+- `/ll:format-issue` - 2026-08-26T19:09:04 - `8c47cf34-66af-4a75-8c4b-c7a8efe5d7ec.jsonl`

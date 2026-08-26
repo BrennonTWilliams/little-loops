@@ -32,52 +32,175 @@ The instance is fixed. This issue is about making the *class* detectable.
 
 ## Current Behavior
 
-[If applicable - describe what currently happens]
+`fsm/validation` has no lint that inspects intermediate `shell` gate actions
+for hardcoded rule restatement. A meta-loop author can write an inline
+`python3 -c` gate that hand-lists a literal subset of values (e.g. `{"exit_code",
+"regex_match"}`) instead of importing the validator's own exported table
+(e.g. `NON_LLM_EVALUATOR_TYPES` in
+`scripts/little_loops/fsm/validation/_base.py:66`), and nothing flags the
+drift. This is exactly what `validate_evaluators` in
+`workflow-generator.yaml` did before it was fixed: it checked
+`evaluate.type` membership but not the companion fields
+`EVALUATOR_REQUIRED_FIELDS` requires, so four states carrying bare
+`type: output_json` passed the gate and the defect surfaced three states
+downstream at `validate_artifact` instead.
 
 ## Expected Behavior
 
-[What should happen instead]
+`fsm/validation` gains a meta-rule (alongside MR-1..MR-6 in
+`scripts/little_loops/fsm/validation/meta_rules.py`) that, for a loop whose
+terminal gate is a little-loops validator, flags any intermediate
+`action_type: shell` state whose action contains `python3` and hardcodes a
+literal set/frozenset of values that is a subset of a known exported table's
+keys (e.g. a literal evaluator-type set instead of importing
+`NON_LLM_EVALUATOR_TYPES`, or literal required-field lists instead of
+`EVALUATOR_REQUIRED_FIELDS`). Severity is `warning` — a restatement can be a
+deliberate, narrower curated vocabulary — with an escape-hatch comment to
+suppress a specific state.
+
+## Use Case
+
+A loop author writing a new intermediate gate for `workflow-generator` (or
+any other meta-loop with a terminal validator gate) hardcodes a literal
+`{"exit_code", "regex_match"}` check instead of importing
+`NON_LLM_EVALUATOR_TYPES`. `ll-loop validate` now emits a `warning` naming
+the state and the exported table it should import instead, catching the drift
+at authoring time instead of three states downstream at the terminal gate —
+the same failure class this issue's Summary describes as already having
+happened once.
+
+## Acceptance Criteria
+
+1. `ll-loop validate` flags an `action_type: shell` state whose `python3`
+   action contains a literal set/frozenset that is a subset of
+   `NON_LLM_EVALUATOR_TYPES` or the keys of `EVALUATOR_REQUIRED_FIELDS`, at
+   `warning` severity, naming the state and the exported table to import
+   instead.
+2. A state with an escape-hatch suppression comment does not raise the
+   warning.
+3. Running the rule against the current built-in loop set (post-fix) produces
+   zero violations — this rule ships as a forward guard, not a fix for an
+   existing loop.
+4. The rule is documented in
+   `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` § The Design Rules alongside
+   MR-1..MR-14, with its own MR number and the retry-reachability item
+   (below) captured as a related-but-unmechanized heuristic.
 
 ## Motivation
 
-[Why this issue matters - business value, user impact, technical debt cost]
+A restated (rather than imported) rule table doesn't just miss defects — when
+the restatement is a proper subset of what the terminal gate checks, it
+launders them: every downstream pass gets false confidence, and detection
+gets pushed to a point where the retry topology can no longer reach the state
+that made the mistake (as BUG-3326 describes for the resulting `emit_artifact`
+retry). Catching this at lint time, at the state where the drift is
+introduced, is strictly cheaper than debugging it after a run fails three
+states later.
 
 ## Proposed Solution
 
-TBD - requires investigation
+Add `_validate_gate_completeness(fsm: FSMLoop) -> list[ValidationError]` to
+`scripts/little_loops/fsm/validation/meta_rules.py`, following the shape of
+the existing `_validate_*` MR functions there (e.g.
+`_validate_artifact_isolation` for MR-3). Detection sketch:
+
+```python
+# For each state with action_type == "shell" whose action contains "python3":
+#   parse literal set/frozenset displays via ast (not regex, to avoid
+#   false positives on string content)
+#   for each known exported table (NON_LLM_EVALUATOR_TYPES,
+#   EVALUATOR_REQUIRED_FIELDS.keys()):
+#     if the literal's members are a non-empty subset of the table's keys
+#     and the action does not already import that table:
+#       emit a warning naming the state, the literal, and the table to
+#       import instead
+#   Skip if the action contains an escape-hatch comment
+#   (e.g. `# gate-completeness: intentional-subset`)
+```
 
 ## Integration Map
 
 ### Files to Modify
-- TBD - requires codebase analysis
+- `scripts/little_loops/fsm/validation/meta_rules.py` — new
+  `_validate_gate_completeness` function, registered alongside the other
+  `_validate_*` MR checks
+- `scripts/little_loops/fsm/validation/__init__.py` — export/wire the new
+  rule into the validation pipeline (same pattern as `EVALUATOR_REQUIRED_FIELDS`,
+  `NON_LLM_EVALUATOR_TYPES` re-exports at lines 47-49, 164-166)
+- `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` — add the new rule to § The
+  Design Rules (MR-1..MR-14 table) and add the Non-Goal below as a review
+  heuristic
 
 ### Dependent Files (Callers/Importers)
-- TBD - use grep to find references
+- `ll-loop validate` CLI — surfaces the new warning through its existing
+  output path, no new integration needed
 
 ### Similar Patterns
-- TBD - search for consistency
+- `_validate_artifact_isolation` (MR-3) and
+  `_validate_meta_loop_evaluation` (MR-1/MR-2) in `meta_rules.py` are the
+  closest existing shape: FSM-wide static checks returning
+  `list[ValidationError]`
 
 ### Tests
-- TBD - identify test files to update
+- `scripts/tests/` — new test(s) for `_validate_gate_completeness`: positive
+  case (literal subset of `NON_LLM_EVALUATOR_TYPES` without import triggers
+  warning), negative case (import present, or escape-hatch comment present,
+  suppresses it), and a full-suite run confirming zero violations against
+  current built-in loops
 
 ### Documentation
-- TBD - docs that need updates
+- `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` — § The Design Rules (new MR
+  entry) and a new heuristic note for retry-reachability (see Non-Goal)
 
 ### Configuration
-- N/A or list config files
+- N/A
+
+## Program Design
+
+### Types
+
+- `ValidationError` — existing type returned by all `_validate_*` MR
+  functions in `meta_rules.py`; reused, not extended
+
+### Signatures
+
+- `_validate_gate_completeness(fsm: FSMLoop) -> list[ValidationError]`
+
+### Call Path
+
+`_validate_artifact_isolation` (existing MR-3 check, same file, same
+`FSMLoop -> list[ValidationError]` shape) is the sibling `_validate_gate_completeness`
+is added next to in `meta_rules.py`; the validation pipeline invokes both the
+same way: `ll-loop validate` -> validation pipeline
+(`scripts/little_loops/fsm/validation/__init__.py`) -> `_validate_gate_completeness`
+-> per offending `shell` state, parses the `python3 -c` action body and checks
+literal set/frozenset displays against the exported tables in
+`scripts/little_loops/fsm/validation/_base.py`
 
 ## Implementation Steps
 
-1. [Major phase 1]
-2. [Major phase 2]
-3. [Verification approach]
+1. Implement `_validate_gate_completeness` in `meta_rules.py`, parsing shell
+   action bodies with `ast` to find literal set/frozenset displays.
+2. Wire the new check into the validation pipeline in
+   `fsm/validation/__init__.py`, following the existing MR registration
+   pattern.
+3. Add the escape-hatch comment convention and honor it in the check.
+4. Add tests: positive (unimported subset triggers warning), negative
+   (imported or suppressed), and a full built-in-loop-set run at zero
+   violations.
+5. Document the new MR rule and the retry-reachability non-goal heuristic in
+   `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md`.
 
 ## Impact
 
-- **Priority**: [P0-P5] - [Justification]
-- **Effort**: [Small/Medium/Large] - [Justification]
-- **Risk**: [Low/Medium/High] - [Justification]
-- **Breaking Change**: [Yes/No]
+- **Priority**: P3 — a forward guard against a failure class that has
+  occurred once and is now fixed; no current violations, so no urgency, but
+  meaningful to prevent recurrence
+- **Effort**: Medium — new static-analysis check plus `ast`-based parsing of
+  shell action bodies, tests, and doc updates
+- **Risk**: Low — additive `warning`-severity check with an escape hatch; does
+  not change existing loop behavior or fail builds
+- **Breaking Change**: No
 
 ## Proposed Rule
 
@@ -115,3 +238,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 ## Status
 
 **Open** | Created: 2026-08-26 | Priority: P3
+
+
+## Session Log
+- `/ll:format-issue` - 2026-08-26T19:09:04 - `8c47cf34-66af-4a75-8c4b-c7a8efe5d7ec.jsonl`
