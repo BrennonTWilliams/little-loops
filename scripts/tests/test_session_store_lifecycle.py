@@ -883,7 +883,7 @@ class TestCompactSession:
         short_summary = "Compacted summary."
         with patch("little_loops.session_store.lifecycle._call_llm_for_summary") as mock_run:
             mock_run.return_value = short_summary
-            counts = backfill(db, jsonl_files=[jsonl], config=config, also_rebuild=True)
+            counts = backfill(db, jsonl_files=[jsonl], config=config, also_rebuild=True, host="test")
         assert counts["summaries"] >= 1
         conn = connect(db)
         try:
