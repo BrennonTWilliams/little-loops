@@ -96,6 +96,29 @@ Two sub-problems, in order:
    event relayed as a `data:` frame. Slow clients are dropped rather than
    buffered, mirroring the drop accounting already in `_record_drop`.
 
+## Program Design
+
+The multi-producer shape (per-producer sockets + fan-in, vs. a broker) is an
+open design decision (see § Open Questions); the signatures below assume the
+fan-in variant since it requires no new daemon lifecycle, and should be
+revised in place once that decision is settled.
+
+### Types
+
+- `ProducerId: str` — stable per-process/per-run identifier stamped onto the
+  relayed envelope alongside `event` and `ts`
+
+### Signatures
+
+- `serve_sse_bridge(config: EventsConfig, host: str = "127.0.0.1", port: int = 0) -> None`
+- `_fan_in_producer_sockets(socket_dir: Path) -> Iterator[dict]`
+
+### Call Path
+
+new bridge entry point -> `serve_sse_bridge` -> `_fan_in_producer_sockets` ->
+`UnixSocketTransport` (per-producer socket read, `transport.py:115`) -> SSE
+`data:` frame written to the connected browser client
+
 ## Integration Map
 
 ### Files to Modify
@@ -144,6 +167,19 @@ Two sub-problems, in order:
 ### Configuration
 - `events.transports` (default `[]`), `events.socket.path`
   (default `.ll/events.sock`), `events.socket.max_clients` (default `32`)
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-26 — based on codebase analysis:_
+
+- No stdlib-only HTTP server precedent exists in this codebase. The one existing HTTP server is `ll-mcp`'s optional streamable-HTTP transport, built on uvicorn/starlette, not stdlib (`scripts/little_loops/mcp_server/server.py:277` `run_http`). That dependency is deliberately kept out of the base install — `scripts/pyproject.toml:182-184` notes it "pulls 16 mandatory transitive deps including a full HTTP server stack" — consistent with this issue's stdlib-only framing, but there is no prior stdlib-HTTP code in the codebase to pattern-match against; this would be new ground.
+- No SSE or `text/event-stream` implementation exists anywhere in product code; `sse-starlette` is only a transitive dependency of the `mcp` extra, unused directly.
+- Loopback-binding convention (from `ll-mcp`, the closest analogue): default `host="127.0.0.1"` on the server entry point, asserted by a dedicated test that inspects the function signature default (`scripts/tests/test_feat_3143_mcp_http_transport.py:60-64`), plus a frozen `_LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})` gate for non-loopback binds (`server.py:86`, `:109-116`).
+- No `port=0` (OS-assigned port) precedent exists anywhere in the codebase; `ll-mcp` uses a fixed default port (`8765`).
+- Per-producer/per-process identifier naming is unsettled across the codebase — three existing identifiers disagree on both name and generation strategy: `run_id` is a compact ISO-timestamp string derived from `started_at` (`scripts/little_loops/fsm/persistence.py:611-613`), `session_id` is a free-form TEXT column with no fixed generation mechanism (`scripts/little_loops/session_store/schema.py`, multiple tables), and `entry_id` is a straight `str(uuid.uuid4())` (`scripts/little_loops/cli/loop/run.py:381`). No existing "producer identifier" or PID-based constant was found in `events.py` or `transport.py`.
+- New `events.*` config sub-blocks follow a fixed three-part shape, evidenced by every existing sub-block (`socket`, `otel`, `webhook`, `sqlite`): (1) a schema object under `events.<name>` in `config-schema.json` with `additionalProperties: false` (e.g. `webhook` at `config-schema.json:1620-1641`); (2) a matching `<Name>EventsConfig` dataclass in `scripts/little_loops/config/features.py` with a `from_dict` classmethod supplying the same defaults as the schema (e.g. `WebhookEventsConfig` at `features.py:1232-1246`); (3) a `field(default_factory=...)` member on `EventsConfig`, threaded through its own `from_dict` (`features.py:1264-1287`). A new block is inert until its name is also added to `_TRANSPORT_REGISTRY` (`transport.py:602-608`) and a matching dispatch branch in `wire_transports` (`transport.py:632-675`) — registration in the dict alone is not sufficient.
+- `ll-mcp` is the only existing `[project.scripts]` entry point that starts a long-running server process; its `main_mcp()` (`scripts/little_loops/mcp_server/__init__.py:66`) lazily imports its server dependency inside the function (not at module scope) so the module still imports on a checkout without the optional extra installed, and dispatches via `anyio.run(...)`. No naming convention has been settled yet even for the sibling FEAT-3321 server entry point this issue may share a process with — that issue records only a provisional name (`.issues/features/P3-FEAT-3321-...md:108`).
+- Test precedent for the multi-producer/slow-consumer acceptance criteria already exists in `scripts/tests/test_transport.py`: `test_multi_client_each_receives_every_event` (`:458-479`) and `test_client_disconnect_does_not_affect_other_clients` (`:481-504`) are the direct models for "two producers reach one client" and "second producer does not disconnect an existing client." `test_max_clients_cap_rejects_extra_connection` (`:506-535`) and the drop-accounting/rate-limited-logging tests (`:585`, `:537`) are the models for the slow-consumer-drop acceptance criterion. All of these use a `short_tmp_path` fixture (`:52`) instead of `tmp_path`, because raw `AF_UNIX` socket paths have an OS length ceiling `tmp_path` can exceed. Separately, `scripts/tests/test_feat_3143_mcp_http_transport.py` tests its ASGI app via Starlette's in-process `TestClient` rather than a real socket bind — a pattern that would not transfer to a stdlib HTTP implementation, since `TestClient` drives the ASGI lifespan protocol this issue's server would not have.
 
 ## Implementation Steps
 
@@ -314,4 +350,6 @@ dependency: neither blocks the other.
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-08-26T03:22:33 - `39df27ac-4529-446c-ad77-2dd45a63f9c4.jsonl`
+- `/ll:format-issue` - 2026-08-26T03:13:36 - `07e3e6d6-b489-4e89-8655-3bde4b1da576.jsonl`
 - `/ll:capture-issue` - 2026-08-26T03:09:09 - `eadc481c-e910-429b-9281-ccfbd253d4a9.jsonl`
