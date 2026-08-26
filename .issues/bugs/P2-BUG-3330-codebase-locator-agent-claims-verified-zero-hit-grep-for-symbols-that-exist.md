@@ -3,10 +3,11 @@ id: BUG-3330
 type: BUG
 title: codebase-locator agent claims verified zero-hit grep for symbols that exist
 priority: P2
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-08-26'
 captured_at: '2026-08-26T19:31:41Z'
+completed_at: '2026-08-26T20:58:47Z'
 program_design_not_applicable: true
 confidence_score: 98
 outcome_confidence: 91
@@ -331,6 +332,24 @@ scoped `### Searched, No Hits` row rather than a tree-wide "confirmed zero hits"
 claim — and record the outcome in Notes. A bad spot-check is a signal to
 re-examine the wording, not an automatic blocker.
 
+## Resolution
+
+Added the `### Searched, No Hits` output group and matching evidence rules
+(unfiltered re-run requirement, caller-scoped carve-out, named-exclusion
+inside-count, one-row-per-symbol) to `agents/codebase-locator.md`'s Output
+Format prose and example block, plus a matching prohibition bullet in
+`## What NOT to Do`. Added the three pinned `DOC_STRINGS_PRESENT` tuples to
+`scripts/tests/test_wiring_skills_and_commands.py`. Regenerated all four
+host mirrors (`.qwen/`, `.gemini/`, `.kimi-code/`, `.codex/`) via
+`ll-adapt --apply`; `docs/reference/API.md:12403`'s agent table row stayed
+accurate, no edit needed. Filed BUG-3333 to port the same contract to
+`agents/codebase-analyzer.md` and `agents/codebase-pattern-finder.md`
+(deferred, per the Wiring Phase out-of-scope note). Full suite run: 3
+pre-existing failures remain (`test_no_new_unverifiable_evidence`,
+`test_readme_matches_repo_root`, `test_no_prose_dependency_drift_in_repo`),
+all traced to unrelated uncommitted issue-file edits present before this
+session (FEAT-3323, FEAT-3328/BUG-3326) — unrelated to this fix's scope.
+
 ## Impact
 
 - **Priority**: P2 — a locator agent asserting false negatives can silently
@@ -366,6 +385,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-26T20:58:47 - `0bf7be52-4470-4341-8647-365e248c9992.jsonl`
 - `/ll:confidence-check` - 2026-08-26T20:46:38 - `4d24c972-60e1-47a9-b765-76e05e1cd46b.jsonl`
 - `/ll:confidence-check` - 2026-08-26T20:33:37 - `e1dbeb25-e8a5-4187-bf3f-becfa88318fe.jsonl`
 - `/ll:wire-issue` - 2026-08-26T20:16:40 - `782fbb73-240e-4e96-ad04-a421c2fa5e7a.jsonl`

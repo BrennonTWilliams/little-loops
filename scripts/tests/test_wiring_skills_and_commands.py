@@ -259,6 +259,21 @@ DOC_STRINGS_PRESENT: list[tuple[str, str, str]] = [
         "one targeted Grep for the match string",
         "BUG-3260",
     ),
+    # BUG-3330: codebase-locator must give negative claims ("symbol not
+    # found") the same evidence discipline as positive ones — a mandatory
+    # "### Searched, No Hits" row per requested target, unfiltered before
+    # asserting absence.
+    ("agents/codebase-locator.md", "### Searched, No Hits", "BUG-3330"),
+    (
+        "agents/codebase-locator.md",
+        "searched repo-wide with no glob or type filter",
+        "BUG-3330",
+    ),
+    (
+        "agents/codebase-locator.md",
+        "row is mandatory for every requested symbol",
+        "BUG-3330",
+    ),
 ]
 
 

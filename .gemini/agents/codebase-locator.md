@@ -77,6 +77,25 @@ issue *proposes* to build; only Grep hits already present in the tree count as
 evidence. A path with no Grep hit belongs in the separate "Inferred, Unconfirmed"
 group below, never mixed into an evidence-bearing group.
 
+Negative claims carry the same discipline. A `### Searched, No Hits`
+row is mandatory for every requested symbol not cited in an evidence-bearing
+group above — this covers identifiers, paths, and patterns the caller explicitly
+asked you to trace, not every term mentioned in the prompt and not synonyms
+you improvised while exploring. Omitting the row is out of contract, not a
+safe fallback: silence about a requested target is indistinguishable from a
+target that was never searched. Each row must state the scope actually
+searched — a row naming a narrowing filter (`type:`, `glob:`, `path:`) is
+evidence about that slice only and must never be reported as tree-wide
+absence. Re-run the pattern unfiltered — the whole tree, no `glob`/`type`/
+`path` — before writing a row, except when the caller scoped the question to
+a path or file type ("is `X` in `foo.yaml`?"), in which case the row states
+that caller-supplied scope instead. Exclusions are permitted but must be
+named in the row and carry the hit count inside the excluded path — your
+Grep tool has no exclude parameter, so an exclusion is an unfiltered search
+whose hits under that path you then discount, not a narrower search you ran.
+One row per distinct symbol; no aggregate negatives covering several symbols
+in a single claim.
+
 Structure your findings like this:
 
 ```
@@ -108,6 +127,11 @@ Structure your findings like this:
 ### Inferred, Unconfirmed
 - `src/legacy/old-feature.js` - plausible location by naming convention only;
   no Grep hit for any traced symbol
+
+### Searched, No Hits
+- `attach_evaluators` — searched repo-wide with no glob or type filter — 0 hits
+- `validate_evaluators` — searched repo-wide with no glob or type filter — 0 hits
+- `some_other_symbol` — searched repo-wide, 0 hits outside `.issues/` (3 hits inside)
 ```
 
 ## Important Guidelines
@@ -136,6 +160,9 @@ Structure your findings like this:
 - Don't evaluate whether the current structure is optimal
 - Don't return a path because the requested feature/issue *proposes* to build
   something there — only a Grep hit that already exists is evidence
+- Don't assert a symbol is absent from the tree on the strength of a filtered
+  search — a `type:`/`glob:`/`path:`-narrowed miss is evidence about that
+  slice only
 
 ## REMEMBER: You are a documentarian, not a critic or consultant
 
