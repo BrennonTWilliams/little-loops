@@ -3,7 +3,7 @@ id: ENH-3322
 type: ENH
 title: Chart layer for ll-artifact dashboard query results
 priority: P3
-status: open
+status: deferred
 discovered_by: ll-issues-create
 discovered_date: '2026-08-26'
 captured_at: '2026-08-26T01:46:57Z'

@@ -83,6 +83,18 @@ to a subset of them.
   confirming); this issue is about hardening the upstream agent instead of
   relying solely on downstream callers to catch it
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-26 — based on codebase analysis:_
+
+**Tests**
+- `scripts/tests/test_wiring_skills_and_commands.py` — `DOC_STRINGS_PRESENT` list (from line 27) paired with `test_string_present_in_doc()` (line 274) asserts literal substrings appear in agent/skill markdown files as `(doc_rel, needle, issue_id)` tuples. The BUG-3260 entry — `("agents/codebase-locator.md", "cite the symbol or pattern your Grep matched", "BUG-3260")` — is the precedent for the positive-evidence rule this issue's negative-claim rule extends. No policy document mandates a matching entry for this fix, but every prior instruction-language change to `agents/codebase-locator.md` in this suite was paired with one.
+- The same file also has a mirror `DOC_STRINGS_ABSENT` list + `test_string_absent_from_doc()` (line 284/333) for forbidden-phrase assertions, showing the convention covers both "must contain" and "must not contain" checks on agent markdown bodies.
+
+**Conventions in Force**
+- All three research agents (`agents/codebase-locator.md`, `agents/codebase-analyzer.md`, `agents/codebase-pattern-finder.md`) share one section skeleton: `## Output Format` → `## Important Guidelines` → `## What NOT to Do` → closing "REMEMBER" paragraph → `## When to use` — evidence: structural comparison across all three files.
+- No existing negative-claim wording ("zero hits", "not present anywhere", "confirm before asserting absence") appears anywhere in `agents/*.md` — grepping the directory for this vocabulary returns no hits. The only existing precedent this fix can build on is the positive-evidence citation rule it extends (`agents/codebase-locator.md:77-82`, added by BUG-3260) and the downstream re-grep gate in `skills/wire-issue/evidence-confirmation.md` (Layer B) — which this issue's own Similar Patterns note frames as out of scope; whether the new negative-claim language should also be mirrored there is unsettled by anything in the codebase.
+
 ## Implementation Steps
 
 1. In `agents/codebase-locator.md`'s Output Format section, add a negative-claim
@@ -132,5 +144,6 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-08-26T20:08:19 - `fdfe1063-50b8-41a2-aae7-c524a32eadad.jsonl`
 - `/ll:format-issue` - 2026-08-26T19:54:03 - `001e5679-9e60-4be1-8880-9ae8bd851f63.jsonl`
 - `/ll:capture-issue` - 2026-08-26T19:31:47 - `3b6a461b-67ff-4f6b-9949-d834388d9cff.jsonl`
