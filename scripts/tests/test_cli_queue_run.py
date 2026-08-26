@@ -557,12 +557,37 @@ class TestKillCurrentLoopProc:
         finally:
             queue_mod._current_loop_proc = None
 
-    def test_swallows_permission_error_from_killpg(self) -> None:
+    def test_falls_back_to_proc_terminate_when_killpg_permission_error(self) -> None:
+        """PermissionError from killpg falls back to proc.terminate() (BUG-3208
+        guard routes through safe_killpg, which returns False on the OSError
+        subclass). Mirrors ``cli/loop/lifecycle._signal_process_group``'s
+        ``os.kill(pid, sig)`` fallback shape — when group signal is denied,
+        still try the direct child."""
         import little_loops.cli.queue as queue_mod
 
         mock_proc = MagicMock()
         mock_proc.poll.return_value = None
         mock_proc.pid = 999
+        mock_proc.terminate = MagicMock()  # succeeds in this test
+        queue_mod._current_loop_proc = mock_proc
+        try:
+            with patch("little_loops.cli.queue.os.getpgid", return_value=999):
+                with patch("little_loops.cli.queue.os.killpg", side_effect=PermissionError()):
+                    assert queue_mod._kill_current_loop_proc() is True
+        finally:
+            queue_mod._current_loop_proc = None
+        mock_proc.terminate.assert_called_once()
+
+    def test_returns_false_when_both_killpg_and_terminate_fail(self) -> None:
+        """If safe_killpg fails AND proc.terminate() raises OSError, the
+        function returns False (matches the docstring: True iff a live
+        process was actually signaled)."""
+        import little_loops.cli.queue as queue_mod
+
+        mock_proc = MagicMock()
+        mock_proc.poll.return_value = None
+        mock_proc.pid = 999
+        mock_proc.terminate = MagicMock(side_effect=PermissionError("denied"))
         queue_mod._current_loop_proc = mock_proc
         try:
             with patch("little_loops.cli.queue.os.getpgid", return_value=999):

@@ -282,7 +282,7 @@ class TestCallMcpToolFinallyReap:
         ):
             call_mcp_tool("my-server", "my-tool", {}, cwd=tmp_path)
 
-        mock_kill.assert_called_once_with(proc)
+        mock_kill.assert_called_once_with(proc, grace_seconds=0.0)
         assert proc.wait.call_count == 2
 
     def test_logs_warning_when_reap_wait_times_out(self, tmp_path: Path) -> None:

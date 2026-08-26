@@ -336,6 +336,44 @@ def is_shutdown_requested() -> bool:
     return _shutdown_event.is_set()
 
 
+def safe_killpg(pgid: int | None, sig: int) -> bool:
+    """Validate ``pgid`` then call ``os.killpg(pgid, sig)`` (BUG-3208 single guard).
+
+    Every ``os.killpg`` call in this codebase routes through here so the
+    kill(-1, SIGKILL) broadcast trap has exactly one place to be prevented.
+
+    The trap: ``os.killpg(pgid)`` is ``kill(-pgid)``. When ``pgid == 1``
+    the kernel treats ``kill(-1, SIGKILL)`` as "signal every process the
+    caller can reach with the same real UID" — the xdist controller,
+    sibling workers, the hosted runner. ``MagicMock().__index__()`` returns
+    1, so any caller that mocks ``subprocess.Popen`` (leaving ``proc.pid``
+    as a ``MagicMock``) and reaches a ``os.getpgid(proc.pid)`` /
+    ``os.killpg(pgid, sig)`` site without a guard will nuke the whole
+    process tree.
+
+    Returns:
+        True if ``os.killpg`` was actually issued successfully.
+        False if the call was refused — pgid invalid (None, non-int, or
+        <= 1) or ``os.killpg`` raised ``ProcessLookupError`` /
+        ``PermissionError`` / ``OSError`` / ``AttributeError`` (Windows
+        where ``os.killpg`` itself is absent). Callers must use a
+        single-PID fallback when this returns False; do not silently
+        retry the group kill.
+
+    AttributeError is caught (rather than propagated) so each call site
+    keeps its existing Windows fallback shape (``process.kill()``,
+    ``os.kill(pid, sig)``, ``proc.terminate()``) without needing a
+    separate ``try/except`` per call.
+    """
+    if pgid is None or not isinstance(pgid, int) or pgid <= 1:
+        return False
+    try:
+        os.killpg(pgid, sig)
+    except (ProcessLookupError, PermissionError, OSError, AttributeError):
+        return False
+    return True
+
+
 def _kill_process_group(process: subprocess.Popen, grace_seconds: float = 0.0) -> None:
     """SIGTERM the process group, then SIGKILL after grace_seconds if still alive.
 
@@ -344,20 +382,23 @@ def _kill_process_group(process: subprocess.Popen, grace_seconds: float = 0.0) -
     first and gives the group that long to wind down (e.g. finish a commit or
     lifecycle write, ENH-3130) before escalating to SIGKILL.
 
-    Uses os.getpgid / os.killpg (POSIX) so background Workflow/Task children
-    launched by the session are reaped together with the main process.
-    AttributeError catches platforms where os.killpg is absent (Windows).
+    Uses ``safe_killpg`` (POSIX) so background Workflow/Task children
+    launched by the session are reaped together with the main process,
+    and the kill(-1) broadcast trap (BUG-3208) is rejected at the single
+    guard. On any failure (invalid pgid, OSError, missing os.killpg on
+    Windows) the helper falls back to ``process.kill()`` / ``terminate()``.
     """
+    try:
+        pgid = os.getpgid(process.pid)
+    except (OSError, AttributeError):
+        pgid = None
+
     if grace_seconds <= 0:
-        try:
-            os.killpg(os.getpgid(process.pid), signal.SIGKILL)
-        except (ProcessLookupError, PermissionError, AttributeError):
+        if not safe_killpg(pgid, signal.SIGKILL):
             process.kill()
         return
 
-    try:
-        os.killpg(os.getpgid(process.pid), signal.SIGTERM)
-    except (ProcessLookupError, PermissionError, AttributeError):
+    if not safe_killpg(pgid, signal.SIGTERM):
         process.terminate()
 
     try:
@@ -366,9 +407,7 @@ def _kill_process_group(process: subprocess.Popen, grace_seconds: float = 0.0) -
     except subprocess.TimeoutExpired:
         pass
 
-    try:
-        os.killpg(os.getpgid(process.pid), signal.SIGKILL)
-    except (ProcessLookupError, PermissionError, AttributeError):
+    if not safe_killpg(pgid, signal.SIGKILL):
         process.kill()
 
 

@@ -19,7 +19,9 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import selectors
+import signal
 import subprocess
 import sys
 import threading
@@ -27,7 +29,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from little_loops.subprocess_utils import _kill_process_group
+from little_loops.subprocess_utils import _kill_process_group, safe_killpg
 
 MCP_PROTOCOL_VERSION = "2024-11-05"
 _DEFAULT_TIMEOUT = 30  # seconds
@@ -198,7 +200,13 @@ def call_mcp_tool(
 
     cmd = [command] + args
 
-    # Spawn server
+    # Spawn server. Capture the child's pgid *at spawn time* (BUG-3208): the
+    # success path may call proc.terminate() before the unconditional
+    # _kill_process_group, which reaps the direct child before we can read
+    # its pgid via os.getpgid(dead_pid). Without the snapshot, killpg's
+    # ProcessLookupError fallback (process.kill) signals only the dead
+    # direct child and leaves any grandchildren alive.
+    proc_pgid: int | None = None
     try:
         proc = subprocess.Popen(
             cmd,
@@ -209,6 +217,10 @@ def call_mcp_tool(
             env=env,
             start_new_session=True,
         )
+        try:
+            proc_pgid = os.getpgid(proc.pid)
+        except (ProcessLookupError, PermissionError, OSError):
+            proc_pgid = None
     except FileNotFoundError:
         return {
             "isError": True,
@@ -322,19 +334,38 @@ def call_mcp_tool(
             "content": [{"type": "text", "text": "MCP tool call timed out"}],
         }, 124
     finally:
+        # BUG-3208 cleanup: always reap the whole process group, not just the
+        # direct child. proc.terminate() sends SIGTERM to the direct child only
+        # — any grandchildren spawned by the server (e.g. a bash MCP server
+        # that backgrounds a long-lived helper) survive and keep the stderr
+        # pipe open, leaking FDs and blocking stderr_thread. Use
+        # _kill_process_group unconditionally so the whole session dies.
         try:
             proc.terminate()
-            proc.wait(timeout=5)
-        except Exception:
-            _kill_process_group(proc)
             try:
-                proc.wait(timeout=10)
+                proc.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                pass
+        finally:
+            # Prefer the spawn-time pgid snapshot over os.getpgid(proc.pid):
+            # if proc.terminate() above reaped the direct child, the snapshot
+            # is the only way to reach orphaned grandchildren (otherwise
+            # killpg's ProcessLookupError fallback signals only the dead child).
+            if proc_pgid is not None and safe_killpg(proc_pgid, signal.SIGKILL):
+                pass  # group kill issued cleanly
+            else:
+                # Either snapshot was None, pgid invalid (BUG-3208 trap), or
+                # the killpg raised — fall back to direct-child kill so the
+                # stderr_thread still unblocks instead of leaking FDs.
+                _kill_process_group(proc, grace_seconds=0.0)
+            try:
+                proc.wait(timeout=5)
             except subprocess.TimeoutExpired:
                 logger.warning(
-                    "Process %s did not terminate within 10s after kill",
+                    "Process %s did not terminate within 5s after killpg",
                     proc.pid,
                 )
-        stderr_thread.join(timeout=5)
+        stderr_thread.join(timeout=10)
 
 
 def main() -> None:
