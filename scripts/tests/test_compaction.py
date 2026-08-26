@@ -111,6 +111,7 @@ class TestSelectSlidingWindow:
         assert result[0]["role"] == "user"
 
 
+@pytest.mark.conformance
 class TestSummarize6Section:
     def test_produces_all_six_section_headers(self) -> None:
         with patch("little_loops.session_store.subprocess.run") as mock_run:
