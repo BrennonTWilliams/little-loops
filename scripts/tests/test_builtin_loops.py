@@ -17812,6 +17812,94 @@ class TestWorkflowGeneratorLoop:
             action = data["states"][name].get("action", "") or ""
             assert "run_dir" in action, f"{name} must reference run_dir"
 
+    # --- Gate-completeness regression guards (workflow-generator run
+    # 2026-08-26T121218: attach_evaluators emitted bare `type: output_json`
+    # for four states, validate_evaluators checked type membership only, and
+    # the defect surfaced four states downstream at validate_artifact where
+    # the count_emit_retry edge could no longer reach the responsible pass).
+
+    def test_validate_evaluators_imports_validator_rule_tables(self, data: dict) -> None:
+        """The gate must import the terminal validator's tables, not restate them.
+
+        An intermediate gate that hardcodes its own copy of the evaluator
+        vocabulary drifts from ``ll-loop validate`` and launders defects
+        downstream. Importing makes the two impossible to diverge.
+        """
+        action = data["states"]["validate_evaluators"].get("action", "") or ""
+        assert "from little_loops.fsm.validation import" in action
+        assert "NON_LLM_EVALUATOR_TYPES" in action
+        assert "EVALUATOR_REQUIRED_FIELDS" in action
+        assert "'output_numeric', 'output_json'" not in action, (
+            "validate_evaluators restates a literal evaluator-type set; import "
+            "NON_LLM_EVALUATOR_TYPES instead so the gate cannot drift"
+        )
+
+    @pytest.mark.parametrize("fixture_valid", [True, False])
+    def test_validate_evaluators_enforces_required_companion_fields(
+        self, data: dict, tmp_path: Path, fixture_valid: bool
+    ) -> None:
+        """Behavioral: the gate rejects an evaluator missing its required fields."""
+        evaluate: dict = {"type": "output_json"}
+        if fixture_valid:
+            evaluate |= {"path": "total_found", "operator": "ge", "target": 20}
+        graph = {
+            "states": [
+                {"name": "search-all-sources", "kind": "prompt", "evaluate": evaluate},
+                {"name": "done"},
+                {"name": "failed"},
+            ]
+        }
+        graph_file = tmp_path / "graph-evaluators.yaml"
+        graph_file.write_text(yaml.safe_dump(graph, sort_keys=False))
+
+        action = data["states"]["validate_evaluators"]["action"].replace(
+            "${captured.run_dir.output}/graph-evaluators.yaml", str(graph_file)
+        )
+        result = subprocess.run(["bash", "-c", action], capture_output=True, text=True)
+
+        if fixture_valid:
+            assert result.returncode == 0, result.stderr
+        else:
+            assert result.returncode != 0, "gate passed an output_json with no path/operator/target"
+            assert "missing required field" in result.stderr
+
+    def test_attach_evaluators_documents_every_required_field(self, data: dict) -> None:
+        """Every type the prompt offers must have its required fields named in the template.
+
+        ``output_json`` was the only offered type whose required fields were
+        never documented — and the template affirmatively scoped
+        ``operator``/``target`` to ``output_numeric``, steering the model away
+        from supplying them.
+        """
+        from little_loops.fsm.validation import (
+            EVALUATOR_REQUIRED_FIELDS,
+            NON_LLM_EVALUATOR_TYPES,
+        )
+
+        action = data["states"]["attach_evaluators"].get("action", "") or ""
+        # LLM-graded types (comparator, contract, ...) appear only in the
+        # prompt's do-not-use list, so they carry no documentation duty.
+        offered = [t for t in NON_LLM_EVALUATOR_TYPES if t in action]
+        assert "output_json" in offered, "fixture drift: output_json no longer offered"
+        for etype in offered:
+            for field in EVALUATOR_REQUIRED_FIELDS[etype]:
+                assert field in action, (
+                    f"attach_evaluators offers {etype!r} but never documents its "
+                    f"required field {field!r}; the model will emit it bare"
+                )
+
+    def test_emit_artifact_documents_states_shape_flip(self, data: dict) -> None:
+        """Upstream artifacts use a states LIST; workflow.yaml needs a MAPPING.
+
+        Left implicit, the model mirrors the upstream shape and burns a retry on
+        an opaque "dictionary update sequence element" error.
+        """
+        action = data["states"]["emit_artifact"].get("action", "") or ""
+        assert "MAPPING" in action and "LIST" in action, (
+            "emit_artifact must state that states: inverts from a list of "
+            "{name: ...} entries to a mapping keyed by state name"
+        )
+
 
 class TestConfidenceGateThresholdsNotHardcoded:
     """BUG-2767: gate-driving loops must not pin thresholds in their context: block.

@@ -162,6 +162,23 @@ states:
       are LLM-graded and do not satisfy this loop's non-LLM discriminator
       requirement.
 
+      Each evaluator type carries required companion fields; an evaluator
+      missing any of them is INVALID and will be rejected by the gate that
+      runs immediately after you:
+
+      - exit_code — no companion fields
+      - output_contains — requires `pattern`
+      - output_numeric — requires `operator` and `target`
+      - output_json — requires `path`, `operator`, AND `target`
+      - convergence — requires `target`
+      - diff_stall, score_stall, action_stall, mcp_result, classify — none
+
+      Prefer `output_contains` for a "kind: prompt" state that emits free
+      text — it needs only `pattern`. Choose `output_json` ONLY when that
+      state's action explicitly instructs the model to emit a JSON object,
+      and then you MUST supply all three fields, e.g.
+      `path: total_found`, `operator: ge`, `target: 20`.
+
       Write ${captured.run_dir.output}/graph-evaluators.yaml: the same
       structure as graph-sketch.yaml, with an added `evaluate` key per
       non-terminal state:
@@ -173,32 +190,40 @@ states:
           kind: <unchanged>
           evaluate:
             type: <one of the allowed types above>
-            pattern: <only if type is output_contains>
-            operator: <only if type is output_numeric, e.g. "ge">
-            target: <only if type is output_numeric or convergence>
+            pattern: <required if type is output_contains>
+            path: <required if type is output_json — dotted JSON path, e.g. "total_found">
+            operator: <required if type is output_json or output_numeric, e.g. "ge">
+            target: <required if type is output_json, output_numeric, or convergence>
+        # omit any field not required by the chosen type
         # "done" and "failed" carry no evaluate key
       ```
     next: validate_evaluators
 
   validate_evaluators:
-    # HARNESS: non-LLM exit_code gate — every non-terminal state must have an
-    # evaluate.type drawn from the non-LLM vocabulary (mirrors validation.py's
-    # NON_LLM_EVALUATOR_TYPES so the emitted artifact will pass MR-1).
+    # HARNESS: non-LLM exit_code gate. Imports the terminal validator's own
+    # rule tables (NON_LLM_EVALUATOR_TYPES, EVALUATOR_REQUIRED_FIELDS) rather
+    # than restating them, so this gate can never drift into certifying an
+    # artifact `ll-loop validate` will reject. Checks BOTH type membership and
+    # required companion fields — a vocabulary-only check launders defects four
+    # states downstream to validate_artifact, where the retry edge can no
+    # longer reach the state that made the mistake.
     action_type: shell
     action: |
       python3 -c "
       import yaml
+      from little_loops.fsm.validation import (
+          EVALUATOR_REQUIRED_FIELDS,
+          NON_LLM_EVALUATOR_TYPES,
+      )
       d = yaml.safe_load(open('${captured.run_dir.output}/graph-evaluators.yaml'))
-      allowed = {
-          'exit_code', 'output_numeric', 'output_json', 'output_contains',
-          'convergence', 'diff_stall', 'score_stall', 'open_question_stall',
-          'action_stall', 'mcp_result', 'harbor_scorer', 'classify',
-      }
       for s in d.get('states') or []:
           if s.get('name') in ('done', 'failed'):
               continue
-          etype = (s.get('evaluate') or {}).get('type')
-          assert etype in allowed, f\"state {s.get('name')!r} has disallowed evaluator {etype!r}\"
+          ev = (s.get('evaluate') or {})
+          etype = ev.get('type')
+          assert etype in NON_LLM_EVALUATOR_TYPES, f\"state {s.get('name')!r} has disallowed evaluator {etype!r}\"
+          missing = [f for f in EVALUATOR_REQUIRED_FIELDS.get(etype, []) if ev.get(f) is None]
+          assert not missing, f\"state {s.get('name')!r} evaluator {etype!r} is missing required field(s): {missing}\"
       "
     evaluate:
       type: exit_code
@@ -276,6 +301,15 @@ states:
 
       Every `action` must be concrete and executable — no "TODO" or
       "<placeholder>" text.
+
+      SHAPE FLIP — `states:` inverts at this boundary. Every upstream
+      artifact (graph-sketch.yaml, graph-evaluators.yaml, graph-routed.yaml)
+      uses `states:` as a LIST of `{name: ..., ...}` entries. In
+      workflow.yaml `states:` is a MAPPING KEYED BY STATE NAME: each list
+      entry becomes `states.<name>: {...}` with the `name` key removed and
+      `purpose`/`kind` replaced by `action`/`action_type`. Emitting a list
+      here fails validation with an opaque
+      "dictionary update sequence element #0 has length N" error.
     next: validate_artifact
 
   validate_artifact:
