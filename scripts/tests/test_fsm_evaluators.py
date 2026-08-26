@@ -1420,7 +1420,6 @@ class TestAbstentionVerdict:
         assert BLIND_COMPARATOR_SCHEMA["properties"]["verdict_b"]["enum"] == ["yes", "no"]
 
 
-@pytest.mark.conformance
 class TestTaggedStructuredOutputFallback:
     """Non-Anthropic hosts (e.g. MiniMax via the claude CLI) ignore --json-schema
     and emit the verdict as <StructuredOutput> tags in the envelope's "result"

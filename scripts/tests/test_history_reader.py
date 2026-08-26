@@ -1213,7 +1213,6 @@ class TestLookupSessionMetadata:
         assert result["loop_outcome"] is None
 
 
-@pytest.mark.conformance
 class TestSummaryDagRetrieval:
     """Tests for ll_grep, ll_expand, ll_describe (FEAT-1712)."""
 

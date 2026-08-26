@@ -803,7 +803,6 @@ class TestCompactSession:
         assert leaf_parent is not None
         assert leaf_parent["parent_id"] is None
 
-    @pytest.mark.conformance
     def test_compact_session_condensed_node_when_multiple_leaves(self, tmp_path: Path) -> None:
         """A condensed node is created when a session has >= 2 leaf nodes."""
         session_id = "test-session-condensed"
@@ -953,7 +952,6 @@ class TestCompactSession:
             conn.close()
         return db
 
-    @pytest.mark.conformance
     def test_cross_session_condensation_produces_root(self, tmp_path: Path) -> None:
         """Cross-session pass creates exactly one root node with session_id=NULL, level=max."""
         from little_loops.session_store import _compact_sessions
@@ -1000,7 +998,6 @@ class TestCompactSession:
         # Root should have no parent
         assert roots[0]["parent_id"] is None
 
-    @pytest.mark.conformance
     def test_cross_session_condensation_idempotent(self, tmp_path: Path) -> None:
         """Running cross-session pass twice does not create duplicate higher-order nodes."""
         from little_loops.session_store import _compact_sessions
@@ -1048,7 +1045,6 @@ class TestCompactSession:
                 f"Duplicate cross-session nodes at level {row['level']}: found {row['cnt']}"
             )
 
-    @pytest.mark.conformance
     def test_cross_session_condensation_parent_id_links_existing(self, tmp_path: Path) -> None:
         """Re-running _compact_sessions sets parent_id on existing per-session condensed nodes."""
         from little_loops.session_store import _compact_sessions
@@ -1088,7 +1084,6 @@ class TestCompactSession:
                 f" cross-session pass"
             )
 
-    @pytest.mark.conformance
     def test_cross_session_disabled_preserves_old_behavior(self, tmp_path: Path) -> None:
         """cross_session_enabled: false skips the cross-session pass entirely."""
         from little_loops.session_store import _compact_sessions
@@ -1193,7 +1188,6 @@ class TestEstimateTokens:
         assert _estimate_tokens(text) == 2500  # 10000 // 4
 
 
-@pytest.mark.conformance
 class TestSummarizeBlock:
     """Tests for the three-level LCM Algorithm 3 escalation in _summarize_block()."""
 
