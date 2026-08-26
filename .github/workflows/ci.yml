@@ -89,7 +89,7 @@ jobs:
           # exactly the silent-skip class we must not let through.
           .venv/bin/python -c "import pytest, pytest_cov, xdist, pytest_timeout, syrupy, hypothesis; print('dev deps verified')"
 
-      - name: Run unit tests (exclude integration + conformance)
+      - name: Run unit tests (exclude integration + conformance) [DIAG: BUG-3208 wedge capture]
         # `tee` mirrors pytest output to `pytest.log` for upload without
         # buffering the streamed CI log (which would break live-progress in
         # the GH Actions UI). `--junit-xml` writes a structured report that
@@ -97,10 +97,25 @@ jobs:
         # for triage scripts. `set -o pipefail` is required: without it the
         # pipeline's exit code is tee's (always 0), masking pytest's actual
         # failure status. Both files are uploaded on every CI outcome below.
+        #
+        # DIAG flags (remove when the wedge is named):
+        #   -n 4                    Match GH-hosted signature; bypasses the
+        #                           conftest `pytest_xdist_auto_num_workers` cap.
+        #   --max-worker-restart=0  Load-bearing. Without it, xdist silently
+        #                           restarts a dead worker and the first death
+        #                           traceback is lost. Setting to 0 makes the
+        #                           controller fail on first worker death.
+        #   --tb=long --capture=no  Full traceback + unbuffered output, so
+        #                           the worker-side cause isn't swallowed by
+        #                           xdist teardown. Per-worker `workeroutput_*`
+        #                           files are kept by xdist alongside the log.
+        #   -v                      Per-test progress, makes the last-in-flight
+        #                           test name visible in plain text.
         run: |
           set -o pipefail
           .venv/bin/python -m pytest scripts/tests/ \
             -m "not integration and not conformance" \
+            -n 4 --max-worker-restart=0 --tb=long --capture=no -v \
             --junit-xml=pytest-junit.xml \
             | tee pytest.log
 
