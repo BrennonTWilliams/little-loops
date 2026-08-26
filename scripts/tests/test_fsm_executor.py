@@ -2780,6 +2780,7 @@ class TestEvaluators:
         assert result.final_state == "stuck"
         assert result.iterations == 2
 
+    @pytest.mark.conformance
     def test_llm_structured_evaluator_routes_on_verdict(self) -> None:
         """llm_structured evaluator calls LLM and routes based on verdict."""
         fsm = FSMLoop(
@@ -2828,6 +2829,7 @@ class TestEvaluators:
         # Verify CLI was called
         mock_run.assert_called_once()
 
+    @pytest.mark.conformance
     def test_llm_structured_evaluator_failure_verdict(self) -> None:
         """llm_structured evaluator routes to failure on failure verdict."""
         fsm = FSMLoop(
@@ -2868,6 +2870,7 @@ class TestEvaluators:
 
         assert result.final_state == "retry"
 
+    @pytest.mark.conformance
     def test_llm_structured_evaluator_blocked_verdict(self) -> None:
         """llm_structured evaluator routes blocked verdict to configured state."""
         fsm = FSMLoop(
