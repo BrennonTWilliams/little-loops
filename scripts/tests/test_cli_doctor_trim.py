@@ -255,7 +255,16 @@ class TestExitCodeIsolation:
     """`--trim` is advisory: it must never fail the run."""
 
     def test_trim_findings_do_not_affect_exit_code(self, monkeypatch, tmp_path: Path) -> None:
+        from unittest.mock import MagicMock
+
         from little_loops.cli.doctor import main_doctor
+
+        # Mock resolve_host at the host_runner module (its origin) so the local
+        # re-import in cli/doctor.py picks up the fake. Provide describe_capabilities
+        # because main_doctor uses it for capability inspection.
+        fake_runner = MagicMock()
+        fake_runner.describe_capabilities.return_value = MagicMock()
+        monkeypatch.setattr("little_loops.host_runner.resolve_host", lambda: fake_runner)
 
         monkeypatch.chdir(tmp_path)
         _write_skill(tmp_path, "unused", "A" * 200)
