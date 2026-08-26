@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from unittest.mock import patch
 from pathlib import Path
 
 from little_loops.history_reader import (
@@ -1363,7 +1364,13 @@ class TestSummaryDagRetrieval:
         from little_loops.history_reader import ll_expand
 
         db, condensed_id = self._make_db_with_condensed_node(tmp_path)
-        messages = ll_expand(condensed_id, db=db)
+        # Compact_session → _call_llm_for_summary → resolve_host().build_blocking_json.
+        # CI (ubuntu-latest) has no host CLI; mock the LLM-call layer.
+        with patch(
+            "little_loops.session_store.lifecycle._call_llm_for_summary",
+            return_value="Expanded.",
+        ):
+            messages = ll_expand(condensed_id, db=db)
         assert len(messages) >= 1, (
             f"Expected condensed node {condensed_id} to expand to messages, got empty list"
         )
@@ -1374,7 +1381,12 @@ class TestSummaryDagRetrieval:
         from little_loops.history_reader import ll_grep
 
         db, condensed_id = self._make_db_with_condensed_node(tmp_path)
-        results = ll_grep("FSM", summary_id=condensed_id, db=db)
+        # Same LLM mock as test_expand above — see comment there.
+        with patch(
+            "little_loops.session_store.lifecycle._call_llm_for_summary",
+            return_value="Grepped.",
+        ):
+            results = ll_grep("FSM", summary_id=condensed_id, db=db)
         assert len(results) >= 1, (
             f"Expected grep with condensed summary_id {condensed_id} to find matches, "
             f"got empty list"
