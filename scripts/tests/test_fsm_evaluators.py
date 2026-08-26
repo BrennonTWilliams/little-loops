@@ -866,6 +866,7 @@ class TestEvaluateDispatcher:
         assert '"classify"' not in src.split("_EXIT_CODE_AWARE_EVALUATORS")[1].split("}")[0]
 
 
+@pytest.mark.conformance
 class TestLLMStructuredEvaluator:
     """Tests for llm_structured evaluator (Tier 2) via Claude CLI."""
 
@@ -1285,6 +1286,7 @@ class TestLLMStructuredEvaluator:
         assert result.details["confidence"] == 0.8
 
 
+@pytest.mark.conformance
 class TestAbstentionVerdict:
     """Tests for the `cannot_judge` abstention verdict (ENH-3185)."""
 
@@ -1418,6 +1420,7 @@ class TestAbstentionVerdict:
         assert BLIND_COMPARATOR_SCHEMA["properties"]["verdict_b"]["enum"] == ["yes", "no"]
 
 
+@pytest.mark.conformance
 class TestTaggedStructuredOutputFallback:
     """Non-Anthropic hosts (e.g. MiniMax via the claude CLI) ignore --json-schema
     and emit the verdict as <StructuredOutput> tags in the envelope's "result"
@@ -1510,6 +1513,7 @@ class TestTaggedStructuredOutputFallback:
         assert "raw_preview" in result.details
 
 
+@pytest.mark.conformance
 class TestEvaluateDispatcherLLM:
     """Tests for evaluate() dispatcher with llm_structured type."""
 

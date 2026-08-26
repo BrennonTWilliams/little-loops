@@ -713,6 +713,7 @@ class TestBackfillSkillEvents:
         assert any(r["kind"] == "skill" for r in results)
 
 
+@pytest.mark.conformance
 class TestCompactSession:
     """Tests for compact_session() and the summary DAG (FEAT-1712)."""
 
@@ -1188,6 +1189,7 @@ class TestEstimateTokens:
         assert _estimate_tokens(text) == 2500  # 10000 // 4
 
 
+@pytest.mark.conformance
 class TestSummarizeBlock:
     """Tests for the three-level LCM Algorithm 3 escalation in _summarize_block()."""
 
