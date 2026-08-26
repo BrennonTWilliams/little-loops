@@ -502,6 +502,7 @@ class TestAnalyzeWorkflows:
                 loops_dir=tmpdir_path / "no",
                 jsonl_files=[jsonl],
                 also_rebuild=True,
+                host="test",
             )
 
             # An empty messages_file would yield 0 via the JSONL path; if the
