@@ -34,6 +34,7 @@ from little_loops.subprocess_utils import (
     detect_context_handoff,
     read_continuation_prompt,
     run_claude_command,
+    safe_killpg,
 )
 
 # =============================================================================
@@ -3059,3 +3060,160 @@ class TestKillProcessGroupGraceEscalation:
                                 run_claude_command("test", timeout=1, timeout_kill_grace_seconds=15)
 
         mock_killpg.assert_called_once_with(99, signal.SIGTERM)
+
+
+# =============================================================================
+# TestSafeKillpg — BUG-3208 single guard for the kill(-1, SIGKILL) broadcast trap
+# =============================================================================
+
+
+class TestSafeKillpg:
+    """Tests for ``safe_killpg``: rejects pgid <= 1 before calling killpg.
+
+    The BUG-3208 mechanism: ``os.killpg(1, SIGKILL)`` becomes ``kill(-1,
+    SIGKILL)``, a same-UID broadcast. ``MagicMock().__index__()`` returns
+    1, so any caller passing a mocked Popen's ``proc.pid`` to
+    ``os.getpgid`` resolves pgid=1 and was nuking the xdist controller,
+    sibling workers, and (on CI) the hosted runner. ``safe_killpg`` is
+    the single place this trap is prevented.
+    """
+
+    def test_returns_true_on_clean_killpg(self) -> None:
+        """A valid pgid and a clean os.killpg call returns True."""
+        with patch("os.killpg") as mock_killpg:
+            assert safe_killpg(42, signal.SIGKILL) is True
+        mock_killpg.assert_called_once_with(42, signal.SIGKILL)
+
+    def test_rejects_pgid_zero(self) -> None:
+        """pgid=0 is reserved by the kernel (refers to the calling pgid);
+        safe_killpg must not pass it through."""
+        with patch("os.killpg") as mock_killpg:
+            assert safe_killpg(0, signal.SIGKILL) is False
+        mock_killpg.assert_not_called()
+
+    def test_rejects_pgid_one_kill_minus_one_broadcast(self) -> None:
+        """The BUG-3208 trap: pgid=1 -> kill(-1, ...) broadcast. Rejected."""
+        with patch("os.killpg") as mock_killpg:
+            assert safe_killpg(1, signal.SIGKILL) is False
+            assert safe_killpg(1, signal.SIGTERM) is False
+        mock_killpg.assert_not_called()
+
+    def test_rejects_negative_pgid(self) -> None:
+        """Negative pgid would be ``kill(positive)`` (single PID, not a
+        group), a different failure mode — refuse it."""
+        with patch("os.killpg") as mock_killpg:
+            assert safe_killpg(-5, signal.SIGKILL) is False
+        mock_killpg.assert_not_called()
+
+    def test_rejects_none(self) -> None:
+        """None pgid (the snap-time failure case) is rejected cleanly."""
+        with patch("os.killpg") as mock_killpg:
+            assert safe_killpg(None, signal.SIGKILL) is False
+        mock_killpg.assert_not_called()
+
+    def test_rejects_non_int_pgid(self) -> None:
+        """A MagicMock whose __index__ returns 1 — without an isinstance
+        guard this would resolve to pgid=1 and trigger the trap."""
+        with patch("os.killpg") as mock_killpg:
+            assert safe_killpg(MagicMock(), signal.SIGKILL) is False
+            assert safe_killpg("42", signal.SIGKILL) is False
+            assert safe_killpg(42.0, signal.SIGKILL) is False
+        mock_killpg.assert_not_called()
+
+    def test_returns_false_on_process_lookup_error(self) -> None:
+        """ProcessLookupError means the group is already gone — return
+        False so the caller falls back to direct-child kill rather than
+        retrying the group kill."""
+        with patch("os.killpg", side_effect=ProcessLookupError("no such process")):
+            assert safe_killpg(42, signal.SIGKILL) is False
+
+    def test_returns_false_on_permission_error(self) -> None:
+        """PermissionError means we can't signal the group — return False
+        so the caller falls back rather than retrying."""
+        with patch("os.killpg", side_effect=PermissionError("nope")):
+            assert safe_killpg(42, signal.SIGTERM) is False
+
+    def test_returns_false_on_attribute_error(self) -> None:
+        """AttributeError means os.killpg itself is missing (Windows);
+        return False so the caller falls back to a single-PID kill
+        appropriate for its platform."""
+        with patch("os.killpg", side_effect=AttributeError("os.killpg missing")):
+            assert safe_killpg(42, signal.SIGKILL) is False
+
+
+# =============================================================================
+# TestKillProcessGroupMockPidRegression — BUG-3208 MagicMock kill(-1) trap
+# =============================================================================
+
+
+class TestKillProcessGroupMockPidRegression:
+    """Regression: ``_kill_process_group(MagicMock())`` must not broadcast kill(-1).
+
+    The original bug: ``TestCallMcpToolTimeout`` mocked ``subprocess.Popen``
+    so ``proc.pid`` was a ``MagicMock`` whose ``__index__()`` returns 1.
+    ``os.getpgid(1)`` returns 1, so ``os.killpg(1, SIGKILL)`` became
+    ``kill(-1, SIGKILL)`` — a same-UID broadcast that nuked the xdist
+    controller, all sibling workers, and (on CI) the runner itself.
+
+    Without these tests the next refactor could silently re-introduce
+    the bug — that is exactly how we got here.
+    """
+
+    def test_mock_proc_pid_does_not_trigger_kill_minus_one(self) -> None:
+        """``_kill_process_group(MagicMock())`` must never call
+        ``os.killpg`` with any pgid <= 1; the fallback ``process.kill()``
+        is what gets the direct child."""
+        mock_process = MagicMock()
+        mock_process.pid = MagicMock()  # __index__() -> 1
+        mock_process.kill = Mock()
+        mock_process.terminate = Mock()
+
+        with patch("os.getpgid", return_value=1) as mock_getpgid:
+            with patch("os.killpg") as mock_killpg:
+                _kill_process_group(mock_process)
+
+        # getpgid was called (with the MagicMock pid) but killpg must NOT
+        # have been called with the broadcast pgid 1
+        mock_getpgid.assert_called_once()
+        for call in mock_killpg.call_args_list:
+            args = call.args
+            assert args[0] > 1, (
+                f"os.killpg was called with pgid={args[0]} which would "
+                "broadcast kill(-1, SIGKILL) — BUG-3208 regression"
+            )
+        mock_killpg.assert_not_called()
+        mock_process.kill.assert_called_once()
+
+    def test_mock_proc_pid_grace_escalation_falls_back(self) -> None:
+        """With grace_seconds>0 and a mock pid, both the SIGTERM and the
+        SIGKILL killpg calls must be rejected; the fallback terminate
+        and kill should still execute."""
+        mock_process = MagicMock()
+        mock_process.pid = MagicMock()
+        mock_process.kill = Mock()
+        mock_process.terminate = Mock()
+        mock_process.wait.side_effect = subprocess.TimeoutExpired("cmd", 5)
+
+        with patch("os.getpgid", return_value=1):
+            with patch("os.killpg") as mock_killpg:
+                _kill_process_group(mock_process, grace_seconds=5)
+
+        mock_killpg.assert_not_called()
+        mock_process.terminate.assert_called_once()
+        mock_process.kill.assert_called_once()
+
+    def test_real_pgid_still_kills_via_killpg(self) -> None:
+        """Sanity: a real positive pgid still routes through killpg.
+        Protects against the guard accidentally becoming a no-op."""
+        mock_process = Mock()
+        mock_process.pid = 12345
+        mock_process.kill = Mock()
+        mock_process.terminate = Mock()
+
+        with patch("os.getpgid", return_value=12345) as mock_getpgid:
+            with patch("os.killpg") as mock_killpg:
+                _kill_process_group(mock_process)
+
+        mock_getpgid.assert_called_once_with(12345)
+        mock_killpg.assert_called_once_with(12345, signal.SIGKILL)
+        mock_process.kill.assert_not_called()

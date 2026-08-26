@@ -29,6 +29,7 @@ from little_loops.fsm.persistence import (
     _reconcile_stale_running,
 )
 from little_loops.logger import Logger
+from little_loops.subprocess_utils import safe_killpg
 
 
 def _format_relative_time(seconds: float) -> str:
@@ -117,17 +118,20 @@ def _kill_with_timeout(pid: int, label: str, logger: Logger) -> None:
 
 
 def _signal_process_group(pgid: int, pid: int, sig: int, label: str) -> None:
-    """Send a signal to the process group, falling back to single-PID kill."""
-    try:
-        os.killpg(pgid, sig)
-    except AttributeError:
-        # os.killpg not available (Windows) — fall back to single-PID kill
+    """Send a signal to the process group, falling back to single-PID kill.
+
+    Routes through ``subprocess_utils.safe_killpg`` (BUG-3208 single guard)
+    so the kill(-1, SIGKILL) broadcast trap is rejected here too — not
+    just in ``_kill_process_group``. ``safe_killpg`` swallows OSError,
+    AttributeError, and the BUG-3208 invalid-pgid case uniformly and
+    returns False; the Windows single-PID fallback uses ``pid`` (which
+    was already validated to be the session leader at the call site).
+    """
+    if not safe_killpg(pgid, sig):
         try:
             os.kill(pid, sig)
         except OSError:
             pass
-    except (ProcessLookupError, PermissionError):
-        pass  # Group already gone or no permission — not actionable
 
 
 def read_run_status(instance_id: str, loops_dir: Path) -> dict[str, Any] | None:

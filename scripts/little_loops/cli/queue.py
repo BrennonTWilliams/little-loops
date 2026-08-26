@@ -24,6 +24,7 @@ import psutil
 
 from little_loops.queue_store import DEFAULT_DB_PATH as QUEUE_DB_PATH
 from little_loops.session_store import DEFAULT_DB_PATH, cli_event_context
+from little_loops.subprocess_utils import safe_killpg
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -405,6 +406,14 @@ def _kill_current_loop_proc() -> bool:
     ``cli/loop/lifecycle.py``'s ``_kill_with_timeout``/``_signal_process_group``
     escalation shape, minus the SIGKILL escalation wait — the drainer exits
     right after this on a second signal rather than babysitting the kill.
+
+    Routes through ``subprocess_utils.safe_killpg`` (BUG-3208 single guard)
+    so the kill(-1, SIGTERM) broadcast trap is rejected here too: a
+    ``MagicMock`` ``proc.pid`` resolves to ``getpgid(...) = 1``, and
+    ``os.killpg(1, SIGTERM)`` is ``kill(-1, SIGTERM)`` — a same-UID
+    broadcast that signals the drainer itself. On invalid pgid or any
+    OSError, the fallback is ``proc.terminate()`` (the drainer has the
+    Popen object directly).
     """
     proc = _current_loop_proc
     if proc is None or proc.poll() is not None:
@@ -413,14 +422,11 @@ def _kill_current_loop_proc() -> bool:
         pgid = os.getpgid(proc.pid)
     except ProcessLookupError:
         return False
+    if safe_killpg(pgid, signal.SIGTERM):
+        return True
     try:
-        os.killpg(pgid, signal.SIGTERM)
-    except AttributeError:
-        try:
-            proc.terminate()
-        except OSError:
-            return False
-    except (ProcessLookupError, PermissionError):
+        proc.terminate()
+    except OSError:
         return False
     return True
 
