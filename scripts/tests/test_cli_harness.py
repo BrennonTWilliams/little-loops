@@ -1404,7 +1404,7 @@ class TestCmdDsl:
     @pytest.mark.conformance
     def test_cmd_dsl_mismatch_outranks_abstain(
         self, tmp_path: Path, capsys: pytest.CaptureFixture
-    ) -> None:</old_string>
+    ) -> None:
         """AC6: an `expected` mismatch is a hard FAIL even when --semantic abstains."""
         task_file = self._make_task_yaml(tmp_path)
         args = _make_namespace(runner="dsl", path=str(task_file), semantic="some criterion")
