@@ -146,12 +146,9 @@ class TestSummaryOmitsAssistantContent:
                 config={"history": {"compaction": {"enabled": True, "budget_tokens": 50}}},
             )
 
-            # Inspect every prompt actually sent to the (mocked) summarizer CLI.
-            prompts_seen = [
-                call.args[0][call.args[0].index("-p") + 1]
-                for call in mock_run.call_args_list
-                if "-p" in call.args[0]
-            ]
+            # _call_llm_for_summary takes prompt as a positional arg; inspect
+            # all calls to extract the prompt text
+            prompts_seen = [call.args[0] for call in mock_run.call_args_list if call.args]
 
         combined_prompts = "\n".join(prompts_seen)
         assert USER_TURN_1 in combined_prompts
