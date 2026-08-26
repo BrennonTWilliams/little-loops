@@ -1626,6 +1626,7 @@ class TestDecisionsCLISuggestRules:
 # =============================================================================
 
 
+@pytest.mark.conformance
 class TestExtractFromCompleted:
     """Tests for ll-issues decisions extract-from-completed sub-command."""
 

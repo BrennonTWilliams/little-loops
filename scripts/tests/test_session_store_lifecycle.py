@@ -713,6 +713,7 @@ class TestBackfillSkillEvents:
         assert any(r["kind"] == "skill" for r in results)
 
 
+@pytest.mark.conformance
 class TestCompactSession:
     """Tests for compact_session() and the summary DAG (FEAT-1712)."""
 

@@ -716,6 +716,7 @@ class TestBackfillSinceFlag:
         assert mock_backfill.called
 
 
+@pytest.mark.conformance
 class TestGrepExpandDescribe:
     """Tests for the grep, expand, and describe subcommands (FEAT-1712)."""
 
