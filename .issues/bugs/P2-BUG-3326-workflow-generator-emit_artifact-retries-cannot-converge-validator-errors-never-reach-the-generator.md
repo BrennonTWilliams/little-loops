@@ -351,11 +351,25 @@ conflicting edits or none. The numbers are now assigned per-issue:
 | Issue | `max_steps` | Why |
 |---|---|---|
 | BUG-3326 (this) | `40` | +9 productive retry steps |
-| BUG-3327 | `45` | +1 state per pass, plus a bounded `validate_intent` retry edge |
+| BUG-3327 | `45` | headroom over `40` for its `count_intent_retry` counter state and for FEAT-3332's gate |
 
 Land in issue order. If BUG-3327 lands first for any reason, it sets `45`
 directly and this issue's step 4 becomes a no-op verification that the value
 is at least 40 — not a downgrade to 40.
+
+_BUG-3327's `45` was originally justified as "+1 state per pass from
+FEAT-3332's gate, plus a bounded retry edge". FEAT-3332 was split out and is
+not landing with it, so that row is re-stated above as plain headroom. The
+number is unchanged; only its rationale moved._
+
+**Note (out of scope for this issue, do not fix here):** `max_steps` remains
+under-budgeted for the shrink pass at `40` *or* `45`.
+`shrink_select_candidate -> shrink_try_remove -> shrink_probe_candidate ->
+shrink_apply` costs 4 steps per candidate, once per state of the **generated**
+loop, so a 10-state artifact needs ~40 steps for shrink alone on top of the
+~20-step happy path. Latent today (`enable_shrink` defaults `false`). Recorded
+so the next `max_steps` bump is not re-derived from scratch; a real fix means a
+shrink-specific budget or a candidate cap, not a larger constant.
 _The two bullets below surveyed fault-class routing precedent for the **Rejected
 Alternative**. Retained for the record only — this issue adds no fault-class
 routing. Consult them only if that alternative is ever revived._

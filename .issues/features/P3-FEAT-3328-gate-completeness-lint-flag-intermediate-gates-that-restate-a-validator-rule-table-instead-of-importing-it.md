@@ -173,7 +173,13 @@ happened once.
 
    **Linted tables.** All are exported from
    `scripts/little_loops/fsm/validation/__init__.py`:
-   - `EVALUATOR_REQUIRED_FIELDS` (keys) — `_base.py:45`
+   - `EVALUATOR_REQUIRED_FIELDS` (**keys** — the evaluator *type* names:
+     `exit_code`, `output_json`, …) — `_base.py:45`
+   - `EVALUATOR_REQUIRED_FIELDS` (**values**, flattened — the *field* names:
+     `frozenset(chain.from_iterable(EVALUATOR_REQUIRED_FIELDS.values()))` =
+     `{operator, target, path, pattern, baseline_path, pairs, question,
+     verdict_map}`). **This table is required, not optional — see the
+     keys-vs-values correction below.**
    - `NON_LLM_EVALUATOR_TYPES` — `_base.py:66`
    - `VALID_OPERATORS` — `_base.py:74`. **Do not omit this one.** BUG-3326 is
      landing a `VALID_OPERATORS` import into `validate_evaluators` for exactly
@@ -189,9 +195,33 @@ happened once.
      new rule and makes the three linted tables uniform. Grep first: it is
      re-exported from `fsm/validation/__init__.py:51,168`, so confirm no caller
      mutates it (none should — it is a vocabulary constant).
-   - `VALID_VISIBILITY` (`_base.py:78`) — optional; three members total, so any
-     subset meeting the ≥3 floor is the *entire* table, which makes it a
-     high-signal, zero-ambiguity case. Include unless it proves noisy.
+   - `VALID_VISIBILITY` (`_base.py:78`) — optional; three members total
+     (`public`, `internal`, `example`), so any subset meeting the ≥3 floor is
+     the *entire* table, which makes it a high-signal, zero-ambiguity case.
+     Include unless it proves noisy.
+
+1c. **Keys vs. values — the required-field table must be linted on both.**
+   Earlier drafts listed only `EVALUATOR_REQUIRED_FIELDS.keys()` among the
+   linted tables while simultaneously prescribing (in AC #1b and in Tests) that
+   a literal `['operator', 'target', 'path']` be flagged as a restated
+   `EVALUATOR_REQUIRED_FIELDS`. **Those two are contradictory.**
+   `EVALUATOR_REQUIRED_FIELDS`'s keys are evaluator *type* names (`exit_code`,
+   `output_numeric`, `output_json`, … — `_base.py:45-63`); `operator`, `target`,
+   and `path` are members of its **values**. A keys-only implementation would
+   not flag that literal, so the prescribed test would fail against the
+   prescribed implementation.
+
+   Resolution: lint the **flattened values** as a fourth table, as listed above.
+   A hand-restated required-field list (`["path", "operator", "target"]`) is a
+   subset of it and is flagged; the ≥3-member / no-outside-members floor still
+   does the noise suppression. Report it as "import `EVALUATOR_REQUIRED_FIELDS`
+   and index it by evaluator type rather than restating its field lists."
+
+   Note the two `EVALUATOR_REQUIRED_FIELDS`-derived tables are **disjoint**
+   (type names vs. field names share no members), so they cannot double-report
+   against each other and their relative order in the specificity chain does not
+   matter. The AC #1a single-emission concern applies only to the
+   `NON_LLM_EVALUATOR_TYPES` ⊆ `EVALUATOR_REQUIRED_FIELDS.keys()` pair.
 
 1a. **Report each literal against the most specific matching table only.**
    `NON_LLM_EVALUATOR_TYPES` is *derived* from `EVALUATOR_REQUIRED_FIELDS`
@@ -221,6 +251,14 @@ happened once.
    vocabulary — the sole `"eq"` occurrence is `docs-sync.yaml:72`'s
    `operator: "eq"`, a scalar evaluator field, not a display. Zero violations
    holds both before and after BUG-3326.
+
+   **Re-verified 2026-08-26 under AC #1c's flattened-values table** — the one
+   addition that could newly bring literals into scope, since
+   `operator`/`target`/`path`/`pattern` are ordinary words that plausibly appear
+   in a gate body. Swept every `action_type: shell` state containing `python3`
+   across all built-in loop YAMLs for ≥3-member `{}`/`[]`/`()` string-literal
+   displays that are subsets of any of the **five** linted tables: **0 matches.**
+   AC #3 holds under the full table set.
 4. The rule is documented in
    `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` § The Design Rules alongside
    MR-1..MR-14, as an **unnumbered named rule** (`**gate-completeness**`,
@@ -264,8 +302,14 @@ the existing `_validate_*` MR functions there (e.g.
 #     # subset of both NON_LLM_EVALUATOR_TYPES and EVALUATOR_REQUIRED_FIELDS
 #     # (the former is derived from the latter) is reported once, against the
 #     # tighter of the two — see AC #1a
+#     # EVALUATOR_REQUIRED_FIELDS is linted on BOTH its keys (type names) and
+#     # its flattened values (field names) — the two are disjoint, so their
+#     # relative order does not matter. See AC #1c.
 #     for table in (VALID_VISIBILITY, VALID_OPERATORS,
-#                   NON_LLM_EVALUATOR_TYPES, EVALUATOR_REQUIRED_FIELDS.keys()):
+#                   NON_LLM_EVALUATOR_TYPES,
+#                   EVALUATOR_REQUIRED_FIELDS.keys(),
+#                   frozenset(chain.from_iterable(
+#                       EVALUATOR_REQUIRED_FIELDS.values()))):
 #       if members <= table and the action does not already import that table:
 #         emit a warning naming the state, the literal, and the table to
 #         import instead
@@ -314,7 +358,31 @@ a shell-only lint will never see it. This matters for AC #3: "zero violations
 post-fix" is true, but it is true partly because the surviving restatement
 lives where the rule does not look — not because the loop stopped restating.
 
-### This gap is a value question for the whole issue — settle it first
+### This gap is a value question for the whole issue — SETTLED 2026-08-26
+
+**Decision: ship (a) — shell-only, gap documented — and split (c) into its own
+issue.** The evaluation below is retained as the rationale; it is no longer an
+open implementation-time question, and Implementation Step 0a is now a
+confirmation, not a decision.
+
+Why the split rather than folding (c) in: (c) is a `workflow-generator.yaml`
+change — an `init` generator block plus an `attach_evaluators` prompt edit — with
+**no overlap** with this issue's surface (`fsm/validation/meta_rules.py`,
+`_base.py`, `schema.py`, `structural_rules.py`). Different files, different
+tests, different reviewer. Folding it in would make a P3 lint issue carry an
+unrelated loop edit, and a revert of either would drag the other. (b) is
+rejected outright: a `prompt` action has **no import to offer instead**, so the
+warning would have no actionable fix, and prompts legitimately need to name the
+vocabulary they ask for.
+
+Accepted consequence, stated plainly: **this rule ships with zero findings and
+is a pure forward guard.** That is a legitimate P3 deliverable — the failure
+class has occurred once, in this very repo, and cost a full run — but it is not
+a fix for anything currently broken. AC #3's zero-violations result is partly an
+artifact of where the rule looks, and AC #5 requires saying so in both the rule
+docstring and the guide entry.
+
+_Original evaluation, retained:_
 
 The consequence is sharper than "a known limitation". **This rule, as scoped,
 cannot catch the one live restatement in the very loop that motivated it.** It
@@ -325,9 +393,9 @@ a four-site suppression flag, and ~10 test cases, at P3.
 
 Evaluate these three in order and record the decision before writing code:
 
-- **(a) Ship shell-only, document the gap.** State the limitation in the rule
-  docstring and the guide entry, per AC #5. Honest, but leaves the live drift
-  uncaught and the rule findingless.
+- **(a) Ship shell-only, document the gap.** ✅ **CHOSEN.** State the limitation
+  in the rule docstring and the guide entry, per AC #5. Honest, but leaves the
+  live drift uncaught and the rule findingless.
 - **(b) Extend to `prompt` actions** — a second, looser regex over prose (e.g.
   ≥3 table members appearing as backticked tokens in one action), still
   `warning`-severity. Higher recall, meaningfully higher false-positive rate,
@@ -335,8 +403,9 @@ Evaluate these three in order and record the decision before writing code:
   And a prompt has **no import to offer instead**, so the warning has no
   actionable fix to suggest — which is what makes (b) weak on its own.
 - **(c) Fix the live drift generatively, then re-price this rule.**
-  **Recommended.** The right remedy for `attach_evaluators` is not a lint at
-  all: have `init` emit the vocabulary from the table itself —
+  ✅ **Split into its own issue — file it before starting this one.** The right
+  remedy for `attach_evaluators` is not a lint at all: have `init` emit the
+  vocabulary from the table itself —
 
   ```yaml
   # in init, alongside the existing mkdir/echo block
@@ -354,11 +423,13 @@ Evaluate these three in order and record the decision before writing code:
   where an import genuinely isn't available. It also mirrors the existing `init`
   stdout-contract constraint: write to a file, keep the `case`/`echo` block last.
 
-If (c) lands, this rule becomes a pure forward guard against a class with no
-live instance anywhere in the tree. That may still be worth P3 — a forward guard
-is a legitimate deliverable — but make that call deliberately rather than
-inheriting it from the Ordering section. Splitting (c) into its own issue and
-letting it land first is also reasonable.
+Once (c) lands, this rule becomes a pure forward guard against a class with no
+live instance anywhere in the tree. **That call has been made deliberately: it
+is still worth P3** — a forward guard against a class that has already cost one
+full run is a legitimate deliverable — and it is no longer inherited implicitly
+from the Ordering section. (c) does **not** need to land first; the two are
+independent, and this rule's AC #3 is unaffected by it either way (the prose
+restatement lives in a `prompt` action the rule does not inspect).
 
 ## Integration Map
 
@@ -425,11 +496,18 @@ _Wiring pass added by `/ll:wire-issue`:_
     an action that does not import `VALID_OPERATORS` is flagged; the same
     action with the import present is not.
   - **bracket-class coverage** (AC #1b): the same ≥3-member restatement written
-    as a **list** (`['operator', 'target', 'path']` vs
-    `EVALUATOR_REQUIRED_FIELDS`) and as a **tuple**
-    (`('eq', 'ne', 'lt')` vs `VALID_OPERATORS`) is flagged identically to the
-    set form — parametrize over the three bracket shapes so a set-only regex
-    fails the suite.
+    as a **list** (`['operator', 'target', 'path']` vs the flattened
+    `EVALUATOR_REQUIRED_FIELDS` **values** — see AC #1c; this case does *not*
+    match the table's keys and would silently pass a keys-only implementation)
+    and as a **tuple** (`('eq', 'ne', 'lt')` vs `VALID_OPERATORS`) is flagged
+    identically to the set form — parametrize over the three bracket shapes so
+    a set-only regex fails the suite.
+  - **keys-vs-values coverage** (AC #1c): a literal of evaluator *type* names
+    (`['exit_code', 'output_json', 'convergence']`) and a literal of evaluator
+    *field* names (`['path', 'operator', 'target']`) are **both** flagged, and
+    each names the correct table in its message. This pair is what pins the
+    keys/values distinction; a keys-only implementation passes the first and
+    fails the second.
   - **below-floor tuple stays clean**: the in-repo `('done', 'failed')` literal
     (`workflow-generator.yaml:206`) is **not** flagged — the 2-member case that
     keeps AC #3 at zero violations once lists and tuples are in scope.
@@ -533,17 +611,20 @@ literal set/frozenset displays against the exported tables in
 ## Implementation Steps
 
 0. Confirm BUG-3326 has landed (see Ordering) — AC #3 depends on it.
-0a. **Settle the coverage-gap decision (a)/(b)/(c)** — see "This gap is a value
-   question for the whole issue". If (c), the generative `evaluator-vocab.md`
-   fix may land first (as its own issue or as a step here), after which this
-   rule ships as a pure forward guard. Record the choice in this issue before
-   step 1.
+0a. **Coverage-gap decision: SETTLED — (a), shell-only, gap documented; (c)
+   split out.** No evaluation needed at implementation time. The one action
+   item: **file the (c) follow-up issue** (generative `evaluator-vocab.md` in
+   `workflow-generator.yaml`'s `init`, consumed by `attach_evaluators`'s
+   prompt in place of its hand-listed vocabulary) so the live prose
+   restatement is tracked somewhere. It is independent of this issue and need
+   not land first.
 1. Implement `_validate_gate_completeness` in `meta_rules.py` using a
    module-level compiled `re.Pattern` over the raw action string, matching set,
    frozenset, list, and tuple displays (AC #1b), with the ≥3-member /
-   no-outside-members floor from AC #1, the full linted-table list
-   (including `VALID_OPERATORS`), and the smallest-first / one-warning-per-
-   literal ordering from AC #1a.
+   no-outside-members floor from AC #1, **all five linted tables** — including
+   `VALID_OPERATORS` and, per AC #1c, `EVALUATOR_REQUIRED_FIELDS` on *both* its
+   keys and its flattened values — and the smallest-first /
+   one-warning-per-literal ordering from AC #1a.
 1a. Tighten `VALID_OPERATORS` to `frozenset[str]` in `_base.py:74` (AC #1) so
    the three linted tables are uniform. **Land this as its own commit**, before
    or after the rule but never mixed into it: it is an unrelated type
@@ -621,9 +702,13 @@ terminal gate exposes its rules as data, import rather than restate.
 Detection: in `fsm/validation`, for each `action_type: shell` state whose action
 contains `python3`, look for a literal collection display — set, frozenset,
 list, or tuple of string literals — of **≥3 members, all of them**
-members of a known exported table (`EVALUATOR_REQUIRED_FIELDS` keys,
-`NON_LLM_EVALUATOR_TYPES`, `VALID_OPERATORS`, optionally `VALID_VISIBILITY`), in
-an action that does not import that table. Tables are checked smallest-first and
+members of a known exported table (`EVALUATOR_REQUIRED_FIELDS` **keys**,
+`EVALUATOR_REQUIRED_FIELDS` **flattened values**, `NON_LLM_EVALUATOR_TYPES`,
+`VALID_OPERATORS`, optionally `VALID_VISIBILITY`), in
+an action that does not import that table. The keys/values split matters: a
+restated required-*field* list (`['path', 'operator', 'target']`) is a subset of
+the values, not the keys, and a keys-only rule would miss it entirely — see
+AC #1c. Tables are checked smallest-first and
 at most one warning is emitted per literal, since `NON_LLM_EVALUATOR_TYPES` is
 derived from `EVALUATOR_REQUIRED_FIELDS` and would otherwise double-report.
 Severity `warning` — a restatement is sometimes deliberate (a *narrower* curated
@@ -638,9 +723,14 @@ operator vocabulary — the only `"eq"` occurrence across `loops/**.yaml` is
 collection display, and well under the ≥3-member floor. Re-confirmed again
 after widening detection to list and tuple displays (AC #1b): the only literals
 that widening newly brings into scope are the 2-member `('done', 'failed')`
-tuples in `workflow-generator.yaml:206,259`, both below the floor. Caveat: the same
-loop still restates the table in prose inside `attach_evaluators`'s **prompt**,
-which this rule does not inspect — see Known coverage gap.
+tuples in `workflow-generator.yaml:206,259`, both below the floor. Re-confirmed
+a third time after adding the flattened-`EVALUATOR_REQUIRED_FIELDS`-values table
+(AC #1c): a sweep of every `python3` shell gate across all built-in loops for
+≥3-member displays subset to any of the five tables returns **0 matches**.
+Caveat: the same loop still restates the table in prose inside
+`attach_evaluators`'s **prompt**, which this rule does not inspect — see Known
+coverage gap. That live drift is tracked as the (c) follow-up issue, split out
+per the settled coverage-gap decision.
 
 ## Non-Goal (document, don't mechanize)
 
