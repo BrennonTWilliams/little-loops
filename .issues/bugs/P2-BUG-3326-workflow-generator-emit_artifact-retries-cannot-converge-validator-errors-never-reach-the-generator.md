@@ -59,7 +59,9 @@ pass to read.
 1. `validate_artifact` tees `ll-loop validate` output to
    `${captured.run_dir.output}/.emit_errors.txt` while preserving its exit status
    (the `exit_code` evaluator depends on it) **and** leaving the error text visible
-   in the runner log.
+   in the runner log, then truncates that file on a zero exit status so
+   "non-empty" means "the previous attempt failed" (the validator prints a
+   success block to stdout, so `tee` alone does not clear it).
 2. `emit_artifact`'s prompt instructs: if `.emit_errors.txt` exists and is
    non-empty, read it first and fix every listed error specifically.
 3. `validate_evaluators` is extended to check evaluator field *values*, not just
@@ -96,31 +98,55 @@ retry mechanism actually do what its name promises.
        set -o pipefail
        ll-loop validate "${captured.run_dir.output}/workflow.yaml" 2>&1 \
          | tee "${captured.run_dir.output}/.emit_errors.txt"
+       RC=$?
+       [ "$RC" -eq 0 ] && : > "${captured.run_dir.output}/.emit_errors.txt"
+       exit "$RC"
    ```
    `set -o pipefail` makes the pipeline's exit status that of `ll-loop
-   validate`, so the `exit_code` evaluator still sees the real result. A bare
-   `cmd 2>file` also preserves the exit code but *removes the error text from
-   the runner log*, which is where a run is triaged post-mortem — prefer the
-   pipeline. **Verified:** `ll-loop validate` writes its error block to
-   **stderr** via `Logger.error` (`scripts/little_loops/logger.py:97`), so
-   `2>&1` is required — the failure path prints nothing on stdout.
+   validate`, so `RC` — and therefore the `exit_code` evaluator — still sees
+   the real result. A bare `cmd 2>file` also preserves the exit code but
+   *removes the error text from the runner log*, which is where a run is
+   triaged post-mortem — prefer the pipeline. **Verified:** `ll-loop validate`
+   writes its error block to **stderr** via `Logger.error`
+   (`scripts/little_loops/logger.py:97`), so `2>&1` is required — the failure
+   path prints nothing on stdout.
 
-   On a successful validation `tee` truncates `.emit_errors.txt` to empty, so
-   the "exists and non-empty" test in step 2 self-clears between passes. Do
-   **not** add an `rm` step.
+   Do **not** wrap the validator as `if ll-loop validate ...; then` — that
+   shape discards the real exit code, and it is the same construct that
+   silently disables 429/rate-limit detection elsewhere in this codebase.
+
+   **The explicit truncate-on-success line is load-bearing — `tee` alone does
+   not self-clear.** An earlier draft of this issue asserted that a successful
+   validation leaves `.emit_errors.txt` empty. That is **false**: `ll-loop
+   validate` prints a multi-line success block to **stdout** on the happy path
+   (verified against the current tree):
+
+   ```
+   [16:33:57] scripts/little_loops/loops/workflow-generator.yaml is valid
+     States: init, capture_intent, ...
+     Initial: init
+     Max steps: 30
+   ```
+
+   Under `2>&1 | tee` that block lands in `.emit_errors.txt`, leaving it
+   non-empty on success. Hence the `[ "$RC" -eq 0 ] && : > ...` branch, which
+   makes "non-empty ⇒ the immediately preceding attempt failed" true by
+   construction. Do **not** add an `rm` step; do **not** remove the truncate
+   branch as a "simplification".
 
    **Staleness caveat.** Self-clearing only holds on paths that actually reach
    `validate_artifact`. `emit_artifact` is also entered from `validate_routing`
    on the first pass, and a run that re-enters `emit_artifact` without an
    intervening `validate_artifact` would read a `.emit_errors.txt` describing a
-   prior artifact. Two acceptable mitigations — pick one and state it in the
-   implementation:
-   - **(a)** truncate the file in `init` (`: > "$DIR/.emit_errors.txt"`), which
-     costs one line and makes "non-empty ⇒ written by the immediately preceding
-     `validate_artifact`" true by construction; **recommended**.
+   prior artifact. Apply **both** mitigations — they cover different paths and
+   neither subsumes the other:
+   - **(a)** truncate the file in `init` (`: > "$DIR/.emit_errors.txt"`). One
+     line; covers the first-pass `validate_routing -> emit_artifact` entry, and
+     covers a reused `run_dir` carrying a file from a prior *run*.
    - **(b)** phrase `emit_artifact`'s prompt so the file is advisory ("if it
      exists and is non-empty, treat it as the errors from your previous
-     attempt") rather than authoritative.
+     attempt") rather than authoritative — the only protection against a path
+     neither (a) nor the truncate branch enumerates.
 2. `emit_artifact`'s prompt instructs: if `.emit_errors.txt` exists and is
    non-empty, read it first and fix every listed error specifically before
    re-emitting.
@@ -184,6 +210,34 @@ op = ev.get('operator')
 if op is not None:
     assert op in VALID_OPERATORS, f\"state {s.get('name')!r} has invalid operator {op!r}\"
 ```
+
+### Terminal-skip mismatch — pre-existing, inherited by the new assertion
+
+`validate_evaluators` skips terminals **by name**:
+
+```python
+if s.get('name') in ('done', 'failed'):
+    continue
+```
+
+`ll-loop validate` keys on `terminal: true`, not on the name. A generated loop
+whose terminal is named anything else (`aborted`, `succeeded`) therefore has its
+absent evaluator asserted against `NON_LLM_EVALUATOR_TYPES` and fails the
+intermediate gate on a **non-defect** — routing to the unbounded
+`on_no: attach_evaluators` edge, i.e. exactly the wedge the "Mirror the terminal
+predicate exactly" section guards against, one field over. The new
+`VALID_OPERATORS` assertion inherits this skip and so inherits the mismatch.
+
+This is pre-existing and not caused by this issue, but it is the same failure
+class the issue is built around. Widen the skip while in the file:
+
+```python
+if s.get('terminal') is True or s.get('name') in ('done', 'failed'):
+    continue
+```
+
+If that is deliberately left alone, say so explicitly in the implementation
+rather than leaving it unremarked.
 
 ### Rejected Alternative — fault-class routing to `attach_evaluators`
 
@@ -286,8 +340,12 @@ _Wiring pass added by `/ll:wire-issue`:_
   action against a `tmp_path` run dir containing a deliberately invalid
   `workflow.yaml`, assert `returncode != 0` **and** that
   `.emit_errors.txt` is non-empty and contains the validator's error text;
-  then against a valid one, assert `returncode == 0` and the file is empty
-  (proving `pipefail` preserves the code and `tee` self-clears).
+  then against a valid one, assert `returncode == 0` and the file is empty.
+  **Label the second case as pinning the truncate-on-success branch, not
+  `tee` behavior** — `ll-loop validate` prints a success block to stdout, so
+  `tee` alone leaves the file non-empty (see Proposed Solution step 1). Without
+  that label the test reads as an accident and a future author deletes the
+  `[ "$RC" -eq 0 ] && : > ...` line as redundant.
 - `scripts/tests/test_builtin_loops.py::test_pipeline_states_exist` (line
   17725, `required` set includes `count_emit_retry` at 17738) — no change
   needed; no new state is introduced by this issue.
@@ -319,7 +377,7 @@ _Added by `/ll:refine-issue` — 2026-08-26 — based on codebase analysis:_
 
 ### Convention check — stderr capture and fault-class routing
 - No loop YAML in `scripts/little_loops/loops/` uses the literal `cmd 2>file; exit $?` one-liner the issue proposes. Two established idioms exist instead: (a) `cmd 2>&1 | tee file` combined with `set -o pipefail` (e.g. `fix-quality-and-tests.yaml:62-64`, `test-coverage-improvement.yaml`, `dead-code-cleanup.yaml`, `autodev.yaml`, `rn-remediate.yaml`), or (b) stderr-only redirect to a file plus explicit `$?` capture into a shell variable, used when the state needs to branch on the result rather than just log it (e.g. `vega-viz.yaml:298-320`, `cli-anything-bootstrap.yaml:271-279,324-325`). Idiom (b) is the closer structural match to what `validate_artifact` needs (preserve exit code for the `exit_code` evaluator while also persisting stderr for the next state to read).
-  **Decision:** use idiom (a) (`set -o pipefail` + `2>&1 | tee`) anyway. Idiom (b)'s bare `2>file` redirect satisfies the next state but strips the validator's error text out of the runner log, which is where a failed run is actually triaged. `pipefail` makes the pipeline's status that of `ll-loop validate`, so the "a pipeline swallows the exit code" concern in the original Expected Behavior does not apply — it is only true *without* `pipefail`.
+  **Decision:** use idiom (a) (`set -o pipefail` + `2>&1 | tee`) anyway. Idiom (b)'s bare `2>file` redirect satisfies the next state but strips the validator's error text out of the runner log, which is where a failed run is actually triaged. `pipefail` makes the pipeline's status that of `ll-loop validate`, so the "a pipeline swallows the exit code" concern in the original Expected Behavior does not apply — it is only true *without* `pipefail`. Idiom (a) is used here **augmented** with an explicit truncate-on-success branch, because `ll-loop validate` prints a success block to stdout and a bare `tee` would leave the capture file non-empty on the happy path (see Proposed Solution step 1).
   **`pipefail` availability verified:** the FSM executes every `action_type:
   shell` body via `["bash", "-c", action]` (`scripts/little_loops/fsm/runners.py:297`),
   not `sh`, so `set -o pipefail` is guaranteed available. No POSIX-sh fallback
@@ -388,12 +446,14 @@ routing. Consult them only if that alternative is ever revived._
 
 - `validate_artifact() -> int` — shell action, tees `ll-loop validate`'s
   merged output to `${captured.run_dir.output}/.emit_errors.txt` under
-  `set -o pipefail`, preserving the validator's exit code
+  `set -o pipefail`, truncates that file when the captured exit code is zero,
+  and re-raises the validator's exit code
 - `validate_evaluators() -> int` — shell action, gains a
   `VALID_OPERATORS`-membership assertion for every evaluator whose `operator`
   is not `None`, whether or not that type requires one — exactly mirroring
   `structural_rules.py:115`'s `operator is not None` predicate, neither
-  narrower (requiredness-keyed) nor wider (`'operator' in ev`)
+  narrower (requiredness-keyed) nor wider (`'operator' in ev`); its terminal
+  skip widens from name-only to `terminal: true` or name
 - `count_emit_retry() -> int` — **unchanged**; edges stay
   `on_yes: emit_artifact` / `on_no: diagnose`
 
@@ -408,16 +468,19 @@ routing. Consult them only if that alternative is ever revived._
 ## Implementation Steps
 
 1. Add output capture to `validate_artifact` (`set -o pipefail` + `2>&1 |
-   tee`), preserving the exit code, plus the `init` truncation from the
-   Staleness caveat.
+   tee`, then `RC=$?`, the truncate-on-success branch, and `exit "$RC"`),
+   plus the `init` truncation — mitigation (a) — from the Staleness caveat.
 2. Update `emit_artifact`'s prompt to read and address `.emit_errors.txt`,
    using the established "if `<path>` exists and is non-empty, read it first"
-   phrasing (see Prompt convention below).
+   phrasing (see Prompt convention below), worded advisorily per mitigation
+   (b) ("treat it as the errors from your previous attempt").
 3. Extend `validate_evaluators` to import `VALID_OPERATORS` and assert
    operator-value membership for every evaluator where `operator` is
    **non-None** (see Operator-check scope — including both the `is not None`
    predicate and the single-quote requirement, since the gate body sits inside
-   a double-quoted `python3 -c "…"` string).
+   a double-quoted `python3 -c "…"` string). While in that gate, widen the
+   terminal skip to `s.get('terminal') is True or s.get('name') in ('done',
+   'failed')` — see Terminal-skip mismatch.
 4. Set `max_steps: 40` (see Step-budget interaction below).
 5. Verify with `ll-loop validate scripts/little_loops/loops/workflow-generator.yaml`
    and a re-run of the source scenario (or an equivalent fixture) to confirm
@@ -442,7 +505,8 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 - **Priority**: P2 — retries silently waste cost/time on every workflow-generator
   run that hits a deterministic validator fault, and never actually recovers
-- **Effort**: Small — three localized changes to one loop YAML, no new
+- **Effort**: Small — four localized changes to one loop YAML (`init`,
+  `emit_artifact`, `validate_artifact`, `validate_evaluators`), no new
   primitives, no new states, no routing changes
 - **Risk**: Low — changes are confined to two shell actions and one prompt;
   the control-flow graph is untouched, and the new `VALID_OPERATORS` check
