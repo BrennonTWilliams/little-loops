@@ -119,6 +119,37 @@ happened once.
    State the floor in the rule's docstring; it is the difference between a
    useful guard and a noisy one.
 
+   **Define "already imports the table" precisely.** As loosely worded, any
+   mention of the table's name anywhere in the action satisfies it — including
+   inside a comment — which makes the rule trivially evadable by pasting
+   `# NON_LLM_EVALUATOR_TYPES` above the restated literal. Require the
+   identifier to appear on an **import statement** in the same action:
+
+   Note the in-repo form is a **parenthesized multi-line import** — the
+   identifier sits on a later line than the `import` keyword
+   (`workflow-generator.yaml:212-215`), so a single-line
+   `^.*import.*<name>` pattern does not match it. Match the import *region*
+   first, then test membership within it:
+
+   ```python
+   _IMPORT_BLOCK_RE = re.compile(
+       r"^[ \t]*(?:from[ \t]+\S+[ \t]+)?import[ \t]+(?:\([^)]*\)|[^\n]*)",
+       re.MULTILINE,
+   )
+
+   def _imports(action: str, name: str) -> bool:
+       return any(
+           re.search(rf"\b{re.escape(name)}\b", m.group(0))
+           for m in _IMPORT_BLOCK_RE.finditer(action)
+       )
+   ```
+
+   Add two tests: an action naming the table **only in a comment** is still
+   flagged; an action importing it via the parenthesized multi-line form is
+   **not** (this is exactly `validate_evaluators`'s shape, already the
+   designated in-repo correct fixture, so a single-line-only pattern would fail
+   the negative case and be caught).
+
 1b. **Match set, frozenset, list, AND tuple displays — not sets alone.**
    Earlier drafts scoped detection to "a literal set/frozenset". That misses
    the likeliest restatement shape and would not have caught the defect in this
@@ -283,22 +314,51 @@ a shell-only lint will never see it. This matters for AC #3: "zero violations
 post-fix" is true, but it is true partly because the surviving restatement
 lives where the rule does not look — not because the loop stopped restating.
 
-Decide one of these explicitly during implementation and record the choice:
+### This gap is a value question for the whole issue — settle it first
 
-- **(a) Ship shell-only, document the gap** (recommended for v1) — state the
-  limitation in the rule docstring and the guide entry, per AC #5, and treat
-  prompt-side restatement as a known-uncovered case.
-- **(b) Extend to `prompt` actions** — a second, looser regex over prose
-  (e.g. ≥3 table members appearing as backticked tokens in one action), still
+The consequence is sharper than "a known limitation". **This rule, as scoped,
+cannot catch the one live restatement in the very loop that motivated it.** It
+ships with zero findings by construction, and AC #3's zero-violations result is
+partly an artifact of where the rule looks rather than evidence the codebase
+stopped restating tables. That is a real but modest return for a new meta-rule,
+a four-site suppression flag, and ~10 test cases, at P3.
+
+Evaluate these three in order and record the decision before writing code:
+
+- **(a) Ship shell-only, document the gap.** State the limitation in the rule
+  docstring and the guide entry, per AC #5. Honest, but leaves the live drift
+  uncaught and the rule findingless.
+- **(b) Extend to `prompt` actions** — a second, looser regex over prose (e.g.
+  ≥3 table members appearing as backticked tokens in one action), still
   `warning`-severity. Higher recall, meaningfully higher false-positive rate,
-  since a prompt legitimately *needs* to name the vocabulary it is asking for
-  — an LLM cannot `import` a frozenset. That last point is the real argument
-  for (a): unlike a shell gate, a prompt has no import to offer instead, so
-  the warning has no actionable fix to suggest.
+  since a prompt legitimately *needs* to name the vocabulary it is asking for.
+  And a prompt has **no import to offer instead**, so the warning has no
+  actionable fix to suggest — which is what makes (b) weak on its own.
+- **(c) Fix the live drift generatively, then re-price this rule.**
+  **Recommended.** The right remedy for `attach_evaluators` is not a lint at
+  all: have `init` emit the vocabulary from the table itself —
 
-If (a): consider filing the prompt-side drift as its own follow-up, since the
-right remedy there is generative (emit the vocabulary into the prompt from the
-table at runtime) rather than a lint.
+  ```yaml
+  # in init, alongside the existing mkdir/echo block
+  python3 -c "
+  from little_loops.fsm.validation import EVALUATOR_REQUIRED_FIELDS, NON_LLM_EVALUATOR_TYPES
+  for t in sorted(NON_LLM_EVALUATOR_TYPES):
+      req = EVALUATOR_REQUIRED_FIELDS[t]
+      print(f'- {t} — ' + ('no companion fields' if not req else 'requires ' + ', '.join(req)))
+  " > "$DIR/evaluator-vocab.md"
+  ```
+
+  — and have `attach_evaluators`'s prompt read `evaluator-vocab.md` instead of
+  hand-listing it. That is smaller than the lint, eliminates the drift rather
+  than warning about it, and is the same import-don't-restate principle applied
+  where an import genuinely isn't available. It also mirrors the existing `init`
+  stdout-contract constraint: write to a file, keep the `case`/`echo` block last.
+
+If (c) lands, this rule becomes a pure forward guard against a class with no
+live instance anywhere in the tree. That may still be worth P3 — a forward guard
+is a legitimate deliverable — but make that call deliberately rather than
+inheriting it from the Ordering section. Splitting (c) into its own issue and
+letting it land first is also reasonable.
 
 ## Integration Map
 
@@ -473,6 +533,11 @@ literal set/frozenset displays against the exported tables in
 ## Implementation Steps
 
 0. Confirm BUG-3326 has landed (see Ordering) — AC #3 depends on it.
+0a. **Settle the coverage-gap decision (a)/(b)/(c)** — see "This gap is a value
+   question for the whole issue". If (c), the generative `evaluator-vocab.md`
+   fix may land first (as its own issue or as a step here), after which this
+   rule ships as a pure forward guard. Record the choice in this issue before
+   step 1.
 1. Implement `_validate_gate_completeness` in `meta_rules.py` using a
    module-level compiled `re.Pattern` over the raw action string, matching set,
    frozenset, list, and tuple displays (AC #1b), with the ≥3-member /
@@ -480,7 +545,12 @@ literal set/frozenset displays against the exported tables in
    (including `VALID_OPERATORS`), and the smallest-first / one-warning-per-
    literal ordering from AC #1a.
 1a. Tighten `VALID_OPERATORS` to `frozenset[str]` in `_base.py:74` (AC #1) so
-   the three linted tables are uniform.
+   the three linted tables are uniform. **Land this as its own commit**, before
+   or after the rule but never mixed into it: it is an unrelated type
+   tightening riding along for convenience, and keeping it separate means a
+   revert of the rule does not drag it back (or vice versa). Grep first —
+   it is re-exported from `fsm/validation/__init__.py:51,168`; confirm no
+   caller mutates it.
 2. Add the `gate_completeness_ok` flag: `KNOWN_TOP_LEVEL_KEYS` in `_base.py`,
    plus the three `FSMLoop` sites in `schema.py` (field, `from_dict`,
    `to_dict`) following `abstention_route_ok`.
@@ -492,6 +562,9 @@ literal set/frozenset displays against the exported tables in
    single-emission case (AC #1a) and the `VALID_OPERATORS` pair, the
    `validate_evaluators` state as the in-repo correct fixture, the CLI-level
    pair, and the zero-violations sweep over built-in loops.
+4a. Add the two import-detection tests: table name **only in a comment** is
+   still flagged; the parenthesized multi-line import form is **not** flagged
+   (AC #1, "Define 'already imports the table' precisely").
 5. Document the rule in `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` as an
    unnumbered named rule (AC #4), including its `prompt`-action coverage gap
    (AC #5) and the retry-reachability non-goal heuristic.
@@ -584,10 +657,21 @@ guide entry as worked examples:
   `count_emit_retry` back to `attach_evaluators` looks reachable but blames the
   wrong state and discards two passes; the fix belonged upstream, at the gate
   that owns the fault.
-- **BUG-3327's containment gate** — a scope violation routed to `capture_intent`
+- **FEAT-3332's containment gate** (split from BUG-3327) — a scope violation routed to `capture_intent`
   is *structurally* unrepairable (the out-of-scope file is already written), and
   the edge is unbounded, so the loop wedges until `max_steps`. "Can this state
   repair this fault?" catches it; no static rule does.
+- **BUG-3326's operator-check predicate** — the *inverse* case, and the one this
+  rule's own family is most likely to cause. An intermediate gate written
+  slightly **stricter** than the terminal validator (`'operator' in ev` vs
+  `operator is not None`) rejects artifacts the terminal gate accepts, and
+  `validate_evaluators`'s `on_no: attach_evaluators` edge is unbounded, so a
+  non-defect wedges the loop. The heuristic's second question follows from the
+  first: not only "can this state repair this fault?" but "is this fault real —
+  does the terminal gate agree?" Gate-completeness pushes authors to import the
+  table; it does not stop them from mis-applying it, and a subset gate laundering
+  defects and a superset gate wedging on non-defects are the two failure modes of
+  the same move.
 
 ## Ordering
 

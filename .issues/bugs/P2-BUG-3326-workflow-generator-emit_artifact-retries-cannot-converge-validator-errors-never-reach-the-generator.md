@@ -67,8 +67,9 @@ pass to read.
    imports — so that every `.evaluate:`-pathed fault is caught at the state that
    owns it, and the residual `.evaluate:` faults reaching `validate_artifact` are
    emitter-owned by construction. The check must fire **wherever an `operator`
-   field is present**, not only where `EVALUATOR_REQUIRED_FIELDS` requires one —
-   see Operator-check scope below. `count_emit_retry` keeps its flat
+   value is non-`None`**, not only where `EVALUATOR_REQUIRED_FIELDS` requires
+   one and not merely wherever the key exists — see Operator-check scope below.
+   `count_emit_retry` keeps its flat
    `on_yes: emit_artifact` edge.
 
 Point (3) is the substantive design work. See the Rejected Alternative below for
@@ -130,8 +131,8 @@ retry mechanism actually do what its name promises.
    `scripts/little_loops/fsm/validation/__init__.py:51`, defined at
    `_base.py:74` as `{"eq", "ne", "lt", "le", "gt", "ge"}`) alongside the
    `EVALUATOR_REQUIRED_FIELDS` / `NON_LLM_EVALUATOR_TYPES` it already imports,
-   and assert `ev["operator"] in VALID_OPERATORS` wherever an `operator` field
-   is **present** (see Operator-check scope below).
+   and assert membership wherever `ev.get("operator") is not None` (see
+   Operator-check scope below).
    `count_emit_retry` (line 329) is left unchanged.
 
 ### Operator-check scope — present, not required
@@ -159,7 +160,17 @@ the exact failure shape described in FEAT-3328's Summary, relocated one field
 over.
 
 Implement as: for every evaluator, check the operator whenever an `operator`
-key is present. Presence, not requiredness, is the trigger.
+value is present. Presence, not requiredness, is the trigger.
+
+**Mirror the terminal predicate exactly: `is not None`, not `in`.** The
+terminal gate's test is `evaluate.operator is not None`. An intermediate gate
+written as `if 'operator' in ev:` is *stricter* than the terminal gate: an
+`output_contains` evaluator carrying an explicit `operator: null` has the key
+present, so the intermediate gate rejects an artifact `ll-loop validate` would
+accept. That routes to `attach_evaluators` on a non-defect — and
+`validate_evaluators`'s `on_no` edge carries no retry counter, so the loop
+oscillates until `max_steps`. This is the laundering failure inverted, and it
+is just as unreachable-by-retry. Use `ev.get('operator') is not None`.
 
 **Quoting — the gate body is inside a double-quoted shell string.**
 `validate_evaluators`'s Python runs as `python3 -c "` … `"`
@@ -169,8 +180,9 @@ in that gate all do. A naive `if "operator" in ev: assert ev["operator"] in
 VALID_OPERATORS` terminates the shell string and is a syntax error. Write it as:
 
 ```python
-if 'operator' in ev:
-    assert ev['operator'] in VALID_OPERATORS, f\"state {s.get('name')!r} has invalid operator {ev['operator']!r}\"
+op = ev.get('operator')
+if op is not None:
+    assert op in VALID_OPERATORS, f\"state {s.get('name')!r} has invalid operator {op!r}\"
 ```
 
 ### Rejected Alternative — fault-class routing to `attach_evaluators`
@@ -220,15 +232,19 @@ Fault-class retry routing for `count_emit_retry` is therefore an explicit
   Staleness caveat — must not disturb `init`'s stdout contract, which feeds
   `capture: run_dir`; keep the `case`/`echo` block last).
   `count_emit_retry` (line 329) is **not** modified — see Rejected Alternative.
-  Also `max_steps` (line 31) — see Step-budget interaction.
+  Also `max_steps` (line 31) — set to `40`, see Step-budget interaction.
 
 ### Dependent Files (Callers/Importers)
 - N/A — loop is invoked by ID via the FSM runner, not imported
 
 ### Similar Patterns
-- `validate_evaluators` (line 202) already fixed its own gate-gap; its
-  fault-class routing to `attach_evaluators` (line 231) is the pattern
-  `count_emit_retry` should reuse
+- `validate_evaluators` (line 202) already fixed its own gate-gap by
+  *importing* the terminal validator's tables rather than restating them —
+  that import-don't-restate move is the pattern step 3 extends to
+  `VALID_OPERATORS`.
+  ~~its fault-class routing to `attach_evaluators` (line 231) is the pattern
+  `count_emit_retry` should reuse~~ — **superseded**; see Rejected Alternative.
+  `count_emit_retry` keeps its flat edges.
 - `capture_intent`/`validate_intent` (lines 58, 82) have an analogous
   unfenced-input issue tracked separately in BUG-3327
 
@@ -260,6 +276,12 @@ _Wiring pass added by `/ll:wire-issue`:_
   is the regression guard against the required-only subset formulation — it is
   the case `structural_rules.py:115` catches and a requiredness-keyed
   intermediate gate would launder.
+  (iii) an `output_contains` evaluator carrying an explicit `operator: null`
+  must exit **zero**. This is the over-strictness guard: `structural_rules.py:115`
+  tests `is not None`, so a `'operator' in ev` formulation would reject an
+  artifact the terminal validator accepts and wedge the unbounded
+  `validate_evaluators -> attach_evaluators` edge. Cases (ii) and (iii) are a
+  couple — neither alone pins the predicate.
 - Add a behavioral test for `validate_artifact`'s capture: run the extracted
   action against a `tmp_path` run dir containing a deliberately invalid
   `workflow.yaml`, assert `returncode != 0` **and** that
@@ -292,7 +314,8 @@ _Added by `/ll:refine-issue` — 2026-08-26 — based on codebase analysis:_
 - Confirmed current line numbers match the issue exactly: `validate_artifact` (315), `emit_artifact` (280), `count_emit_retry` (329), `validate_evaluators` (202) with its `on_no: attach_evaluators` edge at line 231 (the `attach_evaluators` state header itself is at line 145 — the issue's "line 231" citation refers to the routing edge, not the state header).
 - Full state pipeline order (all under `${captured.run_dir.output}`, set in `init` via `capture: run_dir`): `init → capture_intent → validate_intent → sketch_state_graph → validate_sketch → attach_evaluators → validate_evaluators → resolve_routing → validate_routing → emit_artifact → validate_artifact → count_emit_retry`.
 - `count_emit_retry`'s current shell action is a pure retry-budget counter (persists `.emit_retry_count`, compares against `${context.max_emit_retries}`, default `3` — defaulted twice: once in `context:` at line 39, once again inline in the shell script). It performs no branching on *why* validation failed — `on_yes: emit_artifact`, `on_no: diagnose`. `diagnose` is a `prompt` state with `next: failed` and no `on_error` handling (contrast: `finalize_await_confirmation` does declare `on_error: failed`).
-- `validate_evaluators`'s fault-class routing works because its shell action is a `python3 -c` snippet that imports `NON_LLM_EVALUATOR_TYPES`/`EVALUATOR_REQUIRED_FIELDS` directly from `little_loops.fsm.validation` (not restated), asserts membership/field-completeness, and its single `on_no: attach_evaluators` edge routes straight back to the one state that owns that one fault class — there is no separate "count" state interposed. Reusing this edge for `count_emit_retry` means inserting a classification step between `validate_artifact` and `count_emit_retry` (or inside `count_emit_retry` itself) that greps the captured error text for a fault-class signature before deciding `emit_artifact` vs `attach_evaluators`.
+- `validate_evaluators`'s fault-class routing works because its shell action is a `python3 -c` snippet that imports `NON_LLM_EVALUATOR_TYPES`/`EVALUATOR_REQUIRED_FIELDS` directly from `little_loops.fsm.validation` (not restated), asserts membership/field-completeness, and its single `on_no: attach_evaluators` edge routes straight back to the one state that owns that one fault class — there is no separate "count" state interposed. ~~Reusing this edge for `count_emit_retry` means inserting a classification step between `validate_artifact` and `count_emit_retry` (or inside `count_emit_retry` itself) that greps the captured error text for a fault-class signature before deciding `emit_artifact` vs `attach_evaluators`.~~ **Superseded** — that classification step is the Rejected Alternative and is an explicit non-goal. The research above is retained only as the reason the *upstream* fix (step 3) is the right shape: `validate_evaluators` already owns this fault class, so it should be made complete rather than have downstream states route back to it.
+  Note also that `validate_evaluators`'s `on_no: attach_evaluators` edge is itself **unbounded** — no retry counter guards it. Step 3 must therefore not make that gate stricter than the terminal validator (see "Mirror the terminal predicate exactly" above), or a non-defect wedges the loop.
 
 ### Convention check — stderr capture and fault-class routing
 - No loop YAML in `scripts/little_loops/loops/` uses the literal `cmd 2>file; exit $?` one-liner the issue proposes. Two established idioms exist instead: (a) `cmd 2>&1 | tee file` combined with `set -o pipefail` (e.g. `fix-quality-and-tests.yaml:62-64`, `test-coverage-improvement.yaml`, `dead-code-cleanup.yaml`, `autodev.yaml`, `rn-remediate.yaml`), or (b) stderr-only redirect to a file plus explicit `$?` capture into a shell variable, used when the state needs to branch on the result rather than just log it (e.g. `vega-viz.yaml:298-320`, `cli-anything-bootstrap.yaml:271-279,324-325`). Idiom (b) is the closer structural match to what `validate_artifact` needs (preserve exit code for the `exit_code` evaluator while also persisting stderr for the next state to read).
@@ -317,20 +340,33 @@ means real runs will now actually spend those 9 steps making progress instead
 of failing identically on the first pass.
 
 Consequence: a run that previously died at `diagnose` with 12 identical errors
-can now die at `max_steps` instead, which reads the same in a run log. Either
-raise `max_steps` (40 is the obvious floor: 20 happy-path + 9 retry + shrink
-headroom) or state explicitly why 30 still holds. **Coordinate with BUG-3327**,
-which adds a `check_intent_scope` state on top of an unbounded
-`validate_intent -> capture_intent` edge — whichever issue lands second owns
-the final number.
-- Fault-class routing on a retry edge (grep prior output for a discriminator, route on `output_contains`) is an established, repeated pattern elsewhere: `lib/common.yaml:332-354` (`ll_auto_auth_check`), `lib/common.yaml:355-386` (`ll_auto_learning_gate_check`, three-way classification via sequential grep), and `cua-agent-desktop.yaml:344-391` (a full `_check_*`/`_route_*` chain, with an explicit comment noting this exists specifically because a flat retry edge would otherwise mask a distinct fault class).
-- Contrast case: `cli-anything-bootstrap.yaml:490-506` (`count-refine-cycle`) is structurally identical to `workflow-generator.yaml`'s current `count_emit_retry` — a flat, fault-agnostic counter with no discrimination. This confirms fault-class discrimination is consistently implemented as an *additional* layer on top of the counter shape, not folded into the counter state itself, in every codebase example that has it.
+can now die at `max_steps` instead, which reads the same in a run log.
+
+**Decision — set `max_steps: 40`** (20 happy-path + 9 retry cycle + shrink
+headroom). This is no longer conditional and is not deferred to sequencing:
+an earlier draft had this issue and BUG-3327 each say "whichever lands second
+owns the final number", which is a coordination bug that yields either two
+conflicting edits or none. The numbers are now assigned per-issue:
+
+| Issue | `max_steps` | Why |
+|---|---|---|
+| BUG-3326 (this) | `40` | +9 productive retry steps |
+| BUG-3327 | `45` | +1 state per pass, plus a bounded `validate_intent` retry edge |
+
+Land in issue order. If BUG-3327 lands first for any reason, it sets `45`
+directly and this issue's step 4 becomes a no-op verification that the value
+is at least 40 — not a downgrade to 40.
+_The two bullets below surveyed fault-class routing precedent for the **Rejected
+Alternative**. Retained for the record only — this issue adds no fault-class
+routing. Consult them only if that alternative is ever revived._
+- ~~Fault-class routing on a retry edge (grep prior output for a discriminator, route on `output_contains`) is an established, repeated pattern elsewhere: `lib/common.yaml:332-354` (`ll_auto_auth_check`), `lib/common.yaml:355-386` (`ll_auto_learning_gate_check`, three-way classification via sequential grep), and `cua-agent-desktop.yaml:344-391` (a full `_check_*`/`_route_*` chain, with an explicit comment noting this exists specifically because a flat retry edge would otherwise mask a distinct fault class).~~
+- ~~Contrast case: `cli-anything-bootstrap.yaml:490-506` (`count-refine-cycle`) is structurally identical to `workflow-generator.yaml`'s current `count_emit_retry` — a flat, fault-agnostic counter with no discrimination. This confirms fault-class discrimination is consistently implemented as an *additional* layer on top of the counter shape, not folded into the counter state itself, in every codebase example that has it.~~ The `cli-anything-bootstrap` contrast case is still the correct model: `count_emit_retry` stays a flat, fault-agnostic counter.
 
 ### Prompt convention — reading a prior error file
 - The "if `<path>` exists and is non-empty, read it first" phrasing is an established, near-identical convention repeated verbatim across generator-family loops (`svg-image-generator.yaml:75-76`, `hitl-md.yaml:170`, `openscad-model-generator.yaml:97`, `pixi-data-viz.yaml:133`, `canvas-sketch-generator.yaml:126`, `pixi-generative-art.yaml:101`, `html-website-generator.yaml:70`, `generative-art.yaml:98`) and `rn-refine.yaml:438-441`/`general-task.yaml:987-989` for triage-style reads. `emit_artifact`'s prompt should follow this exact phrasing convention rather than inventing new wording.
 
 ### Test shape conventions
-- `scripts/tests/test_builtin_loops.py` has two established shapes for this kind of assertion: a static dict-lookup shape for routing-target assertions (`test_shrink_gated_by_context_flag`, `test_promotion_gated_by_auto_promote_flag` — `data["states"][name].get("on_yes"/"on_no")` equality checks), and a behavioral subprocess-execution shape for proving a shell gate's logic actually discriminates (`test_validate_evaluators_enforces_required_companion_fields` — extracts the action string, substitutes a `tmp_path` fixture, runs it via `subprocess.run(["bash", "-c", action], ...)`, asserts on `returncode`/`stderr`). A new test for `count_emit_retry`'s fault-class routing should follow the behavioral shape since the point is proving the grep-based discrimination works, not just that a YAML key has a given value.
+- `scripts/tests/test_builtin_loops.py` has two established shapes for this kind of assertion: a static dict-lookup shape for routing-target assertions (`test_shrink_gated_by_context_flag`, `test_promotion_gated_by_auto_promote_flag` — `data["states"][name].get("on_yes"/"on_no")` equality checks), and a behavioral subprocess-execution shape for proving a shell gate's logic actually discriminates (`test_validate_evaluators_enforces_required_companion_fields` — extracts the action string, substitutes a `tmp_path` fixture, runs it via `subprocess.run(["bash", "-c", action], ...)`, asserts on `returncode`/`stderr`). ~~A new test for `count_emit_retry`'s fault-class routing should follow the behavioral shape since the point is proving the grep-based discrimination works, not just that a YAML key has a given value.~~ **Superseded** — there is no fault-class routing to test. Use the two shapes as follows: the *static dict-lookup* shape for pinning `count_emit_retry`'s unchanged edges (a regression guard against the Rejected Alternative), and the *behavioral subprocess* shape for the two gates whose logic actually changes (`validate_artifact`'s tee/exit-code capture and `validate_evaluators`'s operator check).
 
 ## Program Design
 
@@ -340,9 +376,10 @@ the final number.
   merged output to `${captured.run_dir.output}/.emit_errors.txt` under
   `set -o pipefail`, preserving the validator's exit code
 - `validate_evaluators() -> int` — shell action, gains a
-  `VALID_OPERATORS`-membership assertion for every evaluator carrying an
-  `operator` field, whether or not that type requires one (mirrors
-  `structural_rules.py:115`'s `operator is not None` predicate)
+  `VALID_OPERATORS`-membership assertion for every evaluator whose `operator`
+  is not `None`, whether or not that type requires one — exactly mirroring
+  `structural_rules.py:115`'s `operator is not None` predicate, neither
+  narrower (requiredness-keyed) nor wider (`'operator' in ev`)
 - `count_emit_retry() -> int` — **unchanged**; edges stay
   `on_yes: emit_artifact` / `on_no: diagnose`
 
@@ -363,11 +400,11 @@ the final number.
    using the established "if `<path>` exists and is non-empty, read it first"
    phrasing (see Prompt convention below).
 3. Extend `validate_evaluators` to import `VALID_OPERATORS` and assert
-   operator-value membership for every evaluator where `operator` is present
-   (see Operator-check scope — including the single-quote requirement, since
-   the gate body sits inside a double-quoted `python3 -c "…"` string).
-4. Raise `max_steps` (see Step-budget interaction below) or record why 30 still
-   suffices.
+   operator-value membership for every evaluator where `operator` is
+   **non-None** (see Operator-check scope — including both the `is not None`
+   predicate and the single-quote requirement, since the gate body sits inside
+   a double-quoted `python3 -c "…"` string).
+4. Set `max_steps: 40` (see Step-budget interaction below).
 5. Verify with `ll-loop validate scripts/little_loops/loops/workflow-generator.yaml`
    and a re-run of the source scenario (or an equivalent fixture) to confirm
    retries now converge or fail fast on genuinely emitter-owned faults.

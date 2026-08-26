@@ -8,6 +8,12 @@ discovered_by: ll-issues-create
 discovered_date: '2026-08-26'
 captured_at: '2026-08-26T19:31:41Z'
 program_design_not_applicable: true
+confidence_score: 100
+outcome_confidence: 95
+score_complexity: 24
+score_test_coverage: 22
+score_ambiguity: 25
+score_change_surface: 24
 ---
 
 # BUG-3330: codebase-locator agent claims verified zero-hit grep for symbols that exist
@@ -102,29 +108,67 @@ contract. Apply the same shape to negatives with a new group:
 ### Searched, No Hits
 - `attach_evaluators` — searched repo-wide with no glob or type filter — 0 hits
 - `validate_evaluators` — searched repo-wide with no glob or type filter — 0 hits
+- `some_other_symbol` — searched repo-wide, 0 hits outside `.issues/` (3 hits inside)
 ```
 
 Rules attached to that group:
 
-- A negative claim not backed by a row here is out of contract — the agent
-  reports what it found and stays silent on what it didn't, rather than
-  asserting absence.
+- **The row is mandatory, not optional — for explicitly named search targets.**
+  A row is required for each identifier, path, or pattern **the caller asked
+  you to trace** that does not appear cited in an evidence-bearing group above.
+  Silence about a requested target is the out-of-contract state — an omitted
+  one is indistinguishable from one that was never searched, which is exactly
+  the attention-drift failure mode. "Report what you found and stay silent on
+  the rest" is *not* a safe harbor: the caller needs to be able to tell
+  "searched, nothing there" from "never looked."
+
+  **The mandate is bounded to named targets, deliberately.** Real caller
+  prompts (`/ll:wire-issue` Phase 4, `/ll:manage-issue` Phase 1.5) are prose
+  that mentions dozens of terms; a rule reading "every symbol named in the
+  request" would demand a row for each of them. The agent would then either
+  bloat the section past usefulness or quietly drop the rule altogether — and a
+  mandate that gets ignored is worse than none, because a *present* `###
+  Searched, No Hits` group that is silently incomplete reads as exhaustive.
+  Terms you improvised while exploring (synonyms, guessed naming variants) need
+  no row; report them only if useful.
 - Each row must state the **scope actually searched**. A row that names a
   narrowing filter (`type: py`, `glob: "*.py"`, a `path:` prefix) is evidence
   only about that slice and must not be summarized as tree-wide absence.
 - Before writing a row, re-run the pattern **unfiltered** — the whole tree, no
   `glob`/`type`/`path`. This is the step that would have caught the
   reproduction.
+
+  **Carve-out:** when the *caller* scoped the question to a path or file type
+  ("is `X` in `foo.yaml`?", "which Python files reference `Y`?"), no unfiltered
+  re-run is required — the row states that caller-supplied scope and the claim
+  is never generalized past it. Absent that, this rule and the previous one
+  would contradict each other: one permits scoped rows, the other forbids
+  producing any.
+- **Exclusions are allowed but must be named in the row, and carry the count
+  inside the excluded path.** The observed failure claimed "zero hits outside
+  `.issues/`" — an exclusion, not an unfiltered search, and often a legitimate
+  one (a wire-issue caller genuinely wants `.issues/` excluded).
+
+  Note what an exclusion actually *is* here: your Grep tool takes `glob`,
+  `type`, and `path` — there is **no exclude parameter**, and you have no Bash.
+  So an exclusion is not a narrower search you run; it is an **unfiltered
+  search whose hits under the named path you then discount**. Writing the row as
+  "searched, excluding `.issues/`" invites the reader (and you) to treat it as a
+  filtered search, re-legitimizing the exact narrowing this group exists to
+  prevent. Hence the pinned shape — `0 hits outside `.issues/` (3 hits inside)`
+  — which carries the discounted hits with it and is self-evidencing. A row
+  that silently applies an exclusion while claiming repo-wide scope is the
+  defect, not the exclusion itself.
 - One row per distinct symbol. No aggregate negatives covering several symbols
   in a single claim (the attention-drift guard).
 
-A short cross-reference in `## Important Guidelines` points at the new group;
-the group itself carries the contract.
+The contract lives in the Output Format prose; `## What NOT to Do` carries the
+matching prohibition (see Implementation Steps).
 
 ## Integration Map
 
 ### Files to Modify
-- `agents/codebase-locator.md` — Output Format and Important Guidelines
+- `agents/codebase-locator.md` — Output Format and `## What NOT to Do`
   sections
 
 _Wiring pass added by `/ll:wire-issue`:_
@@ -141,9 +185,12 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_wiring_skills_and_commands.py` — add two new tuples to `DOC_STRINGS_PRESENT` (list starts line 27; BUG-3260 precedent pair at lines 253-261), consumed by `test_string_present_in_doc()` (line 274). **The needles are pinned here, byte-exact — `DOC_STRINGS_PRESENT` is a literal-substring assertion, so leaving the wording to the implementer guarantees test/source drift:**
   - `("agents/codebase-locator.md", "### Searched, No Hits", "BUG-3330")`
   - `("agents/codebase-locator.md", "searched repo-wide with no glob or type filter", "BUG-3330")`
+  - `("agents/codebase-locator.md", "row is mandatory for every requested symbol", "BUG-3330")`
 
-  Both strings must appear verbatim in the agent file (the second inside the example rows of the new group). Neither contains the substring `file:line`.
-- `scripts/tests/test_wiring_skills_and_commands.py` — `DOC_STRINGS_ABSENT` list (line 284) forbids the literal substring `"file:line"` in sibling agent files (`agents/codebase-analyzer.md:286`, `agents/codebase-pattern-finder.md:287`) but does not yet include `agents/codebase-locator.md`; the pinned wording above already complies with the anchor-based-reference convention (ENH-1299), though no test currently enforces this against this file [Agent 3 finding]
+  All three strings must appear verbatim in the agent file (the second inside the example rows of the new group; the third inside the Output Format prose). None contains the substring `file:line`.
+
+  **The third needle is load-bearing, not decoration.** The first two pin the *example rows* only — the mandatory-row prose is the actual contract (AC 2) and would otherwise be the one part of this fix no test can observe. Implementation Step 2 must use that exact phrase in the prose sentence.
+- **Do NOT add `agents/codebase-locator.md` to `DOC_STRINGS_ABSENT` for `"file:line"` — that tuple can never pass, and this is not a latent TODO.** The `DOC_STRINGS_ABSENT` list (line 284) forbids the literal substring in the sibling agents (`agents/codebase-analyzer.md`, `agents/codebase-pattern-finder.md`) per ENH-1299, but `agents/codebase-locator.md:79` already contains the literal string inside its own prohibition text — ``…not a line number (no `file:line`)`` — added by BUG-3260. The file states the ENH-1299 rule by quoting the forbidden token, so a substring-absence assertion against it is structurally impossible. The pinned wording for this fix complies with the convention in spirit; no test can or should enforce it here [Agent 3 finding; corrected during review]
 - No behavioral/integration test exercises the agent's actual runtime grep/citation behavior — all existing coverage is static doc-string presence/absence assertions on the prompt text plus frontmatter-only checks (`test_enh3098_refine_issue_graph_seeding.py`'s `test_agent_has_no_bash_tool`). This is a known gap inherent to prompt-only LLM-agent guidance, not something this fix can close [Agent 3 finding]
 - No existing test asserts an exact line count, line number, or file hash for `agents/codebase-locator.md`, and no test breaks from this change [Agent 3 finding]
 
@@ -179,21 +226,46 @@ _Added by `/ll:refine-issue` — 2026-08-26 — based on codebase analysis:_
 
 ## Implementation Steps
 
+_Line numbers below are omitted deliberately: each edit shifts the ones after
+it. Anchor on the section/heading names instead._
+
 1. In `agents/codebase-locator.md`, add a `### Searched, No Hits` group to the
-   Output Format example block, immediately after `### Inferred, Unconfirmed`
-   (line 112-114), using the row shape pinned in the Tests section:
-   `` - `symbol` — searched repo-wide with no glob or type filter — 0 hits ``.
-2. In the same Output Format section, alongside the existing positive-evidence
-   rule (lines 77-82), state the contract for that group: a negative claim
-   unbacked by a row there is out of contract; each row states the scope
-   actually searched; a row naming a narrowing filter (`type:`, `glob:`,
-   `path:`) is evidence about that slice only and must never be reported as
-   tree-wide absence; re-run the pattern unfiltered before writing a row; one
-   row per distinct symbol, no aggregate negatives.
-3. In `## Important Guidelines` (lines 117-127), add a single cross-reference
-   bullet pointing at the new group. Keep it short — the contract lives in the
-   Output Format section, not here.
-4. Add the two pinned `DOC_STRINGS_PRESENT` tuples to
+   Output Format **example block**, immediately after the `### Inferred,
+   Unconfirmed` group, using the row shapes pinned in the Tests section — at
+   least one unfiltered row
+   (`` - `symbol` — searched repo-wide with no glob or type filter — 0 hits ``)
+   and one named-exclusion row carrying the inside count
+   (`` - `symbol` — searched repo-wide, 0 hits outside `.issues/` (3 hits inside) ``).
+2. In the Output Format **prose** above that block, alongside the existing
+   positive-evidence rule, state the contract for the new group. The
+   mandatory-row sentence must contain the pinned phrase **"row is mandatory
+   for every requested symbol"** verbatim (Tests section needle 3) — e.g. "A
+   `### Searched, No Hits` row is mandatory for every requested symbol not
+   cited in an evidence-bearing group above." The prose must also carry:
+   - the **bound** on that mandate — it covers identifiers, paths, and patterns
+     the caller asked you to trace, not every term mentioned in the prompt and
+     not synonyms you improvised while exploring;
+   - omission is out of contract, not a safe fallback;
+   - each row states the scope actually searched, and a row naming a narrowing
+     filter (`type:`, `glob:`, `path:`) is evidence about that slice only and
+     must never be reported as tree-wide absence;
+   - re-run the pattern unfiltered before writing a row, **except** when the
+     caller scoped the question to a path or file type, in which case the row
+     states that caller-supplied scope;
+   - exclusions are permitted but must be named in the row **and state the hit
+     count inside the excluded path** — the Grep tool has no exclude parameter,
+     so an exclusion is an unfiltered search whose hits under that path you
+     discount, not a narrower search you ran;
+   - one row per distinct symbol, no aggregate negatives.
+3. In `## What NOT to Do`, add the matching prohibition bullet — this is the
+   home BUG-3260 used for its paired rule (the existing final bullet, "Don't
+   return a path because the requested feature/issue *proposes* to build
+   something there"), and it is the right one here too. Suggested wording:
+   `` - Don't assert a symbol is absent from the tree on the strength of a
+   filtered search — a `type:`/`glob:`/`path:`-narrowed miss is evidence about
+   that slice only ``. Do **not** put this in `## Important Guidelines`: that
+   section is a list of search-technique tips, not contract rules.
+4. Add the three pinned `DOC_STRINGS_PRESENT` tuples to
    `scripts/tests/test_wiring_skills_and_commands.py` near the BUG-3260 pair
    (lines 253-261).
 5. Regenerate the host mirrors: `ll-adapt --apply`. Do not hand-edit
@@ -209,24 +281,47 @@ _Added by `/ll:refine-issue` — 2026-08-26 — based on codebase analysis:_
 
 _These touchpoints were identified by wiring analysis and must be included in the implementation:_
 
-- Add the two pinned `DOC_STRINGS_PRESENT` tuples to `scripts/tests/test_wiring_skills_and_commands.py` (near the BUG-3260 pair, lines 253-261) — exact needles in the Tests section above; do not paraphrase them
-- The pinned wording avoids the literal substring `"file:line"`, consistent with `DOC_STRINGS_ABSENT`'s existing ENH-1299 convention for sibling agent files
+- Add the three pinned `DOC_STRINGS_PRESENT` tuples to `scripts/tests/test_wiring_skills_and_commands.py` (near the BUG-3260 pair, lines 253-261) — exact needles in the Tests section above; do not paraphrase them
+- The pinned wording avoids the literal substring `"file:line"`, consistent with the ENH-1299 convention — but do **not** add a `DOC_STRINGS_ABSENT` tuple for this file; it cannot pass (see the Tests section for why)
 - Regenerate host mirrors after the source edit: `.qwen/agents/codebase-locator.md`, `.kimi-code/agents/codebase-locator.md`, `.gemini/agents/codebase-locator.md`, `.codex/agents/codebase-locator.toml` (via `ll-adapt --apply`, not hand-edited)
 - Check `docs/reference/API.md:12403`'s agent table row for staleness against the new wording; update only if it becomes inaccurate
 - **Deliberately out of scope** (not "not applicable"): `agents/codebase-analyzer.md` and `agents/codebase-pattern-finder.md`. The textual claim is accurate — neither sibling contains "Grep matched", "no Grep hit", or "zero-hit" language, so the evidence apparatus is unique to `codebase-locator.md` today. But the *failure class* is not: `codebase-analyzer` can assert an equally damaging false negative ("nothing calls this function", "this branch is unreachable") off the same filtered-Grep mechanism described in Root Cause. Scoping this fix to one agent keeps it small and lets the `### Searched, No Hits` shape prove itself on the agent where the reproduction exists; extending it to the siblings is deferred follow-up work, not a settled non-issue.
 
+  **This deferral needs a landing place or it evaporates.** After this fix
+  lands, file a follow-up issue (via `/ll:capture-issue`) to port the
+  `### Searched, No Hits` contract to `agents/codebase-analyzer.md` and
+  `agents/codebase-pattern-finder.md`, referencing BUG-3330 for the
+  filtered-Grep root cause and the proven row shape. Do it as a real issue
+  file, not a note here — a deferral recorded only inside the issue that
+  defers it is invisible the moment that issue is marked `done`.
+
 ## Acceptance Criteria
 
 1. `agents/codebase-locator.md` contains a `### Searched, No Hits` group in its
-   Output Format example block, with the pinned row wording.
-2. `scripts/tests/test_wiring_skills_and_commands.py::test_string_present_in_doc`
-   passes for both new `BUG-3330` tuples.
-3. The four host mirrors (`.qwen/`, `.gemini/`, `.kimi-code/` markdown +
-   `.codex/` TOML) are regenerated and reflect the new source text.
-4. `python -m pytest scripts/tests/` exits 0.
+   Output Format example block, with the pinned row wording, including both the
+   unfiltered row and a named-exclusion row that states the hit count inside the
+   excluded path.
+2. The Output Format prose contains the pinned phrase "row is mandatory for
+   every requested symbol", bounds that mandate to targets the caller asked to
+   trace, carries the caller-scoped carve-out to the unfiltered re-run rule and
+   the exclusion-row inside-count rule, and `## What NOT to Do` carries the
+   filtered-search prohibition bullet.
+3. `scripts/tests/test_wiring_skills_and_commands.py::test_string_present_in_doc`
+   passes for all three new `BUG-3330` tuples.
+4. The four host mirrors are regenerated from the new source. Verify
+   concretely, since no test gates this (see Dependent Files):
+   `git status` shows all four of `.qwen/agents/codebase-locator.md`,
+   `.gemini/agents/codebase-locator.md`, `.kimi-code/agents/codebase-locator.md`,
+   `.codex/agents/codebase-locator.toml` modified, **and**
+   `grep -l "Searched, No Hits" .qwen/agents/codebase-locator.md .gemini/agents/codebase-locator.md .kimi-code/agents/codebase-locator.md .codex/agents/codebase-locator.toml`
+   lists all four files.
+5. `python -m pytest scripts/tests/` exits 0.
+6. A follow-up issue exists for porting the `### Searched, No Hits` contract to
+   `agents/codebase-analyzer.md` and `agents/codebase-pattern-finder.md`,
+   referencing BUG-3330 (see the Wiring Phase out-of-scope note).
 
 **Not an acceptance gate:** re-running the reproduction through the live agent.
-Step 3 of the original Implementation Steps proposed this as verification, but a
+An earlier draft of the Implementation Steps proposed this as verification, but a
 single non-deterministic LLM run can neither confirm the fix (a pass may be
 luck) nor refute it (a failure may be unrelated drift). Do it once as a manual
 spot-check — trace `attach_evaluators`/`validate_evaluators` against
@@ -271,6 +366,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-26T20:33:37 - `e1dbeb25-e8a5-4187-bf3f-becfa88318fe.jsonl`
 - `/ll:wire-issue` - 2026-08-26T20:16:40 - `782fbb73-240e-4e96-ad04-a421c2fa5e7a.jsonl`
 - `/ll:refine-issue` - 2026-08-26T20:08:19 - `fdfe1063-50b8-41a2-aae7-c524a32eadad.jsonl`
 - `/ll:format-issue` - 2026-08-26T19:54:03 - `001e5679-9e60-4be1-8880-9ae8bd851f63.jsonl`
