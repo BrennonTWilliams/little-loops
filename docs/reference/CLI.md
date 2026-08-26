@@ -451,6 +451,8 @@ ll-auto --label quick-win        # Only process issues tagged quick-win
 ll-auto --handoff-threshold 90   # Trigger handoff at 90% context usage
 ```
 
+**Signal handling (BUG-3312):** Ctrl+C sends SIGINT, which sets a module-level shutdown `Event` polled by the read loop that streams the detached `claude` subprocess's output; the process group is killed within ~1s rather than waiting for the subprocess to finish. Phase-boundary checks in the issue-processing loop and continuation runner stop an interrupted issue from falling through to its next phase (e.g., an interrupted Phase 2 does not proceed to Phase 3). A second Ctrl+C forces immediate exit without waiting for cleanup. An issue interrupted mid-run is attributed as `skipped`, not `failed`, and is un-marked from `attempted_issues` so `--resume` picks it back up.
+
 ---
 
 ### ll-parallel
