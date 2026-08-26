@@ -60,8 +60,8 @@ permissions:
 
 jobs:
   unit-tests:
-    name: Unit tests (ubuntu-latest)
-    runs-on: ubuntu-latest
+    name: Unit tests (ubuntu-22.04)
+    runs-on: ubuntu-22.04
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
