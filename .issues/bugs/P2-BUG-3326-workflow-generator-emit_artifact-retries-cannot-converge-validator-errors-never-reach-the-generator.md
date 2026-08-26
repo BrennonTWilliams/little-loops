@@ -143,6 +143,18 @@ retry mechanism actually do what its name promises.
    - **(a)** truncate the file in `init` (`: > "$DIR/.emit_errors.txt"`). One
      line; covers the first-pass `validate_routing -> emit_artifact` entry, and
      covers a reused `run_dir` carrying a file from a prior *run*.
+     **Verified:** `emit_artifact` has exactly two inbound edges —
+     `validate_routing.on_yes` (line 277) and `count_emit_retry.on_yes`
+     (line 344) — so (a) plus the truncate-on-success branch between them
+     cover every path into the state. (b) remains as defense in depth.
+   - **(a′) Reset `.emit_retry_count` in the same `init` line group**
+     (`rm -f "$DIR/.emit_retry_count"`). `count_emit_retry` persists its
+     counter to the same `run_dir` and nothing ever clears it, so the reused-
+     `run_dir` argument that justifies (a) applies identically here — and the
+     consequence is worse: a stale count at or above `max_emit_retries` sends
+     the *first* failure straight to `diagnose` with zero retries, which is
+     strictly worse than the non-convergence this issue fixes. One line,
+     same state, same staleness class.
    - **(b)** phrase `emit_artifact`'s prompt so the file is advisory ("if it
      exists and is non-empty, treat it as the errors from your previous
      attempt") rather than authoritative — the only protection against a path
@@ -159,6 +171,7 @@ retry mechanism actually do what its name promises.
    `EVALUATOR_REQUIRED_FIELDS` / `NON_LLM_EVALUATOR_TYPES` it already imports,
    and assert membership wherever `ev.get("operator") is not None` (see
    Operator-check scope below).
+   Its terminal skip is left **unchanged** — see Terminal skip below.
    `count_emit_retry` (line 329) is left unchanged.
 
 ### Operator-check scope — present, not required
@@ -211,7 +224,7 @@ if op is not None:
     assert op in VALID_OPERATORS, f\"state {s.get('name')!r} has invalid operator {op!r}\"
 ```
 
-### Terminal-skip mismatch — pre-existing, inherited by the new assertion
+### Terminal skip — leave the name-keyed skip alone
 
 `validate_evaluators` skips terminals **by name**:
 
@@ -220,24 +233,33 @@ if s.get('name') in ('done', 'failed'):
     continue
 ```
 
-`ll-loop validate` keys on `terminal: true`, not on the name. A generated loop
-whose terminal is named anything else (`aborted`, `succeeded`) therefore has its
-absent evaluator asserted against `NON_LLM_EVALUATOR_TYPES` and fails the
-intermediate gate on a **non-defect** — routing to the unbounded
-`on_no: attach_evaluators` edge, i.e. exactly the wedge the "Mirror the terminal
-predicate exactly" section guards against, one field over. The new
-`VALID_OPERATORS` assertion inherits this skip and so inherits the mismatch.
+An earlier draft of this issue read that as a mismatch against `ll-loop
+validate` (which keys on `terminal: true`) and proposed widening the skip to
+`s.get('terminal') is True or s.get('name') in ('done', 'failed')`. **Do not
+do that.** Verified against the current tree, the widening is a dead branch
+that opens a new laundering hole:
 
-This is pre-existing and not caused by this issue, but it is the same failure
-class the issue is built around. Widen the skip while in the file:
+- **The key does not exist at that stage.** `graph-evaluators.yaml`'s schema
+  is set by `attach_evaluators`'s prompt (`workflow-generator.yaml:184-198`),
+  which emits `name` / `purpose` / `kind` / `evaluate` only. `terminal: true`
+  is introduced four states later, at `emit_artifact`'s SHAPE FLIP. So
+  `s.get('terminal') is True` can never fire in this gate.
+- **The failure it claims to prevent is unreachable.** `validate_sketch`
+  (`workflow-generator.yaml:128`) hard-asserts `'done' in names` and
+  `'failed' in names`. A sketch whose terminals are named `aborted` /
+  `succeeded` is rejected two states earlier and routed back to
+  `sketch_state_graph`; it cannot reach `validate_evaluators` at all. The
+  name-keyed skip is therefore *consistent with the pipeline's own upstream
+  invariant*, not a drift from it.
+- **It would be actively harmful if the key ever did appear.** An emitter that
+  stamps `terminal: true` onto a work state would have that state's evaluator
+  skipped entirely and laundered downstream to `validate_artifact` — where
+  `count_emit_retry` routes back to `emit_artifact`, a state structurally
+  incapable of repairing an `attach_evaluators` defect. That is precisely the
+  topology this issue exists to close.
 
-```python
-if s.get('terminal') is True or s.get('name') in ('done', 'failed'):
-    continue
-```
-
-If that is deliberately left alone, say so explicitly in the implementation
-rather than leaving it unremarked.
+The new `VALID_OPERATORS` assertion inherits the existing name-keyed skip
+unchanged. No skip change is part of this issue.
 
 ### Rejected Alternative — fault-class routing to `attach_evaluators`
 
@@ -282,9 +304,14 @@ Fault-class retry routing for `count_emit_retry` is therefore an explicit
 ### Files to Modify
 - `scripts/little_loops/loops/workflow-generator.yaml` — `validate_artifact`
   (line 315), `emit_artifact` (line 280), `validate_evaluators` (line 202),
-  and `init` (lines 43-56, one-line `.emit_errors.txt` truncation per the
-  Staleness caveat — must not disturb `init`'s stdout contract, which feeds
-  `capture: run_dir`; keep the `case`/`echo` block last).
+  and `init` (lines 43-56, the two-line `.emit_errors.txt` truncation and
+  `.emit_retry_count` removal per the Staleness caveat, mitigations (a) and
+  (a′)). Placement inside `init` is constrained on both sides: the two lines
+  must come **after** `mkdir -p "$DIR"` — `init` creates the run dir in the
+  same action, so a truncate above it writes into a nonexistent directory —
+  and **before** the `case`/`echo` block, which must stay last because
+  `init`'s stdout is the `capture: run_dir` contract. Neither line emits
+  stdout, so the contract is otherwise undisturbed.
   `count_emit_retry` (line 329) is **not** modified — see Rejected Alternative.
   Also `max_steps` (line 31) — set to `40`, see Step-budget interaction.
 
@@ -346,6 +373,12 @@ _Wiring pass added by `/ll:wire-issue`:_
   `tee` alone leaves the file non-empty (see Proposed Solution step 1). Without
   that label the test reads as an accident and a future author deletes the
   `[ "$RC" -eq 0 ] && : > ...` line as redundant.
+- Add a behavioral test for `init`'s reset lines (mitigations (a)/(a′)): seed
+  a `tmp_path` run dir with a non-empty `.emit_errors.txt` and a
+  `.emit_retry_count` of `9`, run the extracted `init` action, and assert both
+  are cleared **and** that the action's stdout is still exactly the run-dir
+  path — the `capture: run_dir` contract is what constrains where those lines
+  may go.
 - `scripts/tests/test_builtin_loops.py::test_pipeline_states_exist` (line
   17725, `required` set includes `count_emit_retry` at 17738) — no change
   needed; no new state is introduced by this issue.
@@ -452,8 +485,8 @@ routing. Consult them only if that alternative is ever revived._
   `VALID_OPERATORS`-membership assertion for every evaluator whose `operator`
   is not `None`, whether or not that type requires one — exactly mirroring
   `structural_rules.py:115`'s `operator is not None` predicate, neither
-  narrower (requiredness-keyed) nor wider (`'operator' in ev`); its terminal
-  skip widens from name-only to `terminal: true` or name
+  narrower (requiredness-keyed) nor wider (`'operator' in ev`); its
+  name-keyed terminal skip is unchanged
 - `count_emit_retry() -> int` — **unchanged**; edges stay
   `on_yes: emit_artifact` / `on_no: diagnose`
 
@@ -469,7 +502,9 @@ routing. Consult them only if that alternative is ever revived._
 
 1. Add output capture to `validate_artifact` (`set -o pipefail` + `2>&1 |
    tee`, then `RC=$?`, the truncate-on-success branch, and `exit "$RC"`),
-   plus the `init` truncation — mitigation (a) — from the Staleness caveat.
+   plus the `init` lines — mitigations (a) and (a′) — from the Staleness
+   caveat: `: > "$DIR/.emit_errors.txt"` and `rm -f "$DIR/.emit_retry_count"`,
+   placed after `mkdir -p "$DIR"` and before the `case`/`echo` block.
 2. Update `emit_artifact`'s prompt to read and address `.emit_errors.txt`,
    using the established "if `<path>` exists and is non-empty, read it first"
    phrasing (see Prompt convention below), worded advisorily per mitigation
@@ -478,9 +513,8 @@ routing. Consult them only if that alternative is ever revived._
    operator-value membership for every evaluator where `operator` is
    **non-None** (see Operator-check scope — including both the `is not None`
    predicate and the single-quote requirement, since the gate body sits inside
-   a double-quoted `python3 -c "…"` string). While in that gate, widen the
-   terminal skip to `s.get('terminal') is True or s.get('name') in ('done',
-   'failed')` — see Terminal-skip mismatch.
+   a double-quoted `python3 -c "…"` string). Leave that gate's name-keyed
+   terminal skip **exactly as it is** — see Terminal skip.
 4. Set `max_steps: 40` (see Step-budget interaction below).
 5. Verify with `ll-loop validate scripts/little_loops/loops/workflow-generator.yaml`
    and a re-run of the source scenario (or an equivalent fixture) to confirm
