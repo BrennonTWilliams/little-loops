@@ -107,7 +107,8 @@ does not remove another producer's endpoint.
 
 - Starting a second producer does not disturb a running producer or disconnect
   its attached consumers.
-- A producer's `close()` only ever unlinks a path it actually owns.
+- A producer's `close()` only ever unlinks a file it actually owns — the same
+  inode it bound, not merely the same path.
 - A genuinely stale socket file (crashed producer) is still reclaimed
   automatically — no manual `rm` step, no change to today's recovery behavior.
 - With a single producer, everything is byte-identical to today, including the
@@ -162,8 +163,10 @@ Notes on the shape:
   would push realistic paths past that ceiling and make the existing fixture
   insufficient. A pid is short, is a natural stable per-process identifier, and
   makes an orphaned file diagnosable (`ps <pid>`).
-- **Record ownership.** Store the path actually bound and have `close()` unlink
-  only that, fixing the step-4 cross-unlink.
+- **Record ownership by inode, not by path.** Store the path actually bound
+  *and* its `(st_dev, st_ino)` identity, and have `close()` unlink only on an
+  identity match. Path alone is insufficient — see "`close()` is a third
+  cross-unlink site" below.
 - **Probe with a short timeout** and treat any unexpected `OSError` as
   "occupied" (bind suffixed) rather than "stale" (unlink) — erring toward never
   evicting a live producer.
@@ -209,14 +212,32 @@ must not leave residue. Two consequences for the implementation:
 
 - Close the probe socket promptly and unconditionally (`try/finally`), so the
   live producer's client list drains immediately rather than at its next send.
-- A probe must not permanently change the live producer's observable state —
-  no net client-list growth, no `max_clients` consumption after the probe
-  returns. This is worth a test, not just a comment.
+- A probe must not leave *residue* in the live producer's client pool — no net
+  client-list growth, no slot still held once the probe returns, no events
+  missed by its already-attached consumers. This is worth a test, not just a
+  comment.
 
 Note the probe still classifies correctly when the live producer is *saturated*
 at `max_clients`: `connect()` succeeds at the kernel level regardless of whether
 the listener ever accepts, and the rejection path (`:196-201`) closes the
 connection after the fact. "Live" is the right answer in that case.
+
+**Two observable effects are accepted, not defects.** "The probe changes
+nothing" is too strong a claim to make literally, and the implementation should
+not be contorted to satisfy it:
+
+- Probing a *saturated* producer runs `_record_rejection` (`:189`), which
+  permanently increments `_rejections_total` — surfaced by `get_stats()`
+  (`:281-283`). This counter will tick up for a probe that was never a real
+  consumer. Accepted: the alternative is a second, slot-free liveness channel,
+  which is far more machinery than the signal is worth.
+- A probe momentarily *does* occupy a slot, so a genuine consumer connecting at
+  `max_clients - 1` concurrently with a probe can be rejected where it would
+  otherwise have been accepted. Accepted for the same reason; the window is one
+  accept-and-close.
+
+The requirement is therefore about the *steady state after the probe returns*,
+which is what the acceptance criterion and its test assert.
 
 ### TOCTOU: the fallback must actually exist
 
@@ -241,6 +262,40 @@ There is an inherent window between probe and bind. It is not worth a lock file
 Worth a comment at the probe site, in the `session_log.py:176-180` style (cite
 BUG-3324, describe the interleaving, state the fallback), so a future reader
 does not "fix" the window.
+
+### `close()` is a third cross-unlink site
+
+"Store the bound path and unlink only that" is **not** sufficient on its own,
+because a producer can legitimately bind the configured path and still unlink
+someone else's socket at it. `close()` (`:285-320`) does:
+
+1. `self._server.close()` (`:299`) — the listener stops accepting.
+2. Shut down and join every client thread, budgeted against
+   `_CLOSE_TOTAL_TIMEOUT = 10.0` (`:286`, `:312`).
+3. `self._path.unlink(missing_ok=True)` (`:320`).
+
+Between steps 1 and 3 there is a window of **up to ten seconds** — not a
+microsecond race — during which A's path exists but nothing is listening on it.
+A producer B starting inside that window probes, gets `ECONNREFUSED`, correctly
+classifies `RECLAIMABLE`, unlinks and binds the configured path. A then reaches
+step 3 and unlinks **B's** socket. Ownership-by-bound-path does not catch this:
+A really did bind that path, and B's classification really was correct.
+
+Fix by identity rather than by name: `os.stat()` the path immediately after a
+successful `bind()`, keep `(st_dev, st_ino)`, and in `close()` re-`stat` and
+unlink only when it matches. That closes step 4 and this window with one
+mechanism. A residual TOCTOU remains between the `stat` and the `unlink`, but it
+is now bounded by two adjacent syscalls rather than by a thread-join budget —
+which is what makes skipping a lock file defensible. Treat a `FileNotFoundError`
+from the `stat` as "already gone, nothing to do".
+
+### Out of scope: a dangling symlink at the configured path
+
+`connect()` through a dangling symlink yields `ENOENT`, which classifies as
+`ABSENT`, after which `bind()` fails rather than reclaiming. That lands in the
+generic bind-failure path instead of being cleaned up. This is not handled and
+is not worth handling — recorded so it is not mistaken for a regression of the
+stale-file case, which is about a *real* file and does classify correctly.
 
 ### Non-goal: sweeping orphaned suffixed sockets
 
@@ -267,14 +322,31 @@ follow-up; do not grow this fix into one.
   result as one of three states: `LIVE`, `ABSENT`, or `RECLAIMABLE` (a small
   `enum.Enum` or three module constants — not a bool). The catch-all
   unexpected-`OSError` case returns `LIVE`.
-- `_claim_socket_path(configured: Path) -> Path` — the only mutating helper.
-  Calls `_probe_socket_path`, unlinks on `RECLAIMABLE`, and returns the path to
-  bind: `configured` for `ABSENT`/`RECLAIMABLE`, else
+- `_claim_socket_path(configured: Path, *, force_suffix: bool = False) -> Path`
+  — the only mutating helper. **Never binds.** Calls `_probe_socket_path`,
+  unlinks on `RECLAIMABLE`, and returns the path to bind: `configured` for
+  `ABSENT`/`RECLAIMABLE`, else
   `configured.with_name(f"{configured.stem}-{os.getpid()}{configured.suffix}")`
   — itself claimed through the same probe/unlink logic before being returned
-  (see "Claim the suffixed path too" above). Also handles the `EADDRINUSE`
-  fallback, so it needs to either perform the `bind()` or be re-callable by the
-  constructor on that error.
+  (see "Claim the suffixed path too" above). `force_suffix=True` skips the
+  configured path entirely and claims the suffixed path directly; this is how
+  the constructor re-enters after `EADDRINUSE`.
+
+**The `EADDRINUSE` fallback lives in the constructor, not the helper.** The
+constructor runs a bounded **two-attempt** loop, and the helper stays
+non-binding:
+
+1. `path = _claim_socket_path(configured)`; create a socket; `bind()`.
+2. On `OSError` with `errno.EADDRINUSE` on attempt 1 only:
+   `path = _claim_socket_path(configured, force_suffix=True)`; **create a fresh
+   `socket.socket`**; `bind()` again.
+3. A failure on attempt 2 — or any non-`EADDRINUSE` error on attempt 1 —
+   propagates.
+
+Two attempts, never a loop-until-success. The fresh socket on attempt 2 is
+deliberate: rebinding a socket object whose previous `bind()` failed is subtly
+platform-dependent, and a new object costs nothing. Close the attempt-1 socket
+before discarding it.
 
 The split matters: the original spec had `_probe_socket_path` both described as
 a predicate ("returns `True` if a live listener owns `path`") *and* unlinking as
@@ -286,14 +358,28 @@ the next caller. Keep every unlink inside `_claim_socket_path`.
 
 `wire_transports` (`transport.py:611`) -> `_resolve_socket_path` (`:678`) ->
 `UnixSocketTransport.__init__` (`:134`) -> `_claim_socket_path` ->
-`_probe_socket_path` -> `bind()` -> (on `EADDRINUSE`) `_claim_socket_path` ->
-`bind()`
+`_probe_socket_path` -> `bind()` -> (on `EADDRINUSE`)
+`_claim_socket_path(force_suffix=True)` -> fresh socket -> `bind()`
 
 ### New state
 
 - `UnixSocketTransport._path` becomes the *bound* path rather than the
-  *configured* path; `close()` (`:320`) unlinks `self._path` as it does today,
-  which is then automatically correct.
+  *configured* path.
+- `UnixSocketTransport._bound_id: tuple[int, int] | None` — `(st_dev, st_ino)`
+  captured by `os.stat()` immediately after the successful `bind()`. `close()`
+  (`:320`) re-`stat`s `self._path` and unlinks only on a match, treating
+  `FileNotFoundError` as "already gone". Path alone is not enough — see
+  "`close()` is a third cross-unlink site" above.
+
+### The sibling-path naming contract
+
+The suffixed path is `{stem}-{pid}{suffix}` as a **sibling of the configured
+path** — `.ll/events-1234.sock` for the default `.ll/events.sock`. This is a
+contract a directory-enumerating consumer may key on, not an implementation
+detail: FEAT-3323's bridge (which `depends_on` this issue) has to know which
+files in `.ll/` are event sockets, and a loose `events*.sock` glob would also
+match unrelated names. State the rule in `CONFIGURATION.md` so FEAT-3323 is not
+inferring it by reading this code.
 
 ### Codebase Research Findings
 
@@ -314,10 +400,11 @@ _Added by `/ll:refine-issue` — 2026-08-26 — based on codebase analysis:_
 
 ### Files to Modify
 - `scripts/little_loops/transport.py` — `UnixSocketTransport.__init__`
-  (`:134-175`): the unlink at `:157`, **and the failure handler at `:167-170`**
-  whose `try` must be narrowed so a failed `bind()` cannot reach the unlink;
-  `close()` (`:320`); add the two helpers plus the `errno` import (not present
-  in this module today)
+  (`:134-175`): the unlink at `:157`, **the failure handler at `:167-170`**
+  whose `try` must be narrowed so a failed `bind()` cannot reach the unlink, and
+  the two-attempt `EADDRINUSE` bind loop; `close()` (`:320`), whose unlink
+  becomes inode-identity-checked; add the two helpers plus the `errno` and `os`
+  imports (`errno` is not present in this module today)
 
 ### Dependent Files (Callers/Importers)
 - The four `wire_transports` call sites need no change if the claim happens
@@ -363,6 +450,17 @@ _Added by `/ll:refine-issue` — 2026-08-26 — based on codebase analysis:_
   attempt raises `OSError(errno.EADDRINUSE, ...)`; assert the transport comes up
   on the pid-suffixed path and that the pre-existing file at the configured path
   is untouched.
+- New test: **`close()` does not unlink a socket reclaimed during its drain** —
+  the regression guard for the ten-second window. Stand up A on the configured
+  path with a client attached so its `close()` spends real time in the join
+  loop; from another thread, once A's listener is shut, let B reclaim and bind
+  the configured path; assert that when `A.close()` returns, B's socket file
+  still exists and B still delivers events. Drive the interleaving
+  deterministically (e.g. a client whose thread blocks until released) rather
+  than with sleeps.
+- New test: **`close()` unlinks normally in the uncontended case** — the
+  identity check must not regress ordinary cleanup; this is
+  `test_close_unlinks_socket_file` (`:421-426`) and it must pass unmodified.
 - New test: **a failed `bind()` does not unlink the winner's socket** — the
   regression guard for the `:167-170` handler. Bind a live socket at the
   configured path out-of-band, force the constructor down the bind-failure path,
@@ -374,6 +472,10 @@ _Added by `/ll:refine-issue` — 2026-08-26 — based on codebase analysis:_
   the `nc -U` subscription note; document that a concurrent second producer
   binds a pid-suffixed sibling path, and that a consumer wanting *all* producers
   must read the directory (which is what FEAT-3323's bridge does)
+- `docs/reference/CONFIGURATION.md` (same block) — state the sibling naming
+  contract explicitly — `{stem}-{pid}{suffix}` next to the configured path — as
+  the rule a directory-enumerating consumer keys on, so FEAT-3323 does not have
+  to infer it from the implementation
 - `docs/reference/CONFIGURATION.md` (same block) — state that orphaned
   `events-<pid>.sock` files from crashed producers are **not** swept, so a
   consumer enumerating the directory must tolerate dead endpoints
@@ -429,19 +531,26 @@ _Added by `/ll:refine-issue` — 2026-08-26 — based on codebase analysis:_
    (all mutation) per the classification table above, using `errno` symbols
    rather than numeric literals. Close the probe socket in a `finally`.
 2. Replace the unconditional unlink at `transport.py:157` with the claim; store
-   the bound path on `self._path` so `close()` becomes correct by construction.
-3. Narrow the constructor's `try` so the failure handler at `:167-170` can only
-   unlink after a successful `bind()`, and add the `EADDRINUSE` fallback to the
-   suffixed path.
-4. Log at INFO when a suffixed path is claimed, naming both paths — this is the
-   only signal a user gets that two producers are live.
-5. Add a TOCTOU comment at the probe site in the `session_log.py:176-180` style
-   (cite BUG-3324, describe the interleaving, state the fallback).
-6. Add the seven new tests; confirm the five existing path-shape tests pass
+   the bound path on `self._path`.
+3. Capture `(st_dev, st_ino)` into `self._bound_id` immediately after the
+   successful `bind()`, and make `close()`'s unlink (`:320`) conditional on a
+   re-`stat` matching it (`FileNotFoundError` → nothing to do).
+4. Narrow the constructor's `try` so the failure handler at `:167-170` can only
+   unlink after a successful `bind()`, and add the two-attempt `EADDRINUSE`
+   fallback (fresh socket on attempt 2) to the suffixed path.
+5. Log at INFO when a suffixed path is claimed, naming both paths — this is the
+   only signal a user gets that two producers are live. Note at the call site
+   that this is the first `logger.info` in `transport.py` (every existing call
+   is `logger.warning`) and that the level is deliberate, so a later consistency
+   sweep does not downgrade it.
+6. Add TOCTOU comments in the `session_log.py:176-180` style (cite BUG-3324,
+   describe the interleaving, state the fallback) at **two** sites: the probe,
+   and the identity-checked unlink in `close()`.
+7. Add the nine new tests; confirm the five existing path-shape tests pass
    unmodified.
-7. Update `CONFIGURATION.md`, `ARCHITECTURE.md`, and `API.md`, including the
-   note that orphaned `events-<pid>.sock` files are not swept and that
-   directory-reading consumers must tolerate dead endpoints.
+8. Update `CONFIGURATION.md`, `ARCHITECTURE.md`, and `API.md`, including the
+   sibling naming contract, the note that orphaned `events-<pid>.sock` files are
+   not swept, and that directory-reading consumers must tolerate dead endpoints.
 
 ## Impact
 
@@ -449,8 +558,10 @@ _Added by `/ll:refine-issue` — 2026-08-26 — based on codebase analysis:_
   have opted into `events.transports: ["socket"]`, which is `[]` by default,
   and only when two runs overlap.
 - **Effort**: Small-Medium — one constructor (three separate changes: the
-  claim, the narrowed failure handler, the `EADDRINUSE` fallback), two helpers,
-  seven tests.
+  claim, the narrowed failure handler, the two-attempt `EADDRINUSE` fallback),
+  `close()`'s inode-identity check, two helpers, nine tests. The upper end of
+  Small-Medium: the `close()`-drain interleaving test needs deterministic
+  thread coordination rather than sleeps, and is the most expensive item here.
 - **Risk**: Low-Medium — touches a live path inside every FSM loop, but the
   single-producer case is unchanged by construction and is pinned by five
   existing tests. `EventBus.emit` isolates transport exceptions
@@ -473,19 +584,26 @@ _Added by `/ll:refine-issue` — 2026-08-26 — based on codebase analysis:_
       asserted by a test.
 - [ ] A producer exiting unlinks only the path it bound; a test covers the
       short-run-exits-while-long-run-continues case.
+- [ ] A producer exiting unlinks only a file that is still *the inode it bound*:
+      if the path was reclaimed by another producer while `close()` was draining
+      its client threads, the reclaimer's socket survives — asserted by a test
+      that deterministically interleaves a reclaim into A's close-drain window.
 - [ ] A stale socket file (both the regular-file and the bound-but-dead-owner
       cases) is still reclaimed automatically, with no manual cleanup.
 - [ ] With a single producer, the bound path is exactly the configured path;
       `test_socket_registered_by_name`, `test_socket_uses_socket_path_from_config`,
       `test_socket_and_jsonl_both_registered`, `test_init_unlinks_stale_socket_file`,
       and `test_close_unlinks_socket_file` pass unmodified.
-- [ ] Probing a live producer leaves its observable state unchanged: no net
-      growth of its client list, no `max_clients` consumption once the probe
-      returns, and no events missed by its already-attached consumers —
-      asserted by a test.
+- [ ] Probing a live producer leaves no residue in its client pool once the
+      probe returns: no net growth of its client list, no slot still held, and
+      no events missed by its already-attached consumers — asserted by a test.
+      (A `client_rejections` increment when probing a *saturated* producer, and
+      a one-accept-wide slot occupancy during the probe itself, are accepted
+      effects and explicitly not covered by this criterion.)
 - [ ] A `bind()` that fails with `EADDRINUSE` on the configured path falls back
-      to the pid-suffixed path instead of propagating out of the constructor —
-      asserted by a test.
+      to the pid-suffixed path instead of propagating out of the constructor,
+      via a bounded two-attempt loop in the constructor (never in
+      `_claim_socket_path`, which does not bind) — asserted by a test.
 - [ ] A failed `bind()` never unlinks the path: the constructor's failure
       handler only removes a file it successfully bound — asserted by a test
       that forces the bind-failure path against a live out-of-band socket.
@@ -494,8 +612,9 @@ _Added by `/ll:refine-issue` — 2026-08-26 — based on codebase analysis:_
 - [ ] Claiming a suffixed path is logged at INFO naming both paths.
 - [ ] The multi-producer path shape is documented in
       `docs/reference/CONFIGURATION.md` alongside the `nc -U` note, including
-      that orphaned `events-<pid>.sock` files are not swept and that a consumer
-      enumerating the directory must tolerate dead endpoints.
+      the `{stem}-{pid}{suffix}` sibling naming contract, that orphaned
+      `events-<pid>.sock` files are not swept, and that a consumer enumerating
+      the directory must tolerate dead endpoints.
 
 ## Status
 
@@ -503,6 +622,7 @@ _Added by `/ll:refine-issue` — 2026-08-26 — based on codebase analysis:_
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-26T17:26:24 - `7e9b1604-00c9-4e37-8a90-6f2ad32b27f1.jsonl`
 - `/ll:confidence-check` - 2026-08-26T15:21:06 - `517f6995-71e2-43fd-9e62-23da16cd2b72.jsonl`
 - `/ll:refine-issue` - 2026-08-26T15:07:47 - `48865e33-f926-4071-bfdf-2723c61ab53b.jsonl`
 - `/ll:confidence-check` - 2026-08-26T15:03:51 - `48865e33-f926-4071-bfdf-2723c61ab53b.jsonl`
