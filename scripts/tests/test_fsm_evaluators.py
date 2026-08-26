@@ -1561,6 +1561,7 @@ class TestEvaluateDispatcherLLM:
         assert result.verdict == "yes"
         assert result.details["confident"] is True
 
+    @pytest.mark.conformance
     def test_dispatch_llm_structured_uses_default_model_when_none_passed(self, mock_cli) -> None:
         """ENH-2713: evaluate() without a model= kwarg falls back to DEFAULT_LLM_MODEL
         (pre-existing behavior — evaluate_llm_structured's own default)."""
@@ -1575,6 +1576,7 @@ class TestEvaluateDispatcherLLM:
         model_arg = call_args[call_args.index("--model") + 1]
         assert model_arg == DEFAULT_LLM_MODEL
 
+    @pytest.mark.conformance
     def test_dispatch_llm_structured_threads_model_kwarg(self, mock_cli) -> None:
         """ENH-2713: evaluate()'s model= kwarg reaches evaluate_llm_structured's
         --model CLI flag for the explicit llm_structured evaluate branch."""
@@ -1607,7 +1609,6 @@ class TestEvaluateDispatcherLLM:
         assert result.verdict == "yes_uncertain"
         assert result.details["confident"] is False
 
-    @pytest.mark.conformance
     def test_dispatch_exit_code_abstain_on_exit_3(self) -> None:
         """exit_code dispatch honors abstain_on_exit_3 (ENH-3224)."""
         config = EvaluateConfig(type="exit_code", abstain_on_exit_3=True)
@@ -1616,7 +1617,6 @@ class TestEvaluateDispatcherLLM:
 
         assert result.verdict == "cannot_judge"
 
-    @pytest.mark.conformance
     def test_dispatch_exit_code_without_abstain_flag(self) -> None:
         """exit_code dispatch keeps exit 3 as error when the flag is unset."""
         config = EvaluateConfig(type="exit_code")
@@ -1648,6 +1648,7 @@ class TestEvaluateDispatcherLLM:
 
     # --- evidence coercion (ENH-2342) ---
 
+    @pytest.mark.conformance
     def test_empty_evidence_coerces_to_no(self, mock_cli) -> None:
         """Absent evidence coerces verdict to 'no' for default schema."""
         mock_run, mock_result = mock_cli
@@ -1664,6 +1665,7 @@ class TestEvaluateDispatcherLLM:
         assert result.verdict == "no"
         assert result.details["evidence_coerced"] is True
 
+    @pytest.mark.conformance
     def test_populated_evidence_passes_through(self, mock_cli) -> None:
         """Non-empty evidence lets verdict pass through unchanged."""
         mock_run, mock_result = mock_cli
@@ -1674,6 +1676,7 @@ class TestEvaluateDispatcherLLM:
         assert result.verdict == "yes"
         assert result.details["evidence_coerced"] is False
 
+    @pytest.mark.conformance
     def test_evidence_coercion_logged_in_details(self, mock_cli) -> None:
         """Evidence value and coerced flag are always in details for default schema."""
         mock_run, mock_result = mock_cli
@@ -1684,6 +1687,7 @@ class TestEvaluateDispatcherLLM:
         assert "evidence" in result.details
         assert "evidence_coerced" in result.details
 
+    @pytest.mark.conformance
     def test_custom_schema_not_coerced(self, mock_cli) -> None:
         """Custom schema bypasses evidence coercion — caller controls the contract."""
         mock_run, mock_result = mock_cli
@@ -2667,7 +2671,6 @@ class TestContractEvaluator:
         assert "producer_pattern matched nothing" in result.details["pair_results"][0]["error"]
         mock_run.assert_not_called()
 
-    @pytest.mark.conformance
     def test_no_pairs_config_returns_error(self) -> None:
         """Contract evaluator with no pairs returns error immediately."""
         config = EvaluateConfig(type="contract")
@@ -2707,6 +2710,7 @@ class TestContractEvaluator:
         # The prompt was passed to the CLI binary — just verify CLI was called
         assert mock_run.called
 
+    @pytest.mark.conformance
     def test_cli_not_found_returns_error(self, tmp_path) -> None:
         """Returns error immediately when host CLI is not installed."""
         producer = tmp_path / "api.ts"
