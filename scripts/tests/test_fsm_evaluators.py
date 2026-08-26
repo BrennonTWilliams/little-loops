@@ -866,7 +866,6 @@ class TestEvaluateDispatcher:
         assert '"classify"' not in src.split("_EXIT_CODE_AWARE_EVALUATORS")[1].split("}")[0]
 
 
-@pytest.mark.conformance
 class TestLLMStructuredEvaluator:
     """Tests for llm_structured evaluator (Tier 2) via Claude CLI."""
 
@@ -898,6 +897,7 @@ class TestLLMStructuredEvaluator:
             mock_run.return_value = mock_result
             yield mock_run, mock_result
 
+    @pytest.mark.conformance
     def test_cli_not_found(self) -> None:
         """Returns error when host CLI not installed."""
         with patch(
@@ -909,6 +909,7 @@ class TestLLMStructuredEvaluator:
         assert result.details.get("missing_dependency") is True
         assert "CLI not found" in result.details["error"]
 
+    @pytest.mark.conformance
     def test_success_verdict(self, mock_cli) -> None:
         """LLM returns success verdict."""
         mock_run, mock_result = mock_cli
@@ -921,6 +922,7 @@ class TestLLMStructuredEvaluator:
         assert result.details["confident"] is True
         assert result.details["reason"] == "Action completed successfully"
 
+    @pytest.mark.conformance
     def test_env_carries_only_the_two_build_blocking_json_keys(self, mock_cli) -> None:
         """ENH-3184 AC3: this spawn newly receives LL_NON_INTERACTIVE and
         DANGEROUSLY_SKIP_PERMISSIONS (build_blocking_json()'s fixed literal),
@@ -938,6 +940,7 @@ class TestLLMStructuredEvaluator:
         # merge leaves whatever (if anything) the parent process inherited.
         assert env.get("LL_AUTOMATION") == os.environ.get("LL_AUTOMATION")
 
+    @pytest.mark.conformance
     def test_json_schema_present_when_host_supports_structured_output(self, mock_cli) -> None:
         """ENH-2627: the flag is appended for a structured-output-capable host.
 
@@ -984,6 +987,7 @@ class TestLLMStructuredEvaluator:
         assert "--no-session-persistence" not in call_args
         assert result.verdict == "yes"
 
+    @pytest.mark.conformance
     def test_failure_verdict(self, mock_cli) -> None:
         """LLM returns failure verdict."""
         mock_run, mock_result = mock_cli
@@ -994,6 +998,7 @@ class TestLLMStructuredEvaluator:
         assert result.verdict == "no"
         assert result.details["confident"] is True
 
+    @pytest.mark.conformance
     def test_blocked_verdict(self, mock_cli) -> None:
         """LLM returns blocked verdict."""
         mock_run, mock_result = mock_cli
@@ -1003,6 +1008,7 @@ class TestLLMStructuredEvaluator:
 
         assert result.verdict == "blocked"
 
+    @pytest.mark.conformance
     def test_partial_verdict(self, mock_cli) -> None:
         """LLM returns partial verdict."""
         mock_run, mock_result = mock_cli
@@ -1012,6 +1018,7 @@ class TestLLMStructuredEvaluator:
 
         assert result.verdict == "partial"
 
+    @pytest.mark.conformance
     def test_low_confidence_without_suffix(self, mock_cli) -> None:
         """Low confidence without uncertain_suffix keeps original verdict."""
         mock_run, mock_result = mock_cli
@@ -1022,6 +1029,7 @@ class TestLLMStructuredEvaluator:
         assert result.verdict == "yes"
         assert result.details["confident"] is False
 
+    @pytest.mark.conformance
     def test_low_confidence_with_suffix(self, mock_cli) -> None:
         """Low confidence with uncertain_suffix appends _uncertain."""
         mock_run, mock_result = mock_cli
@@ -1032,6 +1040,7 @@ class TestLLMStructuredEvaluator:
         assert result.verdict == "yes_uncertain"
         assert result.details["confident"] is False
 
+    @pytest.mark.conformance
     def test_custom_schema(self, mock_cli) -> None:
         """Custom schema with non-standard verdicts."""
         custom_schema = {
@@ -1062,6 +1071,7 @@ class TestLLMStructuredEvaluator:
         schema_idx = call_args.index("--json-schema")
         assert call_args[schema_idx + 1] == json.dumps(custom_schema)
 
+    @pytest.mark.conformance
     def test_custom_prompt(self, mock_cli) -> None:
         """Custom prompt is passed to CLI."""
         mock_run, mock_result = mock_cli
@@ -1075,6 +1085,7 @@ class TestLLMStructuredEvaluator:
         prompt_idx = call_args.index("-p")
         assert custom_prompt in call_args[prompt_idx + 1]
 
+    @pytest.mark.conformance
     def test_cli_timeout_handling(self) -> None:
         """Timeout returns error verdict."""
         with patch(
@@ -1086,6 +1097,7 @@ class TestLLMStructuredEvaluator:
         assert result.verdict == "error"
         assert result.details.get("timeout") is True
 
+    @pytest.mark.conformance
     def test_cli_error_handling(self, mock_cli) -> None:
         """Non-zero exit code returns error verdict."""
         mock_run, mock_result = mock_cli
@@ -1097,6 +1109,7 @@ class TestLLMStructuredEvaluator:
         assert result.verdict == "error"
         assert result.details.get("api_error") is True
 
+    @pytest.mark.conformance
     def test_empty_stdout(self, mock_cli) -> None:
         """Empty stdout from CLI returns error with diagnostic message."""
         mock_run, mock_result = mock_cli
@@ -1109,6 +1122,7 @@ class TestLLMStructuredEvaluator:
         assert result.details.get("empty_output") is True
         assert "empty output" in result.details["error"]
 
+    @pytest.mark.conformance
     def test_empty_stdout_includes_stderr(self, mock_cli) -> None:
         """Empty stdout error includes stderr content when available."""
         mock_run, mock_result = mock_cli
@@ -1120,6 +1134,7 @@ class TestLLMStructuredEvaluator:
         assert result.verdict == "error"
         assert "rate limit exceeded" in result.details["error"]
 
+    @pytest.mark.conformance
     def test_is_error_in_envelope(self, mock_cli) -> None:
         """is_error=true in envelope returns error even with exit code 0."""
         mock_run, mock_result = mock_cli
@@ -1130,6 +1145,7 @@ class TestLLMStructuredEvaluator:
         assert result.verdict == "error"
         assert result.details.get("api_error") is True
 
+    @pytest.mark.conformance
     def test_structured_output_retry_exhaustion(self, mock_cli) -> None:
         """CLI reports error_max_structured_output_retries when schema validation fails after retries."""
         mock_run, mock_result = mock_cli
@@ -1145,6 +1161,7 @@ class TestLLMStructuredEvaluator:
         assert "structured output" in result.details["error"].lower()
         assert result.details.get("api_error") is True
 
+    @pytest.mark.conformance
     def test_result_as_dict_in_envelope(self, mock_cli) -> None:
         """result field as dict (not string) is handled correctly."""
         mock_run, mock_result = mock_cli
@@ -1164,6 +1181,7 @@ class TestLLMStructuredEvaluator:
         assert result.verdict == "yes"
         assert result.details["confidence"] == 0.9
 
+    @pytest.mark.conformance
     def test_empty_result_field_includes_raw_preview(self, mock_cli) -> None:
         """Empty result field returns error with raw_preview for diagnosis."""
         mock_run, mock_result = mock_cli
@@ -1175,6 +1193,7 @@ class TestLLMStructuredEvaluator:
         assert "raw_preview" in result.details
         assert "Empty result field" in result.details["error"]
 
+    @pytest.mark.conformance
     def test_empty_result_with_tool_turns_regression(self, mock_cli) -> None:
         """Regression: --json-schema multi-turn response has empty result field."""
         mock_run, mock_result = mock_cli
@@ -1198,6 +1217,7 @@ class TestLLMStructuredEvaluator:
         assert "Empty result field" in result.details["error"]
         assert "raw_preview" in result.details
 
+    @pytest.mark.conformance
     def test_invalid_json_response(self, mock_cli) -> None:
         """Unparseable JSON from CLI returns error with raw_preview."""
         mock_run, mock_result = mock_cli
@@ -1209,6 +1229,7 @@ class TestLLMStructuredEvaluator:
         assert "Failed to parse" in result.details["error"]
         assert "raw_preview" in result.details
 
+    @pytest.mark.conformance
     def test_output_truncation(self, mock_cli) -> None:
         """Long output is truncated to last 4000 chars."""
         mock_run, mock_result = mock_cli
@@ -1224,6 +1245,7 @@ class TestLLMStructuredEvaluator:
         # Should have prompt + truncated output (last 4000 chars) + XML tags
         assert len(prompt_content) < 5000
 
+    @pytest.mark.conformance
     def test_raw_response_in_details(self, mock_cli) -> None:
         """Raw LLM response is included in details."""
         mock_run, mock_result = mock_cli
@@ -1235,6 +1257,7 @@ class TestLLMStructuredEvaluator:
         assert result.details["raw"]["verdict"] == "yes"
         assert result.details["raw"]["confidence"] == 0.9
 
+    @pytest.mark.conformance
     def test_default_values_used(self, mock_cli) -> None:
         """Default prompt and schema used when not specified."""
         mock_run, mock_result = mock_cli
@@ -1251,6 +1274,7 @@ class TestLLMStructuredEvaluator:
         schema_idx = call_args.index("--json-schema")
         assert call_args[schema_idx + 1] == json.dumps(DEFAULT_LLM_SCHEMA)
 
+    @pytest.mark.conformance
     def test_envelope_as_direct_result(self, mock_cli) -> None:
         """Envelope itself is the structured result when result field is absent."""
         mock_run, mock_result = mock_cli
@@ -1270,6 +1294,7 @@ class TestLLMStructuredEvaluator:
         assert result.details["confidence"] == 0.9
         assert result.details["reason"] == "All checks passed"
 
+    @pytest.mark.conformance
     def test_jsonl_output_uses_last_line(self, mock_cli) -> None:
         """JSONL output (multiple JSON lines) uses the last non-empty line."""
         mock_run, mock_result = mock_cli
