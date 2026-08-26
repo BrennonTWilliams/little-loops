@@ -94,7 +94,9 @@ whenever `_report_unlifted_tokens` finds matching literals would stamp
 `theme_css` vars into a body that still carries the literals — unreferenced
 vars *and* unlifted literals, not token lifting. Real lifting requires
 locating each literal's span in the template body and splicing in a
-`var(--...)` reference (or an `[[= ll.theme_css =]]`-style stamp point),
+`var(--...)` reference (or an
+<!-- ll-evidence-ok: illustrative example syntax, not a quote from ENH-3035 -->
+`[[= ll.theme_css =]]`-style stamp point),
 which is new feature work, not the extraction ENH-3035 scoped.
 
 ENH-3035 was right that stamping `theme_css` *alone* is dead weight. This

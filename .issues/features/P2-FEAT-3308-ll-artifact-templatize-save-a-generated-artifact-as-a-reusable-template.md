@@ -49,7 +49,9 @@ re-running the generating FSM loop.
 `templatize` exists only as a ~6-line paragraph in FEAT-3036's phased plan,
 described as "the gnarliest part, deliberately last," with the parent epic
 stating that Phases 1–3 "deliver the drift-killing value even if Phase 4 slips."
-No code exists: `grep -rn templatize scripts/` returns nothing.
+No code exists at the time of filing:
+<!-- ll-evidence-ok: historical Current Behavior snapshot predating this issue's own implementation; grep now returns matches from the completed work -->
+`grep -rn templatize scripts/` returns nothing.
 
 Consequently the only way to obtain a template today is to hand-author one —
 manifest, schema and templated body carved by hand out of a ~100KB self-contained
