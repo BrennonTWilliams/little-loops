@@ -1367,7 +1367,7 @@ class TestRawEventsPayloadCompression:
         jsonl = tmp_path / "s.jsonl"
         jsonl.write_text(self._user_line("hello") + "\n", encoding="utf-8")
         db = tmp_path / "history.db"
-        backfill_raw_events(db, jsonl_files=[jsonl], since_ts=0.0)
+        backfill_raw_events(db, jsonl_files=[jsonl], since_ts=0.0, host="test")
         conn = connect(db)
         try:
             row = conn.execute(
@@ -1382,7 +1382,7 @@ class TestRawEventsPayloadCompression:
         jsonl = tmp_path / "s.jsonl"
         jsonl.write_text(self._user_line("compressed") + "\n", encoding="utf-8")
         db = tmp_path / "history.db"
-        backfill_raw_events(db, jsonl_files=[jsonl], since_ts=0.0)  # writes a BLOB row
+        backfill_raw_events(db, jsonl_files=[jsonl], since_ts=0.0, host="test")  # writes a BLOB row
         conn = connect(db)
         legacy = self._user_line("legacy", ts="2026-05-22T00:00:01Z")
         conn.execute(
@@ -1431,7 +1431,7 @@ class TestRawEventsPayloadCompression:
         jsonl = tmp_path / "s.jsonl"
         jsonl.write_text(self._user_line("hello") + "\n", encoding="utf-8")
         db = tmp_path / "history.db"
-        backfill_raw_events(db, jsonl_files=[jsonl], since_ts=0.0)  # already compressed
+        backfill_raw_events(db, jsonl_files=[jsonl], since_ts=0.0, host="test")  # already compressed
         result = recompress_raw_events(db)
         assert result["recompressed"] == 0  # nothing legacy left to convert
 
@@ -1453,7 +1453,7 @@ class TestRebuild:
             + "\n",
             encoding="utf-8",
         )
-        backfill_raw_events(db, jsonl_files=[jsonl], since_ts=0.0)
+        backfill_raw_events(db, jsonl_files=[jsonl], since_ts=0.0, host="test")
 
     def test_rebuild_materializes_from_raw_events_without_original_files(
         self, tmp_path: Path
@@ -1473,7 +1473,7 @@ class TestRebuild:
             + "\n",
             encoding="utf-8",
         )
-        backfill_raw_events(db, jsonl_files=[jsonl], since_ts=0.0)
+        backfill_raw_events(db, jsonl_files=[jsonl], since_ts=0.0, host="test")
         jsonl.unlink()  # source file gone — rebuild must not need it
 
         counts = rebuild(db)
@@ -1551,7 +1551,7 @@ class TestBackfillUsageEvents:
     def _seed(self, tmp_path: Path, db: Path, records: list[str]) -> None:
         jsonl = tmp_path / "s.jsonl"
         jsonl.write_text("\n".join(records) + "\n", encoding="utf-8")
-        backfill_raw_events(db, jsonl_files=[jsonl], since_ts=0.0)
+        backfill_raw_events(db, jsonl_files=[jsonl], since_ts=0.0, host="test")
 
     def test_roundtrip_known_model_computes_cost(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
@@ -1946,7 +1946,7 @@ class TestFts5LeakFixed:
         ]
         jsonl.write_text("\n".join(json.dumps(r) for r in records) + "\n", encoding="utf-8")
 
-        backfill_raw_events(db, jsonl_files=[jsonl], since_ts=0.0)
+        backfill_raw_events(db, jsonl_files=[jsonl], since_ts=0.0, host="test")
         rebuild(db)
 
         conn = connect(db)
