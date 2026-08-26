@@ -109,10 +109,19 @@ design must account for:
   `on_error` to a terminal state. BUG-3325's original "scope evidence" probe was
   unsound for exactly this reason and had to be retracted. **The guard must
   record hits out-of-band and fail the session.**
-- **Skipped tests hide it further.** The offending class is `no_parallel`, so it
-  never runs under default addopts at all (`10 skipped in 1.26s`). A guard that
-  only reports on tests that ran in the default configuration would have caught
-  none of these.
+- **Wall-clock was the only symptom, in the *default* configuration.** The
+  offending class `TestRateLimitCircuitIntegration`
+  (`test_fsm_executor.py:7842`) runs under the default `-n logical` addopts and
+  passed there — so this was not hidden behind a skip; it was hidden behind
+  green. (**Corrected 2026-08-26**: earlier revisions claimed the class was
+  `no_parallel` and "never runs under default addopts at all
+  (`10 skipped in 1.26s`)". Verified false by execution — the class carries no
+  marker, and `python -m pytest
+  scripts/tests/test_fsm_executor.py::TestRateLimitCircuitIntegration` reports
+  **`10 passed in 1.76s`**. The only `no_parallel` markers in the suite are
+  `test_fsm_signal_integration.py:42` and `test_worktree_utils.py:1228`. The
+  collector-plus-teardown design does not rest on this premise — it rests on the
+  `_evaluate` swallow above — so nothing else in this issue changes.)
 
 ## Proposed Solution
 
@@ -172,7 +181,15 @@ plain function to that attribute breaks all of it.
 Implement as `class _GuardedPopen(subprocess.Popen)` overriding `__init__` to
 record/raise *before* `super().__init__(...)`. Verified by execution that a
 subclass preserves `spec=` mocking, `[str]` subscripting, `unittest.mock.patch`
-shadow-and-restore, and the `run` → `Popen` delegation path.
+shadow-and-restore (the `__exit__` restores to `_GuardedPopen`, not to the real
+`Popen`), and the `run` → `Popen` delegation path.
+
+**Raising before `super().__init__()` is safe — do not add a defensive
+`self._child_created = False`.** `subprocess.Popen._child_created` is a *class*
+attribute (`False`), so `Popen.__del__` running against the partially
+initialized instance is well defined and emits no `Exception ignored in:
+<function Popen.__del__>` noise. Verified by execution (2026-08-26). Stated
+because the obvious defensive assignment looks necessary and is not.
 
 **Basename matching is intentionally coarse.** The guard compares only
 `os.path.basename(argv[0])`, and three of the eight names — `pi`, `omp`, `qwen` —
@@ -202,6 +219,18 @@ spawn is not caught. This is acceptable, not an oversight: verified there is no
 `loops/mechanize-skills.yaml:534`, a loop YAML action, not a Python call path.
 State the gap in the guard's docstring so it is not rediscovered as a bug.
 
+**The `run`/`Popen` pair is spawn-API-complete — this is what makes two patches
+sufficient, and it was previously unstated.** Verified by grep over
+`scripts/little_loops/` (2026-08-26): **zero** occurrences of
+`asyncio.create_subprocess_exec`, `asyncio.create_subprocess_shell`,
+`os.system`, `os.exec*`, `os.spawn*`, or `pty.spawn`. Every process the package
+creates goes through the `subprocess` module. Note especially that
+`asyncio.create_subprocess_*` does **not** route through `subprocess.Popen` — had
+production used it, the guard would have a silent blind spot. Record this next
+to the `shell=True` gap: it is the standing precondition for the guard's
+completeness, so a future change introducing an asyncio or `os.exec*` spawn path
+must extend the guard.
+
 **Decided: patch exactly `subprocess.run` and `subprocess.Popen`, with `run`
 recording first. Do not add more patches, and do not remove `run` as a
 "redundant" one.**
@@ -210,14 +239,23 @@ recording first. Do not add more patches, and do not remove `run` as a
 `getoutput` / `getstatusoutput` reach the module-global `Popen`. Both delegation
 routes have live production callers — `subprocess.call` at
 `fsm/route_table.py:645` and `subprocess.check_output` at
-`fsm/concurrency.py:371` — so the pair demonstrably covers the whole surface and
-any third patch would double-record a single spawn.
+`fsm/concurrency.py:371` — so any third patch would double-record a single spawn.
 
-`run` *is* redundant with `Popen` (CPython's `run` builds its child via the
-module-global `Popen`), and that is deliberate: the `run` wrapper records and
-raises before reaching `Popen`, so a host spawn is recorded exactly once, and the
-pair buys clearer attribution at the `run` boundary. Stated here so an
-implementer does not "fix" a phantom double-count or delete the `run` patch.
+**`_GuardedPopen` alone is sufficient for coverage; the `run` patch buys
+attribution, not reach.** Verified by execution (2026-08-26): with *only* the
+`Popen` subclass installed, `subprocess.run(["claude", "-p", "hi"])` raises the
+guard's exception — CPython's `run` builds its child through the module-global
+`Popen`, which the patch has replaced. Earlier revisions justified the pair as
+"demonstrably covers the whole surface"; that overstates the `run` patch's role,
+since `Popen` alone already covers every delegation route listed above.
+
+Keep the `run` patch anyway, on its actual merit: it records and raises at the
+`run` boundary — before the call descends into `Popen` — so the traceback names
+the helper the test actually called (`run_blocking_json`'s `subprocess.run` site)
+rather than a `Popen` frame two levels down. Because it raises first, a host spawn
+is still recorded exactly once. Stated so an implementer neither "fixes" a phantom
+double-count nor deletes the `run` patch believing coverage depends on it — the
+correct reason to keep it is diagnostics.
 
 **Host binary basenames — all eight are derivable with no production change.**
 `describe_capabilities()` is wired on all eight runners and never raises;
@@ -283,13 +321,46 @@ a smell, not merely a gap.
 `yield` and calls `pytest.fail()` in that test's teardown.** It:
 
 - works identically serially and under xdist, because it produces an ordinary
-  test-failure report rather than mutating session state;
-- attributes to the exact offending test with no `PYTEST_CURRENT_TEST` keying
-  and no collector-key bookkeeping;
+  report rather than mutating session state. **Verified by execution
+  (2026-08-26)** on a standalone spike of this exact design: exit status `1`
+  under both `-n 0` and `-n 2 --dist loadfile`;
+- attributes to the exact offending test structurally — via the report cursor,
+  not by matching collector keys against the running test;
 - still defeats the `_evaluate` swallow — the raise is eaten inside the test
   body, but the collector entry survives to teardown;
-- removes the `pytest_sessionfinish` hook, the new-pattern session-fail, and the
-  `test_conftest_cap.py` hook-unit-test wiring item entirely.
+- removes the new-pattern session-fail entirely. (It does **not** remove the
+  `pytest_sessionfinish` hook — that survives, demoted to print-only, and is
+  still required; see § Residual gap below. Earlier revisions of this bullet said
+  otherwise and contradicted the rest of the issue.)
+
+**It reports as an ERROR, not a FAILURE, and the offending test still prints as
+passed.** This is how pytest classifies an exception raised in a fixture's
+post-`yield` teardown, and it is worth designing the message around rather than
+discovering during implementation. Observed on the spike (2026-08-26):
+
+```
+6 passed, 1 error in 0.12s
+ERROR spike_test.py::test_run_delegates_and_guard_fires - Failed: live spawn: ...
+```
+
+The run does fail (exit `1`), which is what matters for enforcement. But the
+contributor's first read of the summary line shows their test green, with a
+separately-listed teardown error beside it. **The failure message must therefore
+lead with the diagnosis, not the mechanism** — open with something to the effect
+of "this test spawned the real host CLI (`claude`) — mock the spawn", then the
+binary, the test id, and how to mock it. A message that opens with collector or
+cursor mechanics will read as test-infra flakiness against a green test line.
+
+**Where the `test_id` in the collector tuple comes from.** The wrapper reads
+`os.environ["PYTEST_CURRENT_TEST"]` (falling back to a placeholder when unset —
+collection time, higher-scope fixtures, background threads). This is needed for
+the dedupe key and for the `pytest_sessionfinish` summary, both of which must
+name a test. It is **not** how attribution works: the teardown fixture attributes
+by cursor position, so a hit recorded with a stale or placeholder `test_id` is
+still reported exactly once, by the next test to finish. Earlier revisions
+described the fixture as needing "no `PYTEST_CURRENT_TEST` keying", which is true
+of *attribution* and false of the *recorded tuple*; both facts are stated here
+because the bare claim reads as "don't record a test id."
 
 **Advance a monotonic report cursor; do not test the collector for truthiness,
 and do not snapshot its length before `yield`.** A naive
@@ -435,9 +506,31 @@ patching the module attributes takes effect.
       deleted before merge (which would leave zero durable regression coverage):
       - call the wrapper directly with a fake `argv` whose `argv[0]` is a host
         binary, and assert it **both** records into the collector **and** raises;
-      - pre-seed the collector and assert the teardown fixture fails the test.
-        This is the `_evaluate`-swallow property expressed durably — a recorded
-        hit still fails even when the raise was eaten inside the test body.
+      - drive `_drain_new_hits()` directly against a pre-seeded collector and
+        assert it returns a failure message naming that hit, then returns `None`
+        on the next call. This is the `_evaluate`-swallow property expressed
+        durably — a recorded hit still surfaces even when the raise was eaten
+        inside the test body.
+
+      **Do not write this second test as "pre-seed the collector and assert the
+      teardown fixture fails the test."** That AC appeared in earlier revisions
+      and is not implementable, for two independent reasons:
+
+      - **A test cannot assert that its own teardown fails.** By the time
+        `_fail_on_live_host_cli`'s post-`yield` body runs, the test body has
+        already completed; there is no point at which the test can observe the
+        outcome and assert on it.
+      - **`test_conftest_cap.py` holds a second, unrelated collector.** That file
+        loads `conftest.py` via `importlib.util.spec_from_file_location` /
+        `exec_module` (`:28-32`), so `conftest_under_test._hits` and
+        `_reported_upto` are *different objects* from the ones the live
+        plugin-loaded fixture reads. Seeding one has no effect on the other.
+
+      Hence the extracted helper: put the slice-and-advance logic in
+      `_drain_new_hits()` and unit-test that pure function. It is the entirety of
+      the teardown fixture's logic, it is testable in either module instance, and
+      the fixture itself reduces to `msg = _drain_new_hits(); if msg:
+      pytest.fail(msg)` — small enough to verify by inspection.
 - [ ] The `subprocess.Popen` replacement is a **subclass** of `subprocess.Popen`,
       not a function. Unit-tested via the two properties that break otherwise:
       `MagicMock(spec=subprocess.Popen).poll` resolves (the shape
@@ -459,9 +552,32 @@ patching the module attributes takes effect.
       **stated accepted gap**, not a bug — no production code uses `shell=True`
       (verified: the only repo occurrence is `loops/mechanize-skills.yaml:534`).
 - [ ] Two consecutive tests where only the first spawns a host CLI produce
-      **exactly one** failure — the teardown fixture advances a monotonic report
+      **exactly one** report — the teardown fixture advances a monotonic report
       cursor rather than testing the collector for truthiness, so a single hit
       does not cascade across the worker.
+- [ ] The report is an **ERROR at teardown**, not a FAILURE, and the offending
+      test itself still prints as passed (`N passed, 1 error`) — this is pytest's
+      classification for a post-`yield` fixture raise and is expected, not a
+      defect. The run's exit status is nonzero. Correspondingly, the failure
+      message **leads with the diagnosis** ("this test spawned the real host CLI
+      `<binary>` — mock the spawn"), not with collector/cursor mechanics, since
+      the summary line beside it reads green.
+- [ ] The collector tuple's `test_id` comes from `PYTEST_CURRENT_TEST` with a
+      placeholder fallback when unset, and the guard behaves correctly when it is
+      the placeholder — attribution is by cursor position, so a
+      placeholder-`test_id` hit is still reported exactly once by the next test
+      to finish.
+- [ ] No production spawn path bypasses the `run`/`Popen` pair: a test (or a
+      documented grep in the guard's docstring) asserts `scripts/little_loops/`
+      contains no `asyncio.create_subprocess_exec` / `create_subprocess_shell`,
+      `os.system`, `os.exec*`, `os.spawn*`, or `pty.spawn`. Verified zero as of
+      2026-08-26; `asyncio.create_subprocess_*` in particular does **not** route
+      through `subprocess.Popen` and would be a silent blind spot.
+- [ ] `_GuardedPopen` raises before `super().__init__(...)` **without** a
+      defensive `self._child_created = False` — `_child_created` is a class
+      attribute, so `Popen.__del__` on the partially initialized instance is
+      well-defined and emits no "Exception ignored" noise (verified by
+      execution).
 - [ ] A hit appended **outside** any test's function-fixture window is still
       reported exactly once, attributed to the next test to finish. Unit test:
       append to the collector directly (simulating a higher-scope fixture or
@@ -758,11 +874,26 @@ the implementation:_
   unresolvable, with a unit test per form. The process-global patch means the
   wrapper is on the path of every subprocess call in the suite, so a `TypeError`
   from the guard itself would break unrelated tests.
-- Advance a monotonic `_reported_upto` cursor in the teardown fixture — not a
-  truthiness check (cascades) and not a pre-`yield` `len()` snapshot (silently
-  drops hits from higher-scope fixture setup, collection time, and background
-  threads). Take the slice and advance the cursor under the collector's lock,
-  and dedupe the reported slice by `(test_id, binary)`.
+- Advance a monotonic `_reported_upto` cursor — not a truthiness check
+  (cascades) and not a pre-`yield` `len()` snapshot (silently drops hits from
+  higher-scope fixture setup, collection time, and background threads). Take the
+  slice and advance the cursor under the collector's lock, and dedupe the
+  reported slice by `(test_id, binary)`.
+- Put that slice-and-advance in a module-level `_drain_new_hits() -> str | None`
+  helper rather than inline in the fixture, so it is unit-testable — a test
+  cannot assert that its own teardown fails, and `test_conftest_cap.py`'s
+  standalone-loaded conftest has a separate collector instance.
+- Lead the failure message with the diagnosis ("this test spawned the real host
+  CLI `<binary>`"), because it surfaces as an ERROR-at-teardown next to a test
+  line that still reads `passed`.
+- Read `test_id` from `PYTEST_CURRENT_TEST` with a placeholder fallback (needed
+  for the dedupe key and the summary; attribution is by cursor).
+- Do **not** add `self._child_created = False` to `_GuardedPopen` — it is a class
+  attribute and `Popen.__del__` is already safe on the partial instance.
+- Record in the guard's docstring that `subprocess.run`/`Popen` is the complete
+  spawn surface: no `asyncio.create_subprocess_*`, `os.system`, `os.exec*`,
+  `os.spawn*`, or `pty.spawn` in `scripts/little_loops/` (verified zero,
+  2026-08-26), and `asyncio.create_subprocess_*` would bypass the guard entirely.
 - Put the ladder fixture session-scoped in `conftest.py` (decided; file-local
   scope would not satisfy the AC). Verified safe: no test asserts the constants'
   defaults, and no other test file drives `_handle_rate_limit`.
@@ -793,24 +924,39 @@ _Added by `/ll:refine-issue` — 2026-08-26 — based on codebase analysis:_
   `(test_id, binary)` to a module-level collector on a match **under a lock**
   (the collector is written from FSM worker threads), then raise a dedicated
   exception whose message names the binary, the test, and how to mock the spawn.
+  `test_id` is read from `PYTEST_CURRENT_TEST` with a placeholder fallback; it
+  feeds the dedupe key and the summary, not attribution (the cursor does that).
 - `_GuardedPopen(subprocess.Popen)` — the `Popen` replacement is a **subclass**,
   overriding `__init__` to record/raise before `super().__init__(...)`. A plain
   function breaks `MagicMock(spec=subprocess.Popen)`
   (`test_subprocess_utils.py:63`, `test_worker_pool.py:2915`) and
   `subprocess.Popen[str]` subscripting (nine production sites). Verified by
   execution; see Proposed Solution Part 1.
+- `_drain_new_hits() -> str | None` — **module-level pure helper**, not a
+  fixture. Under the collector's lock, reads `collector[_reported_upto:]`;
+  returns `None` if empty, otherwise advances the module-level `_reported_upto`
+  cursor to `len(collector)` and returns a formatted failure message listing that
+  slice, deduped by `(test_id, binary)` with a count. Never a bare truthiness
+  check (cascades across the worker) and never a pre-`yield` `len()` snapshot
+  (silently drops hits from higher-scope fixtures, collection time, and
+  background threads). **Extracted as a function specifically so it is
+  unit-testable** — a test cannot assert that its own teardown fails, and
+  `test_conftest_cap.py`'s standalone-loaded conftest has its own unrelated
+  collector (see Acceptance Criteria bullet 1). The message leads with the
+  diagnosis, since the failure surfaces as a teardown ERROR beside a green test
+  line.
 - `_fail_on_live_host_cli()` — **function-scoped** autouse fixture in
-  `conftest.py`. In teardown, under the collector's lock, reads
-  `collector[_reported_upto:]`; if non-empty, advances the module-level
-  `_reported_upto` cursor to `len(collector)` and `pytest.fail()`s listing that
-  slice, deduped by `(test_id, binary)`. Never a bare truthiness check (cascades
-  across the worker) and never a pre-`yield` `len()` snapshot (silently drops
-  hits from higher-scope fixtures, collection time, and background threads).
-  This is the enforcement mechanism; it works under xdist where a
-  `pytest_sessionfinish` exit-status mutation does not.
-- `pytest_sessionfinish(session, exitstatus)` — **required, print-only.** Reads
-  `collector[_reported_upto:]` under the lock and, if non-empty, emits the
-  entries via **both** `terminalreporter.write_line` and `warnings.warn`. This is
+  `conftest.py`, reduced to `yield` then `msg = _drain_new_hits(); if msg:
+  pytest.fail(msg)`. This is the enforcement mechanism; it works under xdist
+  where a `pytest_sessionfinish` exit-status mutation does not (verified by
+  execution: exit `1` under both `-n 0` and `-n 2 --dist loadfile`). Note it
+  produces an ERROR-at-teardown report, not a FAILURE — see Proposed Solution
+  § Failing the run.
+- `pytest_sessionfinish(session, exitstatus)` — **required, print-only.** Calls
+  the same `_drain_new_hits()` helper (so the lock, the cursor advance, and the
+  dedupe are shared with the teardown fixture rather than reimplemented) and, if
+  it returns a message, emits it via **both** `terminalreporter.write_line` and
+  `warnings.warn`. This is
   what surfaces a hit that has no next test to attribute to (last test on the
   worker; session-/module-fixture teardown). Must not be load-bearing for the
   failure — it cannot fail the run under xdist.
@@ -899,10 +1045,13 @@ the real evaluator with `subprocess.run` mocked (fails at
 
 - Prove the guard with **permanent** unit tests, not a probe that is deleted
   before merge. Call the wrapper directly with a synthetic `argv` and assert it
-  records *and* raises; separately pre-seed the collector and assert the teardown
-  fixture fails. The second test is the `_evaluate`-swallow property in durable
-  form — a recorded hit fails even when the raise was eaten — and needs no live
-  FSM run.
+  records *and* raises; separately pre-seed the collector and call
+  `_drain_new_hits()` directly, asserting it returns a message naming the hit and
+  then `None`. The second test is the `_evaluate`-swallow property in durable
+  form — a recorded hit still surfaces even when the raise was eaten — and needs
+  no live FSM run. Do **not** try to assert that a real teardown fails: a test
+  cannot observe its own teardown, and `test_conftest_cap.py`'s standalone-loaded
+  conftest carries a separate collector instance.
 - Exercise all three spawn paths (blocking, streaming, detached), not just the
   blocking one, and assert the `--version` carve-out. Build each path's argv from
   `resolve_host().build_*()` and feed `[inv.binary, *inv.args]` to the patched
@@ -1006,6 +1155,27 @@ the corrected design.
   conformance stub.
 - **A delete-before-merge probe proving the guard fires.** Replaced by permanent
   unit tests; a deleted probe leaves zero durable regression coverage.
+- **"Pre-seed the collector and assert the teardown fixture fails the test."**
+  Not implementable: a test cannot observe its own teardown, and
+  `test_conftest_cap.py` loads `conftest.py` as a second module (`:28-32`) whose
+  collector is a different object from the live plugin's. Replaced by a
+  `_drain_new_hits()` helper unit-tested as a pure function.
+- **"The offending class is `no_parallel` / `10 skipped in 1.26s`."** False.
+  `TestRateLimitCircuitIntegration` (`test_fsm_executor.py:7842`) carries no
+  marker and reports `10 passed in 1.76s` under default addopts (verified by
+  execution). The suite's only `no_parallel` markers are
+  `test_fsm_signal_integration.py:42` and `test_worktree_utils.py:1228`. The
+  defect was hidden behind green, not behind a skip.
+- **"The `run`/`Popen` pair demonstrably covers the whole surface."** Overstated:
+  `_GuardedPopen` alone catches `subprocess.run` (CPython's `run` builds its
+  child via the module-global `Popen`), verified by execution. The `run` patch is
+  retained for attribution/diagnostics, not for reach.
+- **"The teardown fixture removes the `pytest_sessionfinish` hook entirely."**
+  False and self-contradictory — the hook survives as a required print-only
+  summary covering hits with no next test to attribute to.
+- **"The fixture attributes with no `PYTEST_CURRENT_TEST` keying."** True of
+  attribution (the cursor does that), false of the recorded tuple — `test_id`
+  comes from `PYTEST_CURRENT_TEST` and is needed for the dedupe key and summary.
 - **A five-class enumeration for the ladder fixture.** Replaced by one
   suite-wide fixture; no test asserts the constants' defaults.
 - **"Seven wired `build_version_check()` implementations."** Six.
