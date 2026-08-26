@@ -1,26 +1,28 @@
 #!/usr/bin/env python3
-"""BUG-3208 master-side hang watchdog.
+"""BUG-3208 master-side hang watchdog v4 -- heartbeat + snapshot signal generator.
 
-Detects pytest master process hang by monitoring pytest.log for new
-verbose-progress lines (`-v` PASSED/collecting markers). On no-progress,
-captures /proc/<pid>/stack + /proc/<pid>/fd/ + /proc/<pid>/wchan, then
-triggers faulthandler dump via SIGABRT at T+5min.
+Redesigned for the FULL-VM-FREEZE failure mode (per Cooper / QA, 2026-08-26).
+Prior versions targeted a "pytest-stuck-on-syscall" failure mode where the
+VM stays alive but pytest blocks. That assumption was wrong: the reaper
+(independent sleep+date subshell) dies at the same moment as the snapshotter,
+proving the freeze is system-wide. The watchdog itself is in the same VM.
 
-Two-snapshot protocol (T+2min, T+5min):
-  Identical stacks at both snapshots -> hard deadlock
-  Different stacks                 -> slow finalization, not dead
+Two contracts:
+  1. RED-RUN evidence: heartbeat writes to pytest-master-snapshot.log every
+     ~10s (poll_interval). Path E SNAPSHOTTER PATCHes the file content to
+     issue #11 at ~30s cadence. The gap between two successful PATCHes
+     marks the freeze window.
+  2. GREEN-RUN falsification: surviving to close with stable progress events
+     AND no snapshot fires = the wedge did not reproduce this run.
 
-Tool choice rationale:
-  /proc/<pid>/stack is preferred over py-spy because py-spy requires
-  perf_event_open or ptrace that GH-hosted runners don't always grant, and
-  silently fails empty when those are missing (no stderr, just empty dump
-  that looks like a clean capture). /proc/<pid>/stack needs only PROC_FS
-  access and yields a kernel-side stack enough to distinguish file-lock-
-  blocked / I/O-blocked / userland-spinning / Python-lock-deadlock.
-  faulthandler is engaged inside pytest's own Python interpreter via
-  SIGABRT -- Python's faulthandler registers SIGABRT by default since 3.3,
-  so sending SIGABRT triggers a Python-level traceback dump to stderr
-  before the process aborts. No external dep.
+Per-heartbeat line carries: alive_at, VmRSS, FD count, last_progress_at, wchan.
+
+Targeted /proc snapshots at T+2min and T+5min of no-progress: same as v3
+(stack + status + wchan + fd-listing + smaps_rollup + io).
+
+SIGABRT REMOVED: the watchdog is in the same VM that freezes; SIGABRT to
+pytest would only fire if the watchdog is alive, which means the VM is alive
+at T+7min -- but if the VM is alive, pytest is probably making progress.
 
 QA-flag: py-spy-silent-fail-on-perf_event_open
 """
@@ -122,8 +124,7 @@ def main():
     ap.add_argument("--out", required=True, help="snapshot output path")
     ap.add_argument("--snap1-at", type=int, default=120, help="first snapshot at N seconds no-progress")
     ap.add_argument("--snap2-at", type=int, default=300, help="second snapshot at N seconds no-progress")
-    ap.add_argument("--abrt-at", type=int, default=420, help="SIGABRT pytest at N seconds no-progress (forces faulthandler dump)")
-    ap.add_argument("--poll-interval", type=int, default=10)
+    ap.add_argument("--poll-interval", type=int, default=10, help="heartbeat interval in seconds (default 10s; Path E PATCHes every ~30s)")
     args = ap.parse_args()
 
     out_path = Path(args.out)
@@ -131,19 +132,22 @@ def main():
 
     out = open(out_path, "w", buffering=1)
     out.write("=== BUG-3208 master-watchdog started at " + time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()) + " ===\n")
-    out.write("   pid=" + str(args.pid) + " stdout=" + args.stdout + " snap1=" + str(args.snap1_at) + "s snap2=" + str(args.snap2_at) + "s abrt=" + str(args.abrt_at) + "s\n\n")
+    out.write("   pid=" + str(args.pid) + " stdout=" + args.stdout + " snap1=" + str(args.snap1_at) + "s snap2=" + str(args.snap2_at) + "s poll=" + str(args.poll_interval) + "s\n\n")
+    out.write("contracts: red-run heartbeat (Path E PATCH) + green-run falsification (no-snapshot-on-close)\n\n")
 
     last_line_count = 0
     last_progress_monotonic = time.monotonic()
     snap1_done = False
     snap2_done = False
-    abrt_sent = False
     out.write("[" + time.strftime('%H:%M:%S', time.gmtime()) + "] watchdog alive; watching pid=" + str(args.pid) + "\n")
 
     last_junit_mtime = 0.0
     last_junit_size = 0
     junit_path = Path("pytest-junit.xml")
     out.write("junit-mtime+size tracking: enabled (path=" + str(junit_path) + ")\n")
+
+    start_epoch = time.time()
+    start_monotonic = time.monotonic()
 
     while proc_alive(args.pid):
         # Progress signal 1: stdout line count growth
@@ -216,20 +220,53 @@ def main():
             out.write("Different stacks -> slow finalization, not dead.\n")
             snap2_done = True
 
-        if snap2_done and not abrt_sent and no_progress >= args.abrt_at:
-            out.write("\n=== SIGABRT to pid=" + str(args.pid) + " at T+" + str(int(no_progress)) + "s (forces faulthandler dump) ===\n")
+        # Heartbeat pulse: write a single line to the log every poll interval.
+        # Path E SNAPSHOTTER PATCHes this log to issue #11 at ~30s cadence,
+        # so each heartbeat becomes an out-of-band evidence point that
+        # survives VM freeze (worst case: last heartbeat + ~30s gap).
+        try:
+            vmrss = ""
             try:
-                os.kill(args.pid, signal.SIGABRT)
-                abrt_sent = True
-                out.write("SIGABRT sent.\n")
-            except OSError as e:
-                out.write("SIGABRT failed: " + str(e) + "\n")
+                with open("/proc/" + str(args.pid) + "/status", "r") as sf:
+                    for line in sf:
+                        if line.startswith("VmRSS:"):
+                            vmrss = line.strip()
+                            break
+            except OSError:
+                vmrss = "VmRSS:unavailable"
+            fd_count = "?"
+            try:
+                fd_result = subprocess.run(
+                    ["bash", "-c", "ls /proc/" + str(args.pid) + "/fd 2>/dev/null | wc -l"],
+                    capture_output=True, text=True, timeout=2,
+                )
+                fd_count = fd_result.stdout.strip()
+            except (OSError, subprocess.TimeoutExpired):
+                pass
+            wchan_val = "?"
+            try:
+                with open("/proc/" + str(args.pid) + "/wchan", "r") as wf:
+                    wchan_val = wf.read().strip() or "(running)"
+            except OSError:
+                pass
+            last_progress_str = time.strftime('%H:%M:%S', time.gmtime(start_epoch + last_progress_monotonic - start_monotonic))
+            out.write("HEARTBEAT T=" + time.strftime('%H:%M:%S', time.gmtime())
+                      + " alive=" + ("yes" if proc_alive(args.pid) else "no")
+                      + " " + vmrss
+                      + " FD=" + fd_count
+                      + " last_progress=" + last_progress_str
+                      + " no_progress=" + str(int(no_progress)) + "s"
+                      + " wchan=" + wchan_val
+                      + "\n")
+        except Exception as e:
+            out.write("HEARTBEAT failed: " + str(e) + "\n")
 
         time.sleep(args.poll_interval)
 
     out.write("\n=== pytest exited at " + time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()) + " ===\n")
     out.write("   final no-progress at exit: " + str(int(time.monotonic() - last_progress_monotonic)) + "s\n")
-    out.write("   snap1_done=" + str(snap1_done) + " snap2_done=" + str(snap2_done) + " abrt_sent=" + str(abrt_sent) + "\n")
+    out.write("   snap1_done=" + str(snap1_done) + " snap2_done=" + str(snap2_done) + "\n")
+    out.write("   green-run-falsification: " + ("PASS (no snapshot fired = wedge did NOT reproduce)" if not snap1_done else "FAIL (snapshot fired = wedge reproduced)") + "\n")
     out.close()
 
 

@@ -45,10 +45,43 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    # BUG-3208 Path E — workflow_dispatch input for the snapshot sink issue.
+    # Path E reads \${{ env.SINK_ISSUE }} and streams diagnostic snapshots to
+    # that issue's comments. On push events, env.SINK_ISSUE is unset → Path E
+    # stays off (correct — push to main is normal CI, not a wedge probe).
+    # On dispatch, defaults to the sink issue #11 (the existing
+    # "BUG-3208 wedge diagnostic data" issue that already has accumulated
+    # diagnostic data from prior (d)-branch dispatches).
+    inputs:
+      sink_issue:
+        description: 'Issue number for Path E snapshot sink'
+        required: false
+        default: '11'
+      pytest_select:
+        description: 'Pytest selection override (e.g. "scripts/tests/test_foo.py::TestBar::test_baz"). Empty = full suite per marker filter.'
+        required: false
+        default: ''
+      disable_xdist:
+        description: 'Disable pytest-xdist parallelism (run serially). Use to bisect parallelism-related wedges.'
+        type: boolean
+        required: false
+        default: false
 
 concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  # Diagnostic-stack branch: every dispatch lands in its own concurrency group
+  # (keyed on run_id, not ref) so iterative dispatches don't self-cancel. The
+  # `cancel-in-progress: false` is explicit insurance. Only this v3 ci.yml
+  # has this configuration; main's ci.yml keeps the original
+  # `ci-${{ github.ref }}` + `cancel-in-progress: true` so main's cancel-on-push
+  # behavior is untouched.
+  #
+  # Forward merge-safety note: if v3's ci.yml is ever merged to main, this
+  # concurrency change rides along and main would lose its cancel-stale-run
+  # behavior. Before any such merge, revert this block to the original or
+  # gate it on `github.event_name == 'push'`. Not a now-problem; a
+  # don't-forget-later problem.
+  group: ci-diagnostic-${{ github.run_id }}
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -57,12 +90,31 @@ permissions:
   # `none` — without this line the failure-upload step 403s with "Resource not
   # accessible by integration" and the paper trail silently never uploads.
   actions: write
+  # BUG-3208 Path E — diagnostic snapshot streaming needs `issues: write` for
+  # `gh issue comment` against the sink issue (Path A in-runner diagnostics
+  # failed three dispatches in a row; Path E writes to GitHub's servers via
+  # `GITHUB_TOKEN`, which survives runner death). Without this line, the
+  # snapshot writer 403s silently — same failure mode as the upload step.
+  issues: write
 
 jobs:
   unit-tests:
     name: Unit tests (ubuntu-latest)
     runs-on: ubuntu-latest
     timeout-minutes: 120
+    # BUG-3208 Path E — propagate sink_issue input to step env. On push events
+    # (no inputs.sink_issue), env.SINK_ISSUE is empty → Path E guard at :185
+    # emits ::warning:: and stays off (correct). On dispatch, defaults to '11'.
+    #
+    # GH_TOKEN + GITHUB_TOKEN explicit at JOB level — covers both auth-path
+    # conventions for `gh` CLI. Some gh versions prefer `GH_TOKEN` over
+    # `GITHUB_TOKEN` for write-path API calls; setting both at job level
+    # ensures the `gh api PATCH` in step 6's PATCH loop (which is in step 7
+    # since the lift) sees an auth pathway that gh recognizes.
+    env:
+      SINK_ISSUE: ${{ github.event.inputs.sink_issue }}
+      GH_TOKEN: ${{ github.token }}
+      GITHUB_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
 
@@ -89,72 +141,321 @@ jobs:
           # exactly the silent-skip class we must not let through.
           .venv/bin/python -c "import pytest, pytest_cov, xdist, pytest_timeout, syrupy, hypothesis; print('dev deps verified')"
 
-      - name: "Run unit tests (exclude integration + conformance) [DIAG: BUG-3208 wedge capture + master watchdog]"
-        # `tee` mirrors pytest output to `pytest.log` for upload without
-        # buffering the streamed CI log (which would break live-progress in
-        # the GH Actions UI). `--junit-xml` writes a structured report that
-        # GH Actions parses for the test summary table; also machine-readable
-        # for triage scripts. `set -o pipefail` is required: without it the
-        # pipeline's exit code is tee's (always 0), masking pytest's actual
-        # failure status. Both files are uploaded on every CI outcome below.
+      - name: Path E POST probe
+        # BUG-3208 Path E — diagnostic snapshot streaming to GitHub issue.
+        # Lifted from step 6's preamble so POST failure surfaces as a step-level
+        # error instead of being silently swallowed by the inline Option A guard.
+        # Three improvements over the inline-POST design (per Cooper ff43e52f):
+        #   1. `timeout 30 gh api ...` bounds per-attempt wait — distinguishes
+        #      a hung POST (candidate 3 from QA's framing) from a slow one
+        #   2. `2>&1` captures BOTH streams — keeps gh api's exit code info
+        #   3. fail-fast assertion on empty/null COMMENT_ID — never silently degrade;
+        #      step exits 1 with the captured stderr in run log so we can finally
+        #      see what POST failure mode is actually in play (per Cooper's read:
+        #      2-second POST completed, but `2>/dev/null` masked a fast non-2xx;
+        #      the only way to surface it is this probe step).
         #
-        # DIAG flags (remove when the wedge is named):
-        #   -n 4                    Match GH-hosted signature; bypasses the
-        #                           conftest `pytest_xdist_auto_num_workers` cap.
-        #   --max-worker-restart=0  Load-bearing. Without it, xdist silently
-        #                           restarts a dead worker and the first death
-        #                           traceback is lost. Setting to 0 makes the
-        #                           controller fail on first worker death.
-        #   --tb=long --capture=no  Full traceback + unbuffered output, so
-        #                           the worker-side cause isn't swallowed by
-        #                           xdist teardown. Per-worker `workeroutput_*`
-        #                           files are kept by xdist alongside the log.
-        #   -v                      Per-test progress, makes the last-in-flight
-        #                           test name visible in plain text.
+        # Skipped on push events (env.SINK_ISSUE empty). On dispatch events
+        # (default sink_issue=11), runs POST + retry + fail-fast + capture.
+        # COMMENT_ID is exported via $GITHUB_ENV for step 6 to read.
         #
-        # DIAG master-side hang watchdog (remove when the wedge is named):
-        #   The 89% pytest_sessionfinish wedge is qualitatively different from
-        #   the original runner-death wedge: workers all return, master is
-        #   stuck. `--max-worker-restart=0` does NOT fire on a master-side
-        #   hang (no worker dies), so we need a separate watchdog that
-        #   snapshots the master process itself.
+        # First iteration surfaced exit code 4 in 562ms — auth-related error
+        # from gh api not seeing GITHUB_TOKEN. Fixes in this revision:
+        #   - explicit GH_TOKEN + GITHUB_TOKEN env vars (some gh versions
+        #     prefer one over the other; covering both)
+        #   - `set +e` / `set -e` around the for-loop so the substitution's
+        #     non-zero exit code propagates to RC rather than killing the
+        #     script at the assignment (set -e + RESULT=$() = script dies
+        #     immediately, captured stderr swallowed)
+        #   - log gh version + auth status before attempt 1 to surface runner-env specifics
+        if: ${{ github.event.inputs.sink_issue != '' }}
+        timeout-minutes: 5
+        env:
+          SINK_ISSUE: ${{ github.event.inputs.sink_issue }}
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          INITIAL_BODY="Path E diagnostic stream for run $GITHUB_RUN_ID. Updates every ~30s; 65KB cap handled by drop-oldest meta-lines. Last successful PATCH before runner death is the snapshot we want."
+          # `set -e` is the GH Actions default and would kill the script at the
+          # RESULT=$(...) line when gh api returns non-zero — defeating the retry
+          # loop. Toggle off for the loop, restore after.
+          set +e
+          echo "gh version: $(gh --version 2>&1 | head -1)"
+          echo "gh auth status (first 5 lines): $(gh auth status 2>&1 | head -5)"
+          COMMENT_ID=""
+          for attempt in 1 2 3; do
+            echo "Path E POST attempt $attempt starting..."
+            RESULT=$(timeout 30 gh api -X POST \
+              "/repos/${GITHUB_REPOSITORY:-BrennonTWilliams/little-loops}/issues/${SINK_ISSUE}/comments" \
+              -f body="$INITIAL_BODY" --jq .id 2>&1)
+            RC=$?
+            COMMENT_ID="$RESULT"
+            # Cooper's empirical repro (visible in channel event ff43e52f / bug
+            # confirmed in cc9c98de): `2>&1` on a failed `gh api POST` folds the
+            # error JSON + stderr text into $RESULT, polluting $COMMENT_ID
+            # with non-empty / non-"null" text. The success guard must key
+            # off the exit code (RC=0) BEFORE the string non-emptiness check,
+            # otherwise a 4xx response silently passes the guard and exports
+            # the error text as $COMMENT_ID, neutering the fail-fast.
+            if [ "$RC" -eq 0 ] && [ -n "$COMMENT_ID" ] && [ "$COMMENT_ID" != "null" ]; then
+              echo "Path E POST attempt $attempt succeeded: id=$COMMENT_ID (rc=$RC)"
+              break
+            fi
+            echo "Path E POST attempt $attempt returned empty/null (rc=$RC); retrying in 5s"
+            sleep 5
+          done
+          set -e
+          if [ -z "$COMMENT_ID" ] || [ "$COMMENT_ID" = "null" ]; then
+            echo "::error::Path E POST returned empty/null comment_id after 3 retries; aborting dispatch before pytest runs (fail-loud). Captured output from last attempt (multi-line):"
+            echo "$COMMENT_ID"
+            exit 1
+          fi
+          echo "Path E POST captured: id=$COMMENT_ID"
+          echo "COMMENT_ID=$COMMENT_ID" >> "$GITHUB_ENV"
+
+      - name: Run unit tests (exclude integration + conformance)
+        # BUG-3208 diagnostic instrumentation (Path A — controller heartbeat +
+        # resource sampler + log-survival backstop). `tee` mirrors pytest to
+        # pytest.log without buffering the streamed CI log. `set -o pipefail`
+        # is required: without it the pipeline's exit code is tee's (always 0),
+        # masking pytest's real failure status.
         #
-        #   Two-snapshot protocol (T+2min, T+5min of no stdout progress):
-        #     Identical stacks at both snapshots -> hard deadlock.
-        #     Different stacks                 -> slow finalization, not dead.
-        #   At T+7min, SIGABRT the master. Python's faulthandler registers
-        #   SIGABRT by default since 3.3, so this triggers a Python-level
-        #   traceback dump before the process aborts -- captures the userland
-        #   frame the kernel stack alone can't.
-        #
-        #   Tool: /proc/<pid>/stack + /proc/<pid>/fd/ + /proc/<pid>/wchan
-        #   (NOT py-spy -- silent fails empty on GH-hosted runners when
-        #   perf_event_open / ptrace aren't granted).
-        #
-        # QA-flag: py-spy-silent-fail-on-perf_event_open
+        # Three additions make the wedge's evidence SURVIVE the hang:
+        #   1. mem.log sampler   — `free -m` + top-RSS every 30s. RSS climbing
+        #      into a frozen tail => OOM; RSS flat => logical wedge (not memory).
+        #   2. heartbeat.log     — full pytest process tree (PID/PPID/RSS/etime/
+        #      stat/args) every 30s. This is the controller-side heartbeat: a
+        #      live controller + idle workers => controller wait; controller
+        #      gone + orphaned workers still holding the pipe => xdist reaping.
+        #   3. `timeout 45m` backstop + orphan-reap — SIGTERM (+SIGKILL +30s)
+        #      BEFORE the hosted runner's ~52m resource-watchdog fires, then
+        #      `pkill -9 -f pytest` reaps any orphaned xdist workers that
+        #      survive the controller kill (they otherwise hold the step's
+        #      pipe open until the watchdog purges all logs as BlobNotFound).
+        #      The step exits and the upload step (if: always()) persists
+        #      pytest.log + mem.log + heartbeat.log + junit.
         run: |
           set -o pipefail
-          rm -f pytest-master-snapshot.log pytest.log pytest-junit.xml
+          ( set +e
+            while true; do \
+              echo "$(date -u +%H:%M:%S) sampler-tick" >> /tmp/sampler_heartbeat.log 2>/dev/null || true; \
+              echo "== $(date -u +%H:%M:%S) =="; \
+              free -m | awk 'NR==2{print "mem: used "$3"MB / "$2"MB"}'; \
+              ps -eo rss,comm --sort=-rss | head -6 | awk '{printf "  %6.0f MB  %s\n", $1/1024, $2}'; \
+              sleep 30; \
+            done
+          ) > mem.log 2>&1 &
+          SAMPLER=$!
+          ( set +e
+            while true; do \
+              echo "$(date -u +%H:%M:%S) heartbeat-tick" >> /tmp/heartbeat_heartbeat.log 2>/dev/null || true; \
+              echo "== $(date -u +%H:%M:%S) == pytest process tree =="; \
+              # wchan:32 captures the kernel function a process is blocked on
+              # (load-bearing for storage-stall vs per-test subprocess/IO deadlock).
+              # Combined with `args` (test name), correlates wedge location with test heaviness.
+              # Broadened grep: must match the background subshells too (they run as
+              # bash/sleep/date/gh/tail, NOT pytest/python), or wchan misses the
+              # reaper's `date >> reaper.log` D-state — the dispositive storage-stall
+              # signal. Narrow grep = the diagnostic answers the wrong question.
+              ps -eo pid,ppid,etime,rss,stat,wchan:32,args --sort=pid | grep -E '[p]ytest|[p]ython|[b]ash|[s]leep|[d]ate|[g]h|[t]ail|tee' || echo "  (no relevant processes)"; \
+              sleep 30; \
+            done
+          ) > heartbeat.log 2>&1 &
+          HEARTBEAT=$!
+          # BUG-3208 Path A fix — background orphan-reaper, fires at T+46m
+          # INDEPENDENT of the pipeline below. When `timeout` SIGKILLs the
+          # wedged pytest controller, its surviving xdist workers / execnet
+          # gateways keep the pipe's write-end open, so `tee` never sees EOF and
+          # the `| tee pytest.log` pipeline never returns. A reap sequenced AFTER
+          # the pipeline is therefore dead code — `RC=$?`, the kill/tail block,
+          # and `exit` all sit unreachable behind a pipe that can't close, so the
+          # step hangs at `in_progress` until the runner watchdog purges every
+          # log as BlobNotFound (observed in dispatch 32879994072). This reaper
+          # kills the orphaned processes on a timer (the `[p]ytest` bracket idiom
+          # also matches `tee pytest.log`, so the read-end closes too), which
+          # unblocks the pipeline, lets `RC=$?` fire, and lets the upload step
+          # (`if: always()`) persist the evidence bundle.
+          #
+          # BUG-3208 Path A follow-up — `reaper.log` self-heartbeat. The reaper
+          # subshell writes its own timestamped trace to `reaper.log` (spawn,
+          # per-minute tick for 46 minutes, firing timestamp, pkill exit codes)
+          # so a future dispatch can disambiguate runner-death from reap-failure.
+          # If `reaper.log` survives to artifact upload → reap fired as expected
+          # (any exit code is informative). If `reaper.log` is missing or only
+          # has the spawn line → runner died before reap fired. This is the
+          # diagnostic that's needed to name the runner-after-X failure mode.
+          ( set +e
+            date -u +'reaper-spawned T=%H:%M:%S pid='$$ > reaper.log; \
+            for i in $(seq 1 46); do sleep 60; \
+              echo "$(date -u +%H:%M:%S) reaper-heartbeat" >> /tmp/reaper_heartbeat.log 2>/dev/null || true; \
+              date -u +"reaper-tick$i T=%H:%M:%S" >> reaper.log; \
+            done; \
+            echo "reaper-firing T=$(date -u +%H:%M:%S)" >> reaper.log; \
+            pkill -9 -f '[p]ytest' 2>/dev/null; echo "pkill-pytest rc=$?" >> reaper.log; \
+            pkill -9 -f '[e]xecnet' 2>/dev/null; echo "pkill-execnet rc=$?" >> reaper.log; \
+            echo "reaper-done T=$(date -u +%H:%M:%S)" >> reaper.log
+          ) &
+          REAPER=$!
+          # BUG-3208 Path E — diagnostic snapshot streaming via GitHub issue comment
+          # PATCH. Path A's in-runner diagnostics died with the runner three dispatches
+          # in a row (no artifact upload reached GH storage because the upload step
+          # never ran). Path E streams diagnostic snapshots to a single GitHub issue
+          # comment via PATCH (the (d) branch pattern) — one comment, updated every
+          # ~30s. The comment lives on GitHub's servers, NOT the runner's ephemeral
+          # disk, so the most recent successful PATCH survives runner death. Same
+          # survival property as S3, zero new secrets, zero owner-side action.
+          #
+          # Pattern: POST-once-then-PATCH (not POST-many). 45-min dispatch produces ONE
+          # comment, updated every 30s, with the latest snapshot. Avoids spamming the
+          # public tracker with ~90 comments. 65KB cap is handled by drop-oldest
+          # meta-lines inside the comment body.
+          #
+          # Sink target: SINK_ISSUE env var. Not hardcoded — read from workflow_dispatch
+          # input or repo variable, so a future sink-issue re-creation doesn't need a
+          # YAML edit. Fails loud if unset (no comment gets created; the in-runner
+          # diagnostic files still upload if the runner reaches terminal state).
+          #
+          # Worst-case data loss with 30s cadence: ~30s of evidence (last successful
+          # PATCH before writer dies). Better than the previous 100% loss when Path A's
+          # in-runner artifacts died with the runner.
+          if [ -z "${SINK_ISSUE:-}" ]; then
+            echo "::warning::SINK_ISSUE env var is unset; Path E diagnostic stream disabled for this run"
+          elif [ -z "${COMMENT_ID:-}" ] || [ "${COMMENT_ID:-}" = "null" ]; then
+            # Defensive: probe step should have set COMMENT_ID for dispatch events.
+            # Reachable only when SINK_ISSUE is set (dispatch) but COMMENT_ID isn't —
+            # in practice the upstream 'Path E POST probe' step would have failed loud
+            # before we got here. If we DO reach here, it means the probe was skipped
+            # (push event) but SINK_ISSUE somehow made it to this job-level env
+            # (workflow_dispatch_inputs leak), so we log loud rather than silently degrading.
+            echo "::error::Path E COMMENT_ID not set despite SINK_ISSUE=$SINK_ISSUE; PATCH loop disabled. Upstream POST probe step either skipped (push event) or failed silently."
+          else
+            # COMMENT_ID captured by upstream 'Path E POST probe' step (per the lift).
+            COMMENT_URL="https://github.com/${GITHUB_REPOSITORY:-BrennonTWilliams/little-loops}/issues/${SINK_ISSUE}#issuecomment-${COMMENT_ID}"
+            echo "Path E POST captured by upstream probe: issue=$SINK_ISSUE id=$COMMENT_ID url=$COMMENT_URL"
+            ( set +e
+              while true; do
+                echo "$(date -u +%H:%M:%S) snapshotter-tick" >> /tmp/snapshotter_heartbeat.log 2>/dev/null || true; \
+                {
+                  echo "Path E snapshot stream — run_id=$GITHUB_RUN_ID run_attempt=$GITHUB_RUN_ATTEMPT step=unit-tests"
+                  echo "snapshot T=$(date -u +%H:%M:%S) (last update wins; older meta-lines truncated by 65KB cap)"
+                  echo ""
+                  echo "--- mem.log (last 3 lines) ---"
+                  tail -3 mem.log 2>/dev/null || echo "(mem.log not present)"
+                  echo ""
+                  echo "--- heartbeat.log (last 3 lines) ---"
+                  tail -3 heartbeat.log 2>/dev/null || echo "(heartbeat.log not present)"
+                  echo ""
+                  echo "--- sigprobe.log (last 3 lines) ---"
+                  tail -3 sigprobe.log 2>/dev/null || echo "(sigprobe.log not present)"
+                  echo ""
+                  echo "--- pytest-master-snapshot.log (HEARTBEAT lines, last 5) ---"
+                  grep "HEARTBEAT" pytest-master-snapshot.log 2>/dev/null | tail -5 || echo "(no heartbeats yet)"
+                  echo ""
+                  echo "--- reaper.log (last 3 lines) ---"
+                  tail -3 reaper.log 2>/dev/null || echo "(reaper.log not present)"
+                } > /tmp/pathE_snapshot.txt 2>/dev/null || true
+                # Path E drop-oldest body assembly.
+                # Server-as-source-of-truth: GET current body, append new snapshot,
+                # truncate from middle if approaching GitHub's 65536-char comment
+                # limit, PATCH. Without this, body accumulates at ~1.3KB/snapshot
+                # × 30s cadence = ~115KB over 45min, PATCH fails silently at ~25min
+                # into run, back half of dispatch lost. Same design-vs-implementation
+                # pathology as the grep bug.
+                CURRENT_BODY=$(gh api "/repos/$GITHUB_REPOSITORY/issues/comments/$COMMENT_ID" --jq .body 2>/dev/null) || CURRENT_BODY=""
+                # line 345 fix (corrected): skip the iteration if the snapshot file is
+                # missing or zero-size, with a forensic heartbeat entry. The earlier
+                # `|| NEW_BODY="${CURRENT_BODY}"` fallback produced CURRENT_BODY +
+                # "\n\n" + CURRENT_BODY (doubled body) under partial-failure modes
+                # where `cat` fails but the subsequent `printf > /tmp/pathE_body.txt`
+                # succeeds — silent compounding hazard. Skipping keeps the loop a
+                # useful stall sensor rather than a corrupted-body PATCHer. The
+                # `missing` vs `zero-size` reason disambiguates "snapshotter failed to
+                # write" from "snapshotter opened for write but didn't close properly"
+                # — different bug classes if it persists across dispatches.
+                NEW_BODY=$(cat /tmp/pathE_snapshot.txt 2>/dev/null)
+                if [ ! -s /tmp/pathE_snapshot.txt ]; then
+                  if [ -e /tmp/pathE_snapshot.txt ]; then
+                    REASON="zero-size"
+                  else
+                    REASON="missing"
+                  fi
+                  echo "$(date -u +%H:%M:%S) snapshotter: pathE_snapshot.txt $REASON (D-state?)" >> /tmp/snapshotter_heartbeat.log 2>/dev/null || true
+                  sleep 30
+                  continue
+                fi
+                NEW_BODY="${CURRENT_BODY}"$'\n\n'"${NEW_BODY}"
+                # 60000 leaves 5536-char buffer for PATCH validation / future growth.
+                if [ "${#NEW_BODY}" -gt 60000 ]; then
+                  TRUNCATED_AT_T=$(date -u +%H:%M:%S)
+                  NEW_BODY="[...older snapshots truncated at 60KB cap T=${TRUNCATED_AT_T}...]"$'\n\n'"${NEW_BODY: -60000}"
+                fi
+                printf '%s' "$NEW_BODY" > /tmp/pathE_body.txt 2>/dev/null || true
+                gh api --method PATCH -H "Accept: application/vnd.github+json" \
+                  "/repos/$GITHUB_REPOSITORY/issues/comments/$COMMENT_ID" \
+                  -F body=@/tmp/pathE_body.txt 2>/dev/null \
+                  || echo "PATCH failed at $(date -u +%H:%M:%S) exit=$?" >> /tmp/pathE_failures.log
+                sleep 30
+              done
+            ) &
+            SNAPSHOTTER=$!
+          fi
+          set +e
+          # pytest_select override (BUG-3208 isolation staging): if provided,
+          # run only that selection. Otherwise the full suite per marker filter.
+          # Array form preserves per-token quoting through word-splitting.
+          #
+          # github.event.inputs.* (not inputs.*) for consistency with the
+          # SINK_ISSUE pattern at lines 110/166/169. Both forms empirically
+          # resolve correctly for workflow_dispatch in current runners (4
+          # dispatches confirmed), but the github.event.inputs.* form is the
+          # documented best practice and avoids the false-positive trap of
+          # assuming inputs.* is broken syntax.
+          SELECTION='${{ github.event.inputs.pytest_select }}'
+          DISABLE_XDIST='${{ github.event.inputs.disable_xdist }}'
+          if [ -n "$SELECTION" ]; then
+            PYTEST_ARGS=("$SELECTION")
+          else
+            PYTEST_ARGS=(scripts/tests/ -m "not integration and not conformance")
+          fi
+          # pytest-xdist bisect: when disable_xdist=true, override the
+          # pyproject addopts (-n logical --dist loadfile) with -n 0, the
+          # pytest-xdist-documented "disable distribution, run in-process"
+          # switch. Default behavior unchanged (parallel).
+          #
+          # IMPORTANT: empty XDIST_FLAG would NOT disable xdist — pytest still
+          # applies the pyproject addopts, so -n logical would silently
+          # re-enable parallelism. -n 0 explicitly overrides.
+          # BUG-3208 wedge-capture diagnostic flags (scoped to this branch only).
+          # -n 4                   match GH-hosted 4-core signature; bypasses the
+          #                        conftest pytest_xdist_auto_num_workers cap.
+          # --max-worker-restart=0 Load-bearing. Without it, xdist silently
+          #                        restarts a dead worker and the first death
+          #                        traceback is lost.
+          # --tb=long --capture=no Full traceback + unbuffered output.
+          # -v                     Per-test progress for last-in-flight name.
+          XDIST_FLAG='-n 4 --max-worker-restart=0 --tb=long --capture=no -v'
+          [ "$DISABLE_XDIST" = "true" ] && XDIST_FLAG='-n 0 --max-worker-restart=0 --tb=long --capture=no -v'
 
-          # Wrapper records pytest's PID (after `exec`, the wrapper's PID is
-          # pytest's PID since exec preserves PID but replaces process image).
+          # BUG-3208 Path E + watchdog v4 — wrapper captures pytest's PID
+          # (process substitution breaks $! semantics), then we start the
+          # watchdog as a heartbeat generator + targeted snapshotter. Watchdog
+          # writes to pytest-master-snapshot.log; Path E SNAPSHOTTER PATCHes
+          # this file to issue #11 at ~30s cadence so heartbeats survive VM
+          # freeze. The gap between two heartbeats IS the freeze-onset latency.
           cat > /tmp/pytest-wrapper.sh <<'WRAPPER'
           #!/bin/bash
           echo $$ > /tmp/pytest.pid
-          exec .venv/bin/python -u -m pytest scripts/tests/ \
-            -m "not integration and not conformance" \
-            -n 4 --max-worker-restart=0 --tb=long --capture=no -v \
+          exec .venv/bin/python -u -m pytest "${PYTEST_ARGS[@]}" $XDIST_FLAG \
             --junit-xml=pytest-junit.xml
           WRAPPER
           chmod +x /tmp/pytest-wrapper.sh
 
-          # Start pytest via wrapper. Process substitution routes stdout/stderr
-          # through tee (file + live GH Actions stream) without blocking the
-          # pipeline. The wrapper's $! is captured here.
+          # Start pytest via wrapper in background. Process substitution
+          # routes stdout+stderr through tee (file + live GH Actions stream).
           /tmp/pytest-wrapper.sh > >(tee pytest.log) 2>&1 &
           SHELL_PID=$!
-          # Poll for the PID file (wrapper writes it before exec, but on a
-          # heavily-loaded runner the heredoc+chmod+start sequence can race).
+          # Poll for the PID file (wrapper writes it before exec; on a heavily
+          # loaded runner the heredoc+chmod+start sequence can race).
           for i in 1 2 3 4 5 6 7 8 9 10; do
             if [ -s /tmp/pytest.pid ]; then break; fi
             sleep 0.2
@@ -162,37 +463,51 @@ jobs:
           PYTEST_PID=$(cat /tmp/pytest.pid 2>/dev/null || echo "$SHELL_PID")
           echo "[$(date -u +%H:%M:%S)] pytest master PID: $PYTEST_PID (shell: $SHELL_PID)"
 
-          # Start master-side hang watchdog in parallel.
+          # Start watchdog v4 as heartbeat generator + targeted snapshotter.
+          # Two contracts: red-run evidence (Path E PATCHes heartbeats out of
+          # band) + green-run falsification (no snapshot fires = wedge did not
+          # reproduce). SIGABRT removed in v4: the watchdog IS in the same VM
+          # that freezes, so SIGABRT can only fire when the VM is alive at
+          # T+7min, which is the condition the heartbeat + snapshot already
+          # captures.
           .venv/bin/python .github/scripts/bug3208-master-watchdog.py \
             --pid $PYTEST_PID \
             --stdout pytest.log \
             --out pytest-master-snapshot.log \
             --snap1-at 120 \
             --snap2-at 300 \
-            --abrt-at 420 \
+            --poll-interval 10 \
             2>&1 | tee -a pytest-master-snapshot.log &
+          WATCHDOG_PID=$!
 
-          # Wait for pytest (this is what blocks the GH Actions step until
-          # pytest exits or the runner ceiling kills the job).
-          wait $SHELL_PID
-          PYTEST_EXIT=$?
-
-          # Give watchdog a moment to notice pytest exit and write its summary.
-          sleep 1
-
-          # Surface pytest's exit code to GH Actions.
-          exit $PYTEST_EXIT
+          PYTHONUNBUFFERED=1 timeout --signal=TERM --kill-after=30s 45m \
+            wait $SHELL_PID
+          RC=$?
+          set -e
+          # Reap orphaned xdist workers that survive the controller kill — they
+          # would otherwise hold the step's stdout pipe open until the runner
+          # watchdog fires (~52m) and purges every log as BlobNotFound.
+          kill "$SAMPLER" "$HEARTBEAT" "$REAPER" "$SNAPSHOTTER" "$WATCHDOG_PID" 2>/dev/null || true
+          pkill -9 -f 'pytest' 2>/dev/null || true
+          pkill -9 -f 'execnet' 2>/dev/null || true
+          echo "pytest exit: $RC"
+          echo "=== pytest.log tail (last test before stop) ==="
+          tail -30 pytest.log || true
+          echo "=== mem.log tail (final memory samples) ==="
+          tail -15 mem.log || true
+          echo "=== heartbeat.log tail (final process tree) ==="
+          tail -40 heartbeat.log || true
+          exit $RC
 
       - name: Upload unit-test artifacts
         # `if: always()` is the data-collection gate — green runs need to
         # upload too, because the clean-finish signal (junit pass, no busy-spin
         # tail) is exactly the verification surface for the BUG-3208 stack.
-        # `if-no-files-found: warn` is deliberate: if pytest hangs at 98-99%
-        # (the BUG-3208 failure mode) junit XML never gets written, and the
-        # upload step should not turn a hung run into a *double* failure.
-        # `pytest-master-snapshot.log` is uploaded on every outcome: green
-        # runs prove the watchdog never fired (which is the falsification),
-        # wedged runs carry the master-side hang signature.
+        # `if-no-files-found: error` is deliberate: if pytest hangs (the
+        # BUG-3208 failure mode) junit XML never gets written, and the upload
+        # step must surface that as a real failure — not as a silent warning
+        # that's easy to miss in the run summary. The previous `warn` setting
+        # hid hang-mode behind an annotation nobody reads.
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -200,9 +515,13 @@ jobs:
           path: |
             pytest.log
             pytest-junit.xml
+            mem.log
+            heartbeat.log
+            sigprobe.log
+            reaper.log
             pytest-master-snapshot.log
-          retention-days: 7
-          if-no-files-found: warn
+          retention-days: 30
+          if-no-files-found: error
 
   conformance:
     name: Host conformance (Thinky)
@@ -247,7 +566,10 @@ jobs:
         # (`pytest-conformance-failures-*`) so the two jobs' artifacts don't
         # collide on the artifact store. `if: always()` so a clean green
         # conformance produces a junit-paper-trail alongside failure capture;
-        # `if-no-files-found: warn` handles the FEAT-992 host-CLI stub case.
+        # `if-no-files-found: error` mirrors the unit-job policy — missing
+        # artifacts should be loud, not silent. (FEAT-992 host-CLI stub case
+        # still ends up as `error` here; if that becomes an active problem we
+        # can switch this job back to `warn` while keeping `error` on unit.)
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -256,7 +578,7 @@ jobs:
             /tmp/conformance.log
             pytest-conformance-junit.xml
           retention-days: 7
-          if-no-files-found: warn
+          if-no-files-found: error
 
       - name: Surface conformance summary
         if: always()
