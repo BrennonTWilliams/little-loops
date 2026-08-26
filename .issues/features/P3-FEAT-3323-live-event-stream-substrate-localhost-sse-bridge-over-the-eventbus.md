@@ -12,12 +12,12 @@ relates_to:
 - FEAT-3304
 depends_on:
 - BUG-3324
-confidence_score: 92
-outcome_confidence: 58
-score_complexity: 14
-score_test_coverage: 14
-score_ambiguity: 14
-score_change_surface: 16
+confidence_score: 93
+outcome_confidence: 69
+score_complexity: 13
+score_test_coverage: 16
+score_ambiguity: 23
+score_change_surface: 17
 ---
 
 # FEAT-3323: Live event stream substrate: localhost SSE bridge over the EventBus
@@ -620,6 +620,38 @@ Questions._
 
 ## Confidence Check Notes
 
+_Re-run by `/ll:confidence-check` on 2026-08-26, after the BUG-3324 scope split._
+
+**Readiness Score**: 93/100 -> PROCEED
+**Outcome Confidence**: 69/100 -> MODERATE
+
+(Supersedes the 2026-08-25 92/58 assessment below, which predated the split.)
+
+### Outcome Risk Factors
+- **Dominant, carried forward**: no in-repo precedent for a stdlib HTTP/SSE
+  server or for a really-bound-server test harness. Both must be built from
+  scratch; expect iteration there rather than in the relay logic.
+- Breadth remains wide even after the split: new module + CLI entry point +
+  config dataclass + `config-schema.json` block + `to_dict()` mirror +
+  `_DATACLASS_SECTION_MAP` entry + `pyproject.toml` script + two `__init__.py`
+  re-exports + docs. Each site is mechanical, but the BUG-3192 schema guards
+  fail loudly if any config leaf is missed.
+- The envelope gains a top-level key that external consumers (loop-viz, per
+  `EVENT-SCHEMA.md`) read positionally by name; the collision grep against the
+  event catalog is a real pre-work step, not a formality.
+- `ll-artifact serve` does not exist yet (`format-check` reports it as
+  `stale_cli_flag`). This is expected — the issue creates it — but it means the
+  subcommand name is unclaimed and could drift if FEAT-3321 lands first.
+
+### Notes
+- Dependency `BUG-3324` is `open`. It is `depends_on`, not `blocked_by`, so no
+  hard gate fires, but Implementation Step 0 correctly orders it first.
+- Risk factors 1 and 3 from the 2026-08-25 assessment are retired: the
+  fan-in-vs-broker decision is settled (§ Resolved Decisions) and the
+  transport-path change moved to BUG-3324.
+
+### Superseded assessment (2026-08-25)
+
 _Added by `/ll:confidence-check` on 2026-08-25_
 
 **Readiness Score**: 92/100 → PROCEED
@@ -658,6 +690,7 @@ scores.
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-26T15:05:26 - `527f3505-6fa7-4a25-937c-558cd9f06642.jsonl`
 - `/ll:confidence-check` - 2026-08-26T03:42:55 - `2361c366-3751-4d40-b3d8-0d881c047601.jsonl`
 - `/ll:wire-issue` - 2026-08-26T03:35:40 - `ad3eb4f0-b35e-4777-be61-e91603e9fcf0.jsonl`
 - `/ll:refine-issue` - 2026-08-26T03:22:33 - `39df27ac-4529-446c-ad77-2dd45a63f9c4.jsonl`
