@@ -8,6 +8,12 @@ status: open
 discovered_by: ll-issues-create
 discovered_date: '2026-08-26'
 captured_at: '2026-08-26T17:33:30Z'
+confidence_score: 95
+outcome_confidence: 82
+score_complexity: 14
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 25
 ---
 
 # FEAT-3328: Gate-completeness lint: flag intermediate gates that restate a validator rule table instead of importing it
@@ -53,8 +59,10 @@ terminal gate is a little-loops validator, flags any intermediate
 `action_type: shell` state whose action contains `python3` and hardcodes a
 literal set/frozenset of values that is a subset of a known exported table's
 keys (e.g. a literal evaluator-type set instead of importing
-`NON_LLM_EVALUATOR_TYPES`, or literal required-field lists instead of
-`EVALUATOR_REQUIRED_FIELDS`). Severity is `warning` — a restatement can be a
+`NON_LLM_EVALUATOR_TYPES`, literal required-field lists instead of
+`EVALUATOR_REQUIRED_FIELDS`, or a literal operator set instead of
+`VALID_OPERATORS` — the full linted-table list is in AC #1). Severity is
+`warning` — a restatement can be a
 deliberate, narrower curated vocabulary — suppressible via a
 `gate_completeness_ok` top-level flag (see Escape hatch below).
 
@@ -97,10 +105,10 @@ happened once.
 ## Acceptance Criteria
 
 1. `ll-loop validate` flags an `action_type: shell` state whose `python3`
-   action contains a literal set/frozenset that is a subset of
-   `NON_LLM_EVALUATOR_TYPES` or the keys of `EVALUATOR_REQUIRED_FIELDS`, at
-   `warning` severity, naming the state and the exported table to import
-   instead. To be flagged, the literal must satisfy **all** of:
+   action contains a literal set/frozenset that is a subset of one of the
+   **linted tables** (see the list below), at `warning` severity, naming the
+   state and the exported table to import instead. To be flagged, the literal
+   must satisfy **all** of:
    - **at least 3 members** — a bare `{"exit_code"}` or `{"exit_code",
      "output_contains"}` appears in plenty of unrelated shell and is not
      evidence of a restated table;
@@ -110,6 +118,35 @@ happened once.
 
    State the floor in the rule's docstring; it is the difference between a
    useful guard and a noisy one.
+
+   **Linted tables.** All are exported from
+   `scripts/little_loops/fsm/validation/__init__.py`:
+   - `EVALUATOR_REQUIRED_FIELDS` (keys) — `_base.py:45`
+   - `NON_LLM_EVALUATOR_TYPES` — `_base.py:66`
+   - `VALID_OPERATORS` — `_base.py:74`. **Do not omit this one.** BUG-3326 is
+     landing a `VALID_OPERATORS` import into `validate_evaluators` for exactly
+     the reason this rule exists; a hand-restated `{"eq", "ne", "lt", "le",
+     "gt", "ge"}` is the same defect class as a restated evaluator-type set,
+     and leaving it unlinted means the rule does not cover the very move its
+     own Ordering section depends on. Note it is declared as a bare `set`, not
+     an annotated `frozenset` like its siblings — normalize when reading it, or
+     consider tightening the declaration in the same pass.
+   - `VALID_VISIBILITY` (`_base.py:78`) — optional; three members total, so any
+     subset meeting the ≥3 floor is the *entire* table, which makes it a
+     high-signal, zero-ambiguity case. Include unless it proves noisy.
+
+1a. **Report each literal against the most specific matching table only.**
+   `NON_LLM_EVALUATOR_TYPES` is *derived* from `EVALUATOR_REQUIRED_FIELDS`
+   (`_base.py:66`: `frozenset(EVALUATOR_REQUIRED_FIELDS.keys()) - {...}`), so
+   every literal that is a subset of the former is necessarily also a subset of
+   the latter. A naive per-table loop therefore emits **two warnings for one
+   literal**, naming two different tables to import — actively confusing, since
+   only one of them is the right answer. Resolve by checking tables in
+   specificity order (smallest first) and emitting at most one warning per
+   literal, or by preferring the table whose membership the literal matches
+   most tightly. Assert single-emission in the tests: a positive-case fixture
+   whose literal is a subset of both tables must produce exactly one
+   `ValidationError`.
 2. A loop declaring `gate_completeness_ok: true` does not raise the warning
    (see Escape hatch above — a top-level YAML flag, **not** an inline
    comment).
@@ -151,13 +188,18 @@ the existing `_validate_*` MR functions there (e.g.
 # Skip entirely if fsm.gate_completeness_ok
 # For each state with action_type == "shell" whose action contains "python3":
 #   find literal set/frozenset displays by regex over the raw action string
-#   for each known exported table (NON_LLM_EVALUATOR_TYPES,
-#   EVALUATOR_REQUIRED_FIELDS.keys()):
-#     if len(members) >= 3
-#     and members <= table
-#     and the action does not already import that table:
-#       emit a warning naming the state, the literal, and the table to
-#       import instead
+#   for each literal:
+#     if len(members) < 3: skip
+#     # tables in specificity order, smallest first, so a literal that is a
+#     # subset of both NON_LLM_EVALUATOR_TYPES and EVALUATOR_REQUIRED_FIELDS
+#     # (the former is derived from the latter) is reported once, against the
+#     # tighter of the two — see AC #1a
+#     for table in (VALID_VISIBILITY, VALID_OPERATORS,
+#                   NON_LLM_EVALUATOR_TYPES, EVALUATOR_REQUIRED_FIELDS.keys()):
+#       if members <= table and the action does not already import that table:
+#         emit a warning naming the state, the literal, and the table to
+#         import instead
+#         break   # at most one warning per literal
 ```
 
 ### Detection: regex, not `ast` — decided
@@ -272,7 +314,14 @@ _Wiring pass added by `/ll:wire-issue`:_
   triggers warning), negative cases (import present; `gate_completeness_ok:
   true`; literal below the 3-member floor; literal containing a member outside
   the table), and a full-suite run confirming zero violations against current
-  built-in loops
+  built-in loops. Two further cases from the AC revisions:
+  - **single-emission** (AC #1a): a literal that is a subset of *both*
+    `NON_LLM_EVALUATOR_TYPES` and `EVALUATOR_REQUIRED_FIELDS.keys()` — which
+    is every subset of the former, since it is derived from the latter —
+    produces exactly one `ValidationError`, naming the more specific table.
+  - **`VALID_OPERATORS` coverage** (AC #1): a literal `{"eq", "ne", "lt"}` in
+    an action that does not import `VALID_OPERATORS` is flagged; the same
+    action with the import present is not.
 - Use `workflow-generator.yaml`'s `validate_evaluators` state as the in-repo
   "correct" fixture for the import-present negative case — it imports both
   tables directly and carries an inline comment stating the
@@ -375,7 +424,9 @@ literal set/frozenset displays against the exported tables in
 0. Confirm BUG-3326 has landed (see Ordering) — AC #3 depends on it.
 1. Implement `_validate_gate_completeness` in `meta_rules.py` using a
    module-level compiled `re.Pattern` over the raw action string, with the
-   ≥3-member / no-outside-members floor from AC #1.
+   ≥3-member / no-outside-members floor from AC #1, the full linted-table list
+   (including `VALID_OPERATORS`), and the smallest-first / one-warning-per-
+   literal ordering from AC #1a.
 2. Add the `gate_completeness_ok` flag: `KNOWN_TOP_LEVEL_KEYS` in `_base.py`,
    plus the three `FSMLoop` sites in `schema.py` (field, `from_dict`,
    `to_dict`) following `abstention_route_ok`.
@@ -384,6 +435,7 @@ literal set/frozenset displays against the exported tables in
 4. Add tests: positive (unimported ≥3-member subset triggers warning),
    negative (import present; below the cardinality floor; a literal with
    members outside the table; `gate_completeness_ok: true`), the
+   single-emission case (AC #1a) and the `VALID_OPERATORS` pair, the
    `validate_evaluators` state as the in-repo correct fixture, the CLI-level
    pair, and the zero-violations sweep over built-in loops.
 5. Document the rule in `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` as an
@@ -441,13 +493,21 @@ terminal gate exposes its rules as data, import rather than restate.
 
 Detection: in `fsm/validation`, for each `action_type: shell` state whose action
 contains `python3`, look for a literal set/frozenset of **≥3 members, all of them**
-members of a known exported table, in an action that does not import that table.
+members of a known exported table (`EVALUATOR_REQUIRED_FIELDS` keys,
+`NON_LLM_EVALUATOR_TYPES`, `VALID_OPERATORS`, optionally `VALID_VISIBILITY`), in
+an action that does not import that table. Tables are checked smallest-first and
+at most one warning is emitted per literal, since `NON_LLM_EVALUATOR_TYPES` is
+derived from `EVALUATOR_REQUIRED_FIELDS` and would otherwise double-report.
 Severity `warning` — a restatement is sometimes deliberate (a *narrower* curated
 vocabulary) — suppressed by `gate_completeness_ok: true`.
 
 Current blast radius: `workflow-generator.yaml`'s `validate_evaluators` was the
 only built-in doing this in a `shell` gate, and it has been fixed, so the rule
-ships with zero violations and acts purely as a forward guard. Caveat: the same
+ships with zero violations and acts purely as a forward guard. Re-confirmed
+after adding `VALID_OPERATORS` to the linted set: no built-in loop restates an
+operator vocabulary — the only `"eq"` occurrence across `loops/**.yaml` is
+`docs-sync.yaml:72`'s `operator: "eq"`, a single evaluator field, not a set
+literal, and well under the ≥3-member floor. Caveat: the same
 loop still restates the table in prose inside `attach_evaluators`'s **prompt**,
 which this rule does not inspect — see Known coverage gap.
 
@@ -491,6 +551,7 @@ Source: `postmortems/workflow-generator-output-json-gate-gap.md` §6.
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-26T20:09:17 - `fdfe1063-50b8-41a2-aae7-c524a32eadad.jsonl`
 - `/ll:wire-issue` - 2026-08-26T19:28:19 - `1f462280-8e7a-4295-8360-c2cd201baeea.jsonl`
 - `/ll:refine-issue` - 2026-08-26T19:14:22 - `0809cdb6-a88f-42a7-9e51-e57ee8a63f3a.jsonl`
 - `/ll:format-issue` - 2026-08-26T19:09:04 - `8c47cf34-66af-4a75-8c4b-c7a8efe5d7ec.jsonl`

@@ -8,6 +8,12 @@ status: open
 discovered_by: ll-issues-create
 discovered_date: '2026-08-26'
 captured_at: '2026-08-26T17:33:29Z'
+confidence_score: 100
+outcome_confidence: 93
+score_complexity: 18
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # BUG-3326: workflow-generator emit_artifact retries cannot converge: validator errors never reach the generator
@@ -60,7 +66,9 @@ pass to read.
    field *presence* — importing `VALID_OPERATORS` alongside the tables it already
    imports — so that every `.evaluate:`-pathed fault is caught at the state that
    owns it, and the residual `.evaluate:` faults reaching `validate_artifact` are
-   emitter-owned by construction. `count_emit_retry` keeps its flat
+   emitter-owned by construction. The check must fire **wherever an `operator`
+   field is present**, not only where `EVALUATOR_REQUIRED_FIELDS` requires one —
+   see Operator-check scope below. `count_emit_retry` keeps its flat
    `on_yes: emit_artifact` edge.
 
 Point (3) is the substantive design work. See the Rejected Alternative below for
@@ -99,6 +107,19 @@ retry mechanism actually do what its name promises.
    On a successful validation `tee` truncates `.emit_errors.txt` to empty, so
    the "exists and non-empty" test in step 2 self-clears between passes. Do
    **not** add an `rm` step.
+
+   **Staleness caveat.** Self-clearing only holds on paths that actually reach
+   `validate_artifact`. `emit_artifact` is also entered from `validate_routing`
+   on the first pass, and a run that re-enters `emit_artifact` without an
+   intervening `validate_artifact` would read a `.emit_errors.txt` describing a
+   prior artifact. Two acceptable mitigations — pick one and state it in the
+   implementation:
+   - **(a)** truncate the file in `init` (`: > "$DIR/.emit_errors.txt"`), which
+     costs one line and makes "non-empty ⇒ written by the immediately preceding
+     `validate_artifact`" true by construction; **recommended**.
+   - **(b)** phrase `emit_artifact`'s prompt so the file is advisory ("if it
+     exists and is non-empty, treat it as the errors from your previous
+     attempt") rather than authoritative.
 2. `emit_artifact`'s prompt instructs: if `.emit_errors.txt` exists and is
    non-empty, read it first and fix every listed error specifically before
    re-emitting.
@@ -110,7 +131,35 @@ retry mechanism actually do what its name promises.
    `_base.py:74` as `{"eq", "ne", "lt", "le", "gt", "ge"}`) alongside the
    `EVALUATOR_REQUIRED_FIELDS` / `NON_LLM_EVALUATOR_TYPES` it already imports,
    and assert `ev["operator"] in VALID_OPERATORS` wherever an `operator` field
-   is required. `count_emit_retry` (line 329) is left unchanged.
+   is **present** (see Operator-check scope below).
+   `count_emit_retry` (line 329) is left unchanged.
+
+### Operator-check scope — present, not required
+
+The intermediate gate must mirror the terminal gate's predicate exactly, or this
+issue reintroduces the very laundering topology it exists to close.
+
+`_validate_evaluate` in
+`scripts/little_loops/fsm/validation/structural_rules.py:115` reads:
+
+```python
+if evaluate.operator is not None and evaluate.operator not in VALID_OPERATORS:
+```
+
+— i.e. it validates the operator whenever one is **present**, regardless of the
+evaluator type. Restricting the intermediate check to types whose
+`EVALUATOR_REQUIRED_FIELDS` entry *lists* `operator` (only `output_numeric` and
+`output_json`) makes it a proper subset of the terminal gate: an
+`output_contains` or `exit_code` evaluator carrying a stray
+`operator: "greater"` passes `validate_evaluators`, propagates through
+`resolve_routing` and `emit_artifact`, and first surfaces at
+`validate_artifact` — where `count_emit_retry` routes back to `emit_artifact`, a
+state structurally incapable of repairing an `attach_evaluators` defect. That is
+the exact failure shape described in FEAT-3328's Summary, relocated one field
+over.
+
+Implement as: for every evaluator, `if "operator" in ev: assert
+ev["operator"] in VALID_OPERATORS`. Presence, not requiredness, is the trigger.
 
 ### Rejected Alternative — fault-class routing to `attach_evaluators`
 
@@ -154,7 +203,10 @@ Fault-class retry routing for `count_emit_retry` is therefore an explicit
 
 ### Files to Modify
 - `scripts/little_loops/loops/workflow-generator.yaml` — `validate_artifact`
-  (line 315), `emit_artifact` (line 280), `validate_evaluators` (line 202).
+  (line 315), `emit_artifact` (line 280), `validate_evaluators` (line 202),
+  and `init` (lines 43-56, one-line `.emit_errors.txt` truncation per the
+  Staleness caveat — must not disturb `init`'s stdout contract, which feeds
+  `capture: run_dir`; keep the `case`/`echo` block last).
   `count_emit_retry` (line 329) is **not** modified — see Rejected Alternative.
 
 ### Dependent Files (Callers/Importers)
@@ -186,8 +238,15 @@ _Wiring pass added by `/ll:wire-issue`:_
   deliberately rather than by drift.
 - Extend `test_validate_evaluators_enforces_required_companion_fields` (lines
   17837-17864) — or add a sibling in the same behavioral subprocess shape —
-  covering the new `VALID_OPERATORS` value check: an evaluator carrying
-  `operator: "greater"` must exit non-zero.
+  covering the new `VALID_OPERATORS` value check. **Two cases, not one**, per
+  Operator-check scope:
+  (i) an `output_json` evaluator (type *requires* `operator`) carrying
+  `operator: "greater"` must exit non-zero;
+  (ii) an `output_contains` evaluator (type does **not** require `operator`)
+  carrying a stray `operator: "greater"` must **also** exit non-zero. Case (ii)
+  is the regression guard against the required-only subset formulation — it is
+  the case `structural_rules.py:115` catches and a requiredness-keyed
+  intermediate gate would launder.
 - Add a behavioral test for `validate_artifact`'s capture: run the extracted
   action against a `tmp_path` run dir containing a deliberately invalid
   `workflow.yaml`, assert `returncode != 0` **and** that
@@ -242,8 +301,9 @@ _Added by `/ll:refine-issue` — 2026-08-26 — based on codebase analysis:_
   merged output to `${captured.run_dir.output}/.emit_errors.txt` under
   `set -o pipefail`, preserving the validator's exit code
 - `validate_evaluators() -> int` — shell action, gains a
-  `VALID_OPERATORS`-membership assertion for every evaluator carrying a
-  required `operator` field
+  `VALID_OPERATORS`-membership assertion for every evaluator carrying an
+  `operator` field, whether or not that type requires one (mirrors
+  `structural_rules.py:115`'s `operator is not None` predicate)
 - `count_emit_retry() -> int` — **unchanged**; edges stay
   `on_yes: emit_artifact` / `on_no: diagnose`
 
@@ -258,12 +318,14 @@ _Added by `/ll:refine-issue` — 2026-08-26 — based on codebase analysis:_
 ## Implementation Steps
 
 1. Add output capture to `validate_artifact` (`set -o pipefail` + `2>&1 |
-   tee`), preserving the exit code.
+   tee`), preserving the exit code, plus the `init` truncation from the
+   Staleness caveat.
 2. Update `emit_artifact`'s prompt to read and address `.emit_errors.txt`,
    using the established "if `<path>` exists and is non-empty, read it first"
    phrasing (see Prompt convention below).
 3. Extend `validate_evaluators` to import `VALID_OPERATORS` and assert
-   operator-value membership.
+   operator-value membership for every evaluator where `operator` is present
+   (see Operator-check scope).
 4. Verify with `ll-loop validate scripts/little_loops/loops/workflow-generator.yaml`
    and a re-run of the source scenario (or an equivalent fixture) to confirm
    retries now converge or fail fast on genuinely emitter-owned faults.
@@ -319,6 +381,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-26T20:09:17 - `fdfe1063-50b8-41a2-aae7-c524a32eadad.jsonl`
 - `/ll:wire-issue` - 2026-08-26T19:21:20 - `3b6a461b-67ff-4f6b-9949-d834388d9cff.jsonl`
 - `/ll:refine-issue` - 2026-08-26T19:14:21 - `0809cdb6-a88f-42a7-9e51-e57ee8a63f3a.jsonl`
 - `/ll:format-issue` - 2026-08-26T19:09:04 - `8c47cf34-66af-4a75-8c4b-c7a8efe5d7ec.jsonl`
