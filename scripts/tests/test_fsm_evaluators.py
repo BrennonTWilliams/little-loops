@@ -2180,6 +2180,7 @@ class TestMcpResultEvaluator:
         assert result.verdict == "error"
 
 
+@pytest.mark.conformance
 class TestBlindComparator:
     """Tests for evaluate_blind_comparator — blind A/B output comparison."""
 
@@ -2358,6 +2359,7 @@ class TestBlindComparator:
         assert "error" not in result
 
 
+@pytest.mark.conformance
 class TestComparatorEvaluator:
     """Tests for evaluate_comparator() — blind A/B comparison with baseline file."""
 
@@ -2497,6 +2499,7 @@ class TestComparatorEvaluator:
         assert (baseline_with_file / "output.txt").read_text() == original_content
 
 
+@pytest.mark.conformance
 class TestContractEvaluator:
     """Tests for evaluate_contract function (Tier 2 LLM-based, reads files)."""
 
