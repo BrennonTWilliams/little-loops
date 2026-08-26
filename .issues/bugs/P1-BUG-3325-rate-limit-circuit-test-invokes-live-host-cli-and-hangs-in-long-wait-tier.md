@@ -113,7 +113,12 @@ No production code is at fault; see Root Cause for the trace that clears
 - **File**: `scripts/tests/test_fsm_executor.py`
 - **Line(s)**: 7964 (wedging test), 7991 (its lone `patch` context); 7889 and 7915
   (the two live-CLI-but-passing siblings); 7856 (`_prompt_fsm()`, the shared
-  prompt-mode helper they call); 7850-7853 (class docstring, made stale by the fix)
+  prompt-mode helper they call — also needs an explicit `action_type="prompt"`);
+  8001 (`test_record_rate_limit_not_called_when_circuit_none`, same implicit-mode
+  defect, currently benign); 7850-7853 (class docstring, made stale by the fix)
+- **Also**: `scripts/tests/conftest.py:98-121` — `pytest_collection_modifyitems`'
+  docstring, which asserts a `no_parallel` test "still runs … on the controller".
+  False under `-n N`; see the marker note in Proposed Solution.
 - **Anchors**: `TestRateLimitCircuitIntegration.test_record_rate_limit_called_on_short_tier`,
   `.test_pre_action_sleep_when_circuit_active`, `.test_pre_action_no_sleep_when_circuit_stale`
 - **Blocking site**: `scripts/little_loops/fsm/executor.py:3415` — the long-wait
@@ -327,21 +332,56 @@ Test-only. No production change. **This shape was prototyped end-to-end against
    them by adding the missing evaluator patch instead:
 
    ```python
-   with patch("little_loops.fsm.executor.evaluate_llm_structured") as llm:
+   with patch(
+       "little_loops.fsm.executor.evaluate_llm_structured",
+       return_value=EvaluationResult(verdict="yes", details={}),
+   ) as llm:
        executor = FSMExecutor(fsm, action_runner=runner, circuit=circuit)
        with patch.object(executor, "_interruptible_sleep", side_effect=fake_sleep):
            executor.run()
    ```
 
-   Both assert only on the `sleeps` list, and both route `on_yes`/`on_no`/`on_error`
-   to `done`, so a bare `MagicMock` return value is sufficient — the run
-   terminates in one iteration on any verdict. Add `assert llm.call_count == 1`
-   to each so the prompt-mode routing they exist to prove stays asserted (a
-   `MagicMock` that is never called would silently weaken the test).
-7. **Update the class docstring** (`:7844-7854`). Its `no_parallel` justification —
-   "`test_record_rate_limit_called_on_short_tier` exercises a real wall-clock
-   sleep in the short-tier backoff ladder" — becomes false the moment step (2)
-   lands. See the marker note below.
+   **The return value must be a real `EvaluationResult`, not a bare `MagicMock`.**
+   An earlier revision said a bare `MagicMock` was sufficient because both tests
+   route `on_yes`/`on_no`/`on_error` to `done` and assert only on `sleeps`. That
+   is wrong: `_evaluate` unpacks the result's `details` into the emitted event —
+   `self._emit("evaluate", {"type": "default", "verdict": result.verdict,
+   **result.details})` at `executor.py:2610-2617` — and `**MagicMock().details`
+   raises `TypeError` at unpack time rather than degrading to an `error` verdict.
+   `EvaluationResult(verdict="yes", details={})` is also this file's existing
+   convention for the same patch (`test_fsm_executor.py:8094` and the two
+   sibling `test_sub_loop_*` tests below it).
+
+   Add `assert llm.call_count == 1` to each so the prompt-mode routing they exist
+   to prove stays asserted (a mock that is never called would silently weaken the
+   test).
+7. **Declare prompt mode explicitly in `_prompt_fsm()` (`:7856`)** — add
+   `action_type="prompt"` to its `StateConfig`. Step (1) forbids re-depending on
+   `_action_mode`'s leading-slash heuristic for the shell side; the same argument
+   applies here. `_prompt_fsm` currently gets prompt mode *implicitly* from
+   `action="/work"`, and these two tests exist precisely to assert the
+   prompt-vs-shell axis (paired against `test_pre_action_skipped_for_shell_action`).
+   The axis under test should be declared, not inferred. `_action_mode` checks
+   explicit `action_type` first (`executor.py:2844-2859`), so the resolved mode is
+   unchanged and the `MockActionRunner` keying on the `"/work"` string is
+   unaffected.
+8. **Fix the same latent defect in `test_record_rate_limit_not_called_when_circuit_none`
+   (`:8001`)** — it builds `action="work.sh"` with **no** `action_type`, the exact
+   implicit classification step (1) rules out. It lands in shell mode today, so it
+   makes no live call, but it is one `_action_mode` change away from becoming a
+   fourth billing test. Add `action_type="shell"` (or reuse `self._shell_fsm()`).
+   Zero-risk, and it makes the class uniformly explicit.
+9. **Rewrite the class docstring** (`:7844-7854`). Only the BUG-2524 `no_parallel`
+   paragraph is removed — "`test_record_rate_limit_called_on_short_tier` exercises
+   a real wall-clock sleep in the short-tier backoff ladder" becomes false the
+   moment step (2) lands. The ENH-1137 coverage summary above it is still accurate
+   and stays. See the marker note below.
+10. **Record the coverage the shell-mode switch gives up, in
+    `test_record_rate_limit_called_on_short_tier`'s own docstring.** After step (1)
+    no test asserts that a *prompt-mode* 429 records to the circuit. That is
+    acceptable — `_handle_rate_limit` runs during routing
+    (`executor.py:1996-2016`) and is action-mode-agnostic — but say so explicitly,
+    or the next reader "restores" prompt mode and reintroduces this bug.
 
 ### `no_parallel` marker — keep, but re-justify
 
@@ -375,6 +415,34 @@ python -m pytest scripts/tests/test_fsm_executor.py -q -k TestRateLimitCircuitIn
 Re-run a few times to confirm no xdist flake. If it does flake, keep the marker
 and rewrite the docstring to state the real reason — but record the flake, don't
 restore the stale text.
+
+### Also fix the `conftest.py` docstring that is the source of the wrong model
+
+`pytest_collection_modifyitems` (`scripts/tests/conftest.py:98-121`) states:
+
+> The structural fix is to skip the test on workers so it **only runs on the
+> controller** (or in a serial `-n 0` run); **the test still runs** — just on a
+> process that doesn't share cores with six other pytest invocations.
+
+That is false under `-n N`: the controller only collects and distributes, it never
+runs tests. This sentence is why the marker read as a cheap no-op across two
+rounds of review of this issue, and why the coverage loss went unnoticed for as
+long as BUG-2524's marker has been in place. `test_worktree_utils.py:1228` already
+carries the correct warning ("Deliberately NOT `no_parallel`: that marker makes a
+test *skip* under the …"); the conftest docstring must be brought in line with it.
+
+One-paragraph edit, in scope here, and it prevents the next `no_parallel` from
+silently deleting coverage.
+
+**Marker surface, verified 2026-08-26**: `no_parallel` has exactly two real users
+repo-wide — this class (`test_fsm_executor.py:7842`) and
+`test_fsm_signal_integration.py:42`, which also carries `pytest.mark.integration`
+and is therefore deselected from the default run anyway (`-m "not integration and
+not conformance"`). Once this class drops the marker, `no_parallel` has **zero**
+effective users in the default run. Whether the marker and its collection hook
+should survive at all is a separate call — note it for FEAT-3329 rather than
+deciding it here; `scripts/tests/test_conftest_cap.py:133-190` unit-tests the hook
+and would need to go with it.
 
 ### Observable caveat — `_rate_limit_retries` is popped before the assertion runs
 
@@ -513,16 +581,35 @@ _Added by `/ll:refine-issue` — 2026-08-26 — based on codebase analysis:_
       spawn **no** live host CLI call, verified by `assert llm.call_count == 1`
       on a patched `little_loops.fsm.executor.evaluate_llm_structured` (not by
       wall clock). Both remain in prompt mode — `_prompt_fsm()` is the axis they
-      test and must not be swapped for `_shell_fsm()`.
+      test and must not be swapped for `_shell_fsm()`. The patch's `return_value`
+      is a real `EvaluationResult(verdict="yes", details={})`, **not** a bare
+      `MagicMock` (which raises `TypeError` on `**result.details` at
+      `executor.py:2610-2617`).
+- [ ] Every `StateConfig` in `TestRateLimitCircuitIntegration` declares its mode
+      explicitly: `_prompt_fsm()` (`:7856`) gains `action_type="prompt"`, and
+      `test_record_rate_limit_not_called_when_circuit_none` (`:8001`) gains
+      `action_type="shell"`. No test in the class depends on `_action_mode`'s
+      leading-`/` prefix heuristic (`executor.py:2844-2859`) — the implicit
+      classification that produced this bug.
+- [ ] `test_record_rate_limit_called_on_short_tier`'s docstring records that the
+      short-tier/circuit assertion is action-mode-agnostic
+      (`executor.py:1996-2016`), so the shell-mode fixture is deliberate and must
+      not be "restored" to prompt mode.
+- [ ] `pytest_collection_modifyitems`' docstring
+      (`scripts/tests/conftest.py:98-121`) no longer claims a `no_parallel` test
+      "still runs … on the controller"; it states that under `-n N` the controller
+      does not run tests, so the marker *skips the test outright*. Wording aligned
+      with the existing correct note at `test_worktree_utils.py:1228`.
 - [ ] The whole class runs in under 1s:
       `python -m pytest scripts/tests/test_fsm_executor.py -q -n 0 -p no:randomly
       -k TestRateLimitCircuitIntegration --durations=10` shows no call over 1s.
       Baseline for comparison (2026-08-26, `main`): the two pre-action tests alone
       took 56.21s and 59.88s.
-- [ ] The `no_parallel` marker is removed from `TestRateLimitCircuitIntegration`
-      and the class docstring's stale BUG-2524 rationale
-      (`test_fsm_executor.py:7844-7854`) goes with it, so the class actually
-      executes in the default run:
+- [ ] The class docstring (`test_fsm_executor.py:7844-7854`) is **rewritten, not
+      deleted**: the stale BUG-2524 `no_parallel` paragraph goes; the ENH-1137
+      coverage summary above it is still accurate and stays.
+- [ ] The `no_parallel` marker is removed from `TestRateLimitCircuitIntegration`,
+      so the class actually executes in the default run:
       `python -m pytest scripts/tests/test_fsm_executor.py -q -k TestRateLimitCircuitIntegration`
       reports **`10 passed`**, not `10 skipped` (measured baseline on `main`:
       `10 skipped in 1.26s`). If it flakes under xdist, the marker may stay —
@@ -558,10 +645,13 @@ and Risk accordingly.
      tests in the class are `skipped` under default addopts (verified:
      `10 skipped in 1.26s`), so the ENH-1137 circuit integration this class exists
      to protect is unguarded in every default and CI run. The fix restores it.
-- **Effort**: Small–Medium. Six test-only edits across three test functions, plus
-  a marker/docstring removal and a re-verification that the un-skipped class is
-  xdist-stable. No production change. (Was rated "four edits / one function"
-  before the second review found the two sibling tests and the skip.)
+- **Effort**: Small–Medium. Test-only edits across three test functions, two
+  one-line `action_type` declarations (`_prompt_fsm`, the `circuit=None` test),
+  a marker removal + class-docstring rewrite, a `conftest.py` docstring
+  correction, and a re-verification that the un-skipped class is xdist-stable.
+  No production change. (Was "four edits / one function" before the second review
+  found the two sibling tests and the skip; the third review added the
+  explicit-mode and conftest-docstring items, both zero-risk.)
 - **Risk**: Low. The test edits are confined to three functions in one class and
   the production reset they were suspected of exposing is confirmed correct and
   stays untouched. The one real judgment call is dropping `no_parallel` — that
@@ -577,8 +667,8 @@ and Risk accordingly.
 _Added by `/ll:refine-issue` — 2026-08-26 — based on codebase analysis:_
 
 **Files to modify:**
-- `scripts/tests/test_fsm_executor.py` — three target tests in `TestRateLimitCircuitIntegration`: `test_record_rate_limit_called_on_short_tier` (7964), `test_pre_action_sleep_when_circuit_active` (7889), `test_pre_action_no_sleep_when_circuit_stale` (7915); plus the class docstring (7844-7854) and, if a class/session-scoped fixture is added, the class body (7843-8250)
-- `scripts/tests/conftest.py` — candidate location for the proposed `_no_live_host_cli`/ladder-guard autouse fixtures; the file's existing autouse fixtures (`_isolate_history_db_session`, `_isolate_history_db`, `_guard_real_history_db`, `_isolate_session_log_dir`, `_restore_cmd_run_env_vars`, `_reset_deprecated_key_warnings`) live at lines 553-762
+- `scripts/tests/test_fsm_executor.py` — three target tests in `TestRateLimitCircuitIntegration`: `test_record_rate_limit_called_on_short_tier` (7964), `test_pre_action_sleep_when_circuit_active` (7889), `test_pre_action_no_sleep_when_circuit_stale` (7915); the `_prompt_fsm()` helper (7856, explicit `action_type="prompt"`); `test_record_rate_limit_not_called_when_circuit_none` (8001, explicit `action_type="shell"`); plus the class marker (7842) and docstring (7844-7854)
+- `scripts/tests/conftest.py:98-121` — `pytest_collection_modifyitems` **docstring only** (the "still runs on the controller" correction). No behavior change; `scripts/tests/test_conftest_cap.py:133-190` covers the hook and must stay green. This file is *also* the candidate location for FEAT-3329's `_no_live_host_cli`/ladder-guard autouse fixtures — those are **not** in scope here; its existing autouse fixtures (`_isolate_history_db_session`, `_isolate_history_db`, `_guard_real_history_db`, `_isolate_session_log_dir`, `_restore_cmd_run_env_vars`, `_reset_deprecated_key_warnings`) live at lines 553-762
 
 **Dependent files (callers/importers):**
 - `scripts/little_loops/fsm/executor.py:2011` — `FSMExecutor._execute_state()` calls `_handle_rate_limit()`, the function whose long-wait tier this test's fixture bug reaches unintentionally
@@ -616,9 +706,11 @@ the Scope note under Acceptance Criteria).
 The path that must stop being reached:
 `_execute_state` (`executor.py:1872`) → `_evaluate` (`executor.py:2603`) →
 `evaluate_llm_structured` (`fsm/evaluators.py:1090`) → `run_blocking_json`
-(`host_runner.py:2146`) → `subprocess.run`. Switching `action="/work"` to
-`action="work.sh"` diverts `_action_mode` away from `"prompt"` before
-`_evaluate` is reached.
+(`host_runner.py:2146`) → `subprocess.run`. Switching to `self._shell_fsm()`
+(`action="work.sh"` **with** an explicit `action_type="shell"`) diverts
+`_action_mode` away from `"prompt"` before `_evaluate` is reached. A bare
+`action="work.sh"` would work only via the prefix heuristic — see Proposed
+Solution step 1.
 
 The path that must terminate:
 `_handle_rate_limit` short tier (`executor.py:3396-3402`) → long tier
@@ -718,6 +810,41 @@ further corrections folded in:
    passing" AC conditional on the marker removal. Effort re-rated Small→Small–Medium
    and Risk Very low→Low, since un-skipping 10 tests into the parallel run is a
    real (if small) change that must be verified rather than assumed.
+
+### Third review — 2026-08-26 (pre-implementation)
+
+Diagnosis, scope, and the Verified Fix Shape all re-confirmed against `main`; no
+retractions. Six additions folded into the sections above:
+
+1. **Step 6's snippet was wrong and would have raised.** "A bare `MagicMock`
+   return value is sufficient" is false — `_evaluate` unpacks `**result.details`
+   into the emitted event (`executor.py:2610-2617`), so a `MagicMock` raises
+   `TypeError` rather than degrading to an `error` verdict. Corrected to
+   `EvaluationResult(verdict="yes", details={})`, matching this file's existing
+   convention at `test_fsm_executor.py:8094`. Added to the ACs.
+2. **`_prompt_fsm()` (`:7856`) needs an explicit `action_type="prompt"`.** Step 1
+   correctly forbids re-depending on `_action_mode`'s prefix heuristic for the
+   shell side but left the prompt side implicit — in the two tests whose entire
+   purpose is the prompt-vs-shell axis. New step 7.
+3. **`test_record_rate_limit_not_called_when_circuit_none` (`:8001`) carries the
+   same latent defect** — bare `action="work.sh"`, no `action_type`. Benign today
+   (lands in shell mode), one `_action_mode` change from becoming a fourth
+   billing test. New step 8.
+4. **The `conftest.py:98-121` docstring is the source of the wrong mental model**
+   — it claims a `no_parallel` test "still runs … on the controller," which is
+   false under `-n N`. That sentence is why the marker read as a cheap no-op
+   across two rounds of review here. `test_worktree_utils.py:1228` already has
+   the correct wording to align to. Added to Proposed Solution and the ACs.
+5. **`no_parallel` marker surface measured**: exactly two users repo-wide — this
+   class and `test_fsm_signal_integration.py:42` (also `integration`-marked, so
+   deselected from the default run regardless). After this fix the marker has
+   zero effective users in the default run; whether it and its hook should
+   survive is noted for FEAT-3329, not decided here.
+6. **The class-docstring AC was ambiguous** — split so the BUG-2524 paragraph is
+   removed while the still-accurate ENH-1137 coverage summary is retained; and
+   `test_record_rate_limit_called_on_short_tier`'s own docstring must record that
+   the circuit assertion is action-mode-agnostic (`executor.py:1996-2016`), so
+   the shell-mode fixture is not "restored" to prompt mode by a later reader.
 
 ### Origin
 
