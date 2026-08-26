@@ -114,9 +114,38 @@ retry mechanism actually do what its name promises.
   `workflow-generator.yaml` validates and that `count_emit_retry`'s routing
   edges cover the `\.evaluate:` fault class
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_builtin_loops.py` — `TestWorkflowGeneratorLoop`
+  (class starts line 17684) currently has no test pinning
+  `count_emit_retry`'s `on_yes`/`on_no` targets or `validate_artifact`'s
+  `on_no` target — a genuine gap since the class otherwise asserts routing
+  edges for every other gated state. Add a dict-lookup test following
+  `test_shrink_gated_by_context_flag`/`test_promotion_gated_by_auto_promote_flag`
+  (lines 17759-17772) for the new fault-class branch, and extend
+  `test_validate_artifact_invokes_ll_loop_validate` (line 17790) or add a
+  sibling behavioral test following
+  `test_validate_evaluators_enforces_required_companion_fields` (lines
+  17837-17864) to prove the stderr-capture/fault-class grep actually
+  discriminates, per the same file's existing "Gate-completeness regression
+  guards" block (lines 17815-17819).
+- `scripts/tests/test_builtin_loops.py::test_pipeline_states_exist` (line
+  17725, `required` set includes `count_emit_retry` at 17738) — no change
+  needed unless a state is renamed/removed, but note it as the guard that
+  will break if the classification step is inserted as a new named state
+  rather than folded into `count_emit_retry` itself.
+
 ### Documentation
 - `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` — if fault-class retry routing
   becomes a documented MR pattern, note it there; otherwise N/A
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/guides/LOOPS_REFERENCE.md` (~line 2659, `workflow-generator` section)
+  — states `count_emit_retry` falls back to `diagnose` only; needs a clause
+  for the new fault-class exit to `attach_evaluators`.
+- `docs/reference/loops.md` (~line 152, `workflow-generator` context-variables
+  table) — describes `max_emit_retries` as "Bound on `emit_artifact` retries
+  before routing to `diagnose`"; same staleness once a fault-class branch
+  exists.
 
 ### Configuration
 - N/A
@@ -168,6 +197,23 @@ faults) **or** `attach_evaluators` (fixes evaluator faults, matching the
    and a re-run of the source scenario (or an equivalent fixture) to confirm
    retries now converge or fail fast on genuinely emitter-owned faults.
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Update `scripts/little_loops/loops/workflow-generator.yaml`'s `diagnose`
+  prompt (lines 582-595) — its "read whichever of these exist" file list
+  (`intent.yaml, graph-sketch.yaml, graph-evaluators.yaml, graph-routed.yaml,
+  workflow.yaml, .emit_retry_count`) does not include `.emit_errors.txt`; add
+  it so the terminal diagnostic path sees the new artifact.
+- Update `scripts/tests/test_builtin_loops.py::TestWorkflowGeneratorLoop` —
+  add a routing-edge test for `count_emit_retry`'s new fault-class branch
+  (dict-lookup shape) and a behavioral test proving the stderr/fault-class
+  grep discriminates (subprocess shape), per the Tests subsection above.
+- Update `docs/guides/LOOPS_REFERENCE.md` (~line 2659) and
+  `docs/reference/loops.md` (~line 152) to describe the new fault-class exit
+  from `count_emit_retry` to `attach_evaluators`.
+
 ## Impact
 
 - **Priority**: P2 — retries silently waste cost/time on every workflow-generator
@@ -196,5 +242,6 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-08-26T19:21:20 - `3b6a461b-67ff-4f6b-9949-d834388d9cff.jsonl`
 - `/ll:refine-issue` - 2026-08-26T19:14:21 - `0809cdb6-a88f-42a7-9e51-e57ee8a63f3a.jsonl`
 - `/ll:format-issue` - 2026-08-26T19:09:04 - `8c47cf34-66af-4a75-8c4b-c7a8efe5d7ec.jsonl`

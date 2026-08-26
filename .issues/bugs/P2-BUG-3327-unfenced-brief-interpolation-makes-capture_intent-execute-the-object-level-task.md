@@ -101,6 +101,15 @@ discipline becomes an enforced gate rather than a documented intention.
 - `scripts/little_loops/loops/workflow-generator.yaml` — `capture_intent`
   (line 58), `validate_intent` (line 82)
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/loops/workflow-generator.yaml` — `init` (lines
+  43-56) has no `baseline-ref.txt` capture (unlike `general-task.yaml:76`'s
+  `git rev-parse HEAD > baseline-ref.txt`). If `validate_intent`'s
+  out-of-scope-file assertion follows the `check_provisional_markers`
+  precedent (a baseline-ref + `git diff` gate), `init` needs the same
+  baseline-ref write added, since `validate_intent` alone cannot diff
+  against a baseline that was never captured.
+
 ### Dependent Files (Callers/Importers)
 - N/A — loop is invoked by ID via the FSM runner, not imported
 
@@ -113,6 +122,27 @@ discipline becomes an enforced gate rather than a documented intention.
 - `scripts/tests/test_builtin_loops.py` — add a case asserting
   `capture_intent`'s action text contains the brief-fencing delimiter and
   `validate_intent` asserts no out-of-scope files were written
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_builtin_loops.py::TestWorkflowGeneratorLoop::test_validation_gates_are_exit_code`
+  (line 17784, parametrized on `"validate_intent"` among others) pins
+  `validate_intent.evaluate.type == "exit_code"`. The new out-of-scope-file
+  assertion must stay inside `validate_intent`'s single Python
+  `exit_code`-evaluated check (raise/exit non-zero) rather than switching to
+  `check_provisional_markers`'s `output_json`/`capture:` evaluator shape —
+  the latter would break this test unless it's also updated. Note this
+  constraint explicitly in the implementation.
+- `scripts/tests/test_builtin_loops.py::TestGeneralTaskFinalVerifySpinGateShellAction`
+  (class starts line 2988; helpers `_init_repo` line 3001, `_run_gate` line
+  3019, `_make_run_dir` line 3028) is a closer in-file precedent than
+  `test_general_task_loop.py`'s `check_provisional_markers` tests for writing
+  a behavioral test of `validate_intent`'s new gate: build a temp git repo,
+  write `baseline-ref.txt`, create an out-of-scope file (fail case) vs.
+  only in-scope files (pass case), substitute `${context.run_dir}` in the
+  extracted action string, run via `subprocess.run(["bash", "-c", ...])`,
+  assert on `returncode`.
+- No existing test asserts on `capture_intent`'s literal `"Brief:"` action
+  text, so fencing it breaks nothing currently passing.
 
 ### Documentation
 - `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` — if brief-fencing becomes a
@@ -175,6 +205,26 @@ No existing gate asserts "changed-file-set ⊆ run_dir" as a subset/containment 
 4. Survey other built-in loops per the Scope section and file follow-up
    issues if the same raw-interpolation pattern is found elsewhere.
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Add a `baseline-ref.txt` capture to `init` (lines 43-56), following
+  `general-task.yaml:76`'s `git rev-parse HEAD > baseline-ref.txt` idiom —
+  `validate_intent` cannot diff against a baseline that was never written.
+- Use the untracked-file idiom from `general-task.yaml`'s
+  `final_verify_spin_gate` (`git ls-files -o --exclude-standard`), not
+  `check_provisional_markers`'s tracked-only `git diff --name-only` alone —
+  the source incident's `research/*.md` files were new/untracked, so a
+  diff-only check would miss the exact failure mode this issue targets.
+- Keep `validate_intent`'s containment check inside its existing single
+  Python `exit_code`-evaluated block (per
+  `test_validation_gates_are_exit_code`, line 17784) rather than adopting
+  `check_provisional_markers`'s `output_json`/`capture:` evaluator shape.
+- Add the behavioral test in `TestWorkflowGeneratorLoop` following the
+  `TestGeneralTaskFinalVerifySpinGateShellAction` helper shape (line 2988),
+  per the Tests subsection above.
+
 ## Impact
 
 - **Priority**: P2 — a failed run can leave unverified deliverables that look
@@ -206,5 +256,6 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-08-26T19:24:45 - `3b6a461b-67ff-4f6b-9949-d834388d9cff.jsonl`
 - `/ll:refine-issue` - 2026-08-26T19:14:21 - `0809cdb6-a88f-42a7-9e51-e57ee8a63f3a.jsonl`
 - `/ll:format-issue` - 2026-08-26T19:09:04 - `8c47cf34-66af-4a75-8c4b-c7a8efe5d7ec.jsonl`

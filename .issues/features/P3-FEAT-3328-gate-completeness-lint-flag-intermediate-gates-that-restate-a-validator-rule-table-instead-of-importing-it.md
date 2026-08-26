@@ -131,6 +131,30 @@ the existing `_validate_*` MR functions there (e.g.
   Design Rules (MR-1..MR-14 table) and add the Non-Goal below as a review
   heuristic
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/fsm/validation/structural_rules.py` — add
+  `_validate_gate_completeness` to the `from little_loops.fsm.validation.meta_rules
+  import (...)` block (alongside `_validate_artifact_isolation`,
+  `_validate_meta_loop_evaluation`, etc.) and add its
+  `errors.extend(_validate_gate_completeness(fsm))` call inside `validate_fsm()`,
+  grouped with the other MR-1..MR-6 meta-rule calls (immediately after
+  `errors.extend(_validate_missing_scope(fsm))`, before
+  `errors.extend(_validate_bash_default_interpolation(fsm))`).
+- `scripts/little_loops/fsm/validation/_base.py` — the escape-hatch flag
+  needs a `gate_completeness_ok` entry in `KNOWN_TOP_LEVEL_KEYS`
+  (`frozenset[str]`), or a loop that sets `gate_completeness_ok: true` to
+  suppress the rule gets spuriously flagged as an "Unknown top-level keys"
+  violation.
+- `scripts/little_loops/fsm/schema.py` — the `gate_completeness_ok`
+  suppression flag needs three additional touchpoints on the `FSMLoop`
+  dataclass, following the exact pattern of the existing `abstention_route_ok`
+  flag: (1) field declaration `gate_completeness_ok: bool = False`, (2)
+  `from_dict` parsing `gate_completeness_ok=data.get("gate_completeness_ok",
+  False)`, (3) `to_dict` round-trip `if self.gate_completeness_ok:
+  result["gate_completeness_ok"] = self.gate_completeness_ok`. This is four
+  total sites (this file's three plus `_base.py`'s `KNOWN_TOP_LEVEL_KEYS`),
+  not the single top-level-flag mention the issue's own research implies.
+
 ### Dependent Files (Callers/Importers)
 - `ll-loop validate` CLI — surfaces the new warning through its existing
   output path, no new integration needed
@@ -148,9 +172,51 @@ the existing `_validate_*` MR functions there (e.g.
   suppresses it), and a full-suite run confirming zero violations against
   current built-in loops
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_fsm_validation_meta_rules.py` — add a `TestGateCompleteness`
+  class following the existing `TestArtifactIsolation` (MR-3) shape (lines
+  294-369): a `_simple_fsm(...)` builder constructing a minimal `FSMLoop`
+  directly, then direct calls to `_validate_gate_completeness(fsm)` for
+  positive/negative/suppression cases, plus a
+  `test_gate_completeness_runs_via_validate_fsm` end-to-end wiring check
+  mirroring `test_mr3_runs_via_validate_fsm`.
+- `scripts/tests/test_ll_loop_commands.py::TestCmdValidate` (lines 407-466)
+  has a paired CLI-level precedent for a WARNING-severity rule:
+  `test_validate_no_json_warns_mr13_hardcoded_success_verdict` (non-JSON
+  path, asserts via `caplog.at_level("WARNING")`) and
+  `test_validate_json_warns_mr13_hardcoded_success_verdict` (JSON path,
+  asserts via `capsys` + `json.loads(...)["violations"]`). Add the same
+  paired pair for the new rule to prove it surfaces through `ll-loop
+  validate` end-to-end, not just via the direct function call.
+- `scripts/tests/test_builtin_loops.py::TestBuiltinLoopFiles` (offenders-list
+  + optional exempt-dict pattern at `test_no_failure_edge_routes_to_a_success_terminal`,
+  lines 59-98) is the template for AC #3's "zero violations against the
+  current built-in loop set" test — iterate `builtin_loops`, call
+  `_validate_gate_completeness` per file, assert no offenders.
+- Confirmed: no test enumerates a fixed MR-rule count/list (`validate_fsm`'s
+  dispatcher is a flat `errors.extend(...)` sequence with no registry
+  object), so adding the new rule requires no update to any "N rules total"
+  assertion.
+
 ### Documentation
 - `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` — § The Design Rules (new MR
   entry) and a new heuristic note for retry-reachability (see Non-Goal)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- If the new rule is numbered `MR-15` (per AC #4's "its own MR number"), four
+  spots need updating, not just the table row: the section heading `## The
+  Design Rules (MR-1…MR-14)` itself (→ `MR-1…MR-15`, which drives the GFM
+  anchor slug); `.claude/CLAUDE.md`'s Loop Authoring section, which both
+  hardcodes the prose `` `ll-loop validate` enforces these plus MR-1..MR-14 ``
+  and links to the anchor `#the-design-rules-mr-1mr-14` (both go stale on a
+  heading rename); and two enumerated-list sentences inside
+  `HARNESS_OPTIMIZATION_GUIDE.md` itself that spell out the full WARNING
+  rule set by number (a code-block comment and a matching bullet a few lines
+  later) — both need `MR-15` appended. **Alternative**: ship as an unnumbered
+  named rule (e.g. `**gate-completeness**`) following the existing
+  `policy-table`/`terminal-action-ok` precedent in the same table, which
+  avoids all four renumbering touchpoints. Flag this choice explicitly during
+  implementation rather than defaulting to a numbered slot.
 
 ### Configuration
 - N/A
@@ -203,6 +269,31 @@ literal set/frozenset displays against the exported tables in
 5. Document the new MR rule and the retry-reachability non-goal heuristic in
    `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md`.
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Update `scripts/little_loops/fsm/validation/structural_rules.py` — import
+  `_validate_gate_completeness` and add its `errors.extend(...)` call inside
+  `validate_fsm()`, grouped with the other MR-1..MR-6 meta-rule calls.
+- Update `scripts/little_loops/fsm/validation/_base.py` — add
+  `gate_completeness_ok` to `KNOWN_TOP_LEVEL_KEYS`.
+- Update `scripts/little_loops/fsm/schema.py` — add `gate_completeness_ok`
+  as an `FSMLoop` dataclass field, `from_dict` parse, and `to_dict` emit
+  (three sites, following the `abstention_route_ok` pattern).
+- Update `scripts/tests/test_ll_loop_commands.py::TestCmdValidate` — add a
+  paired non-JSON/`caplog` + JSON/`capsys` CLI-level test mirroring
+  `test_validate_no_json_warns_mr13_hardcoded_success_verdict` /
+  `test_validate_json_warns_mr13_hardcoded_success_verdict`.
+- Update `scripts/tests/test_builtin_loops.py::TestBuiltinLoopFiles` — add a
+  zero-violations test over `builtin_loops` per AC #3, following the
+  offenders-list pattern in `test_no_failure_edge_routes_to_a_success_terminal`.
+- Decide numbered (`MR-15`, touching the section heading, `.claude/CLAUDE.md`'s
+  anchor + prose, and two enumerated WARNING-rule-list sentences in
+  `HARNESS_OPTIMIZATION_GUIDE.md`) vs. unnumbered named-rule (`**gate-completeness**`,
+  no renumbering touchpoints) before writing the docs update — see the
+  Documentation subsection above.
+
 ## Impact
 
 - **Priority**: P3 — a forward guard against a failure class that has
@@ -253,5 +344,6 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-08-26T19:28:19 - `1f462280-8e7a-4295-8360-c2cd201baeea.jsonl`
 - `/ll:refine-issue` - 2026-08-26T19:14:22 - `0809cdb6-a88f-42a7-9e51-e57ee8a63f3a.jsonl`
 - `/ll:format-issue` - 2026-08-26T19:09:04 - `8c47cf34-66af-4a75-8c4b-c7a8efe5d7ec.jsonl`
