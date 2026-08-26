@@ -452,7 +452,15 @@ jobs:
 
           # Start pytest via wrapper in background. Process substitution
           # routes stdout+stderr through tee (file + live GH Actions stream).
-          /tmp/pytest-wrapper.sh > >(tee pytest.log) 2>&1 &
+          # `PYTHONUNBUFFERED=1 timeout 45m` wraps the wrapper (NOT `wait`)
+          # because `wait` is a bash builtin with no binary form — `timeout`
+          # exec's the argument and would fail with "No such file or directory"
+          # (exit 127) before any test runs. The 45m ceiling is enforced by
+          # SIGTERM at T+45min, SIGKILL 30s later, both via the wrapper's
+          # process tree. SHELL_PID captures timeout's PID; `wait $SHELL_PID`
+          # below still works because timeout exits when its child does.
+          PYTHONUNBUFFERED=1 timeout --signal=TERM --kill-after=30s 45m \
+            /tmp/pytest-wrapper.sh > >(tee pytest.log) 2>&1 &
           SHELL_PID=$!
           # Poll for the PID file (wrapper writes it before exec; on a heavily
           # loaded runner the heredoc+chmod+start sequence can race).
@@ -480,8 +488,8 @@ jobs:
             2>&1 | tee -a pytest-master-snapshot.log &
           WATCHDOG_PID=$!
 
-          PYTHONUNBUFFERED=1 timeout --signal=TERM --kill-after=30s 45m \
-            wait $SHELL_PID
+          # Plain `wait` — the timeout guard lives on the wrapper command (above).
+          wait $SHELL_PID
           RC=$?
           set -e
           # Reap orphaned xdist workers that survive the controller kill — they
