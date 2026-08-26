@@ -65,7 +65,7 @@ class TestBackfill:
             "---\nid: BUG-1\nstatus: done\ntype: BUG\n---\n# x\n", encoding="utf-8"
         )
         db = tmp_path / "session.db"
-        counts = backfill(db, issues_dir=tmp_path / ".issues", loops_dir=tmp_path / ".loops")
+        counts = backfill(db, issues_dir=tmp_path / ".issues", loops_dir=tmp_path / ".loops", host="test")
         assert counts["issues"] == 1
         rows = recent(db, kind="issue")
         assert rows[0]["issue_id"] == "BUG-1"
@@ -77,7 +77,7 @@ class TestBackfill:
             json.dumps({"loop_name": "docs-sync", "current_state": "verify"}), encoding="utf-8"
         )
         db = tmp_path / "session.db"
-        counts = backfill(db, issues_dir=tmp_path / ".issues", loops_dir=tmp_path / ".loops")
+        counts = backfill(db, issues_dir=tmp_path / ".issues", loops_dir=tmp_path / ".loops", host="test")
         assert counts["loops"] == 1
 
     def test_backfill_tool_events_from_jsonl(self, tmp_path: Path) -> None:
@@ -104,7 +104,7 @@ class TestBackfill:
             issues_dir=tmp_path / "none",
             loops_dir=tmp_path / "none",
             jsonl_files=[jsonl],
-            also_rebuild=True,
+            also_rebuild=True, host="test"
         )
         assert counts["tools"] == 1
         assert recent(db, kind="tool")[0]["tool_name"] == "Bash"
@@ -115,7 +115,7 @@ class TestBackfill:
             db,
             issues_dir=tmp_path / "no",
             loops_dir=tmp_path / "no",
-            registry_dir=tmp_path / "no-registry",
+            registry_dir=tmp_path / "no-registry", host="test"
         )
         assert counts == {
             "issues": 0,
@@ -147,7 +147,7 @@ class TestBackfill:
             issues_dir=tmp_path / "no",
             loops_dir=tmp_path / "no",
             jsonl_files=[jsonl],
-            also_rebuild=True,
+            also_rebuild=True, host="test"
         )
         assert counts["sessions"] == 1
         conn = connect(db)
@@ -167,7 +167,7 @@ class TestBackfill:
             "---\nid: BUG-2\nstatus: done\ntype: BUG\n---\n", encoding="utf-8"
         )
         db = tmp_path / "session.db"
-        backfill(db, issues_dir=issues, loops_dir=tmp_path / "no")
+        backfill(db, issues_dir=issues, loops_dir=tmp_path / "no", host="test")
         results = search(db, query="done")
         assert any(r["kind"] == "issue" for r in results)
 
@@ -200,7 +200,7 @@ class TestBackfillMessages:
             issues_dir=tmp_path / "no",
             loops_dir=tmp_path / "no",
             jsonl_files=[jsonl],
-            also_rebuild=True,
+            also_rebuild=True, host="test"
         )
         assert counts["messages"] == 1
         rows = recent(db, kind="message")
@@ -223,7 +223,7 @@ class TestBackfillMessages:
             issues_dir=tmp_path / "no",
             loops_dir=tmp_path / "no",
             jsonl_files=[jsonl],
-            also_rebuild=True,
+            also_rebuild=True, host="test"
         )
         rows = recent(db, kind="message")
         assert rows[0]["content"] == "first\nsecond"
@@ -250,7 +250,7 @@ class TestBackfillMessages:
             issues_dir=tmp_path / "no",
             loops_dir=tmp_path / "no",
             jsonl_files=[jsonl],
-            also_rebuild=True,
+            also_rebuild=True, host="test"
         )
         assert counts["messages"] == 1
 
@@ -266,7 +266,7 @@ class TestBackfillMessages:
             issues_dir=tmp_path / "no",
             loops_dir=tmp_path / "no",
             jsonl_files=[jsonl],
-            also_rebuild=True,
+            also_rebuild=True, host="test"
         )
         results = search(db, query="needle")
         assert any(r["kind"] == "message" for r in results)
@@ -289,7 +289,7 @@ class TestBackfillMessages:
             issues_dir=tmp_path / "no",
             loops_dir=tmp_path / "no",
             jsonl_files=[jsonl],
-            also_rebuild=True,
+            also_rebuild=True, host="test"
         )
         assert counts["corrections"] == 1
         rows = recent(db, kind="correction")
@@ -311,7 +311,7 @@ class TestBackfillMessages:
             loops_dir=tmp_path / "no",
             jsonl_files=[jsonl],
             config={"analytics": {"capture": {"corrections": False}}},
-            also_rebuild=True,
+            also_rebuild=True, host="test"
         )
         assert counts["corrections"] == 0
         assert len(recent(db, kind="correction")) == 0
@@ -329,14 +329,14 @@ class TestBackfillMessages:
             issues_dir=tmp_path / "no",
             loops_dir=tmp_path / "no",
             jsonl_files=[jsonl],
-            also_rebuild=True,
+            also_rebuild=True, host="test"
         )
         backfill(
             db,
             issues_dir=tmp_path / "no",
             loops_dir=tmp_path / "no",
             jsonl_files=[jsonl],
-            also_rebuild=True,
+            also_rebuild=True, host="test"
         )
         rows = recent(db, kind="correction")
         assert len(rows) == 1, "re-running backfill must not duplicate correction rows"
@@ -519,19 +519,19 @@ class TestBackfillIncremental:
     def test_processes_all_files_when_since_ts_zero(self, tmp_path: Path) -> None:
         jsonl = self._make_tool_jsonl(tmp_path, "s1")
         db = tmp_path / "history.db"
-        counts = backfill_incremental(db, jsonl_files=[jsonl], since_ts=0.0)
+        counts = backfill_incremental(db, jsonl_files=[jsonl], since_ts=0.0, host="test")
         assert counts["raw_events"] >= 1
 
     def test_filters_files_with_future_since_ts(self, tmp_path: Path) -> None:
         """Files with mtime before a far-future since_ts are excluded."""
         jsonl = self._make_tool_jsonl(tmp_path, "s2")
         db = tmp_path / "history.db"
-        counts = backfill_incremental(db, jsonl_files=[jsonl], since_ts=9_999_999_999.0)
+        counts = backfill_incremental(db, jsonl_files=[jsonl], since_ts=9_999_999_999.0, host="test")
         assert counts["raw_events"] == 0
 
     def test_writes_last_raw_event_ts_after_run(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
-        backfill_incremental(db, jsonl_files=[], since_ts=0.0)
+        backfill_incremental(db, jsonl_files=[], since_ts=0.0, host="test")
         conn = connect(db)
         try:
             row = conn.execute("SELECT value FROM meta WHERE key = 'last_raw_event_ts'").fetchone()
@@ -555,20 +555,20 @@ class TestBackfillIncremental:
             conn.commit()
         finally:
             conn.close()
-        counts = backfill_incremental(db, jsonl_files=[jsonl])
+        counts = backfill_incremental(db, jsonl_files=[jsonl], host="test")
         assert counts["raw_events"] == 0
 
     def test_missing_file_is_skipped_silently(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
         counts = backfill_incremental(
-            db, jsonl_files=[tmp_path / "nonexistent.jsonl"], since_ts=0.0
+            db, jsonl_files=[tmp_path / "nonexistent.jsonl"], since_ts=0.0, host="test"
         )
         assert counts["raw_events"] == 0
 
     def test_also_rebuild_materializes_messages_and_sessions(self, tmp_path: Path) -> None:
         jsonl = self._make_msg_jsonl(tmp_path, "s4")
         db = tmp_path / "history.db"
-        counts = backfill_incremental(db, jsonl_files=[jsonl], since_ts=0.0, also_rebuild=True)
+        counts = backfill_incremental(db, jsonl_files=[jsonl], since_ts=0.0, also_rebuild=True, host="test")
         assert counts["messages"] >= 1
         assert counts["sessions"] >= 1
 
@@ -576,7 +576,7 @@ class TestBackfillIncremental:
         """backfill_incremental() is ingest-only by default (ENH-2581)."""
         jsonl = self._make_tool_jsonl(tmp_path, "sess-1")
         db = tmp_path / "history.db"
-        backfill_incremental(db, jsonl_files=[jsonl], since_ts=0.0)
+        backfill_incremental(db, jsonl_files=[jsonl], since_ts=0.0, host="test")
         conn = connect(db)
         try:
             sessions_count = conn.execute("SELECT COUNT(*) FROM sessions").fetchone()[0]
@@ -591,7 +591,7 @@ class TestBackfillIncremental:
     def test_also_rebuild_materializes_sessions(self, tmp_path: Path) -> None:
         jsonl = self._make_tool_jsonl(tmp_path, "sess-1")
         db = tmp_path / "history.db"
-        backfill_incremental(db, jsonl_files=[jsonl], since_ts=0.0, also_rebuild=True)
+        backfill_incremental(db, jsonl_files=[jsonl], since_ts=0.0, also_rebuild=True, host="test")
         conn = connect(db)
         try:
             count = conn.execute("SELECT COUNT(*) FROM sessions").fetchone()[0]
@@ -629,7 +629,7 @@ class TestBackfillSkillEvents:
             issues_dir=tmp_path / "no",
             loops_dir=tmp_path / "no",
             jsonl_files=[jsonl],
-            also_rebuild=True,
+            also_rebuild=True, host="test"
         )
         assert counts["skill_events"] == 1
         rows = recent(db, kind="skill")
@@ -651,7 +651,7 @@ class TestBackfillSkillEvents:
             issues_dir=tmp_path / "no",
             loops_dir=tmp_path / "no",
             jsonl_files=[jsonl],
-            also_rebuild=True,
+            also_rebuild=True, host="test"
         )
         assert counts["skill_events"] == 1
         rows = recent(db, kind="skill")
@@ -671,7 +671,7 @@ class TestBackfillSkillEvents:
             issues_dir=tmp_path / "no",
             loops_dir=tmp_path / "no",
             jsonl_files=[jsonl],
-            also_rebuild=True,
+            also_rebuild=True, host="test"
         )
         assert counts["skill_events"] == 0
 
@@ -688,7 +688,7 @@ class TestBackfillSkillEvents:
             issues_dir=tmp_path / "no",
             loops_dir=tmp_path / "no",
             jsonl_files=[jsonl],
-            also_rebuild=True,
+            also_rebuild=True, host="test"
         )
         assert counts["skill_events"] == 1
         rows = recent(db, kind="skill")
@@ -707,7 +707,7 @@ class TestBackfillSkillEvents:
             issues_dir=tmp_path / "no",
             loops_dir=tmp_path / "no",
             jsonl_files=[jsonl],
-            also_rebuild=True,
+            also_rebuild=True, host="test"
         )
         results = search(db, query="ready")
         assert any(r["kind"] == "skill" for r in results)
@@ -2634,7 +2634,7 @@ class TestBackfillPromptOpt:
             issues_dir=tmp_path / "no",
             loops_dir=tmp_path / "no",
             jsonl_files=[jsonl],
-            also_rebuild=True,
+            also_rebuild=True, host="test"
         )
         assert counts["prompt_opt_events"] == 1
         rows = recent(db, kind="prompt_opt")
@@ -2667,7 +2667,7 @@ class TestBackfillPromptOpt:
             issues_dir=tmp_path / "no",
             loops_dir=tmp_path / "no",
             jsonl_files=[jsonl],
-            also_rebuild=True,
+            also_rebuild=True, host="test"
         )
         assert counts["prompt_opt_events"] == 0
         rows = recent(db, kind="prompt_opt")
@@ -2699,7 +2699,7 @@ class TestBackfillPromptOpt:
             issues_dir=tmp_path / "no",
             loops_dir=tmp_path / "no",
             jsonl_files=[jsonl],
-            also_rebuild=True,
+            also_rebuild=True, host="test"
         )
         first_pass = rebuild(db)
         assert first_pass["prompt_opt_events"] == 0

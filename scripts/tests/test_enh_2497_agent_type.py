@@ -241,7 +241,7 @@ class TestBackfillAgentType:
             issues_dir=tmp_path / "none",
             loops_dir=tmp_path / "none",
             jsonl_files=[jsonl_path],
-            also_rebuild=True,
+            also_rebuild=True, host="test"
         )
 
         conn = sqlite3.connect(str(db))
