@@ -50,18 +50,22 @@ pass to read.
 
 ## Expected Behavior
 
-1. `validate_artifact` tees `ll-loop validate` stderr to
+1. `validate_artifact` tees `ll-loop validate` output to
    `${captured.run_dir.output}/.emit_errors.txt` while preserving its exit status
-   (the `exit_code` evaluator depends on it).
+   (the `exit_code` evaluator depends on it) **and** leaving the error text visible
+   in the runner log.
 2. `emit_artifact`'s prompt instructs: if `.emit_errors.txt` exists and is
    non-empty, read it first and fix every listed error specifically.
-3. `count_emit_retry` routes by fault class rather than unconditionally back to
-   `emit_artifact` — an error matching `\.evaluate:` belongs to `attach_evaluators`,
-   not the emitter, and the existing `on_no: attach_evaluators` edge already exists
-   to carry it.
+3. `validate_evaluators` is extended to check evaluator field *values*, not just
+   field *presence* — importing `VALID_OPERATORS` alongside the tables it already
+   imports — so that every `.evaluate:`-pathed fault is caught at the state that
+   owns it, and the residual `.evaluate:` faults reaching `validate_artifact` are
+   emitter-owned by construction. `count_emit_retry` keeps its flat
+   `on_yes: emit_artifact` edge.
 
-Point (3) is the substantive design work. Point (1) has a trap: capturing stderr
-must not swallow the exit code (`cmd 2>file` then `exit $?`, not a pipeline).
+Point (3) is the substantive design work. See the Rejected Alternative below for
+why fault-class routing from `count_emit_retry` to `attach_evaluators` — the
+original proposal — is the wrong shape now that `validate_evaluators` is fixed.
 
 ## Motivation
 
@@ -73,31 +77,85 @@ retry mechanism actually do what its name promises.
 
 ## Proposed Solution
 
-1. `validate_artifact` tees `ll-loop validate` stderr to
+1. `validate_artifact` tees `ll-loop validate` output to
    `${captured.run_dir.output}/.emit_errors.txt` while preserving its exit
-   status:
+   status, using the established `pipefail` + `tee` idiom (idiom (a) in the
+   Convention check below):
    ```yaml
    validate_artifact:
      action: |
-       ll-loop validate "${captured.run_dir.output}/workflow.yaml" \
-         2> "${captured.run_dir.output}/.emit_errors.txt"; exit $?
+       set -o pipefail
+       ll-loop validate "${captured.run_dir.output}/workflow.yaml" 2>&1 \
+         | tee "${captured.run_dir.output}/.emit_errors.txt"
    ```
-   (`cmd 2>file; exit $?`, not a pipeline — piping through e.g. `tee` would
-   swallow the exit code the `exit_code` evaluator depends on.)
+   `set -o pipefail` makes the pipeline's exit status that of `ll-loop
+   validate`, so the `exit_code` evaluator still sees the real result. A bare
+   `cmd 2>file` also preserves the exit code but *removes the error text from
+   the runner log*, which is where a run is triaged post-mortem — prefer the
+   pipeline. **Verified:** `ll-loop validate` writes its error block to
+   **stderr** via `Logger.error` (`scripts/little_loops/logger.py:97`), so
+   `2>&1` is required — the failure path prints nothing on stdout.
+
+   On a successful validation `tee` truncates `.emit_errors.txt` to empty, so
+   the "exists and non-empty" test in step 2 self-clears between passes. Do
+   **not** add an `rm` step.
 2. `emit_artifact`'s prompt instructs: if `.emit_errors.txt` exists and is
    non-empty, read it first and fix every listed error specifically before
    re-emitting.
-3. `count_emit_retry` (`scripts/little_loops/loops/workflow-generator.yaml:329`)
-   routes by fault class instead of unconditionally back to `emit_artifact`:
-   an error matching `\.evaluate:` belongs to `attach_evaluators`, not the
-   emitter, and reuses the existing `on_no: attach_evaluators` edge already
-   present on `validate_evaluators` (line 231).
+3. `validate_evaluators`
+   (`scripts/little_loops/loops/workflow-generator.yaml:202`) is extended to
+   validate evaluator field *values*, not just presence: import
+   `VALID_OPERATORS` (already exported from
+   `scripts/little_loops/fsm/validation/__init__.py:51`, defined at
+   `_base.py:74` as `{"eq", "ne", "lt", "le", "gt", "ge"}`) alongside the
+   `EVALUATOR_REQUIRED_FIELDS` / `NON_LLM_EVALUATOR_TYPES` it already imports,
+   and assert `ev["operator"] in VALID_OPERATORS` wherever an `operator` field
+   is required. `count_emit_retry` (line 329) is left unchanged.
+
+### Rejected Alternative — fault-class routing to `attach_evaluators`
+
+The original proposal had `count_emit_retry` grep `.emit_errors.txt` for
+`\.evaluate:` and route those faults back to `attach_evaluators`, reusing
+`validate_evaluators`'s existing `on_no` edge (line 231). That was drafted
+against the pre-fix world and is now the wrong shape:
+
+- **The class it targets no longer reaches `validate_artifact`.**
+  `validate_evaluators` already imports `EVALUATOR_REQUIRED_FIELDS` and
+  `NON_LLM_EVALUATOR_TYPES` and checks *both* type membership and companion-
+  field completeness (the gate-completeness fix referenced in Notes). A
+  missing-companion-field defect — the source incident's actual fault — is
+  caught at `attach_evaluators` and cannot surface downstream any more.
+- **The residual `.evaluate:` faults are emitter-owned.** What can still reach
+  `validate_artifact` on that path is `emit_artifact` dropping or mangling
+  evaluator fields during the documented `states:` list→mapping SHAPE FLIP.
+  Routing those to `attach_evaluators` blames the wrong state.
+- **It discards two passes of work.** `attach_evaluators` re-reads
+  `graph-sketch.yaml` and rewrites `graph-evaluators.yaml`, so
+  `resolve_routing`'s `graph-routed.yaml` is regenerated too — the routing
+  pass re-runs for a transcription bug.
+- **It reintroduces this very bug one state over.** `attach_evaluators`'s
+  prompt reads only `graph-sketch.yaml`. Routed there without also being told
+  to read `.emit_errors.txt`, it regenerates byte-identical evaluators — the
+  exact non-convergence this issue exists to fix, relocated.
+
+The one genuine `attach_evaluators`-owned class that *does* survive the
+current gate is **invalid field values**: `validate_evaluators` checks that
+`operator` is present, not that it is a legal operator, so
+`operator: "greater"` passes the gate and fails at `ll-loop validate` with an
+`.evaluate:`-pathed error. Fixing that upstream (Proposed Solution step 3) is
+strictly smaller than a classification state, keeps the fix at the state that
+owns the fault, and applies the same import-don't-restate principle FEAT-3328
+proposes to lint for.
+
+Fault-class retry routing for `count_emit_retry` is therefore an explicit
+**non-goal** of this issue.
 
 ## Integration Map
 
 ### Files to Modify
 - `scripts/little_loops/loops/workflow-generator.yaml` — `validate_artifact`
-  (line 315), `emit_artifact` (line 280), `count_emit_retry` (line 329)
+  (line 315), `emit_artifact` (line 280), `validate_evaluators` (line 202).
+  `count_emit_retry` (line 329) is **not** modified — see Rejected Alternative.
 
 ### Dependent Files (Callers/Importers)
 - N/A — loop is invoked by ID via the FSM runner, not imported
@@ -110,9 +168,10 @@ retry mechanism actually do what its name promises.
   unfenced-input issue tracked separately in BUG-3327
 
 ### Tests
-- `scripts/tests/test_builtin_loops.py` — add/extend a case asserting
-  `workflow-generator.yaml` validates and that `count_emit_retry`'s routing
-  edges cover the `\.evaluate:` fault class
+- `scripts/tests/test_builtin_loops.py` — add/extend cases asserting
+  `workflow-generator.yaml` validates, that `validate_artifact` persists
+  validator output to `.emit_errors.txt` while preserving its exit code, and
+  that `validate_evaluators` rejects an invalid `operator` value
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_builtin_loops.py` — `TestWorkflowGeneratorLoop`
@@ -121,31 +180,35 @@ _Wiring pass added by `/ll:wire-issue`:_
   `on_no` target — a genuine gap since the class otherwise asserts routing
   edges for every other gated state. Add a dict-lookup test following
   `test_shrink_gated_by_context_flag`/`test_promotion_gated_by_auto_promote_flag`
-  (lines 17759-17772) for the new fault-class branch, and extend
-  `test_validate_artifact_invokes_ll_loop_validate` (line 17790) or add a
-  sibling behavioral test following
-  `test_validate_evaluators_enforces_required_companion_fields` (lines
-  17837-17864) to prove the stderr-capture/fault-class grep actually
-  discriminates, per the same file's existing "Gate-completeness regression
-  guards" block (lines 17815-17819).
+  (lines 17759-17772) pinning `count_emit_retry`'s edges as
+  `on_yes: emit_artifact` / `on_no: diagnose` — a *regression guard against
+  the Rejected Alternative*, so a future author re-adds fault-class routing
+  deliberately rather than by drift.
+- Extend `test_validate_evaluators_enforces_required_companion_fields` (lines
+  17837-17864) — or add a sibling in the same behavioral subprocess shape —
+  covering the new `VALID_OPERATORS` value check: an evaluator carrying
+  `operator: "greater"` must exit non-zero.
+- Add a behavioral test for `validate_artifact`'s capture: run the extracted
+  action against a `tmp_path` run dir containing a deliberately invalid
+  `workflow.yaml`, assert `returncode != 0` **and** that
+  `.emit_errors.txt` is non-empty and contains the validator's error text;
+  then against a valid one, assert `returncode == 0` and the file is empty
+  (proving `pipefail` preserves the code and `tee` self-clears).
 - `scripts/tests/test_builtin_loops.py::test_pipeline_states_exist` (line
   17725, `required` set includes `count_emit_retry` at 17738) — no change
-  needed unless a state is renamed/removed, but note it as the guard that
-  will break if the classification step is inserted as a new named state
-  rather than folded into `count_emit_retry` itself.
+  needed; no new state is introduced by this issue.
 
 ### Documentation
-- `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` — if fault-class retry routing
-  becomes a documented MR pattern, note it there; otherwise N/A
+- N/A — `count_emit_retry`'s topology is unchanged, so the existing docs stay
+  accurate.
 
-_Wiring pass added by `/ll:wire-issue`:_
-- `docs/guides/LOOPS_REFERENCE.md` (~line 2659, `workflow-generator` section)
-  — states `count_emit_retry` falls back to `diagnose` only; needs a clause
-  for the new fault-class exit to `attach_evaluators`.
-- `docs/reference/loops.md` (~line 152, `workflow-generator` context-variables
-  table) — describes `max_emit_retries` as "Bound on `emit_artifact` retries
-  before routing to `diagnose`"; same staleness once a fault-class branch
-  exists.
+_Wiring pass added by `/ll:wire-issue` — superseded:_
+- ~~`docs/guides/LOOPS_REFERENCE.md` (~line 2659) and `docs/reference/loops.md`
+  (~line 152) need a clause for a new fault-class exit to
+  `attach_evaluators`.~~ Both descriptions (`count_emit_retry` falls back to
+  `diagnose`; `max_emit_retries` bounds `emit_artifact` retries) remain
+  correct under the revised solution — no doc change needed. Re-check these
+  two spots only if the Rejected Alternative is ever revived.
 
 ### Configuration
 - N/A
@@ -161,6 +224,7 @@ _Added by `/ll:refine-issue` — 2026-08-26 — based on codebase analysis:_
 
 ### Convention check — stderr capture and fault-class routing
 - No loop YAML in `scripts/little_loops/loops/` uses the literal `cmd 2>file; exit $?` one-liner the issue proposes. Two established idioms exist instead: (a) `cmd 2>&1 | tee file` combined with `set -o pipefail` (e.g. `fix-quality-and-tests.yaml:62-64`, `test-coverage-improvement.yaml`, `dead-code-cleanup.yaml`, `autodev.yaml`, `rn-remediate.yaml`), or (b) stderr-only redirect to a file plus explicit `$?` capture into a shell variable, used when the state needs to branch on the result rather than just log it (e.g. `vega-viz.yaml:298-320`, `cli-anything-bootstrap.yaml:271-279,324-325`). Idiom (b) is the closer structural match to what `validate_artifact` needs (preserve exit code for the `exit_code` evaluator while also persisting stderr for the next state to read).
+  **Decision:** use idiom (a) (`set -o pipefail` + `2>&1 | tee`) anyway. Idiom (b)'s bare `2>file` redirect satisfies the next state but strips the validator's error text out of the runner log, which is where a failed run is actually triaged. `pipefail` makes the pipeline's status that of `ll-loop validate`, so the "a pipeline swallows the exit code" concern in the original Expected Behavior does not apply — it is only true *without* `pipefail`.
 - Fault-class routing on a retry edge (grep prior output for a discriminator, route on `output_contains`) is an established, repeated pattern elsewhere: `lib/common.yaml:332-354` (`ll_auto_auth_check`), `lib/common.yaml:355-386` (`ll_auto_learning_gate_check`, three-way classification via sequential grep), and `cua-agent-desktop.yaml:344-391` (a full `_check_*`/`_route_*` chain, with an explicit comment noting this exists specifically because a flat retry edge would otherwise mask a distinct fault class).
 - Contrast case: `cli-anything-bootstrap.yaml:490-506` (`count-refine-cycle`) is structurally identical to `workflow-generator.yaml`'s current `count_emit_retry` — a flat, fault-agnostic counter with no discrimination. This confirms fault-class discrimination is consistently implemented as an *additional* layer on top of the counter shape, not folded into the counter state itself, in every codebase example that has it.
 
@@ -174,25 +238,32 @@ _Added by `/ll:refine-issue` — 2026-08-26 — based on codebase analysis:_
 
 ### Signatures
 
-- `validate_artifact() -> int` — shell action, tees `ll-loop validate` stderr
-  to `${captured.run_dir.output}/.emit_errors.txt`, preserves exit code
-- `count_emit_retry(fault_class: str) -> str` — FSM edge target; currently
-  unconditionally `emit_artifact`, gains a fault-class branch to
-  `attach_evaluators`
+- `validate_artifact() -> int` — shell action, tees `ll-loop validate`'s
+  merged output to `${captured.run_dir.output}/.emit_errors.txt` under
+  `set -o pipefail`, preserving the validator's exit code
+- `validate_evaluators() -> int` — shell action, gains a
+  `VALID_OPERATORS`-membership assertion for every evaluator carrying a
+  required `operator` field
+- `count_emit_retry() -> int` — **unchanged**; edges stay
+  `on_yes: emit_artifact` / `on_no: diagnose`
 
 ### Call Path
 
-`validate_artifact` (writes `.emit_errors.txt`) -> `count_emit_retry` (reads
-fault class) -> `emit_artifact` (reads `.emit_errors.txt`, fixes emitter
-faults) **or** `attach_evaluators` (fixes evaluator faults, matching the
-`validate_evaluators` precedent at line 231)
+`attach_evaluators` -> `validate_evaluators` (now also rejects invalid
+`operator` values, so evaluator-owned faults never escape this gate) ->
+... -> `emit_artifact` (reads `.emit_errors.txt` when non-empty) ->
+`validate_artifact` (writes `.emit_errors.txt`) -> `count_emit_retry` ->
+`emit_artifact` under the budget, `diagnose` once exhausted
 
 ## Implementation Steps
 
-1. Add stderr capture to `validate_artifact` with exit-code preservation.
-2. Update `emit_artifact`'s prompt to read and address `.emit_errors.txt`.
-3. Add fault-class detection and routing to `count_emit_retry`, wiring the
-   `\.evaluate:` case to `attach_evaluators`.
+1. Add output capture to `validate_artifact` (`set -o pipefail` + `2>&1 |
+   tee`), preserving the exit code.
+2. Update `emit_artifact`'s prompt to read and address `.emit_errors.txt`,
+   using the established "if `<path>` exists and is non-empty, read it first"
+   phrasing (see Prompt convention below).
+3. Extend `validate_evaluators` to import `VALID_OPERATORS` and assert
+   operator-value membership.
 4. Verify with `ll-loop validate scripts/little_loops/loops/workflow-generator.yaml`
    and a re-run of the source scenario (or an equivalent fixture) to confirm
    retries now converge or fail fast on genuinely emitter-owned faults.
@@ -207,28 +278,34 @@ _These touchpoints were identified by wiring analysis and must be included in th
   workflow.yaml, .emit_retry_count`) does not include `.emit_errors.txt`; add
   it so the terminal diagnostic path sees the new artifact.
 - Update `scripts/tests/test_builtin_loops.py::TestWorkflowGeneratorLoop` —
-  add a routing-edge test for `count_emit_retry`'s new fault-class branch
-  (dict-lookup shape) and a behavioral test proving the stderr/fault-class
-  grep discriminates (subprocess shape), per the Tests subsection above.
-- Update `docs/guides/LOOPS_REFERENCE.md` (~line 2659) and
-  `docs/reference/loops.md` (~line 152) to describe the new fault-class exit
-  from `count_emit_retry` to `attach_evaluators`.
+  add the `count_emit_retry` edge-pinning guard, the `VALID_OPERATORS`
+  behavioral case, and the `validate_artifact` capture test, per the Tests
+  subsection above.
+- No documentation changes — see the Documentation subsection.
 
 ## Impact
 
 - **Priority**: P2 — retries silently waste cost/time on every workflow-generator
   run that hits a deterministic validator fault, and never actually recovers
 - **Effort**: Small — three localized changes to one loop YAML, no new
-  primitives needed
-- **Risk**: Low — changes are scoped to one loop's shell action and routing
-  edge; existing `on_no: attach_evaluators` edge is reused, not invented
+  primitives, no new states, no routing changes
+- **Risk**: Low — changes are confined to two shell actions and one prompt;
+  the control-flow graph is untouched, and the new `VALID_OPERATORS` check
+  imports an already-exported table rather than restating one
 - **Breaking Change**: No
 
 ## Notes
 
 Companion to the gate-completeness fix already landed on `validate_evaluators`,
 which moves *evaluator* faults upstream so they never reach this retry. This issue
-covers the residual fault classes that legitimately belong to `emit_artifact`.
+covers the residual fault classes that legitimately belong to `emit_artifact`,
+and finishes the upstream move by closing the one evaluator-owned gap that fix
+left open (field *values*, not just field presence).
+
+Implementation ordering: land this issue before FEAT-3328. Its
+`VALID_OPERATORS` change is the same import-don't-restate move FEAT-3328 lints
+for, and FEAT-3328's AC #3 ("zero violations against the current built-in loop
+set") assumes a clean tree.
 
 Source: `postmortems/workflow-generator-output-json-gate-gap.md` §2.5, §5 R3.
 

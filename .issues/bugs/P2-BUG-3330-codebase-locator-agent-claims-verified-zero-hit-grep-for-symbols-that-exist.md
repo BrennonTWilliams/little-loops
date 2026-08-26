@@ -1,5 +1,5 @@
 ---
-id: BUG-3329
+id: BUG-3330
 type: BUG
 title: codebase-locator agent claims verified zero-hit grep for symbols that exist
 priority: P2

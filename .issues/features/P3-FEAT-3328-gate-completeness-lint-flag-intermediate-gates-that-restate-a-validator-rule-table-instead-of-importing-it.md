@@ -55,8 +55,33 @@ literal set/frozenset of values that is a subset of a known exported table's
 keys (e.g. a literal evaluator-type set instead of importing
 `NON_LLM_EVALUATOR_TYPES`, or literal required-field lists instead of
 `EVALUATOR_REQUIRED_FIELDS`). Severity is `warning` — a restatement can be a
-deliberate, narrower curated vocabulary — with an escape-hatch comment to
-suppress a specific state.
+deliberate, narrower curated vocabulary — suppressible via a
+`gate_completeness_ok` top-level flag (see Escape hatch below).
+
+### Escape hatch — resolved
+
+Earlier drafts of this issue specified the suppression two incompatible ways:
+an inline source comment (`# gate-completeness: intentional-subset`) in the
+Acceptance Criteria and Proposed Solution, versus a top-level YAML flag in the
+research findings and every Wiring Phase entry. **Resolved in favor of the
+top-level flag**, `gate_completeness_ok`, matching the established convention
+(`meta_self_eval_ok`, `shared_state_ok`, `generator_fix_ok`,
+`partial_route_ok`, `abstention_route_ok`); no inline-comment suppression
+mechanism exists anywhere in `fsm/validation` today, and introducing one for a
+single rule would be a second, inconsistent convention.
+
+Consequence to accept explicitly: the flag is **loop-wide**, whereas this
+section previously promised suppression of "a specific state". Two options:
+
+- **(a) Accept loop-wide granularity** (`gate_completeness_ok: true`) —
+  simplest, and exactly matches every sibling flag.
+- **(b) Accept a list** (`gate_completeness_ok: [state_a, state_b]`) —
+  per-state, but no sibling flag is list-shaped, so it needs its own parsing
+  and its own `KNOWN_TOP_LEVEL_KEYS`/`from_dict`/`to_dict` handling for a
+  non-bool type.
+
+Recommend **(a)**. At `warning` severity on a rule expected to ship with zero
+violations, per-state precision is not worth a bespoke flag shape.
 
 ## Use Case
 
@@ -75,16 +100,34 @@ happened once.
    action contains a literal set/frozenset that is a subset of
    `NON_LLM_EVALUATOR_TYPES` or the keys of `EVALUATOR_REQUIRED_FIELDS`, at
    `warning` severity, naming the state and the exported table to import
-   instead.
-2. A state with an escape-hatch suppression comment does not raise the
-   warning.
-3. Running the rule against the current built-in loop set (post-fix) produces
-   zero violations — this rule ships as a forward guard, not a fix for an
-   existing loop.
+   instead. To be flagged, the literal must satisfy **all** of:
+   - **at least 3 members** — a bare `{"exit_code"}` or `{"exit_code",
+     "output_contains"}` appears in plenty of unrelated shell and is not
+     evidence of a restated table;
+   - **no member outside the table** — a literal mixing table members with
+     unrelated strings is not a copy of that table;
+   - **the action does not already import the table** it is a subset of.
+
+   State the floor in the rule's docstring; it is the difference between a
+   useful guard and a noisy one.
+2. A loop declaring `gate_completeness_ok: true` does not raise the warning
+   (see Escape hatch above — a top-level YAML flag, **not** an inline
+   comment).
+3. Running the rule against the current built-in loop set produces zero
+   violations — this rule ships as a forward guard, not a fix for an existing
+   loop. Note this depends on BUG-3326 having landed first; see Ordering.
 4. The rule is documented in
    `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` § The Design Rules alongside
-   MR-1..MR-14, with its own MR number and the retry-reachability item
-   (below) captured as a related-but-unmechanized heuristic.
+   MR-1..MR-14, as an **unnumbered named rule** (`**gate-completeness**`,
+   following the existing `policy-table` / `terminal-action-ok` precedent in
+   the same table), with the retry-reachability item (below) captured as a
+   related-but-unmechanized heuristic. Taking a numbered `MR-15` slot instead
+   would force four renumbering touchpoints — including the section heading
+   (which drives the GFM anchor) and `.claude/CLAUDE.md`'s prose *and* link to
+   `#the-design-rules-mr-1mr-14` — for no analytic benefit.
+5. The rule's known coverage limit is documented alongside it: it inspects
+   `shell` actions only, so a rule table restated in **prose inside a `prompt`
+   action** is not detected. See Known coverage gap below.
 
 ## Motivation
 
@@ -105,18 +148,76 @@ the existing `_validate_*` MR functions there (e.g.
 `_validate_artifact_isolation` for MR-3). Detection sketch:
 
 ```python
+# Skip entirely if fsm.gate_completeness_ok
 # For each state with action_type == "shell" whose action contains "python3":
-#   parse literal set/frozenset displays via ast (not regex, to avoid
-#   false positives on string content)
+#   find literal set/frozenset displays by regex over the raw action string
 #   for each known exported table (NON_LLM_EVALUATOR_TYPES,
 #   EVALUATOR_REQUIRED_FIELDS.keys()):
-#     if the literal's members are a non-empty subset of the table's keys
+#     if len(members) >= 3
+#     and members <= table
 #     and the action does not already import that table:
 #       emit a warning naming the state, the literal, and the table to
 #       import instead
-#   Skip if the action contains an escape-hatch comment
-#   (e.g. `# gate-completeness: intentional-subset`)
 ```
+
+### Detection: regex, not `ast` — decided
+
+Earlier drafts specified `ast.parse` "to avoid false positives on string
+content". Use **regex over the raw action string** instead:
+
+- **Consistency.** No rule in this package parses embedded shell or Python
+  today — MR-3, MR-5, MR-6, and MR-7/9/11 in `shell_safety.py` are all
+  regex-over-raw-string against module-level compiled `re.Pattern` constants.
+  A single `ast`-based rule introduces a detection utility nothing else
+  shares.
+- **`ast` doesn't actually get a clean shot at the source.** The Python body
+  is embedded inside a YAML shell action as `python3 -c "..."` — extracting it
+  means handling quoting, `\"` escapes, and heredocs before `ast.parse` ever
+  sees valid source. That extractor is its own mini-parser, and it is the part
+  most likely to be wrong.
+- **The cardinality floor does the work `ast` was meant to do.** Requiring ≥3
+  members, all inside the table, is what suppresses incidental matches — not
+  the parsing strategy.
+
+This drops the effort estimate from Medium to Small (see Impact).
+
+### Known coverage gap — prose restatement in `prompt` actions
+
+The rule is scoped to `shell` gates, but the live drift risk in the very loop
+that motivated this issue is **not** in a shell gate. `attach_evaluators`
+(`workflow-generator.yaml:165-181`) is an `action_type: prompt` state whose
+prompt hand-lists the entire allowed evaluator vocabulary *and* an English
+copy of the `EVALUATOR_REQUIRED_FIELDS` table:
+
+```
+- exit_code — no companion fields
+- output_contains — requires `pattern`
+- output_numeric — requires `operator` and `target`
+- output_json — requires `path`, `operator`, AND `target`
+...
+```
+
+That table drifts silently the moment `EVALUATOR_REQUIRED_FIELDS` changes, and
+a shell-only lint will never see it. This matters for AC #3: "zero violations
+post-fix" is true, but it is true partly because the surviving restatement
+lives where the rule does not look — not because the loop stopped restating.
+
+Decide one of these explicitly during implementation and record the choice:
+
+- **(a) Ship shell-only, document the gap** (recommended for v1) — state the
+  limitation in the rule docstring and the guide entry, per AC #5, and treat
+  prompt-side restatement as a known-uncovered case.
+- **(b) Extend to `prompt` actions** — a second, looser regex over prose
+  (e.g. ≥3 table members appearing as backticked tokens in one action), still
+  `warning`-severity. Higher recall, meaningfully higher false-positive rate,
+  since a prompt legitimately *needs* to name the vocabulary it is asking for
+  — an LLM cannot `import` a frozenset. That last point is the real argument
+  for (a): unlike a shell gate, a prompt has no import to offer instead, so
+  the warning has no actionable fix to suggest.
+
+If (a): consider filing the prompt-side drift as its own follow-up, since the
+right remedy there is generative (emit the vocabulary into the prompt from the
+table at runtime) rather than a lint.
 
 ## Integration Map
 
@@ -167,10 +268,15 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ### Tests
 - `scripts/tests/` — new test(s) for `_validate_gate_completeness`: positive
-  case (literal subset of `NON_LLM_EVALUATOR_TYPES` without import triggers
-  warning), negative case (import present, or escape-hatch comment present,
-  suppresses it), and a full-suite run confirming zero violations against
-  current built-in loops
+  case (≥3-member literal subset of `NON_LLM_EVALUATOR_TYPES` without import
+  triggers warning), negative cases (import present; `gate_completeness_ok:
+  true`; literal below the 3-member floor; literal containing a member outside
+  the table), and a full-suite run confirming zero violations against current
+  built-in loops
+- Use `workflow-generator.yaml`'s `validate_evaluators` state as the in-repo
+  "correct" fixture for the import-present negative case — it imports both
+  tables directly and carries an inline comment stating the
+  import-not-restate rationale
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_fsm_validation_meta_rules.py` — add a `TestGateCompleteness`
@@ -199,10 +305,13 @@ _Wiring pass added by `/ll:wire-issue`:_
   assertion.
 
 ### Documentation
-- `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` — § The Design Rules (new MR
-  entry) and a new heuristic note for retry-reachability (see Non-Goal)
+- `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` — § The Design Rules (new
+  **unnumbered named** rule entry, per AC #4), the `prompt`-action coverage
+  gap (AC #5), and a new heuristic note for retry-reachability (see Non-Goal)
 
-_Wiring pass added by `/ll:wire-issue`:_
+_Wiring pass added by `/ll:wire-issue` — **choice now made: unnumbered.**
+The analysis below is retained as the rationale; no renumbering touchpoints
+apply, so `.claude/CLAUDE.md` and the section heading are left alone:_
 - If the new rule is numbered `MR-15` (per AC #4's "its own MR number"), four
   spots need updating, not just the table row: the section heading `## The
   Design Rules (MR-1…MR-14)` itself (→ `MR-1…MR-15`, which drives the GFM
@@ -230,7 +339,13 @@ _Added by `/ll:refine-issue` — 2026-08-26 — based on codebase analysis:_
 - Confirmed `_validate_artifact_isolation` (MR-3) and `_validate_meta_loop_evaluation` (MR-1/MR-2) shapes as the sibling pattern: both operate on `state.action` as a raw string via compiled module-level `re.Pattern` constants (`_SHARED_TMP_PATH_RE`, `_META_LOOP_ACTION_PATTERNS`) — **no rule in this package uses `ast.parse`, `ast`, or `shlex` on embedded shell/Python bodies today**; every action-text lint (MR-3, MR-5, MR-6, MR-7/9/11 in `shell_safety.py`) is regex-over-raw-string. A new rule wanting more than substring/regex matching on literal set/frozenset syntax would need to introduce its own detection utility — none is currently shared/reusable.
 - Confirmed `NON_LLM_EVALUATOR_TYPES` is *derived*, not hand-listed: `frozenset[str] = frozenset(EVALUATOR_REQUIRED_FIELDS.keys()) - {"llm_structured", "comparator", "contract", "advisor_consult"}` in `_base.py`. This directly supports the issue's rationale — a literal copy of this set drifts silently whenever `EVALUATOR_REQUIRED_FIELDS` changes, since the derived set updates automatically but a pasted literal does not.
 - **Escape-hatch convention correction**: no inline source-comment suppression convention (e.g. the issue's proposed `# gate-completeness: intentional-subset`) exists anywhere in `fsm/validation` today. Every existing MR rule's escape hatch is a top-level loop YAML boolean flag instead (e.g. `meta_self_eval_ok`, `shared_state_ok`, `generator_fix_ok`, `partial_route_ok`, all enumerated in `KNOWN_TOP_LEVEL_KEYS` in `_base.py`), referenced directly in the `ValidationError.message` text. A `gate_completeness_ok: true` top-level flag would match established convention; an inline comment marker would be a new, inconsistent suppression mechanism for this codebase.
-- `ll-loop validate` severity surfacing (`cmd_validate` in `scripts/little_loops/cli/loop/config_cmds.py`): plain-text mode raises on ERROR only and does not currently print WARNING-severity results in its success path (they're returned but unused); `--json` mode always includes warnings in the `violations` array with `"severity": "warning"` and `"valid": true`. A new WARNING-severity rule will be visible via `--json` immediately but silent in the default CLI success output until/unless that gap is separately addressed.
+- ~~`ll-loop validate` severity surfacing: plain-text mode ... does not currently print WARNING-severity results in its success path ... silent in the default CLI success output until/unless that gap is separately addressed.~~ **This finding is wrong — corrected 2026-08-26.** `cmd_validate`'s own success path does discard its return value, but `load_and_validate` emits every warning via `logger.warning(str(warning))` at `structural_rules.py:1848` (stdlib `logging`), which reaches stderr through logging's lastResort handler. Verified end-to-end:
+  ```
+  $ ll-loop validate scripts/little_loops/loops/adopt-third-party-api.yaml
+  [14:39:07] ...is valid                                       # stdout
+  [WARNING] states.enumerate.evaluate.prompt: ... (ENH-2342 MR-8)   # stderr
+  ```
+  A new WARNING-severity rule is therefore visible in **both** the default CLI path and `--json`, with no additional plumbing. Do not add CLI work for this — the original bullet would have sent implementation down a dead end.
 - Reference implementation already in-repo: `workflow-generator.yaml`'s `validate_evaluators` state is the positive control this rule must not flag (imports `EVALUATOR_REQUIRED_FIELDS`/`NON_LLM_EVALUATOR_TYPES` directly, with an inline comment stating the import-not-restate rationale) — useful as the concrete "correct" fixture for the rule's negative test case.
 
 ## Program Design
@@ -257,17 +372,23 @@ literal set/frozenset displays against the exported tables in
 
 ## Implementation Steps
 
-1. Implement `_validate_gate_completeness` in `meta_rules.py`, parsing shell
-   action bodies with `ast` to find literal set/frozenset displays.
-2. Wire the new check into the validation pipeline in
-   `fsm/validation/__init__.py`, following the existing MR registration
-   pattern.
-3. Add the escape-hatch comment convention and honor it in the check.
-4. Add tests: positive (unimported subset triggers warning), negative
-   (imported or suppressed), and a full built-in-loop-set run at zero
-   violations.
-5. Document the new MR rule and the retry-reachability non-goal heuristic in
-   `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md`.
+0. Confirm BUG-3326 has landed (see Ordering) — AC #3 depends on it.
+1. Implement `_validate_gate_completeness` in `meta_rules.py` using a
+   module-level compiled `re.Pattern` over the raw action string, with the
+   ≥3-member / no-outside-members floor from AC #1.
+2. Add the `gate_completeness_ok` flag: `KNOWN_TOP_LEVEL_KEYS` in `_base.py`,
+   plus the three `FSMLoop` sites in `schema.py` (field, `from_dict`,
+   `to_dict`) following `abstention_route_ok`.
+3. Wire the check into `validate_fsm()` in `structural_rules.py` and re-export
+   from `fsm/validation/__init__.py` (both the import block and `__all__`).
+4. Add tests: positive (unimported ≥3-member subset triggers warning),
+   negative (import present; below the cardinality floor; a literal with
+   members outside the table; `gate_completeness_ok: true`), the
+   `validate_evaluators` state as the in-repo correct fixture, the CLI-level
+   pair, and the zero-violations sweep over built-in loops.
+5. Document the rule in `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` as an
+   unnumbered named rule (AC #4), including its `prompt`-action coverage gap
+   (AC #5) and the retry-reachability non-goal heuristic.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
@@ -288,41 +409,47 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - Update `scripts/tests/test_builtin_loops.py::TestBuiltinLoopFiles` — add a
   zero-violations test over `builtin_loops` per AC #3, following the
   offenders-list pattern in `test_no_failure_edge_routes_to_a_success_terminal`.
-- Decide numbered (`MR-15`, touching the section heading, `.claude/CLAUDE.md`'s
-  anchor + prose, and two enumerated WARNING-rule-list sentences in
-  `HARNESS_OPTIMIZATION_GUIDE.md`) vs. unnumbered named-rule (`**gate-completeness**`,
-  no renumbering touchpoints) before writing the docs update — see the
-  Documentation subsection above.
+- ~~Decide numbered vs. unnumbered before writing the docs update.~~
+  **Decided: unnumbered named rule** (`**gate-completeness**`), per AC #4 — no
+  renumbering touchpoints, so `.claude/CLAUDE.md` and the
+  `## The Design Rules (MR-1…MR-14)` heading are untouched.
+- Also document the `prompt`-action coverage gap in the guide entry, per
+  AC #5 and the Known coverage gap section.
 
 ## Impact
 
 - **Priority**: P3 — a forward guard against a failure class that has
   occurred once and is now fixed; no current violations, so no urgency, but
   meaningful to prevent recurrence
-- **Effort**: Medium — new static-analysis check plus `ast`-based parsing of
-  shell action bodies, tests, and doc updates
+- **Effort**: Small — revised down from Medium. Dropping `ast` for
+  regex-over-raw-string (see Detection above) removes the embedded-body
+  extractor, which was the bulk of the estimate; what remains is one
+  `_validate_*` function in the established shape, a four-site boolean flag,
+  and tests
 - **Risk**: Low — additive `warning`-severity check with an escape hatch; does
   not change existing loop behavior or fail builds
 - **Breaking Change**: No
 
 ## Proposed Rule
 
-**Gate-completeness (MR-rule candidate).** For a loop whose terminal gate is a
-little-loops validator, flag any intermediate `shell` gate that hardcodes a literal
-set of values which the validator exposes as an importable table — e.g. a literal
-evaluator-type set instead of `NON_LLM_EVALUATOR_TYPES`, or literal required-field
-lists instead of `EVALUATOR_REQUIRED_FIELDS`. Where the terminal gate exposes its
-rules as data, import rather than restate.
+**gate-completeness** (unnumbered named rule, per AC #4). For a loop whose
+terminal gate is a little-loops validator, flag any intermediate `shell` gate that
+hardcodes a literal set of values which the validator exposes as an importable
+table — e.g. a literal evaluator-type set instead of `NON_LLM_EVALUATOR_TYPES`, or
+literal required-field lists instead of `EVALUATOR_REQUIRED_FIELDS`. Where the
+terminal gate exposes its rules as data, import rather than restate.
 
-Detection sketch: in `fsm/validation`, for each `action_type: shell` state whose
-action contains `python3`, look for a literal set/frozenset whose members are a
-subset of a known exported table's keys. Severity `warning` is probably right to
-start — a restatement is sometimes deliberate (a *narrower* curated vocabulary), so
-an escape hatch comment should suppress it.
+Detection: in `fsm/validation`, for each `action_type: shell` state whose action
+contains `python3`, look for a literal set/frozenset of **≥3 members, all of them**
+members of a known exported table, in an action that does not import that table.
+Severity `warning` — a restatement is sometimes deliberate (a *narrower* curated
+vocabulary) — suppressed by `gate_completeness_ok: true`.
 
-Current blast radius: `workflow-generator.yaml` was the only built-in doing this,
-and it has been fixed, so the rule would ship with zero violations and act purely as
-a forward guard.
+Current blast radius: `workflow-generator.yaml`'s `validate_evaluators` was the
+only built-in doing this in a `shell` gate, and it has been fixed, so the rule
+ships with zero violations and acts purely as a forward guard. Caveat: the same
+loop still restates the table in prose inside `attach_evaluators`'s **prompt**,
+which this rule does not inspect — see Known coverage gap.
 
 ## Non-Goal (document, don't mechanize)
 
@@ -332,11 +459,31 @@ fault-class-to-state mapping is semantic and resists static analysis. Add this t
 `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` as a review heuristic alongside the MR
 rule table rather than attempting a lint.
 
+Two live instances make the case for the heuristic and are worth citing in the
+guide entry as worked examples:
+
+- **BUG-3326's Rejected Alternative** — routing an `.evaluate:` fault from
+  `count_emit_retry` back to `attach_evaluators` looks reachable but blames the
+  wrong state and discards two passes; the fix belonged upstream, at the gate
+  that owns the fault.
+- **BUG-3327's containment gate** — a scope violation routed to `capture_intent`
+  is *structurally* unrepairable (the out-of-scope file is already written), and
+  the edge is unbounded, so the loop wedges until `max_steps`. "Can this state
+  repair this fault?" catches it; no static rule does.
+
+## Ordering
+
+Land **BUG-3326 first**. It adds a `VALID_OPERATORS` import to
+`workflow-generator.yaml`'s `validate_evaluators` — the same
+import-don't-restate move this rule lints for — and AC #3 ("zero violations
+against the current built-in loop set") assumes that tree.
+
 Source: `postmortems/workflow-generator-output-json-gate-gap.md` §6.
 
 ## Related Key Documentation
 
-_No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
+- `.claude/CLAUDE.md` — `## Loop Authoring` documents the MR-1..MR-14 rule set enforced by `ll-loop validate`, which this issue extends with a new MR rule.
+- `docs/reference/API.md` — documents `little_loops.fsm.validation`, the module this issue's new `_validate_gate_completeness` function is added to.
 
 ## Status
 

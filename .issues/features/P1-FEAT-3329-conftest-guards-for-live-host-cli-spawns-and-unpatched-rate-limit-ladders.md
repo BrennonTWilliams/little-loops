@@ -311,6 +311,11 @@ the real evaluator with `subprocess.run` mocked (fails at
   they are excluded from the CI unit run and are the likeliest legitimate
   spawners.
 
+## Related Key Documentation
+
+- `.claude/CLAUDE.md` — `## Testing & CI Policy` names `python -m pytest scripts/tests/` as the authoritative gate this issue's guards must keep passing.
+- `CONTRIBUTING.md` — `### Running Tests` documents the pytest invocation conventions (`-m integration`, `-m "not integration"`) this issue's AC explicitly checks for false positives.
+
 ## Status
 
 **Open** | Created: 2026-08-26 | Priority: P1

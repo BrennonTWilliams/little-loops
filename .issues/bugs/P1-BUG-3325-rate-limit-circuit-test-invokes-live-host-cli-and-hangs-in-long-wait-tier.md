@@ -312,6 +312,12 @@ Test-only. No production change. **This shape was prototyped end-to-end against
    bug. Do not re-depend on it. This step alone removes the live `claude`
    invocation, the ~20s-per-iteration latency, and the billed spend; nothing in
    the assertion requires prompt mode.
+
+   The gate this turns on is `_maybe_wait_for_circuit`'s
+   `if self._action_mode(state) != "prompt": return` at
+   **`executor.py:3518`** — shell mode therefore also skips the *pre-action*
+   circuit wait, which is correct here (this test seeds no recovery window
+   before `run()`).
 2. **Add the missing tier patches** —
    `_DEFAULT_RATE_LIMIT_LONG_WAIT_LADDER=[0]` and
    `_DEFAULT_RATE_LIMIT_MAX_WAIT_SECONDS=0` — via the file's standard
@@ -364,7 +370,10 @@ Test-only. No production change. **This shape was prototyped end-to-end against
    The axis under test should be declared, not inferred. `_action_mode` checks
    explicit `action_type` first (`executor.py:2844-2859`), so the resolved mode is
    unchanged and the `MockActionRunner` keying on the `"/work"` string is
-   unaffected.
+   unaffected. Provably behavior-preserving for these two tests specifically:
+   the only consumer of the resolved mode on their path is
+   `_maybe_wait_for_circuit`'s `_action_mode(state) != "prompt"` gate
+   (**`executor.py:3518`**), and `"prompt"` in, `"prompt"` out.
 8. **Fix the same latent defect in `test_record_rate_limit_not_called_when_circuit_none`
    (`:8001`)** — it builds `action="work.sh"` with **no** `action_type`, the exact
    implicit classification step (1) rules out. It lands in shell mode today, so it
@@ -416,7 +425,7 @@ Re-run a few times to confirm no xdist flake. If it does flake, keep the marker
 and rewrite the docstring to state the real reason — but record the flake, don't
 restore the stale text.
 
-### Also fix the `conftest.py` docstring that is the source of the wrong model
+### Also fix the three places that carry the wrong mental model
 
 `pytest_collection_modifyitems` (`scripts/tests/conftest.py:98-121`) states:
 
@@ -431,18 +440,55 @@ long as BUG-2524's marker has been in place. `test_worktree_utils.py:1228` alrea
 carries the correct warning ("Deliberately NOT `no_parallel`: that marker makes a
 test *skip* under the …"); the conftest docstring must be brought in line with it.
 
-One-paragraph edit, in scope here, and it prevents the next `no_parallel` from
-silently deleting coverage.
+**Two further copies of the same false claim** (2026-08-26 fourth review), both
+in scope for this same one-paragraph correction:
 
-**Marker surface, verified 2026-08-26**: `no_parallel` has exactly two real users
-repo-wide — this class (`test_fsm_executor.py:7842`) and
-`test_fsm_signal_integration.py:42`, which also carries `pytest.mark.integration`
-and is therefore deselected from the default run anyway (`-m "not integration and
-not conformance"`). Once this class drops the marker, `no_parallel` has **zero**
-effective users in the default run. Whether the marker and its collection hook
-should survive at all is a separate call — note it for FEAT-3329 rather than
-deciding it here; `scripts/tests/test_conftest_cap.py:133-190` unit-tests the hook
-and would need to go with it.
+- **`scripts/tests/test_conftest_cap.py:181-186`** —
+  `test_controller_does_not_skip_no_parallel_item`'s docstring: *"On the
+  controller (no `workerinput`), no_parallel tests still run. … the tests run on
+  the controller process (single-process or `-n 0`)."* The **test body is
+  correct** and must not change — it asserts only that the hook returns early
+  without mutating items. It is the docstring's generalization that is false:
+  under `-n N` the controller runs no tests, so only the `-n 0` half of the
+  parenthetical holds. Docstring-only edit.
+- **`scripts/pyproject.toml:284`** — the marker help text, *"no_parallel: marks
+  tests that must not run on xdist workers (subprocess signal-handling,
+  timing-sensitive)"*. This is the string `pytest --markers` prints, and it is
+  silent on the consequence: under the repo's default `-n logical` addopts the
+  marker does not reroute the test, it **skips it outright**. Say so.
+
+One-paragraph edit in each, in scope here, and it prevents the next
+`no_parallel` from silently deleting coverage.
+
+**Marker surface, verified 2026-08-26** (revised, fourth review): `no_parallel`
+has exactly two real users repo-wide — this class (`test_fsm_executor.py:7842`)
+and `test_fsm_signal_integration.py:42`.
+
+An earlier revision said the latter "is deselected from the default run anyway
+(`-m "not integration and not conformance"`)", implying it still runs when
+integration tests are deliberately selected. **That understates it — it is
+skipped even then**, because the integration invocation inherits the same
+`-n logical` addopts:
+
+```
+$ python -m pytest scripts/tests/test_fsm_signal_integration.py -q -m integration --collect-only
+2 tests collected in 0.06s
+$ python -m pytest scripts/tests/test_fsm_signal_integration.py -q -m integration
+2 skipped in 1.12s
+```
+
+So `no_parallel` has **zero effective users under any invocation that isn't
+`-n 0`** — including BUG-2523's own original target, whose mitigation has
+therefore been a no-op since it landed. The only way to run either user is the
+serial run, which needs no marker.
+
+That materially strengthens the FEAT-3329 note: this is no longer "whether the
+marker and its collection hook should survive is a separate call" but "the
+marker never routes anything anywhere; the hook, the marker registration
+(`pyproject.toml:284`), and `scripts/tests/test_conftest_cap.py:133-190` should
+be deleted together, and `test_fsm_signal_integration.py` given the
+`test_worktree_utils.py:1228` treatment instead (run the timing-sensitive part
+in a nested serial subprocess)." Still not decided here — record it on FEAT-3329.
 
 ### Observable caveat — `_rate_limit_retries` is popped before the assertion runs
 
@@ -482,6 +528,7 @@ with patch.multiple(
 
 llm.assert_not_called()                          # no live host CLI
 assert circuit.get_estimated_recovery() is not None
+assert json.loads((tmp_path / "circuit.json").read_text())["attempts"] == 1
 assert runner.calls == ["work.sh", "work.sh"]    # no tier climbing
 assert sleeps == [0.0]                           # one short-tier sleep, ladder never entered
 ```
@@ -489,6 +536,24 @@ assert sleeps == [0.0]                           # one short-tier sleep, ladder 
 `circuit.record_rate_limit()` runs *before* the sleep in both tiers
 (`executor.py:3400`, `:3411`), so spying the sleep does not affect the circuit
 assertion.
+
+**Why a zero-length window still reads back non-`None`** (verified, fourth
+review): with `_DEFAULT_RATE_LIMIT_BACKOFF_BASE=0` the short tier records
+`record_rate_limit(0.0)`, i.e. `estimated_recovery_at == now`. That is *already
+in the past* by the time the assertion runs, but
+`RateLimitCircuit.get_estimated_recovery()`
+(`scripts/little_loops/fsm/rate_limit_circuit.py:77-85`) only checks
+`is_stale()` — a 1-hour `last_seen` threshold — and never compares the recovery
+timestamp to now. So it returns the timestamp, not `None`. The AC is sound; the
+reason is non-obvious enough to record here.
+
+**`attempts == 1` is the stronger assertion and should be added.**
+`recovery is not None` is satisfied by *any* number of recorded episodes, so it
+passes just as well under the pre-fix fixture, which recorded four (see the
+traced sequence in Root Cause). `attempts == 1` is what the test's docstring
+actually claims — one short-tier 429 → one circuit record — and it is the exact
+property the old fixture violated. `attempts` is incremented per call at
+`rate_limit_circuit.py:62,69`.
 
 ### Follow-on hardening — SPLIT OUT, not in scope here
 
@@ -570,6 +635,12 @@ _Added by `/ll:refine-issue` — 2026-08-26 — based on codebase analysis:_
       `runner.calls == ["work.sh", "work.sh"]` (no tier climbing). **Not** via
       `executor._rate_limit_retries` — that record is popped on recovery before
       the assertion runs (see Observable caveat).
+- [ ] The test asserts **exactly one** circuit episode, not merely that one
+      exists: `json.loads((tmp_path / "circuit.json").read_text())["attempts"] == 1`
+      alongside `get_estimated_recovery() is not None`. The `is not None` check
+      alone passes under the *pre-fix* fixture too (which recorded four
+      episodes), so it cannot regression-guard this bug on its own. Verified
+      2026-08-26 in the prototype: `{'attempts': 1, ...}`, 0.30s.
 - [ ] `python -m pytest scripts/tests/test_fsm_executor.py -q -n 0` completes with
       no faulthandler timeout dump.
 - [ ] Full suite `python -m pytest scripts/tests/` shows this test **passing** —
@@ -600,6 +671,14 @@ _Added by `/ll:refine-issue` — 2026-08-26 — based on codebase analysis:_
       "still runs … on the controller"; it states that under `-n N` the controller
       does not run tests, so the marker *skips the test outright*. Wording aligned
       with the existing correct note at `test_worktree_utils.py:1228`.
+- [ ] The same false claim is corrected in its two other homes:
+      `scripts/tests/test_conftest_cap.py:181-186`
+      (`test_controller_does_not_skip_no_parallel_item`'s docstring —
+      **docstring only**; the test body is correct and stays untouched, and
+      `test_conftest_cap.py` stays green) and the `no_parallel` marker
+      registration at `scripts/pyproject.toml:284`, which must state that under
+      the default `-n logical` addopts the marker skips the test rather than
+      rerouting it.
 - [ ] The whole class runs in under 1s:
       `python -m pytest scripts/tests/test_fsm_executor.py -q -n 0 -p no:randomly
       -k TestRateLimitCircuitIntegration --durations=10` shows no call over 1s.
@@ -618,6 +697,24 @@ _Added by `/ll:refine-issue` — 2026-08-26 — based on codebase analysis:_
 - [x] The split-out hardening issue is filed (**FEAT-3329**), with `relates_to:`
       linkage in both directions. Its *implementation* is explicitly not part of
       this issue.
+
+### Optional (not an AC) — tighten the two pre-action assertions while you are in them
+
+`test_pre_action_sleep_when_circuit_active` (`:7889`) asserts
+`len(sleeps) >= 1` and `sleeps[0] > 0`. The `>=` is slack that only exists
+because the live-CLI path could inject additional rate-limit sleeps into the
+list. Once step (6)'s evaluator patch lands, the run is deterministic — exactly
+one pre-action wait, derived from the seeded `record_rate_limit(1000.0)` — so it
+can tighten to:
+
+```python
+assert len(sleeps) == 1
+assert 990 < sleeps[0] <= 1000
+```
+
+Same for the negative case: `sleeps == []` at `:7915` is already exact and needs
+nothing. Cheap, and it converts a tolerance that masked this bug into a real
+assertion. **Explicitly optional** — skipping it does not fail any AC above.
 
 ### Scope note (2026-08-26 review)
 
@@ -647,8 +744,10 @@ and Risk accordingly.
      to protect is unguarded in every default and CI run. The fix restores it.
 - **Effort**: Small–Medium. Test-only edits across three test functions, two
   one-line `action_type` declarations (`_prompt_fsm`, the `circuit=None` test),
-  a marker removal + class-docstring rewrite, a `conftest.py` docstring
-  correction, and a re-verification that the un-skipped class is xdist-stable.
+  a marker removal + class-docstring rewrite, three doc-only corrections of the
+  "`no_parallel` still runs on the controller" claim (`conftest.py:98-121`,
+  `test_conftest_cap.py:181-186`, `pyproject.toml:284`), and a re-verification
+  that the un-skipped class is xdist-stable.
   No production change. (Was "four edits / one function" before the second review
   found the two sibling tests and the skip; the third review added the
   explicit-mode and conftest-docstring items, both zero-risk.)
@@ -669,6 +768,8 @@ _Added by `/ll:refine-issue` — 2026-08-26 — based on codebase analysis:_
 **Files to modify:**
 - `scripts/tests/test_fsm_executor.py` — three target tests in `TestRateLimitCircuitIntegration`: `test_record_rate_limit_called_on_short_tier` (7964), `test_pre_action_sleep_when_circuit_active` (7889), `test_pre_action_no_sleep_when_circuit_stale` (7915); the `_prompt_fsm()` helper (7856, explicit `action_type="prompt"`); `test_record_rate_limit_not_called_when_circuit_none` (8001, explicit `action_type="shell"`); plus the class marker (7842) and docstring (7844-7854)
 - `scripts/tests/conftest.py:98-121` — `pytest_collection_modifyitems` **docstring only** (the "still runs on the controller" correction). No behavior change; `scripts/tests/test_conftest_cap.py:133-190` covers the hook and must stay green. This file is *also* the candidate location for FEAT-3329's `_no_live_host_cli`/ladder-guard autouse fixtures — those are **not** in scope here; its existing autouse fixtures (`_isolate_history_db_session`, `_isolate_history_db`, `_guard_real_history_db`, `_isolate_session_log_dir`, `_restore_cmd_run_env_vars`, `_reset_deprecated_key_warnings`) live at lines 553-762
+- `scripts/tests/test_conftest_cap.py:181-186` — **docstring only** on `test_controller_does_not_skip_no_parallel_item`, which repeats the same false "still runs on the controller" claim. The assertion body is correct (it only checks the hook returns early without mutating items) and must not change; the file must stay green
+- `scripts/pyproject.toml:284` — the `no_parallel` marker registration string, i.e. what `pytest --markers` prints. Add the skip-outright consequence under the default `-n logical` addopts
 
 **Dependent files (callers/importers):**
 - `scripts/little_loops/fsm/executor.py:2011` — `FSMExecutor._execute_state()` calls `_handle_rate_limit()`, the function whose long-wait tier this test's fixture bug reaches unintentionally
@@ -846,6 +947,50 @@ retractions. Six additions folded into the sections above:
    the circuit assertion is action-mode-agnostic (`executor.py:1996-2016`), so
    the shell-mode fixture is not "restored" to prompt mode by a later reader.
 
+### Fourth review — 2026-08-26 (pre-implementation)
+
+Diagnosis, scope, and the Verified Fix Shape re-confirmed against `main`; **no
+retractions and no errors found**. Scope re-checked exhaustively across the
+class: of its 10 tests only the 3 already named reach a live CLI — the three
+`test_sub_loop_*` tests patch both `dispatch_anthropic_request` and
+`evaluate_llm_structured`, and `test_execute_sub_loop_signature_drift_guard` is
+AST/`inspect`-only. Four additions:
+
+1. **The `no_parallel` surface finding understated itself.** The prior text said
+   `test_fsm_signal_integration.py:42` is "deselected from the default run
+   anyway," implying it runs when integration tests are explicitly selected. It
+   does not — `-m integration` inherits the same `-n logical` addopts, so it is
+   *skipped* there too (verified: `2 tests collected` → `2 skipped in 1.12s`).
+   `no_parallel` therefore has zero effective users under any non-`-n 0`
+   invocation, including BUG-2523's own target, whose mitigation has been a no-op
+   since it landed. Folded into the marker-surface paragraph; strengthens the
+   FEAT-3329 recommendation from "separate call" to "delete marker + hook +
+   registration + `test_conftest_cap.py:133-190` together."
+2. **Two more copies of the false "still runs on the controller" model** beyond
+   `conftest.py:98-121`: `test_conftest_cap.py:181-186`'s docstring (body is
+   correct, docstring only) and the marker registration at
+   `pyproject.toml:284`. Both added to Proposed Solution and the ACs — the point
+   of the correction is to kill the mental model, and leaving two copies alive
+   defeats it.
+3. **`executor.py:3518` now cited in steps 1 and 7.** `_maybe_wait_for_circuit`'s
+   `_action_mode(state) != "prompt"` gate is the single line that makes the
+   shell-mode switch safe and makes `_prompt_fsm`'s explicit
+   `action_type="prompt"` provably behavior-preserving; the issue previously
+   cited only `_evaluate` and `_action_mode`.
+4. **`recovery is not None` strengthened to `attempts == 1`.** Two findings:
+   (a) the non-`None` read-back of a zero-length window is correct but
+   non-obvious — `get_estimated_recovery()` (`rate_limit_circuit.py:77-85`)
+   only staleness-checks and never compares the recovery timestamp to now, so a
+   `record_rate_limit(0.0)` window that is already in the past still reads back;
+   (b) `is not None` passes under the *pre-fix* fixture too (4 recorded
+   episodes), so it cannot guard this regression alone. Re-ran the prototype
+   with the added assertion: passes in 0.30s, `{'attempts': 1, 'last_seen' ==
+   'estimated_recovery_at'}`. Added as an AC.
+
+Plus one explicitly-optional note (tightening `len(sleeps) >= 1` to `== 1` in
+`test_pre_action_sleep_when_circuit_active` once the run is deterministic),
+recorded under Acceptance Criteria as a non-AC.
+
 ### Origin
 
 Split out during review of PR #17 / PR #15 (both BUG-3208). Neither PR touches
@@ -855,6 +1000,7 @@ is the same worker-wedge mechanism.
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-26T19:44:40 - `b3e7603c-67fa-4126-bbf5-7a198982fe97.jsonl`
 - `/ll:confidence-check` - 2026-08-26T19:29:20 - `1f462280-8e7a-4295-8360-c2cd201baeea.jsonl`
 - `/ll:reconcile-issue` - 2026-08-26T17:23:20 - `5a39850d-35a2-49b4-a59f-151abf0cd32d.jsonl`
 - `/ll:refine-issue` - 2026-08-26T17:08:08 - `2be9d313-ffa2-4c26-a423-8e5a0df02ae0.jsonl`
