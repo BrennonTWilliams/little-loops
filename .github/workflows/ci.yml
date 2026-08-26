@@ -436,66 +436,51 @@ jobs:
           XDIST_FLAG='-n 4 --max-worker-restart=0 --tb=long --capture=no -v'
           [ "$DISABLE_XDIST" = "true" ] && XDIST_FLAG='-n 0 --max-worker-restart=0 --tb=long --capture=no -v'
 
-          # BUG-3208 Path E + watchdog v4 — wrapper captures pytest's PID
-          # (process substitution breaks $! semantics), then we start the
-          # watchdog as a heartbeat generator + targeted snapshotter. Watchdog
-          # writes to pytest-master-snapshot.log; Path E SNAPSHOTTER PATCHes
-          # this file to issue #11 at ~30s cadence so heartbeats survive VM
-          # freeze. The gap between two heartbeats IS the freeze-onset latency.
-          cat > /tmp/pytest-wrapper.sh <<'WRAPPER'
-          #!/bin/bash
-          echo $$ > /tmp/pytest.pid
-          exec .venv/bin/python -u -m pytest "${PYTEST_ARGS[@]}" $XDIST_FLAG \
-            --junit-xml=pytest-junit.xml
-          WRAPPER
-          chmod +x /tmp/pytest-wrapper.sh
-
-          # Start pytest via wrapper in background. Process substitution
-          # routes stdout+stderr through tee (file + live GH Actions stream).
-          # `PYTHONUNBUFFERED=1 timeout 45m` wraps the wrapper (NOT `wait`)
-          # because `wait` is a bash builtin with no binary form — `timeout`
-          # exec's the argument and would fail with "No such file or directory"
-          # (exit 127) before any test runs. The 45m ceiling is enforced by
-          # SIGTERM at T+45min, SIGKILL 30s later, both via the wrapper's
-          # process tree. SHELL_PID captures timeout's PID; `wait $SHELL_PID`
-          # below still works because timeout exits when its child does.
+          # BUG-3208 Path E + Direct pytest invocation (Cooper's Option A — drop the wrapper).
+          #
+          # PREVIOUS WRAPPER PATH WAS CONTAMINATED — silent-false-signal on every
+          # dispatch since the watchdog-v4 integration. Two compounding bugs:
+          #   1. The wrapper heredoc was QUOTED (`<<'WRAPPER'`), so `${PYTEST_ARGS[@]}`
+          #      and `$XDIST_FLAG` were written LITERALLY, not expanded.
+          #   2. The wrapper ran as a separate child process with no `export PYTEST_ARGS`
+          #      (and bash arrays don't survive export anyway).
+          # Net: child bash expanded `$PYTEST_ARGS` and `$XDIST_FLAG` in its fresh
+          # environment where both were EMPTY. Pytest fell back to pyproject.toml
+          # defaults — no -m filter, no --max-worker-restart=0 (load-bearing!),
+          # no -v, no --tb=long. Tests still ran, so heartbeats looked healthy.
+          # EVERY dispatch since the watchdog-v4 integration reported on the WRONG
+          # invocation. Caught and locally reproduced by Cooper at 03:31:34.
+          #
+          # FIX: invoke pytest INLINE. `timeout 45m` wraps the actual pytest
+          # binary (no shell-builtin trap — pytest is a real binary, not `wait`).
+          # `PYTEST_ARGS` + `XDIST_FLAG` expand in the running shell with the
+          # running shell's variables in scope. `tee pytest.log` mirrors to file
+          # (live stream is lost — acceptable trade; `-v` makes pytest.log
+          # verbose enough for post-hoc wedge attribution). `set -o pipefail` +
+          # `${PIPESTATUS[0]}` captures pytest's REAL exit code (not tee's
+          # always-0). Pattern matches v3 lineage; this is the inline-foreground
+          # version Cooper's Option A called for.
+          #
+          # Watchdog-v4 dropped along with the wrapper. The watchdog attached
+          # to PYTEST_PID via /tmp/pytest.pid + poll-loop, which is dead-weight
+          # now (no PID to attach to in inline mode). Path E HEARTBEAT background
+          # subshell (already running above as part of Path E streaming) captures
+          # process-tree state via `ps` at 30s cadence — sufficient for freeze
+          # detection without per-PID `/proc/<pid>/` snapshots. If a future
+          # wedge needs per-PID /proc inspection, refactor watchdog to discover
+          # pytest's PID via `pgrep -f pytest` instead of accepting `--pid $PYTEST_PID`.
+          set -o pipefail
           PYTHONUNBUFFERED=1 timeout --signal=TERM --kill-after=30s 45m \
-            /tmp/pytest-wrapper.sh > >(tee pytest.log) 2>&1 &
-          SHELL_PID=$!
-          # Poll for the PID file (wrapper writes it before exec; on a heavily
-          # loaded runner the heredoc+chmod+start sequence can race).
-          for i in 1 2 3 4 5 6 7 8 9 10; do
-            if [ -s /tmp/pytest.pid ]; then break; fi
-            sleep 0.2
-          done
-          PYTEST_PID=$(cat /tmp/pytest.pid 2>/dev/null || echo "$SHELL_PID")
-          echo "[$(date -u +%H:%M:%S)] pytest master PID: $PYTEST_PID (shell: $SHELL_PID)"
+            .venv/bin/python -u -m pytest "${PYTEST_ARGS[@]}" $XDIST_FLAG \
+              --junit-xml=pytest-junit.xml \
+              2>&1 | tee pytest.log
+          RC=${PIPESTATUS[0]}
+          set +o pipefail
 
-          # Start watchdog v4 as heartbeat generator + targeted snapshotter.
-          # Two contracts: red-run evidence (Path E PATCHes heartbeats out of
-          # band) + green-run falsification (no snapshot fires = wedge did not
-          # reproduce). SIGABRT removed in v4: the watchdog IS in the same VM
-          # that freezes, so SIGABRT can only fire when the VM is alive at
-          # T+7min, which is the condition the heartbeat + snapshot already
-          # captures.
-          .venv/bin/python .github/scripts/bug3208-master-watchdog.py \
-            --pid $PYTEST_PID \
-            --stdout pytest.log \
-            --out pytest-master-snapshot.log \
-            --snap1-at 120 \
-            --snap2-at 300 \
-            --poll-interval 10 \
-            2>&1 | tee -a pytest-master-snapshot.log &
-          WATCHDOG_PID=$!
-
-          # Plain `wait` — the timeout guard lives on the wrapper command (above).
-          wait $SHELL_PID
-          RC=$?
-          set -e
           # Reap orphaned xdist workers that survive the controller kill — they
           # would otherwise hold the step's stdout pipe open until the runner
           # watchdog fires (~52m) and purges every log as BlobNotFound.
-          kill "$SAMPLER" "$HEARTBEAT" "$REAPER" "$SNAPSHOTTER" "$WATCHDOG_PID" 2>/dev/null || true
+          kill "$SAMPLER" "$HEARTBEAT" "$REAPER" "$SNAPSHOTTER" 2>/dev/null || true
           pkill -9 -f 'pytest' 2>/dev/null || true
           pkill -9 -f 'execnet' 2>/dev/null || true
           echo "pytest exit: $RC"
@@ -527,7 +512,6 @@ jobs:
             heartbeat.log
             sigprobe.log
             reaper.log
-            pytest-master-snapshot.log
           retention-days: 30
           if-no-files-found: error
 
