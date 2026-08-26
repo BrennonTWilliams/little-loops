@@ -97,10 +97,20 @@ jobs:
         # for triage scripts. `set -o pipefail` is required: without it the
         # pipeline's exit code is tee's (always 0), masking pytest's actual
         # failure status. Both files are uploaded on every CI outcome below.
+        # BUG-3208 wedge-capture diagnostic (scoped to this branch only —
+        # remove these flags once the wedge test is identified):
+        #   --max-worker-restart=0  surface the FIRST worker death (xdist
+        #                           otherwise silently restarts it and the
+        #                           death traceback is lost)
+        #   --tb=long --capture=no -v  name the last-in-flight test + the
+        #                           death mechanism (SIGKILL/FD/ResourceWarning)
+        #   -n 4 --dist loadfile   match the GH-hosted 4-core signature
         run: |
           set -o pipefail
           .venv/bin/python -m pytest scripts/tests/ \
             -m "not integration and not conformance" \
+            -n 4 --dist loadfile \
+            --max-worker-restart=0 --tb=long --capture=no -v \
             --junit-xml=pytest-junit.xml \
             | tee pytest.log
 
