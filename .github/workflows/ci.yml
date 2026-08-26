@@ -57,6 +57,10 @@ on:
         description: 'Issue number for Path E snapshot sink'
         required: false
         default: '11'
+      pytest_select:
+        description: 'Pytest selection override (e.g. "scripts/tests/test_foo.py::TestBar::test_baz"). Empty = full suite per marker filter.'
+        required: false
+        default: ''
 
 concurrency:
   # Diagnostic-stack branch: every dispatch lands in its own concurrency group
@@ -388,9 +392,17 @@ jobs:
             SNAPSHOTTER=$!
           fi
           set +e
+          # pytest_select override (BUG-3208 isolation staging): if provided,
+          # run only that selection. Otherwise the full suite per marker filter.
+          # Array form preserves per-token quoting through word-splitting.
+          SELECTION='${{ inputs.pytest_select }}'
+          if [ -n "$SELECTION" ]; then
+            PYTEST_ARGS=("$SELECTION")
+          else
+            PYTEST_ARGS=(scripts/tests/ -m "not integration and not conformance")
+          fi
           PYTHONUNBUFFERED=1 timeout --signal=TERM --kill-after=30s 45m \
-            .venv/bin/python -m pytest scripts/tests/ \
-              -m "not integration and not conformance" \
+            .venv/bin/python -m pytest "${PYTEST_ARGS[@]}" \
               -v \
               --tb=line \
               --junit-xml=pytest-junit.xml \
