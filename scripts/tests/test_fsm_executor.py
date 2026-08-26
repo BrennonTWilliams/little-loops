@@ -8220,6 +8220,7 @@ class TestRateLimitCircuitIntegration:
             "run_model",
             "compression_config",
             "orchestration_config",
+            "run_effort",
         }
 
         sig_params = set(inspect.signature(FSMExecutor.__init__).parameters) - exempt
