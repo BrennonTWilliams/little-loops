@@ -1421,7 +1421,7 @@ class TestSkillStatsAndNewKinds:
             + "\n",
             encoding="utf-8",
         )
-        backfill_raw_events(db, jsonl_files=[jsonl], since_ts=0.0)
+        backfill_raw_events(db, jsonl_files=[jsonl], since_ts=0.0, host="test")
         rebuild(db)
         with patch("sys.argv", ["ll-session", "--db", str(db), "recent", "--kind", "usage"]):
             assert main_session() == 0
