@@ -23,7 +23,7 @@ flowchart TB
     subgraph "Claude Code Plugin"
         CMD[Commands<br/>29 slash commands]
         AGT[Agents<br/>9 specialized agents]
-        SKL[Skills<br/>40 composable skills]
+        SKL[Skills<br/>41 composable skills]
     end
 
     subgraph "Configuration"
@@ -108,7 +108,7 @@ little-loops/
 │       ├── user-prompt-check.sh
 │       └── lib/
 │           └── common.sh    # Shared shell functions
-├── skills/                  # 40 skill definitions + 29 command bridges — force-included into the wheel at
+├── skills/                  # 41 skill definitions + 29 command bridges — force-included into the wheel at
 │                            # little_loops/skills/ for ll-mcp's prompts surface (BUG-3177);
 │                            # stays physically here (host-plugin glue, FEAT-2274/BUG-938)
 │                            #

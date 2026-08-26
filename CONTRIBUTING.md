@@ -173,7 +173,7 @@ little-loops/
 │   ├── web-search-researcher.md
 │   └── workflow-pattern-analyzer.md
 ├── hooks/                # Lifecycle hooks
-├── skills/               # 40 skill definitions + 29 command bridges (user-invocable workflows)
+├── skills/               # 41 skill definitions + 29 command bridges (user-invocable workflows)
 │   │                     # Representative sample — run `ls skills/` for the full set.
 │   ├── capture-issue/                # Capture issues from conversation
 │   ├── manage-issue/                 # Manage issue lifecycle
