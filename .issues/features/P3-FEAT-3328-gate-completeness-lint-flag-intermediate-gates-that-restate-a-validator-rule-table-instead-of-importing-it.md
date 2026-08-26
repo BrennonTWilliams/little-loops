@@ -105,8 +105,8 @@ happened once.
 ## Acceptance Criteria
 
 1. `ll-loop validate` flags an `action_type: shell` state whose `python3`
-   action contains a literal set/frozenset that is a subset of one of the
-   **linted tables** (see the list below), at `warning` severity, naming the
+   action contains a **literal collection display** that is a subset of one of
+   the **linted tables** (see the list below), at `warning` severity, naming the
    state and the exported table to import instead. To be flagged, the literal
    must satisfy **all** of:
    - **at least 3 members** — a bare `{"exit_code"}` or `{"exit_code",
@@ -119,6 +119,27 @@ happened once.
    State the floor in the rule's docstring; it is the difference between a
    useful guard and a noisy one.
 
+1b. **Match set, frozenset, list, AND tuple displays — not sets alone.**
+   Earlier drafts scoped detection to "a literal set/frozenset". That misses
+   the likeliest restatement shape and would not have caught the defect in this
+   issue's own Summary had the author written it as a list:
+   - The literals that actually appear in these gates today are **tuples** —
+     `('done', 'failed')` at `workflow-generator.yaml:206` and `:259`.
+   - `EVALUATOR_REQUIRED_FIELDS`'s values are `list[str]` (`_base.py:45-63`),
+     so a hand-restated required-field table is naturally written
+     `["operator", "target"]`, never `{"operator", "target"}`.
+   - A restated `NON_LLM_EVALUATOR_TYPES` is just as plausible as a
+     `("exit_code", "output_contains", "output_numeric")` membership tuple.
+
+   The regex must therefore match `{...}`, `[...]`, and `(...)` displays of
+   string literals (single- or double-quoted, since gate bodies are embedded in
+   double-quoted `python3 -c "…"` strings and use single quotes inside). The
+   ≥3-member / no-outside-members floor from AC #1 still does all the
+   noise suppression — widening the bracket class does not widen the false
+   positive surface, it only stops the rule from being trivially evadable by
+   choosing a different bracket. Note the existing 2-member `('done', 'failed')`
+   tuples stay below the floor and remain unflagged.
+
    **Linted tables.** All are exported from
    `scripts/little_loops/fsm/validation/__init__.py`:
    - `EVALUATOR_REQUIRED_FIELDS` (keys) — `_base.py:45`
@@ -128,9 +149,15 @@ happened once.
      the reason this rule exists; a hand-restated `{"eq", "ne", "lt", "le",
      "gt", "ge"}` is the same defect class as a restated evaluator-type set,
      and leaving it unlinted means the rule does not cover the very move its
-     own Ordering section depends on. Note it is declared as a bare `set`, not
-     an annotated `frozenset` like its siblings — normalize when reading it, or
-     consider tightening the declaration in the same pass.
+     own Ordering section depends on. **Confirmed** it is declared as a bare
+     `set` (`VALID_OPERATORS = {"eq", "ne", "lt", "le", "gt", "ge"}`,
+     `_base.py:74`), not an annotated `frozenset` like `NON_LLM_EVALUATOR_TYPES`
+     (`:66`) and `VALID_VISIBILITY` (`:78`). **Tighten it to
+     `VALID_OPERATORS: frozenset[str] = frozenset({...})` in this pass** — a
+     one-line change that removes the normalize-on-read special case from the
+     new rule and makes the three linted tables uniform. Grep first: it is
+     re-exported from `fsm/validation/__init__.py:51,168`, so confirm no caller
+     mutates it (none should — it is a vocabulary constant).
    - `VALID_VISIBILITY` (`_base.py:78`) — optional; three members total, so any
      subset meeting the ≥3 floor is the *entire* table, which makes it a
      high-signal, zero-ambiguity case. Include unless it proves noisy.
@@ -153,6 +180,16 @@ happened once.
 3. Running the rule against the current built-in loop set produces zero
    violations — this rule ships as a forward guard, not a fix for an existing
    loop. Note this depends on BUG-3326 having landed first; see Ordering.
+
+   **Verified 2026-08-26, including under AC #1b's widened bracket class.**
+   Swept `loops/**.yaml`: the only literal collection displays inside `python3`
+   shell gates are the 2-member `('done', 'failed')` tuples
+   (`workflow-generator.yaml:206`, `:259`), which sit below the ≥3 floor.
+   `validate_evaluators` imports both `EVALUATOR_REQUIRED_FIELDS` and
+   `NON_LLM_EVALUATOR_TYPES` directly. No built-in restates an operator
+   vocabulary — the sole `"eq"` occurrence is `docs-sync.yaml:72`'s
+   `operator: "eq"`, a scalar evaluator field, not a display. Zero violations
+   holds both before and after BUG-3326.
 4. The rule is documented in
    `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` § The Design Rules alongside
    MR-1..MR-14, as an **unnumbered named rule** (`**gate-completeness**`,
@@ -187,7 +224,9 @@ the existing `_validate_*` MR functions there (e.g.
 ```python
 # Skip entirely if fsm.gate_completeness_ok
 # For each state with action_type == "shell" whose action contains "python3":
-#   find literal set/frozenset displays by regex over the raw action string
+#   find literal collection displays — {...}, [...], and (...) of string
+#   literals, single- or double-quoted — by regex over the raw action string
+#   (AC #1b: sets alone would miss the list/tuple shapes actually used)
 #   for each literal:
 #     if len(members) < 3: skip
 #     # tables in specificity order, smallest first, so a literal that is a
@@ -270,6 +309,9 @@ table at runtime) rather than a lint.
 - `scripts/little_loops/fsm/validation/__init__.py` — export/wire the new
   rule into the validation pipeline (same pattern as `EVALUATOR_REQUIRED_FIELDS`,
   `NON_LLM_EVALUATOR_TYPES` re-exports at lines 47-49, 164-166)
+- `scripts/little_loops/fsm/validation/_base.py:74` — tighten
+  `VALID_OPERATORS` from a bare `set` to `frozenset[str]`, matching its two
+  sibling tables (AC #1)
 - `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` — add the new rule to § The
   Design Rules (MR-1..MR-14 table) and add the Non-Goal below as a review
   heuristic
@@ -322,6 +364,15 @@ _Wiring pass added by `/ll:wire-issue`:_
   - **`VALID_OPERATORS` coverage** (AC #1): a literal `{"eq", "ne", "lt"}` in
     an action that does not import `VALID_OPERATORS` is flagged; the same
     action with the import present is not.
+  - **bracket-class coverage** (AC #1b): the same ≥3-member restatement written
+    as a **list** (`['operator', 'target', 'path']` vs
+    `EVALUATOR_REQUIRED_FIELDS`) and as a **tuple**
+    (`('eq', 'ne', 'lt')` vs `VALID_OPERATORS`) is flagged identically to the
+    set form — parametrize over the three bracket shapes so a set-only regex
+    fails the suite.
+  - **below-floor tuple stays clean**: the in-repo `('done', 'failed')` literal
+    (`workflow-generator.yaml:206`) is **not** flagged — the 2-member case that
+    keeps AC #3 at zero violations once lists and tuples are in scope.
 - Use `workflow-generator.yaml`'s `validate_evaluators` state as the in-repo
   "correct" fixture for the import-present negative case — it imports both
   tables directly and carries an inline comment stating the
@@ -423,10 +474,13 @@ literal set/frozenset displays against the exported tables in
 
 0. Confirm BUG-3326 has landed (see Ordering) — AC #3 depends on it.
 1. Implement `_validate_gate_completeness` in `meta_rules.py` using a
-   module-level compiled `re.Pattern` over the raw action string, with the
-   ≥3-member / no-outside-members floor from AC #1, the full linted-table list
+   module-level compiled `re.Pattern` over the raw action string, matching set,
+   frozenset, list, and tuple displays (AC #1b), with the ≥3-member /
+   no-outside-members floor from AC #1, the full linted-table list
    (including `VALID_OPERATORS`), and the smallest-first / one-warning-per-
    literal ordering from AC #1a.
+1a. Tighten `VALID_OPERATORS` to `frozenset[str]` in `_base.py:74` (AC #1) so
+   the three linted tables are uniform.
 2. Add the `gate_completeness_ok` flag: `KNOWN_TOP_LEVEL_KEYS` in `_base.py`,
    plus the three `FSMLoop` sites in `schema.py` (field, `from_dict`,
    `to_dict`) following `abstention_route_ok`.
@@ -492,7 +546,8 @@ literal required-field lists instead of `EVALUATOR_REQUIRED_FIELDS`. Where the
 terminal gate exposes its rules as data, import rather than restate.
 
 Detection: in `fsm/validation`, for each `action_type: shell` state whose action
-contains `python3`, look for a literal set/frozenset of **≥3 members, all of them**
+contains `python3`, look for a literal collection display — set, frozenset,
+list, or tuple of string literals — of **≥3 members, all of them**
 members of a known exported table (`EVALUATOR_REQUIRED_FIELDS` keys,
 `NON_LLM_EVALUATOR_TYPES`, `VALID_OPERATORS`, optionally `VALID_VISIBILITY`), in
 an action that does not import that table. Tables are checked smallest-first and
@@ -506,8 +561,11 @@ only built-in doing this in a `shell` gate, and it has been fixed, so the rule
 ships with zero violations and acts purely as a forward guard. Re-confirmed
 after adding `VALID_OPERATORS` to the linted set: no built-in loop restates an
 operator vocabulary — the only `"eq"` occurrence across `loops/**.yaml` is
-`docs-sync.yaml:72`'s `operator: "eq"`, a single evaluator field, not a set
-literal, and well under the ≥3-member floor. Caveat: the same
+`docs-sync.yaml:72`'s `operator: "eq"`, a single evaluator field, not a
+collection display, and well under the ≥3-member floor. Re-confirmed again
+after widening detection to list and tuple displays (AC #1b): the only literals
+that widening newly brings into scope are the 2-member `('done', 'failed')`
+tuples in `workflow-generator.yaml:206,259`, both below the floor. Caveat: the same
 loop still restates the table in prose inside `attach_evaluators`'s **prompt**,
 which this rule does not inspect — see Known coverage gap.
 

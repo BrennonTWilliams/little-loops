@@ -158,8 +158,20 @@ state structurally incapable of repairing an `attach_evaluators` defect. That is
 the exact failure shape described in FEAT-3328's Summary, relocated one field
 over.
 
-Implement as: for every evaluator, `if "operator" in ev: assert
-ev["operator"] in VALID_OPERATORS`. Presence, not requiredness, is the trigger.
+Implement as: for every evaluator, check the operator whenever an `operator`
+key is present. Presence, not requiredness, is the trigger.
+
+**Quoting — the gate body is inside a double-quoted shell string.**
+`validate_evaluators`'s Python runs as `python3 -c "` … `"`
+(`workflow-generator.yaml:209`), so every Python string literal in it must use
+single quotes, and any f-string quote must be escaped `\"` — the existing lines
+in that gate all do. A naive `if "operator" in ev: assert ev["operator"] in
+VALID_OPERATORS` terminates the shell string and is a syntax error. Write it as:
+
+```python
+if 'operator' in ev:
+    assert ev['operator'] in VALID_OPERATORS, f\"state {s.get('name')!r} has invalid operator {ev['operator']!r}\"
+```
 
 ### Rejected Alternative — fault-class routing to `attach_evaluators`
 
@@ -208,6 +220,7 @@ Fault-class retry routing for `count_emit_retry` is therefore an explicit
   Staleness caveat — must not disturb `init`'s stdout contract, which feeds
   `capture: run_dir`; keep the `case`/`echo` block last).
   `count_emit_retry` (line 329) is **not** modified — see Rejected Alternative.
+  Also `max_steps` (line 31) — see Step-budget interaction.
 
 ### Dependent Files (Callers/Importers)
 - N/A — loop is invoked by ID via the FSM runner, not imported
@@ -284,6 +297,32 @@ _Added by `/ll:refine-issue` — 2026-08-26 — based on codebase analysis:_
 ### Convention check — stderr capture and fault-class routing
 - No loop YAML in `scripts/little_loops/loops/` uses the literal `cmd 2>file; exit $?` one-liner the issue proposes. Two established idioms exist instead: (a) `cmd 2>&1 | tee file` combined with `set -o pipefail` (e.g. `fix-quality-and-tests.yaml:62-64`, `test-coverage-improvement.yaml`, `dead-code-cleanup.yaml`, `autodev.yaml`, `rn-remediate.yaml`), or (b) stderr-only redirect to a file plus explicit `$?` capture into a shell variable, used when the state needs to branch on the result rather than just log it (e.g. `vega-viz.yaml:298-320`, `cli-anything-bootstrap.yaml:271-279,324-325`). Idiom (b) is the closer structural match to what `validate_artifact` needs (preserve exit code for the `exit_code` evaluator while also persisting stderr for the next state to read).
   **Decision:** use idiom (a) (`set -o pipefail` + `2>&1 | tee`) anyway. Idiom (b)'s bare `2>file` redirect satisfies the next state but strips the validator's error text out of the runner log, which is where a failed run is actually triaged. `pipefail` makes the pipeline's status that of `ll-loop validate`, so the "a pipeline swallows the exit code" concern in the original Expected Behavior does not apply — it is only true *without* `pipefail`.
+  **`pipefail` availability verified:** the FSM executes every `action_type:
+  shell` body via `["bash", "-c", action]` (`scripts/little_loops/fsm/runners.py:297`),
+  not `sh`, so `set -o pipefail` is guaranteed available. No POSIX-sh fallback
+  is needed.
+
+### Step-budget interaction — `max_steps: 30`
+
+`workflow-generator` declares `max_steps: 30` (line 31) across 24 states. The
+happy path with `enable_shrink` already consumes ~20 steps, and the shrink loop
+(`shrink_select_candidate -> shrink_try_remove -> shrink_probe_candidate ->
+shrink_apply -> shrink_select_candidate`) iterates once per candidate.
+
+This issue changes the economics of that budget. Today a full retry cycle
+(`emit_artifact -> validate_artifact -> count_emit_retry`, 3 steps x
+`max_emit_retries: 3` = 9 steps) is pure waste, because the retries are
+byte-identical draws. After this fix the retries become *productive* — which
+means real runs will now actually spend those 9 steps making progress instead
+of failing identically on the first pass.
+
+Consequence: a run that previously died at `diagnose` with 12 identical errors
+can now die at `max_steps` instead, which reads the same in a run log. Either
+raise `max_steps` (40 is the obvious floor: 20 happy-path + 9 retry + shrink
+headroom) or state explicitly why 30 still holds. **Coordinate with BUG-3327**,
+which adds a `check_intent_scope` state on top of an unbounded
+`validate_intent -> capture_intent` edge — whichever issue lands second owns
+the final number.
 - Fault-class routing on a retry edge (grep prior output for a discriminator, route on `output_contains`) is an established, repeated pattern elsewhere: `lib/common.yaml:332-354` (`ll_auto_auth_check`), `lib/common.yaml:355-386` (`ll_auto_learning_gate_check`, three-way classification via sequential grep), and `cua-agent-desktop.yaml:344-391` (a full `_check_*`/`_route_*` chain, with an explicit comment noting this exists specifically because a flat retry edge would otherwise mask a distinct fault class).
 - Contrast case: `cli-anything-bootstrap.yaml:490-506` (`count-refine-cycle`) is structurally identical to `workflow-generator.yaml`'s current `count_emit_retry` — a flat, fault-agnostic counter with no discrimination. This confirms fault-class discrimination is consistently implemented as an *additional* layer on top of the counter shape, not folded into the counter state itself, in every codebase example that has it.
 
@@ -325,8 +364,11 @@ _Added by `/ll:refine-issue` — 2026-08-26 — based on codebase analysis:_
    phrasing (see Prompt convention below).
 3. Extend `validate_evaluators` to import `VALID_OPERATORS` and assert
    operator-value membership for every evaluator where `operator` is present
-   (see Operator-check scope).
-4. Verify with `ll-loop validate scripts/little_loops/loops/workflow-generator.yaml`
+   (see Operator-check scope — including the single-quote requirement, since
+   the gate body sits inside a double-quoted `python3 -c "…"` string).
+4. Raise `max_steps` (see Step-budget interaction below) or record why 30 still
+   suffices.
+5. Verify with `ll-loop validate scripts/little_loops/loops/workflow-generator.yaml`
    and a re-run of the source scenario (or an equivalent fixture) to confirm
    retries now converge or fail fast on genuinely emitter-owned faults.
 

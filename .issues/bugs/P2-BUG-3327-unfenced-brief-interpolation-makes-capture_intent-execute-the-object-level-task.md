@@ -181,6 +181,24 @@ Sketch:
       ${param.body}
 ```
 
+**Mechanism verified — this is no longer a design risk.** The parameterized
+shape is proven end-to-end in-repo, not merely sketched:
+
+- `rn-plan.yaml:273-274` binds `run_dir: "${captured.run_dir.output}"` through
+  `with:`, and `common.yaml:252` consumes it as `${param.run_dir}` — so a
+  `with:` value may itself contain `${context.*}`/`${captured.*}` references
+  and they resolve correctly. `brief_var: "${context.description}"` works.
+- `rn-plan.yaml:306-310` binds a **multi-line** `extra_bullets: |` block that
+  itself contains `${captured.run_dir.output}` interpolations, consumed at
+  `common.yaml:326`. So a whole prompt body can travel through `${param.body}`.
+
+One formatting wart to design around: a multi-line `${param.body}` substitutes
+its continuation lines at **column 0**, not at the fragment's indent level. The
+fragment must therefore place `${param.body}` at the left margin of its own
+`|` block and must not rely on the body being indented beneath surrounding
+text. Harmless for prose and for fenced code blocks, which are already
+column-0-relative.
+
 Two consequences the estimate must absorb:
 
 - Each fencing target's prompt has to be **restructured into a `with:`
@@ -267,6 +285,25 @@ Requirements:
    prefix comparison. macOS's `/tmp` → `/private/tmp` symlink makes this a live
    concern for the `tmp_path`-based tests, not a theoretical one.
 
+**(f) Escape bash brace-expansions — the FSM interpolates the action string
+first.** This gate is the first state in the loop to need real shell variables
+(`$(git rev-parse --show-toplevel)`, a repo-root prefix, a relativized run
+dir). The FSM's interpolation engine runs over the **entire** action text
+before `bash -c` ever sees it, so a bare `${VAR}` is parsed as a namespace
+reference and raises `expected namespace.path`. Use `$VAR` or escape as
+`$${VAR}` — `common.yaml:459-460` (`$${ID}`) is the in-repo precedent. Note the
+existing sketches in this issue use `"$DIR"` and happen to sidestep this; the
+real gate will not.
+
+**(g) Step budget — `max_steps: 30`.** This issue adds a state to a 24-state
+loop that already declares `max_steps: 30` (line 31) and whose happy path with
+`enable_shrink` consumes ~20 steps. `check_intent_scope` costs +1 per pass, and
+the unbounded `validate_intent -> capture_intent` edge (requirement 5 below)
+can multiply that. **Coordinate with BUG-3326**, which independently makes the
+3-retry `emit_artifact` cycle (9 steps) productive rather than wasted — so both
+issues push against the same ceiling from opposite ends. Whichever lands second
+owns the final `max_steps` number; 40 is the obvious floor.
+
 ## Integration Map
 
 ### Files to Modify
@@ -279,7 +316,7 @@ Requirements:
 - `scripts/little_loops/loops/workflow-generator.yaml` — `init` (lines
   43-56, add both baselines), `capture_intent` (line 58, fence the brief),
   new `check_intent_scope` state, `validate_intent`'s `on_yes` retargeted to
-  it
+  it, and `max_steps` (line 31, per requirement (g))
 - `scripts/little_loops/loops/brainstorm.yaml`,
   `loop-composer.yaml`, `loop-composer-adaptive.yaml`, `loop-router.yaml` —
   apply the fence fragment at the sites enumerated in the Scope survey below
@@ -417,12 +454,28 @@ syntax, and a crafted brief injects arbitrary Python into a shell action. The
 remedy is different in kind — pass the value through the environment and read
 it with `os.environ`, or `repr()`-quote it — not a fence.
 
-**Decision needed before implementation:** either (i) split the code-literal
-sites into their own issue, retitled as an injection/quoting bug, and scope
-this issue to class (1); or (ii) keep both here and rename the issue to cover
-both remedies. Recommend **(i)** — the two fixes share no code, no test shape,
-and no rationale, and folding an injection bug into a prompt-hygiene issue
-buries it.
+**Decision — resolved 2026-08-26: split (option (i)).** The class-(2)
+code-literal sites move to their own issue, retitled as an injection/quoting
+bug; **this issue is scoped to class (1) only**. Rationale: the two fixes share
+no code, no test shape, and no rationale, and folding an injection bug into a
+prompt-hygiene issue buries it.
+
+Two facts that make the split urgent rather than tidy-up:
+
+- **Class (2) is a live defect, not a latent one.** `inp = (...) or
+  '${context.goal}'` breaks *today* on any brief containing an apostrophe
+  (`don't`) — the single-quoted Python literal is terminated mid-string and the
+  whole `python3 -c` body is a syntax error. That is a P2 in its own right, on
+  a shorter fuse than the fencing work here.
+- **The remedy is different in kind.** Pass the value through the environment
+  and read it with `os.environ`, or `repr()`-quote it — no fence is involved.
+
+**Filed as BUG-3331** (2026-08-26). Note its survey found the class far wider
+than the four sites listed here: ~23 class-A (user input into a single-quoted
+Python literal) plus **27 class-B sites across 10 loops** where *LLM output* is
+interpolated into a triple-quoted literal — a sharper variant, since a `"""`
+anywhere in a model response breaks the state with no adversary involved. That
+breadth is a further argument for the split: it would have swamped this issue.
 
 **(3) Display text** — the brief appears in output or report copy, with no
 model acting on it and no code parsing it. Confirmed: `brainstorm.yaml:295`
@@ -470,9 +523,8 @@ genuinely-retryable malformed-intent case) -> `check_intent_scope`
 
 ## Implementation Steps
 
-0. Classify every surveyed interpolation site as instruction surface / code
-   literal / display text (see Site classification), and settle the class-(2)
-   split decision — this determines what "all five loops" actually means below.
+0. ~~File the class-(2) injection/quoting follow-up issue.~~ **Done — BUG-3331.**
+   This issue covers **class-(1) sites only**; class (3) needs no change.
 1. Add the parameterized `fenced_brief` fragment to
    `scripts/little_loops/loops/lib/prompt-fragments.yaml` (see Fragment
    mechanism — it must own the whole `action:` and take the state's prompt as a
@@ -481,10 +533,13 @@ genuinely-retryable malformed-intent case) -> `check_intent_scope`
    restructuring each state's prompt into a `with:` binding.
 3. Add both baseline captures to `init`.
 4. Add the `check_intent_scope` state — including the repo-root relativization
-   and outside-the-worktree escape from requirement (e) — and retarget
-   `validate_intent`'s `on_yes` to it.
+   and outside-the-worktree escape from requirement (e), and the `$${VAR}`
+   brace escaping from requirement (f) — and retarget `validate_intent`'s
+   `on_yes` to it.
 5. Bound `validate_intent`'s `on_no: capture_intent` retry edge, or record why
    not (see Expected Behavior).
+5a. Raise `max_steps` (line 31) per requirement (g), coordinating with
+   BUG-3326, or record why 30 still suffices.
 6. Verify with `ll-loop validate` on every modified loop, plus a re-run of
    `workflow-generator` using an imperative-phrased brief **from a
    deliberately dirty working tree and from a repo subdirectory**, to confirm
@@ -585,7 +640,8 @@ _Added by `/ll:confidence-check` on 2026-08-26_
 
 ### Outcome Risk Factors
 - Broad enumeration across 6 sites (fragment library + workflow-generator.yaml + 4 other loops) with moderate-depth per-site changes: a new `check_intent_scope` state with git-based path relativization and baseline diffing, plus restructuring each fence target's prompt into a `with:` binding rather than an in-place edit.
-- One implementation-time decision is flagged but not finally settled: the "Decision needed before implementation" on splitting class-(2) code-literal sites into a separate injection/quoting issue (recommended: (i) split them out) — confirm this before starting so the class-(1) scope for this issue is locked in.
+- ~~One implementation-time decision is flagged but not finally settled: the "Decision needed before implementation" on splitting class-(2) code-literal sites into a separate injection/quoting issue (recommended: (i) split them out) — confirm this before starting so the class-(1) scope for this issue is locked in.~~ **Settled 2026-08-26: split.** This issue is class-(1)-only; the class-(2) sites move to a follow-up injection/quoting issue (Implementation Step 0).
+- Also settled since the check: the parameterized-fragment mechanism is verified against `rn-plan.yaml:273-310` / `common.yaml:252,326` rather than assumed (see "Mechanism verified" under Proposed Solution 1), removing the largest remaining unknown.
 
 ## Status
 
