@@ -1626,7 +1626,6 @@ class TestDecisionsCLISuggestRules:
 # =============================================================================
 
 
-@pytest.mark.conformance
 class TestExtractFromCompleted:
     """Tests for ll-issues decisions extract-from-completed sub-command."""
 
@@ -1646,6 +1645,7 @@ class TestExtractFromCompleted:
         )
         return filepath
 
+    @pytest.mark.conformance
     def test_dry_run_prints_candidates_without_writing(
         self,
         temp_project_dir: Path,
@@ -1729,6 +1729,7 @@ class TestExtractFromCompleted:
         assert mock_run.call_args.kwargs["env"]["LL_NON_INTERACTIVE"] == "1"
         assert mock_run.call_args.kwargs["env"]["DANGEROUSLY_SKIP_PERMISSIONS"] == "1"
 
+    @pytest.mark.conformance
     def test_writes_rules_for_completed_issues(
         self,
         temp_project_dir: Path,
@@ -1872,6 +1873,7 @@ class TestExtractFromCompleted:
         captured = capsys.readouterr()
         assert "0 written" in captured.out
 
+    @pytest.mark.conformance
     def test_min_confidence_filters_low_confidence_candidates(
         self,
         temp_project_dir: Path,
