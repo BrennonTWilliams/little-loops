@@ -122,7 +122,6 @@ class TestAssistantMessagesMigration:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.conformance
 class TestBackfillAssistantMessages:
     """_backfill_assistant_messages() seeds assistant_messages from JSONL."""
 

@@ -872,7 +872,6 @@ class TestSchemaV12:
         assert row is not None and row[0] == 0
 
 
-@pytest.mark.conformance
 class TestRawEventsTable:
     """v19 migration: raw_events is the JSONL source of truth (ENH-2581)."""
 

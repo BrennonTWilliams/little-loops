@@ -55,7 +55,6 @@ def tmp_path(_module_tmp_parent: Path, request: pytest.FixtureRequest) -> Path:
     return path
 
 
-@pytest.mark.conformance
 class TestBackfill:
     """Seeding the database from existing on-disk sources."""
 
@@ -173,7 +172,6 @@ class TestBackfill:
         assert any(r["kind"] == "issue" for r in results)
 
 
-@pytest.mark.conformance
 class TestBackfillMessages:
     """_backfill_messages() seeds message_events from user JSONL blocks."""
 
@@ -479,7 +477,6 @@ class TestBackfillDedup:
         assert rows[0]["issue_id"] == "BUG-10"
 
 
-@pytest.mark.conformance
 class TestBackfillIncremental:
     """backfill_incremental() filters JSONL by mtime and tracks last_backfill_ts (ENH-1830)."""
 
@@ -603,7 +600,6 @@ class TestBackfillIncremental:
         assert count == 1
 
 
-@pytest.mark.conformance
 class TestBackfillSkillEvents:
     """BUG-2283: _backfill_skill_events() seeds skill_events from JSONL user records."""
 
@@ -717,7 +713,6 @@ class TestBackfillSkillEvents:
         assert any(r["kind"] == "skill" for r in results)
 
 
-@pytest.mark.conformance
 class TestCompactSession:
     """Tests for compact_session() and the summary DAG (FEAT-1712)."""
 
@@ -1345,7 +1340,6 @@ class TestSummarizeBlock:
         assert "Message three" in prompt
 
 
-@pytest.mark.conformance
 class TestRawEventsPayloadCompression:
     """raw_events payload columns are stored zlib-compressed, losslessly.
 
@@ -1448,7 +1442,6 @@ class TestRawEventsPayloadCompression:
         assert result["recompressed"] == 0  # nothing legacy left to convert
 
 
-@pytest.mark.conformance
 class TestRebuild:
     """rebuild() wipes+re-derives the JSONL-derived cache tables from raw_events (ENH-2581)."""
 
@@ -1548,7 +1541,6 @@ class TestRebuild:
         assert n == 1
 
 
-@pytest.mark.conformance
 class TestBackfillUsageEvents:
     """_backfill_usage_events parses real LLM token usage from raw_events (ENH-2461)."""
 
@@ -2600,7 +2592,6 @@ class TestBackfillLearningTestEvents:
         assert counts["learning_tests"] == 0
 
 
-@pytest.mark.conformance
 class TestBackfillPromptOpt:
     """ENH-2498: _backfill_prompt_opt() enriches offer rows with optimized text."""
 

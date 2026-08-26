@@ -233,7 +233,6 @@ class TestGracefulMalformedResponse:
         assert row[1] == "batch_design"
 
 
-@pytest.mark.conformance
 class TestBackfillMcpColumns:
     def test_backfill_populates_mcp_server_and_tool(self, tmp_path: Path) -> None:
         from little_loops.session_store import backfill
