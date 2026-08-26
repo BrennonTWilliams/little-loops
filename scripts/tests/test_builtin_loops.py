@@ -5620,6 +5620,7 @@ class TestSprintRefineAndImplementLoop:
         )
 
 
+@pytest.mark.conformance
 class TestCheckoutEpicBranchConfigReadShell:
     """ENH-2601 end-to-end: exercise checkout_epic_branch's config-gated branch
     creation against a real git repo (mirrors
@@ -5704,6 +5705,7 @@ class TestCheckoutEpicBranchConfigReadShell:
         assert second.returncode == 0, second.stderr
 
 
+@pytest.mark.conformance
 class TestVerifyStateConfigReadShell:
     """ENH-2601 end-to-end: exercise verify's project.test_cmd/lint_cmd config
     read against a stubbed command (mirrors
@@ -5858,6 +5860,7 @@ class TestVerifyStateConfigReadShell:
         assert self._run(tmp_path, test_cmd="true", env=env) == "error"
 
 
+@pytest.mark.conformance
 class TestMergeEpicBranchConfigReadShell:
     """BUG-2614 end-to-end: exercise merge_epic_branch's config-gated merge-back
     against a real git repo (mirrors TestCheckoutEpicBranchConfigReadShell's
