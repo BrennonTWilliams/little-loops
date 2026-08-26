@@ -395,7 +395,14 @@ jobs:
           # pytest_select override (BUG-3208 isolation staging): if provided,
           # run only that selection. Otherwise the full suite per marker filter.
           # Array form preserves per-token quoting through word-splitting.
-          SELECTION='${{ inputs.pytest_select }}'
+          #
+          # github.event.inputs.* (not inputs.*) for consistency with the
+          # SINK_ISSUE pattern at lines 110/166/169. Both forms empirically
+          # resolve correctly for workflow_dispatch in current runners (4
+          # dispatches confirmed), but the github.event.inputs.* form is the
+          # documented best practice and avoids the false-positive trap of
+          # assuming inputs.* is broken syntax.
+          SELECTION='${{ github.event.inputs.pytest_select }}'
           if [ -n "$SELECTION" ]; then
             PYTEST_ARGS=("$SELECTION")
           else
