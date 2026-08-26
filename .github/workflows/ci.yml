@@ -61,6 +61,11 @@ on:
         description: 'Pytest selection override (e.g. "scripts/tests/test_foo.py::TestBar::test_baz"). Empty = full suite per marker filter.'
         required: false
         default: ''
+      disable_xdist:
+        description: 'Disable pytest-xdist parallelism (run serially). Use to bisect parallelism-related wedges.'
+        type: boolean
+        required: false
+        default: false
 
 concurrency:
   # Diagnostic-stack branch: every dispatch lands in its own concurrency group
@@ -403,13 +408,18 @@ jobs:
           # documented best practice and avoids the false-positive trap of
           # assuming inputs.* is broken syntax.
           SELECTION='${{ github.event.inputs.pytest_select }}'
+          DISABLE_XDIST='${{ github.event.inputs.disable_xdist }}'
           if [ -n "$SELECTION" ]; then
             PYTEST_ARGS=("$SELECTION")
           else
             PYTEST_ARGS=(scripts/tests/ -m "not integration and not conformance")
           fi
+          # pytest-xdist bisect: when disable_xdist=true, run serially (omit
+          # the -n/--dist flags). Default behavior unchanged (parallel).
+          XDIST_FLAG='-n logical --dist loadfile'
+          [ "$DISABLE_XDIST" = "true" ] && XDIST_FLAG=''
           PYTHONUNBUFFERED=1 timeout --signal=TERM --kill-after=30s 45m \
-            .venv/bin/python -m pytest "${PYTEST_ARGS[@]}" \
+            .venv/bin/python -m pytest "${PYTEST_ARGS[@]}" $XDIST_FLAG \
               -v \
               --tb=line \
               --junit-xml=pytest-junit.xml \
