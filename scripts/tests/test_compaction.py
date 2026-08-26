@@ -7,6 +7,8 @@ import subprocess
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
 from little_loops.compaction.instant import (
     SECTION_HEADERS,
     compute_goal_tokens,

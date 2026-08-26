@@ -6,6 +6,8 @@ import json
 from datetime import UTC, datetime
 from pathlib import Path
 
+import pytest
+
 from little_loops.history_reader import conversation_turns
 from little_loops.session_store import (
     SCHEMA_VERSION,

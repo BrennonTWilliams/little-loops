@@ -12,6 +12,8 @@ import json
 import sqlite3
 from pathlib import Path
 
+import pytest
+
 from little_loops.hooks.post_tool_use import handle
 from little_loops.hooks.types import LLHookEvent
 from little_loops.session_store import _MIGRATIONS, SCHEMA_VERSION, _split_sql_statements, ensure_db

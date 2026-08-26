@@ -8,6 +8,8 @@ from __future__ import annotations
 import ast
 import json
 from pathlib import Path
+
+import pytest
 from unittest.mock import patch
 
 from tests.spike.fsm_continuity_compaction.continuity_pipeline import backfill_and_compact
