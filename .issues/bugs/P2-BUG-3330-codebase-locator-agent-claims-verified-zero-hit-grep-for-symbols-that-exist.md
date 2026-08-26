@@ -7,6 +7,7 @@ status: open
 discovered_by: ll-issues-create
 discovered_date: '2026-08-26'
 captured_at: '2026-08-26T19:31:41Z'
+program_design_not_applicable: true
 ---
 
 # BUG-3329: codebase-locator agent claims verified zero-hit grep for symbols that exist
@@ -84,9 +85,22 @@ to a subset of them.
 
 ## Implementation Steps
 
-1. [Major phase 1]
-2. [Major phase 2]
-3. [Verification approach]
+1. In `agents/codebase-locator.md`'s Output Format section, add a negative-claim
+   rule alongside the existing positive-evidence rule (lines 77-82): a "zero
+   hits"/"does not exist" claim must name the exact grep pattern and exact
+   file(s)/dir(s) it was run against, in the same sentence as the claim — no
+   codebase-wide negative summaries.
+2. In the "Inferred, Unconfirmed" example block (lines 112-114) and the
+   Important Guidelines section (lines 117-127), add guidance requiring a
+   final per-symbol confirming grep before writing "confirmed... zero hits"
+   language when a prompt traces multiple symbols, so attention drift across
+   symbols can't produce a false aggregate negative.
+3. Verification: re-run the reproduction from "Steps to Reproduce" above
+   (trace `attach_evaluators`/`validate_evaluators` against
+   `scripts/little_loops/loops/workflow-generator.yaml` via the `ll:codebase-locator`
+   agent) and confirm the agent's summary either cites the actual grep hits at
+   those lines or, if it still misses them, no longer asserts a "confirmed
+   zero hits" claim without naming the exact pattern/file it checked.
 
 ## Impact
 
@@ -118,4 +132,5 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:format-issue` - 2026-08-26T19:54:03 - `001e5679-9e60-4be1-8880-9ae8bd851f63.jsonl`
 - `/ll:capture-issue` - 2026-08-26T19:31:47 - `3b6a461b-67ff-4f6b-9949-d834388d9cff.jsonl`
