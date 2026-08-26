@@ -422,6 +422,12 @@ _Added by `/ll:refine-issue` — 2026-08-26 — based on codebase analysis:_
 - `${context.description}` is populated directly from the operator's raw CLI input: `run.py`'s input-binding logic assigns the typed-in string verbatim to `fsm.context[fsm.input_key]` when it isn't valid JSON matching context keys (`scripts/little_loops/cli/loop/run.py` ~line 169-176, via `_resolve_input_value` in `_helpers.py`). The interpolation engine itself (`scripts/little_loops/fsm/interpolation.py`, `VARIABLE_PATTERN`/`InterpolationContext.resolve()`) is pure text substitution with no concept of fencing or escaping — any framing must be hand-authored into the prompt string, which `capture_intent` does not do today.
 - `validate_intent` currently performs zero file-scope checking of any kind — its `python3 -c` body only asserts `intent.yaml` parses with non-empty `name`/`goal`/`steps`/`success_signal`. The loop's `scope:` block (lines 29-31) is unrelated to runtime enforcement: it is consumed only by `resolve_scope()` in `run.py` to acquire concurrency locks for parallel runs, not to audit what a prompt-driven state actually wrote to disk. The closest existing static check, MR-3 `_validate_artifact_isolation` in `meta_rules.py`, only scans literal `action:` YAML text for hardcoded `.loops/tmp/` writes at `ll-loop validate` time — it cannot see runtime writes an LLM agent improvises (like the `research/*.md` files from the source incident), since those paths never appear in the YAML source.
 
+_Added by `/ll:refine-issue` — 2026-08-26 — based on codebase analysis:_
+
+- **Line-number refresh (2026-08-26, post-BUG-3326 landing):** BUG-3326 (now `done`, its `blocked_by` entry here is resolved) landed in `75d473afd` and shifted `workflow-generator.yaml`'s line numbers by +2 starting at `init` (added `: > "$DIR/.emit_errors.txt"` and `rm -f "$DIR/.emit_retry_count"`). Current locations: `capture_intent` state header is now line 60 (was 58), the raw unfenced interpolation (`Brief: ${context.description}`) is now line 65 (was 63), `validate_intent` state header is now line 84 (was 82) with its action body at lines 88-96, and the unbounded `on_no: capture_intent` edge is now line 100 (was 98). No other cited line numbers moved.
+- `max_steps` is now `40` on disk (BUG-3326 landed it, confirmed at `workflow-generator.yaml:32`) — this issue's Proposed Solution 3 sets it to `45`; since BUG-3326 landed first, apply `45` directly rather than treating BUG-3326's number as a floor check.
+- Confirmed all other cited class-(1) sites are unchanged at their cited line numbers: `brainstorm.yaml:60,109`, `loop-composer.yaml:45,451`, `loop-composer-adaptive.yaml:52,678`, `loop-router.yaml:92,158,218,312,385,416`. `test_builtin_loops.py` changed (BUG-3326 test additions, unrelated `TestWorkflowGeneratorLoop` cases) but none of its new content touches the fence/`FENCED_BRIEF_SITES`/counter-state material this issue proposes adding.
+
 ### Scope survey — other loops with the same unfenced-brief pattern
 Confirmed as **not** workflow-generator-specific, matching the issue's own Scope section prediction. Meta/compiling loops (structurally analogous to `workflow-generator`, where the brief should be distilled, not executed) that interpolate their user-input context var unfenced:
 - `scripts/little_loops/loops/brainstorm.yaml` (`input_key: brief`) — `${context.brief}` unfenced at lines 60, 109, 295, 403
@@ -720,6 +726,7 @@ it was pricing are gone.**
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-08-26T22:13:26 - `60d4d70f-5c6f-414d-83a4-59287ae63c09.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-26T21:32:02 - `2066e6fd-1452-49ff-9b3a-c31e7abc3907.jsonl`
 - `/ll:confidence-check` - 2026-08-26T20:09:17 - `fdfe1063-50b8-41a2-aae7-c524a32eadad.jsonl`
 - `/ll:wire-issue` - 2026-08-26T19:24:45 - `3b6a461b-67ff-4f6b-9949-d834388d9cff.jsonl`

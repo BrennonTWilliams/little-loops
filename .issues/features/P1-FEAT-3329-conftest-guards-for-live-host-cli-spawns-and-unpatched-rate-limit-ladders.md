@@ -659,6 +659,14 @@ patching the module attributes takes effect.
 - [ ] Any new marker is registered in `scripts/pyproject.toml` `[tool.pytest.ini_options] markers`
       (`:280-285`); the suite runs under `--strict-markers` (`:264`), so an
       unregistered marker is a hard error.
+- [ ] `docs/development/TESTING.md` documents the live-host-CLI guard
+      (unconditionally — not gated on a marker being registered): what the
+      ERROR-at-teardown means, why the test line beside it still reads
+      `passed`, and how to mock the spawn.
+- [ ] `_fail_on_live_host_cli` is defined **first** among the function-scoped
+      autouse fixtures in `conftest.py`, so its teardown runs after all other
+      function-scoped teardowns and a spawn inside another function fixture's
+      teardown is attributed to the same test.
 
 ## Impact
 
@@ -821,6 +829,15 @@ _Wiring pass added by `/ll:wire-issue`:_
   citing the same `conftest.py` mechanism a ladder-exemption marker would need
   to follow. Not currently listed in "Related Key Documentation." [Agent 2
   finding]
+- `docs/development/TESTING.md` — **add a short paragraph documenting the
+  live-host-CLI guard itself, unconditionally** (the marker rows above are
+  marker-gated, and no marker is expected — without this the guard would ship
+  undocumented). Cover: what the guard is, that the failure surfaces as an
+  ERROR-at-teardown beside a test line that still reads `passed`, and how to
+  mock the spawn (patch `subprocess.run`/`subprocess.Popen` or the helper one
+  level up, per the existing idioms in `test_host_runner.py` /
+  `test_subprocess_utils.py`). A contributor who trips the guard otherwise has
+  only the failure message. [2026-08-26 review]
 
 ### Tests
 
@@ -856,8 +873,12 @@ _Wiring pass added by `/ll:wire-issue`:_
   `patch("subprocess.Popen")`/`patch("subprocess.run")` context managers
   (`:248-249`, `:321-322`, `:367-368`) with unpatched direct `subprocess.run(...)`
   calls elsewhere in the same file (`:34`, `:46`, `:65`, `:71`, `:156`, `:478`).
-  Needs per-test triage against the guard's exact binding before merge — flagged
-  as the highest-risk false-positive candidate found. [Agent 1 + 3 finding]
+  **Downgraded from "highest-risk false-positive candidate" (2026-08-26
+  review): inspected — every unpatched `subprocess.run` call in this file execs
+  a bash hook script (`hooks/scripts/*.sh`), so `argv[0]` is `bash`/a script
+  path, never a host binary, and a basename check does not trip.** Keep the
+  cheap per-test triage at merge time as confirmation, but this file is
+  expected clean. [Agent 1 + 3 finding; downgraded on inspection]
 - 20 additional `-m integration`/`-m conformance` files were located but not
   individually inspected for `subprocess.run`/`subprocess.Popen` calls this pass
   (full list: `test_worker_pool.py`, `test_design_tokens.py`,
@@ -900,13 +921,19 @@ the implementation:_
 - Cover the detached path (`handoff_handler.py:123`) in the guard's scope and
   acceptance criteria — it is a third host-CLI spawn path and the priciest.
 - Triage `test_hooks_integration.py`'s mixed patched/unpatched `subprocess.run`
-  calls against the guard's exact monkeypatch target before merge.
+  calls against the guard's exact monkeypatch target before merge — expected
+  clean (inspected 2026-08-26: all unpatched calls exec bash hook scripts, not
+  host binaries), so this is confirmation, not risk mitigation.
 - Run `-m integration` and `-m conformance` explicitly (per the issue's own
   Testing Strategy) to classify the 18 unreviewed integration/conformance files
   listed above.
 - Add marker rows to `docs/development/TESTING.md:1049` and
   `docs/development/TROUBLESHOOTING.md:822-828` **only if** a new marker is
   registered — with the ladder exemption dropped, none is expected.
+- Add the unconditional `docs/development/TESTING.md` paragraph documenting the
+  guard itself (see Documentation above) — what it is, why the offending test
+  line still reads green beside the teardown ERROR, and how to mock the spawn.
+  This is not marker-gated.
 - Normalize the wrapper's command argument across all `argv` forms (`list`,
   `str` + `shell=True`, `PathLike`, empty, and the `args=` keyword form —
   resolve from `a[0] if a else kw.get("args")`), passing through anything
@@ -921,7 +948,9 @@ the implementation:_
   among the session-scoped autouse fixtures so spawns in the others' setup are
   observed (same-scope autouse fixtures run in definition order); a spawn at
   collection/`pytest_configure` time predates the install and is an accepted,
-  unobserved gap.
+  unobserved gap. Likewise define `_fail_on_live_host_cli` **first** among the
+  function-scoped autouse fixtures, so its teardown runs last and catches
+  spawns from other function fixtures' teardowns in the same test.
 - Put that slice-and-advance in a module-level `_drain_new_hits() -> str | None`
   helper rather than inline in the fixture, so it is unit-testable — a test
   cannot assert that its own teardown fails, and `test_conftest_cap.py`'s
@@ -993,7 +1022,13 @@ _Added by `/ll:refine-issue` — 2026-08-26 — based on codebase analysis:_
   where a `pytest_sessionfinish` exit-status mutation does not (verified by
   execution: exit `1` under both `-n 0` and `-n 2 --dist loadfile`). Note it
   produces an ERROR-at-teardown report, not a FAILURE — see Proposed Solution
-  § Failing the run.
+  § Failing the run. **Define it first among the function-scoped autouse
+  fixtures in `conftest.py`** — function-scoped fixtures tear down in reverse
+  setup order, so defining it first makes its teardown run *last*, and a spawn
+  inside another function fixture's teardown is caught by the same test's error
+  rather than deferring to the next test (or, for the last test on a worker,
+  degrading to the print-only summary). This mirrors the define-first rule
+  already stated for the session-scoped installer, for the symmetric reason.
 - `pytest_sessionfinish(session, exitstatus)` — **required, print-only.** Calls
   the same `_drain_new_hits()` helper (so the lock, the cursor advance, and the
   dedupe are shared with the teardown fixture rather than reimplemented) and, if
@@ -1001,7 +1036,12 @@ _Added by `/ll:refine-issue` — 2026-08-26 — based on codebase analysis:_
   `warnings.warn`. This is
   what surfaces a hit that has no next test to attribute to (last test on the
   worker; session-/module-fixture teardown). Must not be load-bearing for the
-  failure — it cannot fail the run under xdist.
+  failure — it cannot fail the run under xdist. **`warnings.warn` here is safe
+  today but fragile**: `scripts/pyproject.toml` has no `filterwarnings` config
+  (verified 2026-08-26), so the warning cannot escalate to an error — but if
+  `filterwarnings = ["error"]` is ever added, a sessionfinish-time warning
+  could crash a worker confusingly. Note this in the hook's docstring so the
+  interaction is discovered by reading, not by debugging.
 - `_collapse_rate_limit_ladder()` — **session-scoped** autouse fixture in
   `conftest.py` (decided; see Proposed Solution Part 2), patching the two ladder
   constants suite-wide. **No marker exemption**: the one intentional non-zero
