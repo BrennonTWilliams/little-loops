@@ -155,7 +155,7 @@ Two consequences follow, and both must be designed for:
   them. **Carve out version checks explicitly** (e.g. skip when the argument
   vector is exactly `["--version"]`) rather than relying on those tests
   happening to mock. **Canonical form of the carve-out, used everywhere in this
-  issue: `argv[1:] == ["--version"]`.**
+  issue: `list(argv[1:]) == ["--version"]` (coerce — argv may be a tuple).**
 
 The wrapper resolves `argv[0]`, compares its basename against the known host
 binaries, applies the version-check carve-out, and on a match records the hit in
@@ -207,7 +207,15 @@ handle, without raising on its own:
 - a bare `str` command (`shell=True`), where `argv[0]` is the whole command line
   and indexing yields a character, not a program name;
 - a `PathLike` (or a list whose first element is one);
-- an empty or non-subscriptable sequence.
+- an empty or non-subscriptable sequence;
+- the command passed as a **keyword** — `run(args=[...])` / `Popen(args=[...])`
+  are legal signatures, so resolve the command from
+  `a[0] if a else kw.get("args")`. Nothing in the repo uses the kwarg form
+  today (verified by grep, 2026-08-26), but the patch is process-global and the
+  pass-through contract must not depend on callers we enumerated.
+
+Note the `--version` carve-out must compare via `list(argv[1:]) == ["--version"]`
+— argv may arrive as a tuple, and `("--version",) != ["--version"]`.
 
 Anything it cannot confidently resolve to a program name is a **pass-through**,
 not a failure — a guard that is noisy about unparseable input will be disabled.
@@ -375,11 +383,19 @@ reported by any test. Three cases, all reachable:
 - **Higher-scope fixture setup.** pytest sets up session- and module-scoped
   fixtures *before* function-scoped ones, so a spawn inside one is already in
   the collector when the first test's pre-`yield` snapshot is taken and reads as
-  "not new".
-- **Collection / `pytest_configure` time**, before any fixture runs at all.
+  "not new". For this to be observable at all, the guard installer must run
+  before other session-scoped autouse fixtures — same-scope autouse fixtures
+  run in definition order, so **define `_install_no_live_host_cli` first among
+  the session-scoped autouse fixtures in `conftest.py`**.
 - **A background thread whose append lands between two tests** — the issue
   already anticipates thread hits (see Program Design § Background-thread
   spawns), and the length snapshot is precisely the mechanism that loses them.
+
+(Earlier revisions also listed "collection / `pytest_configure` time" as a
+source of collector hits. That case is **unreachable**: the guard installs at
+session-fixture setup, which runs after collection, so a spawn at collection
+time is simply not observed — a bounded, accepted gap, not a cursor case. The
+cursor design does not depend on it.)
 
 Use instead a module-level `_reported_upto: int` cursor. In teardown the fixture
 reads `collector[_reported_upto:]`, and if that slice is non-empty it advances
@@ -539,7 +555,8 @@ patching the module attributes takes effect.
       `subprocess_utils.py:39`, `mcp_call.py:76`, `fsm/handoff_handler.py:44,98`
       and six other production sites depend on).
 - [ ] The wrapper does **not** fire on `build_version_check()` invocations
-      (`argv[1:] == ["--version"]`), covered by a unit test. Verified:
+      (`list(argv[1:]) == ["--version"]` — coerce, since argv may be a tuple),
+      covered by a unit test. Verified:
       all **six** wired `build_version_check()` implementations emit exactly
       `args=["--version"]` — `claude` (`:473`), `codex` (`:772`), `gemini`
       (`:1152`), `omp` (`:1335`), `kimi` (`:1537`), `qwen` (`:1739`); `opencode`
@@ -547,8 +564,9 @@ patching the module attributes takes effect.
       condition therefore covers every implementation that can emit an argv.
 - [ ] The wrapper passes through, without raising an error of its own, every
       `argv` form CPython accepts: a `list`/`tuple` of `str`, a bare `str`
-      command with `shell=True`, a `PathLike` (bare and as element 0), and an
-      empty sequence. One unit test per form. The `shell=True` pass-through is a
+      command with `shell=True`, a `PathLike` (bare and as element 0), an
+      empty sequence, and the command passed as the `args=` **keyword**
+      (`run(args=[...])` / `Popen(args=[...])`). One unit test per form. The `shell=True` pass-through is a
       **stated accepted gap**, not a bug — no production code uses `shell=True`
       (verified: the only repo occurrence is `loops/mechanize-skills.yaml:534`).
 - [ ] Two consecutive tests where only the first spawns a host CLI produce
@@ -609,6 +627,12 @@ patching the module attributes takes effect.
 - [ ] The guard fails the run **under the default `-n logical` addopts**, not
       only serially. This is the specific mechanism check: a `pytest_sessionfinish`
       exit-status mutation on an xdist worker does not reach the controller.
+      **One-time manual verification, not a permanent test** — with no
+      `pytester`/`testdir` convention in this codebase there is no durable
+      in-suite form of "a deliberately-tripped guard fails the run"; verify it
+      once via the spike shape (already done 2026-08-26: exit `1` under both
+      `-n 0` and `-n 2 --dist loadfile`) and do not hunt for a merged
+      equivalent.
 - [ ] `python -m pytest scripts/tests/test_host_runner.py` passes unchanged — no
       marker opt-out needed, or the opt-out is documented with the specific test
       that required it.
@@ -619,8 +643,16 @@ patching the module attributes takes effect.
       which BUG-3325's defects were reachable, and with the guard active a live
       spawn is a failure, so "the serial suite passes" *is* "zero live host-CLI
       spawns."
-- [ ] A rate-limit test that omits the ladder patch cannot block: verified by a
-      probe that would otherwise sleep on the 300s ladder.
+- [ ] A rate-limit test that omits the ladder patch cannot block. The
+      **permanent** regression test asserts the patched state directly —
+      `executor._DEFAULT_RATE_LIMIT_LONG_WAIT_LADDER == [0]` and
+      `_DEFAULT_RATE_LIMIT_MAX_WAIT_SECONDS == 0` — so a fixture regression
+      fails fast. **Do not merge a sleep-observing probe**: its failure mode
+      when the fixture regresses is a 300s sleep the thread-method watchdog
+      cannot kill, i.e. the exact BUG-3208 wedge this issue exists to prevent,
+      planted deliberately in the suite. A probe that drives
+      `_handle_rate_limit` unpatched-in-body is fine as a **one-time
+      verification during implementation only**.
 - [ ] `test_fsm_executor.py:7806-7813` still observes its intentional non-zero
       (`[0.3]`) ladder — its in-body `patch.multiple` takes precedence over the
       session-scoped fixture, with no marker exemption involved.
@@ -747,7 +779,13 @@ _Wiring pass added by `/ll:wire-issue`:_
   `TestPytestConfigureNice` / `TestNoParallelMarkerRouting` classes are also the
   de facto regression suite for `conftest.py` hook-level behavior, and the
   natural home for a new `pytest_sessionfinish` unit test (see Tests below).
-  [Agent 2 finding]
+  One consequence of the double-load: at `exec_module` time the live guard is
+  already installed, so the standalone module's `_GuardedPopen` subclasses the
+  live guard class rather than the real `Popen`. Harmless (it is never
+  installed), but unit tests constructing the standalone class must use a
+  host-binary argv (which records/raises before `super().__init__`) — a
+  non-host argv would fall through to the live guard's `__init__` and spawn a
+  real process. [Agent 2 finding; extended 2026-08-26 review]
 - `scripts/tests/test_host_runner.py:1958-2027` `TestRunBlockingJson` (6 test
   methods) — confirmed via code-graph query and direct read: each opens its own
   `with patch("little_loops.host_runner.subprocess.run") as mock_run:` context
@@ -870,15 +908,20 @@ the implementation:_
   `docs/development/TROUBLESHOOTING.md:822-828` **only if** a new marker is
   registered — with the ladder exemption dropped, none is expected.
 - Normalize the wrapper's command argument across all `argv` forms (`list`,
-  `str` + `shell=True`, `PathLike`, empty), passing through anything
+  `str` + `shell=True`, `PathLike`, empty, and the `args=` keyword form —
+  resolve from `a[0] if a else kw.get("args")`), passing through anything
   unresolvable, with a unit test per form. The process-global patch means the
   wrapper is on the path of every subprocess call in the suite, so a `TypeError`
   from the guard itself would break unrelated tests.
 - Advance a monotonic `_reported_upto` cursor — not a truthiness check
   (cascades) and not a pre-`yield` `len()` snapshot (silently drops hits from
-  higher-scope fixture setup, collection time, and background threads). Take the
+  higher-scope fixture setup and background threads). Take the
   slice and advance the cursor under the collector's lock, and dedupe the
-  reported slice by `(test_id, binary)`.
+  reported slice by `(test_id, binary)`. Define the guard installer **first**
+  among the session-scoped autouse fixtures so spawns in the others' setup are
+  observed (same-scope autouse fixtures run in definition order); a spawn at
+  collection/`pytest_configure` time predates the install and is an accepted,
+  unobserved gap.
 - Put that slice-and-advance in a module-level `_drain_new_hits() -> str | None`
   helper rather than inline in the fixture, so it is unit-testable — a test
   cannot assert that its own teardown fails, and `test_conftest_cap.py`'s
@@ -938,8 +981,7 @@ _Added by `/ll:refine-issue` — 2026-08-26 — based on codebase analysis:_
   cursor to `len(collector)` and returns a formatted failure message listing that
   slice, deduped by `(test_id, binary)` with a count. Never a bare truthiness
   check (cascades across the worker) and never a pre-`yield` `len()` snapshot
-  (silently drops hits from higher-scope fixtures, collection time, and
-  background threads). **Extracted as a function specifically so it is
+  (silently drops hits from higher-scope fixtures and background threads). **Extracted as a function specifically so it is
   unit-testable** — a test cannot assert that its own teardown fails, and
   `test_conftest_cap.py`'s standalone-loaded conftest has its own unrelated
   collector (see Acceptance Criteria bullet 1). The message leads with the
@@ -1129,9 +1171,18 @@ the corrected design.
   silently no-op under the default `-n logical` addopts. Replaced by a
   function-scoped teardown fixture; the hook survives as a print-only summary.
 - **A pre-`yield` `len()` snapshot of the collector.** Silently drops hits from
-  higher-scope fixture setup, collection time, and background threads. Replaced
+  higher-scope fixture setup and background threads. Replaced
   by a monotonic `_reported_upto` cursor. (A bare truthiness check was rejected
   earlier still — it cascade-fails every subsequent test on the worker.)
+- **"Collection / `pytest_configure` time" as a source of collector hits.**
+  Unreachable — the guard installs at session-fixture setup, after collection.
+  Replaced by the fixture-ordering requirement (guard installer defined first
+  among session-scoped autouse fixtures) plus a stated accepted gap for
+  pre-install spawns.
+- **A permanent sleep-observing probe for the ladder guard.** Its regression
+  failure mode is the un-killable 300s sleep (the BUG-3208 wedge) rather than a
+  fast failure. Replaced by a direct assertion on the patched constants; the
+  sleep probe is one-time implementation verification only.
 - **"The monkeypatch is module-bound."** Both call sites `import subprocess`, so
   there is one process-global attribute pair. This widened coverage for free
   (detached path, version checks) and widened the false-positive surface to the
