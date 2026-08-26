@@ -104,9 +104,11 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
     worker contention: 7 workers competing for the same cores can starve the
     spawned loop subprocess's SIGINT handler past its 10s wait, surfacing as
     ``subprocess.TimeoutExpired``. The structural fix is to skip the test on
-    workers so it only runs on the controller (or in a serial ``-n 0`` run);
-    the test still runs — just on a process that doesn't share cores with
-    six other pytest invocations.
+    workers so it only runs on the controller — but under ``-n N`` the
+    controller only collects and distributes work, it never runs tests
+    itself. Net effect: a ``no_parallel`` test does **not** run under the
+    default ``-n logical`` addopts; it runs only in a serial ``-n 0`` run
+    (see ``scripts/tests/test_worktree_utils.py:1228`` for the same warning).
 
     Detection idiom mirrors
     ``scripts/little_loops/pytest_history_plugin.py:147-150``

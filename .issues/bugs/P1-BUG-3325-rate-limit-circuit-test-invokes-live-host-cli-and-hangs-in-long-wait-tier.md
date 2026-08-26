@@ -4,10 +4,11 @@ type: BUG
 title: Three TestRateLimitCircuitIntegration tests invoke the live host CLI on every
   suite run; one also wedges its xdist worker
 priority: P1
-status: open
+status: done
 discovered_by: manual-review
 discovered_date: '2026-08-26'
 captured_at: '2026-08-26T00:00:00Z'
+completed_at: '2026-08-26T20:06:34Z'
 relates_to:
 - BUG-3208
 - FEAT-3329
@@ -1000,6 +1001,7 @@ is the same worker-wedge mechanism.
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-26T20:06:34 - `5689fa66-5d60-4833-90f8-e1109c174be6.jsonl`
 - `/ll:confidence-check` - 2026-08-26T19:54:55 - `001e5679-9e60-4be1-8880-9ae8bd851f63.jsonl`
 - `/ll:confidence-check` - 2026-08-26T19:44:40 - `b3e7603c-67fa-4126-bbf5-7a198982fe97.jsonl`
 - `/ll:confidence-check` - 2026-08-26T19:29:20 - `1f462280-8e7a-4295-8360-c2cd201baeea.jsonl`

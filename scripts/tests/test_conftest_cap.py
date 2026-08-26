@@ -179,10 +179,13 @@ class TestNoParallelMarkerRouting:
         item.add_marker.assert_not_called()
 
     def test_controller_does_not_skip_no_parallel_item(self) -> None:
-        """On the controller (no ``workerinput``), no_parallel tests still run.
+        """On the controller (no ``workerinput``), the hook leaves items unmarked.
 
-        The hook returns early without mutating items; the tests run on the
-        controller process (single-process or ``-n 0``).
+        The hook returns early without mutating items — but under ``-n N``
+        the controller only collects and distributes work, it never runs
+        tests itself. So this "not skipped" is only actually exercised in a
+        serial ``-n 0`` run; under default addopts the item is skipped on
+        every worker it lands on.
         """
         # No `workerinput` attribute at all → controller.
         config = MagicMock(spec=["pluginmanager"])
