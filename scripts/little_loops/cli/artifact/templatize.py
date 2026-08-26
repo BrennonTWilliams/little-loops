@@ -542,6 +542,18 @@ def build_manifest(
 # --------------------------------------------------------------------------
 
 
+def _render_tmp_dir(tmp_dir: Path, data: dict[str, Any], config: object) -> str:
+    """Shared ``load_manifest`` -> ``ArtifactTemplate`` -> ``render_template`` prologue.
+
+    Factored out (ENH-3319) so :func:`verify_lift_renders` reuses the exact
+    sequence :func:`verify_round_trip` already performs, minus the
+    ``difflib`` comparison.
+    """
+    manifest = load_manifest(tmp_dir)
+    template = ArtifactTemplate(root=tmp_dir, manifest=manifest)
+    return render_template(template, data, config)
+
+
 def verify_round_trip(
     template_dir: Path, data: dict[str, Any], original: bytes, config: object
 ) -> str | None:
@@ -551,9 +563,7 @@ def verify_round_trip(
     """
     import difflib
 
-    manifest = load_manifest(template_dir)
-    template = ArtifactTemplate(root=template_dir, manifest=manifest)
-    rendered = render_template(template, data, config)
+    rendered = _render_tmp_dir(template_dir, data, config)
     rendered_bytes = rendered.encode("utf-8")
     if rendered_bytes == original:
         return None
@@ -659,14 +669,31 @@ def _normalize_color_value(value: str) -> str | None:
     return None
 
 
-def report_token_literals(template_text: str, tokens: DesignTokens) -> list[UnliftedToken]:
-    """Report baked design-token color literals in *template_text* (FEAT-3316).
+class TokenLiteralMatch(TypedDict):
+    """A single regex-match occurrence of a baked design-token color literal.
 
-    Report-only — this does not rewrite anything. *template_text* must be
-    the spliced template body (never the original artifact), since extracted
-    data regions are not part of the template (§ Scan input). The value ->
-    token-name inversion of ``tokens.resolved`` is not injective, so a
-    matched literal maps to every candidate name (§ Matching rule).
+    Sibling of :class:`UnliftedToken` that exposes ``.start()``/``.end()``
+    per-occurrence spans (ENH-3319), which :func:`report_token_literals`
+    discards into aggregate counts. ``literal`` is the *normalized* form
+    (§ Matching rule), not the original on-disk bytes — callers that need
+    to restore the exact original text must re-slice the source text at
+    ``[start, end)``.
+    """
+
+    start: int
+    end: int
+    literal: str
+    candidate_names: list[str]
+
+
+def find_token_literals(template_text: str, tokens: DesignTokens) -> list[TokenLiteralMatch]:
+    """Span-returning primitive over baked design-token color literals (ENH-3319).
+
+    Every regex match is included regardless of CSS-value position — the
+    CSS-context guard (Decision Rules § CSS-context guard) only decides
+    *lift* eligibility (:func:`lift_token_literals`), not whether a match is
+    reported. This keeps :func:`report_token_literals`'s aggregation, and
+    therefore ``TestReportTokenLiterals``, unaffected by this issue.
     """
     value_to_names: dict[str, list[str]] = {}
     for name, value in tokens.resolved.items():
@@ -678,62 +705,582 @@ def report_token_literals(template_text: str, tokens: DesignTokens) -> list[Unli
     if not value_to_names:
         return []
 
-    counts: dict[str, int] = {}
+    matches: list[TokenLiteralMatch] = []
     for match in _TOKEN_SCAN_RE.finditer(template_text):
         normalized = _normalize_color_value(match.group(0))
         if normalized is None or normalized not in value_to_names:
             continue
-        counts[normalized] = counts.get(normalized, 0) + 1
+        matches.append(
+            TokenLiteralMatch(
+                start=match.start(),
+                end=match.end(),
+                literal=normalized,
+                candidate_names=sorted(value_to_names[normalized]),
+            )
+        )
+    return matches
 
+
+def _aggregate_matches(matches: list[TokenLiteralMatch]) -> list[UnliftedToken]:
+    """Aggregate per-occurrence matches into the today's-shape ``UnliftedToken`` list."""
+    counts: dict[str, int] = {}
+    candidate_names: dict[str, list[str]] = {}
+    for m in matches:
+        literal = m["literal"]
+        counts[literal] = counts.get(literal, 0) + 1
+        candidate_names[literal] = m["candidate_names"]
     return [
         UnliftedToken(
             literal=literal,
-            candidate_names=sorted(value_to_names[literal]),
+            candidate_names=sorted(candidate_names[literal]),
             occurrences=count,
         )
         for literal, count in sorted(counts.items())
     ]
 
 
-def _write_unlifted_tokens_report(tmp_dir: Path, unlifted: list[UnliftedToken]) -> Path:
-    """Write ``unlifted-tokens.json`` into *tmp_dir*, pre-promote (FEAT-3316)."""
+def report_token_literals(template_text: str, tokens: DesignTokens) -> list[UnliftedToken]:
+    """Report baked design-token color literals in *template_text* (FEAT-3316).
+
+    Report-only — this does not rewrite anything. *template_text* must be
+    the spliced template body (never the original artifact), since extracted
+    data regions are not part of the template (§ Scan input). The value ->
+    token-name inversion of ``tokens.resolved`` is not injective, so a
+    matched literal maps to every candidate name (§ Matching rule).
+
+    Reimplemented (ENH-3319) as a thin aggregation over the span-returning
+    :func:`find_token_literals` — signature and return shape unchanged.
+    """
+    return _aggregate_matches(find_token_literals(template_text, tokens))
+
+
+# --------------------------------------------------------------------------
+# --lift-tokens (ENH-3319) — rewrite matched literals to var(--...) refs
+# --------------------------------------------------------------------------
+
+# § CSS-context guard: rewrites fire only in CSS-value position — inside a
+# <style>...</style> element or a style="..." attribute value — and only
+# when the nearest preceding delimiter is ':' and the nearest following
+# delimiter is ';' or '}' (scope-then-nearest-delimiter rule).
+_STYLE_BLOCK_RE = re.compile(r"<style\b[^>]*>(.*?)</style>", re.IGNORECASE | re.DOTALL)
+_STYLE_ATTR_RE = re.compile(r"""style\s*=\s*(["'])(.*?)\1""", re.IGNORECASE | re.DOTALL)
+_BACKWARD_DELIMS = frozenset(":;{}")
+_FORWARD_DELIMS = frozenset(";{}")
+
+
+def _css_value_scopes(text: str) -> list[tuple[int, int]]:
+    scopes: list[tuple[int, int]] = []
+    for m in _STYLE_BLOCK_RE.finditer(text):
+        scopes.append((m.start(1), m.end(1)))
+    for m in _STYLE_ATTR_RE.finditer(text):
+        scopes.append((m.start(2), m.end(2)))
+    return scopes
+
+
+def _is_css_value_position(text: str, start: int, end: int) -> bool:
+    """Decision Rules § CSS-context guard: scope test, then nearest-delimiter test.
+
+    A match outside CSS-value position (a fragment attribute, a CSS
+    selector, script-string text, or a presentation attribute like inline
+    SVG ``fill``) is never eligible for rewriting — only for reporting.
+    """
+    scope: tuple[int, int] | None = None
+    for scope_start, scope_end in _css_value_scopes(text):
+        if scope_start <= start and end <= scope_end:
+            scope = (scope_start, scope_end)
+            break
+    if scope is None:
+        return False
+    scope_start, scope_end = scope
+
+    backward_char: str | None = None
+    for i in range(start - 1, scope_start - 1, -1):
+        if text[i] in _BACKWARD_DELIMS:
+            backward_char = text[i]
+            break
+    if backward_char != ":":
+        return False
+
+    forward_char = ";"  # reaching the scope boundary (closing quote / block end) terminates
+    for j in range(end, scope_end):
+        if text[j] in _FORWARD_DELIMS:
+            forward_char = text[j]
+            break
+    return forward_char in (";", "}")
+
+
+def _raw_layered_flat(tokens: DesignTokens) -> dict[str, Any]:
+    """Mirror the loader's raw-layer merge order (``design_tokens.py:376-381``).
+
+    Reads the same raw nested layers the loader flattens *before* alias
+    resolution — semantic, typography, spacing, theme, in that order — so
+    the alias-preference filter can ask "was this name's pre-resolution
+    value an alias reference?" without re-deriving that from
+    ``tokens.resolved``, which has already erased it. Primitives are absent
+    from every raw layer (injected into ``resolved`` separately) and are
+    therefore correctly treated as non-alias by a plain ``.get()`` miss.
+    """
+    from little_loops.design_tokens import _flatten
+
+    if tokens.source == "design_md":
+        # DESIGN.md has no separate typography.json/spacing.json files;
+        # tokens.semantic is the only raw layer (design_tokens.py:504-512).
+        return _flatten(tokens.semantic)
+
+    from little_loops.design_tokens import _load_json
+
+    root = tokens.source_path
+    typography = _load_json(root / "typography.json")
+    spacing = _load_json(root / "spacing.json")
+    return {
+        **_flatten(tokens.semantic),
+        **_flatten(typography),
+        **_flatten(spacing),
+        **_flatten(tokens.theme),
+    }
+
+
+def _is_alias_reference(raw_value: Any) -> bool:
+    return isinstance(raw_value, str) and raw_value.startswith("{") and raw_value.endswith("}")
+
+
+def _alias_preferred_candidate_map(tokens: DesignTokens) -> dict[str, str]:
+    """Build normalized-literal-value -> single winning token name (Decision Rules
+    § Ambiguous literal-to-token mapping).
+
+    Only literal values with exactly one alias-preferred candidate survive;
+    everything else (zero aliases, or two-or-more) is absent from the map
+    and therefore never lifted. ``_``-prefixed names are excluded entirely,
+    mirroring ``render_as_css_vars_themed``'s metadata skip
+    (``design_tokens.py:701-702``).
+    """
+    raw_flat = _raw_layered_flat(tokens)
+
+    value_to_names: dict[str, list[str]] = {}
+    for name, value in tokens.resolved.items():
+        if name.startswith("_"):
+            continue
+        normalized = _normalize_color_value(str(value))
+        if normalized is None:
+            continue
+        value_to_names.setdefault(normalized, []).append(name)
+
+    candidate_map: dict[str, str] = {}
+    for literal, names in value_to_names.items():
+        aliased = [n for n in names if _is_alias_reference(raw_flat.get(n))]
+        if len(aliased) == 1:
+            candidate_map[literal] = aliased[0]
+    return candidate_map
+
+
+def lift_token_literals(
+    spliced: bytes, tokens: DesignTokens
+) -> tuple[bytes, list[TokenLiteralMatch], list[TokenLiteralMatch], list[tuple[int, int]]]:
+    """Rewrite eligible color literals to ``var(--name)`` references (ENH-3319).
+
+    A separate pass over the already-spliced body (Decision Rules
+    § Splice placement) — never composed into ``apply_regions``'s span
+    list. Collected ``(start, end, replacement)`` spans are applied in
+    **reverse order**, per ``issues/anchor_sweep.py:59``.
+
+    Returns ``(lifted_body, lifted, unlifted, lift_spans)``: the lifted
+    body bytes, the per-occurrence matches that were rewritten (each
+    ``candidate_names`` is the single winning token name), the
+    per-occurrence matches that were not, and ``lift_spans`` — the
+    position of each rewritten ``var(--x)`` reference *in the returned
+    body's coordinate space*, index-aligned with ``lifted``, for
+    :func:`verify_lift_reversible` to consume.
+    """
+    text = spliced.decode("utf-8")
+    matches = find_token_literals(text, tokens)
+    alias_map = _alias_preferred_candidate_map(tokens)
+
+    lifted: list[TokenLiteralMatch] = []
+    unlifted: list[TokenLiteralMatch] = []
+    write_spans: list[tuple[int, int, str]] = []
+
+    for m in matches:
+        var_name = alias_map.get(m["literal"])
+        if var_name is not None and _is_css_value_position(text, m["start"], m["end"]):
+            replacement = f"var(--{var_name.replace('.', '-')})"
+            write_spans.append((m["start"], m["end"], replacement))
+            lifted.append(
+                TokenLiteralMatch(
+                    start=m["start"], end=m["end"], literal=m["literal"], candidate_names=[var_name]
+                )
+            )
+        else:
+            unlifted.append(m)
+
+    ordered_spans = sorted(write_spans, key=lambda s: s[0])
+
+    new_text = text
+    for start, end, replacement in reversed(ordered_spans):
+        new_text = new_text[:start] + replacement + new_text[end:]
+
+    # lift_spans is computed independently via forward cumulative-delta
+    # accumulation so it reflects the *final* text regardless of which
+    # order the string was actually built in above.
+    lift_spans: list[tuple[int, int]] = []
+    delta = 0
+    for start, end, replacement in ordered_spans:
+        new_start = start + delta
+        new_end = new_start + len(replacement)
+        lift_spans.append((new_start, new_end))
+        delta += len(replacement) - (end - start)
+
+    return new_text.encode("utf-8"), lifted, unlifted, lift_spans
+
+
+# --------------------------------------------------------------------------
+# Stamp injection (ENH-3319) — [[= ll.theme_css =]], data-theme, manifest.theme
+# --------------------------------------------------------------------------
+
+_HEAD_OPEN_RE = re.compile(r"<head\b[^>]*>", re.IGNORECASE)
+_STYLE_OPEN_RE = re.compile(r"<style\b[^>]*>", re.IGNORECASE)
+_HTML_OPEN_RE = re.compile(r"<html\b[^>]*>", re.IGNORECASE)
+_DATA_THEME_ATTR_RE = re.compile(r"""data-theme\s*=\s*["']([^"']*)["']""", re.IGNORECASE)
+
+
+def _themed_css_vars(config: object) -> str:
+    """Thin, patchable wrapper over ``artifact_template_kit.themed_css_vars``."""
+    from little_loops.artifact_template_kit import themed_css_vars
+
+    return themed_css_vars(config)
+
+
+def _check_lift_preconditions(
+    body_text: str,
+    dt_cfg: Any,
+    tokens: DesignTokens,
+    emitted_var_names: set[str],
+    config: object,
+) -> str | None:
+    """Decision Rules § Hard preconditions — all five must hold, or no lift at all.
+
+    Returns a human-readable description of the first failed precondition,
+    or ``None`` if all five hold.
+    """
+    head_match = _HEAD_OPEN_RE.search(body_text)
+    style_match = _STYLE_OPEN_RE.search(body_text)
+    if head_match is None and style_match is None:
+        return "precondition 1: no <head> or <style> element to place the theme stamp point"
+
+    if _HTML_OPEN_RE.search(body_text) is None:
+        return "precondition 2: no root <html> element to carry the data-theme attribute"
+
+    active_theme = dt_cfg.active_theme
+    existing = _DATA_THEME_ATTR_RE.search(body_text)
+    if existing is not None and existing.group(1) != active_theme:
+        return (
+            f'precondition 3: body already carries data-theme="{existing.group(1)}", which '
+            f'disagrees with the active theme "{active_theme}"'
+        )
+
+    if tokens.source != "design_md" and active_theme not in ("light", "dark"):
+        return (
+            f"precondition 4: active_theme {active_theme!r} is neither 'light' nor 'dark' "
+            "(and source is not design_md)"
+        )
+
+    try:
+        css_text = _themed_css_vars(config)
+    except Exception as exc:  # noqa: BLE001 — a raising themed_css_vars is a failed precondition
+        return f"precondition 5: themed_css_vars(config) raised: {exc}"
+
+    declared = set(re.findall(r"--([A-Za-z0-9-]+)\s*:", css_text))
+    missing = {name for name in emitted_var_names if name not in declared}
+    if missing:
+        return f"precondition 5: themed_css_vars(config) does not declare: {', '.join(sorted(missing))}"
+
+    return None
+
+
+def _inject_theme_stamp(
+    body_text: str, active_theme: str, lift_spans: list[tuple[int, int]] | None = None
+) -> tuple[str, list[tuple[int, int]], list[tuple[int, int]]]:
+    """Inject the ``[[= ll.theme_css =]]`` stamp point and ``data-theme`` attribute.
+
+    Preconditions must already hold. The stamp goes immediately after the
+    ``<head>`` open tag, ahead of every author ``<style>`` (Decision Rules
+    § Stamp insertion position); when no ``<head>`` exists but a ``<style>``
+    does, ``[[= ll.theme_css =]]`` is prepended at the top of that existing
+    block instead, which preserves the same "author declarations win"
+    ordering by construction.
+
+    Both insertion points sit earlier in the document than any literal this
+    issue rewrites (inside ``<head>``/an existing ``<style>``, ahead of the
+    body), so inserting them shifts every already-recorded ``lift_spans``
+    entry forward by however much text lands before it — this function
+    re-bases *lift_spans* accordingly rather than leaving that to the
+    caller, since a caller computing it independently is exactly the kind
+    of drift ``verify_lift_reversible`` exists to catch. Returns
+    ``(new_text, stamp_spans, rebased_lift_spans)``, all in the *returned*
+    text's coordinate space.
+    """
+    insertions: list[tuple[int, str]] = []
+
+    head_match = _HEAD_OPEN_RE.search(body_text)
+    if head_match is not None:
+        insertions.append((head_match.end(), "<style>[[= ll.theme_css =]]</style>"))
+    else:
+        style_match = _STYLE_OPEN_RE.search(body_text)
+        assert style_match is not None  # precondition 1 already checked
+        insertions.append((style_match.end(), "[[= ll.theme_css =]]"))
+
+    html_match = _HTML_OPEN_RE.search(body_text)
+    assert html_match is not None  # precondition 2 already checked
+    existing_attr = _DATA_THEME_ATTR_RE.search(body_text[html_match.start() : html_match.end()])
+    if existing_attr is None:
+        insertions.append((html_match.end() - 1, f' data-theme="{active_theme}"'))
+
+    insertions.sort(key=lambda ins: ins[0])
+
+    parts: list[str] = []
+    cursor = 0
+    stamp_spans: list[tuple[int, int]] = []
+    for pos, ins_text in insertions:
+        parts.append(body_text[cursor:pos])
+        start_final = sum(len(p) for p in parts)
+        parts.append(ins_text)
+        stamp_spans.append((start_final, start_final + len(ins_text)))
+        cursor = pos
+    parts.append(body_text[cursor:])
+    new_text = "".join(parts)
+
+    def _shift(pos: int) -> int:
+        return pos + sum(len(ins_text) for ins_pos, ins_text in insertions if ins_pos <= pos)
+
+    rebased_lift_spans = [(_shift(s), _shift(e)) for s, e in (lift_spans or [])]
+
+    return new_text, stamp_spans, rebased_lift_spans
+
+
+def verify_lift_reversible(
+    lifted: bytes,
+    pre_lift: bytes,
+    lift_matches: list[TokenLiteralMatch],
+    lift_spans: list[tuple[int, int]],
+    stamp_spans: list[tuple[int, int]],
+) -> str | None:
+    """Undo the recorded lift + stamp spans; assert byte equality against *pre_lift*.
+
+    Span-tracked, never a whole-body textual ``var()`` -> literal
+    substitution (Decision Rules § Reversibility) — restores the exact
+    original bytes at each recorded span (read from *pre_lift* itself, not
+    the normalized ``literal`` field) and removes the injected stamp
+    spans. Returns a unified diff on mismatch, or ``None`` on success.
+    """
+    pre_lift_text = pre_lift.decode("utf-8")
+    lifted_text = lifted.decode("utf-8")
+
+    undo_spans: list[tuple[int, int, str]] = []
+    for match, (start, end) in zip(lift_matches, lift_spans, strict=True):
+        original = pre_lift_text[match["start"] : match["end"]]
+        undo_spans.append((start, end, original))
+    for start, end in stamp_spans:
+        undo_spans.append((start, end, ""))
+
+    undo_spans.sort(key=lambda s: s[0])
+    prev_end = -1
+    for start, end, _ in undo_spans:
+        if start < prev_end:
+            return f"overlapping undo spans at byte offset {start}"
+        prev_end = end
+
+    new_text = lifted_text
+    for start, end, replacement in reversed(undo_spans):
+        new_text = new_text[:start] + replacement + new_text[end:]
+
+    result_bytes = new_text.encode("utf-8")
+    if result_bytes == pre_lift:
+        return None
+
+    import difflib
+
+    diff = difflib.unified_diff(
+        pre_lift_text.splitlines(keepends=True),
+        new_text.splitlines(keepends=True),
+        fromfile="pre_lift",
+        tofile="un-lifted",
+    )
+    return "".join(diff)
+
+
+def verify_lift_renders(
+    tmp_dir: Path, data: dict[str, Any], emitted_var_names: set[str], config: object
+) -> str | None:
+    """Re-render *tmp_dir* from disk; assert a ``--x:`` declaration for every emitted
+    ``var(--x)`` reference (Decision Rules § Post-lift render verification).
+
+    Deliberately does **not** assert the absence of ``[[=``/``[[%`` in the
+    rendered output — ``escape_literal_delimiters`` (``templatize.py:327-339``)
+    makes a source artifact's own delimiters render back as literal ``[[=``
+    text by design, so such a check would false-reject a valid lift.
+    """
+    rendered = _render_tmp_dir(tmp_dir, data, config)
+    missing = [name for name in emitted_var_names if f"--{name}:" not in rendered]
+    if missing:
+        return (
+            "lifted body's rendered output is missing a declaration for: "
+            f"{', '.join(sorted(missing))}"
+        )
+    return None
+
+
+@dataclass
+class _LiftOutcome:
+    stamped_bytes: bytes | None
+    lifted: list[TokenLiteralMatch]
+    unlifted: list[TokenLiteralMatch]
+    skip_reason: str | None
+    lift_spans: list[tuple[int, int]]
+    stamp_spans: list[tuple[int, int]]
+    tokens_available: bool
+
+
+def _attempt_lift(spliced: bytes, config: object) -> _LiftOutcome:
+    """Orchestrate the full ``--lift-tokens`` pipeline (steps 4-6), pure and
+    side-effect-free: nothing is written to disk here.
+
+    ``stamped_bytes`` is ``None`` unless every hard precondition holds *and*
+    at least one literal was lift-eligible — the caller must then treat this
+    exactly like the flag-off path (nothing rewritten), reporting
+    ``unlifted`` (with ``skip_reason`` if a precondition actually failed).
+    """
+    from little_loops.config.core import BRConfig
+    from little_loops.design_tokens import load_design_tokens
+
+    assert isinstance(config, BRConfig)
+    dt_cfg = config.design_tokens
+    active_theme = dt_cfg.active_theme
+
+    tokens = load_design_tokens(config, theme=active_theme)  # type: ignore[arg-type]
+    if tokens is None:
+        return _LiftOutcome(None, [], [], None, [], [], tokens_available=False)
+
+    lifted_bytes, lifted, unlifted, lift_spans = lift_token_literals(spliced, tokens)
+
+    if not lifted:
+        return _LiftOutcome(None, [], unlifted, None, [], [], tokens_available=True)
+
+    body_text = spliced.decode("utf-8")
+    emitted_var_names = {m["candidate_names"][0].replace(".", "-") for m in lifted}
+    skip_reason = _check_lift_preconditions(body_text, dt_cfg, tokens, emitted_var_names, config)
+    if skip_reason is not None:
+        return _LiftOutcome(None, [], lifted + unlifted, skip_reason, [], [], tokens_available=True)
+
+    stamped_text, stamp_spans, rebased_lift_spans = _inject_theme_stamp(
+        lifted_bytes.decode("utf-8"), active_theme, lift_spans
+    )
+    stamped_bytes = stamped_text.encode("utf-8")
+
+    return _LiftOutcome(
+        stamped_bytes,
+        lifted,
+        unlifted,
+        None,
+        rebased_lift_spans,
+        stamp_spans,
+        tokens_available=True,
+    )
+
+
+def _write_unlifted_tokens_report(
+    tmp_dir: Path,
+    unlifted: list[UnliftedToken],
+    lifted: list[dict[str, Any]] | None = None,
+    lift_skipped_reason: str | None = None,
+) -> Path:
+    """Write ``unlifted-tokens.json`` into *tmp_dir*, pre-promote (FEAT-3316/ENH-3319)."""
     payload = {
         "_comment": (
-            "Design-token color literals baked into the spliced template body "
-            "that match the resolved token map. Report-only — not rewritten, "
-            "and the manifest does not set theme: design-tokens. Colors only "
-            "(#rgb/#rgba/#rrggbb/#rrggbbaa and rgb()/rgba()/hsl()/hsla() "
-            "functional forms) — other token namespaces (space, radius, font, "
-            "bare numbers) are out of scope for v1. Regenerate by re-running "
-            "`ll-artifact templatize`."
+            "Design-token color literals in the spliced template body that match the "
+            "resolved token map. With --lift-tokens, a matched literal in CSS-value "
+            "position is rewritten to a var(--...) reference (see 'lifted') and the "
+            "manifest sets theme: design-tokens; entries in 'unlifted' were left as "
+            "literals (ambiguous candidate, outside CSS-value position, or a hard "
+            "precondition failed — see 'lift_skipped_reason'). Without --lift-tokens "
+            "(the default), this report is report-only: nothing is rewritten and the "
+            "manifest does not set theme: design-tokens. Colors only "
+            "(#rgb/#rgba/#rrggbb/#rrggbbaa and rgb()/rgba()/hsl()/hsla() functional "
+            "forms) — other token namespaces (space, radius, font, bare numbers) are "
+            "out of scope for v1. Regenerate by re-running `ll-artifact templatize`."
         ),
+        "lifted": lifted or [],
         "unlifted": unlifted,
+        "lift_skipped_reason": lift_skipped_reason,
     }
     path = tmp_dir / "unlifted-tokens.json"
     path.write_text(json.dumps(payload, indent=2, sort_keys=False) + "\n", encoding="utf-8")
     return path
 
 
-def _report_unlifted_tokens(tmp_dir: Path, spliced: bytes, config: object, logger: Logger) -> None:
-    """Run the token report step, fully contained (FEAT-3316).
+def _aggregate_lifted(matches: list[TokenLiteralMatch]) -> list[dict[str, Any]]:
+    """Aggregate per-occurrence lifted matches into the report's ``lifted`` list.
+
+    Not a pinned shape (§ Types only pins ``UnliftedToken``'s three keys) —
+    each entry records the literal, the winning token name, the mangled
+    ``var()`` reference emitted, and an occurrence count.
+    """
+    counts: dict[str, int] = {}
+    name_for: dict[str, str] = {}
+    for m in matches:
+        literal = m["literal"]
+        counts[literal] = counts.get(literal, 0) + 1
+        name_for[literal] = m["candidate_names"][0]
+    return [
+        {
+            "literal": literal,
+            "name": name_for[literal],
+            "var": f"var(--{name_for[literal].replace('.', '-')})",
+            "occurrences": count,
+        }
+        for literal, count in sorted(counts.items())
+    ]
+
+
+def _report_unlifted_tokens(
+    tmp_dir: Path,
+    spliced: bytes,
+    config: object,
+    logger: Logger,
+    *,
+    lifted: list[TokenLiteralMatch] | None = None,
+    unlifted: list[TokenLiteralMatch] | None = None,
+    lift_skipped_reason: str | None = None,
+) -> None:
+    """Run the token report step, fully contained (FEAT-3316/ENH-3319).
 
     No exception raised anywhere in this step may change cmd_templatize's
     exit code, block promote, or suppress the success line — a failure here
     surfaces only as a warning line.
+
+    With ``lifted``/``unlifted`` both ``None`` (the flag-off default), this
+    rescans *spliced* exactly as today. Under ``--lift-tokens``, the lift
+    already computed the authoritative split, so the caller passes it in
+    directly rather than letting this rescan the (possibly already-lifted)
+    body, which would always yield an empty ``lifted`` list.
     """
     try:
-        from little_loops.design_tokens import load_design_tokens
+        if lifted is None and unlifted is None:
+            from little_loops.design_tokens import load_design_tokens
 
-        tokens = load_design_tokens(config)  # type: ignore[arg-type]
-        if tokens is None:
-            return
-        template_text = spliced.decode("utf-8", errors="replace")
-        unlifted = report_token_literals(template_text, tokens)
-        _write_unlifted_tokens_report(tmp_dir, unlifted)
-        if unlifted:
-            names = sorted({name for entry in unlifted for name in entry["candidate_names"]})
+            tokens = load_design_tokens(config)  # type: ignore[arg-type]
+            if tokens is None:
+                return
+            template_text = spliced.decode("utf-8", errors="replace")
+            unlifted_report = report_token_literals(template_text, tokens)
+            lifted_report: list[dict[str, Any]] = []
+        else:
+            unlifted_report = _aggregate_matches(unlifted or [])
+            lifted_report = _aggregate_lifted(lifted or [])
+
+        _write_unlifted_tokens_report(tmp_dir, unlifted_report, lifted_report, lift_skipped_reason)
+        if unlifted_report:
+            names = sorted({name for entry in unlifted_report for name in entry["candidate_names"]})
             logger.warning(
-                f"{len(unlifted)} unlifted design-token color literal(s) baked into "
+                f"{len(unlifted_report)} unlifted design-token color literal(s) baked into "
                 f"template body: {', '.join(names)}"
             )
     except Exception as exc:  # noqa: BLE001 — report step must never affect exit code
@@ -920,7 +1467,79 @@ def cmd_templatize(args: argparse.Namespace, logger: Logger) -> int:
                 )
                 return 2
 
-            _report_unlifted_tokens(tmp_dir, spliced, config, logger)
+            if getattr(args, "lift_tokens", False):
+                outcome = _attempt_lift(spliced, config)
+                if not outcome.tokens_available:
+                    # Mirrors the flag-off "tokens is None" degradation:
+                    # nothing to lift or report, no file written, exit 0.
+                    pass
+                elif outcome.stamped_bytes is not None:
+                    reversibility_diff = verify_lift_reversible(
+                        outcome.stamped_bytes,
+                        spliced,
+                        outcome.lifted,
+                        outcome.lift_spans,
+                        outcome.stamp_spans,
+                    )
+                    if reversibility_diff is not None:
+                        rejected_dir.parent.mkdir(parents=True, exist_ok=True)
+                        shutil.copytree(tmp_dir, rejected_dir)
+                        (rejected_dir / "lift-reversibility.diff").write_text(
+                            reversibility_diff, encoding="utf-8"
+                        )
+                        _write_rejected_discovery(rejected_dir, discovery_raw, discovery_resolved)
+                        logger.error(
+                            "lift reversibility verification failed — candidate + diff "
+                            f"written to {rejected_dir}"
+                        )
+                        return 2
+
+                    # Re-serialize tmp_dir before promote() — both the template
+                    # body and manifest.yaml were already written pre-lift
+                    # (§ Implementation Steps step 6's explicit warning).
+                    (tmp_dir / f"template.{body_suffix}.j2").write_bytes(outcome.stamped_bytes)
+                    manifest["theme"] = "design-tokens"
+                    (tmp_dir / "manifest.yaml").write_text(
+                        _dump_manifest_yaml(manifest), encoding="utf-8"
+                    )
+
+                    emitted_var_names = {
+                        m["candidate_names"][0].replace(".", "-") for m in outcome.lifted
+                    }
+                    render_err = verify_lift_renders(tmp_dir, data, emitted_var_names, config)
+                    if render_err is not None:
+                        rejected_dir.parent.mkdir(parents=True, exist_ok=True)
+                        shutil.copytree(tmp_dir, rejected_dir)
+                        (rejected_dir / "lift-render-check.txt").write_text(
+                            render_err, encoding="utf-8"
+                        )
+                        _write_rejected_discovery(rejected_dir, discovery_raw, discovery_resolved)
+                        logger.error(
+                            "post-lift render verification failed — candidate written to "
+                            f"{rejected_dir}: {render_err}"
+                        )
+                        return 2
+
+                    _report_unlifted_tokens(
+                        tmp_dir,
+                        spliced,
+                        config,
+                        logger,
+                        lifted=outcome.lifted,
+                        unlifted=outcome.unlifted,
+                    )
+                else:
+                    _report_unlifted_tokens(
+                        tmp_dir,
+                        spliced,
+                        config,
+                        logger,
+                        lifted=[],
+                        unlifted=outcome.unlifted,
+                        lift_skipped_reason=outcome.skip_reason,
+                    )
+            else:
+                _report_unlifted_tokens(tmp_dir, spliced, config, logger)
 
             promote(tmp_dir, out_dir, force=bool(args.force))
         finally:
@@ -1009,4 +1628,15 @@ def add_templatize_parser(subparsers: argparse._SubParsersAction) -> None:
         "--force",
         action="store_true",
         help="Overwrite an existing template at the resolved -o path",
+    )
+    templatize.add_argument(
+        "--lift-tokens",
+        action="store_true",
+        help=(
+            "Rewrite baked-in color literals matching a resolved design token, in "
+            "CSS-value position, to var(--dotted-name) references, and inject the "
+            "[[= ll.theme_css =]] stamp point plus data-theme attribute so they resolve "
+            "(default: off — report-only, byte-exact round trip). See "
+            "docs/reference/CLI.md for the accepted limitations."
+        ),
     )

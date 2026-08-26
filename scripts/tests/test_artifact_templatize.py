@@ -17,15 +17,21 @@ from little_loops.cli.artifact.templatize import (
     RegionGroup,
     RegionMapError,
     SpliceError,
+    _alias_preferred_candidate_map,
+    _check_lift_preconditions,
+    _is_css_value_position,
     _parse_region_map,
     apply_regions,
     build_manifest,
     derive_schema,
     escape_literal_delimiters,
     extract_data,
+    lift_token_literals,
     load_regions,
     promote,
     report_token_literals,
+    verify_lift_renders,
+    verify_lift_reversible,
 )
 from little_loops.host_runner import HostInvocation
 
@@ -1296,3 +1302,764 @@ class TestCmdTemplatizeFanOut:
         # Leak assertion: none of document 1's region values survive.
         for leaked in (_DOC1_TITLE, _DOC1_DESC, *_DOC1_ITEMS):
             assert leaked not in rendered
+
+
+# ---------------------------------------------------------------------------
+# --lift-tokens (ENH-3319)
+# ---------------------------------------------------------------------------
+
+
+def _write_simple_lift_tokens(project_root: Path) -> None:
+    """A single, unambiguous alias -> primitive pair: #4F46E5 -> color.brand.500.
+
+    Deliberately theme-invariant (no theme-layer override) so it can drive
+    the hard-precondition tests without also depending on light/dark value
+    differences.
+    """
+    token_dir = project_root / ".ll" / "design-tokens"
+    token_dir.mkdir(parents=True, exist_ok=True)
+    (token_dir / "primitives.json").write_text(json.dumps({"color": {"raw": {"500": "#4F46E5"}}}))
+    (token_dir / "semantic.json").write_text(
+        json.dumps({"color": {"brand": {"500": "{color.raw.500}"}}})
+    )
+    themes_dir = token_dir / "themes"
+    themes_dir.mkdir(exist_ok=True)
+    (themes_dir / "dark.json").write_text("{}")
+    (themes_dir / "light.json").write_text("{}")
+
+
+def _write_themed_lift_tokens(project_root: Path) -> None:
+    """Light/dark-divergent tokens mirroring the profile measured in the issue.
+
+    color.surface.primary: #fdfbf6 (light) / #0d0b08 (dark, via theme
+    override) — an unambiguous alias whose light and dark values differ.
+    color.text.inverse also aliases the light primitive, so #fdfbf6 has TWO
+    alias candidates (ambiguous) while #0d0b08 has exactly one.
+    color.border.subtle: #e8dcc4 — a single unambiguous alias to a
+    primitive, theme-invariant.
+    """
+    token_dir = project_root / ".ll" / "design-tokens"
+    token_dir.mkdir(parents=True, exist_ok=True)
+    (token_dir / "primitives.json").write_text(
+        json.dumps(
+            {
+                "color": {
+                    "paper": {"0": "#fdfbf6", "200": "#e8dcc4"},
+                    "ink": {"900": "#0d0b08"},
+                }
+            }
+        )
+    )
+    (token_dir / "semantic.json").write_text(
+        json.dumps(
+            {
+                "color": {
+                    "surface": {"primary": "{color.paper.0}"},
+                    "border": {"subtle": "{color.paper.200}"},
+                    "text": {"inverse": "{color.paper.0}"},
+                }
+            }
+        )
+    )
+    themes_dir = token_dir / "themes"
+    themes_dir.mkdir(exist_ok=True)
+    (themes_dir / "light.json").write_text("{}")
+    (themes_dir / "dark.json").write_text(
+        json.dumps({"color": {"surface": {"primary": "{color.ink.900}"}}})
+    )
+
+
+def _write_ll_config(project_root: Path, **design_tokens: object) -> Path:
+    ll_dir = project_root / ".ll"
+    ll_dir.mkdir(parents=True, exist_ok=True)
+    path = ll_dir / "ll-config.json"
+    path.write_text(json.dumps({"design_tokens": dict(design_tokens)}))
+    return path
+
+
+class TestCssValuePositionGuard:
+    """Direct unit tests for the scope-then-nearest-delimiter rule."""
+
+    def test_id_selector_after_a_colon_bearing_rule_rejected(self):
+        text = "<style> a:hover { color: red } #face { color: blue } </style>"
+        start = text.index("#face")
+        end = start + len("#face")
+        assert _is_css_value_position(text, start, end) is False
+
+    def test_href_attribute_rejected(self):
+        text = '<a href="#dedede">link</a>'
+        start = text.index("#dedede")
+        end = start + len("#dedede")
+        assert _is_css_value_position(text, start, end) is False
+
+    def test_script_string_rejected(self):
+        text = "<script>var x = '#c0ffee';</script>"
+        start = text.index("#c0ffee")
+        end = start + len("#c0ffee")
+        assert _is_css_value_position(text, start, end) is False
+
+    def test_presentation_attribute_rejected(self):
+        text = '<svg><rect fill="#fdfbf6" /></svg>'
+        start = text.index("#fdfbf6")
+        end = start + len("#fdfbf6")
+        assert _is_css_value_position(text, start, end) is False
+
+    def test_box_shadow_multi_value_accepted(self):
+        text = "<style>a{box-shadow: 0 0 2px #e8dcc4, 0 0 4px #000;}</style>"
+        start = text.index("#e8dcc4")
+        end = start + len("#e8dcc4")
+        assert _is_css_value_position(text, start, end) is True
+
+    def test_background_with_url_accepted(self):
+        text = "<style>a{background: #fdfbf6 url(foo.png);}</style>"
+        start = text.index("#fdfbf6")
+        end = start + len("#fdfbf6")
+        assert _is_css_value_position(text, start, end) is True
+
+    def test_important_suffix_accepted(self):
+        text = "<style>a{color: #fdfbf6 !important;}</style>"
+        start = text.index("#fdfbf6")
+        end = start + len("#fdfbf6")
+        assert _is_css_value_position(text, start, end) is True
+
+    def test_style_attribute_accepted(self):
+        text = '<div style="color:#4f46e5">x</div>'
+        start = text.index("#4f46e5")
+        end = start + len("#4f46e5")
+        assert _is_css_value_position(text, start, end) is True
+
+
+class TestAliasPreferredCandidateMap:
+    def _tokens(self, resolved, semantic=None, theme=None):
+        from little_loops.design_tokens import DesignTokens
+
+        return DesignTokens(
+            primitives={},
+            semantic=semantic or {},
+            theme=theme or {},
+            resolved=resolved,
+            source_path=Path("."),
+        )
+
+    def test_single_alias_survives(self):
+        tokens = self._tokens(
+            resolved={"color.border.subtle": "#e8dcc4", "color.paper.200": "#e8dcc4"},
+            semantic={"color": {"border": {"subtle": "{color.paper.200}"}}},
+        )
+        candidates = _alias_preferred_candidate_map(tokens)
+        assert candidates["#e8dcc4"] == "color.border.subtle"
+
+    def test_two_aliases_stays_ambiguous(self):
+        tokens = self._tokens(
+            resolved={
+                "color.surface.primary": "#fdfbf6",
+                "color.text.inverse": "#fdfbf6",
+                "color.paper.0": "#fdfbf6",
+            },
+            semantic={
+                "color": {
+                    "surface": {"primary": "{color.paper.0}"},
+                    "text": {"inverse": "{color.paper.0}"},
+                }
+            },
+        )
+        candidates = _alias_preferred_candidate_map(tokens)
+        assert "#fdfbf6" not in candidates
+
+    def test_bare_primitive_only_candidate_is_not_an_alias(self):
+        tokens = self._tokens(resolved={"color.paper.0": "#fdfbf6"})
+        candidates = _alias_preferred_candidate_map(tokens)
+        assert "#fdfbf6" not in candidates
+
+    def test_theme_layer_override_flips_winning_candidate(self):
+        # Semantic declares surface.primary as an alias; the theme layer
+        # overrides it with a concrete literal. Reading semantic alone would
+        # pick surface.primary; layering the theme override on top must not.
+        tokens = self._tokens(
+            resolved={"color.surface.primary": "#0d0b08", "color.text.inverse": "#0d0b08"},
+            semantic={
+                "color": {
+                    "surface": {"primary": "{color.paper.0}"},
+                    "text": {"inverse": "{color.ink.900}"},
+                }
+            },
+            theme={"color": {"surface": {"primary": "#0d0b08"}}},
+        )
+        candidates = _alias_preferred_candidate_map(tokens)
+        # surface.primary is now a concrete literal (theme override), so
+        # text.inverse is the sole surviving alias candidate.
+        assert candidates["#0d0b08"] == "color.text.inverse"
+
+    def test_underscore_prefixed_names_excluded(self):
+        tokens = self._tokens(
+            resolved={"_wcag_spot_check.foo": "#fdfbf6", "color.paper.0": "#fdfbf6"},
+            semantic={"_wcag_spot_check": {"foo": "{color.paper.0}"}},
+        )
+        candidates = _alias_preferred_candidate_map(tokens)
+        assert "#fdfbf6" not in candidates
+
+
+class TestLiftTokenLiterals:
+    def _tokens(self, resolved, semantic=None, theme=None):
+        from little_loops.design_tokens import DesignTokens
+
+        return DesignTokens(
+            primitives={},
+            semantic=semantic or {},
+            theme=theme or {},
+            resolved=resolved,
+            source_path=Path("."),
+        )
+
+    def test_lifts_eligible_literal_in_css_value_position(self):
+        tokens = self._tokens(
+            resolved={"color.brand.500": "#4F46E5"},
+            semantic={"color": {"brand": {"500": "{color.raw.500}"}}},
+        )
+        body = b"<style>a{color:#4F46E5;}</style>"
+        lifted_bytes, lifted, unlifted, spans = lift_token_literals(body, tokens)
+        assert unlifted == []
+        assert len(lifted) == 1
+        assert lifted[0]["candidate_names"] == ["color.brand.500"]
+        text = lifted_bytes.decode("utf-8")
+        assert "var(--color-brand-500)" in text
+        assert "#4F46E5" not in text
+        # lift_spans locates the replacement in the returned text.
+        (start, end) = spans[0]
+        assert text[start:end] == "var(--color-brand-500)"
+
+    def test_does_not_lift_outside_css_value_position(self):
+        tokens = self._tokens(
+            resolved={"color.brand.500": "#4F46E5"},
+            semantic={"color": {"brand": {"500": "{color.raw.500}"}}},
+        )
+        body = b'<a href="#4F46E5">x</a>'
+        lifted_bytes, lifted, unlifted, spans = lift_token_literals(body, tokens)
+        assert lifted == []
+        assert len(unlifted) == 1
+        assert lifted_bytes == body
+        assert spans == []
+
+    def test_pre_existing_var_reference_left_alone(self):
+        """A source artifact already emitting var(--color-surface-primary) must
+        survive unchanged — the lift is span-tracked, not a textual inverse."""
+        tokens = self._tokens(
+            resolved={"color.brand.500": "#4F46E5"},
+            semantic={"color": {"brand": {"500": "{color.raw.500}"}}},
+        )
+        body = b"<style>a{color:#4F46E5;} b{color:var(--color-surface-primary);}</style>"
+        lifted_bytes, lifted, unlifted, spans = lift_token_literals(body, tokens)
+        assert len(lifted) == 1
+        text = lifted_bytes.decode("utf-8")
+        assert "var(--color-surface-primary)" in text
+        assert "var(--color-brand-500)" in text
+
+    def test_var_name_matches_render_as_css_vars_themed_mangling(self):
+        from little_loops.design_tokens import render_as_css_vars_themed
+
+        light = self._tokens(resolved={"color.brand.500": "#4F46E5"})
+        dark = self._tokens(resolved={"color.brand.500": "#4F46E5"})
+        css_text = render_as_css_vars_themed(light, dark)
+
+        tokens = self._tokens(
+            resolved={"color.brand.500": "#4F46E5"},
+            semantic={"color": {"brand": {"500": "{color.raw.500}"}}},
+        )
+        body = b"<style>a{color:#4F46E5;}</style>"
+        _lifted_bytes, lifted, _unlifted, _spans = lift_token_literals(body, tokens)
+        var_name = f"var(--{lifted[0]['candidate_names'][0].replace('.', '-')})"
+        assert var_name == "var(--color-brand-500)"
+        assert "--color-brand-500:" in css_text
+
+
+class TestVerifyLiftReversible:
+    def test_reproduces_pre_lift_body_byte_for_byte(self):
+        pre_lift = b"<html><head><style>a{color:#4F46E5;}</style></head><body>x</body></html>"
+        lit_start = pre_lift.index(b"#4F46E5")
+        lit_end = lit_start + len(b"#4F46E5")
+        tokens_match = {
+            "start": lit_start,
+            "end": lit_end,
+            "literal": "#4f46e5",
+            "candidate_names": ["x"],
+        }
+        lifted_text = (
+            pre_lift[:lit_start].decode() + "var(--color-brand-500)" + pre_lift[lit_end:].decode()
+        )
+        stamp = "<style>[[= ll.theme_css =]]</style>"
+        head_end = lifted_text.index("<head>") + len("<head>")
+        stamped_text = lifted_text[:head_end] + stamp + lifted_text[head_end:]
+        stamp_span = (head_end, head_end + len(stamp))
+        var_start = stamped_text.index("var(--color-brand-500)")
+        var_end = var_start + len("var(--color-brand-500)")
+
+        result = verify_lift_reversible(
+            stamped_text.encode("utf-8"),
+            pre_lift,
+            [tokens_match],
+            [(var_start, var_end)],
+            [stamp_span],
+        )
+        assert result is None
+
+    def test_mismatch_reports_diff(self):
+        pre_lift = b"<style>a{color:#4F46E5;}</style>"
+        lifted = b"<style>a{color:var(--color-brand-500);}</style>"
+        match = {"start": 15, "end": 22, "literal": "#4f46e5", "candidate_names": ["x"]}
+        var_start = lifted.decode().index("var(--color-brand-500)")
+        var_end = var_start + len("var(--color-brand-500)")
+        # Corrupt: pretend the span is one byte short, so undo does not
+        # reproduce the original body.
+        result = verify_lift_reversible(lifted, pre_lift, [match], [(var_start, var_end - 1)], [])
+        assert result is not None
+
+
+class TestVerifyLiftRenders:
+    def test_missing_declaration_is_reported(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        config = _make_config(tmp_path)
+        tmp_dir = tmp_path / "tmp"
+        tmp_dir.mkdir()
+        (tmp_dir / "manifest.yaml").write_text(
+            "name: x\nversion: 1\nrenderer: jinja2\noutput: index.html\n"
+            "data_schema: {type: object, properties: {}}\n"
+        )
+        (tmp_dir / "template.html.j2").write_text(
+            "<html><head></head><body>var(--color-brand-500)</body></html>"
+        )
+        result = verify_lift_renders(tmp_dir, {}, {"color-brand-500"}, config)
+        assert result is not None
+        assert "color-brand-500" in result
+
+    def test_present_declaration_passes(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        _write_simple_lift_tokens(tmp_path)
+        config = _make_config(tmp_path)
+        tmp_dir = tmp_path / "tmp"
+        tmp_dir.mkdir()
+        (tmp_dir / "manifest.yaml").write_text(
+            "name: x\nversion: 1\nrenderer: jinja2\noutput: index.html\ntheme: design-tokens\n"
+            "data_schema: {type: object, properties: {}}\n"
+        )
+        (tmp_dir / "template.html.j2").write_text(
+            "<html><head><style>[[= ll.theme_css =]]</style></head>"
+            "<body>var(--color-brand-500)</body></html>"
+        )
+        result = verify_lift_renders(tmp_dir, {}, {"color-brand-500"}, config)
+        assert result is None
+
+
+class TestCheckLiftPreconditions:
+    def _tokens(self, source="profile"):
+        from little_loops.design_tokens import DesignTokens
+
+        return DesignTokens(
+            primitives={}, semantic={}, theme={}, resolved={}, source_path=Path("."), source=source
+        )
+
+    def test_no_head_or_style(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        config = _make_config(tmp_path)
+        reason = _check_lift_preconditions(
+            "<html><body>hi</body></html>", config.design_tokens, self._tokens(), set(), config
+        )
+        assert reason is not None and "precondition 1" in reason
+
+    def test_no_root_html(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        config = _make_config(tmp_path)
+        reason = _check_lift_preconditions(
+            "<head><style>a{}</style></head><body>hi</body>",
+            config.design_tokens,
+            self._tokens(),
+            set(),
+            config,
+        )
+        assert reason is not None and "precondition 2" in reason
+
+    def test_disagreeing_data_theme(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        config = _make_config(tmp_path)
+        reason = _check_lift_preconditions(
+            '<html data-theme="light"><head><style>a{}</style></head></html>',
+            config.design_tokens,
+            self._tokens(),
+            set(),
+            config,
+        )
+        assert reason is not None and "precondition 3" in reason
+
+    def test_active_theme_outside_light_dark(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        _write_ll_config(tmp_path, active_theme="sepia")
+        config = _make_config(tmp_path)
+        reason = _check_lift_preconditions(
+            "<html><head><style>a{}</style></head></html>",
+            config.design_tokens,
+            self._tokens(),
+            set(),
+            config,
+        )
+        assert reason is not None and "precondition 4" in reason
+
+    def test_design_md_source_bypasses_theme_restriction(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        _write_ll_config(tmp_path, active_theme="sepia")
+        config = _make_config(tmp_path)
+        with patch(
+            "little_loops.cli.artifact.templatize._themed_css_vars",
+            return_value=":root {\n}\n[data-theme=dark] {\n}",
+        ):
+            reason = _check_lift_preconditions(
+                "<html><head><style>a{}</style></head></html>",
+                config.design_tokens,
+                self._tokens(source="design_md"),
+                set(),
+                config,
+            )
+        assert reason is None
+
+    def test_missing_var_declaration(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        config = _make_config(tmp_path)
+        with patch(
+            "little_loops.cli.artifact.templatize._themed_css_vars",
+            return_value=":root {\n  --something-else: #000;\n}\n[data-theme=dark] {\n}",
+        ):
+            reason = _check_lift_preconditions(
+                "<html><head><style>a{}</style></head></html>",
+                config.design_tokens,
+                self._tokens(),
+                {"color-brand-500"},
+                config,
+            )
+        assert reason is not None and "precondition 5" in reason
+
+    def test_themed_css_vars_raise_is_a_failed_precondition(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        config = _make_config(tmp_path)
+        with patch(
+            "little_loops.cli.artifact.templatize._themed_css_vars",
+            side_effect=json.JSONDecodeError("boom", "doc", 0),
+        ):
+            reason = _check_lift_preconditions(
+                "<html><head><style>a{}</style></head></html>",
+                config.design_tokens,
+                self._tokens(),
+                {"color-brand-500"},
+                config,
+            )
+        assert reason is not None and "precondition 5" in reason
+
+    def test_all_preconditions_hold(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        _write_simple_lift_tokens(tmp_path)
+        config = _make_config(tmp_path)
+        reason = _check_lift_preconditions(
+            "<html><head><style>a{}</style></head></html>",
+            config.design_tokens,
+            self._tokens(),
+            {"color-brand-500"},
+            config,
+        )
+        assert reason is None
+
+
+class TestCmdTemplatizeLiftTokens:
+    def _run(self, argv):
+        old_argv = sys.argv
+        sys.argv = ["ll-artifact"] + argv
+        try:
+            return main_artifact()
+        finally:
+            sys.argv = old_argv
+
+    def _templatize(self, tmp_path, body: bytes, *, lift=True, out_name="lifted"):
+        artifact = _write(tmp_path / "out" / "index.html", body)
+        source = _write(tmp_path / "docs" / "SRC.md", b"# Hello\n")
+        regions = _write_regions(tmp_path / "map.json", regions=[])
+        out_dir = tmp_path / "artifacts" / "templates" / f"{out_name}.llat"
+        argv = [
+            "templatize",
+            str(artifact),
+            str(source),
+            "-o",
+            str(out_dir),
+            "--regions",
+            str(regions),
+        ]
+        if lift:
+            argv.append("--lift-tokens")
+        code = self._run(argv)
+        return code, out_dir, artifact
+
+    def test_flag_off_is_byte_identical_regression(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        _write_simple_lift_tokens(tmp_path)
+        body = b"<html><head><style>a{color:#4F46E5;}</style></head><body>x</body></html>"
+
+        code_off, out_dir_off, artifact = self._templatize(
+            tmp_path, body, lift=False, out_name="off"
+        )
+        assert code_off == 0
+        manifest_off = load_manifest(out_dir_off)
+        assert "theme" not in manifest_off
+        body_off = (out_dir_off / "template.html.j2").read_bytes()
+        assert body_off == body
+        report_off = json.loads((out_dir_off / "unlifted-tokens.json").read_text())
+        assert report_off["lifted"] == []
+        assert report_off["unlifted"]
+
+    def test_lift_on_rewrites_and_renders_with_declarations(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        _write_simple_lift_tokens(tmp_path)
+        body = b"<html><head><style>a{color:#4F46E5;}</style></head><body>x</body></html>"
+
+        code, out_dir, artifact = self._templatize(tmp_path, body)
+        assert code == 0
+
+        manifest = load_manifest(out_dir)
+        assert manifest["theme"] == "design-tokens"
+        promoted_body = (out_dir / "template.html.j2").read_text()
+        assert "var(--color-brand-500)" in promoted_body
+        assert "#4F46E5" not in promoted_body
+        assert 'data-theme="dark"' in promoted_body
+
+        report = json.loads((out_dir / "unlifted-tokens.json").read_text())
+        assert report["lift_skipped_reason"] is None
+        assert report["lifted"]
+        assert report["lifted"][0]["name"] == "color.brand.500"
+
+        render_out = tmp_path / "rendered"
+        code2 = self._run(["render", "lifted", "-o", str(render_out)])
+        assert code2 == 0
+        rendered = (render_out / "index.html").read_text(encoding="utf-8")
+        assert "--color-brand-500: #4F46E5;" in rendered
+        assert "[[= ll.theme_css =]]" not in rendered
+        assert "/*__THEMED_CSS_VARS__*/" not in rendered
+
+    def test_author_style_precedes_injected_stamp_in_head(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        _write_simple_lift_tokens(tmp_path)
+        body = (
+            b"<html><head><style>:root { --color-brand-500: #000000; }"
+            b"a{color:#4F46E5;}</style></head><body>x</body></html>"
+        )
+        code, out_dir, artifact = self._templatize(tmp_path, body, out_name="pos")
+        assert code == 0
+        promoted_body = (out_dir / "template.html.j2").read_text()
+        author_idx = promoted_body.index("--color-brand-500: #000000")
+        stamp_idx = promoted_body.index("[[= ll.theme_css =]]")
+        # The injected stamp <style> sits immediately after <head>, ahead of
+        # the author's own <style> — later source order wins at equal
+        # specificity, so the author's declaration overrides the stamp's.
+        assert stamp_idx < author_idx
+
+    def test_dark_theme_fidelity(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        _write_themed_lift_tokens(tmp_path)
+        # active_theme defaults to "dark"; the artifact is authored with the
+        # dark value of color.surface.primary.
+        body = b"<html><head><style>a{color:#0d0b08;}</style></head><body>x</body></html>"
+        code, out_dir, artifact = self._templatize(tmp_path, body, out_name="dark")
+        assert code == 0
+        promoted_body = (out_dir / "template.html.j2").read_text()
+        assert "var(--color-surface-primary)" in promoted_body
+        assert 'data-theme="dark"' in promoted_body
+
+        render_out = tmp_path / "rendered_dark"
+        code2 = self._run(["render", "dark", "-o", str(render_out)])
+        assert code2 == 0
+        rendered = (render_out / "index.html").read_text(encoding="utf-8")
+        dark_scope = rendered.index("[data-theme=dark] {")
+        assert "--color-surface-primary: #0d0b08;" in rendered[dark_scope:]
+
+    def test_ambiguous_light_literal_stays_unlifted(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        _write_themed_lift_tokens(tmp_path)
+        _write_ll_config(tmp_path, active_theme="light")
+        body = b"<html><head><style>a{color:#fdfbf6;}</style></head><body>x</body></html>"
+        code, out_dir, artifact = self._templatize(tmp_path, body, out_name="ambiguous")
+        assert code == 0
+        manifest = load_manifest(out_dir)
+        assert "theme" not in manifest
+        promoted_body = (out_dir / "template.html.j2").read_text()
+        assert promoted_body == body.decode()
+        report = json.loads((out_dir / "unlifted-tokens.json").read_text())
+        assert report["lifted"] == []
+        entry = report["unlifted"][0]
+        assert sorted(entry["candidate_names"]) == [
+            "color.paper.0",
+            "color.surface.primary",
+            "color.text.inverse",
+        ]
+
+    def test_unambiguous_border_subtle_lifts(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        _write_themed_lift_tokens(tmp_path)
+        body = b"<html><head><style>a{border-color:#e8dcc4;}</style></head><body>x</body></html>"
+        code, out_dir, artifact = self._templatize(tmp_path, body, out_name="subtle")
+        assert code == 0
+        promoted_body = (out_dir / "template.html.j2").read_text()
+        assert "var(--color-border-subtle)" in promoted_body
+
+    def test_css_context_guard_end_to_end(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        _write_simple_lift_tokens(tmp_path)
+        body = (
+            b"<html><head><style> a:hover { color: red } #4f46e5-select { color: blue }"
+            b" .ok { box-shadow: 0 0 2px #4F46E5, 0 0 4px #000; } </style></head>"
+            b'<body><a href="#4F46E5">x</a><script>var y="#4F46E5";</script></body></html>'
+        )
+        code, out_dir, artifact = self._templatize(tmp_path, body, out_name="guard")
+        assert code == 0
+        promoted_body = (out_dir / "template.html.j2").read_text()
+        # The box-shadow occurrence lifts...
+        assert "box-shadow: 0 0 2px var(--color-brand-500)" in promoted_body
+        # ...but href and script occurrences never do.
+        assert 'href="#4F46E5"' in promoted_body
+        assert 'var y="#4F46E5"' in promoted_body
+
+    def test_escaped_literal_delimiter_does_not_false_reject(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        _write_simple_lift_tokens(tmp_path)
+        body = (
+            b"<html><head><style>a{color:#4F46E5;}</style></head>"
+            b"<body>Docs say: [[= something =]]</body></html>"
+        )
+        code, out_dir, artifact = self._templatize(tmp_path, body, out_name="escaped")
+        assert code == 0
+        assert out_dir.is_dir()
+
+    def test_preexisting_var_reference_does_not_false_reject(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        _write_simple_lift_tokens(tmp_path)
+        body = (
+            b"<html><head><style>a{color:#4F46E5;} "
+            b"b{color:var(--some-other-existing-token);}</style></head>"
+            b"<body>x</body></html>"
+        )
+        code, out_dir, artifact = self._templatize(tmp_path, body, out_name="preexisting")
+        assert code == 0
+        promoted_body = (out_dir / "template.html.j2").read_text()
+        assert "var(--some-other-existing-token)" in promoted_body
+        assert "var(--color-brand-500)" in promoted_body
+
+    def test_no_head_or_style_precondition_blocks_lift(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        _write_simple_lift_tokens(tmp_path)
+        body = b'<div style="color:#4F46E5">hi</div>'
+        code, out_dir, artifact = self._templatize(tmp_path, body, out_name="nohead")
+        assert code == 0
+        manifest = load_manifest(out_dir)
+        assert "theme" not in manifest
+        assert (out_dir / "template.html.j2").read_bytes() == body
+        report = json.loads((out_dir / "unlifted-tokens.json").read_text())
+        assert report["lift_skipped_reason"] is not None
+        assert "precondition 1" in report["lift_skipped_reason"]
+
+    def test_no_root_html_precondition_blocks_lift(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        _write_simple_lift_tokens(tmp_path)
+        body = b"<head><style>a{color:#4F46E5;}</style></head><body>hi</body>"
+        code, out_dir, artifact = self._templatize(tmp_path, body, out_name="nohtml")
+        assert code == 0
+        report = json.loads((out_dir / "unlifted-tokens.json").read_text())
+        assert "precondition 2" in report["lift_skipped_reason"]
+
+    def test_disagreeing_data_theme_precondition_blocks_lift(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        _write_simple_lift_tokens(tmp_path)
+        body = (
+            b'<html data-theme="light"><head><style>a{color:#4F46E5;}</style></head>'
+            b"<body>hi</body></html>"
+        )
+        code, out_dir, artifact = self._templatize(tmp_path, body, out_name="disagree")
+        assert code == 0
+        report = json.loads((out_dir / "unlifted-tokens.json").read_text())
+        assert "precondition 3" in report["lift_skipped_reason"]
+
+    def test_active_theme_outside_light_dark_blocks_lift(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        _write_simple_lift_tokens(tmp_path)
+        (tmp_path / ".ll" / "design-tokens" / "themes" / "sepia.json").write_text("{}")
+        _write_ll_config(tmp_path, active_theme="sepia")
+        body = b"<html><head><style>a{color:#4F46E5;}</style></head><body>hi</body></html>"
+        code, out_dir, artifact = self._templatize(tmp_path, body, out_name="sepia")
+        assert code == 0
+        report = json.loads((out_dir / "unlifted-tokens.json").read_text())
+        assert "precondition 4" in report["lift_skipped_reason"]
+
+    def test_no_tokens_configured_writes_no_report(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        _write_ll_config(tmp_path, enabled=False)
+        body = b"<html><head><style>a{color:#4F46E5;}</style></head><body>hi</body></html>"
+        code, out_dir, artifact = self._templatize(tmp_path, body, out_name="notokens")
+        assert code == 0
+        assert not (out_dir / "unlifted-tokens.json").exists()
+
+    def test_precondition_5_missing_declaration_blocks_lift(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        _write_simple_lift_tokens(tmp_path)
+        body = b"<html><head><style>a{color:#4F46E5;}</style></head><body>hi</body></html>"
+        with patch(
+            "little_loops.cli.artifact.templatize._themed_css_vars",
+            return_value=":root {\n  --something-else: #000;\n}\n[data-theme=dark] {\n}",
+        ):
+            code, out_dir, artifact = self._templatize(tmp_path, body, out_name="missingdecl")
+        assert code == 0
+        manifest = load_manifest(out_dir)
+        assert "theme" not in manifest
+        assert (out_dir / "template.html.j2").read_bytes() == body
+        report = json.loads((out_dir / "unlifted-tokens.json").read_text())
+        assert "precondition 5" in report["lift_skipped_reason"]
+
+    def test_precondition_5_raising_themed_css_vars_still_exits_0(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        _write_simple_lift_tokens(tmp_path)
+        body = b"<html><head><style>a{color:#4F46E5;}</style></head><body>hi</body></html>"
+        with patch(
+            "little_loops.cli.artifact.templatize._themed_css_vars",
+            side_effect=json.JSONDecodeError("boom", "doc", 0),
+        ):
+            code, out_dir, artifact = self._templatize(tmp_path, body, out_name="raising")
+        assert code == 0
+        report = json.loads((out_dir / "unlifted-tokens.json").read_text())
+        assert "precondition 5" in report["lift_skipped_reason"]
+
+    def test_unreversible_lift_rejects_with_exit_2(self, tmp_path, monkeypatch):
+        from little_loops.cli.artifact import templatize as templatize_mod
+
+        monkeypatch.chdir(tmp_path)
+        _write_simple_lift_tokens(tmp_path)
+        body = b"<html><head><style>a{color:#4F46E5;}</style></head><body>hi</body></html>"
+
+        real_inject = templatize_mod._inject_theme_stamp
+
+        def _corrupting_inject(body_text, active_theme, lift_spans=None):
+            text, _spans, rebased = real_inject(body_text, active_theme, lift_spans)
+            return text, [], rebased  # drop the stamp span -> undo can't remove it
+
+        with patch.object(templatize_mod, "_inject_theme_stamp", side_effect=_corrupting_inject):
+            code, out_dir, artifact = self._templatize(tmp_path, body, out_name="unreversible")
+        assert code == 2
+        rejected_dir = out_dir.with_name(out_dir.name + ".rejected")
+        assert rejected_dir.is_dir()
+        assert (rejected_dir / "lift-reversibility.diff").is_file()
+
+    def test_lost_stamp_point_caught_by_render_check(self, tmp_path, monkeypatch):
+        from little_loops.cli.artifact import templatize as templatize_mod
+
+        monkeypatch.chdir(tmp_path)
+        _write_simple_lift_tokens(tmp_path)
+        body = b"<html><head><style>a{color:#4F46E5;}</style></head><body>hi</body></html>"
+
+        def _no_op_inject(body_text, active_theme, lift_spans=None):
+            return body_text, [], (lift_spans or [])  # stamp point never actually inserted
+
+        with patch.object(templatize_mod, "_inject_theme_stamp", side_effect=_no_op_inject):
+            code, out_dir, artifact = self._templatize(tmp_path, body, out_name="loststamp")
+        assert code == 2
+        rejected_dir = out_dir.with_name(out_dir.name + ".rejected")
+        assert rejected_dir.is_dir()
+        assert (rejected_dir / "lift-render-check.txt").is_file()

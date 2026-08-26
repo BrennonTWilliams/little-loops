@@ -3,10 +3,11 @@ id: ENH-3319
 type: ENH
 title: Rewrite baked-in design-token literals to var() references in templatize output
 priority: P4
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-08-25'
 captured_at: '2026-08-25T16:04:10Z'
+completed_at: '2026-08-26T01:11:10Z'
 parent: EPIC-3299
 labels:
 - artifact
