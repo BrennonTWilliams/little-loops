@@ -1286,7 +1286,6 @@ class TestLLMStructuredEvaluator:
         assert result.details["confidence"] == 0.8
 
 
-@pytest.mark.conformance
 class TestAbstentionVerdict:
     """Tests for the `cannot_judge` abstention verdict (ENH-3185)."""
 
@@ -1320,6 +1319,7 @@ class TestAbstentionVerdict:
         """AC1: cannot_judge is a member of DEFAULT_LLM_SCHEMA's verdict enum."""
         assert "cannot_judge" in DEFAULT_LLM_SCHEMA["properties"]["verdict"]["enum"]
 
+    @pytest.mark.conformance
     def test_cannot_judge_verdict(self, mock_cli) -> None:
         """AC1: a judge that cannot evaluate reports cannot_judge, not a coin-flip yes/no."""
         mock_run, mock_result = mock_cli
@@ -1329,6 +1329,7 @@ class TestAbstentionVerdict:
 
         assert result.verdict == "cannot_judge"
 
+    @pytest.mark.conformance
     def test_cannot_judge_survives_empty_evidence_coercion(self, mock_cli) -> None:
         """AC10: cannot_judge is exempt from the empty-evidence -> 'no' coercion —
         an abstention has no verbatim quote by definition."""
@@ -1340,6 +1341,7 @@ class TestAbstentionVerdict:
         assert result.verdict == "cannot_judge"
         assert result.details["evidence_coerced"] is False
 
+    @pytest.mark.conformance
     def test_yes_no_partial_still_coerced_on_empty_evidence(self, mock_cli) -> None:
         """AC10 exemption is narrow: yes/no/partial are still coerced (ENH-2342 unchanged)."""
         mock_run, mock_result = mock_cli
@@ -1350,6 +1352,7 @@ class TestAbstentionVerdict:
         assert result.verdict == "no"
         assert result.details["evidence_coerced"] is True
 
+    @pytest.mark.conformance
     def test_cannot_judge_uncertain_suffix(self, mock_cli) -> None:
         """AC12: low confidence + uncertain_suffix produces cannot_judge_uncertain,
         distinct from a plain cannot_judge abstention."""
@@ -1360,6 +1363,7 @@ class TestAbstentionVerdict:
 
         assert result.verdict == "cannot_judge_uncertain"
 
+    @pytest.mark.conformance
     def test_verdict_outside_grammar_fails_loudly(self, mock_cli) -> None:
         """AC5: an out-of-grammar verdict on the default schema becomes verdict="error"
         rather than silently flowing through to routing as if it were a real verdict."""
@@ -1372,6 +1376,7 @@ class TestAbstentionVerdict:
         assert result.details.get("invalid_verdict") is True
         assert result.details.get("raw_verdict") == "maybe"
 
+    @pytest.mark.conformance
     def test_verdict_outside_grammar_allowed_for_custom_schema(self, mock_cli) -> None:
         """AC5's grammar check is scoped to the default schema; a caller-supplied
         schema controls its own vocabulary (mirrors test_custom_schema)."""
@@ -1512,7 +1517,6 @@ class TestTaggedStructuredOutputFallback:
         assert "raw_preview" in result.details
 
 
-@pytest.mark.conformance
 class TestEvaluateDispatcherLLM:
     """Tests for evaluate() dispatcher with llm_structured type."""
 
@@ -1544,6 +1548,7 @@ class TestEvaluateDispatcherLLM:
             mock_run.return_value = mock_result
             yield mock_run, mock_result
 
+    @pytest.mark.conformance
     def test_dispatch_llm_structured(self, mock_cli) -> None:
         """llm_structured type routes correctly."""
         mock_run, mock_result = mock_cli
@@ -1584,6 +1589,7 @@ class TestEvaluateDispatcherLLM:
         model_arg = call_args[call_args.index("--model") + 1]
         assert model_arg == "claude-haiku-4-5-20251001"
 
+    @pytest.mark.conformance
     def test_dispatch_llm_with_config_options(self, mock_cli) -> None:
         """llm_structured uses config options."""
         mock_run, mock_result = mock_cli
@@ -1601,6 +1607,7 @@ class TestEvaluateDispatcherLLM:
         assert result.verdict == "yes_uncertain"
         assert result.details["confident"] is False
 
+    @pytest.mark.conformance
     def test_dispatch_exit_code_abstain_on_exit_3(self) -> None:
         """exit_code dispatch honors abstain_on_exit_3 (ENH-3224)."""
         config = EvaluateConfig(type="exit_code", abstain_on_exit_3=True)
@@ -1609,6 +1616,7 @@ class TestEvaluateDispatcherLLM:
 
         assert result.verdict == "cannot_judge"
 
+    @pytest.mark.conformance
     def test_dispatch_exit_code_without_abstain_flag(self) -> None:
         """exit_code dispatch keeps exit 3 as error when the flag is unset."""
         config = EvaluateConfig(type="exit_code")
@@ -1617,6 +1625,7 @@ class TestEvaluateDispatcherLLM:
 
         assert result.verdict == "error"
 
+    @pytest.mark.conformance
     def test_dispatch_llm_structured_interpolates_prompt(self, mock_cli) -> None:
         """llm_structured interpolates ${context.*} variables in prompt before sending to LLM."""
         mock_run, mock_result = mock_cli
@@ -2358,7 +2367,6 @@ class TestBlindComparator:
         assert "error" not in result
 
 
-@pytest.mark.conformance
 class TestComparatorEvaluator:
     """Tests for evaluate_comparator() — blind A/B comparison with baseline file."""
 
@@ -2395,6 +2403,7 @@ class TestComparatorEvaluator:
         result = evaluate(config, output="new output", exit_code=0, context=ctx)
         assert result.verdict == "no_baseline"
 
+    @pytest.mark.conformance
     def test_harness_wins(self, baseline_with_file: Path) -> None:
         """Majority harness_pass=True → yes verdict."""
         config = EvaluateConfig(type="comparator", baseline_path=str(baseline_with_file))
@@ -2411,6 +2420,7 @@ class TestComparatorEvaluator:
         assert result.details["harness_wins"] == 1
         assert result.details["baseline_wins"] == 0
 
+    @pytest.mark.conformance
     def test_baseline_wins(self, baseline_with_file: Path) -> None:
         """Majority baseline_pass=True → no verdict."""
         config = EvaluateConfig(type="comparator", baseline_path=str(baseline_with_file))
@@ -2427,6 +2437,7 @@ class TestComparatorEvaluator:
         assert result.details["harness_wins"] == 0
         assert result.details["baseline_wins"] == 1
 
+    @pytest.mark.conformance
     def test_tie(self, baseline_with_file: Path) -> None:
         """Equal harness/baseline wins → tie verdict (min_pairs=2)."""
         config = EvaluateConfig(
@@ -2453,6 +2464,7 @@ class TestComparatorEvaluator:
                 result = evaluate(config, output="harness output", exit_code=0, context=ctx)
         assert result.verdict == "tie"
 
+    @pytest.mark.conformance
     def test_auto_promote_writes_file(self, baseline_with_file: Path) -> None:
         """auto_promote=True with yes verdict writes output to baseline file."""
         config = EvaluateConfig(
@@ -2481,6 +2493,7 @@ class TestComparatorEvaluator:
         assert result.details.get("bootstrapped") is True
         assert (baseline_dir / "output.txt").read_text() == "first run output"
 
+    @pytest.mark.conformance
     def test_no_auto_promote_does_not_write_file(self, baseline_with_file: Path) -> None:
         """auto_promote=False (default) never writes to baseline file on yes."""
         original_content = (baseline_with_file / "output.txt").read_text()
@@ -2498,7 +2511,6 @@ class TestComparatorEvaluator:
         assert (baseline_with_file / "output.txt").read_text() == original_content
 
 
-@pytest.mark.conformance
 class TestContractEvaluator:
     """Tests for evaluate_contract function (Tier 2 LLM-based, reads files)."""
 
@@ -2527,6 +2539,7 @@ class TestContractEvaluator:
             mock_run.return_value = mock_result
             yield mock_run, mock_result
 
+    @pytest.mark.conformance
     def test_aligned_pair_returns_yes(self, mock_cli, tmp_path) -> None:
         """Single aligned pair returns yes verdict."""
         mock_run, mock_result = mock_cli
@@ -2554,6 +2567,7 @@ class TestContractEvaluator:
         assert len(result.details["pair_results"]) == 1
         assert result.details["pair_results"][0]["verdict"] == "yes"
 
+    @pytest.mark.conformance
     def test_mismatched_pair_returns_no(self, mock_cli, tmp_path) -> None:
         """Mismatched pair (LLM returns no) yields no verdict."""
         mock_run, mock_result = mock_cli
@@ -2653,6 +2667,7 @@ class TestContractEvaluator:
         assert "producer_pattern matched nothing" in result.details["pair_results"][0]["error"]
         mock_run.assert_not_called()
 
+    @pytest.mark.conformance
     def test_no_pairs_config_returns_error(self) -> None:
         """Contract evaluator with no pairs returns error immediately."""
         config = EvaluateConfig(type="contract")
@@ -2662,6 +2677,7 @@ class TestContractEvaluator:
         assert result.verdict == "error"
         assert "pairs" in result.details["error"].lower()
 
+    @pytest.mark.conformance
     def test_regex_extraction_applies_to_both_sides(self, mock_cli, tmp_path) -> None:
         """Producer and consumer regex patterns correctly extract slices."""
         mock_run, mock_result = mock_cli
@@ -2714,6 +2730,7 @@ class TestContractEvaluator:
         assert result.verdict == "error"
         assert result.details.get("missing_dependency") is True
 
+    @pytest.mark.conformance
     def test_multi_pair_any_failure_returns_no(self, mock_cli, tmp_path) -> None:
         """With multiple pairs, any failure causes overall no verdict."""
         mock_run, mock_result = mock_cli
@@ -2753,6 +2770,7 @@ class TestContractEvaluator:
         assert result.verdict == "no"
         assert len(result.details["pair_results"]) == 2
 
+    @pytest.mark.conformance
     def test_dispatch_contract(self, mock_cli, tmp_path) -> None:
         """Contract type routes through the evaluate() dispatcher."""
         mock_run, mock_result = mock_cli
