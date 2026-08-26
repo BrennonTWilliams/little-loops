@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import errno
 import json
 import logging
+import os
 import re
 import shutil
 import socket
 import tempfile
+import threading
 import time
 from collections.abc import Iterator
 from pathlib import Path
@@ -665,6 +668,259 @@ class TestUnixSocketTransport:
             assert client.thread is None or not client.thread.is_alive()
         c1.close()
         c2.close()
+
+    def test_bound_but_dead_socket_file_is_reclaimed(self, short_tmp_path: Path) -> None:
+        """A socket file whose owner is dead (bound-but-closed) is reclaimed."""
+        path = short_tmp_path / "events.sock"
+        raw = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        raw.bind(str(path))
+        raw.close()  # dead owner: file exists but nothing is listening
+        assert path.exists()
+
+        t = UnixSocketTransport(path, max_clients=2)
+        try:
+            assert t._path == path
+            assert path.exists()
+        finally:
+            t.close()
+
+    def test_second_producer_binds_suffixed_path_first_still_delivers(
+        self, short_tmp_path: Path
+    ) -> None:
+        """A second live producer binds a distinct pid-suffixed path; the first is untouched."""
+        path = short_tmp_path / "events.sock"
+        a = UnixSocketTransport(path, max_clients=4)
+        try:
+            consumer = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            consumer.connect(str(path))
+            _wait_until(lambda: _client_count(a) == 1)
+
+            b = UnixSocketTransport(path, max_clients=4)
+            try:
+                assert b._path != a._path
+                assert b._path.name == f"events-{os.getpid()}.sock"
+                assert a._path.exists()
+                assert path.exists()
+
+                a.send({"event": "still-a"})
+                lines = _read_lines(consumer, expected=1)
+                assert json.loads(lines[0])["event"] == "still-a"
+            finally:
+                b.close()
+            consumer.close()
+        finally:
+            a.close()
+
+    def test_short_producer_close_does_not_unlink_long_producer_socket(
+        self, short_tmp_path: Path
+    ) -> None:
+        """B exiting after claiming a suffixed path never disturbs A's socket file."""
+        path = short_tmp_path / "events.sock"
+        a = UnixSocketTransport(path, max_clients=4)
+        try:
+            b = UnixSocketTransport(path, max_clients=4)
+            b.close()
+
+            assert a._path.exists()
+            consumer = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            consumer.connect(str(a._path))
+            _wait_until(lambda: _client_count(a) == 1)
+            a.send({"event": "a-alive"})
+            lines = _read_lines(consumer, expected=1)
+            assert json.loads(lines[0])["event"] == "a-alive"
+            consumer.close()
+        finally:
+            a.close()
+
+    def test_probe_leaves_live_producer_client_pool_unchanged(self, short_tmp_path: Path) -> None:
+        """Constructing B (which probes A) leaves A's client pool exactly as before."""
+        path = short_tmp_path / "events.sock"
+        a = UnixSocketTransport(path, max_clients=4)
+        try:
+            consumer = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            consumer.connect(str(path))
+            _wait_until(lambda: _client_count(a) == 1)
+
+            b = UnixSocketTransport(path, max_clients=4)
+            try:
+                # The probe's connect-and-close is handled asynchronously by
+                # _client_loop's finally block; poll rather than assume it has
+                # already drained by the time the constructor returns.
+                _wait_until(lambda: _client_count(a) == 1)
+
+                a.send({"event": "post-probe"})
+                lines = _read_lines(consumer, expected=1)
+                assert len(lines) == 1
+                assert json.loads(lines[0])["event"] == "post-probe"
+            finally:
+                b.close()
+            consumer.close()
+        finally:
+            a.close()
+
+    def test_stale_pid_suffixed_path_is_reclaimed(self, short_tmp_path: Path) -> None:
+        """A dead/regular file at the pid-suffixed sibling is reclaimed, not bound blind."""
+        path = short_tmp_path / "events.sock"
+        suffixed = path.with_name(f"events-{os.getpid()}.sock")
+        suffixed.write_text("stale")
+
+        a = UnixSocketTransport(path, max_clients=4)
+        try:
+            b = UnixSocketTransport(path, max_clients=4)
+            try:
+                assert b._path == suffixed
+                # Reclaimed and now a real, connectable socket.
+                probe = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+                probe.connect(str(suffixed))
+                probe.close()
+            finally:
+                b.close()
+        finally:
+            a.close()
+
+    def test_eaddrinuse_on_configured_path_falls_back_to_suffixed(
+        self, short_tmp_path: Path
+    ) -> None:
+        """A bind() EADDRINUSE race falls back to the suffixed path instead of raising."""
+        path = short_tmp_path / "events.sock"
+        winner = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        winner.bind(str(path))
+        winner.listen(1)
+        try:
+            real_bind = socket.socket.bind
+            calls = {"n": 0}
+
+            def flaky_bind(self: socket.socket, address: Any) -> None:
+                calls["n"] += 1
+                if calls["n"] == 1:
+                    raise OSError(errno.EADDRINUSE, "Address already in use")
+                real_bind(self, address)
+
+            with mock.patch.object(socket.socket, "bind", flaky_bind):
+                t = UnixSocketTransport(path, max_clients=2)
+            try:
+                assert t._path.name == f"events-{os.getpid()}.sock"
+                assert path.exists()  # winner's file, untouched
+            finally:
+                t.close()
+        finally:
+            winner.close()
+
+    def test_failed_bind_does_not_unlink_winners_socket(self, short_tmp_path: Path) -> None:
+        """A real EADDRINUSE against a live out-of-band socket never unlinks it."""
+        path = short_tmp_path / "events.sock"
+        winner = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        winner.bind(str(path))
+        winner.listen(1)
+        try:
+            from little_loops import transport as transport_mod
+
+            real_claim = transport_mod._claim_socket_path
+
+            def forced_claim(configured: Path, *, force_suffix: bool = False) -> Path:
+                if not force_suffix:
+                    # Bypass the probe's own LIVE protection to force a real
+                    # OS-level bind() collision against `winner`.
+                    return configured
+                return real_claim(configured, force_suffix=True)
+
+            with mock.patch.object(transport_mod, "_claim_socket_path", side_effect=forced_claim):
+                t = UnixSocketTransport(path, max_clients=2)
+            try:
+                assert path.exists()
+                # winner is still the live listener at `path`.
+                probe = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+                probe.connect(str(path))
+                probe.close()
+                assert t._path != path
+            finally:
+                t.close()
+        finally:
+            winner.close()
+
+    def test_close_does_not_unlink_socket_reclaimed_during_drain(
+        self, short_tmp_path: Path
+    ) -> None:
+        """B reclaiming A's path mid-drain survives A's eventual close()."""
+        from little_loops import transport as transport_mod
+
+        path = short_tmp_path / "events.sock"
+        a = UnixSocketTransport(path, max_clients=4)
+        c1 = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        c1.connect(str(path))
+        _wait_until(lambda: _client_count(a) == 1)
+
+        with a._clients_lock:
+            client = a._clients[0]
+        release = threading.Event()
+        real_get = client.queue.get
+
+        def blocking_get(timeout: float | None = None) -> bytes:
+            # Block for real until released, so the client thread genuinely
+            # never exits on its own — the only way for a.close()'s join to
+            # return is via `release.set()` below.
+            release.wait()
+            return real_get(timeout=0.01)
+
+        client.queue.get = blocking_get  # type: ignore[method-assign]
+
+        close_done = threading.Event()
+
+        def run_close() -> None:
+            a.close()
+            close_done.set()
+
+        closer = threading.Thread(target=run_close, daemon=True)
+        try:
+            # Give close()'s per-client join a budget long enough that it
+            # cannot time out and proceed to unlink() before we release the
+            # client — the real production ceiling is 10s total; widen it
+            # here so the test controls the interleaving, not the clock.
+            with (
+                mock.patch.object(transport_mod, "_CLOSE_TOTAL_TIMEOUT", 60.0),
+                mock.patch.object(transport_mod, "_CLIENT_THREAD_JOIN_TIMEOUT", 60.0),
+            ):
+                closer.start()
+
+                def _configured_path_unlistened() -> bool:
+                    probe = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+                    try:
+                        probe.connect(str(path))
+                        probe.close()
+                        return False
+                    except OSError as exc:
+                        return exc.errno == errno.ECONNREFUSED
+
+                # A's accept thread has exited and its server socket is
+                # closed, but a.close() is genuinely blocked in the
+                # client-join loop (the client thread is parked in
+                # blocking_get) — this is A's real drain window.
+                _wait_until(_configured_path_unlistened, timeout=5.0)
+
+                b = UnixSocketTransport(path, max_clients=4)
+                try:
+                    assert b._path == path
+                    assert not close_done.is_set(), "a.close() should still be draining"
+
+                    release.set()
+                    assert close_done.wait(timeout=15.0), "a.close() did not return"
+
+                    # B's socket survives A's close() because A only unlinks
+                    # its own bound inode.
+                    assert path.exists()
+                    consumer = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+                    consumer.connect(str(path))
+                    _wait_until(lambda: _client_count(b) == 1)
+                    b.send({"event": "b-survives"})
+                    lines = _read_lines(consumer, expected=1)
+                    assert json.loads(lines[0])["event"] == "b-survives"
+                    consumer.close()
+                finally:
+                    b.close()
+        finally:
+            release.set()
+            closer.join(timeout=15.0)
+            c1.close()
 
 
 @pytest.mark.skipif(not _HAS_OTEL_SDK, reason="opentelemetry-sdk not installed")

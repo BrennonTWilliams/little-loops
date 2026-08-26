@@ -3,10 +3,11 @@ id: BUG-3324
 type: BUG
 title: Concurrent producers evict each other from the shared events socket
 priority: P3
-status: open
+status: done
 discovered_by: manual-review
 discovered_date: '2026-08-26'
 captured_at: '2026-08-26T00:00:00Z'
+completed_at: '2026-08-26T17:55:11Z'
 relates_to:
 - FEAT-3323
 labels:
@@ -579,42 +580,66 @@ _Added by `/ll:refine-issue` — 2026-08-26 — based on codebase analysis:_
 
 ## Acceptance Criteria
 
-- [ ] Starting a second producer while a first is running leaves the first's
+- [x] Starting a second producer while a first is running leaves the first's
       socket path intact and does not disconnect its attached consumers —
       asserted by a test.
-- [ ] A producer exiting unlinks only the path it bound; a test covers the
+- [x] A producer exiting unlinks only the path it bound; a test covers the
       short-run-exits-while-long-run-continues case.
-- [ ] A producer exiting unlinks only a file that is still *the inode it bound*:
+- [x] A producer exiting unlinks only a file that is still *the inode it bound*:
       if the path was reclaimed by another producer while `close()` was draining
       its client threads, the reclaimer's socket survives — asserted by a test
       that deterministically interleaves a reclaim into A's close-drain window.
-- [ ] A stale socket file (both the regular-file and the bound-but-dead-owner
+- [x] A stale socket file (both the regular-file and the bound-but-dead-owner
       cases) is still reclaimed automatically, with no manual cleanup.
-- [ ] With a single producer, the bound path is exactly the configured path;
+- [x] With a single producer, the bound path is exactly the configured path;
       `test_socket_registered_by_name`, `test_socket_uses_socket_path_from_config`,
       `test_socket_and_jsonl_both_registered`, `test_init_unlinks_stale_socket_file`,
       and `test_close_unlinks_socket_file` pass unmodified.
-- [ ] Probing a live producer leaves no residue in its client pool once the
+- [x] Probing a live producer leaves no residue in its client pool once the
       probe returns: no net growth of its client list, no slot still held, and
       no events missed by its already-attached consumers — asserted by a test.
       (A `client_rejections` increment when probing a *saturated* producer, and
       a one-accept-wide slot occupancy during the probe itself, are accepted
       effects and explicitly not covered by this criterion.)
-- [ ] A `bind()` that fails with `EADDRINUSE` on the configured path falls back
+- [x] A `bind()` that fails with `EADDRINUSE` on the configured path falls back
       to the pid-suffixed path instead of propagating out of the constructor,
       via a bounded two-attempt loop in the constructor (never in
       `_claim_socket_path`, which does not bind) — asserted by a test.
-- [ ] A failed `bind()` never unlinks the path: the constructor's failure
+- [x] A failed `bind()` never unlinks the path: the constructor's failure
       handler only removes a file it successfully bound — asserted by a test
       that forces the bind-failure path against a live out-of-band socket.
-- [ ] A stale file at the pid-suffixed path is reclaimed by the same
+- [x] A stale file at the pid-suffixed path is reclaimed by the same
       probe/unlink logic as the configured path, rather than being bound blind.
-- [ ] Claiming a suffixed path is logged at INFO naming both paths.
-- [ ] The multi-producer path shape is documented in
+- [x] Claiming a suffixed path is logged at INFO naming both paths.
+- [x] The multi-producer path shape is documented in
       `docs/reference/CONFIGURATION.md` alongside the `nc -U` note, including
       the `{stem}-{pid}{suffix}` sibling naming contract, that orphaned
       `events-<pid>.sock` files are not swept, and that a consumer enumerating
       the directory must tolerate dead endpoints.
+
+## Resolution
+
+Implemented per the Program Design: `_probe_socket_path` (pure, three-state
+classification) and `_claim_socket_path` (the only mutating helper) added to
+`transport.py`. `UnixSocketTransport.__init__` claims a path instead of
+unlinking blind, runs a bounded two-attempt `EADDRINUSE` fallback to a
+pid-suffixed sibling, and narrows the bind-failure handler so a failed
+`bind()` never unlinks another producer's file. `close()` now unlinks only
+when a re-`stat` confirms the path still holds the inode this instance bound.
+
+One addition beyond the Program Design's explicit scope: `_client_loop` and a
+new `_peer_closed` helper detect an already-closed peer on each idle poll
+(non-destructive `MSG_PEEK`) rather than waiting for the next `send()`'s
+failed `sendall()`. This was required to satisfy the "probe leaves no residue
+in the live producer's client pool once it returns" acceptance criterion —
+without it, a probe's accept-and-close connection would occupy a client slot
+indefinitely until the producer's next event.
+
+All nine new tests pass, all five pinned pre-existing tests pass unmodified,
+and the full suite (`python -m pytest scripts/tests/`) is green except two
+pre-existing failures unrelated to this change (`test_readme_matches_repo_root`
+/ BUG-3179 README drift, and `test_no_new_unverifiable_evidence` on
+FEAT-3323) — both confirmed failing identically on `main` before this change.
 
 ## Status
 
@@ -622,6 +647,8 @@ _Added by `/ll:refine-issue` — 2026-08-26 — based on codebase analysis:_
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-26T17:55:11 - `692413e5-db1e-458e-8db5-769ffb2e8e9f.jsonl`
+- `/ll:ready-issue` - 2026-08-26T17:31:10 - `97f65a3c-b080-4006-b9a6-51bf69fca04a.jsonl`
 - `/ll:confidence-check` - 2026-08-26T17:26:24 - `7e9b1604-00c9-4e37-8a90-6f2ad32b27f1.jsonl`
 - `/ll:confidence-check` - 2026-08-26T15:21:06 - `517f6995-71e2-43fd-9e62-23da16cd2b72.jsonl`
 - `/ll:refine-issue` - 2026-08-26T15:07:47 - `48865e33-f926-4071-bfdf-2723c61ab53b.jsonl`

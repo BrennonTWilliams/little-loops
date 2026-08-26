@@ -1577,7 +1577,7 @@ List of transports to wire onto the EventBus at runtime. Transports are additive
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `events.socket.path` | `string` | `".ll/events.sock"` | Filesystem path for the AF_UNIX socket. The transport unlinks any stale file before binding and removes the file on `close()`. |
+| `events.socket.path` | `string` | `".ll/events.sock"` | Preferred filesystem path for the AF_UNIX socket. This is the path a single producer binds; a concurrent second producer binds a sibling path instead (see "Multiple concurrent producers" below). The transport reclaims a genuinely stale file (crashed producer) before binding, and removes the file it bound on `close()`. |
 | `events.socket.max_clients` | `integer` | `32` | Maximum simultaneous clients. Connections beyond the cap are accepted-and-closed. |
 
 The socket file is `chmod 0600` immediately after `bind()` — owner-only, since the events stream may include issue titles, file paths, and branch names. Operators wanting wider access must relax permissions out-of-band.
@@ -1587,6 +1587,10 @@ The socket file is `chmod 0600` immediately after `bind()` — owner-only, since
 **`ll-auto` exclusion:** `cli/auto.py` does not construct an `EventBus`, so listing `"socket"` (or any transport) under `events.transports` has no effect under `ll-auto`. The socket transport is available under `ll-loop run`/`resume`, `ll-parallel`, and `ll-sprint` parallel-wave runs.
 
 **Subscribing locally:** Any AF_UNIX-aware tool can subscribe — for ad-hoc inspection, pipe `nc -U .ll/events.sock | jq`.
+
+**Multiple concurrent producers (BUG-3324):** Two `little-loops` processes can have `events.transports: ["socket"]` configured at once (e.g. an `ll-loop run` and an `ll-sprint run` overlapping). The second producer probes the configured path before binding; if a live listener already owns it, the second producer binds a **sibling path** instead of evicting the first: `{stem}-{pid}{suffix}` next to the configured path — for example `.ll/events-1234.sock` alongside the default `.ll/events.sock`, where `1234` is the second producer's pid. This is a naming *contract*, not an implementation detail — a consumer that wants to see every live producer must enumerate the directory for files matching this shape rather than connecting to the configured path alone. Claiming a sibling path is logged at `INFO`, naming both paths.
+
+Orphaned `events-<pid>.sock` files left behind by a producer that crashes without running `close()` are **not** swept by this or any other mechanism — they accumulate in `.ll/` across crashes. A directory-enumerating consumer must therefore tolerate dead endpoints: connecting to a sibling file and getting `ECONNREFUSED` or finding it already gone is an expected, not exceptional, outcome.
 
 ### `events.otel`
 

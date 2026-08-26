@@ -10262,9 +10262,9 @@ UnixSocketTransport(path: Path, max_clients: int = 32, on_connect: Callable[[_So
 ```
 
 **Parameters:**
-- `path` - Path to the AF_UNIX socket. Any stale file at this path is unlinked before bind. The file is `chmod 0600` immediately after `bind()`.
+- `path` - Preferred path for the AF_UNIX socket. Before binding, the constructor probes `path` (BUG-3324): a genuinely stale occupant (regular file, or a bound-but-dead socket) is unlinked and `path` is bound as before; a *live* listener already on `path` causes this instance to bind a `{stem}-{pid}{suffix}` sibling path instead, leaving the live listener and its consumers untouched. The bound path (not necessarily `path`) is available as `self._path` after construction and is `chmod 0600` immediately after `bind()`.
 - `max_clients` - Maximum simultaneous client connections. Used as both the `listen()` backlog and the live-clients cap; further connections are accepted-and-closed.
-- `on_connect` - Optional callback invoked by `_accept_loop` immediately after a new client is registered. Receives the new `_SocketClient`; used internally by `wire_transports` to seed current loop state. Defaults to `None` (no-op).
+- `on_connect` - Optional callback invoked by `_accept_loop` immediately after a new client is registered. Receives the new `_SocketClient`; used internally by `wire_transports` to seed current loop state. Defaults to `None` (no-op). Also fires for the accept-and-close connection made by another instance's construction-time probe against this listener — self-healing, and does not affect delivery to already-attached consumers.
 
 **Wire format:** Each `send(event)` serializes the event with `json.dumps(event)` and appends a `\n`, so consumers can parse one line at a time:
 
@@ -10277,7 +10277,7 @@ nc -U .ll/events.sock | jq
 | Method | Description |
 |--------|-------------|
 | `send(event: dict[str, Any]) -> None` | Enqueue the serialized event into every connected client's outbound queue. Non-blocking — if a client's queue is full, the newest event is dropped (preserving causal order) and a rate-limited warning is logged. |
-| `close() -> None` | Set the shutdown event, join the accept thread (≤2s) and each client thread (≤1s, 10s ceiling overall), close the server socket, and unlink the socket file. |
+| `close() -> None` | Set the shutdown event, join the accept thread (≤2s) and each client thread (≤1s, 10s ceiling overall), close the server socket, and unlink the socket file — but only if it is still the same inode this instance bound (BUG-3324): if another producer reclaimed the path during the drain window, that producer's socket is left alone. |
 
 **Platform support:** Requires `AF_UNIX` (POSIX). On Windows, [`wire_transports`](#wire_transports) raises `RuntimeError` rather than registering the transport.
 

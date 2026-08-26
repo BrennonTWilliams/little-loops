@@ -28,8 +28,11 @@ Public exports:
 
 from __future__ import annotations
 
+import enum
+import errno
 import json
 import logging
+import os
 import socket
 import threading
 import time
@@ -52,6 +55,7 @@ _CLIENT_THREAD_JOIN_TIMEOUT = 1.0
 _CLOSE_TOTAL_TIMEOUT = 10.0
 _ACCEPT_POLL_TIMEOUT = 1.0
 _CLIENT_QUEUE_POLL_TIMEOUT = 0.5
+_SOCKET_PROBE_TIMEOUT = 0.2
 
 _WEBHOOK_BATCH_MS_DEFAULT = 1000
 _WEBHOOK_CLOSE_TIMEOUT = 10.0
@@ -115,12 +119,15 @@ class _SocketClient:
 class UnixSocketTransport:
     """Stream events as newline-delimited JSON over an `AF_UNIX` socket.
 
-    On construction, binds the socket at ``path`` (after unlinking any stale
-    file), starts an accept thread, and accepts up to ``max_clients`` concurrent
-    consumers. Each accepted client gets its own daemon thread and bounded
-    outbound queue; ``send()`` enqueues the serialized event into every client
-    queue without blocking. A full queue causes the newest event to be dropped
-    (preserving causal order) and a rate-limited warning is logged.
+    On construction, claims a bind path: `path` if it is absent or occupied by
+    a stale file/dead socket (which is unlinked), or a `{stem}-{pid}{suffix}`
+    sibling of `path` if a live listener already owns it (BUG-3324 — a second
+    concurrent producer must never evict a first). It then starts an accept
+    thread and accepts up to ``max_clients`` concurrent consumers. Each
+    accepted client gets its own daemon thread and bounded outbound queue;
+    ``send()`` enqueues the serialized event into every client queue without
+    blocking. A full queue causes the newest event to be dropped (preserving
+    causal order) and a rate-limited warning is logged.
 
     A misbehaving / disconnected client is removed from the pool without
     affecting other clients or the FSM thread.
@@ -142,7 +149,6 @@ class UnixSocketTransport:
                 "UnixSocketTransport requires AF_UNIX, which is not available on this platform"
             )
 
-        self._path = path
         self._max_clients = max_clients
         self._on_connect = on_connect
         self._shutdown = threading.Event()
@@ -152,18 +158,51 @@ class UnixSocketTransport:
         self._rejections_since_log: int = 0
         self._last_reject_log_ts: float = 0.0
         self._first_reject_logged: bool = False
+        self._bound_id: tuple[int, int] | None = None
 
-        self._path.parent.mkdir(parents=True, exist_ok=True)
-        self._path.unlink(missing_ok=True)
+        path.parent.mkdir(parents=True, exist_ok=True)
 
+        # BUG-3324: a second concurrent producer must not steal `path` out from
+        # under a live listener. Claim it (probing for a live/stale/absent
+        # owner) rather than unlinking blind; a live owner pushes us onto a
+        # pid-suffixed sibling path instead.
+        claimed = _claim_socket_path(path)
         self._server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         try:
-            self._server.bind(str(self._path))
+            self._server.bind(str(claimed))
+        except OSError as exc:
+            self._server.close()
+            if exc.errno != errno.EADDRINUSE:
+                raise
+            # TOCTOU (BUG-3324): another producer won the race and bound
+            # `claimed` between our probe and our bind(). Re-enter the claim
+            # forcing the pid-suffixed fallback and retry once with a fresh
+            # socket object (rebinding a socket whose bind() already failed is
+            # platform-dependent).
+            claimed = _claim_socket_path(path, force_suffix=True)
+            self._server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            try:
+                self._server.bind(str(claimed))
+            except Exception:
+                self._server.close()
+                raise
+
+        self._path = claimed
+        if claimed != path:
+            logger.info(
+                "UnixSocketTransport: %s is in use by a live producer; bound %s instead",
+                path,
+                claimed,
+            )
+        try:
+            self._bound_id = _stat_id(self._path)
             self._path.chmod(0o600)
             self._server.listen(max_clients)
             self._server.settimeout(_ACCEPT_POLL_TIMEOUT)
         except Exception:
             self._server.close()
+            # Only unlink here if bind() actually succeeded above — a failure
+            # in bind() itself never reaches this handler.
             self._path.unlink(missing_ok=True)
             raise
 
@@ -210,6 +249,16 @@ class UnixSocketTransport:
                 try:
                     payload = client.queue.get(timeout=_CLIENT_QUEUE_POLL_TIMEOUT)
                 except Empty:
+                    # BUG-3324: a client that never receives an event — most
+                    # notably a liveness probe from `_probe_socket_path`,
+                    # which connects and closes immediately — is otherwise
+                    # only noticed on the next actual send()'s failed
+                    # sendall(), leaving it occupying a slot indefinitely.
+                    # A non-destructive peek on each idle poll detects a
+                    # peer that already closed and retires the client
+                    # promptly instead of waiting on the next event.
+                    if self._peer_closed(client.conn):
+                        return
                     continue
                 try:
                     client.conn.sendall(payload)
@@ -223,6 +272,20 @@ class UnixSocketTransport:
             with self._clients_lock:
                 if client in self._clients:
                     self._clients.remove(client)
+
+    @staticmethod
+    def _peer_closed(conn: socket.socket) -> bool:
+        """Non-destructively check whether `conn`'s peer has closed its end."""
+        try:
+            conn.setblocking(False)
+            try:
+                return conn.recv(1, socket.MSG_PEEK) == b""
+            except BlockingIOError:
+                return False
+            except OSError:
+                return True
+        finally:
+            conn.setblocking(True)
 
     def send(self, event: dict[str, Any]) -> None:
         payload = (json.dumps(event) + "\n").encode("utf-8")
@@ -317,7 +380,91 @@ class UnixSocketTransport:
                         budget,
                     )
 
-        self._path.unlink(missing_ok=True)
+        # TOCTOU (BUG-3324): the drain above can take up to _CLOSE_TOTAL_TIMEOUT
+        # seconds, during which another producer can probe this path, classify
+        # it RECLAIMABLE (nothing is listening once the accept thread exits),
+        # and bind it as its own. Unlinking by path alone would then delete
+        # that producer's socket instead of ours, so re-stat and compare the
+        # inode identity captured at bind() time before unlinking.
+        if self._bound_id is not None:
+            try:
+                if _stat_id(self._path) == self._bound_id:
+                    self._path.unlink(missing_ok=True)
+            except FileNotFoundError:
+                pass
+
+
+def _stat_id(path: Path) -> tuple[int, int]:
+    """Return the `(st_dev, st_ino)` identity of `path`."""
+    st = os.stat(path)
+    return (st.st_dev, st.st_ino)
+
+
+class _PathState(enum.Enum):
+    """Classification of a socket path's occupant, per BUG-3324."""
+
+    LIVE = "live"
+    ABSENT = "absent"
+    RECLAIMABLE = "reclaimable"
+
+
+def _probe_socket_path(path: Path, timeout: float = _SOCKET_PROBE_TIMEOUT) -> _PathState:
+    """Classify what currently occupies `path` without mutating anything.
+
+    Connects to `path` as a client would and inspects the outcome:
+
+    - Connects successfully -> a live listener owns it (`LIVE`).
+    - `FileNotFoundError` (`ENOENT`) -> nothing is there (`ABSENT`).
+    - `ENOTSOCK` (a regular file) or `ECONNREFUSED` (a bound-but-dead socket)
+      -> safe to reclaim (`RECLAIMABLE`).
+    - Anything else (`EACCES`/`EPERM` from a different uid's `chmod 0600`
+      socket, a probe timeout, `EAGAIN`, ...) -> assume `LIVE`. Erring toward
+      "occupied" means a second producer takes a suffixed path rather than
+      ever evicting one it can't positively rule out.
+    """
+    probe = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    try:
+        probe.settimeout(timeout)
+        try:
+            probe.connect(str(path))
+            return _PathState.LIVE
+        except FileNotFoundError:
+            return _PathState.ABSENT
+        except OSError as exc:
+            if exc.errno in (errno.ENOTSOCK, errno.ECONNREFUSED):
+                return _PathState.RECLAIMABLE
+            return _PathState.LIVE
+    finally:
+        probe.close()
+
+
+def _claim_socket_path(configured: Path, *, force_suffix: bool = False) -> Path:
+    """Return the path a new `UnixSocketTransport` should `bind()` to.
+
+    Never binds. Probes `configured` (unless `force_suffix`) and unlinks it
+    only when `RECLAIMABLE`. If `configured` is occupied by a live listener,
+    claims a pid-suffixed sibling (`{stem}-{pid}{suffix}`) through the same
+    probe/unlink logic rather than binding it blind — a prior producer under a
+    recycled pid may have left an orphan there too.
+    """
+    if not force_suffix:
+        state = _probe_socket_path(configured)
+        if state is _PathState.RECLAIMABLE:
+            configured.unlink(missing_ok=True)
+        if state is not _PathState.LIVE:
+            return configured
+
+    suffixed = configured.with_name(f"{configured.stem}-{os.getpid()}{configured.suffix}")
+    state = _probe_socket_path(suffixed)
+    if state is _PathState.RECLAIMABLE:
+        suffixed.unlink(missing_ok=True)
+    elif state is _PathState.LIVE:
+        # A distinct live process cannot be listening under our own pid.
+        raise RuntimeError(
+            f"UnixSocketTransport: pid-suffixed path {suffixed} is claimed by a live "
+            "listener, which cannot happen for a distinct live process"
+        )
+    return suffixed
 
 
 _OTEL_EVENT_TYPES = frozenset(
