@@ -207,6 +207,7 @@ Out of scope: retrofitting `parallel.*` and `issue.*` emitters that build event 
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-27T21:18:15 - `086de69c-22b2-41be-878d-e9a1dd904924.jsonl`
 - `/ll:decide-issue` - 2026-08-27T21:03:09 - `afdc9a20-86de-4e24-ad07-3b472050429a.jsonl`
 - `/ll:refine-issue` - 2026-08-27T21:02:35 - `3300bae1-29e4-43aa-be1f-dbf44d0ba9ec.jsonl`
 - `/ll:wire-issue` - 2026-08-27T20:56:26 - `90bd9242-a8e8-4a44-9297-fb97e2e007d7.jsonl`

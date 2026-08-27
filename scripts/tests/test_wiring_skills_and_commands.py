@@ -296,6 +296,23 @@ DOC_STRINGS_PRESENT: list[tuple[str, str, str]] = [
         "pattern not present in this codebase",
         "BUG-3333",
     ),
+    # BUG-3344: port the Searched-No-Hits evidence contract to
+    # consistency-checker — hybrid rule-plus-column shape since this agent's
+    # output is a table-per-check-type structure, not a prose section. The
+    # unfiltered-rerun rule lives in Step 2; evidence lives in a "Scope
+    # Searched" column on the Missing References table only.
+    ("agents/consistency-checker.md", "Scope Searched", "BUG-3344"),
+    (
+        "agents/consistency-checker.md",
+        "searched repo-wide with no glob or type filter",
+        "BUG-3344",
+    ),
+    (
+        "agents/consistency-checker.md",
+        "Don't record MISSING on the strength of a filtered search",
+        "BUG-3344",
+    ),
+    ("skills/audit-claude-config/report-template.md", "Scope Searched", "BUG-3344"),
 ]
 
 

@@ -224,7 +224,9 @@ This file contains the format and structure for the final audit report generated
 
 ### Missing References
 
-[List or "None"]
+| Source | Reference | Expected Target | Scope Searched | Severity |
+|--------|-----------|------------------|-----------------|----------|
+[Table rows, or "None"]
 
 ## Wave 3: Fix Suggestions
 

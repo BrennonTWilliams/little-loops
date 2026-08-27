@@ -114,7 +114,16 @@ For each reference found:
 2. Check if target exists
 3. If file, check if readable
 4. If script, check if executable
-5. Record status (OK, MISSING, BROKEN)
+5. Before recording MISSING, re-run the lookup unfiltered — the whole tree,
+   no `glob`/`type`/`path` narrowing — except where the caller scoped the
+   audit to a path or file type, in which case use that caller-supplied
+   scope instead. A narrowed miss is evidence about that slice only and must
+   never be reported as tree-wide absence, so the row states the scope
+   actually searched (`searched repo-wide with no glob or type filter`, or
+   the caller-supplied scope). Named exclusions carry the hit count inside
+   the excluded path. This scope check applies to `MISSING` only — `BROKEN`,
+   `NOT_SET`, and `WARNING` verdicts do not require it.
+6. Record status (OK, MISSING, BROKEN)
 
 ### Step 3: Check for Conflicts
 Compare configurations across files:
@@ -308,11 +317,11 @@ Structure your consistency check like this:
 
 ### Missing References
 
-| Source | Reference | Expected Target | Severity |
-|--------|-----------|-----------------|----------|
-| .claude/CLAUDE.md:45 | @DEPRECATED.md | .claude/DEPRECATED.md | WARNING |
-| hooks/hooks.json:8 | validate.sh | hooks/validate.sh | CRITICAL |
-| ... | ... | ... | ... |
+| Source | Reference | Expected Target | Scope Searched | Severity |
+|--------|-----------|-----------------|-----------------|----------|
+| .claude/CLAUDE.md:45 | @DEPRECATED.md | .claude/DEPRECATED.md | searched repo-wide with no glob or type filter | WARNING |
+| hooks/hooks.json:8 | validate.sh | hooks/validate.sh | searched repo-wide with no glob or type filter | CRITICAL |
+| ... | ... | ... | ... | ... |
 
 ### Broken References
 
@@ -378,6 +387,9 @@ Structure your consistency check like this:
 - Don't report opinion-based issues
 - Don't skip checking because "it probably exists"
 - Don't conflate missing with broken references
+- Don't record MISSING on the strength of a filtered search — a `type:`/
+  `glob:`/`path:`-narrowed miss is evidence about that slice only; re-run
+  unfiltered first and state the scope searched in the row
 
 ## When to use
 

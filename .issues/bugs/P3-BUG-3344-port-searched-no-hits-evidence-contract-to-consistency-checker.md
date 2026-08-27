@@ -3,10 +3,11 @@ id: BUG-3344
 type: BUG
 title: Port Searched-No-Hits evidence contract to consistency-checker
 priority: P3
-status: open
+status: done
 discovered_by: review-of-BUG-3333
 discovered_date: '2026-08-27'
 captured_at: '2026-08-27T00:00:00Z'
+completed_at: '2026-08-27T21:18:57Z'
 confidence_score: 100
 outcome_confidence: 91
 score_complexity: 22
@@ -284,6 +285,7 @@ _Added by `/ll:confidence-check` — Readiness 95/100 (PROCEED), Outcome Confide
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-27T21:18:57 - `2d250ccd-87ea-4499-a117-c458bb9fece1.jsonl`
 - `/ll:confidence-check` - 2026-08-27T21:08:27 - `6ec43e47-0e35-4cc1-b7b3-21a572c5ff4c.jsonl`
 - `/ll:confidence-check` - 2026-08-27T20:56:49 - `36eebace-6074-480d-8d4e-76d867f7149b.jsonl`
 - `/ll:wire-issue` - 2026-08-27T20:53:18 - `3592ce60-9489-48d1-a80d-b55638012e78.jsonl`
