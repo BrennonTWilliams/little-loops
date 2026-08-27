@@ -7,6 +7,12 @@ status: open
 discovered_by: ll-issues-create
 discovered_date: '2026-08-27'
 captured_at: '2026-08-27T19:56:15Z'
+confidence_score: 100
+outcome_confidence: 82
+score_complexity: 20
+score_test_coverage: 22
+score_ambiguity: 18
+score_change_surface: 22
 ---
 
 # ENH-3345: Stamp run_id and loop on every emitted FSM event
