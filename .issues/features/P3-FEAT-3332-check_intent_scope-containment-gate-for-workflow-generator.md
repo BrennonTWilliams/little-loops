@@ -31,9 +31,13 @@ baselines, repo-root relativization, one escape path, and fourteen behavioral te
 cases. It is defense-in-depth against regressions, and bundling it was the single
 largest driver of BUG-3327's 63/100 outcome confidence. Land the fence first, then
 this with its own budget. (That split sized the work at "nine behavioral test
-cases"; a first review pass raised it to eleven, the 2026-08-26 pre-implementation
-review to fourteen, and the 2026-08-27 review pass held it at fourteen by making
-case (xii) unconditional — see Integration Map → Tests.)
+cases"; successive review passes raised it to eleven, then fourteen, then
+**nineteen** when the never-counted mandatory negative partners were included and
+the tracked-dirty and deletion cases added. The 2026-08-27 **third** review pass
+adds two more — (vii-c) for the subdirectory-launch run dir and (xiv) for the
+falsy-`{}` baseline — giving **twenty-one**: (i)–(xiv) plus the seven `-b`/`-c`
+partners (iv-b, vi-b, vii-b, vii-c, viii-b, xii-b, xii-c). See Integration Map →
+Tests.)
 
 ## Current Behavior
 
@@ -82,7 +86,7 @@ sketch_state_graph`, with `check_intent_scope`'s `on_no` going to `diagnose`.
    parametrizes over `"validate_intent"`. A new sibling state takes its own
    `evaluate: {type: exit_code}` and leaves that test untouched.
 
-**Two limits of this placement, to state rather than silently accept:**
+**One limit of this placement, to state rather than silently accept:**
 
 - **The gate is one-shot, at one point in a twelve-state pipeline.** It audits the
   window from `init` through `validate_intent` only. `sketch_state_graph`,
@@ -94,24 +98,19 @@ sketch_state_graph`, with `check_intent_scope`'s `on_no` going to `diagnose`.
   remaining prompt states is tracked as **FEAT-3335**, which depends on this
   issue. (`diagnose` is the one exception handled here — see requirement (o) —
   because this issue creates the edge into it.)
-- ~~**`validate_intent`'s `on_no: capture_intent` edge (line 98) remains
-  unbounded.**~~ **Resolved — no residual work.** BUG-3327 bounded that edge with
-  `count_intent_retry` (`workflow-generator.yaml:119`,
-  `context.max_intent_retries: "3"`). Retained here only so the reasoning above
-  is readable against its original form.
-
-### Codebase Research Findings
-
-_Added by `/ll:refine-issue` — 2026-08-27 — based on codebase analysis:_
-
-- **BUG-3327 has landed** (`status: done`, commit `34c3ecac9`): `validate_intent`'s `on_no` is now `count_intent_retry` (`workflow-generator.yaml:119`), a bounded retry state (default `context.max_intent_retries: "3"`, mirroring the pre-existing `count_emit_retry` pattern). Reason (1) above has been rewritten against this current state; nothing further to reconcile.
-- The "Two limits of this placement" bullet's second point ("if BUG-3327 recorded 'left alone', pick it up here") is resolved — BUG-3327 did not leave the edge unbounded. No residual work from that bullet remains for this issue.
+BUG-3327 has landed (`status: done`, commit `34c3ecac9`) and bounded
+`validate_intent`'s `on_no` edge with `count_intent_retry`
+(`workflow-generator.yaml:119`, default `context.max_intent_retries: "3"`,
+mirroring `count_emit_retry`). An earlier draft listed that unbounded edge as a
+second limit of this placement; it is resolved, with no residual work for this
+issue.
 
 ## Use Case
 
 A little-loops maintainer runs `ll-loop run workflow-generator` from a
 subdirectory of the repo, with a working tree that already holds a few
-untracked scratch files, to generate a new loop from a natural-language brief.
+untracked scratch files **and a couple of half-finished edits to tracked source
+files**, to generate a new loop from a natural-language brief.
 Partway through `capture_intent`, the LLM state decides it needs to "do some
 research first" and writes notes to `research/` at the repo root — outside the
 run directory, into the maintainer's actual source tree.
@@ -122,8 +121,8 @@ to be gitignored) with no record of which run produced them. With
 `check_intent_scope`, the run stops at the gate immediately after
 `validate_intent`, `${run_dir}/.scope_violations.txt` names `research/…`, and
 `diagnose` reports a containment violation rather than a retry-exhaustion
-story. The maintainer's pre-existing untracked scratch files do not trip the
-gate, and legitimate `run_dir`, `.loops/tmp/scratch/` and `.ll/` harness writes
+story. The maintainer's pre-existing untracked scratch files and dirty tracked
+sources do not trip the gate, and legitimate `run_dir`, `.loops/tmp/scratch/` and `.ll/` harness writes
 are ignored — so the signal is actionable on the first pass rather than a false
 alarm to be disabled.
 
@@ -142,10 +141,69 @@ tractable rather than hand-rolled.
 Correctness requirements, each of which the naive
 `git ls-files -o --exclude-standard` formulation gets wrong:
 
-**(a) Baseline the untracked set at `init`, don't assume a clean tree.** A
-developer's working tree routinely holds pre-existing untracked files. Without a
-baseline the gate fires on the *first* pass of every run in a dirty repo — and
-since the offending files are not the loop's to remove, the failure is permanent.
+**(a) Baseline the entire changed-file set at `init` — tracked *and* untracked —
+don't assume a clean tree.** A developer's working tree routinely holds
+pre-existing untracked files *and* pre-existing modifications to tracked files.
+Without a baseline the gate fires on the *first* pass of every run in a dirty repo
+— and since the offending files are not the loop's to remove, the failure is
+permanent.
+
+**Revised 2026-08-27 (second review pass): the baseline is one unified
+`path -> content-hash` map covering both sides, not an untracked-only snapshot.**
+The previous formulation baselined only the untracked set and compared tracked
+files via a bare `git diff --name-only "$BASELINE_REF"` with **no baseline
+subtraction at all**. That is the same permanent-false-positive failure this
+requirement exists to prevent, applied asymmetrically: a maintainer with any dirty
+tracked file — the normal state of a working repo — failed the gate on the first
+pass of every run. It also directly contradicted the live-verification acceptance
+criterion, which requires a red-gate run "from a repo subdirectory with a dirty
+working tree": as previously written, that run failed for the wrong reason.
+
+Note this is *not* the case requirement (h) accepts. (h) covers a human editing a
+file **concurrently with** an in-flight run; this is the state of the tree **at
+launch**, which is fully knowable at `init` and must be subtracted.
+
+The unified construct. Define one changed-set function used byte-identically at
+both sites (see (c)):
+
+```
+EXCL  = ':(exclude,glob)**/.loops/**' ':(exclude,glob)**/.ll/**'
+paths = (git -C "$ROOT" diff --name-only -z "$REF" -- $EXCL)
+      ∪ (git -C "$ROOT" ls-files -o --exclude-standard -z -- $EXCL)
+map   = { p: hash(p) if p exists else DELETED  for p in paths }
+```
+
+where `DELETED` is a sentinel for a path git reports but which is absent from the
+worktree. `init` writes this map; `check_intent_scope` recomputes it and flags
+**any path whose entry is new or whose value differs**. At `init` the `$REF` side
+is a no-op against a freshly-read `HEAD`, so the map at that moment is exactly
+"what the maintainer already had dirty."
+
+**Hashing is one batched call, not one per path.** Use a single
+`git -C "$ROOT" hash-object --stdin-paths` invocation fed the NUL-split path list
+(the Python analogue of `general-task.yaml`'s `xargs -0 git hash-object`), reading
+its stdout as the hash column. A per-path `subprocess.run(["git","hash-object",p])`
+spawns N processes per run at both sites and is what makes the cost note below
+wrong rather than merely real. `hashlib` over the file bytes is an acceptable
+substitute; a per-path git spawn is not.
+
+**The exclusion pathspecs are depth-agnostic globs, not root-anchored prefixes** —
+see requirement (f), where the reason is spelled out. `':(exclude).loops/'` matches
+only `<root>/.loops/`, which is the wrong set.
+
+This single construct subsumes three previously separate requirements and closes a
+fourth hole that was never written down:
+
+- **(d)** in-place overwrite of a pre-existing *untracked* file — a value change in
+  the map.
+- **(i)** cover untracked and tracked — the union is the point.
+- the new tracked-dirty case above — a value change, not a bare name match.
+- **deletions, previously unhandled and silently green.** A path-set difference
+  that only looks for newly-appeared entries never notices an agent *deleting* a
+  pre-existing untracked file outside `run_dir`: the set gets smaller, and the gate
+  passes. The `DELETED` sentinel makes a deletion a value change like any other.
+  (Deletion of a *tracked* file was already visible via `git diff --name-only`; it
+  is the untracked half that was missing.)
 
 `init` (lines 44-61) must first resolve the repo root — it currently has no
 `ROOT`, only `DIR`, so this is net-new and is a precondition of every other git
@@ -157,25 +215,35 @@ invocation in the state:
 ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || ROOT=""
 ```
 
-then capture both baselines (`$EXCL` is the shared exclusion literal from (f)):
+then capture the ref and the unified map:
 
 ```sh
 if [ -n "$ROOT" ]; then
   git -C "$ROOT" rev-parse HEAD > "$DIR/baseline-ref.txt" 2>/dev/null || : > "$DIR/baseline-ref.txt"
-  git -C "$ROOT" ls-files -o --exclude-standard -z \
-    -- ':(exclude).loops/' ':(exclude).ll/' \
-    > "$DIR/baseline-untracked-paths.z" 2>/dev/null
+  # HARNESS: unified changed-set baseline (tracked ∪ untracked, path -> hash).
+  # Matched pair with check_intent_scope (requirement (c)) — keep identical.
+  python3 -c '<changed-set map, argv: ROOT, REF>' "$ROOT" "$(cat "$DIR/baseline-ref.txt")" \
+    > "$DIR/baseline-changed-set.json" 2>/dev/null || : > "$DIR/baseline-changed-set.json"
 else
   : > "$DIR/baseline-ref.txt"
-  : > "$DIR/baseline-untracked-paths.z"
+  : > "$DIR/baseline-changed-set.json"
 fi
 ```
 
-`check_intent_scope` then diffs the *current* untracked set against the baseline
-(as a `path -> content-hash` map, per (d)) and only considers newly-appeared or
-in-place-modified paths, unioned with
-`git -C "$ROOT" diff --name-only "$BASELINE_REF"` for modifications to tracked
-files.
+The map is emitted as JSON so the gate loads it with `json.load` rather than
+re-parsing a NUL stream; per (e) both sides are Python, so this costs nothing and
+removes a second parsing surface.
+
+**The escape condition is a property of the *file*, not the truthiness of the
+loaded value.** The gate takes (j)'s skip-with-warning escape when
+`baseline-changed-set.json` is **missing, zero bytes, or raises
+`json.JSONDecodeError`** — a corrupt baseline must not read as "the tree was
+clean." It must **not** escape on a falsy *value*: a genuinely clean tree
+serializes as `{}`, which is falsy in Python, so `if not baseline: skip` silently
+disables the gate on exactly the runs where it is most likely to catch something.
+Write the check as a file-level test (`os.path.getsize(...) == 0`, `FileNotFoundError`,
+`JSONDecodeError`) and let `{}` flow through as a valid empty baseline. Behavioral
+case (xiv) is the guard.
 
 **(a1) Ordering inside `init` is a three-way constraint, not just "keep the
 `case`/`echo` block last."** `init`'s existing body creates run-dir state before
@@ -187,9 +255,20 @@ that does not gitignore the run dir (exactly behavioral case (v)) the gate fires
 on the loop's own scaffolding, permanently, on every run. The required order in
 `init` is:
 
-1. existing `mkdir` / truncate / `rm -f` block (creates run-dir state)
-2. `ROOT` resolution and both baseline captures (this requirement and (a))
+1. existing `mkdir` / truncate / `rm -f` block (creates run-dir state), **extended
+   with `: > "$DIR/.scope_violations.txt"`** — see below
+2. `ROOT` resolution, `baseline-ref.txt`, and the unified changed-set map
+   (this requirement and (a))
 3. the `case "$DIR" in /*) … esac` stdout block, last and alone (requirement (b))
+
+**`.scope_violations.txt` is truncated in step 1, not created first by the gate.**
+`init` already pre-truncates `.emit_errors.txt` and `.intent_errors.txt`; the
+violation report is the same class of artifact and gets the same treatment, so the
+run-dir contract is uniform and a file left behind by an earlier run sharing the
+directory cannot be read as this run's finding. `diagnose`'s read list is phrased
+"whichever of these exist," so absence is already tolerated — this is about
+staleness, not absence. Being part of step 1, it is also inside the baseline per
+this requirement's ordering.
 
 Note the second and third constraints are independent: (b) pins the tail, this
 pins the middle, and neither implies the other.
@@ -209,14 +288,30 @@ file (or into `$(…)`) **and** sends stderr to `/dev/null`, and a test asserts
 `init`'s stdout is exactly one line — in a git repo *and* in a non-repo, where all
 three git commands fail.
 
+**This obligation extends *inside* the `python3` body, not just to the shell
+level.** The `changed_set` construct shells out to git several times; a
+`subprocess.run(...)` or `subprocess.call(...)` without `capture_output=True` (or
+an explicit `stdout=PIPE, stderr=DEVNULL`) **inherits `init`'s stdout**, so a git
+advisory — `detached HEAD`, a `safe.directory` warning, an `--stdin-paths` error —
+lands in `capture: run_dir` even though the shell-level redirect looks correct.
+Every git call inside the body captures both streams; nothing but the final
+`case`/`echo` block reaches fd 1.
+
 **(c) `init`'s baseline and the gate's current-set capture are a matched pair,
 not two independent captures.** The set difference is meaningful only if both
 sides were produced by the *identical* invocation — same `-C "$ROOT"`, same
-pathspec (including both exclusions), same `--exclude-standard`, same `-z`. Any
-drift between the two sites (e.g. adding an exclusion to one only) makes
-previously-baselined files read as newly-appeared, i.e. a permanent false
-positive. Write the two commands as a deliberate pair and say so in a
-`# HARNESS:` comment at both sites.
+pathspec (including both exclusions), same `--exclude-standard`, same `-z`, same
+hashing rule and same `DELETED` sentinel. Any drift between the two sites (e.g.
+adding an exclusion to one only) makes previously-baselined files read as
+newly-appeared, i.e. a permanent false positive. Write the two commands as a
+deliberate pair and say so in a `# HARNESS:` comment at both sites.
+
+**Made structural by (a)'s revision.** Because both sides now compute the *same*
+unified `path -> hash` map, the pair is one function invoked twice rather than two
+hand-matched command lines — the strongest available form of this requirement.
+Emit that function as a single shared literal (the `python3 -c '…'` body from (e),
+identical text at both sites, differing only in argv) so drift requires editing two
+visibly identical blocks rather than two superficially different ones.
 
 The exclusion pathspec belongs on **both** sides, not gate-side only. An earlier
 draft of (a) sketched the baseline without it; that happened to work by accident
@@ -224,22 +319,26 @@ draft of (a) sketched the baseline without it; that happened to work by accident
 side would silently break it.
 
 **(d) In-place overwrite of an untracked file — DECIDED: content-hash the
-baseline.** A path-name-only set difference flags only *newly appeared* untracked
-paths. An agent that clobbers a **pre-existing** untracked file outside `run_dir`
-leaves the path set unchanged and the gate passes green. The in-repo precedent
-already solves this: `general-task.yaml:424-429`'s `untracked()` diffs untracked
-files by **both path and content hash** (`xargs -0 git hash-object`), and
-`test_untracked_file_content_edit_resets_counter`
-(`test_builtin_loops.py:3081-3096`) exists specifically to assert that a name-only
-listing is insufficient.
+baseline. SUBSUMED BY (a); implement (a) and (d) falls out.**
 
-**Decision (2026-08-27 review pass): take the content-hash path.** Baseline
-`path -> hash` pairs rather than bare paths, mirroring `untracked()`. Behavioral
-case (xii) is therefore **required, not conditional**, and the accepted-limit
-variant is off the table — the hole does not appear in the guide's limits list.
-Cost is one `hash-object` pass at `init` and one at the gate, which requirement
-(e)'s `python3` body makes a three-line `dict` comparison rather than a shell
-pipeline.
+A path-name-only set difference flags only *newly appeared* untracked paths, so an
+agent that clobbers a **pre-existing** untracked file outside `run_dir` leaves the
+path set unchanged and the gate passes green. (a)'s unified `path -> hash` map
+closes this as one value-change among several. Precedent:
+`general-task.yaml:424-429`'s `untracked()` diffs by both path and content hash
+(`xargs -0 git hash-object`), and `test_untracked_file_content_edit_resets_counter`
+(`test_builtin_loops.py:3081-3096`) exists to assert a name-only listing is
+insufficient. Consequences that are still live: behavioral case (xii) is
+**required, not conditional**, and this hole does **not** appear in the guide's
+limits list.
+
+**Cost note.** The map hashes every changed-or-untracked file twice per run (once
+at `init`, once at the gate). `--exclude-standard` bounds this in practice — build
+output and vendored trees are gitignored in any sane project — but a project with a
+large *non-ignored* untracked tree pays real I/O. This is two batched
+`git hash-object --stdin-paths` calls per run, not two-times-N process spawns —
+see (a). Not a design change; it is the fifth entry on the guide's limits list (see
+Documentation).
 
 **(e) Delimiter and implementation language — DECIDED: NUL-delimited git output,
 consumed by `python3`.** `general-task`'s `untracked()` uses `git ls-files -o -z`
@@ -251,9 +350,42 @@ hand-rolled `sort -z` substitute.
 **Decision (2026-08-27 review pass): the gate body is `python3 -c`, and git
 output is NUL-delimited throughout.** Precedent is `validate_intent` in this same
 loop — `action_type: shell` + `python3 -c` + `evaluate: {type: exit_code}` — so
-the shape test in Expected Behavior reason (3) is satisfied without change. This
-decision is load-bearing for four other requirements and is why they are cheap
-rather than risky:
+the shape test in Expected Behavior reason (3) is satisfied without change.
+
+**Amended 2026-08-27 (second review pass): single-quoted body, values passed as
+`sys.argv`.** `validate_intent` uses a *double*-quoted `-c "…"` body, but it has no
+shell locals to inject — its only substitutions are FSM-side
+`${captured.run_dir.output}` refs. This gate does: `$ROOT`, `$BASELINE_REF`, and the
+run dir all have to reach the Python body. Copying the double-quoted shape means
+bash expands anything `$`-shaped **inside the Python source** — a `$` in a regex or
+string literal, a `` ` ``, a `\` — and every embedded `"` needs hand-escaping. That
+is an escaping class the gate's predecessors never had to face, in the code the
+Impact section already names as the most dangerous surface.
+
+Use a single-quoted body with values as arguments:
+
+```sh
+ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || ROOT=""
+BASELINE_REF=$(cat "${captured.run_dir.output}/baseline-ref.txt" 2>/dev/null || echo "")
+python3 -c '
+import sys, os, json, subprocess
+root, ref, run_dir = sys.argv[1], sys.argv[2], sys.argv[3]
+...
+' "$ROOT" "$BASELINE_REF" "${captured.run_dir.output}"
+```
+
+FSM interpolation runs over the **entire** action string regardless of shell
+quoting (`interpolation.py:209-287`), so `${captured.run_dir.output}` still
+resolves inside single quotes exactly as it does inside double quotes — only
+*bash* expansion is suppressed, which is the point. The single constraint the form
+adds: the Python body may not itself contain a literal `'`; use `"` throughout it.
+
+This also discharges requirement (l) **completely** rather than leaving it as a
+residual check — a single-quoted body cannot contain a bash-visible `${…}` at all,
+and the surrounding preamble uses the bare-`$VAR` idiom.
+
+The `python3` decision is load-bearing for four other requirements and is why they
+are cheap rather than risky:
 
 - **(d)** becomes a `dict` set-difference over `path -> hash`, not an `xargs`
   pipeline.
@@ -263,20 +395,50 @@ rather than risky:
   hand-rolled bash prefix comparison. It also sidesteps `ARCHITECTURE-087`
   cleanly — that decision governs the *capture* of `run_dir` as absolute in
   shell, not a comparison-time normalization inside a Python body.
-- **(l)** reduces to a residual check: a `python3 -c` body rarely contains the
-  `${` sequence at all.
+- **(l)** dissolves entirely under the single-quoted form above: a single-quoted
+  body cannot contain a bash-visible `${` at all.
 
 It is also the largest available reduction in the surface area the Impact
-section calls out as the dangerous one — the path-space code that almost never
-executes.
+section calls out as the dangerous one — the path-space code, which the corrected
+(k) scope note establishes runs on every subdirectory launch rather than almost
+never.
 
-**(f) Exclude harness state by explicit pathspec, not by ambient gitignore — and
-exclude `.loops/` and `.ll/` as wholes, not just `run_dir`.** This repo happens to
-gitignore `.loops/runs/` (`.gitignore:88`), so `--exclude-standard` hides
-`run_dir` here *by accident*. A consuming project without those entries would see
-every legitimate run-dir artifact as an out-of-scope write. Exclude explicitly,
-following `general-task.yaml`'s `final_verify_spin_gate` idiom
+**(f) Exclude harness state by explicit pathspec, not by ambient gitignore —
+exclude `.loops/` and `.ll/` as wholes rather than just `run_dir`, and exclude them
+at *any depth*, not only at the repo root.** This repo happens to gitignore
+`.loops/runs/` (`.gitignore:88`), so `--exclude-standard` hides `run_dir` here *by
+accident*. A consuming project without those entries would see every legitimate
+run-dir artifact as an out-of-scope write. Exclude explicitly, adapting
+`general-task.yaml`'s `final_verify_spin_gate` idiom
 (`git diff "$BASELINE_REF" -- . ':(exclude).loops/'`).
+
+**The pathspecs must be `':(exclude,glob)**/.loops/**'` and
+`':(exclude,glob)**/.ll/**'`, not the root-anchored `':(exclude).loops/'` form the
+precedent uses.** This is the correction the 2026-08-27 *third* review pass made,
+and it is load-bearing rather than cosmetic:
+
+- `ll-loop run` derives `run_dir` from the **launch directory**, not the project
+  root. `cli/loop/__init__.py:57` takes the raw relative config string
+  (`Path(config.loops.loops_dir)`, i.e. `".loops"` — note it does **not** call
+  `config.get_loops_dir()`, which would anchor to `project_root`), and
+  `cli/loop/run.py:102` resolves it with a bare `.resolve()`, i.e. against `$(pwd)`.
+  `run.py:199` then builds `run_dir = <cwd>/.loops/runs/<instance>/`.
+- Shell states inherit that same cwd: `ExecutorState.working_dir` defaults to
+  `None` and the action subprocess runs with `cwd=self.working_dir`
+  (`fsm/executor.py:2482`).
+- So a run launched from `scripts/` writes its run dir to
+  `<repo>/scripts/.loops/runs/…`. A root-anchored `':(exclude).loops/'` — which
+  `-C "$ROOT"` deliberately anchors to `<repo>/.loops/` — does not cover it, and
+  `.gitignore:88` (`.loops/runs/`, leading-slash-anchored) does not either.
+
+Without the glob form the gate therefore **fires on its own run-dir scaffolding on
+every subdirectory launch** — the exact scenario in the Use Case, in behavioral case
+(vii), and in the live "launched from a repo subdirectory" acceptance criterion.
+Verified against git 2.52: `':(exclude,glob)**/.loops/**'` excludes both
+`<root>/.loops/` and `<subdir>/.loops/` while leaving `<subdir>/other.txt` visible;
+the root-anchored form leaves `<subdir>/.loops/w.txt` in the result set.
+
+Case (vii-c) is the guard.
 
 The exclusion must cover:
 
@@ -317,10 +479,12 @@ defeat the gate. It is a third entry for the guide's limits list, next to the
 one-shot window and the gitignored-write blind spot, so the next person to hit it
 recognizes it rather than filing it as a bug.
 
-**(i) Cover untracked *and* tracked changes.** The source incident's `research/*.md`
-files were new/untracked, so a tracked-only `git diff --name-only` misses the exact
-failure mode this issue targets; conversely an untracked-only check misses an
-in-place overwrite of a tracked file. Check both.
+**(i) Cover untracked *and* tracked changes. SUBSUMED BY (a).** The source
+incident's `research/*.md` files were untracked, so a tracked-only
+`git diff --name-only` misses the exact failure mode this issue targets; an
+untracked-only check misses an in-place overwrite of a tracked file. (a)'s unified
+map *is* the union of both sides, baselined symmetrically. Retained as a lettered
+requirement because it is cited by ID elsewhere.
 
 **(j) Define the non-repo behavior — and the empty-repo behavior with it.**
 `workflow-generator` can be run outside a git repo, where `git rev-parse HEAD`
@@ -359,17 +523,36 @@ if the exclusion is instead applied as a prefix-strip over git's relative output
 the comparison silently never matches and the gate passes everything. Neither
 failure announces itself.
 
-**Scope note — relativization is the fallback path, not the main mechanism.**
-The runner's default `run_dir` is `.loops/runs/<loop>-<ts>/`
-(`fsm/validation/meta_rules.py:194`), which requirement (f)'s `.loops/`-wide
-exclusion **already subsumes**. So in the overwhelmingly common case the gate
-needs no relativization at all. Requirement (k)(1) below exists for one specific
-configuration: a non-default `--run-dir` that lands *inside* the worktree but
-outside `.loops/` and `.ll/`. Requirement (k)(3)'s symlink normalization is likewise
-reachable only on that path. Implement (k)(1)/(k)(3) as a guarded branch rather than
-as unconditional machinery in front of every run — that is what keeps the Impact
-section's Medium risk rating honest, since the code most likely to be wrong is
-also the code that almost never executes.
+**Scope note — CORRECTED 2026-08-27 (third review pass). Relativization is on the
+common path, not a rare fallback.**
+
+_(This note previously read: "relativization is the fallback path, not the main
+mechanism … the code most likely to be wrong is also the code that almost never
+executes," on the reasoning that the default `run_dir` is `.loops/runs/<loop>-<ts>/`
+(`fsm/validation/meta_rules.py:194`) and is therefore subsumed by requirement (f)'s
+`.loops/`-wide exclusion. That reasoning silently assumed `run_dir` is anchored to
+the repo root. It is not — see (f): it is anchored to the **launch directory**
+(`cli/loop/run.py:102`'s bare `.resolve()`, states inheriting cwd via
+`executor.py:2482`). The conclusion drawn from it — implement (k)(1)/(k)(3) as a
+guarded branch — was therefore wrong, and is reversed below.)_
+
+Two independent things follow from the cwd-anchoring:
+
+1. Requirement (f)'s **glob** exclusions (`':(exclude,glob)**/.loops/**'`) restore
+   the subsumption the old note claimed: with them, a default `run_dir` at any
+   depth is excluded. Root-anchored exclusions do not.
+2. Requirement (k)(1)'s relativization is nonetheless exercised on **every
+   subdirectory launch**, because `${captured.run_dir.output}` is
+   `$(pwd)`-absolute (`init`'s `case` block) while git reports root-relative paths.
+   Relativizing `<repo>/scripts/.loops/runs/x/` against `<repo>` is not an exotic
+   configuration; it is what happens whenever a maintainer runs the loop from
+   anywhere but the repo root — which the Use Case and the live acceptance
+   criterion both require.
+
+**Implement (k)(1) and (k)(3) as unconditional machinery on the main path, not as
+a guarded branch.** The guarded-branch instruction previously carried in
+Implementation Step 2 is withdrawn. The one genuinely rare configuration is
+(k)(2)'s run-dir-outside-the-worktree, which keeps its own branch.
 
 Requirements:
 
@@ -422,17 +605,15 @@ Requirements:
    for the `tmp_path`-based tests, not a theoretical one. Per (e) this is
    `os.path.realpath` in the `python3` body, not a shell construction.
 
-**(l) Escape bash brace-expansions — the FSM interpolates the action string
-first.** This gate is the first state in the loop to need real shell variables
-(`$(git rev-parse --show-toplevel)`, a repo-root prefix, a relativized run dir).
-The FSM's interpolation engine runs over the **entire** action text before
-`bash -c` ever sees it, so a bare `${VAR}` is parsed as a namespace reference and
-raises `expected namespace.path`. Use `$VAR` or escape as `$${VAR}` —
-`common.yaml:459-460` (`$${ID}`) is the in-repo precedent. Per (e)'s decision the
-gate body is mostly Python, where the `${` sequence rarely appears at all, so this
-is a residual check on the surrounding shell preamble (`ROOT`, `BASELINE_REF`)
-rather than a pervasive concern. The `init` additions in (a) use bare `$DIR`/`$ROOT`
-and sidestep it entirely, matching `general-task.yaml`'s local-variable idiom.
+**(l) Escape bash brace-expansions — DISCHARGED BY (e), not managed.** The FSM
+interpolates the entire action text before `bash -c` sees it, so a bare `${VAR}` is
+parsed as a namespace reference and raises `expected namespace.path` (escape is
+`$${VAR}`; precedent `common.yaml:459-460`). (e)'s single-quoted body contains no
+bash-visible `${…}` by construction, and the preamble (`ROOT`, `BASELINE_REF`) plus
+the `init` additions use the bare-`$VAR` idiom. **No `$${VAR}` escape should appear
+anywhere in this issue's code.** Kept as a lettered requirement so a later edit
+reintroducing a braced local — or reverting the body to double quotes — is
+recognized as reopening a closed hazard.
 
 **(m) Step budget — verified, no change needed.** `max_steps` is **already 45**
 (`workflow-generator.yaml:32`, bumped by BUG-3327). An earlier research pass
@@ -559,6 +740,12 @@ baseline-ref + `git diff --name-only` shape.
   - (iv) **a pre-existing untracked file present before `init` → exit 0** (the
     dirty-tree false-positive guard — the case that wedges the loop if the baseline
     snapshot is omitted)
+  - (iv-b) **a pre-existing *modified tracked* file, dirty before `init` → exit 0.**
+    The tracked-side analogue of (iv) and the guard for the defect (a)'s revision
+    fixes: with an untracked-only baseline this case fails permanently, on every run,
+    in any repo with a dirty tracked file. It is also the unit-level stand-in for the
+    live "dirty working tree" acceptance criterion, which as previously specified
+    would have failed for this reason rather than for the planted violation.
   - (v) run dir not gitignored → exit 0 (proves the explicit pathspec exclusion,
     not ambient gitignore, is doing the work). **This case is also the (a1)
     ordering guard**: it fails if the baseline is captured before `init`'s
@@ -580,6 +767,16 @@ baseline-ref + `git diff --name-only` shape.
     partner, per requirement (k)(1b): (vii) alone passes trivially against a gate
     that enumerates only the cwd subtree and therefore sees nothing. Without this
     case the cwd-scoping defect ships silently green.
+  - (vii-c) **loop invoked from a repo subdirectory with the run dir at
+    `<subdir>/.loops/runs/<instance>/` — the real default for that launch — and
+    only run-dir files written** → exit 0. This is the guard for requirement (f)'s
+    glob exclusions and the corrected (k) scope note. Case (vii) as previously
+    written does **not** cover it: a test that plants the run dir under the *root*
+    `.loops/` while merely running `bash -c` from a subdirectory passes against the
+    root-anchored `':(exclude).loops/'` form, which fires on every real
+    subdirectory launch. The run dir must be built at `<subdir>/.loops/…`, and the
+    repo's `.gitignore` must not cover it (mirroring `.gitignore:88`'s
+    leading-anchored `.loops/runs/`, which does not match at depth).
   - (viii) **run dir outside the worktree, clean repo** (an absolute path under
     `tmp_path`, not under the repo) → exit 0, per the corrected (k)(2). The gate
     drops the run-dir pathspec, keeps the `.loops/`/`.ll/` exclusions, and finds
@@ -602,12 +799,32 @@ baseline-ref + `git diff --name-only` shape.
   - (xi) **on a violation, `${run_dir}/.scope_violations.txt` exists and names the
     offending path(s)**; on a pass it exists and is empty. Requirement (n) — the
     artifact `diagnose` reads.
-- One case for (d), now **unconditional** given that requirement's decision:
+  - (xiv) **a clean tree at `init` (baseline map is exactly `{}`) with an
+    out-of-scope file planted during the run** → non-zero, and **not** the
+    skip-with-warning escape. The guard for (a)'s file-level escape condition: `{}`
+    is falsy, so a gate written as `if not baseline: skip` passes this run green
+    while announcing that it skipped. Assert both the non-zero exit *and* the
+    absence of the escape warning on stdout — cases (vi)/(vi-b) assert that warning
+    is present, and nothing else distinguishes the two readings. This is the
+    always-green variant with the widest blast radius, since it fires on the
+    cleanest repos.
+- Three cases for the unified map in (a) — (xii) unconditional given (d)'s
+  decision, (xii-b) and (xii-c) added by the 2026-08-27 second review pass. Each
+  is a *value* change the corresponding name-only formulation passes green:
   - (xii) **a pre-existing untracked file (present in the baseline) overwritten in
     place, outside the run dir** → non-zero. This is the case a name-only set
     difference passes green, and the direct analogue of
     `test_untracked_file_content_edit_resets_counter`
     (`test_builtin_loops.py:3081-3096`).
+  - (xii-b) **a tracked file already dirty before `init`, modified *again* during
+    the run** → non-zero. (iv-b)'s mandatory negative partner: a fix for (iv-b) that
+    subtracts the dirty-tracked set *by path* passes (iv-b) and fails only here, so
+    without this case the naive fix ships as a new always-green hole on the tracked
+    side.
+  - (xii-c) **a pre-existing untracked file outside the run dir, deleted during the
+    run** → non-zero. The `DELETED` sentinel. A set difference that looks only for
+    newly-appeared paths sees the set get *smaller* and passes green; this case is
+    the only thing that distinguishes the two.
 - One case for (b), on `init` rather than the gate:
   - (xiii) **`init`'s stdout is exactly one line**, asserted both in a git repo and
     in a non-repo directory (where all three new git commands fail). Extract
@@ -680,9 +897,13 @@ section; `## Tests` is not part of the FEAT template):_
   3. the human-concurrent-edit false positive (h),
   4. the wholesale exclusion of the `.loops/` and `.ll/` harness-state
      directories (f) — anything a loop writes there is unaudited by design.
+  5. the hashing cost (d) — the changed-or-untracked set is hashed twice per run
+     (`init` and gate). Bounded by `--exclude-standard` in practice; a project with
+     a large non-ignored untracked tree pays for it.
 
   The in-place-overwrite hole is **not** on this list: requirement (d) closes it
-  by decision.
+  by decision. Neither is the tracked-dirty false positive or the untracked-deletion
+  blind spot: (a)'s unified changed-set map closes both.
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `docs/reference/loops.md` — the `workflow-generator` section's `### State Graph`
@@ -728,24 +949,45 @@ _Added by `/ll:refine-issue` — 2026-08-27 — based on codebase analysis:_
 - [ ] `check_intent_scope` exists as its own `action_type: shell` /
       `evaluate: {type: exit_code}` state, with `on_yes: sketch_state_graph` and
       `on_no: diagnose` — **not** `capture_intent` and not `count_intent_retry`.
-- [ ] The gate body is a `python3 -c` script per (e), matching `validate_intent`'s
-      existing shape in this loop.
+- [ ] The gate body is a **single-quoted** `python3 -c '…'` script per (e), with
+      `$ROOT`, `$BASELINE_REF` and the run dir passed as `sys.argv` — not a
+      double-quoted body with shell-expanded values. No `$${VAR}` escape appears
+      anywhere in the state (requirement (l) is discharged, not managed).
 - [ ] `validate_intent.on_yes` targets `check_intent_scope`;
       `validate_intent.on_no` is still `count_intent_retry`.
 - [ ] `init` resolves `ROOT` via `git rev-parse --show-toplevel` and writes
-      `baseline-ref.txt` and the untracked baseline, all git calls via
-      `git -C "$ROOT"`, and its stdout contract (`capture: run_dir`) is unchanged.
+      `baseline-ref.txt` plus the **unified changed-set map** (tracked ∪ untracked,
+      `path -> hash`, `DELETED` sentinel), all git calls via `git -C "$ROOT"`, and
+      its stdout contract (`capture: run_dir`) is unchanged.
+- [ ] A **tracked file already modified before `init`** does not trip the gate
+      (case (iv-b)), and modifying it *again* during the run does (case (xii-b)).
+      A path-only subtraction of the dirty-tracked set does not satisfy this pair.
+- [ ] **Deleting** a pre-existing untracked file outside the run dir trips the gate
+      (case (xii-c)) — the changed-set comparison is value-based, so a shrinking
+      path set is not silently green.
+- [ ] `init` pre-truncates `.scope_violations.txt` alongside `.emit_errors.txt` and
+      `.intent_errors.txt`, inside the step-1 block that precedes the baseline
+      capture (requirement (a1)).
+- [ ] A **missing, zero-byte, or unparseable** `baseline-changed-set.json` takes
+      the skip-with-warning escape — it must not read as "the tree was clean."
+      The condition is file-level; a successfully-parsed `{}` (a genuinely clean
+      tree) is a **valid baseline** and must gate normally, not escape
+      (case (xiv)). `if not baseline:` does not satisfy this criterion.
 - [ ] `init`'s statement order is: existing `mkdir`/truncate block → `ROOT` +
       baseline capture → the `case`/`echo` stdout block last (requirement (a1)).
       Case (v) is the regression guard.
 - [ ] `init` emits **exactly one line** on stdout — asserted in a git repo and in
       a non-repo, where all three git commands fail (requirement (b), case (xiii)).
+      Every git call **inside** the `python3` body captures its own stdout and
+      stderr; none inherits fd 1 (requirement (b)).
 - [ ] `init`'s baseline capture and the gate's current-set capture carry matching
       `# HARNESS:` comments identifying them as a deliberate matched pair, and use
       byte-identical invocations including both `':(exclude)'` pathspecs
       (requirement (c)).
-- [ ] The untracked baseline is **content-hashed** (`path -> hash`), not name-only,
-      and case (xii) passes (requirement (d)).
+- [ ] The baseline is **content-hashed** (`path -> hash`), not name-only, on both
+      the tracked and untracked sides, and cases (xii)/(xii-b)/(xii-c) pass
+      (requirements (a), (d)). Hashing is a **single batched**
+      `git hash-object --stdin-paths` call per site, not one spawn per path.
 - [ ] Git enumeration is NUL-delimited (`-z`) end to end, with the set difference
       computed in Python (requirement (e)).
 - [ ] A run dir **outside the worktree** gates normally — clean → exit 0,
@@ -758,6 +1000,15 @@ _Added by `/ll:refine-issue` — 2026-08-27 — based on codebase analysis:_
       with no cwd-relative `-- .` pathspec.
 - [ ] The gate's exclusions cover `.loops/` **and** `.ll/` as whole directories and
       do not rely on ambient gitignore (requirement (f), case (x)).
+- [ ] The exclusions are **depth-agnostic globs**
+      (`':(exclude,glob)**/.loops/**'`, `':(exclude,glob)**/.ll/**'`), not
+      root-anchored prefixes. A run launched from a repo **subdirectory** — whose
+      default run dir is `<subdir>/.loops/runs/…`, not `<root>/.loops/…` — passes
+      with only run-dir files written (case (vii-c)).
+- [ ] The run-dir relativization from (k)(1) and the `os.path.realpath`
+      normalization from (k)(3) are on the **main path**, not behind a
+      non-default-`--run-dir` guard. Only (k)(2)'s outside-the-worktree handling is
+      a branch.
 - [ ] On violation the gate exits non-zero, prints the offending paths, and
       writes them to `${run_dir}/.scope_violations.txt`; on pass that file exists
       and is empty.
@@ -768,8 +1019,10 @@ _Added by `/ll:refine-issue` — 2026-08-27 — based on codebase analysis:_
       indistinguishable from the always-green bug). Run-dir-outside-the-worktree
       is **not** in this set — see the criterion above.
 - [ ] A pre-existing untracked file present before `init` does not trip the gate.
-- [ ] Behavioral cases (i)–(xiii) all pass, including the mandatory negative
-      partners (vii-b), (viii-b) and (ix), and (xii).
+- [ ] All **twenty-one** behavioral cases pass — (i)–(xiv) plus the `-b`/`-c`
+      partners (iv-b), (vi-b), (vii-b), (vii-c), (viii-b), (xii-b), (xii-c) —
+      including the mandatory negative partners (vii-b), (viii-b), (ix), (xii-b),
+      (xii-c) and (xiv).
 - [ ] **The gate has been observed red** against a deliberately planted
       out-of-scope write in a live `workflow-generator` run, launched from a repo
       subdirectory with a dirty working tree — not merely green in CI.
@@ -778,18 +1031,30 @@ _Added by `/ll:refine-issue` — 2026-08-27 — based on codebase analysis:_
       justified by this issue ID — `partial-route` is the category to watch;
       `no-scope` is a non-risk since the loop already declares `scope:`).
 - [ ] `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` documents the gate and all
-      **four** limits: the one-shot window, the gitignored-write blind spot (g),
-      the human-concurrent-edit false positive (h), and the wholesale `.loops/` /
-      `.ll/` exclusion (f). The in-place-overwrite hole is not among them —
-      requirement (d) closes it. `docs/reference/loops.md`'s state-graph diagram
+      **five** limits: the one-shot window, the gitignored-write blind spot (g),
+      the human-concurrent-edit false positive (h), the wholesale `.loops/` /
+      `.ll/` exclusion (f), and the double-hash cost (d). The in-place-overwrite,
+      tracked-dirty and untracked-deletion holes are not among them — requirements
+      (d) and (a) close them. `docs/reference/loops.md`'s state-graph diagram
       includes the new state and its `on_no -> diagnose` branch.
 
 ## Program Design
 
 ### Signatures
 
+- `changed_set(root: str, ref: str) -> dict[str, str]` — the shared construct from
+  (a): union of `git diff --name-only -z <ref>` and `git ls-files -o
+  --exclude-standard -z`, both root-scoped (`-C "$ROOT"`) and both carrying the
+  depth-agnostic `':(exclude,glob)**/.loops/**'` / `':(exclude,glob)**/.ll/**'`
+  exclusions, mapped to `path -> content-hash` via one batched
+  `git hash-object --stdin-paths` call, with a `DELETED` sentinel for paths git
+  reports that are absent from the worktree. Every internal git call captures its
+  own stdout and stderr (requirement (b)). Emitted as one identical
+  single-quoted `python3 -c` literal at **both** call sites — `init` and
+  `check_intent_scope` — differing only in argv (requirement (c)).
 - `init.action: str` — additionally resolves `ROOT` and writes `baseline-ref.txt`
-  plus the content-hashed untracked baseline; its stdout contract
+  plus `baseline-changed-set.json` (the `changed_set` map above), and pre-truncates
+  `.scope_violations.txt` in its existing step-1 block; its stdout contract
   (`capture: run_dir`) is unchanged. Two independent ordering invariants apply:
   **sole stdout writer** (`capture` stores the state's *entire* stdout —
   `executor.py:2370-2372`, `result.output.rstrip("\n\r")` — so every new command
@@ -846,25 +1111,35 @@ _Added by `/ll:refine-issue` — 2026-08-27 — based on codebase analysis:_
 
 ## Implementation Steps
 
-1. Add `ROOT` resolution and both baseline captures to `init` (lines 44-61),
+0. Write the shared `changed_set(root, ref)` body from (a) first — it is the one
+   construct both `init` and the gate embed verbatim, and every other step depends
+   on its shape. Union of tracked-diff and untracked-listing, root-scoped, both
+   **glob** `':(exclude,glob)'` pathspecs from (f), `path -> hash` with a `DELETED`
+   sentinel, hashed via a single batched `git hash-object --stdin-paths` call, with
+   every internal git call capturing its own stdout/stderr per (b).
+1. Add `ROOT` resolution and the baseline captures to `init` (lines 44-61),
    following `general-task.yaml:76`'s `git rev-parse HEAD > baseline-ref.txt`
-   idiom plus a content-hashed `git ls-files -o --exclude-standard -z` snapshot
-   per (d) — all via `git -C "$ROOT"` per (k)(1b), with both `':(exclude)'`
-   pathspecs from (f), written as an explicitly-commented matched pair with the
-   gate per (c). **Placement matters twice**: after the existing
-   `mkdir`/truncate block per (a1), and before the `case`/`echo` block, which
-   stays last and alone. Redirect every new command's stdout to a file (or into
-   `$(…)`) and stderr to `/dev/null` so `init` stays the sole stdout writer per
-   (b).
-2. Add the `check_intent_scope` state as a `python3 -c` body per (e) — the
-   `.loops/`/`.ll/`-wide exclusions from (f) as the primary mechanism, the
-   root-scoped enumeration from (k)(1b), the non-repo/zero-commit escape from
-   (j), and the residual `$VAR` brace handling from (l) in the shell preamble.
+   idiom plus `changed_set` serialized to `baseline-changed-set.json` per (a)/(d)
+   — all via `git -C "$ROOT"` per (k)(1b), written as an explicitly-commented
+   matched pair with the gate per (c). Extend the existing truncate block with
+   `: > "$DIR/.scope_violations.txt"` per (a1). **Placement matters twice**: the
+   baseline goes after that `mkdir`/truncate block per (a1), and before the
+   `case`/`echo` block, which stays last and alone. Redirect every new command's
+   stdout to a file (or into `$(…)`) and stderr to `/dev/null` so `init` stays the
+   sole stdout writer per (b).
+2. Add the `check_intent_scope` state as a **single-quoted** `python3 -c '…'` body
+   with `sys.argv`-passed values per (e) — it recomputes `changed_set` and flags
+   any entry that is new or whose value differs. Plus the depth-agnostic
+   `':(exclude,glob)**/.loops/**'` / `':(exclude,glob)**/.ll/**'` exclusions from
+   (f) as the primary mechanism, the root-scoped enumeration from (k)(1b), the
+   non-repo/zero-commit escape from (j) — extended to cover a **missing, zero-byte
+   or unparseable** `baseline-changed-set.json` per (a), with a parsed `{}`
+   explicitly *not* escaping — and the bare-`$VAR` preamble idiom from (l).
    Add the repo-root relativization from (k)(1) and `os.path.realpath`
-   normalization from (k)(3) as a **guarded branch** for a non-default
-   in-worktree `--run-dir`, per the scope note in (k). Handle
+   normalization from (k)(3) **on the main path** — every subdirectory launch
+   exercises them, per the corrected scope note in (k). Handle
    outside-the-worktree by dropping the run-dir pathspec and gating normally per
-   the corrected (k)(2) — **not** by escaping.
+   the corrected (k)(2) — **not** by escaping; that is the only guarded branch.
 3. Retarget `validate_intent`'s `on_yes` (line 118) to it. Leave
    `on_no: count_intent_retry` (line 119) untouched.
 4. Have the gate write `${run_dir}/.scope_violations.txt` per (n) — truncated to
@@ -873,17 +1148,20 @@ _Added by `/ll:refine-issue` — 2026-08-27 — based on codebase analysis:_
    `diagnose`'s failure enumeration.
 5. Add the fence clause to `diagnose`'s prompt per (o).
 6. Verify `max_steps` is 45 per (m) — expected to be a no-op.
-7. Add the tests above (cases i–xiii, plus the state-set, exit_code-shape,
-   routing-edge, `run_dir`-usage and `diagnose`-text test updates). Case (xiii)
-   targets `init`, not the gate; case (v) doubles as the (a1) ordering guard.
+7. Add the tests above (all twenty-one cases — (i)–(xiv) plus (iv-b), (vi-b),
+   (vii-b), (vii-c), (viii-b), (xii-b), (xii-c) — plus the state-set,
+   exit_code-shape, routing-edge, `run_dir`-usage and `diagnose`-text test
+   updates). Case (xiii) targets `init`, not the gate; case (v) doubles as the (a1)
+   ordering guard; case (vii-c) must build its run dir under `<subdir>/.loops/`,
+   not the root one, or it does not test what it claims.
 8. Verify with `ll-loop validate`, plus a re-run of `workflow-generator` **from a
    deliberately dirty working tree and from a repo subdirectory**, confirming that
    pre-existing untracked files do not trip the gate and that the gate still fires
    on a deliberately planted out-of-scope write **placed outside the invocation
    subdirectory**. **A green gate proves nothing until you have seen it go red.**
-9. Document the gate and its four limits: the one-shot window, the
+9. Document the gate and its five limits: the one-shot window, the
    gitignored-write blind spot (g), the human-concurrent-edit false positive (h),
-   and the wholesale `.loops/`/`.ll/` exclusion (f).
+   the wholesale `.loops/`/`.ll/` exclusion (f), and the double-hash cost (d).
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
@@ -914,10 +1192,11 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 - **Priority**: P3 — defense-in-depth. BUG-3327's fence removes the cause; this
   catches regressions and the classes the fence does not cover.
-- **Effort**: Medium — one new state, `ROOT` resolution plus two `init` baselines,
-  root-scoped enumeration, a guarded relativization branch, one escape path (no
-  repo / no commits), a violation report artifact plus `diagnose` edits, and
-  fourteen behavioral test cases
+- **Effort**: Medium — one new state, `ROOT` resolution plus the shared
+  `changed_set` construct and its `init` baseline, root-scoped enumeration, a
+  relativization on the main path, one escape path (no repo / no commits / no
+  usable baseline), a violation report artifact plus `diagnose` edits, and
+  twenty-one behavioral test cases
 - **Risk**: Medium — the gate can misfire in **both** directions: a false positive
   routes to `diagnose` and fails the run, while a path-space mismatch
   (requirement (k)) yields a gate that is permanently green and reports safety it
@@ -927,19 +1206,35 @@ _These touchpoints were identified by wiring analysis and must be included in th
   and the red-gate test case are requirements, not polish — and why the gate must
   not route back to `capture_intent`.
 
-  Three of the always-green variants are pinned by mandatory negative test
+  Six of the always-green variants are pinned by mandatory negative test
   partners rather than left to review: (vii-b) for cwd-scoped enumeration,
-  (viii-b) for the outside-the-worktree escape, and (ix) for the exclusion
-  pathspec. Each of their positive partners passes trivially against the
-  corresponding broken gate, so the pairs are not optional.
+  (viii-b) for the outside-the-worktree escape, (ix) for the exclusion pathspec,
+  (xii-b) for a path-only subtraction of the dirty-tracked set, (xii-c) for
+  untracked deletions, and (xiv) for a falsy-`{}` baseline escaping on a clean
+  tree. Each of their positive partners passes trivially against the corresponding
+  broken gate, so the pairs are not optional.
 
-  Two decisions lower this risk relative to the original framing. The (k)-scope
-  note: the default `run_dir` (`.loops/runs/…`) is covered by the `.loops/`
-  exclusion alone, so the relativization code most likely to be subtly wrong is
-  also the code that almost never runs. And requirement (e)'s `python3` body:
-  the set difference, content hashing, and symlink normalization become library
-  calls instead of hand-rolled shell, which is where the subtle always-green
-  failures were most likely to originate.
+  The false-positive direction gained a real instance in the 2026-08-27 second
+  review pass: the tracked side had no baseline at all, so any repo with a dirty
+  tracked file failed the gate permanently. (a)'s unified changed-set map fixes it
+  and, in the same construct, closes the untracked-deletion always-green hole.
+
+  One decision lowers this risk relative to the original framing: requirement
+  (e)'s `python3` body, which turns the set difference, content hashing, and
+  symlink normalization into library calls instead of hand-rolled shell — where the
+  subtle always-green failures were most likely to originate.
+
+  A second claimed mitigation was **withdrawn by the 2026-08-27 third review
+  pass**. It read: "the default `run_dir` (`.loops/runs/…`) is covered by the
+  `.loops/` exclusion alone, so the relativization code most likely to be subtly
+  wrong is also the code that almost never runs." Both halves are false, and in
+  opposite directions: `run_dir` is anchored to the **launch directory**
+  (`cli/loop/run.py:102`, `executor.py:2482`), so a root-anchored `.loops/`
+  exclusion misses it entirely on subdirectory launches — a permanent false
+  positive — and the relativization path runs on every such launch rather than
+  almost never. Requirement (f)'s glob exclusions restore the first half; the
+  corrected (k) scope note fixes the second. The risk rating stays Medium, but it
+  no longer rests on that argument.
 - **Breaking Change**: No
 
 ## Scope
@@ -954,28 +1249,55 @@ Split from BUG-3327 on 2026-08-26 (Proposed Solution §2 and its associated
 requirements, tests, and Impact analysis moved here verbatim). BUG-3327 retains the
 brief-fencing work.
 
-**Pre-implementation review pass, 2026-08-27.** Five changes:
-1. `init` had no `ROOT` variable, though the ACs mandated `git -C "$ROOT"` —
-   added as an explicit precondition in (a).
-2. New requirement (a1): the baseline capture must follow `init`'s existing
-   `mkdir`/truncate block, or the loop's own scaffolding reads as out-of-scope
-   writes in any project that does not gitignore the run dir. Case (v) is the
-   guard.
-3. The (a) sketch lacked the exclusion pathspec that (c) requires on both sides;
-   made symmetric.
-4. The two open decisions — content-hash vs name-only (d), and delimiter (e) —
-   are resolved rather than deferred to implementation: content-hashed baselines,
-   NUL-delimited git output, and a `python3 -c` gate body. That decision also
-   discharges (k)(3) and most of (l), and makes case (xii) unconditional.
-5. `.ll/` added to the exclusion set (f) — this repo gitignores it only as a list
-   of individual entries, so `.ll/decisions.d/` fragments would trip the gate.
-   The `no-scope` warning-budget watch is narrowed to `partial-route`.
+### Review history
 
-Requirements were renumbered sequentially (a)–(p) in the same pass; the previous
-labels ran `(a) (a1) (a3) (a4) (a2) (b) (b2) (b3) (c) (d) (e) (f) (g) (i) (j) (h)`.
-Mapping for anyone holding an older reference: `a1->b`, `a2->c`, `a3->d`, `a4->e`,
-`b->f`, `b2->g`, `b3->h`, `c->i`, `d->j`, `e->k`, `f->l`, `g->m`, `i->n`, `j->o`,
-`h->p`. The new `(a1)` is net-new content, not the old one.
+Three pre-implementation review passes have run against this issue. The current
+spec is the body above; this is only the record of what changed and why, so a
+reader who remembers an earlier version can see what moved.
+
+- **2026-08-27, first pass.** Added `ROOT` resolution to `init` as an explicit
+  precondition; added (a1) (baseline capture must follow `init`'s `mkdir`/truncate
+  block, or the loop's own scaffolding reads as out-of-scope writes); made (a)'s
+  exclusion pathspec symmetric across both sites per (c); resolved the two open
+  decisions — content-hashed baselines (d) and NUL-delimited git output consumed by
+  a `python3 -c` body (e) — rather than deferring them to implementation; added
+  `.ll/` to the exclusion set (f).
+- **2026-08-27, second pass.** Rewrote (a): the baseline had covered only the
+  untracked set, so any repo with a pre-existing dirty *tracked* file failed the
+  gate permanently on every run — the exact failure (a) exists to prevent, applied
+  to one side only. The replacement is one unified `path -> content-hash` map over
+  tracked ∪ untracked, which subsumes (d) and (i) and closes a never-recorded hole:
+  **deletion** of a pre-existing untracked file was silently green. Amended (e) to
+  a *single-quoted* body with `sys.argv`-passed values, discharging (l) outright.
+  Added cases (iv-b), (xii-b), (xii-c); corrected the case count to nineteen.
+  Pre-truncated `.scope_violations.txt` in `init`.
+- **2026-08-27, third pass.** Four changes, all recorded in place above:
+  1. **(f) exclusions are depth-agnostic globs.** `run_dir` is anchored to the
+     **launch directory**, not the repo root (`cli/loop/__init__.py:57` takes the
+     raw relative config string, `cli/loop/run.py:102` resolves it against `$(pwd)`,
+     `run.py:199` builds `<cwd>/.loops/runs/…`, and states inherit that cwd via
+     `executor.py:2482`). A root-anchored `':(exclude).loops/'` therefore misses
+     `<subdir>/.loops/`, and `.gitignore:88` does not cover it either — so the gate
+     fired on its own scaffolding on every subdirectory launch, which is the Use
+     Case, case (vii), and the live acceptance criterion. Case (vii-c) added.
+  2. **(k)'s scope note reversed.** Relativization is on the main path, exercised by
+     every subdirectory launch — not a rare guarded branch. Implementation Step 2
+     and the Impact risk rationale both corrected; the withdrawn mitigation is
+     recorded in Impact rather than deleted.
+  3. **(a)'s escape condition is file-level.** A clean tree serializes as `{}`,
+     which is falsy, so `if not baseline: skip` disabled the gate on the cleanest
+     repos while announcing that it skipped. Case (xiv) added.
+  4. **Hashing is one batched `git hash-object --stdin-paths` call per site**, and
+     (b)'s sole-stdout-writer obligation extends *inside* the `python3` body — an
+     uncaptured `subprocess.run` there inherits `init`'s fd 1 and corrupts
+     `capture: run_dir`.
+  Requirements (d), (i) and (l) were compacted to pointers at their own labels,
+  since (a) and (e) now carry their mechanisms; they are retained as lettered
+  requirements only because they are cited by ID elsewhere.
+
+Requirement labels were renumbered sequentially to (a)–(p) in an earlier pass. If
+you are holding a reference from before that, re-read the requirement by its text
+rather than its letter.
 
 Source: `postmortems/workflow-generator-output-json-gate-gap.md` §4, §5 R5.
 
