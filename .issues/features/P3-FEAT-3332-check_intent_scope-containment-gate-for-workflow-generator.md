@@ -4,10 +4,11 @@ type: FEAT
 title: 'check_intent_scope: runtime containment gate asserting workflow-generator
   writes stay under run_dir'
 priority: P3
-status: open
+status: done
 discovered_by: split-from-BUG-3327
 discovered_date: '2026-08-26'
 captured_at: '2026-08-26T21:00:00Z'
+completed_at: '2026-08-27T15:11:19Z'
 depends_on:
 - BUG-3327
 confidence_score: 100
@@ -1492,6 +1493,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-27T15:11:01 - `515588de-c7dc-49b8-8055-f5d45cbe0d70.jsonl`
 - `/ll:confidence-check` - 2026-08-27T14:46:00 - `481326d9-9c13-4580-8e5f-a3cef3648574.jsonl`
 - `/ll:format-issue` - 2026-08-27T02:20:19 - `0cce9f36-f0aa-4271-8573-3bd29b6d01a6.jsonl`
 - `/ll:wire-issue` - 2026-08-27T01:49:46 - `b4592890-2b63-4442-b15e-89282998dd3d.jsonl`

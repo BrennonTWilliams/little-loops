@@ -156,6 +156,9 @@ ll-loop run workflow-generator "triage a new bug report: read it, grep for the o
 
 ```
 init → capture_intent → validate_intent (loops back on fail)
+     → check_intent_scope (containment gate: changed-file set since init ⊆ run_dir)
+         on_no  → diagnose (not retryable — the out-of-scope file is already written)
+         on_yes → sketch_state_graph
      → sketch_state_graph → validate_sketch (loops back on fail)
      → attach_evaluators → validate_evaluators (loops back on fail)
      → resolve_routing → validate_routing (loops back on fail)

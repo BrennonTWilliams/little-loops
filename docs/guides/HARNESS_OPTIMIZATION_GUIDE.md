@@ -676,6 +676,76 @@ separate question (see FEAT-3328); today it is enforced only by the test suite.
 
 ---
 
+## Runtime Containment Gates
+
+BUG-3327's fence (above) prevents an LLM state from *reading* a brief as live
+instructions. It does not prevent the state from writing files outside
+`${context.run_dir}` for any other reason — a stray "let me research this first"
+detour, a hallucinated path, a tool that resolves relative paths against the wrong
+cwd. `workflow-generator.yaml`'s `check_intent_scope` (FEAT-3332) is a runtime
+*containment gate*: a non-LLM `action_type: shell` / `evaluate: {type: exit_code}`
+state that asserts the set of files changed since `init` is a subset of `run_dir`
+(plus explicit `.loops/`/`.ll/` harness-state exclusions), and fails the run into
+`diagnose` — not a retry state — if it is not.
+
+**Mechanism, in outline.** `init` baselines the entire changed-file set at launch —
+tracked *and* untracked, as a `path -> content-hash` map, not a name-only listing —
+into `baseline-changed-set.json`. `check_intent_scope` recomputes the identical map
+(the two `python3 -c` bodies are byte-identical, differing only in argv — a
+dedicated structural test enforces this) and flags any path that is new, whose hash
+changed, or whose baseline key is absent from the current map (a symmetric
+comparison, so deletions are caught too). The flagged set is then filtered by a
+post-enumeration `os.path.realpath` prefix check against `run_dir` — separator-safe,
+not a bare `startswith` — to drop legitimate run-dir writes. A non-repo or
+zero-commit repo takes a skip-with-warning escape (`check_intent_scope: SKIPPED` on
+stdout, exit 0); a missing, zero-byte, or unparseable baseline file takes the same
+escape, but a baseline that parses to `{}` (a genuinely clean tree) does not — it
+gates normally.
+
+**This pattern generalizes to any loop with a `run_dir` and an `init`-time baseline
+opportunity.** The shape to copy: baseline the changed-set at `init` (after any
+run-dir scaffolding, not before — capturing the baseline too early makes the loop's
+own scratch files read as violations, permanently), diff symmetrically at the gate,
+exclude harness state by explicit depth-agnostic pathspec rather than relying on
+ambient `.gitignore`, and route a violation to a diagnostic/terminal state directly —
+never back through a retry loop, since an already-written out-of-scope file is not
+something a retry can undo.
+
+**Five limits, by design — read these before assuming the gate is stronger than it
+is:**
+
+1. **One-shot window.** The gate audits only `init` through `validate_intent`.
+   `sketch_state_graph`, `attach_evaluators`, `resolve_routing`, `emit_artifact`, and
+   `diagnose` all run afterward and are equally capable of writing outside
+   `run_dir`; this gate does not check them. (`diagnose` itself is fenced with the
+   same "write no file this state does not explicitly ask you to write" clause as
+   `capture_intent`, but that is a fence, not a gate — nothing re-runs the
+   containment check after it.) Generalizing the gate across the remaining prompt
+   states is a separate, larger issue (FEAT-3335).
+2. **Gitignored writes are invisible.** The changed-set enumeration uses
+   `--exclude-standard`, so a write to a gitignored path (`node_modules/`, `.env`,
+   build output) is never reported. This is the correct trade — without it the gate
+   is unusable in any project with build artifacts — but it is a real hole in the
+   containment claim, not a subtle edge case.
+3. **Human-concurrent-edit false positive.** The gate audits a time window, not an
+   actor. A maintainer editing a source file in their editor while a long-running
+   loop is in flight produces a changed file outside `run_dir` and fails the run.
+   There is no fix available at this layer — git offers no provenance — and
+   fail-open would defeat the gate's purpose.
+4. **`.loops/` and `.ll/` are excluded wholesale, at any depth.** Anything a loop
+   (or the surrounding harness — the scratch-pad-redirect hook, a
+   `.ll/decisions.d/` fragment) writes under either directory is unaudited by
+   design, not merely unnoticed. A regression that starts writing genuinely
+   out-of-scope files under one of those trees would not be caught by this gate.
+5. **The changed-or-untracked set is hashed twice per run** — once at `init`, once
+   at the gate — to support content-hash comparison rather than a name-only
+   listing (needed to catch in-place overwrites of pre-existing untracked files).
+   `--exclude-standard` bounds this in practice, since build output and vendored
+   trees are gitignored in any reasonably-configured project, but a project with a
+   large *non-ignored* untracked tree pays real I/O for it.
+
+---
+
 ## See Also
 
 - [AUTOMATIC_HARNESSING_GUIDE.md](AUTOMATIC_HARNESSING_GUIDE.md) — the sibling pattern:

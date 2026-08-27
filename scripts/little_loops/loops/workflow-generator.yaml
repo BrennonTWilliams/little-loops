@@ -44,6 +44,17 @@ states:
   init:
     # HARNESS: capture the runner-injected run_dir as an absolute path (guard
     # against double-prefixing an already-absolute path, per BUG-2435).
+    #
+    # FEAT-3332: also resolve ROOT and baseline the changed-file set (tracked
+    # ∪ untracked, path -> content-hash) so check_intent_scope can later
+    # subtract "what was already dirty when this run started" from "what
+    # changed since". Ordering is load-bearing (requirement (a1)): (1) this
+    # existing mkdir/truncate block, extended with .scope_violations.txt, (2)
+    # ROOT + baseline capture, (3) the case/echo stdout block last and alone.
+    # Every new command below redirects stdout to a file (or $(...)) and
+    # stderr to /dev/null so init's stdout stays exactly one line
+    # (requirement (b)) -- capture: run_dir stores the state's ENTIRE stdout,
+    # not just its last line.
     action_type: shell
     action: |
       DIR="${context.run_dir}"
@@ -53,6 +64,102 @@ states:
       rm -f "$DIR/.emit_retry_count"
       rm -f "$DIR/.intent_retry_count"
       : > "$DIR/.intent_errors.txt"
+      : > "$DIR/.scope_violations.txt"
+      ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || ROOT=""
+      if [ -n "$ROOT" ]; then
+        git -C "$ROOT" rev-parse HEAD > "$DIR/baseline-ref.txt" 2>/dev/null || : > "$DIR/baseline-ref.txt"
+        # HARNESS: unified changed-set baseline (tracked ∪ untracked, path ->
+        # hash). Matched pair with check_intent_scope (requirement (c)) --
+        # keep this python3 -c body byte-identical at both sites; only argv
+        # differs.
+        python3 -c '
+      import sys, os, subprocess, hashlib, json
+
+      root, ref = sys.argv[1], sys.argv[2]
+      EXCL = [":(exclude,glob)**/.loops/**", ":(exclude,glob)**/.ll/**"]
+      DELETED = "DELETED"
+
+
+      def _run(args):
+          try:
+              out = subprocess.run(
+                  args, capture_output=True, check=False
+              ).stdout
+          except OSError:
+              return []
+          return [p for p in out.split(b"\0") if p]
+
+
+      def _hash(path):
+          try:
+              with open(path, "rb") as fh:
+                  return hashlib.sha256(fh.read()).hexdigest()
+          except OSError:
+              return DELETED
+
+
+      def changed_set(root, ref):
+          paths = set()
+          if ref:
+              diff_args = ["git", "-C", root, "diff", "--name-only", "-z", ref, "--", *EXCL]
+              for p in _run(diff_args):
+                  paths.add(p.decode("utf-8", "surrogateescape"))
+          ls_args = ["git", "-C", root, "ls-files", "-o", "--exclude-standard", "-z", "--", *EXCL]
+          for p in _run(ls_args):
+              paths.add(p.decode("utf-8", "surrogateescape"))
+          result = {}
+          for p in paths:
+              full = os.path.join(root, p)
+              if os.path.exists(full):
+                  result[p] = _hash(full)
+              else:
+                  result[p] = DELETED
+          return result
+
+
+      current = changed_set(root, ref)
+
+      if len(sys.argv) <= 3:
+          json.dump(current, sys.stdout)
+          sys.exit(0)
+
+      run_dir_arg, baseline_path_arg = sys.argv[3], sys.argv[4]
+      try:
+          if os.path.getsize(baseline_path_arg) == 0:
+              raise ValueError("empty baseline")
+          with open(baseline_path_arg, "r") as fh:
+              baseline = json.load(fh)
+      except (OSError, ValueError):
+          print("check_intent_scope: SKIPPED (baseline unreadable or unparseable)")
+          sys.exit(0)
+
+      flagged = set()
+      for p, h in current.items():
+          if p not in baseline or baseline[p] != h:
+              flagged.add(p)
+      for p in baseline:
+          if p not in current:
+              flagged.add(p)
+
+      run_dir_real = os.path.realpath(run_dir_arg)
+      violations = []
+      for p in sorted(flagged):
+          full_real = os.path.realpath(os.path.join(root, p))
+          if full_real == run_dir_real or full_real.startswith(run_dir_real + os.sep):
+              continue
+          violations.append(p)
+
+      if violations:
+          for v in violations:
+              print(v)
+          sys.exit(1)
+      sys.exit(0)
+      ' "$ROOT" "$(cat "$DIR/baseline-ref.txt")" \
+          > "$DIR/baseline-changed-set.json" 2>/dev/null || : > "$DIR/baseline-changed-set.json"
+      else
+        : > "$DIR/baseline-ref.txt"
+        : > "$DIR/baseline-changed-set.json"
+      fi
       case "$DIR" in
         /*) echo "$DIR" ;;
         *) echo "$(pwd)/$DIR" ;;
@@ -115,8 +222,125 @@ states:
       exit "$RC"
     evaluate:
       type: exit_code
-    on_yes: sketch_state_graph
+    on_yes: check_intent_scope
     on_no: count_intent_retry
+
+  check_intent_scope:
+    # FEAT-3332: containment gate. Asserts the set of files changed since
+    # init is a subset of ${captured.run_dir.output} (plus explicit .loops/
+    # and .ll/ harness-state exclusions). A scope violation is not retryable
+    # -- the out-of-scope file is already written, and re-running
+    # capture_intent cannot unwrite it -- so this is its own state with its
+    # own on_no edge straight to diagnose, never folded into validate_intent
+    # (which would burn count_intent_retry attempts on a condition no retry
+    # can clear).
+    #
+    # HARNESS: matched pair with init's baseline capture (requirement (c)).
+    # The single-quoted python3 -c body below is byte-identical to the one
+    # embedded in init -- only argv differs (init passes 2 args and dumps the
+    # baseline map; this state passes 4, which switches the same script into
+    # comparison mode). Keep the two literal blocks identical if you edit
+    # either.
+    action_type: shell
+    action: |
+      ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || ROOT=""
+      BASELINE_REF=$(cat "${captured.run_dir.output}/baseline-ref.txt" 2>/dev/null || echo "")
+      if [ -z "$BASELINE_REF" ] || ! git rev-parse --git-dir >/dev/null 2>&1; then
+        echo "check_intent_scope: SKIPPED (no git repo, or repo has no commits)"
+        : > "${captured.run_dir.output}/.scope_violations.txt"
+        exit 0
+      fi
+      python3 -c '
+      import sys, os, subprocess, hashlib, json
+
+      root, ref = sys.argv[1], sys.argv[2]
+      EXCL = [":(exclude,glob)**/.loops/**", ":(exclude,glob)**/.ll/**"]
+      DELETED = "DELETED"
+
+
+      def _run(args):
+          try:
+              out = subprocess.run(
+                  args, capture_output=True, check=False
+              ).stdout
+          except OSError:
+              return []
+          return [p for p in out.split(b"\0") if p]
+
+
+      def _hash(path):
+          try:
+              with open(path, "rb") as fh:
+                  return hashlib.sha256(fh.read()).hexdigest()
+          except OSError:
+              return DELETED
+
+
+      def changed_set(root, ref):
+          paths = set()
+          if ref:
+              diff_args = ["git", "-C", root, "diff", "--name-only", "-z", ref, "--", *EXCL]
+              for p in _run(diff_args):
+                  paths.add(p.decode("utf-8", "surrogateescape"))
+          ls_args = ["git", "-C", root, "ls-files", "-o", "--exclude-standard", "-z", "--", *EXCL]
+          for p in _run(ls_args):
+              paths.add(p.decode("utf-8", "surrogateescape"))
+          result = {}
+          for p in paths:
+              full = os.path.join(root, p)
+              if os.path.exists(full):
+                  result[p] = _hash(full)
+              else:
+                  result[p] = DELETED
+          return result
+
+
+      current = changed_set(root, ref)
+
+      if len(sys.argv) <= 3:
+          json.dump(current, sys.stdout)
+          sys.exit(0)
+
+      run_dir_arg, baseline_path_arg = sys.argv[3], sys.argv[4]
+      try:
+          if os.path.getsize(baseline_path_arg) == 0:
+              raise ValueError("empty baseline")
+          with open(baseline_path_arg, "r") as fh:
+              baseline = json.load(fh)
+      except (OSError, ValueError):
+          print("check_intent_scope: SKIPPED (baseline unreadable or unparseable)")
+          sys.exit(0)
+
+      flagged = set()
+      for p, h in current.items():
+          if p not in baseline or baseline[p] != h:
+              flagged.add(p)
+      for p in baseline:
+          if p not in current:
+              flagged.add(p)
+
+      run_dir_real = os.path.realpath(run_dir_arg)
+      violations = []
+      for p in sorted(flagged):
+          full_real = os.path.realpath(os.path.join(root, p))
+          if full_real == run_dir_real or full_real.startswith(run_dir_real + os.sep):
+              continue
+          violations.append(p)
+
+      if violations:
+          for v in violations:
+              print(v)
+          sys.exit(1)
+      sys.exit(0)
+      ' "$ROOT" "$BASELINE_REF" "${captured.run_dir.output}" "${captured.run_dir.output}/baseline-changed-set.json" \
+        > "${captured.run_dir.output}/.scope_violations.txt"
+      RC=$?
+      cat "${captured.run_dir.output}/.scope_violations.txt"
+      exit "$RC"
+    evaluate:
+      type: exit_code
+    on_yes: sketch_state_graph
+    on_no: diagnose
 
   count_intent_retry:
     # HARNESS: bounded-retry guard, same idiom as count_emit_retry — routes
@@ -635,17 +859,24 @@ states:
     action: |
       The workflow-generator loop terminated with an unrecoverable error.
 
+      Produce only the output this state asks for, and write no file this
+      state does not explicitly ask you to write.
+
       Diagnose by reading whichever of these exist under
       ${captured.run_dir.output}/: intent.yaml, graph-sketch.yaml,
       graph-evaluators.yaml, graph-routed.yaml, workflow.yaml,
       .emit_retry_count, .emit_errors.txt, .intent_retry_count,
-      .intent_errors.txt.
+      .intent_errors.txt, .scope_violations.txt.
 
       Most common failure: either emit_artifact could not produce a
       workflow.yaml that passes `ll-loop validate` within max_emit_retries
       attempts, or capture_intent could not produce an intent.yaml that
-      passes validate_intent within max_intent_retries attempts. Write
-      a one-paragraph diagnostic the operator can use to adjust the brief.
+      passes validate_intent within max_intent_retries attempts, or
+      check_intent_scope found the changed-file set since init was not
+      contained in run_dir (a scope violation, listed in
+      .scope_violations.txt if non-empty) -- that failure is not retryable,
+      since the out-of-scope file has already been written. Write a
+      one-paragraph diagnostic the operator can use to adjust the brief.
     next: failed
 
   done:

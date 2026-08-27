@@ -17735,6 +17735,7 @@ class TestWorkflowGeneratorLoop:
             "init",
             "capture_intent",
             "validate_intent",
+            "check_intent_scope",
             "sketch_state_graph",
             "validate_sketch",
             "attach_evaluators",
@@ -17784,6 +17785,7 @@ class TestWorkflowGeneratorLoop:
         "state_name",
         [
             "validate_intent",
+            "check_intent_scope",
             "validate_sketch",
             "validate_evaluators",
             "validate_routing",
@@ -17814,12 +17816,46 @@ class TestWorkflowGeneratorLoop:
         for name in (
             "capture_intent",
             "validate_intent",
+            "check_intent_scope",
             "sketch_state_graph",
             "emit_artifact",
             "validate_artifact",
         ):
             action = data["states"][name].get("action", "") or ""
             assert "run_dir" in action, f"{name} must reference run_dir"
+
+    def test_check_intent_scope_routing_edge(self, data: dict) -> None:
+        """FEAT-3332: a scope violation is not retryable -- the out-of-scope file
+        is already written -- so on_no must go straight to diagnose, never back
+        to capture_intent (which would misreport it as a retryable intent
+        failure) and never to count_intent_retry (which would burn retry
+        budget on a condition no retry can clear)."""
+        state = data["states"]["check_intent_scope"]
+        assert state.get("on_no") == "diagnose", (
+            f"check_intent_scope.on_no must be 'diagnose', got {state.get('on_no')!r}"
+        )
+        assert state.get("on_yes") == "sketch_state_graph"
+
+    def test_check_intent_scope_matched_pair_byte_identical(self, data: dict) -> None:
+        """FEAT-3332 requirement (c): init's baseline capture and
+        check_intent_scope's current-set capture must embed the identical
+        single-quoted python3 -c body (differing only in argv), or the two
+        changed_set computations can silently drift apart."""
+        pattern = re.compile(r"python3 -c '\n(.*?)\n *' ", re.S)
+
+        init_action = data["states"]["init"].get("action", "") or ""
+        gate_action = data["states"]["check_intent_scope"].get("action", "") or ""
+
+        init_match = pattern.search(init_action)
+        gate_match = pattern.search(gate_action)
+        assert init_match, "init action does not contain a single-quoted python3 -c body"
+        assert gate_match, (
+            "check_intent_scope action does not contain a single-quoted python3 -c body"
+        )
+        assert init_match.group(1) == gate_match.group(1), (
+            "init and check_intent_scope's python3 -c bodies have drifted apart "
+            "(requirement (c) demands byte-identical text, argv-only difference)"
+        )
 
     # --- Gate-completeness regression guards (workflow-generator run
     # 2026-08-26T121218: attach_evaluators emitted bare `type: output_json`
@@ -18045,11 +18081,17 @@ class TestWorkflowGeneratorLoop:
 
     def test_diagnose_mentions_both_retry_exhaustion_paths(self, data: dict) -> None:
         """diagnose is count_intent_retry's exhausted-budget target too now;
-        it must not assert emit_artifact as the sole failure mode."""
+        it must not assert emit_artifact as the sole failure mode. FEAT-3332:
+        check_intent_scope is a third route into diagnose (a non-retryable
+        scope violation), so diagnose must name that path and its artifact
+        too, or an operator hitting a scope violation gets a diagnostic about
+        retry exhaustion instead."""
         action = data["states"]["diagnose"].get("action", "") or ""
         assert "emit_artifact" in action
         assert "capture_intent" in action
         assert "max_intent_retries" in action
+        assert "check_intent_scope" in action
+        assert ".scope_violations.txt" in action
 
     def test_capture_intent_references_intent_errors_file(self, data: dict) -> None:
         """The bounded retry must feed capture_intent the prior attempt's
@@ -18167,6 +18209,387 @@ class TestWorkflowGeneratorLoop:
         else:
             assert result.returncode != 0, "gate passed an invalid operator value"
             assert "invalid operator" in result.stderr
+
+
+class TestCheckIntentScopeShellAction:
+    """FEAT-3332: check_intent_scope's containment gate, executed directly
+    against real temp git repos (subprocess model cloned from
+    TestGeneralTaskFinalVerifySpinGateShellAction, general-task.yaml)."""
+
+    LOOP_FILE = BUILTIN_LOOPS_DIR / "workflow-generator.yaml"
+    SKIPPED_TOKEN = "check_intent_scope: SKIPPED"
+
+    @pytest.fixture
+    def data(self) -> dict:
+        assert self.LOOP_FILE.exists(), f"Loop file not found: {self.LOOP_FILE}"
+        return yaml.safe_load(self.LOOP_FILE.read_text())
+
+    @staticmethod
+    def _init_repo(repo: Path) -> None:
+        repo.mkdir(parents=True, exist_ok=True)
+        subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+        subprocess.run(["git", "config", "user.email", "t@example.com"], cwd=repo, check=True)
+        subprocess.run(["git", "config", "user.name", "Test"], cwd=repo, check=True)
+        (repo / "seed.txt").write_text("seed\n")
+        subprocess.run(["git", "add", "-A"], cwd=repo, check=True)
+        subprocess.run(["git", "commit", "-q", "-m", "seed"], cwd=repo, check=True)
+
+    def _run_init(
+        self, data: dict, repo: Path, run_dir_rel: str, cwd: Path | None = None
+    ) -> subprocess.CompletedProcess:
+        """Run init's action with ${context.run_dir} substituted to run_dir_rel
+        (relative to cwd, mirroring the real runner). Returns the completed
+        process; stdout (rstripped) is the captured run_dir string."""
+        action = data["states"]["init"]["action"].replace(
+            "${context.run_dir}", run_dir_rel
+        )
+        return subprocess.run(
+            ["bash", "-c", action], cwd=cwd or repo, capture_output=True, text=True
+        )
+
+    def _run_gate(
+        self, data: dict, run_dir: Path, cwd: Path
+    ) -> subprocess.CompletedProcess:
+        """Run check_intent_scope's action with ${captured.run_dir.output}
+        substituted to the absolute run_dir, from the given cwd."""
+        action = data["states"]["check_intent_scope"]["action"].replace(
+            "${captured.run_dir.output}", str(run_dir)
+        )
+        return subprocess.run(
+            ["bash", "-c", action], cwd=cwd, capture_output=True, text=True
+        )
+
+    def _setup(
+        self,
+        data: dict,
+        tmp_path: Path,
+        *,
+        run_dir_rel: str = ".loops/runs/test",
+        launch_subdir: str | None = None,
+        outside_run_dir: Path | None = None,
+    ) -> tuple[Path, Path, Path]:
+        """Build a temp git repo with a baseline commit, run init from
+        (repo/launch_subdir or repo) to capture the baseline, and return
+        (repo, cwd, run_dir) -- run_dir is the resolved absolute run dir."""
+        repo = tmp_path / "repo"
+        self._init_repo(repo)
+        cwd = repo / launch_subdir if launch_subdir else repo
+        cwd.mkdir(parents=True, exist_ok=True)
+        if outside_run_dir is not None:
+            run_dir = outside_run_dir
+            init_result = self._run_init(data, repo, str(run_dir), cwd=cwd)
+        else:
+            init_result = self._run_init(data, repo, run_dir_rel, cwd=cwd)
+        assert init_result.returncode == 0, f"init failed: {init_result.stderr}"
+        lines = init_result.stdout.splitlines()
+        assert len(lines) == 1, f"init stdout must be exactly one line, got: {lines!r}"
+        run_dir = Path(lines[0])
+        return repo, cwd, run_dir
+
+    # --- (i)-(vi-b): baseline / dirty-tree / no-repo behavior ---
+
+    def test_i_only_run_dir_files_pass(self, data: dict, tmp_path: Path) -> None:
+        repo, cwd, run_dir = self._setup(data, tmp_path)
+        (run_dir / "intent.yaml").write_text("name: x\n")
+        result = self._run_gate(data, run_dir, cwd)
+        assert result.returncode == 0, result.stdout + result.stderr
+
+    def test_ii_out_of_scope_untracked_file_fails(self, data: dict, tmp_path: Path) -> None:
+        repo, cwd, run_dir = self._setup(data, tmp_path)
+        (repo / "research").mkdir()
+        (repo / "research" / "notes.md").write_text("stray notes\n")
+        result = self._run_gate(data, run_dir, cwd)
+        assert result.returncode != 0
+        assert "research/notes.md" in result.stdout
+
+    def test_iii_out_of_scope_tracked_file_modified_fails(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        repo, cwd, run_dir = self._setup(data, tmp_path)
+        (repo / "seed.txt").write_text("modified during run\n")
+        result = self._run_gate(data, run_dir, cwd)
+        assert result.returncode != 0
+        assert "seed.txt" in result.stdout
+
+    def test_iv_pre_existing_untracked_file_does_not_trip_gate(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        repo = tmp_path / "repo"
+        self._init_repo(repo)
+        (repo / "pre-existing.txt").write_text("already here before init\n")
+        init_result = self._run_init(data, repo, ".loops/runs/test")
+        assert init_result.returncode == 0
+        run_dir = Path(init_result.stdout.strip())
+        result = self._run_gate(data, run_dir, repo)
+        assert result.returncode == 0, result.stdout + result.stderr
+
+    def test_iv_b_pre_existing_dirty_tracked_file_does_not_trip_gate(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        repo = tmp_path / "repo"
+        self._init_repo(repo)
+        (repo / "seed.txt").write_text("already dirty before init\n")
+        init_result = self._run_init(data, repo, ".loops/runs/test")
+        assert init_result.returncode == 0
+        run_dir = Path(init_result.stdout.strip())
+        result = self._run_gate(data, run_dir, repo)
+        assert result.returncode == 0, result.stdout + result.stderr
+
+    def test_v_run_dir_not_gitignored_passes(self, data: dict, tmp_path: Path) -> None:
+        """No .gitignore entry for .loops/ at all -- proves the explicit glob
+        exclusion, not ambient gitignore, is doing the work. Also the (a1)
+        ordering guard: fails if the baseline is captured before init's own
+        mkdir/truncate scaffolding."""
+        repo, cwd, run_dir = self._setup(data, tmp_path)
+        result = self._run_gate(data, run_dir, cwd)
+        assert result.returncode == 0, result.stdout + result.stderr
+
+    def test_vi_non_git_directory_skips_with_warning(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        not_repo = tmp_path / "not-a-repo"
+        not_repo.mkdir()
+        init_result = self._run_init(data, not_repo, ".loops/runs/test")
+        assert init_result.returncode == 0
+        lines = init_result.stdout.splitlines()
+        assert len(lines) == 1
+        run_dir = Path(lines[0])
+        result = self._run_gate(data, run_dir, not_repo)
+        assert result.returncode == 0
+        assert self.SKIPPED_TOKEN in result.stdout
+
+    def test_vi_b_zero_commit_repo_skips_with_warning(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+        subprocess.run(["git", "config", "user.email", "t@example.com"], cwd=repo, check=True)
+        subprocess.run(["git", "config", "user.name", "Test"], cwd=repo, check=True)
+        init_result = self._run_init(data, repo, ".loops/runs/test")
+        assert init_result.returncode == 0
+        run_dir = Path(init_result.stdout.strip())
+        result = self._run_gate(data, run_dir, repo)
+        assert result.returncode == 0
+        assert self.SKIPPED_TOKEN in result.stdout
+
+    # --- (vii)-(ix): path-space / repo-root relativization ---
+
+    def test_vii_launched_from_subdir_passes(self, data: dict, tmp_path: Path) -> None:
+        repo, cwd, run_dir = self._setup(data, tmp_path, launch_subdir="sub")
+        (run_dir / "intent.yaml").write_text("name: x\n")
+        result = self._run_gate(data, run_dir, cwd)
+        assert result.returncode == 0, result.stdout + result.stderr
+
+    def test_vii_b_launched_from_subdir_violation_outside_subdir_fails(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        """(vii)'s mandatory negative partner: proves the gate enumerates the
+        whole repo (git -C "$ROOT"), not just the launch subdirectory."""
+        repo, cwd, run_dir = self._setup(data, tmp_path, launch_subdir="sub")
+        (repo / "outside.txt").write_text("planted at repo root, not under sub\n")
+        result = self._run_gate(data, run_dir, cwd)
+        assert result.returncode != 0
+        assert "outside.txt" in result.stdout
+
+    def test_vii_c_subdir_default_run_dir_passes(self, data: dict, tmp_path: Path) -> None:
+        """Run dir at <subdir>/.loops/runs/<instance> -- the real default for a
+        subdirectory launch -- must be covered by the depth-agnostic glob
+        exclusion, not just a root-anchored one."""
+        repo, cwd, run_dir = self._setup(data, tmp_path, launch_subdir="sub")
+        assert str(run_dir).startswith(str(cwd)), (
+            f"test setup error: run_dir {run_dir} must be under the subdir {cwd}"
+        )
+        (run_dir / "probes" / "p.txt").parent.mkdir(parents=True, exist_ok=True)
+        (run_dir / "probes" / "p.txt").write_text("probe\n")
+        result = self._run_gate(data, run_dir, cwd)
+        assert result.returncode == 0, result.stdout + result.stderr
+
+    def test_viii_run_dir_outside_worktree_clean_passes(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        outside = tmp_path / "outside-run-dir"
+        repo, cwd, run_dir = self._setup(data, tmp_path, outside_run_dir=outside)
+        result = self._run_gate(data, run_dir, cwd)
+        assert result.returncode == 0, result.stdout + result.stderr
+
+    def test_viii_b_run_dir_outside_worktree_violation_inside_repo_fails(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        """(viii)'s mandatory negative partner: an outside-the-worktree run dir
+        must gate normally, not take the skip-with-warning escape."""
+        outside = tmp_path / "outside-run-dir"
+        repo, cwd, run_dir = self._setup(data, tmp_path, outside_run_dir=outside)
+        (repo / "leaked.txt").write_text("written inside the repo\n")
+        result = self._run_gate(data, run_dir, cwd)
+        assert result.returncode != 0
+        assert "leaked.txt" in result.stdout
+        assert self.SKIPPED_TOKEN not in result.stdout
+
+    def test_ix_deliberate_violation_with_run_dir_excluded_fails(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        """Positive/negative pair with (i): proves the exclusion pathspec
+        doesn't accidentally match everything."""
+        repo, cwd, run_dir = self._setup(data, tmp_path)
+        (run_dir / "intent.yaml").write_text("name: x\n")
+        (repo / "violation.txt").write_text("out of scope\n")
+        result = self._run_gate(data, run_dir, cwd)
+        assert result.returncode != 0
+        assert "violation.txt" in result.stdout
+
+    # --- (x): .loops/ and .ll/ harness-state exclusion ---
+
+    def test_x_scratch_and_decisions_dir_writes_pass(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        repo, cwd, run_dir = self._setup(data, tmp_path)
+        scratch = repo / ".loops" / "tmp" / "scratch"
+        scratch.mkdir(parents=True, exist_ok=True)
+        (scratch / "foo-1234.txt").write_text("scratch output\n")
+        decisions = repo / ".ll" / "decisions.d"
+        decisions.mkdir(parents=True, exist_ok=True)
+        (decisions / "x.json").write_text("{}\n")
+        result = self._run_gate(data, run_dir, cwd)
+        assert result.returncode == 0, result.stdout + result.stderr
+
+    # --- (xi): violation artifact ---
+
+    def test_xi_scope_violations_file_named_on_fail_empty_on_pass(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        repo, cwd, run_dir = self._setup(data, tmp_path)
+        result = self._run_gate(data, run_dir, cwd)
+        assert result.returncode == 0
+        violations_file = run_dir / ".scope_violations.txt"
+        assert violations_file.exists()
+        assert violations_file.read_text() == ""
+
+        (repo / "bad.txt").write_text("out of scope\n")
+        result = self._run_gate(data, run_dir, cwd)
+        assert result.returncode != 0
+        assert violations_file.exists()
+        assert "bad.txt" in violations_file.read_text()
+
+    # --- (xii)-(xii-c): content-hashed unified changed-set map ---
+
+    def test_xii_pre_existing_untracked_file_overwritten_in_place_fails(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        repo = tmp_path / "repo"
+        self._init_repo(repo)
+        (repo / "draft.txt").write_text("v1\n")
+        init_result = self._run_init(data, repo, ".loops/runs/test")
+        run_dir = Path(init_result.stdout.strip())
+        (repo / "draft.txt").write_text("v2 - overwritten during the run\n")
+        result = self._run_gate(data, run_dir, repo)
+        assert result.returncode != 0
+        assert "draft.txt" in result.stdout
+
+    def test_xii_b_dirty_tracked_file_modified_again_fails(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        repo = tmp_path / "repo"
+        self._init_repo(repo)
+        (repo / "seed.txt").write_text("already dirty before init\n")
+        init_result = self._run_init(data, repo, ".loops/runs/test")
+        run_dir = Path(init_result.stdout.strip())
+        (repo / "seed.txt").write_text("dirty again, during the run\n")
+        result = self._run_gate(data, run_dir, repo)
+        assert result.returncode != 0
+        assert "seed.txt" in result.stdout
+
+    def test_xii_c_pre_existing_untracked_file_deleted_fails(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        repo = tmp_path / "repo"
+        self._init_repo(repo)
+        (repo / "stray.txt").write_text("here at init time\n")
+        init_result = self._run_init(data, repo, ".loops/runs/test")
+        run_dir = Path(init_result.stdout.strip())
+        (repo / "stray.txt").unlink()
+        result = self._run_gate(data, run_dir, repo)
+        assert result.returncode != 0
+        assert "stray.txt" in result.stdout
+
+    # --- (xiii): init's stdout is exactly one line ---
+
+    def test_xiii_init_stdout_exactly_one_line_in_repo(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        repo = tmp_path / "repo"
+        self._init_repo(repo)
+        init_result = self._run_init(data, repo, ".loops/runs/test")
+        assert init_result.returncode == 0, init_result.stderr
+        lines = init_result.stdout.splitlines()
+        assert len(lines) == 1, f"init stdout must be exactly one line, got: {lines!r}"
+        assert lines[0] == str((repo / ".loops/runs/test").resolve())
+
+    def test_xiii_init_stdout_exactly_one_line_in_non_repo(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        not_repo = tmp_path / "not-a-repo"
+        not_repo.mkdir()
+        init_result = self._run_init(data, not_repo, ".loops/runs/test")
+        assert init_result.returncode == 0, init_result.stderr
+        lines = init_result.stdout.splitlines()
+        assert len(lines) == 1, f"init stdout must be exactly one line, got: {lines!r}"
+
+    # --- (xiv): falsy-{} baseline is a valid clean baseline, not an escape ---
+
+    def test_xiv_clean_tree_baseline_then_violation_fails_not_skips(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        repo, cwd, run_dir = self._setup(data, tmp_path)
+        baseline = json.loads((run_dir / "baseline-changed-set.json").read_text())
+        assert baseline == {}, f"expected a clean {{}} baseline, got {baseline!r}"
+
+        (repo / "planted.txt").write_text("out of scope\n")
+        result = self._run_gate(data, run_dir, cwd)
+        assert result.returncode != 0
+        assert self.SKIPPED_TOKEN not in result.stdout, (
+            "a falsy {} baseline must NOT read as an unusable baseline"
+        )
+        assert "planted.txt" in result.stdout
+
+    # --- (xv): separator-safe run-dir prefix filter ---
+
+    def test_xv_sibling_named_path_not_masked_by_run_dir_prefix(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        """Custom in-worktree run dir 'out/', violation written to sibling
+        'output/x.txt'. A bare startswith(run_dir) prefix check would
+        incorrectly treat 'output/' as contained within 'out/'."""
+        repo, cwd, run_dir = self._setup(data, tmp_path, run_dir_rel="out")
+        assert run_dir.name == "out"
+        (repo / "output").mkdir()
+        (repo / "output" / "x.txt").write_text("sibling, not contained\n")
+        result = self._run_gate(data, run_dir, cwd)
+        assert result.returncode != 0
+        assert "output/x.txt" in result.stdout
+
+    # --- Missing/zero-byte/unparseable baseline file also escapes (AC bullet,
+    # beyond the 22 numbered cases: (vi)/(vi-b) already exercise the
+    # zero-byte shape for the no-repo/zero-commit routes; these exercise it
+    # directly against an otherwise-valid repo). ---
+
+    def test_missing_baseline_file_skips_with_warning(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        repo, cwd, run_dir = self._setup(data, tmp_path)
+        (run_dir / "baseline-changed-set.json").unlink()
+        result = self._run_gate(data, run_dir, cwd)
+        assert result.returncode == 0
+        assert self.SKIPPED_TOKEN in result.stdout
+
+    def test_unparseable_baseline_file_skips_with_warning(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        repo, cwd, run_dir = self._setup(data, tmp_path)
+        (run_dir / "baseline-changed-set.json").write_text("not valid json {{{")
+        result = self._run_gate(data, run_dir, cwd)
+        assert result.returncode == 0
+        assert self.SKIPPED_TOKEN in result.stdout
 
 
 def _load_builtin_loop(filename: str) -> dict:
