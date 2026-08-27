@@ -868,16 +868,16 @@ class TestGrepExpandDescribe:
     def test_expand_condensed_node_returns_messages_cli(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        db, condensed_id = self._make_db_with_condensed_node(tmp_path)
         # main_session → compact_session → _call_llm_for_summary → resolve_host.
         # CI (ubuntu-latest) has no host CLI; mock the LLM-call layer.
-        with (
-            patch("sys.argv", ["ll-session", "--db", str(db), "expand", str(condensed_id)]),
-            patch(
-                "little_loops.session_store.lifecycle._call_llm_for_summary",
-                return_value="Expanded.",
-            ),
+        # Helper call inside the LLM patch so compact_session's host
+        # resolution is mocked at fixture-setup time.
+        with patch(
+            "little_loops.session_store.lifecycle._call_llm_for_summary",
+            return_value="Expanded.",
         ):
+            db, condensed_id = self._make_db_with_condensed_node(tmp_path)
+        with patch("sys.argv", ["ll-session", "--db", str(db), "expand", str(condensed_id)]):
             result = main_session()
         out = capsys.readouterr().out
         assert result == 0
@@ -886,18 +886,18 @@ class TestGrepExpandDescribe:
     def test_grep_with_condensed_summary_id_cli(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        db, condensed_id = self._make_db_with_condensed_node(tmp_path)
         # main_session → compact_session → _call_llm_for_summary → resolve_host.
         # CI (ubuntu-latest) has no host CLI; mock the LLM-call layer.
-        with (
-            patch(
-                "sys.argv",
-                ["ll-session", "--db", str(db), "grep", "--summary-id", str(condensed_id), "auth"],
-            ),
-            patch(
-                "little_loops.session_store.lifecycle._call_llm_for_summary",
-                return_value="Grepped.",
-            ),
+        # Helper call inside the LLM patch so compact_session's host
+        # resolution is mocked at fixture-setup time.
+        with patch(
+            "little_loops.session_store.lifecycle._call_llm_for_summary",
+            return_value="Grepped.",
+        ):
+            db, condensed_id = self._make_db_with_condensed_node(tmp_path)
+        with patch(
+            "sys.argv",
+            ["ll-session", "--db", str(db), "grep", "--summary-id", str(condensed_id), "auth"],
         ):
             result = main_session()
         out = capsys.readouterr().out
