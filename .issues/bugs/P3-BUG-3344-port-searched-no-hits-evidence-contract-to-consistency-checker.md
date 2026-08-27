@@ -193,6 +193,14 @@ consistently — see Open Questions.
    found, so the filtered-search failure mode does not apply. Likely scope this
    to `MISSING` only, but state it explicitly so the rule is not over-applied.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-27 — based on codebase analysis:_
+
+- BUG-3333 (the sibling port to `codebase-analyzer.md`/`codebase-pattern-finder.md`) is confirmed still `status: open` and unlanded as of this research pass — a repo-wide grep for `"Searched, No Hits"` returns zero hits in both files. `agents/codebase-locator.md` therefore remains the only landed precedent available to mirror; do not assume the other two files show a second worked example.
+- `agents/consistency-checker.md` and its Wave-2 consumer `skills/audit-claude-config/report-template.md` already use a `Scope` (and `Scope 1`/`Scope 2`) column header with an established meaning — configuration precedence scope (project/user/local/managed), e.g. `consistency-checker.md`'s `#### Settings → Scope Conflicts` table (lines 262-266) and `report-template.md` (lines 91-114, 129). A bare `Scope` column for this contract would collide with that existing vocabulary; `Scope Searched` (the issue's own working name) avoids the collision — this is evidence in favor of that naming if Open Question 1 chooses the new-column option.
+- `report-template.md` (line 225) carries a `### Missing References` heading but no matching `### Broken References` heading — the report template only partially mirrors `consistency-checker.md`'s own aggregate-table structure. Relevant to Open Question 1's third option (scoping the contract to the two aggregate tables only), since that option's symmetry assumption doesn't hold on the consumer side.
+
 ## Impact
 
 - **Priority**: P3 - No reproduction has yet surfaced a harmful output from
@@ -223,4 +231,5 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-08-27T20:05:46 - `9e4fa033-0b0b-43cd-be66-950ccb670df0.jsonl`
 - `/ll:format-issue` - 2026-08-27T19:59:56 - `278ef87b-9267-47eb-b438-15c48011237e.jsonl`

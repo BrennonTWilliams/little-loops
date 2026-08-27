@@ -32,6 +32,14 @@ Acceptance: every event observed on the bus during a loop run carries a non-empt
 
 `FSMExecutor._emit()` (`scripts/little_loops/fsm/executor.py:3328`) stamps only `event`, `ts`, and the caller-supplied payload — no run identity. `loop` is emitted exactly once, on `loop_start` (`executor.py:494`), by the caller passing it in the payload rather than by `_emit()` itself. `run_id` is never put on the wire at all; it's derived twice, independently, inside `_finish()` (`executor.py:3686` and `:3711`) purely for archive rows (`loop_runs`, `usage_events`), from `self.started_at.replace(":", "").replace(".", "").replace("+", "")[:17]` + `"-" + self.fsm.name`.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-27 — based on codebase analysis:_
+
+- Correction: `loop` is currently stamped at **two** `_emit()` call sites in `executor.py`, not one — `loop_start` (`:484`) and the ENH-2486 prompt-size guard's `PROMPT_SIZE_WARN_EVENT` emission (`:2161`, `{"loop": self.fsm.name, "state": ..., "size": ..., "threshold": ..., "est_tokens": ...}`). Confirmed via `grep '"loop": self.fsm.name'` returning exactly these two lines.
+- `cli/action.py`'s `_emit()` (module-level function, `:175-176`, `print(json.dumps(event), flush=True)`) and `state.py`'s `StateManager._emit()` (method, `:109-112`, calls `self._event_bus.emit(...)` directly) are **independently-implemented `_emit` functions**, not callers of `FSMExecutor._emit()` — they share only the conventional `event`/`ts` dict shape and, for `StateManager`, the same `EventBus.emit()` sink. A change scoped to `FSMExecutor._emit()` does not reach either of them.
+- The `run_id` derivation formula (`.replace(":", "").replace(".", "").replace("+", "")[:17]`) is duplicated at **three** sites total, not two: `executor.py:3686` and `:3711` (as the issue states) plus `persistence.py:611` in `archive_run()` (applied to `state.started_at`) and a fourth near-identical instance at `persistence.py:782-786` inside an artifact-promotion helper (`promote_run_artifact`), which additionally falls back to `datetime.now(UTC).strftime(...)` when `started_at` is falsy.
+
 ## Expected Behavior
 
 Every event emitted via `_emit()` during a run — `loop_start` through `loop_complete` — carries non-empty `run_id` and `loop` fields, computed once and reused for the whole run. Two concurrent runs writing to one `events.jsonl` (or any other single-sink transport) can be split back into per-run streams by grouping on `run_id` alone, with no socket-provenance inference required.
@@ -83,6 +91,18 @@ Out of scope: `parallel.*` and `issue.*` event emitters build their dicts inline
 ### Configuration
 - N/A
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-27 — based on codebase analysis:_
+
+- `scripts/little_loops/fsm/persistence.py:611` (`PersistentExecutor.archive_run()`) and `scripts/little_loops/fsm/persistence.py:782-786` (`promote_run_artifact()`) carry independent copies of the same `run_id` derivation formula this issue centralizes in `executor.py`. Out of this issue's stated scope (only `_finish()`'s two sites are named), but worth a maintainer decision: leave them deriving in parallel (they must keep matching `self.run_id`'s formula for archive rows to JOIN, per the existing `persistence.py::archive_run` comment this issue already cites), or have them read the now-canonical `self.run_id` where a live `FSMExecutor` instance is in scope.
+- `EventBus.emit()` (`scripts/little_loops/events.py:117-138`) does no key filtering: it reads `event.get("event", "")` only to match observer filter globs, then passes the entire unmodified dict to every observer and transport. `LLEvent.from_dict()` (`events.py:54-62`) pops only `event`/`type` and `ts`/`timestamp`; every other key (including the new `run_id`/`loop`) lands in `payload`. Both claims in the Proposed Solution are confirmed exactly as stated — no special-casing needed.
+- `cli/action.py`'s `_emit()` (`:175-176`) and `state.py`'s `StateManager._emit()` (`:109-112`) are independently-implemented `_emit` functions that do not call `FSMExecutor._emit()` — they are unaffected by this change and do not need updating.
+- No test in `scripts/tests/` does exact dict-equality or exact key-set comparison against a `FSMExecutor`-emitted event (`event == {...}`, `set(event.keys()) == {...}` all return zero matches) — the closest is `test_fsm_executor.py:7787-7839`'s subset check (`missing = expected_keys - event.keys()`), which tolerates additional keys. Adding `run_id`/`loop` will not break existing assertions.
+- Closest existing precedent for testing a stamped identity field across many/nested events: `test_sub_loop_events_forwarded_to_parent_callback` (`test_fsm_executor.py:6495`) and `test_sub_loop_depth_propagates_to_nested_sub_loops` (`:6522`), which assert on a `depth` key forwarded onto sub-loop events — same "field stamped on every event, verify via `[e for e in events if e.get(...) == ...]`" shape this issue's new tests should follow. `test_event_includes_timestamp` (same file) is the closest template for "assert a field is present and stable across all events."
+- Event-schema doc-update workflow is documented at `CONTRIBUTING.md` § "Event Schema Maintenance" (lines 784-800): edit `docs/reference/EVENT-SCHEMA.md` first, then `SCHEMA_DEFINITIONS` in `scripts/little_loops/generate_schemas.py`, then run `ll-generate-schemas` (never hand-edit the generated `.json` files).
+- `parallel.*` (e.g. `orchestrator.py:1285`, `parallel.worker_completed`) and `issue.*` (e.g. `issue_lifecycle.py:1491`, `issue.started`) emitters build event dicts standalone at each call site — there is no shared chokepoint analogous to `FSMExecutor._emit()` in those modules, confirming the issue's Scope Boundaries note that they need separate treatment (sibling issue ENH-3346).
+
 ## Program Design
 
 ### Types
@@ -96,6 +116,14 @@ Out of scope: `parallel.*` and `issue.*` event emitters build their dicts inline
 ### Call Path
 
 `FSMExecutor.run()` (sets `self.started_at`, then `self.run_id`) -> `FSMExecutor._emit()` (stamps `run_id`/`loop` on every call site, e.g. `loop_start` at `:494`, `loop_complete` at `:3675`) -> `self.event_callback` -> registered transports (`jsonl`/`sqlite`/`webhook`/`otel`)
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-27 — based on codebase analysis:_
+
+- No existing "compute once at construction/run-start, store on self, read everywhere" idiom is present in `executor.py` for an eager, run-once value. The closest analogues are both lazy-memoized accessors: `_get_br_config()` (`:2429`, backed by `self._br_config: BRConfig | None = None` set in `__init__`) and the `_prepatch_check_memo` dict (`__init__`, `:263-266`). This issue's proposed shape — assign `self.run_id` eagerly in `run()` rather than lazily on first access — has no exact prior instance in this file; it is closer to how `self.started_at` itself is already set (`run()` line 481, single assignment, no lazy accessor).
+- Confirmed: `self.fsm` is assigned exactly once, in `__init__` (`:234`), never reassigned; `FSMLoop.name: str` (`schema.py:1382`, dataclass field on the class at `:1360`) is a required, non-mutated string. `fsm.name` is therefore stable for the executor's whole lifetime and is already read at execution time at `executor.py:826, 3044, 2161, 3299, 3689, 3690, 3717, 3787` — safe to reuse for `self.run_id` and the `loop` stamp.
+- Confirmed: `self.started_at` is initialized to `""` in `__init__` (`:258`) and set exactly once, in `run()` at `:481` (`self.started_at = _iso_now()`); no other assignment site exists. Every `self._emit(...)` call site in `executor.py` occurs after line 481 in the call graph — `loop_start` (`:484`) is the first emission and fires immediately after `started_at` is set, so `started_at` is never empty at emission time during a real `run()`.
 
 ## Implementation Steps
 
@@ -138,5 +166,6 @@ Out of scope: retrofitting `parallel.*` and `issue.*` emitters that build event 
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-08-27T20:08:12 - `6a48b0c1-bff7-4c66-a42d-e3b6acefc1f6.jsonl`
 - `/ll:format-issue` - 2026-08-27T19:59:35 - `278ef87b-9267-47eb-b438-15c48011237e.jsonl`
 - `/ll:capture-issue` - 2026-08-27T19:56:51 - `f1d9d0f2-280e-4e9e-bb4a-45c14f878f7b.jsonl`
