@@ -211,8 +211,6 @@ Corrected line numbers for the issue's own confirmed sites (drift since 2026-08-
 
 ### Codebase Research Findings
 
-_Added by `/ll:refine-issue` — 2026-08-27 — based on codebase analysis:_
-
 ### Files to Modify
 - `scripts/little_loops/loops/loop-router.yaml` — `review` (lines 411-437): fence `${captured.chosen.output}` (line 428) and `${captured.sub_loop_output.output}` (lines 430-431); `propose_new_loop` (lines 452-478): fence `${captured.catalog.output}` (line ~469, tier-C, listed not scheduled)
 - `scripts/little_loops/loops/loop-composer.yaml` — `review_chain` (lines 453-488): fence `${captured.step_results_json.output}` (line 474)
@@ -239,8 +237,6 @@ _Added by `/ll:refine-issue` — 2026-08-27 — based on codebase analysis:_
 ## Program Design
 
 ### Codebase Research Findings
-
-_Added by `/ll:refine-issue` — 2026-08-27 — based on codebase analysis:_
 
 ### Types
 - `FENCE_ROLES: dict[tuple[str, str], tuple[str, str, str, str]]` (`scripts/little_loops/fsm/fence.py:75`) — keyed by `(loop_file, state_name)`, valued `(noun, role, verbs, var)`; new untrusted-output sites add entries to this same dict (or a parallel dict if Open Questions resolves toward a second constant)

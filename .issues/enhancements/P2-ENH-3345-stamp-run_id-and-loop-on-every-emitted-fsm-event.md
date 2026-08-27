@@ -7,12 +7,12 @@ status: open
 discovered_by: ll-issues-create
 discovered_date: '2026-08-27'
 captured_at: '2026-08-27T19:56:15Z'
-confidence_score: 100
-outcome_confidence: 82
-score_complexity: 20
-score_test_coverage: 22
-score_ambiguity: 18
-score_change_surface: 22
+confidence_score: 90
+outcome_confidence: 86
+score_complexity: 18
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 18
 ---
 
 # ENH-3345: Stamp run_id and loop on every emitted FSM event
@@ -244,6 +244,7 @@ def derive_run_id(started_at: str, loop_name: str) -> str: ...
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-27T21:34:43 - `0c0971db-7bf3-4963-8c87-a0f3ba7bd71f.jsonl`
 - `/ll:confidence-check` - 2026-08-27T21:18:15 - `086de69c-22b2-41be-878d-e9a1dd904924.jsonl`
 - `/ll:decide-issue` - 2026-08-27T21:03:09 - `afdc9a20-86de-4e24-ad07-3b472050429a.jsonl`
 - `/ll:refine-issue` - 2026-08-27T21:02:35 - `3300bae1-29e4-43aa-be1f-dbf44d0ba9ec.jsonl`
