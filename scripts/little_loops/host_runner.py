@@ -1834,6 +1834,17 @@ _PROBE_ORDER: list[tuple[str, str]] = [
     ("qwen", "qwen"),
 ]
 
+# All host CLI binary basenames, derived from every registered runner's
+# describe_capabilities().binary (FEAT-3329). This is the single source of
+# truth for "is argv[0] a host CLI" checks (e.g. the conftest.py live-spawn
+# guard) — deliberately not _PROBE_ORDER (missing "opencode") nor
+# build_version_check().binary (raises HostNotConfigured for opencode/pi).
+# A drift test (test_host_runner.py) asserts this stays in sync with the
+# registry.
+HOST_BINARY_NAMES: frozenset[str] = frozenset(
+    cls().describe_capabilities().binary for cls in _HOST_RUNNER_REGISTRY.values()
+)
+
 
 def project_child_env(
     invocation: HostInvocation | None = None,

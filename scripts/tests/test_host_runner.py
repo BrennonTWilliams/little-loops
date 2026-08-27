@@ -1956,9 +1956,7 @@ class TestRunBlockingJson:
     def test_claude_code_structured_output_success(self) -> None:
         invocation = ClaudeCodeRunner().build_blocking_json(prompt="hi")
         with patch("little_loops.host_runner.subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(
-                returncode=0, stdout=self._envelope(), stderr=""
-            )
+            mock_run.return_value = MagicMock(returncode=0, stdout=self._envelope(), stderr="")
             result = run_blocking_json(invocation, schema={"type": "object"}, timeout=30)
         assert result["verdict"] == "yes"
         # Inline schema flag appended host-gated for claude-code.
@@ -1982,9 +1980,7 @@ class TestRunBlockingJson:
             assert not p.exists()
 
     def test_codex_cleanup_paths_unlinked_on_failure(self) -> None:
-        invocation = CodexRunner().build_blocking_json(
-            prompt="hi", json_schema={"type": "object"}
-        )
+        invocation = CodexRunner().build_blocking_json(prompt="hi", json_schema={"type": "object"})
         with patch("little_loops.host_runner.subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(returncode=1, stdout="", stderr="boom")
             with pytest.raises(BlockingJsonError):
@@ -1995,9 +1991,7 @@ class TestRunBlockingJson:
     def test_codex_cleanup_paths_unlinked_on_timeout(self) -> None:
         import subprocess
 
-        invocation = CodexRunner().build_blocking_json(
-            prompt="hi", json_schema={"type": "object"}
-        )
+        invocation = CodexRunner().build_blocking_json(prompt="hi", json_schema={"type": "object"})
         with patch("little_loops.host_runner.subprocess.run") as mock_run:
             mock_run.side_effect = subprocess.TimeoutExpired(cmd="codex", timeout=30)
             with pytest.raises(BlockingJsonError) as exc_info:
@@ -2015,7 +2009,9 @@ class TestRunBlockingJson:
         )
         with patch("little_loops.host_runner.subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(
-                returncode=0, stdout=self._envelope(structured_output=None, result=tagged), stderr=""
+                returncode=0,
+                stdout=self._envelope(structured_output=None, result=tagged),
+                stderr="",
             )
             result = run_blocking_json(invocation, timeout=30)
         assert result["verdict"] == "yes"
@@ -2034,3 +2030,34 @@ class TestRunBlockingJson:
         for runner in (OpenCodeRunner(), PiRunner()):
             with pytest.raises(HostNotConfigured):
                 runner.build_blocking_json(prompt="hi")
+
+
+class TestHostBinaryNames:
+    """HOST_BINARY_NAMES (FEAT-3329): the conftest.py live-spawn guard's
+    single source of truth for "is argv[0] a host CLI" basename checks.
+    """
+
+    def test_matches_registry_describe_capabilities_binaries(self) -> None:
+        """Not build_version_check().binary, which raises HostNotConfigured
+        for opencode and pi — describe_capabilities() is wired and
+        non-raising on all eight registry entries."""
+        from little_loops import host_runner as hr
+
+        expected = {
+            cls().describe_capabilities().binary for cls in hr._HOST_RUNNER_REGISTRY.values()
+        }
+        assert hr.HOST_BINARY_NAMES == expected
+
+    def test_has_all_eight_known_binaries(self) -> None:
+        from little_loops.host_runner import HOST_BINARY_NAMES
+
+        assert HOST_BINARY_NAMES == {
+            "claude",
+            "codex",
+            "opencode",
+            "pi",
+            "gemini",
+            "omp",
+            "kimi",
+            "qwen",
+        }

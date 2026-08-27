@@ -241,7 +241,15 @@ class TestExtractData:
         with (
             patch("little_loops.cli.artifact.extract.resolve_host", return_value=_make_runner()),
             patch(
-                "little_loops.host_runner.run_blocking_json",
+                # extract.py imports run_blocking_json by reference
+                # (`from little_loops.host_runner import ... run_blocking_json`),
+                # so it must be patched where it's bound, not at its
+                # definition site — patching `little_loops.host_runner.
+                # run_blocking_json` leaves extract.py's already-bound name
+                # untouched and the call falls through to the real function,
+                # which spawns the real host CLI (caught by FEAT-3329's
+                # live-spawn guard).
+                "little_loops.cli.artifact.extract.run_blocking_json",
                 side_effect=BlockingJsonError("boom", {"error": "boom"}),
             ),
         ):

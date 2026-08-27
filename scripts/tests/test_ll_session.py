@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from pathlib import Path
 from unittest.mock import patch
 
@@ -854,7 +855,19 @@ class TestGrepExpandDescribe:
         finally:
             conn.close()
         config = {"history": {"compaction": {"enabled": True, "budget_tokens": 10}}}
-        compact_session(session_id, db, config=config)
+        # Mock subprocess so _call_llm_for_summary never invokes the real
+        # claude binary (caught by FEAT-3329's live-spawn guard) — mirrors
+        # test_session_store_lifecycle.py::test_compact_session_condensed_node_when_multiple_leaves.
+        with patch("little_loops.session_store.subprocess.run") as mock_run:
+            mock_run.return_value = subprocess.CompletedProcess(
+                args=[],
+                returncode=0,
+                stdout=json.dumps(
+                    {"type": "result", "subtype": "success", "result": "Condensed summary."}
+                ),
+                stderr="",
+            )
+            compact_session(session_id, db, config=config)
         conn = connect(db)
         try:
             condensed_id = conn.execute(

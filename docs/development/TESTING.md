@@ -1062,6 +1062,37 @@ Verify the line is exactly in `exclude_lines` configuration.
 | `capsys` | Capture stdout/stderr |
 | `monkeypatch` | Modify environment/paths |
 
+### Live Host-CLI Spawn Guard
+
+`scripts/tests/conftest.py` fails any test that spawns a real host CLI binary
+(`claude`, `codex`, `opencode`, `pi`, `gemini`, `omp`, `kimi`, `qwen`) — a
+session-scoped autouse fixture patches `subprocess.run` and a
+`subprocess.Popen` subclass, the process-global choke point every host-CLI
+call path shares (FEAT-3329). A test that forgets to mock the spawn no longer
+passes silently while billing the account: it now fails the run.
+
+**Read the failure message, not just the summary line.** The offending test
+prints `passed` — pytest classifies the guard's raise, caught in a
+function-scoped teardown fixture, as an ERROR at teardown rather than a
+FAILURE. The run's exit status is still nonzero, and the ERROR's message
+leads with the diagnosis (which binary, which test) rather than fixture
+mechanics.
+
+To fix a trip: mock the spawn instead of calling the real binary. Patch
+`subprocess.run` / `subprocess.Popen` at the module that calls it (e.g.
+`little_loops.host_runner.subprocess.run`, since `host_runner.py` does a
+plain `import subprocess`) or the helper one level up
+(`run_blocking_json`/`run_claude_command`/`resolve_host`), the way
+`test_host_runner.py::TestRunBlockingJson` and `test_subprocess_utils.py`
+already do. A `build_version_check()` invocation (`<binary> --version`) is
+exempt — it costs nothing and is not a guard trip.
+
+The same `conftest.py` fixture stack also collapses the rate-limit backoff
+ladder (`_DEFAULT_RATE_LIMIT_LONG_WAIT_LADDER` / `_MAX_WAIT_SECONDS`) to zero
+suite-wide, so a rate-limit test that forgets to patch it locally cannot wedge
+a worker on the real 300s sleep (the un-killable BUG-3208 hang) — it just
+runs fast instead.
+
 ### Testing Best Practices
 
 1. **Use descriptive test names** - `test_returns_empty_list_when_no_files` not `test_1`

@@ -7,7 +7,7 @@ import os
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 import yaml
@@ -4035,7 +4035,17 @@ class TestIncrementalRefactorResumeSkipsPrecondition:
 
         mock_runner = MockActionRunner()
         executor = PersistentExecutor(fsm, persistence=persistence, action_runner=mock_runner)
-        result = executor.resume()
+        # execute_step's on_yes/on_no lands on check_complete, whose
+        # evaluate.type is llm_structured -> a real host-CLI spawn
+        # (caught by FEAT-3329's live-spawn guard). This test only asserts on
+        # mock_runner.calls, not the evaluated verdict, so a FileNotFoundError
+        # (handled gracefully by run_blocking_json/evaluate_llm_structured,
+        # same as test_host_runner.py::test_file_not_found_raises_missing_dependency)
+        # is sufficient to avoid the real spawn.
+        with patch(
+            "little_loops.host_runner.subprocess.run", side_effect=FileNotFoundError("claude")
+        ):
+            result = executor.resume()
 
         assert result is not None
         assert not any("clean working tree" in call for call in mock_runner.calls), (

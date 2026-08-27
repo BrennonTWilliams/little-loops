@@ -4,10 +4,11 @@ type: FEAT
 title: Add conftest guards that fail the suite on a live host-CLI spawn and on an
   unpatched rate-limit ladder
 priority: P1
-status: open
+status: done
 discovered_by: manual-review
 discovered_date: '2026-08-26'
 captured_at: '2026-08-26T00:00:00Z'
+completed_at: '2026-08-27T00:08:50Z'
 relates_to:
 - BUG-3325
 - BUG-3208
@@ -1178,6 +1179,68 @@ _Added by `/ll:refine-issue` — 2026-08-26 — based on codebase analysis:_
 - `.claude/CLAUDE.md` — `## Testing & CI Policy` names `python -m pytest scripts/tests/` as the authoritative gate this issue's guards must keep passing.
 - `CONTRIBUTING.md` — `### Running Tests` documents the pytest invocation conventions (`-m integration`, `-m "not integration"`) this issue's AC explicitly checks for false positives.
 
+## Resolution
+
+- **Action**: implement
+- **Completed**: 2026-08-27
+- **Status**: Completed
+
+### Changes Made
+- `scripts/tests/conftest.py`: added `_install_no_live_host_cli` (session-scoped,
+  patches `subprocess.run`/`subprocess.Popen` as designed — a `_GuardedPopen`
+  subclass, record-then-raise, `--version` carve-out, argv normalization),
+  `_fail_on_live_host_cli` (function-scoped teardown enforcement),
+  `pytest_sessionfinish` (print-only summary for orphaned hits), and
+  `_collapse_rate_limit_ladder` (session-scoped, suite-wide).
+- `scripts/little_loops/host_runner.py`: added `HOST_BINARY_NAMES: frozenset[str]`,
+  derived from `describe_capabilities().binary` across the registry.
+- `scripts/tests/test_conftest_cap.py`: permanent unit tests for the guard's
+  pure helpers (`_extract_argv`, `_match_host_binary`, `_drain_new_hits`,
+  `_GuardedPopen`, `pytest_sessionfinish`, install/restore) and a direct
+  assertion that the rate-limit constants are collapsed by default.
+- `scripts/tests/test_host_runner.py`: `HOST_BINARY_NAMES` drift test against
+  the registry.
+- `docs/development/TESTING.md`: documents the guard, the ERROR-at-teardown
+  read, and how to mock a spawn.
+- **Fourth-instance findings**: the guard immediately caught four
+  previously-undetected live spawns (the exact failure mode this issue
+  exists to close) and each was fixed by mocking the spawn at the existing
+  test's boundary, not by weakening the guard:
+  - `test_fsm_executor.py::TestObservedEffortFromSessionJsonl` (4 tests) —
+    action_type="prompt" states with no explicit `evaluate` route through
+    the real `evaluate_llm_structured` by default; now patches it to a fixed
+    "yes" verdict.
+  - `test_feat3310_artifact_extract.py::test_host_call_failure_translated` —
+    patched `little_loops.host_runner.run_blocking_json` instead of
+    `little_loops.cli.artifact.extract.run_blocking_json`, the name
+    `extract.py` actually binds by reference; the old patch target never
+    intercepted the call.
+  - `test_history_reader.py::TestSummaryDagRetrieval` (2 tests) and
+    `test_ll_session.py::TestGrepExpandDescribe` (2 tests) — both build a
+    condensed summary node via `compact_session()` without mocking
+    `_call_llm_for_summary`'s `subprocess.run`; now mock it the same way
+    `test_session_store_lifecycle.py`'s existing condensed-node test does.
+  - `test_fsm_persistence.py::TestIncrementalRefactorResumeSkipsPrecondition::test_resume_restores_persisted_state_not_initial` —
+    resuming into `check_complete` (an `evaluate.type: llm_structured`
+    state) previously spawned for real and still passed (`1 passed, 1
+    error` before the fix) since the test only asserts on `mock_runner.calls`.
+
+### Verification Results
+- Tests: PASS — full suite `python -m pytest scripts/tests/` (includes
+  `-m integration`/`-m conformance`): 21682 passed, 41 skipped, 3 failed —
+  the 3 failures (`test_verify_evidence.py::test_no_new_unverifiable_evidence`,
+  `test_packaging_duplicate_files.py::test_readme_matches_repo_root`,
+  `test_prose_dep_sweep_gate.py::test_no_prose_dependency_drift_in_repo`) are
+  pre-existing on `main`, confirmed unrelated via `git stash` before writing
+  any code.
+- Serial regression check (`-n 0`, the configuration where BUG-3325's
+  defects were reachable): `test_fsm_executor.py` + `test_host_runner.py` —
+  694 passed, 1 skipped, 18.75s (no wedge).
+- `test_host_runner.py` alone: 247 passed, 1 skipped — no marker opt-out
+  needed, as designed.
+- Lint: PASS (`ruff check`, `ruff format --check`, scoped to changed files)
+- Types: PASS (`mypy scripts/little_loops/host_runner.py`)
+
 ## Status
 
 **Open** | Created: 2026-08-26 | Priority: P1
@@ -1272,6 +1335,8 @@ the corrected design.
 - **"Seven wired `build_version_check()` implementations."** Six.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-27T00:07:41 - `05399093-61c0-43b5-99b6-b22c21bf5f80.jsonl`
+- `/ll:ready-issue` - 2026-08-26T23:32:49 - `b61aa87f-9da1-4e4e-8518-dea8abb984bd.jsonl`
 - `/ll:confidence-check` - 2026-08-26T20:52:31 - `88aa69aa-30d3-411b-b2b0-f5cfaf1a8181.jsonl`
 - `/ll:wire-issue` - 2026-08-26T20:23:34 - `c52dee45-306e-4834-bf4d-c82265f05dc7.jsonl`
 - `/ll:refine-issue` - 2026-08-26T20:16:59 - `c8fbfaf4-7e26-4a99-9fe9-48c752eecfe4.jsonl`

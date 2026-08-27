@@ -7990,12 +7990,15 @@ class TestRateLimitCircuitIntegration:
         runner.use_indexed_order = True
         sleeps: list[float] = []
 
-        with patch.multiple(
-            "little_loops.fsm.executor",
-            _DEFAULT_RATE_LIMIT_BACKOFF_BASE=0,
-            _DEFAULT_RATE_LIMIT_LONG_WAIT_LADDER=[0],
-            _DEFAULT_RATE_LIMIT_MAX_WAIT_SECONDS=0,
-        ), patch("little_loops.fsm.executor.evaluate_llm_structured") as llm:
+        with (
+            patch.multiple(
+                "little_loops.fsm.executor",
+                _DEFAULT_RATE_LIMIT_BACKOFF_BASE=0,
+                _DEFAULT_RATE_LIMIT_LONG_WAIT_LADDER=[0],
+                _DEFAULT_RATE_LIMIT_MAX_WAIT_SECONDS=0,
+            ),
+            patch("little_loops.fsm.executor.evaluate_llm_structured") as llm,
+        ):
             executor = FSMExecutor(fsm, action_runner=runner, circuit=circuit)
             with patch.object(
                 executor,
@@ -10680,9 +10683,21 @@ class TestObservedEffortFromSessionJsonl:
         )
 
     def _run_and_collect(self, fsm: FSMLoop, runner: Any) -> list[dict[str, Any]]:
+        # action_type="prompt" with on_yes/on_no and no explicit `evaluate`
+        # config routes the runner's plain-text output through the real
+        # evaluate_llm_structured (-> a real host-CLI spawn) by default
+        # (FEAT-3329's live-spawn guard caught this). These tests only
+        # assert on the `effort` field, not the verdict, so a fixed "yes"
+        # stands in for the real evaluator.
+        from little_loops.fsm.evaluators import EvaluationResult
+
         events: list[dict[str, Any]] = []
         executor = FSMExecutor(fsm, event_callback=events.append, action_runner=runner)
-        executor.run()
+        with patch(
+            "little_loops.fsm.executor.evaluate_llm_structured",
+            return_value=EvaluationResult(verdict="yes", details={}),
+        ):
+            executor.run()
         return [e for e in events if e["event"] == "action_complete"]
 
     def test_jsonl_effort_overrides_config_value(self, tmp_path: Path) -> None:

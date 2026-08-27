@@ -5,7 +5,10 @@ from __future__ import annotations
 import itertools
 import json
 import os
+import subprocess
 import tempfile
+import threading
+import warnings
 from collections.abc import Callable, Generator
 from pathlib import Path
 from typing import Any
@@ -13,6 +16,7 @@ from typing import Any
 import pytest
 from hypothesis import settings as _hypothesis_settings
 
+from little_loops.host_runner import HOST_BINARY_NAMES
 from little_loops.issue_parser import reset_deprecated_key_warnings
 
 # =============================================================================
@@ -122,6 +126,335 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
     for item in items:
         if "no_parallel" in item.keywords:
             item.add_marker(skip_marker)
+
+
+# =============================================================================
+# Live host-CLI spawn guard + rate-limit ladder guard (FEAT-3329)
+# =============================================================================
+#
+# Two structural gaps this closes, both split out of BUG-3325:
+#
+# 1. Nothing failed a test that spawned the real host CLI (`claude` et al.) —
+#    a passing test could still bill the account. Guarded here at the
+#    process-spawn boundary (subprocess.run / subprocess.Popen), not by
+#    patching a helper function, because both host_runner.py and
+#    subprocess_utils.py `import subprocess` as a module: subprocess.run and
+#    subprocess.Popen are process-global attributes, so ONE patch pair covers
+#    every call path (blocking, streaming, detached) rather than two
+#    independent per-module patches.
+# 2. Nothing failed a rate-limit test that omitted the
+#    _DEFAULT_RATE_LIMIT_LONG_WAIT_LADDER=[0] patch convention — it would
+#    sleep on the real 300s ladder, which the --timeout=120
+#    --timeout-method=thread watchdog cannot kill (the BUG-3208 wedge). See
+#    ``_collapse_rate_limit_ladder`` below.
+#
+# Completeness precondition for guard 1: scripts/little_loops/ contains zero
+# occurrences of asyncio.create_subprocess_exec/_shell, os.system, os.exec*,
+# os.spawn*, or pty.spawn (verified 2026-08-26) — every process the package
+# spawns goes through subprocess.run/Popen. asyncio.create_subprocess_* in
+# particular does NOT route through subprocess.Popen and would be a silent
+# blind spot; a future change introducing one of these must extend the guard.
+# Accepted gap: a `shell=True` string command is a pass-through (argv[0] is
+# the whole command line, not a program name) — no production code uses
+# shell=True (the only repo occurrence is loops/mechanize-skills.yaml, a
+# loop YAML action, not a Python call path).
+
+
+class _LiveHostCLISpawn(Exception):
+    """Raised when guarded subprocess.run/Popen resolves argv[0] to a host CLI."""
+
+
+_host_cli_lock = threading.Lock()
+# (test_id, binary) tuples, one per recorded spawn attempt. Written from FSM
+# worker threads as well as the main test thread — always mutate under
+# _host_cli_lock.
+_host_cli_hits: list[tuple[str, str]] = []
+# Monotonic cursor into _host_cli_hits: everything before this index has
+# already been reported by _drain_new_hits(). NOT a pre-yield len() snapshot
+# (that silently drops hits appended during higher-scope fixture setup or by
+# a background thread outside any test's function-fixture window) and NOT a
+# bare truthiness check (that cascade-fails every later test on the worker
+# once one hit lands). Slice-and-advance reports every hit exactly once and
+# attributes an out-of-window hit to the next test to finish.
+_reported_upto = 0
+
+
+def _current_test_id() -> str:
+    """Best-effort test id for the collector tuple, from PYTEST_CURRENT_TEST.
+
+    Only feeds the recorded tuple (for the dedupe key and the
+    pytest_sessionfinish summary) — attribution of WHICH test's teardown
+    fails is by report-cursor position in ``_fail_on_live_host_cli``, not by
+    this value, so a placeholder here (collection time, higher-scope fixture
+    setup, a background thread) does not break enforcement.
+    """
+    current = os.environ.get("PYTEST_CURRENT_TEST")
+    if not current:
+        return "<no active test>"
+    return current.split(" ", 1)[0]
+
+
+def _extract_argv(args: tuple[Any, ...], kwargs: dict[str, Any]) -> list[str] | None:
+    """Normalize a subprocess.run/Popen call's command to a list[str], or None.
+
+    Because the patch this feeds is process-global, this function sees every
+    subprocess call in the suite — a TypeError/IndexError raised here would
+    break unrelated tests in a way that reads as a guard bug, not a test bug.
+    Returns None (pass-through, no opinion) for anything not confidently
+    resolvable, rather than raising.
+    """
+    argv = args[0] if args else kwargs.get("args")
+    if argv is None:
+        return None
+    if isinstance(argv, os.PathLike):
+        return [os.fspath(argv)]
+    if isinstance(argv, (str, bytes)):
+        # shell=True string command: argv[0] would be the whole command line,
+        # not indexable into a program name. Accepted gap — see module note.
+        return None
+    try:
+        items = list(argv)
+    except TypeError:
+        return None
+    if not items:
+        return None
+    normalized: list[str] = []
+    for item in items:
+        if isinstance(item, os.PathLike):
+            normalized.append(os.fspath(item))
+        elif isinstance(item, str):
+            normalized.append(item)
+        elif isinstance(item, bytes):
+            try:
+                normalized.append(item.decode())
+            except UnicodeDecodeError:
+                return None
+        else:
+            return None
+    return normalized
+
+
+def _match_host_binary(
+    args: tuple[Any, ...], kwargs: dict[str, Any]
+) -> tuple[str, list[str]] | None:
+    """Return (basename, argv) if this call targets a host CLI binary, else None.
+
+    Applies the ``--version`` carve-out: all six wired
+    ``build_version_check()`` implementations emit exactly ``args=["<binary>",
+    "--version"]``, which is free (no spend) but would otherwise trip a naive
+    argv[0]-basename check.
+    """
+    argv = _extract_argv(args, kwargs)
+    if not argv:
+        return None
+    binary = os.path.basename(argv[0])
+    if binary not in HOST_BINARY_NAMES:
+        return None
+    if list(argv[1:]) == ["--version"]:
+        return None
+    return binary, argv
+
+
+def _record_and_build_error(binary: str, argv: list[str]) -> _LiveHostCLISpawn:
+    test_id = _current_test_id()
+    with _host_cli_lock:
+        _host_cli_hits.append((test_id, binary))
+    return _LiveHostCLISpawn(
+        f"live host-CLI spawn: this test spawned the real host CLI `{binary}` "
+        f"(argv={argv!r}) — mock the spawn instead of calling the real "
+        f"binary. Patch subprocess.run / subprocess.Popen (or the "
+        f"host_runner.py / subprocess_utils.py helper one level up), the "
+        f"way test_host_runner.py::TestRunBlockingJson and "
+        f"test_subprocess_utils.py already do. See "
+        f"docs/development/TESTING.md."
+    )
+
+
+def _drain_new_hits() -> str | None:
+    """Slice-and-advance the report cursor; return a message for new hits, or None.
+
+    Pure module-level helper (not inline in the teardown fixture) so it is
+    unit-testable: a test cannot assert that its own teardown fails, and
+    test_conftest_cap.py loads conftest.py as a second, independent module
+    whose collector is a different object from this one. Dedupes the
+    reported slice by (test_id, binary) with a count, since a retry-on-error
+    path can re-enter the spawn after the guard raises.
+    """
+    global _reported_upto
+    with _host_cli_lock:
+        new_hits = _host_cli_hits[_reported_upto:]
+        if not new_hits:
+            return None
+        _reported_upto = len(_host_cli_hits)
+    counts: dict[tuple[str, str], int] = {}
+    for hit in new_hits:
+        counts[hit] = counts.get(hit, 0) + 1
+    lines = [
+        f"  - {test_id} spawned `{binary}`" + (f" (x{count})" if count > 1 else "")
+        for (test_id, binary), count in counts.items()
+    ]
+    return (
+        "This test spawned the real host CLI — mock the spawn instead of "
+        "calling the real binary (patch subprocess.run / subprocess.Popen, "
+        "or the helper one level up):\n" + "\n".join(lines)
+    )
+
+
+class _GuardedPopen(subprocess.Popen):
+    """subprocess.Popen replacement that fails on a real host-CLI spawn.
+
+    Must be a *subclass* of subprocess.Popen, not a function: a function
+    breaks MagicMock(spec=subprocess.Popen) (used in test_subprocess_utils.py
+    and test_worker_pool.py — a function spec exposes no Popen attributes, so
+    `.poll`/`.wait` raise AttributeError) and subprocess.Popen[str]
+    subscripting (used at nine production call sites). Raises before
+    super().__init__() runs, which is safe without a defensive
+    `self._child_created = False`: `_child_created` is a *class* attribute on
+    subprocess.Popen (False), so Popen.__del__ on the partially-initialized
+    instance is well-defined and emits no "Exception ignored" noise.
+    """
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        match = _match_host_binary(args, kwargs)
+        if match is not None:
+            binary, argv = match
+            raise _record_and_build_error(binary, argv)
+        super().__init__(*args, **kwargs)
+
+
+def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
+    """Print-only summary for host-CLI-spawn hits with no next test to attribute to.
+
+    NOT the enforcement mechanism (see ``_fail_on_live_host_cli``) — under
+    xdist a worker-mutated ``session.exitstatus`` never reaches the
+    controller, so a worker-side sessionfinish cannot fail the run at all.
+    This hook only covers the residual reporting gap: the last test on a
+    worker, or a spawn during session-/module-fixture teardown, both land
+    after the final function-scoped teardown has already advanced the
+    report cursor, so nothing would otherwise surface them. Calls the same
+    ``_drain_new_hits()`` helper the teardown fixture uses, so the lock, the
+    cursor advance, and the dedupe are shared rather than reimplemented.
+
+    ``warnings.warn`` is safe today because ``pyproject.toml`` sets no
+    ``filterwarnings`` (verified 2026-08-26), so this cannot escalate to an
+    error — but if ``filterwarnings = ["error"]`` is ever added, a
+    sessionfinish-time warning could crash a worker confusingly. Noted here
+    so that interaction is discovered by reading, not by debugging.
+    """
+    msg = _drain_new_hits()
+    if not msg:
+        return
+    terminalreporter = session.config.pluginmanager.get_plugin("terminalreporter")
+    if terminalreporter is not None:
+        terminalreporter.write_line(msg, red=True)
+    warnings.warn(msg, stacklevel=1)
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _install_no_live_host_cli() -> Generator[None, None, None]:
+    """Fail any test that spawns a real host CLI binary (FEAT-3329).
+
+    Patches the single process-global choke point every host-CLI spawn path
+    shares — ``subprocess.run`` and a ``subprocess.Popen`` subclass — rather
+    than a per-module or per-function patch, because both ``host_runner.py``
+    and ``subprocess_utils.py`` do a plain ``import subprocess``. Covers the
+    blocking (``run_blocking_json``), streaming (``run_claude_command``), and
+    detached (``handoff_handler.build_detached``) paths for free.
+
+    A raise alone is insufficient: ``FSMExecutor._evaluate`` swallows an
+    evaluator exception into an ``error`` verdict, so a test whose FSM routes
+    ``on_error`` to a terminal state would never see the raise propagate.
+    Every match is therefore also recorded into a module-level collector
+    (``_host_cli_hits``) *before* raising, so ``_fail_on_live_host_cli``'s
+    teardown check still surfaces the hit even when the raise itself was
+    eaten inside the test body.
+
+    **Must be defined first among session-scoped autouse fixtures in this
+    file** — same-scope autouse fixtures set up in definition order, so this
+    ordering is what lets the guard observe a spawn during another
+    session-scoped fixture's own setup.
+
+    Undone via ``mp.undo()`` in a ``finally`` after ``yield``, following
+    ``_guard_real_history_db``'s shape (a raw ``pytest.MonkeyPatch()``
+    instance, since the function-scoped ``monkeypatch`` fixture is
+    unavailable at session scope).
+    """
+    real_run = subprocess.run
+
+    def guarded_run(*args: Any, **kwargs: Any) -> Any:
+        match = _match_host_binary(args, kwargs)
+        if match is not None:
+            binary, argv = match
+            raise _record_and_build_error(binary, argv)
+        return real_run(*args, **kwargs)
+
+    mp = pytest.MonkeyPatch()
+    mp.setattr(subprocess, "run", guarded_run)
+    mp.setattr(subprocess, "Popen", _GuardedPopen)
+    try:
+        yield
+    finally:
+        mp.undo()
+
+
+@pytest.fixture(autouse=True)
+def _fail_on_live_host_cli() -> Generator[None, None, None]:
+    """Fail this test's teardown if it (or a background thread) spawned a real host CLI.
+
+    Enforcement mechanism for the guard above — NOT ``pytest_sessionfinish``,
+    which cannot reliably fail the run under the default ``-n logical``
+    addopts (xdist workers do not propagate a worker-mutated
+    ``session.exitstatus`` to the controller). This function-scoped
+    teardown-check works identically serially and under xdist because it
+    produces an ordinary test report rather than mutating session state.
+
+    Reports as an ERROR at teardown, not a FAILURE — the offending test line
+    itself still prints ``passed`` (pytest's standard classification for an
+    exception raised in a fixture's post-yield teardown). The run's exit
+    status is still nonzero, which is what matters for enforcement; the
+    message from ``_drain_new_hits()`` leads with the diagnosis rather than
+    with collector/cursor mechanics for exactly this reason.
+
+    **Must be defined first among function-scoped autouse fixtures in this
+    file** — function-scoped fixtures tear down in reverse setup order, so
+    defining this one first makes its teardown run *last*, catching a spawn
+    that happens inside another function-scoped fixture's own teardown
+    within the same test.
+    """
+    yield
+    msg = _drain_new_hits()
+    if msg:
+        pytest.fail(msg)
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _collapse_rate_limit_ladder() -> Generator[None, None, None]:
+    """Collapse the rate-limit backoff ladder to zero suite-wide (FEAT-3329).
+
+    Makes the "patch the ladder to [0]" convention structural rather than
+    per-test discipline: a rate-limit test that forgets the patch previously
+    slept on the real 300s ladder, which the ``--timeout=120
+    --timeout-method=thread`` watchdog cannot kill (the BUG-3208 wedge) — now
+    it simply runs fast. Session-scoped and suite-wide, not file-local or
+    class-scoped: file-locality only protects tests written in one file, and
+    there is no class-scoped-autouse precedent in this codebase.
+
+    No marker exemption for the one intentional non-zero ladder
+    (``test_fsm_executor.py`` heartbeat test, ``[0.3]``): it patches both
+    constants via ``patch.multiple`` inside the test body, which is applied
+    after — and therefore wins over — this session-scoped patch. A marker
+    exemption would be impossible here anyway: a session-scoped fixture runs
+    once and cannot observe per-test markers.
+    """
+    from little_loops.fsm import executor as fsm_executor
+
+    mp = pytest.MonkeyPatch()
+    mp.setattr(fsm_executor, "_DEFAULT_RATE_LIMIT_LONG_WAIT_LADDER", [0])
+    mp.setattr(fsm_executor, "_DEFAULT_RATE_LIMIT_MAX_WAIT_SECONDS", 0)
+    try:
+        yield
+    finally:
+        mp.undo()
 
 
 # =============================================================================
