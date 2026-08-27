@@ -36,8 +36,9 @@ cases"; successive review passes raised it to eleven, then fourteen, then
 the tracked-dirty and deletion cases added. The 2026-08-27 **third** review pass
 adds two more — (vii-c) for the subdirectory-launch run dir and (xiv) for the
 falsy-`{}` baseline — giving **twenty-one**: (i)–(xiv) plus the seven `-b`/`-c`
-partners (iv-b, vi-b, vii-b, vii-c, viii-b, xii-b, xii-c). See Integration Map →
-Tests.)
+partners (iv-b, vi-b, vii-b, vii-c, viii-b, xii-b, xii-c). The 2026-08-27
+**fifth** pass adds (xv) for the sibling-named-path prefix filter — **twenty-two**
+total. See Integration Map → Tests.)
 
 ## Current Behavior
 
@@ -200,6 +201,18 @@ nothing: the map is only ever compared against itself. A per-path
 `subprocess.run(["git","hash-object",p])` remains prohibited — it spawns N
 processes per run at both sites.
 
+**Hash reads must tolerate two failure modes (added 2026-08-27, fifth review
+pass), mapping both to the `DELETED`/unreadable sentinel rather than raising:**
+(1) `FileNotFoundError` — a path can vanish between enumeration and hashing
+(TOCTOU; live during real runs, where an agent writes and removes files
+concurrently with the gate); (2) `IsADirectoryError` — `git diff --name-only`
+reports a dirty **submodule** entry as its path, which is a directory on disk.
+The failure is not loud if unhandled: an uncaught exception in `init`'s body
+lands in the `|| : > "$DIR/baseline-changed-set.json"` fallback, truncating the
+baseline to zero bytes — which the gate then reads as "no usable baseline" and
+**skips with a warning**. A crash in the hasher silently disables the gate.
+Catch `OSError` around the read; sentinel and continue.
+
 **The exclusion pathspecs are depth-agnostic globs, not root-anchored prefixes** —
 see requirement (f), where the reason is spelled out. `':(exclude).loops/'` matches
 only `<root>/.loops/`, which is the wrong set.
@@ -331,6 +344,14 @@ The exclusion pathspec belongs on **both** sides, not gate-side only. An earlier
 draft of (a) sketched the baseline without it; that happened to work by accident
 (the difference cancels) but left the pair asymmetric, so any later edit to one
 side would silently break it.
+
+**Enforced by test, not only by comment convention (added 2026-08-27, fifth
+review pass):** a structural test extracts the `action` strings of `init` and
+`check_intent_scope` from the parsed YAML, slices the single-quoted
+`python3 -c '…'` body out of each, and asserts **byte equality**. That converts
+this requirement from reviewable to enforced — the strongest available drift
+guard for the construct the entire comparison depends on. See Integration Map →
+Tests.
 
 **(d) In-place overwrite of an untracked file — DECIDED: content-hash the
 baseline. SUBSUMED BY (a); implement (a) and (d) falls out.**
@@ -519,6 +540,21 @@ that two-clause form is the one to copy. The empty `ROOT` case from (a)'s sketch
 below builds its temp repo with a baseline commit, so **no proposed test exercises
 this path**; case (vi) must be extended or partnered with an empty-repo variant.
 
+**The escape warning is a pinned marker string, not improvised prose (added
+2026-08-27, fifth review pass).** Three tests couple to the warning's exact text
+— (vi)/(vi-b) assert its presence, (xiv) asserts its absence — and nothing else
+distinguishes "skipped" from "always-green." Emit a stable grep-able token,
+`check_intent_scope: SKIPPED`, optionally followed by the reason, and have all
+three cases assert on that token rather than on sentence prose that a later
+wording tweak would silently decouple.
+
+**`init`'s body must tolerate an empty ref explicitly** — when `$REF` is empty
+(zero-commit repo), skip the `git diff` side and build the map from the
+untracked listing alone, rather than letting the diff call crash into the
+`|| : >` fallback. Otherwise the zero-byte-file escape and the empty-ref escape
+become accidentally load-bearing for each other: the gate skips for the right
+reason only because `init` failed for a different one.
+
 **(k) Relativize the run dir before comparing — the two path spaces do not match.**
 This is the requirement the naive formulation gets wrong most quietly, because it
 produces a gate that is *always green*:
@@ -587,6 +623,16 @@ Requirements:
    repo-relative.
    Precedent: `incremental-refactor.yaml:58,159`
    (`ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || ROOT="."`).
+
+   **The filter applies to the final flagged set — equivalently to both maps —
+   not to the current-side enumeration alone (pinned 2026-08-27, fifth review
+   pass).** Under (a)'s symmetric comparison, a current-side-only filter makes
+   every run-dir path present in the *baseline* — `init`'s own scaffolding
+   (`.emit_errors.txt`, `baseline-ref.txt`, …), in any project that does not
+   gitignore the run dir — read as a baseline key absent from the current map,
+   and flag. That recreates case (v)'s permanent false positive by a new route.
+   The rule: a path is a violation **iff** it is flagged by the symmetric
+   comparison **and** its realpath is not under the run dir.
 1b. **Enumerate from the repo root, not from cwd — `git -C "$ROOT"`.** This is
    the same defect as (k) in a second place, and the sketches in (a) originally
    had it: both `git ls-files -o --exclude-standard` and
@@ -631,6 +677,13 @@ Requirements:
    comparison. macOS's `/tmp` → `/private/tmp` symlink makes this a live concern
    for the `tmp_path`-based tests, not a theoretical one. Per (e) this is
    `os.path.realpath` in the `python3` body, not a shell construction.
+
+   **The comparison itself must be separator-safe (added 2026-08-27, fifth
+   review pass):** `p == run_dir or p.startswith(run_dir + os.sep)` (or
+   `os.path.commonpath`), never a bare `startswith(run_dir)`. The bare form
+   filters `/repo/output/x` when the run dir is `/repo/out` — an always-green
+   hole for custom `--run-dir` values, in exactly the misfire direction Impact
+   names as the more dangerous one. Case (xv) is the guard.
 
 **(l) Escape bash brace-expansions — DISCHARGED BY (e), not managed.** The FSM
 interpolates the entire action text before `bash -c` sees it, so a bare `${VAR}` is
@@ -755,6 +808,11 @@ baseline-ref + `git diff --name-only` shape.
   regression guard for the unbounded-retry-wedge analysis in Expected Behavior;
   without it a later "simplification" back to `capture_intent` reintroduces the
   hang silently.
+- Add a matched-pair structural test enforcing requirement (c): extract the
+  `action` strings of `init` and `check_intent_scope` from the parsed YAML,
+  slice the single-quoted `python3 -c '…'` body out of each, and assert byte
+  equality. Any drift between the two `changed_set` embeddings — the failure
+  (c) exists to prevent — then fails a test instead of waiting for review.
 - Behavioral test cases, following the
   `TestGeneralTaskFinalVerifySpinGateShellAction` helper shape (class starts line
   2996; helpers `_init_repo` line 3009, `_run_gate` line 3027, `_make_run_dir` line
@@ -835,6 +893,12 @@ baseline-ref + `git diff --name-only` shape.
     is present, and nothing else distinguishes the two readings. This is the
     always-green variant with the widest blast radius, since it fires on the
     cleanest repos.
+  - (xv) **an out-of-scope file planted in a sibling-named path of the run dir**
+    — custom in-worktree run dir `<repo>/out/`, violation written to
+    `<repo>/output/x.txt` (the custom run dir matters: with the default
+    `.loops/runs/…` dir the glob exclusion masks the defect) → non-zero. Guard
+    for (k)(3)'s separator-safe prefix comparison: a bare `startswith(run_dir)`
+    filters the sibling path as if it were inside the run dir and passes green.
 - Three cases for the unified map in (a) — (xii) unconditional given (d)'s
   decision, (xii-b) and (xii-c) added by the 2026-08-27 second review pass. Each
   is a *value* change the corresponding name-only formulation passes green:
@@ -1020,7 +1084,11 @@ _Added by `/ll:refine-issue` — 2026-08-27 — based on codebase analysis:_
       the tracked and untracked sides, and cases (xii)/(xii-b)/(xii-c) pass
       (requirements (a), (d)). Hashing is **`hashlib` over the file bytes inside
       the `python3` body** — not `git hash-object --stdin-paths` (no `-z` mode;
-      breaks on embedded-newline paths) and not one git spawn per path.
+      breaks on embedded-newline paths) and not one git spawn per path. An
+      unreadable path (vanished mid-run, or a dirty submodule directory entry)
+      maps to the sentinel, never an uncaught exception — a crash in `init`'s
+      hasher truncates the baseline via the `|| :` fallback and silently
+      disables the gate.
 - [ ] Git enumeration is NUL-delimited (`-z`) end to end, with the set difference
       computed in Python (requirement (e)).
 - [ ] A run dir **outside the worktree** gates normally — clean → exit 0,
@@ -1044,21 +1112,30 @@ _Added by `/ll:refine-issue` — 2026-08-27 — based on codebase analysis:_
       byte-identical per (c). It and (k)(3)'s normalization are on the **main
       path**, not behind a non-default-`--run-dir` guard; (k)(2)'s
       outside-the-worktree case gates normally through the same filter, with no
-      dedicated branch and no skip.
+      dedicated branch and no skip. The filter applies to the **final flagged
+      set** (equivalently both maps), not the current-side enumeration alone —
+      a current-side-only filter re-flags `init`'s baselined run-dir
+      scaffolding as "absent" under the symmetric comparison — and is
+      **separator-safe** (`run_dir + os.sep`, not bare `startswith`; case (xv)).
 - [ ] On violation the gate exits non-zero, prints the offending paths, and
       writes them to `${run_dir}/.scope_violations.txt`; on pass that file exists
       and is empty.
 - [ ] `diagnose` reads `.scope_violations.txt`, names the scope-violation failure
       path, and carries the BUG-3327 no-stray-writes fence clause.
 - [ ] Non-git directory and zero-commit repo both exit 0 **with a warning on
-      stdout**, and the warning text is asserted (a bare exit 0 is
-      indistinguishable from the always-green bug). Run-dir-outside-the-worktree
+      stdout**, and the warning is the pinned marker token
+      `check_intent_scope: SKIPPED` (a bare exit 0 is indistinguishable from
+      the always-green bug). Cases (vi)/(vi-b) assert the token present;
+      case (xiv) asserts it absent. Run-dir-outside-the-worktree
       is **not** in this set — see the criterion above.
 - [ ] A pre-existing untracked file present before `init` does not trip the gate.
-- [ ] All **twenty-one** behavioral cases pass — (i)–(xiv) plus the `-b`/`-c`
+- [ ] All **twenty-two** behavioral cases pass — (i)–(xv) plus the `-b`/`-c`
       partners (iv-b), (vi-b), (vii-b), (vii-c), (viii-b), (xii-b), (xii-c) —
       including the mandatory negative partners (vii-b), (viii-b), (ix), (xii-b),
-      (xii-c) and (xiv).
+      (xii-c), (xiv) and (xv).
+- [ ] The matched-pair structural test passes: the single-quoted `python3 -c`
+      bodies extracted from `init`'s and `check_intent_scope`'s actions are
+      **byte-identical** (requirement (c)).
 - [ ] **The gate has been observed red** against a deliberately planted
       out-of-scope write in a live `workflow-generator` run, launched from a repo
       subdirectory with a dirty working tree — not merely green in CI.
@@ -1084,11 +1161,16 @@ _Added by `/ll:refine-issue` — 2026-08-27 — based on codebase analysis:_
   depth-agnostic `':(exclude,glob)**/.loops/**'` / `':(exclude,glob)**/.ll/**'`
   exclusions, mapped to `path -> content-hash` via `hashlib` over the file bytes,
   with a `DELETED` sentinel for paths git reports that are absent from the
-  worktree. The comparison over two such maps is **symmetric**: new keys, changed
-  values, and baseline keys absent from the current map all flag. Run-dir
-  subtraction is deliberately **not** part of this function — it is the gate's
-  post-enumeration realpath filter per (k)(1), which is what lets the two call
-  sites stay byte-identical. Every internal git call captures its
+  worktree — the same sentinel covering paths that are unreadable at hash time
+  (vanished mid-run, dirty submodule directory entries), caught via `OSError`
+  rather than raised. The comparison over two such maps is **symmetric**: new
+  keys, changed values, and baseline keys absent from the current map all flag.
+  Run-dir subtraction is deliberately **not** part of this function — it is the
+  gate's post-enumeration realpath filter per (k)(1), applied to the **final
+  flagged set** (both maps, not the current enumeration alone) and
+  separator-safe per (k)(3) — which is what lets the two call
+  sites stay byte-identical. That byte identity is itself test-enforced
+  (requirement (c), matched-pair structural test). Every internal git call captures its
   own stdout and stderr (requirement (b)). Emitted as one identical
   single-quoted `python3 -c` literal at **both** call sites — `init` and
   `check_intent_scope` — differing only in argv (requirement (c)).
@@ -1155,9 +1237,12 @@ _Added by `/ll:refine-issue` — 2026-08-27 — based on codebase analysis:_
    construct both `init` and the gate embed verbatim, and every other step depends
    on its shape. Union of tracked-diff and untracked-listing, root-scoped, both
    **glob** `':(exclude,glob)'` pathspecs from (f), `path -> hash` with a `DELETED`
-   sentinel, hashed via `hashlib` over the file bytes per (a), compared
+   sentinel, hashed via `hashlib` over the file bytes per (a) — with unreadable
+   paths (TOCTOU-vanished files, submodule directory entries) caught and mapped
+   to the sentinel, never raised — compared
    symmetrically (new keys, changed values, and baseline keys absent from the
-   current map all flag), with every internal git call capturing its own
+   current map all flag), tolerating an empty ref (skip the diff side) per (j),
+   with every internal git call capturing its own
    stdout/stderr per (b).
 1. Add `ROOT` resolution and the baseline captures to `init` (lines 44-61),
    following `general-task.yaml:76`'s `git rev-parse HEAD > baseline-ref.txt`
@@ -1176,10 +1261,14 @@ _Added by `/ll:refine-issue` — 2026-08-27 — based on codebase analysis:_
    (f) as the primary mechanism, the root-scoped enumeration from (k)(1b), the
    non-repo/zero-commit escape from (j) — extended to cover a **missing, zero-byte
    or unparseable** `baseline-changed-set.json` per (a), with a parsed `{}`
-   explicitly *not* escaping — and the bare-`$VAR` preamble idiom from (l).
+   explicitly *not* escaping, and emitting the pinned
+   `check_intent_scope: SKIPPED` marker on every escape — and the bare-`$VAR`
+   preamble idiom from (l).
    Add the run-dir subtraction as (k)(1)'s **post-enumeration realpath prefix
-   filter** (not a gate-side pathspec — the two `changed_set` sites must stay
-   byte-identical per (c)) and (k)(3)'s `os.path.realpath` normalization, both
+   filter** — applied to the final flagged set, separator-safe
+   (`run_dir + os.sep`), not a gate-side pathspec: the two `changed_set` sites
+   must stay byte-identical per (c) — and (k)(3)'s `os.path.realpath`
+   normalization, both
    **on the main path** — every subdirectory launch exercises them, per the
    corrected scope note in (k). Outside-the-worktree gates normally per the
    corrected (k)(2) — **not** by escaping; under the post-filter it needs no
@@ -1192,12 +1281,14 @@ _Added by `/ll:refine-issue` — 2026-08-27 — based on codebase analysis:_
    `diagnose`'s failure enumeration.
 5. Add the fence clause to `diagnose`'s prompt per (o).
 6. Verify `max_steps` is 45 per (m) — expected to be a no-op.
-7. Add the tests above (all twenty-one cases — (i)–(xiv) plus (iv-b), (vi-b),
+7. Add the tests above (all twenty-two cases — (i)–(xv) plus (iv-b), (vi-b),
    (vii-b), (vii-c), (viii-b), (xii-b), (xii-c) — plus the state-set,
-   exit_code-shape, routing-edge, `run_dir`-usage and `diagnose`-text test
+   exit_code-shape, routing-edge, matched-pair byte-identity, `run_dir`-usage
+   and `diagnose`-text test
    updates). Case (xiii) targets `init`, not the gate; case (v) doubles as the (a1)
    ordering guard; case (vii-c) must build its run dir under `<subdir>/.loops/`,
-   not the root one, or it does not test what it claims.
+   not the root one, or it does not test what it claims; case (xv) must use a
+   custom in-worktree run dir, or the `.loops/` glob masks the defect.
 8. Verify with `ll-loop validate`, plus a re-run of `workflow-generator` **from a
    deliberately dirty working tree and from a repo subdirectory**, confirming that
    pre-existing untracked files do not trip the gate and that the gate still fires
@@ -1240,7 +1331,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
   `changed_set` construct and its `init` baseline, root-scoped enumeration, a
   relativization on the main path, one escape path (no repo / no commits / no
   usable baseline), a violation report artifact plus `diagnose` edits, and
-  twenty-one behavioral test cases
+  twenty-two behavioral test cases plus a matched-pair structural test
 - **Risk**: Medium — the gate can misfire in **both** directions: a false positive
   routes to `diagnose` and fails the run, while a path-space mismatch
   (requirement (k)) yields a gate that is permanently green and reports safety it
@@ -1250,12 +1341,13 @@ _These touchpoints were identified by wiring analysis and must be included in th
   and the red-gate test case are requirements, not polish — and why the gate must
   not route back to `capture_intent`.
 
-  Six of the always-green variants are pinned by mandatory negative test
+  Seven of the always-green variants are pinned by mandatory negative test
   partners rather than left to review: (vii-b) for cwd-scoped enumeration,
   (viii-b) for the outside-the-worktree escape, (ix) for the exclusion pathspec,
   (xii-b) for a path-only subtraction of the dirty-tracked set, (xii-c) for
-  untracked deletions, and (xiv) for a falsy-`{}` baseline escaping on a clean
-  tree. Each of their positive partners passes trivially against the corresponding
+  untracked deletions, (xiv) for a falsy-`{}` baseline escaping on a clean
+  tree, and (xv) for a separator-unsafe run-dir prefix filter. Each of their
+  positive partners passes trivially against the corresponding
   broken gate, so the pairs are not optional.
 
   The false-positive direction gained a real instance in the 2026-08-27 second
@@ -1295,7 +1387,7 @@ brief-fencing work.
 
 ### Review history
 
-Four pre-implementation review passes have run against this issue. The current
+Five pre-implementation review passes have run against this issue. The current
 spec is the body above; this is only the record of what changed and why, so a
 reader who remembers an earlier version can see what moved.
 
@@ -1356,6 +1448,26 @@ reader who remembers an earlier version can see what moved.
      pathspec." The post-filter resolves all three, and dissolves (k)(2)'s
      dedicated branch (the filter never matches an in-repo path); cases
      (viii)/(viii-b) are retained.
+- **2026-08-27, fifth pass.** Six changes, all recorded in place above:
+  1. **(k)(1)'s post-filter pinned to the final flagged set**, not the
+     current-side enumeration — under the symmetric comparison a current-side
+     filter re-flags `init`'s baselined run-dir scaffolding as "absent,"
+     recreating case (v)'s permanent false positive by a new route.
+  2. **(k)(3)'s prefix comparison made separator-safe** (`run_dir + os.sep`) —
+     a bare `startswith` filters sibling-named paths (`/repo/output` under run
+     dir `/repo/out`), an always-green hole for custom `--run-dir`. Case (xv)
+     added; count is twenty-two.
+  3. **(a)'s hasher tolerates unreadable paths** — `FileNotFoundError` (TOCTOU)
+     and `IsADirectoryError` (dirty submodule entry) map to the sentinel; an
+     uncaught exception in `init` truncates the baseline via the `|| :`
+     fallback and silently disables the gate.
+  4. **(c)'s matched pair is now test-enforced** — a structural test asserts
+     the two embedded `python3 -c` bodies are byte-identical.
+  5. **(j)'s escape warning is a pinned marker** (`check_intent_scope: SKIPPED`)
+     since three tests couple to its presence/absence.
+  6. **(j)/`init` tolerate an empty ref explicitly** (skip the diff side)
+     rather than relying on the crash-into-`|| : >` fallback producing the
+     zero-byte escape by accident.
 
 Requirement labels were renumbered sequentially to (a)–(p) in an earlier pass. If
 you are holding a reference from before that, re-read the requirement by its text
