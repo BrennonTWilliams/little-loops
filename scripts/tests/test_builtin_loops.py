@@ -15,6 +15,14 @@ import pytest
 import yaml
 
 from little_loops.fsm import is_runnable_loop
+from little_loops.fsm.fence import (
+    FENCE_CORE,
+    FENCE_ROLES,
+    FENCED_BRIEF_SITES,
+    KNOWN_UNFENCED_PROMPT_SITES,
+    normalize_fence_text,
+    render_fence,
+)
 from little_loops.fsm.fragments import resolve_fragments
 from little_loops.fsm.validation import (
     ValidationSeverity,
@@ -17736,6 +17744,7 @@ class TestWorkflowGeneratorLoop:
             "emit_artifact",
             "validate_artifact",
             "count_emit_retry",
+            "count_intent_retry",
             "check_shrink_enabled",
             "shrink_baseline",
             "shrink_select_candidate",
@@ -17973,7 +17982,9 @@ class TestWorkflowGeneratorLoop:
     def test_init_resets_emit_errors_and_retry_count(self, data: dict, tmp_path: Path) -> None:
         """Behavioral: init clears stale .emit_errors.txt/.emit_retry_count from
         a reused run_dir, without disturbing the capture: run_dir stdout contract."""
-        action = data["states"]["init"]["action"].replace('DIR="${context.run_dir}"', f'DIR="{tmp_path}"')
+        action = data["states"]["init"]["action"].replace(
+            'DIR="${context.run_dir}"', f'DIR="{tmp_path}"'
+        )
         (tmp_path).mkdir(exist_ok=True)
         (tmp_path / ".emit_errors.txt").write_text("stale error text\n")
         (tmp_path / ".emit_retry_count").write_text("9\n")
@@ -17984,17 +17995,150 @@ class TestWorkflowGeneratorLoop:
         assert (tmp_path / ".emit_errors.txt").read_text() == ""
         assert not (tmp_path / ".emit_retry_count").exists()
 
+    # --- BUG-3327 regression guards: validate_intent's on_no edge is now
+    # bounded by a count_intent_retry counter state, and the retry it bounds
+    # is fed the prior attempt's errors.
+
+    def test_count_intent_retry_edges(self, data: dict) -> None:
+        """count_intent_retry mirrors count_emit_retry's flat counter shape:
+        on_yes back to capture_intent under budget, on_no to diagnose once
+        exhausted."""
+        state = data["states"]["count_intent_retry"]
+        assert state.get("on_yes") == "capture_intent"
+        assert state.get("on_no") == "diagnose"
+
+    def test_validate_intent_on_no_targets_count_intent_retry(self, data: dict) -> None:
+        state = data["states"]["validate_intent"]
+        assert state.get("on_no") == "count_intent_retry"
+
+    def test_count_intent_retry_uses_exit_code_not_output_numeric(self, data: dict) -> None:
+        """lib/common.yaml's retry_counter fragment uses output_numeric/lt and
+        is the wrong model here (it hardcodes a bare .loops/tmp/ counter file);
+        the in-file count_emit_retry precedent evaluates exit_code with the
+        comparison done in the shell, and count_intent_retry must match."""
+        state = data["states"]["count_intent_retry"]
+        assert state.get("action_type") == "shell"
+        assert state.get("evaluate", {}).get("type") == "exit_code"
+
+    def test_max_steps_is_45(self, data: dict) -> None:
+        assert data.get("max_steps") == 45
+
+    def test_no_max_edge_revisits_declared(self, data: dict) -> None:
+        """Regression guard: max_edge_revisits is loop-wide and the threshold
+        needed to bound validate_intent's retry edge would terminate the
+        shrink pass (shrink_select_candidate <-> shrink_try_remove fires once
+        per candidate state). A counter state is used instead."""
+        assert "max_edge_revisits" not in data
+
+    def test_context_max_intent_retries_declared(self, data: dict) -> None:
+        assert data.get("context", {}).get("max_intent_retries") == "3"
+
+    def test_init_resets_intent_errors_and_retry_count(self, data: dict) -> None:
+        action = data["states"]["init"].get("action", "") or ""
+        assert 'rm -f "$DIR/.intent_retry_count"' in action
+        assert ': > "$DIR/.intent_errors.txt"' in action
+
+    def test_diagnose_mentions_intent_retry_files(self, data: dict) -> None:
+        action = data["states"]["diagnose"].get("action", "") or ""
+        assert ".intent_retry_count" in action
+        assert ".intent_errors.txt" in action
+
+    def test_diagnose_mentions_both_retry_exhaustion_paths(self, data: dict) -> None:
+        """diagnose is count_intent_retry's exhausted-budget target too now;
+        it must not assert emit_artifact as the sole failure mode."""
+        action = data["states"]["diagnose"].get("action", "") or ""
+        assert "emit_artifact" in action
+        assert "capture_intent" in action
+        assert "max_intent_retries" in action
+
+    def test_capture_intent_references_intent_errors_file(self, data: dict) -> None:
+        """The bounded retry must feed capture_intent the prior attempt's
+        validation errors, mirroring emit_artifact's .emit_errors.txt read."""
+        action = data["states"]["capture_intent"].get("action", "") or ""
+        assert ".intent_errors.txt" in action
+        assert "exists" in action and "non-empty" in action
+
+    def test_validate_intent_still_exit_code(self, data: dict) -> None:
+        state = data["states"]["validate_intent"]
+        assert state.get("action_type") == "shell"
+        assert state.get("evaluate", {}).get("type") == "exit_code"
+
+    def test_validate_intent_captures_rc_explicitly(self, data: dict) -> None:
+        """A bare trailing `| tee` reports tee's exit status, silently turning
+        every failed validation into a pass. validate_intent must capture RC
+        explicitly, mirroring validate_artifact's shape."""
+        action = data["states"]["validate_intent"].get("action", "") or ""
+        assert not action.rstrip().endswith("txt"), (
+            "validate_intent's action must not end in a bare pipe to tee"
+        )
+        assert "RC=$?" in action
+        assert 'exit "$RC"' in action
+
+    def test_validate_intent_writes_intent_errors_file(self, data: dict) -> None:
+        action = data["states"]["validate_intent"].get("action", "") or ""
+        assert ".intent_errors.txt" in action
+
+    def test_validate_intent_writes_and_clears_intent_errors_behaviorally(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        """Behavioral: validate_intent tees its python3 assertion failures to
+        .intent_errors.txt while preserving the real exit code, and truncates
+        the file on success."""
+        action = data["states"]["validate_intent"]["action"].replace(
+            "${captured.run_dir.output}", str(tmp_path)
+        )
+
+        (tmp_path / "intent.yaml").write_text(yaml.safe_dump({"name": ""}))
+        result = subprocess.run(["bash", "-c", action], capture_output=True, text=True)
+        assert result.returncode != 0
+        errors_file = tmp_path / ".intent_errors.txt"
+        assert errors_file.exists()
+        assert errors_file.read_text().strip() != ""
+
+        valid_intent = {
+            "name": "x",
+            "goal": "y",
+            "steps": ["z"],
+            "success_signal": "w",
+        }
+        (tmp_path / "intent.yaml").write_text(yaml.safe_dump(valid_intent))
+        result = subprocess.run(["bash", "-c", action], capture_output=True, text=True)
+        assert result.returncode == 0, result.stderr
+        assert errors_file.read_text() == ""
+
+    def test_init_resets_intent_errors_and_retry_count_behaviorally(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        action = data["states"]["init"]["action"].replace(
+            'DIR="${context.run_dir}"', f'DIR="{tmp_path}"'
+        )
+        (tmp_path).mkdir(exist_ok=True)
+        (tmp_path / ".intent_errors.txt").write_text("stale error text\n")
+        (tmp_path / ".intent_retry_count").write_text("9\n")
+
+        result = subprocess.run(["bash", "-c", action], capture_output=True, text=True)
+        assert result.returncode == 0, result.stderr
+        assert result.stdout.strip() == str(tmp_path)
+        assert (tmp_path / ".intent_errors.txt").read_text() == ""
+        assert not (tmp_path / ".intent_retry_count").exists()
+
     @pytest.mark.parametrize(
         "evaluate,expect_pass",
         [
-            pytest.param({"type": "output_json", "path": "x", "operator": "greater", "target": 1}, False, id="required-invalid"),
+            pytest.param(
+                {"type": "output_json", "path": "x", "operator": "greater", "target": 1},
+                False,
+                id="required-invalid",
+            ),
             pytest.param(
                 {"type": "output_contains", "pattern": "ok", "operator": "greater"},
                 False,
                 id="not-required-invalid",
             ),
             pytest.param(
-                {"type": "output_contains", "pattern": "ok", "operator": None}, True, id="explicit-null-ok"
+                {"type": "output_contains", "pattern": "ok", "operator": None},
+                True,
+                id="explicit-null-ok",
             ),
         ],
     )
@@ -18023,6 +18167,114 @@ class TestWorkflowGeneratorLoop:
         else:
             assert result.returncode != 0, "gate passed an invalid operator value"
             assert "invalid operator" in result.stderr
+
+
+def _load_builtin_loop(filename: str) -> dict:
+    return yaml.safe_load((BUILTIN_LOOPS_DIR / filename).read_text())
+
+
+# The raw ${context.*} interpolation var each fenced loop's input_key resolves
+# to. Used only by the completeness guard to discover every prompt state that
+# interpolates it — the fencing sites themselves come from FENCED_BRIEF_SITES.
+_FENCE_LOOP_INPUT_VARS = {
+    "workflow-generator.yaml": "${context.description}",
+    "brainstorm.yaml": "${context.brief}",
+    "loop-composer.yaml": "${context.goal}",
+    "loop-composer-adaptive.yaml": "${context.goal}",
+    "loop-router.yaml": "${context.goal}",
+}
+
+
+class TestBriefFencing:
+    """BUG-3327: class-(1) prompt sites that interpolate a raw user-authored
+    brief/goal must fence it, so imperative verbs inside it read as material
+    to analyze rather than instructions to the model.
+
+    Not test-provable: these tests pin the fence's *presence and placement*,
+    not its *effect* — whether an imperatively-phrased brief actually stops
+    being executed is model behavior. See BUG-3327 "Efficacy is not
+    test-provable."
+    """
+
+    @pytest.mark.parametrize("site", FENCED_BRIEF_SITES, ids=lambda s: f"{s[0]}::{s[1]}")
+    def test_rendered_fence_present(self, site: tuple[str, str]) -> None:
+        loop_file, state_name = site
+        data = _load_builtin_loop(loop_file)
+        action = data["states"][state_name].get("action", "") or ""
+        expected = render_fence(*FENCE_ROLES[site])
+        assert normalize_fence_text(expected) in normalize_fence_text(action), (
+            f"{site}: rendered fence text not found (or diverged) in action"
+        )
+
+    @pytest.mark.parametrize("site", FENCED_BRIEF_SITES, ids=lambda s: f"{s[0]}::{s[1]}")
+    def test_fence_core_present(self, site: tuple[str, str]) -> None:
+        loop_file, state_name = site
+        data = _load_builtin_loop(loop_file)
+        action = data["states"][state_name].get("action", "") or ""
+        assert normalize_fence_text(FENCE_CORE) in normalize_fence_text(action)
+
+    @pytest.mark.parametrize("site", FENCED_BRIEF_SITES, ids=lambda s: f"{s[0]}::{s[1]}")
+    def test_interpolation_sits_between_markers(self, site: tuple[str, str]) -> None:
+        loop_file, state_name = site
+        data = _load_builtin_loop(loop_file)
+        action = data["states"][state_name].get("action", "") or ""
+        noun, _role, _verbs, var = FENCE_ROLES[site]
+        open_marker = f"<<<{noun}"
+        close_marker = f"{noun}>>>"
+        assert open_marker in action, f"{site}: missing opening marker {open_marker!r}"
+        assert close_marker in action, f"{site}: missing closing marker {close_marker!r}"
+        assert var in action, f"{site}: missing interpolation {var!r}"
+        assert action.index(open_marker) < action.index(var) < action.index(close_marker), (
+            f"{site}: interpolation must sit between the markers, in order"
+        )
+
+    @pytest.mark.parametrize("site", FENCED_BRIEF_SITES, ids=lambda s: f"{s[0]}::{s[1]}")
+    def test_var_appears_exactly_once(self, site: tuple[str, str]) -> None:
+        """No second, unfenced occurrence of the loop's input var — otherwise
+        a state can fence one copy and leave another loose."""
+        loop_file, state_name = site
+        data = _load_builtin_loop(loop_file)
+        action = data["states"][state_name].get("action", "") or ""
+        var = FENCE_ROLES[site][3]
+        assert action.count(var) == 1, (
+            f"{site}: expected exactly one occurrence of {var!r}, found {action.count(var)}"
+        )
+
+    def test_completeness_guard(self) -> None:
+        """Discover every action_type: prompt state in the five loops whose
+        action contains that loop's own input_key var, and assert the
+        discovered set equals FENCED_BRIEF_SITES | KNOWN_UNFENCED_PROMPT_SITES.
+
+        Without this, "every prompt that interpolates the brief fences it" is
+        a convention nothing enforces, and the 13-site list can silently go
+        stale as new states are added.
+        """
+        discovered: set[tuple[str, str]] = set()
+        for loop_file, var in _FENCE_LOOP_INPUT_VARS.items():
+            data = _load_builtin_loop(loop_file)
+            for state_name, state in data["states"].items():
+                if state.get("action_type") != "prompt":
+                    continue
+                action = state.get("action", "") or ""
+                if var in action:
+                    discovered.add((loop_file, state_name))
+        expected = set(FENCED_BRIEF_SITES) | KNOWN_UNFENCED_PROMPT_SITES
+        assert discovered == expected, (
+            f"discovered {discovered - expected} not classified; "
+            f"expected-but-missing {expected - discovered}"
+        )
+
+    @pytest.mark.parametrize(
+        "site", sorted(KNOWN_UNFENCED_PROMPT_SITES), ids=lambda s: f"{s[0]}::{s[1]}"
+    )
+    def test_known_unfenced_sites_stay_unfenced(self, site: tuple[str, str]) -> None:
+        """Negative control: class-(3) display-text sites must NOT be fenced,
+        pinning the classification in both directions."""
+        loop_file, state_name = site
+        data = _load_builtin_loop(loop_file)
+        action = data["states"][state_name].get("action", "") or ""
+        assert "<<<BRIEF" not in action
+        assert "<<<GOAL" not in action
 
 
 class TestConfidenceGateThresholdsNotHardcoded:

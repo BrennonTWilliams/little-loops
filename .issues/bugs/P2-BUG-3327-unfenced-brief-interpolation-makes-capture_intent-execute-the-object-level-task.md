@@ -4,10 +4,11 @@ type: BUG
 title: Unfenced brief interpolation makes capture_intent execute the object-level
   task
 priority: P2
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-08-26'
 captured_at: '2026-08-26T17:33:30Z'
+completed_at: '2026-08-27T01:35:46Z'
 confidence_score: 100
 outcome_confidence: 85
 score_complexity: 16
@@ -1052,6 +1053,7 @@ it was pricing are gone.**
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-27T01:35:09 - `295a1af7-f2c3-4804-8783-f85171d1fb05.jsonl`
 - `/ll:confidence-check` - 2026-08-27T01:04:19 - `e7820950-9cbf-413f-8508-e6c3139d98ec.jsonl`
 - `/ll:reconcile-issue` - 2026-08-27T00:08:45 - `f0293c3c-9677-45c0-8292-78c85d6528be.jsonl`
 - `/ll:refine-issue` - 2026-08-27T00:06:20 - `9483762a-304f-479e-b9b2-77f2f346dbfe.jsonl`
