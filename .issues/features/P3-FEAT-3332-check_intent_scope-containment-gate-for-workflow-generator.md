@@ -175,17 +175,30 @@ map   = { p: hash(p) if p exists else DELETED  for p in paths }
 
 where `DELETED` is a sentinel for a path git reports but which is absent from the
 worktree. `init` writes this map; `check_intent_scope` recomputes it and flags
-**any path whose entry is new or whose value differs**. At `init` the `$REF` side
+**any path whose entry is new, whose value differs, or whose baseline key is
+absent from the current map** — the comparison is symmetric, not a one-way scan
+of the current map. The third clause is load-bearing (added 2026-08-27, fourth
+review pass): `git ls-files -o` enumerates the filesystem, so a deleted
+pre-existing *untracked* file appears in **neither** current-side enumeration and
+the `DELETED` sentinel can never fire for it — the sentinel only fires on the
+tracked side, where `git diff` still reports the path. Without the
+baseline-key-absent clause the rule as previously written could not catch case
+(xii-c), the exact case the sentinel was added for. At `init` the `$REF` side
 is a no-op against a freshly-read `HEAD`, so the map at that moment is exactly
 "what the maintainer already had dirty."
 
-**Hashing is one batched call, not one per path.** Use a single
-`git -C "$ROOT" hash-object --stdin-paths` invocation fed the NUL-split path list
-(the Python analogue of `general-task.yaml`'s `xargs -0 git hash-object`), reading
-its stdout as the hash column. A per-path `subprocess.run(["git","hash-object",p])`
-spawns N processes per run at both sites and is what makes the cost note below
-wrong rather than merely real. `hashlib` over the file bytes is an acceptable
-substitute; a per-path git spawn is not.
+**Hashing is `hashlib` over the file bytes inside the `python3` body — DECIDED
+2026-08-27 (fourth review pass), superseding the earlier batched
+`git hash-object --stdin-paths` instruction.** `--stdin-paths` has no `-z` mode
+(verified against git 2.52: it is newline-delimited only), so feeding it the
+NUL-split path list reintroduces exactly the embedded-newline breakage (e)'s
+NUL-everywhere decision exists to prevent — a path containing a newline splits
+into two bogus lines and misaligns the hash column. `hashlib` is stdlib,
+delimiter-free, one fewer subprocess (satisfying (b)'s stdout-purity for free),
+and byte-exact with no CRLF-filter surprises. Git-blob-compatible hashes buy
+nothing: the map is only ever compared against itself. A per-path
+`subprocess.run(["git","hash-object",p])` remains prohibited — it spawns N
+processes per run at both sites.
 
 **The exclusion pathspecs are depth-agnostic globs, not root-anchored prefixes** —
 see requirement (f), where the reason is spelled out. `':(exclude).loops/'` matches
@@ -201,9 +214,10 @@ fourth hole that was never written down:
 - **deletions, previously unhandled and silently green.** A path-set difference
   that only looks for newly-appeared entries never notices an agent *deleting* a
   pre-existing untracked file outside `run_dir`: the set gets smaller, and the gate
-  passes. The `DELETED` sentinel makes a deletion a value change like any other.
-  (Deletion of a *tracked* file was already visible via `git diff --name-only`; it
-  is the untracked half that was missing.)
+  passes. A *tracked* deletion is caught by the `DELETED` sentinel (`git diff`
+  still reports the path; the worktree file is gone). An *untracked* deletion is
+  caught by the symmetric comparison's baseline-key-absent clause — the sentinel
+  cannot fire for it, since no current-side enumeration reports the path at all.
 
 `init` (lines 44-61) must first resolve the repo root — it currently has no
 `ROOT`, only `DIR`, so this is net-new and is a precondition of every other git
@@ -292,7 +306,7 @@ three git commands fail.
 level.** The `changed_set` construct shells out to git several times; a
 `subprocess.run(...)` or `subprocess.call(...)` without `capture_output=True` (or
 an explicit `stdout=PIPE, stderr=DEVNULL`) **inherits `init`'s stdout**, so a git
-advisory — `detached HEAD`, a `safe.directory` warning, an `--stdin-paths` error —
+advisory — a `detached HEAD` notice, a `safe.directory` warning —
 lands in `capture: run_dir` even though the shell-level redirect looks correct.
 Every git call inside the body captures both streams; nothing but the final
 `case`/`echo` block reaches fd 1.
@@ -335,10 +349,9 @@ limits list.
 **Cost note.** The map hashes every changed-or-untracked file twice per run (once
 at `init`, once at the gate). `--exclude-standard` bounds this in practice — build
 output and vendored trees are gitignored in any sane project — but a project with a
-large *non-ignored* untracked tree pays real I/O. This is two batched
-`git hash-object --stdin-paths` calls per run, not two-times-N process spawns —
-see (a). Not a design change; it is the fifth entry on the guide's limits list (see
-Documentation).
+large *non-ignored* untracked tree pays real I/O. This is two in-process `hashlib`
+passes per run, not two-times-N process spawns — see (a). Not a design change; it
+is the fifth entry on the guide's limits list (see Documentation).
 
 **(e) Delimiter and implementation language — DECIDED: NUL-delimited git output,
 consumed by `python3`.** `general-task`'s `untracked()` uses `git ls-files -o -z`
@@ -551,15 +564,27 @@ Two independent things follow from the cwd-anchoring:
 
 **Implement (k)(1) and (k)(3) as unconditional machinery on the main path, not as
 a guarded branch.** The guarded-branch instruction previously carried in
-Implementation Step 2 is withdrawn. The one genuinely rare configuration is
-(k)(2)'s run-dir-outside-the-worktree, which keeps its own branch.
+Implementation Step 2 is withdrawn. (k)(2)'s run-dir-outside-the-worktree
+configuration needs no branch either under the post-filter form of (k)(1) — the
+filter simply never matches an in-repo path — but keeps its own test cases
+((viii)/(viii-b)) because the superseded skip-with-warning reading fails only
+there.
 
 Requirements:
 
-1. Compute the repo root once (`git rev-parse --show-toplevel`) and convert
-   `${captured.run_dir.output}` to a root-relative path before using it in a
-   pathspec. Note `$(pwd)` is not necessarily the repo root — the loop can be
-   invoked from a subdirectory, so cwd-relative ≠ repo-relative.
+1. Compute the repo root once (`git rev-parse --show-toplevel`) and subtract the
+   run dir as a **post-enumeration filter inside the `python3` body** — an
+   `os.path.realpath` prefix comparison of `<root>/<reported path>` against the
+   run dir — **not** as a gate-side `':(exclude)'` pathspec. Decided 2026-08-27
+   (fourth review pass), resolving a three-way conflict in the previous text: a
+   gate-side run-dir pathspec would make the two `changed_set` invocations
+   differ, violating (c)'s byte-identical requirement, while omitting it
+   entirely flags a custom in-worktree `--run-dir` outside `.loops/` on its own
+   artifacts. The post-filter keeps `changed_set(root, ref)` identical at both
+   sites (its signature carries no run-dir argument by design) and lives next to
+   (k)(3)'s normalization, which it shares. Note `$(pwd)` is not necessarily the
+   repo root — the loop can be invoked from a subdirectory, so cwd-relative ≠
+   repo-relative.
    Precedent: `incremental-refactor.yaml:58,159`
    (`ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || ROOT="."`).
 1b. **Enumerate from the repo root, not from cwd — `git -C "$ROOT"`.** This is
@@ -591,10 +616,12 @@ Requirements:
    out-of-scope write.** Nothing is unknowable here; the check is strictly
    *simpler* than the in-worktree case, not impossible.
 
-   Correct behavior: detect outside-worktree, skip the run-dir pathspec entirely,
-   keep the `.loops/`/`.ll/` exclusions, and evaluate the diff exactly as normal.
-   Reserve the skip-with-warning escape for (j)'s two genuine cases — no repo, and
-   no commits — where there is truly no baseline to diff against.
+   Correct behavior: gate normally. Under (k)(1)'s post-enumeration filter this
+   needs no dedicated branch at all — an out-of-worktree run dir simply never
+   prefix-matches any in-repo path, the `.loops/`/`.ll/` exclusions stay, and the
+   diff is evaluated exactly as normal. Reserve the skip-with-warning escape for
+   (j)'s two genuine cases — no repo, and no commits — where there is truly no
+   baseline to diff against.
 
    This matters disproportionately because the discarded configuration fails
    *green*: a run with `--run-dir /tmp/foo` would report containment it never
@@ -778,9 +805,9 @@ baseline-ref + `git diff --name-only` shape.
     repo's `.gitignore` must not cover it (mirroring `.gitignore:88`'s
     leading-anchored `.loops/runs/`, which does not match at depth).
   - (viii) **run dir outside the worktree, clean repo** (an absolute path under
-    `tmp_path`, not under the repo) → exit 0, per the corrected (k)(2). The gate
-    drops the run-dir pathspec, keeps the `.loops/`/`.ll/` exclusions, and finds
-    nothing.
+    `tmp_path`, not under the repo) → exit 0, per the corrected (k)(2). The
+    run-dir post-filter matches nothing, the `.loops/`/`.ll/` exclusions stay,
+    and the gate finds nothing.
   - (viii-b) **run dir outside the worktree, out-of-scope file planted inside the
     repo** → non-zero. (viii)'s mandatory negative partner and the regression guard
     for the corrected (k)(2): the superseded skip-with-warning reading passes
@@ -822,9 +849,11 @@ baseline-ref + `git diff --name-only` shape.
     without this case the naive fix ships as a new always-green hole on the tracked
     side.
   - (xii-c) **a pre-existing untracked file outside the run dir, deleted during the
-    run** → non-zero. The `DELETED` sentinel. A set difference that looks only for
-    newly-appeared paths sees the set get *smaller* and passes green; this case is
-    the only thing that distinguishes the two.
+    run** → non-zero. The symmetric comparison's baseline-key-absent clause — the
+    `DELETED` sentinel cannot fire here, since `git ls-files -o` never reports a
+    nonexistent file and `git diff` does not cover untracked paths. A set
+    difference that looks only for newly-appeared paths sees the set get *smaller*
+    and passes green; this case is the only thing that distinguishes the two.
 - One case for (b), on `init` rather than the gate:
   - (xiii) **`init`'s stdout is exactly one line**, asserted both in a git repo and
     in a non-repo directory (where all three new git commands fail). Extract
@@ -963,8 +992,11 @@ _Added by `/ll:refine-issue` — 2026-08-27 — based on codebase analysis:_
       (case (iv-b)), and modifying it *again* during the run does (case (xii-b)).
       A path-only subtraction of the dirty-tracked set does not satisfy this pair.
 - [ ] **Deleting** a pre-existing untracked file outside the run dir trips the gate
-      (case (xii-c)) — the changed-set comparison is value-based, so a shrinking
-      path set is not silently green.
+      (case (xii-c)) — the changed-set comparison is **symmetric**: baseline keys
+      absent from the current map are flagged, so a shrinking path set is not
+      silently green. A one-way scan of the current map does not satisfy this
+      criterion, since neither current-side enumeration reports a deleted
+      untracked file.
 - [ ] `init` pre-truncates `.scope_violations.txt` alongside `.emit_errors.txt` and
       `.intent_errors.txt`, inside the step-1 block that precedes the baseline
       capture (requirement (a1)).
@@ -986,8 +1018,9 @@ _Added by `/ll:refine-issue` — 2026-08-27 — based on codebase analysis:_
       (requirement (c)).
 - [ ] The baseline is **content-hashed** (`path -> hash`), not name-only, on both
       the tracked and untracked sides, and cases (xii)/(xii-b)/(xii-c) pass
-      (requirements (a), (d)). Hashing is a **single batched**
-      `git hash-object --stdin-paths` call per site, not one spawn per path.
+      (requirements (a), (d)). Hashing is **`hashlib` over the file bytes inside
+      the `python3` body** — not `git hash-object --stdin-paths` (no `-z` mode;
+      breaks on embedded-newline paths) and not one git spawn per path.
 - [ ] Git enumeration is NUL-delimited (`-z`) end to end, with the set difference
       computed in Python (requirement (e)).
 - [ ] A run dir **outside the worktree** gates normally — clean → exit 0,
@@ -1005,10 +1038,13 @@ _Added by `/ll:refine-issue` — 2026-08-27 — based on codebase analysis:_
       root-anchored prefixes. A run launched from a repo **subdirectory** — whose
       default run dir is `<subdir>/.loops/runs/…`, not `<root>/.loops/…` — passes
       with only run-dir files written (case (vii-c)).
-- [ ] The run-dir relativization from (k)(1) and the `os.path.realpath`
-      normalization from (k)(3) are on the **main path**, not behind a
-      non-default-`--run-dir` guard. Only (k)(2)'s outside-the-worktree handling is
-      a branch.
+- [ ] The run-dir subtraction from (k)(1) is a **post-enumeration
+      `os.path.realpath` prefix filter inside the `python3` body**, not a
+      gate-side `':(exclude)'` pathspec — the two `changed_set` sites stay
+      byte-identical per (c). It and (k)(3)'s normalization are on the **main
+      path**, not behind a non-default-`--run-dir` guard; (k)(2)'s
+      outside-the-worktree case gates normally through the same filter, with no
+      dedicated branch and no skip.
 - [ ] On violation the gate exits non-zero, prints the offending paths, and
       writes them to `${run_dir}/.scope_violations.txt`; on pass that file exists
       and is empty.
@@ -1046,9 +1082,13 @@ _Added by `/ll:refine-issue` — 2026-08-27 — based on codebase analysis:_
   (a): union of `git diff --name-only -z <ref>` and `git ls-files -o
   --exclude-standard -z`, both root-scoped (`-C "$ROOT"`) and both carrying the
   depth-agnostic `':(exclude,glob)**/.loops/**'` / `':(exclude,glob)**/.ll/**'`
-  exclusions, mapped to `path -> content-hash` via one batched
-  `git hash-object --stdin-paths` call, with a `DELETED` sentinel for paths git
-  reports that are absent from the worktree. Every internal git call captures its
+  exclusions, mapped to `path -> content-hash` via `hashlib` over the file bytes,
+  with a `DELETED` sentinel for paths git reports that are absent from the
+  worktree. The comparison over two such maps is **symmetric**: new keys, changed
+  values, and baseline keys absent from the current map all flag. Run-dir
+  subtraction is deliberately **not** part of this function — it is the gate's
+  post-enumeration realpath filter per (k)(1), which is what lets the two call
+  sites stay byte-identical. Every internal git call captures its
   own stdout and stderr (requirement (b)). Emitted as one identical
   single-quoted `python3 -c` literal at **both** call sites — `init` and
   `check_intent_scope` — differing only in argv (requirement (c)).
@@ -1115,8 +1155,10 @@ _Added by `/ll:refine-issue` — 2026-08-27 — based on codebase analysis:_
    construct both `init` and the gate embed verbatim, and every other step depends
    on its shape. Union of tracked-diff and untracked-listing, root-scoped, both
    **glob** `':(exclude,glob)'` pathspecs from (f), `path -> hash` with a `DELETED`
-   sentinel, hashed via a single batched `git hash-object --stdin-paths` call, with
-   every internal git call capturing its own stdout/stderr per (b).
+   sentinel, hashed via `hashlib` over the file bytes per (a), compared
+   symmetrically (new keys, changed values, and baseline keys absent from the
+   current map all flag), with every internal git call capturing its own
+   stdout/stderr per (b).
 1. Add `ROOT` resolution and the baseline captures to `init` (lines 44-61),
    following `general-task.yaml:76`'s `git rev-parse HEAD > baseline-ref.txt`
    idiom plus `changed_set` serialized to `baseline-changed-set.json` per (a)/(d)
@@ -1135,11 +1177,13 @@ _Added by `/ll:refine-issue` — 2026-08-27 — based on codebase analysis:_
    non-repo/zero-commit escape from (j) — extended to cover a **missing, zero-byte
    or unparseable** `baseline-changed-set.json` per (a), with a parsed `{}`
    explicitly *not* escaping — and the bare-`$VAR` preamble idiom from (l).
-   Add the repo-root relativization from (k)(1) and `os.path.realpath`
-   normalization from (k)(3) **on the main path** — every subdirectory launch
-   exercises them, per the corrected scope note in (k). Handle
-   outside-the-worktree by dropping the run-dir pathspec and gating normally per
-   the corrected (k)(2) — **not** by escaping; that is the only guarded branch.
+   Add the run-dir subtraction as (k)(1)'s **post-enumeration realpath prefix
+   filter** (not a gate-side pathspec — the two `changed_set` sites must stay
+   byte-identical per (c)) and (k)(3)'s `os.path.realpath` normalization, both
+   **on the main path** — every subdirectory launch exercises them, per the
+   corrected scope note in (k). Outside-the-worktree gates normally per the
+   corrected (k)(2) — **not** by escaping; under the post-filter it needs no
+   dedicated branch, the filter simply never matches an in-repo path.
 3. Retarget `validate_intent`'s `on_yes` (line 118) to it. Leave
    `on_no: count_intent_retry` (line 119) untouched.
 4. Have the gate write `${run_dir}/.scope_violations.txt` per (n) — truncated to
@@ -1251,7 +1295,7 @@ brief-fencing work.
 
 ### Review history
 
-Three pre-implementation review passes have run against this issue. The current
+Four pre-implementation review passes have run against this issue. The current
 spec is the body above; this is only the record of what changed and why, so a
 reader who remembers an earlier version can see what moved.
 
@@ -1294,6 +1338,24 @@ reader who remembers an earlier version can see what moved.
   Requirements (d), (i) and (l) were compacted to pointers at their own labels,
   since (a) and (e) now carry their mechanisms; they are retained as lettered
   requirements only because they are cited by ID elsewhere.
+- **2026-08-27, fourth pass.** Three fixes, all recorded in place above:
+  1. **(a)'s comparison rule made symmetric.** As written ("new or value
+     differs") it could not catch case (xii-c): a deleted pre-existing untracked
+     file appears in neither current-side enumeration, so the `DELETED` sentinel
+     — which only fires on the tracked side, where `git diff` still reports the
+     path — never fires for it. Baseline keys absent from the current map now
+     flag.
+  2. **Hashing switched from batched `git hash-object --stdin-paths` to
+     `hashlib`.** `--stdin-paths` has no `-z` mode (verified, git 2.52), so the
+     third pass's batching instruction conflicted with (e)'s NUL-everywhere
+     decision on embedded-newline paths.
+  3. **Run-dir subtraction pinned as a post-enumeration realpath filter in the
+     gate's Python body.** The previous text was three-way inconsistent: the
+     `changed_set(root, ref)` signature carries no run-dir argument, (c) demands
+     byte-identical call sites, yet (k)(1) said to use the run dir "in a
+     pathspec." The post-filter resolves all three, and dissolves (k)(2)'s
+     dedicated branch (the filter never matches an in-repo path); cases
+     (viii)/(viii-b) are retained.
 
 Requirement labels were renumbered sequentially to (a)–(p) in an earlier pass. If
 you are holding a reference from before that, re-read the requirement by its text
