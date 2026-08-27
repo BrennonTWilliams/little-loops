@@ -7,6 +7,12 @@ status: open
 discovered_by: review-of-BUG-3333
 discovered_date: '2026-08-27'
 captured_at: '2026-08-27T00:00:00Z'
+confidence_score: 95
+outcome_confidence: 78
+score_complexity: 22
+score_test_coverage: 22
+score_ambiguity: 12
+score_change_surface: 22
 ---
 
 # BUG-3344: Port Searched-No-Hits evidence contract to consistency-checker
@@ -100,11 +106,21 @@ symbol-location vocabulary:
 - A matching prohibition bullet in `## What NOT to Do`.
 
 The natural shape here differs from the other three agents: this file's output
-is already a table-per-check-type structure with a `Status` column, so the
-contract is best expressed as (a) a rule governing what may be written in a
-`Status` cell, and (b) a **`Scope Searched`** column (or an explicit
-`### Searched, No Hits` group) carrying the evidence. Choose one and apply it
-consistently — see Open Questions.
+is already a table-per-check-type structure with a `Status` column. **Decided
+shape** (resolves former Open Question 1):
+
+- **Rule**: a new step in `### Step 2: Validate Each Reference`, inserted
+  before "Record status", requiring the unfiltered re-run before `MISSING` may
+  be recorded. Reuse BUG-3333's exact prose needle
+  `searched repo-wide with no glob or type filter` verbatim in this rule, so
+  the shared-vocabulary grep still finds all four agents even though this file
+  uses a column instead of a `### Searched, No Hits` heading.
+- **Evidence**: a **`Scope Searched`** column on the `### Missing References`
+  aggregate table (line 309) only — every `MISSING` verdict already aggregates
+  there, so the evidence attaches exactly once per target with no widening of
+  the ~26 per-check tables and no duplicated target list from a standalone
+  group. `Scope Searched` (not bare `Scope`) avoids colliding with the
+  existing configuration-precedence `Scope` columns (see Research Findings).
 
 ## Program Design
 
@@ -112,31 +128,40 @@ consistently — see Open Questions.
 - N/A — no data-shape change; `agents/consistency-checker.md` is an agent-prompt markdown file, not typed code.
 
 ### Signatures
-- `DOC_STRINGS_PRESENT: list[tuple[str, str, str]]` (`scripts/tests/test_wiring_skills_and_commands.py:253-276`) — the `(doc_path, exact_substring, issue_id)` tuple contract this issue's new pinned strings must follow, same shape as the BUG-3330/BUG-3333 precedent tuples.
-- `test_string_present_in_doc(project_root, doc_rel, needle, issue_id)` (`scripts/tests/test_wiring_skills_and_commands.py:289-294`) — the parametrized assertion that consumes each new tuple; no new test function is needed, only new tuples.
+- `DOC_STRINGS_PRESENT: list[tuple[str, str, str]]` (`scripts/tests/test_wiring_skills_and_commands.py:253-298`) — the `(doc_path, exact_substring, issue_id)` tuple contract this issue's new pinned strings must follow, same shape as the BUG-3330/BUG-3333 precedent tuples (BUG-3333's tuples now occupy lines 277-298).
+- `test_string_present_in_doc(project_root, doc_rel, needle, issue_id)` (`scripts/tests/test_wiring_skills_and_commands.py:310-316`) — the parametrized assertion that consumes each new tuple; no new test function is needed, only new tuples.
 
-**Exact needles depend on Open Question 1.** If the `Scope Searched` column option is chosen, pin a needle on the literal column header (e.g. `"Scope Searched"`); if the `### Searched, No Hits` group option is chosen, pin `"### Searched, No Hits"` as in BUG-3330/BUG-3333. Either way, add one structural needle plus one vocabulary needle drawn from the new prohibition bullet in `## What NOT to Do`, tagged `"BUG-3344"`.
+**Needles** (per the decided shape above), all tagged `"BUG-3344"`:
+- `agents/consistency-checker.md`: `"Scope Searched"` (structural — column
+  header), `"searched repo-wide with no glob or type filter"` (shared
+  vocabulary, verbatim from BUG-3330/BUG-3333), plus one vocabulary needle
+  drawn from the new prohibition bullet in `## What NOT to Do`.
+- `skills/audit-claude-config/report-template.md`: `"Scope Searched"` (the
+  consumer's `### Missing References` table gains the matching column).
 
 ### Call Path
-`DOC_STRINGS_PRESENT` list literal -> `pytest.mark.parametrize("doc_rel, needle, issue_id", DOC_STRINGS_PRESENT)` (`test_wiring_skills_and_commands.py:288`) -> `test_string_present_in_doc()` reads `agents/consistency-checker.md` off `project_root` and asserts each `needle` substring is present.
+`DOC_STRINGS_PRESENT` list literal -> `pytest.mark.parametrize("doc_rel, needle, issue_id", DOC_STRINGS_PRESENT)` (`test_wiring_skills_and_commands.py:310`) -> `test_string_present_in_doc()` reads `agents/consistency-checker.md` off `project_root` and asserts each `needle` substring is present.
 
 ### Decision Rules
 - **Negative-claim trigger re-anchoring (same finding as BUG-3333)**: `agents/consistency-checker.md` has no evidence-bearing/inferred partition to anchor a "not cited above" trigger against. Anchor the mandatory-row (or mandatory-cell) trigger to the `Status` column of the Reference Validation tables instead: a row's evidence is mandatory whenever `Status` is recorded as `MISSING`.
-- **Scope applies to `MISSING` only** (Open Question 2): `BROKEN` verdicts come from reading a target that was already found, so the filtered-search failure mode does not apply — state this explicitly in the ported rule so it is not over-applied to `BROKEN`.
+- **Scope applies to `MISSING` only** (resolves former Open Question 2): `BROKEN` verdicts come from reading a target that was already found, so the filtered-search failure mode does not apply — state this explicitly in the ported rule so it is not over-applied to `BROKEN`. The rule triggers on the literal `MISSING` verdict specifically: the `Output Styles → Settings` table (line 212) also carries `NOT_SET`, and `NOT_SET`/`BROKEN`/`WARNING` cells must not inherit the unfiltered-rerun obligation.
 
 ## Integration Map
 
 ### Files to Modify
-- `agents/consistency-checker.md` — negative-claim rule near
-  `### Step 2: Validate Each Reference` (lines 111-117) and/or `## Output
-  Format` (line 133); prohibition bullet in `## What NOT to Do`
+- `agents/consistency-checker.md` — unfiltered-rerun rule as a new step in
+  `### Step 2: Validate Each Reference` (lines 111-117, before "Record
+  status"); `Scope Searched` column on the `### Missing References` table
+  (lines 309-315); prohibition bullet in `## What NOT to Do`
   (lines 374-380).
+- `skills/audit-claude-config/report-template.md:225` — the consumer's
+  `### Missing References` table gains the matching `Scope Searched` column.
 
 ### Dependent Files (Callers/Importers)
 - `skills/audit-claude-config/SKILL.md:228,268` — invokes by
   `subagent_type="consistency-checker"` and prompt only; does not restate the
-  agent's Output Format contract. Verify whether Wave 2's own report template
-  needs a matching column if the `Scope Searched` option is chosen.
+  agent's Output Format contract. No change needed beyond the report-template
+  column above.
 - Host mirrors (generated, never hand-edited), all four confirmed present:
   `.codex/agents/consistency-checker.toml`,
   `.gemini/agents/consistency-checker.md`,
@@ -173,9 +198,10 @@ _Wiring pass added by `/ll:wire-issue`:_
 ### Tests
 - `scripts/tests/test_wiring_skills_and_commands.py` — append
   `DOC_STRINGS_PRESENT` tuples `(doc_path, needle, issue_id)` tagged
-  `BUG-3344`, mirroring the BUG-3330 block at lines 262-276; consumed by the
-  existing parametrized `test_string_present_in_doc` (lines 288-294). No new
-  test function needed.
+  `BUG-3344` (see Signatures for the exact needles, including the
+  `report-template.md` tuple), mirroring the BUG-3330/BUG-3333 blocks at
+  lines 262-298; consumed by the existing parametrized
+  `test_string_present_in_doc` (lines 310-316). No new test function needed.
 - **Existing constraint to respect**: `DOC_STRINGS_ABSENT` (lines 318-323,
   ENH-2291) forbids the literal `| hooks/prompts/optimize-prompt-hook.md |` in
   both `agents/consistency-checker.md` and
@@ -194,17 +220,20 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ## Open Questions
 
-1. **`Scope Searched` column vs. `### Searched, No Hits` group.** The other
-   three agents use a standalone group because their output is prose plus a
-   fenced template. This agent's output is ~26 tables keyed by check type; a
-   standalone group duplicates the target list, while a new column widens every
-   table. A third option is to scope the contract to the two aggregate tables
-   (`### Missing References`, `### Broken References`, lines 309-322) that
-   already collect every negative in one place. Decide before implementing.
-2. **Whether the contract extends to `BROKEN`.** `BROKEN` verdicts
-   (not-executable, unresolved symlink) come from reading a target that *was*
-   found, so the filtered-search failure mode does not apply. Likely scope this
-   to `MISSING` only, but state it explicitly so the rule is not over-applied.
+_None remaining — both resolved 2026-08-27 (pre-implementation review):_
+
+1. **RESOLVED — hybrid rule-plus-column.** Enforcement rule lives in
+   `### Step 2: Validate Each Reference`; evidence lives in a `Scope Searched`
+   column on the `### Missing References` aggregate table only. Every
+   `MISSING` verdict already aggregates there, so evidence attaches once per
+   target with no widening of the ~26 per-check tables and no duplicated
+   target list. Cross-agent greppability is preserved by reusing BUG-3333's
+   prose needle `searched repo-wide with no glob or type filter` verbatim in
+   the Step 2 rule. The `report-template.md` `### Broken References` asymmetry
+   noted in Research Findings is moot given resolution 2.
+2. **RESOLVED — `MISSING` only.** The rule triggers on the literal `MISSING`
+   verdict; `BROKEN`, `NOT_SET`, and `WARNING` cells do not inherit the
+   unfiltered-rerun obligation (see Decision Rules).
 
 ### Codebase Research Findings
 
@@ -238,12 +267,24 @@ _Added by `/ll:refine-issue` — 2026-08-27 — based on codebase analysis:_
 
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` — Readiness 95/100 (PROCEED), Outcome Confidence 78/100._
+
+**Concerns**:
+- ~~Open Question 1 (`Scope Searched` column vs. `### Searched, No Hits` group
+  vs. scoping to the two aggregate tables) is a genuine unresolved design
+  decision that changes the shape of the diff — resolve it before
+  implementation rather than deciding ad hoc mid-edit.~~ Resolved 2026-08-27:
+  hybrid rule-plus-column shape decided in Proposed Solution / Open Questions.
+
 ## Status
 
 **Open** | Created: 2026-08-27 | Priority: P3
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-27T20:56:49 - `36eebace-6074-480d-8d4e-76d867f7149b.jsonl`
 - `/ll:wire-issue` - 2026-08-27T20:53:18 - `3592ce60-9489-48d1-a80d-b55638012e78.jsonl`
 - `/ll:refine-issue` - 2026-08-27T20:05:46 - `9e4fa033-0b0b-43cd-be66-950ccb670df0.jsonl`
 - `/ll:format-issue` - 2026-08-27T19:59:56 - `278ef87b-9267-47eb-b438-15c48011237e.jsonl`

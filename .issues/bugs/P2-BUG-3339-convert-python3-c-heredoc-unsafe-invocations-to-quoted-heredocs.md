@@ -1,20 +1,32 @@
 ---
 id: BUG-3339
 type: BUG
-title: Convert python3 -c heredoc-unsafe invocations to quoted heredocs (11 files)
+title: Convert python3 -c heredoc-unsafe invocations to quoted heredocs
 priority: P2
 status: open
 discovered_by: ll-issues-create
 discovered_date: '2026-08-27'
 captured_at: '2026-08-27T17:51:35Z'
 parent: EPIC-3336
+blocked_by: [ENH-3337, ENH-3338]
+blocks: [BUG-3340, BUG-3341, ENH-3347]
 ---
 
-# BUG-3339: Convert python3 -c heredoc-unsafe invocations to quoted heredocs (11 files)
+# BUG-3339: Convert python3 -c heredoc-unsafe invocations to quoted heredocs
 
 ## Summary
 
-Convert the 53 python3 -c "..." interpolation sites (11 files under the narrow scope) to quoted python3 << PYEOF heredocs so they stop being shell-injectable, validating each converted file with ll-loop validate.
+Convert every `python3 -c "..."` interpolation site carrying a
+`${context.*}`/`${captured.*}` value in its Python-literal body to a quoted
+`python3 << 'PYEOF'` heredoc, so they stop being shell-injectable, validating
+each converted file with `ll-loop validate`.
+
+**Site count is provisional.** The parent survey said "53 sites, 11 files"; this
+issue's own research could confirm only **9 files** and ruled out
+`harness-optimize.yaml` as a false positive (its enclosing state is
+`action_type: prompt`), with `rn-build.yaml` unresolved. **ENH-3338's baseline is
+the authoritative list** — reconcile against it rather than against the survey's
+numbers, and record the reconciliation in EPIC-3336.
 
 ## Current Behavior
 
@@ -336,6 +348,12 @@ already-converted precedent states in the same files.
    (or their existing test coverage) before and after.
 5. No behavior change to the Python body's logic in any converted site —
    only the shell-invocation shape changes.
+6. The confirmed site list is reconciled against ENH-3338's baseline (filtered to
+   `host_shape == "c-string"`), any divergence from the survey's "53 sites, 11
+   files" is explained, and the reconciled count is recorded in EPIC-3336. The
+   baseline — not the survey table — is what "every site" means.
+7. `python -m pytest scripts/tests/` exits 0 at every commit of this issue, with
+   ENH-3338's baseline shrinking in the same commit as each conversion.
 
 ## Impact
 

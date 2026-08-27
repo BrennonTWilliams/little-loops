@@ -174,7 +174,7 @@ be a single rule instead of a rule plus an exemption list.
 
 ### Tests
 
-- `scripts/tests/test_interpolation.py` — new: one case per ordering
+- `scripts/tests/test_interpolation.py` (new) — one case per ordering
   (`:shell`, `:shell:default=`, `:default=…:shell`, `?:shell`), plus
   quoted-default, empty-value-emits-`''`, and the `}`-in-default decision.
 - `scripts/tests/test_ll_loop_commands.py:7433-7501` — extend the two existing
@@ -193,6 +193,17 @@ be a single rule instead of a rule plus an exemption list.
 ### Configuration
 
 - N/A
+
+## Scope Boundaries
+
+**In scope:** the suffix grammar and its evaluation ordering in
+`interpolate()`, plus the two out-of-module recognizers that must agree with it
+(`cli/loop/run.py`, `shell_safety.py:183`). The two recorded semantic decisions
+(`None` handling, `}` in defaults).
+
+**Out of scope:** any loop YAML site conversion (BUG-3339/3340/3341); MR-11's
+pattern width and namespace coverage (ENH-3342 — this issue touches `:183` only
+to keep composed suffixes recognized); new suffixes beyond the existing three.
 
 ## Program Design
 

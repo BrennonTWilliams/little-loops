@@ -183,7 +183,11 @@ file.
 - `scripts/tests/test_fsm_validation_shell_safety.py` — MR-11 units
 - `scripts/tests/test_ll_loop_commands.py:7433-7501` — the existing `:shell`
   pre-flight cases that ENH-3337 extends
-- `scripts/tests/test_interpolation.py` — S1 ordering units
+- `scripts/tests/test_interpolation.py` (new) — S1 ordering units
+- `scripts/tests/data/loop_interpolation_baseline.json` (new) — the ratcheting
+  baseline
+- `scripts/little_loops/fsm/interp_sweep.py` (new) — the shared scanner and
+  classifier
 
 ### Documentation
 

@@ -69,6 +69,17 @@ Then replace both inline derivations in `_finish()` (`:3686`, `:3711`) with read
 
 Out of scope: `parallel.*` and `issue.*` event emitters build their dicts inline rather than going through `_emit()`, so they need the same treatment or an explicit decision to leave them run-less — tracked separately (see Scope Boundaries).
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-27 — based on codebase analysis:_
+
+- No existing "compute once at construction/run-start" eager pattern exists for a chokepoint-injected field: `_emit()` (`executor.py:3328-3336`) today only injects `event` (param) and `ts` (freshly computed via `_iso_now()` each call) — never a pre-computed `self.*` value. The dominant "compute once, reuse" idiom in this file is lazy memoization (`_get_br_config()` at `:2429`, `self._prepatch_check_memo` in `__init__`), not eager assignment. The closest eager single-assignment analogue is `self.started_at` itself (`""` default in `__init__` at `:258`, single assignment in `run()` at `:481`) — the issue's proposed `self.run_id` shape should model on `started_at`, not the lazy-memo idiom.
+- `loop` is currently supplied per-call-site by the caller (`"loop": self.fsm.name` at `:484` and `:2161`), not injected centrally — this is the only existing precedent for how a run-scoped field has been introduced into events so far, and it's the opposite of chokepoint injection.
+- A chokepoint-style stamped field does exist, but at the sub-loop forwarding layer, not `_emit()`: `_sub_event_callback` (`:1002-1011`) conditionally injects `depth` (`if "depth" not in event`) when relaying child events to the parent's `event_callback`, and `self._depth` is propagated onto the child executor via direct attribute assignment (`child_executor._depth = depth`). This is the nearest structural precedent for "wrap emission to inject a field on every event," useful context for the sub-loop `run_id`/`loop` emergent-behavior question already flagged in the Integration Map.
+- Confirmed a fourth (not just three) inline copy of the run_id derivation formula: `persistence.py:782-786` (`promote_run_artifact()`) duplicates the same `.replace(":", "").replace(".", "").replace("+", "")[:17]` transform, with an added `datetime.now(UTC)` fallback when `started_at` is falsy — no shared helper wraps this formula anywhere in the codebase today.
+- Closest test precedent confirmed: `test_event_includes_timestamp` (`test_fsm_executor.py:2355-2372`) collects events via `event_callback=events.append`, then iterates asserting key presence — no dict-equality/exact-key-set test exists anywhere against `FSMExecutor`-emitted events. `test_sub_loop_events_forwarded_to_parent_callback`/`test_sub_loop_depth_propagates_to_nested_sub_loops` (`:6495`, `:6522`) show the "filter events by `.get(field) == value`" idiom for a stamped identity field — the shape the new `run_id`/`loop` presence and stability tests should follow.
+- `docs/reference/EVENT-SCHEMA.md`'s Wire Format table (`:11-27`) currently documents only `event`/`ts` as universal envelope keys; `loop` is documented per-event-type today (e.g. `loop_start`'s own table). `generate_schemas.py`'s `_BASE_PROPS`/`_BASE_REQUIRED` (`:25-30`) is the single merge point every event schema goes through (`additionalProperties: True` unconditionally) — confirms `run_id`/`loop` belong in `_BASE_PROPS`, not per-type `extra_props`, matching the Integration Map's existing wiring note.
+
 ## Integration Map
 
 ### Files to Modify
@@ -78,15 +89,35 @@ Out of scope: `parallel.*` and `issue.*` event emitters build their dicts inline
 - `scripts/little_loops/events.py` (`LLEvent.from_dict()`, `:54`) — already forward-compatible, no change required, but is the consumer contract this issue relies on
 - Transports under `scripts/little_loops/transport.py` and any registered sinks (`jsonl`, `sqlite`, `webhook`, `otel`) — pass events through unchanged; no code change expected, but they're the consumers this issue is meant to unblock
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/fsm/executor.py` `_call_sub_loop` (~`:1013`) — constructs a second, independent `FSMExecutor` (`child_executor`) with its own `run()`/`started_at`/`run_id`. Once `_emit()` stamps `run_id`/`loop`, sub-loop events forwarded to the parent via `_sub_event_callback` (`:1005-1011`) will carry the **child's own** `run_id`/`loop`, not the parent's, distinguishable only by the existing `depth` field. Emergent behavior of this change (today nothing diverges since neither field is stamped) — confirm this is intended before shipping; covered by a new test below. [Agent 2 finding]
+- `scripts/little_loops/fsm/persistence.py` `PersistentExecutor` — has **no existing `.run_id` property** (only `_on_event` at `:964`); currently reaches the live executor's `run_id`/`started_at` via `self._executor`. No change required by this issue's stated scope, but any future caller wanting `PersistentExecutor.run_id` would need one added. [Agent 1 finding]
+- `scripts/little_loops/generate_schemas.py` shared `_schema()` builder (`:57-74`) sets `"additionalProperties": True` (`:73`) for every event schema — confirms the wire-format change is validator-safe even before regeneration. [Agent 2 finding]
+
 ### Similar Patterns
 - `scripts/little_loops/fsm/persistence.py::archive_run` — the run_id derivation this issue's `self.run_id` must continue to match, so archived rows still JOIN cleanly
 
 ### Tests
 - `scripts/tests/` FSM executor event-emission tests — add assertions that `run_id` and `loop` are present and non-empty on every emitted event, and that `run_id` is stable across all events within one run
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_fsm_executor.py::test_event_includes_timestamp` (`~:2355`) — closest template for a new presence test: collects `events` via `event_callback=events.append`, then `for event in events: assert "ts" in event`. Mirror for `run_id`/`loop`. [Agent 3 finding]
+- `scripts/tests/test_fsm_executor.py::test_sub_loop_events_forwarded_to_parent_callback` (`~:6495`) and `::test_sub_loop_depth_propagates_to_nested_sub_loops` (`~:6522`) — extend to assert whether forwarded sub-loop events carry the child's own `run_id`/`loop` or the parent's (see the `_call_sub_loop` emergent-behavior note above); no existing test covers this dimension. [Agent 2 + 3 finding]
+- New test: run_id-stability across one run (`len({e["run_id"] for e in events}) == 1`) — no existing helper/precedent for this exact shape; model on `test_event_includes_timestamp`. [Agent 3 finding]
+- New integration test: two concurrent runs writing interleaved events into one shared `events.jsonl`, split cleanly by `run_id` (Implementation Step 6's verify requirement) — net-new; nearest but insufficient precedent is `test_multiple_archive_runs_coexist` (`test_fsm_persistence.py:646`), which is sequential, not concurrent. [Agent 3 finding]
+- `scripts/tests/test_fsm_executor.py::test_finish_writes_loop_run_summary` (`:3082-3110`) and `::test_finish_writes_usage_events` (`:3167-3200`) — both independently recompute the run_id formula inline and assert it against `kwargs["run_id"]`; won't break (same formula, same value) but should be updated to assert against `executor.run_id` directly to lock in the centralization. [Agent 1 + 3 finding]
+- `scripts/tests/test_fsm_executor.py::test_warn_emitted_above_threshold` (`:155-170`) — asserts `warns[0]["loop"] == "psg-test"` value-based, not mechanism-based; confirmed it will NOT break when the explicit `"loop"` key is dropped from the `PROMPT_SIZE_WARN_EVENT` call site per Implementation Step 2. [Agent 3 finding]
+- `scripts/tests/test_fsm_persistence.py::test_archive_run_run_id_from_started_at` (`:556-568`) — asserts a *separate* copy of the run_id formula baked into `persistence.py:611`; not touched by this issue's stated file-change list (executor.py only), so it will not break unless a future pass also centralizes the `persistence.py` sites onto `FSMExecutor.run_id`. [Agent 1 + 3 finding]
+
 ### Documentation
 - `docs/reference/EVENT-SCHEMA.md` — document `run_id` and `loop` in the wire-format table
 - `docs/reference/schemas/` — regenerate via `ll-generate-schemas` per the issue's stated acceptance criteria
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/EVENT-SCHEMA.md` "Wire Format" section (`:11-27`) — currently documents only `event`/`ts` as universal envelope keys; add `run_id`/`loop` here as universal fields, not payload-specific ones. [Agent 2 finding]
+- `docs/reference/EVENT-SCHEMA.md` per-event-type field tables for `loop_start` (`:128`), `prompt_size_warn` (`:515`), and `loop_resume` (`:912`) — each already lists `loop` as a payload-specific field; reconcile with the new universal-field documentation so it isn't duplicated/contradicted. `:132`'s example `loop_start` payload also needs `run_id` added. [Agent 1 + 2 finding]
+- `scripts/little_loops/generate_schemas.py` shared `_BASE_PROPERTIES`/`_BASE_REQUIRED` (`:25-30`) — natural touch point for `run_id`/`loop` since they're universal envelope fields, not a single event type's payload; changes the CONTRIBUTING.md maintenance procedure's step 2 from a per-type `extra_props` edit to a shared-schema edit, and regeneration then touches all ~42 committed schema files under `docs/reference/schemas/`, not just one. [Agent 2 finding]
+- `docs/observability/otel-mapping.md:65-66,76` — documents `usage_events.run_id` (archive-time, via `record_usage_event()`) and lists `run_id` as a `cost_attribution()` `group_by` value; distinct from the new live-wire field but worth a note to avoid conflating the two `run_id` concepts. No prose change required since the archive-time value and call site are unchanged. [Agent 2 finding]
 
 ### Configuration
 - N/A
@@ -134,6 +165,16 @@ _Added by `/ll:refine-issue` — 2026-08-27 — based on codebase analysis:_
 5. Update `docs/reference/EVENT-SCHEMA.md` and regenerate `docs/reference/schemas/` via `ll-generate-schemas`
 6. Verify: emit two concurrent runs to one `events.jsonl` and confirm they split cleanly by `run_id`
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Confirm/decide sub-loop `run_id`/`loop` behavior: `_call_sub_loop`'s child `FSMExecutor` (`executor.py` ~`:1013`) will stamp its own `run_id`/`loop` on events forwarded to the parent via `_sub_event_callback` — decide if this is intended (distinguishable today only by the existing `depth` field) and add a test asserting the chosen behavior.
+- Update `test_finish_writes_loop_run_summary` and `test_finish_writes_usage_events` (`test_fsm_executor.py:3082`, `:3167`) to assert against `executor.run_id` instead of re-deriving the formula inline.
+- Update `docs/reference/EVENT-SCHEMA.md`'s Wire Format section (`:11-27`) to list `run_id`/`loop` as universal envelope fields, and reconcile the `loop_start`/`prompt_size_warn`/`loop_resume` per-type tables (`:128`, `:515`, `:912`) that currently list `loop` as payload-specific.
+- Update `scripts/little_loops/generate_schemas.py`'s shared `_BASE_PROPERTIES`/`_BASE_REQUIRED` (`:25-30`) rather than per-type `extra_props`, then regenerate all `docs/reference/schemas/*.json` via `ll-generate-schemas`.
+- Add new tests: run_id/loop presence-on-every-event (model: `test_event_includes_timestamp`), run_id-stability-across-one-run, and a two-concurrent-runs-one-shared-`events.jsonl` integration test.
+
 ## Impact
 
 - **Priority**: P2 - Correctness/observability gap affecting any multi-run consumer (dashboards, loop-viz, history.db queries); not user-blocking but actively undermines a stated capability (BUG-3324's multi-stream scenario)
@@ -166,6 +207,9 @@ Out of scope: retrofitting `parallel.*` and `issue.*` emitters that build event 
 
 
 ## Session Log
+- `/ll:decide-issue` - 2026-08-27T21:03:09 - `afdc9a20-86de-4e24-ad07-3b472050429a.jsonl`
+- `/ll:refine-issue` - 2026-08-27T21:02:35 - `3300bae1-29e4-43aa-be1f-dbf44d0ba9ec.jsonl`
+- `/ll:wire-issue` - 2026-08-27T20:56:26 - `90bd9242-a8e8-4a44-9297-fb97e2e007d7.jsonl`
 - `/ll:refine-issue` - 2026-08-27T20:08:12 - `6a48b0c1-bff7-4c66-a42d-e3b6acefc1f6.jsonl`
 - `/ll:format-issue` - 2026-08-27T19:59:35 - `278ef87b-9267-47eb-b438-15c48011237e.jsonl`
 - `/ll:capture-issue` - 2026-08-27T19:56:51 - `f1d9d0f2-280e-4e9e-bb4a-45c14f878f7b.jsonl`

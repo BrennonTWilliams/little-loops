@@ -102,8 +102,17 @@ Key evidence: `worker_pool.py:187,297` (`_active_workers` keyed by `issue_id`), 
   > ⚠ Superseded — merge events belong in `merge_coordinator.py`, not `worker_pool.py`; see § Codebase Research Findings
 - `docs/reference/EVENT-SCHEMA.md` — document each new event type and its payload table
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/observability/schema.py` — add six new `@dataclass(frozen=True)` `DESVariant` subclasses to the `DES_VARIANTS` registry (pattern: `ParallelWorkerCompletedVariant`/`ParallelEpicBranchStaleVariant`, `:489-507`); without these, `test_des_schema.py::test_variants_cover_all_schema_definitions` fails listing the six new `parallel.*` types as missing [Agent 1/2 finding]
+
 ### Dependent Files (Callers/Importers)
 - Any subscriber of `self._event_bus` (event consumers, dashboards, `ll-events` tooling) — new event types are additive, so existing subscribers filtering on known `event` values are unaffected
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/parallel/priority_queue.py` — `IssuePriorityQueue.__init__` (`:40-48`) takes no `event_bus` param today (constructor has no args at all); `parallel.queue_changed` needs `event_bus: EventBus | None = None` added, mirroring `WorkerPool.__init__`'s existing pattern [Agent 2 finding]
+- `scripts/little_loops/parallel/merge_coordinator.py` — `MergeCoordinator.__init__` (`:47-53`) takes `config, logger, repo_path, git_lock` with no `event_bus` param; `parallel.merge_started`/`parallel.merge_completed` need it added the same way [Agent 2 finding]
+- `scripts/little_loops/parallel/orchestrator.py:132,147-149` — `self.queue = IssuePriorityQueue()` and `self.merge_coordinator = MergeCoordinator(parallel_config, self.logger, self.repo_path, self._git_lock)` are the sole instantiation sites; both need `event_bus=self._event_bus` threaded in, mirroring the existing `WorkerPool(...)` wiring three lines above (comment: "so parallel.epic_branch_stale reaches the same bus/transports as parallel.worker_completed") [Agent 2 finding]
+- `scripts/tests/test_priority_queue.py:34`, `scripts/tests/test_issue_workflow_integration.py:265` — construct `IssuePriorityQueue()` with no args; new `queue_changed` tests need a bus-injected fixture variant [Agent 2 finding]
 
 ### Similar Patterns
 - `parallel.worker_completed` (`orchestrator.py:1285`) and `parallel.epic_branch_stale` (`worker_pool.py:1979`) are the existing `_event_bus.emit()` call sites to model the new emitters after
@@ -113,9 +122,21 @@ Key evidence: `worker_pool.py:187,297` (`_active_workers` keyed by `issue_id`), 
 - `scripts/tests/test_orchestrator.py` — add coverage asserting each new event fires with the expected payload at its trigger point
 - `scripts/tests/test_worker_pool.py` — same, for the worker-pool-owned events (`worker_blocked`/`worker_unblocked`, `merge_started`/`merge_completed`)
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_des_schema.py` — `test_variants_count_meets_minimum` (`:30-41`, `len(DES_VARIANTS) >= len(SCHEMA_DEFINITIONS)`) and `test_variants_cover_all_schema_definitions` (`:43-54`) will fail once `SCHEMA_DEFINITIONS` gains six entries, until matching `DESVariant` classes exist in `observability/schema.py` [Agent 1/2 finding]
+- `scripts/tests/test_generate_schemas.py` — four pinned-count assertions break (42→48): `test_all_41_event_types_defined` (`:17-19`), `test_creates_41_files` (`:73-77`), `test_creates_output_dir_if_missing` (`:79-84`), `TestGenerateSchemasCLI.test_cli_creates_files` (`:207-213`); plus `test_expected_event_types_present` (`:21-67`)'s literal `expected` set needs the six new `parallel.*` strings [Agent 2/3 finding]
+- `scripts/tests/test_merge_coordinator.py` — no existing `EventBus`/event-emission tests (confirmed via grep, zero hits); add a new test class for `merge_started`/`merge_completed` following `test_worker_pool.py`'s `TestEnsureEpicBranchEventEmission` template (`:4133-4277`) — real `EventBus()`, lambda observer, assert on captured dict [Agent 3 finding]
+- `scripts/tests/test_priority_queue.py` — no existing `EventBus`/event-emission tests; add a new test class for `queue_changed` (same template), plus a bus-injectable fixture variant since the current fixture (`:34`) builds `IssuePriorityQueue()` with no args [Agent 3 finding]
+
 ### Documentation
 - `docs/reference/EVENT-SCHEMA.md` — add payload tables for the six new event types
 - `docs/reference/schemas/` — regenerate via `ll-generate-schemas` after the schema doc changes
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/EVENT-SCHEMA.md` has three additional enumeration sites beyond the subsystem section itself, each listing only the two existing parallel events today: the `## Reserved Event Names`/`## Machine-Readable Schemas` file-tree block (`:1379-1423`), the `### Naming Convention` table (`:1429-1435`), and the `## Quick Reference` table (`:1545-1546`, sourced to `parallel/orchestrator.py`/`parallel/worker_pool.py` — new rows must also cite `merge_coordinator.py`/`priority_queue.py`) [Agent 2 finding]
+- `docs/reference/API.md:4097,7871` — line 7871's prose bullet hardcodes the current `parallel.*` names (`parallel.worker_completed`, `parallel.epic_branch_stale`); line 4097 shows a no-arg `IssuePriorityQueue()` example that goes stale once `event_bus` is added to the constructor [Agent 2 finding]
+- `docs/observability/des-audit.md` — generated report (`<!-- DO NOT EDIT - generated by ll-verify-des-audit -->`); regenerate via `ll-verify-des-audit` (`scripts/little_loops/cli/verify_des_audit.py`) after `DES_VARIANTS` is updated — do not hand-edit [Agent 2 finding]
+- `CONTRIBUTING.md:784-798` — the "Event Schema Maintenance" checklist's 4 steps don't mention updating `DES_VARIANTS`, an existing process gap this issue's implementation will hit directly [Agent 2 finding]
 
 ### Configuration
 - N/A
@@ -147,6 +168,22 @@ _Added by `/ll:refine-issue` — 2026-08-27 — based on codebase analysis:_
 
 - Step 3 as written ("Add ... emissions in `worker_pool.py`") is incomplete: `parallel.merge_started`/`parallel.merge_completed` belong in `scripts/little_loops/parallel/merge_coordinator.py` (`_process_merge`, `_finalize_merge`, `_handle_failure`), not `worker_pool.py`, which has no merge-processing code. `parallel.queue_changed` needs `scripts/little_loops/parallel/priority_queue.py`'s count properties wired to an `EventBus` it does not currently hold. See Integration Map findings for the corrected file list.
 - Step 5 ("Document ... in `docs/reference/EVENT-SCHEMA.md` and regenerate ... via `ll-generate-schemas`") also requires updating `scripts/little_loops/generate_schemas.py`'s `SCHEMA_DEFINITIONS` dict and `scripts/tests/test_generate_schemas.py`'s pinned count/key-set — `ll-generate-schemas` reads from that dict, not from the markdown doc.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Inject at `scripts/little_loops/parallel/priority_queue.py` — add `event_bus: EventBus | None = None` to `IssuePriorityQueue.__init__` (`:40-48`)
+- Inject at `scripts/little_loops/parallel/merge_coordinator.py` — add `event_bus: EventBus | None = None` to `MergeCoordinator.__init__` (`:47-53`)
+- Update `scripts/little_loops/parallel/orchestrator.py:132,147-149` — pass `event_bus=self._event_bus` into the `IssuePriorityQueue(...)` and `MergeCoordinator(...)` constructor calls
+- Update `scripts/little_loops/observability/schema.py` — add six new `DESVariant` frozen dataclasses to `DES_VARIANTS`, or `test_des_schema.py` fails
+- Update `scripts/tests/test_generate_schemas.py` — bump four pinned `== 42` assertions to `== 48` and extend `test_expected_event_types_present`'s literal set
+- Update `scripts/tests/test_des_schema.py` — verify `test_variants_count_meets_minimum`/`test_variants_cover_all_schema_definitions` pass once `DES_VARIANTS` is updated
+- Update `scripts/tests/test_merge_coordinator.py` — add new event-emission test class (no prior coverage) following `test_worker_pool.py::TestEnsureEpicBranchEventEmission`
+- Update `scripts/tests/test_priority_queue.py` — add new event-emission test class + bus-injectable fixture (no prior coverage)
+- Update `docs/reference/EVENT-SCHEMA.md` — update all three additional enumeration sites (`:1379-1423`, `:1429-1435`, `:1545-1546`), not just the subsystem section
+- Update `docs/reference/API.md:4097,7871` — refresh the hardcoded `parallel.*` example list and the no-arg `IssuePriorityQueue()` example
+- Regenerate `docs/observability/des-audit.md` via `ll-verify-des-audit` after `DES_VARIANTS` changes (do not hand-edit)
 
 ## Program Design
 
@@ -214,6 +251,7 @@ Out of scope: building the dashboard/visualizer consumer itself (this issue only
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-08-27T21:00:23 - `3300bae1-29e4-43aa-be1f-dbf44d0ba9ec.jsonl`
 - `/ll:decide-issue` - 2026-08-27T20:51:11 - `627b8139-f4c5-4fdb-82a9-07a01d666f59.jsonl`
 - `/ll:refine-issue` - 2026-08-27T20:10:28 - `9e4fa033-0b0b-43cd-be66-950ccb670df0.jsonl`
 - `/ll:refine-issue` - 2026-08-27T20:10:19 - `3cf55431-2b3c-40fa-ad5c-a3fd2b0789ab.jsonl`
