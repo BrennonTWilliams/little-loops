@@ -3,10 +3,11 @@ id: FEAT-3343
 type: FEAT
 title: Add ll-queue tools to ll-mcp
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-08-27'
 captured_at: '2026-08-27T19:37:22Z'
+completed_at: '2026-08-27T19:50:10Z'
 ---
 
 # FEAT-3343: Add ll-queue tools to ll-mcp
