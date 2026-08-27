@@ -181,12 +181,12 @@ happened once.
      verdict_map}`). **This table is required, not optional — see the
      keys-vs-values correction below.**
    - `NON_LLM_EVALUATOR_TYPES` — `_base.py:66`
-   - `VALID_OPERATORS` — `_base.py:74`. **Do not omit this one.** BUG-3326 is
-     landing a `VALID_OPERATORS` import into `validate_evaluators` for exactly
+   - `VALID_OPERATORS` — `_base.py:74`. **Do not omit this one.** BUG-3326
+     landed a `VALID_OPERATORS` import into `validate_evaluators` for exactly
      the reason this rule exists; a hand-restated `{"eq", "ne", "lt", "le",
      "gt", "ge"}` is the same defect class as a restated evaluator-type set,
      and leaving it unlinted means the rule does not cover the very move its
-     own Ordering section depends on. **Confirmed** it is declared as a bare
+     own Ordering section previously depended on. **Confirmed** it is declared as a bare
      `set` (`VALID_OPERATORS = {"eq", "ne", "lt", "le", "gt", "ge"}`,
      `_base.py:74`), not an annotated `frozenset` like `NON_LLM_EVALUATOR_TYPES`
      (`:66`) and `VALID_VISIBILITY` (`:78`). **Tighten it to
@@ -240,7 +240,8 @@ happened once.
    comment).
 3. Running the rule against the current built-in loop set produces zero
    violations — this rule ships as a forward guard, not a fix for an existing
-   loop. Note this depends on BUG-3326 having landed first; see Ordering.
+   loop. BUG-3326 has landed (see Ordering); this AC is verified against the
+   current tree, not a future one.
 
    **Verified 2026-08-26, including under AC #1b's widened bracket class.**
    Swept `loops/**.yaml`: the only literal collection displays inside `python3`
@@ -456,6 +457,7 @@ _Wiring pass added by `/ll:wire-issue`:_
   grouped with the other MR-1..MR-6 meta-rule calls (immediately after
   `errors.extend(_validate_missing_scope(fsm))`, before
   `errors.extend(_validate_bash_default_interpolation(fsm))`).
+  > ⚠ Superseded — not literal adjacency; 5 other calls sit between; see § Codebase Research Findings under Integration Map
 - `scripts/little_loops/fsm/validation/_base.py` — the escape-hatch flag
   needs a `gate_completeness_ok` entry in `KNOWN_TOP_LEVEL_KEYS`
   (`frozenset[str]`), or a loop that sets `gate_completeness_ok: true` to
@@ -586,6 +588,11 @@ _Added by `/ll:refine-issue` — 2026-08-26 — based on codebase analysis:_
   A new WARNING-severity rule is therefore visible in **both** the default CLI path and `--json`, with no additional plumbing. Do not add CLI work for this — the original bullet would have sent implementation down a dead end.
 - Reference implementation already in-repo: `workflow-generator.yaml`'s `validate_evaluators` state is the positive control this rule must not flag (imports `EVALUATOR_REQUIRED_FIELDS`/`NON_LLM_EVALUATOR_TYPES` directly, with an inline comment stating the import-not-restate rationale) — useful as the concrete "correct" fixture for the rule's negative test case.
 
+_Added by `/ll:refine-issue` — 2026-08-27 — based on codebase analysis:_
+
+- **Insertion-point claim corrected**: the Wiring Phase's "immediately after `errors.extend(_validate_missing_scope(fsm))`, before `errors.extend(_validate_bash_default_interpolation(fsm))`" is not literal adjacency. Current sequence in `structural_rules.py` (`validate_fsm()`, calls at lines 1139-1155): `_validate_meta_loop_evaluation` (1139) → `_validate_input_key_without_guard` (1141) → `_validate_missing_scope` (1143) → `_validate_artifact_isolation` (1145) → `_validate_harness_multimodal_evaluator_blind_spot` (1147) → `_validate_partial_route_dead_end` (1149) → `_validate_artifact_overwrite` (1151) → `_validate_generator_fix_discipline` (1153) → `_validate_bash_default_interpolation` (1155). Five other rule calls sit between the two named anchors. The new call can go anywhere in this MR block (1139-1155) — precise adjacency to `_validate_missing_scope` is not required or accurate as stated.
+- **`--json` vs plain-text warning exposure are two separate code paths, not one shared line.** `load_and_validate()` (`structural_rules.py:1736-1850`) branches on `raise_on_error`: when `False` (the `--json` case), it returns `error_list + all_warnings` at line 1840 *before* ever reaching the `logger.warning(...)` calls at lines 1847-1848 — those lines are plain-text-only. The `--json` path is wired instead through `cmd_validate()` in `scripts/little_loops/cli/loop/config_cmds.py` (starts line 14): `as_json = getattr(args, "json", False)` (line 24) sets `raise_on_error=not as_json` (line 35), and the returned violations are serialized via `print_json(...)` (~line 69-74). Both paths do expose WARNING-severity `ValidationError`s end-to-end with no new plumbing needed — the existing finding's conclusion holds — but citing `structural_rules.py:1848` as covering both paths is inaccurate; the `--json` path's actual site is `cmd_validate()` in `config_cmds.py`.
+
 ## Program Design
 
 ### Types
@@ -610,7 +617,8 @@ literal set/frozenset displays against the exported tables in
 
 ## Implementation Steps
 
-0. Confirm BUG-3326 has landed (see Ordering) — AC #3 depends on it.
+0. ~~Confirm BUG-3326 has landed (see Ordering) — AC #3 depends on it.~~
+   **Confirmed landed** (status: done); no longer a blocking step.
 0a. **Coverage-gap decision: SETTLED — (a), shell-only, gap documented; (c)
    split out.** No evaluation needed at implementation time. The one action
    item: **file the (c) follow-up issue** (generative `evaluator-vocab.md` in
@@ -765,10 +773,12 @@ guide entry as worked examples:
 
 ## Ordering
 
-Land **BUG-3326 first**. It adds a `VALID_OPERATORS` import to
-`workflow-generator.yaml`'s `validate_evaluators` — the same
-import-don't-restate move this rule lints for — and AC #3 ("zero violations
-against the current built-in loop set") assumes that tree.
+**BUG-3326 has landed** (status: done, confirmed 2026-08-27). It added the
+`VALID_OPERATORS` import to `workflow-generator.yaml`'s `validate_evaluators`
+— the same import-don't-restate move this rule lints for — and AC #3 ("zero
+violations against the current built-in loop set") assumes that tree, which is
+now the current tree. No ordering constraint remains; this issue can be
+implemented directly.
 
 Source: `postmortems/workflow-generator-output-json-gate-gap.md` §6.
 
@@ -783,6 +793,8 @@ Source: `postmortems/workflow-generator-output-json-gate-gap.md` §6.
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-08-27T15:14:46 - `a812da17-9f21-4c2c-ad6d-806ac51d6467.jsonl`
+- `/ll:refine-issue` - 2026-08-27T15:14:37 - `a812da17-9f21-4c2c-ad6d-806ac51d6467.jsonl`
 - `/ll:confidence-check` - 2026-08-26T20:09:17 - `fdfe1063-50b8-41a2-aae7-c524a32eadad.jsonl`
 - `/ll:wire-issue` - 2026-08-26T19:28:19 - `1f462280-8e7a-4295-8360-c2cd201baeea.jsonl`
 - `/ll:refine-issue` - 2026-08-26T19:14:22 - `0809cdb6-a88f-42a7-9e51-e57ee8a63f3a.jsonl`
