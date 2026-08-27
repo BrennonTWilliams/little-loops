@@ -157,6 +157,19 @@ consistently — see Open Questions.
   file has no evidence-bearing/inferred partition, so the trigger must be
   anchored to the `Status` cells of the Reference Validation tables.
 
+_Wiring pass added by `/ll:wire-issue`:_
+- **Correction**: this issue's own "Codebase Research Findings" (below) claim
+  BUG-3333 is `status: open` and unlanded — that is now stale. BUG-3333 has
+  landed (`7236d30e5 fix(agents): port Searched-No-Hits evidence contract to
+  analyzer and pattern-finder`): `agents/codebase-analyzer.md:144` and
+  `agents/codebase-pattern-finder.md:153` both carry a live `### Searched, No
+  Hits` section, and their `DOC_STRINGS_PRESENT` tuples already exist at
+  `scripts/tests/test_wiring_skills_and_commands.py:277-298`. There are
+  therefore **two** worked precedents to mirror, not one — `codebase-locator.md`
+  (prose-plus-fenced-template shape) and `codebase-analyzer.md` /
+  `codebase-pattern-finder.md` (which already solved this issue's own
+  re-anchoring problem, per the Program Design section above).
+
 ### Tests
 - `scripts/tests/test_wiring_skills_and_commands.py` — append
   `DOC_STRINGS_PRESENT` tuples `(doc_path, needle, issue_id)` tagged
@@ -231,5 +244,6 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-08-27T20:53:18 - `3592ce60-9489-48d1-a80d-b55638012e78.jsonl`
 - `/ll:refine-issue` - 2026-08-27T20:05:46 - `9e4fa033-0b0b-43cd-be66-950ccb670df0.jsonl`
 - `/ll:format-issue` - 2026-08-27T19:59:56 - `278ef87b-9267-47eb-b438-15c48011237e.jsonl`

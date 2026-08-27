@@ -1,0 +1,12 @@
+{
+  "id": "c1e726e7-9068-41fe-bb90-7c78b97718b5",
+  "type": "decision",
+  "timestamp": "2026-08-27T20:50:55Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Every worker-tracking structure in worker_pool.py already keys on issue_id, which is 1:1 stable for a worker's lifetime; no new state needed. Option B (worktree-name-derived) has a timing mismatch \u2014 dispatch precedes worktree creation.",
+  "rule": "Option A \u2014 alias worker_id to issue_id",
+  "scope": "issue",
+  "alternatives_rejected": "Option B: derive worker_id from worktree name",
+  "issue": "ENH-3346"
+}

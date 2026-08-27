@@ -9,7 +9,7 @@ discovered_date: '2026-08-27'
 captured_at: '2026-08-27T19:56:34Z'
 depends_on:
 - ENH-3345
-decision_needed: true
+decision_needed: false
 ---
 
 # ENH-3346: parallel namespace has no worker lifecycle events
@@ -74,11 +74,25 @@ _Added by `/ll:refine-issue` — 2026-08-27 — based on codebase analysis:_
 
 **Open decision: what `worker_id` actually is.** No such identifier exists today (see Program Design findings) — `WorkerPool` and its event tracks everything by `issue_id` or a worktree-derived `worker_name`. This must be resolved before the six emitters can be written consistently.
 
-**Option A**: Alias `worker_id` to `issue_id`. Simplest — `WorkerPool._process_issue` processes exactly one issue per invocation and no worker-reassignment path exists in this codebase, so `issue_id` is already 1:1 and stable for a worker's full lifetime. No new state to introduce or thread through `IssuePriorityQueue`/`MergeCoordinator`. Downside: makes `worker_id` a redundant field alongside `issue_id` on every event (both proposed as required), which invites the question of why both exist.
+**Option A**: Alias `worker_id` to `issue_id`.
+> **Selected:** Option A — every existing worker-tracking structure and the prior lifecycle event already key on `issue_id`; no new state required. Simplest — `WorkerPool._process_issue` processes exactly one issue per invocation and no worker-reassignment path exists in this codebase, so `issue_id` is already 1:1 and stable for a worker's full lifetime. No new state to introduce or thread through `IssuePriorityQueue`/`MergeCoordinator`. Downside: makes `worker_id` a redundant field alongside `issue_id` on every event (both proposed as required), which invites the question of why both exist.
 
 **Option B**: Derive `worker_id` from the existing worktree name (`result.worktree_path.name`, already emitted as `worker_name` on `parallel.worker_completed`). Slightly more distinct from `issue_id` in spirit, but is computed later than dispatch time (the worktree is created inside `_process_issue`, `worker_pool.py:342-`) and would need to be threaded backward to a `parallel.worker_started` emission that fires at claim time, before the worktree necessarily exists.
 
 **Recommended**: Option A for v1 — it requires no new state and matches how every other identity concept in `parallel/` (`_active_workers`, `_worker_stages`, `_pending_callbacks`) already keys on `issue_id`. If a future need for true worker-thread identity (independent of the issue being processed) emerges, it can be introduced then without disrupting this event surface's contract, since `worker_id == issue_id` is a valid instance of "stable for the worker's lifetime."
+
+### Decision Rationale
+
+**Selected**: Option A — alias `worker_id` to `issue_id`.
+
+Every worker-tracking structure in `worker_pool.py` (`_active_workers`, `_pending_callbacks`, `_worker_stages`, `_active_processes`, `_worker_epic_branches`) is already keyed on `issue_id`, and `WorkerPool._process_issue` handles exactly one issue per invocation with no reassignment path — `issue_id` is already 1:1 and stable for a worker's full lifetime. Option B (deriving `worker_id` from the worktree name) has a timing mismatch: dispatch happens in `orchestrator.py`'s `_process_parallel`/`_process_sequential` before any worktree exists, so a `worker_started` event fired at true dispatch time cannot use a worktree-derived ID without either delaying the event or duplicating naming logic to precompute one.
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|---|---|---|---|---|---|
+| A — alias to `issue_id` | 3 | 3 | 3 | 3 | 12/12 |
+| B — derive from worktree name | 1 | 0 | 1 | 1 | 3/12 |
+
+Key evidence: `worker_pool.py:187,297` (`_active_workers` keyed by `issue_id`), `worker_pool.py:200,2012,2024,2048` (`_worker_stages` keyed by `issue_id`), `worker_pool.py:278-304` (`submit()` takes one `IssueInfo`, no reassignment), `worker_pool.py:352-362` (worktree/timestamp not computed until inside `_process_issue`, after dispatch), `orchestrator.py:1287-1293` (existing `worker_completed` event's only precedent for worker identity).
 
 ## Integration Map
 
@@ -200,6 +214,7 @@ Out of scope: building the dashboard/visualizer consumer itself (this issue only
 
 
 ## Session Log
+- `/ll:decide-issue` - 2026-08-27T20:51:11 - `627b8139-f4c5-4fdb-82a9-07a01d666f59.jsonl`
 - `/ll:refine-issue` - 2026-08-27T20:10:28 - `9e4fa033-0b0b-43cd-be66-950ccb670df0.jsonl`
 - `/ll:refine-issue` - 2026-08-27T20:10:19 - `3cf55431-2b3c-40fa-ad5c-a3fd2b0789ab.jsonl`
 - `/ll:format-issue` - 2026-08-27T20:01:01 - `e13ddb3f-38f3-4515-910f-59c195a89ea8.jsonl`
