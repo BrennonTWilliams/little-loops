@@ -86,6 +86,13 @@ sketch_state_graph`, with `check_intent_scope`'s `on_no` going to `diagnose`.
   but if BUG-3327 recorded "left alone", pick it up here, since reason (1) above
   makes the unbounded-edge hazard this gate's own justification.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-27 — based on codebase analysis:_
+
+- **BUG-3327 has landed** (`status: done`, commit `34c3ecac9`) and changed the exact edge reason (1) above relies on: `validate_intent`'s `on_no` is now `count_intent_retry` (`workflow-generator.yaml:119`), not `capture_intent` — a bounded retry state (default `context.max_intent_retries: "3"`, mirroring the pre-existing `count_emit_retry` pattern) now sits between `validate_intent`'s failure and `capture_intent`. The "unbounded retry" hazard reason (1) describes no longer exists on that edge; reasons (2) and (3) are independent of it and still require `check_intent_scope` to be its own state.
+- The "Two limits of this placement" bullet's second point ("if BUG-3327 recorded 'left alone', pick it up here") is resolved — BUG-3327 did not leave the edge unbounded. No residual work from that bullet remains for this issue.
+
 ## Proposed Solution
 
 A new `action_type: shell` / `evaluate: exit_code` state between `validate_intent`
@@ -182,6 +189,15 @@ pipeline. If the gate is ever generalized to later states (see the one-shot limi
 above), `loops_dir` must be added to the allowed set or promotion reads as a
 violation.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-27 — based on codebase analysis:_
+
+- **Additional `$${VAR}` escape precedent sites** beyond `common.yaml:459-460`: `workflow-generator.yaml:607` (`promote` state, `CANDIDATE="$${NAME}-$${SUFFIX}"`), `rn-remediate.yaml` (multiple sites, e.g. `:176`, `:538`, `:542`), `openscad-model-generator.yaml:313`. A second idiom coexists in the codebase: `general-task.yaml`'s `check_provisional_markers`/`final_verify_spin_gate` avoid braces entirely for locals (bare `$VAR`, e.g. `$BASELINE_REF`), sidestepping the escaping question rather than using `$${VAR}`. Both idioms are used elsewhere; neither is marked preferred.
+- **Second precedent for repo-root resolution** (requirement 1): `incremental-refactor.yaml:58,159` — `ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || ROOT="."` — used for a dirty-tree check and to scope a checkout/clean action to the resolved root rather than `$(pwd)`, with an in-file comment explaining the rationale ("a run launched from a subdirectory can't scope the checkout narrowly").
+- **No existing symlink-normalization utility, confirmed independently**: a grep for `realpath|resolve\(|relative_to\(` across `scripts/little_loops/` found only `rn-refine.yaml:93,109` (`realpath "${context.plan_file}" > "$DIR/.source-path"`), which captures a source path rather than resolving symlinks for a containment comparison. `ARCHITECTURE-087` (BUG-2435) governs absolute-path *capture*, not symlink resolution during comparison — requirement (e)(3) must be written fresh, confirming the issue's original claim.
+- **Untracked-set content-hash checking is confirmed test-enforced**: `general-task.yaml:424-429`'s `untracked()` + `git hash-object` pattern is backed by `test_untracked_file_content_edit_resets_counter` (`test_builtin_loops.py:3081-3096`), which asserts a name-only untracked listing is insufficient.
+
 ## Integration Map
 
 ### Files to Modify
@@ -256,12 +272,80 @@ baseline-ref + `git diff --name-only` shape.
   `/var/...` — normalize both sides in the helper or these cases flake per-platform
   (requirement (e)(3)).
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `TestValidatorWarningBudget.test_deterministic_warning_categories_do_not_regrow`
+  (`scripts/tests/test_builtin_loops.py:16206-16218`, class starts 16104) —
+  iterates **every** file in `BUILTIN_LOOPS_DIR.rglob("*.yaml")`, including
+  `workflow-generator.yaml`, and asserts no new WARNING-severity finding
+  appears in any of 10 ratcheted categories (`shared-tmp`, `partial-route`,
+  `required-inputs`, `unreachable`, `failure-terminal`,
+  `artifact-versioning`, `capture-ordering`, `loop-reference`,
+  `unsafe-context-interp`, `no-scope`) unless present in `ALLOWLIST` (lines
+  16138-16177, keyed by `(loop_stem, category) -> {warning_paths}`). No
+  `("workflow-generator", ...)` entry currently exists. If adding
+  `check_intent_scope` trips any of these categories (e.g. a missing `scope:`
+  declaration -> `no-scope`, an on_yes-only edge before `on_no` is wired ->
+  `partial-route`), this test fails at implementation time and either the
+  new state's wiring needs fixing or a new `ALLOWLIST` entry must be added
+  with this issue ID as justification, per the table's own convention.
+- `test_run_dir_used_throughout` (`scripts/tests/test_builtin_loops.py:17813-17822`)
+  — iterates a fixed tuple of state names (`capture_intent`, `validate_intent`,
+  `sketch_state_graph`, `emit_artifact`, `validate_artifact`) asserting
+  `"run_dir" in action`. `check_intent_scope` is architecturally the same
+  invariant (it exists specifically to check containment under `run_dir`) but
+  is not in this tuple — add it so the test actually covers the new gate.
+- `test_diagnose_mentions_both_retry_exhaustion_paths`
+  (`scripts/tests/test_builtin_loops.py:18046-18052`) — asserts `diagnose`'s
+  action text mentions `"emit_artifact"`, `"capture_intent"`, and
+  `"max_intent_retries"`, i.e. `diagnose` enumerates every failure path that
+  can route to it. `check_intent_scope.on_no` is a new route into `diagnose`;
+  for consistency with that existing pattern, `diagnose`'s prompt text should
+  mention the new gate and this test extended to assert it — not required
+  for the test to pass as written, but a natural consistency point given
+  the established convention.
+
 ### Documentation
 - `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` — the gate, and its one-shot window
   limit stated plainly so it is not mistaken for whole-pipeline enforcement
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/loops.md` — the `workflow-generator` section's `### State Graph`
+  ASCII diagram (~lines 155-175) enumerates the exact edge sequence (`init ->
+  capture_intent -> validate_intent -> sketch_state_graph -> ...`) and needs
+  `check_intent_scope` inserted between `validate_intent` and
+  `sketch_state_graph`, with its `on_no -> diagnose` branch shown. Confirmed by
+  `codebase-analyzer`: `docs/guides/LOOPS_REFERENCE.md`,
+  `scripts/little_loops/loops/README.md`, and
+  `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md` describe workflow-generator only
+  as pass-level prose and do **not** need updating — only this file has a
+  literal state-by-state diagram.
+
 ### Configuration
 - N/A
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-27 — based on codebase analysis:_
+
+- **Exact insertion point** — `scripts/little_loops/loops/workflow-generator.yaml`:
+  - `init` (lines 43-58): `action_type: shell`, no `evaluate:` block, flows via bare `next: capture_intent`. No existing `git rev-parse HEAD` or `git ls-files -o --exclude-standard` capture — both must be added fresh.
+  - `validate_intent` (lines 84-100): `action_type: shell`, `evaluate: {type: exit_code}`, `on_yes: sketch_state_graph`, `on_no: capture_intent`. `on_yes` is the exact edge to retarget to `check_intent_scope`.
+  - `max_steps` (line 32) is currently **40, not 45**. The Proposed Solution (g) assumption that BUG-3327 already bumped it does not hold against the current file — Implementation Step 4 ("verify... at least 45") will find 40 and must apply the bump itself.
+- **`general-task.yaml` baseline/diff precedent, exact shape**: `check_baseline_tests` (line 76) writes `baseline-ref.txt` via `git rev-parse HEAD > "${context.run_dir}/baseline-ref.txt" 2>/dev/null || echo "" > ...`, action_type shell, no evaluate block (flows via bare `next`). Downstream states read the file rather than re-deriving HEAD. `check_provisional_markers` (lines 841-864) and `final_verify_spin_gate` (lines 377-447) both use this baseline but their evaluators are `output_json` (`.markers_found` eq 0) and `output_numeric` (lt `${context.max_final_verify_spins}`) respectively — **neither uses `evaluate: {type: exit_code}`** as the Integration Map's "Similar Patterns" implies for the exit_code precedent; the `exit_code` evaluator precedent for this new state instead comes from `workflow-generator.yaml`'s own lowering-pass gates (`validate_intent`, `validate_sketch`, etc.), which are already all `action_type: shell` + `evaluate: {type: exit_code}`.
+- **Untracked-set exclusion precedent, exact form**: `final_verify_spin_gate`'s `untracked() { git ls-files -o --exclude-standard -z -- . ':(exclude).loops/'; }` (lines 407-439) diffs untracked files by **both path and content hash** (`xargs -0 git hash-object`), not path alone — a name-only untracked listing is called out as insufficient by that state's own tests.
+- **No-git escape precedent, exact form**: `check_provisional_markers` (lines 841-864): `if [ -z "$BASELINE_REF" ] || ! git rev-parse --git-dir >/dev/null 2>&1; then printf '...skipped: true...'; exit 0; fi` — confirms the recommended fail-open-with-warning shape for requirement (d)/(e)(2). Contrast: `mechanize-skills.yaml`'s `snapshot_baseline` dirty-worktree check (lines 189-217) instead `exit 1`s to a distinct `on_no: record_skip` branch — a different escape shape used because that gate is wrapped by a routing decision, not a direct `exit_code` evaluator. Since `check_intent_scope` uses `evaluate: {type: exit_code}` directly (per `test_validation_gates_are_exit_code`), the `exit 0`-fail-open shape is the applicable precedent, not the `exit 1`/skip-branch shape.
+- **No existing symlink-resolution utility**: a codebase-wide grep for `realpath|resolve\(|relative_to\(` under `scripts/little_loops/` found no existing utility for resolving symlinks before a path-containment comparison (the 29 hits found are unrelated: config/artifact/issue paths). Requirement (e)(3)'s `/tmp` vs `/private/tmp` normalization must be written fresh for this gate.
+- **`realpath` is rejected for absolute-path capture by `.ll/decisions.yaml` `ARCHITECTURE-087` (BUG-2435)**, which selects the `case "$DIR" in /*) ... esac` idiom already used by `workflow-generator.yaml`'s own `init` (lines 43-58) over `realpath` canonicalization, citing 4 prior consumption-site precedents. This decision governs the *capture* of `run_dir` as absolute, not the *symlink-resolution* step in the comparison itself (previous bullet) — the two are distinct concerns and only the latter is unaddressed by existing convention.
+- **Exact test anchors**: `test_validation_gates_are_exit_code` (`scripts/tests/test_builtin_loops.py:17774-17788`) parametrizes `["validate_intent", "validate_sketch", "validate_evaluators", "validate_routing", "validate_artifact"]` — add `"check_intent_scope"`. `test_pipeline_states_exist`'s `required` set literal (`scripts/tests/test_builtin_loops.py:17726-17751`, 23 states) does not include `check_intent_scope` — add it there too.
+- **FSM interpolation engine location**: `scripts/little_loops/fsm/interpolation.py`, `interpolate()` (lines 209-287). `ESCAPED_PATTERN = re.compile(r"\$\$\{")` (line 29) is substituted to a placeholder before `VARIABLE_PATTERN` (`\$\{([^}]+)\}`, line 28) resolves real `${namespace.path}` refs, then the placeholder is restored to a literal `${` (line 285) — confirming `$${ID}` survives as literal `${ID}` for bash, and a bare `${LOCAL_VAR}` raises `InterpolationError` ("expected namespace.path", lines 261-264) because it has no `.` separator. The `common.yaml:459-460` `$${ID}` precedent cited in the issue is real.
+- **Test harness precedent, exact class**: `TestGeneralTaskFinalVerifySpinGateShellAction` (`scripts/tests/test_builtin_loops.py`, class starts line 2988) extracts `data["states"][name]["action"]` from parsed YAML (never re-typed), substitutes `${context.run_dir}` via plain Python `.replace()` (not the FSM interpolation engine), and runs via `subprocess.run(["bash", "-c", script], cwd=repo, ...)`. Helper `_init_repo` (builds temp repo + baseline commit + `baseline-ref.txt`), `_run_gate` (extracts+substitutes+runs), `_make_run_dir` all confirmed present at this location — this is the shape Implementation Step 5/behavioral test cases should follow.
+
+_Added by `/ll:refine-issue` — 2026-08-27 — based on codebase analysis:_
+
+- **Line numbers have drifted since the 2026-08-27 research pass** (BUG-3327's landing shifted content in both target files):
+  - `workflow-generator.yaml`: `init` is now lines 44-61 (ends `capture: run_dir` at 60, `next: capture_intent` at 61); `capture_intent` (63-97) now carries the BUG-3327 fence wrapping `${context.description}`; `validate_intent` is now lines 99-119, with `on_yes: sketch_state_graph` at line 118 (the edge to retarget) and `on_no: count_intent_retry` at line 119 (see Expected Behavior finding — not `capture_intent`); `max_steps` is confirmed **already 45** at line 32 (BUG-3327 bumped it) — Implementation Step 4 is now a verification-only no-op, not a change.
+  - `test_builtin_loops.py`: `test_pipeline_states_exist` def is now line 17733, its `required` set spans 17734-17760 and already includes `"count_intent_retry"` (line 17747, added by BUG-3327) but still lacks `check_intent_scope`; `test_validation_gates_are_exit_code`'s parametrize list is now lines 17783-17791 (def line 17793), still `["validate_intent", "validate_sketch", "validate_evaluators", "validate_routing", "validate_artifact"]`; `TestGeneralTaskFinalVerifySpinGateShellAction` class now starts at line 2996 with `_init_repo` at 3009, `_run_gate` at 3027, `_make_run_dir` at 3036.
+- `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` gained a new "Fencing a User-Authored Brief/Goal" section (lines 625-676) from BUG-3327, documenting the fence mechanism (`fence.py`) — this is pure net-new prose adjacent to where this issue's gate documentation belongs; it does not mention `check_intent_scope` or runtime containment and requires no reconciliation, only a new adjacent subsection per Implementation Step 7.
 
 ## Program Design
 
@@ -278,6 +362,38 @@ baseline-ref + `git diff --name-only` shape.
 `init` (writes both baselines) -> `capture_intent` -> `validate_intent`
 (`on_yes: check_intent_scope` / `on_no: capture_intent`) -> `check_intent_scope`
 (`on_yes: sketch_state_graph` / `on_no: diagnose`)
+
+**Correction (2026-08-26 refine pass):** `validate_intent`'s `on_no` edge is
+`count_intent_retry`, not `capture_intent` — BUG-3327 added a bounded retry
+state between `validate_intent` and `capture_intent` (default
+`context.max_intent_retries: "3"`). This issue's edit retargets only
+`on_yes`; `on_no` is left as `count_intent_retry`, unchanged. Corrected call
+path: `validate_intent` (`on_yes: check_intent_scope` / `on_no:
+count_intent_retry`) -> `check_intent_scope` (`on_yes: sketch_state_graph` /
+`on_no: diagnose`).
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-27 — based on codebase analysis:_
+
+- Confirmed exact current YAML for the insertion boundary (`scripts/little_loops/loops/workflow-generator.yaml`):
+  ```yaml
+  validate_intent:
+    action_type: shell
+    action: |
+      python3 -c "
+      import yaml
+      d = yaml.safe_load(open('${captured.run_dir.output}/intent.yaml'))
+      assert d.get('name'), 'name is empty'
+      ...
+      "
+    evaluate:
+      type: exit_code
+    on_yes: sketch_state_graph   # retarget to check_intent_scope
+    on_no: capture_intent
+  ```
+  `init` (lines 43-58) currently ends with the `case "$DIR" in /*) ... esac` block as its last action lines, `capture: run_dir`, plain `next: capture_intent` (no evaluate block) — consistent with the Signatures section's note to "keep the case/echo block last."
+- The `evaluate: {type: exit_code}` shape for `check_intent_scope` matches `workflow-generator.yaml`'s own existing lowering-pass gates (`validate_intent`, `validate_sketch`, `validate_evaluators`, `validate_routing`, `validate_artifact` — all shell+exit_code), not `general-task.yaml`'s `check_provisional_markers`/`final_verify_spin_gate`, which use `output_json`/`output_numeric` respectively despite sharing the same baseline-diff shape. `check_intent_scope`'s escape-hatch behavior (non-repo, outside-worktree) should therefore signal via the shell script's own `exit 0`/`exit 1`, not a JSON payload field.
 
 ## Implementation Steps
 
@@ -296,6 +412,26 @@ baseline-ref + `git diff --name-only` shape.
    on a deliberately planted out-of-scope write. **A green gate proves nothing
    until you have seen it go red.**
 7. Document the gate and its one-shot window limit.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Update `docs/reference/loops.md` — insert `check_intent_scope` (with its
+  `on_no -> diagnose` branch) into the `workflow-generator` section's ASCII
+  `### State Graph` diagram, between `validate_intent` and
+  `sketch_state_graph`.
+- Add `check_intent_scope` to `test_run_dir_used_throughout`'s state tuple
+  (`test_builtin_loops.py:17813-17822`).
+- Watch `TestValidatorWarningBudget.test_deterministic_warning_categories_do_not_regrow`
+  (`test_builtin_loops.py:16206-16218`) when the new state lands — add an
+  `ALLOWLIST` entry for `("workflow-generator", <category>)` only if the new
+  state trips one of the 10 ratcheted warning categories.
+- Consider extending `diagnose`'s action text and
+  `test_diagnose_mentions_both_retry_exhaustion_paths`
+  (`test_builtin_loops.py:18046-18052`) to mention `check_intent_scope`,
+  matching the existing convention of `diagnose` enumerating every failure
+  path that routes to it.
 
 ## Impact
 
@@ -333,3 +469,18 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 ## Status
 
 **Open** | Created: 2026-08-26 | Priority: P3
+
+
+## Session Log
+- `/ll:wire-issue` - 2026-08-27T01:49:46 - `b4592890-2b63-4442-b15e-89282998dd3d.jsonl`
+- `/ll:refine-issue` - 2026-08-27T01:43:27 - `981cfc8c-efe7-4751-8804-dd1eed392dab.jsonl`
+- `/ll:refine-issue` - 2026-08-27T01:12:54 - `fb4eed07-2702-4aea-a748-78fa07142d55.jsonl`
+
+## Tests
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-27 — based on codebase analysis:_
+
+- **No shared FSM shell-action test harness utility exists anywhere in `scripts/tests/`.** The "extract action from parsed YAML, substitute `${context.*}` via `.replace()`, run via `subprocess.run(['bash','-c',...])`, assert `returncode`" pattern is independently duplicated per-file across at least 13 test files (`test_builtin_loops.py`, `test_general_task_loop.py`, `test_incremental_refactor_loop.py`, and others) — confirmed by inspecting `conftest.py` directly, which has no such fixture or mixin. The new `check_intent_scope` test class should follow this same per-file duplication convention (matching `TestGeneralTaskFinalVerifySpinGateShellAction`'s shape), not attempt to extract or reuse a shared utility that does not exist.
+- Corrected line anchors (per the Integration Map finding above): `test_pipeline_states_exist` required-set now spans 17734-17760; `test_validation_gates_are_exit_code` parametrize list now spans 17783-17791; `TestGeneralTaskFinalVerifySpinGateShellAction` class now starts at line 2996 with `_init_repo`/`_run_gate`/`_make_run_dir` at 3009/3027/3036.

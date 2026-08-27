@@ -9,6 +9,7 @@ discovered_by: manual
 discovered_date: '2026-08-26'
 captured_at: '2026-08-26T21:00:00Z'
 supersedes: []
+decision_needed: true
 ---
 
 # BUG-3331: Loop YAMLs interpolate untrusted text into Python string literals inside shell actions
@@ -218,6 +219,14 @@ is not one.
 
 - N/A
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-27 — based on codebase analysis:_
+
+- Existing lint precedent for the Notes "Follow-up": MR-11 (`_validate_unsafe_context_interpolation`, `scripts/little_loops/fsm/validation/shell_safety.py:191-227`) already walks `state.action` tracking heredoc state via `_QUOTED_HEREDOC_START_RE` (`shell_safety.py:41`) and flags matches of `_UNSAFE_CONTEXT_INTERP_RE` (`shell_safety.py:33-35`). It currently treats being inside a quoted heredoc (`<< 'EOF'`) as an unconditionally safe position — safe from bash's perspective — and does not distinguish that from being unsafe once the heredoc body is re-parsed as a Python string literal. The Follow-up should extend MR-11's existing heredoc-tracking rather than add a new rule from scratch.
+- The env-var idiom is not applied uniformly even within one file: `mechanize-skills.yaml:283-286` binds `SKILL_FILE` via the env-var idiom (`SKILL_FILE="${captured.current_skill.output}" python3 << 'PYEOF'` / `os.environ["SKILL_FILE"]`) but still raw-interpolates `${captured.run_dir.output}` into a Python string literal (`open("${captured.run_dir.output}/diagnosis.json")`) on the very next line inside the same heredoc. Any regression sweep must check every interpolation site per-heredoc, not treat a file as clean once one site is converted.
+- No existing in-repo pattern writes untrusted multi-line capture output to a run-dir file for later `open()` (relevant to Open Decision option (b)/(a)). The two existing file-handoff shapes found are: (1) an LLM self-managing its own artifact file per prose instructions in `generate_prompt`/`rubric` (e.g. `html-website-generator.yaml:67-95`), and (2) a Python heredoc opening a JSON file at a `${captured.run_dir.output}`-derived path that a prior state wrote (e.g. `mechanize-skills.yaml:286,337,370,581`) — there only the harness-controlled *path* is interpolated raw, not the untrusted file *contents*. Neither is a precedent for passing arbitrary untrusted captured text via file.
+
 ## Program Design
 
 ### Signatures
@@ -225,6 +234,8 @@ is not one.
 - No Python API change under options (b)/(c).
 - Under option (a): a `${captured.<name>.path}` accessor resolving to a run-dir
   file holding that capture's raw output verbatim.
+- `_run_action(self, action_template: str, state: StateConfig, ctx: InterpolationContext, on_usage: UsageCallback | None = None) -> ActionResult` (`scripts/little_loops/fsm/executor.py:2097`) — the single write site (`:2370-2391`) where a `path` key would be added to `self.captured[state.capture]` under option (a).
+- `_build_context(self) -> InterpolationContext` (`scripts/little_loops/fsm/executor.py:3284`) — constructs each interpolation context with `captured=self.captured` by reference, so a `path` key added at the write site above is visible with no further plumbing.
 
 ### Call Path
 
@@ -233,6 +244,18 @@ is not one.
 `python3` parses the substituted text **as source**. The fix breaks the last
 arrow: the value must arrive through `os.environ` or `open()`, never through
 the parser.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-27 — based on codebase analysis:_
+
+- `InterpolationContext.resolve()` (`scripts/little_loops/fsm/interpolation.py:78`) and `_get_nested()` (`:119`) already generically resolve any dot-path under the `captured` namespace via plain dict traversal (`path.split(".")`, `:133`) — a `${captured.X.path}` accessor requires no change to `VARIABLE_PATTERN` (`:28`) or the `:default=`/`?`/`:shell` suffix-parsing block in `interpolate()` (`:209-274`). It resolves automatically once `self.captured["X"]["path"]` exists as a key — this is a data-population problem, not an interpolation-syntax problem.
+- Capture write site: `_run_action()` (`scripts/little_loops/fsm/executor.py`, signature at line 2097) populates `self.captured[state.capture] = {"output": ..., "stderr": ..., "exit_code": ..., "duration_ms": ..., "failure_type": ..., "timeout_kind": ...}` at lines 2370-2391. A `path` key (plus the corresponding file write of `result.output`/`result.stderr` under `${context.run_dir}`) would be added at this single site.
+- `_build_context()` (`executor.py:3284-3303`) constructs each `InterpolationContext` with `captured=self.captured` passed by reference. A `path` key added at the write site above is therefore visible to every subsequent state's interpolation with no additional plumbing — `_build_context` is called from multiple sites (`executor.py:3294, 3755, 3802`), all referencing the same instance dict.
+- `run_dir` is available inside the executor via `self.fsm.context.get("run_dir", "")` (`executor.py:1692`, `:3031`) — the same dict backing `${context.run_dir}` — not as a dedicated attribute on the executor.
+- `LoopState.captured` (`scripts/little_loops/fsm/persistence.py:332`, dataclass field) and `to_dict()` (`:379`) serialize the captured dict opaquely with no per-key shape enforcement — a new `path` key round-trips through checkpointing with no persistence-layer code change.
+- `fsm-loop-schema.json:489-492` — `capture` is currently a bare `{"type": "string", "description": "Variable name to store action output"}` with no destination-path sibling key. Any new schema key for this accessor is purely additive; nothing existing to reconcile with.
+- `bash -c` invocation (`scripts/little_loops/fsm/runners.py:297`, `cmd = ["bash", "-c", action]`) confirms interpolation is fully resolved into `action` (via `interpolate()` at `executor.py:2115`) before bash — and therefore python3 — ever sees the text, confirming the issue's stated Call Path.
 
 ## Implementation Steps
 
@@ -281,3 +304,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 ## Status
 
 **Open** | Created: 2026-08-26 | Priority: P2
+
+
+## Session Log
+- `/ll:refine-issue` - 2026-08-27T01:45:46 - `091f85a6-5523-4888-8bc0-8e7acb268aae.jsonl`
