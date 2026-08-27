@@ -10,6 +10,13 @@ captured_at: '2026-08-27T19:56:34Z'
 depends_on:
 - ENH-3345
 decision_needed: false
+reconcile_attempted: true
+confidence_score: 90
+outcome_confidence: 63
+score_complexity: 10
+score_test_coverage: 18
+score_ambiguity: 10
+score_change_surface: 25
 ---
 
 # ENH-3346: parallel namespace has no worker lifecycle events
@@ -97,9 +104,10 @@ Key evidence: `worker_pool.py:187,297` (`_active_workers` keyed by `issue_id`), 
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/parallel/orchestrator.py` — add `parallel.worker_started` and `parallel.queue_changed` emissions at the state-change points that already track worker claim and pending/active/done counts
-- `scripts/little_loops/parallel/worker_pool.py` — add `parallel.worker_blocked`/`parallel.worker_unblocked` at the lock/worktree/dependency/rate-limit wait points, and `parallel.merge_started`/`parallel.merge_completed` around the epic-branch merge path
-  > ⚠ Superseded — merge events belong in `merge_coordinator.py`, not `worker_pool.py`; see § Codebase Research Findings
+- `scripts/little_loops/parallel/orchestrator.py` — add `parallel.worker_started` and `parallel.queue_changed` emissions at the state-change points that already track worker claim and pending/active/done counts, and `parallel.worker_blocked`/`parallel.worker_unblocked` at the overlap-deferral (`_process_parallel`) and requeue (`_requeue_deferred_issues`) points — the only real blocked/unblocked transition in `parallel/`
+- `scripts/little_loops/parallel/merge_coordinator.py` — add `parallel.merge_started` in `_process_merge` and `parallel.merge_completed` in `_finalize_merge`/`_handle_failure`
+- `scripts/little_loops/parallel/priority_queue.py` — add `event_bus` support and emit `parallel.queue_changed` from `add`/`get`/`mark_completed`/`mark_failed`/`mark_skipped`/`requeue`, or emit it from the orchestrator call sites that invoke these mutators
+- `scripts/little_loops/generate_schemas.py` — add the six new event types to `SCHEMA_DEFINITIONS`
 - `docs/reference/EVENT-SCHEMA.md` — document each new event type and its payload table
 
 _Wiring pass added by `/ll:wire-issue`:_
@@ -119,8 +127,8 @@ _Wiring pass added by `/ll:wire-issue`:_
 - ENH-3345's `run_id`/`loop` stamping mechanism, once landed, should be reused by these new emitters rather than duplicated
 
 ### Tests
-- `scripts/tests/test_orchestrator.py` — add coverage asserting each new event fires with the expected payload at its trigger point
-- `scripts/tests/test_worker_pool.py` — same, for the worker-pool-owned events (`worker_blocked`/`worker_unblocked`, `merge_started`/`merge_completed`)
+- `scripts/tests/test_orchestrator.py` — add coverage asserting `worker_started`, `queue_changed`, `worker_blocked`, and `worker_unblocked` each fire with the expected payload at their trigger point
+- `scripts/tests/test_generate_schemas.py` — bump the four pinned `== 42` counts to `== 48` and extend `test_expected_event_types_present`'s literal set with the six new `parallel.*` keys
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_des_schema.py` — `test_variants_count_meets_minimum` (`:30-41`, `len(DES_VARIANTS) >= len(SCHEMA_DEFINITIONS)`) and `test_variants_cover_all_schema_definitions` (`:43-54`) will fail once `SCHEMA_DEFINITIONS` gains six entries, until matching `DESVariant` classes exist in `observability/schema.py` [Agent 1/2 finding]
@@ -160,12 +168,12 @@ _Added by `/ll:refine-issue` — 2026-08-27 — based on codebase analysis:_
 ## Implementation Steps
 
 1. Land ENH-3345 (run_id/loop stamping) first, since all new emitters route through it
-2. Add `parallel.worker_started` and `parallel.queue_changed` emissions in `orchestrator.py`
-3. Add `parallel.worker_blocked`/`parallel.worker_unblocked` and `parallel.merge_started`/`parallel.merge_completed` emissions in `worker_pool.py`
-   > ⚠ Superseded — merge events belong in `merge_coordinator.py`, not `worker_pool.py`; see § Codebase Research Findings
-4. Add/update tests asserting each event fires with the expected `worker_id`/`issue_id` payload
-5. Document the six new event types in `docs/reference/EVENT-SCHEMA.md` and regenerate `docs/reference/schemas/` via `ll-generate-schemas`
-6. Verify a `parallel.*` subscriber can reconstruct active-worker count and per-worker status from the event stream alone
+2. Add `parallel.worker_started`, `parallel.queue_changed`, `parallel.worker_blocked`, and `parallel.worker_unblocked` emissions in `orchestrator.py` (worker_blocked/unblocked at the overlap-deferral/requeue points, not a lock wait)
+3. Add `parallel.merge_started`/`parallel.merge_completed` emissions in `merge_coordinator.py` (`_process_merge`, `_finalize_merge`, `_handle_failure`); thread `event_bus` into `IssuePriorityQueue`/`MergeCoordinator` per the Wiring Phase
+4. Add six new `DESVariant` dataclasses to `observability/schema.py`'s `DES_VARIANTS`, and six new entries to `generate_schemas.py`'s `SCHEMA_DEFINITIONS`
+5. Add/update tests asserting each event fires with the expected `worker_id`/`issue_id` payload, including `test_merge_coordinator.py`/`test_priority_queue.py` (no prior event coverage) and the pinned counts in `test_generate_schemas.py`/`test_des_schema.py`
+6. Document the six new event types across all `EVENT-SCHEMA.md` enumeration sites, refresh `docs/reference/API.md`'s stale examples, and regenerate `docs/reference/schemas/` via `ll-generate-schemas` and `docs/observability/des-audit.md` via `ll-verify-des-audit`
+7. Verify a `parallel.*` subscriber can reconstruct active-worker count and per-worker status from the event stream alone
 
 ### Codebase Research Findings
 
@@ -262,7 +270,21 @@ Out of scope: building the dashboard/visualizer consumer itself (this issue only
 ```
 
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-08-27_
+
+**Readiness Score**: 90/100 → PROCEED
+**Outcome Confidence**: 63/100 → MODERATE
+
+### Outcome Risk Factors
+- Unapplied decision: format-check's `unapplied_decision` flag fires on "Files to Modify still specifies `parallel/` (rejected option)" — capped Criterion C (Ambiguity) at 10/25. Verify the Integration Map's "Files to Modify" list doesn't still point at a bare `parallel/` reference left over from the worker_id Option A/B decision, and correct it before implementing.
+- Moderate breadth × moderate depth: six new emitters span ~8-10 distinct files (orchestrator.py, merge_coordinator.py, priority_queue.py, generate_schemas.py, observability/schema.py, EVENT-SCHEMA.md, plus 3-4 test files) with some sites requiring constructor signature changes (threading `event_bus` into `IssuePriorityQueue`/`MergeCoordinator`) rather than pure mechanical substitution — expect more iteration than a single-file change.
+- format-check also flagged unresolved `stale_symbol_ref`/`mislocated_symbol_ref` entries claiming several of the new event names live in `scripts/little_loops/cli/parallel.py`; that file exists but a targeted grep found no matches for those event names there — worth a quick recheck before implementation to confirm the Integration Map's file list is accurate.
+
 ## Session Log
+- `/ll:confidence-check` - 2026-08-27T22:17:22 - `dd56bf1f-7933-4d9c-980c-762867d3ce6b.jsonl`
+- `/ll:reconcile-issue` - 2026-08-27T22:14:34 - `3e6453f3-ac93-435f-934e-1a9d7dc7adfd.jsonl`
 - `/ll:refine-issue` - 2026-08-27T22:09:56 - `79106a4f-4393-4e7a-9f77-a9f63f9c673b.jsonl`
 - `/ll:wire-issue` - 2026-08-27T21:00:23 - `3300bae1-29e4-43aa-be1f-dbf44d0ba9ec.jsonl`
 - `/ll:decide-issue` - 2026-08-27T20:51:11 - `627b8139-f4c5-4fdb-82a9-07a01d666f59.jsonl`
