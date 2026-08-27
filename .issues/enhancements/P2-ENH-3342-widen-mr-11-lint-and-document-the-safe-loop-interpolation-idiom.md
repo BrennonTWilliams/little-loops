@@ -8,7 +8,7 @@ discovered_by: ll-issues-create
 discovered_date: '2026-08-27'
 captured_at: '2026-08-27T17:51:35Z'
 parent: EPIC-3336
-blocked_by: [ENH-3337, ENH-3338, BUG-3339, BUG-3340, BUG-3341]
+blocked_by: [ENH-3337, ENH-3338, BUG-3339, BUG-3340, BUG-3341, ENH-3347]
 ---
 
 # ENH-3342: Widen MR-11 lint and document the safe loop-interpolation idiom
@@ -40,9 +40,16 @@ specific ways:
 1. **Fixed key allowlist.** `_UNSAFE_CONTEXT_INTERP_RE` (`:33-35`) matches only
    `input|goal|description|task|prompt|query|topic`. Every class-A key outside
    that set is invisible.
-2. **No `captured` namespace.** The regex is `\$\{context\.…` with no alternation
-   — **class B, the sharper class, is entirely outside MR-11's reach.** BUG-3341
-   can convert all 67 sites and MR-11 will not notice if one is missed.
+2. **No `captured` or `prev` namespace.** The regex is `\$\{context\.…` with no
+   alternation — **class B, the sharper class, is entirely outside MR-11's
+   reach.** BUG-3341 can convert all 67 sites and MR-11 will not notice if one is
+   missed. `${prev.output}` is equally invisible, and unlike the class-B sites
+   this epic converts, it also occurs in plain **bash** positions that no other
+   guard covers: `rlhf-svg-evaluate.yaml:517`, `PREV_OUTPUT="${prev.output}"` —
+   model output inside a double-quoted assignment, where a `"` breaks tokenizing
+   and `$(...)` command-substitutes. ENH-3338's baseline deliberately does not
+   cover bash-position sites, so **this rule is the only thing that can catch
+   them.**
 3. **A quoted heredoc is unconditionally safe** (`:152-154`, `:178-180`). True
    from bash's perspective; false once the body is re-parsed as Python. This is
    the exact inversion EPIC-3336 exists to fix, and MR-11 currently encodes the
@@ -90,8 +97,12 @@ loop — including loops in consuming projects, which no baseline covers.
 
 - `scripts/little_loops/fsm/validation/shell_safety.py`
   - `:33-35` — `_UNSAFE_CONTEXT_INTERP_RE`: drop the key allowlist, add the
-    `captured` namespace, or replace the regex entirely with a call into
-    ENH-3338's scanner
+    `captured` and `prev` namespaces, or replace the regex entirely with a call
+    into ENH-3338's scanner
+  - `:183` — `token.endswith(":shell}")`: this must become position-aware, not
+    merely suffix-chain-aware. ENH-3337 fixes *where* the suffix is recognized;
+    this issue fixes *whether recognizing it clears the site* (it does not,
+    inside a Python body)
   - `:41` — `_QUOTED_HEREDOC_START_RE` and the terminator check at `:173`:
     column-0 semantics
   - `:148-188` — `_find_unsafe_context_interpolations`: the Python-literal
@@ -159,15 +170,33 @@ The rule MR-11 enforces after widening:
 
 | Position of an untrusted interpolation | Verdict |
 |---|---|
+| bash token position, not single-quoted, carries `:shell` | clean (unchanged) |
 | bash token position, not single-quoted, no `:shell` | flag (unchanged) |
 | inside a quoted heredoc that is **not** a Python body | clean (unchanged) |
 | inside a quoted heredoc that **is** a Python body, in a string literal | **flag (new)** |
+| inside a quoted heredoc that **is** a Python body, carrying `:shell` | **flag (new)** — see below |
 | inside a `python3 -c "…"` body | **flag (new)** |
-| carries `:shell` anywhere in its suffix chain | clean |
-| trusted key (`run_dir`, `promoted_artifact`, `_`-prefixed) or `${loop.*}` | clean |
+| trusted key (`run_dir`, `promoted_artifact`, `_`-prefixed), `prev.exit_code`/`state`/`timeout_kind`, or `${loop.*}` | clean |
 
-Untrusted-ness comes from `classify_site()`: `captured.*` always, `context.*`
-minus the enumerated trusted set. **Not** a fixed untrusted-key allowlist.
+Untrusted-ness comes from `classify_site()`: `captured.*` always,
+`prev.output`/`prev.stderr` always, `context.*` minus the enumerated trusted set.
+**Not** a fixed untrusted-key allowlist.
+
+**`:shell` is position-dependent, and an earlier draft of this table got it
+wrong.** It read "carries `:shell` anywhere in its suffix chain → clean,"
+unqualified. `:shell` is `shlex.quote()`, which is safe only at a **bash token
+position**; inside a quoted heredoc bash does nothing, so the quoted form is
+handed straight to the Python parser:
+
+```
+shlex.quote("don't")  ->  '\'don\'"\'"\'t\''
+goal = ''don'"'"'t''  ->  SyntaxError: unterminated string literal
+```
+
+Clearing on `:shell` unconditionally would make MR-11 certify the single most
+likely bad BUG-3340 conversion as clean. The lint must flag it, and its message
+should name the specific remedy — hoist the `:shell` out to a `LL_ARG_X=` binding
+on the `python3` invocation line — rather than the generic text.
 
 ### Severity
 
@@ -180,10 +209,39 @@ has shipped for a release. Record this as a decision.
 
 The widening will surface **pre-existing findings in files EPIC-3336 does not
 otherwise touch** — that is the point of dropping the allowlist, and it is why
-this issue runs last. Two outcomes are acceptable per finding: convert it, or
-add it to ENH-3338's baseline as class-C/accepted with a reason. **Neither
-`unsafe_context_interpolation_ok` nor a re-narrowed regex is an acceptable
-response.** Budget for this triage; it is not a rubber stamp.
+this issue runs last. **Neither `unsafe_context_interpolation_ok` nor a
+re-narrowed regex is an acceptable response.** Budget for this triage; it is not
+a rubber stamp.
+
+#### Triage — resolved 2026-08-27
+
+An earlier draft offered "add it to ENH-3338's baseline as class-C/accepted with
+a reason" as an outcome. **That does not work, and it made the ACs
+self-contradictory.** ENH-3338's baseline is a *test data file* consumed by
+`test_builtin_loops.py`; MR-11 never reads it, and has no per-site suppression —
+only the loop-level `unsafe_context_interpolation_ok` flag this issue forbids. So
+a baselined finding still emits a WARNING, and the old AC 5 ("`ll-loop validate`
+clean across the entire corpus") could not hold alongside the old AC 8.
+
+Resolution, and the two-tier AC that replaces them:
+
+- **Files EPIC-3336 touched** must be MR-11-clean. Non-negotiable — a warning
+  there is a failed conversion.
+- **Findings elsewhere** are triaged one of two ways: converted in this issue, or
+  carried by a **named follow-up issue** filed in this issue's commit and linked
+  here. Filing is not deferral-by-silence: the issue must name the file, the
+  state, and the class.
+- Until that follow-up lands, the corpus temporarily loses its zero-MR-11-warning
+  property. **ENH-3338's baseline, not MR-11 cleanliness, is the regression
+  signal during that window** — record this explicitly, because EPIC-3336's
+  Motivation leans on the zero-warning property and a future reader will
+  otherwise read the residual warnings as the epic having failed.
+
+A per-site suppression mechanism (e.g. an inline `# ll-lint: mr11-ok <reason>`
+marker) was considered and **rejected for this issue** — it is new lint
+surface-area that EPIC-3336 did not scope, and adding it under time pressure at
+the end of the epic is exactly the shape of change that quietly re-opens the
+class. The follow-up issue may propose it on its own merits.
 
 ### Call Path
 
@@ -203,7 +261,8 @@ No runtime path — validation only.
 4. Revise `test_mr11_does_not_fire_inside_quoted_heredoc` to assert the corrected
    semantics, and record why the old assertion was wrong.
 5. Run `ll-loop validate` across the corpus; triage every newly surfaced finding
-   (convert, or baseline with a reason). Do not suppress.
+   (convert here, or file a named follow-up issue in this commit). Do not
+   suppress, and do not baseline — MR-11 does not read the baseline.
 6. Update the validator's message to name both remedies concretely — the
    `LL_ARG_X=${context.x:shell}` + `os.environ` idiom and the
    `LL_RAW_9F3C1A7E_EOF` heredoc-to-file idiom — and link the guide section.
@@ -219,20 +278,37 @@ No runtime path — validation only.
    outside the old allowlist.
 2. MR-11 flags an untrusted `${captured.*}` inside a Python literal, with a unit
    test. Class B is no longer invisible to the lint.
+2b. MR-11 flags `${prev.output}` / `${prev.stderr}` in an unsafe position and
+   does **not** flag `${prev.exit_code}`, with a unit test for each. The live
+   bash-position site `rlhf-svg-evaluate.yaml:517`
+   (`PREV_OUTPUT="${prev.output}"`) is flagged and triaged per Expected finding
+   surface — ENH-3338's baseline does not cover bash-position sites, so this rule
+   is the only guard for it.
 3. MR-11 distinguishes a quoted heredoc that is a Python body from one that is
    not, and flags only the former — with a unit test for each side.
 4. MR-11 closes a heredoc only on a column-0 terminator; an indented
    marker-equal line does not end the tracked block, with a unit test.
 5. MR-11 does not fire on any correctly converted site — verified by
-   `ll-loop validate` running clean across the entire corpus after BUG-3339 /
-   3340 / 3341 have landed, with **no** loop setting
-   `unsafe_context_interpolation_ok`.
+   `ll-loop validate` running clean on **every file EPIC-3336 touched** after
+   BUG-3339 / 3340 / 3341 have landed, with **no** loop setting
+   `unsafe_context_interpolation_ok`. Corpus-wide cleanliness is *not* asserted
+   here; see AC 8.
+5b. MR-11 flags a `:shell`-suffixed interpolation inside a Python body and does
+   **not** flag one at a bash token position, with a unit test for each. Its
+   message for the former names the hoist-to-`LL_ARG_` remedy specifically.
 6. `classify_site()` is imported from `interp_sweep`, not duplicated in
    `shell_safety.py`.
 7. `test_mr11_does_not_fire_inside_quoted_heredoc` is revised, and the reason the
    original assertion was wrong is recorded in the test or this issue.
-8. Every finding surfaced by the widening is triaged — converted or baselined
-   with a reason. None is suppressed via the flag or by re-narrowing the pattern.
+8. Every finding surfaced by the widening outside the epic's touched files is
+   triaged — converted in this issue, or carried by a **named follow-up issue**
+   filed in this issue's commit and linked from here, naming file, state, and
+   class. None is suppressed via `unsafe_context_interpolation_ok` or by
+   re-narrowing the pattern. Baselining is **not** an accepted outcome — MR-11
+   does not read ENH-3338's baseline (see Expected finding surface).
+8b. The interim regression-signal decision is recorded: while the follow-up is
+   open, the corpus carries residual MR-11 warnings and ENH-3338's baseline —
+   not MR-11 cleanliness — is the regression signal.
 9. `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` documents both idioms with
    copy-pasteable blocks, the column-0 hoist rule, and the `<state>-<capture>.txt`
    naming rule.

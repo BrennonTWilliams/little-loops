@@ -31,7 +31,7 @@ Proposed change: compute `run_id` once at executor construction (same derivation
 
 Scope note: `parallel.*` and `issue.*` emitters build their dicts inline rather than going through `_emit()`, so they need the same treatment or an explicit decision to leave them run-less. Sibling issue covers the `parallel.*` surface.
 
-Acceptance: every event observed on the bus during a loop run carries a non-empty `run_id` and `loop`; two concurrent runs writing one `events.jsonl` can be fully separated by `run_id`; `docs/reference/EVENT-SCHEMA.md` documents both fields in the wire-format table; `docs/reference/schemas/` regenerated via `ll-generate-schemas`.
+Acceptance: every event observed on the bus during a loop run carries a non-empty `run_id` and `loop` — including `loop_resume`, and including both segments of a paused-and-resumed run, which must share one `run_id`; two concurrent runs of *different loops* (or same loop, different second — see the documented same-second collision limitation) writing one `events.jsonl` can be fully separated by `run_id`; `docs/reference/EVENT-SCHEMA.md` documents both fields in the wire-format table; `docs/reference/schemas/` regenerated via `ll-generate-schemas`.
 
 
 ## Current Behavior
@@ -75,6 +75,16 @@ Then replace both inline derivations in `_finish()` (`:3686`, `:3711`) with read
 
 Out of scope: `parallel.*` and `issue.*` event emitters build their dicts inline rather than going through `_emit()`, so they need the same treatment or an explicit decision to leave them run-less — tracked separately (see Scope Boundaries).
 
+### Pre-Implementation Review Findings
+
+_Added by pre-implementation review — 2026-08-27 — verified against code:_
+
+1. **Resume path splits one logical run into two `run_id`s — must be guarded.** `PersistentExecutor.resume()` restores `self._executor.started_at = state.started_at` (`persistence.py:1276`), then calls `self.run(clear_previous=False)` → `FSMExecutor.run()`, which unconditionally clobbers it via `self.started_at = _iso_now()` (`executor.py:481`). If `run_id` is computed there naively, a paused-and-resumed run emits its pre-pause segment under one `run_id` and its post-resume segment under another — defeating correlation for exactly the long-running loops most likely to be watched. **Decision: `run()` sets `started_at`/`run_id` only when `self.started_at` is still `""`** (preserving the restored value on resume), so both segments share one `run_id` and archive rows keyed on `started_at` stay consistent. Add a resume test asserting `run_id` stability across the pause/resume boundary.
+2. **`loop_resume` bypasses `_emit()` and would violate acceptance.** It's built inline in `persistence.py:1309-1320` and emitted straight onto the bus mid-run — it would carry `loop` but never `run_id`. **Decision: stamp `run_id` on it in `resume()`**, derived from the just-restored `state.started_at` with the same formula (or by reading `self._executor.run_id` if the restore order makes it available). During implementation, grep for any other `event_bus.emit(`/`append_event(` call sites in `persistence.py` that emit run-scoped events outside `_emit()` and give them the same treatment.
+3. **Same-second collision is a known, accepted limitation.** The derivation truncates to second precision (`[:17]`), so two concurrent runs of the *same loop* started in the same second get identical `run_id`s, while acceptance promises separability. This collision already exists in archive-folder naming (`.history/<run_id>-<loop>`); changing the formula would desync folder names and the three `persistence.py` derivation copies. **Decision: keep the formula, document the limitation in EVENT-SCHEMA.md**, and make the concurrent-runs integration test use two different loop names deliberately.
+4. **Initialize `self.run_id = ""` in `__init__`** alongside `started_at` (`executor.py:258`) — tests like `test_finish_writes_loop_run_summary` call `_finish()` without `run()`, and a `run()`-only attribute would raise `AttributeError`. Mirrors the existing `started_at` init/assign pattern.
+5. **Both explicit `loop` call sites get cleaned up, not just one.** Implementation Step 2's "drop the now-redundant `loop` key" applies to `loop_start` (`:484`) *and* the `PROMPT_SIZE_WARN_EVENT` emission (`:2161`) — the two sites the research findings already identified.
+
 ### Codebase Research Findings
 
 _Added by `/ll:refine-issue` — 2026-08-27 — based on codebase analysis:_
@@ -89,7 +99,8 @@ _Added by `/ll:refine-issue` — 2026-08-27 — based on codebase analysis:_
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/fsm/executor.py` — add `self.run_id` computation in `run()` (`:481` area), update `_emit()` (`:3327`), update the two inline derivations in `_finish()` (`:3686`, `:3711`)
+- `scripts/little_loops/fsm/executor.py` — init `self.run_id = ""` in `__init__` (`:258` area), guarded `started_at`/`run_id` assignment in `run()` (`:481` area), update `_emit()` (`:3327`), update the two inline derivations in `_finish()` (`:3686`, `:3711`)
+- `scripts/little_loops/fsm/persistence.py` — stamp `run_id` on the inline `loop_resume` event in `resume()` (`:1309-1320`)
 
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/events.py` (`LLEvent.from_dict()`, `:54`) — already forward-compatible, no change required, but is the consumer contract this issue relies on
@@ -110,6 +121,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_fsm_executor.py::test_event_includes_timestamp` (`~:2355`) — closest template for a new presence test: collects `events` via `event_callback=events.append`, then `for event in events: assert "ts" in event`. Mirror for `run_id`/`loop`. [Agent 3 finding]
 - `scripts/tests/test_fsm_executor.py::test_sub_loop_events_forwarded_to_parent_callback` (`~:6495`) and `::test_sub_loop_depth_propagates_to_nested_sub_loops` (`~:6522`) — extend to assert whether forwarded sub-loop events carry the child's own `run_id`/`loop` or the parent's (see the `_call_sub_loop` emergent-behavior note above); no existing test covers this dimension. [Agent 2 + 3 finding]
 - New test: run_id-stability across one run (`len({e["run_id"] for e in events}) == 1`) — no existing helper/precedent for this exact shape; model on `test_event_includes_timestamp`. [Agent 3 finding]
+- New test: run_id-stability across a pause/resume boundary — pre-pause and post-resume events (including the stamped `loop_resume`) share one `run_id` (Review Findings 1–2); model on existing `PersistentExecutor.resume()` tests in `test_fsm_persistence.py`. [Review finding]
 - New integration test: two concurrent runs writing interleaved events into one shared `events.jsonl`, split cleanly by `run_id` (Implementation Step 6's verify requirement) — net-new; nearest but insufficient precedent is `test_multiple_archive_runs_coexist` (`test_fsm_persistence.py:646`), which is sequential, not concurrent. [Agent 3 finding]
 - `scripts/tests/test_fsm_executor.py::test_finish_writes_loop_run_summary` (`:3082-3110`) and `::test_finish_writes_usage_events` (`:3167-3200`) — both independently recompute the run_id formula inline and assert it against `kwargs["run_id"]`; won't break (same formula, same value) but should be updated to assert against `executor.run_id` directly to lock in the centralization. [Agent 1 + 3 finding]
 - `scripts/tests/test_fsm_executor.py::test_warn_emitted_above_threshold` (`:155-170`) — asserts `warns[0]["loop"] == "psg-test"` value-based, not mechanism-based; confirmed it will NOT break when the explicit `"loop"` key is dropped from the `PROMPT_SIZE_WARN_EVENT` call site per Implementation Step 2. [Agent 3 finding]
@@ -144,7 +156,7 @@ _Added by `/ll:refine-issue` — 2026-08-27 — based on codebase analysis:_
 
 ### Types
 
-- `FSMExecutor.run_id: str` (new instance attribute, set in `run()`)
+- `FSMExecutor.run_id: str` (new instance attribute; initialized to `""` in `__init__` mirroring `started_at`, assigned in `run()` only when `started_at` is still empty — see Pre-Implementation Review Finding 1/4)
 
 ### Signatures
 
@@ -164,12 +176,13 @@ _Added by `/ll:refine-issue` — 2026-08-27 — based on codebase analysis:_
 
 ## Implementation Steps
 
-1. Add `self.run_id` computation in `FSMExecutor.run()` immediately after `self.started_at = _iso_now()`, reusing `_finish()`'s existing derivation
-2. Update `_emit()` to merge `run_id` and `loop` into every event payload; drop the now-redundant `loop` key from the `loop_start` call site
+1. Initialize `self.run_id = ""` in `__init__` (`executor.py:258` area); in `FSMExecutor.run()`, set `started_at` and `run_id` **only when `self.started_at` is still `""`** (resume guard — preserves the value restored by `PersistentExecutor.resume()` at `persistence.py:1276`), reusing `_finish()`'s existing derivation
+2. Update `_emit()` to merge `run_id` and `loop` into every event payload; drop the now-redundant `loop` key from both explicit call sites — `loop_start` (`:484`) and `PROMPT_SIZE_WARN_EVENT` (`:2161`)
 3. Replace the two inline `run_id` derivations in `_finish()` with reads of `self.run_id`
-4. Add/extend executor tests asserting `run_id`/`loop` presence and stability across a run's events
-5. Update `docs/reference/EVENT-SCHEMA.md` and regenerate `docs/reference/schemas/` via `ll-generate-schemas`
-6. Verify: emit two concurrent runs to one `events.jsonl` and confirm they split cleanly by `run_id`
+4. Stamp `run_id` on the inline `loop_resume` event in `PersistentExecutor.resume()` (`persistence.py:1309-1320`); grep `persistence.py` for other run-scoped `event_bus.emit()`/`append_event()` sites bypassing `_emit()` and treat them the same
+5. Add/extend executor tests asserting `run_id`/`loop` presence and stability across a run's events, including stability across a pause/resume boundary
+6. Update `docs/reference/EVENT-SCHEMA.md` (including the documented same-second same-loop collision limitation) and regenerate `docs/reference/schemas/` via `ll-generate-schemas`
+7. Verify: emit two concurrent runs (different loop names — see Review Finding 3) to one `events.jsonl` and confirm they split cleanly by `run_id`
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
@@ -202,7 +215,7 @@ Every event in a captured `events.jsonl` from a test run has non-empty `run_id` 
 
 ## Scope Boundaries
 
-Out of scope: retrofitting `parallel.*` and `issue.*` emitters that build event dicts inline rather than through `_emit()` — that's the sibling issue ENH-3346. Out of scope: fixing `_claim_socket_path()`'s socket-eviction behavior for concurrent producers (BUG-3324) — this issue only makes concurrent runs *distinguishable* on shared sinks, not resolves socket contention. Out of scope: backfilling `run_id` onto already-archived historical events.
+Out of scope: retrofitting `parallel.*` and `issue.*` emitters that build event dicts inline rather than through `_emit()` — that's the sibling issue ENH-3346. Out of scope: fixing `_claim_socket_path()`'s socket-eviction behavior for concurrent producers (BUG-3324) — this issue only makes concurrent runs *distinguishable* on shared sinks, not resolves socket contention. Out of scope: backfilling `run_id` onto already-archived historical events. Out of scope: changing the `run_id` derivation formula to disambiguate same-loop same-second concurrent starts — accepted as a documented limitation (Review Finding 3) since changing it would desync `.history/<run_id>-<loop>` folder names and the `persistence.py` derivation copies.
 
 ## API/Interface
 

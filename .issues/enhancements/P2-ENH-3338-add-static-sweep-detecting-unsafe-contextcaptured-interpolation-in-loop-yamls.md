@@ -37,8 +37,9 @@ thing and is narrower in four ways that matter here:
 1. **Fixed key allowlist** — `_UNSAFE_CONTEXT_INTERP_RE` (`:33-35`) matches only
    `input|goal|description|task|prompt|query|topic`. Class-A keys outside that
    set are invisible.
-2. **No `captured` namespace at all** — the regex is `\$\{context\.…` only, so
-   **class B, the sharper class, is entirely outside MR-11's reach**.
+2. **No `captured` or `prev` namespace at all** — the regex is `\$\{context\.…`
+   only, so **class B, the sharper class, is entirely outside MR-11's reach**,
+   `${prev.output}` included.
 3. **A quoted heredoc is treated as unconditionally safe** (`:178-180`) — true
    from bash's perspective, false once the body is re-parsed as Python. That
    inversion is precisely what this sweep must catch and MR-11 must not.
@@ -128,6 +129,16 @@ epic faults it for. Invert it:
 
 - `${captured.*}` → **always untrusted, class B.** No exceptions; a capture is
   either LLM output or command output, never operator-fixed.
+- `${prev.*}` → **always untrusted, class B.** `prev` carries the previous
+  state's `output` / `stderr` / `exit_code`, so `${prev.output}` is the same
+  LLM-or-command text a `captured` reference holds — it simply reaches the
+  action without being named. Live example outside any Python body:
+  `rlhf-svg-evaluate.yaml:517`, `PREV_OUTPUT="${prev.output}"` — model output
+  inside a bash **double-quoted** assignment, where a `"` breaks tokenizing and
+  `$(...)` command-substitutes. Corpus usage as of 2026-08-27: 7 `${prev.output}`,
+  3 `${prev.exit_code}`, 2 `${prev.state}`, 1 `${prev.timeout_kind}`.
+  `exit_code` / `state` / `timeout_kind` are runner-constructed and are **class
+  C**; only `output` and `stderr` are untrusted.
 - `${context.<key>}` → **untrusted by default, class A**, except an enumerated
   trusted set of runner-constructed keys. That set is closed as of 2026-08-27:
   `run_dir` (`executor.py:903, 979`), `promoted_artifact`
@@ -204,8 +215,10 @@ Proposed; adjust names freely, but keep the classifier importable by ENH-3342.
   recursively, walks every state's `action`, returns all sites sorted
   deterministically.
 - `@dataclass(frozen=True) class InterpSite` — `file`, `state`, `var`, `cls`,
-  `host_shape`, `line`. `__eq__`/`__hash__` over everything **except** `line`
-  (see baseline anchoring above), or carry `line` outside the dataclass.
+  `host_shape`, `misapplied_remedy`, `line`. `__eq__`/`__hash__` over everything
+  **except** `line` (see baseline anchoring above), or carry `line` outside the
+  dataclass. `misapplied_remedy` is `True` for a `:shell`-suffixed site found
+  inside a Python body.
 
 ### Decision Rules
 
@@ -213,11 +226,43 @@ Per interpolation token found inside a Python body:
 
 | Condition | Verdict |
 |---|---|
-| carries a `:shell` suffix anywhere in its chain | clean, not reported |
 | namespace is `loop` | clean |
 | namespace is `captured` | class B |
+| namespace is `prev`, key is `output` / `stderr` | class B |
+| namespace is `prev`, otherwise | class C |
 | namespace is `context`, key in the trusted set | class C |
 | namespace is `context`, otherwise | class A |
+
+**`:shell` does not clear a site inside a Python body.** An earlier draft of this
+table had "carries a `:shell` suffix anywhere in its chain → clean" as its first
+row. That is wrong, and it is the one error that could certify a broken
+conversion as green. `:shell` is `shlex.quote()`, which is safe **only at a bash
+token position**. Inside a quoted heredoc bash performs no processing at all, so
+the quoted form is handed straight to the Python parser:
+
+```
+shlex.quote("don't")  ->  '\'don\'"\'"\'t\''
+goal = ''don'"'"'t''  ->  SyntaxError: unterminated string literal
+```
+
+So a site written as `goal = '${context.goal:shell}'` **inside** the heredoc is
+still broken, and must still be reported. The rule:
+
+- `:shell` at a bash token position (the `LL_ARG_X=${context.x:shell}` binding on
+  the `python3` invocation line) — outside a Python body, therefore never scanned.
+- `:shell` **inside** a Python body — reported with its normal class (A or B) and
+  a `misapplied_remedy: true` flag on the `InterpSite`, so the failure message can
+  say "`:shell` used inside a Python body; hoist it to a `LL_ARG_` binding"
+  rather than the generic text. This is a distinct and more actionable failure
+  than a raw site, and it is the exact mistake a hurried BUG-3340 conversion
+  makes.
+
+**Scope note — the sweep reports Python-body sites only.** An untrusted value in
+a plain **bash** position (`PREV_OUTPUT="${prev.output}"`,
+`rlhf-svg-evaluate.yaml:517`) is a real defect of the same family but is MR-11's
+territory, not this baseline's; ENH-3342's widening is what must catch it.
+`classify_site()` still returns the right class for it — the position filter, not
+the classifier, is what excludes it here.
 
 "Inside a Python body" is determined by host shape:
 - **quoted heredoc** — between a `<<'MARKER'` / `<<"MARKER"` opener whose `<<`
@@ -267,8 +312,10 @@ executes a loop.
    shells out for those, and a `prompt` action's text is prose, not a live
    invocation. `harness-optimize.yaml:160-165` is the live example of a naive
    grep's false positive.
-6. Treat a `:shell`-suffixed site as clean, recognizing the suffix **anywhere in
-   the chain** (ENH-3337's shared helper, not `endswith`).
+6. Recognize the `:shell` suffix **anywhere in the chain** (ENH-3337's shared
+   helper, not `endswith`) — but do **not** treat it as clearing a Python-body
+   site. Flag it `misapplied_remedy` and report it with its normal class, per
+   Decision Rules.
 7. Assert the epic's naming conventions where they apply: the `LL_ARG_` prefix on
    bindings this work introduces, and the `<state>-<capture>.txt` filename rule
    on Option B writes.
@@ -298,6 +345,13 @@ executes a loop.
    the per-site assertion.
 8. The seeded class-A/B/C counts are recorded in EPIC-3336, superseding the
    survey table's provisional numbers.
+9. A `:shell`-suffixed interpolation **inside a Python body** is reported (not
+   cleared) with `misapplied_remedy: true`, with a unit test whose synthetic
+   action contains `goal = '${context.goal:shell}'` inside a quoted heredoc. A
+   `:shell` binding at a bash token position outside any Python body is not
+   reported.
+10. `classify_site("prev", "output")` returns `"B"` and
+    `classify_site("prev", "exit_code")` returns `"C"`, each with a unit test.
 
 ## Impact
 

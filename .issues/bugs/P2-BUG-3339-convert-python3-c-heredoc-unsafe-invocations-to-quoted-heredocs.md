@@ -323,7 +323,11 @@ already-converted precedent states in the same files.
    could not confirm either way.
 5. `ll-loop validate` reports no new MR-11 warnings on every converted file,
    and no loop sets `unsafe_context_interpolation_ok` to suppress one.
-6. The FSM interpolates the whole action string, comments included
+6. `general-task.yaml:895-902`'s `:default={}` was already rewritten by
+   ENH-3337 (its one in-scope YAML edit — a `}` inside a `:default=` is a hard
+   `InterpolationError` after that issue lands). The heredoc conversion here
+   **preserves** that rewrite; do not restore a brace-bearing default.
+7. The FSM interpolates the whole action string, comments included
    (`reference_fsm_action_interpolated_before_bash`) — any comment near a
    converted site that quotes a `${context.*}`/`${captured.*}` token is
    converted or `$${`-escaped in the same edit, not left to interpolate

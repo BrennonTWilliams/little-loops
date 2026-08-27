@@ -70,6 +70,16 @@ against the baseline being empty for their class, not against these numbers.
 `${context.*}` interpolated into **prompt** text is out of scope — no interpreter
 parses it (that is BUG-3327's territory).
 
+**The survey did not count the `prev` namespace at all.** `interpolate()`
+supports it, and `${prev.output}` carries the same untrusted LLM-or-command text
+a `captured` reference does. Corpus usage as of 2026-08-27: 7 `${prev.output}`,
+3 `${prev.exit_code}`, 2 `${prev.state}`, 1 `${prev.timeout_kind}`. `prev.output`
+and `prev.stderr` are **class B**; the rest are class C. ENH-3338's classifier
+covers them, and the live bash-position site
+`rlhf-svg-evaluate.yaml:517` — `PREV_OUTPUT="${prev.output}"`, model output
+inside a bash double-quoted assignment where `$(...)` command-substitutes — is
+ENH-3342's to catch, since the sweep's baseline covers Python-body sites only.
+
 ## Goal
 
 Every class-A and class-B interpolation site reaches its Python body through
@@ -104,6 +114,8 @@ them.
 | # | Decision | Where it binds |
 |---|---|---|
 | S1 | Make `:shell` **compose** with `:default=` and `?` rather than raise | ENH-3337 |
+| `:shell` position | `:shell` is safe **only at a bash token position**. Inside a Python body it is a *misapplied remedy*, not a clean site — `shlex.quote("don't")` is `'\'don\'"\'"\'t\''`, which is a `SyntaxError` in a Python literal. Both the sweep and MR-11 must flag it, never clear it (added 2026-08-27 during epic review) | ENH-3338, ENH-3342, BUG-3340 |
+| `prev` namespace | `${prev.output}` / `${prev.stderr}` are the same untrusted text as `${captured.*}` and classify as **class B**; `prev.exit_code`/`state`/`timeout_kind` are runner-constructed, class C (added 2026-08-27) | ENH-3338, ENH-3342 |
 | Class B | **Option B** — per-site quoted heredoc writing the captured value to a run-dir file, read back with `open()`. Precedent: `brainstorm.yaml:160-169` (shipped BUG-2468 fix) | BUG-3341 |
 | Sentinel | **Fixed improbable marker** `LL_RAW_9F3C1A7E_EOF`. Randomizing forces a double-quoted heredoc, which re-enables expansion and defeats the mechanism | BUG-3341 |
 | Env prefix | Every binding this work introduces is named `LL_ARG_<NAME>` — `runners.py:305` spawns actions with a full `os.environ.copy()`, so a bare `GOAL=`/`TASK=` shadows the operator's environment | BUG-3340, BUG-3341 |
@@ -136,6 +148,10 @@ ENH-3342 (widen MR-11 + document idiom)
 is `true` and `sprints.default_max_workers` is `2`; without the `blocked_by`
 edges these three would be dispatched to separate branches editing the same YAML
 files and collide on merge. The edges are set in frontmatter; keep them.
+
+ENH-3347's `blocks: [ENH-3342]` edge is mirrored in ENH-3342's `blocked_by`
+(fixed 2026-08-27 — it was one-sided, which let `parallel.epic_branches` dispatch
+ENH-3342 before the behavioral tests existed).
 
 ENH-3337 must land on `main` before anything else starts — BUG-3331 Step 1a:
 *"Nothing else starts until this is on main."* 130 sites carry a `:default=` or
@@ -230,8 +246,13 @@ file.
 
 1. ENH-3338's baseline has **zero** class-A and class-B entries; class-C entries
    may remain.
-2. `ll-loop validate` is clean on all touched files with **no** new MR-11
+2. `ll-loop validate` is clean on all **touched** files with **no** new MR-11
    warnings and **no** loop setting `unsafe_context_interpolation_ok`.
+   *Corpus-wide* cleanliness is deliberately **not** a success metric: ENH-3342's
+   widening surfaces pre-existing findings in untouched files, MR-11 has no
+   per-site suppression, and baselining does not silence it. Those are carried by
+   a named follow-up issue (ENH-3342 AC 8), and during that window ENH-3338's
+   baseline — not MR-11 cleanliness — is the regression signal.
 3. `python -m pytest scripts/tests/` exits 0 at **every** commit of this work,
    not only at the end.
 4. `grep -rl LL_RAW_9F3C1A7E_EOF scripts/little_loops/loops/` enumerates every

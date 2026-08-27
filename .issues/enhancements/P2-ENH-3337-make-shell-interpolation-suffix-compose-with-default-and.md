@@ -163,7 +163,12 @@ be a single rule instead of a rule plus an exemption list.
   `${context.x:default=v:shell}` is skipped entirely rather than mis-stripped;
   the `?:shell` ordering is the one that hard-fails.
 - `scripts/little_loops/fsm/validation/shell_safety.py:183` — MR-11's
-  `token.endswith(":shell}")` safe-position check.
+  `token.endswith(":shell}")` safe-position check. **Recognition only** — make it
+  see `:shell` anywhere in the chain. Whether recognizing it *clears* the site is
+  ENH-3342's question, and the answer there is "not inside a Python body"; do not
+  pre-empt it.
+- `scripts/little_loops/loops/general-task.yaml:895-902` — the one YAML edit in
+  scope, per Scope Boundaries. Rewrite `:default={}` so it needs no brace.
 
 ### Dependent Files (Callers/Importers)
 
@@ -204,6 +209,25 @@ be a single rule instead of a rule plus an exemption list.
 **Out of scope:** any loop YAML site conversion (BUG-3339/3340/3341); MR-11's
 pattern width and namespace coverage (ENH-3342 — this issue touches `:183` only
 to keep composed suffixes recognized); new suffixes beyond the existing three.
+
+**One named exception to "no loop YAML edits":
+`general-task.yaml:895-902`.** Step 4 makes a `}` inside a `:default=` a hard
+`InterpolationError`, and that site
+(`${captured.final_counts.output:default={}}`) is the corpus's only occurrence.
+Landing the error without fixing the site turns a working state into a runtime
+hard failure for however many commits separate this issue from BUG-3339. So the
+fix ships **in this commit**, and this issue's scope boundary is "no *conversion*
+of a site to a safe idiom" — not "no YAML edits at all".
+
+Two consequences to carry forward:
+
+- **BUG-3339 also targets `general-task.yaml:895-902`** (its `-c "` →
+  heredoc conversion, and its Program Design flags this exact `:default={}`
+  interaction). That conversion must **preserve** this issue's fix, not revert to
+  a brace-bearing default. Cross-referenced in BUG-3339's Implementation Steps.
+- **ENH-3338 seeds its baseline *after* this commit**, so the seed reflects the
+  fixed form of that site. Seeding from a pre-3337 `main` would bake in a site
+  that no longer exists.
 
 ## Program Design
 
@@ -294,6 +318,9 @@ suffix addition cannot desynchronize them again.
    test in `test_fsm_validation_shell_safety.py`.
 6. The `None`-handling decision and the `}`-in-default decision are each recorded
    in this issue with their rationale.
+6b. `general-task.yaml:895-902` is fixed in the **same commit** that makes a `}`
+   in a default an error, so no commit on `main` leaves that state hard-failing.
+   `ll-loop validate general-task` is clean at that commit.
 7. `python -m pytest scripts/tests/` exits 0 and `ll-loop validate` is clean
    across the whole loop corpus — no new MR-11 warnings, no loop setting
    `unsafe_context_interpolation_ok`.

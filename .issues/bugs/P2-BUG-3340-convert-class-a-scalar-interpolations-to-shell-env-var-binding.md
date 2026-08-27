@@ -198,11 +198,58 @@ Per class-A site:
    record it.
 2. Hoist the binding to the `python3` invocation line. A binding must not land
    inside the heredoc body.
-3. Replace the in-literal interpolation with `os.environ.get("LL_ARG_X", "")`.
+3. Replace the interpolation with a read of the binding, **typed to match the
+   position it sits in** — see "Non-string Python positions" below. In a string
+   literal that is `os.environ.get("LL_ARG_X", "")`; it is not that everywhere.
 4. Preserve any `:default=` / `?` semantics on the interpolation itself — do not
    move the default into Python. Option S2 (push the default into Python) was
    considered and rejected at the epic level: it works for class A but leaves
    class B without an answer, and a split remedy defeats the single-rule sweep.
+
+### Non-string Python positions — the transform is not uniform
+
+**Not every class-A site sits inside a string literal.** `os.environ.get()`
+returns `str`, so the standard transform silently converts a working numeric
+comparison into a `TypeError`. Confirmed sites, all comparisons against a bare
+interpolated number:
+
+| Site | Today | Wrong | Right |
+|---|---|---|---|
+| `autodev.yaml:1821` | `readiness_ok = conf >= ${context.readiness_threshold}` | `conf >= os.environ.get("LL_ARG_READINESS_THRESHOLD", "")` → `TypeError` | `conf >= int(os.environ["LL_ARG_READINESS_THRESHOLD"])` |
+| `autodev.yaml:1822`, `2053-2054` | same shape, `outcome_threshold` | | |
+| `autodev.yaml:1633` | `and int(cur) < ${context.readiness_threshold} and not attempted` | | |
+| `autodev.yaml:1742` | `sys.exit(0 if int(d.get('confidence') or 0) >= ${context.readiness_threshold} else 1)` | | |
+| `oracles/code-run-gate.yaml:438` | `${context.min_pass_rate}` in an `if ! python3 -c` condition | | `float(...)` — it is a rate, not an int |
+
+Rule: **classify each site by its Python position before transforming.**
+
+- **string literal** → `os.environ.get("LL_ARG_X", "")`
+- **numeric / boolean / expression position** → `int(...)` / `float(...)` around
+  `os.environ["LL_ARG_X"]`. Use the bracket form here, not `.get(..., "")` —
+  `int("")` raises anyway, so an explicit `KeyError` on an unset binding is the
+  better failure. Where the site carries a `:default=`, keep the default on the
+  interpolation (Decision Rule 4) so the binding is always set.
+- **f-string / interpolated-into-a-larger-string position** → treat as a string
+  literal, but verify the surrounding format still produces the same text.
+
+Note `min_pass_rate` is a `float`, and the `autodev.yaml` thresholds are `int`.
+Do not blanket-apply one coercion.
+
+### `:shell` inside the heredoc is not the fix
+
+The remedy is a binding on the `python3` invocation line. Writing
+`goal = '${context.goal:shell}'` **inside** the Python body looks like a
+conversion and is not one — bash does no processing inside a quoted heredoc, so
+`shlex.quote()`'s output reaches the Python parser verbatim:
+
+```
+shlex.quote("don't")  ->  '\'don\'"\'"\'t\''
+goal = ''don'"'"'t''  ->  SyntaxError: unterminated string literal
+```
+
+ENH-3338's sweep reports this shape with `misapplied_remedy: true` rather than
+clearing it, so a conversion that makes this mistake fails the baseline test
+instead of shipping green.
 
 ### Sites needing more than the standard transform
 
@@ -252,6 +299,16 @@ Per class-A site:
    composed suffix from ENH-3337 — none is exempted.
 7. No behavior change to any Python body's logic; only how the value arrives
    changes.
+8. Every site in a **non-string Python position** keeps its type: the six sites
+   named in Program Design → Non-string Python positions
+   (`autodev.yaml:1633, 1742, 1821, 1822, 2053, 2054`;
+   `oracles/code-run-gate.yaml:438`) are converted with an explicit
+   `int(...)`/`float(...)` coercion and their comparisons still evaluate
+   identically. Verified by running the affected states, not by inspection —
+   a `str`/`int` comparison raises at runtime and is invisible to
+   `ll-loop validate`.
+9. No conversion writes `:shell` inside a Python body; ENH-3338's baseline
+   reports zero `misapplied_remedy` sites.
 
 ## Impact
 
@@ -261,8 +318,10 @@ Per class-A site:
   trivial; the volume and the discipline of shrinking the baseline in lockstep
   are the cost.
 - **Risk**: Low–Medium — lower than BUG-3339 because nothing about the shell
-  *structure* changes, only a token and a binding. The realistic failure is a
-  partial conversion, which ENH-3338 catches.
+  *structure* changes, only a token and a binding. Two realistic failures: a
+  partial conversion (ENH-3338 catches it) and a **non-string position converted
+  to a `str`** (`conf >= "85"` → `TypeError`), which neither the baseline nor
+  `ll-loop validate` can see — only running the state does. AC 8 exists for that.
 - **Breaking Change**: No — internal to loop action bodies.
 
 ## Status
