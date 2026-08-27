@@ -106,6 +106,24 @@ contract is best expressed as (a) a rule governing what may be written in a
 `### Searched, No Hits` group) carrying the evidence. Choose one and apply it
 consistently — see Open Questions.
 
+## Program Design
+
+### Types
+- N/A — no data-shape change; `agents/consistency-checker.md` is an agent-prompt markdown file, not typed code.
+
+### Signatures
+- `DOC_STRINGS_PRESENT: list[tuple[str, str, str]]` (`scripts/tests/test_wiring_skills_and_commands.py:253-276`) — the `(doc_path, exact_substring, issue_id)` tuple contract this issue's new pinned strings must follow, same shape as the BUG-3330/BUG-3333 precedent tuples.
+- `test_string_present_in_doc(project_root, doc_rel, needle, issue_id)` (`scripts/tests/test_wiring_skills_and_commands.py:289-294`) — the parametrized assertion that consumes each new tuple; no new test function is needed, only new tuples.
+
+**Exact needles depend on Open Question 1.** If the `Scope Searched` column option is chosen, pin a needle on the literal column header (e.g. `"Scope Searched"`); if the `### Searched, No Hits` group option is chosen, pin `"### Searched, No Hits"` as in BUG-3330/BUG-3333. Either way, add one structural needle plus one vocabulary needle drawn from the new prohibition bullet in `## What NOT to Do`, tagged `"BUG-3344"`.
+
+### Call Path
+`DOC_STRINGS_PRESENT` list literal -> `pytest.mark.parametrize("doc_rel, needle, issue_id", DOC_STRINGS_PRESENT)` (`test_wiring_skills_and_commands.py:288`) -> `test_string_present_in_doc()` reads `agents/consistency-checker.md` off `project_root` and asserts each `needle` substring is present.
+
+### Decision Rules
+- **Negative-claim trigger re-anchoring (same finding as BUG-3333)**: `agents/consistency-checker.md` has no evidence-bearing/inferred partition to anchor a "not cited above" trigger against. Anchor the mandatory-row (or mandatory-cell) trigger to the `Status` column of the Reference Validation tables instead: a row's evidence is mandatory whenever `Status` is recorded as `MISSING`.
+- **Scope applies to `MISSING` only** (Open Question 2): `BROKEN` verdicts come from reading a target that was already found, so the filtered-search failure mode does not apply — state this explicitly in the ported rule so it is not over-applied to `BROKEN`.
+
 ## Integration Map
 
 ### Files to Modify
@@ -202,3 +220,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 ## Status
 
 **Open** | Created: 2026-08-27 | Priority: P3
+
+
+## Session Log
+- `/ll:format-issue` - 2026-08-27T19:59:56 - `278ef87b-9267-47eb-b438-15c48011237e.jsonl`

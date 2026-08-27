@@ -41,39 +41,51 @@ Acceptance: each new event type is emitted from the orchestrator/worker-pool pat
 
 ## Current Behavior
 
-[If applicable - describe what currently happens]
+Only two `parallel.*` events are ever emitted: `parallel.worker_completed` (`orchestrator.py:1285`, on worker finish) and `parallel.epic_branch_stale` (`worker_pool.py:1979`, on stale-branch detection). A subscriber sees a worker only at the moment it finishes — there is no signal for spawn, blocked/waiting, merge outcome, or queue depth while a run is in progress.
 
 ## Expected Behavior
 
-[What should happen instead]
+The orchestrator/worker-pool emit `parallel.worker_started`, `parallel.worker_blocked`, `parallel.worker_unblocked`, `parallel.merge_started`, `parallel.merge_completed`, and `parallel.queue_changed` from the state-change points that already know about them, each carrying `worker_id` and `issue_id`. A consumer subscribed to `parallel.*` can reconstruct active-worker count and per-worker status at any point in a run without reading `.issues/` or the filesystem.
 
 ## Motivation
 
-[Why this issue matters - business value, user impact, technical debt cost]
+The `parallel.*` namespace is documented in `docs/reference/EVENT-SCHEMA.md` as a first-class subsystem but is effectively write-only for terminal accounting today. That makes a wedged worker invisible — the single failure mode most worth watching (one worker stuck while the rest sail) produces no event at all until timeout — and makes any live dashboard/visualizer of an in-progress run impossible to build.
 
 ## Proposed Solution
 
-TBD - requires investigation
+Add six new event emissions alongside the existing two, at the orchestrator/worker-pool call sites that already own each state transition:
+
+- `parallel.worker_started` — emitted where a worker claims an issue and its worktree/branch are known (near `_event_bus.emit()` in `orchestrator.py`, mirroring the `parallel.worker_completed` call at `orchestrator.py:1285`); payload adds `worktree_path`, `branch`.
+- `parallel.worker_blocked` / `parallel.worker_unblocked` — paired events at the lock/worktree/dependency/rate-limit backoff wait points in `worker_pool.py`; payload adds a `reason` discriminator on `worker_blocked`.
+- `parallel.merge_started` / `parallel.merge_completed` — emitted around the epic-branch merge path in `worker_pool.py` (near the existing `parallel.epic_branch_stale` emission at `worker_pool.py:1979`); `merge_completed` payload adds `outcome` (`merged`, `conflict`, `skipped`).
+- `parallel.queue_changed` — emitted wherever the orchestrator's pending/active/done counts change; payload is the three counts.
+
+Each new emitter builds its event dict inline via `self._event_bus.emit({...})`, following the existing `parallel.worker_completed`/`parallel.epic_branch_stale` pattern, and routes `run_id`/`loop` stamping through the mechanism landed by ENH-3345 rather than duplicating that logic here.
 
 ## Integration Map
 
 ### Files to Modify
-- TBD - requires codebase analysis
+- `scripts/little_loops/parallel/orchestrator.py` — add `parallel.worker_started` and `parallel.queue_changed` emissions at the state-change points that already track worker claim and pending/active/done counts
+- `scripts/little_loops/parallel/worker_pool.py` — add `parallel.worker_blocked`/`parallel.worker_unblocked` at the lock/worktree/dependency/rate-limit wait points, and `parallel.merge_started`/`parallel.merge_completed` around the epic-branch merge path
+- `docs/reference/EVENT-SCHEMA.md` — document each new event type and its payload table
 
 ### Dependent Files (Callers/Importers)
-- TBD - use grep to find references
+- Any subscriber of `self._event_bus` (event consumers, dashboards, `ll-events` tooling) — new event types are additive, so existing subscribers filtering on known `event` values are unaffected
 
 ### Similar Patterns
-- TBD - search for consistency
+- `parallel.worker_completed` (`orchestrator.py:1285`) and `parallel.epic_branch_stale` (`worker_pool.py:1979`) are the existing `_event_bus.emit()` call sites to model the new emitters after
+- ENH-3345's `run_id`/`loop` stamping mechanism, once landed, should be reused by these new emitters rather than duplicated
 
 ### Tests
-- TBD - identify test files to update
+- `scripts/tests/test_orchestrator.py` — add coverage asserting each new event fires with the expected payload at its trigger point
+- `scripts/tests/test_worker_pool.py` — same, for the worker-pool-owned events (`worker_blocked`/`worker_unblocked`, `merge_started`/`merge_completed`)
 
 ### Documentation
-- TBD - docs that need updates
+- `docs/reference/EVENT-SCHEMA.md` — add payload tables for the six new event types
+- `docs/reference/schemas/` — regenerate via `ll-generate-schemas` after the schema doc changes
 
 ### Configuration
-- N/A or list config files
+- N/A
 
 ## Implementation Steps
 
