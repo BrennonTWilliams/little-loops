@@ -7,6 +7,14 @@ status: open
 discovered_by: split-from-BUG-3327
 discovered_date: '2026-08-27'
 captured_at: '2026-08-27T00:00:00Z'
+verify_verdict: VALID
+confidence_score: 93
+outcome_confidence: 47
+score_complexity: 11
+score_test_coverage: 10
+score_ambiguity: 13
+score_change_surface: 13
+decision_needed: false
 ---
 
 # BUG-3334: Untrusted captured output is interpolated unfenced into prompt actions
@@ -148,6 +156,49 @@ Convention this codebase holds for the fence itself (from codebase-pattern-finde
 
 On Open Question 2 (does fencing survive event-stream length): `loop-composer{,-adaptive}.yaml` and `loop-router.yaml` already disagree on this axis today, independent of fencing. `loop-composer`'s `write_step_success` (line 329) truncates each step's event text to 500 chars into `output_summary` *before* it ever reaches `step_results_json`/`review_chain` — the aggregate interpolated into the prompt is pre-bounded per step. `loop-router`'s `review` state interpolates the full, untruncated `sub_loop_output` JSONL stream directly — no summarization precedes it. There is no shared truncation-length constant in the codebase (200 chars for catalog descriptions at `loop-router.yaml:68`, 500 for event summaries, 120 for plan-display lines — each a local literal). This means the two loop families are not symmetric today: `loop-router`'s event-stream site is the one actually exposed to the "fence markers thousands of lines apart" risk the Open Question raises; `loop-composer{,-adaptive}`'s aggregate is already bounded by construction.
 
+_Added by `/ll:refine-issue` — 2026-08-27 — based on codebase analysis:_
+
+**Option A**: Add the untrusted-output clause directly to `FENCE_CORE`, which changes all 13 existing class-(1) sites' rendered text too (their tests would need re-verification, not just addition).
+
+> **Selected:** Option B — a sibling `FENCE_CORE_UNTRUSTED_OUTPUT` constant scores
+> higher on containment and testability, and does not force re-verification of
+> BUG-3327's 13 already-shipped sites.
+
+**Option B**: Add a new sibling constant `FENCE_CORE_UNTRUSTED_OUTPUT` and a parallel render path, keeping the 13 existing sites' rendered text byte-identical to today.
+
+See Open Questions → "Shared core or second constant?" for full context; materialized here per `/ll:decide-issue`'s Phase 3b so the decision can be scored.
+
+### Decision Rationale
+
+_Added by `/ll:decide-issue` — 2026-08-27:_
+
+**Selected: Option B** — add a new sibling constant `FENCE_CORE_UNTRUSTED_OUTPUT`
+(plus a parallel render path) rather than folding the untrusted-output clause
+into the existing `FENCE_CORE`.
+
+**Reasoning**: `FENCE_ROLES` is already a dict-of-tuples keyed `(loop_file,
+state_name)`, and `TestBriefFencing`'s 13 existing tests key exclusively off
+`FENCE_ROLES`/`FENCED_BRIEF_SITES`/`FENCE_CORE` — a sibling dict + constant is
+purely additive and leaves those 13 tests, and the 13 already-shipped YAML
+sites, untouched. Folding the clause into `FENCE_CORE` instead would force
+byte-identical-text re-verification (and likely re-pasting) at all 13 sites to
+keep `test_fence_core_present`/`test_rendered_fence_present` green, for a
+clause that has no clear semantic relevance to a user-authored brief. The
+tradeoff Option B accepts — `render_fence()`'s hardcoded `core=FENCE_CORE`
+(`fence.py:57`) needs either a `core` parameter or a small duplicate function,
+and no completeness guard yet links the two core strings against drift — is a
+smaller, contained cost than a 13-site blast radius.
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|---|---|---|---|---|---|
+| A — fold into `FENCE_CORE` | 2 | 1 | 1 | 1 | 5/12 |
+| B — sibling `FENCE_CORE_UNTRUSTED_OUTPUT` | 2 | 1 | 2 | 2 | **7/12** |
+
+**Key evidence**:
+- `render_fence()` hardcodes `core=FENCE_CORE` at `fence.py:57` — Option B needs a small signature/wrapper change; Option A needs none.
+- `test_fence_core_present` / `test_rendered_fence_present` (`test_builtin_loops.py:18623-18637`) assert byte-identical `FENCE_CORE` text at all 13 sites — Option A requires touching every one to stay green; Option B leaves them untouched.
+- `FENCE_ROLES` (`fence.py:75-154`) is a dict-of-tuples keyed `(loop_file, state)` — a same-shaped sibling dict for the new untrusted-output sites is a direct structural fit for Option B.
+
 ## Scope
 
 **Confirmed tier-A sites (verified against the working tree, 2026-08-27)** —
@@ -194,28 +245,100 @@ Remaining un-traced sites from the original ~20-site grep (survey still not comp
 
 Corrected line numbers for the issue's own confirmed sites (drift since 2026-08-27 draft, same-day other commits): `loop-composer.yaml` `read_checkpoints` is lines 429-451 (`step_results_json` capture at 449), `review_chain` interpolation is at line 474 (state opens 453); `loop-composer-adaptive.yaml` `read_checkpoints` is lines 656-678 (capture at 676), `review_chain` interpolation is at lines 700-701 (state opens 680, not 683 as cited — the interpolation sits 20 lines into the state, not at its header line).
 
+### Wiring Pass Findings
+
+_Wiring pass added by `/ll:wire-issue` — 2026-08-27:_
+
+Narrowing the survey further (confirmed/eliminated a batch of the "remaining un-traced" list above and found a **third capture shape** the issue's `state.capture:` methodology hadn't covered — cross-namespace merge, where a sub-loop dispatched via `with:` + `context_passthrough: true` (no explicit `capture:` on the parent state) still exposes its own internal captures to the parent as `captured.<parent_state_name>.<child_capture_name>`, per `executor.py`'s "merge child captures back into parent under the state name" behavior):
+
+**New confirmed tier-A sites (cross-namespace merge shape, not yet in Scope table or Files to Modify):**
+- `examples-miner.yaml` — `run_optimizer` state (line 143, `loop: apo-textgrad`, `context_passthrough: true`) exposes the child's `gradient` capture as `captured.run_optimizer.gradient`, interpolated unfenced in `synthesize` (`action_type: prompt`, action starts line 150) at line 156. File's own header comment (lines 23-24) documents the mechanism.
+- `integrate-sdk.yaml` — `prove` state (line 128, `loop: oracles/enumerate-and-prove`, `with:`) exposes `captured.prove.targets` / `captured.prove.enumeration`, interpolated unfenced in `scaffold_integration` (action starts line 140) at line 147, and in `diagnose_and_block` (action starts line 195) at lines 204-205.
+- `adopt-third-party-api.yaml` — `prove` state (line 64, `loop: oracles/enumerate-and-prove`, `with:`) exposes `captured.prove.enumeration`, interpolated unfenced in `build_playbook` (action starts line 74) at line 80, and in `build_playbook_partial` (action starts line 103) at line 109.
+
+A repo-wide grep for the nested-namespace pattern `${captured.<name>.<name>.output|stderr|exit_code}` across all of `scripts/little_loops/loops/` returned exactly these 3 files plus `proof-first-task.yaml` (whose only hit, `check_gate_blocked` line 59, is `action_type: shell`, not `prompt` — confirmed not tier-A).
+
+**Related but differently-shaped site (shell-capture, not sub-loop dispatch, reaching a prompt):**
+- `eval-driven-development.yaml` — `run_harness` state (line 77, `action_type: shell`, `capture: run_harness`) interpolated unfenced in `diagnose` (`action_type: prompt`) at line 152. Not a sub-loop event stream, but the same "material read from execution reaches a prompt raw" shape — flag for the survey, do not fold into tier-A without a decision on whether shell-capture output belongs in this issue's scope or a sibling one.
+
+**Confirmed NOT tier-A** (eliminates entries from the "remaining un-traced" list above from further consideration): `rn-refine.yaml` (`node_outcome` only reaches `evaluate.source: output_contains`, never a prompt), `rn-implement.yaml` (`rem_outcome`/`dec_outcome`, same — `evaluate.source` only), `flux-image-generator.yaml` (`gen_eval_events` only reaches a shell grep), `oracles/plan-node-refine.yaml`, `oracles/oracle-capture-issue.yaml` (no dispatch state in file), `rn-plan.yaml`, `issue-refinement.yaml` (no `capture:` at all), `rlhf-svg-evaluate.yaml`, `rn-stepwise.yaml`, `oracles/enumerate-and-prove.yaml` (zero prompt states), `sprint-refine-and-implement.yaml`, `rn-decompose.yaml`, `spike-gate.yaml`, `scan-and-implement.yaml`, `auto-refine-and-implement.yaml`, `deep-research.yaml`, `sprint-build-and-validate.yaml`, `hitl-md.yaml`/`hitl-compare.yaml` (child capture merged but never referenced downstream), `proof-first-task.yaml`'s `gate_result` site (reaches only `action_type: shell`).
+
+Still genuinely unchecked: `svg-image-generator.yaml`, `html-website-generator.yaml`, `html-anything.yaml`, `interactive-component-generator.yaml`, `rlhf-animated-svg.yaml`, `prompt-regression-test.yaml`, `rlhf-svg-refine.yaml`.
+
+**File-contention note:** BUG-3340 (EPIC-3336 sibling, "convert class-A scalar interpolations to `:shell` env-var binding") lists `loop-router.yaml`, `loop-composer.yaml`, `loop-composer-adaptive.yaml`, `refine-to-ready-issue.yaml`, and `rn-build.yaml` in its own Files to Modify — the same five files this issue's confirmed tier-A sites touch. BUG-3340 already records a sequencing constraint against its sibling BUG-3341 for the identical reason; no line-range collision was found against BUG-3334's specific sites (BUG-3340's `loop-router.yaml` sites are lines 34, 53, 192, 252, 345 — outside `review` (411-437) and `finalize_present_result` (509-558)), but both issues editing the same 5 files warrants the same sequencing awareness BUG-3340 already gives BUG-3341.
+
 ## Open Questions
 
 - **Shared core or second constant?** BUG-3327's `FENCE_CORE` is asserted
   byte-identical at all 13 of its sites. Adding an untrusted-output clause to it
   changes those 13 too. A sibling `FENCE_CORE_UNTRUSTED_OUTPUT` keeps them
   independent at the cost of two cores to keep coherent. Decide when BUG-3327 has
-  landed and its constants exist to extend.
+  landed and its constants exist to extend. See Option A/B under Proposed
+  Solution → Codebase Research Findings for the materialized alternatives.
 - **Does fencing a whole event stream survive its length?** A brief is a
   paragraph; a sub-loop event stream can be tens of KB. Fence markers thousands
   of lines apart may not hold the frame the way they do around a short brief.
   Worth a look at whether these sites should summarise-then-fence, or truncate,
   rather than fence in full.
 
+_Wiring pass added by `/ll:wire-issue` — 2026-08-27:_
+
+- **Sibling unanchored-`re.search`-over-`${captured...}` sites exist beyond `loop-router.yaml:544`.**
+  `lib/rubric-router.yaml:77` and `lib/policy-router.yaml:88` (`AGGREGATE:\s*(\d+)`),
+  `loop-router.yaml:202-205,270-273` (`CHOSEN_LOOP:`/`CONFIDENCE:`/`LOOP_INPUT:`/`TOP_CANDIDATES:`),
+  `goal-cluster.yaml:210,567,643` (`BATCH_PLAN:`/`REASSESS_DECISION:`/`HINTS:`),
+  `loop-composer-adaptive.yaml:527,579` (`REASSESS_DECISION:`), and
+  `apply-research.yaml:171,309` (`RELEVANCE_SCORES:`/`CAPTURED_IDS:`) all share the
+  unanchored-first-match shape Proposed Solution item 1 fixes at line 544, but none
+  parses a boolean `true|false` verdict — they extract scores/plans/IDs instead, so
+  an echoed tag corrupts a value rather than flipping a pass/fail outcome. Not
+  folded into Proposed Solution item 1's scope (different consequence severity);
+  listed here so a future regex-anchoring pass doesn't have to re-discover them.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-27 — based on codebase analysis:_
+
+Pattern-finder research (2026-08-27) on the two Open Questions:
+
+- **Open Question 1 (shared `FENCE_CORE` vs sibling constant)**: no precedent exists in this codebase either way. Repo-wide search for a base+variant "core" safety/framing string (`_CORE\b|_BASE\b|_VARIANT`) found `FENCE_CORE` itself has no sibling variant anywhere; the only other `_VARIANT`-shaped hits (`DES_VARIANTS` in `observability/schema.py`, `_VARIANT_A_TIMEOUT`/`_VARIANT_B_TIMEOUT` in `cli/loop/scaffold_eval.py`) are unrelated (a dataclass-discriminator registry and numeric eval-scaffold knobs, not prose safety text). `FENCE_CORE`'s own variation axis is template *parameters* (`{noun}/{role}/{verbs}/{var}` filled from `FENCE_ROLES`), not a second core-string constant — so the existing convention already has a slot for per-site variation, but not for a second *core* clause. This confirms the issue's own framing that this is a genuinely open design fork with no established codebase answer.
+- **Open Question 2 (does fencing survive long material / summarize-then-fence vs truncate)**: no shared "shrink long text before a prompt" utility exists. Closest candidates, all with a gap against this issue's shape:
+  - `compress_action_text()` (`scripts/little_loops/compression/heuristic.py:255`, called from `executor.py:2181-2197`) — runtime, trigger-gated, applied to the whole assembled action string post-interpolation. Only actually compresses text that round-trips as a JSON `{role, content}` message list; arbitrary prose (including a raw JSONL event stream, this issue's exact shape) passes through byte-identical above the trigger (`test_large_prose_passes_through_identical`, `test_heuristic_compression.py:244-247`). As written today, it would not shrink the sub-loop event streams this issue is about.
+  - `_summarize_block()` (`session_store/lifecycle.py:65-137`, LCM Algorithm 3) — a three-level escalation ladder (LLM summary → aggressive LLM bullet-summary at half budget → deterministic char-slice truncation as guaranteed-convergent last resort). Operates on session-store message blocks for context compaction, not on FSM-interpolated captured output — no existing hook into the loop-execution/prompt-interpolation path. A precedent for the *shape* of summarize-then-truncate, not a reusable mechanism.
+  - Four call-site-local tail-truncation implementations (`worktree_utils.py:format_verify_detail`, `compaction/instant.py`, `cli/loop/_helpers.py:1938`, plus the already-known loop-router/loop-composer literals) — each reimplements truncation independently; no shared callable. Confirms the issue's own finding that truncation lengths are per-site literals, never a shared named constant.
+
+No test convention exists for asserting two related-but-distinct rendered safety-text constants either (searched for a `TestBriefFencing`-shaped class pinning two parallel constants — none found; `TestBriefFencing` itself tests only the single `FENCE_CORE`).
+
+_Added by `/ll:refine-issue` — 2026-08-27 — based on codebase analysis:_
+
+Pattern-finder research (2026-08-27, targeted follow-up on Open Questions 1 & 2):
+
+- **Open Question 1**: extended repo-wide search confirms no base+variant safety/framing prose precedent exists anywhere outside `fence.py`. All 8 module-level triple-quoted string constants in `scripts/little_loops/**/*.py` (`evaluators.py:CHECK_SEMANTIC_EVIDENCE_CONTRACT`, `issue_manager.py:FINALIZE_RETRY_PROMPT`, `learning_tests/extractor.py:_EXTRACTION_PROMPT`, `fence.py:FENCE_CORE`/`FENCE_TEMPLATE`, `scaffold_verify.py:PREPATCH_CHECK_STATE_EXAMPLE`, `cli/artifact/extract.py:_PROMPT_TEMPLATE`, `cli/artifact/discover.py:_PROMPT_TEMPLATE`) are single standalone constants — none ships a sibling "same string, one clause different" pair, and none uses a conditional-clause template slot. `FENCE_CORE`/`FENCE_TEMPLATE`'s split is core-string-vs-outer-scaffold (noun/role/verbs/var), not core-vs-variant-of-core. This strengthens (does not merely repeat) the issue's existing finding: there is no codebase convention to defer to either way — the choice between `FENCE_CORE` extension and a `FENCE_CORE_UNTRUSTED_OUTPUT` sibling is a genuinely free design decision.
+- **Open Question 2**: `compress_action_text` is already wired into the exact interpolation path this issue concerns — `scripts/little_loops/fsm/executor.py:2183-2195` passes the fully-rendered `action_type: prompt` string (i.e. after `${captured.*.output}` substitution) through `compress_action_text(action, model=..., trigger_pct=cc.trigger_pct, trigger_tokens=cc.trigger_tokens, ...)`, gated on `cc is not None and not cc.heuristic_underperforms`. So captured sub-loop output is not bypassed by this mechanism — it flows through the same call as everything else — but per the issue's existing finding, `compress_action_text` only compresses text that parses as a JSON message list (`heuristic.py:_parse_message_list`); raw prose/event-stream text returns unchanged (`heuristic.py:283-284`), and the whole gate is off when no `compression_config` is set. The codebase's only "trigger-before-truncate" convention (`tail_truncate_assistant_turns`, `trigger_pct`/`trigger_tokens`/`_estimate_tokens` machinery, `heuristic.py:152,278-280`) is scoped to parsed message-turn lists, not arbitrary captured-output strings — so there is no existing length-bounding utility this issue's fencing sites could call directly without either reshaping captured output into a message-list shape first, or building a new string-scoped bound.
+
 ## Integration Map
 
 ### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-27 — based on codebase analysis:_
+
+- No runtime "record, not instructions" framing exists anywhere outside `fence.py` and this issue's own trail — repo-wide search for that framing shape (or a synonym) found only `fence.py`, BUG-3327/BUG-3334, and `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md`'s mirror of it (codebase-pattern-finder, 2026-08-27). The nearest runtime-side safety layer touching assembled prompt text is `scripts/little_loops/fsm/executor.py:2160-2199` — `PROMPT_SIZE_WARN_EVENT` (size-threshold observability, `_DEFAULT_PROMPT_SIZE_WARN_CHARS = 50_000`) and `compress_action_text` (FEAT-2675, gated to JSON message-list content, byte-identical passthrough otherwise) — neither reframes text as material-not-instruction, and both operate post-interpolation on the whole `action` string rather than per-`${...}`-var, a different injection point than `fence.py`'s hand-pasted authoring-time text.
+- This codebase's convention for a per-site dispatch table keyed `(file/loop identifier, state name)` is: pair the table with a *discovery* test that independently re-derives the qualifying site set from the loop YAMLs and diffs it against the table — not a static list checked in isolation. `FENCE_ROLES` (this issue's own extension target) is one of three such tables in `scripts/tests/test_builtin_loops.py`; the other two are `TestValidatorWarningBudget.ALLOWLIST` (`:16138-16178`, paired with `_collect_findings`/`:16192`, bidirectional ratchet) and `TestSubLoopStateTimeoutAudit.ALLOWED` (`:18760`, paired with `test_no_unreviewed_timeout_on_loop_states`/`:18768-18781`). All three carry inline per-entry comments naming the owning issue ID.
+- `TestBriefFencing`'s per-site-parametrized shape (`@pytest.mark.parametrize("site", FENCED_BRIEF_SITES, ...)`, one test method per property, plus a separate completeness-guard test) is the most granular of four comparable test classes; `TestConfidenceGateThresholdsNotHardcoded` (`:18703-18752`) parametrizes on loop file only (no state axis), and `TestValidatorWarningBudget`/`TestSubLoopStateTimeoutAudit` run one aggregate discovery-and-diff test per class rather than per-site nodes. Any new test class for untrusted-output fencing has a documented choice between these two shapes, not just the `TestBriefFencing` precedent.
+- Confirms (independently, via pattern-finder) the issue's own claim that no shared truncation constant exists: repo-wide search for a shared `MAX_*_CHARS`/`CHAR_LIMIT` constant found one unrelated hit (`generate_skill_descriptions.py:21`, not imported elsewhere); every truncation helper found (`adapters/codex.py:43`, `cli/loop/info.py:582,634`, `cli/loop/layout.py:252,283`, `cli/issues/show.py:402`, `cli/issues/list_cmd.py:14`, `cli/issues/refine_status.py:151`) is module-private and re-implemented per call site. Bears on Open Question 2 (summarise-then-fence vs truncate): no existing summarization-before-interpolation utility exists either — `compression/heuristic.py`'s `compress_action_text` is the only general-purpose text-shrinking module, but is gated to JSON message-list content and does not apply to arbitrary captured event-stream prose.
 
 ### Files to Modify
 - `scripts/little_loops/loops/loop-router.yaml` — `review` (lines 411-437): fence `${captured.chosen.output}` (line 428) and `${captured.sub_loop_output.output}` (lines 430-431); `propose_new_loop` (lines 452-478): fence `${captured.catalog.output}` (line ~469, tier-C, listed not scheduled)
 - `scripts/little_loops/loops/loop-composer.yaml` — `review_chain` (lines 453-488): fence `${captured.step_results_json.output}` (line 474)
 - `scripts/little_loops/loops/loop-composer-adaptive.yaml` — `review_chain` (lines 680-709): fence `${captured.step_results_json.output}` (lines 700-701)
 - `scripts/little_loops/fsm/fence.py` — extend `FENCE_ROLES` with new `(loop_file, state_name)` entries for the untrusted-output sites; decide whether the untrusted-output clause (Expected Behavior) joins `FENCE_CORE` or a new `FENCE_CORE_UNTRUSTED_OUTPUT` sibling constant (Open Questions)
+
+_Wiring pass added by `/ll:wire-issue` — 2026-08-27:_ the following confirmed tier-A sites (Scope's Codebase Research Findings and Wiring Pass Findings) are not yet reflected above:
+- `scripts/little_loops/loops/rn-build.yaml` — fence `${captured.eval_result.output}` in `capture_eval_failures` (~line 858) and `synthesize_result` (~line 1255); fence `${captured.cluster_result.output}` in `synthesize_result` (~line 1254)
+- `scripts/little_loops/loops/refine-to-ready-issue.yaml` — fence `${captured.confidence_check.output}` in `diagnose` (~line 859)
+- `scripts/little_loops/loops/examples-miner.yaml` — fence `${captured.run_optimizer.gradient}` in `synthesize` (line 156)
+- `scripts/little_loops/loops/integrate-sdk.yaml` — fence `${captured.prove.targets}`/`${captured.prove.enumeration}` in `scaffold_integration` (line 147) and `diagnose_and_block` (lines 204-205)
+- `scripts/little_loops/loops/adopt-third-party-api.yaml` — fence `${captured.prove.enumeration}` in `build_playbook` (line 80) and `build_playbook_partial` (line 109)
 
 ### Dependent Files (Callers/Importers)
 - `scripts/tests/test_builtin_loops.py::TestBriefFencing` (lines 18611-18701) — imports `FENCE_CORE`, `FENCE_ROLES`, `FENCED_BRIEF_SITES`, `KNOWN_UNFENCED_PROMPT_SITES`, `render_fence`, `normalize_fence_text` from `fence.py`; the `test_completeness_guard` test (line 18666) independently discovers every `action_type: prompt` state referencing a loop's input var and will need its discovery predicate extended (or a parallel guard added) to cover `${captured.*.output}` vars, or new fenced sites will silently fall outside both `FENCED_BRIEF_SITES` and `KNOWN_UNFENCED_PROMPT_SITES` with no test catching the gap
@@ -231,8 +354,17 @@ Corrected line numbers for the issue's own confirmed sites (drift since 2026-08-
 - `scripts/tests/test_builtin_loops.py::TestBriefFencing` — the only existing test class covering fence presence/placement; new untrusted-output fence sites need parametrized entries here (or a sibling `TestUntrustedOutputFencing` class) following the same three-property pattern
 - No existing test covers `${captured.*.output}` fencing at any site — confirmed 0 hits for `<<<` markers co-occurring with `captured\.` in any loop YAML
 
+_Wiring pass added by `/ll:wire-issue` — 2026-08-27:_
+- `scripts/tests/test_builtin_loops.py::TestBriefFencing::test_completeness_guard` (lines 18666-18688) and its backing `_FENCE_LOOP_INPUT_VARS` map (lines 18599-18608) — the map is `{loop_file: single_context_var}`, one var per file, string-literal `in` check; it has no `${captured.*.output}` notion at all. `rn-build.yaml` and `refine-to-ready-issue.yaml` (and the newly-found `examples-miner.yaml`/`integrate-sdk.yaml`/`adopt-third-party-api.yaml`) are not even present as keys — extending the guard to cover captured-output sites needs new loop-file entries added, not just a new var pattern on existing entries.
+- No test loads, substitutes into, or executes `loop-router.yaml`'s `finalize_present_result` block at all (0 hits for `finalize_present_result` in `test_builtin_loops.py`) — the `re.search(r'REVIEW_SUCCESS:(true|false)', ...)` anchor fix (Proposed Solution item 1) has no existing regression test to extend; one needs writing from scratch. Closest structural precedent: `TestClassifyTerminal._run_classify_terminal` (`test_builtin_loops.py:2120-2139`) — extracts a state's raw `action:` text, regex-substitutes `${captured.*}` refs with synthetic values (here: a `review_result.output` containing a decoy `REVIEW_SUCCESS:false` line before the real verdict), runs it via `subprocess.run(["bash", "-c", script], ...)`, and asserts on the result — `finalize_present_result` is a `python3 << 'PYEOF'` heredoc rather than plain bash, so the harness needs to run that heredoc instead, but the substitute-then-execute-then-assert shape carries over directly.
+
 ### Configuration
 - None — this is loop-YAML content and a Python constants module, no config schema involvement
+
+### Documentation
+
+_Wiring pass added by `/ll:wire-issue` — 2026-08-27:_
+- `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` (§ "Fencing a User-Authored Brief/Goal", ~lines 641-722) — the section's three-class taxonomy (class 1 instruction surface / class 2 code literal / class 3 display text) does not have a slot for this issue's shape (untrusted sub-loop/model output framed as a record, not a brief); its closing line naming "the 13 sites in `FENCE_ROLES`" goes stale once this issue adds entries; and if Open Question 1 resolves toward folding the untrusted-output clause into `FENCE_CORE` itself (rather than a sibling constant), the section's claim that `FENCE_CORE` is byte-identical across all sites needs re-verification for the 13 existing sites too, not just the new ones. `fence.py`'s own module docstring (lines 15-18) names this guide section as a canonical consumer that must track `fence.py`, establishing the update obligation runs from code to doc.
 
 ## Program Design
 
@@ -275,6 +407,13 @@ Corrected line numbers for the issue's own confirmed sites (drift since 2026-08-
 - **BUG-3331** — rewrites `loop-router.yaml:473` (`review_out = """…"""`), the
   line immediately above the `re.search` this issue anchors. Same block of code,
   different defect.
+- **BUG-3340** (EPIC-3336 sibling) — _Wiring pass added by `/ll:wire-issue` —
+  2026-08-27:_ its Files to Modify list the same five files this issue's
+  confirmed tier-A sites touch (`loop-router.yaml`, `loop-composer.yaml`,
+  `loop-composer-adaptive.yaml`, `refine-to-ready-issue.yaml`, `rn-build.yaml`),
+  on different, non-overlapping line ranges. No line-range collision found, but
+  file-level contention — sequence the same way BUG-3340 already sequences
+  against its own sibling BUG-3341.
 
 ### Sequencing
 
@@ -310,5 +449,47 @@ No dedicated bug is contained in this codebase's error-handling — this is a de
 - The `finalize_present_result` block (`loop-router.yaml:509-558`) is a `python3 << 'PYEOF'` quoted heredoc, not a `python3 -c "..."` invocation — confirms the issue's framing-vs-quoting distinction from BUG-3331's class-B, but note `review_out = """${captured.review_result.output:default=}"""` at line 523 is itself still a raw triple-quoted-literal interpolation (BUG-3331's exact target shape). BUG-3339's own scope table lists this same block (`finalize_present_result:509-557`) as an *already-converted, safe-shape example*, not a conversion target — see the Dependencies finding below for why this leaves the line-523/line-544 pair unaddressed by any currently-open issue.
 
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-08-27_
+
+**Readiness Score**: 85/100 → PROCEED WITH CAUTION
+**Outcome Confidence**: 39/100 → VERY LOW
+
+### Concerns
+- Survey is explicitly incomplete: the issue states "Survey is NOT complete" twice and lists dozens of still-untraced loop files; the confirmed tier-A site count is a floor, not a total.
+- Two Open Questions remain unresolved and each forks the implementation approach: (1) whether the untrusted-output clause joins `FENCE_CORE` or a sibling `FENCE_CORE_UNTRUSTED_OUTPUT` constant, and (2) whether fencing survives full-length event streams or needs summarize-then-fence/truncation instead.
+- Proposed Solution item 1's premise (BUG-3331 "already rewriting" `loop-router.yaml`'s verdict-parse block) is stale — BUG-3331 is cancelled/superseded by EPIC-3336, and the issue's own Dependencies research found no currently-open EPIC-3336 child owns the adjacent line-523/line-544 pair, leaving ownership of that sub-fix unresolved.
+- File-level contention with BUG-3340 across the same five loop YAMLs (flagged but not line-colliding) adds sequencing risk on top of the above.
+
+### Outcome Risk Factors
+- Broad, still-growing enumeration across 10+ files and 15+ interpolation sites (Complexity — Breadth) — likely to expand further once the survey is completed.
+- No existing test covers `${captured.*.output}` fencing at any site today; `TestBriefFencing`'s completeness-guard map doesn't even have keys for several of the newly-found files (`rn-build.yaml`, `refine-to-ready-issue.yaml`, `examples-miner.yaml`, `integrate-sdk.yaml`, `adopt-third-party-api.yaml`) — new test infrastructure must be built, not just extended.
+- Two unresolved design forks (shared-vs-sibling fence core; fence-vs-summarize for long streams) mean the implementation shape itself may change mid-work.
+- Mitigation: land Proposed Solution item 3 (finish the survey) and resolve both Open Questions via `/ll:decide-issue` before starting the fencing work itself; the item-1 regex anchor is comparatively low-risk and could proceed independently once its ownership vs. BUG-3339/BUG-3340 is confirmed.
+
+_Updated by `/ll:confidence-check` on 2026-08-27_
+
+**Readiness Score**: 93/100 → PROCEED
+**Outcome Confidence**: 47/100 → LOW
+
+Re-run after `/ll:refine-issue` and `/ll:decide-issue` progressed the issue: BUG-3327 is now `done` (dependency satisfied), `format-check`/`check-design`/`blocked_by` gates are all clean, and the core-constant Open Question resolved to Option B (`FENCE_CORE_UNTRUSTED_OUTPUT`) via Decision Rationale. Readiness rose from 85 to 93.
+
+### Outcome Risk Factors
+- Confirmed tier-A site count grew from 3 (original draft) to 11 across 9 files after the wiring pass's cross-namespace-merge discovery, and the survey is still explicitly incomplete — breadth is the dominant risk axis (Criterion A scored low: 11/25).
+- The second Open Question (does fencing survive a full-length event stream, or does it need summarize-then-fence/truncation) remains unresolved and could change the implementation shape mid-work.
+- No test infrastructure exists yet for `${captured.*.output}` fencing; several newly-found files (`rn-build.yaml`, `refine-to-ready-issue.yaml`, `examples-miner.yaml`, `integrate-sdk.yaml`, `adopt-third-party-api.yaml`) aren't even present as keys in `TestBriefFencing`'s completeness-guard map yet.
+- Ownership of the line-523/line-544 quoting+regex-anchor pair (Proposed Solution item 1) is still unclaimed by any open issue since BUG-3331's cancellation.
+- Mitigation unchanged from prior note: finish the survey and resolve the remaining Open Question before starting the fencing work; the regex-anchor item is low-risk and can proceed independently once ownership is confirmed.
+
 ## Session Log
+- `/ll:decide-issue` - 2026-08-27T22:10:09 - `79106a4f-4393-4e7a-9f77-a9f63f9c673b.jsonl`
+- `/ll:confidence-check` - 2026-08-27T22:08:38 - `7226510b-7901-4860-ba47-438b09a88210.jsonl`
+- `/ll:decide-issue` - 2026-08-27T22:06:12 - `326db39b-d5d3-42cf-915f-f715666e4df5.jsonl`
+- `/ll:refine-issue` - 2026-08-27T22:03:02 - `326db39b-d5d3-42cf-915f-f715666e4df5.jsonl`
+- `/ll:refine-issue` - 2026-08-27T21:59:19 - `862ce03d-cf13-4b3c-adec-7c575ea8bbbf.jsonl`
+- `/ll:confidence-check` - 2026-08-27T21:55:25 - `4e8ce745-0cf0-4cfd-9433-575ae8c297a5.jsonl`
+- `/ll:refine-issue` - 2026-08-27T21:49:27 - `a95e5dd4-e461-4f36-bee9-3cfb35251b3a.jsonl`
+- `/ll:verify-issues` - 2026-08-27T21:45:57 - `9eb7d42c-1e7f-41b7-ab64-1a6818ca71fa.jsonl`
+- `/ll:wire-issue` - 2026-08-27T21:43:16 - `0c0971db-7bf3-4963-8c87-a0f3ba7bd71f.jsonl`
 - `/ll:refine-issue` - 2026-08-27T21:32:57 - `69e6f33a-fce6-4632-8dbe-e4c4ed923b09.jsonl`

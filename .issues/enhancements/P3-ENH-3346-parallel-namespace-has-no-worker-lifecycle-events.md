@@ -152,6 +152,11 @@ _Added by `/ll:refine-issue` — 2026-08-27 — based on codebase analysis:_
 - **`## Files to Modify` is missing two files this issue needs**: `scripts/little_loops/parallel/merge_coordinator.py` (merge_started/merge_completed) and `scripts/little_loops/parallel/priority_queue.py` (queue_changed, or the orchestrator call sites that invoke its mutators).
 - **Schema regeneration is not markdown-driven**: `scripts/little_loops/generate_schemas.py` maintains its own hand-written `SCHEMA_DEFINITIONS` dict (`:82` onward, e.g. `parallel.worker_completed` at `:600`) that `docs/reference/schemas/*.json` is generated from — not parsed from `EVENT-SCHEMA.md`. `scripts/tests/test_generate_schemas.py::test_all_41_event_types_defined` pins `len(SCHEMA_DEFINITIONS) == 42` and `test_expected_event_types_present` pins the exact key set — both need updating for six new keys, in addition to `EVENT-SCHEMA.md`. Missing `generate_schemas.py`.
 
+_Added by `/ll:refine-issue` — 2026-08-27 — based on codebase analysis:_
+
+- **`docs/reference/EVENT-SCHEMA.md` line citations are stale** (file changed 2026-08-27T21:54 UTC, after this issue's prior refine pass): the "Reserved Event Names" heading is now at line 1367; the "Machine-Readable Schemas" file-tree block now runs lines 1383-1427 (`parallel_epic_branch_stale.json`/`parallel_worker_completed.json` entries at 1412-1413); the `### Naming Convention` table's `parallel.*` rows are now at lines 1438-1439; the `## Quick Reference` heading moved to line 1495, with its `parallel.*` rows now at lines 1549-1550. No new event types were added by the intervening change — it was a prose-only update to existing events for ENH-3345 (run_id/loop stamping); the sections this issue targets are structurally unchanged, only shifted ~4 lines.
+- **`ParallelWorkerCompletedVariant` (`scripts/little_loops/observability/schema.py:489-494`) does not mirror the full wire payload**: it models only `issue_id`/`status`, omitting `worker_name` and `duration_seconds` that `orchestrator.py:1287-1293` actually emits. The six new `DESVariant` subclasses this issue's wiring phase adds should decide per-field inclusion deliberately — 1:1 payload parity is not the existing convention for `parallel.*` variants.
+
 ## Implementation Steps
 
 1. Land ENH-3345 (run_id/loop stamping) first, since all new emitters route through it
@@ -214,6 +219,13 @@ _Added by `/ll:refine-issue` — 2026-08-27 — based on codebase analysis:_
 - **`_run_worker` does not exist.** The Call Path above has been corrected to the confirmed dispatch/completion methods.
 - **Signatures section's owning classes are wrong for the merge pair.** `_emit_merge_started`/`_emit_merge_completed` are listed under `WorkerPool`, but merge processing lives entirely in `MergeCoordinator` (`merge_coordinator.py`) — `_process_merge` (`:580`, sets `MergeStatus.IN_PROGRESS`), `_finalize_merge` (`:1033-1064`), `_handle_failure` (`:1066-1080`). `worker_pool.py` has no merge code. Likewise `_emit_queue_changed` has no natural home on `Orchestrator`/`WorkerPool` — the counts it needs (`qsize()`, `in_progress_count`, `completed_count`, `failed_count`, `skipped_count`) live on `IssuePriorityQueue` (`priority_queue.py:173-224`), which holds no `EventBus` reference today.
 
+_Added by `/ll:refine-issue` — 2026-08-27 — based on codebase analysis:_
+
+- **`EventBus.emit()` (`events.py:117-138`) is fully synchronous and exception-isolating**: each observer and transport call is individually wrapped in `try/except Exception` (logged via `logger.warning(..., exc_info=True)`), so a failing observer cannot break another observer or raise back to the emitting code; `emit()` performs no schema/shape validation on the passed dict.
+- **New emitters run on different threads depending on placement**: `MergeCoordinator._process_merge`/`_finalize_merge`/`_handle_failure` execute on the dedicated `"merge-coordinator"` daemon thread (`merge_coordinator.py:90-95`), so `merge_started`/`merge_completed` emissions happen off the orchestrator's main thread. A `worker_started` emission placed in `WorkerPool.submit()` (called from `_process_parallel`/`_process_sequential`) runs on the orchestrator's main thread, before the worktree exists; placed inside `_process_issue` instead, it runs on the `ThreadPoolExecutor` worker thread, after worktree creation — the same "claimed but no worktree yet" vs "worktree exists" timing tradeoff already raised by the worker_id Option A/B decision above.
+- **Dispatch call-site line correction**: `_process_sequential` is defined at `orchestrator.py:993` (not `~1008`); its `worker_pool.submit(issue)` call without a completion callback is at `:1008`. `_process_parallel`'s dispatching submit-with-callback call is at `:1047`.
+- **`parallel.epic_branch_stale` precedent for non-issue-scoped events**: it carries no `issue_id`/`worker_id` field at all (only `branch`/`base`/`commits_behind`/`mode`/`action`), consistent with this issue's own `queue_changed` payload (API/Interface section) already omitting `worker_id`/`issue_id` — confirms that design choice matches existing precedent rather than introducing a new inconsistency.
+
 ## Impact
 
 - **Priority**: P3 - Observability gap, not a correctness bug; no user-facing failure today, but blocks building a live run visualizer
@@ -251,6 +263,7 @@ Out of scope: building the dashboard/visualizer consumer itself (this issue only
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-08-27T22:09:56 - `79106a4f-4393-4e7a-9f77-a9f63f9c673b.jsonl`
 - `/ll:wire-issue` - 2026-08-27T21:00:23 - `3300bae1-29e4-43aa-be1f-dbf44d0ba9ec.jsonl`
 - `/ll:decide-issue` - 2026-08-27T20:51:11 - `627b8139-f4c5-4fdb-82a9-07a01d666f59.jsonl`
 - `/ll:refine-issue` - 2026-08-27T20:10:28 - `9e4fa033-0b0b-43cd-be66-950ccb670df0.jsonl`

@@ -1,0 +1,12 @@
+{
+  "id": "ac3d49f6-8a0b-4bfa-a73d-6fa53b9c8869",
+  "type": "decision",
+  "timestamp": "2026-08-27T22:05:56Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Additive to FENCE_ROLES dict-of-tuples shape; leaves 13 existing BUG-3327 sites and their tests untouched, vs folding into FENCE_CORE which forces re-verification at all 13 sites.",
+  "rule": "Sibling FENCE_CORE_UNTRUSTED_OUTPUT constant",
+  "scope": "issue",
+  "alternatives_rejected": "Fold clause directly into FENCE_CORE (5/12 vs 7/12; broader blast radius, no clear semantic fit for brief-only sites)",
+  "issue": "BUG-3334"
+}
