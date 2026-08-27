@@ -4,7 +4,7 @@ type: BUG
 title: Loop YAMLs interpolate untrusted text into Python string literals inside shell
   actions
 priority: P2
-status: open
+status: cancelled
 discovered_by: manual
 discovered_date: '2026-08-26'
 captured_at: '2026-08-26T21:00:00Z'
@@ -933,6 +933,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-27T17:52:13 - `c766dcf0-a664-4805-9c8a-6eba323145c8.jsonl`
 - `/ll:confidence-check` - 2026-08-27T15:55:14 - `445c5d42-9429-4773-bdeb-37f5dd462e67.jsonl`
 - `/ll:decide-issue` - 2026-08-27T03:02:59 - `4a4c9942-5c58-4b71-851d-896694066b21.jsonl`
 - `/ll:refine-issue` - 2026-08-27T01:45:46 - `091f85a6-5523-4888-8bc0-8e7acb268aae.jsonl`
