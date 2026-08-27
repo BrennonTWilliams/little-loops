@@ -1,0 +1,11 @@
+{
+  "id": "4a0f0ff3-1bbf-4f4a-a235-8e5bdfbdf14d",
+  "type": "decision",
+  "timestamp": "2026-08-27T19:37:31Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Queue read/mutation tools mirror the tier-1/tier-2 issue-tool pattern; ll-queue run/--watch deliberately excluded as a stateless-call misfit; fixed a project_root-vs-cwd anchoring bug in queue_store found along the way.",
+  "rule": "Captured: Add ll-queue tools to ll-mcp",
+  "scope": "issue",
+  "issue": "FEAT-3343"
+}
