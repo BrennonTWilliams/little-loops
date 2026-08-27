@@ -915,7 +915,7 @@ class TestCompactSession:
         jsonl.write_text(json.dumps(record) + "\n", encoding="utf-8")
         db = tmp_path / "history.db"
         counts = backfill(
-            db, jsonl_files=[jsonl], also_rebuild=True
+            db, jsonl_files=[jsonl], also_rebuild=True, host="test"
         )  # no config → compaction.enabled=False
         assert counts["summaries"] == 0
         conn = connect(db)
@@ -1226,8 +1226,8 @@ class TestSummarizeBlock:
     def test_level_3_truncation_when_llm_fails(self) -> None:
         """LLM call raises FileNotFoundError → all levels escalate → truncation."""
         with patch(
-            "little_loops.session_store.subprocess.run",
-            side_effect=FileNotFoundError("claude"),
+            "little_loops.session_store.lifecycle._call_llm_for_summary",
+            return_value=None,
         ):
             result = _summarize_block(self.SHORT_INPUT, budget=256)
         combined = "\n---\n".join(self.SHORT_INPUT)
@@ -1236,8 +1236,8 @@ class TestSummarizeBlock:
     def test_level_3_truncation_when_timeout(self) -> None:
         """LLM call times out → escalates through levels → truncation."""
         with patch(
-            "little_loops.session_store.subprocess.run",
-            side_effect=subprocess.TimeoutExpired(cmd="claude", timeout=60),
+            "little_loops.session_store.lifecycle._call_llm_for_summary",
+            return_value=None,
         ):
             result = _summarize_block(self.SHORT_INPUT, budget=1024)
         combined = "\n---\n".join(self.SHORT_INPUT)
@@ -1255,8 +1255,8 @@ class TestSummarizeBlock:
         long_input = ["Long message. " * 100]
         # Force LLM failure so truncation is used
         with patch(
-            "little_loops.session_store.subprocess.run",
-            side_effect=FileNotFoundError("claude"),
+            "little_loops.session_store.lifecycle._call_llm_for_summary",
+            return_value=None,
         ):
             result = _summarize_block(long_input, budget=4096)
         # budget=4096 → budget * 4 = 16384, but cap at 2048
