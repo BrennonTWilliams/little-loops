@@ -12,7 +12,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 import yaml
 
-from little_loops.fsm.executor import ActionResult, ExecutionResult
+from little_loops.fsm.executor import ActionResult, ExecutionResult, derive_run_id
 from little_loops.fsm.persistence import (
     LoopState,
     PersistentExecutor,
@@ -1148,6 +1148,43 @@ class TestPersistentExecutor:
         # The bypass fix: loop_resume must also flow through EventBus.emit()
         bus_event_types = [e["event"] for e in bus_events]
         assert "loop_resume" in bus_event_types
+
+    def test_resume_run_id_stable_across_pause_resume_boundary(
+        self, simple_fsm: FSMLoop, tmp_loops_dir: Path
+    ) -> None:
+        """ENH-3345: pre-pause and post-resume segments (incl. loop_resume) share one run_id."""
+        persistence = StatePersistence("test-loop", tmp_loops_dir)
+        persistence.initialize()
+
+        state = LoopState(
+            loop_name="test-loop",
+            current_state="check",
+            iteration=1,
+            captured={},
+            prev_result=None,
+            last_result=None,
+            started_at="2024-01-15T10:30:00Z",
+            updated_at="",
+            status="running",
+        )
+        persistence.save_state(state)
+
+        executor = PersistentExecutor(
+            simple_fsm, persistence=persistence, action_runner=MockActionRunner()
+        )
+
+        bus_events: list[dict[str, Any]] = []
+        executor.event_bus.register(lambda e: bus_events.append(e))
+
+        executor.resume()
+
+        expected_run_id = derive_run_id(state.started_at, "test-loop")
+        run_ids = {e["run_id"] for e in bus_events}
+        assert run_ids == {expected_run_id}
+        loop_resume_events = [e for e in bus_events if e["event"] == "loop_resume"]
+        assert loop_resume_events
+        assert loop_resume_events[0]["run_id"] == expected_run_id
+        assert executor._executor.run_id == expected_run_id
 
     def test_resume_clears_pending_signals(self, simple_fsm: FSMLoop, tmp_loops_dir: Path) -> None:
         """resume() clears both _pending_handoff and _pending_error from the previous run."""

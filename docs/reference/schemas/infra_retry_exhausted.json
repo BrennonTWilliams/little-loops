@@ -20,6 +20,14 @@
       "format": "date-time",
       "description": "ISO 8601 timestamp"
     },
+    "run_id": {
+      "type": "string",
+      "description": "Run-scoped identity, stable across a run (including pause/resume). Not required: only FSMExecutor._emit()-routed events stamp it today (ENH-3345); parallel.*/issue.* emitters don't yet (ENH-3346)."
+    },
+    "loop": {
+      "type": "string",
+      "description": "Loop name, stamped on every FSMExecutor._emit()-routed event (ENH-3345). Not required for the same reason as run_id."
+    },
     "state": {
       "type": "string",
       "description": "State name that exhausted infra retries"

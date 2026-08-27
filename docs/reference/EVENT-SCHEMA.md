@@ -16,6 +16,8 @@ All events are emitted as flat Python dicts and serialized to JSON:
 {
   "event": "<event-type>",
   "ts": "2026-04-02T12:00:00.123456",
+  "run_id": "2026-04-02T120000-my-loop",
+  "loop": "my-loop",
   "<field>": "<value>"
 }
 ```
@@ -24,6 +26,8 @@ All events are emitted as flat Python dicts and serialized to JSON:
 |-----|------|-------------|
 | `event` | `str` | Event type identifier (see tables below) |
 | `ts` | `str` | ISO 8601 timestamp, UTC |
+| `run_id` | `str` | Run-scoped identity, stable across a run (including pause/resume). Present on every event emitted through `FSMExecutor._emit()` (ENH-3345); **not required** in the schema because `parallel.*`/`issue.*` emitters don't yet stamp it (tracked in ENH-3346). Derived once per run from `started_at` + `loop` name (see below) — **cannot be split on `-`**: the date portion keeps its own `-` separators and loop names may themselves contain dashes, so consumers must group on the full string. **Known limitation:** two concurrent runs of the *same loop* started in the same second collide (the derivation truncates to second precision); this is an accepted limitation also present in `.history/<run_id>-<loop>` archive folder naming. |
+| `loop` | `str` | Loop name. Same presence/requiredness caveat as `run_id`. |
 | *(payload fields)* | varies | Type-specific fields documented per event |
 
 When received by an `LLExtension`, the raw dict is wrapped into an `LLEvent` dataclass:
@@ -123,13 +127,12 @@ These events use bare names (no dot namespace) for historical compatibility.
 
 Emitted once at the very beginning of loop execution, before any state is entered.
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `loop` | `str` | Name of the FSM loop (from the loop YAML `name` field) |
+`loop` (and `run_id`) are universal envelope fields (see [Wire Format](#wire-format)) — no
+event-type-specific fields.
 
 **Example:**
 ```json
-{"event": "loop_start", "ts": "2026-04-02T12:00:00Z", "loop": "my-loop"}
+{"event": "loop_start", "ts": "2026-04-02T12:00:00Z", "run_id": "2026-04-02T120000-my-loop", "loop": "my-loop"}
 ```
 
 ---
@@ -510,9 +513,10 @@ Emitted when a state's tool-call count exceeds `hard_max` with no `on_throttle_h
 
 Emitted when a fully-interpolated action's character size reaches the per-loop `prompt_size_guard.warn_chars` threshold (ENH-2486). WARN-only — it does **not** route; it surfaces loops that silently re-embed monotonically growing captured outputs/artifacts so the ballooning is observable in `<run>.events.jsonl`. Disable per-run with `--no-prompt-size-guard`.
 
+`loop` (and `run_id`) are universal envelope fields (see [Wire Format](#wire-format)).
+
 | Field | Type | Description |
 |-------|------|-------------|
-| `loop` | `str` | Loop name whose interpolated action exceeded the threshold |
 | `state` | `str` | State name where the oversized action was assembled |
 | `size` | `int` | Fully-interpolated action size in characters |
 | `threshold` | `int` | Configured `prompt_size_guard.warn_chars` threshold |
@@ -520,7 +524,7 @@ Emitted when a fully-interpolated action's character size reaches the per-loop `
 
 **Example:**
 ```json
-{"event": "prompt_size_warn", "ts": "...", "loop": "general-task", "state": "check_done", "size": 62000, "threshold": 50000, "est_tokens": 15500}
+{"event": "prompt_size_warn", "ts": "...", "run_id": "2026-04-02T120000-general-task", "loop": "general-task", "state": "check_done", "size": 62000, "threshold": 50000, "est_tokens": 15500}
 ```
 
 ---
@@ -905,11 +909,10 @@ Emitted when the full-pass cap fires and `on_max_iterations` is set on the loop.
 
 ### `loop_resume`
 
-Emitted when a paused or interrupted loop is resumed. Occurs after the executor state is restored from disk, before execution continues.
+Emitted when a paused or interrupted loop is resumed. Occurs after the executor state is restored from disk, before execution continues. `loop` and `run_id` are universal envelope fields (see [Wire Format](#wire-format)); `run_id` here is derived from the *restored* `started_at`, so it matches the run_id of every event from before the pause (ENH-3345).
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `loop` | `str` | always | Name of the loop being resumed |
 | `from_state` | `str` | always | State to resume from (as saved in the state file) |
 | `iteration` | `int` | always | Iteration count at the time of resume |
 | `from_handoff` | `bool` | optional | `true` when resuming from a `handoff_detected` pause; absent otherwise |
@@ -917,7 +920,7 @@ Emitted when a paused or interrupted loop is resumed. Occurs after the executor 
 
 **Example (normal resume):**
 ```json
-{"event": "loop_resume", "ts": "...", "loop": "my-loop", "from_state": "test", "iteration": 2}
+{"event": "loop_resume", "ts": "...", "run_id": "2026-04-02T120000-my-loop", "loop": "my-loop", "from_state": "test", "iteration": 2}
 ```
 
 **Example (handoff resume):**
@@ -925,6 +928,7 @@ Emitted when a paused or interrupted loop is resumed. Occurs after the executor 
 {
   "event": "loop_resume",
   "ts": "...",
+  "run_id": "2026-04-02T120000-my-loop",
   "loop": "my-loop",
   "from_state": "implement",
   "iteration": 3,

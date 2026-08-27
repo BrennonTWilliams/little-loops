@@ -3,10 +3,11 @@ id: ENH-3345
 type: ENH
 title: Stamp run_id and loop on every emitted FSM event
 priority: P2
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-08-27'
 captured_at: '2026-08-27T19:56:15Z'
+completed_at: '2026-08-27T21:54:18Z'
 confidence_score: 90
 outcome_confidence: 86
 score_complexity: 18
@@ -243,7 +244,30 @@ def derive_run_id(started_at: str, loop_name: str) -> str: ...
 ```
 
 
+## Resolution
+
+Implemented as specified. `derive_run_id(started_at, loop_name)` was placed in
+`executor.py` (not `persistence.py`) since `persistence.py` already imports
+from `executor.py` — putting it in `persistence.py` would have created a
+circular import. All four inline derivation copies now point at it;
+`FSMExecutor._emit()` stamps `run_id`/`loop` on every event; `run()` guards
+`started_at` and derives `run_id` unconditionally (resume-safe); the inline
+`loop_resume` event in `PersistentExecutor.resume()` is stamped from the
+restored `started_at`. `_BASE_PROPS` in `generate_schemas.py` gained
+`run_id`/`loop` (not `_BASE_REQUIRED`, per the pre-implementation review
+decision); all 42 committed schemas regenerated via `ll-generate-schemas`.
+`docs/reference/EVENT-SCHEMA.md`'s wire-format table and the `loop_start`/
+`prompt_size_warn`/`loop_resume` per-type tables were reconciled. New/updated
+tests cover: presence on every event, run_id stability within a run, stability
+across a pause/resume boundary, two-concurrent-runs-split-cleanly, and the
+sub-loop child-vs-parent run_id/loop divergence (documented as intended,
+distinguishable via `depth`). Full test suite: 21060 passed (3 pre-existing
+failures unrelated to this change, from concurrent unrelated work in the repo
+— reproduced identically on a clean stash). Lint/format/mypy clean on all
+changed files.
+
 ## Session Log
+- `/ll:manage-issue` - 2026-08-27T21:54:12 - `4bf8252b-ab97-4c80-9316-1e2fbc62413c.jsonl`
 - `/ll:confidence-check` - 2026-08-27T21:34:43 - `0c0971db-7bf3-4963-8c87-a0f3ba7bd71f.jsonl`
 - `/ll:confidence-check` - 2026-08-27T21:18:15 - `086de69c-22b2-41be-878d-e9a1dd904924.jsonl`
 - `/ll:decide-issue` - 2026-08-27T21:03:09 - `afdc9a20-86de-4e24-ad07-3b472050429a.jsonl`

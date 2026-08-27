@@ -142,6 +142,16 @@ def _iso_now() -> str:
     return datetime.now(UTC).isoformat()
 
 
+def derive_run_id(started_at: str, loop_name: str) -> str:
+    """Derive a run_id from a run's started_at timestamp and loop name.
+
+    Truncates to second precision (`[:17]`), so two concurrent runs of the
+    same loop started in the same second collide by design (accepted
+    limitation, see ENH-3345).
+    """
+    return started_at.replace(":", "").replace(".", "").replace("+", "")[:17] + "-" + loop_name
+
+
 @dataclass
 class RouteContext:
     """Context passed to before_route / after_route interceptors."""
@@ -256,6 +266,7 @@ class FSMExecutor:
         self.messages: list[str] = []
         self.prev_result: dict[str, Any] | None = None
         self.started_at = ""
+        self.run_id = ""
         self.start_time_ms = 0
         # ENH-2724: per-invocation TokenUsage collected during this run, written to
         # usage_events (run_id-stamped) at _finish(). (state_name, TokenUsage) pairs.
@@ -478,10 +489,12 @@ class FSMExecutor:
         Returns:
             ExecutionResult with final state and execution metadata
         """
-        self.started_at = _iso_now()
+        if not self.started_at:
+            self.started_at = _iso_now()
+        self.run_id = derive_run_id(self.started_at, self.fsm.name)
         self.start_time_ms = _now_ms()
 
-        self._emit("loop_start", {"loop": self.fsm.name})
+        self._emit("loop_start", {})
 
         try:
             while True:
@@ -2158,7 +2171,6 @@ class FSMExecutor:
                 self._emit(
                     PROMPT_SIZE_WARN_EVENT,
                     {
-                        "loop": self.fsm.name,
                         "state": self.current_state,
                         "size": size,
                         "threshold": threshold,
@@ -3331,6 +3343,8 @@ class FSMExecutor:
             {
                 "event": event,
                 "ts": _iso_now(),
+                "run_id": self.run_id,
+                "loop": self.fsm.name,
                 **data,
             }
         )
@@ -3683,10 +3697,9 @@ class FSMExecutor:
         try:
             from little_loops.session_store import record_loop_run_summary, resolve_history_db
 
-            run_id = self.started_at.replace(":", "").replace(".", "").replace("+", "")[:17]
             record_loop_run_summary(
                 resolve_history_db(),
-                run_id=f"{run_id}-{self.fsm.name}",
+                run_id=self.run_id,
                 loop_name=self.fsm.name,
                 started_at=self.started_at,
                 final_state=self.current_state,
@@ -3708,13 +3721,12 @@ class FSMExecutor:
                 from little_loops.session_store import record_usage_event, resolve_history_db
 
                 if BRConfig(Path.cwd()).analytics_capture.usage_events:
-                    run_id = self.started_at.replace(":", "").replace(".", "").replace("+", "")[:17]
                     ts = _iso_now()
                     db_path = resolve_history_db()
                     for state_name, usage in self._usage_events_collected:
                         record_usage_event(
                             db_path,
-                            run_id=f"{run_id}-{self.fsm.name}",
+                            run_id=self.run_id,
                             ts=ts,
                             state=state_name,
                             model=usage.model,

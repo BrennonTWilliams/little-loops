@@ -21,6 +21,14 @@
       "format": "date-time",
       "description": "ISO 8601 timestamp"
     },
+    "run_id": {
+      "type": "string",
+      "description": "Run-scoped identity, stable across a run (including pause/resume). Not required: only FSMExecutor._emit()-routed events stamp it today (ENH-3345); parallel.*/issue.* emitters don't yet (ENH-3346)."
+    },
+    "loop": {
+      "type": "string",
+      "description": "Loop name, stamped on every FSMExecutor._emit()-routed event (ENH-3345). Not required for the same reason as run_id."
+    },
     "final_state": {
       "type": "string",
       "description": "Name of the state at termination. Usually the last state entered; when terminated_by='timeout' this may be a state that was routed to but never entered \u2014 with one exception: if that pending state is a shell action, the executor flushes it (emits state_enter with flushed=true and runs its action) before honoring the timeout, so state_enter for final_state is always emitted before loop_complete (BUG-1226)."

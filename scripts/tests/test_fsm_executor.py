@@ -2371,6 +2371,83 @@ class TestEvents:
         for event in events:
             assert "ts" in event
 
+    def test_event_includes_run_id_and_loop(self) -> None:
+        """Every emitted event carries non-empty run_id and loop (ENH-3345)."""
+        events: list[dict[str, Any]] = []
+        fsm = FSMLoop(
+            name="test",
+            initial="check",
+            states={
+                "check": StateConfig(action="test.sh", next="done"),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        mock_runner = MockActionRunner()
+
+        executor = FSMExecutor(fsm, event_callback=events.append, action_runner=mock_runner)
+        executor.run()
+
+        assert events
+        for event in events:
+            assert event.get("run_id")
+            assert event["loop"] == "test"
+
+    def test_run_id_stable_across_all_events_in_one_run(self) -> None:
+        """run_id is computed once and identical across every event in a run (ENH-3345)."""
+        events: list[dict[str, Any]] = []
+        fsm = FSMLoop(
+            name="test",
+            initial="check",
+            states={
+                "check": StateConfig(action="test.sh", next="done"),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        mock_runner = MockActionRunner()
+
+        executor = FSMExecutor(fsm, event_callback=events.append, action_runner=mock_runner)
+        executor.run()
+
+        run_ids = {e["run_id"] for e in events}
+        assert len(run_ids) == 1
+        assert run_ids == {executor.run_id}
+
+    def test_two_concurrent_runs_split_cleanly_by_run_id(self) -> None:
+        """Two runs (different loop names) interleaved into one sink separate by run_id (ENH-3345)."""
+        shared_sink: list[dict[str, Any]] = []
+
+        def make_fsm(name: str) -> FSMLoop:
+            return FSMLoop(
+                name=name,
+                initial="check",
+                states={
+                    "check": StateConfig(action="test.sh", next="done"),
+                    "done": StateConfig(terminal=True),
+                },
+            )
+
+        executor_a = FSMExecutor(
+            make_fsm("loop-a"), event_callback=shared_sink.append, action_runner=MockActionRunner()
+        )
+        executor_b = FSMExecutor(
+            make_fsm("loop-b"), event_callback=shared_sink.append, action_runner=MockActionRunner()
+        )
+
+        # Interleave: start A, start B, let both run to completion — simulates
+        # concurrent producers writing into one shared events.jsonl.
+        executor_a.run()
+        executor_b.run()
+
+        assert executor_a.run_id != executor_b.run_id
+
+        by_run_id: dict[str, list[dict[str, Any]]] = {}
+        for event in shared_sink:
+            by_run_id.setdefault(event["run_id"], []).append(event)
+
+        assert set(by_run_id) == {executor_a.run_id, executor_b.run_id}
+        assert all(e["loop"] == "loop-a" for e in by_run_id[executor_a.run_id])
+        assert all(e["loop"] == "loop-b" for e in by_run_id[executor_b.run_id])
+
     def test_loop_complete_event_details(self) -> None:
         """loop_complete event includes final state and iteration count."""
         events: list[dict[str, Any]] = []
@@ -3098,11 +3175,7 @@ class TestErrorHandling:
 
         mock_record.assert_called_once()
         _, kwargs = mock_record.call_args
-        expected_run_id = (
-            executor.started_at.replace(":", "").replace(".", "").replace("+", "")[:17]
-            + "-test-loop"
-        )
-        assert kwargs["run_id"] == expected_run_id
+        assert kwargs["run_id"] == executor.run_id
         assert kwargs["loop_name"] == "test-loop"
         assert kwargs["started_at"] == executor.started_at
         assert kwargs["final_state"] == result.final_state
@@ -3186,11 +3259,7 @@ class TestUsageEventsLiveWriter:
 
         mock_record.assert_called_once()
         _, kwargs = mock_record.call_args
-        expected_run_id = (
-            executor.started_at.replace(":", "").replace(".", "").replace("+", "")[:17]
-            + "-test-loop"
-        )
-        assert kwargs["run_id"] == expected_run_id
+        assert kwargs["run_id"] == executor.run_id
         assert kwargs["state"] == "check"
         assert kwargs["model"] == "claude-sonnet-5"
         assert kwargs["input_tokens"] == 100
@@ -6518,6 +6587,14 @@ class TestSubLoopExecution:
         assert len(child_events) > 0, "Expected child events forwarded with depth=1"
         event_types = [e["event"] for e in child_events]
         assert "state_enter" in event_types
+
+        # ENH-3345: sub-loop children run their own FSMExecutor, so forwarded
+        # child events carry the child's own run_id/loop — not the parent's.
+        # Distinguishable today only via `depth` (confirmed intended behavior).
+        parent_events = [e for e in events if e.get("depth") in (None, 0)]
+        assert all(e["loop"] == "child" for e in child_events)
+        assert all(e["loop"] == "parent" for e in parent_events)
+        assert {e["run_id"] for e in child_events}.isdisjoint({e["run_id"] for e in parent_events})
 
     def test_sub_loop_depth_propagates_to_nested_sub_loops(self, tmp_path: Path) -> None:
         """Nested sub-loops increment depth at each level (depth=2 for grandchild)."""

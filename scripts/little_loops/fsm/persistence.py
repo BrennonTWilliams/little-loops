@@ -36,7 +36,12 @@ from typing import TYPE_CHECKING, Any
 
 from little_loops.events import EventBus
 from little_loops.fsm.concurrency import _process_alive
-from little_loops.fsm.executor import EventCallback, ExecutionResult, FSMExecutor
+from little_loops.fsm.executor import (
+    EventCallback,
+    ExecutionResult,
+    FSMExecutor,
+    derive_run_id,
+)
 from little_loops.fsm.schema import FSMLoop
 from little_loops.fsm.validation import _effective_artifact_mode, _is_meta_loop
 
@@ -606,13 +611,10 @@ class StatePersistence:
         # Derive run ID from started_at in state file, or fall back to now
         state = self.load_state()
         if state is not None and state.started_at:
-            # Compact ISO: strip colons, dots, plus signs; take first 19 chars
-            # e.g. "2024-01-15T10:30:00.123+00:00" → "2024-01-15T103000"
-            run_id = state.started_at.replace(":", "").replace(".", "").replace("+", "")[:17]
+            run_folder = derive_run_id(state.started_at, self.loop_name)
         else:
             run_id = datetime.now(UTC).strftime("%Y-%m-%dT%H%M%S")
-
-        run_folder = f"{run_id}-{self.loop_name}"
+            run_folder = f"{run_id}-{self.loop_name}"
         archive_dir = self.loops_dir / HISTORY_DIR / run_folder
         archive_dir.mkdir(parents=True, exist_ok=True)
 
@@ -780,14 +782,14 @@ def promote_run_artifact(
         dest = Path(spec.to)
     else:
         run_id = (
-            started_at.replace(":", "").replace(".", "").replace("+", "")[:17]
+            derive_run_id(started_at, fsm.name)
             if started_at
-            else datetime.now(UTC).strftime("%Y-%m-%dT%H%M%S")
+            else f"{datetime.now(UTC).strftime('%Y-%m-%dT%H%M%S')}-{fsm.name}"
         )
         promotion_dir = Path(config.artifacts.promotion_dir)
         if not promotion_dir.is_absolute():
             promotion_dir = config.project_root / promotion_dir
-        dest = promotion_dir / f"{run_id}-{fsm.name}{source.suffix}"
+        dest = promotion_dir / f"{run_id}{source.suffix}"
 
     try:
         dest.parent.mkdir(parents=True, exist_ok=True)
@@ -1309,6 +1311,7 @@ class PersistentExecutor:
         resume_event: dict[str, Any] = {
             "event": "loop_resume",
             "ts": _iso_now(),
+            "run_id": derive_run_id(state.started_at, self.fsm.name),
             "loop": self.fsm.name,
             "from_state": state.current_state,
             "iteration": state.iteration,
