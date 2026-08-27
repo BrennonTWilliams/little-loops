@@ -10,6 +10,12 @@ discovered_date: '2026-08-26'
 captured_at: '2026-08-26T21:00:00Z'
 supersedes: []
 decision_needed: false
+confidence_score: 96
+outcome_confidence: 70
+score_complexity: 10
+score_test_coverage: 20
+score_ambiguity: 23
+score_change_surface: 22
 ---
 
 # BUG-3331: Loop YAMLs interpolate untrusted text into Python string literals inside shell actions
@@ -927,5 +933,6 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-27T15:55:14 - `445c5d42-9429-4773-bdeb-37f5dd462e67.jsonl`
 - `/ll:decide-issue` - 2026-08-27T03:02:59 - `4a4c9942-5c58-4b71-851d-896694066b21.jsonl`
 - `/ll:refine-issue` - 2026-08-27T01:45:46 - `091f85a6-5523-4888-8bc0-8e7acb268aae.jsonl`
