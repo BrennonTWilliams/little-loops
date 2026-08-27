@@ -89,16 +89,39 @@ Each new emitter builds its event dict inline via `self._event_bus.emit({...})`,
 
 ## Implementation Steps
 
-1. [Major phase 1]
-2. [Major phase 2]
-3. [Verification approach]
+1. Land ENH-3345 (run_id/loop stamping) first, since all new emitters route through it
+2. Add `parallel.worker_started` and `parallel.queue_changed` emissions in `orchestrator.py`
+3. Add `parallel.worker_blocked`/`parallel.worker_unblocked` and `parallel.merge_started`/`parallel.merge_completed` emissions in `worker_pool.py`
+4. Add/update tests asserting each event fires with the expected `worker_id`/`issue_id` payload
+5. Document the six new event types in `docs/reference/EVENT-SCHEMA.md` and regenerate `docs/reference/schemas/` via `ll-generate-schemas`
+6. Verify a `parallel.*` subscriber can reconstruct active-worker count and per-worker status from the event stream alone
+
+## Program Design
+
+### Types
+
+- `WorkerBlockedReason: Literal["lock", "worktree", "dependency", "rate_limit"]`
+- `MergeOutcome: Literal["merged", "conflict", "skipped"]`
+
+### Signatures
+
+- `Orchestrator._emit_worker_started(self, issue_id: str, worker_id: str, worktree_path: Path, branch: str) -> None`
+- `Orchestrator._emit_queue_changed(self, pending: int, active: int, done: int) -> None`
+- `WorkerPool._emit_worker_blocked(self, worker_id: str, issue_id: str, reason: WorkerBlockedReason) -> None`
+- `WorkerPool._emit_worker_unblocked(self, worker_id: str, issue_id: str) -> None`
+- `WorkerPool._emit_merge_started(self, worker_id: str, issue_id: str, branch: str) -> None`
+- `WorkerPool._emit_merge_completed(self, worker_id: str, issue_id: str, outcome: MergeOutcome) -> None`
+
+### Call Path
+
+`Orchestrator._run_worker` -> `Orchestrator._emit_worker_started` -> `self._event_bus.emit(...)` (mirrors the existing `parallel.worker_completed` call at `orchestrator.py:1285`)
 
 ## Impact
 
-- **Priority**: [P0-P5] - [Justification]
-- **Effort**: [Small/Medium/Large] - [Justification]
-- **Risk**: [Low/Medium/High] - [Justification]
-- **Breaking Change**: [Yes/No]
+- **Priority**: P3 - Observability gap, not a correctness bug; no user-facing failure today, but blocks building a live run visualizer
+- **Effort**: Medium - Six new emitters following an established pattern (`_event_bus.emit()`), plus doc/schema regeneration and test coverage; scoped by depending on ENH-3345 landing first
+- **Risk**: Low - Additive events only; no changes to existing `parallel.worker_completed`/`parallel.epic_branch_stale` payloads or to control flow
+- **Breaking Change**: No
 
 ## Related Key Documentation
 
@@ -106,22 +129,29 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ## Status
 
-**Open** | Created: [YYYY-MM-DD] | Priority: [P0-P5]
-
-## Current Pain Point
+**Open** | Created: 2026-08-27 | Priority: P3
 
 ## Success Metrics
 
+A `parallel.*` subscriber can render active-worker count, per-worker status, and merge outcome for an in-progress run without polling `.issues/` or the filesystem; a worker stuck for its full timeout produces at least one `parallel.worker_blocked` event before that timeout fires.
+
 ## Scope Boundaries
 
-## Backwards Compatibility
+Out of scope: building the dashboard/visualizer consumer itself (this issue only adds the emitters); changing the payload or emission point of the existing `parallel.worker_completed`/`parallel.epic_branch_stale` events; adding lifecycle events outside the `parallel.*` namespace (e.g. FSM state-transition events); retrofitting historical runs with these events after the fact.
 
 ## API/Interface
 
 ```python
-# Example interface/signature
+# New parallel.* event payloads (all include worker_id, issue_id)
+{"event": "parallel.worker_started", "worker_id": str, "issue_id": str, "worktree_path": str, "branch": str}
+{"event": "parallel.worker_blocked", "worker_id": str, "issue_id": str, "reason": str}
+{"event": "parallel.worker_unblocked", "worker_id": str, "issue_id": str}
+{"event": "parallel.merge_started", "worker_id": str, "issue_id": str, "branch": str}
+{"event": "parallel.merge_completed", "worker_id": str, "issue_id": str, "outcome": str}
+{"event": "parallel.queue_changed", "pending": int, "active": int, "done": int}
 ```
 
 
 ## Session Log
+- `/ll:format-issue` - 2026-08-27T20:01:01 - `e13ddb3f-38f3-4515-910f-59c195a89ea8.jsonl`
 - `/ll:capture-issue` - 2026-08-27T19:56:52 - `f1d9d0f2-280e-4e9e-bb4a-45c14f878f7b.jsonl`
