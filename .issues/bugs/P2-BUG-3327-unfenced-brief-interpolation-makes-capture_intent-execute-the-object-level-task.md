@@ -9,11 +9,11 @@ discovered_by: ll-issues-create
 discovered_date: '2026-08-26'
 captured_at: '2026-08-26T17:33:30Z'
 confidence_score: 100
-outcome_confidence: 63
-score_complexity: 10
-score_test_coverage: 25
-score_ambiguity: 18
-score_change_surface: 10
+outcome_confidence: 85
+score_complexity: 16
+score_test_coverage: 24
+score_ambiguity: 23
+score_change_surface: 22
 reconcile_attempted: true
 ---
 
@@ -726,7 +726,7 @@ real count is **13**:
 
 | Loop | Line | State |
 |---|---|---|
-| `workflow-generator.yaml` | 63 | `capture_intent` (the sole site in that loop) |
+| `workflow-generator.yaml` | 65 | `capture_intent` (the sole site in that loop; was 63 pre-BUG-3326, see line-number refresh) |
 | `brainstorm.yaml` | 60 | `frame` |
 | `brainstorm.yaml` | 109 | `diverge` |
 | `loop-composer.yaml` | 45 | `decompose_goal` |
@@ -853,7 +853,8 @@ No existing gate asserts "changed-file-set ⊆ run_dir" as a subset/containment 
   do-not-execute instruction, authored inline from `render_fence()`'s output.
   Same shape at each remaining class-(1) site, with the site's own noun/role.
 - `FENCE_CORE: str` — **new** module-level constant in
-  `scripts/tests/test_builtin_loops.py`; the byte-identical behavioral core
+  `scripts/little_loops/fsm/fence.py` (**not** the test module — see "Where
+  the constants live" under Delivery); the byte-identical behavioral core
 - `FENCE_TEMPLATE: str` / `render_fence(noun, role, verbs, var) -> str` —
   **new**; the fence's single source of truth
 - `FENCE_ROLES: dict[tuple[str, str], tuple[str, str, str, str]]` — **new**;
@@ -901,11 +902,13 @@ FEAT-3332 later interposes `check_intent_scope` between `validate_intent`'s
 0. ~~File the class-(2) injection/quoting follow-up issue.~~ **Done — BUG-3331.**
    This issue covers **class-(1) sites only**; class (3) needs no change.
    The containment gate is **FEAT-3332**; it is not in scope here.
-1. Add `FENCE_CORE`, `FENCE_TEMPLATE`, `render_fence()`, the fully-populated
-   13-entry `FENCE_ROLES`, `FENCED_BRIEF_SITES`, and
-   `KNOWN_UNFENCED_PROMPT_SITES` to `scripts/tests/test_builtin_loops.py` —
-   write the fence text once, here, before touching any YAML (see Delivery
-   under Proposed Solution 1).
+1. Create `scripts/little_loops/fsm/fence.py` with `FENCE_CORE`,
+   `FENCE_TEMPLATE`, `render_fence()`, `normalize_fence_text()`, the
+   fully-populated 13-entry `FENCE_ROLES`, `FENCED_BRIEF_SITES`, and
+   `KNOWN_UNFENCED_PROMPT_SITES`; `scripts/tests/test_builtin_loops.py`
+   imports from it and authors no fence text of its own — write the fence text
+   once, here, before touching any YAML (see "Where the constants live" under
+   Delivery).
 2. Fence `workflow-generator.yaml`'s `capture_intent` (line 65) with
    `render_fence()`'s output for that site, then the remaining **12 class-(1)**
    sites — the complete list is `FENCE_ROLES` under Delivery and the Site
@@ -1003,7 +1006,7 @@ remedy entirely.
 
 **Decision (revised 2026-08-26): fence every class-(1) site in this issue,
 authored inline from a single canonical fence template (`FENCE_CORE` +
-`FENCE_TEMPLATE` + per-site `FENCE_ROLES`) in the test module.** All five
+`FENCE_TEMPLATE` + per-site `FENCE_ROLES`) in `fsm/fence.py`.** All five
 loops are done here — none deferred to follow-ups. What changed from the earlier
 draft is only the *delivery mechanism*: a `lib/` parameterized fragment was
 rejected in favor of inline text pinned by a test.
@@ -1049,6 +1052,7 @@ it was pricing are gone.**
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-27T01:04:19 - `e7820950-9cbf-413f-8508-e6c3139d98ec.jsonl`
 - `/ll:reconcile-issue` - 2026-08-27T00:08:45 - `f0293c3c-9677-45c0-8292-78c85d6528be.jsonl`
 - `/ll:refine-issue` - 2026-08-27T00:06:20 - `9483762a-304f-479e-b9b2-77f2f346dbfe.jsonl`
 - `/ll:refine-issue` - 2026-08-26T22:13:26 - `60d4d70f-5c6f-414d-83a4-59287ae63c09.jsonl`
