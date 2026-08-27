@@ -71,7 +71,7 @@ def _is_default_shaped(path: Path | str) -> bool:
     return p.name == "queue.db" and p.parent.name == ".ll"
 
 
-def _resolve_queue_db_path(path: Path | str = DEFAULT_DB_PATH) -> Path:
+def _resolve_queue_db_path(path: Path | str = DEFAULT_DB_PATH, *, root: Path | None = None) -> Path:
     """Resolve *path* to an absolute location, anchoring the default at the
     resolved project root (ENH-2927) instead of a bare cwd-relative path.
 
@@ -79,16 +79,21 @@ def _resolve_queue_db_path(path: Path | str = DEFAULT_DB_PATH) -> Path:
     default, delegates to :func:`~little_loops.paths.resolve_ll_dir`; when no
     project root resolves at all, falls back to a cwd-absolute form of the
     legacy default rather than inventing a root.
+
+    *root* (mirrors ``session_store.db.resolve_history_db``'s BUG-3181 fix) anchors
+    ``resolve_ll_dir`` at a known project root instead of walking up from
+    ``Path.cwd()`` — needed by callers (e.g. ll-mcp) whose process cwd can differ from
+    the project root they were told to operate against. Omitted, behavior is unchanged.
     """
     p = Path(path)
     if not _is_default_shaped(p):
         return p
     from little_loops.paths import resolve_ll_dir
 
-    ll_dir = resolve_ll_dir()
+    ll_dir = resolve_ll_dir(root)
     if ll_dir is not None:
         return ll_dir / "queue.db"
-    return Path.cwd() / DEFAULT_DB_PATH
+    return (root or Path.cwd()) / DEFAULT_DB_PATH
 
 
 # Lower-is-higher-precedence tiers, mirroring
@@ -193,13 +198,14 @@ def _apply_migrations(conn: sqlite3.Connection) -> None:
         conn.isolation_level = prior_isolation
 
 
-def ensure_db(path: Path | str = DEFAULT_DB_PATH) -> Path:
+def ensure_db(path: Path | str = DEFAULT_DB_PATH, *, root: Path | None = None) -> Path:
     """Create the database at *path* (if needed) and apply pending migrations.
 
     Idempotent: safe to call on every invocation. The parent directory is
-    created if absent. Returns the resolved database path.
+    created if absent. Returns the resolved database path. *root* is forwarded to
+    :func:`_resolve_queue_db_path` (see its docstring).
     """
-    db_path = _resolve_queue_db_path(path)
+    db_path = _resolve_queue_db_path(path, root=root)
     db_path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(db_path))
     try:
@@ -210,12 +216,13 @@ def ensure_db(path: Path | str = DEFAULT_DB_PATH) -> Path:
     return db_path
 
 
-def connect(path: Path | str = DEFAULT_DB_PATH) -> sqlite3.Connection:
+def connect(path: Path | str = DEFAULT_DB_PATH, *, root: Path | None = None) -> sqlite3.Connection:
     """Open a connection to the queue database, ensuring the schema first.
 
-    Rows are returned as :class:`sqlite3.Row` so callers can index by name.
+    Rows are returned as :class:`sqlite3.Row` so callers can index by name. *root* is
+    forwarded to :func:`_resolve_queue_db_path` (see its docstring).
     """
-    db_path = ensure_db(path)
+    db_path = ensure_db(path, root=root)
     conn = sqlite3.connect(str(db_path))
     _configure_connection(conn)
     conn.row_factory = sqlite3.Row
@@ -307,12 +314,13 @@ def add_entry(
     priority: str = "P3",
     *,
     db_path: Path | str = DEFAULT_DB_PATH,
+    root: Path | None = None,
 ) -> QueueEntry:
-    """Persist a new queue entry and return it."""
+    """Persist a new queue entry and return it. *root* is forwarded to :func:`connect`."""
     entry_id = str(uuid.uuid4())
     enqueued_at = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     rank = _priority_rank(priority)
-    conn = connect(db_path)
+    conn = connect(db_path, root=root)
     try:
         conn.execute(
             "INSERT INTO queue_entries(id, action, enqueued_at, priority, status, result) "
@@ -332,9 +340,9 @@ def add_entry(
     )
 
 
-def list_entries(db_path: Path | str = DEFAULT_DB_PATH) -> list[QueueEntry]:
+def list_entries(db_path: Path | str = DEFAULT_DB_PATH, *, root: Path | None = None) -> list[QueueEntry]:
     """Return all entries ordered by priority tier, then FIFO within tier."""
-    conn = connect(db_path)
+    conn = connect(db_path, root=root)
     try:
         rows = conn.execute(
             "SELECT * FROM queue_entries ORDER BY priority ASC, enqueued_at ASC"
@@ -344,9 +352,11 @@ def list_entries(db_path: Path | str = DEFAULT_DB_PATH) -> list[QueueEntry]:
     return [QueueEntry._from_row(row) for row in rows]
 
 
-def get_entry(entry_id: str, db_path: Path | str = DEFAULT_DB_PATH) -> QueueEntry | None:
+def get_entry(
+    entry_id: str, db_path: Path | str = DEFAULT_DB_PATH, *, root: Path | None = None
+) -> QueueEntry | None:
     """Return the entry with the exact *entry_id*, or None."""
-    conn = connect(db_path)
+    conn = connect(db_path, root=root)
     try:
         row = conn.execute("SELECT * FROM queue_entries WHERE id = ?", (entry_id,)).fetchone()
     finally:
@@ -354,18 +364,20 @@ def get_entry(entry_id: str, db_path: Path | str = DEFAULT_DB_PATH) -> QueueEntr
     return QueueEntry._from_row(row) if row else None
 
 
-def resolve_entry(target_id: str, db_path: Path | str = DEFAULT_DB_PATH) -> QueueEntry | None:
+def resolve_entry(
+    target_id: str, db_path: Path | str = DEFAULT_DB_PATH, *, root: Path | None = None
+) -> QueueEntry | None:
     """Resolve *target_id* by exact id or an 8+-char prefix (mirrors ``ll-loop queue``).
 
     Returns None if no entry matches. Raises :class:`AmbiguousEntryIdError` if
     a prefix (shorter than the full uuid) matches more than one entry.
     """
-    exact = get_entry(target_id, db_path)
+    exact = get_entry(target_id, db_path, root=root)
     if exact is not None:
         return exact
     if len(target_id) < 8:
         return None
-    entries = list_entries(db_path)
+    entries = list_entries(db_path, root=root)
     matches = [e for e in entries if e.id.startswith(target_id)]
     if len(matches) > 1:
         raise AmbiguousEntryIdError(
@@ -374,9 +386,11 @@ def resolve_entry(target_id: str, db_path: Path | str = DEFAULT_DB_PATH) -> Queu
     return matches[0] if matches else None
 
 
-def remove_entry(entry_id: str, db_path: Path | str = DEFAULT_DB_PATH) -> bool:
+def remove_entry(
+    entry_id: str, db_path: Path | str = DEFAULT_DB_PATH, *, root: Path | None = None
+) -> bool:
     """Delete the entry with the exact *entry_id*. Returns True if a row was deleted."""
-    conn = connect(db_path)
+    conn = connect(db_path, root=root)
     try:
         cur = conn.execute("DELETE FROM queue_entries WHERE id = ?", (entry_id,))
         conn.commit()
@@ -385,14 +399,16 @@ def remove_entry(entry_id: str, db_path: Path | str = DEFAULT_DB_PATH) -> bool:
     return cur.rowcount > 0
 
 
-def reset_to_pending(entry_id: str, db_path: Path | str = DEFAULT_DB_PATH) -> bool:
+def reset_to_pending(
+    entry_id: str, db_path: Path | str = DEFAULT_DB_PATH, *, root: Path | None = None
+) -> bool:
     """Return a ``running`` entry to ``pending``, clearing ``claimed_at``/``owner_pid``.
 
     Shared by FEAT-2930's ``_reclaim_stale`` sweep and ``ll-queue requeue``.
     Only ``running`` entries transition — a ``pending``/``done``/``failed``
     entry is left untouched. Returns True iff a row was updated.
     """
-    conn = connect(db_path)
+    conn = connect(db_path, root=root)
     try:
         cur = conn.execute(
             "UPDATE queue_entries SET status = 'pending', claimed_at = NULL, owner_pid = NULL "

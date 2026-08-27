@@ -295,6 +295,8 @@ def test_no_unguarded_mutating_tool_is_advertised(tmp_path, monkeypatch) -> None
         "history_search",
         "deps_check",
         "capabilities",
+        "queue_list",
+        "queue_get",
     }
 
     async def run() -> None:

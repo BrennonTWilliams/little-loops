@@ -4750,8 +4750,8 @@ class TestPriorityRegexCompletenessAllowlist:
             21: "_ID_RE: prose-dependency ID shape, optional prefix group discarded",
         },
         "mcp_server/tools.py": {
-            588: "JSON-schema pattern for a priority argument, not a filename read",
-            689: "JSON-schema pattern for a priority argument, not a filename read",
+            731: "JSON-schema pattern for a priority argument, not a filename read",
+            849: "JSON-schema pattern for a priority argument, not a filename read",
         },
         "session_store/writers.py": {
             2521: "_FILENAME_PRIORITY_RE: the deliberately-preserved filename fallback in "

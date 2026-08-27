@@ -104,9 +104,25 @@ def _contains_key(payload: Any, key: str) -> bool:
     return False
 
 
-MUTATING_NAMES = ["issue_capture", "issue_set_status", "issue_link", "issue_append_log"]
+MUTATING_NAMES = [
+    "issue_capture",
+    "issue_set_status",
+    "issue_link",
+    "issue_append_log",
+    "queue_add",
+    "queue_remove",
+    "queue_requeue",
+]
 
-TIER1_NAMES = ["issues_query", "issue_get", "history_search", "deps_check", "capabilities"]
+TIER1_NAMES = [
+    "issues_query",
+    "issue_get",
+    "history_search",
+    "deps_check",
+    "capabilities",
+    "queue_list",
+    "queue_get",
+]
 
 
 # --------------------------------------------------------------------------------------
@@ -148,10 +164,10 @@ def test_ac1_tier1_tools_keep_their_shape_and_ordering(tmp_path, monkeypatch) ->
         async with Client(build_server(transport="stdio")) as client:
             tools = (await client.list_tools()).tools
             names = [t.name for t in tools]
-            assert names[:5] == TIER1_NAMES
-            tier2_and_beyond = [n for n in names[5:] if n not in TASK_STARTING_TOOLS]
+            assert names[:7] == TIER1_NAMES
+            tier2_and_beyond = [n for n in names[7:] if n not in TASK_STARTING_TOOLS]
             assert sorted(tier2_and_beyond) == sorted(MUTATING_NAMES)
-            for tool in tools[:5]:
+            for tool in tools[:7]:
                 assert tool.annotations is None, (
                     f"{tool.name} gained an annotation — tier-1 output shapes must not change"
                 )

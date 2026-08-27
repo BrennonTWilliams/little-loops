@@ -1,5 +1,6 @@
-"""ll-mcp's tool surface: five coarse read-only tools (FEAT-3135) plus four guarded
-mutation tools (FEAT-3149).
+"""ll-mcp's tool surface: seven coarse read-only tools (FEAT-3135, plus `queue_list`/
+`queue_get`) plus seven guarded mutation tools (FEAT-3149, plus `queue_add`/
+`queue_remove`/`queue_requeue`).
 
 Each tool wraps an existing `little_loops` library function or helper directly — no CLI
 subprocess invocation, and no second implementation of behavior the CLI already has. Any
@@ -474,6 +475,143 @@ def _tool_issue_append_log(arguments: dict[str, Any], *, project_root: Path, app
     }
 
 
+def _tool_queue_list(_arguments: dict[str, Any], *, project_root: Path) -> Any:
+    """List all persisted `ll-queue` entries (`ll-queue list`).
+
+    Wraps `queue_store.list_entries` directly, anchored at `project_root` via its `root`
+    kwarg (mirrors `history_search`'s BUG-3181 fix: the process cwd this server happened
+    to be spawned with is not necessarily `project_root`), and returns each entry's
+    `to_dict()` shape — byte-identical to `ll-queue list --json`.
+    """
+    from little_loops.queue_store import list_entries
+
+    entries = list_entries(root=project_root)
+    return [entry.to_dict() for entry in entries]
+
+
+def _tool_queue_get(arguments: dict[str, Any], *, project_root: Path) -> Any:
+    """Fetch a single `ll-queue` entry by full id or 8+-char prefix (`ll-queue status`).
+
+    Wraps `queue_store.resolve_entry`, the same id-resolution helper `ll-queue status`
+    and `ll-queue remove`/`requeue` use.
+    """
+    from little_loops.queue_store import resolve_entry
+
+    entry_id = str(arguments.get("id") or "")
+    if not entry_id:
+        raise ValueError("queue_get requires a non-empty id")
+
+    entry = resolve_entry(entry_id, root=project_root)
+    if entry is None:
+        raise ValueError(f"Queue entry not found: {entry_id!r}")
+    return entry.to_dict()
+
+
+def _tool_queue_add(arguments: dict[str, Any], *, project_root: Path, apply: bool) -> Any:
+    """Classify and persist a new `ll-queue` entry (`ll-queue add`).
+
+    Wraps `cli.queue._classify_action` (the same classifier `ll-queue add` calls) for the
+    dry-run preview, then `queue_store.add_entry` to actually persist on `apply: true`.
+    `--runner mcp`/`--runner loop` targets can themselves start further runs, so — like
+    `loop_start` — this tool's dry-run preview is the caller's only chance to see what an
+    apply would queue before it queues it.
+    """
+    from little_loops.cli.queue import _classify_action
+    from little_loops.queue_store import add_entry
+
+    target = str(arguments.get("target") or "")
+    if not target:
+        raise ValueError("queue_add requires a non-empty target")
+
+    priority = str(arguments.get("priority") or "P3")
+    runner_override = arguments.get("runner")
+    timeout = arguments.get("timeout")
+    input_value = arguments.get("input")
+    arg_pairs = [f"{k}={v}" for k, v in dict(arguments.get("args") or {}).items()]
+
+    spec = _classify_action(
+        target,
+        runner_override=str(runner_override) if runner_override else None,
+        timeout=int(timeout) if isinstance(timeout, int) else None,
+        arg_pairs=arg_pairs,
+        input_value=str(input_value) if input_value is not None else None,
+    )
+
+    preview = {
+        "name": spec.name,
+        "runner": spec.runner.value,
+        "target": spec.target,
+        "args": spec.args,
+        "timeout": spec.timeout,
+        "priority": priority,
+    }
+    if not apply:
+        return {"entry": preview}
+
+    entry = add_entry(spec, priority, root=project_root)
+    return {"entry": entry.to_dict()}
+
+
+def _tool_queue_remove(arguments: dict[str, Any], *, project_root: Path, apply: bool) -> Any:
+    """Delete a pending `ll-queue` entry by id (`ll-queue remove`).
+
+    `--force` (removing a non-pending entry) is deliberately not exposed — mirrors
+    `issue_link`'s precedent of trimming rare escape-hatch flags off tier 2's coarse
+    surface.
+    """
+    from little_loops.queue_store import remove_entry, resolve_entry
+
+    entry_id = str(arguments.get("id") or "")
+    if not entry_id:
+        raise ValueError("queue_remove requires a non-empty id")
+
+    entry = resolve_entry(entry_id, root=project_root)
+    if entry is None:
+        raise ValueError(f"Queue entry not found: {entry_id!r}")
+    if entry.status != "pending":
+        raise ValueError(
+            f"Queue entry {entry.id[:8]} is {entry.status!r}, not 'pending'; "
+            "queue_remove only removes pending entries"
+        )
+
+    target = {"id": entry.id, "target": entry.action.target, "status": entry.status}
+    if not apply:
+        return {"target": target}
+
+    remove_entry(entry.id, root=project_root)
+    return {"target": target}
+
+
+def _tool_queue_requeue(arguments: dict[str, Any], *, project_root: Path, apply: bool) -> Any:
+    """Return a stranded `running` entry to `pending` (`ll-queue requeue`).
+
+    `--force` (requeue even if the owner process still appears alive) is deliberately not
+    exposed, for the same reason `queue_remove` drops `--force`: it is a rare escape-hatch
+    flag, not part of tier 2's coarse brief.
+    """
+    from little_loops.queue_store import reset_to_pending, resolve_entry
+
+    entry_id = str(arguments.get("id") or "")
+    if not entry_id:
+        raise ValueError("queue_requeue requires a non-empty id")
+
+    entry = resolve_entry(entry_id, root=project_root)
+    if entry is None:
+        raise ValueError(f"Queue entry not found: {entry_id!r}")
+    if entry.status != "running":
+        raise ValueError(
+            f"Queue entry {entry.id[:8]} is {entry.status!r}, not 'running'; "
+            "queue_requeue only requeues running entries"
+        )
+
+    target = {"id": entry.id, "target": entry.action.target, "status": entry.status}
+    if not apply:
+        return {"target": target, "changes": [{"field": "status", "from": "running", "to": "pending"}]}
+
+    reset_to_pending(entry.id, root=project_root)
+    return {"target": target, "changes": [{"field": "status", "from": "running", "to": "pending"}]}
+
+
 # ---------------------------------------------------------------------------------------
 # Tier 3 (FEAT-3151): the SEP-2663 start-path tool.
 #
@@ -549,6 +687,8 @@ _TOOL_HANDLERS: dict[str, Callable[..., Any]] = {
     "history_search": _tool_history_search,
     "deps_check": _tool_deps_check,
     "capabilities": _tool_capabilities,
+    "queue_list": _tool_queue_list,
+    "queue_get": _tool_queue_get,
     # Tier 2 (FEAT-3149) — these take an extra required `apply` keyword, which is why the
     # value type is `Callable[..., Any]` rather than `Callable[[dict], Any]`. The split is
     # by `policy.MUTATING_TOOLS`, not by a second registry, so there is exactly one list
@@ -557,6 +697,9 @@ _TOOL_HANDLERS: dict[str, Callable[..., Any]] = {
     "issue_set_status": _tool_issue_set_status,
     "issue_link": _tool_issue_link,
     "issue_append_log": _tool_issue_append_log,
+    "queue_add": _tool_queue_add,
+    "queue_remove": _tool_queue_remove,
+    "queue_requeue": _tool_queue_requeue,
     # Tier 3 (FEAT-3151) — takes no `apply` keyword; see the module comment above.
     "loop_start": _tool_loop_start,
 }
@@ -655,6 +798,23 @@ _TOOLS: list[types.Tool] = [
         name="capabilities",
         description="Report the resolved AI-host CLI's capability surface (streaming, tool allowlist, etc).",
         input_schema={"type": "object", "properties": {}, "additionalProperties": False},
+    ),
+    types.Tool(
+        name="queue_list",
+        description="List all persisted `ll-queue` entries (pending/running/done/failed).",
+        input_schema={"type": "object", "properties": {}, "additionalProperties": False},
+    ),
+    types.Tool(
+        name="queue_get",
+        description="Fetch a single `ll-queue` entry's state and result by full id or 8+-char prefix.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "id": {"type": "string", "description": "Entry id (full uuid or 8+-char prefix)."},
+            },
+            "required": ["id"],
+            "additionalProperties": False,
+        },
     ),
     # --- Tier 2: mutating tools (FEAT-3149) ---------------------------------------------
     # `annotations` is set ONLY on these four. The five tier-1 entries above deliberately
@@ -833,6 +993,115 @@ _TOOLS: list[types.Tool] = [
             "additionalProperties": False,
         },
     ),
+    types.Tool(
+        name="queue_add",
+        description=(
+            "Classify and persist a new `ll-queue` entry (FSM loop, skill/command, or raw "
+            "CLI invocation). Dry-run by default: without `apply: true` this returns the "
+            "classified runner/target/args/timeout it would queue and writes nothing."
+        ),
+        annotations=types.ToolAnnotations(
+            read_only_hint=False,
+            # Adds a new row; never overwrites or deletes an existing one.
+            destructive_hint=False,
+            # Two identical calls queue two entries.
+            idempotent_hint=False,
+        ),
+        input_schema={
+            "type": "object",
+            "properties": {
+                "target": {
+                    "type": "string",
+                    "description": "Loop name, skill/command name, or raw CLI invocation.",
+                },
+                "priority": {
+                    "type": "string",
+                    "enum": ["P0", "P1", "P2", "P3", "P4", "P5"],
+                    "description": "Priority tier. Default: P3.",
+                },
+                "runner": {
+                    "type": "string",
+                    "enum": ["skill", "cmd", "mcp", "prompt", "loop"],
+                    "description": "Force a specific runner kind instead of classifying target.",
+                },
+                "args": {
+                    "type": "object",
+                    "description": "Extra ActionSpec args as key/value pairs.",
+                },
+                "timeout": {
+                    "type": "integer",
+                    "description": "Timeout in seconds. Default: 120 (unbounded for runner=loop).",
+                },
+                "input": {
+                    "type": "string",
+                    "description": "Input for a loop-runner target, same semantics as "
+                    "`ll-loop run <loop> [input]`.",
+                },
+                "apply": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Set true to actually queue the entry. Omitted or "
+                    "anything other than true means dry-run: nothing is written.",
+                },
+            },
+            "required": ["target"],
+            "additionalProperties": False,
+        },
+    ),
+    types.Tool(
+        name="queue_remove",
+        description=(
+            "Delete a pending `ll-queue` entry by id. Dry-run by default: without "
+            "`apply: true` this reports the entry it would remove and writes nothing. "
+            "Only removes entries in `pending` state."
+        ),
+        annotations=types.ToolAnnotations(
+            read_only_hint=False,
+            destructive_hint=True,
+            idempotent_hint=True,
+        ),
+        input_schema={
+            "type": "object",
+            "properties": {
+                "id": {"type": "string", "description": "Entry id (full uuid or 8+-char prefix)."},
+                "apply": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Set true to actually remove the entry. Omitted or "
+                    "anything other than true means dry-run: nothing is written.",
+                },
+            },
+            "required": ["id"],
+            "additionalProperties": False,
+        },
+    ),
+    types.Tool(
+        name="queue_requeue",
+        description=(
+            "Return a stranded `running` `ll-queue` entry to `pending`. Dry-run by "
+            "default: without `apply: true` this reports the transition and writes "
+            "nothing. Only requeues entries in `running` state."
+        ),
+        annotations=types.ToolAnnotations(
+            read_only_hint=False,
+            destructive_hint=True,
+            idempotent_hint=True,
+        ),
+        input_schema={
+            "type": "object",
+            "properties": {
+                "id": {"type": "string", "description": "Entry id (full uuid or 8+-char prefix)."},
+                "apply": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Set true to actually requeue the entry. Omitted or "
+                    "anything other than true means dry-run: nothing is written.",
+                },
+            },
+            "required": ["id"],
+            "additionalProperties": False,
+        },
+    ),
     # --- Tier 3: SEP-2663 start path (FEAT-3151) ------------------------------------------
     # Not in MUTATING_TOOLS, so no `apply` param and no ToolAnnotations `readOnlyHint`
     # false-vs-mutating distinction — this tool is gated by a separate registry entirely
@@ -867,11 +1136,11 @@ async def handle_list_tools(
     _ctx: ServerRequestContext[Any],
     _params: types.PaginatedRequestParams | None,
 ) -> types.ListToolsResult:
-    """`tools/list` handler: returns the fixed ten-tool catalog in source order.
+    """`tools/list` handler: returns the fixed fifteen-tool catalog in source order.
 
-    The five tier-1 read-only tools come first, then the four tier-2 mutating tools, then
-    FEAT-3151's tier-3 start tool; only the tier-2 four carry `annotations`, which is how a
-    host tells the mutating group apart from the rest.
+    The seven tier-1 read-only tools come first, then the seven tier-2 mutating tools,
+    then FEAT-3151's tier-3 start tool; only the tier-2 seven carry `annotations`, which is
+    how a host tells the mutating group apart from the rest.
 
     `ttlMs`/`cacheScope` are left unset here — the `Server(cache_hints=...)` passed in
     `little_loops.mcp_server.server.build_server` fills them, per SEP-2549.

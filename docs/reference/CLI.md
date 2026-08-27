@@ -4846,10 +4846,11 @@ ll-adapt-agents-for-codex --force --apply  # Regenerate all files (including up-
 ### ll-mcp
 
 MCP server (2026-07-28 spec) — stdio by default, streamable HTTP with `--http` — exposing
-ten coarse tools over the `little_loops` library. Five read: `issues_query`, `issue_get`,
-`history_search`, `deps_check`, `capabilities`. Four write, dry-run by default:
-`issue_capture`, `issue_set_status`, `issue_link`, `issue_append_log` (FEAT-3149). One
-starts a run: `loop_start` (FEAT-3151, see below). Started by an MCP-capable host (Claude
+fifteen coarse tools over the `little_loops` library. Seven read: `issues_query`,
+`issue_get`, `history_search`, `deps_check`, `capabilities`, `queue_list`, `queue_get`.
+Seven write, dry-run by default: `issue_capture`, `issue_set_status`, `issue_link`,
+`issue_append_log` (FEAT-3149), `queue_add`, `queue_remove`, `queue_requeue` (FEAT-3343).
+One starts a run: `loop_start` (FEAT-3151, see below). Started by an MCP-capable host (Claude
 Code, Codex, ...) from the config `ll-adapt --host <host> --apply` emits (`.mcp.json`,
 Codex's `~/.codex/config.toml`) — not run directly by a human. Requires the `mcp` optional extra
 (`pip install "little-loops[mcp]"`); without it, exits `2` with an actionable message
@@ -4861,7 +4862,7 @@ surface; `ll-loop` is the one exception — `loop_start` starts a detached run, 
 below polls/stops it. No request handler depends on state from a prior request: each
 `tools/call` resolves entirely from its own arguments plus the filesystem/SQLite.
 
-The four mutating tools are guarded twice. **Dry-run by default:** each takes an `apply`
+The seven mutating tools are guarded twice. **Dry-run by default:** each takes an `apply`
 boolean defaulting to `false`; without an explicit `true` the tool returns the change it
 would make (`{"applied": false, "tool": …, "target": …, "changes": […]}`) and writes
 nothing. The check is fail-closed — only the literal boolean `true` opts in. **Per-transport
@@ -4871,9 +4872,16 @@ authentication) and `true` for stdio. On HTTP, a denied call is refused in ASGI 
 from the SEP-2243 `Mcp-Method`/`Mcp-Name` headers, before the JSON-RPC body is parsed, with
 a JSON-RPC error (`-32001`) and HTTP 403; the `tools/call` handler itself also enforces the
 same policy on both transports (FEAT-3168), so the decision is uniform even when the ASGI
-layer is bypassed or the call arrives over stdio. Reads on the same server are unaffected. The four
-carry a `readOnlyHint: false` annotation in `tools/list`; the five read-only tools carry no
+layer is bypassed or the call arrives over stdio. Reads on the same server are unaffected. The seven
+carry a `readOnlyHint: false` annotation in `tools/list`; the seven read-only tools carry no
 annotations, which is how a host tells the groups apart.
+
+`ll-queue`'s three mutating tools (`queue_add`, `queue_remove`, `queue_requeue`, FEAT-3343)
+follow the same two tier-2 escape-hatch omissions `issue_link` set precedent for:
+`queue_remove`/`queue_requeue` drop the CLI's `--force` flag (removing/requeuing a non-
+matching-state entry), keeping the MCP surface to the coarse, safe path. There is no
+`queue_run`/`--watch` tool — draining the queue is a long-lived process, not a stateless
+request/response call, so it does not fit the MCP tool-call model.
 
 A dry-run `issue_capture` returns **no issue ID** — not even a predicted one. It reports the
 resolved type, priority, slug, target directory, and rendered body, because the ID is
@@ -4894,6 +4902,8 @@ real one.
 | | `limit` | integer ≥ 1 | no (default `10`) | Maximum number of results |
 | `deps_check` | — | — | — | No parameters; validates the cross-issue dependency graph |
 | `capabilities` | — | — | — | No parameters; reports the resolved AI-host CLI's capability surface |
+| `queue_list` | — | — | — | No parameters; lists all persisted `ll-queue` entries |
+| `queue_get` | `id` | string | **yes** | Entry id (full uuid or 8+-char prefix) |
 | `issue_capture` | `type` | `BUG`\|`FEAT`\|`ENH`\|`EPIC` | **yes** | Issue type |
 | | `title` | string | **yes** | Issue title |
 | | `priority` | `P[0-5]` | no (default `P2`) | Priority level |
@@ -4916,12 +4926,27 @@ real one.
 | `issue_append_log` | `issue_id` | string | **yes** | Issue to append to |
 | | `command` | string | **yes** | Command name to record, e.g. `/ll:manage-issue` |
 | | `apply` | boolean | no (default `false`) | Set `true` to actually append the entry |
+| `queue_add` | `target` | string | **yes** | Loop name, skill/command name, or raw CLI invocation |
+| | `priority` | `P[0-5]` | no (default `P3`) | Priority tier |
+| | `runner` | `skill`\|`cmd`\|`mcp`\|`prompt`\|`loop` | no | Force a specific runner kind instead of classifying `target` |
+| | `args` | object | no | Extra `ActionSpec` args as key/value pairs |
+| | `timeout` | integer | no (default `120`, unbounded for `runner=loop`) | Timeout in seconds |
+| | `input` | string | no | Input for a loop-runner target, same semantics as `ll-loop run <loop> [input]` |
+| | `apply` | boolean | no (default `false`) | Set `true` to actually queue the entry |
+| `queue_remove` | `id` | string | **yes** | Entry id (full uuid or 8+-char prefix); must be `pending` |
+| | `apply` | boolean | no (default `false`) | Set `true` to actually remove the entry |
+| `queue_requeue` | `id` | string | **yes** | Entry id (full uuid or 8+-char prefix); must be `running` |
+| | `apply` | boolean | no (default `false`) | Set `true` to actually requeue the entry |
 | `loop_start` | `loop` | string | **yes** | Loop name to run |
 | | `context` | string[] | no | `KEY=VALUE` context overrides, mirrors `ll-loop run --context` |
 
-`issues_query` returns a list of `{id, priority, type, title, path, status, parent, labels}` dicts. `issue_get` returns the same summary-card field set `ll-issues show` uses, or a tool-level error if `issue_id` doesn't resolve. `history_search` returns a list of `SearchResult` dicts. `deps_check` returns `{has_issues, broken_refs, missing_backlinks, cycles, stale_completed_refs, broken_depends_on_refs, broken_relates_to_refs}`. `capabilities` returns `{host, binary, version, capabilities}`. Each mutating tool returns
+`issues_query` returns a list of `{id, priority, type, title, path, status, parent, labels}` dicts. `issue_get` returns the same summary-card field set `ll-issues show` uses, or a tool-level error if `issue_id` doesn't resolve. `history_search` returns a list of `SearchResult` dicts. `deps_check` returns `{has_issues, broken_refs, missing_backlinks, cycles, stale_completed_refs, broken_depends_on_refs, broken_relates_to_refs}`. `capabilities` returns `{host, binary, version, capabilities}`. `queue_list` returns a list of entries, byte-identical to `ll-queue list --json` (each entry's `to_dict()` shape). `queue_get` returns a single entry's `to_dict()` shape, or a tool-level error if `id` doesn't resolve. Each mutating tool returns
 `{applied, tool, target, changes}`; `issue_capture`'s `target` is `{type, priority, slug,
-directory}` plus a `rendered_body` on a dry-run and `{issue_id, path}` on apply.
+directory}` plus a `rendered_body` on a dry-run and `{issue_id, path}` on apply. `queue_add`
+returns `{entry: {name, runner, target, args, timeout, priority}}` on a dry-run (the classified
+preview) and `{entry: <to_dict()>}` on apply. `queue_remove`/`queue_requeue` return
+`{target: {id, target, status}}`, `queue_requeue` adding a `changes` list describing the
+`running` → `pending` transition either way.
 
 **`loop_start`** (FEAT-3151): starts a detached `ll-loop` run — the same spawn
 `ll-loop run --background` performs — and returns immediately. Ordinary callers get
@@ -4931,7 +4956,7 @@ result, `{resultType: "task", taskId, status: "working"}`, where `taskId` is the
 `instance_id` verbatim. Either shape, the run started — the envelope is the only thing
 that differs, never whether a run was spawned. A spawn failure (scope conflict, unloadable
 loop) is always an ordinary tool error, never a task id for a run that does not exist. Not
-one of the four mutating tools above — a dry-run "start" has no coherent meaning, so it
+one of the seven mutating tools above — a dry-run "start" has no coherent meaning, so it
 takes no `apply` parameter and is gated by `allow_tasks` (below), not `allow_mutations`.
 
 **`tasks/get` / `tasks/cancel`** (FEAT-3145): not tools — custom JSON-RPC methods,

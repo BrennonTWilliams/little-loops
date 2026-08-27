@@ -58,6 +58,9 @@ MUTATING_TOOLS = frozenset(
         "issue_set_status",
         "issue_link",
         "issue_append_log",
+        "queue_add",
+        "queue_remove",
+        "queue_requeue",
     }
 )
 
