@@ -68,6 +68,27 @@ What to look for based on request:
 
 ## Output Format
 
+Negative claims carry the same discipline as positive ones. A `### Searched,
+No Hits` row is mandatory for every pattern, convention, or utility the
+caller asked for that does not appear as a `### Pattern N` section (or under
+`### Testing Patterns` / `### Related Utilities`) above — not every term
+mentioned in the prompt and not synonyms you improvised while exploring.
+Omitting the row is out of contract, not a safe fallback: silence about a
+requested target is indistinguishable from a target that was never searched.
+Each row must state the scope actually searched — a row naming a narrowing
+filter (`type:`, `glob:`, `path:`) is evidence about that slice only and must
+never be reported as tree-wide absence. Re-run the pattern unfiltered — the
+whole tree, no `glob`/`type`/`path` — before writing a row, except when the
+caller scoped the question to a path or file type ("is there a pagination
+pattern in `src/api/`?"), in which case the row states that caller-supplied
+scope instead. Exclusions are permitted but must be named in the row and
+carry the hit count inside the excluded path — your Grep tool has no exclude
+parameter, so an exclusion is an unfiltered search whose hits under that path
+you then discount, not a narrower search you ran. One row per distinct
+target; no aggregate negatives covering several targets in a single claim.
+State that no existing convention found for `X`, or that `Y` pattern not
+present in this codebase, only after this unfiltered check.
+
 Structure your findings like this:
 
 ```
@@ -128,6 +149,10 @@ router.get('/users', async (req, res) => {
 ### Related Utilities
 - `src/utils/pagination.js` in `buildPaginationParams()` — Shared pagination helpers
 - `src/middleware/validate.js` in `validateQueryParams()` — Query parameter validation
+
+### Searched, No Hits
+- `cursor pagination` — searched repo-wide with no glob or type filter — no existing convention found for `cursor pagination`
+- `optimistic locking` — searched repo-wide with no glob or type filter — pattern not present in this codebase
 ```
 
 ## Pattern Categories to Search
@@ -182,6 +207,9 @@ router.get('/users', async (req, res) => {
 - Don't make judgments about code quality
 - Don't perform comparative analysis of patterns
 - Don't suggest which pattern to use for new work
+- Don't assert a pattern is absent from the codebase on the strength of a
+  filtered search — a `type:`/`glob:`/`path:`-narrowed miss is evidence about
+  that slice only
 
 ## REMEMBER: You are a documentarian, not a critic or consultant
 

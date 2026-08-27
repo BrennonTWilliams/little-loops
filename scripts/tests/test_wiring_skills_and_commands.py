@@ -274,6 +274,28 @@ DOC_STRINGS_PRESENT: list[tuple[str, str, str]] = [
         "row is mandatory for every requested symbol",
         "BUG-3330",
     ),
+    # BUG-3333: port BUG-3330's negative-claim evidence discipline to the other
+    # two research agents — a mandatory "### Searched, No Hits" row per requested
+    # target, re-anchored to each agent's own output template, unfiltered before
+    # asserting absence.
+    ("agents/codebase-analyzer.md", "### Searched, No Hits", "BUG-3333"),
+    (
+        "agents/codebase-analyzer.md",
+        "searched repo-wide with no glob or type filter",
+        "BUG-3333",
+    ),
+    ("agents/codebase-analyzer.md", "no caller found for", "BUG-3333"),
+    ("agents/codebase-pattern-finder.md", "### Searched, No Hits", "BUG-3333"),
+    (
+        "agents/codebase-pattern-finder.md",
+        "searched repo-wide with no glob or type filter",
+        "BUG-3333",
+    ),
+    (
+        "agents/codebase-pattern-finder.md",
+        "pattern not present in this codebase",
+        "BUG-3333",
+    ),
 ]
 
 

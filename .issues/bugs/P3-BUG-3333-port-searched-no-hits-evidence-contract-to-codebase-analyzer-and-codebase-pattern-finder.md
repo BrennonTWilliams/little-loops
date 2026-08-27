@@ -3,10 +3,11 @@ id: BUG-3333
 type: BUG
 title: Port Searched-No-Hits evidence contract to codebase-analyzer and codebase-pattern-finder
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-08-26'
 captured_at: '2026-08-26T20:52:00Z'
+completed_at: '2026-08-27T20:15:09Z'
 confidence_score: 100
 outcome_confidence: 83
 score_complexity: 22
@@ -265,6 +266,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-27T20:14:57 - `9e4fa033-0b0b-43cd-be66-950ccb670df0.jsonl`
 - `/ll:confidence-check` - 2026-08-27T19:59:39 - `003caff9-426c-4e75-93c3-cc4133140a9c.jsonl`
 - `/ll:confidence-check` - 2026-08-27T19:22:26 - `7839b9c3-7a0f-4732-a76a-0e00fbd4022d.jsonl`
 - `/ll:wire-issue` - 2026-08-27T19:15:03 - `44ca8d09-8ec6-4d45-87da-fd9e70de0ac6.jsonl`
