@@ -9,7 +9,7 @@ discovered_by: manual
 discovered_date: '2026-08-26'
 captured_at: '2026-08-26T21:00:00Z'
 supersedes: []
-decision_needed: true
+decision_needed: false
 ---
 
 # BUG-3331: Loop YAMLs interpolate untrusted text into Python string literals inside shell actions
@@ -84,7 +84,11 @@ in-repo idioms, one per value shape:
    `os.environ`), `:283`, `:511`, `:528`; `autodev.yaml:405`
    (`ISSUE_FILE="$ISSUE_FILE" python3 << 'PYEOF'`); `flux-image-generator.yaml:275`
    (`abs_dir = os.environ["ABS_DIR"]`).
-2. **Multi-line LLM output → a file.** See the open decision below.
+2. **Multi-line LLM output → a file.** Write the captured output to a run-dir
+   file via its own quoted heredoc, then `open()` that file from the Python
+   heredoc (Option B — see Decision Rationale under Proposed Solution).
+   Precedent: `brainstorm.yaml:160-169` (BUG-2468, shipped/tested),
+   `cua-agent-desktop.yaml:417-423` (shell-only sibling).
 
 ## Motivation
 
@@ -148,24 +152,66 @@ defect relocated from Python to bash. Multi-line values make it worse.
 
 Three options; pick one and record it:
 
-- **(a) Runner-side capture-to-file.** Have the FSM persist each `capture:`
-  variable to a file under the run dir and expose its path (e.g.
-  `${captured.x.path}`), so shell actions read it with `open(...)`. Cleanest and
-  fixes the class permanently, but it is a runner change plus a schema addition,
-  not a per-site edit. Note captured values are already carried in the
-  checkpoint state (`fsm/persistence.py:332, 379`) but are not exposed as a
-  per-variable file a shell action can open.
-- **(b) Per-site heredoc for the value.** Write the captured output to a run-dir
-  file in the same action via its own quoted heredoc, then read that file from
-  the Python heredoc. No runner change; ~27 hand-edits with a repeated
-  boilerplate block.
-- **(c) Scope this issue to class A and file class B separately.** Defensible
-  given that (a) is a different kind of change, but leaves the sharper class
-  open.
+**Option A**: Runner-side capture-to-file. Have the FSM persist each `capture:`
+variable to a file under the run dir and expose its path (e.g.
+`${captured.x.path}`), so shell actions read it with `open(...)`. Cleanest and
+fixes the class permanently, but it is a runner change plus a schema addition,
+not a per-site edit. Note captured values are already carried in the
+checkpoint state (`fsm/persistence.py:332, 379`) but are not exposed as a
+per-variable file a shell action can open.
 
-**Recommend (a)**, with (b) as the fallback if the schema addition proves
-contentious. Do **not** ship env-binding for class B — it looks like a fix and
-is not one.
+**Option B**: Per-site heredoc for the value. Write the captured output to a
+run-dir file in the same action via its own quoted heredoc, then read that
+file from the Python heredoc. No runner change; ~27 hand-edits with a
+repeated boilerplate block.
+
+> **Selected:** Option B — Per-site heredoc for the value. Already a shipped,
+> tested in-repo precedent for this exact failure mode
+> (`brainstorm.yaml`'s `dedup_novelty` state, BUG-2468, done), plus a
+> shell-only sibling in `cua-agent-desktop.yaml`. No runner or schema change,
+> lower risk than Option A's untested runner change, and unlike Option C it
+> closes the live, non-adversarial defect now instead of deferring it.
+
+**Option C**: Scope this issue to class A and file class B separately.
+Defensible given that (a) is a different kind of change, but leaves the
+sharper class open.
+
+**Recommended**: (a) Runner-side capture-to-file, with (b) as the fallback if
+the schema addition proves contentious. Do **not** ship env-binding for class
+B — it looks like a fix and is not one.
+
+### Decision Rationale
+
+**Selected: Option B — Per-site heredoc for the value.**
+
+`/ll:decide-issue` re-evaluated the issue's own "Recommend (a)" note against
+fresh codebase evidence and overturned it: the issue's Codebase Research
+Findings claimed "no existing in-repo pattern writes untrusted multi-line
+capture output to a run-dir file for later `open()`" — that claim is false.
+`brainstorm.yaml`'s `dedup_novelty` state (`scripts/little_loops/loops/brainstorm.yaml:160-169`)
+already implements exactly this shape — write untrusted LLM output to a file
+via a quoted shell heredoc, then `open()` it from the Python heredoc — as the
+shipped, tested fix for BUG-2468 (`status: done`,
+`scripts/tests/test_brainstorm.py::TestBug2468ErrorRouting`), which is the
+identical `"""`-breaks-triple-quoted-literal failure mode this issue
+describes. `cua-agent-desktop.yaml:417-423` has a shell-only sibling of the
+same pattern. Option B therefore generalizes an already-proven idiom rather
+than inventing new mechanism, needs no FSM runner or schema change (unlike
+Option A), and — unlike Option C — resolves the live, non-adversarial class-B
+defect now instead of deferring it to a new issue (a defer-risk borne out by
+this same split lineage's sibling, FEAT-3332, still sitting open).
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|---|---|---|---|---|---|
+| A — runner-side `.path` accessor | 2 | 1 | 2 | 1 | 6/12 |
+| **B — per-site heredoc-to-file** | **3** | **2** | **3** | **2** | **10/12** |
+| C — defer class B to a new issue | 2 | 3 | 3 | 1 | 9/12 |
+
+Key evidence:
+- `brainstorm.yaml:156-169` — shipped BUG-2468 fix, identical failure mode, identical mechanism
+- `cua-agent-desktop.yaml:417-423` — shell-only sibling instance, explicit "~25% failure rate" comment on the raw-interpolation defect it replaced
+- `scripts/little_loops/fsm/validation/shell_safety.py:37-41,154,178-180` (MR-11) — the regression-guard lint already tracks quoted-heredoc boundaries structurally; it needs to stop treating "safe from bash" as "safe from the re-parsed Python literal," not be built from scratch
+- Known residual risk to address during implementation: static heredoc sentinels (`RAWEOF`, `PLANEOF`, etc.) are not collision-proof against LLM output that happens to contain the sentinel line verbatim — no in-repo instance uses a randomized/per-run sentinel yet; worth hardening while converting the ~27 sites
 
 ## Integration Map
 
@@ -259,10 +305,12 @@ _Added by `/ll:refine-issue` — 2026-08-27 — based on codebase analysis:_
 
 ## Implementation Steps
 
-1. Settle the class-B decision (a/b/c) above.
+1. ~~Settle the class-B decision (a/b/c) above.~~ Decided: Option B — see
+   Decision Rationale under Proposed Solution.
 2. Convert class A sites to the env-var idiom, loop by loop, running
    `ll-loop validate` on each.
-3. Implement the chosen class-B mechanism and convert those 27 sites.
+3. Implement Option B (per-site heredoc-to-file, hardened against sentinel
+   collision) and convert the 27 class-B sites.
 4. Add the behavioral tests and the static regression sweep.
 5. Document the idiom in `HARNESS_OPTIMIZATION_GUIDE.md`.
 
@@ -307,4 +355,5 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:decide-issue` - 2026-08-27T03:02:59 - `4a4c9942-5c58-4b71-851d-896694066b21.jsonl`
 - `/ll:refine-issue` - 2026-08-27T01:45:46 - `091f85a6-5523-4888-8bc0-8e7acb268aae.jsonl`

@@ -1,0 +1,12 @@
+{
+  "id": "02c5dbc1-518d-486c-94c4-3b4b02c8c3dc",
+  "type": "decision",
+  "timestamp": "2026-08-27T03:02:19Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "brainstorm.yaml's dedup_novelty state (BUG-2468, shipped/tested) already implements this exact write-to-quoted-heredoc-file-then-open() pattern for the identical failure mode, contradicting the issue's own research note that no such precedent existed. No runner/schema change needed (unlike Option A); resolves the live defect now rather than deferring it (unlike Option C).",
+  "rule": "Option B \u2014 per-site heredoc-to-file for class-B (LLM output) sites",
+  "scope": "issue",
+  "alternatives_rejected": "Option A (runner-side capture-to-file .path accessor): requires FSM schema addition + executor change, untested combination of two separately-proven mechanisms, higher risk. Option C (defer class B to a new issue): leaves a live, non-adversarial defect unresolved; this split lineage's sibling FEAT-3332 is still open, evidencing defer-risk.",
+  "issue": "BUG-3331"
+}

@@ -1,0 +1,18 @@
+{
+  "id": "649044de-1a81-473c-8aae-fa7cad960b09",
+  "type": "decision",
+  "timestamp": "2026-08-27T03:06:54Z",
+  "category": "architecture",
+  "labels": [
+    "loops",
+    "fsm",
+    "git",
+    "gitignore"
+  ],
+  "rationale": "This repo's .gitignore covers .ll/ only as a list of individual entries (history.db, queue.db, *.lock, ll-context-state.json, ...), not the directory. Uncovered paths include .ll/decisions.d/ (282 tracked fragments), .ll/decisions.yaml, .ll/ll-config.json and .ll/loops/ \u2014 so a decision fragment or loop-suggestion written mid-run would read as an out-of-scope write by the loop. The .loops/ half is required for the same reason for the scratch-pad-redirect hook's .loops/tmp/scratch/<cmd>-<pid>.txt writes (subprocess_utils.py:292) in consuming projects that do not gitignore .loops/. Excluding .ll/ wholesale also makes FEAT-3332 requirement (p) (loops_dir out of the audited window) structurally true rather than merely temporally true. Precedent: general-task.yaml's final_verify_spin_gate already uses ':(exclude).loops/'.",
+  "rule": "check_intent_scope excludes both .loops/ and .ll/ as whole directories via explicit ':(exclude)' pathspecs on both the init baseline and the gate's current-set capture, rather than relying on ambient gitignore.",
+  "scope": "issue",
+  "alternatives_rejected": "run_dir-relative exclusion only (rejected: fails on the scratch-pad hook's writes, which are outside run_dir and not the loop's doing). Relying on ambient gitignore (rejected: works in this repo by accident via .gitignore:88 and breaks in any consuming project without those entries). Excluding .loops/ only and documenting .ll/ writes as an accepted limit (rejected: it is a live false-positive source in this very repo, not a theoretical one).",
+  "issue": "FEAT-3332",
+  "source_issue_id": "FEAT-3332"
+}

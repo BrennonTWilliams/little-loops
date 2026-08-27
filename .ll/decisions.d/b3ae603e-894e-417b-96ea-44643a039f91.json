@@ -1,0 +1,18 @@
+{
+  "id": "818d8299-4d99-4343-9e40-0496aa4a6283",
+  "type": "decision",
+  "timestamp": "2026-08-27T03:06:38Z",
+  "category": "architecture",
+  "labels": [
+    "loops",
+    "fsm",
+    "git",
+    "containment"
+  ],
+  "rationale": "comm has no NUL mode on BSD or GNU, so a bash sort/comm formulation would have forced either newline-delimited paths (losing embedded-newline paths) or a hand-rolled sort -z substitute. A python3 body makes the set difference a dict comparison, makes the content-hash path (which closes the in-place-overwrite blind spot that a name-only listing passes green) nearly free, turns requirement (k)(3) symlink normalization into os.path.realpath, and largely dissolves the FSM $${VAR} brace-escaping concern. Precedent: validate_intent in the same loop is already action_type: shell + python3 -c + evaluate: exit_code, so test_validation_gates_are_exit_code is satisfied unchanged. Also shrinks the path-space code that FEAT-3332's Impact names as the dangerous always-green failure surface.",
+  "rule": "check_intent_scope's containment gate is implemented as a python3 -c body inside an action_type: shell state, with NUL-delimited (-z) git enumeration and content-hashed (path -> git hash-object) untracked baselines on both the init and gate sides.",
+  "scope": "issue",
+  "alternatives_rejected": "Bash with comm -13 over newline-delimited paths (rejected: cannot consume NUL, loses embedded-newline paths, and makes content hashing an xargs pipeline). Name-only untracked comparison as an accepted limit (rejected: passes green on in-place overwrite of a pre-existing untracked file outside run_dir; general-task.yaml:424-429's untracked() already hashes, and test_untracked_file_content_edit_resets_counter exists to assert name-only is insufficient). Hand-rolled sort -z substitute in bash (rejected: reimplements in shell what python does natively).",
+  "issue": "FEAT-3332",
+  "source_issue_id": "FEAT-3332"
+}
