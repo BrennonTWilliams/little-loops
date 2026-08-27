@@ -17,8 +17,8 @@ depends_on: [BUG-3327]
 
 `workflow-generator` documents MR-3 artifact-isolation discipline for itself but
 enforces none of it at runtime. In run `2026-08-26T171218-workflow-generator`,
-`capture_intent` wrote `research/rsi-sources.md` and `research/rsi-oss-projects.md`
-**outside** `${context.run_dir}` and nothing noticed.
+`capture_intent` wrote two files under `research/` (`rsi-sources`,
+`rsi-oss-projects`) **outside** `${context.run_dir}` and nothing noticed.
 
 BUG-3327 fixes the *cause* of that specific incident (an unfenced brief that read
 as live instructions). This issue adds the *guard*: a `check_intent_scope` state
@@ -30,7 +30,9 @@ additive, low-risk, one prompt edit per site. This gate is a new state, two `ini
 baselines, repo-root relativization, two escape paths, and nine behavioral test
 cases. It is defense-in-depth against regressions, and bundling it was the single
 largest driver of BUG-3327's 63/100 outcome confidence. Land the fence first, then
-this with its own budget.
+this with its own budget. (That split sized the work at "nine behavioral test
+cases"; the 2026-08-26 review pass raised it to eleven — see Integration Map →
+Tests.)
 
 ## Current Behavior
 
@@ -56,14 +58,21 @@ sketch_state_graph`, with `check_intent_scope`'s `on_no` going to `diagnose`.
 **The containment check must be its own state, not an extra assertion inside
 `validate_intent`.** Three reasons, all load-bearing:
 
-1. **A scope violation is not retryable by `capture_intent`.** The out-of-scope
-   file has already been written; re-running the prompt cannot unwrite it.
-   `validate_intent`'s `on_no` edge is `capture_intent` (line 98) and is
-   **unbounded** — no retry counter guards it — so folding the containment check
-   in there means every true violation oscillates `capture_intent ->
-   validate_intent -> capture_intent` until `max_steps` is exhausted. The gate
-   must route a violation to `diagnose`/`failed`, which requires a separate state
-   with its own routing keys.
+1. **A scope violation is not retryable at all, so it must not enter the retry
+   path.** The out-of-scope file has already been written; re-running
+   `capture_intent` cannot unwrite it. Folding the containment check into
+   `validate_intent` would route every true violation through
+   `count_intent_retry` (line 119) — burning all three `max_intent_retries`
+   attempts on a condition no retry can clear, then arriving at `diagnose`
+   several passes late with the retry-exhaustion story rather than the real one.
+   The gate must route a violation *directly* to `diagnose`, which requires a
+   separate state with its own routing keys.
+
+   _(Historical note: this reason originally rested on `validate_intent`'s
+   `on_no` being an **unbounded** edge to `capture_intent`. BUG-3327 landed
+   `count_intent_retry` and bounded it, so the oscillate-until-`max_steps`
+   hazard no longer exists; the "not retryable" argument above survives that
+   change intact.)
 2. **The two checks fail for unrelated reasons.** "intent.yaml is malformed" is
    genuinely retryable by `capture_intent`; "the agent wrote outside its sandbox"
    is not. One state cannot carry two different `on_no` targets.
@@ -80,49 +89,98 @@ sketch_state_graph`, with `check_intent_scope`'s `on_no` going to `diagnose`.
   prompt states that run *after* it and are equally capable of writing outside
   `run_dir`. This issue does not make the loop scope-safe; it closes the one
   window where the incident occurred. Say so in the guide entry so the gate is not
-  mistaken for whole-pipeline enforcement.
-- **`validate_intent`'s `on_no: capture_intent` edge (line 98) remains
-  unbounded.** Bounding it is BUG-3327's Implementation Step 5, not this issue's —
-  but if BUG-3327 recorded "left alone", pick it up here, since reason (1) above
-  makes the unbounded-edge hazard this gate's own justification.
+  mistaken for whole-pipeline enforcement. Generalizing the gate across the
+  remaining prompt states is tracked as **FEAT-3335**, which depends on this
+  issue. (`diagnose` is the one exception handled here — see requirement (j) —
+  because this issue creates the edge into it.)
+- ~~**`validate_intent`'s `on_no: capture_intent` edge (line 98) remains
+  unbounded.**~~ **Resolved — no residual work.** BUG-3327 bounded that edge with
+  `count_intent_retry` (`workflow-generator.yaml:119`,
+  `context.max_intent_retries: "3"`). Retained here only so the reasoning above
+  is readable against its original form.
 
 ### Codebase Research Findings
 
 _Added by `/ll:refine-issue` — 2026-08-27 — based on codebase analysis:_
 
-- **BUG-3327 has landed** (`status: done`, commit `34c3ecac9`) and changed the exact edge reason (1) above relies on: `validate_intent`'s `on_no` is now `count_intent_retry` (`workflow-generator.yaml:119`), not `capture_intent` — a bounded retry state (default `context.max_intent_retries: "3"`, mirroring the pre-existing `count_emit_retry` pattern) now sits between `validate_intent`'s failure and `capture_intent`. The "unbounded retry" hazard reason (1) describes no longer exists on that edge; reasons (2) and (3) are independent of it and still require `check_intent_scope` to be its own state.
+- **BUG-3327 has landed** (`status: done`, commit `34c3ecac9`): `validate_intent`'s `on_no` is now `count_intent_retry` (`workflow-generator.yaml:119`), a bounded retry state (default `context.max_intent_retries: "3"`, mirroring the pre-existing `count_emit_retry` pattern). Reason (1) above has been rewritten against this current state; nothing further to reconcile.
 - The "Two limits of this placement" bullet's second point ("if BUG-3327 recorded 'left alone', pick it up here") is resolved — BUG-3327 did not leave the edge unbounded. No residual work from that bullet remains for this issue.
+
+## Use Case
+
+A little-loops maintainer runs `ll-loop run workflow-generator` from a
+subdirectory of the repo, with a working tree that already holds a few
+untracked scratch files, to generate a new loop from a natural-language brief.
+Partway through `capture_intent`, the LLM state decides it needs to "do some
+research first" and writes notes to `research/` at the repo root — outside the
+run directory, into the maintainer's actual source tree.
+
+Today nothing notices: the run continues, the loop is emitted, and the stray
+files are discovered later by `git status` (or not at all, if the path happens
+to be gitignored) with no record of which run produced them. With
+`check_intent_scope`, the run stops at the gate immediately after
+`validate_intent`, `${run_dir}/.scope_violations.txt` names `research/…`, and
+`diagnose` reports a containment violation rather than a retry-exhaustion
+story. The maintainer's pre-existing untracked scratch files do not trip the
+gate, and legitimate `run_dir` and `.loops/tmp/scratch/` writes are ignored —
+so the signal is actionable on the first pass rather than a false alarm to be
+disabled.
 
 ## Proposed Solution
 
 A new `action_type: shell` / `evaluate: exit_code` state between `validate_intent`
 and `sketch_state_graph`, with `on_yes: sketch_state_graph` and `on_no: diagnose`.
 
-Five correctness requirements, each of which the naive
+Correctness requirements, each of which the naive
 `git ls-files -o --exclude-standard` formulation gets wrong:
 
 **(a) Baseline the untracked set at `init`, don't assume a clean tree.** A
 developer's working tree routinely holds pre-existing untracked files. Without a
 baseline the gate fires on the *first* pass of every run in a dirty repo — and
 since the offending files are not the loop's to remove, the failure is permanent.
-`init` (lines 43-56) must capture both:
+`init` (lines 44-61) must capture both:
 
 ```sh
-git rev-parse HEAD > "$DIR/baseline-ref.txt"
-git ls-files -o --exclude-standard | LC_ALL=C sort > "$DIR/baseline-untracked.txt"
+git -C "$ROOT" rev-parse HEAD > "$DIR/baseline-ref.txt"
+git -C "$ROOT" ls-files -o --exclude-standard \
+  | LC_ALL=C sort > "$DIR/baseline-untracked.txt"
 ```
 
 `check_intent_scope` then diffs the *current* untracked set against
 `baseline-untracked.txt` (e.g. `comm -13`) and only considers newly-appeared
-paths, unioned with `git diff --name-only "$BASELINE_REF" -- .` for modifications
-to tracked files.
+paths, unioned with `git -C "$ROOT" diff --name-only "$BASELINE_REF"` for
+modifications to tracked files.
 
-**(b) Exclude the run dir by explicit pathspec, not by ambient gitignore.** This
-repo happens to gitignore `.loops/runs/` (`.gitignore:88`), so `--exclude-standard`
-hides `run_dir` here *by accident*. A consuming project without those entries would
-see every legitimate run-dir artifact as an out-of-scope write. Exclude
-`${captured.run_dir.output}` explicitly, following `general-task.yaml`'s
-`final_verify_spin_gate` idiom (`git diff "$BASELINE_REF" -- . ':(exclude).loops/'`).
+**(a2) `init`'s baseline and the gate's current-set capture are a matched pair,
+not two independent captures.** `comm -13` is meaningful only if both sides were
+produced by the *identical* invocation — same `-C "$ROOT"`, same pathspec, same
+`LC_ALL=C sort`, same `--exclude-standard`. Any drift between the two sites
+(e.g. adding an exclusion to one only) makes previously-baselined files read as
+newly-appeared, i.e. a permanent false positive. Write the two commands as a
+deliberate pair and say so in a `# HARNESS:` comment at both sites.
+
+**(b) Exclude the run dir by explicit pathspec, not by ambient gitignore — and
+exclude `.loops/` as a whole, not just `run_dir`.** This repo happens to
+gitignore `.loops/runs/` (`.gitignore:88`), so `--exclude-standard` hides
+`run_dir` here *by accident*. A consuming project without those entries would see
+every legitimate run-dir artifact as an out-of-scope write. Exclude explicitly,
+following `general-task.yaml`'s `final_verify_spin_gate` idiom
+(`git diff "$BASELINE_REF" -- . ':(exclude).loops/'`).
+
+The exclusion must cover **`.loops/`**, not merely `${captured.run_dir.output}`:
+the scratch-pad-redirect hook writes `.loops/tmp/scratch/<cmd>-<pid>.txt` during
+prompt states (`scripts/little_loops/subprocess_utils.py:292`), which is outside
+`run_dir` and not the loop's doing. In a consuming project that does not
+gitignore `.loops/`, a `run_dir`-only exclusion therefore fails the run on
+harness scratch files. Excluding `.loops/` wholesale also subsumes the
+`run_dir`-relative case and is the idiom already precedented in this repo.
+
+**(b2) Accepted limit: gitignored out-of-scope writes are invisible.**
+`--exclude-standard` means a write to `node_modules/`, `.env`, or any other
+ignored path is not reported by this gate at all. That is the correct trade
+(without it the gate is unusable in any project with build output), but it is a
+real hole in the containment claim and belongs in the guide entry next to the
+one-shot-window limit, not left implicit.
 
 **(c) Cover untracked *and* tracked changes.** The source incident's `research/*.md`
 files were new/untracked, so a tracked-only `git diff --name-only` misses the exact
@@ -159,6 +217,19 @@ Requirements:
    `${captured.run_dir.output}` to a root-relative path before using it in a
    pathspec. Note `$(pwd)` is not necessarily the repo root — the loop can be
    invoked from a subdirectory, so cwd-relative ≠ repo-relative.
+   Precedent: `incremental-refactor.yaml:58,159`
+   (`ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || ROOT="."`).
+1b. **Enumerate from the repo root, not from cwd — `git -C "$ROOT"`.** This is
+   the same defect as (e) in a second place, and the sketches in (a) originally
+   had it: both `git ls-files -o --exclude-standard` and
+   `git diff --name-only "$BASELINE_REF" -- .` are **scoped to the invocation
+   directory**. Run from a subdirectory, they enumerate only that subtree, so
+   every out-of-scope write elsewhere in the repo is silently invisible and the
+   gate reports green. Every git invocation in both `init` and
+   `check_intent_scope` must carry `-C "$ROOT"`, and the tracked-file diff must
+   drop the cwd-relative `-- .` pathspec (keep only the `':(exclude).loops/'`
+   exclusion from (b)). Test case (vii) does **not** catch this — it only proves
+   the absence of a false positive; see case (vii-b).
 2. Handle the run dir being **outside the worktree entirely** (an absolute
    `--run-dir` elsewhere on disk, or a symlinked path). There is no valid
    root-relative form; git will never report those files at all, so the correct
@@ -177,9 +248,39 @@ raises `expected namespace.path`. Use `$VAR` or escape as `$${VAR}` —
 `common.yaml:459-460` (`$${ID}`) is the in-repo precedent. Note the sketches above
 use `"$DIR"` and happen to sidestep this; the real gate will not.
 
-**(g) Step budget.** This state costs +1 per pass. BUG-3327 sets `max_steps: 45`,
-which already includes headroom for it; verify that value is in place rather than
-re-deriving a number here. If BUG-3327 shipped without the bump, set `45`.
+**(g) Step budget — verified, no change needed.** `max_steps` is **already 45**
+(`workflow-generator.yaml:32`, bumped by BUG-3327). An earlier research pass
+recorded 40; that reading is stale and superseded. This state costs +1 per pass,
+and the `count_intent_retry` loop can traverse it up to `max_intent_retries` (3)
+additional times, so confirm the longest path still fits inside 45 before
+declaring the step budget untouched — but do not bump it speculatively.
+
+**(i) The gate must persist its findings, and `diagnose` must read them.**
+`on_no: diagnose` lands in a **prompt** state whose read list is a fixed
+enumeration (`workflow-generator.yaml:638-642`: `intent.yaml`,
+`graph-sketch.yaml`, …, `.intent_errors.txt`) and whose "Most common failure"
+paragraph names only the two retry-exhaustion paths. A scope violation currently
+arrives there with no artifact and no explanation, so the diagnostic the operator
+receives would describe the wrong failure. Required:
+
+- `check_intent_scope` writes the offending paths, one per line, to
+  `${captured.run_dir.output}/.scope_violations.txt` (truncated to empty on a
+  pass, mirroring `validate_intent`'s `.intent_errors.txt` handling) **and**
+  prints them to stdout so they land in the run log.
+- `.scope_violations.txt` is added to `diagnose`'s read list, and
+  `diagnose`'s failure enumeration gains the scope-violation path.
+
+This promotes the Wiring Phase's "consider extending `diagnose`" item to a
+requirement, and gives `test_diagnose_mentions_both_retry_exhaustion_paths`
+(`test_builtin_loops.py:18046`) a third path to assert.
+
+**(j) Fence `diagnose` itself.** `diagnose` is an unfenced prompt state, so a
+containment violation is currently routed *into* an LLM state that is free to
+write anywhere — including more out-of-scope files, after the gate has already
+run. Add BUG-3327's clause ("write no file this state does not explicitly ask you
+to write") to `diagnose`'s prompt. In scope here because this issue creates the
+edge that makes it matter; the other post-gate prompt states named in the
+one-shot-window limit are the follow-up issue's business, not this one's.
 
 **(h) `loops_dir` is out of the audited window — for now.** The loop's `scope:`
 declares `${context.loops_dir}` (`.ll/loops`) alongside `run_dir`, and
@@ -187,7 +288,7 @@ declares `${context.loops_dir}` (`.ll/loops`) alongside `run_dir`, and
 this gate runs, so a run-dir-only subset assertion is correct at this point in the
 pipeline. If the gate is ever generalized to later states (see the one-shot limit
 above), `loops_dir` must be added to the allowed set or promotion reads as a
-violation.
+violation. Carried forward as an explicit requirement of **FEAT-3335**.
 
 ### Codebase Research Findings
 
@@ -261,12 +362,25 @@ baseline-ref + `git diff --name-only` shape.
   - (vii) **loop invoked from a repo subdirectory** (`cwd != repo root`) with only
     run-dir files written → exit 0. Proves the gate relativizes against
     `git rev-parse --show-toplevel` rather than `$(pwd)`.
+  - (vii-b) **loop invoked from a repo subdirectory, out-of-scope file written
+    *outside* that subdirectory** → non-zero. This is (vii)'s mandatory negative
+    partner, per requirement (e)(1b): (vii) alone passes trivially against a gate
+    that enumerates only the cwd subtree and therefore sees nothing. Without this
+    case the cwd-scoping defect ships silently green.
   - (viii) **run dir outside the worktree** (an absolute path under `tmp_path`, not
     under the repo) → exit 0 *with a warning*, per (e)(2) — and assert the warning
     text, since a bare exit 0 here is indistinguishable from the bug.
   - (ix) **a deliberate out-of-scope write while the run dir is correctly
     excluded** → non-zero. Pair with case (i) as a positive/negative couple; case
     (i) alone passes trivially against a gate that matches nothing.
+- Two further cases for requirements (b) and (i):
+  - (x) **a `.loops/tmp/scratch/foo-1234.txt` write in a repo whose `.gitignore`
+    does *not* cover `.loops/`** → exit 0. Proves requirement (b)'s `.loops/`-wide
+    exclusion, not just a `run_dir`-relative one; without it the scratch-pad hook
+    fails every run in a consuming project.
+  - (xi) **on a violation, `${run_dir}/.scope_violations.txt` exists and names the
+    offending path(s)**; on a pass it exists and is empty. Requirement (i) — the
+    artifact `diagnose` reads.
 
   Note macOS resolves `tmp_path` under `/private/var/...` while `$(pwd)` may report
   `/var/...` — normalize both sides in the helper or these cases flake per-platform
@@ -304,9 +418,30 @@ _Wiring pass added by `/ll:wire-issue`:_
   for the test to pass as written, but a natural consistency point given
   the established convention.
 
+_Test-harness research (relocated 2026-08-26 from a stray trailing `## Tests`
+section; `## Tests` is not part of the FEAT template):_
+- **No shared FSM shell-action test harness utility exists anywhere in
+  `scripts/tests/`.** The "extract action from parsed YAML, substitute
+  `${context.*}` via `.replace()`, run via `subprocess.run(['bash','-c',...])`,
+  assert `returncode`" pattern is independently duplicated per-file across at
+  least 13 test files (`test_builtin_loops.py`, `test_general_task_loop.py`,
+  `test_incremental_refactor_loop.py`, and others) — `conftest.py` has no such
+  fixture or mixin. The new `check_intent_scope` test class should follow this
+  same per-file duplication convention (matching
+  `TestGeneralTaskFinalVerifySpinGateShellAction`'s shape), not attempt to
+  extract or reuse a shared utility that does not exist.
+- **Anchors re-verified 2026-08-26, all current**:
+  `TestGeneralTaskFinalVerifySpinGateShellAction` line 2996
+  (`_init_repo`/`_run_gate`/`_make_run_dir` at 3009/3027/3036),
+  `test_pipeline_states_exist` 17733, `test_validation_gates_are_exit_code`
+  17793, `test_run_dir_used_throughout` 17813,
+  `test_diagnose_mentions_both_retry_exhaustion_paths` 18046. Earlier passes
+  recorded several of these differently; these supersede.
+
 ### Documentation
-- `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` — the gate, and its one-shot window
-  limit stated plainly so it is not mistaken for whole-pipeline enforcement
+- `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` — the gate, its one-shot window
+  limit stated plainly so it is not mistaken for whole-pipeline enforcement, and
+  the gitignored-write blind spot from requirement (b2)
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `docs/reference/loops.md` — the `workflow-generator` section's `### State Graph`
@@ -330,7 +465,7 @@ _Added by `/ll:refine-issue` — 2026-08-27 — based on codebase analysis:_
 - **Exact insertion point** — `scripts/little_loops/loops/workflow-generator.yaml`:
   - `init` (lines 43-58): `action_type: shell`, no `evaluate:` block, flows via bare `next: capture_intent`. No existing `git rev-parse HEAD` or `git ls-files -o --exclude-standard` capture — both must be added fresh.
   - `validate_intent` (lines 84-100): `action_type: shell`, `evaluate: {type: exit_code}`, `on_yes: sketch_state_graph`, `on_no: capture_intent`. `on_yes` is the exact edge to retarget to `check_intent_scope`.
-  - `max_steps` (line 32) is currently **40, not 45**. The Proposed Solution (g) assumption that BUG-3327 already bumped it does not hold against the current file — Implementation Step 4 ("verify... at least 45") will find 40 and must apply the bump itself.
+  - ~~`max_steps` (line 32) is currently **40, not 45**.~~ **Stale — superseded.** Re-verified 2026-08-26 against the current file: `max_steps: 45` at line 32. See Proposed Solution (g).
 - **`general-task.yaml` baseline/diff precedent, exact shape**: `check_baseline_tests` (line 76) writes `baseline-ref.txt` via `git rev-parse HEAD > "${context.run_dir}/baseline-ref.txt" 2>/dev/null || echo "" > ...`, action_type shell, no evaluate block (flows via bare `next`). Downstream states read the file rather than re-deriving HEAD. `check_provisional_markers` (lines 841-864) and `final_verify_spin_gate` (lines 377-447) both use this baseline but their evaluators are `output_json` (`.markers_found` eq 0) and `output_numeric` (lt `${context.max_final_verify_spins}`) respectively — **neither uses `evaluate: {type: exit_code}`** as the Integration Map's "Similar Patterns" implies for the exit_code precedent; the `exit_code` evaluator precedent for this new state instead comes from `workflow-generator.yaml`'s own lowering-pass gates (`validate_intent`, `validate_sketch`, etc.), which are already all `action_type: shell` + `evaluate: {type: exit_code}`.
 - **Untracked-set exclusion precedent, exact form**: `final_verify_spin_gate`'s `untracked() { git ls-files -o --exclude-standard -z -- . ':(exclude).loops/'; }` (lines 407-439) diffs untracked files by **both path and content hash** (`xargs -0 git hash-object`), not path alone — a name-only untracked listing is called out as insufficient by that state's own tests.
 - **No-git escape precedent, exact form**: `check_provisional_markers` (lines 841-864): `if [ -z "$BASELINE_REF" ] || ! git rev-parse --git-dir >/dev/null 2>&1; then printf '...skipped: true...'; exit 0; fi` — confirms the recommended fail-open-with-warning shape for requirement (d)/(e)(2). Contrast: `mechanize-skills.yaml`'s `snapshot_baseline` dirty-worktree check (lines 189-217) instead `exit 1`s to a distinct `on_no: record_skip` branch — a different escape shape used because that gate is wrapped by a routing decision, not a direct `exit_code` evaluator. Since `check_intent_scope` uses `evaluate: {type: exit_code}` directly (per `test_validation_gates_are_exit_code`), the `exit 0`-fail-open shape is the applicable precedent, not the `exit 1`/skip-branch shape.
@@ -346,6 +481,41 @@ _Added by `/ll:refine-issue` — 2026-08-27 — based on codebase analysis:_
   - `workflow-generator.yaml`: `init` is now lines 44-61 (ends `capture: run_dir` at 60, `next: capture_intent` at 61); `capture_intent` (63-97) now carries the BUG-3327 fence wrapping `${context.description}`; `validate_intent` is now lines 99-119, with `on_yes: sketch_state_graph` at line 118 (the edge to retarget) and `on_no: count_intent_retry` at line 119 (see Expected Behavior finding — not `capture_intent`); `max_steps` is confirmed **already 45** at line 32 (BUG-3327 bumped it) — Implementation Step 4 is now a verification-only no-op, not a change.
   - `test_builtin_loops.py`: `test_pipeline_states_exist` def is now line 17733, its `required` set spans 17734-17760 and already includes `"count_intent_retry"` (line 17747, added by BUG-3327) but still lacks `check_intent_scope`; `test_validation_gates_are_exit_code`'s parametrize list is now lines 17783-17791 (def line 17793), still `["validate_intent", "validate_sketch", "validate_evaluators", "validate_routing", "validate_artifact"]`; `TestGeneralTaskFinalVerifySpinGateShellAction` class now starts at line 2996 with `_init_repo` at 3009, `_run_gate` at 3027, `_make_run_dir` at 3036.
 - `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` gained a new "Fencing a User-Authored Brief/Goal" section (lines 625-676) from BUG-3327, documenting the fence mechanism (`fence.py`) — this is pure net-new prose adjacent to where this issue's gate documentation belongs; it does not mention `check_intent_scope` or runtime containment and requires no reconciliation, only a new adjacent subsection per Implementation Step 7.
+
+## Acceptance Criteria
+
+- [ ] `check_intent_scope` exists as its own `action_type: shell` /
+      `evaluate: {type: exit_code}` state, with `on_yes: sketch_state_graph` and
+      `on_no: diagnose` — **not** `capture_intent` and not `count_intent_retry`.
+- [ ] `validate_intent.on_yes` targets `check_intent_scope`;
+      `validate_intent.on_no` is still `count_intent_retry`.
+- [ ] `init` writes `baseline-ref.txt` and `baseline-untracked.txt`, both via
+      `git -C "$ROOT"`, and its stdout contract (`capture: run_dir`) is unchanged.
+- [ ] Every git invocation in `init` and the gate is root-scoped (`-C "$ROOT"`),
+      with no cwd-relative `-- .` pathspec.
+- [ ] The gate's exclusion covers `.loops/` as a whole and does not rely on
+      ambient gitignore.
+- [ ] On violation the gate exits non-zero, prints the offending paths, and
+      writes them to `${run_dir}/.scope_violations.txt`; on pass that file exists
+      and is empty.
+- [ ] `diagnose` reads `.scope_violations.txt`, names the scope-violation failure
+      path, and carries the BUG-3327 no-stray-writes fence clause.
+- [ ] Non-git directory and run-dir-outside-the-worktree both exit 0 **with a
+      warning on stdout**, and the warning text is asserted (a bare exit 0 is
+      indistinguishable from the always-green bug).
+- [ ] A pre-existing untracked file present before `init` does not trip the gate.
+- [ ] Behavioral cases (i)–(xi) all pass, including the negative partners
+      (ix) and (vii-b).
+- [ ] **The gate has been observed red** against a deliberately planted
+      out-of-scope write in a live `workflow-generator` run, launched from a repo
+      subdirectory with a dirty working tree — not merely green in CI.
+- [ ] `ll-loop validate` clean; full `python -m pytest scripts/tests/` exits 0
+      (including `TestValidatorWarningBudget`, with any new `ALLOWLIST` entry
+      justified by this issue ID).
+- [ ] `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` documents the gate, its
+      one-shot window limit, and the gitignored-write blind spot;
+      `docs/reference/loops.md`'s state-graph diagram includes the new state and
+      its `on_no -> diagnose` branch.
 
 ## Program Design
 
@@ -397,21 +567,32 @@ _Added by `/ll:refine-issue` — 2026-08-27 — based on codebase analysis:_
 
 ## Implementation Steps
 
-1. Add both baseline captures to `init` (lines 43-56), following
+1. Add both baseline captures to `init` (lines 44-61), following
    `general-task.yaml:76`'s `git rev-parse HEAD > baseline-ref.txt` idiom, plus the
-   `git ls-files -o --exclude-standard` untracked snapshot.
-2. Add the `check_intent_scope` state — including the repo-root relativization and
-   outside-the-worktree escape from requirement (e), the non-repo escape from (d),
-   and the `$${VAR}` brace escaping from (f).
-3. Retarget `validate_intent`'s `on_yes` to it.
-4. Verify `max_steps` is at least 45 per (g).
-5. Add the tests above.
-6. Verify with `ll-loop validate`, plus a re-run of `workflow-generator` **from a
+   `git ls-files -o --exclude-standard` untracked snapshot — both via
+   `git -C "$ROOT"` per (e)(1b), and written as an explicitly-commented matched
+   pair with the gate per (a2). Keep the `case`/`echo` block last so `init`'s
+   stdout contract (`capture: run_dir`) is unchanged.
+2. Add the `check_intent_scope` state — including the repo-root relativization,
+   root-scoped enumeration and outside-the-worktree escape from requirement (e),
+   the `.loops/`-wide exclusion from (b), the non-repo escape from (d), and the
+   `$${VAR}` brace escaping from (f).
+3. Retarget `validate_intent`'s `on_yes` (line 118) to it. Leave `on_no:
+   count_intent_retry` (line 119) untouched.
+4. Have the gate write `${run_dir}/.scope_violations.txt` per (i); add that file
+   to `diagnose`'s read list and add the scope-violation path to `diagnose`'s
+   failure enumeration.
+5. Add the fence clause to `diagnose`'s prompt per (j).
+6. Verify `max_steps` is 45 per (g) — expected to be a no-op.
+7. Add the tests above (cases i–xi, plus the state-set, exit_code-shape,
+   routing-edge, `run_dir`-usage and `diagnose`-text test updates).
+8. Verify with `ll-loop validate`, plus a re-run of `workflow-generator` **from a
    deliberately dirty working tree and from a repo subdirectory**, confirming that
    pre-existing untracked files do not trip the gate and that the gate still fires
-   on a deliberately planted out-of-scope write. **A green gate proves nothing
-   until you have seen it go red.**
-7. Document the gate and its one-shot window limit.
+   on a deliberately planted out-of-scope write **placed outside the invocation
+   subdirectory**. **A green gate proves nothing until you have seen it go red.**
+9. Document the gate, its one-shot window limit, and the gitignored-write blind
+   spot from (b2).
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
@@ -427,18 +608,23 @@ _These touchpoints were identified by wiring analysis and must be included in th
   (`test_builtin_loops.py:16206-16218`) when the new state lands — add an
   `ALLOWLIST` entry for `("workflow-generator", <category>)` only if the new
   state trips one of the 10 ratcheted warning categories.
-- Consider extending `diagnose`'s action text and
+- **Required (promoted from "consider" by requirement (i)):** extend
+  `diagnose`'s action text — read list *and* failure enumeration — to cover
+  `check_intent_scope` / `.scope_violations.txt`, and extend
   `test_diagnose_mentions_both_retry_exhaustion_paths`
-  (`test_builtin_loops.py:18046-18052`) to mention `check_intent_scope`,
-  matching the existing convention of `diagnose` enumerating every failure
-  path that routes to it.
+  (`test_builtin_loops.py:18046-18052`) to assert it. This matches the existing
+  convention of `diagnose` enumerating every failure path that routes to it;
+  without it an operator hitting a scope violation gets a diagnostic about
+  retry exhaustion, which is the wrong story. Rename the test if its
+  "both_retry_exhaustion_paths" name no longer describes what it asserts.
 
 ## Impact
 
 - **Priority**: P3 — defense-in-depth. BUG-3327's fence removes the cause; this
   catches regressions and the classes the fence does not cover.
 - **Effort**: Medium — one new state, two `init` baselines, repo-root
-  relativization, two escape paths, and nine behavioral test cases
+  relativization and root-scoped enumeration, two escape paths, a violation
+  report artifact plus `diagnose` edits, and eleven behavioral test cases
 - **Risk**: Medium — the gate can misfire in **both** directions: a false positive
   routes to `diagnose` and fails the run, while a path-space mismatch
   (requirement (e)) yields a gate that is permanently green and reports safety it
@@ -472,15 +658,8 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:format-issue` - 2026-08-27T02:20:19 - `0cce9f36-f0aa-4271-8573-3bd29b6d01a6.jsonl`
 - `/ll:wire-issue` - 2026-08-27T01:49:46 - `b4592890-2b63-4442-b15e-89282998dd3d.jsonl`
 - `/ll:refine-issue` - 2026-08-27T01:43:27 - `981cfc8c-efe7-4751-8804-dd1eed392dab.jsonl`
 - `/ll:refine-issue` - 2026-08-27T01:12:54 - `fb4eed07-2702-4aea-a748-78fa07142d55.jsonl`
 
-## Tests
-
-### Codebase Research Findings
-
-_Added by `/ll:refine-issue` — 2026-08-27 — based on codebase analysis:_
-
-- **No shared FSM shell-action test harness utility exists anywhere in `scripts/tests/`.** The "extract action from parsed YAML, substitute `${context.*}` via `.replace()`, run via `subprocess.run(['bash','-c',...])`, assert `returncode`" pattern is independently duplicated per-file across at least 13 test files (`test_builtin_loops.py`, `test_general_task_loop.py`, `test_incremental_refactor_loop.py`, and others) — confirmed by inspecting `conftest.py` directly, which has no such fixture or mixin. The new `check_intent_scope` test class should follow this same per-file duplication convention (matching `TestGeneralTaskFinalVerifySpinGateShellAction`'s shape), not attempt to extract or reuse a shared utility that does not exist.
-- Corrected line anchors (per the Integration Map finding above): `test_pipeline_states_exist` required-set now spans 17734-17760; `test_validation_gates_are_exit_code` parametrize list now spans 17783-17791; `TestGeneralTaskFinalVerifySpinGateShellAction` class now starts at line 2996 with `_init_repo`/`_run_gate`/`_make_run_dir` at 3009/3027/3036.
