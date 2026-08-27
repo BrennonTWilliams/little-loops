@@ -94,6 +94,40 @@ Confirmed `-c "` class-A/B sites: `loop-router.yaml:34, 53`; `sft-corpus.yaml:11
 **These must be converted to a quoted heredoc first**, then treated as shape 1.
 That is a third mechanical step the original plan did not budget for.
 
+#### Scope ambiguity in the shape-2 conversion (resolve before Step 4)
+
+"53 sites, 11 files" counts **interpolation sites**, but the unit of work in Step 4
+is the **invocation**: there are **114 `python3 -c "` invocations across 29 files**
+(`autodev.yaml` 26, `rn-build.yaml` 10, `oracles/code-run-gate.yaml` 10,
+`sft-corpus.yaml` 9, `workflow-generator.yaml` 7, `cli-anything-bootstrap.yaml` 6,
+…). Two readings, roughly 2× apart in effort on the riskiest step:
+
+- **Narrow — SELECTED (2026-08-27).** Convert only the invocations that *contain* a
+  class-A/B site (the 11 files). Consequence: 18 files keep the `-c "` shape, so the
+  Step-2 sweep **must not flag a `-c "` block whose interpolations are all class C**.
+  This is not a special case in the sweep: it falls out of the per-site
+  classification rule below for free, since a class-C site is clean in either host
+  shape.
+- ~~**Broad**~~ — convert all 114 invocations. Rejected: it triples the volume of the
+  one step that changes shell structure rather than a token (the step Impact names as
+  hazard 1), and buys only a simpler sweep rule the classifier already gives us.
+
+### Sweep classification rule (settles class C vs. class A/B)
+
+The sweep must decide, per interpolation site, whether it is untrusted. Do **not**
+reproduce MR-11's fixed key allowlist — that is the exact narrowness this issue
+faults it for. Invert it:
+
+- `${captured.*}` — **always untrusted** (class B). No exceptions; a capture is
+  either LLM output or command output, never operator-fixed.
+- `${context.<key>}` — **untrusted by default** (class A), except a short
+  explicitly-listed *trusted* set of runner-constructed keys (`run_dir`, and the
+  other loop-controlled keys the runner populates rather than the operator).
+- Consequence: a newly-introduced `${context.*}` key is untrusted until someone
+  adds it to the trusted list, which is the safe default direction.
+
+The same rule serves Step 9's MR-11 widening — implement it once, share it.
+
 ## Steps to Reproduce
 
 1. Run `loop-router` with a goal containing an apostrophe:
@@ -116,11 +150,15 @@ in-repo idioms, one per value shape:
    on the `python3` invocation and read it with `os.environ`:
 
    ```bash
-   GOAL=${context.goal:shell} python3 << 'PYEOF'
+   LL_ARG_GOAL=${context.goal:shell} python3 << 'PYEOF'
    import os
-   goal = os.environ.get("GOAL", "")
+   goal = os.environ.get("LL_ARG_GOAL", "")
    PYEOF
    ```
+
+   **The `LL_ARG_` prefix is mandatory** — see *Env-var naming* under Proposed
+   Solution; shell actions inherit the full parent environment, so an unprefixed
+   `GOAL=` shadows an inherited value.
 
    **The `:shell` suffix is required and the surrounding double quotes must be
    omitted.** `interpolation.py` supports a `:shell` suffix that `shlex.quote()`s
@@ -137,8 +175,17 @@ in-repo idioms, one per value shape:
    (`ISSUE_FILE="$ISSUE_FILE" python3 << 'PYEOF'`); `flux-image-generator.yaml:275`
    (`abs_dir = os.environ["ABS_DIR"]`). Note those bind an already-safe *shell*
    variable, not a raw interpolation — for a raw `${context.*}` the `:shell`
-   suffix is what makes the binding safe. 17 sites across the loop corpus already
+   suffix is what makes the binding safe. 18 sites across the loop corpus already
    use `:shell`.
+
+   **Only sound in the assignment-prefix position.** `interpolate()` returns `""`
+   for a `None`-resolving value *before* it reaches the `shlex.quote` branch
+   (`interpolation.py:270-273`), so `:shell` on an absent value emits nothing —
+   not `''`. `VAR=${context.x:shell} python3 …` degrades harmlessly to
+   `VAR= python3 …` (empty assignment), but the same token in a bare argument
+   position (`[ -z ${context.x:shell} ]`) collapses the token and changes the
+   command's arity. Use the `VAR=…` prefix form only; do not generalize `:shell`
+   to bare token positions as part of this work.
 2. **Multi-line LLM output → a file.** Write the captured output to a run-dir
    file via its own quoted heredoc, then `open()` that file from the Python
    heredoc (Option B — see Decision Rationale under Proposed Solution).
@@ -231,11 +278,81 @@ interpreter parses it. That is BUG-3327's territory.
    injections as well as literal injections, and neither the class-A nor the
    class-B remedy is sound in place.
 1. Convert **class A** sites to the `:shell`-bound env-var idiom:
-   `VAR=${context.goal:shell} python3 << 'PYEOF'` + `os.environ.get("VAR", "")`.
-   No surrounding double quotes — `:shell` shlex-quotes the value itself.
+   `LL_ARG_GOAL=${context.goal:shell} python3 << 'PYEOF'` +
+   `os.environ.get("LL_ARG_GOAL", "")`. No surrounding double quotes — `:shell`
+   shlex-quotes the value itself. Prefix every binding `LL_ARG_` (see *Env-var
+   naming* below).
 2. Convert **class B** sites per the decision below.
 3. Leave **class C** alone except where already editing the surrounding state.
 4. Add a lint (see Follow-up) so new sites cannot be introduced.
+
+### BLOCKER — `:shell` does not compose with `:default=` or `?`
+
+`interpolate()` parses the three suffixes as **mutually exclusive** and raises
+`InterpolationError("Ambiguous suffix: … (:default=..., ?, and :shell are mutually
+exclusive)")` on any combination (`scripts/little_loops/fsm/interpolation.py:242-248`,
+`:250-256`). Steps 5 and 6 as written are therefore **unimplementable at any site
+that already carries a `:default=` or `?` suffix** — the conversion produces a
+runtime hard failure, not a lint warning.
+
+This is not hypothetical. **130 `${context.*}` / `${captured.*}` sites repo-wide
+carry `:default=` or `?`**, and real class-A/B targets are among them:
+
+- Class B: `loop-router.yaml:522-523`
+  (`"""${captured.new_loop_proposal.output:default=}"""`,
+  `"""${captured.review_result.output:default=}"""`);
+  `loop-composer-adaptive.yaml:744, 750`
+  (`'${captured.user_plan_decision.output:default=}'`,
+  `'${captured.chain_review.output:default=}'`)
+- Class A: `rn-refine.yaml:151, 223, 500, 907, 1014-1015`;
+  `recursive-refine.yaml:55, 82-83, 118, 304, 320`; `rn-build.yaml:728-729`
+
+**Additionally, the suffix parse has a silent-misparse branch — S1 must fix it too.**
+The mutual-exclusion guard fires for only *one* of the two orderings
+(`interpolation.py:243-248` tests `var_part.endswith(":shell")`, i.e.
+`${x:shell:default=v}`). The other orderings fail quietly or confusingly:
+
+| Written | Today's behavior |
+|---|---|
+| `${x:shell:default=v}` | `InterpolationError` (the documented blocker) |
+| `${x:default=v:shell}` | **Silent misparse** — splits on `:default=` first, so the default becomes the literal string `"v:shell"` and no quoting is applied |
+| `${x?:shell}` | `shell_quote=True`, then resolves the path `"x?"` → "not found" error naming the wrong path |
+
+So S1 is not "relax the mutual-exclusion check": it must **normalize suffix order**
+and give all orderings one defined meaning, with unit tests covering all four
+(`:shell` alone, both `:default=` orders, `?:shell`). Budget for that, not a
+one-line edit.
+
+**Decision — SELECTED (2026-08-27): Option S1.**
+S2 does not answer class B at all (it says so itself), and S3 carves the permanent
+hole in exactly the class this issue calls sharpest. S1 is the only option that
+keeps the per-site remedy uniform across all 145 sites, which is what lets the
+Step-2 sweep be a single rule instead of a rule plus an exemption list. It is one
+function, unit-testable in isolation, no schema change.
+
+**Options considered:**
+
+- **Option S1 — SELECTED: make `:shell` compose.** Change `interpolate()` so
+  `:shell` may be combined with `:default=` and `?` — apply the fallback first,
+  then `shlex.quote()` the result — instead of raising. Small, local, directly
+  unit-testable, and it is the only change that leaves the per-site remedy uniform
+  across all 145 sites. It is a runner-side edit, but a far smaller one than
+  Option A's `${captured.x.path}` accessor, and it does not touch the schema.
+  Also fixes the `None` → bare-empty asymmetry noted in *Expected Behavior* if the
+  quote is applied after the `None` branch.
+- ~~**Option S2: push the default into Python.**~~ Rejected. Drop the suffix and write
+  `os.environ.get("VAR") or "queue"`. Works for **class A only**. For class B,
+  `:default=` guards a *missing capture* — dropping it makes the interpolation
+  raise on a state that never ran, converting a graceful default into a loop
+  failure. So S2 still needs a separate answer for the class-B `:default=` sites.
+- ~~**Option S3: exempt these sites.**~~ Rejected. Leave `:default=`/`?` sites
+  unconverted and teach the Step-2 sweep to accept them as known-unfixable.
+  Cheapest, but it carves a permanent hole in exactly the class-B sites the issue
+  calls sharpest.
+
+The **Step-2 sweep's definition of "clean" depends on this** — under S1 there is no
+`:default=`/`?` exemption: every class-A/B site converts, and a surviving raw one is
+a failure.
 
 ### Interaction with MR-11 (existing lint)
 
@@ -253,6 +370,14 @@ Consequences for this work:
 - MR-11 currently treats "inside a quoted heredoc" as unconditionally safe —
   true for bash, false once the body is re-parsed as Python. That is precisely
   the gap the Follow-up lint closes.
+- **MR-11's heredoc terminator match is looser than bash's.** `shell_safety.py:180`
+  closes a heredoc on `stripped == heredoc_marker`, so an *indented* line equal to
+  the marker ends the tracked block — where bash requires column 0 for `<<` (only
+  `<<-` relaxes it, and only for **tabs**). Any block after such a line is scoped
+  wrong. Since Step 2's sweep is expected to share this heredoc tracking and Step 9
+  extends it, tighten the check to column-0 (or `<<-` + leading tabs) as part of
+  this work — otherwise the sweep mis-scopes blocks the same way the original
+  survey's scanner did.
 
 ### Heredoc sentinel collision
 
@@ -268,17 +393,75 @@ the opener and closer must both carry the same token, and interpolating one
 expansion and defeats the entire mechanism. Two workable options; **pick one
 during implementation and record it here**:
 
-- **Fixed, improbable sentinel.** A long fixed marker unlikely to appear in prose
-  (e.g. `LL_RAW_9F3C1A7E_EOF`). Zero mechanism, keeps the quoted heredoc, residual
-  risk is non-zero but negligible. Cheapest, and consistent with the existing
-  precedents.
-- **Sentinel plus post-read length check.** Same fixed sentinel, but the Python
-  side compares the file's byte length against a `wc -c` recorded before the
-  heredoc, so a truncated payload fails loudly rather than silently. Costs a few
-  lines per site × 67.
+- **Fixed, improbable sentinel** — **SELECTED (2026-08-27).** A long fixed marker
+  unlikely to appear in prose (e.g. `LL_RAW_9F3C1A7E_EOF`). Zero mechanism, keeps
+  the quoted heredoc, residual risk is non-zero but negligible: a line reading
+  exactly `LL_RAW_9F3C1A7E_EOF` in LLM prose is not a realistic failure. Cheapest,
+  and consistent with the existing precedents.
+- ~~**Sentinel plus post-read length check.**~~ Rejected: costs ~4 lines per site
+  × 67 and only converts a silent truncation into a loud one — it does not prevent
+  the collision, and the collision it guards is already negligible.
 
 A randomized-per-run sentinel would require quoting the marker as
 `<< 'RAW'"$SENTINEL"''` or similar contortions; it is not recommended.
+
+### Option B canonical block (and its column-0 constraint)
+
+Bash matches a `<<` heredoc terminator **only at column 0** (`<<-` relaxes it for
+**tabs** only, which this repo's space-indented YAML block scalars cannot supply).
+The `brainstorm.yaml:161-164` precedent works because its `cat >` sits at the
+action body's top level. Several conversion targets do **not** — their Python is
+nested inside an `if` (`recursive-refine.yaml:82-83`, `rn-build.yaml:728-729`,
+`loop-composer-adaptive.yaml:744`). Writing the Option B block in place there
+produces an unterminated heredoc that swallows the rest of the action.
+
+**Rule: hoist the `cat >` heredoc to the top of the action, above any `if`/`for`,
+even when the Python that reads it is nested.** The file write is unconditional
+and harmless; only the read is conditional. Canonical block:
+
+```bash
+cat > "${context.run_dir}/<state>-<capture>.txt" << 'LL_RAW_9F3C1A7E_EOF'
+${captured.<name>.output}
+LL_RAW_9F3C1A7E_EOF
+# ... any if/for wrapping goes here ...
+LL_ARG_RUN_DIR=${context.run_dir:shell} python3 << 'PYEOF'
+import os
+run_dir = os.environ["LL_ARG_RUN_DIR"]
+with open(os.path.join(run_dir, "<state>-<capture>.txt")) as f:
+    value = f.read()
+PYEOF
+```
+
+**The `LL_ARG_RUN_DIR=` binding is load-bearing and was missing from the first draft
+of this block** — an earlier revision read `os.environ["RUN_DIR"]` without ever
+setting it, which raises `KeyError` at every one of the ~67 copy-paste sites. If you
+prefer to match the `brainstorm.yaml:163` precedent instead, raw-interpolate the path
+(`open("${context.run_dir}/<state>-<capture>.txt")`) — that is an accepted class-C
+site — but then drop the `os.environ` line. Do not ship the half-and-half form.
+
+Three notes on the block: the heredoc appends a trailing newline the captured value
+did not have (`.strip()` or `.rstrip("\n")` at the read site if the consumer is
+newline-sensitive — `brainstorm.yaml` gets away with it because it strips
+per-line); the filename must be unique **per capture per state**, since `>`
+truncates and a re-entered state legitimately overwrites its own file — the
+`<state>-<capture>.txt` naming is the enforced rule, not a suggestion, and the
+Step-2 sweep should assert it; and grepping `LL_RAW_9F3C1A7E_EOF` is the canonical
+way to enumerate every completed class-B conversion.
+
+### Env-var naming: reserve an `LL_ARG_` prefix
+
+`runners.py:305` spawns each shell action with `env=project_child_env()`, which is a
+full `os.environ.copy()` (`host_runner.py:1872` — the helper deliberately provides no
+way to clear an inherited key). So a binding named `GOAL=`, `TASK=`, `INPUT=`, or
+`PROMPT=` silently shadows whatever the operator's environment already had under that
+name, and the corpus already reuses generic names (`RUN_DIR`, `SKILL_FILE`) across
+unrelated states.
+
+**Rule: every binding introduced by this work is named `LL_ARG_<NAME>`** — e.g.
+`LL_ARG_GOAL=${context.goal:shell}` read as `os.environ.get("LL_ARG_GOAL", "")`. The
+Step-2 sweep asserts the prefix, which also makes the 78 class-A conversions greppable
+and keeps them from colliding with the pre-existing unprefixed bindings this issue
+does not touch.
 
 ### Open decision — how class B passes multi-line LLM output
 
@@ -391,7 +574,12 @@ must change):
   `oracles/verify-confidence-scores.yaml`
 - `scripts/little_loops/fsm/validation/shell_safety.py` — the MR-11 extension
   (Follow-up); this is now in-scope-adjacent rather than purely optional, since
-  the sweep is what makes ~145 hand-edits verifiable
+  the sweep is what makes ~145 hand-edits verifiable. Also carries the column-0
+  heredoc-terminator fix (`:180`).
+- `scripts/little_loops/fsm/interpolation.py` — **required (Option S1 selected)**:
+  `:242-256`, the suffix parse (mutual exclusion *and* the `${x:default=v:shell}`
+  silent misparse — the guard at `:243-248` only catches the reverse order);
+  `:270-273`, the `None`-before-`shlex.quote` ordering.
 - ~~Under option (a): `interpolation.py` / `executor.py` / `fsm-loop-schema.json`
   for the `.path` accessor~~ — not needed; Option B was selected
 
@@ -432,9 +620,35 @@ must change):
     scanner that only tracks heredoc markers silently mis-scopes every `-c "`
     block (this is how the original ~60 count was produced);
   - treat a `:shell`-suffixed site as clean;
+  - **track heredoc terminators at column 0**, not `line.strip() == marker` — see
+    the MR-11 note above; an indented marker line is not a bash terminator;
+  - classify per site via the *Sweep classification rule* above (`captured.*` always
+    untrusted; `context.*` untrusted minus a trusted runner-key list), **not** via a
+    fixed untrusted-key allowlist;
+  - encode the settled decisions: under **S1** there is no `:default=`/`?`
+    exemption — every class-A/B site converts; under **narrow**, a `-c "` block whose
+    sites are all class C is clean (which the classifier gives for free);
+  - assert the `LL_ARG_` prefix on bindings this work introduces, and the
+    `<state>-<capture>.txt` filename rule on Option B writes;
   - assert **per interpolation site**, not per file — `mechanize-skills.yaml:283-286`
     is the counterexample: one converted binding on one line, a raw
     interpolation on the next, inside the same heredoc.
+
+#### The sweep must be green on every commit — use a ratcheting baseline
+
+"Pin the survey table as the sweep's expected-fail baseline" cannot mean a failing
+test. `python -m pytest scripts/tests/` must exit 0 on `main` (see CLAUDE.md
+*Testing & CI Policy*, and the self-hosted runner gates every push), while steps 4/5/6
+are explicitly meant to land as separate commits — so a test red for the duration is
+not landable.
+
+Mechanism: check in a **baseline allowlist file** enumerating the known-unconverted
+sites (file, line-anchor, class). The test asserts the current scan equals the
+baseline — a site **not** in the baseline is a failure (no new sites), and a baseline
+entry that no longer scans is also a failure (stale entry: delete it in the same
+commit that converts it). Each conversion commit shrinks the baseline; the work is
+done when the class-A and class-B entries are empty. This makes every phase both
+green and independently verifiable, which is what step 2 is actually for.
 
 ### Documentation
 
@@ -491,20 +705,35 @@ _Added by `/ll:refine-issue` — 2026-08-27 — based on codebase analysis:_
 
 1. ~~Settle the class-B decision (a/b/c) above.~~ Decided: Option B — see
    Decision Rationale under Proposed Solution.
-2. **Write the static sweep first**, and pin the survey table above as its
-   expected-fail baseline. Building the detector before the edits is what turns
-   ~145 hand-edits from hopeful into verifiable, and it is the only way to know
-   the conversion is complete. It must handle both host shapes and glob
-   recursively (see Tests).
-3. Pick the sentinel strategy (fixed-improbable vs. fixed-plus-length-check) and
-   record it in *Heredoc sentinel collision* above.
-4. Convert the 53 `python3 -c "…"` sites to quoted heredocs (11 files), running
-   `ll-loop validate` on each. Behavior-neutral by itself; do it as its own
+1a. ~~Settle the `:shell` / `:default=` blocker.~~ Decided: **S1 — make `:shell`
+   compose**. Land the `interpolate()` change as its own first commit: normalize
+   suffix order so all four orderings have one defined meaning (including the
+   currently silent `${x:default=v:shell}` misparse), apply the fallback before
+   `shlex.quote()`, and fix the `None`-before-quote ordering. Unit tests for every
+   ordering ship in the same commit. Nothing else starts until this is on `main`.
+1b. ~~Settle the `-c "` conversion scope.~~ Decided: **narrow** — the 11 files that
+   contain a class-A/B site. See *Scope ambiguity in the shape-2 conversion*.
+2. **Write the static sweep first**, with the ratcheting baseline file described in
+   Tests (the sweep is green from commit one; the baseline shrinks per phase).
+   Building the detector before the edits is what turns ~145 hand-edits from hopeful
+   into verifiable, and it is the only way to know the conversion is complete. It
+   must handle both host shapes, glob recursively, and classify per site (see Tests).
+3. ~~Pick the sentinel strategy.~~ Decided: fixed-improbable
+   (`LL_RAW_9F3C1A7E_EOF`) — see *Heredoc sentinel collision*.
+4. Convert the `python3 -c "…"` sites to quoted heredocs — **11 files under the
+   narrow reading, 29 files / 114 invocations under the broad one (step 1b)** —
+   running `ll-loop validate` on each. Behavior-neutral by itself; do it as its own
    commit so the diff is reviewable.
-5. Convert the 78 class-A sites to `VAR=${context.x:shell}` + `os.environ`, loop
+5. Convert the 78 class-A sites to `LL_ARG_X=${context.x:shell}` + `os.environ`, loop
    by loop, `ll-loop validate` each. Any new MR-11 warning means the conversion
-   is wrong — do not set `unsafe_context_interpolation_ok`.
-6. Convert the 67 class-B sites via Option B (per-site heredoc-to-file).
+   is wrong — do not set `unsafe_context_interpolation_ok`. Note the FSM interpolates
+   the **whole** action string, comments included
+   (`reference_fsm_action_interpolated_before_bash`): a comment near the site that
+   quotes `${context.goal}` interpolates too, so convert or escape (`$${`) it in the
+   same edit.
+6. Convert the 67 class-B sites via Option B (per-site heredoc-to-file), using the
+   canonical block above — hoisting each `cat >` heredoc above any enclosing
+   `if`/`for` so its terminator lands at column 0.
 7. Leave the 131 class-C sites alone except where already editing the state.
 8. Add the behavioral tests; confirm the sweep from step 2 now passes clean.
 9. Extend MR-11 (widen the pattern to drop the key allowlist and add the
@@ -512,8 +741,34 @@ _Added by `/ll:refine-issue` — 2026-08-27 — based on codebase analysis:_
    Python literal within one") so new sites cannot be introduced.
 10. Document the idiom in `HARNESS_OPTIMIZATION_GUIDE.md`.
 
+## Acceptance Criteria
+
+1. `${x:default=v:shell}`, `${x:shell:default=v}`, `${x?:shell}`, and `${x:shell}`
+   each have one defined, unit-tested meaning; no ordering silently misparses.
+2. The static sweep exists, globs `loops/**/*.yaml` recursively, handles both host
+   shapes, classifies per site, and asserts equality against a checked-in baseline
+   file. It is green on `main` at every commit of this work.
+3. The baseline's class-A and class-B entries are **empty** at completion; class-C
+   entries may remain.
+4. `ll-loop validate` is clean on all 33 touched files, with **no** new MR-11
+   warnings and **no** loop setting `unsafe_context_interpolation_ok`.
+5. Every binding this work introduces is named `LL_ARG_*`; every Option B write uses
+   the `LL_RAW_9F3C1A7E_EOF` sentinel and a `<state>-<capture>.txt` filename.
+6. The four behavioral tests in *Tests* pass (apostrophe goal, `"""` capture, Python
+   injection, shell injection at a converted `-c "` site).
+7. MR-11 is widened (no key allowlist, `captured` namespace included, column-0
+   heredoc terminator) and the guide documents the two idioms.
+
 ## Impact
 
+- **Sizing / split**: this is EPIC-shaped, not a single issue — 145 site edits plus a
+  runner change, a new lint, a widened lint, and docs. The phases are already
+  independently landable and independently gated by the step-2 baseline; the natural
+  children are **1a** (`interpolation.py` suffix composition + tests), **2** (sweep +
+  baseline), **4** (`-c "` → heredoc, 11 files), **5** (78 class-A), **6** (67
+  class-B), **9+10** (MR-11 widening + guide). Run `/ll:scope-epic` before starting if
+  this will not be finished in one session; the ordering constraint is 1a → 2 → 4 →
+  {5, 6} → 9.
 - **Priority**: P2 — an ordinary apostrophe in a goal breaks `loop-router` and
   `loop-composer` today, and class B fails non-deterministically on ordinary
   model output. The injection path is real but mostly self-inflicted (operator
@@ -526,11 +781,16 @@ _Added by `/ll:refine-issue` — 2026-08-27 — based on codebase analysis:_
   roughly 3×. Splitting by phase (steps 4 / 5 / 6 above) is advisable — each is
   independently landable and independently verifiable by the step-2 sweep.
 - **Risk**: Medium — each edit is local and `ll-loop validate`-checkable, but the
-  sites are numerous and a missed one is invisible until it fires. Two specific
+  sites are numerous and a missed one is invisible until it fires. Four specific
   hazards: (1) the `-c "` → heredoc conversion is the only step that changes
   shell structure rather than a token, so it is the one that can break a working
-  loop; (2) the MR-11 widening will surface pre-existing findings in files this
-  issue does not otherwise touch, which must be triaged rather than suppressed.
+  loop — and its volume is 11 files or 29 depending on step 1b; (2) the MR-11
+  widening will surface pre-existing findings in files this issue does not
+  otherwise touch, which must be triaged rather than suppressed; (3) the
+  `:shell`/`:default=` blocker turns a mechanical suffix edit into a runtime
+  `InterpolationError` at 130 candidate sites unless step 1a lands first; (4) an
+  Option B block left inside an `if` yields an unterminated heredoc that silently
+  swallows the rest of the action.
   The static regression sweep, written first, is what makes the sweep verifiable
   rather than hopeful.
 - **Breaking Change**: No — all edits are internal to loop action bodies.
@@ -551,6 +811,49 @@ import-don't-restate spirit as FEAT-3328's gate-completeness rule, same
 regex-over-raw-action-string shape — but extend MR-11 rather than adding a rule,
 and widen its matcher (see Codebase Research Findings): today it matches a fixed
 seven-key `${context.*}` allowlist and has no `captured` alternation at all.
+
+**Seventh review pass — 2026-08-27** (verified against the code):
+- **Both open decisions settled; `decision_needed` → false.** S1 (make `:shell`
+  compose) and narrow (`-c "` scope). Rationale recorded inline at each.
+- **S1 is bigger than "relax the mutual-exclusion check".** The guard at
+  `interpolation.py:243-248` only catches `${x:shell:default=v}`; the reverse order
+  `${x:default=v:shell}` **silently misparses** into the literal default `"v:shell"`
+  with no quoting, and `${x?:shell}` resolves the bogus path `"x?"`. S1 must
+  normalize suffix order and test all four forms.
+- **The Option B canonical block was broken** — it read `os.environ["RUN_DIR"]`
+  without ever binding it, i.e. a `KeyError` at all ~67 copy-paste sites. Fixed;
+  the alternative raw-path form (matching `brainstorm.yaml:163`) is spelled out.
+- **Env-var names need the `LL_ARG_` prefix.** `runners.py:305` passes
+  `project_child_env()` = full `os.environ.copy()` (`host_runner.py:1872`), so an
+  unprefixed `GOAL=`/`TASK=` shadows an inherited value, and the corpus already
+  reuses generic names across states.
+- **The sweep needs a stated classification rule**, or it reproduces the very
+  allowlist this issue faults MR-11 for. Added: `captured.*` always untrusted,
+  `context.*` untrusted minus a trusted runner-key list (new keys untrusted by
+  default).
+- **"Expected-fail baseline" conflicted with the CI policy** (`pytest` must exit 0
+  on `main`, phases land as separate commits). Replaced with a ratcheting
+  baseline-file equality assertion that is green at every commit.
+- Added an **Acceptance Criteria** section and an **EPIC split recommendation**.
+- Noted that the FSM interpolates comments too, so comments quoting a converted
+  placeholder must be converted or `$${`-escaped in the same edit.
+
+**Sixth review pass — 2026-08-27** (verified against the code; see the sections
+above for detail):
+- **BLOCKER added:** `:shell` is mutually exclusive with `:default=` and `?`
+  (`interpolation.py:242-256`), so the class-A/B remedy is unimplementable at the
+  130 sites carrying those suffixes — including class-B targets
+  `loop-router.yaml:522-523` and `loop-composer-adaptive.yaml:744, 750`. New
+  open decision S1/S2/S3; `decision_needed` flipped to `true`.
+- `:shell` returns a bare `""` (not `''`) for a `None` value, so the remedy is
+  sound only in the `VAR=…` assignment-prefix position.
+- The `-c "` figure "53 sites, 11 files" counts sites; the *invocations* are 114
+  across 29 files. Narrow-vs-broad scope is now an explicit step-1b decision.
+- Option B needs a column-0 heredoc terminator; several targets nest their Python
+  inside an `if`. Canonical block + hoisting rule added.
+- MR-11 closes heredocs on `line.strip() == marker` (`shell_safety.py:180`),
+  looser than bash; fix while extending it, since the sweep shares the tracking.
+- Sentinel strategy decided: fixed-improbable `LL_RAW_9F3C1A7E_EOF`.
 
 **Also corrected on 2026-08-27** (see the sections above for detail):
 - The class-A remedy is `VAR=${context.x:shell}`, not `VAR="${context.x}"`. The
