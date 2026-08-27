@@ -31,6 +31,13 @@ terminator to column 0. Then document the two safe idioms in
 MR-11 consumes ENH-3338's `classify_site()` rather than reimplementing the
 classification rule.
 
+Also adds the per-site `# ll-lint: mr11-ok(<var>) <reason>` marker — the narrow
+escape hatch that lets the widening's residual findings be recorded in place
+instead of trading away the corpus's zero-warning property. Without it, the
+widening either forces every pre-existing finding to be converted inside this
+issue or leaves ambient warnings that destroy MR-11's value as a regression
+signal.
+
 ## Current Behavior
 
 `_find_unsafe_context_interpolations` / `_validate_unsafe_context_interpolation`
@@ -107,7 +114,15 @@ loop — including loops in consuming projects, which no baseline covers.
     column-0 semantics
   - `:148-188` — `_find_unsafe_context_interpolations`: the Python-literal
     position distinction and the `-c "` host shape
-  - `:191-227` — the validator's message text (see below)
+  - `:191-227` — the validator's message text (see below), plus the marker's
+    own well-formedness check, which emits `ValidationSeverity.ERROR` (not
+    WARNING) for a malformed or reasonless marker
+  - **new** — marker parsing: grammar, per-variable matching, placement
+    (trailing or preceding-line), and the `${`-rejection guard. Note the
+    existing scanner `continue`s on any line whose `stripped.startswith("#")`
+    (`:170-171`) and skips heredoc interiors wholesale (`:166-169`); both paths
+    change under this issue, so marker lines must be read *before* those skips
+    rather than falling through them
 - `scripts/little_loops/fsm/interp_sweep.py` (new), created by ENH-3338 — **not
   modified here**; imported. `classify_site()` is the single implementation of
   the classification rule.
@@ -129,7 +144,12 @@ loop — including loops in consuming projects, which no baseline covers.
   behavior item 3 above says is wrong** — it must be revised, not merely kept
   green. Record the revision explicitly; a silently rewritten assertion is how
   this rule got narrow in the first place.
-- `scripts/tests/test_builtin_loops.py` — ENH-3338's baseline test stays green.
+- `scripts/tests/test_builtin_loops.py` — ENH-3338's baseline test stays green;
+  plus the marker-count ratchet assertion (AC 8c), which belongs here beside the
+  other corpus-wide guards rather than in the MR-11 unit suite.
+- `scripts/tests/test_fsm_validation_shell_safety.py` — the marker unit tests
+  (AC 8b): per-variable exemption, both placements, each malformed form → ERROR,
+  `${`-bearing marker → ERROR, ordinary comment → not a marker.
 - `ll-loop validate` across the whole corpus must be clean **after** the widening.
 
 ### Documentation
@@ -141,16 +161,24 @@ loop — including loops in consuming projects, which no baseline covers.
 ### Configuration
 
 - N/A — `unsafe_context_interpolation_ok` already exists and is not extended.
+  The marker is deliberately **not** config: it lives in the loop YAML beside the
+  site it exempts, where a reviewer reading that action sees it. A config-file
+  allowlist would put the exemption somewhere nobody reading the code will look.
 
 ## Scope Boundaries
 
 **In scope:** MR-11's matcher width, namespace coverage, Python-literal position
-awareness, and column-0 terminator; the validator's message text; the guide's
-idiom documentation; triage of findings the widening surfaces.
+awareness, and column-0 terminator; the validator's message text; the
+`# ll-lint: mr11-ok(<var>)` marker (grammar, parsing, well-formedness ERROR, and
+the marker-count ratchet); the guide's idiom documentation; triage of findings
+the widening surfaces.
 
 **Out of scope:** the suffix grammar (ENH-3337); the sweep and its baseline
-(ENH-3338); converting the 145 epic sites (BUG-3339/3340/3341); raising MR-11 to
-`ERROR` severity; other MR rules.
+(ENH-3338); converting the 145 epic sites (BUG-3339/3340/3341); raising MR-11's
+*finding* severity to `ERROR` (the marker's well-formedness check is a separate,
+new ERROR and does not change MR-11's finding severity — see § Severity);
+extending the marker to other MR rules; removing or deprecating the loop-level
+`unsafe_context_interpolation_ok` flag.
 
 ## Program Design
 
@@ -163,6 +191,12 @@ idiom documentation; triage of findings the widening surfaces.
   (`shell_safety.py:191`) — same signature; message text updated.
 - `classify_site(namespace: str, key: str) -> str` (ENH-3338,
   `scripts/little_loops/fsm/interp_sweep.py`) — **imported, not reimplemented.**
+- `_parse_mr11_marker(line: str) -> MarkerParse | None`
+  (`shell_safety.py`, new) — returns the exempted `<namespace>.<key>` and the
+  reason for a well-formed marker, a malformed-marker sentinel carrying the
+  defect for the ERROR path, or `None` for an ordinary comment. Proposed name;
+  keep it private to `shell_safety.py` — the marker is MR-11's, not a
+  cross-rule mechanism.
 
 ### Decision Rules
 
@@ -177,6 +211,8 @@ The rule MR-11 enforces after widening:
 | inside a quoted heredoc that **is** a Python body, carrying `:shell` | **flag (new)** — see below |
 | inside a `python3 -c "…"` body | **flag (new)** |
 | trusted key (`run_dir`, `promoted_artifact`, `_`-prefixed), `prev.exit_code`/`state`/`timeout_kind`, or `${loop.*}` | clean |
+| carries a well-formed `# ll-lint: mr11-ok(<this var>) <reason>` marker | clean, and counted against the marker ratchet |
+| carries a malformed / reasonless / `${`-bearing marker | **ERROR** (louder than the warning it tried to silence) |
 
 Untrusted-ness comes from `classify_site()`: `captured.*` always,
 `prev.output`/`prev.stderr` always, `context.*` minus the enumerated trusted set.
@@ -200,10 +236,17 @@ on the `python3` invocation line — rather than the generic text.
 
 ### Severity
 
-Keep `WARNING`. Raising to `ERROR` would hard-fail `ll-loop validate` on
-consuming projects' pre-existing loops at upgrade time, which is a migration this
-epic did not scope. Reconsider in a follow-up once the idiom is documented and
-has shipped for a release. Record this as a decision.
+Keep `WARNING` **for findings**. Raising to `ERROR` would hard-fail
+`ll-loop validate` on consuming projects' pre-existing loops at upgrade time,
+which is a migration this epic did not scope. Reconsider in a follow-up once the
+idiom is documented and has shipped for a release. Record this as a decision.
+
+**The marker's well-formedness check is `ERROR`, and that is deliberate and not
+in tension with the above.** A consuming project that never writes a marker never
+sees it, so it adds no upgrade-time hard failure — the only way to trip it is to
+write a marker and write it wrong. Making it a WARNING would mean a malformed
+marker both fails to suppress *and* fails to announce itself clearly, which is
+the worst of both.
 
 ### Expected finding surface
 
@@ -218,30 +261,64 @@ a rubber stamp.
 An earlier draft offered "add it to ENH-3338's baseline as class-C/accepted with
 a reason" as an outcome. **That does not work, and it made the ACs
 self-contradictory.** ENH-3338's baseline is a *test data file* consumed by
-`test_builtin_loops.py`; MR-11 never reads it, and has no per-site suppression —
+`test_builtin_loops.py`; MR-11 never reads it, and had no per-site suppression —
 only the loop-level `unsafe_context_interpolation_ok` flag this issue forbids. So
-a baselined finding still emits a WARNING, and the old AC 5 ("`ll-loop validate`
+a baselined finding still emitted a WARNING, and the old AC 5 ("`ll-loop validate`
 clean across the entire corpus") could not hold alongside the old AC 8.
 
-Resolution, and the two-tier AC that replaces them:
+**Resolution: this issue adds a per-site inline marker** (see the next section),
+so corpus-wide cleanliness stays a real, continuously-enforced property rather
+than being traded away. Triage per finding is then:
 
-- **Files EPIC-3336 touched** must be MR-11-clean. Non-negotiable — a warning
-  there is a failed conversion.
-- **Findings elsewhere** are triaged one of two ways: converted in this issue, or
-  carried by a **named follow-up issue** filed in this issue's commit and linked
-  here. Filing is not deferral-by-silence: the issue must name the file, the
-  state, and the class.
-- Until that follow-up lands, the corpus temporarily loses its zero-MR-11-warning
-  property. **ENH-3338's baseline, not MR-11 cleanliness, is the regression
-  signal during that window** — record this explicitly, because EPIC-3336's
-  Motivation leans on the zero-warning property and a future reader will
-  otherwise read the residual warnings as the epic having failed.
+- **Convert it** — the default, and always preferred.
+- **Mark it** with an inline `# ll-lint: mr11-ok(<var>) <reason>` naming a
+  tracking issue, when conversion is genuinely out of this epic's reach.
+- **Never** `unsafe_context_interpolation_ok`, and never a re-narrowed pattern.
 
-A per-site suppression mechanism (e.g. an inline `# ll-lint: mr11-ok <reason>`
-marker) was considered and **rejected for this issue** — it is new lint
-surface-area that EPIC-3336 did not scope, and adding it under time pressure at
-the end of the epic is exactly the shape of change that quietly re-opens the
-class. The follow-up issue may propose it on its own merits.
+The deferral option (carry residual warnings until a follow-up lands) was
+considered and rejected: EPIC-3336's Motivation leans on the corpus being
+MR-11-clean so that *any* warning is a regression signal, and a window of
+ambient warnings destroys exactly that property for the duration.
+
+### The `# ll-lint: mr11-ok(...)` marker — in scope for this issue
+
+A narrow, per-site, reason-bearing escape hatch. Grammar:
+
+```
+# ll-lint: mr11-ok(<namespace>.<key>) <reason, must reference an issue ID>
+```
+
+Design constraints, each one a lesson from how MR-11 got narrow in the first
+place:
+
+1. **It names the variable it exempts.** A bare line-level marker would exempt
+   *every* site on that line — the `mechanize-skills.yaml:283-286` failure shape
+   (one converted binding, a raw sibling on the next line) is precisely what a
+   line-level exemption would hide. The parenthesized `<namespace>.<key>` is
+   mandatory.
+2. **A reason is mandatory and must cite an issue ID.** A marker with no reason,
+   no parenthesized variable, or a malformed one is itself a validation
+   **ERROR** — not a silently-ignored comment. A lazy blanket marker must fail
+   louder than the warning it was trying to silence.
+3. **Placement: trailing on the site's own line, or alone on the line
+   immediately above it.** The two-line form is required for a
+   `python3 -c "…"` one-liner, where a trailing `#` would comment out the rest
+   of the Python body; there the marker goes on a preceding *shell* comment
+   line. Inside a heredoc Python body both forms are ordinary Python comments.
+4. **The marker must not quote the token it exempts.** The FSM interpolates the
+   whole action string, comments included
+   (`reference_fsm_action_interpolated_before_bash`), so writing
+   `# ll-lint: mr11-ok(context.goal) — see ${context.goal}` makes the comment its
+   own live interpolation site. The grammar's `<namespace>.<key>` is bare text
+   with no `${`, which is what keeps it inert; reject a marker containing `${`.
+5. **Markers are counted.** A test asserts the total marker count in the corpus
+   against a checked-in integer, so adding one is a deliberate, reviewed act
+   rather than a quiet edit. Removing one needs no ceremony — the count only
+   ratchets down.
+
+The loop-level `unsafe_context_interpolation_ok` flag is **not** removed or
+deprecated here (that is a migration this epic did not scope), but no loop in the
+corpus sets it and none may start.
 
 ### Call Path
 
@@ -260,9 +337,15 @@ No runtime path — validation only.
 3. Tighten the heredoc terminator to column 0.
 4. Revise `test_mr11_does_not_fire_inside_quoted_heredoc` to assert the corrected
    semantics, and record why the old assertion was wrong.
-5. Run `ll-loop validate` across the corpus; triage every newly surfaced finding
-   (convert here, or file a named follow-up issue in this commit). Do not
-   suppress, and do not baseline — MR-11 does not read the baseline.
+5. Implement the `# ll-lint: mr11-ok(<var>) <reason>` marker: grammar, per-
+   variable matching, both placements, the `${`-rejection guard, the
+   malformed-marker ERROR, and the checked-in marker-count ratchet. Do this
+   **before** step 6 — triaging without the mechanism is what forced the earlier
+   draft's contradiction.
+6. Run `ll-loop validate` across the corpus; triage every newly surfaced finding
+   — convert it, or mark it with a reason citing a tracking issue. Do not set
+   `unsafe_context_interpolation_ok`, do not re-narrow the pattern, and do not
+   baseline (MR-11 does not read ENH-3338's baseline).
 6. Update the validator's message to name both remedies concretely — the
    `LL_ARG_X=${context.x:shell}` + `os.environ` idiom and the
    `LL_RAW_9F3C1A7E_EOF` heredoc-to-file idiom — and link the guide section.
@@ -289,10 +372,11 @@ No runtime path — validation only.
 4. MR-11 closes a heredoc only on a column-0 terminator; an indented
    marker-equal line does not end the tracked block, with a unit test.
 5. MR-11 does not fire on any correctly converted site — verified by
-   `ll-loop validate` running clean on **every file EPIC-3336 touched** after
+   `ll-loop validate` running clean across the **entire corpus** after
    BUG-3339 / 3340 / 3341 have landed, with **no** loop setting
-   `unsafe_context_interpolation_ok`. Corpus-wide cleanliness is *not* asserted
-   here; see AC 8.
+   `unsafe_context_interpolation_ok`. Residual pre-existing findings are
+   converted or marked (AC 8); the corpus's zero-warning property is preserved
+   continuously, not restored later.
 5b. MR-11 flags a `:shell`-suffixed interpolation inside a Python body and does
    **not** flag one at a bash token position, with a unit test for each. Its
    message for the former names the hoist-to-`LL_ARG_` remedy specifically.
@@ -300,18 +384,26 @@ No runtime path — validation only.
    `shell_safety.py`.
 7. `test_mr11_does_not_fire_inside_quoted_heredoc` is revised, and the reason the
    original assertion was wrong is recorded in the test or this issue.
-8. Every finding surfaced by the widening outside the epic's touched files is
-   triaged — converted in this issue, or carried by a **named follow-up issue**
-   filed in this issue's commit and linked from here, naming file, state, and
-   class. None is suppressed via `unsafe_context_interpolation_ok` or by
-   re-narrowing the pattern. Baselining is **not** an accepted outcome — MR-11
-   does not read ENH-3338's baseline (see Expected finding surface).
-8b. The interim regression-signal decision is recorded: while the follow-up is
-   open, the corpus carries residual MR-11 warnings and ENH-3338's baseline —
-   not MR-11 cleanliness — is the regression signal.
+8. Every finding surfaced by the widening is triaged — converted in this issue,
+   or exempted with a well-formed `# ll-lint: mr11-ok(<var>) <reason>` marker
+   citing a tracking issue. None is suppressed via
+   `unsafe_context_interpolation_ok` or by re-narrowing the pattern. Baselining
+   is **not** an accepted outcome — MR-11 does not read ENH-3338's baseline.
+8b. The marker is implemented per § The `# ll-lint: mr11-ok(...)` marker, with a
+   unit test for each constraint: it exempts only the named variable (a sibling
+   site on the same line still fires); a marker with no reason, no parenthesized
+   variable, or a `${` in it is an **ERROR**; both placements work, including the
+   preceding-line form for a `python3 -c "…"` one-liner; and an ordinary comment
+   is not mistaken for a marker.
+8c. The corpus's marker count is checked in and asserted by a test. Every marker
+   present at close carries a reason naming a tracking issue —
+   `grep -rn "ll-lint: mr11-ok" scripts/little_loops/loops/` enumerates them, and
+   the enumeration is recorded in this issue so the residual set is visible
+   rather than diffuse.
 9. `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` documents both idioms with
-   copy-pasteable blocks, the column-0 hoist rule, and the `<state>-<capture>.txt`
-   naming rule.
+   copy-pasteable blocks, the column-0 hoist rule, the `<state>-<capture>.txt`
+   naming rule, and the marker's grammar and placement rules — including that it
+   is a last resort and must not quote the token it exempts.
 10. The WARNING-vs-ERROR severity decision is recorded with its rationale.
 11. `python -m pytest scripts/tests/` exits 0.
 
@@ -319,15 +411,23 @@ No runtime path — validation only.
 
 - **Priority**: P2 (raised from P3) — the only child that stops the class from
   returning, and the only one whose effect reaches loops in consuming projects.
-- **Effort**: Medium — the lint change is contained, but step 5's triage of
-  newly-surfaced pre-existing findings is open-ended by design.
-- **Risk**: Low to runtime (validation only). The risk is process: an implementer
-  under time pressure re-narrows the pattern or sets the suppression flag to make
-  `ll-loop validate` green, which silently undoes the epic. AC 8 exists to make
-  that visible.
-- **Breaking Change**: No at `WARNING` severity — consuming projects see new
-  warnings, not failures. It would be at `ERROR`, which is why the severity stays
-  as-is.
+- **Effort**: Medium–Large — raised when the marker was scoped in (2026-08-27).
+  Three parts now: the lint widening (contained), the marker mechanism (new
+  parsing, a new ERROR path, and a count ratchet — small but genuinely new lint
+  surface), and step 6's triage of newly-surfaced pre-existing findings, which is
+  open-ended by design. The marker is what keeps that triage from being
+  unbounded: a finding beyond this epic's reach costs one reviewed line, not a
+  conversion.
+- **Risk**: Low to runtime (validation only). Two process risks. First, an
+  implementer under time pressure re-narrows the pattern or sets the loop-level
+  flag to make `ll-loop validate` green — AC 8 exists to make that visible.
+  Second, and new: **the marker becomes the path of least resistance** and the
+  triage turns into a marking exercise. The count ratchet (AC 8c) and the
+  mandatory issue-citing reason are the countermeasures; if the residual marker
+  count comes out large, that is a signal to convert more, not to accept it.
+- **Breaking Change**: No. MR-11 findings stay at `WARNING`, so consuming
+  projects see new warnings, not failures. The marker's well-formedness check is
+  an `ERROR`, but it is unreachable for any project that does not write a marker.
 
 ## Status
 

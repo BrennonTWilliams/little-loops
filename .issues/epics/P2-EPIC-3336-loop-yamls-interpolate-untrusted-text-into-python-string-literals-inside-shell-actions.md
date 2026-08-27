@@ -94,7 +94,8 @@ baseline proves it; MR-11 prevents new sites.
 - `-c "` → quoted-heredoc conversion (BUG-3339)
 - class-A → `:shell` env-var binding (BUG-3340)
 - class-B → heredoc-to-file (BUG-3341)
-- MR-11 widening + guide documentation (ENH-3342)
+- MR-11 widening, the per-site `# ll-lint: mr11-ok(<var>)` marker, and guide
+  documentation (ENH-3342)
 - the four behavioral injection tests (ENH-3347)
 
 ### Out of scope
@@ -121,6 +122,7 @@ them.
 | Env prefix | Every binding this work introduces is named `LL_ARG_<NAME>` — `runners.py:305` spawns actions with a full `os.environ.copy()`, so a bare `GOAL=`/`TASK=` shadows the operator's environment | BUG-3340, BUG-3341 |
 | `-c "` scope | **Narrow** — only the files containing a class-A/B site, not all 29 files / 114 invocations | BUG-3339 |
 | Baseline | Ratcheting checked-in baseline, green on `main` at every commit — never a red test | ENH-3338 |
+| Escape hatch | A per-site `# ll-lint: mr11-ok(<var>) <reason>` marker, naming the variable it exempts and citing a tracking issue; malformed markers are an ERROR and the corpus marker count is ratcheted. It exists so success metric 2 can stay absolute. **It ships in ENH-3342, which runs last — so it is NOT available to BUG-3339/3340/3341.** For those three, a new MR-11 warning means a failed conversion, full stop (added 2026-08-27) | ENH-3342 |
 
 ## Child sequencing
 
@@ -246,13 +248,16 @@ file.
 
 1. ENH-3338's baseline has **zero** class-A and class-B entries; class-C entries
    may remain.
-2. `ll-loop validate` is clean on all **touched** files with **no** new MR-11
-   warnings and **no** loop setting `unsafe_context_interpolation_ok`.
-   *Corpus-wide* cleanliness is deliberately **not** a success metric: ENH-3342's
-   widening surfaces pre-existing findings in untouched files, MR-11 has no
-   per-site suppression, and baselining does not silence it. Those are carried by
-   a named follow-up issue (ENH-3342 AC 8), and during that window ENH-3338's
-   baseline — not MR-11 cleanliness — is the regression signal.
+2. `ll-loop validate` is clean across the **whole corpus** with **no** MR-11
+   warnings and **no** loop setting `unsafe_context_interpolation_ok`. The
+   corpus's zero-warning property — what makes any future warning a regression
+   signal rather than ambient noise — is preserved continuously, never traded
+   away for a migration window. ENH-3342's widening surfaces pre-existing
+   findings in files this epic does not otherwise touch; each is either converted
+   or carries a per-site `# ll-lint: mr11-ok(<var>) <reason>` marker citing a
+   tracking issue. That marker is scoped into ENH-3342 specifically so this
+   metric can stay absolute (decided 2026-08-27; baselining is not an option —
+   MR-11 does not read ENH-3338's baseline).
 3. `python -m pytest scripts/tests/` exits 0 at **every** commit of this work,
    not only at the end.
 4. `grep -rl LL_RAW_9F3C1A7E_EOF scripts/little_loops/loops/` enumerates every
