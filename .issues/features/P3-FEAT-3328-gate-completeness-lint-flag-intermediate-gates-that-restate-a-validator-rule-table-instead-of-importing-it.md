@@ -448,6 +448,12 @@ restatement lives in a `prompt` action the rule does not inspect).
   Design Rules (MR-1..MR-14 table) and add the Non-Goal below as a review
   heuristic
 
+_Wiring pass added by `/ll:wire-issue` (2026-08-27):_
+- `CHANGELOG.md` — add an entry for the new rule, following the established
+  precedent of a changelog line for every prior validation-rule addition
+  (e.g. ENH-2896 → MR-14, ENH-2934 → tamper-guard, ENH-2997 → prepatch-check).
+  This was the one wiring gap not already covered by the issue's own research.
+
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/little_loops/fsm/validation/structural_rules.py` — add
   `_validate_gate_completeness` to the `from little_loops.fsm.validation.meta_rules
@@ -543,6 +549,58 @@ _Wiring pass added by `/ll:wire-issue`:_
   dispatcher is a flat `errors.extend(...)` sequence with no registry
   object), so adding the new rule requires no update to any "N rules total"
   assertion.
+
+_Wiring pass added by `/ll:wire-issue` (2026-08-27):_
+- `gate_completeness_ok`'s round-trip test (schema.py field + `from_dict` +
+  `to_dict`, per the Wiring Phase entry below) has an exact existing template:
+  `TestPartialRouteOk` in `scripts/tests/test_fsm_schema.py:3664-3699` (three
+  methods — `..._true_round_trips`, `..._false_omitted_from_dict`,
+  `..._defaults_false`). A second instance of the same shape exists for
+  `unsafe_context_interpolation_ok` at `test_fsm_schema.py:4154`, confirming
+  this is the established convention, not a one-off.
+- The "recognized as top-level key" check (i.e. that `gate_completeness_ok`
+  in `KNOWN_TOP_LEVEL_KEYS` produces no "Unknown top-level" warning) is not
+  automatically covered by the generic tests at `test_fsm_schema.py:1788-1827`
+  (`test_unknown_top_level_keys_warn` / `test_known_keys_no_warning`) — those
+  only test the generic mechanism. The per-flag precedent is
+  `TestArtifactIsolation.test_shared_state_ok_recognized_as_top_level_key`
+  (`test_fsm_validation_meta_rules.py:370-387`), and the equivalent for
+  `unsafe_context_interpolation_ok` at `test_fsm_validation_shell_safety.py:180-199`.
+  `TestGateCompleteness` needs its own such method, following this two-flag
+  precedent.
+- Closest existing fixture pattern for a rule scoped to `action_type: shell`
+  states matched by substring (there `${context.*}`, here `python3` + a
+  restated literal): `TestUnsafeContextInterpolation` in
+  `scripts/tests/test_fsm_validation_shell_safety.py:202-279`. Its
+  `_simple_fsm(action, *, action_type="shell", <suppression_flag>: bool =
+  False)` helper builds a minimal two-state `work → done` `FSMLoop` with the
+  shell action injected as a raw string — a more precise template than
+  `TestArtifactIsolation` for this rule's specific shape (MR-3 does not gate
+  on a `python3` substring).
+- Confirmed `VALID_OPERATORS`'s `set` → `frozenset[str]` tightening (AC #1a,
+  Implementation Step 1a) is safe: no test anywhere pins it as a `set` via
+  `isinstance`/`type()`, and its only production consumers
+  (`structural_rules.py`'s `operator not in VALID_OPERATORS` /
+  `sorted(VALID_OPERATORS)`, and `workflow-generator.yaml`'s generated-shell
+  membership assertion) use membership/iteration only — no mutation call
+  sites (`.add(`/`.discard(`/`.remove(`/`.update(`/`|=`) exist anywhere in
+  the repo. No existing test needs updating or will break.
+- Confirmed `validate_fsm()`/`load_and_validate()` have callers beyond
+  `ll-loop validate`'s `cmd_validate` — `executor.py:871` and
+  `structural_rules.py:282` (sub-loop recursion), `cli/loop/edit_routes.py`,
+  `scaffold_verify.py`, `scaffold_eval.py`, `cli/loop/_helpers.py`,
+  `cli/loop/info.py`, `cli/loop/run.py`, and `cli/doctor.py` (health-check
+  aggregation across all loops). All consume the returned warning list
+  generically (append/aggregate), so the new WARNING-severity rule needs no
+  additional wiring at any of these call sites — confirms the issue's
+  existing "no new plumbing needed" finding extends beyond just the CLI.
+- `docs/reference/CLI.md` and `docs/reference/API.md` each maintain their own
+  independent MR-rule enumeration and are **already stale** relative to each
+  other and to `HARNESS_OPTIMIZATION_GUIDE.md` (both are missing several
+  already-shipped unnumbered rules, e.g. `abstention_route_ok`). Given this
+  inconsistent precedent, adding a bullet for the new rule to either is
+  optional, not required — `HARNESS_OPTIMIZATION_GUIDE.md` (already in Files
+  to Modify) remains the one place full rule-table parity is expected.
 
 ### Documentation
 - `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` — § The Design Rules (new
@@ -683,6 +741,14 @@ _These touchpoints were identified by wiring analysis and must be included in th
   `## The Design Rules (MR-1…MR-14)` heading are untouched.
 - Also document the `prompt`-action coverage gap in the guide entry, per
   AC #5 and the Known coverage gap section.
+- Add a `CHANGELOG.md` entry for the new rule, per established precedent for
+  prior validation-rule additions (added 2026-08-27).
+- Add `TestGateCompletenessOk` round-trip tests to `test_fsm_schema.py`
+  (template: `TestPartialRouteOk`, lines 3664-3699) and a
+  `test_gate_completeness_ok_recognized_as_top_level_key` method inside
+  `TestGateCompleteness` (template:
+  `TestArtifactIsolation.test_shared_state_ok_recognized_as_top_level_key`,
+  `test_fsm_validation_meta_rules.py:370-387`) (added 2026-08-27).
 
 ## Impact
 
@@ -793,6 +859,7 @@ Source: `postmortems/workflow-generator-output-json-gate-gap.md` §6.
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-08-27T15:27:35 - `2ab74eb6-4b00-4645-8ae0-d69b8041979f.jsonl`
 - `/ll:refine-issue` - 2026-08-27T15:14:46 - `a812da17-9f21-4c2c-ad6d-806ac51d6467.jsonl`
 - `/ll:refine-issue` - 2026-08-27T15:14:37 - `a812da17-9f21-4c2c-ad6d-806ac51d6467.jsonl`
 - `/ll:confidence-check` - 2026-08-26T20:09:17 - `fdfe1063-50b8-41a2-aae7-c524a32eadad.jsonl`

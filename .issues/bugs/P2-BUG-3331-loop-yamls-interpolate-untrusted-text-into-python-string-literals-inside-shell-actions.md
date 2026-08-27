@@ -120,9 +120,15 @@ faults it for. Invert it:
 
 - `${captured.*}` — **always untrusted** (class B). No exceptions; a capture is
   either LLM output or command output, never operator-fixed.
-- `${context.<key>}` — **untrusted by default** (class A), except a short
-  explicitly-listed *trusted* set of runner-constructed keys (`run_dir`, and the
-  other loop-controlled keys the runner populates rather than the operator).
+- `${context.<key>}` — **untrusted by default** (class A), except the *trusted*
+  set of runner-constructed keys. **That set is enumerated (2026-08-27), not
+  open-ended**: the only non-underscore keys the runner itself writes are
+  `run_dir` (`executor.py:903, 979`) and `promoted_artifact`
+  (`persistence.py:1229`); underscore-prefixed bookkeeping keys
+  (`_tamper_guard`, `_prepatch_check`) are runner-internal and also trusted.
+  Every other `context.*` key originates from the loop YAML's `context:` block
+  or a CLI override and is untrusted. `${loop.*}` (run_id, iteration, …) is
+  runner-constructed and trusted.
 - Consequence: a newly-introduced `${context.*}` key is untrusted until someone
   adds it to the trusted list, which is the safe default direction.
 
@@ -175,8 +181,9 @@ in-repo idioms, one per value shape:
    (`ISSUE_FILE="$ISSUE_FILE" python3 << 'PYEOF'`); `flux-image-generator.yaml:275`
    (`abs_dir = os.environ["ABS_DIR"]`). Note those bind an already-safe *shell*
    variable, not a raw interpolation — for a raw `${context.*}` the `:shell`
-   suffix is what makes the binding safe. 18 sites across the loop corpus already
-   use `:shell`.
+   suffix is what makes the binding safe. 17 sites across the loop corpus already
+   use `:shell` (recounted 2026-08-27; 12 assignment-prefix, 5 bare-token — the
+   bare-token five are audited under S1, see the BLOCKER section).
 
    **Only sound in the assignment-prefix position.** `interpolate()` returns `""`
    for a `None`-resolving value *before* it reaches the `shlex.quote` branch
@@ -322,6 +329,19 @@ So S1 is not "relax the mutual-exclusion check": it must **normalize suffix orde
 and give all orderings one defined meaning, with unit tests covering all four
 (`:shell` alone, both `:default=` orders, `?:shell`). Budget for that, not a
 one-line edit.
+
+**S1 must also spec what an empty/absent value emits under `:shell` — it is an
+observable behavior change at existing sites.** Post-S1 rule: resolve, apply the
+fallback, then `shlex.quote()` whatever string results — so an empty result emits
+`''` (a valid empty token), where today the `None` branch emits nothing
+(`interpolation.py:270-273`). Five of the 17 existing `:shell` sites use bare
+token positions and will see the change: `outer-loop-eval.yaml:51`
+(`ll-loop show ${context.input:shell}`), `refine-to-ready-issue.yaml:123`
+(`[ -n ${context.input:shell} ]` — today an empty input collapses to `[ -n ]`,
+which is **always true** in bash; `''` fixes that latent bug, but verify the
+branch flip is intended), and the `|| echo ${context.goal:shell}` fallbacks at
+`loop-router.yaml:299, 393`, `loop-composer.yaml:286`,
+`loop-composer-adaptive.yaml:295`. Audit these five in the S1 commit.
 
 **Decision — SELECTED (2026-08-27): Option S1.**
 S2 does not answer class B at all (it says so itself), and S3 carves the permanent
@@ -472,12 +492,18 @@ defect relocated from Python to bash. Multi-line values make it worse.
 
 > **Correction (2026-08-27):** the *safety* half of this argument no longer
 > holds. `${captured.x.output:shell}` shlex-quotes the value, newlines included,
-> so a `:shell`-bound env var is not injectable for class B either. The reasons
-> to still prefer a file for class B are different ones: (1) a captured LLM
-> response can exceed the per-argument `ARG_MAX` limit (256 KB on darwin) and
-> fail with `E2BIG`, where a file has no such ceiling; (2) a shlex-quoted
-> multi-KB blob on a bash assignment line is unreviewable in a diff. The Option B
-> decision stands, on those grounds rather than the original one.
+> so a `:shell`-bound env var is not injectable for class B either.
+>
+> **Second correction (2026-08-27, eighth pass):** the ARG_MAX ground offered in
+> the first correction is also wrong. The interpolated value rides inside the
+> single `bash -c <action>` argv element (`runners.py:297`) under **both**
+> shapes — Option B's heredoc body and a `:shell` env assignment are both text
+> within that one argument — so both hit the same `ARG_MAX` ceiling at the same
+> exec boundary; Option B removes only the second (bash→python3) boundary, which
+> has essentially the same budget. The Option B decision stands, but on the
+> Decision Rationale's grounds — shipped precedent (`brainstorm.yaml`, BUG-2468),
+> uniformity across the 67 sites, no new mechanism — not on ARG_MAX. Do not
+> reuse the ARG_MAX argument elsewhere.
 
 Three options; pick one and record it:
 
@@ -605,9 +631,10 @@ must change):
     action to exit 0 (today: `SyntaxError`);
   - a captured output containing `"""` and a newline runs the class-B action to
     exit 0;
-  - a goal containing `'; import os; os.system("touch /tmp/pwned") #` does not
-    create the file;
-  - a goal containing `"; touch /tmp/pwned; #` run against a converted **`-c "`**
+  - a goal containing `'; import os; os.system("touch <tmp_path>/pwned") #` does
+    not create the file (use pytest `tmp_path`, not a fixed `/tmp` path — fixed
+    paths collide across parallel/xdist runs and leak between tests);
+  - a goal containing `"; touch <tmp_path>/pwned; #` run against a converted **`-c "`**
     site (e.g. `loop-router`'s `list_loops`) does not create the file — this is
     the shell-injection half that only the `-c "` shape exhibits, and it needs
     its own case.
@@ -744,7 +771,10 @@ _Added by `/ll:refine-issue` — 2026-08-27 — based on codebase analysis:_
 ## Acceptance Criteria
 
 1. `${x:default=v:shell}`, `${x:shell:default=v}`, `${x?:shell}`, and `${x:shell}`
-   each have one defined, unit-tested meaning; no ordering silently misparses.
+   each have one defined, unit-tested meaning; no ordering silently misparses. An
+   empty/absent value under `:shell` emits `''` (quoted empty token), and the five
+   existing bare-token `:shell` sites are audited for the resulting behavior
+   change (see the S1 BLOCKER section).
 2. The static sweep exists, globs `loops/**/*.yaml` recursively, handles both host
    shapes, classifies per site, and asserts equality against a checked-in baseline
    file. It is green on `main` at every commit of this work.
@@ -811,6 +841,29 @@ import-don't-restate spirit as FEAT-3328's gate-completeness rule, same
 regex-over-raw-action-string shape — but extend MR-11 rather than adding a rule,
 and widen its matcher (see Codebase Research Findings): today it matches a fixed
 seven-key `${context.*}` allowlist and has no `captured` alternation at all.
+
+**Eighth review pass — 2026-08-27** (pre-implementation; verified against the code):
+- **Re-verified the seventh pass's load-bearing claims directly**: the
+  `${x:default=v:shell}` silent misparse and `${x?:shell}` bogus-path resolution
+  (`interpolation.py:242-256`), the `None`-before-`shlex.quote` ordering
+  (`:270-273`), MR-11's indented-terminator looseness (`shell_safety.py:173`),
+  the 114-invocation / 29-file `-c "` count, and the `brainstorm.yaml:160-169`
+  precedent. All hold.
+- **Enumerated the trusted `context.*` key list** the sweep classification rule
+  referenced but never specified — a blocker input to Steps 2 and 9. The runner
+  writes only `run_dir`, `promoted_artifact`, and underscore-internal keys;
+  `${loop.*}` is trusted. Recorded in the rule.
+- **Spec'd S1's empty-value emission** (`''` after fallback, quote applied last)
+  and identified the five existing bare-token `:shell` sites whose behavior it
+  changes — including `refine-to-ready-issue.yaml:123`, where today's collapse
+  to `[ -n ]` is always-true (a latent bug S1 incidentally fixes). Added to
+  AC-1.
+- **Retracted the first correction's ARG_MAX ground for Option B** — the value
+  rides inside the single `bash -c` argv element under both shapes
+  (`runners.py:297`), so the ceiling is identical. Option B stands on the
+  Decision Rationale's precedent/uniformity grounds.
+- Corrected the `:shell` site count (17, not 18) and pointed the behavioral
+  injection tests at pytest `tmp_path` instead of fixed `/tmp` paths.
 
 **Seventh review pass — 2026-08-27** (verified against the code):
 - **Both open decisions settled; `decision_needed` → false.** S1 (make `:shell`
