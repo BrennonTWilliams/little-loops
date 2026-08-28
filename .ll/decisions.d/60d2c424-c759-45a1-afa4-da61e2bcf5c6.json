@@ -1,0 +1,12 @@
+{
+  "id": "e8992204-e33b-492a-946a-ac798ec9e1de",
+  "type": "decision",
+  "timestamp": "2026-08-28T23:31:34Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Only shape satisfying all ACs as written (coverage incl. shrink/promote windows, gate body defined once, per-window attribution); fragment machinery is first-class and precedented (resolve_fragments at fsm/fragments.py:66, lib/common.yaml shell_exit); all six insertion edges are on_yes/exit edges so the +6 step cost is deterministic (16->22 of max_steps 45). Scored 10/12 vs 9/12.",
+  "rule": "Option B: per-pass containment gates at the six window boundaries, factored as one parameterized fragment, with a rolling baseline",
+  "scope": "issue",
+  "alternatives_rejected": "Option A: single re-check on validate_artifact.on_yes with init-anchored baseline \u2014 +1 step but loses per-window attribution and leaves shrink/promote windows uncovered",
+  "issue": "FEAT-3335"
+}
