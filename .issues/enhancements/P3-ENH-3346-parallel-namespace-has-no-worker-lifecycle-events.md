@@ -14,9 +14,9 @@ reconcile_attempted: true
 confidence_score: 90
 outcome_confidence: 63
 score_complexity: 10
-score_test_coverage: 18
+score_test_coverage: 25
 score_ambiguity: 10
-score_change_surface: 25
+score_change_surface: 18
 ---
 
 # ENH-3346: parallel namespace has no worker lifecycle events
@@ -36,15 +36,15 @@ It also means a wedged worker is invisible. The single failure mode most worth w
 
 Proposed additions to the `parallel.*` surface, each carrying `worker_id` (stable for the worker's lifetime) and `issue_id`:
 
-- `parallel.worker_started` — worker claimed an issue; include worktree path and branch
-- `parallel.worker_blocked` — waiting on a lock, worktree, dependency, or rate-limit backoff; include a reason discriminator
-- `parallel.worker_unblocked` — paired resume
-- `parallel.merge_started` / `parallel.merge_completed` — with outcome (`merged`, `conflict`, `skipped`) so merge-gate stalls are visible
-- `parallel.queue_changed` — pending/active/done counts, so a consumer can render progress without replaying history
+- `parallel.worker_started` — worker began processing an issue (emitted just after worktree creation); include worktree path and branch
+- `parallel.worker_blocked` — issue deferred on overlap conflict (the only real blocked transition in `parallel/`); include a `reason` discriminator (`Literal["overlap"]`, extensible)
+- `parallel.worker_unblocked` — paired resume on requeue
+- `parallel.merge_started` / `parallel.merge_completed` — with outcome (`merged`, `failed`) plus an `error` string so merge-gate stalls are visible
+- `parallel.queue_changed` — the five queue counters (pending/active/completed/failed/skipped), so a consumer can render progress without replaying history
 
-Depends on the sibling `run_id`/`loop` stamping issue: these emitters build their dicts inline rather than routing through `FSMExecutor._emit()`, so they need run-scoped identity applied here too, or they stay uncorrelatable in a merged stream.
+Run-scoped identity: ENH-3345 landed (`d712e20b4`), but its stamping mechanism lives in `FSMExecutor._emit()`, which `parallel/` emitters never route through — it cannot be reused here. Instead, stamp `run_id` inline from `ParallelOrchestrator.run_id` (already exists, `orchestrator.py:123`) and thread it into `MergeCoordinator`/`IssuePriorityQueue` alongside `event_bus`; omit `loop`, which has no meaning for a parallel run.
 
-Acceptance: each new event type is emitted from the orchestrator/worker-pool paths that already know the state change; every `parallel.*` event carries `worker_id` and `issue_id`; a consumer subscribed to `parallel.*` can reconstruct active-worker count and per-worker status at any point in a run without reading `.issues/` or the filesystem; `docs/reference/EVENT-SCHEMA.md` documents each new type with its payload table; `docs/reference/schemas/` regenerated via `ll-generate-schemas`.
+Acceptance: each new event type is emitted from the paths that already know the state change; every `parallel.*` event carries `run_id`, and every worker-scoped event carries `worker_id` and `issue_id` (`queue_changed` and `epic_branch_stale` are run-scoped, not worker-scoped); a consumer subscribed to `parallel.*` can reconstruct active-worker count and per-worker status at any point in a run without reading `.issues/` or the filesystem — **for parallel-dispatched issues** (sequential/P0 issues get `worker_started`, merge, and `queue_changed` events but no `worker_completed`; see Scope Boundaries); `docs/reference/EVENT-SCHEMA.md` documents each new type with its payload table; `docs/reference/schemas/` regenerated via `ll-generate-schemas`.
 
 
 ## Current Behavior
@@ -53,7 +53,7 @@ Only two `parallel.*` events are ever emitted: `parallel.worker_completed` (`orc
 
 ## Expected Behavior
 
-The orchestrator/worker-pool emit `parallel.worker_started`, `parallel.worker_blocked`, `parallel.worker_unblocked`, `parallel.merge_started`, `parallel.merge_completed`, and `parallel.queue_changed` from the state-change points that already know about them, each carrying `worker_id` and `issue_id`. A consumer subscribed to `parallel.*` can reconstruct active-worker count and per-worker status at any point in a run without reading `.issues/` or the filesystem.
+The orchestrator, worker pool, and merge coordinator emit `parallel.worker_started`, `parallel.worker_blocked`, `parallel.worker_unblocked`, `parallel.merge_started`, `parallel.merge_completed`, and `parallel.queue_changed` from the state-change points that already know about them — every event carrying `run_id`, and each worker-scoped event (all but `queue_changed`) carrying `worker_id` and `issue_id`. A consumer subscribed to `parallel.*` can reconstruct active-worker count and per-worker status at any point in a run without reading `.issues/` or the filesystem.
 
 ## Motivation
 
@@ -63,12 +63,12 @@ The `parallel.*` namespace is documented in `docs/reference/EVENT-SCHEMA.md` as 
 
 Add six new event emissions alongside the existing two, at the orchestrator/worker-pool call sites that already own each state transition:
 
-- `parallel.worker_started` — emitted where a worker claims an issue and its worktree/branch are known (near `_event_bus.emit()` in `orchestrator.py`, mirroring the `parallel.worker_completed` call at `orchestrator.py:1285`); payload adds `worktree_path`, `branch`.
-- `parallel.worker_blocked` / `parallel.worker_unblocked` — paired events at the lock/worktree/dependency/rate-limit backoff wait points in `worker_pool.py`; payload adds a `reason` discriminator on `worker_blocked`.
-- `parallel.merge_started` / `parallel.merge_completed` — emitted around the epic-branch merge path in `worker_pool.py` (near the existing `parallel.epic_branch_stale` emission at `worker_pool.py:1979`); `merge_completed` payload adds `outcome` (`merged`, `conflict`, `skipped`).
-- `parallel.queue_changed` — emitted wherever the orchestrator's pending/active/done counts change; payload is the three counts.
+- `parallel.worker_started` — emitted from `WorkerPool._process_issue` immediately after worktree creation, when `worktree_path`/`branch` are known (see Program Design timing decision); payload adds `worktree_path`, `branch`.
+- `parallel.worker_blocked` / `parallel.worker_unblocked` — paired events at the overlap-deferral point in `ParallelOrchestrator._process_parallel` and the resubmit point in `_requeue_deferred_issues`; payload adds a `reason` discriminator (`Literal["overlap"]`) on `worker_blocked`.
+- `parallel.merge_started` / `parallel.merge_completed` — emitted from `MergeCoordinator._process_merge` (where `MergeStatus.IN_PROGRESS` is set) and `_finalize_merge`/`_handle_failure`. **Retry gating**: `_process_merge` re-runs the *same* `MergeRequest` on `MergeStatus.RETRYING` (`merge_coordinator.py:852,1030` requeue it), so `merge_started` must be gated on `request.retry_count == 0` to keep started/completed pairs 1:1 — retries do not re-emit `merge_started`. `merge_completed` payload adds `outcome` (`Literal["merged","failed"]`) plus `error: str | None` (`None` on success) — see MergeOutcome rationale in Program Design Types.
+- `parallel.queue_changed` — emitted from *inside* `IssuePriorityQueue`'s six mutators (`add`/`get`/`mark_completed`/`mark_failed`/`mark_skipped`/`requeue`), not from orchestrator call sites; payload is the five counters (pending/active/completed/failed/skipped). Rationale: the orchestrator has ~15 scattered mutating call sites across both the parallel and sequential paths (`orchestrator.py:909,934,1019,1120-1138,1220-1234,1312,1551-1599`) and any future mutator call would silently drift out of coverage; the queue's mutators are a single choke point covering both modes. Emit *outside* the queue's internal lock (build the payload under the lock, call `emit()` after releasing) so a re-entrant observer cannot deadlock. `add_many` emits **once** after the batch, not N times (override or emit-suppression flag on the inner `add` calls).
 
-Each new emitter builds its event dict inline via `self._event_bus.emit({...})`, following the existing `parallel.worker_completed`/`parallel.epic_branch_stale` pattern, and routes `run_id`/`loop` stamping through the mechanism landed by ENH-3345 rather than duplicating that logic here.
+Each new emitter builds its event dict inline via `self._event_bus.emit({...})`, following the existing `parallel.worker_completed`/`parallel.epic_branch_stale` pattern, and stamps `run_id` from `ParallelOrchestrator.run_id` (threaded into `MergeCoordinator`/`IssuePriorityQueue` alongside `event_bus`). ENH-3345's `FSMExecutor._emit()` stamping is FSM-path-only and is not reused here; `loop` is omitted since it has no meaning for a parallel run. Additionally, add the same `run_id` stamp to the two existing emitters (`parallel.worker_completed`, `parallel.epic_branch_stale`) — an additive field, explicitly in scope (see Scope Boundaries), since correlation across a merged stream is the point of this issue.
 
 ### Codebase Research Findings
 
@@ -104,9 +104,10 @@ Key evidence: `worker_pool.py:187,297` (`_active_workers` keyed by `issue_id`), 
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/parallel/orchestrator.py` — add `parallel.worker_started` and `parallel.queue_changed` emissions at the state-change points that already track worker claim and pending/active/done counts, and `parallel.worker_blocked`/`parallel.worker_unblocked` at the overlap-deferral (`_process_parallel`) and requeue (`_requeue_deferred_issues`) points — the only real blocked/unblocked transition in `parallel/`
-- `scripts/little_loops/parallel/merge_coordinator.py` — add `parallel.merge_started` in `_process_merge` and `parallel.merge_completed` in `_finalize_merge`/`_handle_failure`
-- `scripts/little_loops/parallel/priority_queue.py` — add `event_bus` support and emit `parallel.queue_changed` from `add`/`get`/`mark_completed`/`mark_failed`/`mark_skipped`/`requeue`, or emit it from the orchestrator call sites that invoke these mutators
+- `scripts/little_loops/parallel/orchestrator.py` — add `parallel.worker_blocked`/`parallel.worker_unblocked` at the overlap-deferral (`_process_parallel`) and requeue (`_requeue_deferred_issues`) points — the only real blocked/unblocked transition in `parallel/`; stamp `run_id` on the existing `parallel.worker_completed` emitter (`queue_changed` is NOT emitted from orchestrator call sites — see priority_queue.py entry)
+- `scripts/little_loops/parallel/worker_pool.py` — add `parallel.worker_started` emission in `_process_issue` immediately after worktree creation; stamp `run_id` on the existing `parallel.epic_branch_stale` emitter (requires threading `run_id` into `WorkerPool` alongside its existing `event_bus`)
+- `scripts/little_loops/parallel/merge_coordinator.py` — add `parallel.merge_started` in `_process_merge` (gated on `request.retry_count == 0` — retries re-enter `_process_merge` and must not re-emit) and `parallel.merge_completed` in `_finalize_merge`/`_handle_failure` (outcome `merged`/`failed` + `error`)
+- `scripts/little_loops/parallel/priority_queue.py` — add `event_bus`/`run_id` support and emit `parallel.queue_changed` from inside `add`/`get`/`mark_completed`/`mark_failed`/`mark_skipped`/`requeue` (decision resolved: queue-side, not orchestrator-side — single choke point covering both parallel and sequential paths; emit outside the internal lock; `add_many` coalesces to one event)
 - `scripts/little_loops/generate_schemas.py` — add the six new event types to `SCHEMA_DEFINITIONS`
 - `docs/reference/EVENT-SCHEMA.md` — document each new event type and its payload table
 
@@ -124,10 +125,11 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ### Similar Patterns
 - `parallel.worker_completed` (`orchestrator.py:1285`) and `parallel.epic_branch_stale` (`worker_pool.py:1979`) are the existing `_event_bus.emit()` call sites to model the new emitters after
-- ENH-3345's `run_id`/`loop` stamping mechanism, once landed, should be reused by these new emitters rather than duplicated
+- ENH-3345's stamping landed in `FSMExecutor._emit()` (FSM path only) and is NOT reusable here — parallel emitters stamp `run_id` inline from `ParallelOrchestrator.run_id` (`orchestrator.py:123`), threaded into `WorkerPool`/`MergeCoordinator`/`IssuePriorityQueue` alongside `event_bus`
 
 ### Tests
-- `scripts/tests/test_orchestrator.py` — add coverage asserting `worker_started`, `queue_changed`, `worker_blocked`, and `worker_unblocked` each fire with the expected payload at their trigger point
+- `scripts/tests/test_orchestrator.py` — add coverage asserting `queue_changed`, `worker_blocked`, and `worker_unblocked` each fire with the expected payload at their trigger point, and that the existing `worker_completed` event now carries `run_id`
+- `scripts/tests/test_worker_pool.py` — add coverage asserting `worker_started` fires from `_process_issue` after worktree creation with `worktree_path`/`branch`, and that `epic_branch_stale` now carries `run_id`
 - `scripts/tests/test_generate_schemas.py` — bump the four pinned `== 42` counts to `== 48` and extend `test_expected_event_types_present`'s literal set with the six new `parallel.*` keys
 
 _Wiring pass added by `/ll:wire-issue`:_
@@ -167,8 +169,8 @@ _Added by `/ll:refine-issue` — 2026-08-27 — based on codebase analysis:_
 
 ## Implementation Steps
 
-1. Land ENH-3345 (run_id/loop stamping) first, since all new emitters route through it
-2. Add `parallel.worker_started`, `parallel.queue_changed`, `parallel.worker_blocked`, and `parallel.worker_unblocked` emissions in `orchestrator.py` (worker_blocked/unblocked at the overlap-deferral/requeue points, not a lock wait)
+1. ~~Land ENH-3345 first~~ — DONE (`d712e20b4`); note its stamping lives in `FSMExecutor._emit()` and is NOT reused here — parallel emitters stamp `run_id` inline from `ParallelOrchestrator.run_id` (see Proposed Solution)
+2. Add `parallel.queue_changed`, `parallel.worker_blocked`, and `parallel.worker_unblocked` emissions in `orchestrator.py` (worker_blocked/unblocked at the overlap-deferral/requeue points, not a lock wait); add `parallel.worker_started` in `worker_pool.py`'s `_process_issue` immediately after worktree creation (see Program Design timing decision); stamp `run_id` on the two existing emitters
 3. Add `parallel.merge_started`/`parallel.merge_completed` emissions in `merge_coordinator.py` (`_process_merge`, `_finalize_merge`, `_handle_failure`); thread `event_bus` into `IssuePriorityQueue`/`MergeCoordinator` per the Wiring Phase
 4. Add six new `DESVariant` dataclasses to `observability/schema.py`'s `DES_VARIANTS`, and six new entries to `generate_schemas.py`'s `SCHEMA_DEFINITIONS`
 5. Add/update tests asserting each event fires with the expected `worker_id`/`issue_id` payload, including `test_merge_coordinator.py`/`test_priority_queue.py` (no prior event coverage) and the pinned counts in `test_generate_schemas.py`/`test_des_schema.py`
@@ -202,17 +204,21 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ### Types
 
-- `WorkerBlockedReason: Literal["lock", "worktree", "dependency", "rate_limit"]`
+- `WorkerBlockedReason: Literal["overlap"]` — the only real blocked transition in `parallel/` is overlap deferral (`_process_parallel` → `_deferred_issues`); a `Literal` keeps the field extensible if lock-wait or rate-limit blocking ever moves into this package (rate-limit handling currently lives in the FSM executor, not here). The originally proposed `"lock"`/`"worktree"`/`"dependency"`/`"rate_limit"` values have no emission sites in this codebase.
 - `MergeOutcome: Literal["merged", "conflict", "skipped"]`
 
 ### Signatures
 
-- `Orchestrator._emit_worker_started(self, issue_id: str, worker_id: str, worktree_path: Path, branch: str) -> None`
-- `Orchestrator._emit_queue_changed(self, pending: int, active: int, done: int) -> None`
-- `WorkerPool._emit_worker_blocked(self, worker_id: str, issue_id: str, reason: WorkerBlockedReason) -> None`
-- `WorkerPool._emit_worker_unblocked(self, worker_id: str, issue_id: str) -> None`
-- `WorkerPool._emit_merge_started(self, worker_id: str, issue_id: str, branch: str) -> None`
-- `WorkerPool._emit_merge_completed(self, worker_id: str, issue_id: str, outcome: MergeOutcome) -> None`
+- `WorkerPool._emit_worker_started(self, issue_id: str, worktree_path: Path, branch: str) -> None` — called from `_process_issue` immediately after worktree creation (see timing decision below)
+- `ParallelOrchestrator._emit_worker_blocked(self, issue_id: str, reason: WorkerBlockedReason) -> None` — at the overlap-deferral point in `_process_parallel`
+- `ParallelOrchestrator._emit_worker_unblocked(self, issue_id: str) -> None` — at the resubmit point in `_requeue_deferred_issues`
+- `ParallelOrchestrator._emit_queue_changed(self) -> None` — reads the five `IssuePriorityQueue` counters and emits; called after each queue-mutating call the orchestrator makes
+- `MergeCoordinator._emit_merge_started(self, issue_id: str, branch: str) -> None` — in `_process_merge` where `MergeStatus.IN_PROGRESS` is set
+- `MergeCoordinator._emit_merge_completed(self, issue_id: str, outcome: MergeOutcome) -> None` — in `_finalize_merge` (success) and `_handle_failure` (conflict/failure)
+
+`worker_id` is stamped inside each emitter as an alias of `issue_id` (Option A) rather than passed separately.
+
+**Timing decision for `worker_started`**: emit from inside `WorkerPool._process_issue` on the worker thread, immediately after worktree creation — not from `submit()` at dispatch time. Rationale: the payload requires `worktree_path`/`branch`, which do not exist at dispatch (`worker_pool.py:352-362`), and "claimed but not yet running" is already visible via `parallel.queue_changed`'s pending/active counts. This resolves the claim-time-vs-worktree-time tradeoff raised in the research findings in favor of a complete payload.
 
 ### Call Path
 
@@ -255,18 +261,26 @@ A `parallel.*` subscriber can render active-worker count, per-worker status, and
 
 ## Scope Boundaries
 
-Out of scope: building the dashboard/visualizer consumer itself (this issue only adds the emitters); changing the payload or emission point of the existing `parallel.worker_completed`/`parallel.epic_branch_stale` events; adding lifecycle events outside the `parallel.*` namespace (e.g. FSM state-transition events); retrofitting historical runs with these events after the fact.
+Out of scope: building the dashboard/visualizer consumer itself (this issue only adds the emitters); changing existing fields or the emission point of the existing `parallel.worker_completed`/`parallel.epic_branch_stale` events (the additive `run_id` stamp on both IS in scope — see API/Interface); adding lifecycle events outside the `parallel.*` namespace (e.g. FSM state-transition events); retrofitting historical runs with these events after the fact.
 
 ## API/Interface
 
 ```python
-# New parallel.* event payloads (all include worker_id, issue_id)
-{"event": "parallel.worker_started", "worker_id": str, "issue_id": str, "worktree_path": str, "branch": str}
-{"event": "parallel.worker_blocked", "worker_id": str, "issue_id": str, "reason": str}
-{"event": "parallel.worker_unblocked", "worker_id": str, "issue_id": str}
-{"event": "parallel.merge_started", "worker_id": str, "issue_id": str, "branch": str}
-{"event": "parallel.merge_completed", "worker_id": str, "issue_id": str, "outcome": str}
-{"event": "parallel.queue_changed", "pending": int, "active": int, "done": int}
+# New parallel.* event payloads (all include run_id; all but queue_changed include worker_id, issue_id)
+# worker_id == issue_id (Option A alias); reason is Literal["overlap"]; outcome is Literal["merged","conflict","skipped"]
+{"event": "parallel.worker_started", "run_id": str, "worker_id": str, "issue_id": str, "worktree_path": str, "branch": str}
+{"event": "parallel.worker_blocked", "run_id": str, "worker_id": str, "issue_id": str, "reason": str}
+{"event": "parallel.worker_unblocked", "run_id": str, "worker_id": str, "issue_id": str}
+{"event": "parallel.merge_started", "run_id": str, "worker_id": str, "issue_id": str, "branch": str}
+{"event": "parallel.merge_completed", "run_id": str, "worker_id": str, "issue_id": str, "outcome": str}
+{"event": "parallel.queue_changed", "run_id": str, "pending": int, "active": int, "completed": int, "failed": int, "skipped": int}
+# queue_changed carries all five IssuePriorityQueue counters rather than a lossy pending/active/done triple —
+# a dashboard wants failed broken out; consumers needing "done" compute completed + failed + skipped.
+# ("active" = in_progress_count, "pending" = qsize().)
+
+# Existing events gain the same additive run_id stamp (payloads otherwise unchanged):
+{"event": "parallel.worker_completed", "run_id": str, ...}
+{"event": "parallel.epic_branch_stale", "run_id": str, ...}
 ```
 
 
@@ -278,11 +292,12 @@ _Added by `/ll:confidence-check` on 2026-08-27_
 **Outcome Confidence**: 63/100 → MODERATE
 
 ### Outcome Risk Factors
-- Unapplied decision: format-check's `unapplied_decision` flag fires on "Files to Modify still specifies `parallel/` (rejected option)" — capped Criterion C (Ambiguity) at 10/25. Verify the Integration Map's "Files to Modify" list doesn't still point at a bare `parallel/` reference left over from the worker_id Option A/B decision, and correct it before implementing.
-- Moderate breadth × moderate depth: six new emitters span ~8-10 distinct files (orchestrator.py, merge_coordinator.py, priority_queue.py, generate_schemas.py, observability/schema.py, EVENT-SCHEMA.md, plus 3-4 test files) with some sites requiring constructor signature changes (threading `event_bus` into `IssuePriorityQueue`/`MergeCoordinator`) rather than pure mechanical substitution — expect more iteration than a single-file change.
-- format-check also flagged unresolved `stale_symbol_ref`/`mislocated_symbol_ref` entries claiming several of the new event names live in `scripts/little_loops/cli/parallel.py`; that file exists but a targeted grep found no matches for those event names there — worth a quick recheck before implementation to confirm the Integration Map's file list is accurate.
+- `unapplied_decision` still fires, but on a different pair than the prior run: "Program Design/Implementation Steps/Files to Modify still specifies `_process_issue` (rejected option)". Reading the actual text, `_process_issue` is the *selected* placement for `worker_started` (the Program Design "Timing decision" explicitly rejects `submit()` in favor of `_process_issue`) — this reads as a tool false-positive on directionality rather than a real unapplied decision. Worth a quick human confirmation before implementing, but no text change appears needed. Caps Criterion C (Ambiguity) at 10/25 regardless.
+- `stale_symbol_ref` still flags all six new/existing event names as "claimed in `scripts/little_loops/cli/parallel.py`", which a targeted grep still doesn't confirm — same gap as the prior run, unresolved. Caps Criterion 4 (Well-Specified, readiness dimension) at 10/20; recheck whether the Integration Map should cite `cli/parallel.py` at all before implementing.
+- Moderate breadth × moderate depth: six new emitters plus `run_id` stamping on two existing ones span 6 source files (orchestrator.py, worker_pool.py, merge_coordinator.py, priority_queue.py, generate_schemas.py, observability/schema.py) and 6 doc/test files, with constructor-signature changes (threading `event_bus` into `IssuePriorityQueue`/`MergeCoordinator`) rather than pure mechanical substitution — expect more iteration than a single-file change.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-27T23:52:49 - `669eb13b-852d-427b-9f5f-ccf15758ffa9.jsonl`
 - `/ll:confidence-check` - 2026-08-27T22:17:22 - `dd56bf1f-7933-4d9c-980c-762867d3ce6b.jsonl`
 - `/ll:reconcile-issue` - 2026-08-27T22:14:34 - `3e6453f3-ac93-435f-934e-1a9d7dc7adfd.jsonl`
 - `/ll:refine-issue` - 2026-08-27T22:09:56 - `79106a4f-4393-4e7a-9f77-a9f63f9c673b.jsonl`
