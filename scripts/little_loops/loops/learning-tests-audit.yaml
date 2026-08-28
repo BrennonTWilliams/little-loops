@@ -108,12 +108,24 @@ states:
     action_type: shell
     timeout: 120
     action: |
+      cat > "${context.run_dir}/check_versions-records.txt" << 'LL_RAW_9F3C1A7E_EOF'
+      ${captured.records.output}
+      LL_RAW_9F3C1A7E_EOF
+      cat > "${context.run_dir}/check_versions-installed.txt" << 'LL_RAW_9F3C1A7E_EOF'
+      ${captured.installed.output}
+      LL_RAW_9F3C1A7E_EOF
+      cat > "${context.run_dir}/check_versions-classification.txt" << 'LL_RAW_9F3C1A7E_EOF'
+      ${captured.classification.output}
+      LL_RAW_9F3C1A7E_EOF
       python3 << 'PYEOF'
       import json, urllib.request, urllib.error, sys
 
-      records_raw = """${captured.records.output}"""
-      installed_raw = """${captured.installed.output}"""
-      classification_raw = """${captured.classification.output}"""
+      with open("${context.run_dir}/check_versions-records.txt") as _f:
+          records_raw = _f.read()
+      with open("${context.run_dir}/check_versions-installed.txt") as _f:
+          installed_raw = _f.read()
+      with open("${context.run_dir}/check_versions-classification.txt") as _f:
+          classification_raw = _f.read()
 
       records = json.loads(records_raw)
       installed = json.loads(installed_raw)
@@ -219,10 +231,14 @@ states:
     action_type: shell
     timeout: 60
     action: |
+      cat > "${context.run_dir}/mark_stale_candidates-version_check.txt" << 'LL_RAW_9F3C1A7E_EOF'
+      ${captured.version_check.output}
+      LL_RAW_9F3C1A7E_EOF
       python3 << 'PYEOF'
       import json, subprocess, sys
 
-      data = json.loads("""${captured.version_check.output}""")
+      with open("${context.run_dir}/mark_stale_candidates-version_check.txt") as _f:
+          data = json.loads(_f.read())
       candidates = data.get("candidates", [])
 
       marked = []

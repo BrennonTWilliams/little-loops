@@ -175,28 +175,10 @@
     {
       "file": "loops/goal-cluster.yaml",
       "state": "finalize_present_result",
-      "var": "captured.cluster_summary.output",
-      "class": "B",
-      "host_shape": "heredoc",
-      "line": 21,
-      "count": 2
-    },
-    {
-      "file": "loops/goal-cluster.yaml",
-      "state": "finalize_present_result",
-      "var": "captured.user_plan_decision.output",
-      "class": "B",
-      "host_shape": "heredoc",
-      "line": 15,
-      "count": 1
-    },
-    {
-      "file": "loops/goal-cluster.yaml",
-      "state": "finalize_present_result",
       "var": "context.run_dir",
       "class": "C",
       "host_shape": "heredoc",
-      "line": 4,
+      "line": 10,
       "count": 1
     },
     {
@@ -220,28 +202,19 @@
     {
       "file": "loops/goal-cluster.yaml",
       "state": "parse_batch_plan",
-      "var": "captured.batch_plan_raw.output",
-      "class": "B",
-      "host_shape": "heredoc",
-      "line": 6,
-      "count": 1
-    },
-    {
-      "file": "loops/goal-cluster.yaml",
-      "state": "parse_batch_plan",
       "var": "context.run_dir",
       "class": "C",
       "host_shape": "heredoc",
-      "line": 4,
+      "line": 8,
       "count": 1
     },
     {
       "file": "loops/goal-cluster.yaml",
       "state": "parse_cluster_reassess",
-      "var": "captured.reassess_decision.output",
-      "class": "B",
+      "var": "context.run_dir",
+      "class": "C",
       "host_shape": "heredoc",
-      "line": 4,
+      "line": 7,
       "count": 1
     },
     {
@@ -256,19 +229,10 @@
     {
       "file": "loops/goal-cluster.yaml",
       "state": "save_hints",
-      "var": "captured.propagate_output.output",
-      "class": "B",
-      "host_shape": "heredoc",
-      "line": 5,
-      "count": 1
-    },
-    {
-      "file": "loops/goal-cluster.yaml",
-      "state": "save_hints",
       "var": "context.run_dir",
       "class": "C",
       "host_shape": "heredoc",
-      "line": 4,
+      "line": 7,
       "count": 1
     },
     {
@@ -283,19 +247,10 @@
     {
       "file": "loops/goal-cluster.yaml",
       "state": "write_cluster_success",
-      "var": "captured.cluster_batch_output.output",
-      "class": "B",
-      "host_shape": "heredoc",
-      "line": 15,
-      "count": 1
-    },
-    {
-      "file": "loops/goal-cluster.yaml",
-      "state": "write_cluster_success",
       "var": "context.run_dir",
       "class": "C",
       "host_shape": "heredoc",
-      "line": 4,
+      "line": 7,
       "count": 1
     },
     {
@@ -310,37 +265,19 @@
     {
       "file": "loops/learning-tests-audit.yaml",
       "state": "check_versions",
-      "var": "captured.classification.output",
-      "class": "B",
+      "var": "context.run_dir",
+      "class": "C",
       "host_shape": "heredoc",
-      "line": 6,
-      "count": 1
-    },
-    {
-      "file": "loops/learning-tests-audit.yaml",
-      "state": "check_versions",
-      "var": "captured.installed.output",
-      "class": "B",
-      "host_shape": "heredoc",
-      "line": 5,
-      "count": 1
-    },
-    {
-      "file": "loops/learning-tests-audit.yaml",
-      "state": "check_versions",
-      "var": "captured.records.output",
-      "class": "B",
-      "host_shape": "heredoc",
-      "line": 4,
-      "count": 1
+      "line": 13,
+      "count": 3
     },
     {
       "file": "loops/learning-tests-audit.yaml",
       "state": "mark_stale_candidates",
-      "var": "captured.version_check.output",
-      "class": "B",
+      "var": "context.run_dir",
+      "class": "C",
       "host_shape": "heredoc",
-      "line": 4,
+      "line": 7,
       "count": 1
     },
     {
@@ -832,37 +769,28 @@
     {
       "file": "loops/refine-to-ready-issue.yaml",
       "state": "check_outcome",
-      "var": "captured.issue_id.output",
-      "class": "B",
+      "var": "context.run_dir",
+      "class": "C",
       "host_shape": "heredoc",
-      "line": 15,
+      "line": 17,
       "count": 1
     },
     {
       "file": "loops/refine-to-ready-issue.yaml",
       "state": "check_readiness",
-      "var": "captured.issue_id.output",
-      "class": "B",
+      "var": "context.run_dir",
+      "class": "C",
       "host_shape": "heredoc",
-      "line": 15,
+      "line": 17,
       "count": 1
     },
     {
       "file": "loops/refine-to-ready-issue.yaml",
       "state": "check_scores_from_file",
-      "var": "captured.check_scores_from_file.stderr",
-      "class": "B",
+      "var": "context.run_dir",
+      "class": "C",
       "host_shape": "heredoc",
-      "line": 21,
-      "count": 1
-    },
-    {
-      "file": "loops/refine-to-ready-issue.yaml",
-      "state": "check_scores_from_file",
-      "var": "captured.issue_id.output",
-      "class": "B",
-      "host_shape": "heredoc",
-      "line": 16,
+      "line": 18,
       "count": 1
     },
     {

@@ -199,12 +199,17 @@ states:
   parse_batch_plan:
     action_type: shell
     action: |
+      mkdir -p "${context.run_dir}"
+      cat > "${context.run_dir}/parse_batch_plan-batch_plan_raw.txt" << 'LL_RAW_9F3C1A7E_EOF'
+      ${captured.batch_plan_raw.output}
+      LL_RAW_9F3C1A7E_EOF
       python3 << 'PYEOF'
       import json, re, sys, os
 
       run_dir = '${context.run_dir}'
       os.makedirs(run_dir, exist_ok=True)
-      output = """${captured.batch_plan_raw.output}"""
+      with open(os.path.join(run_dir, 'parse_batch_plan-batch_plan_raw.txt')) as _f:
+          output = _f.read()
 
       plan = None
       m = re.search(r'BATCH_PLAN:\s*```(?:json)?\s*(\{.*?\})\s*```', output, re.DOTALL)
@@ -419,6 +424,9 @@ states:
   write_cluster_success:
     action_type: shell
     action: |
+      cat > "${context.run_dir}/write_cluster_success-cluster_batch_output.txt" << 'LL_RAW_9F3C1A7E_EOF'
+      ${captured.cluster_batch_output.output}
+      LL_RAW_9F3C1A7E_EOF
       python3 << 'PYEOF'
       import json, os
 
@@ -433,7 +441,8 @@ states:
       except Exception:
           pass
 
-      subloop_out = """${captured.cluster_batch_output.output}"""
+      with open(os.path.join(run_dir, 'write_cluster_success-cluster_batch_output.txt')) as _f:
+          subloop_out = _f.read()
       output_summary = ''
       terminal_state = 'done'
       for line in subloop_out.strip().split('\n'):
@@ -560,10 +569,14 @@ states:
   parse_cluster_reassess:
     action_type: shell
     action: |
+      cat > "${context.run_dir}/parse_cluster_reassess-reassess_decision.txt" << 'LL_RAW_9F3C1A7E_EOF'
+      ${captured.reassess_decision.output}
+      LL_RAW_9F3C1A7E_EOF
       python3 << 'PYEOF'
       import json, re, sys
 
-      output = """${captured.reassess_decision.output}"""
+      with open("${context.run_dir}/parse_cluster_reassess-reassess_decision.txt") as _f:
+          output = _f.read()
       m = re.search(r'REASSESS_DECISION:\s*```(?:json)?\s*(\{.*?\})\s*```', output, re.DOTALL)
       if m:
           try:
@@ -632,11 +645,15 @@ states:
   save_hints:
     action_type: shell
     action: |
+      cat > "${context.run_dir}/save_hints-propagate_output.txt" << 'LL_RAW_9F3C1A7E_EOF'
+      ${captured.propagate_output.output}
+      LL_RAW_9F3C1A7E_EOF
       python3 << 'PYEOF'
       import json, re, os
 
       run_dir = '${context.run_dir}'
-      output = """${captured.propagate_output.output}"""
+      with open(os.path.join(run_dir, 'save_hints-propagate_output.txt')) as _f:
+          output = _f.read()
       hints_file = os.path.join(run_dir, 'propagated-hints.json')
 
       new_hints = []
@@ -698,6 +715,12 @@ states:
   finalize_present_result:
     action_type: shell
     action: |
+      cat > "${context.run_dir}/finalize_present_result-user_plan_decision.txt" << 'LL_RAW_9F3C1A7E_EOF'
+      ${captured.user_plan_decision.output:default=}
+      LL_RAW_9F3C1A7E_EOF
+      cat > "${context.run_dir}/finalize_present_result-cluster_summary.txt" << 'LL_RAW_9F3C1A7E_EOF'
+      ${captured.cluster_summary.output:default=}
+      LL_RAW_9F3C1A7E_EOF
       python3 << 'PYEOF'
       import json, os
 
@@ -712,13 +735,16 @@ states:
       cluster_state = _read_json(os.path.join(run_dir, 'cluster-state.json'), [])
       batch_plan = _read_json(os.path.join(run_dir, 'batch-plan.json'), {})
 
-      cancelled = '${captured.user_plan_decision.output:default=}'
+      with open(os.path.join(run_dir, 'finalize_present_result-user_plan_decision.txt')) as _f:
+          cancelled = _f.read()
+      with open(os.path.join(run_dir, 'finalize_present_result-cluster_summary.txt')) as _f:
+          cluster_summary_raw = _f.read()
       if 'CANCEL' in cancelled:
           success = False
           summary = 'Cluster plan cancelled by user before execution began.'
       else:
           success = bool(cluster_state) and all(b.get('success', False) for b in cluster_state)
-          summary_out = '${captured.cluster_summary.output:default=}'
+          summary_out = cluster_summary_raw
           if summary_out.strip():
               summary = summary_out.strip()
           else:
@@ -741,7 +767,7 @@ states:
           'batches': cluster_state,
           'per_goal_outcomes': per_goal_outcomes,
           'cluster_summary': summary,
-          'recommended_next': '${captured.cluster_summary.output:default=}',
+          'recommended_next': cluster_summary_raw,
           'success': success,
       }
       print(json.dumps(result, indent=2))

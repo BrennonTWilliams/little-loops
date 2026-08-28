@@ -542,6 +542,9 @@ states:
     # Readiness below threshold → retry refinement (refine-issue can fix technical gaps).
     # Readiness passes → proceed to check_outcome.
     action: |
+      cat > "${context.run_dir}/check_readiness-issue_id.txt" << 'LL_RAW_9F3C1A7E_EOF'
+      ${captured.issue_id.output}
+      LL_RAW_9F3C1A7E_EOF
       LL_ARG_READINESS_THRESHOLD=${context.readiness_threshold:shell} python3 << 'PYEOF'
       import json, os, sys, subprocess
       from pathlib import Path
@@ -555,8 +558,9 @@ states:
               pass
       readiness = cg.get('readiness_threshold', int(os.environ['LL_ARG_READINESS_THRESHOLD']))
 
+      issue_id = Path('${context.run_dir}/check_readiness-issue_id.txt').read_text().rstrip("\n")
       r = subprocess.run(
-          ['ll-issues', 'show', '${captured.issue_id.output}', '--json'],
+          ['ll-issues', 'show', issue_id, '--json'],
           capture_output=True, text=True
       )
       d = json.loads(r.stdout)
@@ -574,6 +578,9 @@ states:
     # Outcome below threshold → check_decision_needed before falling through to breakdown_issue.
     # Outcome passes → done.
     action: |
+      cat > "${context.run_dir}/check_outcome-issue_id.txt" << 'LL_RAW_9F3C1A7E_EOF'
+      ${captured.issue_id.output}
+      LL_RAW_9F3C1A7E_EOF
       LL_ARG_OUTCOME_THRESHOLD=${context.outcome_threshold:shell} python3 << 'PYEOF'
       import json, os, sys, subprocess
       from pathlib import Path
@@ -587,8 +594,9 @@ states:
               pass
       outcome = cg.get('outcome_threshold', int(os.environ['LL_ARG_OUTCOME_THRESHOLD']))
 
+      issue_id = Path('${context.run_dir}/check_outcome-issue_id.txt').read_text().rstrip("\n")
       r = subprocess.run(
-          ['ll-issues', 'show', '${captured.issue_id.output}', '--json'],
+          ['ll-issues', 'show', issue_id, '--json'],
           capture_output=True, text=True
       )
       # BUG-2726: surface the REAL inner ll-issues failure (not the heredoc
@@ -725,6 +733,9 @@ states:
     # on_no routes to breakdown_issue (not failed) — outcome-only failures here
     # should not stall the loop; scope reduction is the appropriate intervention.
     action: |
+      cat > "${context.run_dir}/check_scores_from_file-issue_id.txt" << 'LL_RAW_9F3C1A7E_EOF'
+      ${captured.issue_id.output}
+      LL_RAW_9F3C1A7E_EOF
       LL_ARG_READINESS_THRESHOLD=${context.readiness_threshold:shell} LL_ARG_OUTCOME_THRESHOLD=${context.outcome_threshold:shell} python3 << 'PYEOF'
       import json, os, sys, subprocess
       from pathlib import Path
@@ -739,13 +750,14 @@ states:
       readiness = cg.get('readiness_threshold', int(os.environ['LL_ARG_READINESS_THRESHOLD']))
       outcome = cg.get('outcome_threshold', int(os.environ['LL_ARG_OUTCOME_THRESHOLD']))
 
+      issue_id = Path('${context.run_dir}/check_scores_from_file-issue_id.txt').read_text().rstrip("\n")
       r = subprocess.run(
-          ['ll-issues', 'show', '${captured.issue_id.output}', '--json'],
+          ['ll-issues', 'show', issue_id, '--json'],
           capture_output=True, text=True
       )
       # BUG-2726: surface the REAL inner ll-issues failure (not the heredoc
       # wrapper's status) and exit 2 → verdict 'error' → on_error: diagnose,
-      # so ${captured.check_scores_from_file.stderr} carries it forward.
+      # so this state's own captured stderr carries it forward.
       if r.returncode != 0:
           sys.stderr.write(r.stderr or 'll-issues show exited %d\n' % r.returncode)
           sys.exit(2)
