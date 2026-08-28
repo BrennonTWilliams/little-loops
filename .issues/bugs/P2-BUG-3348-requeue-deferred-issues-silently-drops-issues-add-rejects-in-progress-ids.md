@@ -4,9 +4,10 @@ type: BUG
 title: "_requeue_deferred_issues silently drops issues \u2014 queue.add() rejects\
   \ in_progress ids"
 priority: P2
-status: open
+status: done
 discovered_by: pre-implementation review of ENH-3346
 discovered_date: '2026-08-27'
+completed_at: '2026-08-28T00:56:59Z'
 confidence_score: 100
 outcome_confidence: 90
 score_complexity: 24
@@ -141,6 +142,7 @@ _Added by `/ll:refine-issue` — 2026-08-28 — based on codebase analysis:_
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-28T00:56:39 - `704143ae-3b9d-4786-97ae-10dc0e1b01c8.jsonl`
 - `/ll:confidence-check` - 2026-08-28T00:47:03 - `da0b8709-ed69-41b4-ab2e-8b5a036dc0a9.jsonl`
 - `/ll:confidence-check` - 2026-08-28T00:36:37 - `9ec5f3ec-b4d2-4b79-b4c8-e01cc64d4578.jsonl`
 - `/ll:wire-issue` - 2026-08-28T00:33:50 - `52578ca5-b353-4a6a-84db-a98fe4dd673c.jsonl`

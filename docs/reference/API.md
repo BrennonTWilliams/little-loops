@@ -4112,7 +4112,7 @@ queue.mark_skipped(issue_id)
 | `mark_completed(issue_id)` | Mark issue as completed |
 | `mark_failed(issue_id)` | Mark issue as failed |
 | `mark_skipped(issue_id)` | Mark issue as skipped, e.g. BLOCKED on an open dependency (BUG-3254) |
-| `requeue(issue_info, demote_priority=False)` | Requeue an issue; clears it from the failed and skipped buckets |
+| `requeue(issue_info, demote_priority=False)` | Requeue an issue; clears it from the in-progress, failed, and skipped buckets |
 | `qsize() -> int` | Count of issues currently in queue |
 | `in_progress_count() -> int` | Count of issues currently being processed |
 | `completed_count() -> int` | Count of completed issues |

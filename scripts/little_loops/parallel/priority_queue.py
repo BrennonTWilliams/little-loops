@@ -151,6 +151,9 @@ class IssuePriorityQueue:
             demote_priority: Whether to lower the priority by one level
         """
         with self._lock:
+            if issue.issue_id in self._queued:
+                return
+
             self._in_progress.discard(issue.issue_id)
             self._failed.discard(issue.issue_id)
             self._skipped.discard(issue.issue_id)

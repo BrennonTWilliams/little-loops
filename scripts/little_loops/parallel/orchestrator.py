@@ -1309,7 +1309,7 @@ class ParallelOrchestrator:
                 else:
                     # No more overlaps, add back to queue
                     self.logger.info(f"Re-queuing {issue.issue_id} - no longer overlapping")
-                    self.queue.add(issue)
+                    self.queue.requeue(issue)
 
         self._deferred_issues = still_deferred
 

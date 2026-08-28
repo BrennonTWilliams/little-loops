@@ -4555,11 +4555,51 @@ class TestOverlapDetection:
 
         orchestrator._on_worker_complete(result)
 
-        # Should re-queue the deferred issue (check_overlap called, queue.add called)
+        # Should re-queue the deferred issue (check_overlap called, queue.requeue called)
         mock_detector.check_overlap.assert_called_once_with(mock_deferred)
-        orchestrator.queue.add.assert_called_once_with(mock_deferred)  # type: ignore[attr-defined]
+        orchestrator.queue.requeue.assert_called_once_with(mock_deferred)  # type: ignore[attr-defined]
         # Deferred list should be empty after re-queuing
         assert len(orchestrator._deferred_issues) == 0
+
+    def test_requeue_deferred_issues_real_queue_dequeueable_again(
+        self, orchestrator: ParallelOrchestrator
+    ) -> None:
+        """BUG-3348 regression: an overlap-deferred issue is re-dequeueable
+        once the overlap clears, and in_progress_count returns to 0 — using
+        a real (unmocked) IssuePriorityQueue rather than the fixture's
+        MagicMock, which would hide the add()-rejects-in_progress-ids defect.
+        """
+        from little_loops.parallel.overlap_detector import OverlapResult
+        from little_loops.parallel.priority_queue import IssuePriorityQueue
+
+        real_issue = IssueInfo(
+            path=Path(".issues/bugs/P1-BUG-002-deferred.md"),
+            issue_type="bugs",
+            priority="P1",
+            issue_id="BUG-002",
+            title="Deferred Bug",
+        )
+
+        real_queue = IssuePriorityQueue()
+        real_queue.add(real_issue)
+        queued = real_queue.get()  # Moves BUG-002 into _in_progress
+        assert queued is not None
+        assert real_queue.in_progress_count == 1
+
+        orchestrator.queue = real_queue
+        orchestrator._deferred_issues = [real_issue]
+
+        mock_detector = MagicMock()
+        mock_detector.check_overlap.return_value = OverlapResult(has_overlap=False)
+        orchestrator.overlap_detector = mock_detector
+
+        orchestrator._requeue_deferred_issues()
+
+        assert orchestrator._deferred_issues == []
+        assert real_queue.in_progress_count == 0
+        requeued = real_queue.get(block=False)
+        assert requeued is not None
+        assert requeued.issue_info.issue_id == "BUG-002"
 
 
 class TestInterruptedWorkers:

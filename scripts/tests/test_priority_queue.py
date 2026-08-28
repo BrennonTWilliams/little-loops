@@ -488,6 +488,19 @@ class TestIssuePriorityQueueStateTransitions:
         queue.requeue(sample_issue)
         assert sample_issue.issue_id not in queue.skipped_ids
 
+    def test_requeue_is_idempotent_against_queued_id(
+        self, queue: IssuePriorityQueue, sample_issue: IssueInfo
+    ) -> None:
+        """Calling requeue() on an already-queued id is a no-op, not a
+        duplicate enqueue (BUG-3348) — guards concurrent
+        _on_worker_complete callbacks racing on the same deferred issue."""
+        queue.add(sample_issue)
+        queue.get()
+        queue.requeue(sample_issue)
+        assert queue.qsize() == 1
+        queue.requeue(sample_issue)
+        assert queue.qsize() == 1
+
     def test_add_accepts_previously_skipped_id(
         self, queue: IssuePriorityQueue, sample_issue: IssueInfo
     ) -> None:
