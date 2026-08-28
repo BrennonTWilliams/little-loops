@@ -168,9 +168,14 @@ _Added by `/ll:refine-issue` — 2026-08-27 — based on codebase analysis:_
 - **`docs/reference/EVENT-SCHEMA.md` line citations are stale** (file changed 2026-08-27T21:54 UTC, after this issue's prior refine pass): the "Reserved Event Names" heading is now at line 1367; the "Machine-Readable Schemas" file-tree block now runs lines 1383-1427 (`parallel_epic_branch_stale.json`/`parallel_worker_completed.json` entries at 1412-1413); the `### Naming Convention` table's `parallel.*` rows are now at lines 1438-1439; the `## Quick Reference` heading moved to line 1495, with its `parallel.*` rows now at lines 1549-1550. No new event types were added by the intervening change — it was a prose-only update to existing events for ENH-3345 (run_id/loop stamping); the sections this issue targets are structurally unchanged, only shifted ~4 lines.
 - **`ParallelWorkerCompletedVariant` (`scripts/little_loops/observability/schema.py:489-494`) does not mirror the full wire payload**: it models only `issue_id`/`status`, omitting `worker_name` and `duration_seconds` that `orchestrator.py:1287-1293` actually emits. The six new `DESVariant` subclasses this issue's wiring phase adds should decide per-field inclusion deliberately — 1:1 payload parity is not the existing convention for `parallel.*` variants.
 
+_Added by `/ll:refine-issue` — 2026-08-28 — based on codebase analysis:_
+
+- `scripts/little_loops/cli/parallel.py:316,333` — constructs `EventBus()` and passes `event_bus=event_bus` into `ParallelOrchestrator.__init__`; confirms the six new emitters will reach the same runtime bus/transports as the existing `parallel.*` events with no further CLI wiring changes needed
+
 ## Implementation Steps
 
 1. ~~Land ENH-3345 first~~ — DONE (`d712e20b4`); note its stamping lives in `FSMExecutor._emit()` and is NOT reused here — parallel emitters stamp `run_id` inline from `ParallelOrchestrator.run_id` (see Proposed Solution). **Land BUG-3348 first as well** — `_requeue_deferred_issues`'s `queue.add()` call silently drops deferred issues (rejected as `_in_progress`), and `worker_unblocked` is emitted at that resubmit point; without the fix the event either never fires or lies
+   > ⚠ Superseded — BUG-3348 done; `queue.requeue()` confirmed at `orchestrator.py:1312`
 2. Add `parallel.worker_blocked`/`parallel.worker_unblocked` emissions in `orchestrator.py` (at the overlap-deferral/requeue points, not a lock wait); add `parallel.worker_started` in `worker_pool.py`'s `_process_issue` immediately after worktree creation (see Program Design timing decision); add `parallel.queue_changed` inside `priority_queue.py`'s six mutators (queue-side — see Program Design); stamp `run_id` on the two existing emitters
 3. Add `parallel.merge_started` (gated on `retry_count == 0`) / `parallel.merge_completed` (outcome `merged|failed` + `error`) emissions in `merge_coordinator.py` (`_process_merge`, `_finalize_merge`, `_handle_failure`); thread `event_bus` and `run_id` into `IssuePriorityQueue`/`MergeCoordinator` per the Wiring Phase
 4. Add six new `DESVariant` dataclasses to `observability/schema.py`'s `DES_VARIANTS`, and six new entries to `generate_schemas.py`'s `SCHEMA_DEFINITIONS`
@@ -251,6 +256,13 @@ _Added 2026-08-27 — manual code review against the live codebase before implem
 3. **`queue_changed` conditional-emit rules made explicit**: `get()` emits only on successful dequeue (main loop polls `get(block=False)` every iteration — unconditional emit floods the bus); `add()` only when it returns `True`.
 4. **`load_completed`/`load_failed` resume-path loaders added to the emitter set** (`priority_queue.py:225-241`): they mutate the counters but were absent from the original six-mutator list; each now emits one `queue_changed` after its batch so post-resume counters are truthful.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-28 — based on codebase analysis:_
+
+- **BUG-3348 confirmed resolved in the live tree**: `_requeue_deferred_issues` (`orchestrator.py:1296-1314`) now calls `self.queue.requeue(issue)` at `:1312` (not `queue.add()`), and `IssuePriorityQueue.requeue()` (`priority_queue.py:146-170`) already contains the duplicate-enqueue guard (`if issue.issue_id in self._queued: return`, `:154-155`) that discards the id from `_in_progress`/`_failed`/`_skipped` before re-enqueueing. BUG-3348's frontmatter shows `status: done`, `completed_at: 2026-08-28T00:56:59Z`. Item 1's BLOCKER language (below) is now stale — `parallel.worker_unblocked` can be safely gated on `requeue()` succeeding, since it no longer silently drops.
+- **No other `parallel.*` implementation exists yet**: repo-wide search confirms none of the six proposed event names (`worker_started`, `worker_blocked`, `worker_unblocked`, `merge_started`, `merge_completed`, `queue_changed`) appear anywhere outside `.issues/`; `IssuePriorityQueue`/`MergeCoordinator` still take no `event_bus`/`run_id` parameters (`priority_queue.py:40-48`, `merge_coordinator.py:47-53`). The rest of this issue's research and Program Design remain current.
+
 ## Impact
 
 - **Priority**: P3 - Observability gap, not a correctness bug; no user-facing failure today, but blocks building a live run visualizer
@@ -319,6 +331,7 @@ _Added by `/ll:confidence-check` on 2026-08-27_
 - Moderate breadth × moderate depth: six new emitters plus `run_id` stamping on two existing ones span 6 source files (orchestrator.py, worker_pool.py, merge_coordinator.py, priority_queue.py, generate_schemas.py, observability/schema.py) and 6 doc/test files, with constructor-signature changes (threading `event_bus` into `IssuePriorityQueue`/`MergeCoordinator`) rather than pure mechanical substitution — expect more iteration than a single-file change.
 
 ## Session Log
+- `/ll:refine-issue` - 2026-08-28T03:18:19 - `90104caa-276e-4ccd-9e14-4b75908612aa.jsonl`
 - `/ll:confidence-check` - 2026-08-27T23:52:49 - `669eb13b-852d-427b-9f5f-ccf15758ffa9.jsonl`
 - `/ll:confidence-check` - 2026-08-27T22:17:22 - `dd56bf1f-7933-4d9c-980c-762867d3ce6b.jsonl`
 - `/ll:reconcile-issue` - 2026-08-27T22:14:34 - `3e6453f3-ac93-435f-934e-1a9d7dc7adfd.jsonl`

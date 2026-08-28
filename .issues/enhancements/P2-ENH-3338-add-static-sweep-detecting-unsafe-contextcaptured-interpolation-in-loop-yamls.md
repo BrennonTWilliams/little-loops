@@ -15,7 +15,7 @@ blocks:
 - BUG-3340
 - BUG-3341
 - ENH-3342
-confidence_score: 80
+confidence_score: 95
 outcome_confidence: 81
 score_complexity: 17
 score_test_coverage: 22
@@ -188,6 +188,12 @@ epic faults it for. Invert it:
 - Consequence, and the point of the inversion: a newly-introduced `${context.*}`
   key is **untrusted until someone adds it to the trusted list** — the safe
   default direction.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-28 — based on codebase analysis:_
+
+- A third existing grandfathering mechanism exists alongside the Python-constant vs. checked-in-JSON baseline choice weighed above: MR-7/MR-9/MR-11 in `shell_safety.py` use per-loop suppression flags instead of any baseline. `unsafe_context_interpolation_ok` (and siblings `bash_default_ok`, `shell_pid_ok`) are registered in `KNOWN_TOP_LEVEL_KEYS` (`scripts/little_loops/fsm/validation/_base.py:81-145`) and read via `fsm.unsafe_context_interpolation_ok` (`FSMLoop`, `schema.py`) at the top of `_validate_unsafe_context_interpolation()` (`shell_safety.py:201-237`). A loop author sets the flag directly on the offending YAML file; there is no baseline file and no set-equality assertion involved. This is a third live grandfathering pattern in this codebase, distinct from both options this section currently weighs.
 
 ## Integration Map
 
@@ -366,6 +372,12 @@ into `FSMLoop` via the same schema those consume.
 No runtime path. This is a static analysis over checked-in YAML; it never
 executes a loop.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-28 — based on codebase analysis:_
+
+- The interpolation grammar recognized elsewhere in this codebase (`KNOWN_NAMESPACES`, `scripts/tests/test_builtin_loop_interpolation.py:41-51`) includes `result`, `state`, `env`, `messages`, and `param` in addition to `context`, `captured`, `prev`, and `loop`. The Decision Rules table above states a verdict only for `loop`/`captured`/`prev`/`context`; it does not state a verdict for a `${result.*}`, `${state.*}`, `${env.*}`, `${messages.*}`, or `${param.*}` token found inside a Python body.
+
 ## Implementation Steps
 
 1. **Glob recursively** (`loops/**/*.yaml`). `lib/` holds fragments composed into
@@ -407,6 +419,12 @@ executes a loop.
 9. The failure message names file, state, line, var, and class, and says which
    direction failed (new site vs. stale entry). This message is read once per
    conversion commit across the whole epic; make it good.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-28 — based on codebase analysis:_
+
+- Two existing call sites already special-case a `None`-typed action whose text starts with `/` as prompt dispatch rather than a shell invocation: `Executor._action_mode()` (`executor.py`) returns `"prompt"` when `action_type` is unset and `state.action.startswith("/")` — matching `StateConfig.action_type`'s own docstring ("If None, uses heuristic: / prefix = slash_command, else = shell") — and MR-11's own `_find_unsafe_context_interpolations()` (`shell_safety.py`) independently skips any action where `action.lstrip().startswith("/")`. Step 5 above scopes the sweep to `action_type` values `shell`/`None` without stating a verdict for a `None`-typed, slash-prefixed action.
 
 ## Acceptance Criteria
 
@@ -472,6 +490,8 @@ _Added by `/ll:confidence-check` on 2026-08-27_
 **Open** | Created: 2026-08-27 | Priority: P2
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-28T15:29:35 - `95d1793e-8286-4e69-bc9a-1ae51f79f14e.jsonl`
+- `/ll:refine-issue` - 2026-08-28T15:25:52 - `9ebbf943-3dc2-4bcb-b0aa-5d1256594e70.jsonl`
 - `/ll:confidence-check` - 2026-08-28T03:13:07 - `e52b5f8b-4479-4377-bf0a-15b1b4dcbd9a.jsonl`
 - `/ll:confidence-check` - 2026-08-28T03:03:44 - `486b558c-b1c6-4706-9fa1-9c30566c1e36.jsonl`
 - `/ll:wire-issue` - 2026-08-28T02:57:43 - `13d6dd54-6fe5-483d-8ac7-01629c54d02f.jsonl`
