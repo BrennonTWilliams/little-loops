@@ -8,6 +8,8 @@ status: open
 discovered_by: ll-issues-create
 discovered_date: '2026-08-26'
 captured_at: '2026-08-26T17:33:30Z'
+relates_to:
+- ENH-3355
 confidence_score: 95
 outcome_confidence: 82
 score_complexity: 14
@@ -404,7 +406,7 @@ Evaluate these three in order and record the decision before writing code:
   And a prompt has **no import to offer instead**, so the warning has no
   actionable fix to suggest — which is what makes (b) weak on its own.
 - **(c) Fix the live drift generatively, then re-price this rule.**
-  ✅ **Split into its own issue — file it before starting this one.** The right
+  ✅ **Split into its own issue — filed as ENH-3355 (2026-08-28).** The right
   remedy for `attach_evaluators` is not a lint at all: have `init` emit the
   vocabulary from the table itself —
 
@@ -679,11 +681,11 @@ literal set/frozenset displays against the exported tables in
    **Confirmed landed** (status: done); no longer a blocking step.
 0a. **Coverage-gap decision: SETTLED — (a), shell-only, gap documented; (c)
    split out.** No evaluation needed at implementation time. The one action
-   item: **file the (c) follow-up issue** (generative `evaluator-vocab.md` in
+   item — file the (c) follow-up issue (generative `evaluator-vocab.md` in
    `workflow-generator.yaml`'s `init`, consumed by `attach_evaluators`'s
-   prompt in place of its hand-listed vocabulary) so the live prose
-   restatement is tracked somewhere. It is independent of this issue and need
-   not land first.
+   prompt in place of its hand-listed vocabulary) — is **done: ENH-3355**
+   (filed 2026-08-28). It is independent of this issue and need not land
+   first.
 1. Implement `_validate_gate_completeness` in `meta_rules.py` using a
    module-level compiled `re.Pattern` over the raw action string, matching set,
    frozenset, list, and tuple displays (AC #1b), with the ≥3-member /
@@ -803,8 +805,8 @@ a third time after adding the flattened-`EVALUATOR_REQUIRED_FIELDS`-values table
 ≥3-member displays subset to any of the five tables returns **0 matches**.
 Caveat: the same loop still restates the table in prose inside
 `attach_evaluators`'s **prompt**, which this rule does not inspect — see Known
-coverage gap. That live drift is tracked as the (c) follow-up issue, split out
-per the settled coverage-gap decision.
+coverage gap. That live drift is tracked as ENH-3355, split out per the
+settled coverage-gap decision.
 
 ## Non-Goal (document, don't mechanize)
 

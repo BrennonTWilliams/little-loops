@@ -305,6 +305,9 @@ Out of scope: building the dashboard/visualizer consumer itself (this issue only
 # requeue() fix; never emitted on a rejected re-add).
 # queue_changed: get() emits only on successful dequeue (main loop polls get(block=False) every
 # iteration); add() only when it returns True; add_many/load_completed/load_failed emit once per batch.
+# NOTE (2026-08-28): FEAT-3323 stamps a producer identifier onto the socket-transport envelope at the
+# same top level these payloads are splatted into. run_id is reserved for THIS issue's field; FEAT-3323's
+# key will be something else (producer_id or similar) — coordinated in that issue's Resolved Decisions.
 # queue_changed carries all five IssuePriorityQueue counters rather than a lossy pending/active/done triple —
 # a dashboard wants failed broken out; consumers needing "done" compute completed + failed + skipped.
 # ("active" = in_progress_count, "pending" = qsize().)

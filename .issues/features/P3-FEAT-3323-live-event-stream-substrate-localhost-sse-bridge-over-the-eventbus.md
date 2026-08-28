@@ -10,6 +10,7 @@ captured_at: '2026-08-26T03:08:21Z'
 relates_to:
 - FEAT-3321
 - FEAT-3304
+- ENH-3346
 depends_on:
 - BUG-3324
 confidence_score: 93
@@ -388,7 +389,9 @@ _Added by `/ll:refine-issue` — 2026-08-26 — based on codebase analysis:_
    `UnixSocketTransport`, recovered from the pid in the socket filename) and
    document it in `docs/reference/EVENT-SCHEMA.md` § Wire Format. Pick a key
    that cannot collide with a payload field — payloads are splatted at the top
-   level of the envelope; grep the event catalog before choosing.
+   level of the envelope; grep the event catalog before choosing, and note
+   `run_id` is reserved by ENH-3346 (planned on all `parallel.*` payloads;
+   not visible to a grep until it lands).
 2. Add the `events.bridge` config block (schema + dataclass + `EventsConfig`
    member + `to_dict()` mirror + `_DATACLASS_SECTION_MAP` entry), off by
    default.
@@ -567,7 +570,10 @@ Questions._
   `EVENT-SCHEMA.md`) reads by key. One caveat to check at implementation time:
   payloads are splatted at the *top level*, so the new key must not collide
   with any existing payload field — grep the event catalog before settling on
-  `producer_id` (or similar).
+  `producer_id` (or similar). **`run_id` is reserved (2026-08-28):** ENH-3346
+  adds a `run_id` field to every `parallel.*` payload, so a grep of the
+  *current* catalog will not surface the collision — the producer key must not
+  be `run_id` regardless of which issue lands first.
 
 ## Open Questions
 
@@ -585,7 +591,8 @@ Questions._
 - [ ] A producer that starts *after* the bridge is already serving is picked up
       by the directory rescan and its events reach an attached client.
 - [ ] Every relayed event carries a stable producer identifier that does not
-      collide with any existing payload field, and the envelope addition is
+      collide with any existing payload field — nor with `run_id`, reserved by
+      ENH-3346 for `parallel.*` payloads — and the envelope addition is
       documented in `docs/reference/EVENT-SCHEMA.md`.
 - [ ] An SSE client connecting while a loop is mid-run receives the
       current-state seed events before live traffic, matching today's

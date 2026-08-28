@@ -2,8 +2,9 @@
 id: 3182
 title: Deterministic verification-evidence bundle from verify-loop runs
 type: FEAT
-priority: P2
+priority: P3
 status: open
+parent: EPIC-2087
 discovered_date: '2026-08-15'
 labels:
 - path-a
@@ -28,3 +29,13 @@ Two consumers need the first kind and cannot use the second: a team reviewing ag
 - Any LLM-produced content included for context is segregated and labeled non-evidentiary.
 - A run whose evidence is incomplete produces an explicit gap list rather than a bundle that looks complete.
 - The bundle is readable without little-loops installed — it is evidence, not a proprietary format.
+
+## Notes
+
+_2026-08-28, unparented-issues review:_ downgraded P2 → P3 and parented under
+EPIC-2087 (Loop Harness Quality & Evaluation Tooling). The motivation and ACs
+are sound, but the issue has had no refine/wire/confidence pass — no proposed
+solution, no integration map, no file references. **Run `/ll:refine-issue
+FEAT-3182` before scheduling implementation**; at minimum it must identify the
+verify-loop run artifacts and `history.db` tables the bundle draws from, and
+the exporter's CLI surface.

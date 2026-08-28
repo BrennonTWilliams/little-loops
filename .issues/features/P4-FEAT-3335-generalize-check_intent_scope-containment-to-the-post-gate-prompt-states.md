@@ -171,8 +171,9 @@ a second concrete consumer first.
 Filed 2026-08-26 from the pre-implementation review of FEAT-3332, which states
 the one-shot limitation plainly (Expected Behavior, "Two limits of this
 placement") and defers `loops_dir` (Proposed Solution requirement (h)) to
-whatever picks this up. Blocked on FEAT-3332 landing: this issue reuses its gate
-body, its baseline mechanics, and its escape paths.
+whatever picks this up. ~~Blocked on FEAT-3332 landing~~ — **FEAT-3332 is done
+(confirmed 2026-08-28), so this issue is unblocked**; it reuses FEAT-3332's
+gate body, baseline mechanics, and escape paths, all now in the tree.
 
 Original incident: `postmortems/workflow-generator-output-json-gate-gap.md`
 §4, §5 R5.

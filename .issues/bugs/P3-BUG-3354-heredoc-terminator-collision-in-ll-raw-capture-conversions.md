@@ -7,7 +7,8 @@ status: open
 discovered_by: manual-review
 discovered_date: '2026-08-28'
 captured_at: '2026-08-28T00:00:00Z'
-related: [EPIC-3336, BUG-3341, ENH-3347]
+parent: EPIC-3336
+relates_to: [BUG-3341, ENH-3347]
 ---
 
 # BUG-3354: Heredoc terminator collision in LL_RAW capture conversions
@@ -47,7 +48,7 @@ that line, and the remainder of the payload is parsed as shell commands.
 
 Captured-output rendering is injection-proof regardless of payload content —
 no fixed delimiter whose presence in the payload changes parsing. Candidate
-directions (decide at implementation):
+directions considered:
 
 1. **Per-render unique terminator**: interpolation-time generated marker
    (e.g. UUID-suffixed) guaranteed absent from the payload — requires engine
@@ -58,7 +59,13 @@ directions (decide at implementation):
 3. **Detect-and-refuse**: interpolation fails loudly if the rendered payload
    contains the terminator line — turns silent injection into a hard error.
 
-Option 3 is the cheapest guard and can ship first; 1/2 are the structural fix.
+**Decided 2026-08-28 (unparented-issues review): this issue's scope is
+option 3** — interpolation fails loudly (hard error, run halts at that state)
+when a rendered payload contains a line equal to the heredoc terminator of the
+site being rendered. That turns silent arbitrary shell execution into a
+deterministic, attributable failure at Small effort with no touch to the ~145
+converted sites. Options 1/2 remain the candidate structural fix; file a
+follow-up (child of EPIC-3336) only if the hard-error path fires in practice.
 
 ## Motivation
 
@@ -73,20 +80,22 @@ zero.
 
 **In scope:** the delimiter-collision failure mode of the `LL_RAW_*_EOF`
 heredoc pattern across converted sites; a behavioral test demonstrating the
-break; the chosen mitigation.
+break; the option-3 detect-and-refuse guard (decided above).
 
-**Out of scope:** re-litigating the BUG-3341 conversion pattern itself;
-ENH-3347's four behavioral cases; non-captured interpolation classes
-(BUG-3339/3340 territory).
+**Out of scope:** options 1/2 (per-render unique terminator; engine-level safe
+binding) — the structural fix, deferred to a follow-up if ever needed;
+re-litigating the BUG-3341 conversion pattern itself; ENH-3347's four
+behavioral cases; non-captured interpolation classes (BUG-3339/3340
+territory).
 
 ## Impact
 
 - **Priority**: P3 — real injection class, low trigger likelihood, no known
   in-the-wild occurrence.
-- **Effort**: Medium — engine touch (interpolation or executor) plus tests;
-  option 3 alone is Small.
-- **Risk**: Low for option 3; Medium for 1/2 (touches rendering across all
-  converted sites).
+- **Effort**: Small — option 3 only (interpolation-layer guard plus tests);
+  the Medium engine rework belongs to the deferred 1/2 follow-up.
+- **Risk**: Low — detect-and-refuse adds a hard error on a payload shape that
+  today executes as shell; no rendering change at the converted sites.
 - **Breaking Change**: No.
 
 ## Status

@@ -30,11 +30,19 @@ its own until now. This issue is that tracking issue.
 
 ## Current Behavior
 
-[If applicable - describe what currently happens]
+The only browser view of `.ll/history.db` is `ll-artifact dashboard`, a
+point-in-time export: the embedded data is frozen at export time, and seeing
+new `loop_run`/`usage_event` rows means re-running the export and reloading
+the page. Watching a live run otherwise means polling `ll-session query` /
+`ll-issues show` by hand.
 
 ## Expected Behavior
 
-[What should happen instead]
+A read-only query route mounted on FEAT-3323's `ll-artifact serve` server
+exposes the live `.ll/history.db` (read-only connection, ENH-075 redaction
+semantics), and a lightweight page polls it every few seconds — new rows
+appear in the open browser tab without re-export or reload, and the live path
+provably cannot mutate the database.
 
 ## Motivation
 
@@ -48,7 +56,8 @@ template/render pipeline, which is designed around single-file, offline,
 
 ## Proposed Solution
 
-TBD - requires investigation
+See Proposed Approach below (kept as the working sketch); firm up via
+`/ll:refine-issue` once FEAT-3323's server exists to mount on.
 
 ## Integration Map
 
@@ -63,16 +72,23 @@ TBD - requires investigation
 
 ## Implementation Steps
 
-1. [Major phase 1]
-2. [Major phase 2]
-3. [Verification approach]
+1. Mount a read-only query route on FEAT-3323's `ll-artifact serve` server
+   (per the Scope Boundary below), reusing `cli/artifact/dashboard.py`'s
+   read-only connection pattern and ENH-075 redaction logic.
+2. Add the polling page and the config gate (`artifacts`-adjacent block in
+   `config-schema.json`, off by default).
+3. Verify against a live `ll-sprint`/`ll-loop` run: new rows appear without
+   reload, and write statements are rejected (`PRAGMA query_only`).
 
 ## Impact
 
-- **Priority**: [P0-P5] - [Justification]
-- **Effort**: [Small/Medium/Large] - [Justification]
-- **Risk**: [Low/Medium/High] - [Justification]
-- **Breaking Change**: [Yes/No]
+- **Priority**: P3 - Developer-experience live view; no correctness impact,
+  and sequenced behind FEAT-3323 (`depends_on`)
+- **Effort**: Medium - The route and page are small, but redaction reuse,
+  config gating, and schema-guard wiring span several files
+- **Risk**: Low - Read-only connection against the live DB, loopback-only
+  server (FEAT-3323's controls), gated off by default
+- **Breaking Change**: No
 
 ## Use Case
 
