@@ -109,9 +109,9 @@ states:
   check_issue_outcome:
     action_type: shell
     action: |
-      python3 << 'PYEOF'
-      import json
-      enabled = '${context.require_issue_outcome}'.lower() == 'true'
+      LL_ARG_REQUIRE_ISSUE_OUTCOME=${context.require_issue_outcome:shell} python3 << 'PYEOF'
+      import json, os
+      enabled = os.environ.get("LL_ARG_REQUIRE_ISSUE_OUTCOME", "").lower() == 'true'
       if not enabled:
           print(1)
           exit()
@@ -130,10 +130,10 @@ states:
   reject_issue_outcome:
     action_type: shell
     action: |
-      python3 << 'PYEOF'
+      LL_ARG_OUTPUT_DIR=${context.output_dir:shell} python3 << 'PYEOF'
       import json, os
       from datetime import datetime, timezone
-      out_dir = '${context.output_dir}'
+      out_dir = os.environ.get("LL_ARG_OUTPUT_DIR", "")
       os.makedirs(out_dir, exist_ok=True)
       entry = {
           'path': '${captured.enrich_output.output}',
@@ -151,9 +151,9 @@ states:
   check_corrections:
     action_type: shell
     action: |
-      python3 << 'PYEOF'
-      import json
-      enabled = '${context.exclude_user_corrections}'.lower() == 'true'
+      LL_ARG_EXCLUDE_USER_CORRECTIONS=${context.exclude_user_corrections:shell} python3 << 'PYEOF'
+      import json, os
+      enabled = os.environ.get("LL_ARG_EXCLUDE_USER_CORRECTIONS", "").lower() == 'true'
       if not enabled:
           print(0)
           exit()
@@ -172,10 +172,10 @@ states:
   reject_corrections:
     action_type: shell
     action: |
-      python3 << 'PYEOF'
+      LL_ARG_OUTPUT_DIR=${context.output_dir:shell} python3 << 'PYEOF'
       import json, os
       from datetime import datetime, timezone
-      out_dir = '${context.output_dir}'
+      out_dir = os.environ.get("LL_ARG_OUTPUT_DIR", "")
       os.makedirs(out_dir, exist_ok=True)
       entry = {
           'path': '${captured.enrich_output.output}',
@@ -193,9 +193,9 @@ states:
   check_tools:
     action_type: shell
     action: |
-      python3 << 'PYEOF'
-      import json
-      min_tools = '${context.min_tool_invocations}'
+      LL_ARG_MIN_TOOL_INVOCATIONS=${context.min_tool_invocations:shell} python3 << 'PYEOF'
+      import json, os
+      min_tools = os.environ.get("LL_ARG_MIN_TOOL_INVOCATIONS", "")
       if min_tools == '0' or min_tools == '':
           print(int(min_tools) if min_tools.isdigit() else 0)
           exit()
@@ -214,10 +214,10 @@ states:
   reject_tools:
     action_type: shell
     action: |
-      python3 << 'PYEOF'
+      LL_ARG_OUTPUT_DIR=${context.output_dir:shell} python3 << 'PYEOF'
       import json, os
       from datetime import datetime, timezone
-      out_dir = '${context.output_dir}'
+      out_dir = os.environ.get("LL_ARG_OUTPUT_DIR", "")
       os.makedirs(out_dir, exist_ok=True)
       entry = {
           'path': '${captured.enrich_output.output}',
@@ -235,9 +235,9 @@ states:
   check_files:
     action_type: shell
     action: |
-      python3 << 'PYEOF'
-      import json
-      enabled = '${context.require_file_modifications}'.lower() == 'true'
+      LL_ARG_REQUIRE_FILE_MODIFICATIONS=${context.require_file_modifications:shell} python3 << 'PYEOF'
+      import json, os
+      enabled = os.environ.get("LL_ARG_REQUIRE_FILE_MODIFICATIONS", "").lower() == 'true'
       if not enabled:
           print(1)
           exit()
@@ -256,10 +256,10 @@ states:
   reject_files:
     action_type: shell
     action: |
-      python3 << 'PYEOF'
+      LL_ARG_OUTPUT_DIR=${context.output_dir:shell} python3 << 'PYEOF'
       import json, os
       from datetime import datetime, timezone
-      out_dir = '${context.output_dir}'
+      out_dir = os.environ.get("LL_ARG_OUTPUT_DIR", "")
       os.makedirs(out_dir, exist_ok=True)
       entry = {
           'path': '${captured.enrich_output.output}',
@@ -277,12 +277,12 @@ states:
   check_pii:
     action_type: shell
     action: |
-      python3 << 'PYEOF'
-      import json, sys
+      LL_ARG_PII_ACTION=${context.pii_action:shell} python3 << 'PYEOF'
+      import json, os, sys
       sys.path.insert(0, "scripts")
       from little_loops.pii import apply_pii_action
 
-      action = "${context.pii_action}"
+      action = os.environ.get("LL_ARG_PII_ACTION", "")
 
       with open("${captured.enrich_output.output}") as f:
           example = json.loads(f.readline())
@@ -313,10 +313,10 @@ states:
   reject_pii:
     action_type: shell
     action: |
-      python3 << 'PYEOF'
+      LL_ARG_OUTPUT_DIR=${context.output_dir:shell} python3 << 'PYEOF'
       import json, os
       from datetime import datetime, timezone
-      out_dir = '${context.output_dir}'
+      out_dir = os.environ.get("LL_ARG_OUTPUT_DIR", "")
       os.makedirs(out_dir, exist_ok=True)
       entry = {
           'path': '${captured.enrich_output.output}',
@@ -338,15 +338,15 @@ states:
   check_token_length:
     action_type: shell
     action: |
-      python3 << 'PYEOF'
+      LL_ARG_MIN_TOKENS=${context.min_tokens:shell} LL_ARG_MAX_TOKENS=${context.max_tokens:shell} LL_ARG_OUTPUT_DIR=${context.output_dir:shell} python3 << 'PYEOF'
       import json, os
       from datetime import datetime, timezone
 
-      min_tokens = ${context.min_tokens}
-      max_tokens = ${context.max_tokens}
+      min_tokens = int(os.environ['LL_ARG_MIN_TOKENS'])
+      max_tokens = int(os.environ['LL_ARG_MAX_TOKENS'])
       input_file = "${captured.enrich_output.output}"
       output_file = "${context.run_dir}/token_filtered.jsonl"
-      out_dir = "${context.output_dir}"
+      out_dir = os.environ.get("LL_ARG_OUTPUT_DIR", "")
       os.makedirs(out_dir, exist_ok=True)
 
       passed = 0
@@ -396,12 +396,12 @@ states:
   dedup:
     action_type: shell
     action: |
-      python3 << 'PYEOF'
-      import json, sys
+      LL_ARG_DEDUP_THRESHOLD=${context.dedup_threshold:shell} python3 << 'PYEOF'
+      import json, os, sys
       sys.path.insert(0, "scripts")
       from little_loops.text_utils import extract_words, calculate_word_overlap
 
-      threshold = float("${context.dedup_threshold}")
+      threshold = float(os.environ["LL_ARG_DEDUP_THRESHOLD"])
       input_file = "${context.run_dir}/token_filtered.jsonl"
       output_file = "${context.run_dir}/deduped.jsonl"
 
@@ -458,13 +458,13 @@ states:
   split:
     action_type: shell
     action: |
-      python3 << 'PYEOF'
+      LL_ARG_VAL_RATIO=${context.val_ratio:shell} LL_ARG_TEST_RATIO=${context.test_ratio:shell} LL_ARG_OUTPUT_DIR=${context.output_dir:shell} python3 << 'PYEOF'
       import json, os, random
 
-      val_ratio = float("${context.val_ratio}")
-      test_ratio = float("${context.test_ratio}")
+      val_ratio = float(os.environ["LL_ARG_VAL_RATIO"])
+      test_ratio = float(os.environ["LL_ARG_TEST_RATIO"])
       input_file = "${context.run_dir}/deduped.jsonl"
-      output_dir = "${context.output_dir}/staged"
+      output_dir = os.environ.get("LL_ARG_OUTPUT_DIR", "") + "/staged"
       os.makedirs(output_dir, exist_ok=True)
 
       examples = []
@@ -541,11 +541,11 @@ states:
   publish:
     action_type: shell
     action: |
-      python3 << 'PYEOF'
+      LL_ARG_OUTPUT_DIR=${context.output_dir:shell} python3 << 'PYEOF'
       import json, os
       from pathlib import Path
 
-      out_dir = Path("${context.output_dir}")
+      out_dir = Path(os.environ.get("LL_ARG_OUTPUT_DIR", ""))
       out_dir.mkdir(parents=True, exist_ok=True)
       enriched_file = Path("${captured.enrich_output.output}")
 

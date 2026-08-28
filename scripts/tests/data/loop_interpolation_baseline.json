@@ -1146,15 +1146,6 @@
     },
     {
       "file": "loops/sft-corpus.yaml",
-      "state": "check_corrections",
-      "var": "context.exclude_user_corrections",
-      "class": "A",
-      "host_shape": "heredoc",
-      "line": 3,
-      "count": 1
-    },
-    {
-      "file": "loops/sft-corpus.yaml",
       "state": "check_files",
       "var": "captured.enrich_output.output",
       "class": "B",
@@ -1164,29 +1155,11 @@
     },
     {
       "file": "loops/sft-corpus.yaml",
-      "state": "check_files",
-      "var": "context.require_file_modifications",
-      "class": "A",
-      "host_shape": "heredoc",
-      "line": 3,
-      "count": 1
-    },
-    {
-      "file": "loops/sft-corpus.yaml",
       "state": "check_issue_outcome",
       "var": "captured.enrich_output.output",
       "class": "B",
       "host_shape": "heredoc",
       "line": 7,
-      "count": 1
-    },
-    {
-      "file": "loops/sft-corpus.yaml",
-      "state": "check_issue_outcome",
-      "var": "context.require_issue_outcome",
-      "class": "A",
-      "host_shape": "heredoc",
-      "line": 3,
       "count": 1
     },
     {
@@ -1200,47 +1173,11 @@
     },
     {
       "file": "loops/sft-corpus.yaml",
-      "state": "check_pii",
-      "var": "context.pii_action",
-      "class": "A",
-      "host_shape": "heredoc",
-      "line": 6,
-      "count": 1
-    },
-    {
-      "file": "loops/sft-corpus.yaml",
       "state": "check_token_length",
       "var": "captured.enrich_output.output",
       "class": "B",
       "host_shape": "heredoc",
       "line": 7,
-      "count": 1
-    },
-    {
-      "file": "loops/sft-corpus.yaml",
-      "state": "check_token_length",
-      "var": "context.max_tokens",
-      "class": "A",
-      "host_shape": "heredoc",
-      "line": 6,
-      "count": 1
-    },
-    {
-      "file": "loops/sft-corpus.yaml",
-      "state": "check_token_length",
-      "var": "context.min_tokens",
-      "class": "A",
-      "host_shape": "heredoc",
-      "line": 5,
-      "count": 1
-    },
-    {
-      "file": "loops/sft-corpus.yaml",
-      "state": "check_token_length",
-      "var": "context.output_dir",
-      "class": "A",
-      "host_shape": "heredoc",
-      "line": 9,
       "count": 1
     },
     {
@@ -1259,24 +1196,6 @@
       "class": "B",
       "host_shape": "heredoc",
       "line": 7,
-      "count": 1
-    },
-    {
-      "file": "loops/sft-corpus.yaml",
-      "state": "check_tools",
-      "var": "context.min_tool_invocations",
-      "class": "A",
-      "host_shape": "heredoc",
-      "line": 3,
-      "count": 1
-    },
-    {
-      "file": "loops/sft-corpus.yaml",
-      "state": "dedup",
-      "var": "context.dedup_threshold",
-      "class": "A",
-      "host_shape": "heredoc",
-      "line": 6,
       "count": 1
     },
     {
@@ -1317,29 +1236,11 @@
     },
     {
       "file": "loops/sft-corpus.yaml",
-      "state": "publish",
-      "var": "context.output_dir",
-      "class": "A",
-      "host_shape": "heredoc",
-      "line": 5,
-      "count": 1
-    },
-    {
-      "file": "loops/sft-corpus.yaml",
       "state": "reject_corrections",
       "var": "captured.enrich_output.output",
       "class": "B",
       "host_shape": "heredoc",
       "line": 7,
-      "count": 1
-    },
-    {
-      "file": "loops/sft-corpus.yaml",
-      "state": "reject_corrections",
-      "var": "context.output_dir",
-      "class": "A",
-      "host_shape": "heredoc",
-      "line": 4,
       "count": 1
     },
     {
@@ -1353,29 +1254,11 @@
     },
     {
       "file": "loops/sft-corpus.yaml",
-      "state": "reject_files",
-      "var": "context.output_dir",
-      "class": "A",
-      "host_shape": "heredoc",
-      "line": 4,
-      "count": 1
-    },
-    {
-      "file": "loops/sft-corpus.yaml",
       "state": "reject_issue_outcome",
       "var": "captured.enrich_output.output",
       "class": "B",
       "host_shape": "heredoc",
       "line": 7,
-      "count": 1
-    },
-    {
-      "file": "loops/sft-corpus.yaml",
-      "state": "reject_issue_outcome",
-      "var": "context.output_dir",
-      "class": "A",
-      "host_shape": "heredoc",
-      "line": 4,
       "count": 1
     },
     {
@@ -1389,36 +1272,9 @@
     },
     {
       "file": "loops/sft-corpus.yaml",
-      "state": "reject_pii",
-      "var": "context.output_dir",
-      "class": "A",
-      "host_shape": "heredoc",
-      "line": 4,
-      "count": 1
-    },
-    {
-      "file": "loops/sft-corpus.yaml",
       "state": "reject_tools",
       "var": "captured.enrich_output.output",
       "class": "B",
-      "host_shape": "heredoc",
-      "line": 7,
-      "count": 1
-    },
-    {
-      "file": "loops/sft-corpus.yaml",
-      "state": "reject_tools",
-      "var": "context.output_dir",
-      "class": "A",
-      "host_shape": "heredoc",
-      "line": 4,
-      "count": 1
-    },
-    {
-      "file": "loops/sft-corpus.yaml",
-      "state": "split",
-      "var": "context.output_dir",
-      "class": "A",
       "host_shape": "heredoc",
       "line": 7,
       "count": 1
@@ -1430,24 +1286,6 @@
       "class": "C",
       "host_shape": "heredoc",
       "line": 6,
-      "count": 1
-    },
-    {
-      "file": "loops/sft-corpus.yaml",
-      "state": "split",
-      "var": "context.test_ratio",
-      "class": "A",
-      "host_shape": "heredoc",
-      "line": 5,
-      "count": 1
-    },
-    {
-      "file": "loops/sft-corpus.yaml",
-      "state": "split",
-      "var": "context.val_ratio",
-      "class": "A",
-      "host_shape": "heredoc",
-      "line": 4,
       "count": 1
     },
     {
