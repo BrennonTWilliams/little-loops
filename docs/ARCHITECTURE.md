@@ -897,12 +897,14 @@ for the full public surface.
 Sitting alongside the Host Runner Layer above is the artifact control contract
 (`docs/reference/ARTIFACT_CONTROL_LEVELS.md`). Where the Host Runner Layer
 normalizes outgoing host-CLI invocations, this layer normalizes what a rendered
-artifact (a dashboard, an MCP Apps interactive resource, a future SSE-bridged
-view) may do when a user interacts with it, and which layer — the host session
-or the FSM executor — owns the resulting state change. The FSM executor is the
-sole routing authority today (`FSMExecutor.run()`,
-`scripts/little_loops/fsm/executor.py`); no artifact type can currently route an
-interaction back into it. The contract names three levels — notify,
+artifact (a dashboard, an MCP Apps interactive resource, `ll-loop run --serve`'s
+SSE-bridged view) may do when a user interacts with it, and which layer — the
+host session or the FSM executor — owns the resulting state change. The FSM
+executor is the sole routing authority (`FSMExecutor.run()`,
+`scripts/little_loops/fsm/executor.py`); `ll-loop run --serve`'s
+`LocalBridgeTransport` (ENH-3351) is the first render target that routes an
+interaction back into it, via `FSMExecutor._drain_inbound()` — record-and-emit
+only, with no FSM guard/transition semantics yet. The contract names three levels — notify,
 ask-to-run-prompt, host-owned — so that future render targets converge on one
 re-entry vocabulary instead of each defining it implicitly. See
 [ARTIFACT_CONTROL_LEVELS.md](reference/ARTIFACT_CONTROL_LEVELS.md) for the full

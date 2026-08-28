@@ -3,7 +3,8 @@ id: ENH-3351
 title: 'Add `ll-loop run --serve`: a Level-3 loopback SSE bridge for live FSM dashboards'
 type: ENH
 priority: P2
-status: open
+status: done
+completed_at: '2026-08-28T20:35:20Z'
 discovered_date: '2026-08-28'
 relates_to:
 - ENH-3307
@@ -595,6 +596,7 @@ applies — this run scores the raw Criteria A-D sum (9 + 25 + 25 + 18 = 77) dir
 - Broad enumeration across 17 change sites (transport.py, fsm/executor.py, cli/loop/__init__.py, cli/loop/run.py, cli/artifact/dashboard.py, two template files, package_data.py, little_loops/__init__.py, plus 5 docs and 2 new vendored assets) is the dominant risk axis — Breadth scored 0/12 on Criterion A even though each individual site's depth is Local (contained logic change).
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-28T20:35:03 - `40ac07c5-f2b6-4094-810d-3a0283a566be.jsonl`
 - `/ll:confidence-check` - 2026-08-28T19:49:35 - `ea33ecd6-8c2e-4da2-984b-1c4e3288aafb.jsonl`
 - pre-implementation review revision 2 - 2026-08-28 - specified SSE shutdown mechanics (sentinel + daemon-thread rationale), respec'd the byte-identical test as dev-time verification with `mtime=0` pinned (gzip mtime makes renders non-deterministic today), decided missing-`history.db` serve behavior (empty snapshot, run proceeds)
 - `/ll:decide-issue` - 2026-08-28T19:38:47 - `e999097a-2e38-45bb-b367-623703246cd4.jsonl`

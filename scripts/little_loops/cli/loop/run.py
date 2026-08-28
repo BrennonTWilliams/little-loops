@@ -576,6 +576,25 @@ def cmd_run(
             else None
         )
         Path(fsm.context["run_dir"]).mkdir(parents=True, exist_ok=True)
+
+        # ENH-3351: --serve binds a loopback-only SSE bridge before the executor
+        # exists, so its per-run token/port (bridge.url) are known in time to
+        # construct the executor's inbound queue and, later, the served page.
+        bridge = None
+        inbound_queue = None
+        if getattr(args, "serve", False):
+            import queue as _queue
+
+            from little_loops.cli.artifact.dashboard import render_live_fragment
+            from little_loops.transport import LocalBridgeTransport
+
+            inbound_queue = _queue.Queue()
+            bridge = LocalBridgeTransport(
+                port=getattr(args, "port", None) or 0,
+                inbound=inbound_queue,
+                render_fragment=render_live_fragment,
+            )
+
         executor = PersistentExecutor(
             fsm,
             loops_dir=loops_dir,
@@ -587,6 +606,7 @@ def cmd_run(
             run_effort=getattr(args, "run_effort", None) or None,
             compression_config=_config.compression,
             orchestration_config=_config.orchestration,
+            inbound=inbound_queue,
         )
 
         # Register signal handlers for graceful shutdown
@@ -597,6 +617,31 @@ def cmd_run(
 
         wire_extensions(executor.event_bus, _config.extensions, executor=executor)
         wire_transports(executor.event_bus, _config.events)
+
+        if bridge is not None:
+            executor.event_bus.add_transport(bridge)
+            from little_loops.cli.artifact.dashboard import (
+                ServeContext,
+                build_dashboard_html,
+                resolve_tables,
+            )
+
+            export_cfg = _config.artifacts.export
+            serve_ctx = ServeContext(
+                events_url=bridge.url + "events",
+                interaction_url=bridge.url + "interaction",
+            )
+            rendered = build_dashboard_html(
+                db_path=_config.project_root / ".ll" / "history.db",
+                config=_config,
+                tables=resolve_tables(None, local_mode=export_cfg.mode == "local"),
+                since_iso=None,
+                mode=export_cfg.mode,
+                serve_context=serve_ctx,
+            )
+            bridge.set_page_html(rendered.html)
+            logger.success(f"ll-loop run --serve: {bridge.url}")
+
         return run_foreground(
             executor,
             fsm,

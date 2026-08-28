@@ -675,6 +675,8 @@ Run a loop.
 | `--handoff-threshold` | | Override auto-handoff context threshold (1-100) |
 | `--context-limit` | | Override context window token estimate |
 | `--no-lock` | | Run without acquiring the scope lock, bypassing the conflict check. **Caution:** this allows concurrent runs that may interfere with each other on shared resources. Use when you need parallel runs that operate on disjoint paths or when testing a loop that would otherwise be blocked by a stale lock you cannot clear. |
+| `--serve` | | Bind a loopback-only HTTP + SSE bridge (`LocalBridgeTransport`) for this run and serve a live dashboard page — Level 3 (host-owned) per [ARTIFACT_CONTROL_LEVELS.md](ARTIFACT_CONTROL_LEVELS.md) (ENH-3351). Prints a tokenized `http://127.0.0.1:<port>/<token>/` URL on start. The page's state badge, iteration counter, and log tail update live via `hx-sse` + morph swaps without losing scroll position, open `<details>`, or in-progress query-box text; a "Send" control POSTs an `artifact_interaction` event to `/{token}/interaction`, delivered to the executor's inbound channel unchanged (record-and-re-emit only — no FSM routing semantics in this issue). Server lifetime == run lifetime: it shuts down (with a final `run_complete` SSE frame) when the loop reaches a terminal state, `ll-loop stop`, or Ctrl-C; `ll-loop run`'s exit code is unaffected. Works even when `.ll/history.db` does not exist yet (renders with an empty snapshot rather than failing). Without `--serve`, `ll-loop run` and all of `ll-artifact` are byte-identical to before this flag existed. |
+| `--port N` | | TCP port on `127.0.0.1` for `--serve` (default: `0` = ephemeral, printed on start). No effect without `--serve`. |
 
 ##### Exit Codes (ENH-2814)
 

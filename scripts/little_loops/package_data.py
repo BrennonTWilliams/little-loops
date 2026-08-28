@@ -84,6 +84,11 @@ PACKAGE_DATA_ASSETS: Final[tuple[tuple[str, ...], ...]] = (
     ("assets", "vendor", "sql.js", "PROVENANCE.md"),
     ("templates", "dashboard.llat", "manifest.yaml"),
     ("templates", "dashboard.llat", "template.html.j2"),
+    # ENH-3351: vendored htmx 4.0 "htmx + extensions, one file" bundle, inlined
+    # into the serve-only block of `ll-loop run --serve`'s dashboard page.
+    ("assets", "vendor", "htmx", "htmax.js"),
+    ("assets", "vendor", "htmx", "PROVENANCE.md"),
+    ("templates", "dashboard.llat", "partials.html.j2"),
 )
 
 # BUG-3177: skills/ is force-included into the wheel by hatch_build.py rather than

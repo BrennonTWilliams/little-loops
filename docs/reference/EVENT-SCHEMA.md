@@ -1368,9 +1368,12 @@ The following conventions apply to little-loops CLI tools that emit JSON output.
 
 Some event names are reserved ahead of a mechanism that will emit them, so that
 future implementations converge on one name rather than each inventing one.
-Reserved names have **no schema file** and **no emitter** until a mechanism
-ships — they are not event types, and do not count toward the schema-parity
-claim below.
+`artifact_interaction` was reserved this way and now has a real emitter —
+`FSMExecutor._drain_inbound()`, wired by `ll-loop run --serve`'s
+`LocalBridgeTransport` (ENH-3351) — so it appears in the Quick Reference table
+below like any other emitted event; it is listed here too because the payload
+contract it must satisfy is defined by
+[ARTIFACT_CONTROL_LEVELS.md](ARTIFACT_CONTROL_LEVELS.md), not by this file.
 
 | Event | Reserved for | Meaning |
 |---|---|---|
@@ -1378,7 +1381,7 @@ claim below.
 
 ## Machine-Readable Schemas
 
-Every *emitted* event type listed in this document has a corresponding JSON Schema (draft-07) file committed to `docs/reference/schemas/`. Reserved names (above) are excluded from this claim — they have no schema file until a mechanism actually emits them. These files can be used for programmatic validation, IDE autocomplete, and external tooling.
+Every *emitted* event type listed in this document has a corresponding JSON Schema (draft-07) file committed to `docs/reference/schemas/`, with one exception: `artifact_interaction` (ENH-3351) is emitted but has no generated schema file yet — its payload contract lives in [ARTIFACT_CONTROL_LEVELS.md](ARTIFACT_CONTROL_LEVELS.md#reserved-event-artifact_interaction) instead, since `generate_schemas.py`'s registry hasn't been extended for it (a follow-up, not part of this issue). These files can be used for programmatic validation, IDE autocomplete, and external tooling.
 
 ```
 docs/reference/schemas/
@@ -1496,6 +1499,7 @@ See [`ll-generate-schemas`](CLI.md#ll-generate-schemas) in the CLI reference and
 
 | Event | Namespace | Source |
 |-------|-----------|--------|
+| `artifact_interaction` | FSM | `fsm/executor.py` (`_drain_inbound`, ENH-3351) |
 | `loop_start` | FSM | `fsm/executor.py` |
 | `state_enter` | FSM | `fsm/executor.py` |
 | `route` | FSM | `fsm/executor.py` |

@@ -8,6 +8,9 @@ Built-in implementations:
     JsonlTransport: appends each event as a JSON line to a file.
     UnixSocketTransport: streams newline-delimited JSON to AF_UNIX socket clients
         for sub-second-latency local consumers (TUIs, log tailers, dashboards).
+    LocalBridgeTransport: binds a loopback-only stdlib HTTP server and streams
+        events as Server-Sent Events to browser clients, while also accepting
+        inbound `artifact_interaction` POSTs (ARTIFACT_CONTROL_LEVELS Level 3).
     OTelTransport: maps loop executions to OpenTelemetry traces/spans, exporting
         via OTLP to Grafana, Jaeger, Datadog, etc. Requires the optional
         ``opentelemetry-sdk`` and ``opentelemetry-exporter-otlp-grpc`` packages.
@@ -21,6 +24,7 @@ Public exports:
     Transport: runtime-checkable Protocol that any sink must satisfy
     JsonlTransport: writes events to a JSONL file
     UnixSocketTransport: streams events over an AF_UNIX socket
+    LocalBridgeTransport: streams events over a loopback SSE bridge, bidirectionally
     OTelTransport: exports loop traces via OTLP
     WebhookTransport: POSTs batched events to an HTTP endpoint
     wire_transports: register transports listed in `EventsConfig` on an `EventBus`
@@ -30,9 +34,11 @@ from __future__ import annotations
 
 import enum
 import errno
+import http.server
 import json
 import logging
 import os
+import secrets
 import socket
 import threading
 import time
@@ -61,6 +67,14 @@ _WEBHOOK_BATCH_MS_DEFAULT = 1000
 _WEBHOOK_CLOSE_TIMEOUT = 10.0
 _WEBHOOK_RETRY_BASE_S = 0.5
 _WEBHOOK_RETRY_MAX_S = 8.0
+
+_LOCAL_BRIDGE_CLOSE_TIMEOUT = 10.0
+_LOCAL_BRIDGE_THREAD_JOIN_TIMEOUT = 2.0
+_LOCAL_BRIDGE_SERVE_THREAD_JOIN_TIMEOUT = 2.0
+_LOCAL_BRIDGE_DEFAULT_PAGE_HTML = (
+    '<!doctype html><html><head><meta charset="utf-8"></head>'
+    "<body><p>LocalBridgeTransport: no page_html supplied.</p></body></html>"
+)
 
 
 @runtime_checkable
@@ -392,6 +406,369 @@ class UnixSocketTransport:
                     self._path.unlink(missing_ok=True)
             except FileNotFoundError:
                 pass
+
+
+_SHUTDOWN = object()
+"""Sentinel enqueued after the final rendered frame in `LocalBridgeTransport.close()`;
+an SSE handler thread that dequeues this object (identity, not equality) exits its
+write loop and returns, regardless of what `render_fragment` returned for the
+`run_complete` event (including `None`)."""
+
+
+class _SSEClient:
+    """Per-SSE-client state: outbound queue, handler thread, drop counters."""
+
+    def __init__(self) -> None:
+        self.queue: Queue[Any] = Queue(maxsize=_CLIENT_QUEUE_MAXSIZE)
+        self.thread: threading.Thread | None = None
+        self.dropped_total = 0
+        self.dropped_since_log = 0
+        self.last_drop_log_ts = 0.0
+        self.first_drop_logged = False
+
+
+def _sse_encode(text: str) -> bytes:
+    """Wrap `text` as an SSE `data:` frame, preserving embedded newlines per spec.
+
+    Each line of `text` becomes its own ``data: <line>`` field; the frame ends with
+    the blank line that terminates an SSE event.
+    """
+    lines = text.split("\n")
+    frame = "".join(f"data: {line}\n" for line in lines) + "\n"
+    return frame.encode("utf-8")
+
+
+def _make_local_bridge_handler(
+    transport: LocalBridgeTransport,
+) -> type[http.server.BaseHTTPRequestHandler]:
+    """Build a `BaseHTTPRequestHandler` subclass bound to `transport` via closure."""
+
+    class _Handler(http.server.BaseHTTPRequestHandler):
+        server_version = "ll-local-bridge/1.0"
+
+        def log_message(self, format: str, *args: Any) -> None:  # noqa: A002
+            logger.debug("LocalBridgeTransport: " + format, *args)
+
+        def _expected_hosts(self) -> set[str]:
+            port = transport._server.server_address[1]
+            return {f"127.0.0.1:{port}", f"localhost:{port}"}
+
+        def _route(self) -> str | None:
+            """Return the path suffix after `/{token}/`, or None if the prefix doesn't match."""
+            path = self.path.split("?", 1)[0]
+            prefix = f"/{transport._token}"
+            if path in (prefix, prefix + "/"):
+                return ""
+            if path.startswith(prefix + "/"):
+                return path[len(prefix) + 1 :]
+            return None
+
+        def do_GET(self) -> None:  # noqa: N802
+            if self.headers.get("Host") not in self._expected_hosts():
+                self.send_error(403, "Forbidden host")
+                return
+            route = self._route()
+            if route is None:
+                self.send_error(404, "Not found")
+                return
+            if route == "":
+                self._serve_page()
+            elif route == "events":
+                self._serve_events()
+            else:
+                self.send_error(404, "Not found")
+
+        def do_POST(self) -> None:  # noqa: N802
+            if self.headers.get("Host") not in self._expected_hosts():
+                self.send_error(403, "Forbidden host")
+                return
+            route = self._route()
+            if route is None:
+                self.send_error(404, "Not found")
+                return
+            if route == "interaction":
+                self._handle_interaction()
+            else:
+                self.send_error(404, "Not found")
+
+        def _serve_page(self) -> None:
+            body = transport._page_html.encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def _serve_events(self) -> None:
+            client = _SSEClient()
+            client.thread = threading.current_thread()
+            with transport._clients_lock:
+                transport._clients.append(client)
+            try:
+                self.send_response(200)
+                self.send_header("Content-Type", "text/event-stream")
+                self.send_header("Cache-Control", "no-cache")
+                self.end_headers()
+                while True:
+                    try:
+                        frame = client.queue.get(timeout=_CLIENT_QUEUE_POLL_TIMEOUT)
+                    except Empty:
+                        if transport._closed:
+                            return
+                        continue
+                    if frame is _SHUTDOWN:
+                        return
+                    try:
+                        self.wfile.write(frame)
+                        self.wfile.flush()
+                    except (BrokenPipeError, ConnectionResetError, OSError):
+                        return
+            finally:
+                # This connection is a one-shot indefinite stream, never reused
+                # for a subsequent request. Without this, BaseHTTPRequestHandler's
+                # send_header("Connection", ...) bookkeeping can leave
+                # close_connection False, and handle()'s keep-alive loop would
+                # block forever on the next readline() after this method
+                # returns — leaking the handler thread instead of exiting it.
+                self.close_connection = True
+                with transport._clients_lock:
+                    if client in transport._clients:
+                        transport._clients.remove(client)
+
+        def _handle_interaction(self) -> None:
+            length_header = self.headers.get("Content-Length")
+            try:
+                length = int(length_header) if length_header is not None else 0
+            except ValueError:
+                length = 0
+            body = self.rfile.read(length) if length > 0 else b""
+            # Respond before touching `inbound` — a full/misbehaving inbound queue
+            # must never surface as an HTTP-layer failure to the caller.
+            self.send_response(204)
+            self.end_headers()
+            if transport._inbound is None:
+                return
+            try:
+                parsed = json.loads(body)
+            except (json.JSONDecodeError, UnicodeDecodeError):
+                transport._record_inbound_drop("invalid JSON body")
+                return
+            if not isinstance(parsed, dict):
+                transport._record_inbound_drop("non-dict JSON body")
+                return
+            try:
+                transport._inbound.put_nowait(parsed)
+            except Full:
+                transport._record_inbound_drop("inbound queue full")
+
+    return _Handler
+
+
+class LocalBridgeTransport:
+    """Loopback-only SSE bridge (ARTIFACT_CONTROL_LEVELS Level 3).
+
+    Binds a stdlib `http.server.ThreadingHTTPServer` to `127.0.0.1` only (never
+    `0.0.0.0` — there is no host-override parameter, deliberately stricter than
+    `mcp_server/server.py`'s optional host override). All endpoints sit under a
+    per-run token prefix (`secrets.token_urlsafe(16)`, generated at construction
+    time): a request whose path doesn't start with `/{token}/` gets `404`. A
+    request whose `Host` header isn't exactly `127.0.0.1:<port>` or
+    `localhost:<port>` gets `403` (DNS-rebinding guard) — loopback binding alone
+    does not stop a malicious page in the user's own browser from firing
+    drive-by requests.
+
+    Bidirectional, unlike the other built-in transports:
+
+    - `GET /{token}/` serves `page_html` verbatim (or a minimal placeholder if
+      `page_html` is None — the real dashboard page is built by CLI wiring, not
+      by this class).
+    - `GET /{token}/events` is `text/event-stream`. Each connecting client gets
+      its own bounded outbound `Queue`, decoupled from `send()`'s bookkeeping
+      the same way `UnixSocketTransport._SocketClient` decouples its clients. A
+      full per-client queue drops the newest event and logs a rate-limited
+      warning, mirroring `UnixSocketTransport.send()`.
+    - `POST /{token}/interaction` reads the JSON request body and, if `inbound`
+      was supplied, `inbound.put_nowait()`s the parsed dict unchanged. A full
+      queue or invalid body is dropped silently (rate-limited warning); this
+      handler never raises back to the HTTP layer.
+
+    `send(event)` (the `Transport.send` outbound direction) renders `event` via
+    the constructor-injected `render_fragment` callable if supplied — returning
+    `str | None`, where `None` means "skip this event", and any embedded
+    newlines become multiple `data:` lines per the SSE spec — or, when
+    `render_fragment` is None (the default), forwards raw JSON
+    (`data: {json.dumps(event)}\\n\\n`). The rendered frame fans out to every
+    currently-connected SSE client's queue.
+
+    Shutdown mechanics: `ThreadingHTTPServer` is constructed with
+    `daemon_threads = True` so teardown never hangs on stdlib's
+    `server_close()` (which does not join daemon threads). `close()` renders a
+    final `{"event": "run_complete"}` frame the same way `send()` renders any
+    other event, pushes it (followed by a private `_SHUTDOWN` sentinel object)
+    into every currently-connected client's queue, then shuts the HTTP server
+    down. Each SSE handler's write loop recognizes the `_SHUTDOWN` sentinel,
+    writes the final frame, and returns — exiting its thread — regardless of
+    what `render_fragment` returned for the sentinel event. Handlers catch
+    `BrokenPipeError`/`ConnectionResetError` on write and deregister that
+    client's queue from the fan-out list on any write failure (dead-client
+    pruning) rather than crashing the handler thread. `close()` joins each
+    handler thread within a bounded budget before returning.
+    """
+
+    def __init__(
+        self,
+        port: int = 0,
+        inbound: Queue[dict[str, Any]] | None = None,
+        render_fragment: Callable[[dict[str, Any]], str | None] | None = None,
+        page_html: str | None = None,
+    ) -> None:
+        self._token = secrets.token_urlsafe(16)
+        self._inbound = inbound
+        self._render_fragment = render_fragment
+        self._page_html = page_html if page_html is not None else _LOCAL_BRIDGE_DEFAULT_PAGE_HTML
+
+        self._clients: list[_SSEClient] = []
+        self._clients_lock = threading.Lock()
+        self._closed = False
+
+        self._inbound_drops_total = 0
+        self._inbound_drops_since_log = 0
+        self._last_inbound_drop_log_ts = 0.0
+        self._inbound_drop_logged = False
+
+        handler_cls = _make_local_bridge_handler(self)
+        self._server = http.server.ThreadingHTTPServer(("127.0.0.1", port), handler_cls)
+        self._server.daemon_threads = True
+
+        self._serve_thread = threading.Thread(
+            target=self._server.serve_forever,
+            name="local-bridge-transport-serve",
+            daemon=True,
+        )
+        self._serve_thread.start()
+
+    @property
+    def url(self) -> str:
+        port = self._server.server_address[1]
+        return f"http://127.0.0.1:{port}/{self._token}/"
+
+    def set_page_html(self, page_html: str) -> None:
+        """Replace the HTML served at ``GET /{token}/`` after construction.
+
+        The served page typically needs to embed this transport's own `url`
+        (for its SSE/interaction endpoints), which is only known once the
+        server is bound — so callers construct the transport first, build the
+        page from `url`, then call this instead of passing `page_html` to
+        `__init__`.
+        """
+        self._page_html = page_html
+
+    def send(self, event: dict[str, Any]) -> None:
+        frame = self._render_event(event)
+        if frame is None:
+            return
+        with self._clients_lock:
+            snapshot = list(self._clients)
+        for client in snapshot:
+            try:
+                client.queue.put_nowait(frame)
+            except Full:
+                self._record_drop(client)
+
+    def close(self) -> None:
+        if self._closed:
+            return
+        self._closed = True
+
+        final_frame = self._render_event({"event": "run_complete"})
+        with self._clients_lock:
+            snapshot = list(self._clients)
+        for client in snapshot:
+            if final_frame is not None:
+                try:
+                    client.queue.put_nowait(final_frame)
+                except Full:
+                    self._record_drop(client)
+            try:
+                client.queue.put_nowait(_SHUTDOWN)
+            except Full:
+                # Queue saturated even for the sentinel: the handler's idle-poll
+                # timeout still notices `self._closed` and exits on its own.
+                pass
+
+        try:
+            self._server.shutdown()
+        except Exception:
+            pass
+        try:
+            self._server.server_close()
+        except Exception:
+            pass
+
+        deadline = time.monotonic() + _LOCAL_BRIDGE_CLOSE_TIMEOUT
+        for client in snapshot:
+            t = client.thread
+            if t is not None and t.is_alive():
+                budget = min(
+                    _LOCAL_BRIDGE_THREAD_JOIN_TIMEOUT, max(0.0, deadline - time.monotonic())
+                )
+                t.join(timeout=budget)
+                if t.is_alive():
+                    logger.warning(
+                        "LocalBridgeTransport: SSE handler thread did not exit within %.1fs",
+                        budget,
+                    )
+
+        if self._serve_thread.is_alive():
+            self._serve_thread.join(timeout=_LOCAL_BRIDGE_SERVE_THREAD_JOIN_TIMEOUT)
+
+    def _render_event(self, event: dict[str, Any]) -> bytes | None:
+        if self._render_fragment is not None:
+            text = self._render_fragment(event)
+            if text is None:
+                return None
+        else:
+            text = json.dumps(event)
+        return _sse_encode(text)
+
+    def _record_drop(self, client: _SSEClient) -> None:
+        client.dropped_total += 1
+        client.dropped_since_log += 1
+        now = time.monotonic()
+        if not client.first_drop_logged:
+            logger.warning(
+                "LocalBridgeTransport: dropping events for slow SSE client (queue full at %d)",
+                _CLIENT_QUEUE_MAXSIZE,
+            )
+            client.first_drop_logged = True
+            client.last_drop_log_ts = now
+            client.dropped_since_log = 0
+            return
+        if now - client.last_drop_log_ts >= _DROP_LOG_INTERVAL_SEC:
+            logger.warning(
+                "LocalBridgeTransport: dropped %d events for slow SSE client",
+                client.dropped_since_log,
+            )
+            client.last_drop_log_ts = now
+            client.dropped_since_log = 0
+
+    def _record_inbound_drop(self, reason: str) -> None:
+        self._inbound_drops_total += 1
+        self._inbound_drops_since_log += 1
+        now = time.monotonic()
+        if not self._inbound_drop_logged:
+            logger.warning("LocalBridgeTransport: dropping interaction POST (%s)", reason)
+            self._inbound_drop_logged = True
+            self._last_inbound_drop_log_ts = now
+            self._inbound_drops_since_log = 0
+            return
+        if now - self._last_inbound_drop_log_ts >= _DROP_LOG_INTERVAL_SEC:
+            logger.warning(
+                "LocalBridgeTransport: dropped %d interaction POSTs",
+                self._inbound_drops_since_log,
+            )
+            self._last_inbound_drop_log_ts = now
+            self._inbound_drops_since_log = 0
 
 
 def _stat_id(path: Path) -> tuple[int, int]:

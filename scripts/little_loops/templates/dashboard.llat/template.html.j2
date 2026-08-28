@@ -316,5 +316,48 @@ th { position: sticky; top: 0; background: var(--color-surface, #1a1d26); }
     });
 })();
 </script>
+[[% if serve_enabled %]]
+<script>[[= serve_htmax_js =]]</script>
+<section id="ll-serve" aria-live="polite">
+  <h2 style="font-size:.95rem;margin:1rem 0 .25rem;">Live run — Level 3 (host-owned)</h2>
+  <p class="muted">
+    This region declares Artifact Control Level 3 (host-owned, see
+    docs/reference/ARTIFACT_CONTROL_LEVELS.md): the Send action below POSTs an
+    <code>artifact_interaction</code> event, delivered to the running FSM
+    executor's inbound channel unchanged.
+  </p>
+  <div id="ll-sse-sentinel" hx-sse:connect="[[= serve_events_url =]]" hx-swap="none"></div>
+  <ul class="stamps">
+    <li><b>state</b><span id="ll-state-badge">connecting&hellip;</span></li>
+    <li><b>iteration</b><span id="ll-iter-count">0</span></li>
+  </ul>
+  <div class="scroll" style="max-height:30vh;">
+    <pre id="ll-log-tail" style="margin:0;padding:.5rem;white-space:pre-wrap;font-size:.78rem;"></pre>
+  </div>
+  <div>
+    <input id="ll-interaction-text" type="text" placeholder="note (POSTs artifact_interaction)" style="width:60%;">
+    <button id="ll-interaction-send" type="button">Send</button>
+  </div>
+</section>
+<script>
+(function () {
+  "use strict";
+  document.getElementById("ll-interaction-send").addEventListener("click", function () {
+    var textEl = document.getElementById("ll-interaction-text");
+    var body = {
+      artifact_id: "ll-loop-serve-dashboard",
+      level: "host-owned",
+      action: "note",
+      payload: { text: textEl.value }
+    };
+    fetch([[= serve_interaction_url_js =]], {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    }).then(function () { textEl.value = ""; });
+  });
+})();
+</script>
+[[% endif %]]
 </body>
 </html>

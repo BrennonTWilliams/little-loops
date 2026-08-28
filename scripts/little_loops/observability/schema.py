@@ -324,6 +324,21 @@ class ActionErrorVariant(DESVariant):
 
 
 @dataclass(frozen=True)
+class ArtifactInteractionVariant(DESVariant):
+    """FSMExecutor._drain_inbound() -> self._emit('artifact_interaction') — a Level-3
+    (host-owned) artifact interaction re-entering the executor, delivered unchanged
+    from a render target's inbound channel (ENH-3351's LocalBridgeTransport is the
+    first emitter). Payload contract: docs/reference/ARTIFACT_CONTROL_LEVELS.md
+    § Reserved event: artifact_interaction.
+    """
+
+    type: Literal["artifact_interaction"] = "artifact_interaction"
+    artifact_id: str = ""
+    level: str = ""
+    action: str = ""
+
+
+@dataclass(frozen=True)
 class RateLimitWaitingVariant(DESVariant):
     """FSMExecutor._emit('rate_limit_waiting') — heartbeat during rate-limit backoff."""
 
@@ -657,6 +672,7 @@ DES_VARIANTS: Final[tuple[type[DESVariant], ...]] = (
     LearningTargetRefutedVariant,
     LearningTargetProvenVariant,
     LearningCompleteVariant,
+    ArtifactInteractionVariant,
     RequestPathDowngradeVariant,
     ThrottleWarnVariant,
     ThrottleHardVariant,

@@ -24,7 +24,7 @@ specification.
 |---|---|---|---|---|
 | 1 notify | Display-only signals (`ui/message`, status text) | Surface it; nothing else | Nobody — no state change | `html-anything.yaml` dashboards; ENH-3306 first view |
 | 2 ask-to-run-prompt | A prompt/command request addressed to the host session | Decide whether to run it; if run, run it as its own session action | Host session (human/agent), *not* the executor | `HandoffBehavior.SPAWN` (closest analog) |
-| 3 host-owned | An `artifact_interaction` event | Deliver it to the executor's inbound channel unchanged | FSM executor (`FSMExecutor`) | None today — reserved for a future SSE bridge / queue path |
+| 3 host-owned | An `artifact_interaction` event | Deliver it to the executor's inbound channel unchanged | FSM executor (`FSMExecutor`) | `ll-loop run --serve`'s SSE bridge (ENH-3351) |
 
 ### Level 2 vs. level 3
 
@@ -55,6 +55,7 @@ contract violation reviewers can point at.
 |---|---|
 | `html-anything.yaml` dashboards | 1 (notify) |
 | ENH-3306's `ui://` resources | 1 (notify) |
+| `ll-loop run --serve`'s dashboard page (ENH-3351) | 3 (host-owned) |
 
 **Binding now:** every render target MUST declare its supported level(s) in
 prose, in its own canonical doc, and MUST link back to this document for the
@@ -71,10 +72,11 @@ field is out of scope for this issue.
 ## Reserved event: `artifact_interaction`
 
 The level-3 event name `artifact_interaction` is reserved so that ENH-3306's view
-and a future SSE bridge converge on one name rather than each inventing one. No
-executor code emits or consumes it today — see
+and `ll-loop run --serve`'s SSE bridge converge on one name rather than each
+inventing one. `FSMExecutor._drain_inbound()` (ENH-3351) is the first emitter —
+see
 [EVENT-SCHEMA.md § Reserved Event Names](EVENT-SCHEMA.md#reserved-event-names) for
-the full reservation, including its lack of a schema file or emitter.
+the full reservation and its schema.
 
 The payload fields compose with the standard event envelope (`event`, `ts`, both
 always present; an executor-emitted event additionally carries `state` and

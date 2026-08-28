@@ -10,9 +10,11 @@ This module provides the execution engine that runs FSM loops:
 
 from __future__ import annotations
 
+import collections
 import hashlib
 import json
 import os
+import queue
 import random
 import selectors
 import subprocess
@@ -205,6 +207,7 @@ class FSMExecutor:
         working_dir: Path | None = None,
         compression_config: CompressionConfig | None = None,
         orchestration_config: OrchestrationConfig | None = None,
+        inbound: queue.Queue[dict[str, Any]] | None = None,
     ):
         """Initialize the executor.
 
@@ -240,6 +243,15 @@ class FSMExecutor:
                 ``StateConfig.request_path`` overrides this default per FEAT-2710's
                 resolved precedent (state wins, falls through to this default).
                 Inherited by nested sub-loop executors (BUG-2819).
+            inbound: Optional queue of externally-posted interaction events
+                (ENH-3351), e.g. from a Level-3 SSE loopback bridge. None
+                (default) disables inbound entirely — ``_drain_inbound()`` is a
+                no-op, so behavior is byte-identical to pre-ENH-3351. When set,
+                each ``run()`` iteration non-blockingly drains all currently
+                queued items, re-emits each as an ``artifact_interaction``
+                event, and records it in ``self.inbound_events``. Inherited by
+                nested sub-loop executors so interactions keep arriving while
+                the FSM is inside a ``loop:`` sub-state.
         """
         self.fsm = fsm
         self.event_callback = event_callback or (lambda _: None)
@@ -258,12 +270,20 @@ class FSMExecutor:
         # byte-identical to pre-FEAT-2675 behavior. Wired from BRConfig.compression
         # by cli/loop/run.py; a resumed loop re-reads the same project config.
         self.compression_config = compression_config
+        # ENH-3351: optional inbound queue of externally-posted interaction
+        # events (Level-3 SSE loopback bridge). None (default) means
+        # _drain_inbound() is a no-op, so behavior is byte-identical to
+        # pre-ENH-3351. Inherited by nested sub-loop executors.
+        self.inbound: queue.Queue[dict[str, Any]] | None = inbound
 
         # Runtime state
         self.current_state = fsm.initial
         self.iteration = 0
         self.captured: dict[str, dict[str, Any]] = {}
         self.messages: list[str] = []
+        # ENH-3351: bounded record of inbound events drained during this run,
+        # in the original (pre-_emit-augmented) drained-dict form.
+        self.inbound_events: collections.deque[dict[str, Any]] = collections.deque(maxlen=100)
         self.prev_result: dict[str, Any] | None = None
         self.started_at = ""
         self.run_id = ""
@@ -483,6 +503,24 @@ class FSMExecutor:
             return self._finish("system_signal", error=error)
         return self._finish("interrupted", error=error)
 
+    def _drain_inbound(self) -> None:
+        """Drain all currently-queued inbound events (non-blocking), re-emit each as
+        artifact_interaction, and record it. No-op when self.inbound is None.
+
+        Modeled on WebhookTransport._flush() (transport.py): a non-blocking
+        full-drain loop via get_nowait()/queue.Empty, so a single call drains
+        everything queued so far in one pass without blocking the FSM loop.
+        """
+        if self.inbound is None:
+            return
+        while True:
+            try:
+                event = self.inbound.get_nowait()
+            except queue.Empty:
+                break
+            self._emit("artifact_interaction", event)
+            self.inbound_events.append(event)
+
     def run(self) -> ExecutionResult:
         """Execute the FSM until terminal state or limits reached.
 
@@ -501,6 +539,10 @@ class FSMExecutor:
                 # Check shutdown request (signal handling)
                 if self._shutdown_requested:
                     return self._finish_for_shutdown()
+
+                # ENH-3351: drain any externally-posted inbound interaction
+                # events for this iteration. No-op when self.inbound is None.
+                self._drain_inbound()
 
                 # Check step limit (max_steps): caps individual state executions.
                 if self.iteration >= self.fsm.max_steps:
@@ -1034,6 +1076,7 @@ class FSMExecutor:
             run_model=self.run_model,
             run_effort=self.run_effort,
             compression_config=self.compression_config,
+            inbound=self.inbound,
         )
         child_executor._depth = depth  # propagate depth for further nesting
 

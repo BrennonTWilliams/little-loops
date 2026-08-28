@@ -30,9 +30,13 @@ from little_loops.artifact_templates import (
 )
 from little_loops.cli.artifact.dashboard import (
     RENDER_ROW_CAP,
+    RenderedDashboard,
+    ServeContext,
     _packaged_path,
+    build_dashboard_html,
     cmd_dashboard,
     parse_since,
+    render_live_fragment,
     resolve_tables,
     schema_version_warning,
 )
@@ -48,6 +52,7 @@ from little_loops.session_store.queries import (
 from little_loops.session_store.schema import SCHEMA_VERSION
 
 VENDOR_DIR = Path(__file__).parent.parent / "little_loops" / "assets" / "vendor" / "sql.js"
+VENDOR_HTMX_DIR = Path(__file__).parent.parent / "little_loops" / "assets" / "vendor" / "htmx"
 DASHBOARD_PY = Path(__file__).parent.parent / "little_loops" / "cli" / "artifact" / "dashboard.py"
 QUERIES_PY = Path(__file__).parent.parent / "little_loops" / "session_store" / "queries.py"
 SCHEMA_JSON = Path(__file__).parent.parent / "little_loops" / "config-schema.json"
@@ -602,6 +607,7 @@ class TestTemplatePipeline:
         assert set(re.findall(r"\[\[=\s*(.*?)\s*=\]\]", body)) <= declared
         assert set(re.findall(r"\[\[%\s*(.*?)\s*%\]\]", body)) == {
             "if schema_version_warning",
+            "if serve_enabled",
             "endif",
         }
         assert "[[#" not in body
@@ -771,6 +777,160 @@ class TestMissingDatabase:
         code, out = _run(tmp_path, since="2026-07-01")
         assert code == 1
         assert not out.exists()
+
+
+# ---------------------------------------------------------------------------
+# ENH-3351: vendored htmx bundle + serve-mode build_dashboard_html/render_live_fragment
+# ---------------------------------------------------------------------------
+
+
+class TestVendoredHtmax:
+    def test_bundle_contains_no_literal_closing_script_tag(self) -> None:
+        bundle = (VENDOR_HTMX_DIR / "htmax.js").read_text(encoding="utf-8")
+        assert "</" + "script>" not in bundle
+
+    def test_provenance_records_version_hash_license_and_procedure(self) -> None:
+        provenance = (VENDOR_HTMX_DIR / "PROVENANCE.md").read_text(encoding="utf-8")
+        assert "4.0.0" in provenance
+        assert "unpkg.com/htmx.org" in provenance
+        assert "BSD-0-Clause" in provenance
+        assert "Update procedure" in provenance
+        digest = hashlib.sha256((VENDOR_HTMX_DIR / "htmax.js").read_bytes()).hexdigest()
+        assert digest in provenance, "PROVENANCE.md records a stale hash for htmax.js"
+
+
+class TestServeModeDashboardDefaultUnchanged:
+    """The default file:// path stays byte-for-byte htmx-free (ENH-3351)."""
+
+    def test_default_output_has_no_htmx_or_hx_markers(self, project: Path) -> None:
+        code, out = _run(project, since="2026-07-01")
+        assert code == 0
+        html_text = out.read_text(encoding="utf-8")
+        assert "htmx" not in html_text
+        assert "hx-" not in html_text
+        assert "hx_sse" not in html_text
+
+    def test_cmd_dashboard_delegates_to_build_dashboard_html_with_no_serve_context(
+        self, project: Path
+    ) -> None:
+        from unittest.mock import ANY
+
+        with patch(
+            "little_loops.cli.artifact.dashboard.build_dashboard_html",
+            wraps=build_dashboard_html,
+        ) as spy:
+            code, _out = _run(project, since="2026-07-01")
+        assert code == 0
+        spy.assert_called_once_with(
+            db_path=ANY,
+            config=ANY,
+            tables=ANY,
+            since_iso=ANY,
+            mode=ANY,
+            serve_context=None,
+        )
+
+
+class TestServeModeBuildDashboardHtml:
+    def test_missing_db_with_serve_context_renders_empty_snapshot_instead_of_failing(
+        self, tmp_path: Path
+    ) -> None:
+        from little_loops.config.core import BRConfig
+
+        (tmp_path / ".ll").mkdir()
+        (tmp_path / ".ll" / "ll-config.json").write_text("{}", encoding="utf-8")
+        config = BRConfig(tmp_path)
+        result = build_dashboard_html(
+            db_path=tmp_path / ".ll" / "history.db",
+            config=config,
+            tables=list(_SHAREABLE_EXPORT_TYPES),
+            since_iso=None,
+            mode="shareable",
+            serve_context=ServeContext(
+                events_url="http://127.0.0.1:9/tok/events",
+                interaction_url="http://127.0.0.1:9/tok/interaction",
+            ),
+        )
+        assert isinstance(result, RenderedDashboard)
+        assert "hx-sse:connect" in result.html
+        assert "http://127.0.0.1:9/tok/events" in result.html
+
+    def test_missing_db_without_serve_context_raises(self, tmp_path: Path) -> None:
+        from little_loops.config.core import BRConfig
+
+        (tmp_path / ".ll").mkdir()
+        (tmp_path / ".ll" / "ll-config.json").write_text("{}", encoding="utf-8")
+        config = BRConfig(tmp_path)
+        with pytest.raises(ValueError, match="history database not found"):
+            build_dashboard_html(
+                db_path=tmp_path / ".ll" / "history.db",
+                config=config,
+                tables=list(_SHAREABLE_EXPORT_TYPES),
+                since_iso=None,
+                mode="shareable",
+                serve_context=None,
+            )
+
+    def test_serve_context_enabled_page_declares_level_3_and_htmax_js(self, project: Path) -> None:
+        from little_loops.config.core import BRConfig
+
+        config = BRConfig(project)
+        result = build_dashboard_html(
+            db_path=project / ".ll" / "history.db",
+            config=config,
+            tables=list(_SHAREABLE_EXPORT_TYPES),
+            since_iso=None,
+            mode="shareable",
+            serve_context=ServeContext(
+                events_url="http://127.0.0.1:12345/tok/events",
+                interaction_url="http://127.0.0.1:12345/tok/interaction",
+            ),
+        )
+        assert "Level 3" in result.html
+        assert "var htmx" in result.html  # vendored bundle inlined verbatim
+
+    def test_gzip_snapshot_is_reproducible_across_renders(self, project: Path) -> None:
+        """mtime=0 makes two renders of identical input byte-identical (ENH-3351)."""
+        from little_loops.config.core import BRConfig
+
+        config = BRConfig(project)
+        kwargs = {
+            "db_path": project / ".ll" / "history.db",
+            "config": config,
+            "tables": list(_SHAREABLE_EXPORT_TYPES),
+            "since_iso": "2026-07-01T00:00:00",
+            "mode": "shareable",
+            "serve_context": None,
+        }
+        first = build_dashboard_html(**kwargs)
+        second = build_dashboard_html(**kwargs)
+        assert first.html == second.html
+
+
+class TestRenderLiveFragment:
+    def test_state_enter_event_yields_badge_and_log_partials(self) -> None:
+        fragment = render_live_fragment(
+            {"event": "state_enter", "state": "running", "ts": "2026-08-28T00:00:00Z"}
+        )
+        assert fragment is not None
+        assert '<hx-partial hx-target="#ll-state-badge"' in fragment
+        assert '<hx-partial hx-target="#ll-log-tail"' in fragment
+
+    def test_run_complete_sentinel_sets_complete_badge(self) -> None:
+        fragment = render_live_fragment({"event": "run_complete", "ts": "2026-08-28T00:00:00Z"})
+        assert fragment is not None
+        assert "complete" in fragment
+
+    def test_event_without_event_key_returns_none(self) -> None:
+        assert render_live_fragment({}) is None
+
+    def test_iteration_present_yields_iter_count_partial(self) -> None:
+        fragment = render_live_fragment(
+            {"event": "state_enter", "state": "x", "iteration": 3, "ts": "t"}
+        )
+        assert fragment is not None
+        assert '<hx-partial hx-target="#ll-iter-count"' in fragment
+        assert ">3<" in fragment
 
 
 # ---------------------------------------------------------------------------

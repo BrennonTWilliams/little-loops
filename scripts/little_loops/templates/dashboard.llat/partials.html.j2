@@ -1,0 +1,20 @@
+{# ENH-3351 — <hx-partial> out-of-band region fragments for the serve-mode SSE
+   bridge. Rendered by render_live_fragment() (cli/artifact/dashboard.py) via a
+   plain jinja2.Environment (autoescape=True) — distinct from the frozen
+   SandboxedEnvironment / [[= =]] delimiters used by the manifest-driven
+   template.html.j2 body, since this file is an internal implementation detail
+   of LocalBridgeTransport's render_fragment callable, not a FEAT-3036/3308
+   governed artifact template. #}
+
+{% macro state_badge(text) -%}
+<hx-partial hx-target="#ll-state-badge" hx-swap="innerMorph">{{ text }}</hx-partial>
+{%- endmacro %}
+
+{% macro iter_count(n) -%}
+<hx-partial hx-target="#ll-iter-count" hx-swap="innerMorph">{{ n }}</hx-partial>
+{%- endmacro %}
+
+{% macro log_line(text) -%}
+<hx-partial hx-target="#ll-log-tail" hx-swap="beforeend">{{ text }}
+</hx-partial>
+{%- endmacro %}

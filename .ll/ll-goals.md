@@ -16,7 +16,7 @@ Grow the FSM-based loop system (`ll-loop`) as the core automation primitive — 
 
 ## 4. Artifact / dashboard UX
 
-Improve how little-loops surfaces its work back to users — artifact templates, dashboards, and next-action recommendations that make automation state legible. See `docs/design/2026-07-10-artifact-templates-design.md`, `docs/design/next-action-recommender-design.md`, `docs/explorations/htmx-artifacts-exploration.md`, `docs/explorations/2026-07-12-htmx-fsm-dashboard-event-bus-capability-assessment.md`.
+Improve how little-loops surfaces its work back to users — artifact templates, dashboards, and next-action recommendations that make automation state legible. See `docs/design/2026-07-10-artifact-templates-design.md`, `docs/design/next-action-recommender-design.md`.
 
 ## 5. APO / RL self-improvement
 

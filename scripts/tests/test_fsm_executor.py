@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import queue
 import shlex
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -8316,6 +8317,7 @@ class TestRateLimitCircuitIntegration:
             "compression_config",
             "orchestration_config",
             "run_effort",
+            "inbound",
         }
 
         sig_params = set(inspect.signature(FSMExecutor.__init__).parameters) - exempt
@@ -13043,3 +13045,171 @@ class TestPrePatchCheckExecutorHook:
             check=True,
         ).stdout
         assert branches.strip() == ""
+
+
+@dataclass
+class _QueueingActionRunner(MockActionRunner):
+    """MockActionRunner variant that pushes a payload onto a queue as a side
+    effect of running a specific trigger action (ENH-3351 test helper).
+
+    Simulates an inbound interaction event arriving mid-run — e.g. while a
+    sub-loop is executing — so drain timing across iterations can be tested
+    without depending on real subprocess/wall-clock behavior.
+    """
+
+    q: queue.Queue[dict[str, Any]] | None = None
+    trigger: str = ""
+    payload: dict[str, Any] = field(default_factory=dict)
+
+    def run(self, action: str, **kwargs: Any) -> ActionResult:
+        result = super().run(action, **kwargs)
+        if self.q is not None and action == self.trigger:
+            self.q.put(self.payload)
+        return result
+
+
+class TestInboundEvents:
+    """Tests for the ENH-3351 inbound-events drain (Level-3 SSE loopback bridge)."""
+
+    def _fsm(self) -> FSMLoop:
+        """Minimal 2-state FSM: one action state routing unconditionally to a
+        terminal state."""
+        return FSMLoop(
+            name="test",
+            initial="run",
+            states={
+                "run": StateConfig(action="echo hi", action_type="shell", next="done"),
+                "done": StateConfig(terminal=True),
+            },
+        )
+
+    def test_inbound_none_default_matches_omitted(self) -> None:
+        """inbound=None (explicit) and omitting inbound entirely produce
+        identical event-type sequences and results — no behavior change for
+        callers that don't pass the new parameter."""
+        events1: list[dict[str, Any]] = []
+        runner1 = MockActionRunner()
+        runner1.always_return(exit_code=0)
+        executor1 = FSMExecutor(self._fsm(), action_runner=runner1, event_callback=events1.append)
+        result1 = executor1.run()
+
+        events2: list[dict[str, Any]] = []
+        runner2 = MockActionRunner()
+        runner2.always_return(exit_code=0)
+        executor2 = FSMExecutor(
+            self._fsm(),
+            action_runner=runner2,
+            event_callback=events2.append,
+            inbound=None,
+        )
+        result2 = executor2.run()
+
+        assert result1.final_state == result2.final_state == "done"
+        assert result1.terminated_by == result2.terminated_by
+        assert [e["event"] for e in events1] == [e["event"] for e in events2]
+        assert executor1.inbound is None
+        assert executor2.inbound is None
+        assert list(executor1.inbound_events) == []
+        assert list(executor2.inbound_events) == []
+
+    def test_drain_inbound_is_noop_when_inbound_none(self) -> None:
+        """_drain_inbound() is directly callable and a safe no-op with no
+        inbound queue configured."""
+        executor = FSMExecutor(self._fsm(), action_runner=MockActionRunner())
+        executor._drain_inbound()  # must not raise
+        assert list(executor.inbound_events) == []
+
+    def test_inbound_item_drained_and_emitted(self) -> None:
+        """A single item queued before run() is drained, re-emitted as
+        artifact_interaction, and recorded in inbound_events in its original
+        (pre-_emit) form."""
+        q: queue.Queue[dict[str, Any]] = queue.Queue()
+        q.put({"foo": "bar"})
+        events: list[dict[str, Any]] = []
+        runner = MockActionRunner()
+        runner.always_return(exit_code=0)
+        executor = FSMExecutor(
+            self._fsm(), action_runner=runner, event_callback=events.append, inbound=q
+        )
+        executor.run()
+
+        artifact_events = [e for e in events if e.get("event") == "artifact_interaction"]
+        assert len(artifact_events) == 1
+        assert artifact_events[0]["foo"] == "bar"
+        assert list(executor.inbound_events) == [{"foo": "bar"}]
+
+    def test_inbound_multiple_items_drained_in_one_pass(self) -> None:
+        """Multiple items queued before run() are all drained (in FIFO order)
+        on the first iteration, each re-emitted and recorded."""
+        q: queue.Queue[dict[str, Any]] = queue.Queue()
+        q.put({"n": 1})
+        q.put({"n": 2})
+        q.put({"n": 3})
+        events: list[dict[str, Any]] = []
+        runner = MockActionRunner()
+        runner.always_return(exit_code=0)
+        executor = FSMExecutor(
+            self._fsm(), action_runner=runner, event_callback=events.append, inbound=q
+        )
+        executor.run()
+
+        artifact_events = [e for e in events if e.get("event") == "artifact_interaction"]
+        assert [e["n"] for e in artifact_events] == [1, 2, 3]
+        assert list(executor.inbound_events) == [{"n": 1}, {"n": 2}, {"n": 3}]
+
+    def test_inbound_events_bounded_at_100(self) -> None:
+        """inbound_events is a maxlen=100 deque — draining more than 100
+        queued items retains only the most recent 100, oldest-first."""
+        q: queue.Queue[dict[str, Any]] = queue.Queue()
+        for i in range(150):
+            q.put({"i": i})
+        executor = FSMExecutor(self._fsm(), action_runner=MockActionRunner(), inbound=q)
+        executor._drain_inbound()
+
+        assert len(executor.inbound_events) == 100
+        assert executor.inbound_events[0] == {"i": 50}
+        assert executor.inbound_events[-1] == {"i": 149}
+
+    def test_inbound_forwarded_into_sub_loop(self, tmp_path: Path) -> None:
+        """A parent executor constructed with inbound=q forwards the same
+        queue to a child sub-loop executor (ENH-3351 sub-loop wiring). An
+        item that arrives while the sub-loop's first state is executing is
+        drained on the sub-loop's next iteration and forwarded to the
+        parent's event_callback tagged with the sub-loop's depth."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        (loops_dir / "child.yaml").write_text(
+            "name: child\ninitial: s1\nstates:\n"
+            "  s1:\n    action: s1_action\n    on_yes: s2\n    on_no: s2\n"
+            "  s2:\n    action: s2_action\n    on_yes: done\n    on_no: done\n"
+            "  done:\n    terminal: true"
+        )
+        parent_fsm = FSMLoop(
+            name="parent",
+            initial="run_child",
+            states={
+                "run_child": StateConfig(loop="child", on_yes="success", on_no="fail"),
+                "success": StateConfig(terminal=True),
+                "fail": StateConfig(terminal=True),
+            },
+        )
+        q: queue.Queue[dict[str, Any]] = queue.Queue()
+        runner = _QueueingActionRunner(q=q, trigger="s1_action", payload={"during": "subloop"})
+        runner.always_return(exit_code=0)
+        events: list[dict[str, Any]] = []
+
+        executor = FSMExecutor(
+            parent_fsm,
+            loops_dir=loops_dir,
+            action_runner=runner,
+            event_callback=events.append,
+            inbound=q,
+        )
+        result = executor.run()
+
+        assert result.final_state == "success"
+        artifact_events = [e for e in events if e.get("event") == "artifact_interaction"]
+        assert len(artifact_events) == 1
+        assert artifact_events[0]["during"] == "subloop"
+        # depth=1: forwarded from the immediate child sub-loop executor.
+        assert artifact_events[0]["depth"] == 1

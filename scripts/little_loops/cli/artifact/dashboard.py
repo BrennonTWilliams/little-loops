@@ -18,8 +18,10 @@ import gzip
 import html
 import importlib.resources
 import tempfile
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import TYPE_CHECKING, Any
 
 from little_loops.artifact_templates import (
     ArtifactTemplate,
@@ -38,6 +40,9 @@ from little_loops.session_store.queries import (
     build_snapshot_db,
 )
 from little_loops.session_store.schema import SCHEMA_VERSION
+
+if TYPE_CHECKING:
+    from little_loops.config.core import BRConfig
 
 # D17: a 30-day snapshot holds ~150k usage_events rows; rendering them all would
 # hang the tab. The page renders at most this many and states the true total.
@@ -124,6 +129,186 @@ def schema_version_warning(source_version: str | None) -> str:
     return ""
 
 
+@dataclass(frozen=True)
+class ServeContext:
+    """Serve-mode template data for ``ll-loop run --serve`` (ENH-3351).
+
+    Supplied by the loop process's CLI wiring, which constructs the
+    ``LocalBridgeTransport`` first (so its per-run token and bound port are
+    known) and derives both URLs from ``bridge.url``. ``cmd_dashboard``'s
+    ``file://`` path always calls :func:`build_dashboard_html` with
+    ``serve_context=None``, which keeps default output htmx-free.
+    """
+
+    events_url: str
+    interaction_url: str
+
+
+@dataclass(frozen=True)
+class RenderedDashboard:
+    """Result of :func:`build_dashboard_html`."""
+
+    html: str
+    schema_version_warning: str
+
+
+def build_dashboard_html(
+    *,
+    db_path: Path,
+    config: BRConfig,
+    tables: list[str],
+    since_iso: str | None,
+    mode: str,
+    serve_context: ServeContext | None = None,
+) -> RenderedDashboard:
+    """Render the history dashboard page (ENH-3351 extraction of ``cmd_dashboard``).
+
+    A pure(ish) renderer: raises ``ValueError`` for the conditions
+    ``cmd_dashboard`` used to ``return 1`` for (missing db, oversized
+    snapshot, template/manifest errors) — the caller decides how to report
+    them. The one behavior split: a missing ``db_path`` raises when
+    ``serve_context is None`` (the ``file://`` path's existing behavior)
+    but renders with an empty snapshot when ``serve_context`` is set, since
+    ``--serve``'s live SSE regions are the point and the query box is a
+    bonus (first-ever-run has no ``history.db`` yet).
+    """
+    local_mode = mode == "local"
+    export_cfg = config.artifacts.export
+    max_bytes = export_cfg.max_artifact_bytes
+
+    if not db_path.is_file():
+        if serve_context is None:
+            raise ValueError(f"history database not found: {db_path}")
+        source_version: str | None = None
+        # gzip's mtime header would otherwise stamp wall-clock time, making
+        # repeated renders of identical input non-reproducible (ENH-3351).
+        snapshot_b64 = base64.b64encode(gzip.compress(b"", mtime=0)).decode("ascii")
+    else:
+        with tempfile.TemporaryDirectory(prefix="ll-dashboard-") as tmpdir:
+            snapshot_path = Path(tmpdir) / "snapshot.db"
+            source_version = build_snapshot_db(
+                db_path,
+                snapshot_path,
+                tables=tables,
+                since=since_iso,
+                local_mode=local_mode,
+            )
+
+            # D16: the cheap pre-check. Without it the all-history path
+            # materializes, gzips, base64-encodes and renders hundreds of MB
+            # before the authoritative final-HTML ceiling (D7) fires.
+            raw_size = snapshot_path.stat().st_size
+            if raw_size > max_bytes:
+                raise ValueError(
+                    f"raw snapshot is {raw_size} bytes, over the "
+                    f"artifacts.export.max_artifact_bytes limit of {max_bytes}. "
+                    "Narrow the export window with --since."
+                )
+
+            snapshot_b64 = base64.b64encode(
+                gzip.compress(snapshot_path.read_bytes(), mtime=0)
+            ).decode("ascii")
+
+    wasm_b64 = base64.b64encode(
+        _packaged_path(*_VENDOR_PARTS, "sql-wasm.wasm").read_bytes()
+    ).decode("ascii")
+    # The glue is UTF-8 text and rides in `data` verbatim rather than through
+    # the template's assets/, which would mean a second copy of the vendored
+    # file inside the package template tree for no gain (D10 says the assets/
+    # route "may" be used, not "must").
+    wasm_js = _packaged_path(*_VENDOR_PARTS, "sql-wasm.js").read_text(encoding="utf-8")
+
+    root = _packaged_path("templates", "dashboard.llat")
+    try:
+        manifest = load_manifest(root)
+    except ManifestError as exc:
+        raise ValueError(str(exc)) from exc
+    template = ArtifactTemplate(root=root, manifest=manifest)
+
+    warning_text = schema_version_warning(source_version)
+
+    # D18: autoescape=False, so every stamped value is escaped here. These
+    # are all allowlisted or parsed already; escaping is the rule that has to
+    # survive the next flag someone adds, not a fix for a live defect.
+    data: dict[str, Any] = {
+        "snapshot_gzip_b64": snapshot_b64,
+        "sql_wasm_b64": wasm_b64,
+        "sql_wasm_js": wasm_js,
+        "exported_at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "filter_tables": html.escape(", ".join(tables)),
+        "filter_since": html.escape(since_iso) if since_iso else "all history",
+        "export_mode": mode,
+        "allowlist_version": _SHAREABLE_ALLOWLIST_VERSION,
+        "source_schema_version": html.escape(str(source_version or "unknown")),
+        "installed_schema_version": SCHEMA_VERSION,
+        "schema_version_warning": html.escape(warning_text),
+        "row_cap": RENDER_ROW_CAP,
+        "serve_enabled": serve_context is not None,
+    }
+    if serve_context is not None:
+        import json as _json
+
+        htmax_js = _packaged_path("assets", "vendor", "htmx", "htmax.js").read_text(
+            encoding="utf-8"
+        )
+        data["serve_htmax_js"] = htmax_js
+        data["serve_events_url"] = html.escape(serve_context.events_url)
+        # Embedded inside an inline <script> as a JS string literal, not an
+        # HTML attribute — json.dumps gives correct JS-string quoting rather
+        # than HTML-attribute escaping.
+        data["serve_interaction_url_js"] = _json.dumps(serve_context.interaction_url)
+
+    try:
+        validate_top_level_data(data, manifest["data_schema"])
+    except DataValidationError as exc:
+        raise ValueError(str(exc)) from exc
+
+    try:
+        rendered = render_template(template, data, config)
+    except (ManifestError, DataValidationError) as exc:
+        raise ValueError(str(exc)) from exc
+
+    return RenderedDashboard(html=rendered, schema_version_warning=warning_text)
+
+
+def render_live_fragment(event: dict[str, Any]) -> str | None:
+    """Render an SSE fragment for one FSM event (ENH-3351 serve mode).
+
+    Returns ``None`` for an event with nothing to show; otherwise a string of
+    ``<hx-partial>`` out-of-band fragments (state badge / iteration counter /
+    log-tail regions), backed by ``templates/dashboard.llat/partials.html.j2``.
+    This is the ``render_fragment`` callable passed to ``LocalBridgeTransport``.
+    """
+    import jinja2
+
+    event_type = str(event.get("event", ""))
+    if not event_type:
+        return None
+
+    root = _packaged_path("templates", "dashboard.llat")
+    env = jinja2.Environment(
+        loader=jinja2.FileSystemLoader(str(root)), autoescape=True, keep_trailing_newline=True
+    )
+    partials = env.get_template("partials.html.j2").module
+
+    # jinja2's TemplateModule exposes macros dynamically — mypy has no way to
+    # know partials.html.j2 defines state_badge/iter_count/log_line.
+    parts: list[str] = []
+    if event_type == "run_complete":
+        parts.append(partials.state_badge("complete"))  # type: ignore[attr-defined]
+    elif "state" in event:
+        parts.append(
+            partials.state_badge(f"{event_type}: {event['state']}")  # type: ignore[attr-defined]
+        )
+    if "iteration" in event:
+        parts.append(partials.iter_count(event["iteration"]))  # type: ignore[attr-defined]
+    ts = event.get("ts", "")
+    parts.append(
+        partials.log_line(f"[{ts}] {event_type}" if ts else event_type)  # type: ignore[attr-defined]
+    )
+    return "\n".join(parts)
+
+
 def cmd_dashboard(args: argparse.Namespace, logger: Logger) -> int:
     """Export a queryable history.db dashboard as a single self-contained HTML file.
 
@@ -164,86 +349,22 @@ def cmd_dashboard(args: argparse.Namespace, logger: Logger) -> int:
                 logger.error(f"Invalid date: {args.since!r}. Use YYYY-MM-DD or ISO 8601.")
                 return 1
 
-        with tempfile.TemporaryDirectory(prefix="ll-dashboard-") as tmpdir:
-            snapshot_path = Path(tmpdir) / "snapshot.db"
-            try:
-                source_version = build_snapshot_db(
-                    db_path,
-                    snapshot_path,
-                    tables=tables,
-                    since=since_iso,
-                    local_mode=local_mode,
-                )
-            except ValueError as exc:
-                logger.error(str(exc))
-                return 1
-
-            # D16: the cheap pre-check. Without it the all-history path
-            # materializes, gzips, base64-encodes and renders hundreds of MB
-            # before the authoritative final-HTML ceiling (D7) fires.
-            raw_size = snapshot_path.stat().st_size
-            if raw_size > max_bytes:
-                logger.error(
-                    f"raw snapshot is {raw_size} bytes, over the "
-                    f"artifacts.export.max_artifact_bytes limit of {max_bytes}. "
-                    "Narrow the export window with --since."
-                )
-                return 1
-
-            snapshot_b64 = base64.b64encode(gzip.compress(snapshot_path.read_bytes())).decode(
-                "ascii"
+        try:
+            result = build_dashboard_html(
+                db_path=db_path,
+                config=config,
+                tables=tables,
+                since_iso=since_iso,
+                mode=mode,
+                serve_context=None,
             )
-
-        wasm_b64 = base64.b64encode(
-            _packaged_path(*_VENDOR_PARTS, "sql-wasm.wasm").read_bytes()
-        ).decode("ascii")
-        # The glue is UTF-8 text and rides in `data` verbatim rather than through
-        # the template's assets/, which would mean a second copy of the vendored
-        # file inside the package template tree for no gain (D10 says the assets/
-        # route "may" be used, not "must").
-        wasm_js = _packaged_path(*_VENDOR_PARTS, "sql-wasm.js").read_text(encoding="utf-8")
-
-        root = _packaged_path("templates", "dashboard.llat")
-        try:
-            manifest = load_manifest(root)
-        except ManifestError as exc:
-            logger.error(str(exc))
-            return 1
-        template = ArtifactTemplate(root=root, manifest=manifest)
-
-        # D18: autoescape=False, so every stamped value is escaped here. These
-        # are all allowlisted or parsed already; escaping is the rule that has to
-        # survive the next flag someone adds, not a fix for a live defect.
-        data = {
-            "snapshot_gzip_b64": snapshot_b64,
-            "sql_wasm_b64": wasm_b64,
-            "sql_wasm_js": wasm_js,
-            "exported_at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
-            "filter_tables": html.escape(", ".join(tables)),
-            "filter_since": html.escape(since_iso) if since_iso else "all history",
-            "export_mode": mode,
-            "allowlist_version": _SHAREABLE_ALLOWLIST_VERSION,
-            "source_schema_version": html.escape(str(source_version or "unknown")),
-            "installed_schema_version": SCHEMA_VERSION,
-            "schema_version_warning": html.escape(schema_version_warning(source_version)),
-            "row_cap": RENDER_ROW_CAP,
-        }
-
-        try:
-            validate_top_level_data(data, manifest["data_schema"])
-        except DataValidationError as exc:
-            logger.error(str(exc))
-            return 1
-
-        try:
-            rendered = render_template(template, data, config)
-        except (ManifestError, DataValidationError) as exc:
+        except ValueError as exc:
             logger.error(str(exc))
             return 1
 
         # D7: the authoritative ceiling, measured on the final HTML because that
         # is the quantity that actually bites the user. Hard-fail before write.
-        rendered_size = len(rendered.encode("utf-8"))
+        rendered_size = len(result.html.encode("utf-8"))
         if rendered_size > max_bytes:
             logger.error(
                 f"rendered dashboard is {rendered_size} bytes, over the "
@@ -263,11 +384,12 @@ def cmd_dashboard(args: argparse.Namespace, logger: Logger) -> int:
             logger.error(f"-o names an existing file, not a directory: {output_dir}")
             return 1
         output_dir.mkdir(parents=True, exist_ok=True)
+        manifest = load_manifest(_packaged_path("templates", "dashboard.llat"))
         out_path = output_dir / manifest["output"]
-        out_path.write_text(rendered, encoding="utf-8")
+        out_path.write_text(result.html, encoding="utf-8")
 
-        if data["schema_version_warning"]:
-            logger.warning(schema_version_warning(source_version))
+        if result.schema_version_warning:
+            logger.warning(result.schema_version_warning)
         logger.success(f"Wrote {out_path} ({rendered_size} bytes, mode={mode})")
         return 0
     except Exception as exc:  # noqa: BLE001 — surface any failure as exit 1

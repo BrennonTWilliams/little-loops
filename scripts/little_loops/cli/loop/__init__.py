@@ -291,6 +291,23 @@ Examples:
             "--no-lock", action="store_true", help="Skip scope lock (for demos/recordings)"
         )
         run_parser.add_argument(
+            "--serve",
+            action="store_true",
+            help=(
+                "Bind a loopback-only HTTP + SSE bridge for this run and serve a live "
+                "dashboard page (ENH-3351). Declares Level 3 (host-owned) per "
+                "docs/reference/ARTIFACT_CONTROL_LEVELS.md. Server lifetime == run "
+                "lifetime. Without --serve, behavior is byte-identical to today."
+            ),
+        )
+        run_parser.add_argument(
+            "--port",
+            type=int,
+            default=None,
+            metavar="N",
+            help="TCP port on 127.0.0.1 for --serve (default: 0 = ephemeral, printed on start)",
+        )
+        run_parser.add_argument(
             "--context",
             action="append",
             default=[],

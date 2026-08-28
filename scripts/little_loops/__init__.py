@@ -56,6 +56,7 @@ from little_loops.sync import GitHubSyncManager, SyncResult, SyncStatus
 from little_loops.testing import LLTestBus
 from little_loops.transport import (
     JsonlTransport,
+    LocalBridgeTransport,
     OTelTransport,
     Transport,
     UnixSocketTransport,
@@ -107,6 +108,7 @@ __all__ = [
     "vendor_for_runner",
     # transport
     "JsonlTransport",
+    "LocalBridgeTransport",
     "OTelTransport",
     "SQLiteTransport",
     "record_issue_snapshot",

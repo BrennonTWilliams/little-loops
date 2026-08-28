@@ -96,7 +96,7 @@ pip install -e "./scripts[dev]"
 | `little_loops.test_file_patterns` | Test-file classification shared across gates — `is_test_file(path, config=None)` and `filter_test_files(paths, config=None)`. |
 | `little_loops.test_tamper_guard` | Test-weakening detection core (ENH-2933) — `snapshot_test_paths()` / `snapshot_test_paths_at_ref()`, `compare_snapshots()`, `measure_test_strength()`, `is_weakening()`, `filter_weakening_findings()`,
 `extract_test_functions()`, with `TamperFinding` / `TamperReport` / `TestStrength` / `ConfigTarget` dataclasses. |
-| `little_loops.transport` | EventBus transport abstraction (`Transport` Protocol + `send`/`close`) with built-in `JsonlTransport`, `UnixSocketTransport`, and `OTelTransport` sinks. |
+| `little_loops.transport` | EventBus transport abstraction (`Transport` Protocol + `send`/`close`) with built-in `JsonlTransport`, `UnixSocketTransport`, `OTelTransport`, `WebhookTransport`, and `LocalBridgeTransport` (ENH-3351 — loopback-only SSE bridge for `ll-loop run --serve`) sinks. |
 | `little_loops.worktree_utils` | Shared worktree setup/cleanup utilities used by `ll-parallel`, `ll-sprint`, `ll-loop`, the FSM executor's pre-patch check hook (ENH-2997), and `work_verification`'s non-FSM pre-patch check adapter (ENH-2998). See [WORKTREES.md](WORKTREES.md) for the file-copy contract. |
 | `little_loops.prepatch_check` | Pre-patch check core (ENH-3142) — `run_prepatch_check()`, `collect_candidates()`, and the `PrePatchCandidate` / `PrePatchTestOutcome` / `PrePatchEvidence` dataclasses. Deterministic, no LLM/FSM/CLI/database access; runs candidate tests from a step diff against the pre-patch worktree ENH-3141's `setup_prepatch_worktree()` produces to flag evidence that passes without the change it claims to demonstrate. |
 | `little_loops.mcp_call` | Thin CLI wrapper for direct MCP tool invocation via JSON-RPC |
@@ -5471,7 +5471,7 @@ FSM (Finite State Machine) loop system for automation workflows. This subpackage
 |--------|---------|
 | `little_loops.fsm.schema` | FSM state machine schema definitions |
 | `little_loops.fsm.evaluators` | Verdict evaluators (exit_code, llm_structured, etc.) |
-| `little_loops.fsm.executor` | FSM execution engine |
+| `little_loops.fsm.executor` | FSM execution engine. Optional `inbound` queue + `_drain_inbound()` (ENH-3351) let an external actor (e.g. `ll-loop run --serve`'s SSE bridge) re-enter the running executor as `artifact_interaction` events. |
 | `little_loops.fsm.runners` | Action runner protocol and default/simulation implementations |
 | `little_loops.fsm.types` | Core result types (`ExecutionResult`, `ActionResult`) |
 | `little_loops.fsm.interpolation` | Variable substitution (`${context.*}`, etc.) |
@@ -6072,10 +6072,24 @@ class FSMExecutor:
         handoff_handler: HandoffHandler | None = None,
         loops_dir: Path | None = None,
         circuit: RateLimitCircuit | None = None,
+        inbound: queue.Queue[dict[str, Any]] | None = None,  # ENH-3351
     )
 ```
 
 Execute an FSM loop until terminal state, max iterations, timeout, or signal.
+
+`inbound` (ENH-3351) is an optional queue drained non-blockingly at the top of
+each `run()` iteration by `_drain_inbound()`: each drained dict is re-emitted
+as an `artifact_interaction` event (via `self._emit`, reaching persistence and
+any registered transport, including a `--serve` SSE bridge) and appended to the
+bounded `self.inbound_events: collections.deque[dict[str, Any]]` (`maxlen=100`)
+so future issues can build routing/guard semantics on top. `None` (the
+default) is a no-op — behavior is unchanged when `inbound` is omitted.
+`PersistentExecutor(..., inbound=q)` forwards it through unmodified
+(`**executor_kwargs`); `_execute_sub_loop`'s child executor construction
+forwards the parent's `inbound` so interactions keep arriving inside a `loop:`
+sub-state. Wired by `ll-loop run --serve` (`LocalBridgeTransport`), not by any
+other production call site.
 
 **Methods:**
 
@@ -6083,6 +6097,7 @@ Execute an FSM loop until terminal state, max iterations, timeout, or signal.
 |--------|---------|-------------|
 | `run()` | `ExecutionResult` | Execute FSM to completion |
 | `request_shutdown()` | `None` | Request graceful shutdown |
+| `_drain_inbound()` | `None` | Non-blocking full-drain of `self.inbound`; re-emits each item as `artifact_interaction` and records it in `inbound_events` (ENH-3351) |
 
 **Example:**
 ```python
@@ -10460,6 +10475,57 @@ WebhookTransport(
 |--------|-------------|
 | `send(event: dict[str, Any]) -> None` | Enqueue the event for the next batch flush. Non-blocking. No-op after `close()` is called. |
 | `close() -> None` | Signal shutdown, drain the queue with one final flush, and join the daemon thread (10s timeout). |
+
+### LocalBridgeTransport
+
+Loopback-only HTTP + SSE bridge — Level 3 (host-owned) per
+[ARTIFACT_CONTROL_LEVELS.md](ARTIFACT_CONTROL_LEVELS.md) — backing `ll-loop run
+--serve` (ENH-3351). Bidirectional: outbound events stream to connected browser
+clients as SSE frames; a `POST /{token}/interaction` handler enqueues the JSON
+body onto an `inbound` queue the FSM executor drains
+(`FSMExecutor._drain_inbound`). Stdlib-only (`http.server.ThreadingHTTPServer`),
+no new dependency. Constructed directly by `cli/loop/run.py` under `--serve` —
+not registered through `wire_transports`/`_TRANSPORT_REGISTRY`.
+
+```python
+import queue
+
+from little_loops.transport import LocalBridgeTransport
+
+inbound: queue.Queue[dict] = queue.Queue()
+bridge = LocalBridgeTransport(port=0, inbound=inbound, render_fragment=None)
+print(bridge.url)  # http://127.0.0.1:<bound-port>/<token>/
+bridge.send({"event": "state_enter", "state": "running"})
+bridge.close()
+```
+
+#### Constructor
+
+```python
+LocalBridgeTransport(
+    port: int = 0,
+    inbound: queue.Queue[dict[str, Any]] | None = None,
+    render_fragment: Callable[[dict[str, Any]], str | None] | None = None,
+    page_html: str | None = None,
+)
+```
+
+**Parameters:**
+- `port` - TCP port on `127.0.0.1` to bind. `0` (default) picks an ephemeral port; the actual bound port is read back via `url`. Binds `127.0.0.1` only — there is no host-override parameter.
+- `inbound` - Optional `queue.Queue` that `POST /{token}/interaction` bodies are enqueued onto unchanged (`put_nowait`, dropped with a rate-limited warning if full or the body isn't valid JSON). `None` means inbound POSTs are accepted and dropped.
+- `render_fragment` - Optional callable converting an event dict to an HTML fragment string (or `None` to skip that event). When omitted, `send()` forwards raw JSON `data:` frames — the form `test_transport.py`'s unit tests mostly exercise. `cli/artifact/dashboard.py`'s `render_live_fragment` is the real caller supplied here, keeping Jinja out of `transport.py`.
+- `page_html` - HTML served at `GET /{token}/`. `None` serves a minimal placeholder; the loop process supplies the full dashboard page built via `build_dashboard_html(..., serve_context=...)`.
+
+Every request is checked against the per-run token (`secrets.token_urlsafe(16)`, generated at construction) and the `Host` header (`403` unless it is exactly `127.0.0.1:<port>` or `localhost:<port>`, guarding against DNS rebinding); a missing/wrong token is `404`.
+
+#### Methods
+
+| Method | Description |
+|--------|-------------|
+| `send(event: dict[str, Any]) -> None` | Fan out to every connected SSE client's per-client queue as an SSE frame (via `render_fragment`, or raw JSON when unset). Non-blocking — a full client queue drops the newest event. |
+| `close() -> None` | Push a final `run_complete`-derived frame (plus a shutdown sentinel) into every connected client's queue so each SSE handler exits cleanly, then `shutdown()`/`server_close()` the HTTP server and join handler threads within a bounded budget. Delivers the final frame and leaves no handler threads behind — asserted in tests, not just intended. |
+| `set_page_html(page_html: str) -> None` | Replace the HTML served at `GET /{token}/` after construction — the served page typically embeds this transport's own `url` (for its SSE/interaction endpoints), which is only known once the server is bound, so callers construct first, build the page from `url`, then call this instead of passing `page_html` to `__init__`. |
+| `url` (property) | `http://127.0.0.1:<bound-port>/<token>/` — the page URL. Derive the events/interaction endpoints by appending `events` / `interaction`. |
 
 ### wire_transports
 

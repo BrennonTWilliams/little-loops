@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import errno
+import http.client
 import json
 import logging
 import os
+import queue
 import re
 import shutil
 import socket
@@ -29,6 +31,7 @@ from little_loops.events import EventBus
 from little_loops.session_store import recent
 from little_loops.transport import (
     JsonlTransport,
+    LocalBridgeTransport,
     OTelTransport,
     Transport,
     UnixSocketTransport,
@@ -921,6 +924,341 @@ class TestUnixSocketTransport:
             release.set()
             closer.join(timeout=15.0)
             c1.close()
+
+
+def _lb_port(t: LocalBridgeTransport) -> int:
+    """The real ephemeral port a LocalBridgeTransport bound (port=0 in tests)."""
+    return t._server.server_address[1]
+
+
+def _lb_client_count(t: LocalBridgeTransport) -> int:
+    """Number of SSE clients currently registered on the transport's fan-out list."""
+    with t._clients_lock:
+        return len(t._clients)
+
+
+def _lb_http_request(
+    port: int,
+    method: str,
+    path: str,
+    host: str | None = None,
+    body: bytes | None = None,
+    timeout: float = 5.0,
+) -> tuple[int, bytes]:
+    """One-shot HTTP request with explicit control over the `Host` header.
+
+    `http.client` normally derives `Host` from the connection target; `skip_host`
+    plus an explicit `putheader("Host", ...)` lets tests send a mismatched value
+    to exercise the DNS-rebinding guard.
+    """
+    conn = http.client.HTTPConnection("127.0.0.1", port, timeout=timeout)
+    try:
+        conn.putrequest(method, path, skip_host=True)
+        conn.putheader("Host", host if host is not None else f"127.0.0.1:{port}")
+        if body is not None:
+            conn.putheader("Content-Type", "application/json")
+            conn.putheader("Content-Length", str(len(body)))
+        conn.endheaders(body)
+        resp = conn.getresponse()
+        data = resp.read()
+        return resp.status, data
+    finally:
+        conn.close()
+
+
+def _sse_connect(
+    port: int, token: str, host: str | None = None, timeout: float = 5.0
+) -> socket.socket:
+    """Open a raw streaming connection to the SSE endpoint.
+
+    There is no existing SSE-parsing helper in this codebase (every other transport
+    is newline-delimited JSON over a socket, not HTTP), so tests drive the protocol
+    directly over a raw socket rather than reusing http.client, which buffers/blocks
+    in ways unsuited to an indefinite-length streaming response.
+    """
+    sock = socket.create_connection(("127.0.0.1", port), timeout=timeout)
+    host_header = host if host is not None else f"127.0.0.1:{port}"
+    req = f"GET /{token}/events HTTP/1.1\r\nHost: {host_header}\r\nConnection: keep-alive\r\n\r\n"
+    sock.sendall(req.encode())
+    return sock
+
+
+def _read_sse_headers(sock: socket.socket, timeout: float = 5.0) -> bytes:
+    """Consume the HTTP response headers; return any body bytes already read past them."""
+    sock.settimeout(timeout)
+    buf = b""
+    while b"\r\n\r\n" not in buf:
+        chunk = sock.recv(4096)
+        if not chunk:
+            break
+        buf += chunk
+    _headers, _, leftover = buf.partition(b"\r\n\r\n")
+    return leftover
+
+
+def _read_sse_frame(
+    sock: socket.socket, leftover: bytes, timeout: float = 5.0
+) -> tuple[str, bytes]:
+    """Read one blank-line-terminated SSE frame; return (joined `data:` text, new leftover)."""
+    sock.settimeout(timeout)
+    buf = leftover
+    while b"\n\n" not in buf:
+        chunk = sock.recv(4096)
+        if not chunk:
+            break
+        buf += chunk
+    frame, _, rest = buf.partition(b"\n\n")
+    lines = [
+        line[len("data: ") :]
+        for line in frame.decode("utf-8").split("\n")
+        if line.startswith("data: ")
+    ]
+    return "\n".join(lines), rest
+
+
+class TestLocalBridgeTransport:
+    """Tests for LocalBridgeTransport (ARTIFACT_CONTROL_LEVELS Level 3 SSE bridge)."""
+
+    def test_satisfies_protocol(self) -> None:
+        """LocalBridgeTransport instances satisfy the Transport Protocol."""
+        t = LocalBridgeTransport(port=0)
+        try:
+            assert isinstance(t, Transport)
+        finally:
+            t.close()
+
+    def test_binds_loopback_only(self) -> None:
+        """The server binds 127.0.0.1, never 0.0.0.0, and a loopback client can connect."""
+        t = LocalBridgeTransport(port=0)
+        try:
+            assert t._server.server_address[0] == "127.0.0.1"
+            sock = socket.create_connection(("127.0.0.1", _lb_port(t)), timeout=5.0)
+            sock.close()
+        finally:
+            t.close()
+
+    def test_url_property_shape(self) -> None:
+        """url is http://127.0.0.1:<bound-port>/<token>/ and contains the real token."""
+        t = LocalBridgeTransport(port=0)
+        try:
+            port = _lb_port(t)
+            assert t.url == f"http://127.0.0.1:{port}/{t._token}/"
+        finally:
+            t.close()
+
+    def test_wrong_token_returns_404(self) -> None:
+        """A request whose URL prefix doesn't match /{token}/... gets 404."""
+        t = LocalBridgeTransport(port=0)
+        try:
+            port = _lb_port(t)
+            status, _ = _lb_http_request(port, "GET", "/not-the-real-token/")
+            assert status == 404
+        finally:
+            t.close()
+
+    def test_bad_host_header_returns_403(self) -> None:
+        """A request whose Host header doesn't match 127.0.0.1:<port>/localhost:<port> gets 403."""
+        t = LocalBridgeTransport(port=0)
+        try:
+            port = _lb_port(t)
+            status, _ = _lb_http_request(port, "GET", f"/{t._token}/", host="evil.com")
+            assert status == 403
+        finally:
+            t.close()
+
+    def test_page_html_served_verbatim(self) -> None:
+        """GET /{token}/ serves the constructor-supplied page_html verbatim."""
+        page = "<html><body>hello-dashboard</body></html>"
+        t = LocalBridgeTransport(port=0, page_html=page)
+        try:
+            port = _lb_port(t)
+            status, body = _lb_http_request(port, "GET", f"/{t._token}/")
+            assert status == 200
+            assert body.decode("utf-8") == page
+        finally:
+            t.close()
+
+    def test_send_raw_json_frame_delivered_to_client(self) -> None:
+        """send() with render_fragment=None delivers a raw JSON data: frame to an SSE client."""
+        t = LocalBridgeTransport(port=0)
+        try:
+            port = _lb_port(t)
+            sock = _sse_connect(port, t._token)
+            try:
+                leftover = _read_sse_headers(sock)
+                _wait_until(lambda: _lb_client_count(t) == 1)
+
+                t.send({"event": "first", "x": 1})
+
+                text, _leftover = _read_sse_frame(sock, leftover)
+                assert json.loads(text) == {"event": "first", "x": 1}
+            finally:
+                sock.close()
+        finally:
+            t.close()
+
+    def test_send_with_render_fragment_delivers_rendered_string(self) -> None:
+        """A render_fragment callable's returned string becomes the frame body."""
+
+        def render(event: dict[str, Any]) -> str | None:
+            return f"<div>{event['event']}</div>"
+
+        t = LocalBridgeTransport(port=0, render_fragment=render)
+        try:
+            port = _lb_port(t)
+            sock = _sse_connect(port, t._token)
+            try:
+                leftover = _read_sse_headers(sock)
+                _wait_until(lambda: _lb_client_count(t) == 1)
+
+                t.send({"event": "state_change"})
+
+                text, _leftover = _read_sse_frame(sock, leftover)
+                assert text == "<div>state_change</div>"
+            finally:
+                sock.close()
+        finally:
+            t.close()
+
+    def test_render_fragment_returning_none_skips_the_event(self) -> None:
+        """When render_fragment returns None for an event, nothing is enqueued for it."""
+
+        def render(event: dict[str, Any]) -> str | None:
+            if event.get("event") == "skip-me":
+                return None
+            return f"<div>{event['event']}</div>"
+
+        t = LocalBridgeTransport(port=0, render_fragment=render)
+        try:
+            port = _lb_port(t)
+            sock = _sse_connect(port, t._token)
+            try:
+                leftover = _read_sse_headers(sock)
+                _wait_until(lambda: _lb_client_count(t) == 1)
+
+                t.send({"event": "skip-me"})
+                t.send({"event": "keep-me"})
+
+                # The only frame that ever arrives is "keep-me" — "skip-me" was
+                # never enqueued at all, so there is nothing to skip over.
+                text, _leftover = _read_sse_frame(sock, leftover)
+                assert text == "<div>keep-me</div>"
+            finally:
+                sock.close()
+        finally:
+            t.close()
+
+    def test_interaction_post_lands_on_inbound_queue_unchanged(self) -> None:
+        """POST /{token}/interaction enqueues the parsed JSON body onto inbound unchanged."""
+        inbound: queue.Queue[dict[str, Any]] = queue.Queue()
+        t = LocalBridgeTransport(port=0, inbound=inbound)
+        try:
+            port = _lb_port(t)
+            payload = {"kind": "artifact_interaction", "value": 42}
+            body = json.dumps(payload).encode("utf-8")
+            status, _ = _lb_http_request(port, "POST", f"/{t._token}/interaction", body=body)
+            assert status == 204
+            # The handler responds with 204 before touching `inbound` (a
+            # full/misbehaving queue must never delay the HTTP response), so the
+            # put() can land a moment after this thread sees the response —
+            # poll instead of a bare get_nowait() race.
+            _wait_until(lambda: not inbound.empty())
+            assert inbound.get_nowait() == payload
+        finally:
+            t.close()
+
+    def test_interaction_post_with_no_inbound_configured_is_a_noop(self) -> None:
+        """POST /{token}/interaction still returns 204 when inbound is None."""
+        t = LocalBridgeTransport(port=0)
+        try:
+            port = _lb_port(t)
+            body = json.dumps({"x": 1}).encode("utf-8")
+            status, _ = _lb_http_request(port, "POST", f"/{t._token}/interaction", body=body)
+            assert status == 204
+        finally:
+            t.close()
+
+    def test_interaction_post_with_invalid_json_is_dropped_silently(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """A non-JSON body never raises back to the HTTP layer; it's dropped with a warning."""
+        inbound: queue.Queue[dict[str, Any]] = queue.Queue()
+        t = LocalBridgeTransport(port=0, inbound=inbound)
+        try:
+            port = _lb_port(t)
+            with caplog.at_level(logging.WARNING):
+                status, _ = _lb_http_request(
+                    port, "POST", f"/{t._token}/interaction", body=b"not-json"
+                )
+            assert status == 204
+            assert inbound.empty()
+            # The handler responds before touching `inbound` (a full/misbehaving
+            # queue must never delay the HTTP response), so the warning log is
+            # written on the handler thread *after* the client already has its
+            # 204 — poll instead of asserting immediately (avoids an xdist-visible
+            # race between this thread and the handler thread's log emission).
+            _wait_until(lambda: any("interaction" in r.message.lower() for r in caplog.records))
+        finally:
+            t.close()
+
+    def test_close_delivers_final_frame_and_exits_handler_thread(self) -> None:
+        """close() delivers a run_complete-derived frame and the handler thread exits."""
+        t = LocalBridgeTransport(port=0)
+        port = _lb_port(t)
+        sock = _sse_connect(port, t._token)
+        try:
+            leftover = _read_sse_headers(sock)
+            _wait_until(lambda: _lb_client_count(t) == 1)
+
+            with t._clients_lock:
+                handler_thread = t._clients[0].thread
+            assert handler_thread is not None and handler_thread.is_alive()
+
+            t.close()
+
+            text, _leftover = _read_sse_frame(sock, leftover)
+            assert json.loads(text) == {"event": "run_complete"}
+
+            _wait_until(lambda: not handler_thread.is_alive())
+        finally:
+            sock.close()
+            t.close()
+
+    def test_disconnected_client_pruned_after_next_failed_write(self) -> None:
+        """A reader that closes its socket is deregistered after a subsequent send()."""
+        t = LocalBridgeTransport(port=0)
+        try:
+            port = _lb_port(t)
+            sock = _sse_connect(port, t._token)
+            _read_sse_headers(sock)
+            _wait_until(lambda: _lb_client_count(t) == 1)
+
+            sock.close()
+
+            # send() must never raise even though the client is now unreachable.
+            # Unlike UnixSocketTransport's AF_UNIX peer (which typically errors
+            # on the very next write), a TCP loopback write can silently land in
+            # the OS send buffer once or twice before the RST is observed; poll
+            # by resending until the write failure surfaces and prunes the dead
+            # client, rather than assuming exactly one send suffices.
+            def _pruned_after_send() -> bool:
+                t.send({"event": "after-disconnect"})
+                return _lb_client_count(t) == 0
+
+            _wait_until(_pruned_after_send)
+        finally:
+            t.close()
+
+    def test_ephemeral_port_allocation_gives_distinct_real_ports(self) -> None:
+        """Two concurrent port=0 instances each bind a distinct real ephemeral port."""
+        t1 = LocalBridgeTransport(port=0)
+        t2 = LocalBridgeTransport(port=0)
+        try:
+            assert _lb_port(t1) != _lb_port(t2)
+            assert t1.url != t2.url
+        finally:
+            t1.close()
+            t2.close()
 
 
 @pytest.mark.skipif(not _HAS_OTEL_SDK, reason="opentelemetry-sdk not installed")
