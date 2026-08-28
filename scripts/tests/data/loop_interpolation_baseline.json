@@ -634,38 +634,11 @@
     {
       "file": "loops/loop-router.yaml",
       "state": "apply_user_choice",
-      "var": "context.goal",
-      "class": "A",
-      "host_shape": "heredoc",
-      "line": 10,
-      "count": 1
-    },
-    {
-      "file": "loops/loop-router.yaml",
-      "state": "apply_user_choice",
       "var": "context.run_dir",
       "class": "C",
       "host_shape": "heredoc",
       "line": 10,
       "count": 4
-    },
-    {
-      "file": "loops/loop-router.yaml",
-      "state": "discover_loops",
-      "var": "context.exclude",
-      "class": "A",
-      "host_shape": "heredoc",
-      "line": 24,
-      "count": 1
-    },
-    {
-      "file": "loops/loop-router.yaml",
-      "state": "discover_loops",
-      "var": "context.include",
-      "class": "A",
-      "host_shape": "heredoc",
-      "line": 5,
-      "count": 1
     },
     {
       "file": "loops/loop-router.yaml",
@@ -697,15 +670,6 @@
     {
       "file": "loops/loop-router.yaml",
       "state": "parse_builtin_score",
-      "var": "context.goal",
-      "class": "A",
-      "host_shape": "heredoc",
-      "line": 10,
-      "count": 1
-    },
-    {
-      "file": "loops/loop-router.yaml",
-      "state": "parse_builtin_score",
       "var": "context.run_dir",
       "class": "C",
       "host_shape": "heredoc",
@@ -719,15 +683,6 @@
       "class": "B",
       "host_shape": "heredoc",
       "line": 3,
-      "count": 1
-    },
-    {
-      "file": "loops/loop-router.yaml",
-      "state": "parse_project_score",
-      "var": "context.goal",
-      "class": "A",
-      "host_shape": "heredoc",
-      "line": 10,
       "count": 1
     },
     {
@@ -755,24 +710,6 @@
       "class": "B",
       "host_shape": "heredoc",
       "line": 3,
-      "count": 1
-    },
-    {
-      "file": "loops/loop-router.yaml",
-      "state": "select_loop",
-      "var": "context.auto",
-      "class": "A",
-      "host_shape": "heredoc",
-      "line": 11,
-      "count": 1
-    },
-    {
-      "file": "loops/loop-router.yaml",
-      "state": "select_loop",
-      "var": "context.confidence_threshold",
-      "class": "A",
-      "host_shape": "heredoc",
-      "line": 10,
       "count": 1
     },
     {

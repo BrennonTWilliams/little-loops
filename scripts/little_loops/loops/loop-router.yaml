@@ -29,10 +29,10 @@ states:
     timeout: 60
     action: |
       LOOP_ROUTER_CATALOG_JSON=$(ll-loop list --json --visibility public 2>/dev/null)
-      LOOP_ROUTER_CATALOG_JSON="$LOOP_ROUTER_CATALOG_JSON" python3 << 'PYEOF'
+      LOOP_ROUTER_CATALOG_JSON="$LOOP_ROUTER_CATALOG_JSON" LL_ARG_INCLUDE=${context.include:shell} LL_ARG_EXCLUDE=${context.exclude:shell} python3 << 'PYEOF'
       import json, os
       loops = json.loads(os.environ['LOOP_ROUTER_CATALOG_JSON'] or '[]')
-      include_raw = '${context.include}'
+      include_raw = os.environ.get("LL_ARG_INCLUDE", "")
       includes = [s.strip() for s in include_raw.split(',') if s.strip()]
       def _matches_include(loop):
           if not includes:
@@ -51,7 +51,7 @@ states:
                   return True
           return False
       loops = [l for l in loops if _matches_include(l)]
-      exclude_raw = '${context.exclude}'
+      exclude_raw = os.environ.get("LL_ARG_EXCLUDE", "")
       excludes = set(x.strip() for x in exclude_raw.split(',') if x.strip())
       excludes.add('loop-router')
       excludes.add('loop-composer')
@@ -197,8 +197,8 @@ states:
   parse_project_score:
     action_type: shell
     action: |
-      python3 << 'PYEOF'
-      import re, sys
+      LL_ARG_GOAL=${context.goal:shell} python3 << 'PYEOF'
+      import os, re, sys
       output = """${captured.project_score.output}"""
       loop_m  = re.search(r'CHOSEN_LOOP:(\S+)', output)
       conf_m  = re.search(r'CONFIDENCE:([\d.]+)', output)
@@ -206,7 +206,7 @@ states:
       top_m   = re.search(r'TOP_CANDIDATES:(.*)', output)
       name  = loop_m.group(1) if loop_m else 'NONE'
       conf  = float(conf_m.group(1)) if conf_m else 0.0
-      inp   = (input_m.group(1).strip() if input_m else '') or '${context.goal}'
+      inp   = (input_m.group(1).strip() if input_m else '') or os.environ.get("LL_ARG_GOAL", "")
       tops  = (top_m.group(1).strip() if top_m else name)
       with open('${context.run_dir}/loop-router-chosen.txt', 'w') as f:
           f.write(name)
@@ -265,8 +265,8 @@ states:
   parse_builtin_score:
     action_type: shell
     action: |
-      python3 << 'PYEOF'
-      import re, sys
+      LL_ARG_GOAL=${context.goal:shell} python3 << 'PYEOF'
+      import os, re, sys
       output = """${captured.builtin_score.output}"""
       loop_m  = re.search(r'CHOSEN_LOOP:(\S+)', output)
       conf_m  = re.search(r'CONFIDENCE:([\d.]+)', output)
@@ -274,7 +274,7 @@ states:
       top_m   = re.search(r'TOP_CANDIDATES:(.*)', output)
       name  = loop_m.group(1) if loop_m else 'NONE'
       conf  = float(conf_m.group(1)) if conf_m else 0.0
-      inp   = (input_m.group(1).strip() if input_m else '') or '${context.goal}'
+      inp   = (input_m.group(1).strip() if input_m else '') or os.environ.get("LL_ARG_GOAL", "")
       tops  = (top_m.group(1).strip() if top_m else name)
       with open('${context.run_dir}/loop-router-chosen.txt', 'w') as f:
           f.write(name)
@@ -305,8 +305,8 @@ states:
   select_loop:
     action_type: shell
     action: |
-      python3 << 'PYEOF'
-      import sys
+      LL_ARG_CONFIDENCE_THRESHOLD=${context.confidence_threshold:shell} LL_ARG_AUTO=${context.auto:shell} python3 << 'PYEOF'
+      import os, sys
       def _read(p, default=''):
           try:
               with open(p) as f: return f.read().strip()
@@ -314,8 +314,8 @@ states:
       name       = _read('${context.run_dir}/loop-router-chosen.txt', 'NONE')
       confidence = float(_read('${context.run_dir}/loop-router-confidence.txt', '0') or '0')
       tops       = _read('${context.run_dir}/loop-router-top.txt', name)
-      threshold  = float('${context.confidence_threshold}')
-      auto       = '${context.auto}'.strip().lower() == 'true'
+      threshold  = float(os.environ["LL_ARG_CONFIDENCE_THRESHOLD"])
+      auto       = os.environ.get("LL_ARG_AUTO", "").strip().lower() == 'true'
       print(f'loop={name}  confidence={confidence:.2f}  threshold={threshold}  auto={auto}  top_candidates={tops}')
       sys.exit(1 if (name == 'NONE' or confidence < threshold or not auto) else 0)
       PYEOF
@@ -366,8 +366,8 @@ states:
   apply_user_choice:
     action_type: shell
     action: |
-      python3 << 'PYEOF'
-      import re
+      LL_ARG_GOAL=${context.goal:shell} python3 << 'PYEOF'
+      import os, re
       raw = """${captured.user_choice.output}""".strip()
       m   = re.search(r'\b([a-z][a-z0-9-]+)\b', raw)
       name = m.group(1) if m else 'NONE'
@@ -375,7 +375,7 @@ states:
           try:
               with open(p) as f: return f.read().strip()
           except Exception: return default
-      inp = _read('${context.run_dir}/loop-router-input.txt') or '${context.goal}'
+      inp = _read('${context.run_dir}/loop-router-input.txt') or os.environ.get("LL_ARG_GOAL", "")
       with open('${context.run_dir}/loop-router-chosen.txt', 'w') as f:
           f.write(name)
       with open('${context.run_dir}/loop-router-input.txt', 'w') as f:
