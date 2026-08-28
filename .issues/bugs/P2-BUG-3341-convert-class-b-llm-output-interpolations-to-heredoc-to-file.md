@@ -200,6 +200,14 @@ to a parallel epic branch.
 
 - N/A
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-28 — based on codebase analysis:_
+
+- **Four additional heredoc-to-file (`cat > file << 'SENTINEL'`) sites exist beyond the two cited in Similar Patterns**, each already writing a `${captured.*.output}` class-B value to a run-dir file before reading it back with `open()`, but each using its own bespoke sentinel (not the mandated `LL_RAW_9F3C1A7E_EOF`): `loop-composer.yaml` — `parse_plan` (`plan-raw.txt` / `LL_PLAN_RAW_EOF`) and `write_step_success`/its failure sibling (`current-step-output.jsonl` / `LL_STEP_OUTPUT_EOF`, 2 occurrences); `loop-composer-adaptive.yaml` — the same two shapes plus `parse_reassess_decision` (`reassess-decision.txt` / `LL_REASSESS_EOF`). These files/sites are not currently named in this issue's Files to Modify or Similar Patterns lists and should be reconciled against ENH-3338's baseline alongside the rest.
+- A repo-wide search confirms `LL_RAW_9F3C1A7E_EOF` has zero occurrences in any `.yaml` file today (hits are confined to issue markdown) — the four additional sites above predate this issue's sentinel choice with their own bespoke conventions, they don't pre-empt it.
+- **A shipped precedent already applies env-var binding (not heredoc-to-file) to two class-B sites.** Commit d8d3476a1 (BUG-3349, status done, landed after this issue's parent survey) converted `loop-router.yaml`'s `finalize_present_result` state's two `${captured.*.output}` sites (`new_loop_proposal`, `review_result`) using `LL_PROPOSAL_OUT=${captured.new_loop_proposal.output:shell:default=} \` / `LL_REVIEW_OUT=${captured.review_result.output:shell:default=} \` bound to the `python3` invocation line, read via `os.environ.get(..., '')` — structurally the same env-var-binding mechanism this issue's own Settled Decisions section rejects for class B ("uniformity with the shipped precedent and reviewability," not correctness). BUG-3349's own research notes this exact combination ("`:shell` applied to a `captured.*` reference") had "no direct precedent confirming the combination works" at the time it was written — that precedent now exists, and it uses the opposite remedy from Option B. This does not change this issue's own two listed sites (`finalize_present_result`'s lines were never in this issue's site list), but the "uniformity with the shipped precedent" rationale for rejecting env-var binding is weaker than when written: the codebase now ships both conventions for the same defect class, not one.
+
 ## Program Design
 
 ### Signatures
@@ -301,5 +309,6 @@ step is added — run dirs are already managed as a unit.
 **Open** | Created: 2026-08-27 | Priority: P2
 
 ## Session Log
+- `/ll:refine-issue` - 2026-08-28T03:15:16 - `21c2bc4e-6e06-47c6-a164-ddb166a7cfff.jsonl`
 - `/ll:format-issue` - 2026-08-28T03:03:20 - `486b558c-b1c6-4706-9fa1-9c30566c1e36.jsonl`
 - `/ll:scope-epic` - 2026-08-27T17:51:45 - `c766dcf0-a664-4805-9c8a-6eba323145c8.jsonl`

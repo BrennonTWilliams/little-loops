@@ -109,6 +109,14 @@ Inherited from EPIC-3336's settled decisions; do not re-litigate:
   `${context.x:default=v:shell}` and `${context.x?:shell}` are legal and quoted.
   There is no `:default=`/`?` exemption: those ~130 sites convert like any other.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-28 — based on codebase analysis:_
+
+- **The `LL_ARG_` naming prefix has zero shipped occurrences anywhere in the codebase.** A repo-wide search (including scoped to `scripts/little_loops/loops/`) finds it only in `.issues/*.md` prose (EPIC-3336, BUG-3331, BUG-3340, BUG-3341, ENH-3338, ENH-3342). This issue's own six cited "safe idiom already exists in the corpus" precedent sites (`mechanize-skills.yaml:162,283,511,528`, `autodev.yaml:405`, plus the four `export ABS_DIR`-style sites `flux-image-generator.yaml:271-275`, `interactive-component-generator.yaml:526-529`, `openscad-model-generator.yaml:327-330`, `html-website-generator.yaml:208-211`) all use unprefixed generic names (`RUN_DIR`, `SKILL_FILE`, `ISSUE_FILE`, `ABS_DIR`, `VISION_THRESHOLD`) — precisely the collision risk this section's text already warns about. `LL_ARG_` is a naming rule this issue introduces going forward; no existing site needs renaming to match it, since none currently does.
+- A second, `LL_`-prefixed-but-not-`LL_ARG_` shape already exists in the corpus: `LL_EPIC_BRANCH`/`LL_RUN_DIR` (`auto-refine-and-implement.yaml:756,783`, `rn-refine.yaml:663,668,722,727`) and `LL_PROPOSAL_OUT`/`LL_REVIEW_OUT` (`loop-router.yaml:512-513`, shipped by BUG-3349/done, binding two `${captured.*}` class-B values — outside this issue's class-A scope). None of the three `LL_`-prefixed naming shapes found agree with each other.
+- `loop-router.yaml:512-513` is the only site in the corpus using the composed `:shell:default=` suffix today (confirmed via repo-wide search — no hits for the reverse ordering `:default=...:shell` or for `?:shell` in any loop YAML). This issue will be the first to apply that suffix broadly once conversions begin.
+
 ## Integration Map
 
 ### Files to Modify
@@ -329,5 +337,6 @@ instead of shipping green.
 **Open** | Created: 2026-08-27 | Priority: P2
 
 ## Session Log
+- `/ll:refine-issue` - 2026-08-28T03:15:15 - `21c2bc4e-6e06-47c6-a164-ddb166a7cfff.jsonl`
 - `/ll:format-issue` - 2026-08-28T03:03:20 - `486b558c-b1c6-4706-9fa1-9c30566c1e36.jsonl`
 - `/ll:scope-epic` - 2026-08-27T17:51:45 - `c766dcf0-a664-4805-9c8a-6eba323145c8.jsonl`

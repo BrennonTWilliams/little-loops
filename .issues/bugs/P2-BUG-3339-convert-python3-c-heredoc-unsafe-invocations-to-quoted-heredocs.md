@@ -218,6 +218,15 @@ not a blocker to starting on the 9 confirmed files.
 
 - N/A
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-28 — based on codebase analysis:_
+
+- **`rn-build.yaml` scope resolved**: all 10 `python3 -c "` occurrences (lines 559, 798, 826, 953, 974, 979, 984, 1216, 1329, 1363) individually checked — none carries a `${context.*}`/`${captured.*}` interpolation inside the Python-literal body; each instead threads the value in via `sys.argv[...]` or `os.environ[...]` set by a preceding shell assignment. `rn-build.yaml` is out of scope for this issue's conversion.
+- **`harness-optimize.yaml:160-165` scope confirmed**: the enclosing `apply` state (header at line 144) has `action_type: prompt` (line 145), not `shell` — confirmed excluded, matching the issue's own citation exactly.
+- **No line-number drift on any of the 9 confirmed sites** despite commit d8d3476a1 (BUG-3349, done) touching both `loop-router.yaml` and `fsm/interpolation.py` after this issue's last refine — every cited file/line still matches, still unconverted.
+- `loop-router.yaml`'s `finalize_present_result` heredoc precedent now spans lines 509-560 (was cited 509-557) — a small line-count drift from BUG-3349's own fix (which changed the state's Python body, not its heredoc wrapper), not a shape change; it remains valid as the "already-converted heredoc shape" precedent.
+
 ## Program Design
 
 ### Signatures
@@ -301,6 +310,16 @@ rather than a prescribed rewrite:
 their bodies — a literal token swap is sufficient there, matching the
 already-converted precedent states in the same files.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-28 — based on codebase analysis:_
+
+- **No corpus precedent for wrapping a heredoc directly as an `if !` condition.** Every site in the loop corpus that branches on a heredoc's outcome instead runs the heredoc first (bare or `$(...)`-captured) and tests `$?` on the following line — e.g. `mechanize-skills.yaml:436-444`, and four sibling instances in `code-run-gate.yaml`'s own state family (`:214-215`, `:254-255`, `:304-305`, `:331-332`, `:387-388`). `code-run-gate.yaml:438`'s conversion needs to produce a testable `$?`/exit status for its enclosing `if !`, since no heredoc-as-condition shape exists to model it on.
+- **No corpus precedent for piping command output directly into a heredoc's stdin** (`cmd | python3 << 'PYEOF'`) — a heredoc already occupies stdin, so this cannot be a literal conversion. The pipe-fed `-c "..."` sites this issue must convert (`autodev.yaml:1619,1739,1815`) have no existing heredoc analogue; the piped value must reach the heredoc some other way — e.g. the env-var-prefixed-invocation shape already used at `mechanize-skills.yaml:162` / `autodev.yaml:405` (`VAR="$VAR" python3 << 'PYEOF'`, read via `os.environ` inside the body) is an established pattern for getting a value into a heredoc without stdin.
+- An FSM-level alternative exists for exit-code-based branching without any bash-level `if`: `fragment: shell_exit` / `evaluate: type: exit_code` (`lib/common.yaml:14-21`, used at `autodev.yaml:1731-1746`) routes on a whole state's exit code directly — a different granularity than `code-run-gate.yaml:438`'s single embedded statement inside a larger `aggregate` state.
+- The corpus's existing idiom for embedding a `${context.*}` value as a Python literal directly inside a `<<'PYEOF'` heredoc (triple-quoted, e.g. `arg = """${context.scope}""".strip()` at `auto-refine-and-implement.yaml:144,215-216,352`) confirms a literal token swap is already a normal, used shape in this corpus — consistent with the plain conversion needed at `loop-router.yaml:discover_loops` and `lib/composer.yaml`.
+- **ENH-3337 (blocked_by) status: partially landed.** Its core `interpolation.py` composed `:shell:default=` suffix support already shipped as a side effect of BUG-3349 (done); `cli/loop/run.py:298-300` and `fsm/validation/shell_safety.py:183` still only recognize `:shell` as a *trailing* suffix and are unaffected — ENH-3337 remains open on that part of its scope. This doesn't change BUG-3339's own scope (its conversions don't use `:shell`), but the blocked_by dependency itself is not yet fully resolved.
+
 ## Implementation Steps
 
 1. The 9 confirmed sites (Integration Map → Files to Modify) resolve to a
@@ -382,6 +401,7 @@ already-converted precedent states in the same files.
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-08-28T03:15:15 - `21c2bc4e-6e06-47c6-a164-ddb166a7cfff.jsonl`
 - `/ll:format-issue` - 2026-08-28T03:03:20 - `486b558c-b1c6-4706-9fa1-9c30566c1e36.jsonl`
 - `/ll:refine-issue` - 2026-08-27T19:51:04 - `121602fa-f1cf-4559-9d22-a1a9e5682b74.jsonl`
 - `/ll:scope-epic` - 2026-08-27T17:51:45 - `c766dcf0-a664-4805-9c8a-6eba323145c8.jsonl`
