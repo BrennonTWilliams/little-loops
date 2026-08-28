@@ -54,9 +54,10 @@ that honor it read the flag directly (`ClaudeCodeRunner.build_streaming`, `host_
 
 - Loop YAML gains a per-state scope-declaration field (schema: `fsm-loop-schema.json`;
   dataclass: `StateConfig`, `schema.py`), resolved against ENH-3233's capability registry.
-- `fsm/runners.py`'s `DefaultActionRunner` shell branch resolves the declared capabilities into an
-  `env_allow` set and constructs (or synthesizes) a `HostInvocation` carrying it, so
-  `project_child_env()` denies everything not declared.
+- `fsm/runners.py`'s `DefaultActionRunner` shell branch resolves the declared scopes into an
+  `env_allow` set and passes it via the explicit kwarg ENH-3233 provides for invocation-less
+  call sites — `project_child_env(env_allow=...)` — so everything not declared is denied. No
+  synthetic `HostInvocation` is constructed.
 - States with no declaration keep today's coarse (full-inherit) behavior — opt-in per state,
   matching ENH-3233's `env_allow=None` no-op default.
 
@@ -72,8 +73,8 @@ the shell branch directly (not by reusing the `tools:` flow), since AC7.1 is spe
 
 ### Call Path
 `StateConfig` (scope declared) → `fsm/runners.py::DefaultActionRunner` shell branch resolves
-capabilities → `env_allow` set → `project_child_env(invocation, env_allow=...)` (ENH-3233) →
-`subprocess.*`
+scopes → `env_allow` set → `project_child_env(env_allow=...)` (ENH-3233's kwarg; no
+`HostInvocation` at this call site) → `subprocess.*`
 
 ### Round-trip
 A new per-state field needs a symmetric `StateConfig.to_dict()` line (`fsm/schema.py:721`)

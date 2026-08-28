@@ -54,14 +54,31 @@ as the follow-on that changes this.
 
 ## Expected Behavior
 
-- `HostInvocation` gains `env_allow: frozenset[str] | None = None`.
-- `project_child_env()` accepts an invocation whose `env_allow` is set and constructs the child
-  environment as: the declared allow-set (from `invocation.env`/`extra`, intersected with
-  `env_allow`) plus a fixed baseline, and nothing else from `os.environ`.
-- `invocation.env_allow is None` (the default) preserves today's full-inherit behavior exactly —
-  this is the escape hatch the two consumer issues rely on for undeclared specs.
-- A capability registry maps capability names to the env-var names they unlock; resolving a
-  capability not in the registry raises at resolve time, naming the capability.
+- `HostInvocation` gains `env_allow: frozenset[str] | None = None`, **and** `project_child_env()`
+  gains an explicit `env_allow: frozenset[str] | None = None` keyword. The kwarg is required, not
+  a convenience: both `bash -c` paths (`fsm/runners.py` shell branch, `runner_spec.py::_run_cmd()`)
+  call the helper with **no `HostInvocation` at all**, and forcing ENH-3234/ENH-3235 to
+  synthesize a fake invocation just to carry the field would be worse. If both are supplied, the
+  explicit kwarg wins.
+- With an allow-set in effect, `project_child_env()` constructs the child environment as: the
+  names in the allow-set, selected from the **merged** `os.environ` + `invocation.env` + `extra`
+  — ambient `os.environ` is the normal source of a declared credential (e.g. `GITHUB_TOKEN` from
+  the operator's shell), so a declared name present only in `os.environ` **must** reach the
+  child — plus the fixed baseline, and nothing else.
+- No allow-set in effect (`invocation.env_allow is None` and no kwarg — the default) preserves
+  today's full-inherit behavior exactly — this is the escape hatch the two consumer issues rely
+  on for undeclared specs.
+- A credential-scope registry maps scope names to the env-var names they unlock; resolving a
+  scope name not in the registry **raises directly** (e.g. `ValueError`) at resolve time, naming
+  the scope. Direct raise, not `warnings.simplefilter("error", ...)` promotion — promotion is
+  opt-in per process and this check is fail-loud security. (This pins ENH-3203 Open Decision #3.)
+- **Registry naming**: do not call this a "capability" registry in code. `host_runner.py` already
+  uses the capability vocabulary for host-feature support (`HostCapabilities`, `CapabilityEntry`,
+  `CapabilityNotSupported`, `describe_capabilities`) — a second meaning of "capability" in the
+  same module invites confusion. Use "scope" (e.g. `CREDENTIAL_SCOPES`, `resolve_scopes(...)`).
+- The registry ships with an initial entry set so ENH-3234/ENH-3235 don't each invent their own
+  (e.g. `github → {GH_TOKEN, GITHUB_TOKEN}`, `anthropic-api → {ANTHROPIC_API_KEY}`); finalize
+  the list during implementation with a justification comment per entry.
 - When projection denies a variable, the helper logs the denied variable **names** at DEBUG
   level (names only, never values).
 - A report-only mode runs the same diff logic without denying anything, for empirically deriving
@@ -94,17 +111,26 @@ ENH-3235 each wire a declaration through it without re-deriving or duplicating d
 The baseline must **not** be guessed. `bash -c` actions in this repo run pytest, git, ruff, and
 `gh`; they depend on `VIRTUAL_ENV`, `PYTHONPATH`, `SSH_AUTH_SOCK` (git push over SSH fails
 without it), `HTTP_PROXY`/`HTTPS_PROXY`/`NO_PROXY`, `PYENV_ROOT`, `HOMEBREW_*`, `XDG_*`, `SHELL`,
-`TERM`, `TZ`, in addition to `PATH`/`HOME`/`USER`/`LANG`/`TMPDIR`/`LL_*`. Derive it empirically:
-run this repo's own `loops/*.yaml` under the report-only mode built here, diff variables
-actually read against the candidate baseline, and justify each addition in a comment next to the
-set.
+`TERM`, `TZ`, in addition to `PATH`/`HOME`/`USER`/`LANG`/`TMPDIR`/`LL_*`.
 
-### Failure polarity (AC3)
+Two honest limits shape the derivation method: **(1)** env projection cannot observe which
+variables a child *actually read* — report-only mode can only log which ambient names fall
+outside a candidate allow-set (would-be-denied names); **(2)** this repo's loops carry no
+declarations (retrofitting is out of scope) and undeclared specs are full-inherit, so an
+ordinary loop run cannot exercise deny mode at all until ENH-3235 lands. Therefore: ship a
+**curated** baseline with a per-entry justification comment, and validate it with a test-only
+override (e.g. `LL_ENV_PROJECTION_FORCE_ALLOW=<candidate set>`, honored only by
+`project_child_env()`) that forces the candidate baseline onto undeclared specs — run this
+repo's own `loops/*.yaml` under that override and fix whatever breaks. Report-only mode's
+would-deny name logging is the triage evidence, not a read-trace.
+
+### Failure polarity (AC3) — decided
 The one existing analog, `CapabilityNotSupported(UserWarning)` (`host_runner.py:109-117`), is
 warn-and-drop at every site (`warnings.warn(..., CapabilityNotSupported, stacklevel=N)`). AC3
-requires the opposite polarity for an undeclared-capability-name-vs-registry mismatch — decide
-directly-raise vs. `warnings.simplefilter("error", ...)` promotion as part of this issue (this
-resolves ENH-3203's Open Decision #3, which is otherwise unresolved).
+requires the opposite polarity for an unknown-scope-name-vs-registry mismatch — **decided:
+direct raise** (see Expected Behavior). This resolves ENH-3203's Open Decision #3;
+`simplefilter` promotion was rejected because it is opt-in per process and this check must
+fail loudly everywhere.
 
 ### Logging (AC6)
 `scripts/little_loops/host_runner.py` has no existing `logging` import or `logger` — this
@@ -118,10 +144,11 @@ which is a different mechanism and stays as-is for AC3).
   invocation; a variable not in the allow-set is *absent from the child process*, not merely
   discouraged. Covered by direct calls to `project_child_env(invocation, ...)` — no consumer
   surface required.
-- **AC3.** Resolving a capability name not in the known-capability registry fails loudly at
-  resolve time, naming the capability.
+- **AC3.** Resolving a scope name not in the credential-scope registry fails loudly at resolve
+  time via direct raise, naming the scope (see "Failure polarity" — pins ENH-3203 Open
+  Decision #3).
 - **AC4.** A fixed baseline set of non-credential variables is always inherited regardless of
-  declaration, empirically derived per "Baseline derivation" above with each addition justified
+  declaration — curated and validated per "Baseline derivation" above, with each entry justified
   in a comment next to the set.
 - **AC5.** `invocation.env_allow is None` (no declaration) preserves today's full-inherit
   behavior exactly. `scripts/tests/test_host_runner.py::TestProjectChildEnv::test_no_args_is_full_inherit`
@@ -129,18 +156,22 @@ which is a different mechanism and stays as-is for AC3).
   (lines 145-152) must keep passing **unmodified** — if either needs to change, deny-by-default
   has leaked into the no-declaration case.
 - **AC6.** Denied variable names are logged at DEBUG level (names only, never values). The same
-  code path in report-only mode produces the AC4 baseline evidence.
+  code path in report-only mode produces the AC4 would-deny evidence (ambient names outside the
+  candidate set) — a triage aid, not a read-trace.
 - **AC8 (partial — full close in ENH-3234/ENH-3235).** `python -m pytest scripts/tests/` exits 0
-  for this chokepoint's own tests, and this repo's own `loops/*.yaml` run green under report-only
-  mode. Full AC8 (deny mode fully wired end-to-end) closes once ENH-3234 and ENH-3235 land.
+  for this chokepoint's own tests, and this repo's own `loops/*.yaml` run green under the AC4
+  forced-allow override (report-only alone denies nothing, so "green under report-only" would be
+  vacuous). Full AC8 (deny mode fully wired end-to-end) closes once ENH-3234 and ENH-3235 land.
 
 ## Program Design
 
 ### Signatures
 - `build_streaming(*, prompt, working_dir=None, resume=False, agent=None, tools=None, model=None,
   automation_profile=None, disable_background_tasks=False, workspace_root=None) -> HostInvocation`
-  (`host_runner.py:217-229`) — **do not** add a `scope=`/`env_allow=` kwarg here. That's nine
-  keyword-only parameters already; threading scope through it means editing ~32 signatures (4
+  (`host_runner.py:217-229`; note the ENH-3095 refactor has since collapsed
+  `automation_profile`/`disable_background_tasks` into `automation: AutomationContext | None` —
+  the guidance below stands unchanged) — **do not** add a `scope=`/`env_allow=` kwarg here.
+  Threading scope through it means editing ~32 signatures (4
   build methods × 8 runner classes) for a value none of them interpret, and it puts the scoping
   decision inside the per-host runners — the one place it must not live, since `RunnerType.CMD`
   never calls `resolve_host()` at all (structurally excluded). Instead: the `env_allow` field is
@@ -176,8 +207,10 @@ before implementing, as they were already noted as drifted once:_
   pattern (BUG-3058 precedent) — new deny-mode tests should follow this shape, parametrized
   across `ClaudeCodeRunner, CodexRunner, GeminiRunner, OmpRunner, KimiRunner, QwenRunner` plus
   `OpenCodeRunner`/`PiRunner` stubs (tested individually, not through the parametrized table).
-- New tests for: `env_allow` intersection semantics, baseline-always-present, capability-registry
-  fail-loud, DEBUG logging of denied names, report-only mode diff output.
+- New tests for: `env_allow` selection semantics (incl. a declared name present only in ambient
+  `os.environ` reaching the child, and the explicit kwarg working with no invocation),
+  baseline-always-present, scope-registry fail-loud direct raise, DEBUG logging of denied names,
+  report-only mode would-deny output, and the forced-allow override.
 - No shared fixture exists for `HostInvocation` construction (`scripts/tests/conftest.py` has
   none) — follow the existing inline-keyword-construction convention.
 

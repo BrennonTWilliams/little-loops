@@ -7,8 +7,9 @@ status: open
 parent: EPIC-3212
 epic: EPIC-3212
 blocked_by:
-- ENH-3203
 - ENH-3233
+- ENH-3234
+- ENH-3235
 discovered_by: ll-issues-create
 discovered_date: '2026-08-15'
 captured_at: '2026-08-15T22:28:30Z'
@@ -20,11 +21,11 @@ decision_needed: true
 
 ## Summary
 
-Nothing anywhere records what authority a given run held. Once ENH-3203 lets a task declare a credential scope, an audit should be able to answer after the fact what a given run could reach.
+Nothing anywhere records what authority a given run held. Once a task can declare a credential scope, an audit should be able to answer after the fact what a given run could reach.
 
-Record the declared scope with the run. The record stores **capability and variable *names* only — never values**.
+Record the declared scope with the run. The record stores **scope and variable *names* only — never values**.
 
-ENH-3203 has landed, so the declaration this issue records now exists.
+**Dependency status**: ENH-3203 was closed by *decomposition* into ENH-3233/3234/3235 — no declaration code has landed yet. The enforcement chokepoint is ENH-3233; the declaration surfaces this issue records arrive with ENH-3234 (`ActionSpec`) and ENH-3235 (`StateConfig`). All three are in `blocked_by`; scope *names* in the record only exist once at least one declaration surface ships.
 
 ## Current Behavior
 
@@ -37,7 +38,7 @@ Each run records the capability and variable names it was granted, queryable aft
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/session_store/schema.py` — `SCHEMA_VERSION` is currently **40** (line 21, verified 2026-08-15), so a new migration is **v41**. Confirm the current value before writing the migration; it moves.
+- `scripts/little_loops/session_store/schema.py` — `SCHEMA_VERSION` is currently **45** (line 25, verified 2026-08-28), so a new migration is **v46**. Confirm the current value before writing the migration; it moves (it already drifted from 40 since this issue was written).
 - The projection helper in `scripts/little_loops/host_runner.py` — emits the granted-names record at spawn time.
 
 ### Tests
@@ -49,15 +50,16 @@ Each run records the capability and variable names it was granted, queryable aft
 - No existing per-run authority record exists to extend. `loop_events` rows are the nearest per-run ledger shape.
 
 ### Signatures
-- `_apply_automation_env(env: dict[str, str], automation_profile: str | None) -> None` — the existing shared env-injection helper the projection helper sits beside (`host_runner.py:1784-1799`); the new writer is invoked from the same spawn-time seam.
-- The writer itself takes a run identifier plus two `frozenset[str]` name-sets (capabilities, variables) and returns `None`. Indicative shape; no value-bearing parameter may exist.
+- `_apply_automation_env(env: dict[str, str], automation: AutomationContext | None) -> None` — the existing shared env-injection helper the projection helper sits beside (`host_runner.py:1882`, signature updated by ENH-3095's `AutomationContext` refactor); the new writer is invoked from the same spawn-time seam.
+- The writer itself takes a run identifier plus two `frozenset[str]` name-sets (scopes, variables) and returns `None`. Indicative shape; no value-bearing parameter may exist.
 
 ### Call Path
-`resolve_host` → `_apply_automation_env` → projection helper → `loop_events`
+Spawn site (holds run identifier) → `project_child_env()` result (ENH-3233 chokepoint) → scope-record writer → `loop_events` (or new table, per Open Decision #1)
 
 ### Decision Rules
 - Names only, never values — enforced by test, not convention.
 - No record is written for undeclared specs, since there is no scope to report.
+- The write must **not** live inside `project_child_env()` itself: it is a pure helper with ~18 call sites, several of which have no run context at all (`worktree_utils.py`, `git_operations.py`, `mcp_call.py`). Invoke the writer from spawn sites that hold a run identifier.
 
 ## Scope Boundaries
 

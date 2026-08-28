@@ -226,11 +226,24 @@ Do not assert on stdout content; a conversion may legitimately change formatting
 - **Keep each case pinned to a named state** in a named loop. A case that scans
   for "some class-B action" silently stops testing anything when that action is
   refactored.
-- **Bind `context.run_dir` to the test's `tmp_path`** in `InterpolationContext` —
-  every targeted action writes artifacts to `${context.run_dir}`, so the exit-0
-  assertions fail on a missing directory otherwise, and it colocates the
-  injection sentinel. Do not copy the fixed `/tmp` path from the existing
-  convention sites (`test_builtin_loops.py:560-575`).
+- **Bind every `${...}` reference the pinned state's action makes** in
+  `InterpolationContext` — `interpolate()` raises on a missing key with no
+  `:default=`. Concretely: `discover_loops` interpolates `context.include`
+  **and** `context.exclude` (case 4 puts the payload in one but must bind
+  both) plus `context.run_dir`; `parse_project_score` interpolates
+  `context.goal`, `context.run_dir`, and `captured.project_score.output`.
+- **Bind `context.run_dir` to the test's `tmp_path`** — every targeted action
+  writes artifacts to `${context.run_dir}`, so the exit-0 assertions fail on a
+  missing directory otherwise, and it colocates the injection sentinel. Do not
+  copy the fixed `/tmp` path from the existing convention sites
+  (`test_builtin_loops.py:560-575`).
+- **Case 4's action shells out to `ll-loop list --json` at test runtime**
+  (both current and pre-fix shapes). It degrades gracefully (`2>/dev/null`
+  plus the `or '[]'` fallback in the Python), so the case works where the CLI
+  is absent — but it is a real multi-second subprocess per run. Either accept
+  the fallback behavior or PATH-stub a fake `ll-loop` printing `[]` for
+  speed; the injection assertion does not depend on catalog output, and in
+  the red demo the injected `touch` fires at shell-parse time regardless.
 - These shell out; keep each fast and bounded. A test invoking a >120s command
   loops forever under xdist (thread-timeout kills the worker, orphans the
   grandchild, xdist respawns and re-runs).
@@ -272,11 +285,18 @@ _Added by `/ll:refine-issue` — 2026-08-28 — based on codebase analysis:_
 
 1. Demonstrate each case **red** against pre-conversion action text — a test
    that was never red proves nothing. All three conversions have already
-   landed, so recover the pre-conversion action from git history (conversion
-   commits `0a440184c`, `dc9fe247e`, `367d8cadb`; e.g.
-   `git show <sha>^:scripts/little_loops/loops/loop-router.yaml`), run the
+   landed, so recover the pre-conversion action from git history via
+   `git show <sha>^:scripts/little_loops/loops/loop-router.yaml`, run the
    payload through it once to observe the failure, and record the result in
-   the test docstring per AC 2.
+   the test docstring per AC 2. Per-case conversion commits (verified
+   2026-08-28 by inspecting each commit's parent):
+   - Cases 1 & 3 (`parse_project_score` goal →
+     `LL_ARG_GOAL=${context.goal:shell}`): `9a4f997b2` (BUG-3340 batch 3).
+   - Case 2 (`captured.project_score.output` → `LL_RAW` heredoc):
+     `dc9fe247e` (BUG-3341 batch 2).
+   - Case 4 (`discover_loops` `python3 -c "..."` → quoted heredoc):
+     `9709fd22f` (BUG-3339) — its parent has the pre-fix `-c "` shape with
+     `include_raw = '${context.include}'`.
 2. Land the cases against the current (converted) actions, green.
 3. Confirm ENH-3338's sweep is clean at the same commit; the static and
    behavioral guards should agree.

@@ -7,8 +7,8 @@ status: open
 parent: EPIC-3212
 epic: EPIC-3212
 blocked_by:
-- ENH-3203
 - ENH-3233
+- ENH-3235
 discovered_by: ll-issues-create
 discovered_date: '2026-08-15'
 captured_at: '2026-08-15T22:28:30Z'
@@ -26,7 +26,7 @@ gh operations bypass `host_runner` entirely. `sync.py`'s `_run_gh_command()`/`_c
 
 This is the one place where ENH-3203's guarantee visibly does not reach, and gh is what FSM loops actually use to make changes to the outside world — so it is the highest-value gap and the one most likely to be misread as already covered.
 
-ENH-3203 has landed. Decide this in or out explicitly; leaving it ambiguous is how the largest hole ships open.
+**Dependency status**: ENH-3203 was closed by *decomposition* into ENH-3233/3234/3235 — no projection code has landed yet. "Gated on a declaration" requires a declaration surface: the FSM shell path (this issue's primary gh surface, per Current Behavior) is ENH-3235, hence `blocked_by: [ENH-3233, ENH-3235]`. If gh scoping should also cover the `ll-action`/`ll-queue`/`ll-harness` path, add ENH-3234 to `blocked_by` when deciding scope. Decide this in or out explicitly; leaving it ambiguous is how the largest hole ships open.
 
 ## Current Behavior
 

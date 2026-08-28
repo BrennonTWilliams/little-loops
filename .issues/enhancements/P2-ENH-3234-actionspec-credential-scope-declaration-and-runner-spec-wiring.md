@@ -57,25 +57,28 @@ function never calls `resolve_host()` anywhere.
 - `ActionSpec` gains a scope-declaration field naming the capabilities a task needs (resolved
   against ENH-3233's capability registry).
 - Every production `ActionSpec` construction site (listed above) can populate it.
-- `runner_spec.py::_run_cmd()` resolves the declared capabilities into an `env_allow` set and
-  constructs (or synthesizes) a `HostInvocation` carrying it, so `project_child_env()` denies
-  everything not declared.
+- `runner_spec.py::_run_cmd()` resolves the declared scopes into an `env_allow` set and passes
+  it via the explicit kwarg ENH-3233 provides for invocation-less call sites —
+  `project_child_env(env_allow=...)` — so everything not declared is denied. No synthetic
+  `HostInvocation` is constructed.
 - `ActionSpec`s with no declaration keep today's coarse (full-inherit) behavior — the `env_allow`
   path is opt-in per spec, matching ENH-3233's `env_allow=None` no-op default.
 
 ## Proposed Solution
 
-Per ENH-3203's Decision Rationale (Option A analysis, still valid for this surface alone):
-`ActionSpec`'s established extension convention is threading new behavior through the untyped
-`args: dict[str, Any]` grab-bag (`runner_spec.py:120-136`), not new typed dataclass fields —
-`ActionSpec` has never grown a typed field since its introduction (ENH-2668). Follow that
-convention unless a typed field is clearly warranted; either way, resolve the declared names
-against ENH-3233's capability registry at spec-construction or resolve time (AC3's fail-loud
-behavior applies here).
+**Decided: a typed field** (e.g. `scopes: frozenset[str] | None = None`), deliberately diverging
+from `ActionSpec`'s established `args: dict[str, Any]` grab-bag convention
+(`runner_spec.py:120-136`; no typed field added since ENH-2668). Rationale: this is a security
+control — with an `args` key, a typo'd key name (`"scope"` vs `"scopes"`) silently yields an
+**unscoped** task with no error anywhere, exactly the "looks like protection that isn't there"
+failure mode the parent issue warns about. A typed field also stays symmetric with ENH-3235's
+typed `StateConfig` field. Resolve the declared names against ENH-3233's credential-scope
+registry at spec-construction or resolve time (AC3's fail-loud direct raise applies here).
 
 ### Call Path
-`ActionSpec` (scope declared) → `runner_spec.py::_run_cmd()` resolves capabilities → `env_allow`
-set → `project_child_env(invocation, env_allow=...)` (ENH-3233) → `subprocess.*`
+`ActionSpec` (scope declared) → `runner_spec.py::_run_cmd()` resolves scopes → `env_allow`
+set → `project_child_env(env_allow=...)` (ENH-3233's kwarg; no `HostInvocation` at this call
+site) → `subprocess.*`
 
 ## Acceptance Criteria
 
