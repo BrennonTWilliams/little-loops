@@ -32,7 +32,11 @@ and `?` in every ordering, apply the fallback **before** `shlex.quote()`, and
 update the two other places in the codebase that recognize `:shell` only as a
 **trailing** token (`cli/loop/run.py:298-300` and `shell_safety.py:183`). This
 is EPIC-3336's hard blocker: **130 `${context.*}` / `${captured.*}` sites carry a
-`:default=` or `?` suffix**, and every one of them is unconvertible until this
+`:default=` or `?` suffix**. BUG-3349 (`d8d3476a1`) already made the
+`:shell:default=` ordering work inside `interpolate()` itself, so
+default-bearing sites are mechanically convertible today — but the `?`
+orderings still misparse, and both out-of-module recognizers still reject or
+mis-flag composed suffixes, so the conversions remain blocked until this
 lands.
 
 Land as its own commit on `main`. Nothing else in the epic starts before it.
@@ -40,18 +44,19 @@ Land as its own commit on `main`. Nothing else in the epic starts before it.
 ## Current Behavior
 
 `interpolate()` (`scripts/little_loops/fsm/interpolation.py:209-287`) parses
-`:default=`, `?`, and `:shell` as **mutually exclusive**
-(docstring at `:214-216`, guard at `:243-249`). Four defects, all verified
-against the code as it stands:
+`:default=`, `?`, and `:shell` as only partially composable
+(docstring at `:214-219`, `:default=` branch at `:246-256`). Five defects,
+all verified against the code as it stands:
 
-**1. Composition raises or silently misparses.**
+**1. Composition silently misparses in two orderings.**
 
 | Written | Today's behavior |
 |---|---|
 | `${x:shell}` | Correct — `shlex.quote()` applied |
-| `${x:shell:default=v}` | `InterpolationError("Ambiguous suffix: …")` — the documented blocker (`:243-249`) |
-| `${x:default=v:shell}` | **Silent misparse.** Splits on `:default=` first, so `default_value` becomes the literal `"v:shell"` and **no quoting is applied** (`:244`) |
-| `${x?:shell}` | `shell_quote=True`, then resolves the path `"x?"` → "not found" naming the wrong path (`:254-256`) |
+| `${x:shell:default=v}` | **Correct since BUG-3349** (`d8d3476a1`) — the `:default=` branch strips a leading `:shell` and quotes the fallback (`:253-255`, `:283`). Already covered by `TestShellSuffix` tests tagged BUG-3349; do not re-fix or duplicate those tests |
+| `${x:default=v:shell}` | **Silent misparse.** Splits on `:default=` first, so `default_value` becomes the literal `"v:shell"` and **no quoting is applied** |
+| `${x?:shell}` | `shell_quote=True` is never set and `nullable` is never set — the string ends in `"shell"` not `"?"`, so the path resolves as the literal `"x?"` → "not found" naming the wrong path |
+| `${x:shell?}` | **Silent misparse.** Trailing `?` sets `nullable`, path becomes the literal `"x:shell"` → resolve fails → nullable swallows it → yields `""` with no quoting and no error |
 
 **2. `None` short-circuits before the quote.** `:270-271` returns `""` for a
 resolved `None` *before* the `shell_quote` branch at `:272-273`. In a bare token
@@ -108,9 +113,10 @@ evaluation pipeline:
 
 > **resolve → apply fallback → `shlex.quote()`**
 
-- All four orderings (`${x:shell}`, `${x:shell:default=v}`,
-  `${x:default=v:shell}`, `${x?:shell}`) parse to the same intent. No ordering
-  raises `Ambiguous suffix` and none silently misparses.
+- All five orderings (`${x:shell}`, `${x:shell:default=v}`,
+  `${x:default=v:shell}`, `${x?:shell}`, `${x:shell?}`) parse to the same
+  intent. No ordering raises `Ambiguous suffix` and none silently misparses.
+  (`?` with `:default=` stays a hard error, as today.)
 - The fallback value is itself quoted when `:shell` is present — a default
   containing a space or a quote must not break the token.
 - An empty or absent value under `:shell` emits `''` (a valid empty token), not
@@ -224,9 +230,13 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ### Tests
 
-- `scripts/tests/test_interpolation.py` (new) — one case per ordering
-  (`:shell`, `:shell:default=`, `:default=…:shell`, `?:shell`), plus
-  quoted-default, empty-value-emits-`''`, and the `}`-in-default decision.
+- `scripts/tests/test_fsm_interpolation.py` — one case per ordering
+  (`:shell`, `:shell:default=`, `:default=…:shell`, `?:shell`, `:shell?`),
+  plus mid-default literal `:shell`, quoted-default, empty-value-emits-`''`,
+  and the `}`-in-default decision. (The refine findings below correct the
+  originally proposed new-file location: `TestShellSuffix` in the existing
+  module is where this coverage lives, and the `:shell:default=` cases
+  already exist there from BUG-3349.)
 - `scripts/tests/test_ll_loop_commands.py:7433-7501` — extend the two existing
   `:shell` pre-flight cases (`test_...:shell` ref not falsely flagged / genuinely
   missing still flagged) to cover composed suffixes.
@@ -333,10 +343,17 @@ Two consequences to carry forward:
 
 Suffix chain parsing — one rule, order-independent:
 
-1. Strip a trailing/embedded `:shell` token wherever it appears in the suffix
-   chain; set `shell_quote`.
+1. Recognize `:shell` in **exactly two positions**: immediately before
+   `:default=` (i.e. the chain contains `:shell:default=`), or at the very
+   end of the whole chain (after the default value, or after `?`, or alone).
+   Set `shell_quote` and remove it. **Not** "anywhere in the string": a
+   `:shell` embedded mid-default (`:default=use :shell here`) is part of the
+   literal default and must survive untouched — an unrestricted
+   strip-anywhere pass would corrupt it.
 2. Of what remains, `:default=` (first occurrence wins, everything after it is
-   the literal default) and a trailing `?` are parsed as today.
+   the literal default) and a trailing `?` are parsed as today. `?` and
+   `:default=` **remain mutually exclusive** — the existing raise at
+   `interpolation.py:248-252` is kept, not silently dropped in the rewrite.
 3. Evaluate: `resolve()` → on `InterpolationError`, substitute the default (or
    `""` if nullable, else re-raise) → if `shell_quote`, `shlex.quote(str(result))`.
 
@@ -376,7 +393,8 @@ suffix addition cannot desynchronize them again.
    recommendation: reject loudly; fix `general-task.yaml:895` accordingly.
 5. Update `cli/loop/run.py:288-305` to use the shared helper.
 6. Update `shell_safety.py:183` to use the shared helper.
-7. Unit tests for all four orderings, quoted defaults, and empty-emits-`''`.
+7. Unit tests for all five orderings (including `${x:shell?}`), the
+   mid-default literal `:shell`, quoted defaults, and empty-emits-`''`.
 8. Audit the 17 existing `:shell` sites for behavior change (a); pay specific
    attention to `refine-to-ready-issue.yaml`'s `[ -n … ]` branch flip.
 9. `python -m pytest scripts/tests/` exits 0; `ll-loop validate` clean across the
@@ -401,9 +419,11 @@ the implementation:_
 
 ## Acceptance Criteria
 
-1. `${x:shell}`, `${x:shell:default=v}`, `${x:default=v:shell}`, and `${x?:shell}`
-   each have one defined, unit-tested meaning. No ordering raises
-   `Ambiguous suffix` and none silently misparses.
+1. `${x:shell}`, `${x:shell:default=v}`, `${x:default=v:shell}`, `${x?:shell}`,
+   and `${x:shell?}` each have one defined, unit-tested meaning. No ordering
+   raises `Ambiguous suffix` and none silently misparses. A `:shell` embedded
+   mid-default (`:default=use :shell here`) stays literal, with a unit test.
+   `?` + `:default=` still raises, with the existing test kept passing.
 2. A fallback value is `shlex.quote()`d when `:shell` is present; a default
    containing a space or a quote produces a single valid shell token.
 3. An empty or absent value under `:shell` emits `''`. The 5 bare-token sites
@@ -442,6 +462,7 @@ the implementation:_
 **Open** | Created: 2026-08-27 | Priority: P2
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-28T03:13:07 - `e52b5f8b-4479-4377-bf0a-15b1b4dcbd9a.jsonl`
 - `/ll:confidence-check` - 2026-08-28T03:03:45 - `486b558c-b1c6-4706-9fa1-9c30566c1e36.jsonl`
 - `/ll:wire-issue` - 2026-08-28T02:57:39 - `13d6dd54-6fe5-483d-8ac7-01629c54d02f.jsonl`
 - `/ll:refine-issue` - 2026-08-28T02:39:00 - `b0fc8e25-b423-43c9-a6e7-49a921fc64b8.jsonl`

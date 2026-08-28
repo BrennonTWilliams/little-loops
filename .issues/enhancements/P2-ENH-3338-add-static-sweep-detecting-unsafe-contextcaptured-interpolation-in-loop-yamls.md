@@ -124,7 +124,8 @@ minimal:
       "line": 34,
       "var": "context.include",
       "class": "A",
-      "host_shape": "c-string"
+      "host_shape": "c-string",
+      "count": 1
     }
   ]
 }
@@ -135,6 +136,22 @@ Line numbers churn on every unrelated edit and would make the baseline a
 merge-conflict magnet across the three serial conversion issues. Carry `line` as
 an informational field the failure message prints, excluded from the comparison
 key.
+
+**The comparison key is exactly those four fields** — `line`, `host_shape`,
+and `misapplied_remedy` are all informational (`field(compare=False)` on the
+dataclass). An earlier draft excluded only `line`, which would have silently
+put `host_shape` and `misapplied_remedy` into the key: a conversion that
+changes a site's host shape without fixing the interpolation would then read
+as new-site-plus-stale-entry noise instead of an unchanged site.
+
+**Set equality collapses duplicate occurrences.** Two occurrences of the same
+`(file, state, var, class)` inside one state (a real pattern — one heredoc in
+`mechanize-skills.yaml` carries multiple `${captured.*}` refs) become one
+baseline entry, so introducing a *second* occurrence of an already-baselined
+site is invisible, and fixing one-of-two shows no baseline movement. Carry an
+informational `count` per entry that the failure message prints when it
+changes; full multiset equality is not required — the ratchet's endpoint is
+zero either way — but the count keeps intra-entry regressions visible.
 
 ### Classifier location — `scripts/little_loops/fsm/interp_sweep.py`
 
@@ -243,13 +260,24 @@ Proposed; adjust names freely, but keep the classifier importable by ENH-3342.
   scans one action string, tracking both host shapes, returning one `InterpSite`
   per interpolation inside a Python body.
 - `scan_corpus(root: Path) -> list[InterpSite]` — globs `loops/**/*.yaml`
-  recursively, walks every state's `action`, returns all sites sorted
-  deterministically.
+  recursively, walks **both top-level shapes**: every entry under `states:`
+  *and* every entry under `fragments:`, returning all sites sorted
+  deterministically. `lib/` files have **no `states:` key at all** — they are
+  top-level `fragments:` (`lib/common.yaml:14`, `lib/harness.yaml:1`,
+  `lib/cli.yaml:21`, `lib/benchmark.yaml:14`) and contain live python3 bodies
+  with interpolations (`lib/composer.yaml:97`, `lib/policy-router.yaml:81,135`,
+  `lib/rubric-router.yaml:74,105,122`). A states-only walk globs those files
+  and yields nothing — a false clean for exactly the `lib/` coverage
+  Implementation Step 1 mandates. For a fragment site, the fragment name
+  fills the `state` anchor field. (`_iter_strings` in
+  `scripts/tests/test_builtin_loop_interpolation.py:37-80` — this issue's
+  named walk precedent — already walks both keys.)
 - `@dataclass(frozen=True) class InterpSite` — `file`, `state`, `var`, `cls`,
-  `host_shape`, `misapplied_remedy`, `line`. `__eq__`/`__hash__` over everything
-  **except** `line` (see baseline anchoring above), or carry `line` outside the
-  dataclass. `misapplied_remedy` is `True` for a `:shell`-suffixed site found
-  inside a Python body.
+  `host_shape`, `misapplied_remedy`, `line`, `count`. `__eq__`/`__hash__` over
+  the four anchor fields only — `line`, `host_shape`, `misapplied_remedy`, and
+  `count` are `field(compare=False)` (see baseline anchoring above).
+  `misapplied_remedy` is `True` for a `:shell`-suffixed site found inside a
+  Python body.
 
 ### Decision Rules
 
@@ -296,18 +324,36 @@ territory, not this baseline's; ENH-3342's widening is what must catch it.
 the classifier, is what excludes it here.
 
 "Inside a Python body" is determined by host shape:
-- **quoted heredoc** — between a `<<'MARKER'` / `<<"MARKER"` opener whose `<<`
-  sits at **column 0** and a line that is **exactly** `MARKER` at column 0
-- **`-c "` string** — between `python3 -c "` and the next unescaped `"`
+- **heredoc** — between a `<<'MARKER'` / `<<"MARKER"` opener recognized
+  **anywhere on a line** and a line that is **exactly** `MARKER` at column 0.
+  The column-0 constraint applies to the **terminator only** — a heredoc
+  opener is a redirection and sits mid-line in every corpus occurrence
+  (`python3 << 'PYEOF'` after env-var bindings at `loop-router.yaml:514`,
+  after a pipe and indented inside an `if` block at `rn-implement.yaml:102`,
+  after `cat > file <<'EOF'` at `brainstorm.yaml:162`). An opener-side
+  column-0 requirement would scope ~0 real heredocs and certify a false
+  clean. **Unquoted heredocs** (`<<EOF`, no quotes on the marker): zero in
+  the corpus today, but treat the body the same as a quoted one — FSM
+  interpolation runs before bash, so marker quoting changes bash expansion,
+  not whether the interpolated text lands in the Python parser.
+- **`-c` string** — between `python3 -c "` and the next unescaped `"`, **and
+  equally** between `python3 -c '` and the closing `'`. The single-quoted
+  shape is live in the corpus (`rn-refine.yaml:920,928`,
+  `rn-implement.yaml:102`, `workflow-generator.yaml:75,253`); none of those
+  bodies contain an interpolation today, but single quotes protect nothing
+  here — FSM interpolation happens before bash ever tokenizes — and a
+  scanner that doesn't recognize the shape both misses future sites and
+  mis-scopes the remainder of the action string.
 
 Under ENH-3337's S1 there is **no `:default=` / `?` exemption**: every class-A/B
 site converts, and a surviving raw one is a failure.
 
 ### Call Path
 
-`scripts/tests/test_builtin_loops.py` → `scan_corpus(loops_root)` → per file, per
-state, `scan_action(state.action)` → `classify_site()` per token → set compared
-against `scripts/tests/data/loop_interpolation_baseline.json` (new).
+`scripts/tests/test_builtin_loops.py` → `scan_corpus(loops_root)` → per file,
+per entry under `states:` **and** `fragments:`, `scan_action(entry.action)` →
+`classify_site()` per token → set compared against
+`scripts/tests/data/loop_interpolation_baseline.json` (new).
 
 The scanner reads the same `state.action` field that
 `_find_unsafe_context_interpolations(fsm)`
@@ -325,13 +371,18 @@ executes a loop.
 1. **Glob recursively** (`loops/**/*.yaml`). `lib/` holds fragments composed into
    runnable loops and `oracles/` loops are themselves runnable — both are in
    scope. A non-recursive glob certifies a **false clean**; that is exactly how
-   the original survey missed 28 sites across 8 files.
+   the original survey missed 28 sites across 8 files. **Walk `fragments:` as
+   well as `states:`** — `lib/` files have no `states:` key, so a states-only
+   walk visits them and finds nothing (see `scan_corpus` in Program Design).
 2. **Handle both host shapes** — a heredoc body delimited by its marker, and a
-   `python3 -c "` body delimited by the next unescaped `"`. A line-oriented
-   scanner that only tracks heredoc markers silently mis-scopes every `-c "`
-   block.
-3. **Track heredoc terminators at column 0**, not `line.strip() == marker`. Bash
-   matches a `<<` terminator only at column 0 (`<<-` relaxes it for **tabs**
+   `python3 -c` body delimited by its closing quote (**double- and
+   single-quoted**; the `-c '` shape is live at `rn-refine.yaml:920,928` and
+   `workflow-generator.yaml:75,253`). A line-oriented scanner that only tracks
+   heredoc markers silently mis-scopes every `-c` block.
+3. **Track heredoc terminators at column 0**, not `line.strip() == marker` —
+   the **terminator only**; the opener is a mid-line redirection and must be
+   recognized anywhere on a line (see Decision Rules). Bash matches a `<<`
+   terminator only at column 0 (`<<-` relaxes it for **tabs**
    only, which this repo's space-indented YAML block scalars cannot supply).
    MR-11's `:173` check is looser than bash and mis-scopes any block following an
    indented marker-equal line — do not inherit that bug.
@@ -359,9 +410,15 @@ executes a loop.
 
 ## Acceptance Criteria
 
-1. The sweep globs `loops/**/*.yaml` recursively, handles both host shapes,
-   tracks heredoc terminators at column 0, and classifies per site — each with a
-   unit test against a synthetic action string.
+1. The sweep globs `loops/**/*.yaml` recursively, handles both host shapes
+   (heredoc with mid-line opener + column-0 terminator; `-c` with both `"` and
+   `'` quoting), and classifies per site — each with a unit test against a
+   synthetic action string, including one whose heredoc opener follows an
+   env-var-binding prefix mid-line.
+1b. The sweep walks `fragments:` as well as `states:`; at least one
+   `lib/` fragment site (e.g. from `lib/policy-router.yaml:81` or
+   `lib/rubric-router.yaml:74`) appears in the seeded baseline, proving the
+   fragments walk.
 2. `scripts/tests/data/loop_interpolation_baseline.json` is checked in, seeded
    from `main`, and anchored on `(file, state, var, class)` — not on line number.
 3. The equality test fails in **both** directions: a new unbaselined site, and a
@@ -415,6 +472,7 @@ _Added by `/ll:confidence-check` on 2026-08-27_
 **Open** | Created: 2026-08-27 | Priority: P2
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-28T03:13:07 - `e52b5f8b-4479-4377-bf0a-15b1b4dcbd9a.jsonl`
 - `/ll:confidence-check` - 2026-08-28T03:03:44 - `486b558c-b1c6-4706-9fa1-9c30566c1e36.jsonl`
 - `/ll:wire-issue` - 2026-08-28T02:57:43 - `13d6dd54-6fe5-483d-8ac7-01629c54d02f.jsonl`
 - `/ll:refine-issue` - 2026-08-28T02:39:00 - `b0fc8e25-b423-43c9-a6e7-49a921fc64b8.jsonl`
