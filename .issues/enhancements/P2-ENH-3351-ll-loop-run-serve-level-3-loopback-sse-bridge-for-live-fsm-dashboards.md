@@ -12,7 +12,7 @@ labels:
 - artifact
 - fsm
 - htmx
-unproven_mechanism: true
+unproven_mechanism: false
 learning_tests_required:
 - htmx
 - http.server
