@@ -8,12 +8,12 @@ discovered_by: split-from-BUG-3327
 discovered_date: '2026-08-27'
 captured_at: '2026-08-27T00:00:00Z'
 verify_verdict: VALID
-confidence_score: 93
-outcome_confidence: 47
-score_complexity: 11
-score_test_coverage: 10
+confidence_score: 95
+outcome_confidence: 54
+score_complexity: 12
+score_test_coverage: 13
 score_ambiguity: 13
-score_change_surface: 13
+score_change_surface: 16
 decision_needed: false
 ---
 
@@ -862,7 +862,23 @@ closed at 11 sites, not a floor), but the marker-collision requirement and
 Open Question 2 (fencing vs. long event streams) remain unresolved design
 forks for the still-open fencing work (item 2).
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-08-27_
+
+**Readiness Score**: 95/100 → PROCEED
+**Outcome Confidence**: 54/100 → LOW
+
+### Outcome Risk Factors
+- Broad enumeration across 11 dispatch-provenance sites in 9 files, plus a separately hand-classified shell-capture site (`eval-driven-development.yaml`) — breadth remains the dominant risk axis even though the completeness guard now closes the survey question itself.
+- Open Question 2 (does fencing survive a full-length event stream, or does the "reference the path instead of the content" alternative win) is still unresolved and could change item 2's implementation shape mid-work.
+- The marker-collision requirement (nonce-suffixed markers vs. an explicit "only the final marker closes" clause) is decided-as-required but not decided-as-which-form, so `render_fence()`'s new `core` parameter and the untrusted-output template still have an open design fork.
+- No fencing test infrastructure exists yet for these sites — `TestUntrustedOutputSurvey` (item 3) proves the site enumeration is complete, but a `TestUntrustedOutputFencing`-shaped class (rendered-substring, marker-position, per-site completeness) still needs writing from scratch, and several files (`rn-build.yaml`, `refine-to-ready-issue.yaml`, `examples-miner.yaml`, `integrate-sdk.yaml`, `adopt-third-party-api.yaml`) aren't yet keys in any such map.
+- Mitigation: the Recommended split (Impact section) is still un-executed — item 1 (regex/quoting hardening in `finalize_present_result`) has none of items 2-3's risk and can land independently now; resolve Open Question 2 and the marker-collision form before starting item 2's fence rendering.
+
 ## Session Log
+- `/ll:decide-issue` - 2026-08-28T00:39:52 - `272a435e-c458-4312-a8ae-849a96be5179.jsonl`
+- `/ll:confidence-check` - 2026-08-28T00:38:07 - `fcb1e84a-1c87-4c72-80bf-44d11a0cfec1.jsonl`
 - `/ll:decide-issue` - 2026-08-27T22:10:09 - `79106a4f-4393-4e7a-9f77-a9f63f9c673b.jsonl`
 - `/ll:confidence-check` - 2026-08-27T22:08:38 - `7226510b-7901-4860-ba47-438b09a88210.jsonl`
 - `/ll:decide-issue` - 2026-08-27T22:06:12 - `326db39b-d5d3-42cf-915f-f715666e4df5.jsonl`

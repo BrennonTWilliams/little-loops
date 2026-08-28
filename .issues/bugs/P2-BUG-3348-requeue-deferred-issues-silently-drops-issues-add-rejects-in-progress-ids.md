@@ -1,11 +1,18 @@
 ---
 id: BUG-3348
 type: BUG
-title: _requeue_deferred_issues silently drops issues — queue.add() rejects in_progress ids
+title: "_requeue_deferred_issues silently drops issues \u2014 queue.add() rejects\
+  \ in_progress ids"
 priority: P2
 status: open
 discovered_by: pre-implementation review of ENH-3346
 discovered_date: '2026-08-27'
+confidence_score: 100
+outcome_confidence: 90
+score_complexity: 24
+score_test_coverage: 20
+score_ambiguity: 22
+score_change_surface: 24
 ---
 
 # BUG-3348: _requeue_deferred_issues silently drops issues — queue.add() rejects in_progress ids
@@ -36,7 +43,12 @@ Call `self.queue.requeue(issue)` instead of `self.queue.add(issue)` in `_requeue
 
 ## Why the existing test missed it
 
-`test_orchestrator.py::test_on_worker_complete_requeues_deferred_issues` (`:4532`) mocks the queue, so `add()`'s rejection never fires. The fix should add a test using a **real** `IssuePriorityQueue` that walks the actual sequence: `add` → `get` (moves to in_progress) → defer → requeue-deferred → assert the issue is dequeueable again.
+`test_orchestrator.py::test_on_worker_complete_requeues_deferred_issues` (`:4532`) mocks the queue, so `add()`'s rejection never fires. The fix should add a test using a **real** `IssuePriorityQueue` that walks the actual sequence: `add` → `get` (moves to in_progress) → defer → requeue-deferred → assert the issue is dequeueable again. The test should also assert `in_progress_count` returns to its expected value after the requeue — that is the accounting skew described in the Summary, and it is cheap to cover in the same walk.
+
+## Known Interactions (verified during review, 2026-08-28)
+
+- **`max_issues` double-count (out of scope — do not fix here, just be aware):** the main loop increments `issues_processed` at `orchestrator.py:944` when an issue is first dequeued, even if `_process_parallel` immediately defers it. Post-fix, the requeued issue is dequeued and counted a second time, so a deferred-then-requeued issue consumes two slots of `parallel.max_issues` (`orchestrator.py:928`). Pre-existing behavior; this fix merely makes the requeue path live. Do not address it in this change.
+- **Completion-check race: verified non-issue.** The scenario "last worker finishes → main loop sees `queue.empty() and active_count == 0` (`orchestrator.py:922`) and exits before the callback requeues the deferred issue" cannot happen: `WorkerPool.active_count` (`worker_pool.py:1992-2002`) counts futures that are done but whose completion callbacks are still running (`_pending_callbacks`), so the loop stays alive until `_on_worker_complete` — and therefore `_requeue_deferred_issues` — has completed. No extra synchronization is needed.
 
 ## Integration Map
 
@@ -89,7 +101,7 @@ N/A — no new decision logic; this issue swaps one existing queue method call f
 _Added by `/ll:refine-issue` — 2026-08-28 — based on codebase analysis:_
 
 1. The re-add call at `orchestrator.py:1312` uses a queue method that succeeds even though the deferred issue's id is still in `IssuePriorityQueue._in_progress` — `requeue()` (`priority_queue.py:146-167`) is the existing method built for this exact "re-add an already-claimed id" case, and it never rejects.
-2. The overlap-cleared deferred issue is dequeueable again after resubmission — verified by a test that walks a real (unmocked) `IssuePriorityQueue` through `add` → `get` (moves to `_in_progress`) → defer (append to `_deferred_issues`, per current `_process_parallel` behavior) → the fixed `_requeue_deferred_issues` → assert the issue is present in the queue and absent from `_in_progress`. `test_orchestrator.py`'s existing `orchestrator` fixture (`:123-138`) mocks `IssuePriorityQueue` entirely, so this coverage cannot reuse that fixture as-is for the assertion that matters (see `test_priority_queue.py:388-499` for the real-queue pattern this test should follow).
+2. The overlap-cleared deferred issue is dequeueable again after resubmission — verified by a test that walks a real (unmocked) `IssuePriorityQueue` through `add` → `get` (moves to `_in_progress`) → defer (append to `_deferred_issues`, per current `_process_parallel` behavior) → the fixed `_requeue_deferred_issues` → assert the issue is present in the queue, absent from `_in_progress`, and that `in_progress_count` has returned to its expected value. `test_orchestrator.py`'s existing `orchestrator` fixture (`:123-138`) mocks `IssuePriorityQueue` entirely, so this coverage cannot reuse that fixture as-is for the assertion that matters (see `test_priority_queue.py:388-499` for the real-queue pattern this test should follow).
 3. `python -m pytest scripts/tests/test_orchestrator.py scripts/tests/test_priority_queue.py -v` passes.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
@@ -126,6 +138,7 @@ _Added by `/ll:refine-issue` — 2026-08-28 — based on codebase analysis:_
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-28T00:36:37 - `9ec5f3ec-b4d2-4b79-b4c8-e01cc64d4578.jsonl`
 - `/ll:wire-issue` - 2026-08-28T00:33:50 - `52578ca5-b353-4a6a-84db-a98fe4dd673c.jsonl`
 - `/ll:format-issue` - 2026-08-28T00:28:41 - `a9c9f3c5-52b9-439c-83a8-f6c0aaa9f64f.jsonl`
 - `/ll:refine-issue` - 2026-08-28T00:19:19 - `d1beae10-4eb8-49b3-9178-351e6ef08d8b.jsonl`
