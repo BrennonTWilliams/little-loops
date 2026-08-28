@@ -148,6 +148,15 @@ the site with the verdict consequence. The fix must therefore choose one of:
 This ranks above Open Question 2 (length): a fence broken at line 40 by an
 echoed marker fails regardless of whether the material is 2 KB or 200 KB.
 
+**Form decided — 2026-08-28: per-site literal nonce-suffixed markers.** The
+"only the final marker closes" prose clause is unverifiable model behavior; a
+nonce suffix is testable text (the tests can assert no unsuffixed marker and
+that the suffix never occurs inside the material's known producers). Per-site
+literal suffixes keep the fence authoring-time and hand-pasted, preserving the
+existing convention — no runtime fencing capability needed. The suffix becomes
+part of the `(noun, ...)` tuple in `UNTRUSTED_OUTPUT_ROLES` (e.g. noun
+`STEP_RESULTS_7Q4X`), so `render_fence()` needs no marker-construction change.
+
 ## Motivation
 
 Two distinct harms, only the first of which fencing fully addresses:
@@ -189,6 +198,11 @@ unfenced brief that steers a generated loop's `description` reaches
    everything else here. See "Item 1 covers the whole block" below for the four
    parses and two raw interpolations in scope — an earlier draft scoped this to
    the single `REVIEW_SUCCESS` regex at (then) line 494, now line 544.
+
+   **Spun out — 2026-08-28: this is now BUG-3349** (per Impact → Recommended
+   split, executed). The six-construct table below stays as the canonical
+   analysis BUG-3349 references; the work item, tests, and acceptance criteria
+   live there. This issue's remaining scope is items 2-3 only (item 3 is done).
 2. **Fence the confirmed tier-A sites** (see Scope) reusing BUG-3327's
    `render_fence()` with new nouns and roles, plus the untrusted-output clause
    and the marker-collision remedy above.
@@ -221,12 +235,14 @@ throughout. For lines 522-523, bind the captures to environment variables and
 read them via `os.environ` rather than interpolating into a Python literal —
 BUG-3340's technique, applied to the same file it already edits.
 
-**Ownership.** The Dependencies research below establishes that no currently-open
+**Ownership.** ~~The Dependencies research below establishes that no currently-open
 issue owns lines 522-523 (BUG-3331 is cancelled; BUG-3339 cites this block as an
-already-safe example rather than a target). **This issue claims them.** Anchoring
-line 544 means editing its immediate neighbours regardless, and splitting the
-block across two issues would leave adjacent lines in the same heredoc owned by
-different work.
+already-safe example rather than a target). **This issue claims them.**~~
+**Superseded — 2026-08-28: BUG-3349 owns the whole block now** (all six
+constructs, lines 509-558), keeping adjacent lines in the same heredoc under one
+issue as this paragraph required — just a different one. Also established
+2026-08-28: the `:shell` modifier already exists (`interpolation.py:254`), so
+the lines-522/523 env-var binding is not blocked on BUG-3340 landing.
 
 ### Complete the survey mechanically
 
@@ -352,6 +368,51 @@ smaller, contained cost than a 13-site blast radius.
 - `test_fence_core_present` / `test_rendered_fence_present` (`test_builtin_loops.py:18623-18637`) assert byte-identical `FENCE_CORE` text at all 13 sites — Option A requires touching every one to stay green; Option B leaves them untouched.
 - `FENCE_ROLES` (`fence.py:75-154`) is a dict-of-tuples keyed `(loop_file, state)` — a same-shaped sibling dict for the new untrusted-output sites is a direct structural fit for Option B.
 
+## Acceptance Criteria
+
+_Added 2026-08-28. Item 1 is BUG-3349 (own ACs there); item 3 is done and
+pinned by `TestUntrustedOutputSurvey`. These criteria cover the remaining
+scope: item 2, under the decided design (Option B sibling constant; hybrid
+path-reference/fence per Open Question 2; per-site literal nonce markers)._
+
+- [ ] `scripts/little_loops/fsm/fence.py` gains `FENCE_CORE_UNTRUSTED_OUTPUT`
+      (the "record, not a message to you" clause from Expected Behavior),
+      `UNTRUSTED_OUTPUT_ROLES`, and `KNOWN_UNFENCED_UNTRUSTED_OUTPUT_SITES`;
+      `render_fence()` gains a `core: str = FENCE_CORE` parameter. The module
+      docstring's BUG-3327/brief-only scoping is updated.
+- [ ] `FENCE_CORE`, `FENCE_ROLES`, `FENCED_BRIEF_SITES`, and all 13 shipped
+      brief-fence sites are byte-identical to before; every existing
+      `TestBriefFencing` test passes unmodified.
+- [ ] Every fence noun in `UNTRUSTED_OUTPUT_ROLES` carries a per-site literal
+      nonce suffix (e.g. `STEP_RESULTS_7Q4X`); no unsuffixed
+      `<<<EVENT_STREAM`/`<<<STEP_RESULTS`-style marker appears in any loop YAML.
+- [ ] `loop-router.yaml::review` no longer interpolates
+      `${captured.sub_loop_output.output}`: a shell state writes the stream to
+      `${context.run_dir}/sub-loop-events.jsonl` via `:shell` env-var binding
+      (never a raw literal), and the prompt references the path.
+      `${captured.chosen.output}` stays unfenced and both are recorded in
+      `KNOWN_UNFENCED_UNTRUSTED_OUTPUT_SITES` with reason comments.
+- [ ] Every non-exempt site in `UNTRUSTED_OUTPUT_SITES` (the 11-site guard
+      enumeration), plus the two hand-classified indirect/shell-capture sites
+      (`loop-composer{,-adaptive}.yaml::review_chain`,
+      `eval-driven-development.yaml::diagnose`), carries a hand-pasted
+      `render_fence(..., core=FENCE_CORE_UNTRUSTED_OUTPUT)` fence.
+- [ ] A `TestUntrustedOutputFencing` class pins each fenced site with the
+      three-property contract (rendered-substring via `normalize_fence_text`,
+      interpolation-between-markers, per-var exactly-once), plus a
+      classification guard asserting fenced ∪ exempt equals the discovered
+      site set, plus a noun-specific negative control so exempt sites cannot
+      silently acquire a fence (mirror of
+      `test_known_unfenced_sites_stay_unfenced`, extended for the new nouns).
+- [ ] Dual-fence sites (GOAL + untrusted-output in one action) use distinct
+      nouns and each var passes the exactly-once/between-markers properties
+      independently.
+- [ ] `ll-loop validate` passes on every modified loop YAML.
+- [ ] `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` § fencing gains the
+      untrusted-output class (and its stale "13 sites" count is corrected);
+      `fence.py`'s docstring names it.
+- [ ] Full suite (`python -m pytest scripts/tests/`) shows no new failures.
+
 ## Scope
 
 **Confirmed tier-A sites (verified against the working tree, 2026-08-27)** —
@@ -455,7 +516,16 @@ A repo-wide grep for the nested-namespace pattern `${captured.<name>.<name>.outp
 
 **Confirmed NOT tier-A** (eliminates entries from the "remaining un-traced" list above from further consideration): `rn-refine.yaml` (`node_outcome` only reaches `evaluate.source: output_contains`, never a prompt), `rn-implement.yaml` (`rem_outcome`/`dec_outcome`, same — `evaluate.source` only), `flux-image-generator.yaml` (`gen_eval_events` only reaches a shell grep), `oracles/plan-node-refine.yaml`, `oracles/oracle-capture-issue.yaml` (no dispatch state in file), `rn-plan.yaml`, `issue-refinement.yaml` (no `capture:` at all), `rlhf-svg-evaluate.yaml`, `rn-stepwise.yaml`, `oracles/enumerate-and-prove.yaml` (zero prompt states), `sprint-refine-and-implement.yaml`, `rn-decompose.yaml`, `spike-gate.yaml`, `scan-and-implement.yaml`, `auto-refine-and-implement.yaml`, `deep-research.yaml`, `sprint-build-and-validate.yaml`, `hitl-md.yaml`/`hitl-compare.yaml` (child capture merged but never referenced downstream), `proof-first-task.yaml`'s `gate_result` site (reaches only `action_type: shell`).
 
-Still genuinely unchecked: `svg-image-generator.yaml`, `html-website-generator.yaml`, `html-anything.yaml`, `interactive-component-generator.yaml`, `rlhf-animated-svg.yaml`, `prompt-regression-test.yaml`, `rlhf-svg-refine.yaml`.
+~~Still genuinely unchecked: `svg-image-generator.yaml`, `html-website-generator.yaml`, `html-anything.yaml`, `interactive-component-generator.yaml`, `rlhf-animated-svg.yaml`, `prompt-regression-test.yaml`, `rlhf-svg-refine.yaml`.~~
+**Superseded — 2026-08-28.** This list tracked dispatch-capture tracing, which
+`TestUntrustedOutputSurvey::test_completeness_guard` now does mechanically over
+every file under `BUILTIN_LOOPS_DIR` (rglob) — these 7 files are inside its
+sweep and produced no site, so nothing remains unchecked for the
+dispatch-provenance mechanism. For the broader shell-capture provenance class
+(the restated Decision Rule), enumeration is deliberately hand-classified-only —
+widening the guard is the 188-site explosion — and
+`eval-driven-development.yaml::run_harness` is the sole known instance;
+further shell-capture sites, if found, are added to the table by hand.
 
 **File-contention note:** BUG-3340 (EPIC-3336 sibling, "convert class-A scalar interpolations to `:shell` env-var binding") lists `loop-router.yaml`, `loop-composer.yaml`, `loop-composer-adaptive.yaml`, `refine-to-ready-issue.yaml`, and `rn-build.yaml` in its own Files to Modify — the same five files this issue's confirmed tier-A sites touch. BUG-3340 already records a sequencing constraint against its sibling BUG-3341 for the identical reason; no line-range collision was found against BUG-3334's specific sites (BUG-3340's `loop-router.yaml` sites are lines 34, 53, 192, 252, 345 — outside `review` (411-437) and `finalize_present_result` (509-558)), but both issues editing the same 5 files warrants the same sequencing awareness BUG-3340 already gives BUG-3341.
 
@@ -499,12 +569,28 @@ Still genuinely unchecked: `svg-image-generator.yaml`, `html-website-generator.y
   to use `Read` for large files rather than piping content inline, precisely
   because `Read` is self-capping.
 
-  Cost: it needs BUG-3340's env-var binding to land first (it touches
-  `loop-router.yaml`, which BUG-3340 already edits — see Dependencies), and it
+  Cost: ~~it needs BUG-3340's env-var binding to land first~~ (corrected
+  2026-08-28: the `:shell` modifier already exists at `interpolation.py:254`, so
+  no landing-order dependency on BUG-3340 — only file-level contention), and it
   changes `review` from a self-contained prompt into one that depends on a
   file-reading tool being available to the host. Weigh that against fencing in
   full before committing; but it should be evaluated as a first-class option, not
   omitted.
+
+  **Resolved — 2026-08-28: hybrid.** For `loop-router.yaml::review`'s
+  `sub_loop_output` — the only unbounded, untruncated stream (see Codebase
+  Research Findings above: the composer sites are pre-bounded at 500 chars/step)
+  — take the path-reference option: a shell state writes the stream to
+  `${context.run_dir}/sub-loop-events.jsonl` (env-var binding via `:shell`, not
+  literal interpolation) and `review`'s prompt references the path for the model
+  to open with its file-reading tool. This dissolves length, marker-collision,
+  and framing at that site in one move, and matches CLAUDE.md § "Automation:
+  Scratch Pad". All other confirmed sites are bounded by construction and are
+  **fenced in place** with `FENCE_CORE_UNTRUSTED_OUTPUT` + nonce-suffixed
+  markers. Consequence: `loop-router.yaml::review` needs **no** second fence
+  (its GOAL fence stays; `sub_loop_output` never enters the prompt), and it
+  joins `KNOWN_UNFENCED_UNTRUSTED_OUTPUT_SITES` with a comment naming the
+  path-reference mechanism. This question is closed.
 
 - **~~Do the fence markers themselves need collision handling?~~ Resolved — yes,
   as a hard requirement.** _Added by review pass — 2026-08-27._ Promoted out of
@@ -569,7 +655,7 @@ _Added by `/ll:refine-issue` — 2026-08-28 — based on codebase analysis:_
 - `scripts/little_loops/fsm/fence.py` confirmed unchanged at 165 lines against the current working tree — no `FENCE_CORE_UNTRUSTED_OUTPUT` or `UNTRUSTED_OUTPUT_ROLES` symbol exists anywhere in the codebase yet; both names appear only in this issue's own markdown and a `.ll/decisions.d/` fragment. Items 1-2 remain genuinely unstarted.
 
 ### Files to Modify
-- `scripts/little_loops/loops/loop-router.yaml` — `review` (lines 411-437): fence `${captured.chosen.output}` (line 428) and `${captured.sub_loop_output.output}` (lines 430-431); `propose_new_loop` (lines 452-478): fence `${captured.catalog.output}` (line ~469, tier-C, listed not scheduled)
+- `scripts/little_loops/loops/loop-router.yaml` — `review` (lines 411-437): ~~fence `${captured.chosen.output}` (line 428) and `${captured.sub_loop_output.output}` (lines 430-431)~~ — **corrected 2026-08-28 to match Scope and the Open Question 2 resolution:** `chosen` is exempt (dropped from tier A, joins `KNOWN_UNFENCED_UNTRUSTED_OUTPUT_SITES`); `sub_loop_output` is **not fenced but removed from the prompt entirely** — add a shell state writing it to `${context.run_dir}/sub-loop-events.jsonl` via `:shell` env-var binding and have `review` reference the path; `propose_new_loop` (lines 452-478): fence `${captured.catalog.output}` (line ~469, tier-C, listed not scheduled)
 - `scripts/little_loops/loops/loop-composer.yaml` — `review_chain` (lines 453-488): fence `${captured.step_results_json.output}` (line 474)
 - `scripts/little_loops/loops/loop-composer-adaptive.yaml` — `review_chain` (lines 680-709): fence `${captured.step_results_json.output}` (lines 700-701)
 - `scripts/little_loops/fsm/fence.py` — ~~extend `FENCE_ROLES` with new `(loop_file, state_name)` entries for the untrusted-output sites; decide whether the untrusted-output clause (Expected Behavior) joins `FENCE_CORE` or a new `FENCE_CORE_UNTRUSTED_OUTPUT` sibling constant (Open Questions)~~ — **corrected by review pass, 2026-08-27.** `FENCE_ROLES` **cannot** be extended for the three primary sites: `loop-router.yaml::review` (`fence.py:118`), `loop-composer.yaml::review_chain` (`:101`), and `loop-composer-adaptive.yaml::review_chain` (`:113`) are already keys in it, and each needs a *second* fence. The actual work is:
@@ -585,6 +671,9 @@ _Wiring pass added by `/ll:wire-issue` — 2026-08-27:_ the following confirmed 
 - `scripts/little_loops/loops/examples-miner.yaml` — fence `${captured.run_optimizer.gradient}` in `synthesize` (line 156)
 - `scripts/little_loops/loops/integrate-sdk.yaml` — fence `${captured.prove.targets}`/`${captured.prove.enumeration}` in `scaffold_integration` (line 147) and `diagnose_and_block` (lines 204-205)
 - `scripts/little_loops/loops/adopt-third-party-api.yaml` — fence `${captured.prove.enumeration}` in `build_playbook` (line 80) and `build_playbook_partial` (line 109)
+
+_Added 2026-08-28 (was declared in scope by the restated Decision Rule but missing from this list):_
+- `scripts/little_loops/loops/eval-driven-development.yaml` — fence `${captured.run_harness.output}` in `diagnose` (`action_type: prompt`, ~line 152) — the hand-classified shell-capture tier-A site
 
 ### Dependent Files (Callers/Importers)
 - `scripts/tests/test_builtin_loops.py::TestBriefFencing` (lines 18611-18701) — imports `FENCE_CORE`, `FENCE_ROLES`, `FENCED_BRIEF_SITES`, `KNOWN_UNFENCED_PROMPT_SITES`, `render_fence`, `normalize_fence_text` from `fence.py`; the `test_completeness_guard` test (line 18666) independently discovers every `action_type: prompt` state referencing a loop's input var and will need its discovery predicate extended (or a parallel guard added) to cover `${captured.*.output}` vars, or new fenced sites will silently fall outside both `FENCED_BRIEF_SITES` and `KNOWN_UNFENCED_PROMPT_SITES` with no test catching the gap
@@ -679,6 +768,10 @@ low score is driven almost entirely by items 2-3 (breadth, unresolved design
 shape, absent test infrastructure); item 1 shares none of that and is being held
 hostage by it.
 
+_Executed — 2026-08-28: (1) is now **BUG-3349**; (2) remains this issue; (3)
+stays folded into this issue since the completeness guard (landed) makes the
+remaining sites mechanical and un-forgettable._
+
 Split into:
 
 1. **`loop-router` result-parse hardening** — Proposed Solution item 1 in full
@@ -706,6 +799,11 @@ independently — nothing in it depends on the rest.
 - **BUG-3327** — supplies `FENCE_CORE` / `FENCE_TEMPLATE` / `render_fence()` /
   `FENCE_ROLES` and the `<<<NOUN … NOUN>>>` convention this issue extends. Land
   first; this issue should not invent a parallel fence.
+- **BUG-3349** — _added 2026-08-28:_ the spun-out `finalize_present_result`
+  hardening (this issue's former item 1). No code dependency in either
+  direction; both touch `loop-router.yaml` on non-overlapping line ranges
+  (BUG-3349: 509-558; this issue: `review` 411-437 plus a new shell state).
+  Sequence BUG-3349 first to keep line anchors stable.
 - **BUG-3331** — rewrites `loop-router.yaml:473` (`review_out = """…"""`), the
   line immediately above the `re.search` this issue anchors. Same block of code,
   different defect.
@@ -729,14 +827,14 @@ EPIC-3336), so there is no rewrite to fold into and nothing to check for at line
 544. Current sequencing:
 
 - **BUG-3327** — `done`. Supplies the constants this issue extends. Satisfied.
-- **Item 1 is unblocked now.** It depends on neither BUG-3327 nor the fencing
-  design, and this issue claims the adjacent unowned lines 522-523 (see Proposed
-  Solution → "Item 1 covers the whole block"). Land it first, ideally as its own
-  issue per Recommended split.
-- **BUG-3340 before the Open Question 2 "reference the path" option**, if that
-  option is taken — it supplies the env-var binding technique and already edits
-  `loop-router.yaml`. Item 1's lines 522-523 fix uses the same technique, so
-  either sequence item 1 after BUG-3340 or duplicate the small binding pattern.
+- **Item 1 is spun out as BUG-3349** (2026-08-28, per Recommended split —
+  executed). It depends on neither BUG-3327 nor the fencing design. Land it
+  first to keep this issue's `loop-router.yaml` line anchors stable.
+- ~~**BUG-3340 before the Open Question 2 "reference the path" option**~~ —
+  corrected 2026-08-28: the `:shell` modifier already exists
+  (`interpolation.py:254`), so the path-reference option (now decided — see Open
+  Questions) has no landing-order dependency on BUG-3340. BUG-3340 remains
+  file-level contention only.
 - **Items 2-3 after the completeness guard**, which is the first thing to build,
   not the last (see Proposed Solution → "Complete the survey mechanically").
 
@@ -871,7 +969,7 @@ closed at 11 sites, not a floor), but the marker-collision requirement and
 Open Question 2 (fencing vs. long event streams) remain unresolved design
 forks for the still-open fencing work (item 2).
 
-## Confidence Check Notes
+## Confidence Check Notes (re-run after survey closure)
 
 _Added by `/ll:confidence-check` on 2026-08-27_
 
