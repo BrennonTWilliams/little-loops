@@ -1421,6 +1421,15 @@ class TestRefineToReadyIssueSubLoop:
             "circuit.repeated_failure.on_repeated_failure should be 'diagnose', got "
             f"{repeated_failure.get('on_repeated_failure')!r}"
         )
+        # The consecutive window is structurally inert in this loop (recorded
+        # evaluator-bearing states always interleave; sub-loop and next:-chained
+        # states never record a stall triple), so the run-lifetime recurrent
+        # counter is the effective guard — it bounds the post-BUG-3278
+        # residual-decision cycle and a spike that never writes spike_attempted.
+        assert repeated_failure.get("recurrent_window") == 6, (
+            "circuit.repeated_failure.recurrent_window should be 6 (hottest legitimate "
+            f"triple recurrence ~4 + 2 margin), got {repeated_failure.get('recurrent_window')!r}"
+        )
 
     def test_verify_scores_persisted_on_yes_routes_to_check_readiness(self) -> None:
         """verify_scores_persisted.on_yes must route to done in the child oracle (maps to
@@ -1656,9 +1665,9 @@ class TestRefineToReadyIssueSubLoop:
             f"check_ac_automatable.on_no should be 'check_reconcile_limit' (ENH-3248), "
             f"got {state.get('on_no')!r}"
         )
-        assert state.get("on_error") == "confidence_check", (
-            "BUG-3294: check_ac_automatable.on_error should be 'confidence_check' "
-            f"(fail open — skip AC gate rather than abort), got {state.get('on_error')!r}"
+        assert state.get("on_error") == "check_design", (
+            "BUG-3294: check_ac_automatable.on_error should be 'check_design' "
+            f"(fail open INTO the next gate, not past it), got {state.get('on_error')!r}"
         )
 
     def test_check_design_state_routing(self, data: dict) -> None:
@@ -1930,11 +1939,53 @@ class TestRefineToReadyIssueSubLoop:
             "not refined as a leaf via /ll:refine-issue"
         )
 
-    def test_resolve_issue_routes_to_check_epic_id(self, data: dict) -> None:
-        """resolve_issue.next must route through the EPIC guard before check_lifetime_limit."""
+    def test_resolve_issue_routes_to_check_issue_resolved(self, data: dict) -> None:
+        """resolve_issue.next must route through the blank-id guard: `ll-issues next-issue`
+        exits 1 on an empty backlog but the `| tr -d` pipeline masks that status (no
+        pipefail), so an empty queue must be caught on the captured id itself."""
         state = data["states"].get("resolve_issue", {})
-        assert state.get("next") == "check_epic_id", (
-            f"resolve_issue.next should be 'check_epic_id', got {state.get('next')!r}"
+        assert state.get("next") == "check_issue_resolved", (
+            f"resolve_issue.next should be 'check_issue_resolved', got {state.get('next')!r}"
+        )
+
+    def test_resolve_issue_clears_stale_terminal_class(self, data: dict) -> None:
+        """resolve_issue must rm the refine-terminal-class sentinel at run start: nothing
+        else ever clears it, so a stale `infra` from a previous issue in autodev's shared
+        run_dir would leak into the next issue's skip_inflight classification."""
+        action = data["states"].get("resolve_issue", {}).get("action", "")
+        assert "rm -f" in action and "refine-terminal-class" in action, (
+            "resolve_issue.action should clear ${context.run_dir}/refine-terminal-class "
+            f"with rm -f, got {action!r}"
+        )
+
+    def test_check_issue_resolved_routes_empty_id_to_no_work(self, data: dict) -> None:
+        """check_issue_resolved gates on the captured id: blank id (empty backlog) is a
+        clean no-work exit, not a failure — routing it to diagnose would ledger a
+        quality failure for an empty queue."""
+        state = data["states"].get("check_issue_resolved", {})
+        assert state, "State 'check_issue_resolved' not found"
+        assert "captured.issue_id.output" in state.get("action", ""), (
+            f"check_issue_resolved.action should test the captured id, got {state.get('action')!r}"
+        )
+        assert state.get("fragment") == "shell_exit", (
+            f"check_issue_resolved.fragment should be 'shell_exit', got {state.get('fragment')!r}"
+        )
+        assert state.get("on_yes") == "check_epic_id", (
+            f"check_issue_resolved.on_yes should be 'check_epic_id', got {state.get('on_yes')!r}"
+        )
+        assert state.get("on_no") == "no_work", (
+            f"check_issue_resolved.on_no should be 'no_work', got {state.get('on_no')!r}"
+        )
+
+    def test_no_work_is_success_terminal(self, data: dict) -> None:
+        """no_work is a clean empty-backlog exit: terminal, and NOT a failure terminal
+        (callers must not ledger it)."""
+        state = data["states"].get("no_work", {})
+        assert state.get("terminal") is True, (
+            f"no_work should be a terminal state, got {state!r}"
+        )
+        assert not state.get("failure"), (
+            f"no_work must not be a failure terminal, got failure={state.get('failure')!r}"
         )
 
     def test_check_epic_id_on_yes_routes_to_breakdown_issue(self, data: dict) -> None:
@@ -2046,6 +2097,73 @@ class TestRefineToReadyIssueSubLoop:
         assert "${context.run_dir}" in action
         assert "${prev.state}" in action
         assert "${captured.refine_issue.stderr?}" in action
+
+    def test_write_failure_evidence_derives_failing_state_from_captures(self, data: dict) -> None:
+        """failing_state/-exit must be DERIVED from the per-state captures, not
+        taken from ${prev.*}: diagnose runs between the failure and this state
+        via `next:`, and the executor updates prev after a next:-routed state
+        runs — so on the normal path prev is `diagnose` itself (exit 0)."""
+        action = data["states"].get("write_failure_evidence", {}).get("action", "")
+        assert "FAILING_STATE" in action, (
+            "write_failure_evidence must derive the failing state from captures"
+        )
+        assert "${captured.refine_issue.exit_code?}" in action
+        assert "${captured.issue_id.exit_code?}" in action
+        # prev is recorded under an honest label, never as the failing state.
+        assert "diagnose_prev_state" in action, (
+            "the ${prev.state} value must be labelled diagnose_prev_state (prev is "
+            "`diagnose` on the normal path, the true failing state only on "
+            "diagnose's own on_error route)"
+        )
+        assert "failing_state: %s\\n' '${prev.state}'" not in action, (
+            "failing_state must not be sourced from ${prev.state} (always "
+            "'diagnose'/exit 0 on the normal path)"
+        )
+
+    def test_write_failure_evidence_derivation_executes(self, data: dict, tmp_path) -> None:
+        """Execute the derivation with a simulated SIGTERM'd refine_issue: the
+        evidence file must attribute the failure to refine_issue/143, not to
+        diagnose/0 (the ${prev.*} values on the normal path)."""
+        action = data["states"]["write_failure_evidence"]["action"]
+        script = action.replace("${context.run_dir}", str(tmp_path))
+        # Populate exactly one failing capture; everything else resolves to ''.
+        script = script.replace("${captured.refine_issue.exit_code?}", "143")
+        script = script.replace("${prev.state}", "diagnose")
+        script = script.replace("${prev.exit_code}", "0")
+        script = re.sub(r"\$\{captured\.[^}]+\?\}", "", script)
+        script = re.sub(r"\$\{prev\.[^}]+\?\}", "", script)
+        script = script.replace("$${", "${")  # engine escape for literal bash ${
+        assert "${captured" not in script and "${prev" not in script
+        result = subprocess.run(
+            ["bash", "-c", script], capture_output=True, text=True, cwd=tmp_path
+        )
+        assert result.returncode == 0, f"script failed: {result.stderr}"
+        evidence = (tmp_path / "refine-failure-evidence.txt").read_text()
+        assert "failing_state: refine_issue" in evidence, evidence
+        assert "failing_exit_code: 143" in evidence, evidence
+        assert "diagnose_prev_state: diagnose" in evidence, evidence
+
+    def test_write_failure_evidence_attributes_sub_loop_failure(self, data: dict, tmp_path) -> None:
+        """A confidence_check sub-loop failure populates no per-state exit_code;
+        the derivation must fall back to the state-name-keyed failure_terminal /
+        terminated_by markers."""
+        action = data["states"]["write_failure_evidence"]["action"]
+        script = action.replace("${context.run_dir}", str(tmp_path))
+        script = script.replace("${captured.confidence_check.failure_terminal?}", "True")
+        script = script.replace("${captured.confidence_check.terminated_by?}", "terminal")
+        script = script.replace("${prev.state}", "diagnose")
+        script = script.replace("${prev.exit_code}", "0")
+        script = re.sub(r"\$\{captured\.[^}]+\?\}", "", script)
+        script = re.sub(r"\$\{prev\.[^}]+\?\}", "", script)
+        script = script.replace("$${", "${")
+        assert "${captured" not in script and "${prev" not in script
+        result = subprocess.run(
+            ["bash", "-c", script], capture_output=True, text=True, cwd=tmp_path
+        )
+        assert result.returncode == 0, f"script failed: {result.stderr}"
+        evidence = (tmp_path / "refine-failure-evidence.txt").read_text()
+        assert "failing_state: confidence_check" in evidence, evidence
+        assert "failing_exit_code: sub-loop" in evidence, evidence
 
     def test_diagnose_is_not_terminal(self, data: dict) -> None:
         """diagnose state must not be a terminal state."""
@@ -2244,10 +2362,12 @@ class TestRefineToReadyIssueSubLoop:
             assert f"${{captured.{cap}.stderr" in action, (
                 f"diagnose prompt must reference ${{captured.{cap}.stderr}} (BUG-2726)"
             )
-        # confidence_check sub-loop has no stderr channel — fall back to output.
-        assert "${captured.confidence_check.output" in action, (
-            "diagnose prompt must fall back to ${captured.confidence_check.output} for "
-            "the confidence_check sub-loop, which has no .stderr key (BUG-2726)"
+        # confidence_check sub-loop has no stderr channel — fall back to the
+        # event-stream capture (named confidence_check_events so a `with:` merge
+        # keyed by the STATE name can never clobber it).
+        assert "${captured.confidence_check_events.output" in action, (
+            "diagnose prompt must fall back to ${captured.confidence_check_events.output} "
+            "for the confidence_check sub-loop, which has no .stderr key (BUG-2726)"
         )
 
     def test_diagnose_captured_refs_are_nullable(self, data: dict) -> None:
@@ -2299,6 +2419,22 @@ class TestRefineToReadyIssueSubLoop:
         assert "sys.exit(2" in action, (
             "check_scores_from_file must sys.exit(2+) on inner failure so it "
             "routes to on_error: diagnose (BUG-2726)"
+        )
+
+    def test_check_readiness_surfaces_inner_stderr(self, data: dict) -> None:
+        """Same BUG-2726 guard as its two siblings (it was originally missed
+        here): a failed `ll-issues show` (error on STDOUT, exit 1) must exit 2
+        → on_error: check_scores_from_file, not raise in json.loads → exit 1 →
+        verdict 'no' → check_refine_limit, which burns refine budget on an
+        infra fault."""
+        action = data["states"].get("check_readiness", {}).get("action", "")
+        assert "r.stderr" in action and "sys.stderr" in action, (
+            "check_readiness heredoc must forward the inner ll-issues stderr "
+            "(BUG-2726 guard, mirrored from check_outcome)"
+        )
+        assert "sys.exit(2" in action, (
+            "check_readiness must sys.exit(2+) on inner failure so it routes to "
+            "on_error: check_scores_from_file, not on_no: check_refine_limit"
         )
 
     def test_diagnose_prompt_renders_sigterm_exit_code(self, data: dict) -> None:
@@ -2364,7 +2500,7 @@ class TestRefineToReadyIssueSubLoop:
             "wire_issue action must include '--auto' flag to prevent interactive stalling"
         )
 
-    def test_wire_issue_on_error_is_verify_issue(self, data: dict) -> None:
+    def test_wire_issue_on_error_is_normalize_structure(self, data: dict) -> None:
         """wire_issue.on_error must route to normalize_structure (ENH-3031: wiring failure
         is non-fatal, and the retarget closes the loopback bypass that used to skip the
         verification chain entirely on a gate-forced second pass; ENH-3248: normalize_structure
@@ -2374,7 +2510,7 @@ class TestRefineToReadyIssueSubLoop:
             f"wire_issue.on_error should be 'normalize_structure', got {state.get('on_error')!r}"
         )
 
-    def test_check_wire_done_on_no_and_on_error_route_to_verify_issue(self, data: dict) -> None:
+    def test_check_wire_done_on_no_and_on_error_route_to_normalize_structure(self, data: dict) -> None:
         """check_wire_done.on_no/.on_error must route to normalize_structure (ENH-3031; ENH-3248).
 
         This is the loopback-bypass closure: on a gate-forced second pass the
@@ -2390,7 +2526,7 @@ class TestRefineToReadyIssueSubLoop:
             f"check_wire_done.on_error should be 'normalize_structure', got {state.get('on_error')!r}"
         )
 
-    def test_mark_wire_done_on_error_routes_to_verify_issue(self, data: dict) -> None:
+    def test_mark_wire_done_on_error_routes_to_normalize_structure(self, data: dict) -> None:
         """mark_wire_done.on_error must route to normalize_structure (ENH-3031; ENH-3248)."""
         state = data["states"].get("mark_wire_done", {})
         assert state.get("on_error") == "normalize_structure", (
@@ -2403,7 +2539,7 @@ class TestRefineToReadyIssueSubLoop:
             "State 'mark_wire_done' not found in refine-to-ready-issue.yaml"
         )
 
-    def test_mark_wire_done_routes_to_confidence_check(self, data: dict) -> None:
+    def test_mark_wire_done_next_is_check_decision_mid_wire(self, data: dict) -> None:
         """mark_wire_done.next must route to check_decision_mid_wire (BUG-2528).
 
         The mid-chain decision gate then routes to confidence_check on no.
@@ -2515,10 +2651,66 @@ class TestRefineToReadyIssueSubLoop:
                 f"{state_name}.with.issue_id should bind the captured issue id, "
                 f"got {state.get('with')!r}"
             )
-            assert state.get("on_failure") == "record_decision_unresolved", (
-                f"{state_name}.on_failure should be 'record_decision_unresolved', "
+            # on_failure/on_error route through the rate-limit discriminator: a
+            # 429-exhausted oracle (which writes decide-rate-limited-<ID>) is an
+            # infra fault, not an unresolved decision — deferring the issue for
+            # it was the pre-refactor misclassification.
+            assert state.get("on_failure") == "check_decide_rate_limited", (
+                f"{state_name}.on_failure should be 'check_decide_rate_limited', "
                 f"got {state.get('on_failure')!r}"
             )
+            assert state.get("on_error") == "check_decide_rate_limited", (
+                f"{state_name}.on_error should be 'check_decide_rate_limited', "
+                f"got {state.get('on_error')!r}"
+            )
+
+    def test_check_decide_rate_limited_probes_per_issue_marker(self, data: dict) -> None:
+        """check_decide_rate_limited must probe the per-issue marker
+        oracles/resolve-decision writes before its failed terminal when
+        429-exhausted, and fall through to record_decision_unresolved when the
+        marker is absent (a genuine unresolved decision)."""
+        state = data["states"].get("check_decide_rate_limited", {})
+        assert state, "State 'check_decide_rate_limited' not found"
+        action = state.get("action", "")
+        assert "decide-rate-limited-${captured.issue_id.output}" in action, (
+            f"check_decide_rate_limited must probe the per-issue marker, got {action!r}"
+        )
+        assert state.get("fragment") == "shell_exit"
+        assert state.get("on_yes") == "mark_rate_limit_infra"
+        assert state.get("on_no") == "record_decision_unresolved"
+        assert state.get("on_error") == "record_decision_unresolved"
+
+    def test_mark_rate_limit_infra_writes_class_and_exits_failed(self, data: dict) -> None:
+        """mark_rate_limit_infra must write class `infra` to refine-terminal-class
+        (autodev's skip_inflight contract) and exit via the failed terminal so
+        the parent's on_failure route still fires."""
+        state = data["states"].get("mark_rate_limit_infra", {})
+        assert state, "State 'mark_rate_limit_infra' not found"
+        action = state.get("action", "")
+        assert "infra" in action and "refine-terminal-class" in action, (
+            f"mark_rate_limit_infra must write 'infra' to refine-terminal-class, got {action!r}"
+        )
+        assert state.get("next") == "failed"
+        assert state.get("on_error") == "failed"
+
+    def test_on_max_steps_is_classify_terminal(self, data: dict) -> None:
+        """A step-cap exit must still write refine-terminal-class: on_max_steps
+        runs classify_terminal exactly once at the cap (its `next:` never
+        follows; terminated_by stays max_steps), so autodev's skip_inflight
+        reads a fresh class instead of a missing or stale one."""
+        assert data.get("on_max_steps") == "classify_terminal", (
+            f"on_max_steps should be 'classify_terminal', got {data.get('on_max_steps')!r}"
+        )
+
+    def test_failed_terminal_declares_failure_explicitly(self, data: dict) -> None:
+        """The failed terminal must carry an explicit failure: true rather than
+        relying on the FAILURE_TERMINAL_NAMES name-inference default — autodev's
+        refine_current.on_failure routing hangs off this flag."""
+        state = data["states"].get("failed", {})
+        assert state.get("terminal") is True
+        assert state.get("failure") is True, (
+            f"failed terminal should declare failure: true explicitly, got {state!r}"
+        )
 
     def test_resolve_decision_pre_breakdown_on_success_reenters_confidence_check(
         self, data: dict
@@ -2544,7 +2736,7 @@ class TestRefineToReadyIssueSubLoop:
             f"got {state.get('on_success')!r}"
         )
 
-    def test_resolve_decision_mid_wire_on_success_resumes_verify_issue(self, data: dict) -> None:
+    def test_resolve_decision_mid_wire_on_success_resumes_normalize_structure(self, data: dict) -> None:
         """resolve_decision_mid_wire.on_success must resume the chain at
         normalize_structure — the same target check_decision_mid_wire.on_no uses
         (ENH-3248: normalize_structure interposed before verify_issue)."""
@@ -2961,7 +3153,7 @@ class TestRefineToReadyIssueSubLoop:
             f"got {state.get('on_yes')!r}"
         )
 
-    def test_check_decision_mid_wire_on_no_routes_to_verify_issue(self, data: dict) -> None:
+    def test_check_decision_mid_wire_on_no_routes_to_normalize_structure(self, data: dict) -> None:
         """check_decision_mid_wire.on_no must route to normalize_structure (ENH-3031: no flag
         → fall through into the claim-verification chain, not straight to confidence_check;
         ENH-3248: via normalize_structure, interposed before verify_issue)."""
@@ -2971,7 +3163,7 @@ class TestRefineToReadyIssueSubLoop:
             f"got {state.get('on_no')!r}"
         )
 
-    def test_check_decision_mid_wire_on_error_routes_to_verify_issue(self, data: dict) -> None:
+    def test_check_decision_mid_wire_on_error_routes_to_normalize_structure(self, data: dict) -> None:
         """check_decision_mid_wire.on_error must fall through to normalize_structure (ENH-3031;
         ENH-3248) (a transient check-flag failure should not stall the sub-loop)."""
         state = data["states"].get("check_decision_mid_wire", {})
@@ -18868,7 +19060,7 @@ UNTRUSTED_OUTPUT_SITES: set[tuple[str, str, str]] = {
     ("rn-build.yaml", "capture_eval_failures", "${captured.eval_result.output}"),
     ("rn-build.yaml", "synthesize_result", "${captured.eval_result.output:default=not run}"),
     ("rn-build.yaml", "synthesize_result", "${captured.cluster_result.output}"),
-    ("refine-to-ready-issue.yaml", "diagnose", "${captured.confidence_check.output?}"),
+    ("refine-to-ready-issue.yaml", "diagnose", "${captured.confidence_check_events.output?}"),
     ("examples-miner.yaml", "synthesize", "${captured.run_optimizer.gradient.output}"),
     ("integrate-sdk.yaml", "scaffold_integration", "${captured.prove.targets.output}"),
     (

@@ -2,7 +2,8 @@ name: "refine-to-ready-issue"
 description: "Drives a single issue from backlog to ready-state: refines it, wires integration points, runs confidence checks, and routes to issue-size-review if confidence thresholds cannot be met."
 category: issue-management
 # Routing summary:
-#   resolve_issue → check_epic_id → (on_yes: EPIC id) breakdown_issue | (on_no: leaf) check_lifetime_limit
+#   resolve_issue → check_issue_resolved → (on_no: blank id / empty backlog) no_work
+#   check_issue_resolved → (on_yes) check_epic_id → (on_yes: EPIC id) breakdown_issue | (on_no: leaf) check_lifetime_limit
 #   ENH-3031: every mid-chain route that used to skip straight to confidence_check
 #   (check_wire_done.on_no/.on_error, wire_issue.on_error, mark_wire_done.on_error,
 #   check_decision_mid_wire.on_no/.on_error) now retargets to normalize_structure
@@ -46,8 +47,10 @@ category: issue-management
 #   (resolve_decision_mid_refine / resolve_decision_mid_wire /
 #   resolve_decision_pre_breakdown), which resolves the decision inline and
 #   resumes the chain (check_wire_done / normalize_structure / confidence_check
-#   respectively) on_success, or routes to record_decision_unresolved →
-#   failed on_failure/on_error.
+#   respectively) on_success, or routes on_failure/on_error to
+#   check_decide_rate_limited, which discriminates a 429-exhausted child
+#   (marker → mark_rate_limit_infra → failed, class `infra`) from a genuine
+#   unresolved decision (record_decision_unresolved → failed + deferral).
 initial: resolve_issue
 scope:
   - ".issues/"
@@ -63,9 +66,10 @@ scope:
 # confidence_check -> check_readiness -> check_outcome -> check_decision_needed
 # -> resolve_decision_pre_breakdown -> confidence_check cycle that costs
 # ~6 more steps than the ENH-3031 budget accounted for (### Three gates need
-# three call states). The cycle cannot spin: the second pass through
-# check_decision_needed sees decision_needed: false (the sub-loop's done
-# terminal asserts exactly that) and falls through on_no.
+# three call states). Post-BUG-3278 the sub-loop's done terminal no longer
+# guarantees decision_needed: false (a legitimate residual lower-tier group
+# can survive), so this cycle is bounded by circuit.recurrent_window below,
+# not by the oracle's terminal.
 # ENH-3248: 40 -> 55. Three new states: normalize_structure adds 1 step per
 # refine/wire pass on the happy path (≤3 passes = 3); check_placeholders adds
 # 1 per gate-band pass (≤3 = 3); a reconcile_issue cycle costs ~6
@@ -86,7 +90,20 @@ scope:
 # confidence_check -> check_readiness -> check_outcome, re-entering the
 # existing check_outcome -> check_decision_needed cycle already in budget) ->
 # 5 more worst case, rounded up to preserve headroom.
+# Refactor 2026-08-28: +1 happy-path step (check_issue_resolved). The new
+# check_decide_rate_limited / mark_rate_limit_infra / no_work states are
+# terminal-path only (outside the convergence budget); on_max_steps consumes
+# the cap's single fall-through execution, not budget; circuit.recurrent_window
+# reduces worst-case burn by firing stalls near ~30 steps. 60 unchanged.
 max_steps: 60
+# Step-cap fall-through: the executor runs the named state exactly once at the
+# cap; its `next:` is never followed and terminated_by stays "max_steps".
+# classify_terminal then writes refine-terminal-class so autodev's
+# skip_inflight reads a fresh class instead of a missing (or stale) one. At
+# the cap no capture carries a kill signature (those route to diagnose
+# immediately), so the class is `quality` — correct for budget churn: a
+# from-scratch re-run would likely recur.
+on_max_steps: classify_terminal
 on_handoff: spawn
 context:
   # readiness_threshold / outcome_threshold are seeded at launch from
@@ -97,24 +114,34 @@ context:
 import:
   - lib/common.yaml
 
-# BUG-2685: fire a distinct terminated_by: "stall_detected" (instead of
-# silently burning the full max_steps budget on a phantom-convergence loop,
-# e.g. a sub-loop state like confidence_check retrying without observable
-# state-level progress) before the max_steps guard would otherwise mask the
-# stall behind a misleading final_state: "done" / terminated_by: "max_steps"
-# combo. Mirrors general-task.yaml's circuit.repeated_failure config; window=3
-# is safely above this loop's one legitimate retry cycle (check_refine_limit
-# caps check_readiness retries at 1, so its triple repeats at most twice
-# consecutively in normal operation).
+# BUG-2685: fire a distinct stall route instead of silently burning the full
+# max_steps budget on a phantom-convergence loop. Two detectors:
+# - window (consecutive): kept at 3 for cross-loop consistency, but it is
+#   structurally inert here — the detector records (state, exit, verdict)
+#   triples only for evaluator-bearing states that route by verdict (sub-loop
+#   states and `next:`-chained states never record), and this loop's recorded
+#   gate states always interleave, so 3 identical consecutive triples cannot
+#   occur.
+# - recurrent_window (run-lifetime per-triple counter, non-consecutive;
+#   ENH-2245): the effective guard. Sized 6 = hottest legitimate recurrence
+#   (~4: a gate-band `(0, yes)` triple recurs once per band pass — initial +
+#   refine_followup + reconcile + mid-wire-decision resume) + 2 margin. It
+#   bounds the real spin shapes: the post-BUG-3278 residual-decision cycle
+#   (oracles/resolve-decision can reach `done` with decision_needed
+#   legitimately still set, so check_decision_needed re-fires once per
+#   ~5-step lap → fires near lap 6 ≈ 30 steps) and a spike that never writes
+#   spike_attempted.
 circuit:
   repeated_failure:
     window: 3
     on_repeated_failure: diagnose
+    recurrent_window: 6
 
 states:
   resolve_issue:
     action: >-
       mkdir -p ${context.run_dir} &&
+      rm -f ${context.run_dir}/refine-terminal-class &&
       printf '0' > ${context.run_dir}/refine-to-ready-refine-count &&
       printf '0' > ${context.run_dir}/refine-to-ready-wire-done &&
       printf '0' > ${context.run_dir}/refine-broke-down &&
@@ -124,8 +151,26 @@ states:
       ll-issues next-issue; } | tr -d '\n\r '
     action_type: shell
     capture: issue_id
-    next: check_epic_id
+    next: check_issue_resolved
     on_error: diagnose
+
+  check_issue_resolved:
+    # `ll-issues next-issue` exits 1 on an empty backlog, but the `| tr -d`
+    # pipeline above masks that status (the runner sets no pipefail), so an
+    # empty queue used to flow a blank issue_id into check_epic_id →
+    # check_lifetime_limit → `refine-status ""`. A blank id is a clean
+    # no-work condition, not a failure: under autodev/recursive-refine
+    # context.input is always non-empty, and next-issue's exit 1 covers both
+    # "no issues" and misconfig, so this gate keys on the captured id itself.
+    # The `rm -f refine-terminal-class` in resolve_issue pairs with this fix:
+    # nothing else ever clears that sentinel, so a stale `infra` from a
+    # previous issue in autodev's shared run_dir would otherwise leak into
+    # the next issue's skip_inflight classification.
+    action: "[ -n \"${captured.issue_id.output}\" ]"
+    fragment: shell_exit
+    on_yes: check_epic_id
+    on_no: no_work           # empty backlog → clean no-work exit
+    on_error: check_epic_id  # fail-open, file convention
 
   check_epic_id:
     # Defense-in-depth (BUG-2638): EPICs are umbrella containers, never
@@ -138,10 +183,8 @@ states:
         EPIC-*) exit 0 ;;
         *) exit 1 ;;
       esac
-    action_type: shell
     # exit 0 (on_yes) = id is an EPIC → decompose; exit 1 (on_no) = leaf → proceed
-    evaluate:
-      type: exit_code
+    fragment: shell_exit
     on_yes: breakdown_issue
     on_no: check_lifetime_limit
     on_error: check_lifetime_limit
@@ -161,7 +204,7 @@ states:
       print(cfg.get('commands', {}).get('max_refine_count', int(os.environ['LL_ARG_MAX_REFINE_COUNT'])))
       PYEOF
       )
-      [ -z "$MAX_TOTAL" ] && MAX_TOTAL=${context.max_refine_count}
+      [ -z "$MAX_TOTAL" ] && MAX_TOTAL=${context.max_refine_count:shell}
 
       TOTAL_REFINES=$(ll-issues refine-status "${captured.issue_id.output}" --json 2>/dev/null \
         | python3 -c "
@@ -216,7 +259,9 @@ states:
     # Retry refine (entered from check_refine_limit). ENH-2247: a refine pass already
     # ran this run, so patch remaining gaps additively (--auto --gap-analysis) instead
     # of re-running a destructive rewrite over the first pass. Gap-analysis is
-    # additive-only (never removes content) and does not consume max_refine_count.
+    # additive-only (never removes content). NOTE: the intended gap-analysis
+    # exemption from max_refine_count is not implemented — append-log has no
+    # mode discriminator, so refine-status counts these passes too (BUG-3356).
     action: "/ll:refine-issue ${captured.issue_id.output} --auto --gap-analysis"
     action_type: slash_command
     pruning_profile:
@@ -251,8 +296,8 @@ states:
       issue_id: "${captured.issue_id.output}"
     capture: resolve_decision_mid_refine
     on_success: check_wire_done
-    on_failure: record_decision_unresolved
-    on_error: record_decision_unresolved
+    on_failure: check_decide_rate_limited
+    on_error: check_decide_rate_limited
 
   check_wire_done:
     action: |
@@ -302,8 +347,8 @@ states:
       issue_id: "${captured.issue_id.output}"
     capture: resolve_decision_mid_wire
     on_success: normalize_structure
-    on_failure: record_decision_unresolved
-    on_error: record_decision_unresolved
+    on_failure: check_decide_rate_limited
+    on_error: check_decide_rate_limited
 
   normalize_structure:
     # ENH-3248: deterministic, no-LLM structural repair pass. Unconditional
@@ -466,14 +511,14 @@ states:
     fragment: shell_exit
     on_yes: check_design
     on_no: check_reconcile_limit  # ENH-3248: ACs are inside reconcile's rewrite scope
-    on_error: confidence_check
+    on_error: check_design  # fail open INTO the next gate, not past it (BUG-3294 made exit 2 reachable)
 
   check_design:
     # BUG-3249: the Program Design gate (ENH-2967's design_gate_failed(),
     # already exposed as `ll-issues check-design`) was never wired into this
     # loop, so an issue with no `## Program Design` section could reach
     # `done`. Pure shell, no new predicate copy: reuses the same CLI the
-    # sibling autodev.yaml loop already calls at three sites.
+    # sibling autodev.yaml loop already calls at four sites.
     action: "ll-issues check-design ${captured.issue_id.output}"
     fragment: shell_exit
     on_yes: confidence_check
@@ -531,8 +576,14 @@ states:
     # evidence for a confidence_check failure. A `loop:` capture is shaped
     # {"output": <event-jsonl>, "exit_code": None} with NO `stderr` key
     # (executor._execute_sub_loop), so the diagnose prompt falls back to
-    # ${captured.confidence_check.output} rather than a nonexistent `.stderr`.
-    capture: confidence_check
+    # ${captured.confidence_check_events.output} rather than a nonexistent
+    # `.stderr`. The capture name deliberately differs from the state name:
+    # with `with:` set, the executor stores the child's own captures under the
+    # STATE name (whole-dict overwrite, executor._execute_sub_loop) while the
+    # event stream is keyed by the CAPTURE name — split names mean an oracle
+    # gaining a `capture:` key can never clobber this evidence.
+    # terminated_by / failure_terminal still land under `confidence_check`.
+    capture: confidence_check_events
     on_success: check_readiness
     on_failure: diagnose
     on_error: diagnose
@@ -563,12 +614,23 @@ states:
           ['ll-issues', 'show', issue_id, '--json'],
           capture_output=True, text=True
       )
-      d = json.loads(r.stdout)
+      # BUG-2726 guard (was missing here, present in check_outcome /
+      # check_scores_from_file): `ll-issues show` prints its not-found error to
+      # STDOUT and exits 1, so a bare json.loads traceback would exit 1 →
+      # verdict 'no' → check_refine_limit, burning refine budget on an infra
+      # fault. Exit 2 → verdict 'error' → check_scores_from_file, whose own
+      # guard escalates to diagnose with the real stderr.
+      if r.returncode != 0:
+          sys.stderr.write(r.stderr or 'll-issues show exited %d\n' % r.returncode)
+          sys.exit(2)
+      try:
+          d = json.loads(r.stdout)
+      except (json.JSONDecodeError, ValueError):
+          sys.stderr.write(r.stderr or 'll-issues show returned unparseable JSON\n')
+          sys.exit(2)
       sys.exit(0 if int(d.get('confidence') or 0) >= readiness else 1)
       PYEOF
-    action_type: shell
-    evaluate:
-      type: exit_code
+    fragment: shell_exit
     on_yes: check_outcome
     on_no: check_refine_limit
     on_error: check_scores_from_file
@@ -613,12 +675,10 @@ states:
           sys.exit(2)
       sys.exit(0 if int(d.get('outcome') or 0) >= outcome else 1)
       PYEOF
-    action_type: shell
+    fragment: shell_exit
     # BUG-2726: capture so ${captured.check_outcome.stderr} carries the inner
     # ll-issues failure into the diagnose prompt.
     capture: check_outcome
-    evaluate:
-      type: exit_code
     on_yes: done
     on_no: check_decision_needed
     on_error: diagnose
@@ -637,7 +697,9 @@ states:
     on_error: check_spike_needed
 
   check_spike_needed:
-    # ENH-3250 (B3): mirrors autodev.yaml:1315-1391's check_spike_needed exactly
+    # ENH-3250 (B3): mirrors autodev.yaml's check_spike_needed predicate
+    # (autodev additionally snapshots pre-spike readiness and wraps run_spike
+    # in the rate-limit fragment; deliberately not carried here)
     # — spike_needed is a FlagRule written by apply_flags_from_notes()
     # (set_flags.py) on the same sub-threshold-outcome precondition as
     # decision_needed/missing_artifacts, so it belongs in this gate band. The
@@ -657,7 +719,7 @@ states:
     on_error: check_missing_artifacts
 
   run_spike:
-    # ENH-3250 (B3): mirrors autodev.yaml:1345-1391's run_spike — proves the
+    # ENH-3250 (B3): mirrors autodev.yaml's run_spike — proves the
     # unproven internal mechanism via /ll:spike --auto, which writes
     # spike_attempted/spike_completed to frontmatter (arming check_spike_needed's
     # one-shot guard), then re-enters confidence_check so the score reflects the
@@ -683,22 +745,24 @@ states:
     # autodev's run_decide -> rerun_confidence_after_decide ordering). The
     # resulting confidence_check -> check_readiness -> check_outcome ->
     # check_decision_needed -> resolve_decision_pre_breakdown -> confidence_check
-    # cycle is bounded: the second pass sees decision_needed: false (asserted
-    # by the sub-loop's done terminal) and falls through check_decision_needed's
-    # on_no.
+    # cycle is bounded by circuit.recurrent_window: post-BUG-3278 the
+    # sub-loop's done terminal can legitimately leave decision_needed set
+    # (a residual lower-tier group), so the flag alone no longer breaks the
+    # cycle.
     loop: oracles/resolve-decision
     with:
       issue_id: "${captured.issue_id.output}"
     capture: resolve_decision_pre_breakdown
     on_success: confidence_check
-    on_failure: record_decision_unresolved
-    on_error: record_decision_unresolved
+    on_failure: check_decide_rate_limited
+    on_error: check_decide_rate_limited
 
   check_missing_artifacts:
     # Gate before size-review: if missing_artifacts=true the low outcome score is
     # caused by absent files/unwired components, not scope. Exit via done so the
     # outer loop's triage_outcome_failure → check_missing_artifacts → run_wire path
-    # can handle the repair. Mirrors check_decision_needed above and autodev.yaml:419.
+    # can handle the repair. Mirrors check_decision_needed above and
+    # autodev.yaml's check_missing_artifacts state.
     action: "ll-issues check-flag ${captured.issue_id.output} missing_artifacts"
     fragment: shell_exit
     on_yes: done
@@ -803,9 +867,35 @@ states:
     # parent loop reads — surface it instead of exiting 0.
     on_error: failed
 
+  check_decide_rate_limited:
+    # Mirrors autodev.yaml's check_decide_rate_limited: oracles/resolve-decision
+    # writes ${run_dir}/decide-rate-limited-<ID> before its failed terminal
+    # when 429-exhausted. Without this probe a rate-limit outage was ledgered
+    # as DECISION_UNRESOLVED and the issue deferred — a quality verdict for an
+    # infrastructure fault. Marker present → mark the run infra and exit via
+    # failed (autodev's skip_inflight then reads `infra` → refine_failed_infra,
+    # no deferral). Residual (out of scope): autodev's own equivalent halts its
+    # queue on 429-exhaustion; this nested path only infra-skips the current
+    # issue, so an autodev queue keeps walking into fast infra-skips.
+    action: "[ -f ${context.run_dir}/decide-rate-limited-${captured.issue_id.output} ]"
+    fragment: shell_exit
+    on_yes: mark_rate_limit_infra
+    on_no: record_decision_unresolved
+    on_error: record_decision_unresolved
+
+  mark_rate_limit_infra:
+    # Writes the terminal class directly, bypassing diagnose/classify_terminal
+    # (which key off per-state captures a sub-loop failure never populates), so
+    # the infra verdict still reaches autodev's skip_inflight contract.
+    action: printf 'infra' > ${context.run_dir}/refine-terminal-class
+    action_type: shell
+    next: failed
+    on_error: failed
+
   record_decision_unresolved:
-    # BUG-3065: shared on_failure/on_error target for all three
-    # resolve_decision_* call states. Mirrors autodev.yaml's
+    # BUG-3065: shared fallthrough target for all three resolve_decision_*
+    # call states (via check_decide_rate_limited when no rate-limit marker
+    # exists). Mirrors autodev.yaml's
     # record_decision_unresolved so the DECISION_UNRESOLVED ledger contract
     # auto-refine-and-implement.yaml:840 reads holds regardless of which loop
     # resolved (or failed to resolve) the decision — this loop is now
@@ -817,8 +907,10 @@ states:
       ID="${captured.issue_id.output}"
       echo "$ID" >> ${context.run_dir}/autodev-decision-unresolved.txt
       # BUG-2729 postmortem: never flip an already-resolved issue to deferred.
+      # raw_status is the lowercase canonical field; the display-cased `status`
+      # renders done as "Completed", which left the "done" branch dead.
       STATUS=$(ll-issues show "$ID" --json 2>/dev/null \
-        | python3 -c "import json,sys; print((json.load(sys.stdin).get('status') or '').lower())" \
+        | python3 -c "import json,sys; print((json.load(sys.stdin).get('raw_status') or '').lower())" \
         2>/dev/null || echo "")
       if [ "$STATUS" = "done" ] || [ "$STATUS" = "completed" ] || [ "$STATUS" = "cancelled" ]; then
         echo "[SKIP-DEFER] $ID already $STATUS; leaving status untouched"
@@ -831,6 +923,13 @@ states:
     on_error: failed
 
   done:
+    terminal: true
+
+  no_work:
+    # Clean empty-backlog exit (check_issue_resolved.on_no): the run found no
+    # issue to refine. Success terminal — not a failure edge target — so
+    # callers do not ledger it and refine-terminal-class stays unwritten
+    # (resolve_issue already cleared any stale copy).
     terminal: true
 
   diagnose:
@@ -868,7 +967,7 @@ states:
       - check_scores_from_file: ${captured.check_scores_from_file.stderr?}
       - breakdown_issue:        ${captured.breakdown_issue.stderr?}
       - confidence_check (sub-loop — no stderr channel; event stream instead):
-      ${captured.confidence_check.output?}
+      ${captured.confidence_check_events.output?}
 
       Using the exit code and the stderr/output block for the failing state:
       - A positive exit code such as 143 (128+15, SIGTERM) or 137 (128+9,
@@ -897,11 +996,40 @@ states:
     # Every stderr block is emitted inside a QUOTED heredoc: the engine
     # interpolates before bash sees the script, so quoting keeps arbitrary error
     # prose (quotes, `$`, backticks) from being re-tokenized as bash.
+    #
+    # failing_state / failing_exit_code are DERIVED from the per-state captures
+    # (at most one is nonzero: every diagnose source routes there immediately
+    # on its first error). ${prev.*} is NOT usable for them: diagnose runs
+    # between the failure and this state via `next:`, and the executor updates
+    # prev after a next:-routed state runs — so on the normal path prev is
+    # `diagnose` itself (exit 0). The diagnose_prev_* lines record that
+    # honestly; they carry the true failing state only when diagnose itself
+    # died at the API layer (its on_error route skips the prev update).
     action: |
       EVIDENCE=${context.run_dir}/refine-failure-evidence.txt
+      FAILING_STATE=''; FAILING_EXIT=''
+      for pair in \
+        resolve_issue=${captured.issue_id.exit_code?} \
+        check_lifetime_limit=${captured.check_lifetime_limit.exit_code?} \
+        refine_issue=${captured.refine_issue.exit_code?} \
+        refine_followup=${captured.refine_followup.exit_code?} \
+        check_outcome=${captured.check_outcome.exit_code?} \
+        check_refine_limit=${captured.check_refine_limit.exit_code?} \
+        check_scores_from_file=${captured.check_scores_from_file.exit_code?} \
+        breakdown_issue=${captured.breakdown_issue.exit_code?} \
+      ; do
+        s="$${pair%%=*}"; c="$${pair#*=}"
+        case "$c" in ''|0) ;; *) FAILING_STATE="$s"; FAILING_EXIT="$c" ;; esac
+      done
+      case "${captured.confidence_check.failure_terminal?}:${captured.confidence_check.terminated_by?}" in
+        True:*|*:error|*:timeout|*:max_steps)
+          [ -n "$FAILING_STATE" ] || { FAILING_STATE=confidence_check; FAILING_EXIT=sub-loop; } ;;
+      esac
       {
-        printf 'failing_state: %s\n' '${prev.state}'
-        printf 'failing_exit_code: %s\n' '${prev.exit_code}'
+        printf 'failing_state: %s\n' "$${FAILING_STATE:-unknown}"
+        printf 'failing_exit_code: %s\n' "$${FAILING_EXIT:-unknown}"
+        printf 'diagnose_prev_state: %s\n' '${prev.state}'
+        printf 'diagnose_prev_exit: %s\n' '${prev.exit_code}'
         printf 'issue: %s\n' '${captured.issue_id.output?}'
         printf 'run_dir: %s\n' '${context.run_dir}'
         printf '\n--- captured exit codes ---\n'
@@ -939,7 +1067,7 @@ states:
         cat <<'LL_STDERR_EOF' | tail -40
       ${captured.breakdown_issue.stderr?}
       LL_STDERR_EOF
-        printf 'failing_state_output_tail:\n'
+        printf 'prev_output_tail:\n'
         cat <<'LL_STDERR_EOF' | tail -40
       ${prev.output?}
       LL_STDERR_EOF
@@ -951,9 +1079,13 @@ states:
 
   classify_terminal:
     # ENH-2727: emit a machine-readable termination-class sentinel for autodev's
-    # skip path to consume. Reached only from diagnose — the sole route to the
-    # `failed` terminal — so it always runs on the failed path and never on the
-    # done path. Classifies THIS run's failure as `infra` when the failing state
+    # skip path to consume. Reached from the diagnose path and as the
+    # on_max_steps fall-through (one execution at the step cap; `next: failed`
+    # does not run on that path). The other routes to `failed`
+    # (record_decision_unresolved, write_broke_down.on_error,
+    # mark_rate_limit_infra) bypass this state — the first two by design write
+    # no class, the third writes its own. Never runs on the done path.
+    # Classifies THIS run's failure as `infra` when the failing state
     # was killed externally (exit 143/137/124 = SIGTERM/OOM/timeout, or a
     # negative signal code) — a re-runnable transient — else `quality` (a genuine
     # refine defect that needs human attention).
@@ -1000,3 +1132,8 @@ states:
 
   failed:
     terminal: true
+    # Explicit rather than relying on the FAILURE_TERMINAL_NAMES name-inference
+    # default (fsm/schema.py): autodev's refine_current.on_failure routing and
+    # the refine-terminal-class contract both hang off this flag surviving any
+    # future rename.
+    failure: true
