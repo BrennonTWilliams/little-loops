@@ -3,10 +3,11 @@ id: BUG-3341
 type: BUG
 title: Convert class-B LLM-output interpolations to heredoc-to-file
 priority: P2
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-08-27'
 captured_at: '2026-08-27T17:51:35Z'
+completed_at: '2026-08-28T22:01:07Z'
 parent: EPIC-3336
 blocked_by:
 - ENH-3337
@@ -294,8 +295,8 @@ No Python API change; this is a per-site edit inside loop YAML action strings.
 - `interpolate(template, ctx)`
   (`scripts/little_loops/fsm/interpolation.py:209`) — substitutes the captured
   value into the `cat >` heredoc body. Unchanged.
-- `_run_action(...)` (`scripts/little_loops/fsm/executor.py:2097`, write site at
-  `:2370-2391`) — populates `self.captured[state.capture]`. **Unchanged** — this
+- `_run_action(...)` (`scripts/little_loops/fsm/executor.py:2153`, write site at
+  `:2425-2434`) — populates `self.captured[state.capture]`. **Unchanged** — this
   is where Option A would have added a `path` key, and Option B is what avoids
   touching it.
 
@@ -358,7 +359,7 @@ Per class-B site:
 
 _Added by `/ll:refine-issue` — 2026-08-28 — based on codebase analysis:_
 
-- Anchors have drifted since this issue's last refine (intervening BUG-3339, BUG-3340, ENH-3337 commits shifted line numbers; substitution mechanics themselves are unchanged): `InterpolationContext.resolve()` is now at `interpolation.py:78` (was cited as part of `:209`); `interpolate()` is now at `interpolation.py:274` (issue's Signatures cited `:209`); `_run_action()` now starts at `executor.py:2110` (issue cited `:2097`); the capture write-back (`self.captured[state.capture] = {...}`) is now at `executor.py:2381-2403` (issue cited `:2370-2391`); MR-11's `_UNSAFE_CONTEXT_INTERP_RE` is now at `scripts/little_loops/fsm/validation/shell_safety.py:34-36` (issue's Current Behavior section cited `:33-35`). The substitution order (`resolve()` → `interpolate()` → `bash -c` argv) and `:default=`/`:shell` suffix composition are confirmed unchanged.
+- Anchors have drifted since this issue's last refine (intervening BUG-3339, BUG-3340, ENH-3337 commits shifted line numbers; substitution mechanics themselves are unchanged): `InterpolationContext.resolve()` is now at `interpolation.py:78` (was cited as part of `:209`); `interpolate()` is now at `interpolation.py:274` (issue's Signatures cited `:209`); `_run_action()` now starts at `executor.py:2153` (issue previously cited `:2097`, then `:2110` — both stale); the capture write-back (`self.captured[state.capture] = {...}`) is now at `executor.py:2425-2434` (issue previously cited `:2370-2391`, then `:2381-2403` — both stale); MR-11's `_UNSAFE_CONTEXT_INTERP_RE` is now at `scripts/little_loops/fsm/validation/shell_safety.py:34-36` (issue's Current Behavior section cited `:33-35`, confirmed current — no further drift). The substitution order (`resolve()` → `interpolate()` → `bash -c` argv) and `:default=`/`:shell` suffix composition are confirmed unchanged. (Re-verified 2026-08-28 by `/ll:ready-issue`; Signatures section updated to match.)
 - `classify_site()` (`interp_sweep.py:59-82`) classifies any namespace it has no explicit verdict for as `"B"` as a safe-direction fallback. This means some baseline `class: "B"` entries are not `captured.*`/`prev.output`/`prev.stderr` sites at all but unrecognized namespaces caught by this fallback — e.g. `loops/oracles/generator-evaluator-flux.yaml`'s `synthesize` state has a class-B baseline entry for `state.iteration` via this rule, not the captured/prev rule Decision Rule 0 through 5 are written against. Decision Rule 0's `${context.run_dir}` substitution check does not cover this case — a per-site judgment is needed on whether an unrecognized-namespace B entry is genuinely LLM/command output requiring Option B, or a different kind of site the fallback is only guarding against defensively.
 
 ## Implementation Steps
@@ -428,11 +429,52 @@ with the `brainstorm.yaml` precedent and with run-dir artifact isolation (MR
 rule: write under `${context.run_dir}/`, never bare `.loops/tmp/`). No cleanup
 step is added — run dirs are already managed as a unit.
 
+## Resolution
+
+Converted all 82 class-B baseline entries across 25 loop YAML files:
+
+- **21 `captured.run_dir.output` sites** (Decision Rule 0): substituted
+  `os.path.abspath("${context.run_dir}")` for the raw capture, wrapped in
+  `os.path.abspath()` uniformly (including the two files with an
+  absolutize-guard init state — `mechanize-skills.yaml`,
+  `workflow-generator.yaml` — where Rule 0's own trap warning applies) so
+  path semantics hold regardless of whether `context.run_dir` is relative or
+  absolute at that state. `brainstorm.yaml`, `cli-anything-bootstrap.yaml`,
+  and `rn-implement.yaml`'s three sites needed no init-state changes.
+- **58 remaining sites**: converted to the canonical Option B
+  heredoc-to-file block (`LL_RAW_9F3C1A7E_EOF` sentinel,
+  `<state>-<capture>.txt` filename, `check_gate_blocked-gate.extracted.txt`
+  for the one dotted-path site), preserving `:default=` semantics on the
+  `finalize_present_result` sites shared by `loop-composer.yaml`,
+  `loop-composer-adaptive.yaml`, and `goal-cluster.yaml`.
+- **3 comment-only false positives** (`lib/composer.yaml`,
+  `refine-to-ready-issue.yaml`, `generator-evaluator-flux.yaml`): the
+  scanner matched a `${captured.*}`/`${state.*}` token inside prose
+  explaining why that interpolation is *not* used live; reworded rather than
+  converted, since there was no real interpolation to fix.
+
+ENH-3338's baseline (`loop_interpolation_baseline.json`) now holds zero
+class-B entries across all 151 scanned sites (AC 1). No loop sets
+`unsafe_context_interpolation_ok`. Updated the handful of unit tests that
+hand-substitute `${captured.run_dir.output}` / `${captured.*.output}`
+tokens directly (they needed the new `${context.run_dir}` token added to
+their replacement chains) and one narrow AC-7 test
+(`test_mechanize_skills_validate_diagnosis_is_one_site`) whose pinned site
+is now `context.run_dir`/class C by design.
+
+`python -m pytest scripts/tests/` is green except three pre-existing
+failures already present on `main` before this issue
+(`test_no_new_unverifiable_evidence`, `test_readme_matches_repo_root`,
+`test_no_prose_dependency_drift_in_repo`) — confirmed via `git stash`
+against the unmodified tree.
+
 ## Status
 
-**Open** | Created: 2026-08-27 | Priority: P2
+**Done** | Created: 2026-08-27 | Priority: P2
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-28T22:00:10 - `b3e06a3f-a711-4aff-b397-97e241557980.jsonl`
+- `/ll:ready-issue` - 2026-08-28T20:45:40 - `443665d2-f01e-4ae2-b4d2-6cfb947bc5ba.jsonl`
 - `/ll:confidence-check` - 2026-08-28T20:41:45 - `bee584c2-5fe3-4187-93b9-2e213fdcc96f.jsonl`
 - `/ll:confidence-check` - 2026-08-28T20:21:57 - `46a8948d-5f27-4b55-9948-2076e278ec4c.jsonl`
 - `/ll:reconcile-issue` - 2026-08-28T19:54:53 - `80a08f28-6a5c-42b2-8c75-c8e70076692b.jsonl`
