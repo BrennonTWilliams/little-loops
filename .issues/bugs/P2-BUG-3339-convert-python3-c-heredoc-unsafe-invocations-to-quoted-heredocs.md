@@ -8,9 +8,20 @@ discovered_by: ll-issues-create
 discovered_date: '2026-08-27'
 captured_at: '2026-08-27T17:51:35Z'
 parent: EPIC-3336
-blocked_by: [ENH-3337, ENH-3338]
-blocks: [BUG-3340, BUG-3341, ENH-3347]
+blocked_by:
+- ENH-3337
+- ENH-3338
+blocks:
+- BUG-3340
+- BUG-3341
+- ENH-3347
 reconcile_attempted: true
+confidence_score: 100
+outcome_confidence: 62
+score_complexity: 9
+score_test_coverage: 10
+score_ambiguity: 18
+score_change_surface: 25
 ---
 
 # BUG-3339: Convert python3 -c heredoc-unsafe invocations to quoted heredocs
@@ -474,7 +485,19 @@ _Added by `/ll:refine-issue` — 2026-08-28 — based on codebase analysis:_
 **Open** | Created: 2026-08-27 | Priority: P2
 
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-08-28_
+
+**Readiness Score**: 100/100 → PROCEED
+**Outcome Confidence**: 62/100 → MODERATE
+
+### Outcome Risk Factors
+- Broad enumeration across ~28 change sites in 12 files (Breadth 0/12) — a high site count raises the odds one site is missed or malformed during the sweep, even though most sites are mechanical token swaps.
+- Only 2 of 12 target files (`sft-corpus.yaml`, `autodev.yaml`) have dedicated test modules; the other 10 rely solely on `ll-loop validate`, a structural/static linter that won't catch a behaviorally-broken Python body until the affected state actually runs — mitigate by exercising the structurally-entangled sites (`code-run-gate.yaml:438`, the `autodev.yaml` pipe-fed groups, `general-task.yaml:895-902`) directly per Acceptance Criterion #4.
+
 ## Session Log
+- `/ll:confidence-check` - 2026-08-28T16:59:31 - `5e4f9ac6-d048-48b7-a0cd-6e184370a286.jsonl`
 - `/ll:reconcile-issue` - 2026-08-28T16:54:12 - `1f800b67-df1c-4ef2-913d-0f4cba863bf8.jsonl`
 - `/ll:refine-issue` - 2026-08-28T16:27:59 - `b3de8990-2254-46d0-8e9a-792563a8e929.jsonl`
 - `/ll:refine-issue` - 2026-08-28T03:15:15 - `21c2bc4e-6e06-47c6-a164-ddb166a7cfff.jsonl`
