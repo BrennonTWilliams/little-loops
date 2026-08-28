@@ -433,5 +433,17 @@ No runtime path — validation only.
 
 **Open** | Created: 2026-08-27 | Priority: P2
 
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): This issue shares
+`scripts/tests/test_builtin_loops.py` with [ENH-3347]. ENH-3347 adds the four
+behavioral injection/quote-breaking test cases; this issue adds the
+marker-count ratchet assertion (AC 8c) and keeps ENH-3338's baseline test
+green. The existing `blocked_by`/`blocks` edge (ENH-3347 blocks this issue)
+already sequences the edits — land in that order.
+
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-08-28T02:22:57 - `bd65b096-20a2-4a7e-b430-c4b13ac5b81d.jsonl`
 - `/ll:scope-epic` - 2026-08-27T17:51:45 - `c766dcf0-a664-4805-9c8a-6eba323145c8.jsonl`

@@ -196,3 +196,18 @@ Do not assert on stdout content; a conversion may legitimately change formatting
 ## Status
 
 **Open** | Created: 2026-08-27 | Priority: P2
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): This issue shares
+`scripts/tests/test_builtin_loops.py` with [ENH-3342]. This issue adds the
+four behavioral injection/quote-breaking test cases; ENH-3342 adds the
+marker-count ratchet assertion (AC 8c) and keeps ENH-3338's baseline test
+green. The existing `blocked_by`/`blocks` edge (this issue blocks ENH-3342)
+already sequences the edits — land in that order.
+
+
+## Session Log
+- `/ll:audit-issue-conflicts` - 2026-08-28T02:22:58 - `bd65b096-20a2-4a7e-b430-c4b13ac5b81d.jsonl`

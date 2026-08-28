@@ -15,6 +15,8 @@ score_test_coverage: 13
 score_ambiguity: 20
 score_change_surface: 22
 decision_needed: false
+relates_to:
+- BUG-3340
 ---
 
 # BUG-3334: Untrusted captured output is interpolated unfenced into prompt actions
@@ -242,7 +244,7 @@ already-safe example rather than a target). **This issue claims them.**~~
 constructs, lines 509-558), keeping adjacent lines in the same heredoc under one
 issue as this paragraph required — just a different one. Also established
 2026-08-28: the `:shell` modifier already exists (`interpolation.py:254`), so
-the lines-522/523 env-var binding is not blocked on BUG-3340 landing.
+the lines-522/523 env-var binding has no landing-order dependency on BUG-3340.
 
 ### Complete the survey mechanically
 
@@ -654,6 +656,22 @@ _Added by `/ll:refine-issue` — 2026-08-28 — based on codebase analysis:_
 - `scripts/tests/test_builtin_loops.py:18703-18839` — item 3's delivered code now has exact citations (previously only narrated by name): `UNTRUSTED_OUTPUT_SITES` (18715-18741, 13 three-element tuples keyed `(loop_file, state_name, matched_interpolation_string)`), `KNOWN_INDIRECT_UNTRUSTED_OUTPUT_SITES` (18750-18753), `_direct_ref_pattern`/`_merge_ref_pattern` (18756-18765), `_discover_untrusted_output_sites` (18768-18793), `class TestUntrustedOutputSurvey` (18796-18839: `test_completeness_guard` 18811-18820, `test_known_indirect_sites_chain_still_present` 18822-18839).
 - `scripts/little_loops/fsm/fence.py` confirmed unchanged at 165 lines against the current working tree — no `FENCE_CORE_UNTRUSTED_OUTPUT` or `UNTRUSTED_OUTPUT_ROLES` symbol exists anywhere in the codebase yet; both names appear only in this issue's own markdown and a `.ll/decisions.d/` fragment. Items 1-2 remain genuinely unstarted.
 
+### Behavior Parity
+
+_Added 2026-08-28 — clears the `missing_behavior_parity` gate flagged against
+`scripts/little_loops/loops/loop-router.yaml` by the most recent Confidence
+Check. Only the `review` state's `sub_loop_output` handling is replaced; every
+other behavior in the file, and every other site this issue touches by fencing
+in place, is additive and carries no parity row._
+
+| Artifact | Behavior | Disposition | Notes |
+|---|---|---|---|
+| `loop-router.yaml::review` — `${captured.sub_loop_output.output}` interpolated directly into the prompt text | The model reads the sub-loop's full JSONL event stream inline, as part of the assembled prompt string | DROPPED | Per Open Questions → resolved hybrid: the raw interpolation is removed entirely, not fenced. A new shell state binds `sub_loop_output` via the `:shell:default=` suffix (confirmed available, see Program Design) and writes it to `${context.run_dir}/sub-loop-events.jsonl`. |
+| `loop-router.yaml::review` — model's access to the event stream | Content arrives pre-loaded in the prompt; no tool call needed to see it | CHANGED | The model must issue a `Read` on the written path to see the stream. `review`'s prompt is edited to reference the path instead of the content. This is the cost the Open Question 2 resolution explicitly weighs ("it changes `review` from a self-contained prompt into one that depends on a file-reading tool being available to the host"). |
+| `loop-router.yaml::review` — `${context.goal}` GOAL fence | Fenced per BUG-3327, unchanged by this issue | PRESERVED | No second fence is added at this site — the path-reference change makes an EVENT_STREAM fence unnecessary here (see Open Question 2 resolution). |
+| `loop-router.yaml::review` — `${captured.chosen.output}` | Interpolated raw (a loop filename from the router's own catalog) | PRESERVED | Explicitly exempted from tier A (Scope); joins `KNOWN_UNFENCED_UNTRUSTED_OUTPUT_SITES` with a reason comment, not fenced or path-referenced. |
+| `loop-composer.yaml::review_chain` / `loop-composer-adaptive.yaml::review_chain` — `${captured.step_results_json.output}` | Interpolated raw | CHANGED | Fenced in place with `render_fence(..., core=FENCE_CORE_UNTRUSTED_OUTPUT)` and a nonce-suffixed marker — content and delivery mechanism unchanged, only the surrounding marker text is added. Not a DROPPED/replaced case like `sub_loop_output`, since these sites are pre-bounded at 500 chars/step and were not selected for the path-reference treatment. |
+
 ### Files to Modify
 - `scripts/little_loops/loops/loop-router.yaml` — `review` (lines 411-437): ~~fence `${captured.chosen.output}` (line 428) and `${captured.sub_loop_output.output}` (lines 430-431)~~ — **corrected 2026-08-28 to match Scope and the Open Question 2 resolution:** `chosen` is exempt (dropped from tier A, joins `KNOWN_UNFENCED_UNTRUSTED_OUTPUT_SITES`); `sub_loop_output` is **not fenced but removed from the prompt entirely** — add a shell state writing it to `${context.run_dir}/sub-loop-events.jsonl` via `:shell` env-var binding and have `review` reference the path; `propose_new_loop` (lines 452-478): fence `${captured.catalog.output}` (line ~469, tier-C, listed not scheduled)
 - `scripts/little_loops/loops/loop-composer.yaml` — `review_chain` (lines 453-488): fence `${captured.step_results_json.output}` (line 474)
@@ -713,6 +731,12 @@ _Wiring pass added by `/ll:wire-issue` — 2026-08-27:_
 _Added by `/ll:refine-issue` — 2026-08-28 — based on codebase analysis:_
 
 - `UNTRUSTED_OUTPUT_SITES` (`scripts/tests/test_builtin_loops.py:18715-18741`, item 3's delivered discovery table) is keyed as 3-element tuples `(loop_file, state_name, matched_interpolation_string)`, not `FENCE_ROLES`'s 2-element `(loop_file, state_name)` — a single state can host multiple distinct `${captured...}` matches (e.g. `rn-build.yaml::synthesize_result` appears twice, once for `eval_result` and once for `cluster_result`, lines 18720-18721). The future `UNTRUSTED_OUTPUT_ROLES` dict (item 2, still unwritten) is not required to reuse this key shape, but if its key shape diverges from `UNTRUSTED_OUTPUT_SITES`'s, the completeness guard's notion of "site" and the fencing-role table's notion of "site" will disagree at the sites where one state has multiple captured-output vars.
+
+_Added by `/ll:refine-issue` — 2026-08-28 — based on codebase analysis:_
+
+Confirmed against the working tree (2026-08-28, post-BUG-3349/commit d8d3476a1): `scripts/little_loops/fsm/interpolation.py`'s `interpolate()` (lines 209-293) now supports a combined `:shell:default=value` suffix — `:shell` and `:default=` are no longer mutually exclusive (they were, before this commit). When the resolved value is missing, the fallback in `:default=` is itself `shlex.quote()`-d exactly like a resolved value would be (interpolation.py:246-256, 260-262). This is the exact mechanism the decided Open Question 2 path-reference approach for `loop-router.yaml::review`'s `sub_loop_output` needs: writing the stream to `${context.run_dir}/sub-loop-events.jsonl` via an env-var-bound shell state can now use `${captured.sub_loop_output.output:shell:default=}` (or an equivalent literal fallback) to bind it safely into a shell/heredoc context in one step, with no separate landing-order dependency (already noted as resolved, but the *combined* suffix — as opposed to bare `:shell` used alone — is the new confirmed detail). Caveat: bare `:shell` with no `:default=` still raises `InterpolationError` on a missing path (no fallback branch exists for that case) — the shell state binding `sub_loop_output` must use the combined `:shell:default=` form, not bare `:shell`, since the capture can be absent if the dispatch/prompt path failed upstream. Test coverage for this suffix already exists: `scripts/tests/test_fsm_interpolation.py::test_shell_default_combined_missing_path_emits_quoted_fallback` (line 886) and `::test_shell_default_combined_present_path_emits_quoted_value` (line 898).
+
+Also reconfirmed: `scripts/little_loops/fsm/fence.py` is still unchanged (no `FENCE_CORE_UNTRUSTED_OUTPUT` or `UNTRUSTED_OUTPUT_ROLES` symbol exists) — item 2 remains genuinely unstarted. `scripts/tests/test_builtin_loops.py:18712-18714` carries an explicit `NOTE(BUG-3334 item 2)` comment marking `UNTRUSTED_OUTPUT_SITES`/`KNOWN_INDIRECT_UNTRUSTED_OUTPUT_SITES` as the promotion target once fencing is implemented.
 
 ### Types
 - `FENCE_ROLES: dict[tuple[str, str], tuple[str, str, str, str]]` (`scripts/little_loops/fsm/fence.py:75`) — keyed by `(loop_file, state_name)`, valued `(noun, role, verbs, var)`. ~~new untrusted-output sites add entries to this same dict (or a parallel dict if Open Questions resolves toward a second constant)~~ — **corrected by review pass, 2026-08-27: `FENCE_ROLES` is not extended at all.** Adding to it is impossible for the three sites that need two fences (key collision, see Decision Rationale) and unnecessary for the rest. This dict is left untouched, which is also what keeps BUG-3327's 13 shipped sites and their tests green.
@@ -845,6 +869,10 @@ _Added by `/ll:refine-issue` — 2026-08-27 — based on codebase analysis:_
 BUG-3331's current status contradicts this issue's Proposed Solution item 1 and Sequencing note. Verified via `ll-issues show BUG-3331` (2026-08-27): BUG-3331 is `status: cancelled`, `Superseded by: EPIC-3336` — it was split into EPIC-3336's children (ENH-3337, ENH-3338, BUG-3339, BUG-3340, ENH-3342, ENH-3345), all currently `open`/`in_progress` per the working tree's git status. BUG-3331 is not "already rewriting" `loop-router.yaml:509-558` as Proposed Solution item 1 assumes — it will never rewrite anything; it has no active body of work.
 
 Checked whether any EPIC-3336 child instead covers this: BUG-3339's own scope table lists `finalize_present_result:509-557` (the block containing both the `review_out = """${captured...}"""` triple-quote at line 523 and the unanchored `re.search` at line 544) as an **already-converted, safe-shape example** — i.e. a site BUG-3339 cites as *not* needing further conversion, not a site it targets. BUG-3340 (scalar-interpolation-to-env-var-binding) was not checked against this specific line in this pass; if its scope also excludes `finalize_present_result:523`, then no currently-open issue owns the raw-triple-quote defect that sits one line above the `re.search` this issue's Proposed Solution item 1 wants to anchor — the two fixes (anchor the regex; fix the quoting) would need to land in the same edit regardless of which issue's scope claims it, since they are adjacent lines in the same Python heredoc block.
+
+_Added by `/ll:refine-issue` — 2026-08-28 — based on codebase analysis:_
+
+BUG-3349 (loop-router `finalize_present_result` hardening, this issue's spun-out former item 1) is now `status: done` — landed 2026-08-27 in commit `d8d3476a1` ("fix(fsm): anchor finalize_present_result parses and stop literal-interpolating model output"), which anchored the four unanchored parses and replaced the two raw triple-quoted-literal interpolations with `:shell`-bound env vars. The Sequencing note's "BUG-3349 remains open" framing and the most recent Confidence Check's "BUG-3349 ... still open" concern are both stale as of this commit. The commit touched `loop-router.yaml`'s `finalize_present_result` (lines 509-558 at draft time) only — no overlap with this issue's `review` state (411-451) or the new shell-state work `review` will need, so the prior "no line-range collision, land BUG-3349 first to keep anchors stable" guidance is confirmed correct in hindsight and needs no correction, only a status update.
 
 ## Status
 
@@ -999,6 +1027,7 @@ _Added by `/ll:confidence-check` on 2026-08-27_
 - Add a `### Behavior Parity` subsection to the issue (or to `loop-router.yaml`'s own docs) describing what the new shell-state-plus-path-reference mechanism replaces, to clear the `missing_behavior_parity` gate.
 
 ## Session Log
+- `/ll:refine-issue` - 2026-08-28T01:53:57 - `70aa94f1-e630-42c3-805a-03afcbda0b82.jsonl`
 - `/ll:confidence-check` - 2026-08-28T01:11:19 - `fe4d90cd-470c-49c6-ade3-2aad37f948af.jsonl`
 - `/ll:refine-issue` - 2026-08-28T01:01:26 - `287d64ad-a891-4610-a9c5-2de3df010aa4.jsonl`
 - `/ll:decide-issue` - 2026-08-28T00:39:52 - `272a435e-c458-4312-a8ae-849a96be5179.jsonl`
