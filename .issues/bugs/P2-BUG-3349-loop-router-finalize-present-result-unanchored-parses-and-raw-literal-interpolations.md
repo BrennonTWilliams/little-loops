@@ -1,13 +1,20 @@
 ---
 id: BUG-3349
 type: BUG
-title: loop-router finalize_present_result parses model output unanchored and interpolates it into Python literals
+title: loop-router finalize_present_result parses model output unanchored and interpolates
+  it into Python literals
 priority: P2
 status: open
 discovered_by: split-from-BUG-3334
 discovered_date: '2026-08-28'
 captured_at: '2026-08-28T00:00:00Z'
 decision_needed: false
+confidence_score: 96
+outcome_confidence: 84
+score_complexity: 22
+score_test_coverage: 15
+score_ambiguity: 22
+score_change_surface: 25
 ---
 
 # BUG-3349: loop-router finalize_present_result parses model output unanchored and interpolates it into Python literals
@@ -69,8 +76,8 @@ Verdict flip, line 544:
 
   ```yaml
   action: |
-    LL_PROPOSAL_OUT=${captured.new_loop_proposal.output:shell} \
-    LL_REVIEW_OUT=${captured.review_result.output:shell} \
+    LL_PROPOSAL_OUT=${captured.new_loop_proposal.output:shell:default=} \
+    LL_REVIEW_OUT=${captured.review_result.output:shell:default=} \
     python3 << 'PYEOF'
     import os
     proposal_out = os.environ.get('LL_PROPOSAL_OUT', '')
@@ -81,9 +88,31 @@ Verdict flip, line 544:
   (Exact spelling at implementation time; the requirement is that no captured
   model output appears inside a Python string literal.)
 
-  Note: `:shell` and `:default=` are mutually exclusive
-  (`interpolation.py:245-248`) — the current `:default=` on lines 522-523 is
-  replaced by the `os.environ.get(..., '')` default on the Python side.
+- **Prerequisite: `interpolation.py` must allow `:shell` to compose with a
+  missing-path fallback.** On the current tree, `:shell` is mutually
+  exclusive with both `:default=` and `?` (`interpolation.py:242-250`), and
+  a bare `:shell` on a missing path propagates `InterpolationError` — the
+  `except` clause at `interpolation.py:275-280` only rescues when
+  `default_value` or `nullable` is set. This matters because the two
+  captures live on **mutually exclusive branches**: `review_result` is
+  captured only on the dispatch path (`loop-router.yaml:438`) and
+  `new_loop_proposal` only on the propose path (line 478), so exactly one
+  of them is always missing when `finalize_present_result` runs — that is
+  why the current code carries `:default=`. A bare-`:shell` binding as
+  originally drafted here would raise on **every** run, and since
+  interpolation happens before bash executes, the Python-side
+  `os.environ.get(..., '')` default never gets a chance; the action would
+  fail wholesale and route to `finalize_failed`.
+
+  Required change: support the combined form `${...:shell:default=<v>}` in
+  `interpolation.py` — resolve the path; on a missing path substitute `<v>`;
+  shlex-quote whatever value is emitted (resolved or fallback). Parsing note:
+  the existing `:default=`-first split already sees `var_part` ending in
+  `:shell` and raises "Ambiguous suffix" (`interpolation.py:242-248`) —
+  that branch becomes the legal combined form. Bare `:shell` on a missing
+  path stays an error (unchanged). The unsafe alternative — a double-quoted
+  bash assignment with `?` — is rejected: `$(...)`/backticks in model output
+  would execute.
 
 ## Integration Map
 
@@ -91,7 +120,7 @@ Verdict flip, line 544:
 
 _Added by `/ll:refine-issue` — 2026-08-28 — based on codebase analysis:_
 
-- **Files to Modify**: `scripts/little_loops/loops/loop-router.yaml` — `finalize_present_result` state, lines 509-558 (confirmed unchanged from issue's cited range)
+- **Files to Modify**: `scripts/little_loops/loops/loop-router.yaml` — `finalize_present_result` state, lines 509-558 (confirmed unchanged from issue's cited range); `scripts/little_loops/fsm/interpolation.py` — suffix parser in `replace_var()` (lines 230-280) gains the `:shell:default=` combined form (see Expected Behavior prerequisite)
 - **Dependent Files (Callers/Importers)**: `scripts/tests/test_loop_router.py` — `TestLoopRouterStates.REQUIRED_STATES` (lines 76-97) exercises `loop-router.yaml` states but does not currently include `finalize_present_result`; `scripts/little_loops/fsm/executor.py:2864` — `action_type == "shell"` execution path that runs this heredoc
 - **Convention**: every other captured-model-output parse site in this codebase uses the same unanchored first-match `re.search` shape this issue fixes (`loop-router.yaml:202-205,270-273`; `lib/rubric-router.yaml:77`; `lib/policy-router.yaml:88`; `goal-cluster.yaml:210,567,643`; `loop-composer-adaptive.yaml:527,579`; `apply-research.yaml:171,309`; `rn-build.yaml:534,537,641`). This issue's fix would be the first `re.MULTILINE`-anchored parse of captured model output anywhere in the codebase — the sole existing `re.MULTILINE` hit (`autodev.yaml:417`) parses static issue-body markdown, not model/loop output.
 - **Convention**: the `:shell` interpolation modifier (`scripts/little_loops/fsm/interpolation.py:254-256`; mutual exclusivity with `:default=` enforced at lines 242-250) is used at 11+ sites across loop YAMLs, always binding `${context.*}` values (task/description/config strings). No existing site applies `:shell` to a `${captured.*}` reference — this fix's `${captured...:shell}` usage has no direct precedent confirming the combination works, though nothing in `interpolation.py` restricts `:shell` to the `context` namespace.
@@ -112,8 +141,17 @@ module.
 ### Signatures
 
 - `_field(key: str) -> str` — existing helper inside the heredoc
-  (`loop-router.yaml:~527`); gains `re.MULTILINE` on its internal
-  `re.search(key + r':(.*)', proposal_out)` call.
+  (`loop-router.yaml:~527`); its internal search becomes
+  `re.search('^' + key + r':(.*)', proposal_out, re.MULTILINE)` — the `^`
+  anchor is required alongside the flag (`re.MULTILINE` without `^` changes
+  nothing).
+- `interpolate()` / `replace_var()` (`scripts/little_loops/fsm/interpolation.py:230-280`)
+  — the suffix parser gains the combined `:shell:default=<v>` form: on the
+  `:default=` split, a `var_part` ending in `:shell` no longer raises
+  "Ambiguous suffix"; instead it sets both `shell_quote` and
+  `default_value`, and the fallback value is shlex-quoted on emission the
+  same as a resolved value. `?` + `:shell` remains unsupported; bare
+  `:shell` on a missing path remains an error.
 - Module-level heredoc statements (not functions) change shape:
   - `has_proposal = bool(re.search(r'^PROPOSED_NAME:', proposal_out, re.MULTILINE))`
     replaces the current `'PROPOSED_NAME:' in proposal_out` substring test.
@@ -165,10 +203,18 @@ _Added by `/ll:refine-issue` — 2026-08-28 — based on codebase analysis:_
 
 No test loads or executes `finalize_present_result` today (0 hits in
 `scripts/tests/test_builtin_loops.py`). Write one from scratch following the
-`TestClassifyTerminal._run_classify_terminal` precedent
+`TestRefineToReadyIssueSubLoop._run_classify_terminal` precedent
 (`test_builtin_loops.py:2120-2139`): extract the state's raw `action:` text,
 substitute `${captured.*}` refs with synthetic values, run via
 `subprocess.run(["bash", "-c", script], ...)`, assert on the printed JSON.
+
+**Substitution must mirror runtime quoting**: after this fix the refs carry
+`:shell:default=`, so the test's substitution regex must match that suffix
+and replace each ref with the `shlex.quote()`d synthetic value (missing
+capture → `shlex.quote('')`). Substituting raw unquoted text would make the
+triple-quote case pass for the wrong reason — at runtime the value reaches
+Python via the env var, and the test only exercises that path if its
+substitution quotes the same way interpolation does.
 
 Cases to cover at minimum:
 
@@ -180,6 +226,13 @@ Cases to cover at minimum:
 3. **Branch selection**: `PROPOSED_NAME:` appearing mid-line inside prose in
    `review_result`-era proposal output does not select the `propose_new`
    branch; a line-anchored `PROPOSED_NAME:` does.
+4. **Missing-capture interpolation** (unit tests in
+   `scripts/tests/test_fsm_interpolation.py`, alongside the existing
+   `:shell` suite at ~line 845): `${captured.x.output:shell:default=}` on a
+   missing path emits `''` (shlex-quoted empty); on a present path emits the
+   shlex-quoted value; bare `:shell` on a missing path still raises
+   `InterpolationError`. This case cannot be covered by the heredoc-extraction
+   test — the failure mode lives at interpolation time, before bash runs.
 
 ## Acceptance Criteria
 
@@ -188,8 +241,11 @@ Cases to cover at minimum:
 - [ ] Neither `${captured.new_loop_proposal.output}` nor
       `${captured.review_result.output}` appears inside a Python string
       literal; both reach Python via environment variables.
+- [ ] `interpolation.py` supports `${...:shell:default=<v>}` (shlex-quoted
+      fallback on missing path); bare `:shell` on a missing path still raises;
+      unit tests in `test_fsm_interpolation.py` cover both (Tests case 4).
 - [ ] A regression test executes the heredoc with the three synthetic-input
-      cases above and passes.
+      cases above and passes, substituting refs with shlex-quoted values.
 - [ ] `ll-loop validate` passes on `loop-router.yaml`.
 - [ ] Full suite (`python -m pytest scripts/tests/`) shows no new failures.
 
@@ -214,12 +270,17 @@ onward). Same source values, different sink, different remedy.
 - **BUG-3340** — file-level contention only: it edits `loop-router.yaml` at
   lines 34, 53, 192, 252, 345 — outside this block. No sequencing requirement;
   the `:shell` idiom it standardises already exists in `interpolation.py`.
+  Note: this issue now also edits `interpolation.py` (the `:shell:default=`
+  combined form) — a capability addition BUG-3340's standardisation can reuse,
+  but a second file-level contention point to be aware of if both run in
+  parallel.
 
 ## Impact
 
 - **Priority**: P2 — an incidentally-echoed token silently flips a success
   verdict; blast radius is a wrong success/failure summary, not data loss.
-- **Effort**: Small — one heredoc block plus one new test.
+- **Effort**: Small — one heredoc block, a ~10-line suffix-parser change in
+  `interpolation.py`, and two new test additions.
 - **Risk**: Low.
 - **Breaking Change**: No.
 
@@ -229,5 +290,6 @@ onward). Same source values, different sink, different remedy.
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-28T01:28:58 - `286a27cf-122d-45a3-9474-592c93a3cfca.jsonl`
 - `/ll:refine-issue` - 2026-08-28T01:20:27 - `7cbe469c-9cbd-4824-b712-5ef6f08221f0.jsonl`
 - `/ll:format-issue` - 2026-08-28T01:14:44 - `52d1fdcc-59ae-4471-83fd-cc9439286464.jsonl`
