@@ -277,7 +277,12 @@ instead of shipping green.
 ## Implementation Steps
 
 1. Filter ENH-3338's baseline to `class == "A"`; that is the work list. Reconcile
-   any divergence from the survey's 78 and note it in EPIC-3336.
+   any divergence from the survey's 78 and note it in EPIC-3336. Sites already
+   landed in final form by BUG-3339's structural carve-out (its Implementation
+   Step 8: the pipe-fed `autodev.yaml` threshold sites and
+   `code-run-gate.yaml:438`) will already be absent from the baseline — verify
+   they used this issue's conventions (`LL_ARG_` naming, no surrounding
+   quotes, typed coercion) rather than re-converting them.
 2. Convert loop by loop, one commit per file (or per small group), running
    `ll-loop validate` on each.
 3. Shrink the baseline's class-A entries in the **same commit** as each

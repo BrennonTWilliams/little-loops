@@ -46,7 +46,9 @@ Representative sites: `loop-router.yaml:127, 141, 185, 245, 338, 472`;
 (`sft-corpus.yaml:118, 139, 160, 181, 202, 223, 244, 265, 322`;
 `general-task.yaml:898`, plus `harness-optimize.yaml:164` — which BUG-3339
 determined is `action_type: prompt` and therefore not a live site) get BUG-3339's
-heredoc conversion first.
+heredoc conversion first. Note: under BUG-3339's structural carve-out (its
+Implementation Step 8), `general-task.yaml:895-902` may land in its final
+Option B form during BUG-3339 — check before re-converting it here.
 
 **MR-11 does not see any of this today** — its regex matches `${context.*}` only,
 with no `captured` alternation at all (`shell_safety.py:33-35`). Class B is
@@ -153,6 +155,19 @@ Four constraints on this block, each of which an earlier draft got wrong:
 `grep -rn LL_RAW_9F3C1A7E_EOF scripts/little_loops/loops/` is the canonical way to
 enumerate completed conversions.
 
+**Shipped divergent shapes are grandfathered, not normalized** (decided
+2026-08-28, resolving the tension flagged in Codebase Research Findings).
+`loop-router.yaml:512-513`'s env-var class-B conversion (BUG-3349) and the
+bespoke-sentinel data-sink writes in `brainstorm.yaml` (`RAWEOF`) and
+`loop-composer.yaml` / `loop-composer-adaptive.yaml` (`LL_PLAN_RAW_EOF`,
+`LL_STEP_OUTPUT_EOF`, `LL_REASSESS_EOF`) all scan clean under ENH-3338 and
+stay as they are; this issue does not rewrite them, and AC 2's grep-count
+therefore covers only sites this issue converts. The "uniformity with the
+shipped precedent" rationale for rejecting env-var binding is acknowledged
+as weakened — the corpus now ships both remedies — but Option B stands for
+new conversions on its file-based auditability and the per-site guidance
+already written here.
+
 ## Integration Map
 
 ### Files to Modify
@@ -169,6 +184,11 @@ Known `if`-nested targets requiring the hoist: `recursive-refine.yaml:82-83`,
 `rn-build.yaml:728-729`, `loop-composer-adaptive.yaml:744`.
 
 - `scripts/tests/data/loop_interpolation_baseline.json` (new) — created by ENH-3338 — shrink class-B entries in the same commit as each conversion.
+- **Depends on ENH-3338's data-sink heredoc rule** (its 2026-08-28 review
+  fix): the scanner must treat a `${captured.*}` inside a
+  `cat > … << 'MARKER'` write as clean (data sink, not a Python body).
+  Without it, every conversion here *adds* a class-B baseline entry instead
+  of removing one, and AC 1 is unreachable.
 
 **File contention:** runs strictly after BUG-3339 and BUG-3340; do not dispatch
 to a parallel epic branch.
@@ -236,6 +256,16 @@ as data.
 
 Per class-B site:
 
+0. **First check whether the site needs Option B at all** (review decision,
+   2026-08-28). Many class-B entries are `${captured.run_dir.output}` — a
+   captured run-dir path for which the runner-constructed
+   `${context.run_dir}` (class C, set at `executor.py:903`) is a one-token
+   substitution: e.g. `brainstorm.yaml:169, 186, 213`,
+   `mechanize-skills.yaml:286`. Where the captured value is just the
+   runner's own run dir, substitute `${context.run_dir}` instead of building
+   an Option B block — verify the loop doesn't deliberately point the
+   capture somewhere else before swapping. This likely shrinks the ~67-site
+   estimate materially.
 1. Derive the filename `<state>-<capture>.txt` from the state name and the
    capture variable name. Two captures in one state get two files.
 2. Place the `cat >` block at the action body's top level, above any `if`/`for`,

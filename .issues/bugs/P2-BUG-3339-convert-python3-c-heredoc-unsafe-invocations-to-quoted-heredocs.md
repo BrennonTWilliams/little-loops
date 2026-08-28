@@ -318,7 +318,7 @@ _Added by `/ll:refine-issue` — 2026-08-28 — based on codebase analysis:_
 - **No corpus precedent for piping command output directly into a heredoc's stdin** (`cmd | python3 << 'PYEOF'`) — a heredoc already occupies stdin, so this cannot be a literal conversion. The pipe-fed `-c "..."` sites this issue must convert (`autodev.yaml:1619,1739,1815`) have no existing heredoc analogue; the piped value must reach the heredoc some other way — e.g. the env-var-prefixed-invocation shape already used at `mechanize-skills.yaml:162` / `autodev.yaml:405` (`VAR="$VAR" python3 << 'PYEOF'`, read via `os.environ` inside the body) is an established pattern for getting a value into a heredoc without stdin.
 - An FSM-level alternative exists for exit-code-based branching without any bash-level `if`: `fragment: shell_exit` / `evaluate: type: exit_code` (`lib/common.yaml:14-21`, used at `autodev.yaml:1731-1746`) routes on a whole state's exit code directly — a different granularity than `code-run-gate.yaml:438`'s single embedded statement inside a larger `aggregate` state.
 - The corpus's existing idiom for embedding a `${context.*}` value as a Python literal directly inside a `<<'PYEOF'` heredoc (triple-quoted, e.g. `arg = """${context.scope}""".strip()` at `auto-refine-and-implement.yaml:144,215-216,352`) confirms a literal token swap is already a normal, used shape in this corpus — consistent with the plain conversion needed at `loop-router.yaml:discover_loops` and `lib/composer.yaml`.
-- **ENH-3337 (blocked_by) status: partially landed.** Its core `interpolation.py` composed `:shell:default=` suffix support already shipped as a side effect of BUG-3349 (done); `cli/loop/run.py:298-300` and `fsm/validation/shell_safety.py:183` still only recognize `:shell` as a *trailing* suffix and are unaffected — ENH-3337 remains open on that part of its scope. This doesn't change BUG-3339's own scope (its conversions don't use `:shell`), but the blocked_by dependency itself is not yet fully resolved.
+- **ENH-3337 (blocked_by) is fully resolved (status: done).** An earlier draft of this finding claimed `cli/loop/run.py` and `fsm/validation/shell_safety.py` still recognized only a *trailing* `:shell`; both now call the shared `parse_interpolation_suffixes()` and accept any supported suffix ordering (verified against source 2026-08-28). No residual ENH-3337 scope blocks this issue.
 
 ## Implementation Steps
 
@@ -351,6 +351,21 @@ _Added by `/ll:refine-issue` — 2026-08-28 — based on codebase analysis:_
    converted site that quotes a `${context.*}`/`${captured.*}` token is
    converted or `$${`-escaped in the same edit, not left to interpolate
    independently.
+8. **Final-form carve-out for structurally entangled sites** (review
+   decision, 2026-08-28). The pipe-fed sites (`autodev.yaml:1619-1653`,
+   `:1739-1746`, `:1815-1824`) cannot become pipe-fed heredocs — a heredoc
+   occupies stdin, and this issue's own research found no corpus precedent
+   for `cmd | python3 << 'PYEOF'` — and `code-run-gate.yaml:438` /
+   `general-task.yaml:895-902` need structural rework either way. An
+   intermediate heredoc form at these sites is throwaway work redone by
+   BUG-3340/BUG-3341. At these sites, land the final remedy directly in this
+   issue's edit — class-A values via the `LL_ARG_*=${...:shell}` env binding
+   per BUG-3340's conventions (typed coercion included: `int(...)` for the
+   `autodev.yaml` thresholds, `float(...)` for `min_pass_rate`); the class-B
+   value at `general-task.yaml:895-902` via BUG-3341's canonical Option B
+   block — shrinking the corresponding baseline entry in the same commit and
+   noting the pre-conversion in the downstream issue. All blockers permit
+   this: ENH-3337 is done.
 
 ## Acceptance Criteria
 
@@ -375,8 +390,18 @@ _Added by `/ll:refine-issue` — 2026-08-28 — based on codebase analysis:_
    `host_shape == "c-string"`), any divergence from the survey's "53 sites, 11
    files" is explained, and the reconciled count is recorded in EPIC-3336. The
    baseline — not the survey table — is what "every site" means.
-7. `python -m pytest scripts/tests/` exits 0 at every commit of this issue, with
-   ENH-3338's baseline shrinking in the same commit as each conversion.
+7. `python -m pytest scripts/tests/` exits 0 at every commit of this issue.
+   ENH-3338's baseline does **not** shrink for a plain heredoc conversion —
+   its comparison key `(file, state, var, class)` deliberately excludes
+   `host_shape`, so the site reads as unchanged; instead, update each
+   converted entry's informational `host_shape` field from `c-string` to
+   `heredoc` in the same commit. Only sites landed in final form under
+   Implementation Step 8's carve-out shrink the baseline here.
+8. Each structurally entangled site (Implementation Step 8) either received a
+   behavior-preserving heredoc conversion or was landed directly in its final
+   BUG-3340/BUG-3341 form, with the per-site choice recorded and the baseline
+   updated accordingly; the downstream issue is annotated so it does not
+   re-convert.
 
 ## Impact
 
