@@ -10,6 +10,8 @@ captured_at: '2026-08-27T19:56:34Z'
 depends_on:
 - ENH-3345
 - BUG-3348
+relates_to:
+- FEAT-3323
 decision_needed: false
 reconcile_attempted: true
 confidence_score: 90
@@ -45,7 +47,7 @@ Proposed additions to the `parallel.*` surface, each carrying `worker_id` (stabl
 
 Run-scoped identity: ENH-3345 landed (`d712e20b4`), but its stamping mechanism lives in `FSMExecutor._emit()`, which `parallel/` emitters never route through — it cannot be reused here. Instead, stamp `run_id` inline from `ParallelOrchestrator.run_id` (already exists, `orchestrator.py:123`) and thread it into `MergeCoordinator`/`IssuePriorityQueue` alongside `event_bus`; omit `loop`, which has no meaning for a parallel run.
 
-Acceptance: each new event type is emitted from the paths that already know the state change; every `parallel.*` event carries `run_id`, and every worker-scoped event carries `worker_id` and `issue_id` (`queue_changed` and `epic_branch_stale` are run-scoped, not worker-scoped); a consumer subscribed to `parallel.*` can reconstruct active-worker count and per-worker status at any point in a run without reading `.issues/` or the filesystem — **for parallel-dispatched issues** (sequential/P0 issues get `worker_started`, merge, and `queue_changed` events but no `worker_completed`; see Scope Boundaries); `docs/reference/EVENT-SCHEMA.md` documents each new type with its payload table; `docs/reference/schemas/` regenerated via `ll-generate-schemas`.
+Acceptance: see the formal `## Acceptance Criteria` section below (lifted from this summary and Success Metrics).
 
 
 ## Current Behavior
@@ -113,7 +115,7 @@ Key evidence: `worker_pool.py:187,297` (`_active_workers` keyed by `issue_id`), 
 - `docs/reference/EVENT-SCHEMA.md` — document each new event type and its payload table
 
 _Wiring pass added by `/ll:wire-issue`:_
-- `scripts/little_loops/observability/schema.py` — add six new `@dataclass(frozen=True)` `DESVariant` subclasses to the `DES_VARIANTS` registry (pattern: `ParallelWorkerCompletedVariant`/`ParallelEpicBranchStaleVariant`, `:489-507`); without these, `test_des_schema.py::test_variants_cover_all_schema_definitions` fails listing the six new `parallel.*` types as missing [Agent 1/2 finding]
+- `scripts/little_loops/observability/schema.py` — add six new `@dataclass(frozen=True)` `DESVariant` subclasses to the `DES_VARIANTS` registry (pattern: `ParallelWorkerCompletedVariant` `:505`/`ParallelEpicBranchStaleVariant` `:514`; `DES_VARIANTS` registry at `:657`, existing parallel entries `:718-719`); without these, `test_des_schema.py::test_variants_cover_all_schema_definitions` fails listing the six new `parallel.*` types as missing [Agent 1/2 finding]
 
 ### Dependent Files (Callers/Importers)
 - Any subscriber of `self._event_bus` (event consumers, dashboards, `ll-events` tooling) — new event types are additive, so existing subscribers filtering on known `event` values are unaffected
@@ -166,7 +168,7 @@ _Added by `/ll:refine-issue` — 2026-08-27 — based on codebase analysis:_
 _Added by `/ll:refine-issue` — 2026-08-27 — based on codebase analysis:_
 
 - **`docs/reference/EVENT-SCHEMA.md` line citations are stale** (file changed 2026-08-27T21:54 UTC, after this issue's prior refine pass): the "Reserved Event Names" heading is now at line 1367; the "Machine-Readable Schemas" file-tree block now runs lines 1383-1427 (`parallel_epic_branch_stale.json`/`parallel_worker_completed.json` entries at 1412-1413); the `### Naming Convention` table's `parallel.*` rows are now at lines 1438-1439; the `## Quick Reference` heading moved to line 1495, with its `parallel.*` rows now at lines 1549-1550. No new event types were added by the intervening change — it was a prose-only update to existing events for ENH-3345 (run_id/loop stamping); the sections this issue targets are structurally unchanged, only shifted ~4 lines.
-- **`ParallelWorkerCompletedVariant` (`scripts/little_loops/observability/schema.py:489-494`) does not mirror the full wire payload**: it models only `issue_id`/`status`, omitting `worker_name` and `duration_seconds` that `orchestrator.py:1287-1293` actually emits. The six new `DESVariant` subclasses this issue's wiring phase adds should decide per-field inclusion deliberately — 1:1 payload parity is not the existing convention for `parallel.*` variants.
+- **`ParallelWorkerCompletedVariant` (`scripts/little_loops/observability/schema.py:505-509`) does not mirror the full wire payload**: it models only `issue_id`/`status`, omitting `worker_name` and `duration_seconds` that `orchestrator.py:1287-1293` actually emits. The six new `DESVariant` subclasses this issue's wiring phase adds should decide per-field inclusion deliberately — 1:1 payload parity is not the existing convention for `parallel.*` variants.
 
 _Added by `/ll:refine-issue` — 2026-08-28 — based on codebase analysis:_
 
@@ -320,6 +322,16 @@ Out of scope: building the dashboard/visualizer consumer itself (this issue only
 {"event": "parallel.epic_branch_stale", "run_id": str, ...}
 ```
 
+## Acceptance Criteria
+
+_Formalized from the acceptance prose in Summary and Success Metrics — no new criteria added._
+
+- [ ] Each of the six new event types (`parallel.worker_started`, `worker_blocked`, `worker_unblocked`, `merge_started`, `merge_completed`, `queue_changed`) is emitted from the code path that already knows the state change (per Proposed Solution / Program Design placements)
+- [ ] Every `parallel.*` event carries `run_id`, including the two existing emitters (`parallel.worker_completed`, `parallel.epic_branch_stale`)
+- [ ] Every worker-scoped event carries `worker_id` and `issue_id` (`queue_changed` and `epic_branch_stale` are run-scoped, not worker-scoped)
+- [ ] A consumer subscribed to `parallel.*` can reconstruct active-worker count and per-worker status at any point in a run without reading `.issues/` or the filesystem — for parallel-dispatched issues (sequential/P0 issues get `worker_started`, merge, and `queue_changed` events but no `worker_completed`; see Scope Boundaries)
+- [ ] A worker stuck for its full timeout produces at least one `parallel.worker_blocked` event before that timeout fires
+- [ ] `docs/reference/EVENT-SCHEMA.md` documents each new type with its payload table, and `docs/reference/schemas/` is regenerated via `ll-generate-schemas`
 
 ## Confidence Check Notes
 

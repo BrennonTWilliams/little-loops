@@ -82,6 +82,14 @@ zero.
 heredoc pattern across converted sites; a behavioral test demonstrating the
 break; the option-3 detect-and-refuse guard (decided above).
 
+**Scope widening (2026-08-28, refine-to-ready-issue review):** the same
+collision class exists under a *second* fixed marker, `LL_STDERR_EOF` —
+e.g. `refine-to-ready-issue.yaml`'s `write_failure_evidence` uses four
+`cat <<'LL_STDERR_EOF'` data-sink blocks carrying genuinely untrusted
+payloads (`${captured.*.stderr?}`, `${prev.output?}`). The option-3 guard
+must key on the *site's own terminator line*, whatever the marker string,
+not on the `LL_RAW_*` prefix specifically.
+
 **Out of scope:** options 1/2 (per-render unique terminator; engine-level safe
 binding) — the structural fix, deferred to a follow-up if ever needed;
 re-litigating the BUG-3341 conversion pattern itself; ENH-3347's four

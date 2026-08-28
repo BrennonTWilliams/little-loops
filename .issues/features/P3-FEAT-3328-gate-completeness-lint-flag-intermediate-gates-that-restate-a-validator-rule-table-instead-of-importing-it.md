@@ -10,6 +10,7 @@ discovered_date: '2026-08-26'
 captured_at: '2026-08-26T17:33:30Z'
 relates_to:
 - ENH-3355
+parent: EPIC-2087
 confidence_score: 95
 outcome_confidence: 82
 score_complexity: 14
@@ -129,7 +130,7 @@ happened once.
 
    Note the in-repo form is a **parenthesized multi-line import** — the
    identifier sits on a later line than the `import` keyword
-   (`workflow-generator.yaml:212-215`), so a single-line
+   (`workflow-generator.yaml` `validate_evaluators` state, ~:479-483), so a single-line
    `^.*import.*<name>` pattern does not match it. Match the import *region*
    first, then test membership within it:
 
@@ -146,6 +147,12 @@ happened once.
        )
    ```
 
+   The heredoc gate form (`python3 << 'PYEOF'` — now the in-repo form of
+   `validate_evaluators`, with EPIC-3336/BUG-3339 converting `python3 -c`
+   sites to heredocs repo-wide) needs no special handling here: the heredoc
+   body is part of the raw action string, so `_IMPORT_BLOCK_RE` (MULTILINE
+   over that string) matches its import statements the same way.
+
    Add two tests: an action naming the table **only in a comment** is still
    flagged; an action importing it via the parenthesized multi-line form is
    **not** (this is exactly `validate_evaluators`'s shape, already the
@@ -157,7 +164,8 @@ happened once.
    the likeliest restatement shape and would not have caught the defect in this
    issue's own Summary had the author written it as a list:
    - The literals that actually appear in these gates today are **tuples** —
-     `('done', 'failed')` at `workflow-generator.yaml:206` and `:259`.
+     `('done', 'failed')` at `workflow-generator.yaml:486` (`validate_evaluators`
+     state) and `:536` (`validate_routing` state).
    - `EVALUATOR_REQUIRED_FIELDS`'s values are `list[str]` (`_base.py:45-63`),
      so a hand-restated required-field table is naturally written
      `["operator", "target"]`, never `{"operator", "target"}`.
@@ -165,8 +173,10 @@ happened once.
      `("exit_code", "output_contains", "output_numeric")` membership tuple.
 
    The regex must therefore match `{...}`, `[...]`, and `(...)` displays of
-   string literals (single- or double-quoted, since gate bodies are embedded in
-   double-quoted `python3 -c "…"` strings and use single quotes inside). The
+   string literals (single- or double-quoted, since gate bodies are embedded
+   as `python3 -c "…"` strings or as quoted heredocs — `python3 << 'PYEOF'`,
+   the current `validate_evaluators` form, with EPIC-3336/BUG-3339 converting
+   `-c` sites to heredocs repo-wide — and may use either quote style inside). The
    ≥3-member / no-outside-members floor from AC #1 still does all the
    noise suppression — widening the bracket class does not widen the false
    positive surface, it only stops the rule from being trivially evadable by
@@ -246,9 +256,9 @@ happened once.
    current tree, not a future one.
 
    **Verified 2026-08-26, including under AC #1b's widened bracket class.**
-   Swept `loops/**.yaml`: the only literal collection displays inside `python3`
+   Swept `scripts/little_loops/loops/**.yaml`: the only literal collection displays inside `python3`
    shell gates are the 2-member `('done', 'failed')` tuples
-   (`workflow-generator.yaml:206`, `:259`), which sit below the ≥3 floor.
+   (`workflow-generator.yaml:486`, `:536`), which sit below the ≥3 floor.
    `validate_evaluators` imports both `EVALUATOR_REQUIRED_FIELDS` and
    `NON_LLM_EVALUATOR_TYPES` directly. No built-in restates an operator
    vocabulary — the sole `"eq"` occurrence is `docs-sync.yaml:72`'s
@@ -262,6 +272,15 @@ happened once.
    across all built-in loop YAMLs for ≥3-member `{}`/`[]`/`()` string-literal
    displays that are subsets of any of the **five** linted tables: **0 matches.**
    AC #3 holds under the full table set.
+
+   **Re-verified 2026-08-28, post-FEAT-3332.** FEAT-3332's landing added new
+   `python3` gate bodies to `workflow-generator.yaml` (`init`'s baseline
+   capture and the `check_intent_scope` state); both were included in the
+   sweep. The nearest candidate literals anywhere in the built-in set — the
+   status-value set at `auto-refine-and-implement.yaml:607` and the score-key
+   tuple at `autodev.yaml:2214` — each contain members outside every linted
+   table (`in_progress`/`blocked`/`deferred`; `score_complexity` etc.), so
+   they fail the no-outside-members condition. Still **0 violations**.
 4. The rule is documented in
    `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` § The Design Rules alongside
    MR-1..MR-14, as an **unnumbered named rule** (`**gate-completeness**`,
@@ -330,9 +349,10 @@ content". Use **regex over the raw action string** instead:
   A single `ast`-based rule introduces a detection utility nothing else
   shares.
 - **`ast` doesn't actually get a clean shot at the source.** The Python body
-  is embedded inside a YAML shell action as `python3 -c "..."` — extracting it
-  means handling quoting, `\"` escapes, and heredocs before `ast.parse` ever
-  sees valid source. That extractor is its own mini-parser, and it is the part
+  is embedded inside a YAML shell action as `python3 -c "..."` or a quoted
+  heredoc (`python3 << 'PYEOF'`, the current `validate_evaluators` form) —
+  extracting it means handling quoting, `\"` escapes, and heredoc delimiters
+  before `ast.parse` ever sees valid source. That extractor is its own mini-parser, and it is the part
   most likely to be wrong.
 - **The cardinality floor does the work `ast` was meant to do.** Requiring ≥3
   members, all inside the table, is what suppresses incidental matches — not
@@ -344,7 +364,7 @@ This drops the effort estimate from Medium to Small (see Impact).
 
 The rule is scoped to `shell` gates, but the live drift risk in the very loop
 that motivated this issue is **not** in a shell gate. `attach_evaluators`
-(`workflow-generator.yaml:165-181`) is an `action_type: prompt` state whose
+(`workflow-generator.yaml:409-465`) is an `action_type: prompt` state whose
 prompt hand-lists the entire allowed evaluator vocabulary *and* an English
 copy of the `EVALUATOR_REQUIRED_FIELDS` table:
 
@@ -360,6 +380,8 @@ That table drifts silently the moment `EVALUATOR_REQUIRED_FIELDS` changes, and
 a shell-only lint will never see it. This matters for AC #3: "zero violations
 post-fix" is true, but it is true partly because the surviving restatement
 lives where the rule does not look — not because the loop stopped restating.
+(Note: the `attach_evaluators` citation above refreshed to `:409-465` after
+FEAT-3332 shifted the file by ~200 lines.)
 
 ### This gap is a value question for the whole issue — SETTLED 2026-08-26
 
@@ -519,7 +541,7 @@ _Wiring pass added by `/ll:wire-issue`:_
     keys/values distinction; a keys-only implementation passes the first and
     fails the second.
   - **below-floor tuple stays clean**: the in-repo `('done', 'failed')` literal
-    (`workflow-generator.yaml:206`) is **not** flagged — the 2-member case that
+    (`workflow-generator.yaml:486`, `validate_evaluators` state) is **not** flagged — the 2-member case that
     keeps AC #3 at zero violations once lists and tuples are in scope.
 - Use `workflow-generator.yaml`'s `validate_evaluators` state as the in-repo
   "correct" fixture for the import-present negative case — it imports both
@@ -671,7 +693,8 @@ _Added by `/ll:refine-issue` — 2026-08-27 — based on codebase analysis:_
 is added next to in `meta_rules.py`; the validation pipeline invokes both the
 same way: `ll-loop validate` -> validation pipeline
 (`scripts/little_loops/fsm/validation/__init__.py`) -> `_validate_gate_completeness`
--> per offending `shell` state, parses the `python3 -c` action body and checks
+-> per offending `shell` state, parses the `python3` gate body (`-c` string or
+quoted heredoc) and checks
 literal set/frozenset displays against the exported tables in
 `scripts/little_loops/fsm/validation/_base.py`
 
@@ -794,12 +817,12 @@ Current blast radius: `workflow-generator.yaml`'s `validate_evaluators` was the
 only built-in doing this in a `shell` gate, and it has been fixed, so the rule
 ships with zero violations and acts purely as a forward guard. Re-confirmed
 after adding `VALID_OPERATORS` to the linted set: no built-in loop restates an
-operator vocabulary — the only `"eq"` occurrence across `loops/**.yaml` is
+operator vocabulary — the only `"eq"` occurrence across `scripts/little_loops/loops/**.yaml` is
 `docs-sync.yaml:72`'s `operator: "eq"`, a single evaluator field, not a
 collection display, and well under the ≥3-member floor. Re-confirmed again
 after widening detection to list and tuple displays (AC #1b): the only literals
 that widening newly brings into scope are the 2-member `('done', 'failed')`
-tuples in `workflow-generator.yaml:206,259`, both below the floor. Re-confirmed
+tuples in `workflow-generator.yaml:486,536`, both below the floor. Re-confirmed
 a third time after adding the flattened-`EVALUATOR_REQUIRED_FIELDS`-values table
 (AC #1c): a sweep of every `python3` shell gate across all built-in loops for
 ≥3-member displays subset to any of the five tables returns **0 matches**.

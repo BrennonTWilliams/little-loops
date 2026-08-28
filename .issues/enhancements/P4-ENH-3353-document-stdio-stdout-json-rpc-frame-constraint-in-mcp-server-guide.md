@@ -21,7 +21,7 @@ contributor adding a tool will not find it.
 
 ## Current Behavior
 
-The constraint is recorded at `scripts/little_loops/mcp_server/tools.py:238-241`, in
+The constraint is recorded at `scripts/little_loops/mcp_server/tools.py:236-244`, in
 the tier-2 block comment: `stdout *is* the JSON-RPC frame, so calling them here would
 corrupt the protocol.` The two shipped workarounds are both in source only —
 FEAT-3149 extracted `apply_status_transition` / `apply_link` so the mutating handlers
@@ -35,9 +35,9 @@ guards, and `tasks/*`. It has no contributor-facing section on adding a tool, an
 mention of the stdout hazard.
 
 Separately, the heading `### The five tools, end to end` (around line 203) is stale
-after FEAT-3343 — the tier-1 read surface is now seven tools, and the inventory table
-at lines 32-33 already lists all seven. The walkthrough below the heading still covers
-five.
+after FEAT-3343 — the tier-1 read surface is now eight tools (the mutating tier-2
+surface is the seven), and the inventory table at lines 32-33 already lists all
+eight. The walkthrough below the heading still covers five.
 
 ## Expected Behavior
 
@@ -64,7 +64,7 @@ no code change.
   `### The five tools, end to end` heading (~line 203)
 
 ### Similar Patterns
-- `scripts/little_loops/mcp_server/tools.py:236-241` — the tier-2 block comment this
+- `scripts/little_loops/mcp_server/tools.py:236-244` — the tier-2 block comment this
   section promotes
 - `_tool_loop_start` in the same file — the `redirect_stdout` / `redirect_stderr`
   mitigation to cite
@@ -88,7 +88,8 @@ no code change.
    `_tool_loop_start` precedent); register in both `_TOOL_HANDLERS` and `_TOOLS`; and
    add write tools to `policy.MUTATING_TOOLS`, never `TASK_STARTING_TOOLS`.
 2. Fix the stale `### The five tools, end to end` heading and extend or re-scope the
-   walkthrough to match the current tier-1 surface.
+   walkthrough to match the current tier-1 surface (eight read tools; seven tier-2
+   mutating tools — cf. `tools.py:1` and `tools.py:1196`).
 
 ## Impact
 

@@ -11,8 +11,9 @@ relates_to:
 - FEAT-3321
 - FEAT-3304
 - ENH-3346
+- ENH-3351
 depends_on:
-- BUG-3324
+- BUG-3324  # satisfied — done 2026-08-28
 confidence_score: 93
 outcome_confidence: 69
 score_complexity: 13
@@ -40,6 +41,57 @@ no browser involved, it is fixable and testable on its own, and it carried the
 bulk of this issue's risk and change surface. FEAT-3323 is now scoped to the
 bridge alone: read the producer sockets, serve SSE. See BUG-3324 for the
 probe-and-claim fix and the multi-producer path shape this issue consumes.
+
+## STALE NOTICE (2026-08-28): ENH-3351 landed — research below is partially invalidated
+
+Commit `94a676582` (ENH-3351, `ll-loop run --serve`) added
+`LocalBridgeTransport` to `scripts/little_loops/transport.py:567` — a
+loopback-only stdlib `http.server.ThreadingHTTPServer` (`:640`) SSE bridge,
+with `_SSEClient` (`:418`), `_sse_encode` (`:430`), bounded per-client queues
+with drop-newest, dead-client pruning, `port=0` default (`:620`) with a
+printed tokenized URL (`secrets.token_urlsafe(16)`, `:625`), and a
+Host-header guard — plus a real test harness
+(`scripts/tests/test_transport.py::TestLocalBridgeTransport`, `:1019-1264`).
+
+Consequences for this issue:
+
+- The research findings claiming "no stdlib-only HTTP server precedent", "no
+  SSE or `text/event-stream` implementation exists anywhere in product code",
+  and "no `port=0` precedent exists anywhere in the codebase" are now
+  **false**.
+- The dominant-risk assessment ("HTTP/SSE test harness must be built from
+  scratch") is **void** — `TestLocalBridgeTransport` is exactly that harness.
+- The fixed-port-8766 decision (§ Program Design → Port) now **contradicts**
+  the in-repo precedent: `LocalBridgeTransport` defaults to `port=0` with a
+  printed tokenized URL. Reconsider before implementation.
+- Implementation should **reuse** `_SSEClient`/`_sse_encode` and the
+  `LocalBridgeTransport` handler machinery rather than re-implement SSE
+  framing, client caps, drop accounting, and keepalive from scratch.
+- The issue remains **distinct** from ENH-3351 — this issue is a
+  cross-process, multi-producer fan-in over the socket directory; ENH-3351's
+  bridge is an in-process, single-producer per-run transport — but it must be
+  **re-refined** before implementation: re-run `/ll:refine-issue` and
+  `/ll:confidence-check` (the current 93/69 scores predate ENH-3351).
+- `depends_on: BUG-3324` is **satisfied** — BUG-3324 is `done` (Implementation
+  Step 0 and the Confidence Check dependency note below are stale).
+
+**Stale line-reference corrections** (live tree as of this notice; inline
+citations below are not individually rewritten):
+
+| Cited below | Live tree |
+|---|---|
+| `UnixSocketTransport` (`transport.py:115`) | `:133` |
+| `_record_drop`/`_record_rejection` (`transport.py:242-278`) | `:314` / `:335` |
+| `_make_seed_callback` (`transport.py:586`) | `:1110` |
+| `wire_transports` (`transport.py:611`) | `:1135` |
+| `_resolve_socket_path` (`transport.py:678`) | `:1202` |
+| `cli/loop/run.py:593` | `:616-619` |
+| `cli/loop/lifecycle.py:737` | `:715` (import) / `:741` (call) |
+| `test_transport.py` `short_tmp_path` fixture (`:52`) | `:58` |
+| `test_multi_client_each_receives_every_event` (`:458-479`) | `:464` |
+| `test_max_clients_cap_rejects_extra_connection` (`:506-535`) | `:512` |
+
+(`cli/parallel.py:322` and `cli/sprint/run.py:801` remain correct.)
 
 ## Current Behavior
 
@@ -383,8 +435,8 @@ _Added by `/ll:refine-issue` — 2026-08-26 — based on codebase analysis:_
 
 ## Implementation Steps
 
-0. **Land BUG-3324 first.** The fan-in has nothing to read from until concurrent
-   producers stop evicting each other. Do not start here.
+0. ~~**Land BUG-3324 first.**~~ DONE (2026-08-28) — see STALE NOTICE. The
+   fan-in now has pid-suffixed sibling sockets to read from.
 1. Add the producer identifier to the emitted envelope (stamped in
    `UnixSocketTransport`, recovered from the pid in the socket filename) and
    document it in `docs/reference/EVENT-SCHEMA.md` § Wire Format. Pick a key

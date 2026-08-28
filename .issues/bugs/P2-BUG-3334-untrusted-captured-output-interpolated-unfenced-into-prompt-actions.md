@@ -21,6 +21,19 @@ relates_to:
 
 # BUG-3334: Untrusted captured output is interpolated unfenced into prompt actions
 
+> **Line-anchor note — 2026-08-28:** line-number citations throughout this issue
+> were verified 2026-08-27 and have drifted since BUG-3349 (`d8d3476a1`) and
+> ENH-3347 landed — verify anchors with `grep -n` before editing against them.
+> Known-current anchors (re-verified 2026-08-28): `loop-router.yaml` `review`
+> state :432-459 (`chosen` interpolation :449, `sub_loop_output` :452),
+> `finalize_present_result` :530, verdict regex :567;
+> `scripts/tests/test_builtin_loops.py` `TestBriefFencing` :18760,
+> `UNTRUSTED_OUTPUT_SITES` :18864, `TestUntrustedOutputSurvey` :18945;
+> `executor.py` capture join :1107; `fence.py` `FENCE_ROLES` keys —
+> `loop-router.yaml::review` :142, `loop-composer.yaml::review_chain` :100,
+> `loop-composer-adaptive.yaml::review_chain` :112;
+> `HARNESS_OPTIMIZATION_GUIDE.md` § fencing :625.
+
 ## Summary
 
 BUG-3327 fences the *user's own brief* where it enters a prompt. But at several
@@ -222,6 +235,10 @@ quoted heredoc) contains **four** unanchored parses over model output and **two*
 raw triple-quoted interpolations. The issue previously named only the first. All
 six sit within a 50-line block and are one edit:
 
+**Historical — 2026-08-28: all six constructs below are fixed by BUG-3349
+(commit `d8d3476a1`); table retained for context.** Line numbers and code
+shapes are as of the pre-fix 2026-08-27 draft.
+
 | Line | Construct | Defect |
 |---|---|---|
 | 522 | `proposal_out = """${captured.new_loop_proposal.output:default=}"""` | raw `"""`-literal interpolation of model output — a `"""` in the value is a `SyntaxError` |
@@ -390,15 +407,22 @@ path-reference/fence per Open Question 2; per-site literal nonce markers)._
       `<<<EVENT_STREAM`/`<<<STEP_RESULTS`-style marker appears in any loop YAML.
 - [ ] `loop-router.yaml::review` no longer interpolates
       `${captured.sub_loop_output.output}`: a shell state writes the stream to
-      `${context.run_dir}/sub-loop-events.jsonl` via `:shell` env-var binding
-      (never a raw literal), and the prompt references the path.
+      `${context.run_dir}/sub-loop-events.jsonl` via `:shell:default=` env-var
+      binding (never a raw literal, and never bare `:shell`, which raises
+      `InterpolationError` on a missing capture — see Program Design), and the
+      prompt references the path.
       `${captured.chosen.output}` stays unfenced and both are recorded in
       `KNOWN_UNFENCED_UNTRUSTED_OUTPUT_SITES` with reason comments.
-- [ ] Every non-exempt site in `UNTRUSTED_OUTPUT_SITES` (the 11-site guard
-      enumeration), plus the two hand-classified indirect/shell-capture sites
-      (`loop-composer{,-adaptive}.yaml::review_chain`,
-      `eval-driven-development.yaml::diagnose`), carries a hand-pasted
-      `render_fence(..., core=FENCE_CORE_UNTRUSTED_OUTPUT)` fence.
+- [ ] Every non-exempt site in the 13-entry `UNTRUSTED_OUTPUT_SITES` table
+      (11 mechanically-discovered dispatch-provenance sites plus the two
+      hand-classified indirect sites,
+      `loop-composer{,-adaptive}.yaml::review_chain`), plus the one
+      hand-classified shell-capture site
+      (`eval-driven-development.yaml::diagnose`), carries a hand-pasted
+      `render_fence(..., core=FENCE_CORE_UNTRUSTED_OUTPUT)` fence. Final
+      fenced-site count: **13** — the 13-entry table minus
+      `loop-router.yaml::review` (path-referenced, exempt), plus
+      `eval-driven-development.yaml::diagnose`.
 - [ ] A `TestUntrustedOutputFencing` class pins each fenced site with the
       three-property contract (rendered-substring via `normalize_fence_text`,
       interpolation-between-markers, per-var exactly-once), plus a
@@ -411,8 +435,10 @@ path-reference/fence per Open Question 2; per-site literal nonce markers)._
       independently.
 - [ ] `ll-loop validate` passes on every modified loop YAML.
 - [ ] `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` § fencing gains the
-      untrusted-output class (and its stale "13 sites" count is corrected);
-      `fence.py`'s docstring names it.
+      untrusted-output class documentation; `fence.py`'s docstring names it.
+      (Under the decided Option B, `FENCE_ROLES` stays at exactly 13 entries —
+      new sites go in `UNTRUSTED_OUTPUT_ROLES` — so the guide's existing
+      "13 sites" count is not stale and needs no correction.)
 - [ ] Full suite (`python -m pytest scripts/tests/`) shows no new failures.
 
 ## Scope
@@ -746,7 +772,7 @@ Also reconfirmed: `scripts/little_loops/fsm/fence.py` is still unchanged (no `FE
 - `KNOWN_UNFENCED_PROMPT_SITES: set[tuple[str, str]]` (`fence.py:161-164`) — the explicit exemption set the completeness guard checks against; not modified by this fix unless a captured-output site is deliberately exempted
 
 ### Signatures
-- ~~`render_fence(noun: str, role: str, verbs: str, var: str) -> str` (`fence.py:43`) — existing signature, reused as-is; no new parameters needed~~ — **corrected by review pass, 2026-08-27.** The claim that no signature change is needed rested on "which core string is passed into a (possibly new) template function", but `render_fence` does not take a core: it hardcodes `core=FENCE_CORE` in its `FENCE_TEMPLATE.format(...)` call at `fence.py:57`. Selecting `FENCE_CORE_UNTRUSTED_OUTPUT` therefore requires either widening this signature to `render_fence(noun, role, verbs, var, core: str = FENCE_CORE) -> str` (keeps all 13 existing call sites working unchanged via the default) or adding a sibling `render_untrusted_output_fence(...)`. The default-parameter form is preferable: one renderer means one place where marker construction (and any nonce suffixing, per Expected Behavior) is implemented.
+- ~~`render_fence(noun: str, role: str, verbs: str, var: str) -> str` (`fence.py:43`) — existing signature, reused as-is; no new parameters needed~~ — **corrected by review pass, 2026-08-27.** The claim that no signature change is needed rested on "which core string is passed into a (possibly new) template function", but `render_fence` does not take a core: it hardcodes `core=FENCE_CORE` in its `FENCE_TEMPLATE.format(...)` call at `fence.py:57`. Selecting `FENCE_CORE_UNTRUSTED_OUTPUT` therefore requires either widening this signature to `render_fence(noun, role, verbs, var, core: str = FENCE_CORE) -> str` (keeps all 13 existing call sites working unchanged via the default) or adding a sibling `render_untrusted_output_fence(...)`. The default-parameter form is preferable: one renderer means one place where marker construction is implemented. (Nonce suffixing requires **no** renderer change — per the Expected Behavior form decision of 2026-08-28, the per-site literal suffix is part of the noun in the `UNTRUSTED_OUTPUT_ROLES` tuple, e.g. `STEP_RESULTS_7Q4X`, so `render_fence()` builds markers from the noun exactly as it does today.)
 - Existing: `normalize_fence_text(s: str) -> str` (`fence.py`) — the whitespace-normalization comparator `test_rendered_fence_present` uses; reused unchanged for any new site's substring assertion
 
 ### Call Path
@@ -828,16 +854,20 @@ independently — nothing in it depends on the rest.
   direction; both touch `loop-router.yaml` on non-overlapping line ranges
   (BUG-3349: 509-558; this issue: `review` 411-437 plus a new shell state).
   Sequence BUG-3349 first to keep line anchors stable.
-- **BUG-3331** — rewrites `loop-router.yaml:473` (`review_out = """…"""`), the
+- **BUG-3331** — ~~rewrites `loop-router.yaml:473` (`review_out = """…"""`), the
   line immediately above the `re.search` this issue anchors. Same block of code,
-  different defect.
+  different defect.~~ **Cancelled** (superseded by EPIC-3336 — see Sequencing
+  below); there is no active rewrite. Entry retained for the scoping
+  distinction only.
 - **BUG-3340** (EPIC-3336 sibling) — _Wiring pass added by `/ll:wire-issue` —
   2026-08-27:_ its Files to Modify list the same five files this issue's
   confirmed tier-A sites touch (`loop-router.yaml`, `loop-composer.yaml`,
   `loop-composer-adaptive.yaml`, `refine-to-ready-issue.yaml`, `rn-build.yaml`),
   on different, non-overlapping line ranges. No line-range collision found, but
   file-level contention — sequence the same way BUG-3340 already sequences
-  against its own sibling BUG-3341.
+  against its own sibling BUG-3341. **Satisfied — 2026-08-28: BUG-3340 is now
+  `done`** (verified via `ll-issues show BUG-3340`); the file-level sequencing
+  concern is moot.
 
 ### Sequencing
 
@@ -1021,7 +1051,7 @@ _Added by `/ll:confidence-check` on 2026-08-27_
 ### Concerns
 - `format-check` flags `missing_behavior_parity` for `scripts/little_loops/loops/loop-router.yaml` (ENH-3047 gate) — the issue has no `### Behavior Parity` subsection describing what the `sub_loop_output` path-reference change replaces. Per rubric, any `missing_behavior_parity` gap caps Criterion 4 (Issue Well-Specified) at 10/20 regardless of how complete the rest of the issue is — this is the sole reason readiness dropped from the prior 95 to 85 despite both Open Questions closing since.
 - `format-check` also flags `prose_dep_drift: BUG-3340` — worth a quick check that the Dependencies section's description of BUG-3340's file overlap still matches BUG-3340's current state.
-- `BUG-3349` (regex/quoting hardening, spun out from this issue's former item 1) and `BUG-3340` (EPIC-3336 sibling, same 5 loop YAMLs) are both still `open`. Neither is a hard `blocked_by` dependency and neither line-collides with this issue's sites, but both add file-level sequencing risk once implementation starts.
+- ~~`BUG-3349` (regex/quoting hardening, spun out from this issue's former item 1) and `BUG-3340` (EPIC-3336 sibling, same 5 loop YAMLs) are both still `open`. Neither is a hard `blocked_by` dependency and neither line-collides with this issue's sites, but both add file-level sequencing risk once implementation starts.~~ _Resolved — 2026-08-28: BUG-3349 (`done`, commit `d8d3476a1`) and BUG-3340 (`done`) have both landed; the file-level sequencing risk is moot._
 
 ### Gaps to Address
 - Add a `### Behavior Parity` subsection to the issue (or to `loop-router.yaml`'s own docs) describing what the new shell-state-plus-path-reference mechanism replaces, to clear the `missing_behavior_parity` gate.
