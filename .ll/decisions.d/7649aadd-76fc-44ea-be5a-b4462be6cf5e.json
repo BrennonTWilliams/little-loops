@@ -1,0 +1,11 @@
+{
+  "id": "f4f3103a-7efe-448a-9e6a-b30839a7ab61",
+  "type": "decision",
+  "timestamp": "2026-08-28T18:44:45Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "ll-mcp becomes the canonical primitive surface for an external director agent; loop_list closes the last read-only CLI shellout. Requires extracting a non-printing catalog enumeration from cmd_list (FEAT-3149 pattern). loop_create explicitly excluded: cmd_install is a shutil.copy2 with no wrappable function, and loop creation proper is the LLM-driven /ll:create-loop skill.",
+  "rule": "Captured: Add loop_list catalog tool to ll-mcp",
+  "scope": "issue",
+  "issue": "FEAT-3352"
+}

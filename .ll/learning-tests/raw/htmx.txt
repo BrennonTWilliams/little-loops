@@ -1,0 +1,48 @@
+=== Source: htmx.org@4.0.0 dist/htmx.min.js (core, no hx-sse/hx-partial present) ===
+   1 :inherited
+  17 morph
+
+=== Source: htmx.org@4.0.0 dist/htmax.js (core + extensions bundle, per package.json build:htmax script) ===
+   1 :inherited
+   1 hx-partial
+   8 hx-sse
+  36 morph
+
+=== Browser proof: hx-sse:connect autoswap + innerMorph state preservation + named-event dispatch + <hx-partial> OOB ===
+{
+  "sse_unnamed_autoswap": {
+    "count_after_1": "1",
+    "count_after_2": "2",
+    "marker_after_2": "updated-2"
+  },
+  "morph_preserves_unrelated_input": {
+    "scratch_after_1": "user-typed-value",
+    "scratch_after_2": "user-typed-value",
+    "preserved": true
+  },
+  "named_event_dispatch": {
+    "named_events_seen": [
+      {
+        "type": "tick",
+        "detail": {
+          "data": "{\"n\":3}",
+          "id": ""
+        }
+      }
+    ],
+    "count_unchanged_by_named_event": "2"
+  },
+  "hx_partial_oob": {
+    "oob_target_after": "after-oob",
+    "below_after": "visible-content"
+  },
+  "console_errors": []
+}
+
+=== Browser proof: hx-confirm:inherited propagation vs plain hx-confirm non-propagation ===
+{
+  "confirm_calls_in_order": [
+    null,
+    "parent-inherited"
+  ]
+}

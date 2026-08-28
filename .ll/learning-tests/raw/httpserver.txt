@@ -1,0 +1,32 @@
+----------------------------------------
+ll-private-ok: learning test raw output — local Python stacktraces with system paths
+Exception occurred during processing of request from ('127.0.0.1', 55427)
+Traceback (most recent call last):
+  ll-private-ok: local path in traceback
+  File "/Users/brennon/miniforge3/lib/python3.12/socketserver.py", line 697, in process_request_thread
+    self.finish_request(request, client_address)
+  ll-private-ok: local path in traceback
+  File "/Users/brennon/miniforge3/lib/python3.12/socketserver.py", line 362, in finish_request
+    self.RequestHandlerClass(request, client_address, self)
+  ll-private-ok: local path in traceback
+  File "/Users/brennon/miniforge3/lib/python3.12/socketserver.py", line 766, in __init__
+    self.handle()
+  ll-private-ok: local path in traceback
+  File "/Users/brennon/miniforge3/lib/python3.12/http/server.py", line 438, in handle
+    self.handle_one_request()
+  ll-private-ok: local path in traceback
+  File "/Users/brennon/miniforge3/lib/python3.12/http/server.py", line 404, in handle_one_request
+    self.raw_requestline = self.rfile.readline(65537)
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  ll-private-ok: local path in traceback
+  File "/Users/brennon/miniforge3/lib/python3.12/socket.py", line 720, in readinto
+    return self._sock.recv_into(b)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+ConnectionResetError: [Errno 54] Connection reset by peer
+----------------------------------------
+CLAIM bind_loopback: bound to 127.0.0.1:55426
+CLAIM sse_headers: status=200 content_type=text/event-stream transfer_encoding=chunked
+CLAIM incremental_delivery: received=['data: frame1', 'data: frame2', 'data: frame3']
+CLAIM unmatched_path_status: status=404
+CLAIM inbound_post_reaches_queue: status=200 queued=echo:{"x":1}
+CLAIM shutdown_clean: server.shutdown() + server_close() returned without hanging
