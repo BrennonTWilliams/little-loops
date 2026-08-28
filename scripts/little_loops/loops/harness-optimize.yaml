@@ -42,7 +42,15 @@ states:
       # Write state queue when loop YAML targets[].states[] is non-empty
       LOOP_YAML="${context.targets}"
       if [ -f "$LOOP_YAML" ]; then
-        python3 -c "import yaml,json; data=yaml.safe_load(open('$LOOP_YAML')); states=[s for t in data.get('targets',[]) for s in t.get('states',[])]; open('${context.run_dir}/harness-optimize-state-queue.txt','w').write(''.join(json.dumps({'name':s['name'],'examples_file':s.get('examples_file','')})+'\n' for s in states)) if states else None" 2>/dev/null || true
+        LOOP_YAML="$LOOP_YAML" python3 << 'PYEOF' 2>/dev/null || true
+      import yaml, json, os
+      loop_yaml = os.environ['LOOP_YAML']
+      data = yaml.safe_load(open(loop_yaml))
+      states = [s for t in data.get('targets', []) for s in t.get('states', [])]
+      if states:
+          with open('${context.run_dir}/harness-optimize-state-queue.txt', 'w') as f:
+              f.write(''.join(json.dumps({'name': s['name'], 'examples_file': s.get('examples_file', '')}) + '\n' for s in states))
+      PYEOF
       fi
       # Branch trajectory find path by current STATE_NAME (set by dequeue_state)
       STATE_NAME=$(cat ${context.run_dir}/harness-optimize-state-name.txt 2>/dev/null || echo "")

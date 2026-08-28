@@ -209,14 +209,14 @@ states:
     action_type: shell
     action: |
       set -o pipefail
-      python3 -c "
+      python3 << 'PYEOF' 2>&1 | tee "${captured.run_dir.output}/.intent_errors.txt"
       import yaml
       d = yaml.safe_load(open('${captured.run_dir.output}/intent.yaml'))
       assert d.get('name'), 'name is empty'
       assert d.get('goal'), 'goal is empty'
       assert d.get('steps'), 'steps list is empty'
       assert d.get('success_signal'), 'success_signal is empty'
-      " 2>&1 | tee "${captured.run_dir.output}/.intent_errors.txt"
+      PYEOF
       RC=$?
       [ "$RC" -eq 0 ] && : > "${captured.run_dir.output}/.intent_errors.txt"
       exit "$RC"
@@ -388,7 +388,7 @@ states:
     # state, unique names, and both terminal states declared.
     action_type: shell
     action: |
-      python3 -c "
+      python3 << 'PYEOF'
       import yaml
       d = yaml.safe_load(open('${captured.run_dir.output}/graph-sketch.yaml'))
       states = d.get('states') or []
@@ -398,7 +398,7 @@ states:
       assert 'done' in names, 'missing terminal state: done'
       assert 'failed' in names, 'missing terminal state: failed'
       assert len(names) > 2, 'sketch has no non-terminal work states'
-      "
+      PYEOF
     evaluate:
       type: exit_code
     on_yes: attach_evaluators
@@ -471,7 +471,7 @@ states:
     # longer reach the state that made the mistake.
     action_type: shell
     action: |
-      python3 -c "
+      python3 << 'PYEOF'
       import yaml
       from little_loops.fsm.validation import (
           EVALUATOR_REQUIRED_FIELDS,
@@ -484,13 +484,13 @@ states:
               continue
           ev = (s.get('evaluate') or {})
           etype = ev.get('type')
-          assert etype in NON_LLM_EVALUATOR_TYPES, f\"state {s.get('name')!r} has disallowed evaluator {etype!r}\"
+          assert etype in NON_LLM_EVALUATOR_TYPES, f"state {s.get('name')!r} has disallowed evaluator {etype!r}"
           missing = [f for f in EVALUATOR_REQUIRED_FIELDS.get(etype, []) if ev.get(f) is None]
-          assert not missing, f\"state {s.get('name')!r} evaluator {etype!r} is missing required field(s): {missing}\"
+          assert not missing, f"state {s.get('name')!r} evaluator {etype!r} is missing required field(s): {missing}"
           op = ev.get('operator')
           if op is not None:
-              assert op in VALID_OPERATORS, f\"state {s.get('name')!r} has invalid operator {op!r}\"
-      "
+              assert op in VALID_OPERATORS, f"state {s.get('name')!r} has invalid operator {op!r}"
+      PYEOF
     evaluate:
       type: exit_code
     on_yes: resolve_routing
@@ -522,7 +522,7 @@ states:
     # name absent from the graph.
     action_type: shell
     action: |
-      python3 -c "
+      python3 << 'PYEOF'
       import yaml
       d = yaml.safe_load(open('${captured.run_dir.output}/graph-routed.yaml'))
       states = d.get('states') or []
@@ -533,11 +533,11 @@ states:
               continue
           targets = [s.get('on_yes'), s.get('on_no'), s.get('next')]
           targets = [t for t in targets if t]
-          assert targets, f\"state {s.get('name')!r} has no routing\"
+          assert targets, f"state {s.get('name')!r} has no routing"
           for t in targets:
-              assert t in names, f\"state {s.get('name')!r} routes to unknown state {t!r}\"
+              assert t in names, f"state {s.get('name')!r} routes to unknown state {t!r}"
       assert 'done' in names and 'failed' in names, 'missing done/failed terminal'
-      "
+      PYEOF
     evaluate:
       type: exit_code
     on_yes: emit_artifact
@@ -680,7 +680,7 @@ states:
     # non-zero once every non-terminal, non-initial state has been tried.
     action_type: shell
     action: |
-      python3 -c "
+      python3 <<'PYEOF'
       import yaml
       d = yaml.safe_load(open('${captured.run_dir.output}/workflow.yaml'))
       names = [n for n, s in d['states'].items() if not s.get('terminal') and n != d['initial']]
@@ -690,7 +690,7 @@ states:
       with open('${captured.run_dir.output}/.shrink_candidate_name', 'w') as f:
           f.write(names[idx])
       print(f'candidate: {names[idx]} ({idx+1}/{len(names)})')
-      "
+      PYEOF
     evaluate:
       type: exit_code
     on_yes: shrink_try_remove

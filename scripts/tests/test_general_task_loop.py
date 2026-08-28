@@ -2115,15 +2115,24 @@ class TestENH2365SummarizeSuccess:
         """ENH-3337: the `:default=` value at this site no longer contains a
         literal `{` — interpolate() must resolve the real site's action text
         cleanly on a missing `captured.final_counts` (the state's normal
-        pre-count_final context), not raise or leave a stray `}`."""
+        pre-count_final context), not raise or leave a stray `}`.
+
+        BUG-3339: this site was converted from raw string interpolation
+        (`json.loads('${captured...}')`) to the BUG-3341 Option B
+        heredoc-to-file shape (`json.loads(raw)` after reading the captured
+        value back from a run-dir file) — the empty-capture case must still
+        interpolate to an empty heredoc body between the sentinel markers,
+        not a stray `:default=`/`{`/`}` artifact.
+        """
         with open(LOOP_FILE) as f:
             data = yaml.safe_load(f)
         action = data["states"]["summarize_success"]["action"]
         run_context = {**data.get("context", {}), "run_dir": "/tmp/run"}
         ctx = InterpolationContext(context=run_context, captured={})
         result = interpolate(action, ctx)
-        assert "json.loads('')" in result
         assert ":default=" not in result
+        assert "json.loads(raw)" in result
+        assert "cat > \"$FINAL_COUNTS_FILE\" << 'LL_RAW_9F3C1A7E_EOF'\n\nLL_RAW_9F3C1A7E_EOF" in result
 
     def test_implemented_counts_checked_criteria_not_leftover(self, tmp_path: Path) -> None:
         """BUG-2608: implemented must be the CHECKED count. On the success path

@@ -892,14 +892,21 @@ states:
         ' "$DOD")
         IMPLEMENTED=$(($TOTAL_DOD - $UNCHECKED_DOD))
       fi
-      FAILED_FINALS=$(python3 -c "
-      import json, sys
+      FINAL_COUNTS_FILE="$RUN_DIR/summarize_success-final_counts.txt"
+      cat > "$FINAL_COUNTS_FILE" << 'LL_RAW_9F3C1A7E_EOF'
+      ${captured.final_counts.output:default=}
+      LL_RAW_9F3C1A7E_EOF
+      FAILED_FINALS=$(python3 << 'PYEOF' 2>/dev/null || echo 0
+      import json
       try:
-          data = json.loads('${captured.final_counts.output:default=}')
+          with open("${context.run_dir}/summarize_success-final_counts.txt") as f:
+              raw = f.read()
+          data = json.loads(raw)
           print(data.get('failed_finals', 0))
       except Exception:
           print(0)
-      " 2>/dev/null || echo 0)
+      PYEOF
+      )
       # ENH-2857: [!]-marked plan steps are abandoned, not done — count them
       # (whitespace-tolerant, matching count_done's UNCHECKED_PLAN style) so a
       # run that reached "all DoD criteria satisfied" over abandoned steps
@@ -933,14 +940,14 @@ states:
   # any capture-reachability concern entirely.
   check_abandoned_route:
     action: |
-      python3 -c "
+      python3 << 'PYEOF'
       import json
       try:
           with open('${context.run_dir}/summary.json') as f:
               print(json.load(f).get('abandoned', 0))
       except Exception:
           print(0)
-      "
+      PYEOF
     action_type: shell
     evaluate:
       type: output_numeric

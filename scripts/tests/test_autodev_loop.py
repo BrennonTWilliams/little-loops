@@ -37,9 +37,10 @@ def _load_autodev_yaml() -> dict[str, Any]:
 
 
 def _extract_python_script(action: str) -> str:
-    """Pull the inline `python3 -c "..."` body out of a shell_exit action string."""
-    _, _, tail = action.partition('python3 -c "')
-    script, _, _ = tail.rpartition('"')
+    """Pull the inline `python3 << 'PYEOF' ... PYEOF` heredoc body out of a
+    shell_exit action string (BUG-3339: converted from `python3 -c "..."`)."""
+    _, _, tail = action.partition("<< 'PYEOF'\n")
+    script, _, _ = tail.partition("\nPYEOF")
     return script
 
 
@@ -63,14 +64,7 @@ def _run_reconcile_predicate(
     would — via the environment, not a second stdin stream.
     """
     action = _load_autodev_yaml()["states"]["check_reconcile_needed"]["action"]
-    script = (
-        _extract_python_script(action)
-        .replace("${context.run_dir}", str(run_dir))
-        # BUG-2803: the fresh-below-threshold branch reads the configured
-        # readiness threshold; substitute it the way the FSM interpolator
-        # would (seeded from commands.confidence_gate.readiness_threshold).
-        .replace("${context.readiness_threshold}", "85")
-    )
+    script = _extract_python_script(action).replace("${context.run_dir}", str(run_dir))
     payload = json.dumps(
         {
             "confidence": confidence,
@@ -79,13 +73,18 @@ def _run_reconcile_predicate(
     )
     result = subprocess.run(
         [sys.executable, "-c", script],
-        input=payload,
         capture_output=True,
         text=True,
         check=False,
         env={
             **os.environ,
             "LL_ISSUE_ID": issue_id,
+            "LL_ISSUE_JSON": payload,
+            # BUG-2803: the fresh-below-threshold branch reads the configured
+            # readiness threshold; feed it the way the FSM interpolator's
+            # `:shell` binding would (seeded from
+            # commands.confidence_gate.readiness_threshold).
+            "LL_ARG_READINESS_THRESHOLD": "85",
             "LL_FORMAT_CHECK_JSON": json.dumps({"superseded_marker_count": marker_count}),
         },
     )
@@ -423,20 +422,20 @@ class TestCheckReconcileNeededContradiction:
         leave the gate exactly as it was pre-ENH-2992, not fire it."""
         (tmp_path / "autodev-pre-readiness.txt").write_text("70")
         action = _load_autodev_yaml()["states"]["check_reconcile_needed"]["action"]
-        script = (
-            _extract_python_script(action)
-            .replace("${context.run_dir}", str(tmp_path))
-            .replace("${context.readiness_threshold}", "85")
-        )
+        script = _extract_python_script(action).replace("${context.run_dir}", str(tmp_path))
         env = {k: v for k, v in os.environ.items() if k != "LL_FORMAT_CHECK_JSON"}
 
         result = subprocess.run(
             [sys.executable, "-c", script],
-            input=json.dumps({"confidence": "90", "reconcile_attempted": "false"}),
             capture_output=True,
             text=True,
             check=False,
-            env={**env, "LL_ISSUE_ID": "BUG-9999"},
+            env={
+                **env,
+                "LL_ISSUE_ID": "BUG-9999",
+                "LL_ISSUE_JSON": json.dumps({"confidence": "90", "reconcile_attempted": "false"}),
+                "LL_ARG_READINESS_THRESHOLD": "85",
+            },
         )
 
         assert result.returncode == 1, result.stderr

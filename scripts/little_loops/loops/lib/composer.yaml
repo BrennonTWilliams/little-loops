@@ -26,9 +26,10 @@ fragments:
     action_type: shell
     action: |
       mkdir -p "${context.run_dir}"
-      ll-loop list --json --visibility public 2>/dev/null | python3 -c "
-      import json, sys, os
-      loops = json.load(sys.stdin)
+      COMPOSER_CATALOG_JSON=$(ll-loop list --json --visibility public 2>/dev/null)
+      COMPOSER_CATALOG_JSON="$COMPOSER_CATALOG_JSON" python3 << 'PYEOF'
+      import json, os
+      loops = json.loads(os.environ['COMPOSER_CATALOG_JSON'] or '[]')
       include_raw = '${context.include:default=}'
       includes = [s.strip() for s in include_raw.split(',') if s.strip()]
       def _matches_include(loop):
@@ -76,7 +77,7 @@ fragments:
       with open(os.path.join(run_dir, 'composer-catalog.json'), 'w') as f:
           json.dump(catalog, f, indent=2)
       print(json.dumps(catalog, indent=2))
-      "
+      PYEOF
     capture: catalog
 
   validate_plan:

@@ -435,7 +435,8 @@ states:
             if [ "$f" = "test-results.txt" ]; then
               PASS_RATE=$(grep '^pass_rate=' "$f" 2>/dev/null | tail -1 | cut -d= -f2)
               if [ -n "$PASS_RATE" ]; then
-                if ! python3 -c "import sys; sys.exit(0 if float('$${PASS_RATE}') >= float('${context.min_pass_rate}') else 1)"; then
+                MIN_PASS_RATE=${context.min_pass_rate:shell}
+                if ! LL_ARG_PASS_RATE="$PASS_RATE" LL_ARG_MIN_PASS_RATE="$MIN_PASS_RATE" python3 -c "import os, sys; sys.exit(0 if float(os.environ['LL_ARG_PASS_RATE']) >= float(os.environ['LL_ARG_MIN_PASS_RATE']) else 1)"; then
                   ANY_FAIL=true
                 fi
               fi

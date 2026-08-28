@@ -240,7 +240,15 @@ file.
 
 - **ENH-3337** — Make :shell interpolation suffix compose with :default= and ? (open)
 - **ENH-3338** — Add static sweep detecting unsafe context/captured interpolation in loop YAMLs (open)
-- **BUG-3339** — Convert python3 -c heredoc-unsafe invocations to quoted heredocs (open)
+- **BUG-3339** — Convert python3 -c heredoc-unsafe invocations to quoted heredocs (done, 2026-08-28).
+  Reconciled against ENH-3338's baseline (`host_shape == "c-string"`): **45
+  sites / 11 files**, superseding the parent survey's provisional "53 sites,
+  11 files" figure. All 45 sites converted or landed in final BUG-3340/
+  BUG-3341 form per Implementation Step 8's carve-out (8 sites across
+  `autodev.yaml` (6), `general-task.yaml` (1), and
+  `oracles/code-run-gate.yaml` (1) landed directly in final form and were
+  removed from the baseline rather than converted to an intermediate
+  heredoc). Baseline now carries **0** remaining `c-string` entries.
 - **BUG-3340** — Convert class-A scalar interpolations to :shell env-var binding (open)
 - **BUG-3341** — Convert class-B LLM-output interpolations to heredoc-to-file (open)
 - **ENH-3347** — Add behavioral tests for loop interpolation injection and quote-breaking (open)

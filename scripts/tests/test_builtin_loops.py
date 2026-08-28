@@ -7547,7 +7547,11 @@ class TestAutodevLoop:
         and backfill the snapshot so the stagnation discriminator can apply."""
         action = data["states"].get("check_reconcile_needed", {}).get("action", "")
         assert "fresh_below" in action
-        assert "${context.readiness_threshold}" in action
+        # BUG-3339: the raw `${context.readiness_threshold}` literal was
+        # replaced by a shell-quoted env binding read via os.environ, closing
+        # the class-A shell/Python-literal injection surface.
+        assert "${context.readiness_threshold:shell}" in action
+        assert "LL_ARG_READINESS_THRESHOLD" in action
         # ENH-2992 OR'd a third `contradiction` term onto this expression; the
         # BUG-2803 pair must still be present and still be OR'd together.
         assert "plateau or fresh_below" in action
@@ -13987,7 +13991,7 @@ class TestCodeRunGateOracle:
             aggregate_action.replace("$${", "${")
             .replace("${context.run_dir}", str(run_dir))
             .replace("${context.issue_id}", "TEST")
-            .replace("${context.min_pass_rate}", "0.95")
+            .replace("${context.min_pass_rate:shell}", "0.95")
         )
         aggregate_result = subprocess.run(
             ["bash", "-c", shell_aggregate], capture_output=True, text=True, timeout=30
@@ -14079,7 +14083,7 @@ class TestCodeRunGateOracle:
             aggregate_action.replace("$${", "${")
             .replace("${context.run_dir}", str(run_dir))
             .replace("${context.issue_id}", "TEST")
-            .replace("${context.min_pass_rate}", "0.5")
+            .replace("${context.min_pass_rate:shell}", "0.5")
         )
         aggregate_result = subprocess.run(
             ["bash", "-c", shell_aggregate], capture_output=True, text=True, timeout=30

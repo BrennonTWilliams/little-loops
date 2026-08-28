@@ -146,13 +146,13 @@ states:
     # classify-target on failure so a malformed file doesn't silently poison downstream states.
     action_type: shell
     action: |
-      python3 -c "
+      python3 << 'PYEOF'
       import yaml, sys
       d = yaml.safe_load(open('${captured.run_dir.output}/classification.yaml'))
       assert d.get('classification') in ('desktop-gui', 'stateful-service', 'data-lib'), \
-        f\"unknown classification: {d.get('classification')}\"
+        f"unknown classification: {d.get('classification')}"
       assert d.get('target_name'), 'target_name is empty'
-      "
+      PYEOF
     evaluate:
       type: exit_code
     on_yes: bake-rubric

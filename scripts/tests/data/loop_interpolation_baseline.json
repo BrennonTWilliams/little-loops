@@ -183,29 +183,11 @@
     },
     {
       "file": "loops/autodev.yaml",
-      "state": "check_readiness_for_atomic_remediation",
-      "var": "context.readiness_threshold",
-      "class": "A",
-      "host_shape": "c-string",
-      "line": 4,
-      "count": 1
-    },
-    {
-      "file": "loops/autodev.yaml",
-      "state": "check_reconcile_needed",
-      "var": "context.readiness_threshold",
-      "class": "A",
-      "host_shape": "c-string",
-      "line": 17,
-      "count": 1
-    },
-    {
-      "file": "loops/autodev.yaml",
       "state": "check_reconcile_needed",
       "var": "context.run_dir",
       "class": "C",
-      "host_shape": "c-string",
-      "line": 8,
+      "host_shape": "heredoc",
+      "line": 10,
       "count": 4
     },
     {
@@ -213,8 +195,8 @@
       "state": "check_spike_needed",
       "var": "context.run_dir",
       "class": "C",
-      "host_shape": "c-string",
-      "line": 5,
+      "host_shape": "heredoc",
+      "line": 6,
       "count": 1
     },
     {
@@ -222,44 +204,8 @@
       "state": "check_spike_needed_before_skip",
       "var": "context.run_dir",
       "class": "C",
-      "host_shape": "c-string",
-      "line": 5,
-      "count": 1
-    },
-    {
-      "file": "loops/autodev.yaml",
-      "state": "recheck_after_size_review",
-      "var": "context.outcome_threshold",
-      "class": "A",
-      "host_shape": "c-string",
-      "line": 20,
-      "count": 1
-    },
-    {
-      "file": "loops/autodev.yaml",
-      "state": "recheck_after_size_review",
-      "var": "context.readiness_threshold",
-      "class": "A",
-      "host_shape": "c-string",
-      "line": 19,
-      "count": 1
-    },
-    {
-      "file": "loops/autodev.yaml",
-      "state": "regate_after_atomic_remediation",
-      "var": "context.outcome_threshold",
-      "class": "A",
-      "host_shape": "c-string",
-      "line": 20,
-      "count": 1
-    },
-    {
-      "file": "loops/autodev.yaml",
-      "state": "regate_after_atomic_remediation",
-      "var": "context.readiness_threshold",
-      "class": "A",
-      "host_shape": "c-string",
-      "line": 19,
+      "host_shape": "heredoc",
+      "line": 6,
       "count": 1
     },
     {
@@ -285,7 +231,7 @@
       "state": "validate-classification",
       "var": "captured.run_dir.output",
       "class": "B",
-      "host_shape": "c-string",
+      "host_shape": "heredoc",
       "line": 3,
       "count": 1
     },
@@ -294,17 +240,17 @@
       "state": "check_abandoned_route",
       "var": "context.run_dir",
       "class": "C",
-      "host_shape": "c-string",
+      "host_shape": "heredoc",
       "line": 4,
       "count": 1
     },
     {
       "file": "loops/general-task.yaml",
       "state": "summarize_success",
-      "var": "captured.final_counts.output",
-      "class": "B",
-      "host_shape": "c-string",
-      "line": 31,
+      "var": "context.run_dir",
+      "class": "C",
+      "host_shape": "heredoc",
+      "line": 35,
       "count": 1
     },
     {
@@ -474,8 +420,8 @@
       "state": "load_directive",
       "var": "context.run_dir",
       "class": "C",
-      "host_shape": "c-string",
-      "line": 4,
+      "host_shape": "heredoc",
+      "line": 10,
       "count": 1
     },
     {
@@ -519,8 +465,8 @@
       "state": "discover_loops",
       "var": "context.exclude",
       "class": "A",
-      "host_shape": "c-string",
-      "line": 24,
+      "host_shape": "heredoc",
+      "line": 25,
       "count": 1
     },
     {
@@ -528,8 +474,8 @@
       "state": "discover_loops",
       "var": "context.include",
       "class": "A",
-      "host_shape": "c-string",
-      "line": 5,
+      "host_shape": "heredoc",
+      "line": 6,
       "count": 1
     },
     {
@@ -537,8 +483,8 @@
       "state": "discover_loops",
       "var": "context.run_dir",
       "class": "C",
-      "host_shape": "c-string",
-      "line": 47,
+      "host_shape": "heredoc",
+      "line": 48,
       "count": 1
     },
     {
@@ -879,8 +825,8 @@
       "state": "discover_loops",
       "var": "context.exclude",
       "class": "A",
-      "host_shape": "c-string",
-      "line": 23,
+      "host_shape": "heredoc",
+      "line": 24,
       "count": 1
     },
     {
@@ -888,8 +834,8 @@
       "state": "discover_loops",
       "var": "context.include",
       "class": "A",
-      "host_shape": "c-string",
-      "line": 4,
+      "host_shape": "heredoc",
+      "line": 5,
       "count": 1
     },
     {
@@ -897,8 +843,8 @@
       "state": "discover_loops",
       "var": "context.run_dir",
       "class": "C",
-      "host_shape": "c-string",
-      "line": 46,
+      "host_shape": "heredoc",
+      "line": 47,
       "count": 1
     },
     {
@@ -1118,15 +1064,6 @@
       "count": 1
     },
     {
-      "file": "loops/oracles/code-run-gate.yaml",
-      "state": "aggregate",
-      "var": "context.min_pass_rate",
-      "class": "A",
-      "host_shape": "c-string",
-      "line": 24,
-      "count": 1
-    },
-    {
       "file": "loops/oracles/enumerate-and-prove.yaml",
       "state": "flatten",
       "var": "captured.enumeration.output",
@@ -1185,7 +1122,7 @@
       "state": "check_mechanical",
       "var": "context.output",
       "class": "A",
-      "host_shape": "c-string",
+      "host_shape": "heredoc",
       "line": 3,
       "count": 1
     },
@@ -1617,8 +1554,8 @@
       "state": "run_planner",
       "var": "context.tasks_file",
       "class": "A",
-      "host_shape": "c-string",
-      "line": 3,
+      "host_shape": "heredoc",
+      "line": 5,
       "count": 1
     },
     {
@@ -1644,7 +1581,7 @@
       "state": "check_corrections",
       "var": "captured.enrich_output.output",
       "class": "B",
-      "host_shape": "c-string",
+      "host_shape": "heredoc",
       "line": 7,
       "count": 1
     },
@@ -1653,7 +1590,7 @@
       "state": "check_corrections",
       "var": "context.exclude_user_corrections",
       "class": "A",
-      "host_shape": "c-string",
+      "host_shape": "heredoc",
       "line": 3,
       "count": 1
     },
@@ -1662,7 +1599,7 @@
       "state": "check_files",
       "var": "captured.enrich_output.output",
       "class": "B",
-      "host_shape": "c-string",
+      "host_shape": "heredoc",
       "line": 7,
       "count": 1
     },
@@ -1671,7 +1608,7 @@
       "state": "check_files",
       "var": "context.require_file_modifications",
       "class": "A",
-      "host_shape": "c-string",
+      "host_shape": "heredoc",
       "line": 3,
       "count": 1
     },
@@ -1680,7 +1617,7 @@
       "state": "check_issue_outcome",
       "var": "captured.enrich_output.output",
       "class": "B",
-      "host_shape": "c-string",
+      "host_shape": "heredoc",
       "line": 7,
       "count": 1
     },
@@ -1689,7 +1626,7 @@
       "state": "check_issue_outcome",
       "var": "context.require_issue_outcome",
       "class": "A",
-      "host_shape": "c-string",
+      "host_shape": "heredoc",
       "line": 3,
       "count": 1
     },
@@ -1761,7 +1698,7 @@
       "state": "check_tools",
       "var": "captured.enrich_output.output",
       "class": "B",
-      "host_shape": "c-string",
+      "host_shape": "heredoc",
       "line": 7,
       "count": 1
     },
@@ -1770,7 +1707,7 @@
       "state": "check_tools",
       "var": "context.min_tool_invocations",
       "class": "A",
-      "host_shape": "c-string",
+      "host_shape": "heredoc",
       "line": 3,
       "count": 1
     },
@@ -1833,7 +1770,7 @@
       "state": "reject_corrections",
       "var": "captured.enrich_output.output",
       "class": "B",
-      "host_shape": "c-string",
+      "host_shape": "heredoc",
       "line": 7,
       "count": 1
     },
@@ -1842,7 +1779,7 @@
       "state": "reject_corrections",
       "var": "context.output_dir",
       "class": "A",
-      "host_shape": "c-string",
+      "host_shape": "heredoc",
       "line": 4,
       "count": 1
     },
@@ -1851,7 +1788,7 @@
       "state": "reject_files",
       "var": "captured.enrich_output.output",
       "class": "B",
-      "host_shape": "c-string",
+      "host_shape": "heredoc",
       "line": 7,
       "count": 1
     },
@@ -1860,7 +1797,7 @@
       "state": "reject_files",
       "var": "context.output_dir",
       "class": "A",
-      "host_shape": "c-string",
+      "host_shape": "heredoc",
       "line": 4,
       "count": 1
     },
@@ -1869,7 +1806,7 @@
       "state": "reject_issue_outcome",
       "var": "captured.enrich_output.output",
       "class": "B",
-      "host_shape": "c-string",
+      "host_shape": "heredoc",
       "line": 7,
       "count": 1
     },
@@ -1878,7 +1815,7 @@
       "state": "reject_issue_outcome",
       "var": "context.output_dir",
       "class": "A",
-      "host_shape": "c-string",
+      "host_shape": "heredoc",
       "line": 4,
       "count": 1
     },
@@ -1887,7 +1824,7 @@
       "state": "reject_pii",
       "var": "captured.enrich_output.output",
       "class": "B",
-      "host_shape": "c-string",
+      "host_shape": "heredoc",
       "line": 7,
       "count": 1
     },
@@ -1896,7 +1833,7 @@
       "state": "reject_pii",
       "var": "context.output_dir",
       "class": "A",
-      "host_shape": "c-string",
+      "host_shape": "heredoc",
       "line": 4,
       "count": 1
     },
@@ -1905,7 +1842,7 @@
       "state": "reject_tools",
       "var": "captured.enrich_output.output",
       "class": "B",
-      "host_shape": "c-string",
+      "host_shape": "heredoc",
       "line": 7,
       "count": 1
     },
@@ -1914,7 +1851,7 @@
       "state": "reject_tools",
       "var": "context.output_dir",
       "class": "A",
-      "host_shape": "c-string",
+      "host_shape": "heredoc",
       "line": 4,
       "count": 1
     },
@@ -1977,7 +1914,7 @@
       "state": "shrink_select_candidate",
       "var": "captured.run_dir.output",
       "class": "B",
-      "host_shape": "c-string",
+      "host_shape": "heredoc",
       "line": 3,
       "count": 3
     },
@@ -1995,7 +1932,7 @@
       "state": "validate_evaluators",
       "var": "captured.run_dir.output",
       "class": "B",
-      "host_shape": "c-string",
+      "host_shape": "heredoc",
       "line": 8,
       "count": 1
     },
@@ -2004,7 +1941,7 @@
       "state": "validate_intent",
       "var": "captured.run_dir.output",
       "class": "B",
-      "host_shape": "c-string",
+      "host_shape": "heredoc",
       "line": 4,
       "count": 1
     },
@@ -2013,7 +1950,7 @@
       "state": "validate_routing",
       "var": "captured.run_dir.output",
       "class": "B",
-      "host_shape": "c-string",
+      "host_shape": "heredoc",
       "line": 3,
       "count": 1
     },
@@ -2022,7 +1959,7 @@
       "state": "validate_sketch",
       "var": "captured.run_dir.output",
       "class": "B",
-      "host_shape": "c-string",
+      "host_shape": "heredoc",
       "line": 3,
       "count": 1
     }

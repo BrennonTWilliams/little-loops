@@ -1333,14 +1333,16 @@ states:
     # downstream check_reconcile_needed gate can detect a "spike ran but Readiness
     # is bit-identical" plateau. Written only on the on_yes (spike) branch.
     action: |
-      ll-issues show ${captured.input.output} --json | python3 -c "
-      import json, sys
-      d = json.load(sys.stdin)
+      SPIKE_ISSUE_JSON=$(ll-issues show ${captured.input.output} --json)
+      SPIKE_ISSUE_JSON="$SPIKE_ISSUE_JSON" python3 << 'PYEOF'
+      import json, os, sys
+      d = json.loads(os.environ['SPIKE_ISSUE_JSON'])
       if d.get('spike_needed') == 'true' and d.get('spike_attempted') != 'true':
           with open('${context.run_dir}/autodev-pre-spike-readiness.txt', 'w') as fh:
               fh.write(str(d.get('confidence') or ''))
           sys.exit(0)
-      sys.exit(1)"
+      sys.exit(1)
+      PYEOF
     fragment: shell_exit
     on_yes: run_spike
     on_no: check_missing_artifacts
@@ -1546,14 +1548,16 @@ states:
     # than straight to recheck_after_size_review, so a "spike ran but Readiness is
     # pinned" plateau gets one reconcile pass before the low_readiness deferral.
     action: |
-      ll-issues show ${captured.input.output} --json | python3 -c "
-      import json, sys
-      d = json.load(sys.stdin)
+      SPIKE_ISSUE_JSON=$(ll-issues show ${captured.input.output} --json)
+      SPIKE_ISSUE_JSON="$SPIKE_ISSUE_JSON" python3 << 'PYEOF'
+      import json, os, sys
+      d = json.loads(os.environ['SPIKE_ISSUE_JSON'])
       if d.get('spike_needed') == 'true' and d.get('spike_attempted') != 'true':
           with open('${context.run_dir}/autodev-pre-spike-readiness.txt', 'w') as fh:
               fh.write(str(d.get('confidence') or ''))
           sys.exit(0)
-      sys.exit(1)"
+      sys.exit(1)
+      PYEOF
     fragment: shell_exit
     on_yes: run_spike
     on_no: check_reconcile_needed
@@ -1616,9 +1620,11 @@ states:
     action: |
       ID="${captured.input.output}"
       FMT_JSON=$(ll-issues format-check "$ID" --format json 2>/dev/null || echo '{}')
-      ll-issues show "$ID" --json | LL_ISSUE_ID="$ID" LL_FORMAT_CHECK_JSON="$FMT_JSON" python3 -c "
+      ISSUE_JSON=$(ll-issues show "$ID" --json)
+      READINESS_THRESHOLD=${context.readiness_threshold:shell}
+      LL_ISSUE_ID="$ID" LL_FORMAT_CHECK_JSON="$FMT_JSON" LL_ISSUE_JSON="$ISSUE_JSON" LL_ARG_READINESS_THRESHOLD="$READINESS_THRESHOLD" python3 << 'PYEOF'
       import json, os, sys
-      d = json.load(sys.stdin)
+      d = json.loads(os.environ['LL_ISSUE_JSON'])
       cur = str(d.get('confidence') or '')
       attempted = d.get('reconcile_attempted') == 'true'
       spike_snap = '${context.run_dir}/autodev-pre-spike-readiness.txt'
@@ -1629,8 +1635,9 @@ states:
           with open(snap) as fh:
               pre = fh.read().strip()
       plateau = (pre != '' and pre == cur and not attempted)
+      readiness_threshold = int(os.environ['LL_ARG_READINESS_THRESHOLD'])
       fresh_below = (pre == '' and cur != ''
-                     and int(cur) < ${context.readiness_threshold} and not attempted)
+                     and int(cur) < readiness_threshold and not attempted)
       try:
           fmt = json.loads(os.environ.get('LL_FORMAT_CHECK_JSON') or '{}') or {}
           markers = int(fmt.get('superseded_marker_count') or 0)
@@ -1650,7 +1657,8 @@ states:
               fh.write(cur)
       if contradiction and not (plateau or fresh_below):
           open('${context.run_dir}/autodev-contradiction-reconcile-armed', 'w').close()
-      sys.exit(0 if (plateau or fresh_below or contradiction) else 1)"
+      sys.exit(0 if (plateau or fresh_below or contradiction) else 1)
+      PYEOF
     fragment: shell_exit
     on_yes: reconcile_current
     on_no: check_size_review_ran_this_pass
@@ -1736,10 +1744,14 @@ states:
     # confidence_score directly from frontmatter instead, mirroring
     # check_spike_needed's inline-Python idiom.
     action: |
-      ll-issues show ${captured.input.output} --json | python3 -c "
-      import json, sys
-      d = json.load(sys.stdin)
-      sys.exit(0 if int(d.get('confidence') or 0) >= ${context.readiness_threshold} else 1)"
+      ISSUE_JSON=$(ll-issues show ${captured.input.output} --json)
+      READINESS_THRESHOLD=${context.readiness_threshold:shell}
+      LL_ISSUE_JSON="$ISSUE_JSON" LL_ARG_READINESS_THRESHOLD="$READINESS_THRESHOLD" python3 << 'PYEOF'
+      import json, os, sys
+      d = json.loads(os.environ['LL_ISSUE_JSON'])
+      threshold = int(os.environ['LL_ARG_READINESS_THRESHOLD'])
+      sys.exit(0 if int(d.get('confidence') or 0) >= threshold else 1)
+      PYEOF
     fragment: shell_exit
     on_yes: remediate_oversized_atomic
     on_no: recheck_after_size_review
@@ -1812,16 +1824,22 @@ states:
       else
         DESIGN_FAIL="false"
       fi
-      GATE=$(ll-issues show "$ID" --json 2>/dev/null | python3 -c "
-      import json, sys
-      d = json.load(sys.stdin)
+      ISSUE_JSON=$(ll-issues show "$ID" --json 2>/dev/null)
+      READINESS_THRESHOLD=${context.readiness_threshold:shell}
+      OUTCOME_THRESHOLD=${context.outcome_threshold:shell}
+      GATE=$(LL_ISSUE_JSON="$ISSUE_JSON" LL_ARG_READINESS_THRESHOLD="$READINESS_THRESHOLD" LL_ARG_OUTCOME_THRESHOLD="$OUTCOME_THRESHOLD" python3 << 'PYEOF'
+      import json, os
+      d = json.loads(os.environ['LL_ISSUE_JSON'] or '{}')
       conf = int(d.get('confidence') or 0)
       outc = int(d.get('outcome') or 0)
       waived = str(d.get('outcome_gate_waived')).lower() == 'true'
-      readiness_ok = conf >= ${context.readiness_threshold}
-      outcome_ok = waived or (outc >= ${context.outcome_threshold})
+      readiness_threshold = int(os.environ['LL_ARG_READINESS_THRESHOLD'])
+      outcome_threshold = int(os.environ['LL_ARG_OUTCOME_THRESHOLD'])
+      readiness_ok = conf >= readiness_threshold
+      outcome_ok = waived or (outc >= outcome_threshold)
       print('PASS' if (readiness_ok and outcome_ok) else 'FAIL')
-      " 2>/dev/null || echo "FAIL")
+      PYEOF
+      2>/dev/null || echo "FAIL")
       if [ "$DESIGN_FAIL" = "true" ]; then
         GATE="FAIL"
       fi
@@ -2044,16 +2062,22 @@ states:
       else
         DESIGN_FAIL="false"
       fi
-      GATE=$(ll-issues show "$ID" --json 2>/dev/null | python3 -c "
-      import json, sys
-      d = json.load(sys.stdin)
+      ISSUE_JSON=$(ll-issues show "$ID" --json 2>/dev/null)
+      READINESS_THRESHOLD=${context.readiness_threshold:shell}
+      OUTCOME_THRESHOLD=${context.outcome_threshold:shell}
+      GATE=$(LL_ISSUE_JSON="$ISSUE_JSON" LL_ARG_READINESS_THRESHOLD="$READINESS_THRESHOLD" LL_ARG_OUTCOME_THRESHOLD="$OUTCOME_THRESHOLD" python3 << 'PYEOF'
+      import json, os
+      d = json.loads(os.environ['LL_ISSUE_JSON'] or '{}')
       conf = int(d.get('confidence') or 0)
       outc = int(d.get('outcome') or 0)
       waived = str(d.get('outcome_gate_waived')).lower() == 'true'
-      readiness_ok = conf >= ${context.readiness_threshold}
-      outcome_ok = waived or (outc >= ${context.outcome_threshold})
+      readiness_threshold = int(os.environ['LL_ARG_READINESS_THRESHOLD'])
+      outcome_threshold = int(os.environ['LL_ARG_OUTCOME_THRESHOLD'])
+      readiness_ok = conf >= readiness_threshold
+      outcome_ok = waived or (outc >= outcome_threshold)
       print('PASS' if (readiness_ok and outcome_ok) else 'FAIL')
-      " 2>/dev/null || echo "FAIL")
+      PYEOF
+      2>/dev/null || echo "FAIL")
       if [ "$DESIGN_FAIL" = "true" ]; then
         GATE="FAIL"
       fi

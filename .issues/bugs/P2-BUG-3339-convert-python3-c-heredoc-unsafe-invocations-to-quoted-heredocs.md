@@ -3,10 +3,11 @@ id: BUG-3339
 type: BUG
 title: Convert python3 -c heredoc-unsafe invocations to quoted heredocs
 priority: P2
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-08-27'
 captured_at: '2026-08-27T17:51:35Z'
+completed_at: '2026-08-28T17:58:02Z'
 parent: EPIC-3336
 blocked_by:
 - ENH-3337
@@ -290,6 +291,55 @@ _Added by pre-implementation review — 2026-08-28 — verified against baseline
 
 ## Program Design
 
+### Deviations
+
+_Added during implementation — 2026-08-28:_
+
+- **`loop-router.yaml:discover_loops` and `lib/composer.yaml:discover_loops`
+  needed more than "a literal token swap."** The Program Design's "Sites
+  requiring more than a 1:1 token swap" list excluded these two, reasoning
+  they have no nested `"`, `$(...)`, or backticks. That check missed a
+  separate structural hazard: both pipe a command's stdout into
+  `python3 -c "..."` and the Python body reads `json.load(sys.stdin)`.
+  Verified empirically that `cmd | python3 << 'PYEOF'` **overrides the pipe**
+  — the heredoc's own redirection wins over the preceding pipe, so stdin
+  inside the heredoc is empty, not the piped catalog JSON, which would have
+  silently broken loop discovery on both loops. Landed instead with the
+  established env-var-prefixed-invocation pattern already used elsewhere in
+  the corpus (`mechanize-skills.yaml:162`): capture the pipe's stdout into a
+  shell variable first, pass it in via `VAR="$VAR" python3 << 'PYEOF'`, read
+  with `os.environ` inside the heredoc.
+- **The same pipe-into-stdin hazard also applied to three `autodev.yaml`
+  states** not flagged as structurally complicated by the issue's Program
+  Design: `check_spike_needed`, `check_spike_needed_before_skip`, and
+  `check_reconcile_needed` all piped `ll-issues show ... --json` into
+  `python3 -c "..."` reading `sys.stdin`. Converted with the same env-var
+  capture-and-pass pattern as above (`check_reconcile_needed` already used
+  env vars for two of its inputs — `LL_ISSUE_ID`/`LL_FORMAT_CHECK_JSON` — so
+  this extends that existing shape to the piped JSON payload too, via a new
+  `LL_ISSUE_JSON` binding).
+- **`harness-optimize.yaml:load_directive` needed an env-var binding for
+  `$LOOP_YAML`, not just the `${context.run_dir}` handling the issue
+  flagged.** `$LOOP_YAML` is a bash variable (assigned from
+  `${context.targets}` one line earlier) referenced inside the `-c "..."`
+  body; bash expands it there because `-c "..."` is a bash double-quoted
+  string. A `<<'PYEOF'` **quoted** heredoc (the required safe form) disables
+  *all* bash expansion inside its body, including ordinary `$VAR` references
+  — not just command substitution — so a naive swap would have left
+  `open('$LOOP_YAML')` in the Python source as a literal, non-existent
+  filename. Fixed with the same `VAR="$VAR" python3 << 'PYEOF'` /
+  `os.environ` pattern.
+- **`oracles/code-run-gate.yaml:438`'s final form does not use a heredoc at
+  all**, unlike the plan's framing (Program Design's Codebase Research
+  Findings noted "no corpus precedent for a heredoc-as-condition shape").
+  Landed the class-A remedy (shell-quoted `LL_ARG_MIN_PASS_RATE=` env
+  binding + `float()` coercion in a `-c` one-liner) directly inline in the
+  existing `if ! python3 -c "...";` position instead — once the interpolated
+  value is read via `os.environ` rather than embedded as source text, the
+  `-c` invocation carries no interpolation token at all, so it drops out of
+  the ENH-3338 baseline the same as a converted heredoc site would, with no
+  restructuring of the surrounding `if !`/`for` nesting needed.
+
 ### Signatures
 
 No Python API changes — this is a shell-syntax-only conversion inside loop
@@ -520,6 +570,7 @@ _Added by `/ll:confidence-check` on 2026-08-28_
 - Only 2 of 11 target files (`sft-corpus.yaml`, `autodev.yaml`) have dedicated test modules; the other 9 rely solely on `ll-loop validate`, a structural/static linter that won't catch a behaviorally-broken Python body until the affected state actually runs — mitigate by exercising the structurally-entangled sites (`code-run-gate.yaml:438`, the `autodev.yaml` pipe-fed groups, `general-task.yaml:895-902`) directly per Acceptance Criterion #4.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-28T17:57:43 - `7d5dbc34-9019-400e-bce4-8f69e1363359.jsonl`
 - `/ll:ready-issue` - 2026-08-28T17:21:43 - `510b8679-9ba8-49c8-a1dd-0eab37a6d9bf.jsonl`
 - `/ll:confidence-check` - 2026-08-28T17:19:34 - `4e809575-d5cb-40f4-abcb-af120cec753f.jsonl`
 - `/ll:confidence-check` - 2026-08-28T16:59:31 - `5e4f9ac6-d048-48b7-a0cd-6e184370a286.jsonl`

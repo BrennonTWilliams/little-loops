@@ -28,9 +28,10 @@ states:
     action_type: shell
     timeout: 60
     action: |
-      ll-loop list --json --visibility public 2>/dev/null | python3 -c "
-      import json, sys, os
-      loops = json.load(sys.stdin)
+      LOOP_ROUTER_CATALOG_JSON=$(ll-loop list --json --visibility public 2>/dev/null)
+      LOOP_ROUTER_CATALOG_JSON="$LOOP_ROUTER_CATALOG_JSON" python3 << 'PYEOF'
+      import json, os
+      loops = json.loads(os.environ['LOOP_ROUTER_CATALOG_JSON'] or '[]')
       include_raw = '${context.include}'
       includes = [s.strip() for s in include_raw.split(',') if s.strip()]
       def _matches_include(loop):
@@ -76,7 +77,7 @@ states:
       with open('${context.run_dir}/loop-router-catalog.json', 'w') as f:
           json.dump(catalog, f, indent=2)
       print(json.dumps(catalog, indent=2))
-      "
+      PYEOF
     capture: catalog
     on_error: finalize_failed
     next: classify_goal

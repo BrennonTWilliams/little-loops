@@ -29,7 +29,7 @@ states:
     action_type: shell
     timeout: 30
     action: |
-      python3 -c "
+      python3 << 'PYEOF'
       import json, sys
       raw = '''${context.output}'''
       failures = []
@@ -50,7 +50,7 @@ states:
           if 'tools_used' in data and not isinstance(data['tools_used'], list):
               failures.append('tools_used must be a list')
       print('PHASE1_FAIL: ' + '; '.join(failures) if failures else 'PHASE1_PASS')
-      "
+      PYEOF
     capture: phase1
     next: route_phase1
 

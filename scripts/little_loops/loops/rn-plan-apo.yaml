@@ -45,7 +45,12 @@ states:
     action: |
       PARENT_DIR="${context.run_dir}"
       mkdir -p "$PARENT_DIR/plans"
-      python3 -c "import json,sys; raw=open('${context.tasks_file}').read(); data=(json.loads(raw) if raw.lstrip().startswith('[') else [l for l in raw.splitlines() if l.strip()]); print('\n'.join(t if isinstance(t,str) else t.get('task','') for t in data))" > "$PARENT_DIR/tasks.txt"
+      python3 << 'PYEOF' > "$PARENT_DIR/tasks.txt"
+      import json
+      raw = open('${context.tasks_file}').read()
+      data = json.loads(raw) if raw.lstrip().startswith('[') else [l for l in raw.splitlines() if l.strip()]
+      print('\n'.join(t if isinstance(t, str) else t.get('task', '') for t in data))
+      PYEOF
       COUNT=0
       while IFS= read -r TASK; do
         [ -z "$TASK" ] && continue

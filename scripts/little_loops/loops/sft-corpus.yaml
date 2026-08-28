@@ -109,7 +109,7 @@ states:
   check_issue_outcome:
     action_type: shell
     action: |
-      python3 -c "
+      python3 << 'PYEOF'
       import json
       enabled = '${context.require_issue_outcome}'.lower() == 'true'
       if not enabled:
@@ -119,7 +119,7 @@ states:
           ex = json.loads(f.readline())
       outcome = ex.get('metadata', {}).get('issue_outcome')
       print(1 if outcome == 'done' else 0)
-      "
+      PYEOF
     evaluate:
       type: output_numeric
       operator: eq
@@ -130,7 +130,7 @@ states:
   reject_issue_outcome:
     action_type: shell
     action: |
-      python3 -c "
+      python3 << 'PYEOF'
       import json, os
       from datetime import datetime, timezone
       out_dir = '${context.output_dir}'
@@ -144,14 +144,14 @@ states:
       with open(os.path.join(out_dir, 'rejections.jsonl'), 'a') as f:
           f.write(json.dumps(entry) + '\n')
       print('rejected: require_issue_outcome')
-      "
+      PYEOF
     next: check_corrections
 
   # --- Predicate 2: exclude_user_corrections ---
   check_corrections:
     action_type: shell
     action: |
-      python3 -c "
+      python3 << 'PYEOF'
       import json
       enabled = '${context.exclude_user_corrections}'.lower() == 'true'
       if not enabled:
@@ -161,7 +161,7 @@ states:
           ex = json.loads(f.readline())
       has_corrections = ex.get('metadata', {}).get('has_corrections', False)
       print(1 if has_corrections else 0)
-      "
+      PYEOF
     evaluate:
       type: output_numeric
       operator: eq
@@ -172,7 +172,7 @@ states:
   reject_corrections:
     action_type: shell
     action: |
-      python3 -c "
+      python3 << 'PYEOF'
       import json, os
       from datetime import datetime, timezone
       out_dir = '${context.output_dir}'
@@ -186,14 +186,14 @@ states:
       with open(os.path.join(out_dir, 'rejections.jsonl'), 'a') as f:
           f.write(json.dumps(entry) + '\n')
       print('rejected: exclude_user_corrections')
-      "
+      PYEOF
     next: check_tools
 
   # --- Predicate 3: min_tool_invocations ---
   check_tools:
     action_type: shell
     action: |
-      python3 -c "
+      python3 << 'PYEOF'
       import json
       min_tools = '${context.min_tool_invocations}'
       if min_tools == '0' or min_tools == '':
@@ -203,7 +203,7 @@ states:
           ex = json.loads(f.readline())
       tool_count = ex.get('metadata', {}).get('tool_count', 0)
       print(tool_count)
-      "
+      PYEOF
     evaluate:
       type: output_numeric
       operator: ge
@@ -214,7 +214,7 @@ states:
   reject_tools:
     action_type: shell
     action: |
-      python3 -c "
+      python3 << 'PYEOF'
       import json, os
       from datetime import datetime, timezone
       out_dir = '${context.output_dir}'
@@ -228,14 +228,14 @@ states:
       with open(os.path.join(out_dir, 'rejections.jsonl'), 'a') as f:
           f.write(json.dumps(entry) + '\n')
       print('rejected: min_tool_invocations')
-      "
+      PYEOF
     next: check_files
 
   # --- Predicate 4: require_file_modifications ---
   check_files:
     action_type: shell
     action: |
-      python3 -c "
+      python3 << 'PYEOF'
       import json
       enabled = '${context.require_file_modifications}'.lower() == 'true'
       if not enabled:
@@ -245,7 +245,7 @@ states:
           ex = json.loads(f.readline())
       files_modified = ex.get('metadata', {}).get('files_modified', 0)
       print(files_modified)
-      "
+      PYEOF
     evaluate:
       type: output_numeric
       operator: ge
@@ -256,7 +256,7 @@ states:
   reject_files:
     action_type: shell
     action: |
-      python3 -c "
+      python3 << 'PYEOF'
       import json, os
       from datetime import datetime, timezone
       out_dir = '${context.output_dir}'
@@ -270,7 +270,7 @@ states:
       with open(os.path.join(out_dir, 'rejections.jsonl'), 'a') as f:
           f.write(json.dumps(entry) + '\n')
       print('rejected: require_file_modifications')
-      "
+      PYEOF
     next: check_pii
 
   # --- Predicate 5: pii_action ---
@@ -313,7 +313,7 @@ states:
   reject_pii:
     action_type: shell
     action: |
-      python3 -c "
+      python3 << 'PYEOF'
       import json, os
       from datetime import datetime, timezone
       out_dir = '${context.output_dir}'
@@ -327,7 +327,7 @@ states:
       with open(os.path.join(out_dir, 'rejections.jsonl'), 'a') as f:
           f.write(json.dumps(entry) + '\n')
       print('rejected: pii_detected')
-      "
+      PYEOF
     next: check_token_length
 
   # -------------------------------------------------------------------
