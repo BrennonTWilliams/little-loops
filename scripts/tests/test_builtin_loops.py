@@ -18700,6 +18700,145 @@ class TestBriefFencing:
         assert "<<<GOAL" not in action
 
 
+# BUG-3334 item 3: sites where a sub-loop's untrusted captured output (its
+# child event stream, or a merged child-capture namespace) reaches an
+# action_type: prompt state, unfenced. Two capture mechanisms, both
+# discoverable from a raw YAML parse (executor.py:1059-1069):
+#   - direct: a `loop:` state with `capture: <name>` -> ${captured.<name>.output}
+#   - merge:  a `loop:` state with `with:`/`context_passthrough: true` and no
+#             `capture:` -> the whole child capture dict is merged in under
+#             the dispatch state's own name ->
+#             ${captured.<state_name>.<child_capture_name>.output}
+# NOTE(BUG-3334 item 2): promote to fence.py alongside
+# FENCE_CORE_UNTRUSTED_OUTPUT / UNTRUSTED_OUTPUT_ROLES when fencing is
+# implemented for these sites.
+UNTRUSTED_OUTPUT_SITES: set[tuple[str, str, str]] = {
+    ("loop-router.yaml", "review", "${captured.sub_loop_output.output}"),
+    ("loop-composer.yaml", "review_chain", "${captured.step_results_json.output}"),
+    ("loop-composer-adaptive.yaml", "review_chain", "${captured.step_results_json.output}"),
+    ("rn-build.yaml", "capture_eval_failures", "${captured.eval_result.output}"),
+    ("rn-build.yaml", "synthesize_result", "${captured.eval_result.output:default=not run}"),
+    ("rn-build.yaml", "synthesize_result", "${captured.cluster_result.output}"),
+    ("refine-to-ready-issue.yaml", "diagnose", "${captured.confidence_check.output?}"),
+    ("examples-miner.yaml", "synthesize", "${captured.run_optimizer.gradient.output}"),
+    ("integrate-sdk.yaml", "scaffold_integration", "${captured.prove.targets.output}"),
+    (
+        "integrate-sdk.yaml",
+        "diagnose_and_block",
+        "${captured.prove.enumeration.output:default=not-reached}",
+    ),
+    (
+        "integrate-sdk.yaml",
+        "diagnose_and_block",
+        "${captured.prove.targets.output:default=not-reached}",
+    ),
+    ("adopt-third-party-api.yaml", "build_playbook", "${captured.prove.enumeration.output}"),
+    (
+        "adopt-third-party-api.yaml",
+        "build_playbook_partial",
+        "${captured.prove.enumeration.output}",
+    ),
+}
+
+# Sites where untrusted output reaches a prompt via an on-disk relay
+# (checkpoint-file round-trip) rather than a textual ${captured...} chain —
+# NOT reachable by _discover_untrusted_output_sites, since read_checkpoints
+# never textually references step_output; the link is filesystem I/O
+# (write_step_success/write_step_failed write checkpoints/*.json,
+# read_checkpoints globs them back). See
+# test_known_indirect_sites_chain_still_present for the structural sentinel.
+KNOWN_INDIRECT_UNTRUSTED_OUTPUT_SITES: set[tuple[str, str, str]] = {
+    ("loop-composer.yaml", "review_chain", "${captured.step_results_json.output}"),
+    ("loop-composer-adaptive.yaml", "review_chain", "${captured.step_results_json.output}"),
+}
+
+
+def _direct_ref_pattern(name: str) -> re.Pattern:
+    return re.compile(r"\$\{captured\." + re.escape(name) + r"\.output(?::default=[^}]*)?\??\}")
+
+
+def _merge_ref_pattern(dispatch_state_name: str) -> re.Pattern:
+    return re.compile(
+        r"\$\{captured\."
+        + re.escape(dispatch_state_name)
+        + r"\.[A-Za-z0-9_]+\.output(?::default=[^}]*)?\??\}"
+    )
+
+
+def _discover_untrusted_output_sites(loop_file: str) -> set[tuple[str, str, str]]:
+    """Find every action_type: prompt state referencing untrusted output
+    captured from a `loop:` dispatch state, either directly (`capture:` on
+    the dispatch state itself) or via the with:/context_passthrough
+    cross-namespace merge (executor.py:1068-1069)."""
+    data = _load_builtin_loop(loop_file)
+    states = data.get("states") or {}
+    origins: dict[str, str] = {}  # capture-or-state name -> "direct" | "merge"
+    for state_name, state in states.items():
+        if not isinstance(state, dict) or "loop" not in state:
+            continue
+        if state.get("capture"):
+            origins[state["capture"]] = "direct"
+        elif state.get("with") or state.get("context_passthrough") is True:
+            origins[state_name] = "merge"
+
+    found: set[tuple[str, str, str]] = set()
+    for state_name, state in states.items():
+        if not isinstance(state, dict) or state.get("action_type") != "prompt":
+            continue
+        action = state.get("action", "") or ""
+        for name, kind in origins.items():
+            pattern = _direct_ref_pattern(name) if kind == "direct" else _merge_ref_pattern(name)
+            for m in pattern.finditer(action):
+                found.add((loop_file, state_name, m.group(0)))
+    return found
+
+
+class TestUntrustedOutputSurvey:
+    """BUG-3334 item 3: completeness guard for every site where a sub-loop's
+    untrusted captured output (child event stream, either directly captured
+    or merged into the parent namespace via with:/context_passthrough)
+    reaches an action_type: prompt state, unfenced. This class only surveys
+    and pins the site enumeration — it asserts nothing about fencing being
+    present (that's item 2, not yet implemented).
+
+    `catalog`/`chosen`-shaped captures need no exemption entries: both are
+    captured by action_type: shell states (discover_loops,
+    parse_project_score/parse_builtin_score/apply_user_choice), never a
+    `loop:` state, so the `"loop" in state` origin scoping in
+    _discover_untrusted_output_sites excludes them structurally.
+    """
+
+    def test_completeness_guard(self) -> None:
+        discovered: set[tuple[str, str, str]] = set()
+        files = sorted(p for p in BUILTIN_LOOPS_DIR.rglob("*.yaml") if is_runnable_loop(p))
+        for path in files:
+            discovered |= _discover_untrusted_output_sites(str(path.relative_to(BUILTIN_LOOPS_DIR)))
+        expected = UNTRUSTED_OUTPUT_SITES - KNOWN_INDIRECT_UNTRUSTED_OUTPUT_SITES
+        assert discovered == expected, (
+            f"discovered {discovered - expected} not classified; "
+            f"expected-but-missing {expected - discovered}"
+        )
+
+    def test_known_indirect_sites_chain_still_present(self) -> None:
+        """Sentinel for the on-disk relay the mechanical guard can't see:
+        dispatch_step (capture: step_output) -> write_step_success/failed
+        (embeds ${captured.step_output.output}, writes checkpoints/*.json)
+        -> read_checkpoints (globs checkpoints, capture: step_results_json)
+        -> review_chain (${captured.step_results_json.output}). If any link
+        breaks, this fails loudly instead of silently losing coverage."""
+        for loop_file in ("loop-composer.yaml", "loop-composer-adaptive.yaml"):
+            data = _load_builtin_loop(loop_file)
+            states = data["states"]
+            assert states["dispatch_step"].get("capture") == "step_output"
+            write_success_action = states["write_step_success"].get("action", "") or ""
+            assert "${captured.step_output.output}" in write_success_action
+            assert states["read_checkpoints"].get("capture") == "step_results_json"
+            read_ckpt_action = states["read_checkpoints"].get("action", "") or ""
+            assert "checkpoints" in read_ckpt_action
+            review_action = states["review_chain"].get("action", "") or ""
+            assert "${captured.step_results_json.output}" in review_action
+
+
 class TestConfidenceGateThresholdsNotHardcoded:
     """BUG-2767: gate-driving loops must not pin thresholds in their context: block.
 

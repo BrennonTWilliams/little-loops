@@ -266,6 +266,19 @@ Guard implementation notes:
   carrying a `loop:` key (dispatch captures), plus the state names of `loop:`
   states with no `capture:` (whose child captures merge in under the state name).
 
+**Implemented — 2026-08-27.** `TestUntrustedOutputSurvey` in
+`scripts/tests/test_builtin_loops.py` (`UNTRUSTED_OUTPUT_SITES`,
+`KNOWN_INDIRECT_UNTRUSTED_OUTPUT_SITES`, `_discover_untrusted_output_sites`,
+`test_completeness_guard`, `test_known_indirect_sites_chain_still_present`).
+Resolves both shapes as specified above; tolerates `:default=` and `?`
+modifiers; scoped to `BUILTIN_LOOPS_DIR.rglob("*.yaml")` (all runnable
+loops, not a fixed file list). Confirmed: `chosen` (`loop-router.yaml`) and
+`catalog` (`loop-router.yaml`/`loop-composer{,-adaptive}.yaml`) need no
+explicit exemption entries — both are captured by `action_type: shell`
+states, never a `loop:` state, so the `"loop" in state` origin scoping
+excludes them structurally. This is item 3 of Proposed Solution, done;
+items 1-2 are not part of this change.
+
 ### Codebase Research Findings
 
 _Added by `/ll:refine-issue` — 2026-08-27 — based on codebase analysis:_
@@ -381,6 +394,27 @@ Solution → "Complete the survey mechanically": the narrowed completeness guard
 returns 11 sites across 6 files, matching every site those three passes found by
 hand, and closes the survey as a side effect of writing a test this issue needs
 anyway. The manual lists below stay as corroboration, not as the work item.
+
+**Survey CLOSED — 2026-08-27, implemented.** `scripts/tests/test_builtin_loops.py::TestUntrustedOutputSurvey::test_completeness_guard`
+now runs the narrowed dispatch-provenance predicate (direct `loop:`+`capture:`
+sites, plus `loop:`+`with:`/`context_passthrough:` cross-namespace-merge
+sites, both fully determinable from a raw YAML parse per
+`executor.py:1059-1069`) over every file under `BUILTIN_LOOPS_DIR`, not a
+hand-picked subset. It reproduces the 11-site enumeration below exactly, with
+**no 12th site found** across the full ~78-loop tree — the "tier-A count is a
+floor, not a total" caveat above no longer holds for the dispatch-provenance
+mechanism. `loop-composer{,-adaptive}.yaml`'s `review_chain` site is pinned
+separately by `test_known_indirect_sites_chain_still_present`, a structural
+sentinel, because it reaches the prompt via an on-disk checkpoint relay
+(`dispatch_step` → `write_step_success`/`write_step_failed` →
+`read_checkpoints`) with no textual `${captured...}` chain the mechanical
+guard can trace. Both tests pass on the current tree; full suite run
+(`python -m pytest scripts/tests/`) shows no regressions — 3 pre-existing,
+unrelated failures (`test_verify_evidence`, `test_packaging_duplicate_files`,
+`test_prose_dep_sweep_gate`) confirmed present on `main` before this change.
+This closes only Proposed Solution item 3; items 1 (regex anchoring) and 2
+(actual fencing — `FENCE_CORE_UNTRUSTED_OUTPUT`, `UNTRUSTED_OUTPUT_ROLES`,
+`render_fence()` changes) remain open.
 
 ### Codebase Research Findings
 
@@ -814,6 +848,19 @@ left as `/ll:confidence-check` last set them. A re-run is warranted before
 implementation: this pass closed Open Question 1 definitively and gave the
 survey a mechanical path to completion (both cited as the top outcome risks),
 but added the marker-collision requirement, which is new unestimated work.
+
+**Scores still not updated — 2026-08-27, item 3 implemented.** The survey
+(the outcome-risk factor this note and the Impact → Recommended split both
+name as dominant) is now closed and pinned by
+`TestUntrustedOutputSurvey::test_completeness_guard`/
+`test_known_indirect_sites_chain_still_present` — see Proposed Solution →
+"Complete the survey mechanically" and Scope → "Survey CLOSED" above. A
+`/ll:confidence-check` re-run is warranted before scoring items 1-2: the
+breadth/no-test-infrastructure risk factors that drove `outcome_confidence`
+to 47 no longer hold (test infrastructure now exists; breadth is proven
+closed at 11 sites, not a floor), but the marker-collision requirement and
+Open Question 2 (fencing vs. long event streams) remain unresolved design
+forks for the still-open fencing work (item 2).
 
 ## Session Log
 - `/ll:decide-issue` - 2026-08-27T22:10:09 - `79106a4f-4393-4e7a-9f77-a9f63f9c673b.jsonl`
