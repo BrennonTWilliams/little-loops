@@ -8,8 +8,18 @@ discovered_by: manual-review
 discovered_date: '2026-08-27'
 captured_at: '2026-08-27T00:00:00Z'
 parent: EPIC-3336
-blocked_by: [BUG-3339, BUG-3340, BUG-3341]
-blocks: [ENH-3342]
+blocked_by:
+- BUG-3339
+- BUG-3340
+- BUG-3341
+blocks:
+- ENH-3342
+confidence_score: 100
+outcome_confidence: 95
+score_complexity: 20
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # ENH-3347: Add behavioral tests for loop interpolation injection and quote-breaking
@@ -54,15 +64,45 @@ conversion and green after:
 2. **`"""` capture.** A captured output containing `"""` **and a newline** runs a
    class-B action to exit 0. Covers BUG-3341, and the newline is as important as
    the quotes — it is what breaks a single-quoted literal.
-3. **Python injection.** A goal containing
-   `'; import os; os.system("touch <tmp_path>/pwned") #` does **not** create the
-   file. Use pytest's `tmp_path`, **not a fixed `/tmp` path** — fixed paths
-   collide across parallel/xdist runs and leak between tests.
-4. **Shell injection at a converted `-c "` site.** A goal containing
-   `"; touch <tmp_path>/pwned; #` run against a site converted by BUG-3339 (e.g.
-   `loop-router`'s `list_loops`) does not create the file. This is the
-   shell-injection half that **only** the `-c "` shape exhibits, and it is why
-   this needs its own case rather than folding into case 3.
+3. **Python injection.** Pinned to `loop-router`'s `parse_project_score` (the
+   state whose pre-fix shape interpolated the goal into `python3 -c` source): a
+   goal containing `'; import os; os.system("touch <tmp_path>/pwned") #` does
+   **not** create the file. Use pytest's `tmp_path`, **not a fixed `/tmp`
+   path** — fixed paths collide across parallel/xdist runs and leak between
+   tests.
+4. **Shell injection at a site whose pre-conversion shape was `-c "..."`.**
+   Pinned to `loop-router`'s `discover_loops` (converted by BUG-3339 from
+   `python3 -c "..."` to a quoted heredoc). `discover_loops` never references
+   `${context.goal}` — its user-controlled interpolations are
+   `${context.include:shell}` and `${context.exclude:shell}` — so the payload
+   goes in `context.include`: `"; touch <tmp_path>/pwned; #` does not create
+   the file. This is the shell-injection half that **only** the pre-fix `-c "`
+   shape exhibits, and it is why this needs its own case rather than folding
+   into case 3.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-28 — based on codebase analysis:_
+
+- All three blockers are `status: done` (verified via `ll-issues show
+  --json`): BUG-3339, BUG-3340, BUG-3341. Two of the four cases' named
+  example sites are stale as written:
+- **`list_loops` is not a state name anywhere in the codebase** — searched
+  repo-wide across `.yaml`/source/issue files, zero hits outside this
+  issue's own text. The state BUG-3339 actually converted off the `-c "..."`
+  shape is `discover_loops` (`scripts/little_loops/loops/loop-router.yaml:27`),
+  now a quoted heredoc (`python3 << 'PYEOF'`), not `-c "..."`. Case 4 should
+  target `discover_loops`, not `list_loops`.
+- `parse_project_score` (`scripts/little_loops/loops/loop-router.yaml:205-229`)
+  is already fixed for **both** BUG-3340 (goal bound via
+  `LL_ARG_GOAL=${context.goal:shell}` env var, line 211) **and** BUG-3341
+  (`${captured.project_score.output}` rendered inside a
+  `cat > ... << 'LL_RAW_9F3C1A7E_EOF'` heredoc, lines 207-210) — it is
+  simultaneously case 1's and case 2's natural target state, not case 1's
+  alone.
+- The one remaining `python3 -c "..."` in `loop-router.yaml` is
+  `finalize_failed` (`:584-588`) — a fixed literal JSON string with no
+  interpolation, not an injection surface; do not target it for case 3 or 4.
 
 ## Motivation
 
@@ -99,6 +139,33 @@ They are different questions and the epic currently answers only the first.
 ### Configuration
 
 - N/A
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-28 — based on codebase analysis:_
+
+- No shared/importable helper exists in either test file for "extract a
+  named state's action from a loaded loop" — every existing class defines
+  its own private `_run*`/`_dedup_action`/`_verify_action` method scoped to
+  that class; simple cases inline `data["states"][name]["action"]` directly
+  in the test body. A new helper is not required by convention — each of
+  the four cases can follow the same self-contained shape.
+- `TestBug2468ErrorRouting` (`scripts/tests/test_brainstorm.py:617-702`), the
+  precedent this issue already cites, breaks down concretely as: a `data`
+  fixture (`yaml.safe_load(LOOP_FILE.read_text())`), a `_seeded_run_dir(tmp_path)`
+  helper, a `_dedup_action(...)` method chaining `.replace()` calls per
+  `${...}` token, and a `_bash(action, tmp_path)` wrapper around
+  `subprocess.run(["bash", "-c", action], cwd=tmp_path, capture_output=True,
+  text=True)`; its own `test_triple_quote_payload_no_longer_crashes`
+  (`:689-702`) asserts `returncode == 0` plus a stdout/file-content check.
+- No existing `assert not (...).exists()` site in `test_builtin_loops.py`
+  (8 representative sites: `:811`, `:5371`, `:6072`, `:6120`, `:6242`,
+  `:6680`, `:12780`, `:18046`, `:18181`) frames the check as an
+  injection-sentinel (a file the payload itself would create, e.g.
+  `pwned`) — all existing sites check normal state-output artifacts for
+  absence under a routing branch. Cases 3/4's sentinel-absence assertions
+  are a new usage of an otherwise-conventional shape, not an established
+  pattern to copy verbatim.
 
 ## Scope Boundaries
 
@@ -159,16 +226,58 @@ Do not assert on stdout content; a conversion may legitimately change formatting
 - **Keep each case pinned to a named state** in a named loop. A case that scans
   for "some class-B action" silently stops testing anything when that action is
   refactored.
+- **Bind `context.run_dir` to the test's `tmp_path`** in `InterpolationContext` —
+  every targeted action writes artifacts to `${context.run_dir}`, so the exit-0
+  assertions fail on a missing directory otherwise, and it colocates the
+  injection sentinel. Do not copy the fixed `/tmp` path from the existing
+  convention sites (`test_builtin_loops.py:560-575`).
 - These shell out; keep each fast and bounded. A test invoking a >120s command
   loops forever under xdist (thread-timeout kills the worker, orphans the
   grandchild, xdist respawns and re-runs).
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-28 — based on codebase analysis:_
+
+- `interpolate(template: str, ctx: InterpolationContext) -> str` is actually at
+  `scripts/little_loops/fsm/interpolation.py:274`, not `:209` as cited above —
+  `:209` is `parse_interpolation_suffixes()`, a suffix-parsing helper
+  `interpolate()` calls internally, not `interpolate()` itself. Verified by
+  direct read.
+- Concrete construction convention for driving a payload through the real
+  `interpolate()` (from its only two call sites in the test suite,
+  `scripts/tests/test_builtin_loops.py:560-575` and `:2303-2330`): extract the
+  action as `data["states"][name]["action"]` (raw `yaml.safe_load` dict) or
+  `fsm.states[name].action` (via `load_and_validate`), then
+  `InterpolationContext(context={...}, captured={"name": {"output": ...,
+  "stderr": ..., "exit_code": ...}}, prev={...})` — plain dict literals
+  matching the shapes `captured`/`prev` take at runtime — and call
+  `interpolate(action, ctx)`.
+- No existing test in `test_builtin_loops.py` or `test_brainstorm.py` chains
+  real `interpolate()` output into `subprocess.run(["bash", "-c", ...])` —
+  this issue's cases would be the first. All 24 existing extract-action /
+  subprocess sites (including `TestBug2468ErrorRouting`, this issue's own
+  cited precedent) instead build the rendered action via string `.replace()`
+  substitution on the literal `${...}` tokens, not the real `interpolate()`
+  function.
+- `scripts/little_loops/fsm/runners.py:297` boundary confirmed as
+  `cmd = ["bash", "-c", action]`, then
+  `subprocess.Popen(cmd, stdout=PIPE, stderr=PIPE, text=True,
+  cwd=working_dir, start_new_session=True, env=project_child_env())`. A test
+  reproducing via `subprocess.run(["bash", "-c", action], capture_output=True,
+  text=True)` need not replicate `env=project_child_env()` or
+  `start_new_session=True` to exercise the injection surface itself.
+
 ## Implementation Steps
 
-1. Write each case against its pinned state, **before** the corresponding
-   conversion lands where practical, and confirm it is **red** — a test that was
-   never red proves nothing.
-2. Land the cases after BUG-3339/3340/3341, green.
+1. Demonstrate each case **red** against pre-conversion action text — a test
+   that was never red proves nothing. All three conversions have already
+   landed, so recover the pre-conversion action from git history (conversion
+   commits `0a440184c`, `dc9fe247e`, `367d8cadb`; e.g.
+   `git show <sha>^:scripts/little_loops/loops/loop-router.yaml`), run the
+   payload through it once to observe the failure, and record the result in
+   the test docstring per AC 2.
+2. Land the cases against the current (converted) actions, green.
 3. Confirm ENH-3338's sweep is clean at the same commit; the static and
    behavioral guards should agree.
 
@@ -181,7 +290,11 @@ Do not assert on stdout content; a conversion may legitimately change formatting
 3. Cases 3 and 4 use pytest `tmp_path` for the sentinel; no fixed `/tmp` path
    appears.
 4. Case 2's payload contains both `"""` and a newline.
-5. Case 4 targets a site converted by BUG-3339, not a heredoc site.
+5. Case 4 targets a site whose **pre-conversion** shape was `python3 -c "..."`
+   (converted by BUG-3339 to a quoted heredoc) — `loop-router`'s
+   `discover_loops` — not a site that was already a heredoc before the epic,
+   and the payload is delivered via `context.include`/`context.exclude` (the
+   variables that state actually interpolates), not `context.goal`.
 6. `python -m pytest scripts/tests/` exits 0, including under xdist.
 
 ## Impact
@@ -210,4 +323,6 @@ already sequences the edits — land in that order.
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-28T22:21:03 - `7874a9d3-a25b-4635-aed9-23b27560bb75.jsonl`
+- `/ll:refine-issue` - 2026-08-28T22:06:59 - `013c35fe-cc74-469a-aa25-ae000475e3a9.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-28T02:22:58 - `bd65b096-20a2-4a7e-b430-c4b13ac5b81d.jsonl`
