@@ -17,7 +17,7 @@ learning_tests_required:
 - htmx
 - http.server
 confidence_score: 90
-outcome_confidence: 64
+outcome_confidence: 77
 score_complexity: 9
 score_test_coverage: 25
 score_ambiguity: 25
@@ -584,13 +584,18 @@ Explicitly **out of scope**:
 _Added by `/ll:confidence-check` on 2026-08-28_
 
 **Readiness Score**: 90/100 → PROCEED
-**Outcome Confidence**: 64/100 (raw 77, capped) → MODERATE
+**Outcome Confidence**: 77/100 (uncapped) → MODERATE
+
+`unproven_mechanism` was cleared by `/ll:decide-issue` (2026-08-28T19:38:47) on the
+strength of the now-`proven` learning-test evidence for both `htmx` and `http.server`
+(see Session Log). The prior run's outcome-confidence cap (`min(raw, 64)`) no longer
+applies — this run scores the raw Criteria A-D sum (9 + 25 + 25 + 18 = 77) directly.
 
 ### Outcome Risk Factors
 - Broad enumeration across 17 change sites (transport.py, fsm/executor.py, cli/loop/__init__.py, cli/loop/run.py, cli/artifact/dashboard.py, two template files, package_data.py, little_loops/__init__.py, plus 5 docs and 2 new vendored assets) is the dominant risk axis — Breadth scored 0/12 on Criterion A even though each individual site's depth is Local (contained logic change).
-- `unproven_mechanism: true` forces a hard outcome-confidence cap (min(raw, 64) per this project's `outcome_threshold: 65`) independent of Criteria A-D. This run resolved the underlying uncertainty directly: both `learning_tests_required` targets (`htmx`, `http.server`) were missing registry records, so `/ll:explore-api` was run for each and both are now `status: proven` with real evidence — `http.server` via a live `ThreadingHTTPServer` exercised over the loopback socket (6/6 claims), and `htmx` via a headless-Chromium session driving the actual downloaded `htmx.org@4.0.0` `dist/htmax.js` bundle against a live SSE server (7/7 claims: `hx-sse:connect` auto-swap, `innerMorph` preserving an unrelated `<input>`'s value across live updates, named-event dispatch as a DOM `CustomEvent` on the connecting element, `<hx-partial>` OOB swap, and `:inherited` propagation). The cap is mechanical and still applies this run since it keys off the frontmatter flag, not learning-test status — recommend `/ll:decide-issue ENH-3351` to clear `unproven_mechanism` given the now-concrete proof, which would remove the cap on a future check.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-28T19:49:35 - `ea33ecd6-8c2e-4da2-984b-1c4e3288aafb.jsonl`
 - pre-implementation review revision 2 - 2026-08-28 - specified SSE shutdown mechanics (sentinel + daemon-thread rationale), respec'd the byte-identical test as dev-time verification with `mtime=0` pinned (gzip mtime makes renders non-deterministic today), decided missing-`history.db` serve behavior (empty snapshot, run proceeds)
 - `/ll:decide-issue` - 2026-08-28T19:38:47 - `e999097a-2e38-45bb-b367-623703246cd4.jsonl`
 - `/ll:refine-issue` - 2026-08-28T19:37:43 - `0d616ba3-5ba9-4111-950a-8e9bccdf61b1.jsonl`

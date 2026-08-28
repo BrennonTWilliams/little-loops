@@ -184,11 +184,14 @@ Known `if`-nested targets requiring the hoist: `recursive-refine.yaml:82-83`,
 `rn-build.yaml:728-729`, `loop-composer-adaptive.yaml:744`.
 
 - `scripts/tests/data/loop_interpolation_baseline.json` (new) — created by ENH-3338 — shrink class-B entries in the same commit as each conversion.
-- **Depends on ENH-3338's data-sink heredoc rule** (its 2026-08-28 review
-  fix): the scanner must treat a `${captured.*}` inside a
-  `cat > … << 'MARKER'` write as clean (data sink, not a Python body).
-  Without it, every conversion here *adds* a class-B baseline entry instead
-  of removing one, and AC 1 is unreachable.
+  > ⚠ Superseded — file already exists (82 class-B entries as of this pass); see § Codebase Research Findings under Integration Map
+- **Relies on ENH-3338's data-sink heredoc rule** (its 2026-08-28 review
+  fix, now shipped and confirmed live — `interp_sweep.py`'s `scan_action()`
+  gates a heredoc as a Python body only when its opener line also contains
+  `python3`, so a `cat > … << 'MARKER'` write scans as a data sink, not a
+  Python body): without this rule, every conversion here would *add* a
+  class-B baseline entry instead of removing one, and AC 1 would be
+  unreachable. ENH-3338 is `done`; this dependency is satisfied.
 
 **File contention:** runs strictly after BUG-3339 and BUG-3340; do not dispatch
 to a parallel epic branch.
@@ -227,6 +230,15 @@ _Added by `/ll:refine-issue` — 2026-08-28 — based on codebase analysis:_
 - **Four additional heredoc-to-file (`cat > file << 'SENTINEL'`) sites exist beyond the two cited in Similar Patterns**, each already writing a `${captured.*.output}` class-B value to a run-dir file before reading it back with `open()`, but each using its own bespoke sentinel (not the mandated `LL_RAW_9F3C1A7E_EOF`): `loop-composer.yaml` — `parse_plan` (`plan-raw.txt` / `LL_PLAN_RAW_EOF`) and `write_step_success`/its failure sibling (`current-step-output.jsonl` / `LL_STEP_OUTPUT_EOF`, 2 occurrences); `loop-composer-adaptive.yaml` — the same two shapes plus `parse_reassess_decision` (`reassess-decision.txt` / `LL_REASSESS_EOF`). These files/sites are not currently named in this issue's Files to Modify or Similar Patterns lists and should be reconciled against ENH-3338's baseline alongside the rest.
 - A repo-wide search confirms `LL_RAW_9F3C1A7E_EOF` has zero occurrences in any `.yaml` file today (hits are confined to issue markdown) — the four additional sites above predate this issue's sentinel choice with their own bespoke conventions, they don't pre-empt it.
 - **A shipped precedent already applies env-var binding (not heredoc-to-file) to two class-B sites.** Commit d8d3476a1 (BUG-3349, status done, landed after this issue's parent survey) converted `loop-router.yaml`'s `finalize_present_result` state's two `${captured.*.output}` sites (`new_loop_proposal`, `review_result`) using `LL_PROPOSAL_OUT=${captured.new_loop_proposal.output:shell:default=} \` / `LL_REVIEW_OUT=${captured.review_result.output:shell:default=} \` bound to the `python3` invocation line, read via `os.environ.get(..., '')` — structurally the same env-var-binding mechanism this issue's own Settled Decisions section rejects for class B ("uniformity with the shipped precedent and reviewability," not correctness). BUG-3349's own research notes this exact combination ("`:shell` applied to a `captured.*` reference") had "no direct precedent confirming the combination works" at the time it was written — that precedent now exists, and it uses the opposite remedy from Option B. This does not change this issue's own two listed sites (`finalize_present_result`'s lines were never in this issue's site list), but the "uniformity with the shipped precedent" rationale for rejecting env-var binding is weaker than when written: the codebase now ships both conventions for the same defect class, not one.
+
+_Added by `/ll:refine-issue` — 2026-08-28 — based on codebase analysis:_
+
+- `scripts/tests/data/loop_interpolation_baseline.json` already exists (created by ENH-3338, landed 2026-08-28T16:03:35Z, after this issue's last refine) with 82 `class: "B"` entries as of this pass — it is not "new." See the `⚠ Superseded` marker on the Files to Modify line below.
+- `general-task.yaml` requires no further edits under this issue: BUG-3339 already converted its one class-B site (`summarize_success`'s `captured.final_counts.output`) using the exact canonical `LL_RAW_9F3C1A7E_EOF` sentinel (`general-task.yaml:895-898`, confirmed via `grep -rn LL_RAW_9F3C1A7E_EOF scripts/little_loops/loops/`), validated by `test_general_task_loop.py:2114-2135`. It has zero remaining class-B baseline entries (both its baseline entries are `class: "C"`, `context.run_dir`). This is the first live use of the canonical sentinel, and a working exemplar of this issue's own Canonical block shape.
+- `cua-agent-desktop.yaml` (cited in Similar Patterns) has zero baseline entries of any class — its `execute_action` state (`:408-423`) already writes `${captured.plan_output.output}` to a file via a `cat >` data-sink heredoc (bespoke sentinel `PLANEOF`) before reading it back, so it already scans clean as Option-B-equivalent and needs no conversion under this issue.
+- A fourth nested-`if` class-B target exists beyond the three this issue names: `mechanize-skills.yaml:606-629` (`revert_changes` state, `captured.run_dir.output`, baseline entry at `loop_interpolation_baseline.json:770-777`) — two `python3 << 'PYEOF'` heredocs nested inside `if [ -f "$MANIFEST" ]; then`, terminators already at column 0. See the `⚠ Superseded` marker on AC 3.
+- `scripts/little_loops/fsm/interp_sweep.py` is the scanner/classifier the baseline is generated/verified against and is not currently named anywhere in this issue. `classify_site()` (`:59-82`) is the single source of truth for the A/B/C rule (ENH-3342 imports it to widen MR-11 without duplicating the rule); `scan_action()`'s `_PYTHON3_WORD_RE` gate is what makes a `cat > file << 'MARKER'` data-sink heredoc scan clean — the exact "data-sink heredoc rule" this issue's Files to Modify note already depends on. `scripts/tests/test_interp_sweep.py` unit-tests `classify_site()`/`scan_action()` directly and is not currently in this issue's Tests list.
+- Authoritative site count as of this pass: the baseline has 82 `class: "B"` entries (grep/JSON-confirmed), not the Summary/Impact sections' provisional ~67 — noted here since those sections are outside this command's editable scope, but the implementer should plan against 82, not 67 (already inclusive of the one site BUG-3339 converted).
 
 ## Program Design
 
@@ -278,6 +290,13 @@ Per class-B site:
    into a loop failure. Under ENH-3337 the composed suffix is legal; keep it on
    the heredoc-body interpolation.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-28 — based on codebase analysis:_
+
+- Anchors have drifted since this issue's last refine (intervening BUG-3339, BUG-3340, ENH-3337 commits shifted line numbers; substitution mechanics themselves are unchanged): `InterpolationContext.resolve()` is now at `interpolation.py:78` (was cited as part of `:209`); `interpolate()` is now at `interpolation.py:274` (issue's Signatures cited `:209`); `_run_action()` now starts at `executor.py:2110` (issue cited `:2097`); the capture write-back (`self.captured[state.capture] = {...}`) is now at `executor.py:2381-2403` (issue cited `:2370-2391`); MR-11's `_UNSAFE_CONTEXT_INTERP_RE` is now at `scripts/little_loops/fsm/validation/shell_safety.py:34-36` (issue's Current Behavior section cited `:33-35`). The substitution order (`resolve()` → `interpolate()` → `bash -c` argv) and `:default=`/`:shell` suffix composition are confirmed unchanged.
+- `classify_site()` (`interp_sweep.py:59-82`) classifies any namespace it has no explicit verdict for as `"B"` as a safe-direction fallback. This means some baseline `class: "B"` entries are not `captured.*`/`prev.output`/`prev.stderr` sites at all but unrecognized namespaces caught by this fallback — e.g. `loops/oracles/generator-evaluator-flux.yaml`'s `synthesize` state has a class-B baseline entry for `state.iteration` via this rule, not the captured/prev rule Decision Rule 0 through 5 are written against. Decision Rule 0's `${context.run_dir}` substitution check does not cover this case — a per-site judgment is needed on whether an unrecognized-namespace B entry is genuinely LLM/command output requiring Option B, or a different kind of site the fallback is only guarding against defensively.
+
 ## Implementation Steps
 
 1. Filter ENH-3338's baseline to `class == "B"`; reconcile any divergence from
@@ -305,6 +324,7 @@ Per class-B site:
    `if`/`for` — verified specifically at `recursive-refine.yaml:82-83`,
    `rn-build.yaml:728-729`, and `loop-composer-adaptive.yaml:744`, the three
    known nested targets.
+   > ⚠ Superseded — a fourth nested target exists: `mechanize-skills.yaml:606-629` (revert_changes); "three known" is stale — see § Codebase Research Findings under Integration Map
 4. No site ships the half-and-half form (an `os.environ["LL_ARG_RUN_DIR"]` read
    with no corresponding binding, or a binding with a raw-interpolated path).
 5. Newline sensitivity is decided per site; the trailing newline the heredoc
@@ -339,6 +359,7 @@ step is added — run dirs are already managed as a unit.
 **Open** | Created: 2026-08-27 | Priority: P2
 
 ## Session Log
+- `/ll:refine-issue` - 2026-08-28T19:48:46 - `32717b3b-863a-49e0-9597-080f0b40cfce.jsonl`
 - `/ll:refine-issue` - 2026-08-28T03:15:16 - `21c2bc4e-6e06-47c6-a164-ddb166a7cfff.jsonl`
 - `/ll:format-issue` - 2026-08-28T03:03:20 - `486b558c-b1c6-4706-9fa1-9c30566c1e36.jsonl`
 - `/ll:scope-epic` - 2026-08-27T17:51:45 - `c766dcf0-a664-4805-9c8a-6eba323145c8.jsonl`

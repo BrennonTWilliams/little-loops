@@ -150,8 +150,9 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_mcp_server.py::test_no_unguarded_mutating_tool_is_advertised`
-  (lines 277-319) — hardcodes a `read_only = {...}` set of the 7 current tier-1
-  names; `loop_list` must be added to this set or the test fails once it's
+  (lines 277-319; line-drift note, review pass 2 2026-08-28: the `read_only`
+  set is now at ~line 292 — locate by test name, not cited lines) — hardcodes
+  a `read_only = {...}` set of the 7 current tier-1 names; `loop_list` must be added to this set or the test fails once it's
   registered without being in `MUTATING_TOOLS`/`TASK_STARTING_TOOLS` — **will
   break, must update**. [Agent 1 + Agent 3 finding]
 - `scripts/tests/test_feat_3149_mcp_mutation_tools.py` (lines 107-125, 152-175)
@@ -220,6 +221,17 @@ _Review pass — 2026-08-28 — two additional stale-count sites:_
 - `docs/guides/MCP_SERVER_GUIDE.md:486` — "…the seven [read-only tools]" →
   eight (the mutating-seven count on that same line stays correct).
 
+_Review pass 2 — 2026-08-28 — three more stale-count sites missed above:_
+- `scripts/little_loops/mcp_server/__init__.py:1-2` — package docstring says
+  "…read-only tools, four guarded mutation tools" — already stale on the
+  mutation count (four → seven); fix both counts while there (read → eight).
+- `scripts/little_loops/mcp_server/tools.py:1141` — the line after the
+  already-flagged 1139 docstring: "The seven tier-1 read-only tools come
+  first, then the seven tier-2…" → eight tier-1.
+- `docs/reference/API.md:103` — the `little_loops.mcp_server` row says "the
+  five read-only tools" and enumerates only the original five — already stale
+  (predates the queue tools); update to the eight-tool list.
+
 ### Configuration
 - N/A
 
@@ -273,7 +285,15 @@ _Added by `/ll:refine-issue` — 2026-08-28 — based on codebase analysis:_
   (Dataclass, not TypedDict, per the FEAT-3149 precedent recorded in Codebase
   Research Findings below.)
 - `LoopCatalog: @dataclass` — `entries: list[LoopCatalogEntry]`,
-  `hidden_counts: dict[str, int]` — the enumeration result. `hidden_counts`
+  `hidden_counts: dict[str, int]`, `total_before_filters: int` — the enumeration
+  result. **`total_before_filters` is required** (review pass 2026-08-28):
+  `cmd_list` prints two distinct empty-case messages — `"No loops available"`
+  when the raw enumeration is empty (`info.py:217-222`, checked *before*
+  filters) vs `"No loops match the given filters"` when filters empty it
+  (`info.py:282-287`, tested at `test_ll_loop_commands.py:1189`) — and an empty
+  `entries` list alone cannot distinguish them (`--category nonexistent` yields
+  empty entries *and* zero hidden counts, same as an empty dir). `cmd_list`
+  keys the message on `total_before_filters == 0`. `hidden_counts`
   feeds `cmd_list`'s human footer and `_category_rollup`
   (`cli/loop/info.py:373,389-393`) and cannot be reconstructed from a filtered
   entry list. **Tally semantics** (review pass 2026-08-28): today
@@ -341,7 +361,8 @@ _Added by `/ll:refine-issue` — 2026-08-28 — based on codebase analysis:_
    (`cli/loop/info.py`) that returns the catalog as structured data (`LoopCatalog`
    per Program Design): for each loop, its relative-path name, absolute path,
    `builtin` flag, and the `_load_loop_meta` fields (description, category,
-   labels, visibility), plus the `hidden_counts` the human footer needs. It should
+   labels, visibility), plus the `hidden_counts` the human footer needs and
+   `total_before_filters` (distinguishes the two empty-case messages). It should
    accept the filter parameters (category, label, visibility-tier *set*,
    `builtin_only`) as ordinary arguments rather than reading an
    `argparse.Namespace`; `cmd_list` keeps the legacy-flag → tier-set mapping.
@@ -374,7 +395,10 @@ _These touchpoints were identified by wiring analysis and must be included in th
   lands after the new `loop_list` `Tool()` entry shifts it down
 - Update the stale tool-count docstrings: `mcp_server/tools.py` module
   docstring (seven→eight read tools) and `handle_list_tools` docstring
-  (fifteen→sixteen), plus `docs/reference/CLI.md:4855-4857`
+  (fifteen→sixteen at :1139 *and* seven-tier-1→eight at :1141), plus
+  `docs/reference/CLI.md:4855-4857`, `mcp_server/__init__.py:1-2` (both
+  counts stale), and `docs/reference/API.md:103` (says "five read-only
+  tools" — predates the queue tools)
 - Write `scripts/tests/test_feat_3352_mcp_loop_list.py` (or similar) covering
   the tier-1 tool shape, project-root anchoring, visibility/category/label
   filtering, and JSON-contract parity with `cmd_list --json`
@@ -457,6 +481,7 @@ Output: a list of loop objects, project loops before built-ins, matching what
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-28T19:51:03 - `ea33ecd6-8c2e-4da2-984b-1c4e3288aafb.jsonl`
 - `/ll:confidence-check` - 2026-08-28T19:44:53 - `c056a832-2f27-43a8-b622-031bae76a3d0.jsonl`
 - `/ll:confidence-check` - 2026-08-28T19:30:17 - `d3964614-0e7e-4d89-bc34-5bd7bd83f914.jsonl`
 - `/ll:wire-issue` - 2026-08-28T19:18:02 - `22846f50-44ca-47bb-8d4a-c3a415e9ca6e.jsonl`
