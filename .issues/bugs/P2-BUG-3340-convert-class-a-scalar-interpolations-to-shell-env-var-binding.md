@@ -3,10 +3,11 @@ id: BUG-3340
 type: BUG
 title: Convert class-A scalar interpolations to :shell env-var binding
 priority: P2
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-08-27'
 captured_at: '2026-08-27T17:51:35Z'
+completed_at: '2026-08-28T19:37:16Z'
 parent: EPIC-3336
 blocked_by:
 - ENH-3337
@@ -411,6 +412,7 @@ _Added by `/ll:refine-issue` — 2026-08-28 — based on codebase analysis:_
 **Open** | Created: 2026-08-27 | Priority: P2
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-28T19:36:51 - `d3964614-0e7e-4d89-bc34-5bd7bd83f914.jsonl`
 - `/ll:confidence-check` - 2026-08-28T18:37:17 - `0ddc564b-dddb-422a-9108-e946e9a7ae88.jsonl`
 - `/ll:refine-issue` - 2026-08-28T18:12:42 - `917f03bf-c58d-4c5b-9275-d06596c522eb.jsonl`
 - `/ll:refine-issue` - 2026-08-28T03:15:15 - `21c2bc4e-6e06-47c6-a164-ddb166a7cfff.jsonl`
