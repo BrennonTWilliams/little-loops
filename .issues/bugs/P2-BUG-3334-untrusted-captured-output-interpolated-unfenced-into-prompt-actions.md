@@ -8,12 +8,12 @@ discovered_by: split-from-BUG-3327
 discovered_date: '2026-08-27'
 captured_at: '2026-08-27T00:00:00Z'
 verify_verdict: VALID
-confidence_score: 95
-outcome_confidence: 54
-score_complexity: 12
+confidence_score: 85
+outcome_confidence: 69
+score_complexity: 14
 score_test_coverage: 13
-score_ambiguity: 13
-score_change_surface: 16
+score_ambiguity: 20
+score_change_surface: 22
 decision_needed: false
 ---
 
@@ -983,7 +983,23 @@ _Added by `/ll:confidence-check` on 2026-08-27_
 - No fencing test infrastructure exists yet for these sites — `TestUntrustedOutputSurvey` (item 3) proves the site enumeration is complete, but a `TestUntrustedOutputFencing`-shaped class (rendered-substring, marker-position, per-site completeness) still needs writing from scratch, and several files (`rn-build.yaml`, `refine-to-ready-issue.yaml`, `examples-miner.yaml`, `integrate-sdk.yaml`, `adopt-third-party-api.yaml`) aren't yet keys in any such map.
 - Mitigation: the Recommended split (Impact section) is still un-executed — item 1 (regex/quoting hardening in `finalize_present_result`) has none of items 2-3's risk and can land independently now; resolve Open Question 2 and the marker-collision form before starting item 2's fence rendering.
 
+## Confidence Check Notes (re-run after both Open Questions closed)
+
+_Added by `/ll:confidence-check` on 2026-08-27_
+
+**Readiness Score**: 85/100 → PROCEED WITH CAUTION
+**Outcome Confidence**: 69/100 → MODERATE
+
+### Concerns
+- `format-check` flags `missing_behavior_parity` for `scripts/little_loops/loops/loop-router.yaml` (ENH-3047 gate) — the issue has no `### Behavior Parity` subsection describing what the `sub_loop_output` path-reference change replaces. Per rubric, any `missing_behavior_parity` gap caps Criterion 4 (Issue Well-Specified) at 10/20 regardless of how complete the rest of the issue is — this is the sole reason readiness dropped from the prior 95 to 85 despite both Open Questions closing since.
+- `format-check` also flags `prose_dep_drift: BUG-3340` — worth a quick check that the Dependencies section's description of BUG-3340's file overlap still matches BUG-3340's current state.
+- `BUG-3349` (regex/quoting hardening, spun out from this issue's former item 1) and `BUG-3340` (EPIC-3336 sibling, same 5 loop YAMLs) are both still `open`. Neither is a hard `blocked_by` dependency and neither line-collides with this issue's sites, but both add file-level sequencing risk once implementation starts.
+
+### Gaps to Address
+- Add a `### Behavior Parity` subsection to the issue (or to `loop-router.yaml`'s own docs) describing what the new shell-state-plus-path-reference mechanism replaces, to clear the `missing_behavior_parity` gate.
+
 ## Session Log
+- `/ll:confidence-check` - 2026-08-28T01:11:19 - `fe4d90cd-470c-49c6-ade3-2aad37f948af.jsonl`
 - `/ll:refine-issue` - 2026-08-28T01:01:26 - `287d64ad-a891-4610-a9c5-2de3df010aa4.jsonl`
 - `/ll:decide-issue` - 2026-08-28T00:39:52 - `272a435e-c458-4312-a8ae-849a96be5179.jsonl`
 - `/ll:confidence-check` - 2026-08-28T00:38:07 - `fcb1e84a-1c87-4c72-80bf-44d11a0cfec1.jsonl`

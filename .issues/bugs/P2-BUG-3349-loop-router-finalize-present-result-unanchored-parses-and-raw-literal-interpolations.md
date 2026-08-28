@@ -34,7 +34,9 @@ Python string literals. All six sit within one 50-line block and are one edit.
 | 544 | `re.search(r'REVIEW_SUCCESS:(true|false)', review_out, re.IGNORECASE)` | unanchored first-match — the verdict flip |
 | 545 | `re.search(r'REVIEW_SUMMARY:(.*)', review_out)` | unanchored first-match |
 
-## Steps to Reproduce (verdict flip, line 544)
+## Steps to Reproduce
+
+Verdict flip, line 544:
 
 1. Run `loop-router` with any goal that dispatches to a sub-loop.
 2. Have the sub-loop's output contain the literal text `REVIEW_SUCCESS:false`
@@ -47,7 +49,7 @@ Python string literals. All six sit within one 50-line block and are one edit.
 4. The unanchored `re.search` takes the **first** match anywhere in the text.
    An echoed token earlier in the output beats the model's actual verdict line.
 
-## Expected Behavior / Remedies
+## Expected Behavior
 
 - **Lines 524/527/544/545**: anchor to line start with `re.MULTILINE`
   (`has_proposal` becomes an anchored `re.search`, not an `in` test), first
@@ -62,8 +64,8 @@ Python string literals. All six sit within one 50-line block and are one edit.
 - **Lines 522-523**: bind the captures to environment variables and read them
   via `os.environ` rather than interpolating into a Python literal. The
   `:shell` interpolation modifier (`interpolation.py:254`, shlex-quotes the
-  resolved value) **already exists on the current tree** — this fix is NOT
-  blocked on BUG-3340 landing; it applies BUG-3340's idiom locally:
+  resolved value) **already exists on the current tree** — this fix does not
+  need BUG-3340 to land first; it applies BUG-3340's idiom locally:
 
   ```yaml
   action: |
@@ -82,6 +84,38 @@ Python string literals. All six sit within one 50-line block and are one edit.
   Note: `:shell` and `:default=` are mutually exclusive
   (`interpolation.py:245-248`) — the current `:default=` on lines 522-523 is
   replaced by the `os.environ.get(..., '')` default on the Python side.
+
+## Program Design
+
+### Types
+
+No new types; `finalize_present_result` is a `python3 << 'PYEOF'` heredoc
+embedded in `loop-router.yaml`'s `action:` field, not a standalone Python
+module.
+
+### Signatures
+
+- `_field(key: str) -> str` — existing helper inside the heredoc
+  (`loop-router.yaml:~527`); gains `re.MULTILINE` on its internal
+  `re.search(key + r':(.*)', proposal_out)` call.
+- Module-level heredoc statements (not functions) change shape:
+  - `has_proposal = bool(re.search(r'^PROPOSED_NAME:', proposal_out, re.MULTILINE))`
+    replaces the current `'PROPOSED_NAME:' in proposal_out` substring test.
+  - `re.search(r'^REVIEW_SUCCESS:(true|false)', review_out, re.IGNORECASE | re.MULTILINE)`
+    replaces the current unanchored form.
+  - `re.search(r'^REVIEW_SUMMARY:(.*)', review_out, re.MULTILINE)` replaces
+    the current unanchored form.
+  - `proposal_out = os.environ.get('LL_PROPOSAL_OUT', '')` and
+    `review_out = os.environ.get('LL_REVIEW_OUT', '')` replace the
+    `"""${captured...}"""` literal interpolations.
+
+### Call Path
+
+`loop-router.yaml` FSM executor -> `finalize_present_result` state's
+`action:` bash block -> `LL_PROPOSAL_OUT`/`LL_REVIEW_OUT` env vars (bound via
+`${captured...:shell}`) -> embedded `python3` heredoc -> `_field()` /
+inline `re.search` calls -> printed JSON consumed by the state's
+`evaluate:`.
 
 ## Tests
 
@@ -148,3 +182,7 @@ onward). Same source values, different sink, different remedy.
 ## Status
 
 **Open** | Created: 2026-08-28 | Priority: P2
+
+
+## Session Log
+- `/ll:format-issue` - 2026-08-28T01:14:44 - `52d1fdcc-59ae-4471-83fd-cc9439286464.jsonl`
