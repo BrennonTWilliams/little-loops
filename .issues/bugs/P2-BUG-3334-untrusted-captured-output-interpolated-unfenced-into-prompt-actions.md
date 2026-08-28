@@ -563,6 +563,11 @@ _Added by `/ll:refine-issue` — 2026-08-27 — based on codebase analysis:_
 - `TestBriefFencing`'s per-site-parametrized shape (`@pytest.mark.parametrize("site", FENCED_BRIEF_SITES, ...)`, one test method per property, plus a separate completeness-guard test) is the most granular of four comparable test classes; `TestConfidenceGateThresholdsNotHardcoded` (`:18703-18752`) parametrizes on loop file only (no state axis), and `TestValidatorWarningBudget`/`TestSubLoopStateTimeoutAudit` run one aggregate discovery-and-diff test per class rather than per-site nodes. Any new test class for untrusted-output fencing has a documented choice between these two shapes, not just the `TestBriefFencing` precedent.
 - Confirms (independently, via pattern-finder) the issue's own claim that no shared truncation constant exists: repo-wide search for a shared `MAX_*_CHARS`/`CHAR_LIMIT` constant found one unrelated hit (`generate_skill_descriptions.py:21`, not imported elsewhere); every truncation helper found (`adapters/codex.py:43`, `cli/loop/info.py:582,634`, `cli/loop/layout.py:252,283`, `cli/issues/show.py:402`, `cli/issues/list_cmd.py:14`, `cli/issues/refine_status.py:151`) is module-private and re-implemented per call site. Bears on Open Question 2 (summarise-then-fence vs truncate): no existing summarization-before-interpolation utility exists either — `compression/heuristic.py`'s `compress_action_text` is the only general-purpose text-shrinking module, but is gated to JSON message-list content and does not apply to arbitrary captured event-stream prose.
 
+_Added by `/ll:refine-issue` — 2026-08-28 — based on codebase analysis:_
+
+- `scripts/tests/test_builtin_loops.py:18703-18839` — item 3's delivered code now has exact citations (previously only narrated by name): `UNTRUSTED_OUTPUT_SITES` (18715-18741, 13 three-element tuples keyed `(loop_file, state_name, matched_interpolation_string)`), `KNOWN_INDIRECT_UNTRUSTED_OUTPUT_SITES` (18750-18753), `_direct_ref_pattern`/`_merge_ref_pattern` (18756-18765), `_discover_untrusted_output_sites` (18768-18793), `class TestUntrustedOutputSurvey` (18796-18839: `test_completeness_guard` 18811-18820, `test_known_indirect_sites_chain_still_present` 18822-18839).
+- `scripts/little_loops/fsm/fence.py` confirmed unchanged at 165 lines against the current working tree — no `FENCE_CORE_UNTRUSTED_OUTPUT` or `UNTRUSTED_OUTPUT_ROLES` symbol exists anywhere in the codebase yet; both names appear only in this issue's own markdown and a `.ll/decisions.d/` fragment. Items 1-2 remain genuinely unstarted.
+
 ### Files to Modify
 - `scripts/little_loops/loops/loop-router.yaml` — `review` (lines 411-437): fence `${captured.chosen.output}` (line 428) and `${captured.sub_loop_output.output}` (lines 430-431); `propose_new_loop` (lines 452-478): fence `${captured.catalog.output}` (line ~469, tier-C, listed not scheduled)
 - `scripts/little_loops/loops/loop-composer.yaml` — `review_chain` (lines 453-488): fence `${captured.step_results_json.output}` (line 474)
@@ -615,6 +620,10 @@ _Wiring pass added by `/ll:wire-issue` — 2026-08-27:_
 ## Program Design
 
 ### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-28 — based on codebase analysis:_
+
+- `UNTRUSTED_OUTPUT_SITES` (`scripts/tests/test_builtin_loops.py:18715-18741`, item 3's delivered discovery table) is keyed as 3-element tuples `(loop_file, state_name, matched_interpolation_string)`, not `FENCE_ROLES`'s 2-element `(loop_file, state_name)` — a single state can host multiple distinct `${captured...}` matches (e.g. `rn-build.yaml::synthesize_result` appears twice, once for `eval_result` and once for `cluster_result`, lines 18720-18721). The future `UNTRUSTED_OUTPUT_ROLES` dict (item 2, still unwritten) is not required to reuse this key shape, but if its key shape diverges from `UNTRUSTED_OUTPUT_SITES`'s, the completeness guard's notion of "site" and the fencing-role table's notion of "site" will disagree at the sites where one state has multiple captured-output vars.
 
 ### Types
 - `FENCE_ROLES: dict[tuple[str, str], tuple[str, str, str, str]]` (`scripts/little_loops/fsm/fence.py:75`) — keyed by `(loop_file, state_name)`, valued `(noun, role, verbs, var)`. ~~new untrusted-output sites add entries to this same dict (or a parallel dict if Open Questions resolves toward a second constant)~~ — **corrected by review pass, 2026-08-27: `FENCE_ROLES` is not extended at all.** Adding to it is impossible for the three sites that need two fences (key collision, see Decision Rationale) and unnecessary for the rest. This dict is left untouched, which is also what keeps BUG-3327's 13 shipped sites and their tests green.
@@ -877,6 +886,7 @@ _Added by `/ll:confidence-check` on 2026-08-27_
 - Mitigation: the Recommended split (Impact section) is still un-executed — item 1 (regex/quoting hardening in `finalize_present_result`) has none of items 2-3's risk and can land independently now; resolve Open Question 2 and the marker-collision form before starting item 2's fence rendering.
 
 ## Session Log
+- `/ll:refine-issue` - 2026-08-28T01:01:26 - `287d64ad-a891-4610-a9c5-2de3df010aa4.jsonl`
 - `/ll:decide-issue` - 2026-08-28T00:39:52 - `272a435e-c458-4312-a8ae-849a96be5179.jsonl`
 - `/ll:confidence-check` - 2026-08-28T00:38:07 - `fcb1e84a-1c87-4c72-80bf-44d11a0cfec1.jsonl`
 - `/ll:decide-issue` - 2026-08-27T22:10:09 - `79106a4f-4393-4e7a-9f77-a9f63f9c673b.jsonl`
