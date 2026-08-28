@@ -290,6 +290,7 @@ onward). Same source values, different sink, different remedy.
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-28T01:34:41 - `e8e3b913-2614-4686-b293-63402787dd9d.jsonl`
 - `/ll:confidence-check` - 2026-08-28T01:28:58 - `286a27cf-122d-45a3-9474-592c93a3cfca.jsonl`
 - `/ll:refine-issue` - 2026-08-28T01:20:27 - `7cbe469c-9cbd-4824-b712-5ef6f08221f0.jsonl`
 - `/ll:format-issue` - 2026-08-28T01:14:44 - `52d1fdcc-59ae-4471-83fd-cc9439286464.jsonl`
