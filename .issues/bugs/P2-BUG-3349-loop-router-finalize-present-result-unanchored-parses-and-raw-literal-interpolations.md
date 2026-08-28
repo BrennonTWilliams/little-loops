@@ -4,10 +4,11 @@ type: BUG
 title: loop-router finalize_present_result parses model output unanchored and interpolates
   it into Python literals
 priority: P2
-status: open
+status: done
 discovered_by: split-from-BUG-3334
 discovered_date: '2026-08-28'
 captured_at: '2026-08-28T00:00:00Z'
+completed_at: '2026-08-28T01:46:12Z'
 decision_needed: false
 confidence_score: 96
 outcome_confidence: 84
@@ -290,6 +291,7 @@ onward). Same source values, different sink, different remedy.
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-28T01:45:55 - `55433ce7-efd7-423d-a202-3e46531f233e.jsonl`
 - `/ll:confidence-check` - 2026-08-28T01:34:41 - `e8e3b913-2614-4686-b293-63402787dd9d.jsonl`
 - `/ll:confidence-check` - 2026-08-28T01:28:58 - `286a27cf-122d-45a3-9474-592c93a3cfca.jsonl`
 - `/ll:refine-issue` - 2026-08-28T01:20:27 - `7cbe469c-9cbd-4824-b712-5ef6f08221f0.jsonl`

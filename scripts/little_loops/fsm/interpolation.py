@@ -213,7 +213,10 @@ def interpolate(template: str, ctx: InterpolationContext) -> str:
     Handles $${...} escaping (becomes literal ${...}).
     Supports ``:default=value``, ``?`` (nullable), and ``:shell``
     (``shlex.quote()`` the resolved value, for safe use in a bash token
-    position) suffixes; the three are mutually exclusive.
+    position) suffixes. ``?`` and ``:shell`` are mutually exclusive with
+    each other, but ``:shell`` may combine with ``:default=value`` as
+    ``:shell:default=value`` — the fallback value is shlex-quoted the same
+    as a resolved value.
 
     Args:
         template: String containing variable references
@@ -242,11 +245,14 @@ def interpolate(template: str, ctx: InterpolationContext) -> str:
         # Check for :default= first (so ? inside a default value is literal)
         if ":default=" in full_path:
             var_part, default_value = full_path.split(":default=", 1)
-            if var_part.endswith("?") or var_part.endswith(":shell"):
+            if var_part.endswith("?"):
                 raise InterpolationError(
                     f"Ambiguous suffix: ${{{full_path}}} "
-                    "(:default=..., ?, and :shell are mutually exclusive)"
+                    "(:default=... and ? are mutually exclusive)"
                 )
+            if var_part.endswith(":shell"):
+                shell_quote = True
+                var_part = var_part[: -len(":shell")]
             full_path = var_part
         elif full_path.endswith("?"):
             nullable = True
@@ -274,7 +280,7 @@ def interpolate(template: str, ctx: InterpolationContext) -> str:
             return str(value)
         except InterpolationError:
             if default_value is not None:
-                return default_value
+                return shlex.quote(default_value) if shell_quote else default_value
             if nullable:
                 return ""
             raise

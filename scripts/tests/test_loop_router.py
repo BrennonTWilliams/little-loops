@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import json
+import shlex
 import shutil
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -260,6 +263,72 @@ class TestLoopRouterStates:
         assert "project:*" in action, (
             "discover_loops include filter must support project:* selector form"
         )
+
+
+class TestFinalizePresentResult:
+    """Regression tests for BUG-3349: finalize_present_result must not parse
+    model output unanchored, and must not interpolate it into a Python string
+    literal."""
+
+    @staticmethod
+    def _run(loop_data: dict, tmp_path: Path, proposal_out: str, review_out: str) -> dict:
+        """Execute finalize_present_result's bash `action`, substituting the
+        `${captured.*.output:shell:default=}` refs with shlex-quoted synthetic
+        values — mirroring how `:shell` interpolation quotes at runtime — and
+        `${context.run_dir}` with a scratch directory."""
+        action = loop_data["states"]["finalize_present_result"].get("action", "")
+        run_dir = tmp_path / "run"
+        run_dir.mkdir(parents=True, exist_ok=True)
+        script = action.replace("${context.run_dir}", str(run_dir))
+        script = script.replace(
+            "${captured.new_loop_proposal.output:shell:default=}",
+            shlex.quote(proposal_out),
+        )
+        script = script.replace(
+            "${captured.review_result.output:shell:default=}",
+            shlex.quote(review_out),
+        )
+        assert "${" not in script, f"unsubstituted interpolation token remains: {script}"
+        result = subprocess.run(
+            ["bash", "-c", script], cwd=tmp_path, capture_output=True, text=True
+        )
+        assert result.returncode == 0, f"finalize_present_result failed: {result.stderr}"
+        return json.loads(result.stdout)
+
+    def test_decoy_verdict_in_summary_does_not_flip_success(
+        self, loop_data: dict, tmp_path: Path
+    ) -> None:
+        """A REVIEW_SUCCESS:false echoed inside the summary must not beat the
+        real line-anchored REVIEW_SUCCESS:true verdict."""
+        review_out = (
+            "REVIEW_SUCCESS:true\n"
+            "REVIEW_SUMMARY:the run discussed a prior REVIEW_SUCCESS:false result\n"
+        )
+        result = self._run(loop_data, tmp_path, proposal_out="", review_out=review_out)
+        assert result["success"] is True
+
+    def test_triple_quote_in_proposal_output_does_not_break_the_heredoc(
+        self, loop_data: dict, tmp_path: Path
+    ) -> None:
+        """A literal `\"\"\"` in captured model output must not reach a Python
+        string literal (SyntaxError on the pre-fix tree)."""
+        proposal_out = 'PROPOSED_NAME:foo """ bar\n'
+        result = self._run(loop_data, tmp_path, proposal_out=proposal_out, review_out="")
+        assert result["branch"] == "propose_new"
+        assert result["proposed_loop_spec"]["name"] == 'foo """ bar'
+
+    def test_mid_line_proposed_name_does_not_select_propose_branch(
+        self, loop_data: dict, tmp_path: Path
+    ) -> None:
+        """A `PROPOSED_NAME:` appearing mid-line inside prose must not select
+        the propose_new branch; only a line-anchored occurrence should."""
+        review_out = (
+            "REVIEW_SUCCESS:true\n"
+            "REVIEW_SUMMARY:the prior run mentioned PROPOSED_NAME:decoy in passing\n"
+        )
+        result = self._run(loop_data, tmp_path, proposal_out="", review_out=review_out)
+        assert result["branch"] != "propose_new"
+        assert result["success"] is True
 
 
 @pytest.mark.slow

@@ -509,8 +509,10 @@ states:
   finalize_present_result:
     action_type: shell
     action: |
+      LL_PROPOSAL_OUT=${captured.new_loop_proposal.output:shell:default=} \
+      LL_REVIEW_OUT=${captured.review_result.output:shell:default=} \
       python3 << 'PYEOF'
-      import json, re
+      import json, os, re
       def _read(p, default=''):
           try:
               with open(p) as f: return f.read().strip()
@@ -519,12 +521,12 @@ states:
       chosen         = _read('${context.run_dir}/loop-router-chosen.txt', 'NONE')
       conf_raw       = _read('${context.run_dir}/loop-router-confidence.txt', '0')
       confidence     = float(conf_raw) if conf_raw else 0.0
-      proposal_out   = """${captured.new_loop_proposal.output:default=}"""
-      review_out     = """${captured.review_result.output:default=}"""
-      has_proposal   = 'PROPOSED_NAME:' in proposal_out
+      proposal_out   = os.environ.get('LL_PROPOSAL_OUT', '')
+      review_out     = os.environ.get('LL_REVIEW_OUT', '')
+      has_proposal   = bool(re.search(r'^PROPOSED_NAME:', proposal_out, re.MULTILINE))
       if has_proposal:
           def _field(key):
-              m = re.search(key + r':(.*)', proposal_out)
+              m = re.search('^' + key + r':(.*)', proposal_out, re.MULTILINE)
               return m.group(1).strip() if m else ''
           result = {
               'branch': 'propose_new',
@@ -541,8 +543,8 @@ states:
               'summary': 'No existing loop fit. Loop spec drafted. Run /ll:create-loop or rerun with --context auto_create=true to author it.',
           }
       else:
-          succ_m = re.search(r'REVIEW_SUCCESS:(true|false)', review_out, re.IGNORECASE)
-          summ_m = re.search(r'REVIEW_SUMMARY:(.*)', review_out)
+          succ_m = re.search(r'^REVIEW_SUCCESS:(true|false)', review_out, re.IGNORECASE | re.MULTILINE)
+          summ_m = re.search(r'^REVIEW_SUMMARY:(.*)', review_out, re.MULTILINE)
           success = bool(succ_m) and succ_m.group(1).lower() == 'true'
           summary = summ_m.group(1).strip() if summ_m else 'Sub-loop completed.'
           result = {

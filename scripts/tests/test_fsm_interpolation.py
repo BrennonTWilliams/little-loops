@@ -877,11 +877,35 @@ class TestShellSuffix:
         result = interpolate("VAL=${context.input:shell}", ctx)
         assert result == "VAL="
 
-    def test_shell_suffix_and_default_together_raises(self) -> None:
-        """Using :shell and :default= together on the same var part raises. BUG-2622."""
+    def test_nullable_and_default_together_raises(self) -> None:
+        """Using ? and :default= together on the same var part still raises. BUG-2622."""
         ctx = InterpolationContext(context={})
         with pytest.raises(InterpolationError, match="mutually exclusive"):
-            interpolate("${context.input:shell:default=fallback}", ctx)
+            interpolate("${context.input?:default=fallback}", ctx)
+
+    def test_shell_default_combined_missing_path_emits_quoted_fallback(self) -> None:
+        """${...:shell:default=<v>} on a missing path shlex-quotes the fallback. BUG-3349."""
+        ctx = InterpolationContext(captured={})
+        result = interpolate("VAL=${captured.x.output:shell:default=}", ctx)
+        assert result == "VAL=''"
+
+        ctx2 = InterpolationContext(captured={})
+        result2 = interpolate(
+            "VAL=${captured.x.output:shell:default=a \"b\" value}", ctx2
+        )
+        assert result2 == "VAL='a \"b\" value'"
+
+    def test_shell_default_combined_present_path_emits_quoted_value(self) -> None:
+        """${...:shell:default=<v>} on a present path shlex-quotes the resolved value, not the fallback."""
+        ctx = InterpolationContext(context={"input": 'a "quoted" value'})
+        result = interpolate("VAL=${context.input:shell:default=fallback}", ctx)
+        assert result == "VAL='a \"quoted\" value'"
+
+    def test_bare_shell_on_missing_path_still_raises(self) -> None:
+        """Bare :shell (no :default=) on a missing path still raises. BUG-3349."""
+        ctx = InterpolationContext(captured={})
+        with pytest.raises(InterpolationError):
+            interpolate("${captured.x.output:shell}", ctx)
 
     def test_shell_suffix_in_interpolate_dict(self) -> None:
         """:shell suffix works inside interpolate_dict (mcp_tool params, ENH note)."""
