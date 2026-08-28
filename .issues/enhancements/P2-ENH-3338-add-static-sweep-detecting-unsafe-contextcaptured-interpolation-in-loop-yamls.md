@@ -8,8 +8,19 @@ discovered_by: ll-issues-create
 discovered_date: '2026-08-27'
 captured_at: '2026-08-27T17:51:35Z'
 parent: EPIC-3336
-blocked_by: [ENH-3337]
-blocks: [BUG-3339, BUG-3340, BUG-3341, ENH-3342]
+blocked_by:
+- ENH-3337
+blocks:
+- BUG-3339
+- BUG-3340
+- BUG-3341
+- ENH-3342
+confidence_score: 80
+outcome_confidence: 81
+score_complexity: 17
+score_test_coverage: 22
+score_ambiguity: 20
+score_change_surface: 22
 ---
 
 # ENH-3338: Add static sweep detecting unsafe context/captured interpolation in loop YAMLs
@@ -55,6 +66,17 @@ migration. The one precedent is a Python module-level constant:
 `test_completeness_guard`
 (`scripts/tests/test_builtin_loops.py:18666-18688`, asserting
 `discovered == set(FENCED_BRIEF_SITES) | KNOWN_UNFENCED_PROMPT_SITES`).
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-28 — based on codebase analysis:_
+
+- **Confirmed**: neither `scripts/little_loops/fsm/interp_sweep.py` nor `scripts/tests/data/loop_interpolation_baseline.json` exist yet (unfiltered repo-wide glob, no hits outside `.issues/` prose).
+- **Heredoc-tracking bug confirmed with exact anchors**: `shell_safety.py`'s terminator check (inside `_find_unsafe_context_interpolations`, `:169-188`) is `if stripped == heredoc_marker:` (`:172-175`, where `stripped = line.strip()`) — a full-line-content match, not a column-0 anchor. `_QUOTED_HEREDOC_START_RE` (`:41`) is likewise not column-0-anchored on the opener. This confirms the issue's claim about the bug not to inherit.
+- **The `test_completeness_guard` ratchet shape exists TWICE, not once** — `TestBriefFencing.test_completeness_guard` (`test_builtin_loops.py:18666`, comparing against `set(FENCED_BRIEF_SITES) | KNOWN_UNFENCED_PROMPT_SITES`) and `TestUntrustedOutputSurvey.test_completeness_guard` (`:18811`, comparing against `UNTRUSTED_OUTPUT_SITES - KNOWN_INDIRECT_UNTRUSTED_OUTPUT_SITES`). Both use the identical shape this issue specifies: plain `discovered == expected` equality, failure message reporting both `discovered - expected` and `expected - discovered`. Both are in-code Python `set`/`list` constants, not a checked-in JSON file — confirming the issue's own note that there is no existing JSON-baseline precedent for this exact (bidirectional, per-site) shape. A *different*, one-directional, per-file-count JSON baseline convention does exist (`.ll/private-refs-baseline.json` via `verify_private_refs.py:418-474`, and its sibling `.ll/evidence-baseline.json` via `verify_evidence.py:83`) — tracked in git, regenerated only by an explicit `--update-baseline` CLI flag, never automatically. Worth knowing as a discovered-but-structurally-different precedent for the checked-in-JSON-file mechanics (git tracking, explicit regeneration flag), even though its comparison shape does not match what this issue needs.
+- **Corpus check for ENH-3337's new `:shell:default=` suffix**: exactly 2 live sites today, both in `loop-router.yaml`'s `finalize_present_result` state (`:512-513`, `LL_PROPOSAL_OUT=${captured.new_loop_proposal.output:shell:default=}` / `LL_REVIEW_OUT=${captured.review_result.output:shell:default=}`), both on the bash-token env-var-binding prefix line of a `python3 << 'PYEOF'` invocation — i.e. the safe position, outside the Python heredoc body. These are a live, already-converted example of the pattern this sweep should treat as clean (class B, safe position, not misapplied-remedy), though named `LL_PROPOSAL_OUT`/`LL_REVIEW_OUT` rather than the epic's `LL_ARG_` naming convention.
+- **FSMLoop/StateConfig schema confirmed** consistent with the issue's proposed `scan_action`/`scan_corpus` signatures: `StateConfig.action: str | None` and `StateConfig.action_type: str | None` (`scripts/little_loops/fsm/schema.py:693-694`, class at `:621`), `FSMLoop.states: dict[str, StateConfig]` (`:1384`, class at `:1360`).
+- **Spot-checks confirmed accurate as written**: `harness-optimize.yaml` state `apply` has `action_type: prompt` at `:145`, with the `python3 -c` block embedded in prompt instructional text at `:160-165` exactly as the issue describes (AC 6). `mechanize-skills.yaml` state `validate_diagnosis` (`:276`, shell-shaped via `fragment: shell_exit`) has the converted `SKILL_FILE="${captured.current_skill.output}"` binding at `:283` (bash-token position, safe) and the raw `${captured.run_dir.output}` interpolation at `:286` (inside the same heredoc's Python body) exactly as the issue describes (AC 7).
 
 ## Expected Behavior
 
@@ -190,6 +212,15 @@ epic faults it for. Invert it:
 ### Configuration
 
 - N/A
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-28 — based on codebase analysis:_
+
+- **Recursive-walk convention for a text/grammar sweep (this issue's shape) vs. a schema-validation walk**: two distinct patterns coexist in this codebase, and this issue's scanner matches the first. (1) Raw-YAML text sweeps use `LOOPS_DIR.rglob("*.yaml")` with dot-prefixed-path-segment exclusion, then `yaml.safe_load` scoped to `states`/`fragments` and walked without going through the `FSMLoop` schema — evidence: `scripts/tests/test_builtin_loop_interpolation.py:37-80` (`_builtin_loop_files`, `_iter_strings`), which already recurses into both `lib/` and `oracles/` as this issue's Implementation Step 1 requires. (2) Schema-typed structural walks instead filter with `is_runnable_loop(p)` and call `load_and_validate(path, raise_on_error=False)` to get validated `FSMLoop` objects — evidence: `doctor.py:540-562`, `validation/reachability.py:121-125`. Since this sweep scans action-string *text* for interpolation tokens rather than validating loop *structure*, pattern (1) is the established convention to follow, not (2).
+- **No existing `python3 -c "..."` host-shape boundary tracking anywhere in the codebase** — confirmed via unfiltered repo-wide grep (36 hits for the literal string `python3 -c`, all either loop-YAML action bodies or `fence.py`'s docstring deferring this exact class to "BUG-3331/BUG-3339" without implementing it). `shell_safety.py`'s heredoc-only tracking is the sole "host shape" logic that exists, and it has no `-c "` awareness at all. This scanner's `-c "` boundary tracking has no precedent to reuse or diverge from — it is new work in this codebase.
+- **No `@dataclass(frozen=True)` with a custom `__eq__`/`__hash__` excluding one field exists anywhere in the codebase** (repo-wide grep for `__eq__`/`__hash__` under `scripts/`, zero matches). The closest structural relative, `issues/cli_claims.py:33-40`'s `CliFlagClaim`, is a plain frozen dataclass placed in a `set` using dataclass-generated equality over *all* fields, no exclusion. The issue's proposed `InterpSite` dataclass excluding `line` from equality (for baseline-anchoring purposes) would be a new pattern in this codebase, not an established one — implement it deliberately (e.g. `line: int = field(compare=False)`), there is nothing to copy.
+- **`docs/reference/API.md` convention is narrower than this issue's Documentation section assumes**: sibling validation rules (MR-1 through MR-14, including MR-11) are documented as bullets inside the single shared `### little_loops.fsm.validation` → `#### validate_fsm` entry's "Checks performed" list (`docs/reference/API.md:6279-6323`), not as their own per-submodule headings — `shell_safety.py` itself has no dedicated heading. More directly relevant: `fence.py` — the module this issue's own Design Decisions section names as the ratchet-pattern precedent — has **no API.md entry at all**; it's documented instead in `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md:641-672` and is absent from `docs/ARCHITECTURE.md`'s `fsm/` directory tree (`:239-258`) even though `shell_safety.py` is listed there. Whether `interp_sweep.py` gets its own API.md heading, a bullet under an existing entry, or (matching its closest precedent, `fence.py`) no API.md entry at all, is a genuinely open documentation-placement question this issue's own "per repo convention" claim does not resolve — there isn't a single settled convention to follow here.
 
 ## Scope Boundaries
 
@@ -366,10 +397,26 @@ executes a loop.
   is why ACs 1, 6, and 7 pin specific known-tricky sites.
 - **Breaking Change**: No.
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-08-27_
+
+**Readiness Score**: 80/100 → STOP — ADDRESS GAPS (Dependencies Hard Override)
+**Outcome Confidence**: 81/100 → HIGH CONFIDENCE
+
+### Gaps to Address
+- `blocked_by: ENH-3337` is unresolved (status: open). ENH-3338's own scope note
+  says it must seed its baseline *after* ENH-3337 lands, so this issue is not
+  implementable yet regardless of its own readiness — the sweep would baseline
+  a pre-fix `general-task.yaml:895-902` site.
+
 ## Status
 
 **Open** | Created: 2026-08-27 | Priority: P2
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-28T03:03:44 - `486b558c-b1c6-4706-9fa1-9c30566c1e36.jsonl`
+- `/ll:wire-issue` - 2026-08-28T02:57:43 - `13d6dd54-6fe5-483d-8ac7-01629c54d02f.jsonl`
+- `/ll:refine-issue` - 2026-08-28T02:39:00 - `b0fc8e25-b423-43c9-a6e7-49a921fc64b8.jsonl`
 - `/ll:format-issue` - 2026-08-28T02:28:48 - `2ce7a90a-6aac-441b-a6ef-bdf7013fe147.jsonl`
 - `/ll:scope-epic` - 2026-08-27T17:51:45 - `c766dcf0-a664-4805-9c8a-6eba323145c8.jsonl`

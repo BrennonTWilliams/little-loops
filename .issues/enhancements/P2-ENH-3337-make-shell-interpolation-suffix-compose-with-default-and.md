@@ -8,7 +8,19 @@ discovered_by: ll-issues-create
 discovered_date: '2026-08-27'
 captured_at: '2026-08-27T17:51:35Z'
 parent: EPIC-3336
-blocks: [ENH-3338, BUG-3339, BUG-3340, BUG-3341, ENH-3342, ENH-3347]
+blocks:
+- ENH-3338
+- BUG-3339
+- BUG-3340
+- BUG-3341
+- ENH-3342
+- ENH-3347
+confidence_score: 100
+outcome_confidence: 74
+score_complexity: 17
+score_test_coverage: 22
+score_ambiguity: 20
+score_change_surface: 15
 ---
 
 # ENH-3337: Make :shell interpolation suffix compose with :default= and ?
@@ -79,6 +91,15 @@ written when the suffix could not compose, and both break under it:
 The default becomes the literal `{` and a stray `}` is left in the output. This
 is live today at `general-task.yaml:895-902`, and BUG-3339 flags it obliquely at
 the same site.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-28 — based on codebase analysis:_
+
+- **Stale as of BUG-3349 (commit `d8d3476a1`, 2026-08-27T20:46:41, closed BUG-3349) — landed AFTER this issue was captured (17:51:35 same day).** Row 2 of the behavior table above (`${x:shell:default=v}` → `InterpolationError`) is no longer accurate. BUG-3349 already fixed the shell-before-default ordering: `interpolate()`'s `:default=` branch now also strips a leading `:shell` off `var_part` and sets `shell_quote=True` (`interpolation.py:253-255`), and the fallback is shlex-quoted too (`:283`). `${x:shell:default=v}` now composes correctly.
+- **The other three defects are unchanged and still exactly as described**, verified against current `interpolation.py`: `${x:default=v:shell}` still silently misparses (default-before-shell — `:default=` split happens first and nothing strips a trailing `:shell` from the captured default string); `${x?:shell}` still resolves the wrong path `"x?"` (the `elif full_path.endswith("?")` branch is skipped because the string ends in `"shell"`, so `nullable` is never set); the `None` short-circuit (now at `:276-277`, `if value is None: return ""`) still fires before the `shell_quote` check at `:278-279` and before the `except` block's `default_value` handling; `VARIABLE_PATTERN` (`:28`, unchanged) still terminates on the first `}`, so `}` inside a `:default=` value is still unhandled. `shell_safety.py:183`'s `token.endswith(":shell}")` and `run.py`'s pre-flight (now at `:288-302`, regex compiled `:288`) are both unchanged and still exhibit the defects this issue describes for them.
+- **Line numbers have shifted by BUG-3349's diff** (+5 net lines before the suffix-parse block): the suffix-chain cascade is now at `interpolation.py:246-262` (was cited as `:238-256`), and the resolve/quote/fallback block is now at `:274-286` (was `:268-280`). `run.py`'s `_ctx_var_re` pre-flight loop is now at `:276-309` (regex compile `:288`, loop body `:289-302`, `:default=`/`?` skip `:297`, `:shell` strip `:299-300`) — was cited as `:284-300`/`:288-305`.
+- **Existing test coverage**: `scripts/tests/test_fsm_interpolation.py`'s `TestShellSuffix` class (`:844-921`) already has `test_shell_default_combined_missing_path_emits_quoted_fallback` (`:886`) and `test_shell_default_combined_present_path_emits_quoted_value` (`:898`), both tagged "BUG-3349" — these cover exactly the now-fixed shell-before-default ordering. Confirmed via repo-wide grep: no existing test covers `${x:default=v:shell}` (default-before-shell), `${x?:shell}`, `}` inside a `:default=` value, or the combined "resolved value is `None` AND `:default=` is present" interaction (the closest existing test, `test_shell_suffix_empty_value_resolves_to_empty` at `:874`, only exercises bare `:shell` on a resolved `None`, no `:default=`).
 
 ## Expected Behavior
 
@@ -177,6 +198,30 @@ be a single rule instead of a rule plus an exemption list.
   through.
 - `scripts/little_loops/fsm/runners.py:297` — `bash -c <action>`; no change.
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/fsm/evaluators.py` — 9 direct `interpolate()` call sites
+  (`:855,863,1758,1877,1913,1931,1947,1971,1984,2004`) on author-configured
+  `EvaluateConfig` template fields (`target`, `previous`, `tolerance`,
+  `history_file`, `prompt`) — structurally identical exposure to `action:`
+  strings. No corpus site currently attaches a composed suffix to these
+  fields, so this is a latent, not active, exposure — no code change
+  required, but Implementation Step 8's regression sweep should confirm these
+  fields are unaffected.
+- `scripts/little_loops/cli/loop/testing.py` — `cmd_test()` builds an
+  `InterpolationContext` (`:115`) and calls `evaluate()` (`:119`), routing
+  into the `evaluators.py` `interpolate()` sites above when `ll-loop test`
+  exercises a loop's `evaluate:` config. No change; same latent-exposure note
+  applies.
+- `scripts/little_loops/fsm/__init__.py:120-125` — re-exports
+  `InterpolationContext`, `InterpolationError`, `interpolate`,
+  `interpolate_dict` as the FSM package's public API surface. No change, but
+  this is the public contract this issue's semantics change reaches
+  consumers through, outside the two already-known callers.
+- `scripts/little_loops/fsm/validation/__init__.py:117-127,217` — re-exports
+  `_find_unsafe_context_interpolations` and related MR-11 names from
+  `shell_safety.py`. No change beyond `shell_safety.py:183` itself, already
+  in scope.
+
 ### Tests
 
 - `scripts/tests/test_interpolation.py` (new) — one case per ordering
@@ -189,15 +234,52 @@ be a single rule instead of a rule plus an exemption list.
   on a composed `${context.goal:shell:default=}`.
 - Regression sweep over the 17 existing `:shell` sites for behavior change (a).
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_fsm_interpolation.py:874-878`
+  (`TestShellSuffix.test_shell_suffix_empty_value_resolves_to_empty`) —
+  **will break**. It currently asserts the old None-short-circuit-before-quote
+  behavior (`"VAL="`); under this issue's "resolve → fallback → quote"
+  pipeline the same input must become `"VAL=''"` (Acceptance Criterion 3).
+  Update the expected value as part of this issue's own change.
+- **Correction**: `scripts/tests/test_fsm_validation_shell_safety.py` already
+  exists (`TestUnsafeContextInterpolation` class, `:202-334`, covering
+  MR-7/MR-9/MR-11) — it is not a new file. Add a new test method to that
+  existing class (sibling to `test_mr11_does_not_fire_for_shell_suffix` at
+  `:275`), not a new test file.
+- `scripts/little_loops/loops/general-task.yaml:895-902`'s `summarize_success`
+  state has zero direct interpolation-level test coverage today (confirmed:
+  existing `TestSafeInterpolation` general-task coverage only exercises
+  `check_done` and `run_final_tests`). Add a case covering the `}`-in-default
+  fix at this exact site.
+
 ### Documentation
 
 - `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` — the suffix grammar is documented
   as part of ENH-3342's idiom section, not here. If a suffix reference exists
   elsewhere, update it.
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/API.md:6222-6268` (`#### interpolate` section) — the worked
+  examples document `:default=`, `?`, and `:shell` as separate, non-composed
+  cases (`:6254`, `:6258`, `:6263`). No example shows a composed ordering;
+  this goes stale the moment this issue lands and should gain at least one
+  composed example. (MR-11's conceptual descriptions elsewhere — `API.md:6321`,
+  `CLI.md:870`, `skills/review-loop/reference.md:50`,
+  `HARNESS_OPTIMIZATION_GUIDE.md:104` — remain accurate and need no edit.)
+
 ### Configuration
 
 - N/A
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-28 — based on codebase analysis:_
+
+- **Conventions in Force** — the codebase's established precedent for a small parse routine shared across multiple consumer modules (which is what the proposed `parse_interpolation_suffixes()` helper would be) is `policy_rules.py`'s `grammar_spec()`/`parse_rules()` (`scripts/little_loops/fsm/policy_rules.py:98,262`), imported directly by `route_table.py`, `validation/reachability.py:175`, and `cli/artifact/policy_builder.py:63` — a real cross-module import, not a re-implementation. By contrast, the two out-of-module `:shell` recognizers this issue targets currently hand-mirror `interpolate()`'s parse with a synchronization comment citing the canonical line numbers rather than importing a shared function (`run.py:276-287`'s comment names `fsm/interpolation.py:236-250` as the source of truth) — this comment-only synchronization is the drift risk that produced defects 4a/4b, and is the gap the proposed helper extraction closes.
+- `InterpolationError` is a bare `Exception` subclass carrying only an f-string message — no error codes or `.kind` attributes exist anywhere in the codebase's 10 raise sites in `interpolation.py`. Tests assert via `pytest.raises(InterpolationError, match="<substring>")`.
+- `shlex.quote()` is called directly (no wrapper) at exactly two production sites, both inside `interpolate()` itself (`interpolation.py:279,283`) — no other production module under `scripts/little_loops/` calls `shlex.quote()`.
+- Suffix/grammar test classes in `test_fsm_interpolation.py` follow a `class Test<Feature>` shape with `# ── section ──` comment dividers grouping sub-cases and a one-line docstring per test naming the originating issue ID — evidence: `TestSafeInterpolation` (`:554`, ENH-1958), `TestShellSuffix` (`:844`, BUG-2622/BUG-3349). New test cases for this issue should follow that shape rather than `scripts/tests/test_interpolation.py` (a new filename the issue proposes, but the actively maintained module for this area is `test_fsm_interpolation.py`).
+- This codebase's convention for recording a semantic decision (as Acceptance Criterion 6 requires for the None-handling and `}`-in-default choices) is a dated `## Recorded decisions (DATE)` section with per-topic `### <topic>` subheadings, each opening with a bold `**Decision: ...**` line plus rationale — evidence: `.issues/features/P3-FEAT-3036-artifact-templates-design.md:229,328`. No such section exists yet in this issue.
 
 ## Scope Boundaries
 
@@ -300,6 +382,23 @@ suffix addition cannot desynchronize them again.
 9. `python -m pytest scripts/tests/` exits 0; `ll-loop validate` clean across the
    corpus with no new MR-11 warnings.
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in
+the implementation:_
+
+- Update `scripts/tests/test_fsm_interpolation.py:874-878` — fix
+  `test_shell_suffix_empty_value_resolves_to_empty`'s expected value from
+  `"VAL="` to `"VAL=''"` per the new resolve → fallback → quote ordering.
+- Add a test method to `scripts/tests/test_fsm_validation_shell_safety.py`'s
+  existing `TestUnsafeContextInterpolation` class covering
+  `${context.goal:shell:default=}` not firing MR-11.
+- Add interpolation-level test coverage for `general-task.yaml:895-902`'s
+  `summarize_success` state, exercising the `}`-in-default fix at this exact
+  site.
+- Update `docs/reference/API.md:6222-6268`'s `interpolate` worked examples to
+  include at least one composed-suffix ordering.
+
 ## Acceptance Criteria
 
 1. `${x:shell}`, `${x:shell:default=v}`, `${x:default=v:shell}`, and `${x?:shell}`
@@ -343,5 +442,8 @@ suffix addition cannot desynchronize them again.
 **Open** | Created: 2026-08-27 | Priority: P2
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-28T03:03:45 - `486b558c-b1c6-4706-9fa1-9c30566c1e36.jsonl`
+- `/ll:wire-issue` - 2026-08-28T02:57:39 - `13d6dd54-6fe5-483d-8ac7-01629c54d02f.jsonl`
+- `/ll:refine-issue` - 2026-08-28T02:39:00 - `b0fc8e25-b423-43c9-a6e7-49a921fc64b8.jsonl`
 - `/ll:format-issue` - 2026-08-28T02:28:48 - `2ce7a90a-6aac-441b-a6ef-bdf7013fe147.jsonl`
 - `/ll:scope-epic` - 2026-08-27T17:51:44 - `c766dcf0-a664-4805-9c8a-6eba323145c8.jsonl`

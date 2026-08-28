@@ -382,5 +382,6 @@ already-converted precedent states in the same files.
 
 
 ## Session Log
+- `/ll:format-issue` - 2026-08-28T03:03:20 - `486b558c-b1c6-4706-9fa1-9c30566c1e36.jsonl`
 - `/ll:refine-issue` - 2026-08-27T19:51:04 - `121602fa-f1cf-4559-9d22-a1a9e5682b74.jsonl`
 - `/ll:scope-epic` - 2026-08-27T17:51:45 - `c766dcf0-a664-4805-9c8a-6eba323145c8.jsonl`
