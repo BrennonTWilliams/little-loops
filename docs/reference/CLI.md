@@ -1982,7 +1982,14 @@ a `spike_attempted` re-check via an inline `show --json` predicate, not a plain
 `implementation_order_risk` is written by `set-flags` but **consumed by no gate
 state anywhere in the repo** — it remains a recorded-but-unrouted flag; wiring it
 needs its own issue that first defines the remedy an `on_yes` branch would route
-to.
+to. `unproven_mechanism` (ENH-3350, written by `/ll:refine-issue`, not
+`set-flags`) is **not itself read by any loop gate state** — it affects gating
+only indirectly, by making `/ll:confidence-check` cap `outcome_confidence`
+below `outcome_threshold`, which in turn makes `set-flags`' `spike_needed`
+`FlagRule` fire directly on the `unproven_mechanism: true` frontmatter trigger
+(bypassing its usual `score_test_coverage <= 10` numeric gate and phrase
+match). `check_spike_needed` (both loops, above) is the actual gate this
+reaches — the same state `spike_needed` already routes to.
 
 ---
 

@@ -127,6 +127,9 @@ def _parse_card_fields(path: Path, config: BRConfig) -> dict[str, str | None]:
     captured_at = frontmatter.get("captured_at")
     completed_at = frontmatter.get("completed_at")
     decision_needed_raw = frontmatter.get("decision_needed")
+    # ENH-3350: escalated no-precedent-mechanism flag, set by /ll:refine-issue
+    # and read by /ll:confidence-check before scoring. Mirrors decision_needed.
+    unproven_mechanism_raw = frontmatter.get("unproven_mechanism")
     missing_artifacts_raw = frontmatter.get("missing_artifacts")
     # ENH-2640: spike-remediation flags read by autodev's check_spike_needed
     # (spike_needed set by /ll:confidence-check Phase 4.10; spike_attempted/
@@ -316,6 +319,9 @@ def _parse_card_fields(path: Path, config: BRConfig) -> dict[str, str | None]:
         "completed_at": str(completed_at) if completed_at is not None else None,
         "decision_needed": str(decision_needed_raw).lower()
         if decision_needed_raw is not None
+        else None,
+        "unproven_mechanism": str(unproven_mechanism_raw).lower()
+        if unproven_mechanism_raw is not None
         else None,
         "missing_artifacts": _join_ids(missing_artifacts_raw)
         if isinstance(missing_artifacts_raw, list)

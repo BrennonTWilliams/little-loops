@@ -92,6 +92,12 @@ class FlagRule:
         fires_on_suppression_of: Optional flag name; when that flag was suppressed this
             run, this rule fires even without its own phrase match
             (implementation_order_risk fires because missing_artifacts was suppressed)
+        frontmatter_trigger: Optional check against the issue's own parsed frontmatter
+            that, when True, makes the rule candidate even without a phrase match and
+            bypasses ``numeric_gate`` (direct evidence is stronger than the phrase
+            heuristic it stands in for) — ``spike_needed``'s ``unproven_mechanism: true``
+            trigger (ENH-3350). ``precondition`` still applies, so suppression via
+            ``_spike_not_already_flagged`` is unaffected.
     """
 
     flag: str
@@ -100,6 +106,7 @@ class FlagRule:
     precondition: Callable[[IssueInfo], bool] | None = None
     suppressor: Callable[[str, IssueInfo], bool] | None = None
     fires_on_suppression_of: str | None = None
+    frontmatter_trigger: Callable[[IssueInfo], bool] | None = None
 
 
 @dataclass
@@ -146,6 +153,17 @@ def _spike_precondition_factory(threshold: int) -> Callable[[IssueInfo], bool]:
 
 def _score_test_coverage_gate(issue: IssueInfo) -> bool:
     return issue.score_test_coverage is not None and issue.score_test_coverage <= 10
+
+
+def _unproven_mechanism_trigger(issue: IssueInfo) -> bool:
+    """Direct evidence trigger for spike_needed (ENH-3350).
+
+    A refine-issue-confirmed no-precedent finding is stronger evidence than a
+    phrase match, so it bypasses both the phrase list and the
+    score_test_coverage numeric gate. ``_spike_not_already_flagged`` (via the
+    rule's ``precondition``) still applies.
+    """
+    return issue.unproven_mechanism is True
 
 
 def _files_to_create_section(content: str) -> str:
@@ -212,6 +230,7 @@ def _rules_for_threshold(threshold: int) -> tuple[FlagRule, ...]:
             phrases=_SPIKE_NEEDED_PHRASES,
             precondition=_spike_precondition_factory(threshold),
             numeric_gate=_score_test_coverage_gate,
+            frontmatter_trigger=_unproven_mechanism_trigger,
         ),
     )
 
@@ -288,7 +307,9 @@ def apply_flags_from_notes(
         matches = [phrase for phrase in rule.phrases if phrase.lower() in lowered]
         matched_phrases[rule.flag] = matches
 
-        candidate = bool(matches)
+        frontmatter_triggered = bool(rule.frontmatter_trigger and rule.frontmatter_trigger(issue))
+
+        candidate = bool(matches) or frontmatter_triggered
         if not candidate and rule.fires_on_suppression_of is not None:
             candidate = rule.fires_on_suppression_of in suppressed
 
@@ -300,7 +321,11 @@ def apply_flags_from_notes(
             fired[rule.flag] = False
             continue
 
-        if rule.numeric_gate is not None and not rule.numeric_gate(issue):
+        if (
+            not frontmatter_triggered
+            and rule.numeric_gate is not None
+            and not rule.numeric_gate(issue)
+        ):
             fired[rule.flag] = False
             continue
 

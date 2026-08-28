@@ -715,6 +715,35 @@ it.
   matching the marker convention are ever deletable; the refuted line and
   every other line stay untouchable.
 
+**Unproven-mechanism marker escalation** (ENH-3350): a second, independent
+carve-out — when a codebase-research finding this pass is depositing states
+that a proposed remedy's mechanism has **no confirming precedent** (no
+existing usage site exercises the combination the remedy depends on — e.g.
+"no existing site applies X to a Y reference — no direct precedent
+confirming the combination works"), escalate it rather than depositing it
+silently:
+
+- **Marker text and placement**: append `⚠ Unproven mechanism — <reason
+  clause, ≤10 words>` as the line immediately following the finding bullet
+  in the `ll-issues fold-findings` stdin payload — same column/indent
+  convention as the `⚠ Superseded` marker above, but attached to the
+  *finding*, not to a directive line. This keeps the marker inside the
+  normal findings-block write (still routed through `fold-findings`, never a
+  second hand-`Edit`).
+- **Frontmatter write**: set `unproven_mechanism: true` directly via
+  `update_frontmatter` in this same pass — unlike `superseded_marker_count`,
+  there is no `format-check` read-back key for this signal; refine sets the
+  flag itself, at deposit time, before `outcome_confidence` is ever
+  computed (that ordering is the entire point — see Motivation).
+- **Idempotent**: skip the frontmatter write if `unproven_mechanism` is
+  already `true`; skip the marker insertion if the line immediately below
+  the finding already contains the substring `⚠ Unproven mechanism`.
+- **Annotate, don't resolve**: exactly like the Superseded carve-out, this
+  only flags the finding — proving or disproving the mechanism is
+  `/ll:spike`'s job, not refine's (see Step 6.7 and NEXT STEPS below).
+- **Skip if `DRY_RUN` is true** — report the would-be marker and frontmatter
+  write in the DRY RUN PREVIEW block instead.
+
 #### Heading Containment Check (Hand-Emitted Headings, BUG-3245)
 
 `### Call Path` (`## Program Design`) and `### Dependent Files
@@ -1002,6 +1031,17 @@ keys:
   `/ll:reconcile-issue [ISSUE-ID]` in the Next Steps block. This is the human
   path into a remedy that was previously reachable only via `autodev.yaml`'s
   plateau gate (measured at capture: 1,703 issues refined, 19 reconciled).
+- **`unproven_mechanism: true` set this pass** (ENH-3350): this pass deposited
+  a `⚠ Unproven mechanism` marker (see § Writing Findings Blocks) because a
+  finding it recorded found no confirming precedent for a proposed remedy's
+  mechanism. Unlike `superseded_marker_count`, this is not read back from
+  `format-check` — it is the frontmatter write this pass itself just made.
+  Surface it: report it in Step 8's output and name `/ll:spike [ISSUE-ID]` in
+  the Next Steps block. `/ll:confidence-check` reads this flag before scoring
+  and caps `outcome_confidence` while it is set and unsuppressed
+  (`spike_attempted`/`spike_completed`) — this is the earlier detection point
+  the existing `spike_needed` phrase-scan cannot reach, because that scan only
+  fires once `outcome_confidence` is already below threshold.
 - **`duplicate_findings_block` non-empty** (ENH-2993): one or more H2s carry
   more than one `### Codebase Research Findings` block. Each entry is
   `"<H2 heading> (N)"`. Two branches, and they are not interchangeable:
@@ -1117,6 +1157,7 @@ ISSUE REFINED: [ISSUE-ID]
 - prose_dep_drift: [clear | fixed | — ]
 - stale_prose_dep: [clear | fixed | — ]
 - superseded_marker_count: [N — run `/ll:reconcile-issue [ID]` | 0]
+- unproven_mechanism: [true — run `/ll:spike [ID]` | false | not set]
 - program_design_nonspecific: [clear | revised once, now clear | STILL FAILING after one revision — operator action needed | not applicable (unarmed/grandfathered)]
 - soft_dep_hard_edge: [clear | fixed (moved [ID] to relates_to) | — ]
 - AC-vs-Program-Design contradictions: [none found | N found — see findings below]
@@ -1124,9 +1165,11 @@ ISSUE REFINED: [ISSUE-ID]
 ## FILE STATUS
 - [Modified | Not modified (--dry-run)]
 - decision_needed: [true | false | not set | skipped (--dry-run)] [Auto mode only]
+- unproven_mechanism: [true | false | not set | skipped (--dry-run)] [Auto mode only]
 
 ## NEXT STEPS
 - If this pass deposited findings that refute an existing directive line (`superseded_marker_count` > 0 in Step 6.7): run `/ll:reconcile-issue [ID]` to rewrite the contradicted section. Refine only annotates the contradiction; reconcile is the only command that resolves it (ENH-2992)
+- If `unproven_mechanism: true` was set this pass (a finding found no confirming precedent for a proposed mechanism): run `/ll:spike [ID]` to prove or disprove it before implementation — `/ll:confidence-check` caps `outcome_confidence` while this flag is set and unsuppressed (ENH-3350)
 - If `decision_needed: true` was set (2+ options deposited): run `/ll:decide-issue [ID]` to select the best option before wiring
 - Run `/ll:wire-issue [ID]` to add integration wiring (callers, entry points, test hooks)
 - Run `/ll:ready-issue [ID]` to validate the enriched issue
@@ -1167,8 +1210,11 @@ ISSUE REFINED: [ISSUE-ID]
 ```
 /ll:capture-issue → /ll:format-issue → /ll:refine-issue → /ll:decide-issue → /ll:wire-issue → /ll:ready-issue → /ll:manage-issue
                                              │
-                                             └─ (conditional) /ll:reconcile-issue — when this pass
-                                                refuted an existing directive line
+                                             ├─ (conditional) /ll:reconcile-issue — when this pass
+                                             │   refuted an existing directive line
+                                             │
+                                             └─ (conditional) /ll:spike — when this pass set
+                                                 unproven_mechanism: true (ENH-3350)
 ```
 
 - **Before**: `/ll:format-issue` — ensures structural template compliance
@@ -1178,6 +1224,10 @@ ISSUE REFINED: [ISSUE-ID]
   section. Shown on this canonical diagram only: the two *Typical Workflows* diagrams
   below enumerate the happy path a developer types, and a conditional remedy edge
   there would be noise.
+- **Conditional branch**: `/ll:spike` (ENH-3350) — refine only *annotates* a finding
+  with no confirming precedent via the `⚠ Unproven mechanism` marker and the
+  `unproven_mechanism: true` flag; spike is what proves or disproves the mechanism.
+  Same "shown here only" scoping as the reconcile branch above.
 
 ### Typical Workflows
 

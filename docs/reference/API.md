@@ -719,6 +719,7 @@ class IssueInfo:
     size: str | None = None               # Issue size from /ll:issue-size-review (Small, Medium, Large, Very Large)
     testable: bool | None = None           # False = skip TDD phase; None = treat as testable
     decision_needed: bool | None = None    # Set to true by /ll:refine-issue (2+ options) or /ll:confidence-check (unresolved decision); cleared by /ll:decide-issue
+    unproven_mechanism: bool | None = None # Set to true by /ll:refine-issue when a deposited finding has no confirming precedent; caps /ll:confidence-check's outcome_confidence and drives set-flags' spike_needed trigger; cleared by /ll:spike (spike_completed) or /ll:reconcile-issue (ENH-3350)
     missing_artifacts: bool | None = None  # Set to true by `ll-issues set-flags` (FLAG_RULES) when absent pre-condition files detected; suppressed for co-deliverable files in Files to Create
     implementation_order_risk: bool | None = None  # Set to true by `ll-issues set-flags` (FLAG_RULES) when ordering advice detected (e.g., "implement tests first"), or when missing_artifacts' co-deliverable suppression fired; not a wiring gap
     learning_tests_required: list[str] | None = None  # Declared assumptions about external systems; /ll:ready-issue and /ll:confidence-check (Phase 1.5) each check via ll-learning-tests check

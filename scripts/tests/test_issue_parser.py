@@ -2775,6 +2775,139 @@ class TestIssueInfoDecisionNeeded:
         assert info.decision_needed is None
 
 
+class TestIssueInfoUnprovenMechanism:
+    """Tests for IssueInfo.unproven_mechanism field."""
+
+    def test_unproven_mechanism_default_none(self) -> None:
+        """Test unproven_mechanism defaults to None when not provided."""
+        info = IssueInfo(
+            path=Path("test.md"),
+            issue_type="enhancements",
+            priority="P3",
+            issue_id="ENH-1239",
+            title="Test",
+        )
+        assert info.unproven_mechanism is None
+
+    def test_unproven_mechanism_false(self) -> None:
+        """Test unproven_mechanism can be set to False."""
+        info = IssueInfo(
+            path=Path("test.md"),
+            issue_type="enhancements",
+            priority="P3",
+            issue_id="ENH-1239",
+            title="Test",
+            unproven_mechanism=False,
+        )
+        assert info.unproven_mechanism is False
+
+    def test_unproven_mechanism_true(self) -> None:
+        """Test unproven_mechanism can be set to True."""
+        info = IssueInfo(
+            path=Path("test.md"),
+            issue_type="enhancements",
+            priority="P3",
+            issue_id="ENH-1239",
+            title="Test",
+            unproven_mechanism=True,
+        )
+        assert info.unproven_mechanism is True
+
+    def test_unproven_mechanism_in_to_dict(self) -> None:
+        """Test unproven_mechanism appears in to_dict output."""
+        info = IssueInfo(
+            path=Path("test.md"),
+            issue_type="enhancements",
+            priority="P3",
+            issue_id="ENH-1239",
+            title="Test",
+            unproven_mechanism=True,
+        )
+        data = info.to_dict()
+        assert data["unproven_mechanism"] is True
+
+    def test_unproven_mechanism_from_dict_missing(self) -> None:
+        """Test from_dict defaults to None when unproven_mechanism key is absent."""
+        data = {
+            "path": "/test/path.md",
+            "issue_type": "enhancements",
+            "priority": "P3",
+            "issue_id": "ENH-1239",
+            "title": "Test Issue",
+        }
+        info = IssueInfo.from_dict(data)
+        assert info.unproven_mechanism is None
+
+    def test_unproven_mechanism_from_dict_false(self) -> None:
+        """Test from_dict restores unproven_mechanism=False."""
+        data = {
+            "path": "/test/path.md",
+            "issue_type": "enhancements",
+            "priority": "P3",
+            "issue_id": "ENH-1239",
+            "title": "Test Issue",
+            "unproven_mechanism": False,
+        }
+        info = IssueInfo.from_dict(data)
+        assert info.unproven_mechanism is False
+
+    def test_parse_file_unproven_mechanism_true(self, tmp_path: Path) -> None:
+        """Integration: parse_file reads unproven_mechanism: true from frontmatter."""
+        import json
+
+        from little_loops.config import BRConfig
+
+        config_path = tmp_path / ".ll" / "ll-config.json"
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+        config_path.write_text(
+            json.dumps(
+                {
+                    "issues": {"base_dir": ".issues"},
+                    "project": {"src_dir": "scripts/"},
+                }
+            )
+        )
+        features_dir = tmp_path / ".issues" / "features"
+        features_dir.mkdir(parents=True, exist_ok=True)
+        issue_file = features_dir / "P3-FEAT-1239-unproven-mechanism.md"
+        issue_file.write_text(
+            "---\nunproven_mechanism: true\n---\n# FEAT-1239: Unproven Mechanism\n"
+        )
+
+        config = BRConfig(tmp_path)
+        parser = IssueParser(config)
+        info = parser.parse_file(issue_file)
+
+        assert info.unproven_mechanism is True
+
+    def test_parse_file_unproven_mechanism_absent(self, tmp_path: Path) -> None:
+        """Integration: parse_file yields unproven_mechanism=None when frontmatter key absent."""
+        import json
+
+        from little_loops.config import BRConfig
+
+        config_path = tmp_path / ".ll" / "ll-config.json"
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+        config_path.write_text(
+            json.dumps(
+                {
+                    "issues": {"base_dir": ".issues"},
+                    "project": {"src_dir": "scripts/"},
+                }
+            )
+        )
+        features_dir = tmp_path / ".issues" / "features"
+        features_dir.mkdir(parents=True, exist_ok=True)
+        issue_file = features_dir / "P3-FEAT-1238-normal.md"
+        issue_file.write_text("---\ndiscovered_by: scan-codebase\n---\n# FEAT-1238: Normal\n")
+
+        config = BRConfig(tmp_path)
+        parser = IssueParser(config)
+        info = parser.parse_file(issue_file)
+
+        assert info.unproven_mechanism is None
+
+
 class TestIssueInfoLearningTestsRequired:
     """Tests for IssueInfo.learning_tests_required field."""
 
@@ -4740,10 +4873,10 @@ class TestPriorityRegexCompletenessAllowlist:
             "frontmatter directly by design — drift IS the comparison, not a resolution",
             1697: "_DEP_ID_RE (BUG-3059): dependency-ID shape validation; optional prefix "
             "group discarded",
-            3775: "comment describing the P[0-5]-NNN- filename shape",
-            3779: "_parse_type_and_id's directory-fallback number extraction; priority digit "
+            3780: "comment describing the P[0-5]-NNN- filename shape",
+            3784: "_parse_type_and_id's directory-fallback number extraction; priority digit "
             "skipped over, not read as a value",
-            3800: "_generate_id_from_filename strips a leading priority token before "
+            3805: "_generate_id_from_filename strips a leading priority token before "
             "digit-scanning for ID generation",
         },
         "issues/prose_deps.py": {

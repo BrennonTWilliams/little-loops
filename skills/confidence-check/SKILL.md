@@ -226,6 +226,11 @@ the rest carry no signal about specification quality. Remedy differs by key: `fo
 `template_placeholders` has no `--fix` — it is literal template debris that needs authored
 content.
 
+### Phase 1.9: Pre-Fetch Unproven Mechanism Flag (ENH-3350)
+```bash
+UNPROVEN_MECHANISM=""; ll-issues check-flag {{issue_id}} unproven_mechanism >/dev/null 2>&1 && UNPROVEN_MECHANISM="true"; SPIKE_SUPPRESSED=""; { ll-issues check-flag {{issue_id}} spike_attempted || ll-issues check-flag {{issue_id}} spike_completed; } >/dev/null 2>&1 && SPIKE_SUPPRESSED="yes"
+```
+
 ### Phase 2: Five-Point Assessment
 
 Evaluate each criterion and assign a score (0-20 points each):
@@ -373,6 +378,8 @@ for the full Breadth and Depth scoring tables.
 (scored by caller count, e.g. `0-2 callers` = isolated) and **Pattern B —
 Enumerated Mechanical Fanout** (scored by the verifiability chain: enumerated
 sites + `verification grep` + automated completeness test).
+**Unproven Mechanism Cap** (ENH-3350, not a penalty): `UNPROVEN_MECHANISM` set + not
+`SPIKE_SUPPRESSED` (1.9) caps the sum at `outcome_threshold − 1` — [rubric.md](rubric.md) § Outcome Confidence Cap.
 
 ### Phase 3: Score and Recommend
 
@@ -398,7 +405,7 @@ ll-issues set-scores [ISSUE-ID] \
   --score-change-surface [score_D]
 ```
 
-Replace `[ISSUE-ID]` with the actual issue identifier (e.g., `BUG-1307`) and the bracketed placeholders with the integer values from Phase 2b and Phase 3.
+Replace `[ISSUE-ID]` with the actual issue identifier (e.g., `BUG-1307`) and the bracketed placeholders with the integer values from Phase 2b and Phase 3. `[outcome_confidence]` is the **post-cap** value (Phase 2b's Unproven Mechanism Cap, ENH-3350) — persisting it here, before Phase 4.5/4.6 run, is what lets `set-flags` fire `spike_needed` on this same pass.
 
 The four `score_*` values are the per-criterion integer scores (0–25 each):
 - `--score-complexity` — Criterion A score

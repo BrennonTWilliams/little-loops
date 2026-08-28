@@ -346,6 +346,30 @@ Apply the table matching the detected pattern.
 | Sites enumerated, no verification command | 10 |
 | Sites not enumerated (unbounded sweep) | 0 |
 
+### Outcome Confidence Cap (ENH-3350)
+
+Unlike the Criterion-scoped caps above (Parity/Claim/Structure Cap on Criterion 4, Decision
+Cap on Criterion C), this cap applies to the **aggregate** `outcome_confidence` — the sum of
+Criteria A-D — after all four are scored:
+
+| Condition | Effect |
+|-----------|--------|
+| `UNPROVEN_MECHANISM` is `"true"` and `SPIKE_SUPPRESSED` is empty (Phase 1.9) | `outcome_confidence = min(raw_sum, outcome_threshold − 1)` — hard cap, applied regardless of how high Criteria A-D otherwise sum | 
+| `UNPROVEN_MECHANISM` is empty, or `SPIKE_SUPPRESSED` is non-empty | No cap — `outcome_confidence` is the raw Criteria A-D sum |
+
+`outcome_threshold` is `config.commands.confidence_gate.outcome_threshold` (default 75), so the
+default cap value is 74. This is a **hard cap, not a fixed-point penalty** — a penalty (e.g.
+"subtract 20") is fragile across starting scores and thresholds and can still clear the gate
+on a high-scoring issue; only a cap guarantees the result lands below
+`outcome_threshold` at any starting score, which is what gives Phase 4.5 (Findings
+Write-Back) and Phase 4.6 (`set-flags` → `spike_needed`) something to act on. No existing cap
+targets `outcome_confidence` itself before this — the two prior caps above both target a
+single readiness Criterion (4 or C) only; `outcome_confidence` was previously described as
+"informational context for planning" with no override of any kind (see Phase 3's Outcome
+Confidence table below). See SKILL.md Phase 1.9 and Phase 2b's "Unproven Mechanism Cap"
+subsection for where `UNPROVEN_MECHANISM`/`SPIKE_SUPPRESSED` are read and where this cap is
+applied.
+
 ---
 
 ## Phase 3 — Score-to-Recommendation Tables

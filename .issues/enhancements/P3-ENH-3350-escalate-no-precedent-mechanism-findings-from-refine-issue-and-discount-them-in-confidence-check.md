@@ -4,10 +4,11 @@ type: ENH
 title: Escalate no-precedent mechanism findings from refine-issue and discount them
   in confidence-check
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-08-28'
 captured_at: '2026-08-28T01:42:06Z'
+completed_at: '2026-08-28T03:01:50Z'
 reconcile_attempted: true
 confidence_score: 100
 outcome_confidence: 82
@@ -241,6 +242,7 @@ unproven_mechanism: true
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-28T03:01:44 - `00940f35-e812-46a2-be29-12742f58560e.jsonl`
 - `/ll:confidence-check` - 2026-08-28T02:28:28 - `59dee31a-c0af-4de1-b7d6-0e9cd9b1bbc6.jsonl`
 - `/ll:confidence-check` - 2026-08-28T02:18:50 - `7dc575d8-a564-4ee8-873a-56d4554d4bd4.jsonl`
 - `/ll:wire-issue` - 2026-08-28T02:15:58 - `da7096ea-4b62-4c96-b0a5-607df47afec2.jsonl`

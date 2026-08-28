@@ -3431,6 +3431,7 @@ class IssueInfo:
     size: str | None = None
     testable: bool | None = None
     decision_needed: bool | None = None
+    unproven_mechanism: bool | None = None
     missing_artifacts: bool | None = None
     implementation_order_risk: bool | None = None
     learning_tests_required: list[str] | None = None
@@ -3478,6 +3479,7 @@ class IssueInfo:
             "size": self.size,
             "testable": self.testable,
             "decision_needed": self.decision_needed,
+            "unproven_mechanism": self.unproven_mechanism,
             "missing_artifacts": self.missing_artifacts,
             "implementation_order_risk": self.implementation_order_risk,
             "learning_tests_required": self.learning_tests_required,
@@ -3518,6 +3520,7 @@ class IssueInfo:
             size=data.get("size"),
             testable=data.get("testable"),
             decision_needed=data.get("decision_needed"),
+            unproven_mechanism=data.get("unproven_mechanism"),
             missing_artifacts=data.get("missing_artifacts"),
             implementation_order_risk=data.get("implementation_order_risk"),
             learning_tests_required=data.get("learning_tests_required"),
@@ -3586,6 +3589,7 @@ class IssueParser:
         score_change_surface = self._coerce_optional_int(frontmatter.get("score_change_surface"))
         testable_value = self._coerce_tristate_bool(frontmatter.get("testable"))
         decision_needed_value = self._coerce_tristate_bool(frontmatter.get("decision_needed"))
+        unproven_mechanism_value = self._coerce_tristate_bool(frontmatter.get("unproven_mechanism"))
         missing_artifacts_value = self._coerce_tristate_bool(frontmatter.get("missing_artifacts"))
         implementation_order_risk_value = self._coerce_tristate_bool(
             frontmatter.get("implementation_order_risk")
@@ -3712,6 +3716,7 @@ class IssueParser:
             size=size,
             testable=testable_value,
             decision_needed=decision_needed_value,
+            unproven_mechanism=unproven_mechanism_value,
             missing_artifacts=missing_artifacts_value,
             implementation_order_risk=implementation_order_risk_value,
             learning_tests_required=learning_tests_required_value,

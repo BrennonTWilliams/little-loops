@@ -163,6 +163,64 @@ class TestApplyFlagsFromNotes:
 
         assert result.set_flags["spike_needed"] is False
 
+    def test_spike_needed_fires_on_unproven_mechanism_flag_bug_3349_shape(
+        self, temp_project_dir: Path, sample_config: dict[str, Any], issues_dir: Path
+    ) -> None:
+        """unproven_mechanism: true fires spike_needed directly (ENH-3350), bypassing both
+        the score_test_coverage <= 10 numeric gate and the _SPIKE_NEEDED_PHRASES match —
+        a faithful BUG-3349-shaped fixture: score_test_coverage above the numeric gate,
+        and finding text that matches no existing phrase."""
+        from little_loops.cli.issues.set_flags import apply_flags_from_notes
+        from little_loops.config import BRConfig
+
+        (temp_project_dir / ".ll" / "ll-config.json").write_text(json.dumps(sample_config))
+        issue_file = issues_dir / "bugs" / "P0-BUG-001-critical-crash.md"
+        _write_issue(
+            issue_file,
+            outcome_confidence=50,
+            score_test_coverage=15,
+            extra_frontmatter="unproven_mechanism: true\n",
+        )
+
+        config = BRConfig(temp_project_dir)
+        result = apply_flags_from_notes(
+            config,
+            "BUG-001",
+            "No direct precedent confirming the combination works.",
+            dry_run=False,
+        )
+
+        assert result.set_flags["spike_needed"] is True
+        assert result.matched_phrases["spike_needed"] == []
+        assert "spike_needed: true" in issue_file.read_text()
+
+    def test_spike_needed_unproven_mechanism_suppressed_by_spike_completed(
+        self, temp_project_dir: Path, sample_config: dict[str, Any], issues_dir: Path
+    ) -> None:
+        """The unproven_mechanism trigger still respects _spike_not_already_flagged: a
+        completed spike suppresses the flag even with unproven_mechanism: true."""
+        from little_loops.cli.issues.set_flags import apply_flags_from_notes
+        from little_loops.config import BRConfig
+
+        (temp_project_dir / ".ll" / "ll-config.json").write_text(json.dumps(sample_config))
+        issue_file = issues_dir / "bugs" / "P0-BUG-001-critical-crash.md"
+        _write_issue(
+            issue_file,
+            outcome_confidence=50,
+            score_test_coverage=15,
+            extra_frontmatter="unproven_mechanism: true\nspike_completed: true\n",
+        )
+
+        config = BRConfig(temp_project_dir)
+        result = apply_flags_from_notes(
+            config,
+            "BUG-001",
+            "No direct precedent confirming the combination works.",
+            dry_run=False,
+        )
+
+        assert result.set_flags["spike_needed"] is False
+
     def test_missing_artifacts_co_deliverable_suppression(
         self, temp_project_dir: Path, sample_config: dict[str, Any], issues_dir: Path
     ) -> None:

@@ -211,6 +211,7 @@ DOC_STRINGS_PRESENT: list[tuple[str, str, str]] = [
     ("docs/index.md", "ARTIFACT_CONTROL_LEVELS.md", "ENH-3307"),
     ("docs/ARCHITECTURE.md", "Artifact Control Layer", "ENH-3307"),
     ("docs/guides/MCP_SERVER_GUIDE.md", "ARTIFACT_CONTROL_LEVELS.md", "ENH-3307"),
+    ("docs/reference/CLI.md", "unproven_mechanism", "ENH-3350"),
 ]
 
 

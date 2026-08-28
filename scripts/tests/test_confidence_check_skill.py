@@ -741,6 +741,96 @@ class TestConfidenceCheckRubricStructCap:
         )
 
 
+class TestConfidenceCheckUnprovenMechanismPrefetch:
+    """Phase 1.9 must pre-fetch unproven_mechanism as an outcome_confidence hard cap,
+    discounted before Phase 4.5/4.6 run (ENH-3350)."""
+
+    def _phase_text(self, heading: str, next_heading_prefix: str = "\n### ") -> str:
+        content = SKILL_FILE.read_text()
+        start = content.index(heading)
+        next_heading = content.find(next_heading_prefix, start + 1)
+        end = next_heading if next_heading != -1 else len(content)
+        return content[start:end]
+
+    def test_phase_1_9_names_unproven_mechanism_key(self) -> None:
+        phase_text = self._phase_text("### Phase 1.9: Pre-Fetch Unproven Mechanism Flag (ENH-3350)")
+        assert "unproven_mechanism" in phase_text, (
+            "Phase 1.9 must reference the 'unproven_mechanism' frontmatter flag (ENH-3350)"
+        )
+        assert "UNPROVEN_MECHANISM" in phase_text, (
+            "Phase 1.9 must extract an UNPROVEN_MECHANISM variable (ENH-3350)"
+        )
+
+    def test_phase_1_9_reads_spike_suppression(self) -> None:
+        phase_text = self._phase_text("### Phase 1.9: Pre-Fetch Unproven Mechanism Flag (ENH-3350)")
+        assert "SPIKE_SUPPRESSED" in phase_text, (
+            "Phase 1.9 must extract a SPIKE_SUPPRESSED variable for spike_attempted/"
+            "spike_completed suppression (ENH-3350)"
+        )
+        assert "spike_attempted" in phase_text and "spike_completed" in phase_text, (
+            "Phase 1.9 must read both spike_attempted and spike_completed (ENH-3350)"
+        )
+
+    def test_phase_2b_cap_documented_as_hard_cap_not_penalty(self) -> None:
+        phase_text = self._phase_text("### Phase 2b: Outcome Confidence Assessment")
+        assert "Unproven Mechanism Cap" in phase_text, (
+            "Phase 2b must document the Unproven Mechanism Cap subsection (ENH-3350)"
+        )
+        cap_start = phase_text.index("Unproven Mechanism Cap")
+        cap_text = phase_text[cap_start : cap_start + 800]
+        assert "cap" in cap_text.lower() and "penalty" in cap_text.lower(), (
+            "Phase 2b's cap must be documented as a hard cap, not a fixed penalty (ENH-3350)"
+        )
+        assert "outcome_threshold" in cap_text, (
+            "Phase 2b's cap must be expressed relative to outcome_threshold, not a fixed "
+            "number (ENH-3350)"
+        )
+
+    def test_phase_4_persists_capped_value_before_flag_write_back(self) -> None:
+        phase_4_text = self._phase_text("### Phase 4: Update Frontmatter")
+        assert "post-cap" in phase_4_text.lower() or "capped" in phase_4_text.lower(), (
+            "Phase 4 must document that the persisted outcome_confidence is the post-cap "
+            "value when the Unproven Mechanism Cap applied (ENH-3350)"
+        )
+
+
+class TestConfidenceCheckRubricOutcomeConfidenceCap:
+    """rubric.md must document the outcome_confidence hard cap (ENH-3350)."""
+
+    def _cap_section_text(self) -> str:
+        content = RUBRIC_FILE.read_text()
+        start = content.index("### Outcome Confidence Cap (ENH-3350)")
+        next_heading = content.find("\n##", start + 1)
+        end = next_heading if next_heading != -1 else len(content)
+        return content[start:end]
+
+    def test_cap_section_present(self) -> None:
+        section = self._cap_section_text()
+        assert "unproven_mechanism" in section.lower() or "UNPROVEN_MECHANISM" in section, (
+            "rubric.md's Outcome Confidence Cap must reference unproven_mechanism (ENH-3350)"
+        )
+
+    def test_cap_documented_as_hard_cap(self) -> None:
+        section = self._cap_section_text()
+        assert "hard cap" in section.lower(), (
+            "rubric.md's Outcome Confidence Cap must be documented as a hard cap (ENH-3350)"
+        )
+
+    def test_cap_applies_to_aggregate_not_single_criterion(self) -> None:
+        section = self._cap_section_text()
+        assert "aggregate" in section.lower(), (
+            "rubric.md's Outcome Confidence Cap must document that it applies to the "
+            "aggregate outcome_confidence, not a single Criterion (ENH-3350)"
+        )
+
+    def test_cap_suppressed_by_spike_completion(self) -> None:
+        section = self._cap_section_text()
+        assert "SPIKE_SUPPRESSED" in section, (
+            "rubric.md's Outcome Confidence Cap must document SPIKE_SUPPRESSED suppression "
+            "(ENH-3350)"
+        )
+
+
 class TestVerdictJsonTrailer:
     """rubric.md's single-issue output format must emit VERDICT_JSON (ENH-2949)."""
 
