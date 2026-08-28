@@ -147,8 +147,8 @@ states:
     action_type: shell
     action: |
       python3 << 'PYEOF'
-      import yaml, sys
-      d = yaml.safe_load(open('${captured.run_dir.output}/classification.yaml'))
+      import os, yaml, sys
+      d = yaml.safe_load(open(os.path.join(os.path.abspath("${context.run_dir}"), 'classification.yaml')))
       assert d.get('classification') in ('desktop-gui', 'stateful-service', 'data-lib'), \
         f"unknown classification: {d.get('classification')}"
       assert d.get('target_name'), 'target_name is empty'

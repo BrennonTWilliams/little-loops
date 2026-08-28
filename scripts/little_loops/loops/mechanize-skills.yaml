@@ -283,7 +283,7 @@ states:
       SKILL_FILE="${captured.current_skill.output}" python3 << 'PYEOF'
       import json, os
       skill_file = os.environ["SKILL_FILE"]
-      with open("${captured.run_dir.output}/diagnosis.json") as f:
+      with open(os.path.join(os.path.abspath("${context.run_dir}"), "diagnosis.json")) as f:
           d = json.load(f)
       findings = d.get("findings") or []
       assert isinstance(findings, list), "findings must be a list"
@@ -333,8 +333,8 @@ states:
       RUN_DIR="${captured.run_dir.output}"
       echo "below-threshold" > "$RUN_DIR/skip-reason.txt"
       python3 << 'PYEOF'
-      import json
-      with open("${captured.run_dir.output}/diagnosis.json") as f:
+      import json, os
+      with open(os.path.join(os.path.abspath("${context.run_dir}"), "diagnosis.json")) as f:
           print(json.load(f).get("total_est_tokens_saved", 0))
       PYEOF
     evaluate:
@@ -366,10 +366,10 @@ states:
       N=$((N + 1))
       NUM=$(printf '%03d' "$N")
       python3 << 'PYEOF'
-      import json
-      with open("${captured.run_dir.output}/diagnosis.json") as f:
+      import json, os
+      with open(os.path.join(os.path.abspath("${context.run_dir}"), "diagnosis.json")) as f:
           d = json.load(f)
-      with open("${captured.run_dir.output}/findings.jsonl", "a") as out:
+      with open(os.path.join(os.path.abspath("${context.run_dir}"), "findings.jsonl"), "a") as out:
           out.write(json.dumps(d) + chr(10))
       PYEOF
       cp "$RUN_DIR/diagnosis.json" "$RUN_DIR/diagnoses/$NUM-$SKILL_NAME.json"
@@ -434,8 +434,8 @@ states:
       fi
 
       python3 << 'PYEOF'
-      import json
-      with open("${captured.run_dir.output}/apply-manifest.json") as f:
+      import json, os
+      with open(os.path.join(os.path.abspath("${context.run_dir}"), "apply-manifest.json")) as f:
           json.load(f)
       PYEOF
       if [ "$?" != "0" ]; then
@@ -447,8 +447,8 @@ states:
       cmp -s "${captured.current_skill.output}" "$RUN_DIR/baseline-SKILL.md" && CHANGED="false"
 
       EMPTY_MANIFEST=$(python3 << 'PYEOF'
-      import json
-      with open("${captured.run_dir.output}/apply-manifest.json") as f:
+      import json, os
+      with open(os.path.join(os.path.abspath("${context.run_dir}"), "apply-manifest.json")) as f:
           d = json.load(f)
       empty = not d.get("created") and not d.get("modified")
       print("true" if empty else "false")
@@ -568,8 +568,8 @@ states:
       SKILL_FILE="${captured.current_skill.output}"
       SKILL_DIR=$(dirname "$SKILL_FILE")
       MANIFEST_PATHS=$(python3 << 'PYEOF'
-      import json
-      with open("${captured.run_dir.output}/apply-manifest.json") as f:
+      import json, os
+      with open(os.path.join(os.path.abspath("${context.run_dir}"), "apply-manifest.json")) as f:
           m = json.load(f)
       paths = (m.get("created") or []) + (m.get("modified") or [])
       print(" ".join(paths))
@@ -577,8 +577,8 @@ states:
       )
       git add "$SKILL_DIR" $MANIFEST_PATHS
       SAVED=$(python3 << 'PYEOF'
-      import json
-      with open("${captured.run_dir.output}/diagnosis.json") as f:
+      import json, os
+      with open(os.path.join(os.path.abspath("${context.run_dir}"), "diagnosis.json")) as f:
           print(json.load(f).get("total_est_tokens_saved", 0))
       PYEOF
       )
@@ -592,7 +592,7 @@ states:
           "commit": os.environ["COMMIT"],
           "est_tokens_saved": int(os.environ["SAVED"]),
       }
-      with open("${captured.run_dir.output}/results.jsonl", "a") as f:
+      with open(os.path.join(os.path.abspath("${context.run_dir}"), "results.jsonl"), "a") as f:
           f.write(json.dumps(entry) + chr(10))
       PYEOF
     next: advance
@@ -610,7 +610,7 @@ states:
       if [ -f "$MANIFEST" ]; then
         python3 << 'PYEOF'
       import json, os
-      with open("${captured.run_dir.output}/apply-manifest.json") as f:
+      with open(os.path.join(os.path.abspath("${context.run_dir}"), "apply-manifest.json")) as f:
           m = json.load(f)
       for p in m.get("created") or []:
           try:
@@ -619,8 +619,8 @@ states:
               pass
       PYEOF
         MODIFIED=$(python3 << 'PYEOF'
-      import json
-      with open("${captured.run_dir.output}/apply-manifest.json") as f:
+      import json, os
+      with open(os.path.join(os.path.abspath("${context.run_dir}"), "apply-manifest.json")) as f:
           m = json.load(f)
       print(" ".join(p for p in (m.get("modified") or []) if p))
       PYEOF
@@ -652,7 +652,7 @@ states:
       REASON="$REASON" OUTCOME="$OUTCOME" python3 << 'PYEOF'
       import json, os
       entry = {"outcome": os.environ["OUTCOME"], "reason": os.environ["REASON"]}
-      with open("${captured.run_dir.output}/results.jsonl", "a") as f:
+      with open(os.path.join(os.path.abspath("${context.run_dir}"), "results.jsonl"), "a") as f:
           f.write(json.dumps(entry) + chr(10))
       PYEOF
     next: advance
@@ -674,9 +674,9 @@ states:
     action_type: shell
     action: |
       python3 << 'PYEOF'
-      import json
+      import json, os
 
-      run_dir = "${captured.run_dir.output}"
+      run_dir = os.path.abspath("${context.run_dir}")
 
       results = []
       with open(f"{run_dir}/results.jsonl") as f:

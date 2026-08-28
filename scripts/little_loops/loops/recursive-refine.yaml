@@ -171,10 +171,13 @@ states:
     # the budget-specific file and the shared skipped file so outer-loop callers
     # (auto-refine-and-implement, sprint-refine-and-implement) accumulate them correctly.
     action: |
+      cat > "${context.run_dir}/check_attempt_budget-input.txt" << 'LL_RAW_9F3C1A7E_EOF'
+      ${captured.input.output}
+      LL_RAW_9F3C1A7E_EOF
       LL_ARG_MAX_REFINE_COUNT=${context.max_refine_count:shell} python3 << 'PYEOF'
       import json, os, sys
       from pathlib import Path
-      issue_id = '${captured.input.output}'
+      issue_id = Path('${context.run_dir}/check_attempt_budget-input.txt').read_text().rstrip("\n")
       cfg = {}
       p = Path('.ll/ll-config.json')
       if p.exists():
@@ -258,11 +261,14 @@ states:
     # Routes to maybe_commit on pass, gate_recursion on fail (gate_recursion decides
     # whether to skip directly or proceed to child detection based on no_recursion).
     action: |
+      cat > "${context.run_dir}/check_passed-input.txt" << 'LL_RAW_9F3C1A7E_EOF'
+      ${captured.input.output}
+      LL_RAW_9F3C1A7E_EOF
       LL_ARG_READINESS_THRESHOLD=${context.readiness_threshold:shell} LL_ARG_OUTCOME_THRESHOLD=${context.outcome_threshold:shell} python3 << 'PYEOF'
       import json, os, sys, subprocess
       from pathlib import Path
 
-      issue_id = '${captured.input.output}'
+      issue_id = Path('${context.run_dir}/check_passed-input.txt').read_text().rstrip("\n")
 
       p = Path('.ll/ll-config.json')
       cg = {}
@@ -493,11 +499,14 @@ states:
     # Scores can pass even when the sub-loop failed/errored (e.g., max-iterations hit
     # while the issue was already ready). Mirrors check_passed logic exactly.
     action: |
+      cat > "${context.run_dir}/recheck_scores-input.txt" << 'LL_RAW_9F3C1A7E_EOF'
+      ${captured.input.output}
+      LL_RAW_9F3C1A7E_EOF
       LL_ARG_READINESS_THRESHOLD=${context.readiness_threshold:shell} LL_ARG_OUTCOME_THRESHOLD=${context.outcome_threshold:shell} python3 << 'PYEOF'
       import json, os, sys, subprocess
       from pathlib import Path
 
-      issue_id = '${captured.input.output}'
+      issue_id = Path('${context.run_dir}/recheck_scores-input.txt').read_text().rstrip("\n")
 
       p = Path('.ll/ll-config.json')
       cg = {}
@@ -599,10 +608,13 @@ states:
     # Allow one wire attempt per issue. If already attempted, fall through to skip.
     # Mirrors check_attempt_budget pattern; guards against infinite wire → refine cycles.
     action: |
+      cat > "${context.run_dir}/check_wire_budget-input.txt" << 'LL_RAW_9F3C1A7E_EOF'
+      ${captured.input.output}
+      LL_RAW_9F3C1A7E_EOF
       python3 << 'PYEOF'
       import sys
       from pathlib import Path
-      issue_id = '${captured.input.output}'
+      issue_id = Path('${context.run_dir}/check_wire_budget-input.txt').read_text().rstrip("\n")
       attempts_file = Path('${context.run_dir}/recursive-refine-wire-attempts.txt')
       lines = attempts_file.read_text().splitlines() if attempts_file.exists() else []
       if issue_id in {ln.strip() for ln in lines if ln.strip()}:
@@ -676,6 +688,9 @@ states:
       done < ${context.run_dir}/recursive-refine-diff-ids.txt \
         > ${context.run_dir}/recursive-refine-new-children.txt
 
+      cat > "${context.run_dir}/enqueue_or_skip-input.txt" << 'LL_RAW_9F3C1A7E_EOF'
+      ${captured.input.output}
+      LL_RAW_9F3C1A7E_EOF
       python3 << 'PYEOF'
       from pathlib import Path
       import sys
@@ -699,7 +714,7 @@ states:
       candidates_p.write_text(''.join(f'{c}\n' for c in survivors))
       if len(candidates) > 0 and len(survivors) == 0:
           with open('${context.run_dir}/recursive-refine-skipped-cycle.txt', 'a') as cf:
-              cf.write('${captured.input.output}\n')
+              cf.write(Path('${context.run_dir}/enqueue_or_skip-input.txt').read_text().rstrip("\n") + '\n')
       PYEOF
 
       if [ -s ${context.run_dir}/recursive-refine-new-children.txt ]; then

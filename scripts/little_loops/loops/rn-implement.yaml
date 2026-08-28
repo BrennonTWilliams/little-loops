@@ -264,7 +264,7 @@ states:
                       result[m.group(1)] = m.group(2).strip()
               return result
 
-      run_dir = "${captured.run_dir.output}"
+      run_dir = os.path.abspath("${context.run_dir}")
       queue_path = os.path.join(run_dir, "queue.txt")
       blocked_path = os.path.join(run_dir, "blocked.txt")
       depth_path = os.path.join(run_dir, "depth_map.txt")
@@ -438,6 +438,9 @@ states:
     action: |
       ID="${captured.input.output}"
       RUN_DIR="${captured.run_dir.output}"
+      cat > "${context.run_dir}/check_blocked_by-input.txt" << 'LL_RAW_9F3C1A7E_EOF'
+      ${captured.input.output}
+      LL_RAW_9F3C1A7E_EOF
       UNMET=$(python3 << 'PYEOF'
       import os, re, subprocess, json, sys
       from pathlib import Path
@@ -454,7 +457,8 @@ states:
                       result[m.group(1)] = m.group(2).strip()
               return result
 
-      issue_id = "${captured.input.output}"
+      with open("${context.run_dir}/check_blocked_by-input.txt") as _f:
+          issue_id = _f.read().rstrip("\n")
 
       # Resolve the issue file across active category dirs (mirrors select_next's index)
       issue_path = None
@@ -565,6 +569,9 @@ states:
       fi
       ID="${captured.input.output}"
       RUN_DIR="${captured.run_dir.output}"
+      cat > "${context.run_dir}/check_learning_ready-input.txt" << 'LL_RAW_9F3C1A7E_EOF'
+      ${captured.input.output}
+      LL_RAW_9F3C1A7E_EOF
       UNPROVEN=$(LL_ARG_AUTO_PROVE_LEARNING_GATE=${context.auto_prove_learning_gate:shell} python3 << 'PYEOF'
       import os, re, subprocess, sys
       from pathlib import Path
@@ -581,8 +588,9 @@ states:
                       result[m.group(1)] = m.group(2).strip()
               return result
 
-      issue_id = "${captured.input.output}"
-      run_dir = "${captured.run_dir.output}"
+      with open("${context.run_dir}/check_learning_ready-input.txt") as _f:
+          issue_id = _f.read().rstrip("\n")
+      run_dir = os.path.abspath("${context.run_dir}")
 
       # ENH-2487: 3-tier auto-prove resolution. Explicit per-run override wins
       # (the auto_prove_learning_gate context value non-empty, unless it is an explicit
@@ -1059,6 +1067,9 @@ states:
     # a `check` subprocess error attempts prove rather than passing.
     action_type: shell
     action: |
+      cat > "${context.run_dir}/prove_rem_learning_gate-input.txt" << 'LL_RAW_9F3C1A7E_EOF'
+      ${captured.input.output}
+      LL_RAW_9F3C1A7E_EOF
       LL_ARG_AUTO_PROVE_LEARNING_GATE=${context.auto_prove_learning_gate:shell} python3 << 'PYEOF'
       import json, os, re, subprocess, sys
       from pathlib import Path
@@ -1075,7 +1086,8 @@ states:
                       result[m.group(1)] = m.group(2).strip()
               return result
 
-      issue_id = "${captured.input.output}"
+      with open("${context.run_dir}/prove_rem_learning_gate-input.txt") as _f:
+          issue_id = _f.read().rstrip("\n")
 
       # ENH-2487: 3-tier auto-prove resolution (identical to check_learning_ready).
       _auto_prove_ctx = os.environ.get("LL_ARG_AUTO_PROVE_LEARNING_GATE", "")
@@ -1483,10 +1495,10 @@ states:
     action_type: shell
     action: |
       python3 << 'PYEOF'
-      import json, glob
+      import json, glob, os
       from pathlib import Path
 
-      RUN_DIR = "${captured.run_dir.output}"
+      RUN_DIR = os.path.abspath("${context.run_dir}")
       run_dir = Path(RUN_DIR)
 
       def _read_text_count(name):

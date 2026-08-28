@@ -210,8 +210,9 @@ states:
     action: |
       set -o pipefail
       python3 << 'PYEOF' 2>&1 | tee "${captured.run_dir.output}/.intent_errors.txt"
+      import os
       import yaml
-      d = yaml.safe_load(open('${captured.run_dir.output}/intent.yaml'))
+      d = yaml.safe_load(open(os.path.join(os.path.abspath("${context.run_dir}"), 'intent.yaml')))
       assert d.get('name'), 'name is empty'
       assert d.get('goal'), 'goal is empty'
       assert d.get('steps'), 'steps list is empty'
@@ -389,8 +390,9 @@ states:
     action_type: shell
     action: |
       python3 << 'PYEOF'
+      import os
       import yaml
-      d = yaml.safe_load(open('${captured.run_dir.output}/graph-sketch.yaml'))
+      d = yaml.safe_load(open(os.path.join(os.path.abspath("${context.run_dir}"), 'graph-sketch.yaml')))
       states = d.get('states') or []
       names = [s.get('name') for s in states]
       assert names, 'states list is empty'
@@ -472,13 +474,14 @@ states:
     action_type: shell
     action: |
       python3 << 'PYEOF'
+      import os
       import yaml
       from little_loops.fsm.validation import (
           EVALUATOR_REQUIRED_FIELDS,
           NON_LLM_EVALUATOR_TYPES,
           VALID_OPERATORS,
       )
-      d = yaml.safe_load(open('${captured.run_dir.output}/graph-evaluators.yaml'))
+      d = yaml.safe_load(open(os.path.join(os.path.abspath("${context.run_dir}"), 'graph-evaluators.yaml')))
       for s in d.get('states') or []:
           if s.get('name') in ('done', 'failed'):
               continue
@@ -523,8 +526,9 @@ states:
     action_type: shell
     action: |
       python3 << 'PYEOF'
+      import os
       import yaml
-      d = yaml.safe_load(open('${captured.run_dir.output}/graph-routed.yaml'))
+      d = yaml.safe_load(open(os.path.join(os.path.abspath("${context.run_dir}"), 'graph-routed.yaml')))
       states = d.get('states') or []
       names = {s.get('name') for s in states}
       assert names, 'no states'
@@ -642,9 +646,10 @@ states:
       RUN_DIR="${captured.run_dir.output}"
       python3 <<'PYEOF'
       import json
+      import os
       import subprocess
 
-      run_dir = "${captured.run_dir.output}"
+      run_dir = os.path.abspath("${context.run_dir}")
       artifact = f"{run_dir}/workflow.yaml"
 
       sim = subprocess.run(
@@ -681,13 +686,15 @@ states:
     action_type: shell
     action: |
       python3 <<'PYEOF'
+      import os
       import yaml
-      d = yaml.safe_load(open('${captured.run_dir.output}/workflow.yaml'))
+      run_dir = os.path.abspath("${context.run_dir}")
+      d = yaml.safe_load(open(f'{run_dir}/workflow.yaml'))
       names = [n for n, s in d['states'].items() if not s.get('terminal') and n != d['initial']]
-      idx = int(open('${captured.run_dir.output}/.shrink_state_index').read().strip() or 0)
+      idx = int(open(f'{run_dir}/.shrink_state_index').read().strip() or 0)
       if idx >= len(names):
           raise SystemExit(1)
-      with open('${captured.run_dir.output}/.shrink_candidate_name', 'w') as f:
+      with open(f'{run_dir}/.shrink_candidate_name', 'w') as f:
           f.write(names[idx])
       print(f'candidate: {names[idx]} ({idx+1}/{len(names)})')
       PYEOF
@@ -703,9 +710,10 @@ states:
     action_type: shell
     action: |
       python3 <<'PYEOF'
+      import os
       import yaml
 
-      run_dir = "${captured.run_dir.output}"
+      run_dir = os.path.abspath("${context.run_dir}")
       candidate_name = open(f"{run_dir}/.shrink_candidate_name").read().strip()
       d = yaml.safe_load(open(f"{run_dir}/workflow.yaml"))
       states = d["states"]
@@ -739,9 +747,10 @@ states:
     action: |
       python3 <<'PYEOF'
       import json
+      import os
       import subprocess
 
-      run_dir = "${captured.run_dir.output}"
+      run_dir = os.path.abspath("${context.run_dir}")
       artifact = f"{run_dir}/candidate-workflow.yaml"
       baseline = json.load(open(f"{run_dir}/probes/baseline.json"))
 

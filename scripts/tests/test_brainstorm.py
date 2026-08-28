@@ -642,6 +642,7 @@ class TestBug2468ErrorRouting:
     ) -> str:
         action: str = data["states"]["dedup_novelty"]["action"]
         action = action.replace("${captured.run_dir.output}", str(run_dir))
+        action = action.replace("${context.run_dir}", str(run_dir))
         action = action.replace("${captured.round_ideas.output}", payload)
         action = action.replace("${context.novelty_threshold:shell}", shlex.quote(threshold))
         return action

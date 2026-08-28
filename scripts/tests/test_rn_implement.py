@@ -1397,6 +1397,7 @@ class TestCheckLearningReadyConfigReadShell:
             .replace("${context.auto_prove_learning_gate:shell}", shlex.quote(auto_prove_ctx))
             .replace("${captured.input.output}", "TEST-999")
             .replace("${captured.run_dir.output}", str(run_dir))
+            .replace("${context.run_dir}", str(run_dir))
             .replace("$$", "$")  # unescape FSM shell-brace guards
         )
 
@@ -1746,7 +1747,9 @@ class TestSelectNext:
         run_dir.mkdir()
         (run_dir / "queue.txt").write_text("\n".join(queue_ids) + "\n")
 
-        body = body.replace("${captured.run_dir.output}", str(run_dir))
+        body = body.replace("${captured.run_dir.output}", str(run_dir)).replace(
+            "${context.run_dir}", str(run_dir)
+        )
         script = tmp_path / "select_next.py"
         script.write_text(body)
         return subprocess.run(

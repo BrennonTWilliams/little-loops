@@ -64,6 +64,9 @@ states:
   enrich:
     action_type: shell
     action: |
+      cat > "${context.run_dir}/enrich-stage_output.txt" << 'LL_RAW_9F3C1A7E_EOF'
+      ${captured.stage_output.output}
+      LL_RAW_9F3C1A7E_EOF
       python3 << 'PYEOF'
       import json, sys
       from pathlib import Path
@@ -71,7 +74,8 @@ states:
       from little_loops.history_reader import lookup_session_metadata
 
       run_dir = Path("${context.run_dir}")
-      input_file = Path("${captured.stage_output.output}").resolve()
+      with open(run_dir / "enrich-stage_output.txt") as _f:
+          input_file = Path(_f.read().rstrip("\n")).resolve()
       output_file = run_dir / "enriched.jsonl"
 
       with open(input_file) as f_in, open(output_file, "w") as f_out:
@@ -109,13 +113,18 @@ states:
   check_issue_outcome:
     action_type: shell
     action: |
+      cat > "${context.run_dir}/check_issue_outcome-enrich_output.txt" << 'LL_RAW_9F3C1A7E_EOF'
+      ${captured.enrich_output.output}
+      LL_RAW_9F3C1A7E_EOF
       LL_ARG_REQUIRE_ISSUE_OUTCOME=${context.require_issue_outcome:shell} python3 << 'PYEOF'
       import json, os
       enabled = os.environ.get("LL_ARG_REQUIRE_ISSUE_OUTCOME", "").lower() == 'true'
       if not enabled:
           print(1)
           exit()
-      with open('${captured.enrich_output.output}') as f:
+      with open("${context.run_dir}/check_issue_outcome-enrich_output.txt") as _f:
+          enrich_output_path = _f.read().rstrip("\n")
+      with open(enrich_output_path) as f:
           ex = json.loads(f.readline())
       outcome = ex.get('metadata', {}).get('issue_outcome')
       print(1 if outcome == 'done' else 0)
@@ -130,13 +139,18 @@ states:
   reject_issue_outcome:
     action_type: shell
     action: |
+      cat > "${context.run_dir}/reject_issue_outcome-enrich_output.txt" << 'LL_RAW_9F3C1A7E_EOF'
+      ${captured.enrich_output.output}
+      LL_RAW_9F3C1A7E_EOF
       LL_ARG_OUTPUT_DIR=${context.output_dir:shell} python3 << 'PYEOF'
       import json, os
       from datetime import datetime, timezone
       out_dir = os.environ.get("LL_ARG_OUTPUT_DIR", "")
       os.makedirs(out_dir, exist_ok=True)
+      with open("${context.run_dir}/reject_issue_outcome-enrich_output.txt") as _f:
+          enrich_output_path = _f.read().rstrip("\n")
       entry = {
-          'path': '${captured.enrich_output.output}',
+          'path': enrich_output_path,
           'score': 0,
           'reason': 'require_issue_outcome',
           'timestamp': datetime.now(timezone.utc).isoformat()
@@ -151,13 +165,18 @@ states:
   check_corrections:
     action_type: shell
     action: |
+      cat > "${context.run_dir}/check_corrections-enrich_output.txt" << 'LL_RAW_9F3C1A7E_EOF'
+      ${captured.enrich_output.output}
+      LL_RAW_9F3C1A7E_EOF
       LL_ARG_EXCLUDE_USER_CORRECTIONS=${context.exclude_user_corrections:shell} python3 << 'PYEOF'
       import json, os
       enabled = os.environ.get("LL_ARG_EXCLUDE_USER_CORRECTIONS", "").lower() == 'true'
       if not enabled:
           print(0)
           exit()
-      with open('${captured.enrich_output.output}') as f:
+      with open("${context.run_dir}/check_corrections-enrich_output.txt") as _f:
+          enrich_output_path = _f.read().rstrip("\n")
+      with open(enrich_output_path) as f:
           ex = json.loads(f.readline())
       has_corrections = ex.get('metadata', {}).get('has_corrections', False)
       print(1 if has_corrections else 0)
@@ -172,13 +191,18 @@ states:
   reject_corrections:
     action_type: shell
     action: |
+      cat > "${context.run_dir}/reject_corrections-enrich_output.txt" << 'LL_RAW_9F3C1A7E_EOF'
+      ${captured.enrich_output.output}
+      LL_RAW_9F3C1A7E_EOF
       LL_ARG_OUTPUT_DIR=${context.output_dir:shell} python3 << 'PYEOF'
       import json, os
       from datetime import datetime, timezone
       out_dir = os.environ.get("LL_ARG_OUTPUT_DIR", "")
       os.makedirs(out_dir, exist_ok=True)
+      with open("${context.run_dir}/reject_corrections-enrich_output.txt") as _f:
+          enrich_output_path = _f.read().rstrip("\n")
       entry = {
-          'path': '${captured.enrich_output.output}',
+          'path': enrich_output_path,
           'score': 0,
           'reason': 'exclude_user_corrections',
           'timestamp': datetime.now(timezone.utc).isoformat()
@@ -193,13 +217,18 @@ states:
   check_tools:
     action_type: shell
     action: |
+      cat > "${context.run_dir}/check_tools-enrich_output.txt" << 'LL_RAW_9F3C1A7E_EOF'
+      ${captured.enrich_output.output}
+      LL_RAW_9F3C1A7E_EOF
       LL_ARG_MIN_TOOL_INVOCATIONS=${context.min_tool_invocations:shell} python3 << 'PYEOF'
       import json, os
       min_tools = os.environ.get("LL_ARG_MIN_TOOL_INVOCATIONS", "")
       if min_tools == '0' or min_tools == '':
           print(int(min_tools) if min_tools.isdigit() else 0)
           exit()
-      with open('${captured.enrich_output.output}') as f:
+      with open("${context.run_dir}/check_tools-enrich_output.txt") as _f:
+          enrich_output_path = _f.read().rstrip("\n")
+      with open(enrich_output_path) as f:
           ex = json.loads(f.readline())
       tool_count = ex.get('metadata', {}).get('tool_count', 0)
       print(tool_count)
@@ -214,13 +243,18 @@ states:
   reject_tools:
     action_type: shell
     action: |
+      cat > "${context.run_dir}/reject_tools-enrich_output.txt" << 'LL_RAW_9F3C1A7E_EOF'
+      ${captured.enrich_output.output}
+      LL_RAW_9F3C1A7E_EOF
       LL_ARG_OUTPUT_DIR=${context.output_dir:shell} python3 << 'PYEOF'
       import json, os
       from datetime import datetime, timezone
       out_dir = os.environ.get("LL_ARG_OUTPUT_DIR", "")
       os.makedirs(out_dir, exist_ok=True)
+      with open("${context.run_dir}/reject_tools-enrich_output.txt") as _f:
+          enrich_output_path = _f.read().rstrip("\n")
       entry = {
-          'path': '${captured.enrich_output.output}',
+          'path': enrich_output_path,
           'score': 0,
           'reason': 'min_tool_invocations',
           'timestamp': datetime.now(timezone.utc).isoformat()
@@ -235,13 +269,18 @@ states:
   check_files:
     action_type: shell
     action: |
+      cat > "${context.run_dir}/check_files-enrich_output.txt" << 'LL_RAW_9F3C1A7E_EOF'
+      ${captured.enrich_output.output}
+      LL_RAW_9F3C1A7E_EOF
       LL_ARG_REQUIRE_FILE_MODIFICATIONS=${context.require_file_modifications:shell} python3 << 'PYEOF'
       import json, os
       enabled = os.environ.get("LL_ARG_REQUIRE_FILE_MODIFICATIONS", "").lower() == 'true'
       if not enabled:
           print(1)
           exit()
-      with open('${captured.enrich_output.output}') as f:
+      with open("${context.run_dir}/check_files-enrich_output.txt") as _f:
+          enrich_output_path = _f.read().rstrip("\n")
+      with open(enrich_output_path) as f:
           ex = json.loads(f.readline())
       files_modified = ex.get('metadata', {}).get('files_modified', 0)
       print(files_modified)
@@ -256,13 +295,18 @@ states:
   reject_files:
     action_type: shell
     action: |
+      cat > "${context.run_dir}/reject_files-enrich_output.txt" << 'LL_RAW_9F3C1A7E_EOF'
+      ${captured.enrich_output.output}
+      LL_RAW_9F3C1A7E_EOF
       LL_ARG_OUTPUT_DIR=${context.output_dir:shell} python3 << 'PYEOF'
       import json, os
       from datetime import datetime, timezone
       out_dir = os.environ.get("LL_ARG_OUTPUT_DIR", "")
       os.makedirs(out_dir, exist_ok=True)
+      with open("${context.run_dir}/reject_files-enrich_output.txt") as _f:
+          enrich_output_path = _f.read().rstrip("\n")
       entry = {
-          'path': '${captured.enrich_output.output}',
+          'path': enrich_output_path,
           'score': 0,
           'reason': 'require_file_modifications',
           'timestamp': datetime.now(timezone.utc).isoformat()
@@ -277,19 +321,24 @@ states:
   check_pii:
     action_type: shell
     action: |
+      cat > "${context.run_dir}/check_pii-enrich_output.txt" << 'LL_RAW_9F3C1A7E_EOF'
+      ${captured.enrich_output.output}
+      LL_RAW_9F3C1A7E_EOF
       LL_ARG_PII_ACTION=${context.pii_action:shell} python3 << 'PYEOF'
       import json, os, sys
       sys.path.insert(0, "scripts")
       from little_loops.pii import apply_pii_action
 
       action = os.environ.get("LL_ARG_PII_ACTION", "")
+      with open("${context.run_dir}/check_pii-enrich_output.txt") as _f:
+          enrich_output_path = _f.read().rstrip("\n")
 
-      with open("${captured.enrich_output.output}") as f:
+      with open(enrich_output_path) as f:
           example = json.loads(f.readline())
 
       if action in ("flag", "redact"):
           result = apply_pii_action(example, action)
-          with open("${captured.enrich_output.output}", "w") as f:
+          with open(enrich_output_path, "w") as f:
               json.dump(result, f)
           print(1)
       elif action == "discard":
@@ -297,7 +346,7 @@ states:
           if result is None:
               print(0)
           else:
-              with open("${captured.enrich_output.output}", "w") as f:
+              with open(enrich_output_path, "w") as f:
                   json.dump(result, f)
               print(1)
       else:
@@ -313,13 +362,18 @@ states:
   reject_pii:
     action_type: shell
     action: |
+      cat > "${context.run_dir}/reject_pii-enrich_output.txt" << 'LL_RAW_9F3C1A7E_EOF'
+      ${captured.enrich_output.output}
+      LL_RAW_9F3C1A7E_EOF
       LL_ARG_OUTPUT_DIR=${context.output_dir:shell} python3 << 'PYEOF'
       import json, os
       from datetime import datetime, timezone
       out_dir = os.environ.get("LL_ARG_OUTPUT_DIR", "")
       os.makedirs(out_dir, exist_ok=True)
+      with open("${context.run_dir}/reject_pii-enrich_output.txt") as _f:
+          enrich_output_path = _f.read().rstrip("\n")
       entry = {
-          'path': '${captured.enrich_output.output}',
+          'path': enrich_output_path,
           'score': 0,
           'reason': 'pii_detected',
           'timestamp': datetime.now(timezone.utc).isoformat()
@@ -338,13 +392,17 @@ states:
   check_token_length:
     action_type: shell
     action: |
+      cat > "${context.run_dir}/check_token_length-enrich_output.txt" << 'LL_RAW_9F3C1A7E_EOF'
+      ${captured.enrich_output.output}
+      LL_RAW_9F3C1A7E_EOF
       LL_ARG_MIN_TOKENS=${context.min_tokens:shell} LL_ARG_MAX_TOKENS=${context.max_tokens:shell} LL_ARG_OUTPUT_DIR=${context.output_dir:shell} python3 << 'PYEOF'
       import json, os
       from datetime import datetime, timezone
 
       min_tokens = int(os.environ['LL_ARG_MIN_TOKENS'])
       max_tokens = int(os.environ['LL_ARG_MAX_TOKENS'])
-      input_file = "${captured.enrich_output.output}"
+      with open("${context.run_dir}/check_token_length-enrich_output.txt") as _f:
+          input_file = _f.read().rstrip("\n")
       output_file = "${context.run_dir}/token_filtered.jsonl"
       out_dir = os.environ.get("LL_ARG_OUTPUT_DIR", "")
       os.makedirs(out_dir, exist_ok=True)
@@ -541,13 +599,17 @@ states:
   publish:
     action_type: shell
     action: |
+      cat > "${context.run_dir}/publish-enrich_output.txt" << 'LL_RAW_9F3C1A7E_EOF'
+      ${captured.enrich_output.output}
+      LL_RAW_9F3C1A7E_EOF
       LL_ARG_OUTPUT_DIR=${context.output_dir:shell} python3 << 'PYEOF'
       import json, os
       from pathlib import Path
 
       out_dir = Path(os.environ.get("LL_ARG_OUTPUT_DIR", ""))
       out_dir.mkdir(parents=True, exist_ok=True)
-      enriched_file = Path("${captured.enrich_output.output}")
+      with open("${context.run_dir}/publish-enrich_output.txt") as _f:
+          enriched_file = Path(_f.read().rstrip("\n"))
 
       # Count enriched examples and rejections
       total = 0

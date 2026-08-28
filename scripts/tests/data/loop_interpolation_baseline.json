@@ -88,7 +88,7 @@
       "var": "context.run_dir",
       "class": "C",
       "host_shape": "heredoc",
-      "line": 19,
+      "line": 20,
       "count": 1
     },
     {
@@ -97,7 +97,7 @@
       "var": "context.run_dir",
       "class": "C",
       "host_shape": "heredoc",
-      "line": 7,
+      "line": 8,
       "count": 1
     },
     {
@@ -106,7 +106,7 @@
       "var": "context.run_dir",
       "class": "C",
       "host_shape": "heredoc",
-      "line": 9,
+      "line": 10,
       "count": 1
     },
     {
@@ -148,17 +148,17 @@
     {
       "file": "loops/brainstorm.yaml",
       "state": "dedup_novelty",
-      "var": "captured.run_dir.output",
-      "class": "B",
+      "var": "context.run_dir",
+      "class": "C",
       "host_shape": "heredoc",
       "line": 8,
-      "count": 3
+      "count": 1
     },
     {
       "file": "loops/cli-anything-bootstrap.yaml",
       "state": "validate-classification",
-      "var": "captured.run_dir.output",
-      "class": "B",
+      "var": "context.run_dir",
+      "class": "C",
       "host_shape": "heredoc",
       "line": 3,
       "count": 1
@@ -724,8 +724,8 @@
     {
       "file": "loops/mechanize-skills.yaml",
       "state": "check_emission",
-      "var": "captured.run_dir.output",
-      "class": "B",
+      "var": "context.run_dir",
+      "class": "C",
       "host_shape": "heredoc",
       "line": 10,
       "count": 2
@@ -733,8 +733,8 @@
     {
       "file": "loops/mechanize-skills.yaml",
       "state": "commit_change",
-      "var": "captured.run_dir.output",
-      "class": "B",
+      "var": "context.run_dir",
+      "class": "C",
       "host_shape": "heredoc",
       "line": 6,
       "count": 3
@@ -742,8 +742,8 @@
     {
       "file": "loops/mechanize-skills.yaml",
       "state": "record_finding",
-      "var": "captured.run_dir.output",
-      "class": "B",
+      "var": "context.run_dir",
+      "class": "C",
       "host_shape": "heredoc",
       "line": 9,
       "count": 2
@@ -751,8 +751,8 @@
     {
       "file": "loops/mechanize-skills.yaml",
       "state": "record_skip",
-      "var": "captured.run_dir.output",
-      "class": "B",
+      "var": "context.run_dir",
+      "class": "C",
       "host_shape": "heredoc",
       "line": 10,
       "count": 1
@@ -760,8 +760,8 @@
     {
       "file": "loops/mechanize-skills.yaml",
       "state": "report",
-      "var": "captured.run_dir.output",
-      "class": "B",
+      "var": "context.run_dir",
+      "class": "C",
       "host_shape": "heredoc",
       "line": 4,
       "count": 1
@@ -769,8 +769,8 @@
     {
       "file": "loops/mechanize-skills.yaml",
       "state": "revert_changes",
-      "var": "captured.run_dir.output",
-      "class": "B",
+      "var": "context.run_dir",
+      "class": "C",
       "host_shape": "heredoc",
       "line": 8,
       "count": 2
@@ -778,8 +778,8 @@
     {
       "file": "loops/mechanize-skills.yaml",
       "state": "validate_diagnosis",
-      "var": "captured.run_dir.output",
-      "class": "B",
+      "var": "context.run_dir",
+      "class": "C",
       "host_shape": "heredoc",
       "line": 4,
       "count": 1
@@ -787,8 +787,8 @@
     {
       "file": "loops/mechanize-skills.yaml",
       "state": "worth_gate",
-      "var": "captured.run_dir.output",
-      "class": "B",
+      "var": "context.run_dir",
+      "class": "C",
       "host_shape": "heredoc",
       "line": 5,
       "count": 1
@@ -877,29 +877,11 @@
     {
       "file": "loops/recursive-refine.yaml",
       "state": "check_attempt_budget",
-      "var": "captured.input.output",
-      "class": "B",
-      "host_shape": "heredoc",
-      "line": 4,
-      "count": 1
-    },
-    {
-      "file": "loops/recursive-refine.yaml",
-      "state": "check_attempt_budget",
       "var": "context.run_dir",
       "class": "C",
       "host_shape": "heredoc",
-      "line": 13,
-      "count": 3
-    },
-    {
-      "file": "loops/recursive-refine.yaml",
-      "state": "check_passed",
-      "var": "captured.input.output",
-      "class": "B",
-      "host_shape": "heredoc",
-      "line": 5,
-      "count": 1
+      "line": 7,
+      "count": 4
     },
     {
       "file": "loops/recursive-refine.yaml",
@@ -907,17 +889,8 @@
       "var": "context.run_dir",
       "class": "C",
       "host_shape": "heredoc",
-      "line": 29,
-      "count": 1
-    },
-    {
-      "file": "loops/recursive-refine.yaml",
-      "state": "check_wire_budget",
-      "var": "captured.input.output",
-      "class": "B",
-      "host_shape": "heredoc",
-      "line": 4,
-      "count": 1
+      "line": 8,
+      "count": 2
     },
     {
       "file": "loops/recursive-refine.yaml",
@@ -925,8 +898,8 @@
       "var": "context.run_dir",
       "class": "C",
       "host_shape": "heredoc",
-      "line": 5,
-      "count": 1
+      "line": 7,
+      "count": 2
     },
     {
       "file": "loops/recursive-refine.yaml",
@@ -940,20 +913,11 @@
     {
       "file": "loops/recursive-refine.yaml",
       "state": "enqueue_or_skip",
-      "var": "captured.input.output",
-      "class": "B",
-      "host_shape": "heredoc",
-      "line": 49,
-      "count": 1
-    },
-    {
-      "file": "loops/recursive-refine.yaml",
-      "state": "enqueue_or_skip",
       "var": "context.run_dir",
       "class": "C",
       "host_shape": "heredoc",
-      "line": 29,
-      "count": 2
+      "line": 32,
+      "count": 3
     },
     {
       "file": "loops/recursive-refine.yaml",
@@ -967,20 +931,11 @@
     {
       "file": "loops/recursive-refine.yaml",
       "state": "recheck_scores",
-      "var": "captured.input.output",
-      "class": "B",
-      "host_shape": "heredoc",
-      "line": 5,
-      "count": 1
-    },
-    {
-      "file": "loops/recursive-refine.yaml",
-      "state": "recheck_scores",
       "var": "context.run_dir",
       "class": "C",
       "host_shape": "heredoc",
-      "line": 29,
-      "count": 1
+      "line": 8,
+      "count": 2
     },
     {
       "file": "loops/refine-to-ready-issue.yaml",
@@ -1075,44 +1030,35 @@
     {
       "file": "loops/rn-implement.yaml",
       "state": "check_blocked_by",
-      "var": "captured.input.output",
-      "class": "B",
+      "var": "context.run_dir",
+      "class": "C",
       "host_shape": "heredoc",
-      "line": 19,
+      "line": 22,
       "count": 1
     },
     {
       "file": "loops/rn-implement.yaml",
       "state": "check_learning_ready",
-      "var": "captured.input.output",
-      "class": "B",
+      "var": "context.run_dir",
+      "class": "C",
       "host_shape": "heredoc",
-      "line": 23,
-      "count": 1
-    },
-    {
-      "file": "loops/rn-implement.yaml",
-      "state": "check_learning_ready",
-      "var": "captured.run_dir.output",
-      "class": "B",
-      "host_shape": "heredoc",
-      "line": 24,
-      "count": 1
+      "line": 26,
+      "count": 2
     },
     {
       "file": "loops/rn-implement.yaml",
       "state": "prove_rem_learning_gate",
-      "var": "captured.input.output",
-      "class": "B",
+      "var": "context.run_dir",
+      "class": "C",
       "host_shape": "heredoc",
-      "line": 17,
+      "line": 20,
       "count": 1
     },
     {
       "file": "loops/rn-implement.yaml",
       "state": "report",
-      "var": "captured.run_dir.output",
-      "class": "B",
+      "var": "context.run_dir",
+      "class": "C",
       "host_shape": "heredoc",
       "line": 5,
       "count": 1
@@ -1120,8 +1066,8 @@
     {
       "file": "loops/rn-implement.yaml",
       "state": "select_next",
-      "var": "captured.run_dir.output",
-      "class": "B",
+      "var": "context.run_dir",
+      "class": "C",
       "host_shape": "heredoc",
       "line": 26,
       "count": 1
@@ -1138,46 +1084,37 @@
     {
       "file": "loops/sft-corpus.yaml",
       "state": "check_corrections",
-      "var": "captured.enrich_output.output",
-      "class": "B",
+      "var": "context.run_dir",
+      "class": "C",
       "host_shape": "heredoc",
-      "line": 7,
+      "line": 10,
       "count": 1
     },
     {
       "file": "loops/sft-corpus.yaml",
       "state": "check_files",
-      "var": "captured.enrich_output.output",
-      "class": "B",
+      "var": "context.run_dir",
+      "class": "C",
       "host_shape": "heredoc",
-      "line": 7,
+      "line": 10,
       "count": 1
     },
     {
       "file": "loops/sft-corpus.yaml",
       "state": "check_issue_outcome",
-      "var": "captured.enrich_output.output",
-      "class": "B",
+      "var": "context.run_dir",
+      "class": "C",
       "host_shape": "heredoc",
-      "line": 7,
+      "line": 10,
       "count": 1
     },
     {
       "file": "loops/sft-corpus.yaml",
       "state": "check_pii",
-      "var": "captured.enrich_output.output",
-      "class": "B",
+      "var": "context.run_dir",
+      "class": "C",
       "host_shape": "heredoc",
-      "line": 8,
-      "count": 3
-    },
-    {
-      "file": "loops/sft-corpus.yaml",
-      "state": "check_token_length",
-      "var": "captured.enrich_output.output",
-      "class": "B",
-      "host_shape": "heredoc",
-      "line": 7,
+      "line": 10,
       "count": 1
     },
     {
@@ -1186,16 +1123,16 @@
       "var": "context.run_dir",
       "class": "C",
       "host_shape": "heredoc",
-      "line": 8,
-      "count": 1
+      "line": 10,
+      "count": 2
     },
     {
       "file": "loops/sft-corpus.yaml",
       "state": "check_tools",
-      "var": "captured.enrich_output.output",
-      "class": "B",
+      "var": "context.run_dir",
+      "class": "C",
       "host_shape": "heredoc",
-      "line": 7,
+      "line": 10,
       "count": 1
     },
     {
@@ -1210,73 +1147,64 @@
     {
       "file": "loops/sft-corpus.yaml",
       "state": "enrich",
-      "var": "captured.stage_output.output",
-      "class": "B",
-      "host_shape": "heredoc",
-      "line": 8,
-      "count": 1
-    },
-    {
-      "file": "loops/sft-corpus.yaml",
-      "state": "enrich",
       "var": "context.run_dir",
       "class": "C",
       "host_shape": "heredoc",
-      "line": 7,
+      "line": 10,
       "count": 1
     },
     {
       "file": "loops/sft-corpus.yaml",
       "state": "publish",
-      "var": "captured.enrich_output.output",
-      "class": "B",
+      "var": "context.run_dir",
+      "class": "C",
       "host_shape": "heredoc",
-      "line": 7,
+      "line": 10,
       "count": 1
     },
     {
       "file": "loops/sft-corpus.yaml",
       "state": "reject_corrections",
-      "var": "captured.enrich_output.output",
-      "class": "B",
+      "var": "context.run_dir",
+      "class": "C",
       "host_shape": "heredoc",
-      "line": 7,
+      "line": 9,
       "count": 1
     },
     {
       "file": "loops/sft-corpus.yaml",
       "state": "reject_files",
-      "var": "captured.enrich_output.output",
-      "class": "B",
+      "var": "context.run_dir",
+      "class": "C",
       "host_shape": "heredoc",
-      "line": 7,
+      "line": 9,
       "count": 1
     },
     {
       "file": "loops/sft-corpus.yaml",
       "state": "reject_issue_outcome",
-      "var": "captured.enrich_output.output",
-      "class": "B",
+      "var": "context.run_dir",
+      "class": "C",
       "host_shape": "heredoc",
-      "line": 7,
+      "line": 9,
       "count": 1
     },
     {
       "file": "loops/sft-corpus.yaml",
       "state": "reject_pii",
-      "var": "captured.enrich_output.output",
-      "class": "B",
+      "var": "context.run_dir",
+      "class": "C",
       "host_shape": "heredoc",
-      "line": 7,
+      "line": 9,
       "count": 1
     },
     {
       "file": "loops/sft-corpus.yaml",
       "state": "reject_tools",
-      "var": "captured.enrich_output.output",
-      "class": "B",
+      "var": "context.run_dir",
+      "class": "C",
       "host_shape": "heredoc",
-      "line": 7,
+      "line": 9,
       "count": 1
     },
     {
@@ -1291,73 +1219,73 @@
     {
       "file": "loops/workflow-generator.yaml",
       "state": "shrink_baseline",
-      "var": "captured.run_dir.output",
-      "class": "B",
+      "var": "context.run_dir",
+      "class": "C",
+      "host_shape": "heredoc",
+      "line": 7,
+      "count": 1
+    },
+    {
+      "file": "loops/workflow-generator.yaml",
+      "state": "shrink_probe_candidate",
+      "var": "context.run_dir",
+      "class": "C",
       "host_shape": "heredoc",
       "line": 6,
       "count": 1
     },
     {
       "file": "loops/workflow-generator.yaml",
-      "state": "shrink_probe_candidate",
-      "var": "captured.run_dir.output",
-      "class": "B",
+      "state": "shrink_select_candidate",
+      "var": "context.run_dir",
+      "class": "C",
+      "host_shape": "heredoc",
+      "line": 4,
+      "count": 1
+    },
+    {
+      "file": "loops/workflow-generator.yaml",
+      "state": "shrink_try_remove",
+      "var": "context.run_dir",
+      "class": "C",
       "host_shape": "heredoc",
       "line": 5,
       "count": 1
     },
     {
       "file": "loops/workflow-generator.yaml",
-      "state": "shrink_select_candidate",
-      "var": "captured.run_dir.output",
-      "class": "B",
-      "host_shape": "heredoc",
-      "line": 3,
-      "count": 3
-    },
-    {
-      "file": "loops/workflow-generator.yaml",
-      "state": "shrink_try_remove",
-      "var": "captured.run_dir.output",
-      "class": "B",
-      "host_shape": "heredoc",
-      "line": 4,
-      "count": 1
-    },
-    {
-      "file": "loops/workflow-generator.yaml",
       "state": "validate_evaluators",
-      "var": "captured.run_dir.output",
-      "class": "B",
+      "var": "context.run_dir",
+      "class": "C",
       "host_shape": "heredoc",
-      "line": 8,
+      "line": 9,
       "count": 1
     },
     {
       "file": "loops/workflow-generator.yaml",
       "state": "validate_intent",
-      "var": "captured.run_dir.output",
-      "class": "B",
+      "var": "context.run_dir",
+      "class": "C",
+      "host_shape": "heredoc",
+      "line": 5,
+      "count": 1
+    },
+    {
+      "file": "loops/workflow-generator.yaml",
+      "state": "validate_routing",
+      "var": "context.run_dir",
+      "class": "C",
       "host_shape": "heredoc",
       "line": 4,
       "count": 1
     },
     {
       "file": "loops/workflow-generator.yaml",
-      "state": "validate_routing",
-      "var": "captured.run_dir.output",
-      "class": "B",
-      "host_shape": "heredoc",
-      "line": 3,
-      "count": 1
-    },
-    {
-      "file": "loops/workflow-generator.yaml",
       "state": "validate_sketch",
-      "var": "captured.run_dir.output",
-      "class": "B",
+      "var": "context.run_dir",
+      "class": "C",
       "host_shape": "heredoc",
-      "line": 3,
+      "line": 4,
       "count": 1
     }
   ]

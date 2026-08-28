@@ -17912,7 +17912,7 @@ class TestWorkflowGeneratorLoop:
         graph_file.write_text(yaml.safe_dump(graph, sort_keys=False))
 
         action = data["states"]["validate_evaluators"]["action"].replace(
-            "${captured.run_dir.output}/graph-evaluators.yaml", str(graph_file)
+            "${context.run_dir}", str(tmp_path)
         )
         result = subprocess.run(["bash", "-c", action], capture_output=True, text=True)
 
@@ -18140,8 +18140,10 @@ class TestWorkflowGeneratorLoop:
         """Behavioral: validate_intent tees its python3 assertion failures to
         .intent_errors.txt while preserving the real exit code, and truncates
         the file on success."""
-        action = data["states"]["validate_intent"]["action"].replace(
-            "${captured.run_dir.output}", str(tmp_path)
+        action = (
+            data["states"]["validate_intent"]["action"]
+            .replace("${captured.run_dir.output}", str(tmp_path))
+            .replace("${context.run_dir}", str(tmp_path))
         )
 
         (tmp_path / "intent.yaml").write_text(yaml.safe_dump({"name": ""}))
@@ -18214,7 +18216,7 @@ class TestWorkflowGeneratorLoop:
         graph_file.write_text(yaml.safe_dump(graph, sort_keys=False))
 
         action = data["states"]["validate_evaluators"]["action"].replace(
-            "${captured.run_dir.output}/graph-evaluators.yaml", str(graph_file)
+            "${context.run_dir}", str(tmp_path)
         )
         result = subprocess.run(["bash", "-c", action], capture_output=True, text=True)
 
@@ -18869,9 +18871,11 @@ class TestInterpSweepBaseline:
 
     def test_mechanize_skills_validate_diagnosis_is_one_site(self) -> None:
         """AC 7: the converted SKILL_FILE binding (bash-token position) is not
-        a site; the raw ${captured.run_dir.output} inside the same heredoc's
-        Python body is exactly one site -- proving per-site, not per-file,
-        assertion."""
+        a site; the run_dir reference inside the same heredoc's Python body is
+        exactly one site -- proving per-site, not per-file, assertion.
+        BUG-3341 converted this site's ${captured.run_dir.output} to
+        ${context.run_dir} (Decision Rule 0), reclassifying it C -- the site
+        count stays 1 either way, which is what this test asserts."""
         sites = scan_corpus(BUILTIN_LOOPS_DIR)
         matches = [
             s
@@ -18879,7 +18883,8 @@ class TestInterpSweepBaseline:
             if s.file == "loops/mechanize-skills.yaml" and s.state == "validate_diagnosis"
         ]
         assert len(matches) == 1
-        assert matches[0].var == "captured.run_dir.output"
+        assert matches[0].var == "context.run_dir"
+        assert matches[0].cls == "C"
 
     def test_brainstorm_data_sink_heredoc_is_not_a_site(self) -> None:
         """AC 11: brainstorm.yaml's shipped BUG-2468 fix writes the LLM
