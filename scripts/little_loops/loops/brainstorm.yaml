@@ -162,8 +162,8 @@ states:
       cat > "${captured.run_dir.output}/round_ideas.txt" << 'RAWEOF'
       ${captured.round_ideas.output}
       RAWEOF
-      python3 << 'PYEOF'
-      import json, sys, difflib
+      LL_ARG_NOVELTY_THRESHOLD=${context.novelty_threshold:shell} python3 << 'PYEOF'
+      import json, os, sys, difflib
 
       try:
           with open("${captured.run_dir.output}/round_ideas.txt") as f:
@@ -194,7 +194,7 @@ states:
           except (FileNotFoundError, json.JSONDecodeError):
               pass
 
-          threshold = float("${context.novelty_threshold}")
+          threshold = float(os.environ["LL_ARG_NOVELTY_THRESHOLD"])
           novel = []
           for idea in new_ideas:
               text = idea.get('text', str(idea))

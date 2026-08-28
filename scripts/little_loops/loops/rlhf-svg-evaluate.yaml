@@ -263,14 +263,14 @@ states:
       ITER=$((ITER + 1))
       echo "$ITER" > "$VISION_COUNT_FILE"
       export ABS_DIR ITER
-      python3 <<'PY'
+      LL_ARG_QUALITY_TARGET=${context.quality_target:shell} LL_ARG_EXPLOIT_CUTOFF=${context.exploit_cutoff:shell} python3 <<'PY'
       import os, re, sys, json, base64, urllib.request
       abs_dir = os.environ["ABS_DIR"]
       best_file = os.path.join(abs_dir, ".best_score")
       scores_file = os.path.join(abs_dir, ".vision_scores.json")
-      threshold = ${context.quality_target}
+      threshold = int(os.environ["LL_ARG_QUALITY_TARGET"])
       iteration = int(os.environ["ITER"])
-      exploit_cutoff = ${context.exploit_cutoff}
+      exploit_cutoff = int(os.environ["LL_ARG_EXPLOIT_CUTOFF"])
 
       # --- Multi-frame frame definitions ---
       # Ordered list of (filename, display_label, timestamp_description)

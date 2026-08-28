@@ -37,12 +37,12 @@ states:
   parse_enumeration:
     fragment: parse_tagged_json
     action: |
-      python3 << 'PYEOF'
-      import json, sys
+      LL_ARG_RAW_ENUMERATION=${context.raw_enumeration:shell} LL_ARG_TAG=${context.tag:shell} python3 << 'PYEOF'
+      import json, os, sys
       from little_loops.output_parsing import extract_tagged_json
 
-      output = """${context.raw_enumeration}"""
-      tag = "${context.tag}"
+      output = os.environ.get("LL_ARG_RAW_ENUMERATION", "")
+      tag = os.environ.get("LL_ARG_TAG", "")
       data, error = extract_tagged_json(output, tag)
       if data is None:
           print(error, file=sys.stderr)

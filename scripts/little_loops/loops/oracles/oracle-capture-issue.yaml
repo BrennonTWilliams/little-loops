@@ -29,9 +29,9 @@ states:
     action_type: shell
     timeout: 30
     action: |
-      python3 << 'PYEOF'
-      import json, sys
-      raw = '''${context.output}'''
+      LL_ARG_OUTPUT=${context.output:shell} python3 << 'PYEOF'
+      import json, os, sys
+      raw = os.environ.get("LL_ARG_OUTPUT", "")
       failures = []
       if not raw.strip():
           print('PHASE1_FAIL: empty output')

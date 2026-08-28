@@ -45,9 +45,9 @@ states:
     action: |
       PARENT_DIR="${context.run_dir}"
       mkdir -p "$PARENT_DIR/plans"
-      python3 << 'PYEOF' > "$PARENT_DIR/tasks.txt"
-      import json
-      raw = open('${context.tasks_file}').read()
+      LL_ARG_TASKS_FILE=${context.tasks_file:shell} python3 << 'PYEOF' > "$PARENT_DIR/tasks.txt"
+      import json, os
+      raw = open(os.environ.get("LL_ARG_TASKS_FILE", "")).read()
       data = json.loads(raw) if raw.lstrip().startswith('[') else [l for l in raw.splitlines() if l.strip()]
       print('\n'.join(t if isinstance(t, str) else t.get('task', '') for t in data))
       PYEOF

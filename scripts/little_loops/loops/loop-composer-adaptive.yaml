@@ -212,7 +212,7 @@ states:
   execute_plan:
     action_type: shell
     action: |
-      python3 << 'PYEOF'
+      LL_ARG_GOAL=${context.goal:shell} python3 << 'PYEOF'
       import json, re, sys, os
 
       run_dir = '${context.run_dir}'
@@ -245,7 +245,7 @@ states:
           sys.exit(1)
 
       # Substitute {{step_id_output}} references in input
-      step_input = next_step.get('input', '${context.goal}') or '${context.goal}'
+      step_input = next_step.get('input', os.environ.get("LL_ARG_GOAL", "")) or os.environ.get("LL_ARG_GOAL", "")
       def replace_step_ref(m):
           ref_id = m.group(1).strip()
           # Tolerate a trailing "_output" (the prompt placeholder used to be

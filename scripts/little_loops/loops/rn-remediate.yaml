@@ -954,7 +954,7 @@ states:
         echo "MANUAL_REVIEW_NEEDED" > "${context.run_dir}/subloop_outcome_${context.issue_id}.txt"
       fi
 
-      python3 << 'PYEOF'
+      LL_ARG_ISSUE_ID=${context.issue_id:shell} python3 << 'PYEOF'
       import json
       import os
       import re
@@ -962,7 +962,7 @@ states:
       from pathlib import Path
 
       RUN_DIR = "${context.run_dir}"
-      ISSUE_ID = "${context.issue_id}"
+      ISSUE_ID = os.environ.get("LL_ARG_ISSUE_ID", "")
 
       def _read_json(name):
           try:

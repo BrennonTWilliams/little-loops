@@ -71,8 +71,8 @@ fragments:
       State must supply: next (unconditional forward after parsing).
     action_type: shell
     action: |
-      python3 << 'PYEOF'
-      import re, sys
+      LL_ARG_THRESHOLD_HIGH=${context.threshold_high:shell} LL_ARG_THRESHOLD_MEDIUM=${context.threshold_medium:shell} python3 << 'PYEOF'
+      import os, re, sys
       output = """${captured.scores.output}"""
       agg_m = re.search(r'AGGREGATE:\s*(\d+)', output)
       if not agg_m:
@@ -83,8 +83,8 @@ fragments:
               f.write('low')
           sys.exit(0)
       agg = int(agg_m.group(1))
-      thresh_high = int("${context.threshold_high}" or "85")
-      thresh_med  = int("${context.threshold_medium}" or "65")
+      thresh_high = int(os.environ.get("LL_ARG_THRESHOLD_HIGH", "") or "85")
+      thresh_med  = int(os.environ.get("LL_ARG_THRESHOLD_MEDIUM", "") or "65")
       tier = "high" if agg >= thresh_high else ("medium" if agg >= thresh_med else "low")
       with open('${context.run_dir}/rubric-aggregate.txt', 'w') as f:
           f.write(str(agg))

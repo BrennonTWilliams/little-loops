@@ -565,8 +565,8 @@ states:
       fi
       ID="${captured.input.output}"
       RUN_DIR="${captured.run_dir.output}"
-      UNPROVEN=$(python3 << 'PYEOF'
-      import re, subprocess, sys
+      UNPROVEN=$(LL_ARG_AUTO_PROVE_LEARNING_GATE=${context.auto_prove_learning_gate:shell} python3 << 'PYEOF'
+      import os, re, subprocess, sys
       from pathlib import Path
       try:
           import yaml as _yaml
@@ -585,12 +585,12 @@ states:
       run_dir = "${captured.run_dir.output}"
 
       # ENH-2487: 3-tier auto-prove resolution. Explicit per-run override wins
-      # (${context.auto_prove_learning_gate} non-empty, unless it is an explicit
+      # (the auto_prove_learning_gate context value non-empty, unless it is an explicit
       # off token). Otherwise config-drive it: learning_tests.enabled AND
       # learning_tests.auto_prove (auto_prove defaults true) from .ll/ll-config.json.
       # Falls back to off if config is absent/unreadable. This flips ENH-2431's
       # default-off flag into a config-gated default-on when the LT feature is enabled.
-      _auto_prove_ctx = "${context.auto_prove_learning_gate}"
+      _auto_prove_ctx = os.environ.get("LL_ARG_AUTO_PROVE_LEARNING_GATE", "")
       if _auto_prove_ctx != "":
           auto_prove = _auto_prove_ctx.strip().lower() not in ("0", "false", "no", "off")
       else:
@@ -1059,8 +1059,8 @@ states:
     # a `check` subprocess error attempts prove rather than passing.
     action_type: shell
     action: |
-      python3 << 'PYEOF'
-      import json, re, subprocess, sys
+      LL_ARG_AUTO_PROVE_LEARNING_GATE=${context.auto_prove_learning_gate:shell} python3 << 'PYEOF'
+      import json, os, re, subprocess, sys
       from pathlib import Path
       try:
           import yaml as _yaml
@@ -1078,7 +1078,7 @@ states:
       issue_id = "${captured.input.output}"
 
       # ENH-2487: 3-tier auto-prove resolution (identical to check_learning_ready).
-      _auto_prove_ctx = "${context.auto_prove_learning_gate}"
+      _auto_prove_ctx = os.environ.get("LL_ARG_AUTO_PROVE_LEARNING_GATE", "")
       if _auto_prove_ctx != "":
           auto_prove = _auto_prove_ctx.strip().lower() not in ("0", "false", "no", "off")
       else:

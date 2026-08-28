@@ -4,24 +4,6 @@
     {
       "file": "loops/apply-research.yaml",
       "state": "filter_items",
-      "var": "context.max_issues_per_file",
-      "class": "A",
-      "host_shape": "heredoc",
-      "line": 6,
-      "count": 1
-    },
-    {
-      "file": "loops/apply-research.yaml",
-      "state": "filter_items",
-      "var": "context.relevance_threshold",
-      "class": "A",
-      "host_shape": "heredoc",
-      "line": 5,
-      "count": 1
-    },
-    {
-      "file": "loops/apply-research.yaml",
-      "state": "filter_items",
       "var": "context.run_dir",
       "class": "C",
       "host_shape": "heredoc",
@@ -216,15 +198,6 @@
       "host_shape": "heredoc",
       "line": 8,
       "count": 3
-    },
-    {
-      "file": "loops/brainstorm.yaml",
-      "state": "dedup_novelty",
-      "var": "context.novelty_threshold",
-      "class": "A",
-      "host_shape": "heredoc",
-      "line": 36,
-      "count": 1
     },
     {
       "file": "loops/cli-anything-bootstrap.yaml",
@@ -535,15 +508,6 @@
     {
       "file": "loops/lib/policy-router.yaml",
       "state": "policy_table_dispatch",
-      "var": "context.policy_rules",
-      "class": "A",
-      "host_shape": "heredoc",
-      "line": 6,
-      "count": 1
-    },
-    {
-      "file": "loops/lib/policy-router.yaml",
-      "state": "policy_table_dispatch",
       "var": "context.run_dir",
       "class": "C",
       "host_shape": "heredoc",
@@ -567,24 +531,6 @@
       "host_shape": "heredoc",
       "line": 7,
       "count": 4
-    },
-    {
-      "file": "loops/lib/rubric-router.yaml",
-      "state": "rubric_parse_scores",
-      "var": "context.threshold_high",
-      "class": "A",
-      "host_shape": "heredoc",
-      "line": 13,
-      "count": 1
-    },
-    {
-      "file": "loops/lib/rubric-router.yaml",
-      "state": "rubric_parse_scores",
-      "var": "context.threshold_medium",
-      "class": "A",
-      "host_shape": "heredoc",
-      "line": 14,
-      "count": 1
     },
     {
       "file": "loops/lib/rubric-router.yaml",
@@ -612,15 +558,6 @@
       "host_shape": "heredoc",
       "line": 7,
       "count": 1
-    },
-    {
-      "file": "loops/loop-composer-adaptive.yaml",
-      "state": "execute_plan",
-      "var": "context.goal",
-      "class": "A",
-      "host_shape": "heredoc",
-      "line": 34,
-      "count": 2
     },
     {
       "file": "loops/loop-composer-adaptive.yaml",
@@ -711,15 +648,6 @@
       "host_shape": "heredoc",
       "line": 7,
       "count": 1
-    },
-    {
-      "file": "loops/loop-composer.yaml",
-      "state": "execute_plan",
-      "var": "context.goal",
-      "class": "A",
-      "host_shape": "heredoc",
-      "line": 34,
-      "count": 2
     },
     {
       "file": "loops/loop-composer.yaml",
@@ -1055,39 +983,12 @@
       "count": 1
     },
     {
-      "file": "loops/migrate-sdk-version.yaml",
-      "state": "list_stale",
-      "var": "context.targets",
-      "class": "A",
-      "host_shape": "heredoc",
-      "line": 19,
-      "count": 1
-    },
-    {
       "file": "loops/oracles/enumerate-and-prove.yaml",
       "state": "flatten",
       "var": "captured.enumeration.output",
       "class": "B",
       "host_shape": "heredoc",
       "line": 3,
-      "count": 1
-    },
-    {
-      "file": "loops/oracles/enumerate-and-prove.yaml",
-      "state": "parse_enumeration",
-      "var": "context.raw_enumeration",
-      "class": "A",
-      "host_shape": "heredoc",
-      "line": 5,
-      "count": 1
-    },
-    {
-      "file": "loops/oracles/enumerate-and-prove.yaml",
-      "state": "parse_enumeration",
-      "var": "context.tag",
-      "class": "A",
-      "host_shape": "heredoc",
-      "line": 6,
       "count": 1
     },
     {
@@ -1115,33 +1016,6 @@
       "class": "C",
       "host_shape": "heredoc",
       "line": 6,
-      "count": 1
-    },
-    {
-      "file": "loops/oracles/oracle-capture-issue.yaml",
-      "state": "check_mechanical",
-      "var": "context.output",
-      "class": "A",
-      "host_shape": "heredoc",
-      "line": 3,
-      "count": 1
-    },
-    {
-      "file": "loops/oracles/verify-confidence-scores.yaml",
-      "state": "verify_scores_persisted",
-      "var": "context.issue_id",
-      "class": "A",
-      "host_shape": "heredoc",
-      "line": 5,
-      "count": 1
-    },
-    {
-      "file": "loops/oracles/verify-confidence-scores.yaml",
-      "state": "verify_scores_persisted_final",
-      "var": "context.issue_id",
-      "class": "A",
-      "host_shape": "heredoc",
-      "line": 5,
       "count": 1
     },
     {
@@ -1406,24 +1280,6 @@
       "count": 1
     },
     {
-      "file": "loops/rlhf-svg-evaluate.yaml",
-      "state": "score",
-      "var": "context.exploit_cutoff",
-      "class": "A",
-      "host_shape": "heredoc",
-      "line": 28,
-      "count": 1
-    },
-    {
-      "file": "loops/rlhf-svg-evaluate.yaml",
-      "state": "score",
-      "var": "context.quality_target",
-      "class": "A",
-      "host_shape": "heredoc",
-      "line": 26,
-      "count": 1
-    },
-    {
       "file": "loops/rn-build.yaml",
       "state": "check_build_outcome",
       "var": "context.run_dir",
@@ -1506,29 +1362,11 @@
     },
     {
       "file": "loops/rn-implement.yaml",
-      "state": "check_learning_ready",
-      "var": "context.auto_prove_learning_gate",
-      "class": "A",
-      "host_shape": "heredoc",
-      "line": 27,
-      "count": 2
-    },
-    {
-      "file": "loops/rn-implement.yaml",
       "state": "prove_rem_learning_gate",
       "var": "captured.input.output",
       "class": "B",
       "host_shape": "heredoc",
       "line": 17,
-      "count": 1
-    },
-    {
-      "file": "loops/rn-implement.yaml",
-      "state": "prove_rem_learning_gate",
-      "var": "context.auto_prove_learning_gate",
-      "class": "A",
-      "host_shape": "heredoc",
-      "line": 20,
       "count": 1
     },
     {
@@ -1547,24 +1385,6 @@
       "class": "B",
       "host_shape": "heredoc",
       "line": 26,
-      "count": 1
-    },
-    {
-      "file": "loops/rn-plan-apo.yaml",
-      "state": "run_planner",
-      "var": "context.tasks_file",
-      "class": "A",
-      "host_shape": "heredoc",
-      "line": 5,
-      "count": 1
-    },
-    {
-      "file": "loops/rn-remediate.yaml",
-      "state": "emit_needs_manual_review",
-      "var": "context.issue_id",
-      "class": "A",
-      "host_shape": "heredoc",
-      "line": 15,
       "count": 1
     },
     {

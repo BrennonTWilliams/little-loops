@@ -28,7 +28,7 @@ states:
   list_stale:
     action_type: shell
     action: |
-      python3 << 'PYEOF'
+      LL_ARG_TARGETS=${context.targets:shell} python3 << 'PYEOF'
       import os, sys
       from pathlib import Path
 
@@ -46,7 +46,7 @@ states:
 
       stale = [r for r in records if _is_stale(r)]
 
-      targets_filter = "${context.targets}".strip()
+      targets_filter = os.environ.get("LL_ARG_TARGETS", "").strip()
       if targets_filter:
           filter_set = {t.strip() for t in targets_filter.split(",") if t.strip()}
           stale = [r for r in stale if r.target in filter_set]

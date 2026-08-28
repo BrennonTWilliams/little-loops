@@ -209,12 +209,12 @@ states:
   filter_items:
     action_type: shell
     action: |
-      python3 << 'PYEOF'
+      LL_ARG_RELEVANCE_THRESHOLD=${context.relevance_threshold:shell} LL_ARG_MAX_ISSUES_PER_FILE=${context.max_issues_per_file:shell} python3 << 'PYEOF'
       import json, os, sys
 
       run_dir = '${context.run_dir}'
-      threshold = float('${context.relevance_threshold}')
-      max_issues = int('${context.max_issues_per_file}')
+      threshold = float(os.environ['LL_ARG_RELEVANCE_THRESHOLD'])
+      max_issues = int(os.environ['LL_ARG_MAX_ISSUES_PER_FILE'])
 
       with open(os.path.join(run_dir, 'scored-items.json')) as f:
           items = json.load(f)

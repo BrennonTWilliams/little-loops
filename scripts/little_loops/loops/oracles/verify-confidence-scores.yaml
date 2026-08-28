@@ -28,11 +28,11 @@ states:
     # On miss, routes to retry_confidence_check (one re-run) rather than failed directly,
     # so a single LLM skip of the set-scores call does not trigger spurious size-review.
     action: |
-      python3 << 'PYEOF'
-      import json, sys, subprocess
+      LL_ARG_ISSUE_ID=${context.issue_id:shell} python3 << 'PYEOF'
+      import json, os, sys, subprocess
 
       r = subprocess.run(
-          ['ll-issues', 'show', '${context.issue_id}', '--json'],
+          ['ll-issues', 'show', os.environ.get("LL_ARG_ISSUE_ID", ""), '--json'],
           capture_output=True, text=True
       )
       try:
@@ -78,11 +78,11 @@ states:
     # absent, route to failed — this is a genuine infrastructure problem, not a
     # transient skip.
     action: |
-      python3 << 'PYEOF'
-      import json, sys, subprocess
+      LL_ARG_ISSUE_ID=${context.issue_id:shell} python3 << 'PYEOF'
+      import json, os, sys, subprocess
 
       r = subprocess.run(
-          ['ll-issues', 'show', '${context.issue_id}', '--json'],
+          ['ll-issues', 'show', os.environ.get("LL_ARG_ISSUE_ID", ""), '--json'],
           capture_output=True, text=True
       )
       try:
