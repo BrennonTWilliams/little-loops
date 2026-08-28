@@ -178,6 +178,19 @@ events are forwarded as raw JSON `data:` frames — the form the transport unit 
 exercise. The htmx-fragment renderer is *supplied by the wiring site*, keeping Jinja
 out of `transport.py` (see §3).
 
+**Shutdown mechanics (specified, not left to implementation):**
+`ThreadingHTTPServer` sets `daemon_threads = True`, and stdlib `server_close()`
+skips joining daemon threads — so teardown never hangs, but nothing flushes SSE
+clients either: a naive `close()` would drop the promised final frame and leak
+handler threads blocked on `queue.get()` in tests. Therefore `close()` pushes a
+final `run_complete` sentinel frame into every per-client queue **before**
+calling `shutdown()`/`server_close()`; each SSE handler loop reads its queue
+with `get(timeout=...)` and exits when it sees the sentinel. Handlers catch
+`BrokenPipeError`/`ConnectionResetError` on write and deregister the dead
+client's queue. This one mechanism delivers the final `run_complete` frame,
+prevents handler-thread leaks, and prunes dead clients; the serve-lifecycle
+test asserts handler threads are gone after `close()`.
+
 Use `http.server.ThreadingHTTPServer` from the stdlib. Do **not** add a web framework:
 the only HTTP machinery in the package today is `uvicorn`, imported lazily inside
 `mcp_server/server.py:298` and optional; `.claude/CLAUDE.md` requires preferring stdlib
@@ -240,6 +253,25 @@ transport.
 embeds the gzip'd `history.db` snapshot built at server start; the sql.js query box
 queries that startup snapshot, while the badge/counter/log-tail regions update live
 from SSE. Live-refreshing the embedded snapshot is out of scope.
+
+**Missing/empty `history.db` (first-ever run):** `cmd_dashboard` returns 1 when
+`.ll/history.db` does not exist (`dashboard.py:150`). `--serve` must **not**
+inherit that failure: when the db is missing at server start,
+`build_dashboard_html` renders the page with an empty snapshot — the live SSE
+regions are the point of serve mode; the query box is a bonus — rather than
+failing the run or silently dropping the flag. The `cmd_dashboard` CLI path
+keeps its existing missing-db error behavior unchanged.
+
+**Render determinism (gzip mtime):** `cmd_dashboard` embeds the snapshot via
+`gzip.compress()` (`dashboard.py:193`), which stamps wall-clock mtime into the
+gzip header — two renders of identical input already differ byte-wise today. As
+part of the refactor, pass `mtime=0` so output becomes reproducible (a one-time
+byte change to the shipped render; the embedded db content is unchanged).
+Consequence for testing: "byte-identical pre/post refactor" is a **dev-time
+verification** (render fixed input with old vs new code, mtime pinned), not a
+persistent CI test — the enduring regression tests instead assert (a) zero
+`htmx`/`hx-` occurrences in default output and (b) `cmd_dashboard` delegates to
+`build_dashboard_html(serve_context=None)`.
 
 ### 4. CLI wiring
 
@@ -379,11 +411,12 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `mcp_server/server.py:298` — precedent for lazily-imported, optional HTTP machinery
 
 ### Tests
-- `scripts/tests/test_transport.py` — bind/send/close; loopback-only bind assertion; port-in-use handling; **wrong/missing token → 404; bad `Host` header → 403**; raw-JSON SSE frames when `render_fragment is None`; inbound POST lands on the queue unchanged
+- `scripts/tests/test_transport.py` — bind/send/close; loopback-only bind assertion; port-in-use handling; **wrong/missing token → 404; bad `Host` header → 403**; raw-JSON SSE frames when `render_fragment is None`; inbound POST lands on the queue unchanged; **`close()` delivers the final `run_complete` sentinel frame to a connected SSE client and its handler thread exits (no thread leak — assert via thread count/join, not sleep)**; disconnected client's queue is deregistered after a write failure
 - `scripts/tests/test_fsm_executor.py` — `inbound=None` is byte-identical to today; queued event is re-emitted as `artifact_interaction` and appended to `inbound_events`; sub-loop child receives the parent's `inbound`
-- `scripts/tests/test_feat3304_artifact_dashboard.py` — default `ll-artifact dashboard` output has no `htmx`/`hx-` and is byte-identical pre/post refactor (regression guard on the `file://` path and on the `build_dashboard_html` extraction)
+- `scripts/tests/test_feat3304_artifact_dashboard.py` — default `ll-artifact dashboard` output has no `htmx`/`hx-`, and `cmd_dashboard` delegates to `build_dashboard_html(serve_context=None)` (regression guard on the `file://` path and on the extraction). Byte-identity across the refactor is verified **at dev time** with fixed input and gzip mtime pinned — not as a persistent test, since `gzip.compress()`'s mtime header makes repeated renders non-identical by construction (fixed in this issue via `mtime=0`, see Proposed Solution §3)
+- New: `--serve` with missing `history.db` — page renders with an empty snapshot and the run proceeds; `cmd_dashboard`'s missing-db `return 1` is unchanged
 - New: `render_live_fragment` unit tests — event dict in, `<hx-partial>` fragment (or `None`) out
-- New: serve-lifecycle test — bridge `close()` fires when the run reaches a terminal state; `cmd_run` still returns its normal exit code
+- New: serve-lifecycle test — bridge `close()` fires when the run reaches a terminal state, SSE handler threads are gone afterwards, and `cmd_run` still returns its normal exit code
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_wiring_reference_docs.py` — `DOC_STRINGS_PRESENT` is a pytest-enforced substring gate, not free prose: any rewrite of `docs/reference/ARTIFACT_CONTROL_LEVELS.md`'s Level-3 row must retain the literal substrings `"notify"`, `"ask-to-run-prompt"`, `"host-owned"`, `"artifact_interaction"`, `"_meta.ui.visibility"` (lines 204-208), and any rewrite of `docs/ARCHITECTURE.md`'s `## Artifact Control Layer` section must retain that literal heading text (line 212). No test-file edit needed — this is a constraint on the wording of the doc edits already planned, not new test code.
@@ -431,14 +464,18 @@ _Added by `/ll:refine-issue` — 2026-08-28 — based on codebase analysis:_
    swaps against the actual vendored `htmax.js`** — not merely that the file loads —
    plus the `http.server` SSE-streaming shape.
 3. Add `LocalBridgeTransport` (`send`/`close`, token prefix, Host validation,
-   `render_fragment` injection, per-client SSE queues) + tests. Assert loopback-only
-   bind, 404-on-bad-token, 403-on-bad-Host.
+   `render_fragment` injection, per-client SSE queues, sentinel-based shutdown per
+   §1's shutdown mechanics) + tests. Assert loopback-only bind, 404-on-bad-token,
+   403-on-bad-Host, final-frame delivery, and no handler-thread leak after `close()`.
 4. Add the executor `inbound` queue, `_drain_inbound` (re-emit + `inbound_events`
    record), and `inbound=self.inbound` forwarding in `_execute_sub_loop`; prove
    `inbound=None` is a no-op.
-5. Refactor `dashboard.py` into `build_dashboard_html(...)` (byte-identical default
-   output, regression-tested) and add `render_live_fragment` + `partials.html.j2` +
-   the template's serve-only htmx block.
+5. Refactor `dashboard.py` into `build_dashboard_html(...)`: pin `gzip.compress`
+   `mtime=0`, verify byte-identity vs the old code at dev time with fixed input,
+   handle missing `history.db` in serve mode (empty snapshot), and add
+   `render_live_fragment` + `partials.html.j2` + the template's serve-only htmx
+   block. Persistent tests per the Tests section (no-htmx guard + delegation +
+   missing-db serve behavior).
 6. Wire `--serve` / `--port` into `cli/loop/__init__.py` + `cli/loop/run.py`
    (construct, register, print URL, close in cleanup).
 7. Update `ARTIFACT_CONTROL_LEVELS.md` (Level-3 row), `CLI.md` (`ll-loop run`),
@@ -471,9 +508,14 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - A POST to the interaction endpoint with a wrong token or non-loopback `Host` header is
   rejected (404/403) — asserted in tests.
 - When the run ends, the server shuts down and `ll-loop run` returns its normal exit code.
-- Default `ll-artifact dashboard` output contains zero occurrences of `htmx`/`hx-` and is
-  byte-identical to the pre-change render (regression-tested across the
-  `build_dashboard_html` refactor).
+- Default `ll-artifact dashboard` output contains zero occurrences of `htmx`/`hx-`
+  (persistent regression test), and the `build_dashboard_html` extraction is verified
+  byte-identical at dev time with gzip mtime pinned (`mtime=0` ships, making future
+  renders reproducible).
+- Bridge `close()` delivers a final `run_complete` frame to connected SSE clients and
+  leaves no handler threads behind — asserted in tests.
+- `ll-loop run --serve` on a project with no `history.db` still serves the live page
+  (empty snapshot) instead of failing the run.
 - No new entry in `scripts/pyproject.toml` `dependencies`.
 
 ## Scope Boundaries
@@ -549,6 +591,7 @@ _Added by `/ll:confidence-check` on 2026-08-28_
 - `unproven_mechanism: true` forces a hard outcome-confidence cap (min(raw, 64) per this project's `outcome_threshold: 65`) independent of Criteria A-D. This run resolved the underlying uncertainty directly: both `learning_tests_required` targets (`htmx`, `http.server`) were missing registry records, so `/ll:explore-api` was run for each and both are now `status: proven` with real evidence — `http.server` via a live `ThreadingHTTPServer` exercised over the loopback socket (6/6 claims), and `htmx` via a headless-Chromium session driving the actual downloaded `htmx.org@4.0.0` `dist/htmax.js` bundle against a live SSE server (7/7 claims: `hx-sse:connect` auto-swap, `innerMorph` preserving an unrelated `<input>`'s value across live updates, named-event dispatch as a DOM `CustomEvent` on the connecting element, `<hx-partial>` OOB swap, and `:inherited` propagation). The cap is mechanical and still applies this run since it keys off the frontmatter flag, not learning-test status — recommend `/ll:decide-issue ENH-3351` to clear `unproven_mechanism` given the now-concrete proof, which would remove the cap on a future check.
 
 ## Session Log
+- pre-implementation review revision 2 - 2026-08-28 - specified SSE shutdown mechanics (sentinel + daemon-thread rationale), respec'd the byte-identical test as dev-time verification with `mtime=0` pinned (gzip mtime makes renders non-deterministic today), decided missing-`history.db` serve behavior (empty snapshot, run proceeds)
 - `/ll:decide-issue` - 2026-08-28T19:38:47 - `e999097a-2e38-45bb-b367-623703246cd4.jsonl`
 - `/ll:refine-issue` - 2026-08-28T19:37:43 - `0d616ba3-5ba9-4111-950a-8e9bccdf61b1.jsonl`
 - `/ll:confidence-check` - 2026-08-28T19:30:30 - `d3964614-0e7e-4d89-bc34-5bd7bd83f914.jsonl`

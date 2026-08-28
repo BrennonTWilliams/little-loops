@@ -457,6 +457,7 @@ Output: a list of loop objects, project loops before built-ins, matching what
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-28T19:44:53 - `c056a832-2f27-43a8-b622-031bae76a3d0.jsonl`
 - `/ll:confidence-check` - 2026-08-28T19:30:17 - `d3964614-0e7e-4d89-bc34-5bd7bd83f914.jsonl`
 - `/ll:wire-issue` - 2026-08-28T19:18:02 - `22846f50-44ca-47bb-8d4a-c3a415e9ca6e.jsonl`
 - `/ll:refine-issue` - 2026-08-28T19:00:19 - `1d9de51b-4056-4c32-8b39-b0f74389491b.jsonl`
