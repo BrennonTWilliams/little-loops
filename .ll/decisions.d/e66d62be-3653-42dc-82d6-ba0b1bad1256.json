@@ -1,0 +1,11 @@
+{
+  "id": "b28e360a-0509-4d06-80a1-6cb341caa800",
+  "type": "decision",
+  "timestamp": "2026-08-28T01:42:15Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "No-precedent findings deposited by refine-issue must escalate (spike recommendation + flag) and discount outcome_confidence until cleared",
+  "rule": "Captured: Escalate no-precedent mechanism findings from refine-issue and discount them in confidence-check",
+  "scope": "issue",
+  "issue": "ENH-3350"
+}
