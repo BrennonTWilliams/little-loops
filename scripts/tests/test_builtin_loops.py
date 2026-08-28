@@ -10,6 +10,7 @@ import shlex
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any
 from unittest.mock import patch
 
 import pytest
@@ -18588,6 +18589,160 @@ class TestCheckIntentScopeShellAction:
 
 def _load_builtin_loop(filename: str) -> dict:
     return yaml.safe_load((BUILTIN_LOOPS_DIR / filename).read_text())
+
+
+class TestEnh3347RouterInjection:
+    """EPIC-3336's only *behavioral* proof: run a real converted loop-router
+    action through interpolate() + bash -c and assert the defect BUG-3339/
+    3340/3341 fixed is actually gone, not just absent from a static pattern
+    scan (ENH-3338/3342 cover the static side only).
+
+    Each case's docstring records its red/green demonstration, reproduced via
+    ``git show <sha>^:scripts/little_loops/loops/loop-router.yaml`` against
+    the same interpolate()+bash harness used for the green (current) case.
+    The pre-conversion source no longer exists in the tree, so red is a
+    recorded observation rather than a live parametrized test.
+    """
+
+    @pytest.fixture
+    def data(self) -> dict:
+        return yaml.safe_load((BUILTIN_LOOPS_DIR / "loop-router.yaml").read_text())
+
+    def _run(self, action: str, ctx: Any, tmp_path: Path) -> subprocess.CompletedProcess[str]:
+        from little_loops.fsm.interpolation import interpolate
+
+        rendered = interpolate(action, ctx)
+        return subprocess.run(["bash", "-c", rendered], cwd=tmp_path, capture_output=True, text=True)
+
+    def _run_dir(self, tmp_path: Path) -> Path:
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        return run_dir
+
+    def test_apostrophe_goal_no_longer_syntax_errors(self, data: dict, tmp_path: Path) -> None:
+        """BUG-3340: a goal containing an apostrophe used to splice directly
+        into a Python string literal inside parse_project_score's heredoc.
+
+        Red (pre-fix action, commit 9a4f997b2^): goal="don't stop" rendered
+        `inp = ... or 'don't stop'` -> SyntaxError, returncode 1 (verified
+        directly against the recovered pre-fix action text).
+        Green (current action): goal is bound via
+        `LL_ARG_GOAL=${context.goal:shell}` and read through os.environ, so
+        the apostrophe never reaches Python source -> returncode 0.
+        """
+        from little_loops.fsm.interpolation import InterpolationContext
+
+        run_dir = self._run_dir(tmp_path)
+        action = data["states"]["parse_project_score"]["action"]
+        ctx = InterpolationContext(
+            context={"goal": "don't stop", "run_dir": str(run_dir)},
+            captured={
+                "project_score": {
+                    "output": "CHOSEN_LOOP:foo\nCONFIDENCE:0.9\n",
+                    "stderr": "",
+                    "exit_code": 0,
+                }
+            },
+        )
+        result = self._run(action, ctx, tmp_path)
+        assert result.returncode == 0, f"exit {result.returncode}: {result.stderr}"
+
+    def test_triple_quote_capture_with_newline_no_longer_crashes(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        """BUG-3341: captured.project_score.output used to splice raw into a
+        `\"\"\"${...}\"\"\"` triple-quoted Python string inside
+        parse_project_score's heredoc.
+
+        Red (pre-fix action, commit dc9fe247e^): a captured output containing
+        `\"\"\"` and a newline broke the triple-quote boundary ->
+        SyntaxError, returncode 1 (verified directly against the recovered
+        pre-fix action text).
+        Green (current action): the captured output is written into a
+        `cat > ... << 'LL_RAW_9F3C1A7E_EOF'` heredoc and read back from disk,
+        never spliced into Python source -> returncode 0.
+        """
+        from little_loops.fsm.interpolation import InterpolationContext
+
+        run_dir = self._run_dir(tmp_path)
+        action = data["states"]["parse_project_score"]["action"]
+        ctx = InterpolationContext(
+            context={"goal": "ordinary goal", "run_dir": str(run_dir)},
+            captured={
+                "project_score": {
+                    "output": 'CHOSEN_LOOP:foo\n"""\nCONFIDENCE:0.9\n',
+                    "stderr": "",
+                    "exit_code": 0,
+                }
+            },
+        )
+        result = self._run(action, ctx, tmp_path)
+        assert result.returncode == 0, f"exit {result.returncode}: {result.stderr}"
+
+    def test_goal_python_injection_does_not_execute(self, data: dict, tmp_path: Path) -> None:
+        """BUG-3340's Python-injection half: pre-fix, the goal was spliced
+        directly into a single-quoted Python string literal, so a goal
+        closing that literal early ran as real Python.
+
+        Red (pre-fix action, commit 9a4f997b2^): goal=`'; import os;
+        os.system("touch <sentinel>") #` created the sentinel file,
+        returncode 0 (verified directly against the recovered pre-fix action
+        text — the injected code ran without error).
+        Green (current action): the goal is bound via
+        `LL_ARG_GOAL=${context.goal:shell}` and only ever read as a string
+        via `os.environ.get(...)`, never eval'd -> the sentinel is not
+        created.
+        """
+        from little_loops.fsm.interpolation import InterpolationContext
+
+        run_dir = self._run_dir(tmp_path)
+        sentinel = tmp_path / "pwned"
+        payload = f'\'; import os; os.system("touch {sentinel}") #'
+        action = data["states"]["parse_project_score"]["action"]
+        ctx = InterpolationContext(
+            context={"goal": payload, "run_dir": str(run_dir)},
+            captured={
+                "project_score": {
+                    "output": "CHOSEN_LOOP:foo\nCONFIDENCE:0.9\n",
+                    "stderr": "",
+                    "exit_code": 0,
+                }
+            },
+        )
+        result = self._run(action, ctx, tmp_path)
+        assert result.returncode == 0, f"exit {result.returncode}: {result.stderr}"
+        assert not sentinel.exists(), "goal payload must not execute as Python code"
+
+    def test_include_shell_injection_does_not_execute(self, data: dict, tmp_path: Path) -> None:
+        """BUG-3339: discover_loops used to pipe into `python3 -c "..."`,
+        splicing context.include raw into that double-quoted shell argument
+        — a payload containing `"` closed the argument early and ran
+        arbitrary shell.
+
+        Red (pre-fix action, commit 9709fd22f^): include=`"; touch
+        <sentinel>; #` closed the `-c "..."` string and ran `touch
+        <sentinel>` as a separate shell command, returncode 2 (Python's own
+        SyntaxError on the truncated remainder) but the sentinel was already
+        created by then (verified directly against the recovered pre-fix
+        action text).
+        Green (current action): include/exclude are bound via
+        `${context.include:shell}` / `${context.exclude:shell}` into env
+        vars consumed inside a `python3 << 'PYEOF'` heredoc (single-quoted
+        terminator — no shell expansion of the payload) -> the sentinel is
+        not created.
+        """
+        from little_loops.fsm.interpolation import InterpolationContext
+
+        run_dir = self._run_dir(tmp_path)
+        sentinel = tmp_path / "pwned"
+        payload = f'"; touch {sentinel}; #'
+        action = data["states"]["discover_loops"]["action"]
+        ctx = InterpolationContext(
+            context={"include": payload, "exclude": "", "run_dir": str(run_dir)},
+            captured={},
+        )
+        self._run(action, ctx, tmp_path)
+        assert not sentinel.exists(), "include payload must not execute as shell code"
 
 
 # The raw ${context.*} interpolation var each fenced loop's input_key resolves

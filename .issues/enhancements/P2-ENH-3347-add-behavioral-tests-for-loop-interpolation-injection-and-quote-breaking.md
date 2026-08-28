@@ -3,10 +3,11 @@ id: ENH-3347
 type: ENH
 title: Add behavioral tests for loop interpolation injection and quote-breaking
 priority: P2
-status: open
+status: done
 discovered_by: manual-review
 discovered_date: '2026-08-27'
 captured_at: '2026-08-27T00:00:00Z'
+completed_at: '2026-08-28T22:41:41Z'
 parent: EPIC-3336
 blocked_by:
 - BUG-3339
@@ -343,6 +344,7 @@ already sequences the edits — land in that order.
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-28T22:41:22 - `ad539cb2-7e53-4a4d-8db5-9e08a67425ec.jsonl`
 - `/ll:confidence-check` - 2026-08-28T22:21:03 - `7874a9d3-a25b-4635-aed9-23b27560bb75.jsonl`
 - `/ll:refine-issue` - 2026-08-28T22:06:59 - `013c35fe-cc74-469a-aa25-ae000475e3a9.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-28T02:22:58 - `bd65b096-20a2-4a7e-b430-c4b13ac5b81d.jsonl`
