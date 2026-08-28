@@ -268,6 +268,9 @@ states:
     action_type: shell
     action: |
       ID="${captured.input.output}"
+      cat > "${context.run_dir}/check_blockers_at_dequeue-input.txt" << 'LL_RAW_9F3C1A7E_EOF'
+      ${captured.input.output}
+      LL_RAW_9F3C1A7E_EOF
       UNMET=$(python3 << 'PYEOF'
       import re, subprocess, json, sys
       from pathlib import Path
@@ -284,7 +287,8 @@ states:
                       result[m.group(1)] = m.group(2).strip()
               return result
 
-      issue_id = "${captured.input.output}"
+      with open("${context.run_dir}/check_blockers_at_dequeue-input.txt") as _f:
+          issue_id = _f.read().rstrip("\n")
 
       issue_path = None
       for d in (".issues/bugs", ".issues/features", ".issues/enhancements", ".issues/epics"):

@@ -59,11 +59,15 @@ states:
   parse_assumptions:
     fragment: parse_tagged_json
     action: |
+      cat > "${context.run_dir}/parse_assumptions-raw_extraction.txt" << 'LL_RAW_9F3C1A7E_EOF'
+      ${captured.raw_extraction.output}
+      LL_RAW_9F3C1A7E_EOF
       python3 << 'PYEOF'
       import json, sys
       from little_loops.output_parsing import extract_tagged_json
 
-      output = """${captured.raw_extraction.output}"""
+      with open("${context.run_dir}/parse_assumptions-raw_extraction.txt") as _f:
+          output = _f.read()
       data, error = extract_tagged_json(output, "ASSUMPTIONS_JSON")
       if data is None:
           if error.startswith("No ASSUMPTIONS_JSON"):
@@ -121,11 +125,15 @@ states:
   record_untestable:
     action_type: shell
     action: |
+      cat > "${context.run_dir}/record_untestable-raw_classified.txt" << 'LL_RAW_9F3C1A7E_EOF'
+      ${captured.raw_classified.output}
+      LL_RAW_9F3C1A7E_EOF
       python3 << 'PYEOF'
       import json, sys, subprocess
       from little_loops.output_parsing import extract_tagged_json
 
-      output = """${captured.raw_classified.output}"""
+      with open("${context.run_dir}/record_untestable-raw_classified.txt") as _f:
+          output = _f.read()
       data, error = extract_tagged_json(output, "CLASSIFIED_JSON")
       if data is None:
           print(error, file=sys.stderr)
@@ -151,11 +159,15 @@ states:
   flatten_testable:
     action_type: shell
     action: |
+      cat > "${context.run_dir}/flatten_testable-raw_classified.txt" << 'LL_RAW_9F3C1A7E_EOF'
+      ${captured.raw_classified.output}
+      LL_RAW_9F3C1A7E_EOF
       python3 << 'PYEOF'
       import json, sys
       from little_loops.output_parsing import extract_tagged_json
 
-      classified_output = """${captured.raw_classified.output}"""
+      with open("${context.run_dir}/flatten_testable-raw_classified.txt") as _f:
+          classified_output = _f.read()
       data, error = extract_tagged_json(classified_output, "CLASSIFIED_JSON")
       if data is None:
           print(error, file=sys.stderr)

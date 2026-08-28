@@ -71,9 +71,14 @@ fragments:
       State must supply: next (unconditional forward after parsing).
     action_type: shell
     action: |
+      mkdir -p "${context.run_dir}"
+      cat > "${context.run_dir}/rubric_parse_scores-scores.txt" << 'LL_RAW_9F3C1A7E_EOF'
+      ${captured.scores.output}
+      LL_RAW_9F3C1A7E_EOF
       LL_ARG_THRESHOLD_HIGH=${context.threshold_high:shell} LL_ARG_THRESHOLD_MEDIUM=${context.threshold_medium:shell} python3 << 'PYEOF'
       import os, re, sys
-      output = """${captured.scores.output}"""
+      with open("${context.run_dir}/rubric_parse_scores-scores.txt") as _f:
+          output = _f.read()
       agg_m = re.search(r'AGGREGATE:\s*(\d+)', output)
       if not agg_m:
           print("aggregate=0 tier=low")

@@ -714,6 +714,12 @@ states:
   finalize_present_result:
     action_type: shell
     action: |
+      cat > "${context.run_dir}/finalize_present_result-user_plan_decision.txt" << 'LL_RAW_9F3C1A7E_EOF'
+      ${captured.user_plan_decision.output:default=}
+      LL_RAW_9F3C1A7E_EOF
+      cat > "${context.run_dir}/finalize_present_result-chain_review.txt" << 'LL_RAW_9F3C1A7E_EOF'
+      ${captured.chain_review.output:default=}
+      LL_RAW_9F3C1A7E_EOF
       python3 << 'PYEOF'
       import json, os, glob
 
@@ -741,13 +747,15 @@ states:
       if os.path.exists(plans_dir):
           plan_versions = len([f for f in os.listdir(plans_dir) if f.startswith('v') and f.endswith('.json')])
 
-      cancelled = '${captured.user_plan_decision.output:default=}'
+      with open(os.path.join(run_dir, 'finalize_present_result-user_plan_decision.txt')) as _f:
+          cancelled = _f.read()
       if 'CANCEL' in cancelled:
           success = False
           summary = 'Plan execution cancelled by user before execution began.'
       else:
           success = bool(step_results) and all(v.get('success', False) for v in step_results.values())
-          review_out = '${captured.chain_review.output:default=}'
+          with open(os.path.join(run_dir, 'finalize_present_result-chain_review.txt')) as _f:
+              review_out = _f.read()
           if review_out.strip():
               summary = review_out.strip()
           else:

@@ -22,28 +22,10 @@
     {
       "file": "loops/apply-research.yaml",
       "state": "validate_scores",
-      "var": "captured.scored_items_raw.output",
-      "class": "B",
-      "host_shape": "heredoc",
-      "line": 5,
-      "count": 1
-    },
-    {
-      "file": "loops/apply-research.yaml",
-      "state": "validate_scores",
       "var": "context.run_dir",
       "class": "C",
       "host_shape": "heredoc",
-      "line": 4,
-      "count": 1
-    },
-    {
-      "file": "loops/apply-research.yaml",
-      "state": "verify_captures",
-      "var": "captured.captured_issues_raw.output",
-      "class": "B",
-      "host_shape": "heredoc",
-      "line": 5,
+      "line": 7,
       "count": 1
     },
     {
@@ -52,34 +34,34 @@
       "var": "context.run_dir",
       "class": "C",
       "host_shape": "heredoc",
-      "line": 4,
+      "line": 7,
       "count": 1
     },
     {
       "file": "loops/assumption-firewall.yaml",
       "state": "flatten_testable",
-      "var": "captured.raw_classified.output",
-      "class": "B",
+      "var": "context.run_dir",
+      "class": "C",
       "host_shape": "heredoc",
-      "line": 5,
+      "line": 8,
       "count": 1
     },
     {
       "file": "loops/assumption-firewall.yaml",
       "state": "parse_assumptions",
-      "var": "captured.raw_extraction.output",
-      "class": "B",
+      "var": "context.run_dir",
+      "class": "C",
       "host_shape": "heredoc",
-      "line": 5,
+      "line": 8,
       "count": 1
     },
     {
       "file": "loops/assumption-firewall.yaml",
       "state": "record_untestable",
-      "var": "captured.raw_classified.output",
-      "class": "B",
+      "var": "context.run_dir",
+      "class": "C",
       "host_shape": "heredoc",
-      "line": 5,
+      "line": 8,
       "count": 1
     },
     {
@@ -112,10 +94,10 @@
     {
       "file": "loops/autodev.yaml",
       "state": "check_blockers_at_dequeue",
-      "var": "captured.input.output",
-      "class": "B",
+      "var": "context.run_dir",
+      "class": "C",
       "host_shape": "heredoc",
-      "line": 18,
+      "line": 21,
       "count": 1
     },
     {
@@ -373,15 +355,6 @@
     {
       "file": "loops/lib/composer.yaml",
       "state": "validate_plan",
-      "var": "captured.catalog.output",
-      "class": "B",
-      "host_shape": "heredoc",
-      "line": 30,
-      "count": 1
-    },
-    {
-      "file": "loops/lib/composer.yaml",
-      "state": "validate_plan",
       "var": "context.run_dir",
       "class": "C",
       "host_shape": "heredoc",
@@ -391,19 +364,10 @@
     {
       "file": "loops/lib/policy-router.yaml",
       "state": "policy_parse_scores",
-      "var": "captured.scores.output",
-      "class": "B",
-      "host_shape": "heredoc",
-      "line": 3,
-      "count": 1
-    },
-    {
-      "file": "loops/lib/policy-router.yaml",
-      "state": "policy_parse_scores",
       "var": "context.run_dir",
       "class": "C",
       "host_shape": "heredoc",
-      "line": 4,
+      "line": 7,
       "count": 1
     },
     {
@@ -418,20 +382,11 @@
     {
       "file": "loops/lib/rubric-router.yaml",
       "state": "rubric_parse_scores",
-      "var": "captured.scores.output",
-      "class": "B",
-      "host_shape": "heredoc",
-      "line": 3,
-      "count": 1
-    },
-    {
-      "file": "loops/lib/rubric-router.yaml",
-      "state": "rubric_parse_scores",
       "var": "context.run_dir",
       "class": "C",
       "host_shape": "heredoc",
       "line": 7,
-      "count": 4
+      "count": 5
     },
     {
       "file": "loops/lib/rubric-router.yaml",
@@ -472,28 +427,10 @@
     {
       "file": "loops/loop-composer-adaptive.yaml",
       "state": "finalize_present_result",
-      "var": "captured.chain_review.output",
-      "class": "B",
-      "host_shape": "heredoc",
-      "line": 34,
-      "count": 1
-    },
-    {
-      "file": "loops/loop-composer-adaptive.yaml",
-      "state": "finalize_present_result",
-      "var": "captured.user_plan_decision.output",
-      "class": "B",
-      "host_shape": "heredoc",
-      "line": 28,
-      "count": 1
-    },
-    {
-      "file": "loops/loop-composer-adaptive.yaml",
-      "state": "finalize_present_result",
       "var": "context.run_dir",
       "class": "C",
       "host_shape": "heredoc",
-      "line": 4,
+      "line": 10,
       "count": 1
     },
     {
@@ -562,28 +499,10 @@
     {
       "file": "loops/loop-composer.yaml",
       "state": "finalize_present_result",
-      "var": "captured.chain_review.output",
-      "class": "B",
-      "host_shape": "heredoc",
-      "line": 32,
-      "count": 1
-    },
-    {
-      "file": "loops/loop-composer.yaml",
-      "state": "finalize_present_result",
-      "var": "captured.user_plan_decision.output",
-      "class": "B",
-      "host_shape": "heredoc",
-      "line": 26,
-      "count": 1
-    },
-    {
-      "file": "loops/loop-composer.yaml",
-      "state": "finalize_present_result",
       "var": "context.run_dir",
       "class": "C",
       "host_shape": "heredoc",
-      "line": 4,
+      "line": 10,
       "count": 1
     },
     {
@@ -625,20 +544,11 @@
     {
       "file": "loops/loop-router.yaml",
       "state": "apply_user_choice",
-      "var": "captured.user_choice.output",
-      "class": "B",
-      "host_shape": "heredoc",
-      "line": 3,
-      "count": 1
-    },
-    {
-      "file": "loops/loop-router.yaml",
-      "state": "apply_user_choice",
       "var": "context.run_dir",
       "class": "C",
       "host_shape": "heredoc",
-      "line": 10,
-      "count": 4
+      "line": 6,
+      "count": 5
     },
     {
       "file": "loops/loop-router.yaml",
@@ -661,29 +571,11 @@
     {
       "file": "loops/loop-router.yaml",
       "state": "parse_builtin_score",
-      "var": "captured.builtin_score.output",
-      "class": "B",
-      "host_shape": "heredoc",
-      "line": 3,
-      "count": 1
-    },
-    {
-      "file": "loops/loop-router.yaml",
-      "state": "parse_builtin_score",
       "var": "context.run_dir",
       "class": "C",
       "host_shape": "heredoc",
-      "line": 12,
-      "count": 5
-    },
-    {
-      "file": "loops/loop-router.yaml",
-      "state": "parse_project_score",
-      "var": "captured.project_score.output",
-      "class": "B",
-      "host_shape": "heredoc",
-      "line": 3,
-      "count": 1
+      "line": 6,
+      "count": 6
     },
     {
       "file": "loops/loop-router.yaml",
@@ -691,25 +583,25 @@
       "var": "context.run_dir",
       "class": "C",
       "host_shape": "heredoc",
-      "line": 12,
-      "count": 5
+      "line": 6,
+      "count": 6
     },
     {
       "file": "loops/loop-router.yaml",
       "state": "route_branch_builtin",
-      "var": "captured.classification.output",
-      "class": "B",
+      "var": "context.run_dir",
+      "class": "C",
       "host_shape": "heredoc",
-      "line": 3,
+      "line": 6,
       "count": 1
     },
     {
       "file": "loops/loop-router.yaml",
       "state": "route_branch_project",
-      "var": "captured.classification.output",
-      "class": "B",
+      "var": "context.run_dir",
+      "class": "C",
       "host_shape": "heredoc",
-      "line": 3,
+      "line": 6,
       "count": 1
     },
     {

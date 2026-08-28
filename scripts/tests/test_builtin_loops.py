@@ -6400,7 +6400,7 @@ class TestAutodevLoop:
 
         # done blocker -> READY
         _write_issue("ENH-9100", ["ENH-9001"])
-        script = action.replace("${captured.input.output}", "ENH-9100")
+        script = action.replace("${captured.input.output}", "ENH-9100").replace("${context.run_dir}", str(tmp_path))
         result = subprocess.run(
             ["bash", "-c", script], cwd=tmp_path, capture_output=True, text=True, env=env
         )
@@ -6409,7 +6409,7 @@ class TestAutodevLoop:
 
         # open (unresolved) blocker -> BLOCKED
         _write_issue("ENH-9101", ["ENH-9002"])
-        script = action.replace("${captured.input.output}", "ENH-9101")
+        script = action.replace("${captured.input.output}", "ENH-9101").replace("${context.run_dir}", str(tmp_path))
         result = subprocess.run(
             ["bash", "-c", script], cwd=tmp_path, capture_output=True, text=True, env=env
         )
@@ -6418,7 +6418,7 @@ class TestAutodevLoop:
 
         # no blockers -> READY
         _write_issue("ENH-9102", [])
-        script = action.replace("${captured.input.output}", "ENH-9102")
+        script = action.replace("${captured.input.output}", "ENH-9102").replace("${context.run_dir}", str(tmp_path))
         result = subprocess.run(
             ["bash", "-c", script], cwd=tmp_path, capture_output=True, text=True, env=env
         )
@@ -6448,7 +6448,7 @@ class TestAutodevLoop:
         stub.chmod(0o755)
         env = {**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}"}
 
-        script = action.replace("${captured.input.output}", "ENH-9200")
+        script = action.replace("${captured.input.output}", "ENH-9200").replace("${context.run_dir}", str(tmp_path))
         result = subprocess.run(
             ["bash", "-c", script], cwd=tmp_path, capture_output=True, text=True, env=env
         )

@@ -161,11 +161,15 @@ states:
   validate_scores:
     action_type: shell
     action: |
+      cat > "${context.run_dir}/validate_scores-scored_items_raw.txt" << 'LL_RAW_9F3C1A7E_EOF'
+      ${captured.scored_items_raw.output}
+      LL_RAW_9F3C1A7E_EOF
       python3 << 'PYEOF'
       import json, re, sys, os
 
       run_dir = '${context.run_dir}'
-      output = """${captured.scored_items_raw.output}"""
+      with open(os.path.join(run_dir, 'validate_scores-scored_items_raw.txt')) as _f:
+          output = _f.read()
 
       items = []
       m = re.search(r'RELEVANCE_SCORES:\s*```(?:json)?\s*(\[.*?\])\s*```', output, re.DOTALL)
@@ -299,11 +303,15 @@ states:
   verify_captures:
     action_type: shell
     action: |
+      cat > "${context.run_dir}/verify_captures-captured_issues_raw.txt" << 'LL_RAW_9F3C1A7E_EOF'
+      ${captured.captured_issues_raw.output}
+      LL_RAW_9F3C1A7E_EOF
       python3 << 'PYEOF'
       import re, os, glob, sys
 
       run_dir = '${context.run_dir}'
-      output = """${captured.captured_issues_raw.output}"""
+      with open(os.path.join(run_dir, 'verify_captures-captured_issues_raw.txt')) as _f:
+          output = _f.read()
 
       ids = []
       m = re.search(r'CAPTURED_IDS:\s*(.+)', output)

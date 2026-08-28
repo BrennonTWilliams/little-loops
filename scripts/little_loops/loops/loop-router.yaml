@@ -131,9 +131,13 @@ states:
   route_branch_project:
     action_type: shell
     action: |
+      cat > "${context.run_dir}/route_branch_project-classification.txt" << 'LL_RAW_9F3C1A7E_EOF'
+      ${captured.classification.output}
+      LL_RAW_9F3C1A7E_EOF
       python3 << 'PYEOF'
       import sys
-      output = """${captured.classification.output}"""
+      with open("${context.run_dir}/route_branch_project-classification.txt") as _f:
+          output = _f.read()
       sys.exit(0 if 'BRANCH:project' in output else 1)
       PYEOF
     evaluate:
@@ -145,9 +149,13 @@ states:
   route_branch_builtin:
     action_type: shell
     action: |
+      cat > "${context.run_dir}/route_branch_builtin-classification.txt" << 'LL_RAW_9F3C1A7E_EOF'
+      ${captured.classification.output}
+      LL_RAW_9F3C1A7E_EOF
       python3 << 'PYEOF'
       import sys
-      output = """${captured.classification.output}"""
+      with open("${context.run_dir}/route_branch_builtin-classification.txt") as _f:
+          output = _f.read()
       sys.exit(0 if 'BRANCH:builtin' in output else 1)
       PYEOF
     evaluate:
@@ -197,9 +205,13 @@ states:
   parse_project_score:
     action_type: shell
     action: |
+      cat > "${context.run_dir}/parse_project_score-project_score.txt" << 'LL_RAW_9F3C1A7E_EOF'
+      ${captured.project_score.output}
+      LL_RAW_9F3C1A7E_EOF
       LL_ARG_GOAL=${context.goal:shell} python3 << 'PYEOF'
       import os, re, sys
-      output = """${captured.project_score.output}"""
+      with open("${context.run_dir}/parse_project_score-project_score.txt") as _f:
+          output = _f.read()
       loop_m  = re.search(r'CHOSEN_LOOP:(\S+)', output)
       conf_m  = re.search(r'CONFIDENCE:([\d.]+)', output)
       input_m = re.search(r'LOOP_INPUT:(.*)', output)
@@ -265,9 +277,13 @@ states:
   parse_builtin_score:
     action_type: shell
     action: |
+      cat > "${context.run_dir}/parse_builtin_score-builtin_score.txt" << 'LL_RAW_9F3C1A7E_EOF'
+      ${captured.builtin_score.output}
+      LL_RAW_9F3C1A7E_EOF
       LL_ARG_GOAL=${context.goal:shell} python3 << 'PYEOF'
       import os, re, sys
-      output = """${captured.builtin_score.output}"""
+      with open("${context.run_dir}/parse_builtin_score-builtin_score.txt") as _f:
+          output = _f.read()
       loop_m  = re.search(r'CHOSEN_LOOP:(\S+)', output)
       conf_m  = re.search(r'CONFIDENCE:([\d.]+)', output)
       input_m = re.search(r'LOOP_INPUT:(.*)', output)
@@ -366,9 +382,13 @@ states:
   apply_user_choice:
     action_type: shell
     action: |
+      cat > "${context.run_dir}/apply_user_choice-user_choice.txt" << 'LL_RAW_9F3C1A7E_EOF'
+      ${captured.user_choice.output}
+      LL_RAW_9F3C1A7E_EOF
       LL_ARG_GOAL=${context.goal:shell} python3 << 'PYEOF'
       import os, re
-      raw = """${captured.user_choice.output}""".strip()
+      with open("${context.run_dir}/apply_user_choice-user_choice.txt") as _f:
+          raw = _f.read().strip()
       m   = re.search(r'\b([a-z][a-z0-9-]+)\b', raw)
       name = m.group(1) if m else 'NONE'
       def _read(p, default=''):
