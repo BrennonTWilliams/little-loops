@@ -242,9 +242,13 @@ states:
     # Runs unconditionally (next: check_stall).
     action_type: shell
     action: |
+      cat > "${context.run_dir}/record_score-score_output.txt" << 'LL_RAW_9F3C1A7E_EOF'
+      ${captured.score_output.output}
+      LL_RAW_9F3C1A7E_EOF
       python3 << 'PYEOF'
       import re
-      output = """${captured.score_output.output}"""
+      with open("${context.run_dir}/record_score-score_output.txt") as _f:
+          output = _f.read()
       m = re.search(r'SCORE:\s*([0-9]+(?:\.[0-9]+)?)', output)
       score = m.group(1) if m else "0"
       with open("${context.run_dir}/.score_history", "a") as f:

@@ -523,12 +523,17 @@ states:
   write_epic_id:
     action_type: shell
     action: |
+      mkdir -p "${context.run_dir}"
+      cat > "${context.run_dir}/write_epic_id-scope_project.txt" << 'LL_RAW_9F3C1A7E_EOF'
+      ${captured.scope_project.output}
+      LL_RAW_9F3C1A7E_EOF
       python3 << 'PYEOF'
       import re, sys, os
 
       run_dir = '${context.run_dir}'
       os.makedirs(run_dir, exist_ok=True)
-      output = """${captured.scope_project.output}"""
+      with open(os.path.join(run_dir, 'write_epic_id-scope_project.txt')) as _f:
+          output = _f.read()
 
       # Try tagged format first: EPIC_ID:EPIC-NNN
       m = re.search(r'EPIC_ID:(EPIC-\d+)', output)
@@ -621,6 +626,10 @@ states:
   read_harness_name:
     action_type: shell
     action: |
+      mkdir -p "${context.run_dir}"
+      cat > "${context.run_dir}/read_harness_name-harness_plan.txt" << 'LL_RAW_9F3C1A7E_EOF'
+      ${captured.harness_plan.output}
+      LL_RAW_9F3C1A7E_EOF
       python3 << 'PYEOF'
       import re, sys, os
 
@@ -637,7 +646,8 @@ states:
               sys.exit(0)
 
       # Fall back: parse HARNESS_NAME: tag from prompt output
-      output = """${captured.harness_plan.output}"""
+      with open(os.path.join(run_dir, 'read_harness_name-harness_plan.txt')) as _f:
+          output = _f.read()
       m = re.search(r'HARNESS_NAME:(\S+)', output)
       if not m:
           print('ERROR: Could not extract harness name')

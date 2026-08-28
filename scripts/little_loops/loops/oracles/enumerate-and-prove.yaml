@@ -64,9 +64,13 @@ states:
   flatten:
     action_type: shell
     action: |
+      cat > "${context.run_dir}/flatten-enumeration.txt" << 'LL_RAW_9F3C1A7E_EOF'
+      ${captured.enumeration.output}
+      LL_RAW_9F3C1A7E_EOF
       python3 << 'PYEOF'
       import json
-      data = json.loads("""${captured.enumeration.output}""")
+      with open("${context.run_dir}/flatten-enumeration.txt") as _f:
+          data = json.loads(_f.read())
       print(",".join(data["targets"]))
       PYEOF
     capture: targets

@@ -625,20 +625,11 @@
     {
       "file": "loops/migrate-sdk-version.yaml",
       "state": "apply_update",
-      "var": "captured.classify_result.output",
-      "class": "B",
+      "var": "context.run_dir",
+      "class": "C",
       "host_shape": "heredoc",
-      "line": 4,
-      "count": 1
-    },
-    {
-      "file": "loops/migrate-sdk-version.yaml",
-      "state": "apply_update",
-      "var": "captured.reprove.output",
-      "class": "B",
-      "host_shape": "heredoc",
-      "line": 16,
-      "count": 1
+      "line": 10,
+      "count": 2
     },
     {
       "file": "loops/migrate-sdk-version.yaml",
@@ -652,28 +643,10 @@
     {
       "file": "loops/oracles/enumerate-and-prove.yaml",
       "state": "flatten",
-      "var": "captured.enumeration.output",
-      "class": "B",
+      "var": "context.run_dir",
+      "class": "C",
       "host_shape": "heredoc",
-      "line": 3,
-      "count": 1
-    },
-    {
-      "file": "loops/oracles/generator-evaluator-flux.yaml",
-      "state": "synthesize",
-      "var": "state.iteration",
-      "class": "B",
-      "host_shape": "heredoc",
-      "line": 37,
-      "count": 1
-    },
-    {
-      "file": "loops/oracles/generator-evaluator.yaml",
-      "state": "record_score",
-      "var": "captured.score_output.output",
-      "class": "B",
-      "host_shape": "heredoc",
-      "line": 3,
+      "line": 6,
       "count": 1
     },
     {
@@ -683,15 +656,15 @@
       "class": "C",
       "host_shape": "heredoc",
       "line": 6,
-      "count": 1
+      "count": 2
     },
     {
       "file": "loops/proof-first-task.yaml",
       "state": "check_gate_blocked",
-      "var": "captured.gate.extracted.output",
-      "class": "B",
+      "var": "context.run_dir",
+      "class": "C",
       "host_shape": "heredoc",
-      "line": 4,
+      "line": 7,
       "count": 1
     },
     {
@@ -805,19 +778,10 @@
     {
       "file": "loops/rn-build.yaml",
       "state": "read_harness_name",
-      "var": "captured.harness_plan.output",
-      "class": "B",
-      "host_shape": "heredoc",
-      "line": 17,
-      "count": 1
-    },
-    {
-      "file": "loops/rn-build.yaml",
-      "state": "read_harness_name",
       "var": "context.run_dir",
       "class": "C",
       "host_shape": "heredoc",
-      "line": 4,
+      "line": 8,
       "count": 1
     },
     {
@@ -832,19 +796,10 @@
     {
       "file": "loops/rn-build.yaml",
       "state": "write_epic_id",
-      "var": "captured.scope_project.output",
-      "class": "B",
-      "host_shape": "heredoc",
-      "line": 6,
-      "count": 1
-    },
-    {
-      "file": "loops/rn-build.yaml",
-      "state": "write_epic_id",
       "var": "context.run_dir",
       "class": "C",
       "host_shape": "heredoc",
-      "line": 4,
+      "line": 8,
       "count": 1
     },
     {

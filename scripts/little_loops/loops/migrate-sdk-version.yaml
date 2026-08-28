@@ -165,10 +165,17 @@ states:
   apply_update:
     action_type: shell
     action: |
+      cat > "${context.run_dir}/apply_update-classify_result.txt" << 'LL_RAW_9F3C1A7E_EOF'
+      ${captured.classify_result.output}
+      LL_RAW_9F3C1A7E_EOF
+      cat > "${context.run_dir}/apply_update-reprove.txt" << 'LL_RAW_9F3C1A7E_EOF'
+      ${captured.reprove.output}
+      LL_RAW_9F3C1A7E_EOF
       python3 << 'PYEOF'
       import json, sys
 
-      classify_output = """${captured.classify_result.output}"""
+      with open("${context.run_dir}/apply_update-classify_result.txt") as _f:
+          classify_output = _f.read()
       verdict = None
       for line in reversed(classify_output.split('\n')):
           line = line.strip()
@@ -180,7 +187,8 @@ states:
                   pass
               break
 
-      reprove_raw = """${captured.reprove.output}"""
+      with open("${context.run_dir}/apply_update-reprove.txt") as _f:
+          reprove_raw = _f.read()
       target = ""
       try:
           reprove_data = json.loads(reprove_raw.strip())

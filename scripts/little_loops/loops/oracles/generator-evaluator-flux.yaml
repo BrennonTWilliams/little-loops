@@ -103,8 +103,8 @@ states:
       with open(os.environ["PROMPT_FILE"]) as f:
           prompt = f.read().strip()
 
-      # Per-iteration counter: ${state.iteration} is unavailable inside shell
-      # actions, so use the file-counter idiom (canvas-sketch-generator snapshot).
+      # Per-iteration counter: the FSM's own iteration count is unavailable
+      # inside shell actions, so use the file-counter idiom (canvas-sketch-generator snapshot).
       counter_file = os.path.join(abs_dir, ".gen_counter")
       try:
           with open(counter_file) as f:

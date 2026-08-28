@@ -53,10 +53,14 @@ states:
   check_gate_blocked:
     action_type: shell
     action: |
+      cat > "${context.run_dir}/check_gate_blocked-gate.extracted.txt" << 'LL_RAW_9F3C1A7E_EOF'
+      ${captured.gate.extracted.output}
+      LL_RAW_9F3C1A7E_EOF
       python3 << 'PYEOF'
       import json, sys
       try:
-          data = json.loads("""${captured.gate.extracted.output}""")
+          with open("${context.run_dir}/check_gate_blocked-gate.extracted.txt") as _f:
+              data = json.loads(_f.read())
           count = data.get("count", -1)
       except Exception:
           count = -1
