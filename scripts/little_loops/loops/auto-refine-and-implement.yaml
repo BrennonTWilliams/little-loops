@@ -135,13 +135,14 @@ states:
     action: |
       mkdir -p "${context.run_dir}"
       if [ -n "${context.scope}" ]; then
-        LIST=$(python3 << 'PYEOF'
+        LIST=$(LL_ARG_SCOPE=${context.scope:shell} python3 << 'PYEOF'
+      import os
       import sys
       from pathlib import Path
       from little_loops.config import BRConfig
       from little_loops.sprint import SprintManager
 
-      arg = """${context.scope}""".strip()
+      arg = os.environ.get("LL_ARG_SCOPE", "").strip()
       sprint = SprintManager(config=BRConfig(Path.cwd())).load_or_resolve(arg)
       if sprint is None:
           sys.stderr.write(
@@ -195,7 +196,8 @@ states:
     # N>0 commits behind base, this writes epic-branch-stale.txt (read by
     # finalize) when the outcome is warned/merge_conflict.
     action: |
-      python3 << 'PYEOF'
+      LL_ARG_SCOPE=${context.scope:shell} python3 << 'PYEOF'
+      import os
       import re
       import subprocess
       import sys
@@ -212,7 +214,7 @@ states:
           resolve_epic_branch_name,
       )
 
-      scope = """${context.scope}""".strip()
+      scope = os.environ.get("LL_ARG_SCOPE", "").strip()
       run_dir = Path("""${context.run_dir}""")
 
       # ENH-2609: stdout is reserved for the branch name (captured as
@@ -343,13 +345,14 @@ states:
         echo "recheck_set: re-dispatch cycle cap (5) reached" >&2
         exit 1
       fi
-      LIST=$(python3 << 'PYEOF'
+      LIST=$(LL_ARG_SCOPE=${context.scope:shell} python3 << 'PYEOF'
+      import os
       import sys
       from pathlib import Path
       from little_loops.config import BRConfig
       from little_loops.sprint import SprintManager
 
-      arg = """${context.scope}""".strip()
+      arg = os.environ.get("LL_ARG_SCOPE", "").strip()
       sprint = SprintManager(config=BRConfig(Path.cwd())).load_or_resolve(arg)
       if sprint is None:
           sys.exit(1)
@@ -404,8 +407,9 @@ states:
     # the same function below). Non-epic runs verify in place, unchanged.
     action: |
       RUN_DIR="${context.run_dir}"
-      VERIFY_VERDICT=$(python3 << 'PYEOF'
+      VERIFY_VERDICT=$(LL_ARG_SCOPE=${context.scope:shell} python3 << 'PYEOF'
       import json
+      import os
       import shlex
       import subprocess
       import sys
@@ -484,7 +488,7 @@ states:
       ll_cfg = BRConfig(repo)
       logger = Logger(verbose=False)
       lock = GitLock(logger)
-      epic_id = """${context.scope}""".strip()
+      epic_id = os.environ.get("LL_ARG_SCOPE", "").strip()
 
       # ENH-2630: persist the epic branch tip alongside the verdict so
       # merge_epic_branch can reuse this run's result when the tip is unchanged
@@ -563,7 +567,8 @@ states:
     # one from — on-disk status is the sole source of truth in this context).
     action: |
       RUN_DIR="${context.run_dir}"
-      python3 << 'PYEOF' > "$RUN_DIR/epic-merge-verdict.txt"
+      LL_ARG_SCOPE=${context.scope:shell} python3 << 'PYEOF' > "$RUN_DIR/epic-merge-verdict.txt"
+      import os
       import subprocess
       import sys
       from pathlib import Path
@@ -571,7 +576,7 @@ states:
       run_dir = Path("""${context.run_dir}""")
       branch_file = run_dir / "epic-branch-name.txt"
       base_file = run_dir / "base-branch-name.txt"
-      epic_id = """${context.scope}""".strip()
+      epic_id = os.environ.get("LL_ARG_SCOPE", "").strip()
 
       if not branch_file.exists():
           print("skipped")

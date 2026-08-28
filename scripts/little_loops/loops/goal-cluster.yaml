@@ -44,12 +44,12 @@ states:
     action_type: shell
     timeout: 60
     action: |
-      python3 << 'PYEOF'
+      LL_ARG_GOALS=${context.goals:shell} python3 << 'PYEOF'
       import json, re, subprocess, sys, os
 
       run_dir = '${context.run_dir}'
       os.makedirs(run_dir, exist_ok=True)
-      raw = """${context.goals}"""
+      raw = os.environ.get("LL_ARG_GOALS", "")
 
       goals = []
 
@@ -320,7 +320,7 @@ states:
     action_type: shell
     timeout: 30
     action: |
-      python3 << 'PYEOF'
+      LL_ARG_GOALS=${context.goals:shell} python3 << 'PYEOF'
       import json, os, glob, sys
 
       run_dir = '${context.run_dir}'
@@ -344,7 +344,7 @@ states:
       os.rename(next_file, done_path)
 
       loop = batch.get('suggested_loop', 'loop-router')
-      batch_goal = batch.get('batch_goal', '${context.goals}')
+      batch_goal = batch.get('batch_goal', os.environ.get("LL_ARG_GOALS", ""))
 
       with open(os.path.join(run_dir, 'current-batch-loop.txt'), 'w') as f:
           f.write(loop)
@@ -371,7 +371,7 @@ states:
   read_cluster_input:
     action_type: shell
     action: |
-      python3 << 'PYEOF'
+      LL_ARG_PROPAGATE_CONTEXT=${context.propagate_context:shell} python3 << 'PYEOF'
       import json, os
 
       run_dir = '${context.run_dir}'
@@ -386,7 +386,7 @@ states:
           pass
 
       hints = []
-      if '${context.propagate_context}' == 'true' and os.path.exists(hints_file):
+      if os.environ.get("LL_ARG_PROPAGATE_CONTEXT", "") == 'true' and os.path.exists(hints_file):
           try:
               with open(hints_file) as f:
                   hints = json.load(f)

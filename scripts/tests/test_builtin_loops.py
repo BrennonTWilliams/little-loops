@@ -6,6 +6,7 @@ import datetime
 import json
 import os
 import re
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -4139,6 +4140,7 @@ class TestAutoRefineAndImplementLoop:
         mock_python3.chmod(0o755)
         script = action.replace("${context.run_dir}", str(run_dir))
         script = script.replace("${context.scope}", "EPIC-9")
+        script = script.replace("${context.scope:shell}", shlex.quote("EPIC-9"))
         script = f"export PATH={bin_dir}:$PATH\n" + script
         result = subprocess.run(["bash", "-c", script], cwd=run_dir, capture_output=True, text=True)
         assert result.returncode == 0, (
@@ -4169,6 +4171,7 @@ class TestAutoRefineAndImplementLoop:
         mock_python3.chmod(0o755)
         script = action.replace("${context.run_dir}", str(run_dir))
         script = script.replace("${context.scope}", "EPIC-9")
+        script = script.replace("${context.scope:shell}", shlex.quote("EPIC-9"))
         script = f"export PATH={bin_dir}:$PATH\n" + script
         result = subprocess.run(["bash", "-c", script], cwd=run_dir, capture_output=True, text=True)
         assert result.returncode == 1, (
@@ -5255,7 +5258,7 @@ class TestCheckoutEpicBranchConfigReadShell:
 
         loop = yaml.safe_load((BUILTIN_LOOPS_DIR / "auto-refine-and-implement.yaml").read_text())
         action = loop["states"]["checkout_epic_branch"]["action"]
-        action = action.replace("${context.scope}", scope).replace(
+        action = action.replace("${context.scope:shell}", shlex.quote(scope)).replace(
             "${context.run_dir}", str(run_dir)
         )
         return subprocess.run(
@@ -5322,7 +5325,11 @@ class TestVerifyStateConfigReadShell:
         run_dir.mkdir()
 
         loop = yaml.safe_load((BUILTIN_LOOPS_DIR / "auto-refine-and-implement.yaml").read_text())
-        action = loop["states"]["verify"]["action"].replace("${context.run_dir}", str(run_dir))
+        action = (
+            loop["states"]["verify"]["action"]
+            .replace("${context.run_dir}", str(run_dir))
+            .replace("${context.scope:shell}", shlex.quote(""))
+        )
         result = subprocess.run(
             ["bash", "-c", action], cwd=tmp_path, capture_output=True, text=True, timeout=30
         )
@@ -5414,7 +5421,7 @@ class TestVerifyStateConfigReadShell:
         action = (
             loop["states"]["verify"]["action"]
             .replace("${context.run_dir}", str(run_dir))
-            .replace("${context.scope}", "EPIC-42")
+            .replace("${context.scope:shell}", shlex.quote("EPIC-42"))
         )
         result = subprocess.run(
             ["bash", "-c", action], cwd=tmp_path, capture_output=True, text=True, timeout=30
@@ -5545,7 +5552,7 @@ class TestMergeEpicBranchConfigReadShell:
 
         loop = yaml.safe_load((BUILTIN_LOOPS_DIR / "auto-refine-and-implement.yaml").read_text())
         action = loop["states"]["merge_epic_branch"]["action"]
-        action = action.replace("${context.scope}", "EPIC-42").replace(
+        action = action.replace("${context.scope:shell}", shlex.quote("EPIC-42")).replace(
             "${context.run_dir}", str(run_dir)
         )
         result = subprocess.run(
@@ -5627,7 +5634,7 @@ class TestMergeEpicBranchConfigReadShell:
 
         loop = yaml.safe_load((BUILTIN_LOOPS_DIR / "auto-refine-and-implement.yaml").read_text())
         action = loop["states"]["merge_epic_branch"]["action"]
-        action = action.replace("${context.scope}", "EPIC-42").replace(
+        action = action.replace("${context.scope:shell}", shlex.quote("EPIC-42")).replace(
             "${context.run_dir}", str(run_dir)
         )
         second = subprocess.run(
@@ -14524,7 +14531,7 @@ class TestMigrateSdkVersionListStaleExecution:
         action = data["states"]["list_stale"]["action"]
         run_dir = project_dir / "run"
         action = action.replace("${context.run_dir}", str(run_dir))
-        action = action.replace("${context.targets}", targets)
+        action = action.replace("${context.targets:shell}", shlex.quote(targets))
         return _bash(action, project_dir)
 
     def test_age_stale_proven_record_is_queued(self, tmp_path: Path) -> None:
@@ -14716,11 +14723,13 @@ class TestApplyResearchLoop:
 
     def test_relevance_threshold_used_in_filter_items(self, data: dict) -> None:
         action = data["states"]["filter_items"].get("action", "")
-        assert "${context.relevance_threshold}" in action
+        assert "${context.relevance_threshold:shell}" in action
+        assert 'os.environ[\'LL_ARG_RELEVANCE_THRESHOLD\']' in action
 
     def test_max_issues_per_file_used_in_filter_items(self, data: dict) -> None:
         action = data["states"]["filter_items"].get("action", "")
-        assert "${context.max_issues_per_file}" in action
+        assert "${context.max_issues_per_file:shell}" in action
+        assert 'os.environ[\'LL_ARG_MAX_ISSUES_PER_FILE\']' in action
 
     def test_run_dir_used_throughout(self, data: dict) -> None:
         """All shell states reference run_dir for artifact isolation."""

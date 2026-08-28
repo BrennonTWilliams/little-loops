@@ -148,8 +148,8 @@ states:
 
   check_lifetime_limit:
     action: |
-      MAX_TOTAL=$(python3 << 'PYEOF'
-      import json
+      MAX_TOTAL=$(LL_ARG_MAX_REFINE_COUNT=${context.max_refine_count:shell} python3 << 'PYEOF'
+      import json, os
       from pathlib import Path
       p = Path('.ll/ll-config.json')
       cfg = {}
@@ -158,7 +158,7 @@ states:
               cfg = json.loads(p.read_text())
           except Exception:
               pass
-      print(cfg.get('commands', {}).get('max_refine_count', ${context.max_refine_count}))
+      print(cfg.get('commands', {}).get('max_refine_count', int(os.environ['LL_ARG_MAX_REFINE_COUNT'])))
       PYEOF
       )
       [ -z "$MAX_TOTAL" ] && MAX_TOTAL=${context.max_refine_count}
@@ -542,8 +542,8 @@ states:
     # Readiness below threshold → retry refinement (refine-issue can fix technical gaps).
     # Readiness passes → proceed to check_outcome.
     action: |
-      python3 << 'PYEOF'
-      import json, sys, subprocess
+      LL_ARG_READINESS_THRESHOLD=${context.readiness_threshold:shell} python3 << 'PYEOF'
+      import json, os, sys, subprocess
       from pathlib import Path
 
       p = Path('.ll/ll-config.json')
@@ -553,7 +553,7 @@ states:
               cg = json.loads(p.read_text()).get('commands', {}).get('confidence_gate', {})
           except Exception:
               pass
-      readiness = cg.get('readiness_threshold', ${context.readiness_threshold})
+      readiness = cg.get('readiness_threshold', int(os.environ['LL_ARG_READINESS_THRESHOLD']))
 
       r = subprocess.run(
           ['ll-issues', 'show', '${captured.issue_id.output}', '--json'],
@@ -574,8 +574,8 @@ states:
     # Outcome below threshold → check_decision_needed before falling through to breakdown_issue.
     # Outcome passes → done.
     action: |
-      python3 << 'PYEOF'
-      import json, sys, subprocess
+      LL_ARG_OUTCOME_THRESHOLD=${context.outcome_threshold:shell} python3 << 'PYEOF'
+      import json, os, sys, subprocess
       from pathlib import Path
 
       p = Path('.ll/ll-config.json')
@@ -585,7 +585,7 @@ states:
               cg = json.loads(p.read_text()).get('commands', {}).get('confidence_gate', {})
           except Exception:
               pass
-      outcome = cg.get('outcome_threshold', ${context.outcome_threshold})
+      outcome = cg.get('outcome_threshold', int(os.environ['LL_ARG_OUTCOME_THRESHOLD']))
 
       r = subprocess.run(
           ['ll-issues', 'show', '${captured.issue_id.output}', '--json'],
@@ -725,8 +725,8 @@ states:
     # on_no routes to breakdown_issue (not failed) — outcome-only failures here
     # should not stall the loop; scope reduction is the appropriate intervention.
     action: |
-      python3 << 'PYEOF'
-      import json, sys, subprocess
+      LL_ARG_READINESS_THRESHOLD=${context.readiness_threshold:shell} LL_ARG_OUTCOME_THRESHOLD=${context.outcome_threshold:shell} python3 << 'PYEOF'
+      import json, os, sys, subprocess
       from pathlib import Path
 
       p = Path('.ll/ll-config.json')
@@ -736,8 +736,8 @@ states:
               cg = json.loads(p.read_text()).get('commands', {}).get('confidence_gate', {})
           except Exception:
               pass
-      readiness = cg.get('readiness_threshold', ${context.readiness_threshold})
-      outcome = cg.get('outcome_threshold', ${context.outcome_threshold})
+      readiness = cg.get('readiness_threshold', int(os.environ['LL_ARG_READINESS_THRESHOLD']))
+      outcome = cg.get('outcome_threshold', int(os.environ['LL_ARG_OUTCOME_THRESHOLD']))
 
       r = subprocess.run(
           ['ll-issues', 'show', '${captured.issue_id.output}', '--json'],

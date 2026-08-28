@@ -120,7 +120,8 @@ class TestRunPlannerState:
 
     def test_references_tasks_file(self, raw_data: dict) -> None:
         action = raw_data["states"]["run_planner"].get("action", "")
-        assert "${context.tasks_file}" in action
+        assert "${context.tasks_file:shell}" in action
+        assert 'os.environ.get("LL_ARG_TASKS_FILE", "")' in action
 
     def test_forwards_plan_prompt_file_to_rn_plan(self, raw_data: dict) -> None:
         """run_planner must pass plan_prompt_file into each rn-plan invocation (BUG-2417).

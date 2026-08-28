@@ -2396,7 +2396,8 @@ class TestPolicyRouterLib:
     def test_policy_table_dispatch_uses_policy_rules_context(self) -> None:
         data = self._load_yaml()
         action = data["fragments"]["policy_table_dispatch"]["action"]
-        assert "${context.policy_rules}" in action
+        assert "${context.policy_rules:shell}" in action
+        assert 'os.environ.get("LL_ARG_POLICY_RULES", "")' in action
 
     def test_policy_table_dispatch_imports_policy_rules_module(self) -> None:
         data = self._load_yaml()

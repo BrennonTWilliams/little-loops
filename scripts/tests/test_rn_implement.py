@@ -1270,7 +1270,7 @@ class TestLearningReadyGate:
         """The prove-attempt branch reads auto_prove and only calls
         `ll-learning-tests prove` when it is set."""
         action = _load_loop()["states"]["check_learning_ready"]["action"]
-        assert "${context.auto_prove_learning_gate}" in action
+        assert "${context.auto_prove_learning_gate:shell}" in action
         assert '"ll-learning-tests", "prove"' in action
         assert "not proven and auto_prove" in action
 
@@ -1310,7 +1310,7 @@ class TestLearningReadyGate:
         override wins, else learning_tests.enabled && learning_tests.auto_prove."""
         action = _load_loop()["states"]["check_learning_ready"]["action"]
         # Explicit per-run override token is preserved as the top tier.
-        assert "${context.auto_prove_learning_gate}" in action
+        assert "${context.auto_prove_learning_gate:shell}" in action
         # Config tier reads the two learning_tests keys from .ll/ll-config.json.
         assert ".ll/ll-config.json" in action
         assert '"learning_tests"' in action or "learning_tests" in action
@@ -1344,7 +1344,7 @@ class TestProveRemLearningGate:
         """The state resolves auto-prove the same 3-tier way and makes a prove call
         with its own timeout, mirroring check_learning_ready."""
         action = _load_loop()["states"]["prove_rem_learning_gate"]["action"]
-        assert "${context.auto_prove_learning_gate}" in action
+        assert "${context.auto_prove_learning_gate:shell}" in action
         assert ".ll/ll-config.json" in action
         assert "auto_prove" in action
         assert '"ll-learning-tests", "prove"' in action
@@ -1363,6 +1363,7 @@ class TestCheckLearningReadyConfigReadShell:
     ) -> tuple[int, str, bool]:
         import json
         import os
+        import shlex
         import subprocess
 
         # Issue with an unproven required target.
@@ -1393,7 +1394,7 @@ class TestCheckLearningReadyConfigReadShell:
         action = _load_loop()["states"]["check_learning_ready"]["action"]
         action = (
             action.replace("${context.skip_learning_gate}", "")
-            .replace("${context.auto_prove_learning_gate}", auto_prove_ctx)
+            .replace("${context.auto_prove_learning_gate:shell}", shlex.quote(auto_prove_ctx))
             .replace("${captured.input.output}", "TEST-999")
             .replace("${captured.run_dir.output}", str(run_dir))
             .replace("$$", "$")  # unescape FSM shell-brace guards

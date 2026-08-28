@@ -27,10 +27,10 @@ fragments:
     action: |
       mkdir -p "${context.run_dir}"
       COMPOSER_CATALOG_JSON=$(ll-loop list --json --visibility public 2>/dev/null)
-      COMPOSER_CATALOG_JSON="$COMPOSER_CATALOG_JSON" python3 << 'PYEOF'
+      COMPOSER_CATALOG_JSON="$COMPOSER_CATALOG_JSON" LL_ARG_INCLUDE=${context.include:default=:shell} LL_ARG_EXCLUDE=${context.exclude:shell} python3 << 'PYEOF'
       import json, os
       loops = json.loads(os.environ['COMPOSER_CATALOG_JSON'] or '[]')
-      include_raw = '${context.include:default=}'
+      include_raw = os.environ.get("LL_ARG_INCLUDE", "")
       includes = [s.strip() for s in include_raw.split(',') if s.strip()]
       def _matches_include(loop):
           if not includes:
@@ -49,7 +49,7 @@ fragments:
                   return True
           return False
       loops = [l for l in loops if _matches_include(l)]
-      exclude_raw = '${context.exclude}'
+      exclude_raw = os.environ.get("LL_ARG_EXCLUDE", "")
       excludes = set(x.strip() for x in exclude_raw.split(',') if x.strip())
       excludes.add('loop-router')
       excludes.add('loop-composer')
@@ -95,12 +95,12 @@ fragments:
       State must supply: on_yes (valid), on_no (invalid → retry), on_error.
     action_type: shell
     action: |
-      python3 << 'PYEOF'
+      LL_ARG_MAX_PLAN_NODES=${context.max_plan_nodes:shell} python3 << 'PYEOF'
       import json, sys, os, collections
 
       run_dir = '${context.run_dir}'
       plan_file = os.path.join(run_dir, 'composer-plan.json')
-      max_nodes = int('${context.max_plan_nodes}' or '8')
+      max_nodes = int(os.environ.get("LL_ARG_MAX_PLAN_NODES", "") or "8")
 
       errors = []
 
