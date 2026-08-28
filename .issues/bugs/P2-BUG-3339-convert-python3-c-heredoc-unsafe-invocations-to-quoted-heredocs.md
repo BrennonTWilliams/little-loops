@@ -81,7 +81,7 @@ file.
 
 ## Steps to Reproduce
 
-1. Run `loop-router`'s `discover_loops` state (or any of the 9 confirmed
+1. Run `loop-router`'s `discover_loops` state (or any of the confirmed
    sites in Integration Map) with an `${context.include}`/`${context.exclude}`
    (or the site's equivalent interpolated key) containing a `"` or a
    `$(...)` command-substitution token — e.g.
@@ -123,8 +123,14 @@ interpolation inside the Python-literal body (locator + analyzer, cross-checked)
 
 - `scripts/little_loops/loops/loop-router.yaml` — `discover_loops` (31-79):
   `${context.include}` (34), `${context.exclude}` (53), `${context.run_dir}` (76)
-- `scripts/little_loops/loops/sft-corpus.yaml` — 9 sites, each `${context.output_dir}`
-  plus a state-specific key: lines 114, 136, 139, 156, 178, 198, 220, 240, 262, 319
+- `scripts/little_loops/loops/sft-corpus.yaml` — 9 states / 18 baseline var
+  entries (lines 114, 136, 139, 156, 178, 198, 220, 240, 262, 319): the 4
+  `check_*` states each carry `${captured.enrich_output.output}` (captured
+  LLM output, class B) plus a `${context.*}` threshold key; the 5 `reject_*`
+  states each carry `${captured.enrich_output.output}` plus
+  `${context.output_dir}`. The heredoc conversion is interim at these class-B
+  sites — BUG-3341 still owns the remaining Python-literal remedy for the
+  captured LLM value.
 - `scripts/little_loops/loops/autodev.yaml` — 4 confirmed groups:
   1619-1653 (`${context.run_dir}` at 1633/1640, `${context.readiness_threshold}`),
   1739-1746 (`${context.readiness_threshold}`),
@@ -132,15 +138,21 @@ interpolation inside the Python-literal body (locator + analyzer, cross-checked)
   2047-2054 (same pair repeated)
 - `scripts/little_loops/loops/lib/composer.yaml` — `discover_loops` fragment
   (18-79), near-identical to loop-router's: `${context.include:default=}` (32),
-  `${context.exclude}` (51)
+  `${context.exclude}` (51), `${context.run_dir}` (baseline class C — the
+  analog of loop-router's line-76 occurrence)
 - `scripts/little_loops/loops/oracles/oracle-capture-issue.yaml` —
   `check_mechanical` (28-54): `${context.output}` (34, triple-single-quoted literal)
 - `scripts/little_loops/loops/oracles/code-run-gate.yaml:438` —
   `${context.min_pass_rate}`, inside an `if ! python3 -c "..."; then` condition
 - `scripts/little_loops/loops/rn-plan-apo.yaml:48` — `${context.tasks_file}`,
   single-line `-c` body redirected with `>`
-- `scripts/little_loops/loops/general-task.yaml:895-902` —
-  `${captured.final_counts.output:default={}}`, wrapped in `$(...) || echo 0`
+- `scripts/little_loops/loops/general-task.yaml` — 2 sites:
+  `summarize_success` (895-902, `${captured.final_counts.output:default={}}`,
+  wrapped in `$(...) || echo 0`) and `check_abandoned_route` (934-943,
+  `${context.run_dir}`, class C, `action_type: shell`) — the latter is a
+  plain token-swap conversion, but its `evaluate: type: output_numeric`
+  means the converted heredoc must preserve stdout exactly (the printed
+  count is the routing signal)
 - `scripts/little_loops/loops/harness-optimize.yaml` — `load_directive`
   (39-45, `action_type: shell`): `${context.run_dir}` (45), closed on the same
   physical line with a trailing `2>/dev/null || true`. Distinct from the
@@ -176,13 +188,16 @@ interpolation inside the Python-literal body (locator + analyzer, cross-checked)
   baseline: all 6 of this file's entries are `host_shape="heredoc"`, none
   `"c-string"`. Confirmed out of scope.
 
-The confirmed list is 12 files: the 8 above from the original pass, plus
-`harness-optimize.yaml`, `cli-anything-bootstrap.yaml`, and
-`workflow-generator.yaml`, added by reconciling against ENH-3338's now-landed
-baseline (`scripts/tests/data/loop_interpolation_baseline.json`, filtered to
-`host_shape == "c-string"`) — the authoritative source per this issue's
-Summary. The parent survey's original "53 sites, 11 files" figure is
-superseded by the baseline; do not reconcile against the survey.
+The confirmed list is **11 files** (matching the baseline exactly): the 8
+from the original pass, plus `harness-optimize.yaml`,
+`cli-anything-bootstrap.yaml`, and `workflow-generator.yaml`, added by
+reconciling against ENH-3338's now-landed baseline
+(`scripts/tests/data/loop_interpolation_baseline.json`, filtered to
+`host_shape == "c-string"` → 45 sites, 11 files) — the authoritative source
+per this issue's Summary. An earlier revision of this issue said "12 files"
+— an arithmetic error that double-counted `harness-optimize.yaml`. The
+parent survey's original "53 sites, 11 files" figure is also superseded by
+the baseline; do not reconcile against the survey.
 
 ### Conventions in Force
 
@@ -229,7 +244,7 @@ superseded by the baseline; do not reconcile against the survey.
   Tests section, this is where the four planned behavioral cases (apostrophe
   goal, `"""` capture, Python injection, shell-injection-at-a-converted-`-c "`-site)
   are meant to live.
-- File-specific coverage for the 12 confirmed target files:
+- File-specific coverage for the 11 confirmed target files:
   `scripts/tests/test_loops_sft_corpus.py` (sft-corpus.yaml),
   `scripts/tests/test_autodev_loop.py` (autodev.yaml). No file-specific test
   module was found for `loop-router.yaml`, `lib/composer.yaml`,
@@ -265,7 +280,13 @@ _Added by `/ll:refine-issue` — 2026-08-28 — based on codebase analysis:_
 - **`cli-anything-bootstrap.yaml` — one new confirmed site.** `validate-classification` state (`cli-anything-bootstrap.yaml:143-159`, `action_type: shell`, `evaluate: type: exit_code` directly on the state, no `if !` wrapper) — `python3 -c "..."` interpolates `${captured.run_dir.output}` (baseline: `var=captured.run_dir.output`, `class=B`, line 149). The file's other 5 `python3 -c` occurrences (lines 215, 299, 328, 329, 330) reference only bash-local variables inside the Python literal, not a direct `${context.*}`/`${captured.*}` token, and are not baseline-flagged. No existing heredoc conversion exists anywhere in this file (no `PYEOF`/`PY` delimiter present) — this would be the file's first.
 - **`workflow-generator.yaml` — five new confirmed sites**, all `var=captured.run_dir.output`, `class=B`: `validate_intent` (line 212, output piped to `tee`, explicit `RC=$?`/`exit "$RC"` after — needs the same testable-exit-status handling as the `$(...) || echo` fallback sites already flagged under Program Design), `validate_sketch` (line 391), `validate_evaluators` (line 474), `validate_routing` (line 525), `shrink_select_candidate` (line 683, 3 occurrences of the same var merged into one baseline entry). This file already contains 3 in-file heredoc conversions (`shrink_baseline`, `shrink_try_remove`, `shrink_probe_candidate`) as before/after precedent for its own remaining unconverted sites — see Conventions in Force.
 - **`rn-build.yaml`'s absence from the baseline's c-string file list independently corroborates this issue's manual finding.** The baseline contains 6 `rn-build.yaml` entries, all `host_shape="heredoc"`, none `"c-string"` — none of the file's 10 `python3 -c "` occurrences carries a scannable `${context.*}`/`${captured.*}` token inside the Python-literal body, matching the per-site check already recorded here.
-- **Corrected count for AC #6 reconciliation**: the confirmed-site file count is 12 (9 previously confirmed + `harness-optimize.yaml`, `cli-anything-bootstrap.yaml`, `workflow-generator.yaml`), not 9. See the superseded-marker note on the "confirmed list above is 9 files" line and on Acceptance Criteria #1/#2 below.
+- **Corrected count for AC #6 reconciliation**: the confirmed-site file count is **11**, matching the baseline's `host_shape == "c-string"` file set exactly (45 sites / 11 files). An earlier revision said 12 — an arithmetic error double-counting `harness-optimize.yaml` (it was both in the prior confirmed list and counted again among the reconciliation additions).
+
+_Added by pre-implementation review — 2026-08-28 — verified against baseline + live YAML:_
+
+- **Missed site caught: `general-task.yaml:check_abandoned_route` (934-943).** A second c-string site in `general-task.yaml` — `action_type: shell`, `python3 -c "..."` with `${context.run_dir}` in the Python body, present in the baseline (`class=C`) but absent from every prior revision of this issue's site list. Plain token-swap conversion; its `evaluate: type: output_numeric` requires the converted heredoc to preserve stdout exactly. Now listed in Files to Modify.
+- **`lib/composer.yaml` carries a third baseline var**: `context.run_dir` (class C), the analog of loop-router's line-76 occurrence — added to its Files to Modify entry.
+- **`sft-corpus.yaml` var description corrected**: prior text said "each `${context.output_dir}` plus a state-specific key"; the baseline shows the 4 `check_*` states carry `${captured.enrich_output.output}` (class B) + a `context.*` threshold key, and the 5 `reject_*` states carry `${captured.enrich_output.output}` + `${context.output_dir}` — 9 states, 18 var entries.
 
 ## Program Design
 
@@ -371,7 +392,8 @@ _Added by `/ll:refine-issue` — 2026-08-28 — based on codebase analysis:_
 
 ## Implementation Steps
 
-1. The 12 confirmed sites (Integration Map → Files to Modify) resolve to a
+1. Every confirmed site (Integration Map → Files to Modify; 45 baseline
+   sites across 11 files) resolves to a
    quoted heredoc (`python3 << 'MARKER' ... MARKER`) with bash performing no
    expansion on the body, and their `${context.*}`/`${captured.*}`
    interpolations land unchanged inside the Python source — the conversion is
@@ -427,7 +449,7 @@ _Added by `/ll:refine-issue` — 2026-08-28 — based on codebase analysis:_
 
 1. Every site listed under Integration Map → Files to Modify is converted
    from `python3 -c "..."` to a quoted heredoc; `ll-loop validate` passes
-   clean (no new MR-11 warnings) on all 12 confirmed files, reconciled
+   clean (no new MR-11 warnings) on all 11 confirmed files, reconciled
    against ENH-3338's baseline: `loop-router.yaml`, `sft-corpus.yaml`,
    `autodev.yaml`, `lib/composer.yaml`, `oracles/oracle-capture-issue.yaml`,
    `oracles/code-run-gate.yaml`, `rn-plan-apo.yaml`, `general-task.yaml`,
@@ -437,8 +459,9 @@ _Added by `/ll:refine-issue` — 2026-08-28 — based on codebase analysis:_
    `action_type: prompt` and stays excluded; its separate `load_directive`
    state (39-45, `action_type: shell`) is confirmed in-scope and converted
    along with the file's other confirmed sites.
-3. `rn-build.yaml`'s scope status (in or out of this issue) is resolved and
-   recorded, based on an individual check of its 10 `python3 -c "` sites.
+3. `rn-build.yaml` stays out of scope, per the recorded individual check of
+   its 10 `python3 -c "` sites (already resolved in Codebase Research
+   Findings; re-verify only if the file changed since 2026-08-28).
 4. The structural sites (`code-run-gate.yaml:438`, `autodev.yaml:1619-1653`,
    `autodev.yaml:1815-1824`, `general-task.yaml:895-902`,
    `rn-plan-apo.yaml:48`) preserve their existing control-flow/fallback
@@ -469,7 +492,7 @@ _Added by `/ll:refine-issue` — 2026-08-28 — based on codebase analysis:_
   site is both an availability bug (an interpolated value containing `"` or
   `$` breaks the shell tokenizing, not just the Python parse) and a shell
   injection (operator/LLM-controlled text reaching `bash -c` unquoted).
-- **Effort**: Small–Medium — a mechanical per-site rewrite across 9 confirmed
+- **Effort**: Small–Medium — a mechanical per-site rewrite across 11 confirmed
   files (see Integration Map), but several sites are not a pure 1:1 token swap
   (see Program Design → Call Path and the flagged complications below);
   `ll-loop validate` must be run and stay clean on each converted file.
@@ -493,8 +516,8 @@ _Added by `/ll:confidence-check` on 2026-08-28_
 **Outcome Confidence**: 62/100 → MODERATE
 
 ### Outcome Risk Factors
-- Broad enumeration across ~28 change sites in 12 files (Breadth 0/12) — a high site count raises the odds one site is missed or malformed during the sweep, even though most sites are mechanical token swaps.
-- Only 2 of 12 target files (`sft-corpus.yaml`, `autodev.yaml`) have dedicated test modules; the other 10 rely solely on `ll-loop validate`, a structural/static linter that won't catch a behaviorally-broken Python body until the affected state actually runs — mitigate by exercising the structurally-entangled sites (`code-run-gate.yaml:438`, the `autodev.yaml` pipe-fed groups, `general-task.yaml:895-902`) directly per Acceptance Criterion #4.
+- Broad enumeration across ~28 change sites in 11 files (Breadth 0/12) — a high site count raises the odds one site is missed or malformed during the sweep, even though most sites are mechanical token swaps. (Pre-implementation review already caught one such miss — `general-task.yaml:check_abandoned_route` — now in the site list.)
+- Only 2 of 11 target files (`sft-corpus.yaml`, `autodev.yaml`) have dedicated test modules; the other 9 rely solely on `ll-loop validate`, a structural/static linter that won't catch a behaviorally-broken Python body until the affected state actually runs — mitigate by exercising the structurally-entangled sites (`code-run-gate.yaml:438`, the `autodev.yaml` pipe-fed groups, `general-task.yaml:895-902`) directly per Acceptance Criterion #4.
 
 ## Session Log
 - `/ll:confidence-check` - 2026-08-28T16:59:31 - `5e4f9ac6-d048-48b7-a0cd-6e184370a286.jsonl`
