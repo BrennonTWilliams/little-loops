@@ -520,6 +520,7 @@ _Added by `/ll:confidence-check` on 2026-08-28_
 - Only 2 of 11 target files (`sft-corpus.yaml`, `autodev.yaml`) have dedicated test modules; the other 9 rely solely on `ll-loop validate`, a structural/static linter that won't catch a behaviorally-broken Python body until the affected state actually runs — mitigate by exercising the structurally-entangled sites (`code-run-gate.yaml:438`, the `autodev.yaml` pipe-fed groups, `general-task.yaml:895-902`) directly per Acceptance Criterion #4.
 
 ## Session Log
+- `/ll:ready-issue` - 2026-08-28T17:21:43 - `510b8679-9ba8-49c8-a1dd-0eab37a6d9bf.jsonl`
 - `/ll:confidence-check` - 2026-08-28T17:19:34 - `4e809575-d5cb-40f4-abcb-af120cec753f.jsonl`
 - `/ll:confidence-check` - 2026-08-28T16:59:31 - `5e4f9ac6-d048-48b7-a0cd-6e184370a286.jsonl`
 - `/ll:reconcile-issue` - 2026-08-28T16:54:12 - `1f800b67-df1c-4ef2-913d-0f4cba863bf8.jsonl`
