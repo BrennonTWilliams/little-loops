@@ -4855,8 +4855,9 @@ ll-adapt-agents-for-codex --force --apply  # Regenerate all files (including up-
 ### ll-mcp
 
 MCP server (2026-07-28 spec) — stdio by default, streamable HTTP with `--http` — exposing
-fifteen coarse tools over the `little_loops` library. Seven read: `issues_query`,
-`issue_get`, `history_search`, `deps_check`, `capabilities`, `queue_list`, `queue_get`.
+sixteen coarse tools over the `little_loops` library. Eight read: `issues_query`,
+`issue_get`, `history_search`, `deps_check`, `capabilities`, `queue_list`, `queue_get`,
+`loop_list` (FEAT-3352).
 Seven write, dry-run by default: `issue_capture`, `issue_set_status`, `issue_link`,
 `issue_append_log` (FEAT-3149), `queue_add`, `queue_remove`, `queue_requeue` (FEAT-3343).
 One starts a run: `loop_start` (FEAT-3151, see below). Started by an MCP-capable host (Claude
@@ -4882,7 +4883,7 @@ from the SEP-2243 `Mcp-Method`/`Mcp-Name` headers, before the JSON-RPC body is p
 a JSON-RPC error (`-32001`) and HTTP 403; the `tools/call` handler itself also enforces the
 same policy on both transports (FEAT-3168), so the decision is uniform even when the ASGI
 layer is bypassed or the call arrives over stdio. Reads on the same server are unaffected. The seven
-carry a `readOnlyHint: false` annotation in `tools/list`; the seven read-only tools carry no
+carry a `readOnlyHint: false` annotation in `tools/list`; the eight read-only tools carry no
 annotations, which is how a host tells the groups apart.
 
 `ll-queue`'s three mutating tools (`queue_add`, `queue_remove`, `queue_requeue`, FEAT-3343)

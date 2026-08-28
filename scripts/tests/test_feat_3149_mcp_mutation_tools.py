@@ -122,6 +122,7 @@ TIER1_NAMES = [
     "capabilities",
     "queue_list",
     "queue_get",
+    "loop_list",
 ]
 
 
@@ -164,10 +165,10 @@ def test_ac1_tier1_tools_keep_their_shape_and_ordering(tmp_path, monkeypatch) ->
         async with Client(build_server(transport="stdio")) as client:
             tools = (await client.list_tools()).tools
             names = [t.name for t in tools]
-            assert names[:7] == TIER1_NAMES
-            tier2_and_beyond = [n for n in names[7:] if n not in TASK_STARTING_TOOLS]
+            assert names[:8] == TIER1_NAMES
+            tier2_and_beyond = [n for n in names[8:] if n not in TASK_STARTING_TOOLS]
             assert sorted(tier2_and_beyond) == sorted(MUTATING_NAMES)
-            for tool in tools[:7]:
+            for tool in tools[:8]:
                 assert tool.annotations is None, (
                     f"{tool.name} gained an annotation — tier-1 output shapes must not change"
                 )

@@ -13,6 +13,7 @@ import os
 # PRESERVED because nested oracles are referenced by relative path from
 # parent loops (``ll-loop run`` round-trips through that path).
 import re as _re_path
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -99,6 +100,126 @@ def _load_loop_meta(path: Path) -> dict[str, Any]:
             "labels": [],
             "visibility": "public",
         }
+
+
+def _rel_key(path: Path, base: Path) -> str:
+    """Relative-path identifier matching what `ll-loop run` accepts."""
+    return str(path.relative_to(base).with_suffix(""))
+
+
+@dataclass
+class LoopCatalogEntry:
+    """One loop's catalog metadata (FEAT-3352) — the canonical shape both `cmd_list`'s
+    human/``--json`` rendering and the `loop_list` MCP tool serialize from. ``builtin`` is
+    symmetric (always present) because the human-rendering branch needs it for section
+    splits and badges; :meth:`to_json_item` drops it in favor of the wire convention.
+    """
+
+    name: str
+    path: Path
+    builtin: bool
+    description: str
+    category: str
+    labels: list[str]
+    visibility: str
+
+    def to_json_item(self) -> dict[str, Any]:
+        """Wire shape matching ``ll-loop list --json``: ``path`` stringified, ``builtin``
+        dropped, asymmetric ``built_in: True`` added only for built-ins."""
+        item: dict[str, Any] = {
+            "name": self.name,
+            "path": str(self.path),
+            "category": self.category,
+            "labels": self.labels,
+            "visibility": self.visibility,
+            "description": self.description,
+        }
+        if self.builtin:
+            item["built_in"] = True
+        return item
+
+
+@dataclass
+class LoopCatalog:
+    """Result of :func:`enumerate_loop_catalog`."""
+
+    entries: list[LoopCatalogEntry]
+    hidden_counts: dict[str, int]
+    total_before_filters: int
+
+
+def enumerate_loop_catalog(
+    *,
+    loops_dir: Path,
+    category: str | None = None,
+    label: list[str] | None = None,
+    visibilities: set[str] | None = None,
+    builtin_only: bool = False,
+) -> LoopCatalog:
+    """Enumerate the project's loop catalog: project loops from ``loops_dir`` first, then
+    built-ins not shadowed by a same-named project loop.
+
+    Non-printing extraction from `cmd_list` (FEAT-3352) shared by the CLI's human/``--json``
+    rendering and the `loop_list` MCP tool. ``visibilities=None`` shows every tier; a set of
+    tiers restricts to those (e.g. ``{"public"}`` is the CLI default; the legacy
+    ``--internal --examples`` combination is ``{"internal", "example"}``). Hidden-tier
+    tallying (for the CLI footer hint) happens only for the ``{"public"}`` case — the
+    ``--internal``/``--examples`` branch hides public loops but tallies nothing, matching
+    `cmd_list`'s pre-extraction behavior. Filter order (category → label → visibility) is
+    load-bearing: ``hidden_counts`` reflects only loops that survived the category/label
+    filters.
+    """
+    project_names: set[str] = set()
+    yaml_files: list[Path] = []
+    if not builtin_only and loops_dir.exists():
+        yaml_files = sorted(p for p in loops_dir.rglob("*.yaml") if is_runnable_loop(p))
+        project_names = {_rel_key(p, loops_dir) for p in yaml_files}
+
+    builtin_dir = get_builtin_loops_dir()
+    builtin_files: list[Path] = []
+    if builtin_dir.exists():
+        builtin_files = [
+            f
+            for f in sorted(builtin_dir.rglob("*.yaml"))
+            if is_runnable_loop(f) and _rel_key(f, builtin_dir) not in project_names
+        ]
+
+    entries: list[LoopCatalogEntry] = []
+    for path in yaml_files:
+        meta = _load_loop_meta(path)
+        entries.append(
+            LoopCatalogEntry(name=_rel_key(path, loops_dir), path=path, builtin=False, **meta)
+        )
+    for path in builtin_files:
+        meta = _load_loop_meta(path)
+        entries.append(
+            LoopCatalogEntry(name=_rel_key(path, builtin_dir), path=path, builtin=True, **meta)
+        )
+
+    total_before_filters = len(entries)
+
+    if category:
+        entries = [e for e in entries if e.category == category]
+
+    if label:
+        entries = [
+            e for e in entries if any(lf.lower() in [lb.lower() for lb in e.labels] for lf in label)
+        ]
+
+    hidden_counts: dict[str, int] = {"internal": 0, "example": 0}
+    if visibilities is None:
+        pass
+    elif visibilities == {"public"}:
+        for e in entries:
+            if e.visibility in hidden_counts:
+                hidden_counts[e.visibility] += 1
+        entries = [e for e in entries if e.visibility == "public"]
+    else:
+        entries = [e for e in entries if e.visibility in visibilities]
+
+    return LoopCatalog(
+        entries=entries, hidden_counts=hidden_counts, total_before_filters=total_before_filters
+    )
 
 
 def cmd_list(
@@ -190,96 +311,48 @@ def cmd_list(
     builtin_only = getattr(args, "builtin", False)
     no_truncate = getattr(args, "no_truncate", False)
 
-    def _rel_key(path: Path, base: Path) -> str:
-        """Relative-path identifier matching what `ll-loop run` accepts."""
-        return str(path.relative_to(base).with_suffix(""))
+    # The new --visibility flag is the canonical interface; the legacy --all /
+    # --internal / --examples flags remain supported for backwards compatibility and map
+    # onto the same underlying tiers. --all beats --visibility public when both are set
+    # (checked first); --visibility public beats --internal/--examples.
+    category_filter = getattr(args, "category", None)
+    label_filters: list[str] = getattr(args, "label", None) or []
+    visibility_flag: str | None = getattr(args, "visibility", None)
+    show_all = getattr(args, "all", False) or visibility_flag == "all"
+    show_internal = getattr(args, "internal", False) or visibility_flag == "internal"
+    show_examples = getattr(args, "examples", False) or visibility_flag == "example"
+    show_public_only = visibility_flag == "public"
 
-    # Collect project loops (skipped when --builtin is set). Recurse into
-    # subdirectories (e.g. oracles/) and filter to runnable FSM definitions so
-    # library fragments under loops/lib/ stay hidden.
-    project_names: set[str] = set()
-    yaml_files: list[Path] = []
-    if not builtin_only and loops_dir.exists():
-        yaml_files = sorted(p for p in loops_dir.rglob("*.yaml") if is_runnable_loop(p))
-        project_names = {_rel_key(p, loops_dir) for p in yaml_files}
+    visibilities: set[str] | None
+    if show_all:
+        visibilities = None
+    elif show_public_only:
+        visibilities = {"public"}
+    elif show_internal or show_examples:
+        visibilities = set()
+        if show_internal:
+            visibilities.add("internal")
+        if show_examples:
+            visibilities.add("example")
+    else:
+        visibilities = {"public"}
 
-    # Collect built-in loops (excluding those overridden by a project loop at
-    # the same relative path).
-    builtin_dir = get_builtin_loops_dir()
-    builtin_files: list[Path] = []
-    if builtin_dir.exists():
-        builtin_files = [
-            f
-            for f in sorted(builtin_dir.rglob("*.yaml"))
-            if is_runnable_loop(f) and _rel_key(f, builtin_dir) not in project_names
-        ]
+    catalog = enumerate_loop_catalog(
+        loops_dir=loops_dir,
+        category=category_filter,
+        label=label_filters or None,
+        visibilities=visibilities,
+        builtin_only=builtin_only,
+    )
 
-    if not yaml_files and not builtin_files:
+    if catalog.total_before_filters == 0:
         if getattr(args, "json", False):
             print_json([])
             return 0
         print("No loops available")
         return 0
 
-    # Build combined metadata list
-    all_loops: list[dict[str, Any]] = []
-    for path in yaml_files:
-        meta = _load_loop_meta(path)
-        all_loops.append(
-            {"name": _rel_key(path, loops_dir), "path": path, "builtin": False, **meta}
-        )
-    for path in builtin_files:
-        meta = _load_loop_meta(path)
-        all_loops.append(
-            {"name": _rel_key(path, builtin_dir), "path": path, "builtin": True, **meta}
-        )
-
-    # Apply --category filter
-    category_filter = getattr(args, "category", None)
-    if category_filter:
-        all_loops = [lp for lp in all_loops if lp["category"] == category_filter]
-
-    # Apply --label filter (action="append" → list or None)
-    label_filters: list[str] = getattr(args, "label", None) or []
-    if label_filters:
-        all_loops = [
-            lp
-            for lp in all_loops
-            if any(lf.lower() in [lb.lower() for lb in lp["labels"]] for lf in label_filters)
-        ]
-
-    # Apply visibility filter. The new --visibility flag is the canonical interface;
-    # the legacy --all / --internal / --examples flags remain supported for backwards
-    # compatibility and map onto the same underlying tiers.
-    visibility_flag: str | None = getattr(args, "visibility", None)
-    show_all = getattr(args, "all", False) or visibility_flag == "all"
-    show_internal = getattr(args, "internal", False) or visibility_flag == "internal"
-    show_examples = getattr(args, "examples", False) or visibility_flag == "example"
-    # When --visibility public is explicit, enforce it even if other legacy flags are set.
-    show_public_only = visibility_flag == "public"
-    hidden_counts: dict[str, int] = {"internal": 0, "example": 0}
-    if not show_all:
-        if show_public_only:
-            for lp in all_loops:
-                vis = lp.get("visibility", "public")
-                if vis in hidden_counts:
-                    hidden_counts[vis] += 1
-            all_loops = [lp for lp in all_loops if lp.get("visibility", "public") == "public"]
-        elif show_internal or show_examples:
-            wanted = set()
-            if show_internal:
-                wanted.add("internal")
-            if show_examples:
-                wanted.add("example")
-            all_loops = [lp for lp in all_loops if lp.get("visibility", "public") in wanted]
-        else:
-            for lp in all_loops:
-                vis = lp.get("visibility", "public")
-                if vis in hidden_counts:
-                    hidden_counts[vis] += 1
-            all_loops = [lp for lp in all_loops if lp.get("visibility", "public") == "public"]
-
-    if not all_loops:
+    if not catalog.entries:
         if getattr(args, "json", False):
             print_json([])
             return 0
@@ -287,21 +360,22 @@ def cmd_list(
         return 0
 
     if getattr(args, "json", False):
-        items: list[dict[str, Any]] = []
-        for lp in all_loops:
-            item: dict[str, Any] = {
-                "name": lp["name"],
-                "path": str(lp["path"]),
-                "category": lp["category"],
-                "labels": lp["labels"],
-                "visibility": lp.get("visibility", "public"),
-                "description": lp["description"],
-            }
-            if lp["builtin"]:
-                item["built_in"] = True
-            items.append(item)
-        print_json(items)
+        print_json([e.to_json_item() for e in catalog.entries])
         return 0
+
+    hidden_counts = catalog.hidden_counts
+    all_loops: list[dict[str, Any]] = [
+        {
+            "name": e.name,
+            "path": e.path,
+            "builtin": e.builtin,
+            "description": e.description,
+            "category": e.category,
+            "labels": e.labels,
+            "visibility": e.visibility,
+        }
+        for e in catalog.entries
+    ]
 
     # ------------------------------------------------------------------
     # Human-readable rendering (ENH-2572: scanning-first layout).

@@ -1,5 +1,5 @@
-"""ll-mcp: MCP server (stdio, and streamable HTTP per FEAT-3143) exposing five coarse
-read-only tools, four guarded mutation tools (FEAT-3149), and a `tasks/get` +
+"""ll-mcp: MCP server (stdio, and streamable HTTP per FEAT-3143) exposing eight coarse
+read-only tools, seven guarded mutation tools (FEAT-3149), and a `tasks/get` +
 `tasks/cancel` poll surface for `ll-loop` runs (FEAT-3145) over the little_loops library.
 
 Implements the 2026-07-28 MCP spec via the official `mcp` SDK (pinned exactly to 2.0.0 — see

@@ -1,5 +1,5 @@
-"""ll-mcp's tool surface: seven coarse read-only tools (FEAT-3135, plus `queue_list`/
-`queue_get`) plus seven guarded mutation tools (FEAT-3149, plus `queue_add`/
+"""ll-mcp's tool surface: eight coarse read-only tools (FEAT-3135, plus `queue_list`/
+`queue_get`/`loop_list`) plus seven guarded mutation tools (FEAT-3149, plus `queue_add`/
 `queue_remove`/`queue_requeue`).
 
 Each tool wraps an existing `little_loops` library function or helper directly — no CLI
@@ -507,6 +507,35 @@ def _tool_queue_get(arguments: dict[str, Any], *, project_root: Path) -> Any:
     return entry.to_dict()
 
 
+def _tool_loop_list(arguments: dict[str, Any], *, project_root: Path) -> Any:
+    """List the project's loop catalog (`ll-loop list`).
+
+    Wraps `enumerate_loop_catalog` (FEAT-3352) — the same non-printing enumeration
+    `cmd_list` calls — anchored at `project_root` via `_loops_dir` (ENH-3171/BUG-3180)
+    rather than the process cwd. `visibility` maps to the set-based signature: a single
+    tier becomes a one-element set, `"all"` becomes `None` (show everything). Returns each
+    entry's `to_json_item()` — byte-identical to `ll-loop list --json`.
+    """
+    from little_loops.cli.loop.info import enumerate_loop_catalog
+    from little_loops.mcp_server.tasks import _loops_dir
+
+    category = arguments.get("category")
+    label = arguments.get("label")
+    if label is not None and not isinstance(label, list):
+        raise ValueError("loop_list 'label' must be a list of strings")
+
+    visibility = str(arguments.get("visibility") or "public")
+    visibilities: set[str] | None = None if visibility == "all" else {visibility}
+
+    catalog = enumerate_loop_catalog(
+        loops_dir=_loops_dir(project_root),
+        category=str(category) if category else None,
+        label=[str(lb) for lb in label] if label else None,
+        visibilities=visibilities,
+    )
+    return [entry.to_json_item() for entry in catalog.entries]
+
+
 def _tool_queue_add(arguments: dict[str, Any], *, project_root: Path, apply: bool) -> Any:
     """Classify and persist a new `ll-queue` entry (`ll-queue add`).
 
@@ -689,6 +718,7 @@ _TOOL_HANDLERS: dict[str, Callable[..., Any]] = {
     "capabilities": _tool_capabilities,
     "queue_list": _tool_queue_list,
     "queue_get": _tool_queue_get,
+    "loop_list": _tool_loop_list,
     # Tier 2 (FEAT-3149) — these take an extra required `apply` keyword, which is why the
     # value type is `Callable[..., Any]` rather than `Callable[[dict], Any]`. The split is
     # by `policy.MUTATING_TOOLS`, not by a second registry, so there is exactly one list
@@ -813,6 +843,31 @@ _TOOLS: list[types.Tool] = [
                 "id": {"type": "string", "description": "Entry id (full uuid or 8+-char prefix)."},
             },
             "required": ["id"],
+            "additionalProperties": False,
+        },
+    ),
+    types.Tool(
+        name="loop_list",
+        description=(
+            "List the project's loop catalog (built-ins plus `.loops/`, with the same "
+            "override and visibility semantics `ll-loop list` applies) — project loops "
+            "first, then built-ins not shadowed by a same-named project loop."
+        ),
+        input_schema={
+            "type": "object",
+            "properties": {
+                "category": {"type": "string", "description": "Restrict to one category."},
+                "label": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Restrict to loops carrying any of these labels (case-insensitive).",
+                },
+                "visibility": {
+                    "type": "string",
+                    "enum": ["public", "internal", "example", "all"],
+                    "description": "Visibility tier to include. Default: public.",
+                },
+            },
             "additionalProperties": False,
         },
     ),
@@ -1136,9 +1191,9 @@ async def handle_list_tools(
     _ctx: ServerRequestContext[Any],
     _params: types.PaginatedRequestParams | None,
 ) -> types.ListToolsResult:
-    """`tools/list` handler: returns the fixed fifteen-tool catalog in source order.
+    """`tools/list` handler: returns the fixed sixteen-tool catalog in source order.
 
-    The seven tier-1 read-only tools come first, then the seven tier-2 mutating tools,
+    The eight tier-1 read-only tools come first, then the seven tier-2 mutating tools,
     then FEAT-3151's tier-3 start tool; only the tier-2 seven carry `annotations`, which is
     how a host tells the mutating group apart from the rest.
 

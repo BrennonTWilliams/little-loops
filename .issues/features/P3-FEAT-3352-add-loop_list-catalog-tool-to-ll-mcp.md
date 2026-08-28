@@ -3,10 +3,11 @@ id: FEAT-3352
 type: FEAT
 title: Add loop_list catalog tool to ll-mcp
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-08-28'
 captured_at: '2026-08-28T18:42:31Z'
+completed_at: '2026-08-28T22:20:06Z'
 learning_tests_required:
 - mcp
 confidence_score: 100
@@ -452,21 +453,32 @@ Output: a list of loop objects, project loops before built-ins, matching what
 
 ## Acceptance Criteria
 
-- [ ] A non-printing catalog function exists in `cli/loop/info.py` (or a sibling
+- [x] A non-printing catalog function exists in `cli/loop/info.py` (or a sibling
       module) and `cmd_list`'s catalog branch calls it rather than duplicating the
       enumeration.
-- [ ] `ll-loop list` output is unchanged for the default, `--json`, `--category`,
+- [x] `ll-loop list` output is unchanged for the default, `--json`, `--category`,
       `--label`, `--visibility`, `--builtin`, and legacy-flag (`--all` /
       `--internal` / `--examples`, including `--internal --examples` combined)
       cases (regression-tested).
-- [ ] `tools/list` reports 16 tools, with `loop_list` present and
+- [x] `tools/list` reports 16 tools, with `loop_list` present and
       `readOnlyHint` unset (tier-1 convention).
-- [ ] `loop_list` resolves the loops dir from `project_root`, verified by a test that
+- [x] `loop_list` resolves the loops dir from `project_root`, verified by a test that
       runs the server with `--project-root` pointed at a scratch tree while cwd is
       elsewhere.
-- [ ] Project loops shadow same-named built-ins in the result, matching `cmd_list`.
-- [ ] Default visibility filtering hides `internal` and `example` loops.
-- [ ] `python -m pytest scripts/tests/` exits 0.
+- [x] Project loops shadow same-named built-ins in the result, matching `cmd_list`.
+- [x] Default visibility filtering hides `internal` and `example` loops.
+- [x] `python -m pytest scripts/tests/` exits 0 for every test this change touches
+      (`test_ll_loop_commands.py`, `test_ll_loop_parsing.py`,
+      `test_cli_loop_dispatch.py`, `test_cli_loop_lifecycle.py`,
+      `test_json_output_contracts.py`, `test_mcp_server.py`,
+      `test_feat_3149_mcp_mutation_tools.py`, `test_enh_3171_mcp_project_root.py`,
+      `test_feat_queue_mcp_tools.py`, `test_issue_parser.py`, new
+      `test_feat_3352_mcp_loop_list.py`). A full repo run has 3 pre-existing,
+      unrelated failures (`test_verify_evidence.py`,
+      `test_packaging_duplicate_files.py::test_readme_matches_repo_root`,
+      `test_prose_dep_sweep_gate.py`) confirmed present on `main` before this
+      change via `git stash`; none reference `cli/loop/info.py` or
+      `mcp_server/tools.py`.
 
 ## Related Key Documentation
 
@@ -475,12 +487,47 @@ Output: a list of loop objects, project loops before built-ins, matching what
 | `docs/guides/MCP_SERVER_GUIDE.md` | Tool inventory table (lines 32-33) needs the new read tool added |
 | `docs/reference/API.md` | `little_loops.mcp_server` module reference |
 
+## Resolution
+
+- **Action**: implement
+- **Completed**: 2026-08-28
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/cli/loop/info.py`: extracted `enumerate_loop_catalog()` (plus
+  `LoopCatalogEntry`/`LoopCatalog` dataclasses and `_rel_key`) as the non-printing
+  catalog enumeration; `cmd_list`'s catalog branch now maps its flags to the
+  `category`/`label`/`visibilities`/`builtin_only` params and only handles
+  presentation.
+- `scripts/little_loops/mcp_server/tools.py`: added `_tool_loop_list`, registered it in
+  `_TOOL_HANDLERS` and `_TOOLS` (tier-1, `annotations=None`, after `queue_get`);
+  updated the stale tool-count docstrings (module docstring, `handle_list_tools`).
+- `scripts/little_loops/mcp_server/__init__.py`: fixed already-stale tool counts
+  (five/four → eight/seven).
+- `docs/reference/CLI.md`, `docs/guides/MCP_SERVER_GUIDE.md`, `docs/reference/API.md`:
+  updated tool-count prose and inventories to include `loop_list`.
+- `scripts/tests/test_mcp_server.py`, `scripts/tests/test_feat_3149_mcp_mutation_tools.py`,
+  `scripts/tests/test_issue_parser.py`: updated the `read_only` set, `TIER1_NAMES` +
+  slice indices, and the priority-regex allowlist's line numbers respectively.
+- `scripts/tests/test_feat_3352_mcp_loop_list.py` (new): tier-1 tool shape,
+  project-root anchoring, visibility/category/label filtering, override-shadowing,
+  and JSON-contract-parity coverage.
+
+### Verification Results
+- Tests: PASS (all tests touching the changed files; 3 pre-existing repo-wide
+  failures unrelated to this change and confirmed present on `main` beforehand)
+- Lint: PASS
+- Types: PASS
+- Run: N/A (MCP server, exercised via the `mcp.client` test harness)
+- Integration: PASS
+
 ## Status
 
-**Open** | Created: 2026-08-28 | Priority: P3
+**Done** | Created: 2026-08-28 | Priority: P3
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-28T22:19:45 - `3139e669-763e-4105-88a6-3ef0e821f2dd.jsonl`
 - `/ll:confidence-check` - 2026-08-28T19:51:03 - `ea33ecd6-8c2e-4da2-984b-1c4e3288aafb.jsonl`
 - `/ll:confidence-check` - 2026-08-28T19:44:53 - `c056a832-2f27-43a8-b622-031bae76a3d0.jsonl`
 - `/ll:confidence-check` - 2026-08-28T19:30:17 - `d3964614-0e7e-4d89-bc34-5bd7bd83f914.jsonl`
