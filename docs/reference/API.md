@@ -6283,6 +6283,80 @@ Recursively interpolate all string values in a dict.
 
 ---
 
+### little_loops.fsm.interp_sweep
+
+Static sweep classifying `${context.*}` / `${captured.*}` / `${prev.*}`
+interpolation sites found inside embedded Python bodies (heredocs and
+`python3 -c` strings) within loop-YAML shell actions (ENH-3338). A quoted
+heredoc or `-c` string protects a substituted value from *bash* expansion,
+but once the text lands inside a Python source string, an unescaped
+quote/backslash is a Python syntax break or injection — a distinct hazard
+from the bash-position risk MR-11 (`little_loops.fsm.validation`) checks.
+
+#### classify_site
+
+```python
+def classify_site(namespace: str, key: str) -> str
+```
+
+Classify one interpolation token by namespace and first path segment.
+Returns `"A"` (untrusted `context.*` key), `"B"` (always-untrusted
+`captured.*` or `prev.output`/`prev.stderr`), or `"C"` (trusted/runner-owned
+— e.g. `context.run_dir`, `prev.exit_code`). This is the single
+implementation of the classification rule; ENH-3342 imports it to widen
+MR-11 rather than duplicating it.
+
+#### InterpSite
+
+```python
+@dataclass(frozen=True)
+class InterpSite:
+    file: str
+    state: str
+    var: str
+    cls: str
+    host_shape: str            # "heredoc" | "c-string" — informational
+    misapplied_remedy: bool    # ":shell" found inside a Python body — informational
+    line: int                  # informational
+    count: int = 1             # informational
+```
+
+Equality and hash are restricted to `(file, state, var, cls)` so a ratcheting
+baseline can be diffed by set equality without churning on line-number drift.
+
+#### scan_action
+
+```python
+def scan_action(action: str, *, state: str, file: str) -> list[InterpSite]
+```
+
+Scans one shell action string, tracking both host shapes (a heredoc between
+its mid-line opener and column-0 terminator, and a `python3 -c "..."` /
+`-c '...'` body), and returns one `InterpSite` per interpolation token found
+inside a Python body. Tokens at a plain bash position — including a
+`:shell`-suffixed binding on the invocation line — are not reported here.
+
+#### scan_corpus
+
+```python
+def scan_corpus(root: Path) -> list[InterpSite]
+```
+
+Globs `root` recursively for `*.yaml`, walks both the `states:` and
+`fragments:` top-level keys of each loop (so `lib/*.yaml` fragment-only
+files are covered), skips non-shell (`action_type: prompt`, etc.) and
+slash-command actions, and returns all classified sites sorted
+deterministically by `(file, state, var, cls)`.
+
+`scripts/tests/test_builtin_loops.py`'s `TestInterpSweepBaseline` asserts
+`scan_corpus(BUILTIN_LOOPS_DIR)`'s result equals the checked-in
+`scripts/tests/data/loop_interpolation_baseline.json` — a ratchet that fails
+in both directions (new unbaselined site, or a stale entry that no longer
+scans), forcing each conversion commit (BUG-3339/3340/3341) to update the
+baseline in step with the corpus.
+
+---
+
 ### little_loops.fsm.validation
 
 FSM validation and loading utilities.

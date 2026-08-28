@@ -24,6 +24,7 @@ from little_loops.fsm.fence import (
     render_fence,
 )
 from little_loops.fsm.fragments import resolve_fragments
+from little_loops.fsm.interp_sweep import scan_corpus
 from little_loops.fsm.validation import (
     ValidationSeverity,
     _validate_generator_fix_discipline,
@@ -18240,24 +18241,18 @@ class TestCheckIntentScopeShellAction:
         """Run init's action with ${context.run_dir} substituted to run_dir_rel
         (relative to cwd, mirroring the real runner). Returns the completed
         process; stdout (rstripped) is the captured run_dir string."""
-        action = data["states"]["init"]["action"].replace(
-            "${context.run_dir}", run_dir_rel
-        )
+        action = data["states"]["init"]["action"].replace("${context.run_dir}", run_dir_rel)
         return subprocess.run(
             ["bash", "-c", action], cwd=cwd or repo, capture_output=True, text=True
         )
 
-    def _run_gate(
-        self, data: dict, run_dir: Path, cwd: Path
-    ) -> subprocess.CompletedProcess:
+    def _run_gate(self, data: dict, run_dir: Path, cwd: Path) -> subprocess.CompletedProcess:
         """Run check_intent_scope's action with ${captured.run_dir.output}
         substituted to the absolute run_dir, from the given cwd."""
         action = data["states"]["check_intent_scope"]["action"].replace(
             "${captured.run_dir.output}", str(run_dir)
         )
-        return subprocess.run(
-            ["bash", "-c", action], cwd=cwd, capture_output=True, text=True
-        )
+        return subprocess.run(["bash", "-c", action], cwd=cwd, capture_output=True, text=True)
 
     def _setup(
         self,
@@ -18302,9 +18297,7 @@ class TestCheckIntentScopeShellAction:
         assert result.returncode != 0
         assert "research/notes.md" in result.stdout
 
-    def test_iii_out_of_scope_tracked_file_modified_fails(
-        self, data: dict, tmp_path: Path
-    ) -> None:
+    def test_iii_out_of_scope_tracked_file_modified_fails(self, data: dict, tmp_path: Path) -> None:
         repo, cwd, run_dir = self._setup(data, tmp_path)
         (repo / "seed.txt").write_text("modified during run\n")
         result = self._run_gate(data, run_dir, cwd)
@@ -18344,9 +18337,7 @@ class TestCheckIntentScopeShellAction:
         result = self._run_gate(data, run_dir, cwd)
         assert result.returncode == 0, result.stdout + result.stderr
 
-    def test_vi_non_git_directory_skips_with_warning(
-        self, data: dict, tmp_path: Path
-    ) -> None:
+    def test_vi_non_git_directory_skips_with_warning(self, data: dict, tmp_path: Path) -> None:
         not_repo = tmp_path / "not-a-repo"
         not_repo.mkdir()
         init_result = self._run_init(data, not_repo, ".loops/runs/test")
@@ -18358,9 +18349,7 @@ class TestCheckIntentScopeShellAction:
         assert result.returncode == 0
         assert self.SKIPPED_TOKEN in result.stdout
 
-    def test_vi_b_zero_commit_repo_skips_with_warning(
-        self, data: dict, tmp_path: Path
-    ) -> None:
+    def test_vi_b_zero_commit_repo_skips_with_warning(self, data: dict, tmp_path: Path) -> None:
         repo = tmp_path / "repo"
         repo.mkdir()
         subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
@@ -18405,9 +18394,7 @@ class TestCheckIntentScopeShellAction:
         result = self._run_gate(data, run_dir, cwd)
         assert result.returncode == 0, result.stdout + result.stderr
 
-    def test_viii_run_dir_outside_worktree_clean_passes(
-        self, data: dict, tmp_path: Path
-    ) -> None:
+    def test_viii_run_dir_outside_worktree_clean_passes(self, data: dict, tmp_path: Path) -> None:
         outside = tmp_path / "outside-run-dir"
         repo, cwd, run_dir = self._setup(data, tmp_path, outside_run_dir=outside)
         result = self._run_gate(data, run_dir, cwd)
@@ -18440,9 +18427,7 @@ class TestCheckIntentScopeShellAction:
 
     # --- (x): .loops/ and .ll/ harness-state exclusion ---
 
-    def test_x_scratch_and_decisions_dir_writes_pass(
-        self, data: dict, tmp_path: Path
-    ) -> None:
+    def test_x_scratch_and_decisions_dir_writes_pass(self, data: dict, tmp_path: Path) -> None:
         repo, cwd, run_dir = self._setup(data, tmp_path)
         scratch = repo / ".loops" / "tmp" / "scratch"
         scratch.mkdir(parents=True, exist_ok=True)
@@ -18514,9 +18499,7 @@ class TestCheckIntentScopeShellAction:
 
     # --- (xiii): init's stdout is exactly one line ---
 
-    def test_xiii_init_stdout_exactly_one_line_in_repo(
-        self, data: dict, tmp_path: Path
-    ) -> None:
+    def test_xiii_init_stdout_exactly_one_line_in_repo(self, data: dict, tmp_path: Path) -> None:
         repo = tmp_path / "repo"
         self._init_repo(repo)
         init_result = self._run_init(data, repo, ".loops/runs/test")
@@ -18573,18 +18556,14 @@ class TestCheckIntentScopeShellAction:
     # zero-byte shape for the no-repo/zero-commit routes; these exercise it
     # directly against an otherwise-valid repo). ---
 
-    def test_missing_baseline_file_skips_with_warning(
-        self, data: dict, tmp_path: Path
-    ) -> None:
+    def test_missing_baseline_file_skips_with_warning(self, data: dict, tmp_path: Path) -> None:
         repo, cwd, run_dir = self._setup(data, tmp_path)
         (run_dir / "baseline-changed-set.json").unlink()
         result = self._run_gate(data, run_dir, cwd)
         assert result.returncode == 0
         assert self.SKIPPED_TOKEN in result.stdout
 
-    def test_unparseable_baseline_file_skips_with_warning(
-        self, data: dict, tmp_path: Path
-    ) -> None:
+    def test_unparseable_baseline_file_skips_with_warning(self, data: dict, tmp_path: Path) -> None:
         repo, cwd, run_dir = self._setup(data, tmp_path)
         (run_dir / "baseline-changed-set.json").write_text("not valid json {{{")
         result = self._run_gate(data, run_dir, cwd)
@@ -18837,6 +18816,69 @@ class TestUntrustedOutputSurvey:
             assert "checkpoints" in read_ckpt_action
             review_action = states["review_chain"].get("action", "") or ""
             assert "${captured.step_results_json.output}" in review_action
+
+
+class TestInterpSweepBaseline:
+    """ENH-3338: ratcheting baseline for unsafe context/captured/prev
+    interpolation sites found inside embedded Python bodies (heredocs and
+    ``python3 -c`` strings) in loop-YAML shell actions.
+
+    Both directions are load-bearing: a scanned site not in the baseline
+    fails (a new site was introduced without being converted or recorded),
+    and a baseline entry that no longer scans fails (stale entry; delete it
+    in the same commit that converts it). See EPIC-3336.
+    """
+
+    def test_completeness_guard(self) -> None:
+        baseline_path = Path(__file__).parent / "data" / "loop_interpolation_baseline.json"
+        baseline = json.loads(baseline_path.read_text())
+        expected = {
+            (entry["file"], entry["state"], entry["var"], entry["class"])
+            for entry in baseline["sites"]
+        }
+
+        discovered_sites = scan_corpus(BUILTIN_LOOPS_DIR)
+        discovered = {(s.file, s.state, s.var, s.cls) for s in discovered_sites}
+
+        assert discovered == expected, (
+            f"new unbaselined site(s): {discovered - expected}; "
+            f"stale baseline entr(y/ies) that no longer scan: {expected - discovered}"
+        )
+
+    def test_harness_optimize_prompt_action_is_not_a_site(self) -> None:
+        """AC 6: harness-optimize.yaml's `apply` state embeds a `python3 -c`
+        block in prompt instructional text (action_type: prompt), not a live
+        shell invocation -- it must not appear in the baseline."""
+        sites = scan_corpus(BUILTIN_LOOPS_DIR)
+        assert not any(
+            s.file == "loops/harness-optimize.yaml" and s.state == "apply" for s in sites
+        )
+
+    def test_mechanize_skills_validate_diagnosis_is_one_site(self) -> None:
+        """AC 7: the converted SKILL_FILE binding (bash-token position) is not
+        a site; the raw ${captured.run_dir.output} inside the same heredoc's
+        Python body is exactly one site -- proving per-site, not per-file,
+        assertion."""
+        sites = scan_corpus(BUILTIN_LOOPS_DIR)
+        matches = [
+            s
+            for s in sites
+            if s.file == "loops/mechanize-skills.yaml" and s.state == "validate_diagnosis"
+        ]
+        assert len(matches) == 1
+        assert matches[0].var == "captured.run_dir.output"
+
+    def test_brainstorm_data_sink_heredoc_is_not_a_site(self) -> None:
+        """AC 11: brainstorm.yaml's shipped BUG-2468 fix writes the LLM
+        payload to a file via `cat > ... << 'RAWEOF'` (a data sink, read back
+        with `open()` inside the following `python3` heredoc) instead of
+        interpolating it into the Python source directly -- the RAWEOF body's
+        ${captured.round_ideas.output} must not appear in the baseline."""
+        sites = scan_corpus(BUILTIN_LOOPS_DIR)
+        assert not any(
+            s.file == "loops/brainstorm.yaml" and s.var == "captured.round_ideas.output"
+            for s in sites
+        )
 
 
 class TestConfidenceGateThresholdsNotHardcoded:

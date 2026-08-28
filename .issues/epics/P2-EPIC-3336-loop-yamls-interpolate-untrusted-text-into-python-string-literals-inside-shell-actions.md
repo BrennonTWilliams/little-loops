@@ -61,11 +61,31 @@ Densest files: `sft-corpus.yaml` (38), `loop-router.yaml` (35),
 `recursive-refine.yaml` (29), `goal-cluster.yaml` (19), `autodev.yaml` (13),
 `loop-composer-adaptive.yaml` (13), `mechanize-skills.yaml` (13, all class C).
 
-**These counts are provisional.** They come from a hand-run scan, and BUG-3339's
-refinement already contradicted the `-c "` figure (it could confirm 9 files, not
-11, and ruled out `harness-optimize.yaml` as `action_type: prompt`). **ENH-3338's
-baseline is the authoritative count** once it lands; child ACs are phrased
-against the baseline being empty for their class, not against these numbers.
+**These counts were provisional (hand-run scan) and are now superseded.**
+ENH-3338 landed `interp_sweep.scan_corpus()` and seeded
+`scripts/tests/data/loop_interpolation_baseline.json` from `main` — the table
+below is that baseline's authoritative count, per the site-anchor key
+`(file, state, var, class)`:
+
+| Class | Heredoc | `-c "` | Total | Remedy |
+|---|---|---|---|---|
+| A — user/config scalar into a Python literal | 52 | 22 | **74** | `LL_ARG_X=${context.x:shell}` + `os.environ` (BUG-3340) |
+| B — LLM/`prev`-output/other-namespace into a Python literal | 67 | 16 | **83** | heredoc-to-file + `open()` (BUG-3341) |
+| C — `run_dir` / loop-controlled paths | 61 | 7 | **68** | leave alone; fix opportunistically |
+| **Total** | 180 | 45 | **225** | |
+
+Densest files by baselined site count: `sft-corpus.yaml` (35),
+`recursive-refine.yaml` (19), `goal-cluster.yaml` (18), `loop-router.yaml`
+(18), `loop-composer-adaptive.yaml` (12), `autodev.yaml` (10),
+`loop-composer.yaml` (9), `refine-to-ready-issue.yaml` (9). The gap from the
+hand-run 276 to the baseline's 225 reflects the sweep's stricter per-site
+(not per-file) counting, the column-0 heredoc-terminator fix, `harness-
+optimize.yaml`'s `apply` state being correctly excluded (`action_type:
+prompt`, not a live invocation), and AC 11's data-sink-heredoc exclusion
+(a `cat > file << 'MARKER'` heredoc, e.g. `brainstorm.yaml`'s `RAWEOF`
+block, writes to disk and never reaches the Python parser) — child ACs
+remain phrased against the baseline reaching empty for classes A and B, not
+against either historical number.
 
 `${context.*}` interpolated into **prompt** text is out of scope — no interpreter
 parses it (that is BUG-3327's territory).

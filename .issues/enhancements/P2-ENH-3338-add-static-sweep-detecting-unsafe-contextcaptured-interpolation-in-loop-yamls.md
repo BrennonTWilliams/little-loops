@@ -3,10 +3,11 @@ id: ENH-3338
 type: ENH
 title: Add static sweep detecting unsafe context/captured interpolation in loop YAMLs
 priority: P2
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-08-27'
 captured_at: '2026-08-27T17:51:35Z'
+completed_at: '2026-08-28T16:03:35Z'
 parent: EPIC-3336
 blocked_by:
 - ENH-3337
@@ -351,6 +352,27 @@ the classifier, is what excludes it here.
   scanner that doesn't recognize the shape both misses future sites and
   mis-scopes the remainder of the action string.
 
+**Data-sink heredocs are not Python bodies** (review fix, 2026-08-28). A
+heredoc whose consuming command is a file write (`cat > file << 'MARKER'`,
+`tee file << 'MARKER'`) feeds bytes to a file, not an interpreter — it is the
+Option B *remedy* shape (BUG-3341), not a defect. The scanner must key on the
+command consuming the heredoc: only a heredoc feeding a `python3`/`python`
+invocation is a Python body. Without this distinction the shipped BUG-2468
+fix (`brainstorm.yaml:162-163`, `${captured.round_ideas.output}` inside a
+`cat > … << 'RAWEOF'` block) seeds into the baseline as a class-B defect, and
+every BUG-3341 conversion *adds* a baseline entry instead of removing one —
+the class-B ratchet can never reach zero. The brainstorm citation in the
+heredoc bullet above is an opener-*position* example only; as a site it must
+scan clean.
+
+**Any namespace without an explicit verdict is class B** (decided
+2026-08-28, resolving the `KNOWN_NAMESPACES` gap below). A `${result.*}`,
+`${state.*}`, `${env.*}`, `${messages.*}`, `${param.*}`, or
+future-namespace token found inside a Python body is reported as class B —
+the same safe-direction inversion as unknown `context` keys. No such site
+exists in a Python body today, so the rule costs nothing until someone
+introduces one, at which point it fails safe.
+
 Under ENH-3337's S1 there is **no `:default=` / `?` exemption**: every class-A/B
 site converts, and a surviving raw one is a failure.
 
@@ -405,14 +427,23 @@ _Added by `/ll:refine-issue` — 2026-08-28 — based on codebase analysis:_
 5. Skip `action_type` values other than `shell` / `None` — `runners.py` only
    shells out for those, and a `prompt` action's text is prose, not a live
    invocation. `harness-optimize.yaml:160-165` is the live example of a naive
-   grep's false positive.
+   grep's false positive. A `None`-typed action whose text starts with `/` is
+   also skipped — it is slash-command dispatch, matching
+   `Executor._action_mode()`'s heuristic and MR-11's own
+   `action.lstrip().startswith("/")` skip (resolves the research finding
+   below; decided 2026-08-28).
 6. Recognize the `:shell` suffix **anywhere in the chain** (ENH-3337's shared
    helper, not `endswith`) — but do **not** treat it as clearing a Python-body
    site. Flag it `misapplied_remedy` and report it with its normal class, per
    Decision Rules.
 7. Assert the epic's naming conventions where they apply: the `LL_ARG_` prefix on
    bindings this work introduces, and the `<state>-<capture>.txt` filename rule
-   on Option B writes.
+   on Option B writes — **scoped to writes using the `LL_RAW_9F3C1A7E_EOF`
+   sentinel**. Pre-existing bespoke-sentinel data-sink writes
+   (`brainstorm.yaml`'s `RAWEOF`, `loop-composer.yaml` /
+   `loop-composer-adaptive.yaml`'s `LL_PLAN_RAW_EOF` / `LL_STEP_OUTPUT_EOF` /
+   `LL_REASSESS_EOF`) are grandfathered per BUG-3341's settled decision
+   (2026-08-28) and are not asserted against.
 8. Seed `loop_interpolation_baseline.json` from the first run over `main`, sorted
    deterministically. **Record the resulting class-A/B/C counts in EPIC-3336** —
    they supersede the survey table.
@@ -458,6 +489,11 @@ _Added by `/ll:refine-issue` — 2026-08-28 — based on codebase analysis:_
    reported.
 10. `classify_site("prev", "output")` returns `"B"` and
     `classify_site("prev", "exit_code")` returns `"C"`, each with a unit test.
+11. A `${captured.*}` interpolation inside a data-sink heredoc
+    (`cat > file << 'MARKER'`) is **not** reported — unit-tested against
+    BUG-3341's canonical Option B block — and `brainstorm.yaml:162-163`
+    (the shipped BUG-2468 fix) does not appear in the seeded baseline. The
+    same interpolation inside a heredoc feeding `python3` is still reported.
 
 ## Impact
 
@@ -485,11 +521,47 @@ _Added by `/ll:confidence-check` on 2026-08-27_
   implementable yet regardless of its own readiness — the sweep would baseline
   a pre-fix `general-task.yaml:895-902` site.
 
+---
+
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-08-28
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/fsm/interp_sweep.py` (new): `classify_site()`, `InterpSite`
+  (frozen dataclass, equality/hash on `(file, state, var, cls)` only), `scan_action()`
+  (heredoc + `-c "`/`-c '` host-shape tracking, column-0 terminator, `<<<` here-string
+  exclusion, data-sink-heredoc exclusion per AC 11), `scan_corpus()` (recursive
+  `states:`/`fragments:` walk).
+- `scripts/tests/test_interp_sweep.py` (new): 19 unit tests covering classification,
+  both host shapes, the column-0 terminator fix, misapplied `:shell`, data-sink
+  heredocs, here-strings, and the `fragments:` walk.
+- `scripts/tests/data/loop_interpolation_baseline.json` (new): seeded from `main`,
+  225 sites (A: 74, B: 83, C: 68).
+- `scripts/tests/test_builtin_loops.py`: added `TestInterpSweepBaseline` (the
+  bidirectional completeness-guard test plus ACs 6/7/11 pinned-site tests).
+- `docs/reference/API.md`: new `little_loops.fsm.interp_sweep` module entry.
+- `.issues/epics/P2-EPIC-3336-*.md`: superseded the provisional hand-run survey
+  table with the seeded baseline's authoritative counts (AC 8).
+
+### Verification Results
+- Tests: PASS (`python -m pytest scripts/tests/` — 21865 passed; 3 pre-existing
+  failures unrelated to this issue: `test_verify_evidence`, `test_packaging_duplicate_files`,
+  `test_prose_dep_sweep_gate` — confirmed present identically against `main` with all
+  of this issue's changes stashed)
+- Lint: PASS
+- Types: PASS (mypy on the new module)
+- Integration: N/A (static analysis only, no runtime path)
+
 ## Status
 
-**Open** | Created: 2026-08-27 | Priority: P2
+**Completed** | Created: 2026-08-27 | Priority: P2
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-28T16:03:29 - `a2176df8-fd5d-413a-9bbb-dfd9105887f8.jsonl`
+- `/ll:ready-issue` - 2026-08-28T15:33:40 - `688b156b-1de0-4f44-9a18-4acfac419ff4.jsonl`
 - `/ll:confidence-check` - 2026-08-28T15:29:35 - `95d1793e-8286-4e69-bc9a-1ae51f79f14e.jsonl`
 - `/ll:refine-issue` - 2026-08-28T15:25:52 - `9ebbf943-3dc2-4bcb-b0aa-5d1256594e70.jsonl`
 - `/ll:confidence-check` - 2026-08-28T03:13:07 - `e52b5f8b-4479-4377-bf0a-15b1b4dcbd9a.jsonl`
