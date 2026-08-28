@@ -343,4 +343,5 @@ suffix addition cannot desynchronize them again.
 **Open** | Created: 2026-08-27 | Priority: P2
 
 ## Session Log
+- `/ll:format-issue` - 2026-08-28T02:28:48 - `2ce7a90a-6aac-441b-a6ef-bdf7013fe147.jsonl`
 - `/ll:scope-epic` - 2026-08-27T17:51:44 - `c766dcf0-a664-4805-9c8a-6eba323145c8.jsonl`
