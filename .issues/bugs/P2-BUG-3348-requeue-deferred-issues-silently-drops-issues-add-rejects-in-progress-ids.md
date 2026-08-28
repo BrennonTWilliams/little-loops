@@ -39,7 +39,9 @@ A deferred issue whose overlap clears is actually re-queued and eventually proce
 
 ## Proposed Solution
 
-Call `self.queue.requeue(issue)` instead of `self.queue.add(issue)` in `_requeue_deferred_issues` — `requeue()` (`priority_queue.py:146-167`) already discards the id from `_in_progress`/`_failed`/`_skipped` before re-adding, and exists precisely for this "put an already-claimed issue back" case (it is used today for merge-conflict requeues).
+Call `self.queue.requeue(issue)` instead of `self.queue.add(issue)` in `_requeue_deferred_issues` — `requeue()` (`priority_queue.py:146-167`) already discards the id from `_in_progress`/`_failed`/`_skipped` before re-adding, and exists precisely for this "put an already-claimed issue back" case.
+
+**Required companion change — guard `requeue()` against duplicate enqueue.** `_on_worker_complete` runs in worker threads via `Future.add_done_callback` (`worker_pool.py:300-302`, callback executes in the thread that completed the future), so two workers finishing near-simultaneously run `_requeue_deferred_issues` concurrently. `_deferred_issues` is accessed with no lock, so both threads can iterate the same list and both re-add the same cleared issue. Today `add()`'s `_queued` check (`priority_queue.py:60-61`) silently dedupes that race — the same check that causes this bug. `requeue()` has no such guard: it unconditionally `put()`s (`priority_queue.py:161-167`), so a bare swap can enqueue the same issue twice and have two workers process it in parallel worktrees. Fix in the same change: inside `requeue()`'s existing `with self._lock:` block, return early if `issue.issue_id in self._queued`. This is safe for all callers — a legitimate requeue (in-progress/failed/skipped id) is never simultaneously in `_queued`.
 
 ## Why the existing test missed it
 
@@ -85,7 +87,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ### Signatures
 - `IssuePriorityQueue.add(self, issue: IssueInfo) -> bool` (`priority_queue.py:50`) — existing, rejects if id in `_queued`/`_in_progress`/`_completed`/`_failed`
-- `IssuePriorityQueue.requeue(self, issue: IssueInfo, demote_priority: bool = False) -> None` (`priority_queue.py:146`) — existing, unconditionally clears `_in_progress`/`_failed`/`_skipped` before re-enqueuing
+- `IssuePriorityQueue.requeue(self, issue: IssueInfo, demote_priority: bool = False) -> None` (`priority_queue.py:146`) — existing, unconditionally clears `_in_progress`/`_failed`/`_skipped` before re-enqueuing; gains an early return when the id is already in `_queued` (duplicate-enqueue guard, see Proposed Solution)
 - `ParallelOrchestrator._requeue_deferred_issues(self) -> None` (`orchestrator.py:1296`) — existing method whose body changes at the call site (`orchestrator.py:1312`)
 
 ### Call Path
@@ -102,7 +104,8 @@ _Added by `/ll:refine-issue` — 2026-08-28 — based on codebase analysis:_
 
 1. The re-add call at `orchestrator.py:1312` uses a queue method that succeeds even though the deferred issue's id is still in `IssuePriorityQueue._in_progress` — `requeue()` (`priority_queue.py:146-167`) is the existing method built for this exact "re-add an already-claimed id" case, and it never rejects.
 2. The overlap-cleared deferred issue is dequeueable again after resubmission — verified by a test that walks a real (unmocked) `IssuePriorityQueue` through `add` → `get` (moves to `_in_progress`) → defer (append to `_deferred_issues`, per current `_process_parallel` behavior) → the fixed `_requeue_deferred_issues` → assert the issue is present in the queue, absent from `_in_progress`, and that `in_progress_count` has returned to its expected value. `test_orchestrator.py`'s existing `orchestrator` fixture (`:123-138`) mocks `IssuePriorityQueue` entirely, so this coverage cannot reuse that fixture as-is for the assertion that matters (see `test_priority_queue.py:388-499` for the real-queue pattern this test should follow).
-3. `python -m pytest scripts/tests/test_orchestrator.py scripts/tests/test_priority_queue.py -v` passes.
+3. `requeue()` is idempotent against a queued id — a test on a real `IssuePriorityQueue` calls `requeue(issue)` twice in a row (or `add` then `requeue`) and asserts `qsize() == 1`, covering the concurrent double-callback race described in Proposed Solution.
+4. `python -m pytest scripts/tests/test_orchestrator.py scripts/tests/test_priority_queue.py -v` passes.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
