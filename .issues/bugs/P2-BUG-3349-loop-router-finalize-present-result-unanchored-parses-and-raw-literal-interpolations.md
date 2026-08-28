@@ -85,6 +85,22 @@ Verdict flip, line 544:
   (`interpolation.py:245-248`) — the current `:default=` on lines 522-523 is
   replaced by the `os.environ.get(..., '')` default on the Python side.
 
+## Integration Map
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-28 — based on codebase analysis:_
+
+- **Files to Modify**: `scripts/little_loops/loops/loop-router.yaml` — `finalize_present_result` state, lines 509-558 (confirmed unchanged from issue's cited range)
+- **Dependent Files (Callers/Importers)**: `scripts/tests/test_loop_router.py` — `TestLoopRouterStates.REQUIRED_STATES` (lines 76-97) exercises `loop-router.yaml` states but does not currently include `finalize_present_result`; `scripts/little_loops/fsm/executor.py:2864` — `action_type == "shell"` execution path that runs this heredoc
+- **Convention**: every other captured-model-output parse site in this codebase uses the same unanchored first-match `re.search` shape this issue fixes (`loop-router.yaml:202-205,270-273`; `lib/rubric-router.yaml:77`; `lib/policy-router.yaml:88`; `goal-cluster.yaml:210,567,643`; `loop-composer-adaptive.yaml:527,579`; `apply-research.yaml:171,309`; `rn-build.yaml:534,537,641`). This issue's fix would be the first `re.MULTILINE`-anchored parse of captured model output anywhere in the codebase — the sole existing `re.MULTILINE` hit (`autodev.yaml:417`) parses static issue-body markdown, not model/loop output.
+- **Convention**: the `:shell` interpolation modifier (`scripts/little_loops/fsm/interpolation.py:254-256`; mutual exclusivity with `:default=` enforced at lines 242-250) is used at 11+ sites across loop YAMLs, always binding `${context.*}` values (task/description/config strings). No existing site applies `:shell` to a `${captured.*}` reference — this fix's `${captured...:shell}` usage has no direct precedent confirming the combination works, though nothing in `interpolation.py` restricts `:shell` to the `context` namespace.
+- **Convention**: the `os.environ.get(...)` heredoc-read idiom has independent precedent (`auto-refine-and-implement.yaml:783`, `autodev.yaml:408`, `rn-refine.yaml:922-931`, `oracles/generator-evaluator-flux.yaml:93-99`) but is always fed by bash-local or `context.*`-derived variables, never by a `captured.*:shell` binding directly.
+- A sibling raw-literal-interpolation site exists at `loop-router.yaml:201` (`output = """${captured.project_score.output}"""`, in `parse_project_score`) — same defect shape as this issue's lines 522-523, explicitly out of scope per the issue's own Scope boundary section.
+- **Tests**: `scripts/tests/test_builtin_loops.py` — the issue's cited "`TestClassifyTerminal._run_classify_terminal`" precedent is actually `TestRefineToReadyIssueSubLoop._run_classify_terminal` (staticmethod, lines 2120-2139), which tests `refine-to-ready-issue.yaml`'s `classify_terminal` state — there is no class literally named `TestClassifyTerminal`. The technique it uses (substituting `${captured.*}` refs via a generic regex + dict lookup) is unique to this one helper; no shared/importable action-extraction utility exists in the file — every test site inlines `data["states"][...]["action"]`.
+- `scripts/tests/test_loop_router.py` — `TestLoopRouterStates.REQUIRED_STATES` (lines 76-97) does not currently include `finalize_present_result`.
+- **Documentation**: `docs/reference/API.md`, `docs/reference/CLI.md`, `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` reference the `:shell` modifier generally; none document a `captured.*:shell` pattern.
+
 ## Program Design
 
 ### Types
@@ -116,6 +132,34 @@ module.
 `${captured...:shell}`) -> embedded `python3` heredoc -> `_field()` /
 inline `re.search` calls -> printed JSON consumed by the state's
 `evaluate:`.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-28 — based on codebase analysis:_
+
+- **Call Path correction**: `finalize_present_result` has **no `capture:` and
+  no `evaluate:` key** — the Call Path description above ("printed JSON
+  consumed by the state's `evaluate:`") does not match current behavior. The
+  state's `python3` heredoc prints JSON to stdout only; the state routes
+  unconditionally via `next: present_result` (line 557) to the terminal
+  `present_result` state (lines 559-560, no action of its own).
+  `on_error: finalize_failed` (line 558) is the only alternate route, taken
+  only if the `python3` invocation itself exits non-zero — not based on the
+  printed JSON's content. Confirmed via
+  `scripts/little_loops/loops/loop-router.yaml:509-560`.
+- **MR-11 validation gap** (relevant to Acceptance Criteria's
+  `ll-loop validate` check): `scripts/little_loops/fsm/validation/shell_safety.py`'s
+  MR-11 rule (`_UNSAFE_CONTEXT_INTERP_RE`, lines 33-35) only matches
+  `${context.(input|goal|description|task|prompt|query|topic)...}` tokens —
+  it never matches `${captured.*}`, the namespace this issue's six defect
+  sites actually use. Separately, `_find_unsafe_context_interpolations`
+  (lines 148-188) treats a quoted heredoc (`<<'PYEOF'`) as a safe position
+  and skips scanning inside it entirely. Net effect: `ll-loop validate` did
+  not flag these six sites before the fix and will not validate the fix's
+  correctness after — it only confirms the file still parses/lints, not that
+  the anchoring or env-var binding is correct. The Acceptance Criteria's
+  `ll-loop validate` check is a schema/lint gate, not evidence of this bug's
+  fix.
 
 ## Tests
 
@@ -185,4 +229,5 @@ onward). Same source values, different sink, different remedy.
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-08-28T01:20:27 - `7cbe469c-9cbd-4824-b712-5ef6f08221f0.jsonl`
 - `/ll:format-issue` - 2026-08-28T01:14:44 - `52d1fdcc-59ae-4471-83fd-cc9439286464.jsonl`
