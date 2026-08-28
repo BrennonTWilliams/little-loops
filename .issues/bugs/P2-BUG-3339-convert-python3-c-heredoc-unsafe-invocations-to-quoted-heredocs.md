@@ -10,6 +10,7 @@ captured_at: '2026-08-27T17:51:35Z'
 parent: EPIC-3336
 blocked_by: [ENH-3337, ENH-3338]
 blocks: [BUG-3340, BUG-3341, ENH-3347]
+reconcile_attempted: true
 ---
 
 # BUG-3339: Convert python3 -c heredoc-unsafe invocations to quoted heredocs
@@ -129,30 +130,48 @@ interpolation inside the Python-literal body (locator + analyzer, cross-checked)
   single-line `-c` body redirected with `>`
 - `scripts/little_loops/loops/general-task.yaml:895-902` —
   `${captured.final_counts.output:default={}}`, wrapped in `$(...) || echo 0`
+- `scripts/little_loops/loops/harness-optimize.yaml` — `load_directive`
+  (39-45, `action_type: shell`): `${context.run_dir}` (45), closed on the same
+  physical line with a trailing `2>/dev/null || true`. Distinct from the
+  already-excluded `apply` state (160-165, `action_type: prompt`) — see
+  "Not in scope" below, which covers `apply` only.
+- `scripts/little_loops/loops/cli-anything-bootstrap.yaml` —
+  `validate-classification` (143-159, `action_type: shell`,
+  `evaluate: type: exit_code` directly on the state, no `if !` wrapper):
+  `${captured.run_dir.output}` (149). No existing heredoc conversion anywhere
+  in this file — this would be the file's first.
+- `scripts/little_loops/loops/workflow-generator.yaml` — 5 sites, all
+  `${captured.run_dir.output}`, all state-level `evaluate: type: exit_code`
+  with no `if !` wrapper: `validate_intent` (212, output piped to `tee` with
+  an explicit `RC=$?`/`exit "$RC"` after), `validate_sketch` (391),
+  `validate_evaluators` (474), `validate_routing` (525),
+  `shrink_select_candidate` (683, 3 occurrences merged into one baseline
+  entry). This file already has 3 in-file heredoc conversions
+  (`shrink_baseline`, `shrink_try_remove`, `shrink_probe_candidate`) as
+  before/after precedent — see Conventions in Force.
 
-**Not in scope — verify before treating as a target:**
-- `scripts/little_loops/loops/harness-optimize.yaml:160-165` — textually
-  matches `python3 -c "..."` and was named in the parent survey's confirmed-site
-  list, but its enclosing state (`apply`) has `action_type: prompt`
-  (harness-optimize.yaml:145), not `shell`. `runners.py` only shells out for
-  `action_type: shell`/`None`, and MR-11 itself skips non-shell states
-  (`shell_safety.py:165`). This text is prose describing a shell command to
-  the LLM, not a live invocation — including it in the 11-file/53-site count
-  is a false positive from a naive `grep 'python3 -c "'` sweep.
-- `scripts/little_loops/loops/rn-build.yaml` — has 10 `python3 -c "` occurrences
-  (lines 559, 798, 826, 953, 974, 979, 984, 1216, 1329, 1363) but none was
-  individually confirmed to carry a `${context.*}`/`${captured.*}` interpolation
-  inside the literal body in this pass. The parent survey's "11 files" list
-  does not name it either. Flagging as unconfirmed, not asserting inclusion or
-  exclusion.
+**Not in scope — verified:**
+- `scripts/little_loops/loops/harness-optimize.yaml:160-165` (the `apply`
+  state) — textually matches `python3 -c "..."` but its enclosing state has
+  `action_type: prompt` (line 145), not `shell`. `runners.py` only shells out
+  for `action_type: shell`/`None`, and MR-11 itself skips non-shell states
+  (`shell_safety.py:165`). This exclusion covers only `apply` — the same
+  file's `load_directive` state (above) is a separate, in-scope site.
+- `scripts/little_loops/loops/rn-build.yaml` — all 10 `python3 -c "`
+  occurrences (lines 559, 798, 826, 953, 974, 979, 984, 1216, 1329, 1363)
+  individually checked; none carries a `${context.*}`/`${captured.*}`
+  interpolation inside the Python-literal body (each threads the value in via
+  `sys.argv[...]`/`os.environ[...]` instead). Corroborated by ENH-3338's
+  baseline: all 6 of this file's entries are `host_shape="heredoc"`, none
+  `"c-string"`. Confirmed out of scope.
 
-The confirmed list above is 9 files. The parent survey states "53 sites, 11
-files"; this pass could not independently reconstruct 11 files with
-interpolation-bearing `-c "` sites from the corpus (harness-optimize.yaml
-appears not to qualify, and no second unconfirmed file beyond rn-build.yaml
-was identified). Resolving the exact file/site count against the parent
-survey's original count is unstarted work for whoever begins the conversion,
-not a blocker to starting on the 9 confirmed files.
+The confirmed list is 12 files: the 8 above from the original pass, plus
+`harness-optimize.yaml`, `cli-anything-bootstrap.yaml`, and
+`workflow-generator.yaml`, added by reconciling against ENH-3338's now-landed
+baseline (`scripts/tests/data/loop_interpolation_baseline.json`, filtered to
+`host_shape == "c-string"`) — the authoritative source per this issue's
+Summary. The parent survey's original "53 sites, 11 files" figure is
+superseded by the baseline; do not reconcile against the survey.
 
 ### Conventions in Force
 
@@ -199,13 +218,14 @@ not a blocker to starting on the 9 confirmed files.
   Tests section, this is where the four planned behavioral cases (apostrophe
   goal, `"""` capture, Python injection, shell-injection-at-a-converted-`-c "`-site)
   are meant to live.
-- File-specific coverage for the 9 confirmed target files:
+- File-specific coverage for the 12 confirmed target files:
   `scripts/tests/test_loops_sft_corpus.py` (sft-corpus.yaml),
   `scripts/tests/test_autodev_loop.py` (autodev.yaml). No file-specific test
   module was found for `loop-router.yaml`, `lib/composer.yaml`,
   `oracles/oracle-capture-issue.yaml`, `oracles/code-run-gate.yaml`,
-  `rn-plan-apo.yaml`, or `general-task.yaml` in this pass — `ll-loop validate`
-  is the applicable check for those.
+  `rn-plan-apo.yaml`, `general-task.yaml`, `harness-optimize.yaml`,
+  `cli-anything-bootstrap.yaml`, or `workflow-generator.yaml` in this pass —
+  `ll-loop validate` is the applicable check for those.
 
 ### Documentation
 
@@ -226,6 +246,15 @@ _Added by `/ll:refine-issue` — 2026-08-28 — based on codebase analysis:_
 - **`harness-optimize.yaml:160-165` scope confirmed**: the enclosing `apply` state (header at line 144) has `action_type: prompt` (line 145), not `shell` — confirmed excluded, matching the issue's own citation exactly.
 - **No line-number drift on any of the 9 confirmed sites** despite commit d8d3476a1 (BUG-3349, done) touching both `loop-router.yaml` and `fsm/interpolation.py` after this issue's last refine — every cited file/line still matches, still unconverted.
 - `loop-router.yaml`'s `finalize_present_result` heredoc precedent now spans lines 509-560 (was cited 509-557) — a small line-count drift from BUG-3349's own fix (which changed the state's Python body, not its heredoc wrapper), not a shape change; it remains valid as the "already-converted heredoc shape" precedent.
+
+_Added by `/ll:refine-issue` — 2026-08-28 — based on codebase analysis:_
+
+- **ENH-3338 has landed since this issue's last refine** (status: done, commit `ba3c2c3bf`) — the sibling static-sweep issue this issue's Summary calls the not-yet-existing "authoritative list" now exists: `scripts/little_loops/fsm/interp_sweep.py` + checked-in ratcheting baseline `scripts/tests/data/loop_interpolation_baseline.json` (225 total sites). Filtering that baseline to `host_shape == "c-string"` yields **45 sites across 11 files** — a strict superset of this issue's hand-researched 9-file list, adding three files/sites this issue's prior passes did not catch.
+- **`harness-optimize.yaml` has a second, in-scope site distinct from the already-excluded `apply` state.** The `load_directive` state (`harness-optimize.yaml:39-45`, `action_type: shell` — a real shell state, unlike `apply`'s `action_type: prompt`) contains a live, unconverted `python3 -c "import yaml,json; ... open('${context.run_dir}/harness-optimize-state-queue.txt','w')..."` (baseline: `var=context.run_dir`, `class=C`, line 45). The existing "Not in scope" exclusion of `harness-optimize.yaml:160-165` (the `apply` state) remains correct on its own terms — it just does not cover the whole file. `load_directive`'s `-c` body is single-quoted-literal-only (no f-string double-quote escaping) but is terminated on the same physical line with a trailing `2>/dev/null || true`, structurally similar in kind (single-line closure + fallback) to `rn-plan-apo.yaml:48`'s already-flagged complication.
+- **`cli-anything-bootstrap.yaml` — one new confirmed site.** `validate-classification` state (`cli-anything-bootstrap.yaml:143-159`, `action_type: shell`, `evaluate: type: exit_code` directly on the state, no `if !` wrapper) — `python3 -c "..."` interpolates `${captured.run_dir.output}` (baseline: `var=captured.run_dir.output`, `class=B`, line 149). The file's other 5 `python3 -c` occurrences (lines 215, 299, 328, 329, 330) reference only bash-local variables inside the Python literal, not a direct `${context.*}`/`${captured.*}` token, and are not baseline-flagged. No existing heredoc conversion exists anywhere in this file (no `PYEOF`/`PY` delimiter present) — this would be the file's first.
+- **`workflow-generator.yaml` — five new confirmed sites**, all `var=captured.run_dir.output`, `class=B`: `validate_intent` (line 212, output piped to `tee`, explicit `RC=$?`/`exit "$RC"` after — needs the same testable-exit-status handling as the `$(...) || echo` fallback sites already flagged under Program Design), `validate_sketch` (line 391), `validate_evaluators` (line 474), `validate_routing` (line 525), `shrink_select_candidate` (line 683, 3 occurrences of the same var merged into one baseline entry). This file already contains 3 in-file heredoc conversions (`shrink_baseline`, `shrink_try_remove`, `shrink_probe_candidate`) as before/after precedent for its own remaining unconverted sites — see Conventions in Force.
+- **`rn-build.yaml`'s absence from the baseline's c-string file list independently corroborates this issue's manual finding.** The baseline contains 6 `rn-build.yaml` entries, all `host_shape="heredoc"`, none `"c-string"` — none of the file's 10 `python3 -c "` occurrences carries a scannable `${context.*}`/`${captured.*}` token inside the Python-literal body, matching the per-site check already recorded here.
+- **Corrected count for AC #6 reconciliation**: the confirmed-site file count is 12 (9 previously confirmed + `harness-optimize.yaml`, `cli-anything-bootstrap.yaml`, `workflow-generator.yaml`), not 9. See the superseded-marker note on the "confirmed list above is 9 files" line and on Acceptance Criteria #1/#2 below.
 
 ## Program Design
 
@@ -320,26 +349,42 @@ _Added by `/ll:refine-issue` — 2026-08-28 — based on codebase analysis:_
 - The corpus's existing idiom for embedding a `${context.*}` value as a Python literal directly inside a `<<'PYEOF'` heredoc (triple-quoted, e.g. `arg = """${context.scope}""".strip()` at `auto-refine-and-implement.yaml:144,215-216,352`) confirms a literal token swap is already a normal, used shape in this corpus — consistent with the plain conversion needed at `loop-router.yaml:discover_loops` and `lib/composer.yaml`.
 - **ENH-3337 (blocked_by) is fully resolved (status: done).** An earlier draft of this finding claimed `cli/loop/run.py` and `fsm/validation/shell_safety.py` still recognized only a *trailing* `:shell`; both now call the shared `parse_interpolation_suffixes()` and accept any supported suffix ordering (verified against source 2026-08-28). No residual ENH-3337 scope blocks this issue.
 
+_Added by `/ll:refine-issue` — 2026-08-28 — based on codebase analysis:_
+
+- **New structural complication not in the existing "more than a 1:1 token swap" list: f-string double-quote escaping.** Three of the newly-confirmed sites contain Python f-strings that use double quotes, backslash-escaped to survive the outer bash double-quoted `-c "..."` string: `cli-anything-bootstrap.yaml:153` (`f\"unknown classification: {d.get('classification')}\"`), `workflow-generator.yaml:487` (`f\"state {s.get('name')!r} has disallowed evaluator {etype!r}\"`), `workflow-generator.yaml:536` (`f\"state {s.get('name')!r} has no routing\"`). A quoted heredoc is not shell-expanded, so a literal `\"` left inside it is invalid Python (a bare backslash before a quote outside a string literal) — the backslash-escaping must be removed as part of the conversion at these three sites specifically. `harness-optimize.yaml:load_directive` and `workflow-generator.yaml`'s other four new sites (`validate_intent`, `validate_sketch`, `shrink_select_candidate`) use only single-quoted Python literals and need no such de-escaping.
+- **Precedent found for a bare heredoc paired directly with state-level `evaluate: type: exit_code` (no `if !` wrapper) — a plain heredoc conversion is sufficient for most of the newly-confirmed sites.** Confirmed independently at 4+ existing sites: `migrate-sdk-version.yaml:28-75` (`list_stale`), `proof-first-task.yaml:53-68` (`check_gate_blocked`), `loop-router.yaml:131-139` and `:145-153`, and `workflow-generator.yaml:734-777` (`shrink_probe_candidate`, already converted) — each is a bare `python3 << 'PYEOF' ... PYEOF` as the state's sole action content, terminating with `sys.exit(...)`/`raise SystemExit(...)`, with `evaluate: type: exit_code` attached directly beneath, no bash `if` in between. This is the exact shape of `cli-anything-bootstrap.yaml:validate-classification` and of `workflow-generator.yaml`'s `validate_sketch`, `validate_evaluators`, `validate_routing`, and `shrink_select_candidate` (all state-level `evaluate: type: exit_code`, no `if !`) — these 5 sites do not need `code-run-gate.yaml:438`-style structural rework, only the plain token-swap plus (where applicable) the f-string de-escaping noted above.
+- **`workflow-generator.yaml:validate_intent` (line 212) needs its post-processing preserved**: output is piped to `tee`, followed by an explicit `RC=$?` capture and conditional `exit "$RC"`. The heredoc conversion must still leave the same testable `$?` available to the following lines — the same category of requirement as the existing `$(...) || echo ...` fallback sites (`autodev.yaml`/`general-task.yaml`), though structurally simpler (no `if !` wrapper, sequential commands only).
+- **Reconfirmed: no corpus precedent exists anywhere for the `if !`-wrapped shape at `code-run-gate.yaml:438`.** Searched the full `scripts/little_loops/loops/` tree — this remains the only `if ! python3 ...` invocation in the corpus, unconverted; no other file offers a before/after example for that narrower structural class.
+- **`workflow-generator.yaml`'s 3 existing in-file heredoc conversions** (`shrink_baseline:634-676`, `shrink_try_remove:699-732`, `shrink_probe_candidate:734-777`) use the file-local delimiter spelling `<<'PYEOF'` (no space before the quote) and interpolate `${captured.run_dir.output}` directly inside the heredoc body — in-file before/after precedent for this file's own 5 remaining unconverted sites, the same way `loop-router.yaml` already contains both shapes side by side. This file-local spelling diverges from the corpus-dominant `<< 'PYEOF'` (with space, 100+ occurrences) documented under Conventions in Force above — both are accepted by MR-11's marker-agnostic heredoc check.
+- **`cli-anything-bootstrap.yaml` has no in-file heredoc precedent** — no `PYEOF`/`PY` delimiter exists anywhere in the file; its conversion at `validate-classification` would be the file's first, modeled on the cross-file bare-heredoc-plus-exit_code precedent above rather than an in-file example.
+
 ## Implementation Steps
 
-1. The 9 confirmed sites (Integration Map → Files to Modify) resolve to a
+1. The 12 confirmed sites (Integration Map → Files to Modify) resolve to a
    quoted heredoc (`python3 << 'MARKER' ... MARKER`) with bash performing no
    expansion on the body, and their `${context.*}`/`${captured.*}`
    interpolations land unchanged inside the Python source — the conversion is
-   behavior-neutral for the Python body itself.
+   behavior-neutral for the Python body itself. This includes the 3 files
+   added by reconciling against ENH-3338's baseline: `harness-optimize.yaml`
+   (`load_directive`), `cli-anything-bootstrap.yaml`
+   (`validate-classification`), and `workflow-generator.yaml` (5 states).
 2. Each of the structural complications listed under Program Design → Sites
    requiring more than a 1:1 token swap is resolved without changing the
    surrounding control flow's observable behavior (the `if !` condition at
    `code-run-gate.yaml:438` still gates on the same pass/fail outcome; the
    `$(...) || echo ...` fallbacks in `autodev.yaml`/`general-task.yaml` still
    fall back the same way on error).
-3. `harness-optimize.yaml:160-165` is excluded from this conversion (or its
-   `action_type: prompt` status is re-verified if that turns out to be wrong)
-   — it is not a live shell invocation.
-4. `rn-build.yaml`'s 10 `python3 -c "` occurrences are checked individually
-   for a `${context.*}`/`${captured.*}` interpolation inside the literal body
-   before being included in or excluded from this issue's scope — this pass
-   could not confirm either way.
+3. `harness-optimize.yaml`'s `apply` state (160-165) is excluded from this
+   conversion — it has `action_type: prompt`, not a live shell invocation.
+   Its `load_directive` state (39-45, `action_type: shell`) is a separate,
+   in-scope site and is converted along with the file's other confirmed
+   sites.
+4. `rn-build.yaml` is confirmed out of scope: all 10 of its `python3 -c "`
+   occurrences were checked individually and none carries a
+   `${context.*}`/`${captured.*}` interpolation inside the Python-literal
+   body (each threads the value in via `sys.argv[...]`/`os.environ[...]`
+   instead), corroborated by ENH-3338's baseline (all 6 of its entries are
+   `host_shape="heredoc"`, none `"c-string"`).
 5. `ll-loop validate` reports no new MR-11 warnings on every converted file,
    and no loop sets `unsafe_context_interpolation_ok` to suppress one.
 6. `general-task.yaml:895-902`'s `:default={}` was already rewritten by
@@ -371,12 +416,16 @@ _Added by `/ll:refine-issue` — 2026-08-28 — based on codebase analysis:_
 
 1. Every site listed under Integration Map → Files to Modify is converted
    from `python3 -c "..."` to a quoted heredoc; `ll-loop validate` passes
-   clean (no new MR-11 warnings) on `loop-router.yaml`, `sft-corpus.yaml`,
+   clean (no new MR-11 warnings) on all 12 confirmed files, reconciled
+   against ENH-3338's baseline: `loop-router.yaml`, `sft-corpus.yaml`,
    `autodev.yaml`, `lib/composer.yaml`, `oracles/oracle-capture-issue.yaml`,
-   `oracles/code-run-gate.yaml`, `rn-plan-apo.yaml`, and `general-task.yaml`.
-2. `harness-optimize.yaml`'s `action_type: prompt` status is confirmed (or the
-   site is converted, if that status turns out to be wrong), and the decision
-   is recorded.
+   `oracles/code-run-gate.yaml`, `rn-plan-apo.yaml`, `general-task.yaml`,
+   `harness-optimize.yaml`, `cli-anything-bootstrap.yaml`, and
+   `workflow-generator.yaml`.
+2. `harness-optimize.yaml`'s `apply` state (160-165) is confirmed
+   `action_type: prompt` and stays excluded; its separate `load_directive`
+   state (39-45, `action_type: shell`) is confirmed in-scope and converted
+   along with the file's other confirmed sites.
 3. `rn-build.yaml`'s scope status (in or out of this issue) is resolved and
    recorded, based on an individual check of its 10 `python3 -c "` sites.
 4. The structural sites (`code-run-gate.yaml:438`, `autodev.yaml:1619-1653`,
@@ -426,6 +475,8 @@ _Added by `/ll:refine-issue` — 2026-08-28 — based on codebase analysis:_
 
 
 ## Session Log
+- `/ll:reconcile-issue` - 2026-08-28T16:54:12 - `1f800b67-df1c-4ef2-913d-0f4cba863bf8.jsonl`
+- `/ll:refine-issue` - 2026-08-28T16:27:59 - `b3de8990-2254-46d0-8e9a-792563a8e929.jsonl`
 - `/ll:refine-issue` - 2026-08-28T03:15:15 - `21c2bc4e-6e06-47c6-a164-ddb166a7cfff.jsonl`
 - `/ll:format-issue` - 2026-08-28T03:03:20 - `486b558c-b1c6-4706-9fa1-9c30566c1e36.jsonl`
 - `/ll:refine-issue` - 2026-08-27T19:51:04 - `121602fa-f1cf-4559-9d22-a1a9e5682b74.jsonl`
