@@ -16,6 +16,8 @@ relates_to:
 - FEAT-2001
 - FEAT-2002
 - BUG-2323
+depends_on:
+- EPIC-2938
 ---
 
 # EPIC-1867: Orchestrator FSM Decomposition (ll-auto / ll-sprint / ll-parallel)
@@ -167,6 +169,7 @@ _Added by `/ll:verify-issues` on 2026-06-09_
 - 2026-08-16: Confirmed the Children/status section is already accurate as of the 2026-08-12 pass (FEAT-1901/2000/2001/2002/1899 Deferred, FEAT-1902 Cancelled, ENH-1903/2106/BUG-2323 Completed) — no new drift found this pass. Re-confirmed current as of 2026-08-16, no changes needed to the Children table itself. Verdict: NEEDS_UPDATE.
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-08-28T20:02:57 - `4c46442f-f29f-4ed0-a178-b65ed74c4dc1.jsonl`
 - `/ll:verify-issues` - 2026-08-16T16:40:24 - `688cfc38-322a-447f-94a0-315f2c2aee33.jsonl`
 - `/ll:verify-issues` - 2026-08-13T03:04:14 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-10T18:52:51 - `ffa08fd4-dce7-4108-91f7-6bb57e5df4c8.jsonl`

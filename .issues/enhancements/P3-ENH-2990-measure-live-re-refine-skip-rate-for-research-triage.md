@@ -16,6 +16,8 @@ labels:
 - measurement
 - cost
 verify_verdict: VALID
+depends_on:
+- ENH-3000
 ---
 
 # ENH-2990: Measure the live re-refine skip rate for `research-triage`
@@ -159,6 +161,7 @@ resolved path in the section.
 | `.issues/enhancements/P3-ENH-2971-*.md` § Threshold Validation | The corpus measurement this issue exists to supersede for the live case |
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-08-28T20:02:58 - `4c46442f-f29f-4ed0-a178-b65ed74c4dc1.jsonl`
 - `/ll:verify-issues` - 2026-08-13T03:04:58 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-10T18:52:52 - `ffa08fd4-dce7-4108-91f7-6bb57e5df4c8.jsonl`
 - `/ll:capture-issue` - 2026-08-02T05:15:40 - `3204c464-5212-4b68-a6a3-d963db2a8337.jsonl`

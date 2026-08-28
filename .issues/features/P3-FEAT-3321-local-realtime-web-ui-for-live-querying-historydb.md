@@ -7,6 +7,8 @@ status: open
 discovered_by: ll-issues-create
 discovered_date: '2026-08-26'
 captured_at: '2026-08-26T01:39:46Z'
+depends_on:
+- FEAT-3323
 ---
 
 # FEAT-3321: Local realtime web UI for live-querying history.db
@@ -131,4 +133,5 @@ should mount its query route on FEAT-3323's server rather than defining its own
 
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-08-28T20:02:59 - `4c46442f-f29f-4ed0-a178-b65ed74c4dc1.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-26T21:32:44 - `ce0d899f-b243-4b9b-9802-1a5047cda0de.jsonl`

@@ -14,6 +14,7 @@ labels:
 - history-db
 depends_on:
 - BUG-3236
+- ENH-2775
 relates_to:
 - FEAT-2867
 - FEAT-3182
@@ -487,5 +488,6 @@ Remaining unresolved:
 
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-08-28T20:02:58 - `4c46442f-f29f-4ed0-a178-b65ed74c4dc1.jsonl`
 - `/ll:confidence-check` - 2026-08-16T06:14:00 - `626afca1-c50f-4d88-96c2-8085727c7eca.jsonl`
 - `/ll:refine-issue` - 2026-08-16T06:04:27 - `7c646ce3-f44e-4eef-97cb-1c8c88c8d9d9.jsonl`

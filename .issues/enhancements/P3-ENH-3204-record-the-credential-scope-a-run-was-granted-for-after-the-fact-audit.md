@@ -8,6 +8,7 @@ parent: EPIC-3212
 epic: EPIC-3212
 blocked_by:
 - ENH-3203
+- ENH-3233
 discovered_by: ll-issues-create
 discovered_date: '2026-08-15'
 captured_at: '2026-08-15T22:28:30Z'
@@ -82,3 +83,7 @@ Explicitly **out of scope**:
 ## Status
 
 **Open** | Created: 2026-08-15 | Priority: P3
+
+
+## Session Log
+- `/ll:audit-issue-conflicts` - 2026-08-28T20:02:56 - `4c46442f-f29f-4ed0-a178-b65ed74c4dc1.jsonl`

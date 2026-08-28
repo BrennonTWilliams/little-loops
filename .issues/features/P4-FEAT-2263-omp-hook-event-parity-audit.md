@@ -10,6 +10,7 @@ discovered_by: planning-assessment
 parent: EPIC-2258
 depends_on:
 - FEAT-1850
+- FEAT-2797
 labels:
 - host-compat
 - omp
@@ -203,6 +204,7 @@ gap remains valid: `HOST_COMPATIBILITY.md` still has no omp column and
 `hooks/adapters/omp/README.md` still doesn't exist.
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-08-28T20:02:59 - `4c46442f-f29f-4ed0-a178-b65ed74c4dc1.jsonl`
 - `/ll:verify-issues` - 2026-08-13T03:05:58 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
 - `/ll:verify-issues` - 2026-08-10T16:25:25 - `50b69f30-8ca9-4ab9-8b06-6ee21c203b10.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-04T20:31:44 - `ec47aff0-f647-498d-ad44-7606e8c8054f.jsonl`

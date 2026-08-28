@@ -8,8 +8,20 @@ discovered_by: ll-issues-create
 discovered_date: '2026-08-27'
 captured_at: '2026-08-27T17:51:35Z'
 parent: EPIC-3336
-blocked_by: [ENH-3337, ENH-3338, BUG-3339, BUG-3340]
-blocks: [ENH-3347]
+blocked_by:
+- ENH-3337
+- ENH-3338
+- BUG-3339
+- BUG-3340
+blocks:
+- ENH-3347
+reconcile_attempted: true
+confidence_score: 96
+outcome_confidence: 77
+score_complexity: 15
+score_test_coverage: 22
+score_ambiguity: 18
+score_change_surface: 22
 ---
 
 # BUG-3341: Convert class-B LLM-output interpolations to heredoc-to-file
@@ -162,7 +174,12 @@ bespoke-sentinel data-sink writes in `brainstorm.yaml` (`RAWEOF`) and
 `loop-composer.yaml` / `loop-composer-adaptive.yaml` (`LL_PLAN_RAW_EOF`,
 `LL_STEP_OUTPUT_EOF`, `LL_REASSESS_EOF`) all scan clean under ENH-3338 and
 stay as they are; this issue does not rewrite them, and AC 2's grep-count
-therefore covers only sites this issue converts. The "uniformity with the
+therefore covers only sites this issue converts. **Grandfathering covers only
+those already-clean data-sink shapes, not the files** — `loop-composer.yaml`
+still carries 2 live class-B entries (`finalize_present_result`:
+`captured.chain_review.output`, `captured.user_plan_decision.output`) and
+`brainstorm.yaml` one (`dedup_novelty`), all of which this issue does
+convert. The "uniformity with the
 shipped precedent" rationale for rejecting env-var binding is acknowledged
 as weakened — the corpus now ships both remedies — but Option B stands for
 new conversions on its file-based auditability and the per-site guidance
@@ -172,19 +189,44 @@ already written here.
 
 ### Files to Modify
 
-The authoritative list is ENH-3338's baseline filtered to `class == "B"`. From
-the provisional survey, the class-B-bearing files: `sft-corpus.yaml`,
-`loop-router.yaml`, `recursive-refine.yaml`, `goal-cluster.yaml`,
-`loop-composer-adaptive.yaml`, `apply-research.yaml`,
-`assumption-firewall.yaml`, `learning-tests-audit.yaml`,
-`migrate-sdk-version.yaml`, `general-task.yaml`, `rn-build.yaml`, plus the
-`lib/` and `oracles/` files carrying `${captured.*}` sites.
+The authoritative list is ENH-3338's baseline filtered to `class == "B"`. The
+confirmed per-file breakdown of the 82 entries (2026-08-28, from
+`loop_interpolation_baseline.json`): `sft-corpus.yaml` (13),
+`mechanize-skills.yaml` (8), `workflow-generator.yaml` (8),
+`goal-cluster.yaml` (6), `rn-implement.yaml` (6), `loop-router.yaml` (5),
+`recursive-refine.yaml` (5), `learning-tests-audit.yaml` (4),
+`refine-to-ready-issue.yaml` (4), `assumption-firewall.yaml` (3),
+`apply-research.yaml` (2), `loop-composer.yaml` (2),
+`loop-composer-adaptive.yaml` (2), `migrate-sdk-version.yaml` (2),
+`rn-build.yaml` (2), and one each in `autodev.yaml`, `brainstorm.yaml`,
+`cli-anything-bootstrap.yaml`, `proof-first-task.yaml`, `lib/composer.yaml`,
+`lib/policy-router.yaml`, `lib/rubric-router.yaml`,
+`oracles/enumerate-and-prove.yaml`, `oracles/generator-evaluator.yaml`,
+`oracles/generator-evaluator-flux.yaml`. Earlier drafts under-named this list
+by ~24 entries (omitting `workflow-generator.yaml`, `rn-implement.yaml`,
+`refine-to-ready-issue.yaml`, `loop-composer.yaml`, `autodev.yaml`,
+`brainstorm.yaml`, `cli-anything-bootstrap.yaml`, `proof-first-task.yaml`) —
+always re-derive from the baseline, not from any prose list including this
+one. Note `brainstorm.yaml` — the precedent file itself — still carries one
+live B entry (`dedup_novelty`, `captured.run_dir.output` ×3), a Decision
+Rule 0 case. `general-task.yaml`
+needs no further edits under this issue — BUG-3339 already converted its one
+class-B site with the canonical sentinel and it has zero remaining class-B
+baseline entries.
 
 Known `if`-nested targets requiring the hoist: `recursive-refine.yaml:82-83`,
-`rn-build.yaml:728-729`, `loop-composer-adaptive.yaml:744`.
+`loop-composer-adaptive.yaml:744`, and
+`mechanize-skills.yaml:606-629` (`revert_changes`, two `python3 << 'PYEOF'`
+heredocs nested inside `if [ -f "$MANIFEST" ]; then`). The `rn-build.yaml:728-729`
+citation is stale anchor drift (review, 2026-08-28): those lines now land on
+`check_harness_name`, which has no class-B site; rn-build's two actual B
+sites — `write_epic_id` (`:523`, `captured.scope_project.output`) and
+`read_harness_name` (`:621`, `captured.harness_plan.output`) — are both
+top-level `python3 << 'PYEOF'` heredocs needing no hoist.
 
-- `scripts/tests/data/loop_interpolation_baseline.json` (new) — created by ENH-3338 — shrink class-B entries in the same commit as each conversion.
-  > ⚠ Superseded — file already exists (82 class-B entries as of this pass); see § Codebase Research Findings under Integration Map
+- `scripts/tests/data/loop_interpolation_baseline.json` — already exists
+  (created by ENH-3338, 82 `class: "B"` entries as of this pass) — shrink
+  class-B entries in the same commit as each conversion.
 - **Relies on ENH-3338's data-sink heredoc rule** (its 2026-08-28 review
   fix, now shipped and confirmed live — `interp_sweep.py`'s `scan_action()`
   gates a heredoc as a Python body only when its opener line also contains
@@ -213,6 +255,9 @@ to a parallel epic branch.
   own coverage; the model for ENH-3347's `"""`-capture case.
 - `scripts/tests/test_builtin_loops.py` — ENH-3338's baseline-equality test stays
   green at every commit.
+- `scripts/tests/test_interp_sweep.py` — unit-tests `classify_site()`/
+  `scan_action()`, the classifier AC 1's baseline shrink and the data-sink
+  heredoc rule (see Files to Modify) depend on.
 - `ll-loop validate` per converted file.
 
 ### Documentation
@@ -276,10 +321,29 @@ Per class-B site:
    `mechanize-skills.yaml:286`. Where the captured value is just the
    runner's own run dir, substitute `${context.run_dir}` instead of building
    an Option B block — verify the loop doesn't deliberately point the
-   capture somewhere else before swapping. This likely shrinks the ~67-site
-   estimate materially.
+   capture somewhere else before swapping. 21 of the 82 baseline entries are
+   `captured.run_dir.output`, so this rule covers roughly a quarter of the
+   work. **Known trap: `mechanize-skills.yaml` (all 8 of its entries are this
+   var) captures the *absolutized* run dir** — its `init` state does
+   `case "$DIR" in /*) RUN_DIR="$DIR";; *) RUN_DIR="$(pwd)/$DIR";; esac`
+   (`mechanize-skills.yaml:64-67`) — so a naive swap to `${context.run_dir}`
+   changes relative→absolute semantics for every consumer. There, either
+   keep Option B or substitute `${context.run_dir}` and absolutize in the
+   Python consumer (`os.path.abspath`); check each consumer before choosing.
+   `workflow-generator.yaml`'s `capture: run_dir` similarly stores the
+   state's *entire stdout* by design (comment at
+   `workflow-generator.yaml:50-57`) — confirm the captured value is exactly
+   the runner's run dir before swapping there too.
 1. Derive the filename `<state>-<capture>.txt` from the state name and the
-   capture variable name. Two captures in one state get two files.
+   capture variable name. Two captures in one state get two files. Two
+   extensions of the rule (review decision, 2026-08-28): a `.stderr` site
+   uses `<state>-<capture>-stderr.txt` so a capture whose `.output` and
+   `.stderr` are both interpolated cannot collide (one `.stderr` site exists:
+   `refine-to-ready-issue.yaml`, `check_scores_from_file`,
+   `captured.check_scores_from_file.stderr`); a dotted capture path keeps its
+   dots verbatim in the filename (one exists:
+   `proof-first-task.yaml:59`, `${captured.gate.extracted.output}` →
+   `check_gate_blocked-gate.extracted.txt`).
 2. Place the `cat >` block at the action body's top level, above any `if`/`for`,
    even when the reading Python is nested.
 3. Replace the in-literal interpolation with a read of that file.
@@ -299,8 +363,13 @@ _Added by `/ll:refine-issue` — 2026-08-28 — based on codebase analysis:_
 
 ## Implementation Steps
 
-1. Filter ENH-3338's baseline to `class == "B"`; reconcile any divergence from
-   the survey's 67 and note it in EPIC-3336.
+1. Filter ENH-3338's baseline to `class == "B"`; the baseline holds 82 such
+   entries (confirmed count, already inclusive of BUG-3339's one conversion),
+   against the Summary's provisional ~67 — reconcile the divergence and note
+   it in EPIC-3336. Pre-partition the 82 by Decision Rule 0: ~21 are
+   `captured.run_dir.output` Rule-0 candidates (each still needs the
+   point-elsewhere check, see the mechanize-skills trap), leaving ~61
+   Option-B conversions.
 2. Convert loop by loop, one commit per file (or small group), running
    `ll-loop validate` on each.
 3. For each site, verify the `cat >` terminator lands at **column 0** in the
@@ -317,14 +386,19 @@ _Added by `/ll:refine-issue` — 2026-08-28 — based on codebase analysis:_
 
 1. ENH-3338's baseline has **zero** class-B entries.
 2. Every conversion uses the `LL_RAW_9F3C1A7E_EOF` sentinel and a
-   `<state>-<capture>.txt` filename;
+   `<state>-<capture>.txt` filename (`<state>-<capture>-stderr.txt` for
+   `.stderr` sites);
    `grep -rn LL_RAW_9F3C1A7E_EOF scripts/little_loops/loops/` enumerates them and
    the count matches the converted-site count.
 3. Every `cat >` heredoc terminator sits at column 0, above any enclosing
    `if`/`for` — verified specifically at `recursive-refine.yaml:82-83`,
-   `rn-build.yaml:728-729`, and `loop-composer-adaptive.yaml:744`, the three
-   known nested targets.
-   > ⚠ Superseded — a fourth nested target exists: `mechanize-skills.yaml:606-629` (revert_changes); "three known" is stale — see § Codebase Research Findings under Integration Map
+   `loop-composer-adaptive.yaml:744`, and
+   `mechanize-skills.yaml:606-629` (`revert_changes`), the known nested
+   targets (`rn-build.yaml:728-729` was stale anchor drift — its two B sites
+   are top-level; see Files to Modify). For `mechanize-skills.yaml` (and any other site resolved via
+   Decision Rule 0's `${context.run_dir}` substitution) "converted" reads as
+   "converted or Rule-0-substituted" — a Rule-0 swap leaves no `cat >` block
+   to hoist, and that satisfies this criterion.
 4. No site ships the half-and-half form (an `os.environ["LL_ARG_RUN_DIR"]` read
    with no corresponding binding, or a binding with a raw-interpolated path).
 5. Newline sensitivity is decided per site; the trailing newline the heredoc
@@ -359,6 +433,8 @@ step is added — run dirs are already managed as a unit.
 **Open** | Created: 2026-08-27 | Priority: P2
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-28T20:21:57 - `46a8948d-5f27-4b55-9948-2076e278ec4c.jsonl`
+- `/ll:reconcile-issue` - 2026-08-28T19:54:53 - `80a08f28-6a5c-42b2-8c75-c8e70076692b.jsonl`
 - `/ll:refine-issue` - 2026-08-28T19:48:46 - `32717b3b-863a-49e0-9597-080f0b40cfce.jsonl`
 - `/ll:refine-issue` - 2026-08-28T03:15:16 - `21c2bc4e-6e06-47c6-a164-ddb166a7cfff.jsonl`
 - `/ll:format-issue` - 2026-08-28T03:03:20 - `486b558c-b1c6-4706-9fa1-9c30566c1e36.jsonl`

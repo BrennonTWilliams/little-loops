@@ -1026,7 +1026,16 @@ _Added by `/ll:confidence-check` on 2026-08-27_
 ### Gaps to Address
 - Add a `### Behavior Parity` subsection to the issue (or to `loop-router.yaml`'s own docs) describing what the new shell-state-plus-path-reference mechanism replaces, to clear the `missing_behavior_parity` gate.
 
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): This issue shares edited loop YAML files with BUG-3341 (`loop-router.yaml`, `loop-composer-adaptive.yaml`, `rn-build.yaml`) — BUG-3341 converts `${captured.*}` sites reaching Python literals inside `action_type: shell` heredocs, while this issue fences/relocates `${captured.*.output}` sites reaching `action_type: prompt` text. Different sinks, so the fixes don't collide, but land with awareness of the shared files (same sequencing risk already noted for sibling BUG-3340).
+
+**Note** (added by `/ll:audit-issue-conflicts`): This issue also adds substantial new test content to `scripts/tests/test_builtin_loops.py` (a `TestUntrustedOutputFencing` class), the same file ENH-3347 extends with four behavioral injection/quote-breaking cases. No blocked_by/blocks edge exists between them (unlike the existing ENH-3342/ENH-3347 coordination note for the same file) — each owns disjoint test classes; coordinate landing order to avoid merge friction.
+
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-08-28T20:03:00 - `4c46442f-f29f-4ed0-a178-b65ed74c4dc1.jsonl`
 - `/ll:refine-issue` - 2026-08-28T01:53:57 - `70aa94f1-e630-42c3-805a-03afcbda0b82.jsonl`
 - `/ll:confidence-check` - 2026-08-28T01:11:19 - `fe4d90cd-470c-49c6-ade3-2aad37f948af.jsonl`
 - `/ll:refine-issue` - 2026-08-28T01:01:26 - `287d64ad-a891-4610-a9c5-2de3df010aa4.jsonl`
