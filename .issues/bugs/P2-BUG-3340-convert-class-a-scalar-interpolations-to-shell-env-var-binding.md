@@ -117,26 +117,41 @@ _Added by `/ll:refine-issue` — 2026-08-28 — based on codebase analysis:_
 - A second, `LL_`-prefixed-but-not-`LL_ARG_` shape already exists in the corpus: `LL_EPIC_BRANCH`/`LL_RUN_DIR` (`auto-refine-and-implement.yaml:756,783`, `rn-refine.yaml:663,668,722,727`) and `LL_PROPOSAL_OUT`/`LL_REVIEW_OUT` (`loop-router.yaml:512-513`, shipped by BUG-3349/done, binding two `${captured.*}` class-B values — outside this issue's class-A scope). None of the three `LL_`-prefixed naming shapes found agree with each other.
 - `loop-router.yaml:512-513` is the only site in the corpus using the composed `:shell:default=` suffix today (confirmed via repo-wide search — no hits for the reverse ordering `:default=...:shell` or for `?:shell` in any loop YAML). This issue will be the first to apply that suffix broadly once conversions begin.
 
+_Added by `/ll:refine-issue` — 2026-08-28 — based on codebase analysis:_
+
+- **Correction to the prior pass's "LL_ARG_ has zero shipped occurrences" claim — it is now stale.** BUG-3339's structural carve-out shipped exactly this convention at four `autodev.yaml` states (`check_reconcile_needed` at `:1624-1638`, `check_readiness_for_atomic_remediation` at `:1748-1752`, and the outcome-threshold sites at `:1828-1838`/`:2066-2075`) and `oracles/code-run-gate.yaml`'s `aggregate_gate` state (`:438-439`). Confirmed against the current baseline: `oracles/code-run-gate.yaml` has **zero** remaining class-A entries and `autodev.yaml` has only 4, all class B/C — both files are effectively complete for this issue already; per Implementation Step 1, verify rather than re-convert them.
+- These four confirmed sites use a **two-step hoist**, not the single-line inline form shown in this issue's own Summary example: `VAR=${context.x:shell}` on its own line, then `LL_ARG_VAR="$VAR"` (quoting the already-`shlex.quote()`d shell variable, not the raw interpolation token) on the `python3` invocation line, alongside other `LL_*`-prefixed bindings for class-B/captured values on the same line. Both the single-line inline form and this two-step hoist form clear MR-11 — `_find_unsafe_context_interpolations()` recognizes `:shell` anywhere in the suffix chain (confirmed at `shell_safety.py:149`). Pick per site based on whether other bindings already share the invocation line.
+- Numeric positions at these confirmed sites read via `int(os.environ['LL_ARG_X'])` / `float(os.environ['LL_ARG_X'])`, bracket form — matching this issue's own Program Design → Non-string Python positions rule exactly.
+- The six sites this issue's Current Behavior section cites as "the safe idiom already exists in the corpus" (`mechanize-skills.yaml`, `autodev.yaml:405`, `flux-image-generator.yaml`, `interactive-component-generator.yaml`, `openscad-model-generator.yaml`, `html-website-generator.yaml`) are unprefixed env-var bindings for class-B/C (trusted/captured) values with **no `:shell` suffix** — none binds a `:shell`-quoted class-A scalar. The closest, `flux-image-generator.yaml:272`'s `export VISION_THRESHOLD="${context.pass_threshold}"`, touches a class-A-shaped key but is unquoted and sits on an `export` line outside `interp_sweep`'s scanned scope (not inside a heredoc/`-c` body), so it is not a baseline entry either way. The only real `:shell`+class-A precedent in the corpus today is the `autodev.yaml`/`code-run-gate.yaml` sites above, which post-date these six.
+- ENH-3338's baseline currently holds **67** `class: A` entries (`grep -c '"class": "A"' scripts/tests/data/loop_interpolation_baseline.json`), not the survey's provisional 78 — this reconciles Implementation Step 1's instruction to "reconcile any divergence from the survey's 78 and note it in EPIC-3336" (EPIC-3336 itself is outside this single-issue refine's edit scope).
+
 ## Integration Map
 
 ### Files to Modify
 
-The authoritative list is ENH-3338's baseline, filtered to `class == "A"`. From
-the provisional survey, ordered by class-A+B density:
+The authoritative list is ENH-3338's baseline, filtered to `class == "A"`.
+Current baseline state (verified 2026-08-28, 67 class-A entries across 21
+files, entry count in parentheses):
 
-- `scripts/little_loops/loops/sft-corpus.yaml`, `loop-router.yaml`,
-  `recursive-refine.yaml`, `goal-cluster.yaml`, `autodev.yaml`,
-  `loop-composer-adaptive.yaml`, `loop-composer.yaml`,
-  `refine-to-ready-issue.yaml`, `rn-implement.yaml`, `harness-optimize.yaml`,
-  `general-task.yaml`, `rn-plan-apo.yaml`, `apply-research.yaml`,
-  `assumption-firewall.yaml`, `learning-tests-audit.yaml`,
-  `migrate-sdk-version.yaml`, `auto-refine-and-implement.yaml`,
-  `rn-build.yaml`, `workflow-generator.yaml`, `cli-anything-bootstrap.yaml`,
-  `prompt-across-issues.yaml`
-- Subdirectories: `lib/composer.yaml`, `lib/policy-router.yaml`,
-  `lib/rubric-router.yaml`, `oracles/code-run-gate.yaml`,
-  `oracles/enumerate-and-prove.yaml`, `oracles/generator-evaluator.yaml`,
-  `oracles/oracle-capture-issue.yaml`, `oracles/verify-confidence-scores.yaml`
+- `scripts/little_loops/loops/sft-corpus.yaml` (18), `loop-router.yaml` (7),
+  `recursive-refine.yaml` (6), `auto-refine-and-implement.yaml` (5),
+  `refine-to-ready-issue.yaml` (5), `goal-cluster.yaml` (3),
+  `apply-research.yaml` (2), `rlhf-svg-evaluate.yaml` (2),
+  `rn-implement.yaml` (2), `brainstorm.yaml` (1), `loop-composer.yaml` (1),
+  `loop-composer-adaptive.yaml` (1), `migrate-sdk-version.yaml` (1),
+  `rn-plan-apo.yaml` (1), `rn-remediate.yaml` (1)
+- Subdirectories: `lib/composer.yaml` (3), `lib/rubric-router.yaml` (2),
+  `oracles/enumerate-and-prove.yaml` (2),
+  `oracles/verify-confidence-scores.yaml` (2), `lib/policy-router.yaml` (1),
+  `oracles/oracle-capture-issue.yaml` (1)
+- **Zero class-A entries remain** in files the provisional survey listed:
+  `autodev.yaml`, `harness-optimize.yaml`, `general-task.yaml`,
+  `assumption-firewall.yaml`, `learning-tests-audit.yaml`, `rn-build.yaml`,
+  `workflow-generator.yaml`, `cli-anything-bootstrap.yaml`,
+  `prompt-across-issues.yaml`, `oracles/code-run-gate.yaml`,
+  `oracles/generator-evaluator.yaml`. Do not do per-file passes on these; the
+  `autodev.yaml`/`code-run-gate.yaml` conversions landed via BUG-3339 and are
+  verify-only per Implementation Step 1.
 - `mechanize-skills.yaml` — **no class-A sites** (all 13 are class C). Its
   `SKILL_FILE` binding at `:283-286` is the shape to copy, and the raw
   `${captured.run_dir.output}` on the next line is why the sweep asserts per
@@ -168,6 +183,13 @@ epic branch.
 ### Configuration
 
 - N/A
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-28 — based on codebase analysis:_
+
+- `test_autodev_loop.py`'s `_extract_python_script()`/`_run_reconcile_predicate()` (`scripts/tests/test_autodev_loop.py:39-91`) is the established pattern for behaviorally verifying a converted state per AC 8: load the real YAML, pull the `python3 << 'PYEOF'` heredoc body out textually, run it as a `subprocess` seeding `env=` with the `LL_ARG_*` values the FSM's `:shell` binding would produce at runtime (e.g. `"LL_ARG_READINESS_THRESHOLD": "85"`), then assert the exit code/behavior. This is the pattern to extend per-site for AC 8's non-string-position sites, since `ll-loop validate` cannot catch a `str`/`int` comparison `TypeError` — only running the state can.
+- `scripts/tests/test_interp_sweep.py::TestScanActionHeredoc` already carries a fixture exercising the exact target shape as "correctly converted, not a site": `LL_ARG_X=${context.x:shell} python3 << 'PYEOF'` — a scan-correctness reference distinct from the baseline-equality test in `test_builtin_loops.py`.
 
 ## Program Design
 
@@ -218,8 +240,9 @@ Per class-A site:
 
 **Not every class-A site sits inside a string literal.** `os.environ.get()`
 returns `str`, so the standard transform silently converts a working numeric
-comparison into a `TypeError`. Confirmed sites, all comparisons against a bare
-interpolated number:
+comparison into a `TypeError`. The reference example of the failure shape and
+its fix (these specific sites were converted by BUG-3339 and are verify-only
+now — see below):
 
 | Site | Today | Wrong | Right |
 |---|---|---|---|
@@ -228,6 +251,26 @@ interpolated number:
 | `autodev.yaml:1633` | `and int(cur) < ${context.readiness_threshold} and not attempted` | | |
 | `autodev.yaml:1742` | `sys.exit(0 if int(d.get('confidence') or 0) >= ${context.readiness_threshold} else 1)` | | |
 | `oracles/code-run-gate.yaml:438` | `${context.min_pass_rate}` in an `if ! python3 -c` condition | | `float(...)` — it is a rate, not an int |
+
+**Type-classification is not a 6-site concern — roughly half the remaining 67
+sites carry numeric- or boolean-shaped keys** (verified against the baseline
+2026-08-28). Files with numeric-comparison positions to classify:
+`recursive-refine.yaml` (`readiness_threshold`/`outcome_threshold` ×4,
+`max_depth`, `max_refine_count`), `refine-to-ready-issue.yaml` (×5),
+`lib/rubric-router.yaml` (`threshold_high`/`threshold_medium`),
+`lib/composer.yaml` (`max_plan_nodes`), `sft-corpus.yaml`
+(`min_tokens`/`max_tokens`, `test_ratio`/`val_ratio` — floats,
+`dedup_threshold`), `apply-research.yaml` (`relevance_threshold`,
+`max_issues_per_file`), `brainstorm.yaml` (`novelty_threshold`),
+`loop-router.yaml` (`confidence_threshold`), `rlhf-svg-evaluate.yaml`
+(`exploit_cutoff`).
+
+Boolean-shaped keys (`auto`, `exclude_user_corrections`,
+`require_file_modifications`, `require_issue_outcome`, `propagate_context`,
+`auto_prove_learning_gate`) are **string positions** in the corpus idiom —
+`'${context.x}'.lower() == 'true'` (confirmed at `loop-router.yaml:318`,
+`sft-corpus.yaml:156`) — so they take the standard string transform. Verify
+the idiom per site rather than assuming it.
 
 Rule: **classify each site by its Python position before transforming.**
 
@@ -271,8 +314,15 @@ instead of shipping green.
   comments included (`reference_fsm_action_interpolated_before_bash`). A comment
   near a converted site that quotes `${context.goal}` interpolates too — convert
   or `$${`-escape it in the same edit.
-- **`sft-corpus.yaml`** carries the highest density (38 sites total). Convert it
-  as its own commit so the diff stays reviewable.
+- **`sft-corpus.yaml`** carries the highest density (18 class-A entries in the
+  current baseline; the survey's 38 counted all classes). Convert it as its own
+  commit so the diff stays reviewable.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-28 — based on codebase analysis:_
+
+- Current anchors (confirmed 2026-08-28 via codebase-analyzer — re-verify before citing at implementation time, since these drift): `parse_interpolation_suffixes()` — the ENH-3337 suffix-stripping helper shared by `interpolate()`, MR-11, and the ENH-3338 sweep — is at `scripts/little_loops/fsm/interpolation.py:209` (the line this issue previously cited for `interpolate()` itself). `interpolate()` is now at `interpolation.py:274`. `InterpolationContext.resolve()` is at `interpolation.py:78`. `_find_unsafe_context_interpolations()` is at `scripts/little_loops/fsm/validation/shell_safety.py:149` (one line later than previously cited). All three interpolation-side functions still call the shared `parse_interpolation_suffixes()`, so `interpolate()`'s quoting behavior and MR-11's `:shell` recognition stay in sync by construction — confirmed by direct inspection, not just by docstring claim.
 
 ## Implementation Steps
 
@@ -312,14 +362,23 @@ instead of shipping green.
    composed suffix from ENH-3337 — none is exempted.
 7. No behavior change to any Python body's logic; only how the value arrives
    changes.
-8. Every site in a **non-string Python position** keeps its type: the six sites
-   named in Program Design → Non-string Python positions
-   (`autodev.yaml:1633, 1742, 1821, 1822, 2053, 2054`;
-   `oracles/code-run-gate.yaml:438`) are converted with an explicit
-   `int(...)`/`float(...)` coercion and their comparisons still evaluate
-   identically. Verified by running the affected states, not by inspection —
-   a `str`/`int` comparison raises at runtime and is invisible to
-   `ll-loop validate`.
+8. Every site in a **non-string Python position** keeps its type:
+   - Every numeric-position site in the *current* baseline (the files
+     enumerated in Program Design → Non-string Python positions:
+     `recursive-refine.yaml`, `refine-to-ready-issue.yaml`,
+     `lib/rubric-router.yaml`, `lib/composer.yaml`, `sft-corpus.yaml`,
+     `apply-research.yaml`, `brainstorm.yaml`, `loop-router.yaml`,
+     `rlhf-svg-evaluate.yaml`) is converted with an explicit
+     `int(...)`/`float(...)` coercion matching the value's type, and its
+     comparison still evaluates identically. Verified by running the affected
+     states (the `test_autodev_loop.py` `_extract_python_script` pattern), not
+     by inspection — a `str`/`int` comparison raises at runtime and is
+     invisible to `ll-loop validate`.
+   - The sites already converted by BUG-3339
+     (`autodev.yaml:1633, 1742, 1821, 1822, 2053, 2054`;
+     `oracles/code-run-gate.yaml:438`) are **verified**, not re-converted:
+     confirm they use `LL_ARG_` naming, no surrounding quotes, and typed
+     coercion.
 9. No conversion writes `:shell` inside a Python body; ENH-3338's baseline
    reports zero `misapplied_remedy` sites.
 
@@ -342,6 +401,7 @@ instead of shipping green.
 **Open** | Created: 2026-08-27 | Priority: P2
 
 ## Session Log
+- `/ll:refine-issue` - 2026-08-28T18:12:42 - `917f03bf-c58d-4c5b-9275-d06596c522eb.jsonl`
 - `/ll:refine-issue` - 2026-08-28T03:15:15 - `21c2bc4e-6e06-47c6-a164-ddb166a7cfff.jsonl`
 - `/ll:format-issue` - 2026-08-28T03:03:20 - `486b558c-b1c6-4706-9fa1-9c30566c1e36.jsonl`
 - `/ll:scope-epic` - 2026-08-27T17:51:45 - `c766dcf0-a664-4805-9c8a-6eba323145c8.jsonl`
