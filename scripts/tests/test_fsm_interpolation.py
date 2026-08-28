@@ -16,6 +16,7 @@ from little_loops.fsm.interpolation import (
     _format_duration,
     interpolate,
     interpolate_dict,
+    parse_interpolation_suffixes,
 )
 
 
@@ -872,10 +873,12 @@ class TestShellSuffix:
         assert result == "VAL=simple_value"
 
     def test_shell_suffix_empty_value_resolves_to_empty(self) -> None:
-        """None-valued context resolves to empty string, bypassing shlex.quote()."""
+        """ENH-3337: a None-valued context under :shell emits '' (a valid
+        empty token), not nothing — the quote now applies after the None
+        short-circuit rather than bypassing it."""
         ctx = InterpolationContext(context={"input": None})
         result = interpolate("VAL=${context.input:shell}", ctx)
-        assert result == "VAL="
+        assert result == "VAL=''"
 
     def test_nullable_and_default_together_raises(self) -> None:
         """Using ? and :default= together on the same var part still raises. BUG-2622."""
@@ -890,9 +893,7 @@ class TestShellSuffix:
         assert result == "VAL=''"
 
         ctx2 = InterpolationContext(captured={})
-        result2 = interpolate(
-            "VAL=${captured.x.output:shell:default=a \"b\" value}", ctx2
-        )
+        result2 = interpolate('VAL=${captured.x.output:shell:default=a "b" value}', ctx2)
         assert result2 == "VAL='a \"b\" value'"
 
     def test_shell_default_combined_present_path_emits_quoted_value(self) -> None:
@@ -919,3 +920,82 @@ class TestShellSuffix:
         ctx = InterpolationContext()
         result = interpolate("$${context.input:shell}", ctx)
         assert result == "${context.input:shell}"
+
+
+class TestShellSuffixComposition:
+    """ENH-3337: :shell composes with :default= and ? in every ordering."""
+
+    def test_default_before_shell_quotes_fallback(self) -> None:
+        """${x:default=v:shell} — previously misparsed default as 'v:shell'
+        with no quoting; now quotes the fallback identically to
+        :shell:default=v (BUG-3349)."""
+        ctx = InterpolationContext(captured={})
+        result = interpolate('VAL=${captured.x.output:default=a "b" value:shell}', ctx)
+        assert result == "VAL='a \"b\" value'"
+
+    def test_default_before_shell_matches_shell_before_default(self) -> None:
+        """Both orderings of :shell and :default= produce identical output."""
+        ctx = InterpolationContext(captured={})
+        a = interpolate("VAL=${captured.x.output:shell:default=fallback}", ctx)
+        b = interpolate("VAL=${captured.x.output:default=fallback:shell}", ctx)
+        assert a == b == "VAL=fallback"
+
+    def test_nullable_before_shell_resolves_correct_path(self) -> None:
+        """${x?:shell} — previously resolved the wrong literal path "x?";
+        now correctly nullable-quotes a missing path."""
+        ctx = InterpolationContext(context={})
+        result = interpolate("VAL=${context.input?:shell}", ctx)
+        assert result == "VAL=''"
+
+    def test_nullable_before_shell_quotes_present_value(self) -> None:
+        """${x?:shell} on a present value still shlex-quotes it."""
+        ctx = InterpolationContext(context={"input": 'a "b" value'})
+        result = interpolate("VAL=${context.input?:shell}", ctx)
+        assert result == "VAL='a \"b\" value'"
+
+    def test_shell_before_nullable_resolves_correct_path(self) -> None:
+        """${x:shell?} — previously left a stray literal ":shell" in the
+        resolved path and yielded an unquoted "" on miss."""
+        ctx = InterpolationContext(context={})
+        result = interpolate("VAL=${context.input:shell?}", ctx)
+        assert result == "VAL=''"
+
+    def test_shell_before_nullable_quotes_present_value(self) -> None:
+        """${x:shell?} on a present value still shlex-quotes it."""
+        ctx = InterpolationContext(context={"input": 'a "b" value'})
+        result = interpolate("VAL=${context.input:shell?}", ctx)
+        assert result == "VAL='a \"b\" value'"
+
+    def test_mid_default_literal_shell_stays_literal(self) -> None:
+        """A :shell substring embedded inside the default's literal text is
+        not stripped as a suffix — only boundary positions are recognized."""
+        ctx = InterpolationContext(captured={})
+        result = interpolate("VAL=${captured.x.output:default=use :shell here}", ctx)
+        assert result == "VAL=use :shell here"
+
+    def test_default_value_containing_close_brace_raises(self) -> None:
+        """A ':default=' value containing '{' (which VARIABLE_PATTERN
+        truncates at the first unescaped '}') is a hard error, not a silent
+        truncation (ENH-3337 Expected Behavior (c))."""
+        ctx = InterpolationContext(captured={})
+        with pytest.raises(InterpolationError, match="must not contain"):
+            interpolate("${captured.x.output:default={}}", ctx)
+
+    def test_parse_interpolation_suffixes_all_orderings(self) -> None:
+        """Direct unit coverage of the shared helper for all five orderings."""
+        assert parse_interpolation_suffixes("x") == ("x", None, False, False)
+        assert parse_interpolation_suffixes("x:shell") == ("x", None, False, True)
+        assert parse_interpolation_suffixes("x:shell:default=v") == (
+            "x",
+            "v",
+            False,
+            True,
+        )
+        assert parse_interpolation_suffixes("x:default=v:shell") == (
+            "x",
+            "v",
+            False,
+            True,
+        )
+        assert parse_interpolation_suffixes("x?:shell") == ("x", None, True, True)
+        assert parse_interpolation_suffixes("x:shell?") == ("x", None, True, True)

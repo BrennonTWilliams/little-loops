@@ -7500,3 +7500,37 @@ states:
         assert "foo:shell" not in combined, (
             f"Validator surfaced key with :shell suffix:\n{combined}"
         )
+
+    def test_nullable_before_shell_suffix_does_not_trip_validator(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """ENH-3337: `${context.input?:shell}` (nullable BEFORE :shell) must not
+        falsely report the literal path `input?` as missing. Before this fix
+        the pre-flight's `raw.endswith(":shell")` strip left `input?` as the
+        checked name, since the `?` check only matched a raw string ending in
+        a bare `?` — this ordering ends in `shell` instead.
+        """
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        self._write_loop(
+            loops_dir,
+            "nullable-shell",
+            action="${context.input?:shell}",
+            required_input="unused_input",
+        )
+        monkeypatch.chdir(tmp_path)
+        with patch.object(sys, "argv", ["ll-loop", "run", "nullable-shell"]):
+            from little_loops.cli import main_loop
+
+            result = main_loop()
+
+        captured = capsys.readouterr()
+        combined = captured.out + captured.err
+        assert "Missing required context variable" not in combined, (
+            f"Validator falsely flagged ?:shell ref as missing:\n{combined}"
+        )
+        assert result == 1
+        assert "requires input" in combined and "unused_input" in combined

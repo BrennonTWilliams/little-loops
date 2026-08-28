@@ -18,6 +18,7 @@ from pathlib import Path
 import pytest
 import yaml
 
+from little_loops.fsm.interpolation import InterpolationContext, interpolate
 from little_loops.fsm.validation import ValidationSeverity, load_and_validate, validate_fsm
 
 BUILTIN_LOOPS_DIR = Path(__file__).parent.parent / "little_loops" / "loops"
@@ -2104,8 +2105,25 @@ class TestENH2365SummarizeSuccess:
             script = script.replace(f"${{context.{key}}}", str(val))
         script = script.replace("${context.run_dir}", str(run_dir))
         # No captured final_counts in a unit context → fall back to the default.
-        script = script.replace("${captured.final_counts.output:default={}}", "{}")
+        # ENH-3337: the default is now an empty string (json.loads('') raises,
+        # caught by the script's own except → failed_finals=0), not a literal
+        # "{}" — a `}` inside :default= is a hard InterpolationError.
+        script = script.replace("${captured.final_counts.output:default=}", "")
         return script
+
+    def test_final_counts_placeholder_interpolates_without_error(self) -> None:
+        """ENH-3337: the `:default=` value at this site no longer contains a
+        literal `{` — interpolate() must resolve the real site's action text
+        cleanly on a missing `captured.final_counts` (the state's normal
+        pre-count_final context), not raise or leave a stray `}`."""
+        with open(LOOP_FILE) as f:
+            data = yaml.safe_load(f)
+        action = data["states"]["summarize_success"]["action"]
+        run_context = {**data.get("context", {}), "run_dir": "/tmp/run"}
+        ctx = InterpolationContext(context=run_context, captured={})
+        result = interpolate(action, ctx)
+        assert "json.loads('')" in result
+        assert ":default=" not in result
 
     def test_implemented_counts_checked_criteria_not_leftover(self, tmp_path: Path) -> None:
         """BUG-2608: implemented must be the CHECKED count. On the success path

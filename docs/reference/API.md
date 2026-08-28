@@ -6263,6 +6263,12 @@ result = interpolate("${captured.missing?}", ctx)
 result = interpolate('VAL=${context.target_dir:shell}', ctx)
 # Returns: "VAL=src/"
 
+# ENH-3337: :shell composes with :default=/? in any ordering — the fallback
+# is shlex-quoted too, so both orderings below are equivalent
+result = interpolate("VAL=${captured.missing:shell:default=fall back}", ctx)
+result = interpolate("VAL=${captured.missing:default=fall back:shell}", ctx)
+# Both return: "VAL='fall back'"
+
 # Unsuffixed references still raise InterpolationError on missing paths
 # interpolate("${captured.missing}", ctx)  → InterpolationError
 ```

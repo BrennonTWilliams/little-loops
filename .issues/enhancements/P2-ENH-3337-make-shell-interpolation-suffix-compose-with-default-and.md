@@ -3,10 +3,11 @@ id: ENH-3337
 type: ENH
 title: Make :shell interpolation suffix compose with :default= and ?
 priority: P2
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-08-27'
 captured_at: '2026-08-27T17:51:35Z'
+completed_at: '2026-08-28T03:35:13Z'
 parent: EPIC-3336
 blocks:
 - ENH-3338
@@ -288,7 +289,7 @@ _Added by `/ll:refine-issue` — 2026-08-28 — based on codebase analysis:_
 - **Conventions in Force** — the codebase's established precedent for a small parse routine shared across multiple consumer modules (which is what the proposed `parse_interpolation_suffixes()` helper would be) is `policy_rules.py`'s `grammar_spec()`/`parse_rules()` (`scripts/little_loops/fsm/policy_rules.py:98,262`), imported directly by `route_table.py`, `validation/reachability.py:175`, and `cli/artifact/policy_builder.py:63` — a real cross-module import, not a re-implementation. By contrast, the two out-of-module `:shell` recognizers this issue targets currently hand-mirror `interpolate()`'s parse with a synchronization comment citing the canonical line numbers rather than importing a shared function (`run.py:276-287`'s comment names `fsm/interpolation.py:236-250` as the source of truth) — this comment-only synchronization is the drift risk that produced defects 4a/4b, and is the gap the proposed helper extraction closes.
 - `InterpolationError` is a bare `Exception` subclass carrying only an f-string message — no error codes or `.kind` attributes exist anywhere in the codebase's 10 raise sites in `interpolation.py`. Tests assert via `pytest.raises(InterpolationError, match="<substring>")`.
 - `shlex.quote()` is called directly (no wrapper) at exactly two production sites, both inside `interpolate()` itself (`interpolation.py:279,283`) — no other production module under `scripts/little_loops/` calls `shlex.quote()`.
-- Suffix/grammar test classes in `test_fsm_interpolation.py` follow a `class Test<Feature>` shape with `# ── section ──` comment dividers grouping sub-cases and a one-line docstring per test naming the originating issue ID — evidence: `TestSafeInterpolation` (`:554`, ENH-1958), `TestShellSuffix` (`:844`, BUG-2622/BUG-3349). New test cases for this issue should follow that shape rather than `scripts/tests/test_interpolation.py` (a new filename the issue proposes, but the actively maintained module for this area is `test_fsm_interpolation.py`).
+- Suffix/grammar test classes in `test_fsm_interpolation.py` follow a `class Test<Feature>` shape with `# ── section ──` comment dividers grouping sub-cases and a one-line docstring per test naming the originating issue ID — evidence: `TestSafeInterpolation` (`:554`, ENH-1958), `TestShellSuffix` (`:844`, BUG-2622/BUG-3349). New test cases for this issue should follow that shape rather than a new "test_interpolation.py" file (a filename an earlier draft of this issue proposed, but the actively maintained module for this area is `test_fsm_interpolation.py`).
 - This codebase's convention for recording a semantic decision (as Acceptance Criterion 6 requires for the None-handling and `}`-in-default choices) is a dated `## Recorded decisions (DATE)` section with per-topic `### <topic>` subheadings, each opening with a bold `**Decision: ...**` line plus rationale — evidence: `.issues/features/P3-FEAT-3036-artifact-templates-design.md:229,328`. No such section exists yet in this issue.
 
 ## Scope Boundaries
@@ -444,6 +445,68 @@ the implementation:_
    across the whole loop corpus — no new MR-11 warnings, no loop setting
    `unsafe_context_interpolation_ok`.
 
+## Recorded decisions (2026-08-27)
+
+### `None`-handling in the resolve → fallback → quote pipeline
+
+**Decision: recommendation (ii), narrow.** A resolved `None` keeps its
+short-circuit to `""` and does **not** route through `:default=` — the
+fallback fires only when the *path itself* is missing (an
+`InterpolationError` from `ctx.resolve()`), never when the path resolves
+successfully to `None`. The only pipeline change is that the empty-string
+result now flows *through* the `:shell` quote step instead of returning
+before it, so `${x:shell}` on a `None` value emits `''` (a valid empty
+token) instead of nothing. `${x:default=v}` on a resolved `None` still
+yields `""`, unchanged from today.
+
+Rationale: this issue's mandate is composition of the three suffixes, not a
+new semantic for `None`. Routing `None` through `:default=` (option (i))
+would touch the ~130 `:default=`/`?` corpus sites this issue exists to
+unblock, each of which would need its own audit for whether a `None`
+should now surface the default — a separate, larger change that deserves
+its own issue.
+
+### `}` inside a `:default=` value
+
+**Decision: reject loudly.** `VARIABLE_PATTERN` (`interpolation.py:28`) is
+unchanged — it still cannot capture a `}` inside a `${...}` match. Rather
+than widen the regex to balance braces, `parse_interpolation_suffixes()`
+now raises `InterpolationError` whenever a parsed default value contains a
+literal `{` (the only shape a truncated-at-`}` capture can produce), with a
+message naming the cause. The corpus's one affected site,
+`general-task.yaml:895-902`'s `${captured.final_counts.output:default={}}`,
+is fixed in this same commit to `${captured.final_counts.output:default=}`
+— `json.loads('')` raises the same as `json.loads('{}')` succeeds-with-empty,
+so the downstream `except: print(0)` fallback produces an identical
+`failed_finals=0` result either way. No brace-balancing added to the regex.
+
+### Audit of the 17 existing bare-token `:shell` sites (Expected Behavior (a))
+
+All 17 sites were reviewed for observable behavior change from routing a
+resolved `None`/`""` through the `:shell` quote step:
+
+- 16 of the 17 are either a bash assignment (`VAR=${context.x:shell}`) or an
+  `echo`/argument position where an empty string and `''` are
+  indistinguishable at runtime (`VAR=` and `VAR=''` both set an empty `VAR`;
+  bare `echo` and `echo ''` both print just a newline). No behavior change
+  at these sites.
+- The one bracket-test site, `refine-to-ready-issue.yaml:123`
+  (`[ -n ${context.input:shell} ]`), is the only place where "emit nothing"
+  vs. "emit `''`" is observable (`[ -n ]` alone is true; `[ -n '' ]` is
+  false). Traced `context.input`'s seeding path
+  (`cli/loop/run.py:163-177`): the CLI always stores the raw **string**
+  form of the positional/`--context` input, never Python `None` — even
+  `ll-loop run <loop> null` stores the string `"null"`, not the value
+  `None`, because the parsed JSON is only inspected for the dict-spread
+  case and the raw string is what's assigned otherwise. `input` also has
+  no `:default=`/`?` guard here, so the CLI pre-flight (Phase before this
+  state runs) already requires the key present in `fsm.context` — an
+  omitted input fails the run before this line is ever reached. Net: this
+  site's value was never actually reachable as `None` under real
+  invocations, so the `[ -n … ]` branch was not exercising the bug in
+  practice, and this fix does not flip its behavior in production use. No
+  site required a source change.
+
 ## Impact
 
 - **Priority**: P2 — inherited from EPIC-3336, and it is the epic's hard gate:
@@ -462,6 +525,8 @@ the implementation:_
 **Open** | Created: 2026-08-27 | Priority: P2
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-28T03:34:56 - `90104caa-276e-4ccd-9e14-4b75908612aa.jsonl`
+- `/ll:ready-issue` - 2026-08-28T03:16:36 - `21c2bc4e-6e06-47c6-a164-ddb166a7cfff.jsonl`
 - `/ll:confidence-check` - 2026-08-28T03:13:07 - `e52b5f8b-4479-4377-bf0a-15b1b4dcbd9a.jsonl`
 - `/ll:confidence-check` - 2026-08-28T03:03:45 - `486b558c-b1c6-4706-9fa1-9c30566c1e36.jsonl`
 - `/ll:wire-issue` - 2026-08-28T02:57:39 - `13d6dd54-6fe5-483d-8ac7-01629c54d02f.jsonl`

@@ -278,6 +278,20 @@ class TestUnsafeContextInterpolation:
         errors = _validate_unsafe_context_interpolation(fsm)
         assert errors == []
 
+    def test_mr11_does_not_fire_for_shell_default_composed(self) -> None:
+        """ENH-3337: MR-11 recognizes :shell wherever it appears in the suffix
+        chain, not only a trailing `:shell}` — a composed
+        `${context.goal:shell:default=}` must not be flagged as unsafe."""
+        fsm = self._simple_fsm("GOAL=${context.goal:shell:default=}")
+        errors = _validate_unsafe_context_interpolation(fsm)
+        assert errors == []
+
+    def test_mr11_does_not_fire_for_default_shell_composed(self) -> None:
+        """The reverse ordering (:default= before :shell) is also recognized."""
+        fsm = self._simple_fsm("GOAL=${context.goal:default=:shell}")
+        errors = _validate_unsafe_context_interpolation(fsm)
+        assert errors == []
+
     def test_mr11_does_not_fire_in_comment(self) -> None:
         """MR-11 does not fire for a placeholder mentioned only in a comment."""
         fsm = self._simple_fsm("# Never test ${context.input} as a bare token.\necho ok")

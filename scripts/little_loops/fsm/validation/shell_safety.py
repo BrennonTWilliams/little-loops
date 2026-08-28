@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import re
 
+from little_loops.fsm.interpolation import InterpolationError, parse_interpolation_suffixes
 from little_loops.fsm.schema import FSMLoop
 from little_loops.fsm.validation._base import ValidationError, ValidationSeverity
 
@@ -152,7 +153,8 @@ def _find_unsafe_context_interpolations(fsm: FSMLoop) -> list[tuple[str, str]]:
     Safe positions (not flagged):
       - single-quoted string (``'...'``) — bash performs no expansion inside it
       - quoted heredoc (``<<'EOF'`` / ``<<-"EOF"``) — content is written literally
-      - the ``:shell`` suffix — interpolation.py shlex-quotes it at substitution time
+      - the ``:shell`` suffix, wherever it appears in the suffix chain —
+        interpolation.py shlex-quotes it at substitution time
 
     Everything else (double-quoted, or a bare unquoted token position) is
     flagged: a value containing ``"``, ``$``, `` ` ``, ``\\``, or ``!`` breaks
@@ -180,7 +182,15 @@ def _find_unsafe_context_interpolations(fsm: FSMLoop) -> list[tuple[str, str]]:
                 heredoc_marker = heredoc_match.group(1)
             for match in _UNSAFE_CONTEXT_INTERP_RE.finditer(line):
                 token = match.group(0)
-                if token.endswith(":shell}"):
+                # token is `${context.<raw>}`; strip the outer `${`/`}` and
+                # the `context.` namespace prefix to get the same raw suffix
+                # chain parse_interpolation_suffixes() expects (ENH-3337).
+                _namespace, raw = token[2:-1].split(".", 1)
+                try:
+                    _, _, _, shell_quote = parse_interpolation_suffixes(raw)
+                except InterpolationError:
+                    shell_quote = False
+                if shell_quote:
                     continue
                 if line[: match.start()].count("'") % 2 == 1:
                     continue  # inside a single-quoted string

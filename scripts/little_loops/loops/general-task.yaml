@@ -895,7 +895,7 @@ states:
       FAILED_FINALS=$(python3 -c "
       import json, sys
       try:
-          data = json.loads('${captured.final_counts.output:default={}}')
+          data = json.loads('${captured.final_counts.output:default=}')
           print(data.get('failed_finals', 0))
       except Exception:
           print(0)

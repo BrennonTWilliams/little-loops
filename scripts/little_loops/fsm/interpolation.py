@@ -206,6 +206,71 @@ class InterpolationContext:
             raise InterpolationError(f"Unknown loop property: {key}")
 
 
+def parse_interpolation_suffixes(full_path: str) -> tuple[str, str | None, bool, bool]:
+    """Parse the ``:default=``, ``?``, and ``:shell`` suffix chain off a raw
+    ``${...}`` path, order-independently.
+
+    ``:shell`` is recognized in exactly two positions: immediately before
+    ``:default=`` (``...:shell:default=value``), or at the very end of the
+    chain — alone (``...:shell``), after a default value
+    (``...:default=value:shell``), or after ``?`` (``...?:shell``). A
+    ``:shell`` embedded inside a default's literal text (not at one of these
+    boundaries) is left untouched. The one genuine ambiguity —
+    ``${x:default=v:shell}``, where ``:shell`` could be read as a literal
+    suffix of the default text ``"v:shell"`` instead — is resolved in favor
+    of treating it as the suffix.
+
+    Args:
+        full_path: The captured ``namespace.path`` plus suffix chain, with
+            the outer ``${`` / ``}`` already stripped.
+
+    Returns:
+        ``(var_path, default_value, nullable, shell_quote)`` — ``var_path``
+        is the bare ``namespace.path`` with all suffixes removed;
+        ``default_value`` is the literal fallback text or ``None``;
+        ``nullable`` is whether a trailing ``?`` was present; ``shell_quote``
+        is whether ``:shell`` was present.
+
+    Raises:
+        InterpolationError: ``?`` and ``:default=`` are both present, or a
+            ``:default=`` value contains ``{`` — a literal ``}`` in a default
+            cannot be represented (``VARIABLE_PATTERN`` stops at the first
+            unescaped ``}``), so it is rejected rather than silently
+            truncated.
+    """
+    default_value: str | None = None
+    nullable = False
+    shell_quote = False
+
+    if ":shell:default=" in full_path:
+        full_path = full_path.replace(":shell:default=", ":default=", 1)
+        shell_quote = True
+    elif full_path.endswith(":shell?"):
+        full_path = full_path[: -len(":shell?")] + "?"
+        shell_quote = True
+    elif full_path.endswith(":shell"):
+        full_path = full_path[: -len(":shell")]
+        shell_quote = True
+
+    if ":default=" in full_path:
+        var_part, default_value = full_path.split(":default=", 1)
+        if var_part.endswith("?"):
+            raise InterpolationError(
+                f"Ambiguous suffix: ${{{full_path}}} (:default=... and ? are mutually exclusive)"
+            )
+        if "{" in default_value:
+            raise InterpolationError(
+                f"':default=' value must not contain '{{' or '}}' "
+                f"(the interpolation pattern stops at the first '}}'): ${{{full_path}}}"
+            )
+        full_path = var_part
+    elif full_path.endswith("?"):
+        nullable = True
+        full_path = full_path[:-1]
+
+    return full_path, default_value, nullable, shell_quote
+
+
 def interpolate(template: str, ctx: InterpolationContext) -> str:
     """Replace ${namespace.path} variables in template string.
 
@@ -213,10 +278,14 @@ def interpolate(template: str, ctx: InterpolationContext) -> str:
     Handles $${...} escaping (becomes literal ${...}).
     Supports ``:default=value``, ``?`` (nullable), and ``:shell``
     (``shlex.quote()`` the resolved value, for safe use in a bash token
-    position) suffixes. ``?`` and ``:shell`` are mutually exclusive with
-    each other, but ``:shell`` may combine with ``:default=value`` as
-    ``:shell:default=value`` — the fallback value is shlex-quoted the same
-    as a resolved value.
+    position) suffixes, composable in any order (see
+    ``parse_interpolation_suffixes``). ``?`` and ``:default=`` remain
+    mutually exclusive. Evaluation order is resolve → apply fallback →
+    ``shlex.quote()`` — the fallback is quoted too when ``:shell`` is
+    present, and a resolved ``None`` becomes ``""`` before quoting (so
+    ``${x:shell}`` on a ``None`` value emits ``''``, a valid empty token,
+    not nothing). ``:default=`` does not fire on a resolved ``None`` — only
+    on a missing path.
 
     Args:
         template: String containing variable references
@@ -238,28 +307,7 @@ def interpolate(template: str, ctx: InterpolationContext) -> str:
         #   ${namespace.path:default=value} → use "value" on missing path
         #   ${namespace.path?}              → use "" on missing path
         #   ${namespace.path:shell}         → shlex.quote() the resolved value
-        default_value: str | None = None
-        nullable = False
-        shell_quote = False
-
-        # Check for :default= first (so ? inside a default value is literal)
-        if ":default=" in full_path:
-            var_part, default_value = full_path.split(":default=", 1)
-            if var_part.endswith("?"):
-                raise InterpolationError(
-                    f"Ambiguous suffix: ${{{full_path}}} "
-                    "(:default=... and ? are mutually exclusive)"
-                )
-            if var_part.endswith(":shell"):
-                shell_quote = True
-                var_part = var_part[: -len(":shell")]
-            full_path = var_part
-        elif full_path.endswith("?"):
-            nullable = True
-            full_path = full_path[:-1]
-        elif full_path.endswith(":shell"):
-            shell_quote = True
-            full_path = full_path[: -len(":shell")]
+        full_path, default_value, nullable, shell_quote = parse_interpolation_suffixes(full_path)
 
         if full_path == "messages":
             # Bare ${messages} is shorthand for the full message log
@@ -273,17 +321,17 @@ def interpolate(template: str, ctx: InterpolationContext) -> str:
 
         try:
             value = ctx.resolve(namespace, path)
-            if value is None:
-                return ""
-            if shell_quote:
-                return shlex.quote(str(value))
-            return str(value)
         except InterpolationError:
             if default_value is not None:
                 return shlex.quote(default_value) if shell_quote else default_value
             if nullable:
-                return ""
+                return shlex.quote("") if shell_quote else ""
             raise
+        if value is None:
+            value = ""
+        if shell_quote:
+            return shlex.quote(str(value))
+        return str(value)
 
     result = VARIABLE_PATTERN.sub(replace_var, result)
 

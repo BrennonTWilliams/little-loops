@@ -27,6 +27,7 @@ from little_loops.cli.loop._helpers import (
     seed_confidence_thresholds,
     with_diagram_color,
 )
+from little_loops.fsm.interpolation import InterpolationError, parse_interpolation_suffixes
 from little_loops.logger import Logger
 
 
@@ -276,15 +277,16 @@ def cmd_run(
     # Pre-run validation: check required context variables are present.
     # Guarded/transformed refs are safe even when the underlying key is
     # missing or carries a suffix — the FSM interpolation engine
-    # (fsm/interpolation.py:236-250) parses these suffixes off before
-    # resolving the real var name, so the CLI pre-flight must do the same
-    # to stay aligned with the engine:
+    # (fsm/interpolation.py's parse_interpolation_suffixes()) parses these
+    # suffixes off before resolving the real var name, so the CLI pre-flight
+    # calls the same shared helper to stay aligned with the engine:
     #   - `:default=value` / trailing `?` supply a fallback at render time,
     #     so a missing key is not an error (BUG-2553).
     #   - `:shell` is a transform (shlex.quote) on the resolved value; the
     #     real var name is what must exist in context, not `input:shell`.
     #     Strip it before the membership check so `${context.input:shell}`
-    #     validates against `input` (BUG-2553 successor).
+    #     validates against `input` (BUG-2553 successor), in any suffix
+    #     ordering (ENH-3337).
     _ctx_var_re = re.compile(r"\$\{context\.([^}.]+)")
     missing_keys: set[str] = set()
     for state in fsm.states.values():
@@ -294,12 +296,16 @@ def cmd_run(
         for template in templates:
             for m in _ctx_var_re.finditer(template):
                 raw = m.group(1)
-                if ":default=" in raw or raw.endswith("?"):
+                try:
+                    var_path, default_value, nullable, _shell = parse_interpolation_suffixes(raw)
+                except InterpolationError:
+                    # Malformed suffix chain; interpolate() will raise its own
+                    # clear error at render time — not this pre-flight's job.
                     continue
-                if raw.endswith(":shell"):
-                    raw = raw[: -len(":shell")]
-                if raw not in fsm.context:
-                    missing_keys.add(raw)
+                if default_value is not None or nullable:
+                    continue
+                if var_path not in fsm.context:
+                    missing_keys.add(var_path)
     if missing_keys:
         for key in sorted(missing_keys):
             logger.error(
