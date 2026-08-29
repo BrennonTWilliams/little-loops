@@ -165,6 +165,67 @@ loop — including loops in consuming projects, which no baseline covers.
   site it exempts, where a reviewer reading that action sees it. A config-file
   allowlist would put the exemption somewhere nobody reading the code will look.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
+
+- **No existing precedent for a per-site inline suppression marker.** Every
+  existing suppression mechanism in the FSM validation family is a loop-level
+  boolean flag on `FSMLoop` (`schema.py:1428-1472`, e.g.
+  `unsafe_context_interpolation_ok`, `tamper_guard_ok`, `terminal_action_ok`).
+  No rule in `scripts/little_loops/fsm/validation/*.py` parses an inline
+  per-site comment marker today; `policy_rules.py:131`'s `startswith("#")` is
+  an ordinary comment-skip, not marker parsing. The `# ll-lint:
+  mr11-ok(<var>) <reason>` grammar this issue specifies is new mechanism in
+  this codebase, not an established idiom to match.
+- **Two existing, differently-shaped precedents for tracking "known/accepted
+  residual findings" both live in the test suite, not inline in loop YAML —
+  and they disagree with each other on directionality:**
+  - `test_builtin_loops.py:16399-16429`'s ratcheted-category ALLOWLIST: a
+    hardcoded `set[(loop, category, path)]` tuple literal in the test file.
+    `test_deterministic_warning_categories_do_not_regrow` checks one
+    direction (new unallowlisted findings fail); a companion
+    `test_allowlist_entries_are_not_stale` checks the other (a stale entry
+    that no longer produces its warning must be removed).
+  - ENH-3338's baseline (`test_builtin_loops.py:19183-19226`,
+    `scripts/tests/data/loop_interpolation_baseline.json`): a checked-in
+    JSON file of per-site entries, asserted via exact-set equality
+    (`discovered == expected`) in a single test — new sites fail as
+    "unbaselined", removed/converted sites fail as "stale", both directions
+    from one assertion.
+  Both precedents centralize the accepted-finding registry in the test
+  suite as a structured, per-entry set (not a bare count) and both are
+  bidirectional. This doesn't contradict this issue's own rejection of
+  extending the ENH-3338 baseline for MR-11 (correct — MR-11 never reads
+  it), but it means AC 8c's "checked-in marker count asserted by a test" is
+  a weaker shape than either sibling precedent: a bare integer identifies
+  how many markers exist, not which sites they're on or whether a specific
+  marker is stale. The `grep -rn` enumeration AC 8c already requires is the
+  closest existing test only checks a count, not a structured entry set —
+  worth knowing before deciding how far to match the sibling patterns.
+- **ERROR severity in this rule family fires in exactly two existing shapes,
+  never from unparseable free-text.** Across every current `ERROR` emission
+  (`_base.py:34`'s dataclass default, `shell_safety.py:90,143`,
+  `meta_rules.py:106`, `evaluator_rules.py:318`, `structural_rules.py:908`,
+  `reachability.py:95,511,542`), the trigger is either (a) an unresolvable
+  static reference (e.g. the static `loop:` ref check), or (b) a value
+  outside a fixed enum/grammar (`tamper_guard:`, `prepatch_check:` must be
+  one of a closed set of literal strings). No existing rule emits `ERROR`
+  for malformed free-text comment syntax. The proposed malformed-marker
+  `ERROR` would be this family's first ERROR triggered by unparseable
+  ad-hoc grammar rather than reference-resolution or enum-membership
+  failure — the closest shape to imitate is the enum-membership check
+  (tamper_guard/prepatch_check), not the reference-resolution check.
+- **The Design Rules table's row format is fixed and MR-11's own row is the
+  template to preserve.** `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md`'s table
+  (`:92` for the current MR-11 row) is 5 columns: Rule | What it requires |
+  Why | Severity | Suppress with. Worked examples that don't fit a cell are
+  added as prose/code blocks in a `###`-level subsection immediately after
+  the table, not crammed into a cell — see MR-1's own "Canonical MR-1
+  example" subsection (`:118-127`) for the existing shape. The two idiom
+  code blocks this issue adds should follow that same after-the-table
+  subsection convention rather than inventing a new placement.
+
 ## Scope Boundaries
 
 **In scope:** MR-11's matcher width, namespace coverage, Python-literal position
@@ -445,5 +506,6 @@ green. The existing `blocked_by`/`blocks` edge (ENH-3347 blocks this issue)
 already sequences the edits — land in that order.
 
 ## Session Log
+- `/ll:refine-issue` - 2026-08-29T16:03:29 - `c54a423f-c560-4b02-ba94-5edb4f845eaa.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-28T02:22:57 - `bd65b096-20a2-4a7e-b430-c4b13ac5b81d.jsonl`
 - `/ll:scope-epic` - 2026-08-27T17:51:45 - `c766dcf0-a664-4805-9c8a-6eba323145c8.jsonl`
