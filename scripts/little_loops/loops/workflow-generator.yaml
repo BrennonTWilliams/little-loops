@@ -65,6 +65,25 @@ states:
       rm -f "$DIR/.intent_retry_count"
       : > "$DIR/.intent_errors.txt"
       : > "$DIR/.scope_violations.txt"
+      : > "$DIR/.evaluator_vocab_errors.txt"
+      # ENH-3355: generate attach_evaluators' evaluator vocabulary from the
+      # validator's own tables instead of hand-restating it in that prompt.
+      # Unconditional (not nested in the $ROOT branch below) so it also runs
+      # on non-repo runs. Double-quoted -c body (never single-quoted) so it
+      # is never matched by check_intent_scope's byte-identical-pair regex,
+      # which anchors on a single-quoted python3 -c block.
+      python3 -c "
+      from little_loops.fsm.validation import EVALUATOR_REQUIRED_FIELDS, NON_LLM_EVALUATOR_TYPES
+      EXCLUDED = {'open_question_stall', 'harbor_scorer'}
+      for t in sorted(NON_LLM_EVALUATOR_TYPES - EXCLUDED):
+          req = EVALUATOR_REQUIRED_FIELDS[t]
+          print(f'- {t} — ' + ('no companion fields' if not req else 'requires ' + ', '.join(req)))
+      print()
+      print('Do not use:')
+      for t in sorted(set(EVALUATOR_REQUIRED_FIELDS) - NON_LLM_EVALUATOR_TYPES):
+          print(f'- {t}')
+      " > "$DIR/evaluator-vocab.md" 2> "$DIR/.evaluator_vocab_errors.txt" \
+        || : > "$DIR/evaluator-vocab.md"
       ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || ROOT=""
       if [ -n "$ROOT" ]; then
         git -C "$ROOT" rev-parse HEAD > "$DIR/baseline-ref.txt" 2>/dev/null || : > "$DIR/baseline-ref.txt"
@@ -413,29 +432,21 @@ states:
     # satisfiable by construction, not by luck.
     action_type: prompt
     action: |
-      Read ${captured.run_dir.output}/graph-sketch.yaml.
+      Read ${captured.run_dir.output}/graph-sketch.yaml and
+      ${captured.run_dir.output}/evaluator-vocab.md.
 
       For every state that is NOT "done" or "failed", attach a non-LLM
-      evaluator. Choose exactly one evaluator type per state from this
-      allowed vocabulary: exit_code, output_numeric, output_json,
-      output_contains, convergence, diff_stall, score_stall, action_stall,
-      mcp_result, classify. A "kind: prompt" state generating free text is
-      typically followed logically by an "output_contains" or "exit_code"
-      check; a "kind: shell" state doing a concrete check is typically
-      "exit_code". Do not use llm_structured, comparator, or contract — those
-      are LLM-graded and do not satisfy this loop's non-LLM discriminator
-      requirement.
+      evaluator. Choose exactly one evaluator type per state from the
+      allowed vocabulary listed in evaluator-vocab.md — that file also names
+      each type's required companion fields; an evaluator missing any of
+      them is INVALID and will be rejected by the gate that runs immediately
+      after you. Do not use any type listed under evaluator-vocab.md's
+      "Do not use" heading — those are LLM-graded and do not satisfy this
+      loop's non-LLM discriminator requirement.
 
-      Each evaluator type carries required companion fields; an evaluator
-      missing any of them is INVALID and will be rejected by the gate that
-      runs immediately after you:
-
-      - exit_code — no companion fields
-      - output_contains — requires `pattern`
-      - output_numeric — requires `operator` and `target`
-      - output_json — requires `path`, `operator`, AND `target`
-      - convergence — requires `target`
-      - diff_stall, score_stall, action_stall, mcp_result, classify — none
+      A "kind: prompt" state generating free text is typically followed
+      logically by an "output_contains" or "exit_code" check; a "kind:
+      shell" state doing a concrete check is typically "exit_code".
 
       Prefer `output_contains` for a "kind: prompt" state that emits free
       text — it needs only `pattern`. Choose `output_json` ONLY when that
@@ -453,12 +464,9 @@ states:
           purpose: <unchanged>
           kind: <unchanged>
           evaluate:
-            type: <one of the allowed types above>
-            pattern: <required if type is output_contains>
-            path: <required if type is output_json — dotted JSON path, e.g. "total_found">
-            operator: <required if type is output_json or output_numeric, e.g. "ge">
-            target: <required if type is output_json, output_numeric, or convergence>
-        # omit any field not required by the chosen type
+            type: <one of the allowed types evaluator-vocab.md lists>
+            # include exactly the companion fields evaluator-vocab.md lists
+            # for the chosen type; omit any field not required by it
         # "done" and "failed" carry no evaluate key
       ```
     next: validate_evaluators
@@ -874,9 +882,10 @@ states:
 
       Diagnose by reading whichever of these exist under
       ${captured.run_dir.output}/: intent.yaml, graph-sketch.yaml,
-      graph-evaluators.yaml, graph-routed.yaml, workflow.yaml,
-      .emit_retry_count, .emit_errors.txt, .intent_retry_count,
-      .intent_errors.txt, .scope_violations.txt.
+      evaluator-vocab.md, graph-evaluators.yaml, graph-routed.yaml,
+      workflow.yaml, .emit_retry_count, .emit_errors.txt,
+      .intent_retry_count, .intent_errors.txt, .scope_violations.txt,
+      .evaluator_vocab_errors.txt.
 
       Most common failure: either emit_artifact could not produce a
       workflow.yaml that passes `ll-loop validate` within max_emit_retries

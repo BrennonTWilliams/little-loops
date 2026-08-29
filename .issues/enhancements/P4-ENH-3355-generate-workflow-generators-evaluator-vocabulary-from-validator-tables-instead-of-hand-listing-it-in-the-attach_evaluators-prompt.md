@@ -4,10 +4,11 @@ type: ENH
 title: Generate workflow-generator's evaluator vocabulary from validator tables instead
   of hand-listing it in the attach_evaluators prompt
 priority: P4
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-08-28'
 captured_at: '2026-08-28T22:35:07Z'
+completed_at: '2026-08-29T22:48:03Z'
 verify_verdict: VALID
 labels:
 - workflow-generator
@@ -432,10 +433,10 @@ _Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
 
 ## Acceptance Criteria
 
-- [ ] The Decision Needed above is resolved and recorded in this issue
+- [x] The Decision Needed above is resolved and recorded in this issue
       (widen to all 12 vs. curated exclusion set) before the prompt/generator
       edits land.
-- [ ] `init` gains a generator block, placed in the unconditional
+- [x] `init` gains a generator block, placed in the unconditional
       pre-`$ROOT` region of its action (or between it and the git-conditional
       `if [ -n "$ROOT" ]` block) and never nested inside that block, so it
       also runs on non-repo runs, that writes `evaluator-vocab.md` into the
@@ -446,7 +447,7 @@ _Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
       `{open_question_stall, harbor_scorer}` per the recorded Option 2
       decision, respecting the `init` stdout contract (write to a file;
       `case`/`echo` block stays last).
-- [ ] `attach_evaluators`'s prompt reads the generated vocab file instead of
+- [x] `attach_evaluators`'s prompt reads the generated vocab file instead of
       hand-listing the type/required-field table, and its remaining prose
       guidance (prefer `output_contains`; `output_json` field warnings) stays
       coherent with the generated list. "Hand-listing" covers ALL THREE
@@ -462,14 +463,14 @@ _Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
       comments genericized to "include exactly the companion fields
       evaluator-vocab.md lists for the chosen type"), not left standing as
       residual drift channels.
-- [ ] A negative-assertion test proves the removed enumerations are gone:
+- [x] A negative-assertion test proves the removed enumerations are gone:
       type names that appear ONLY in the removed restatement sites and not in
       the retained prose-guidance sentences — `classify`, `mcp_result`,
       `action_stall`, `diff_stall`, `score_stall` — are asserted absent from
       `attach_evaluators`'s `action` string after the edit. Without this, an
       implementer can replace only the bullet table, leave sites (1) and (3)
       as live drift channels, and every test in this plan still passes.
-- [ ] `test_attach_evaluators_documents_every_required_field`
+- [x] `test_attach_evaluators_documents_every_required_field`
       (`TestWorkflowGeneratorLoop`, `scripts/tests/test_builtin_loops.py:18147`)
       is repointed at the generated `evaluator-vocab.md` content instead of
       the removed hand-listed prompt table — the retained prompt template
@@ -477,15 +478,15 @@ _Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
       `path`, `operator`, `target`) to keep passing for the wrong reason —
       and asserts `init` emits the vocab file under `${context.run_dir}/`
       (per-run artifact isolation, not bare `.loops/tmp/`).
-- [ ] A generator-block execution test runs the generator body and asserts
+- [x] A generator-block execution test runs the generator body and asserts
       its output covers every member of `NON_LLM_EVALUATOR_TYPES -
       {open_question_stall, harbor_scorer}` (the curated allowed set per the
       recorded Option 2 decision) and also covers the derived "Do not use"
       exclusion list (`advisor_consult`, `comparator`, `contract`,
       `llm_structured`).
-- [ ] `ll-loop validate scripts/little_loops/loops/workflow-generator.yaml`
+- [x] `ll-loop validate scripts/little_loops/loops/workflow-generator.yaml`
       passes with no new violations.
-- [ ] FEAT-3328's gate-completeness guide entry's ENH-3355 cross-reference in
+- [x] FEAT-3328's gate-completeness guide entry's ENH-3355 cross-reference in
       `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md:117` is updated from
       "tracked separately as ENH-3355" to reflect this issue as resolved.
 
@@ -493,13 +494,13 @@ _Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
 
 _Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
 
-- [ ] The concrete mechanism for the first bullet's "resolved and recorded": `ll-issues check-decidable ENH-3355` exits 0 against the machine-visible `**Option 1**`/`**Option 2**` blocks under Decision Needed, `/ll:decide-issue ENH-3355` has appended a `> **Selected:**` callout beneath the chosen option, and `decision_needed` is `false` in frontmatter (set by `/ll:decide-issue` on resolution — `true` is only the pre-resolution flag a refine pass sets while the decision is still open, per `skills/decide-issue/SKILL.md:275,289,297`). **Status as of this pass**: all three hold — frontmatter reads `decision_needed: false` and the `> **Selected:**` callout is present under Decision Needed — this bullet is satisfied.
-- [ ] The generator's output includes the derived "Do not use" exclusion list — `sorted(EVALUATOR_REQUIRED_FIELDS.keys() - NON_LLM_EVALUATOR_TYPES)` — alongside the allowed-type table, so the current hand-listed line's `advisor_consult` omission (identified in Decision Needed) is closed by construction; this is the concrete check for the third bullet's "stays coherent with the generated list."
-- [ ] If the real generator block interpolates any `${context.*}`/`${captured.*}`/`${prev.*}` var directly into the new `python3 -c` Python body (rather than reusing bash's own already-set `$DIR`), `scripts/tests/data/loop_interpolation_baseline.json` is updated in the same change and `TestInterpSweepBaseline::test_completeness_guard` (`scripts/tests/test_builtin_loops.py:19267` — re-verified this pass; was 19236) passes.
+- [x] The concrete mechanism for the first bullet's "resolved and recorded": `ll-issues check-decidable ENH-3355` exits 0 against the machine-visible `**Option 1**`/`**Option 2**` blocks under Decision Needed, `/ll:decide-issue ENH-3355` has appended a `> **Selected:**` callout beneath the chosen option, and `decision_needed` is `false` in frontmatter (set by `/ll:decide-issue` on resolution — `true` is only the pre-resolution flag a refine pass sets while the decision is still open, per `skills/decide-issue/SKILL.md:275,289,297`). **Status as of this pass**: all three hold — frontmatter reads `decision_needed: false` and the `> **Selected:**` callout is present under Decision Needed — this bullet is satisfied.
+- [x] The generator's output includes the derived "Do not use" exclusion list — `sorted(EVALUATOR_REQUIRED_FIELDS.keys() - NON_LLM_EVALUATOR_TYPES)` — alongside the allowed-type table, so the current hand-listed line's `advisor_consult` omission (identified in Decision Needed) is closed by construction; this is the concrete check for the third bullet's "stays coherent with the generated list."
+- [x] If the real generator block interpolates any `${context.*}`/`${captured.*}`/`${prev.*}` var directly into the new `python3 -c` Python body (rather than reusing bash's own already-set `$DIR`), `scripts/tests/data/loop_interpolation_baseline.json` is updated in the same change and `TestInterpSweepBaseline::test_completeness_guard` (`scripts/tests/test_builtin_loops.py:19267` — re-verified this pass; was 19236) passes.
 
 _Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
 
-- [ ] The generator block's failure path is diagnosable, not silent: on a
+- [x] The generator block's failure path is diagnosable, not silent: on a
       generation-time failure (e.g. an import error in the `python3 -c`
       body), the run surfaces that failure in a dedicated
       `.evaluator_vocab_errors.txt` file, reset by `init` alongside its
@@ -511,7 +512,7 @@ _Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
       unsafe) — rather than only falling back to a silently empty
       `evaluator-vocab.md`; a test exercises the failure path and asserts
       `.evaluator_vocab_errors.txt` is left non-empty.
-- [ ] `diagnose`'s file-inspection list
+- [x] `diagnose`'s file-inspection list
       (`scripts/little_loops/loops/workflow-generator.yaml:874-878`) is
       extended to name `evaluator-vocab.md` and
       `.evaluator_vocab_errors.txt`, so a generation-time failure is visible
@@ -522,7 +523,7 @@ _Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
       > `count_intent_retry`, `count_emit_retry`); an attach_evaluators /
       > validate_evaluators cycle alone never reaches `diagnose` regardless
       > of its file list — see the "Scope correction" finding below.
-- [ ] The concrete check for the third bullet's "stays coherent with the
+- [x] The concrete check for the third bullet's "stays coherent with the
       generated list" prose-guidance half: `attach_evaluators`'s action
       string still contains the `output_contains` preference sentence
       ("Prefer `output_contains` for a \"kind: prompt\" state that emits
@@ -533,7 +534,7 @@ _Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
       assertion shape `test_attach_evaluators_documents_every_required_field`
       (`scripts/tests/test_builtin_loops.py:18147` — re-verified this pass;
       was 18118) already uses for the table this issue removes.
-- [ ] Concrete redefinition for the seventh bullet (superseded below): as of
+- [x] Concrete redefinition for the seventh bullet (superseded below): as of
       this pass, FEAT-3328 is `status: open` and
       `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` contains no
       gate-completeness rule entry and no cross-reference to ENH-3355
@@ -573,12 +574,40 @@ Independent of FEAT-3328: neither needs to land first, and FEAT-3328's AC #3
 Source: `postmortems/workflow-generator-output-json-gate-gap.md`;
 FEAT-3328 § Known coverage gap.
 
+## Resolution
+
+Implemented per the recorded Option 2 decision. `init` gained an
+unconditional generator block (before the `$ROOT` git-conditional region)
+that imports `NON_LLM_EVALUATOR_TYPES`/`EVALUATOR_REQUIRED_FIELDS` and
+writes `evaluator-vocab.md` (allowed types + required fields) and the
+derived "Do not use" exclusion list into the run dir, with stderr captured
+to a dedicated `.evaluator_vocab_errors.txt` (reset by `init`, never
+`.emit_errors.txt`) and a truncating fallback on failure so `init`'s
+one-line stdout contract holds either way. `attach_evaluators` now reads
+`evaluator-vocab.md` instead of hand-listing the vocabulary/required-field
+table across all three prior restatement sites (inline sentence, bullet
+table, YAML template comments); its retained prose guidance
+(`output_contains` preference, `output_json` three-field warning) is
+unchanged. `diagnose`'s file-inspection list now names both new artifacts.
+
+Verified: `ll-loop validate` passes with no new violations; the generator
+block was executed directly and its output matches the curated 10-type
+allowed vocabulary plus the 4-type exclusion list exactly;
+`python -m pytest scripts/tests/` passes except 4 pre-existing failures
+unrelated to this change (README/BUG-3179 drift, decision-rules corpus,
+subprocess_utils guillotine-prompt test, verify_evidence repo gate — none
+touch `workflow-generator.yaml` or `test_builtin_loops.py`). Both
+documentation cross-references (`HARNESS_OPTIMIZATION_GUIDE.md`,
+`LOOPS_REFERENCE.md`) were updated to reflect the generated, intentionally
+narrower vocabulary.
+
 ## Status
 
 **Open** | Created: 2026-08-28 | Priority: P4
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-29T22:48:03 - `f7c14658-bb40-440b-81af-f3a16fcf645e.jsonl`
 - `/ll:confidence-check` - 2026-08-29T22:28:28 - `6ccd6e6e-388b-438a-9b4d-590811851d9d.jsonl`
 - `/ll:confidence-check` - 2026-08-29T21:51:31 - `50c46bf0-423e-4388-a12d-c46c8485daa9.jsonl`
 - `/ll:reconcile-issue` - 2026-08-29T21:47:59 - `c9c1c0a3-4ed0-4475-ae26-5a077ef3a172.jsonl`
