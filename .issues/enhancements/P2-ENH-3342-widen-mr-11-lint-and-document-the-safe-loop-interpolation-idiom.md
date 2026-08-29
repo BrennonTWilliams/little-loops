@@ -15,7 +15,7 @@ blocked_by:
 - BUG-3340
 - BUG-3341
 - ENH-3347
-confidence_score: 75
+confidence_score: 80
 verify_verdict: PROPOSAL_UNSOUND
 outcome_confidence: 45
 score_complexity: 10
@@ -346,6 +346,17 @@ _Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
 - **The blast radius of "every loop in `scripts/little_loops/loops/**`" is incomplete.** `validate_fsm()` also runs over inline FSM YAML fixtures embedded directly in test files outside that glob. Confirmed via grep for `action_type: shell` fixtures containing `${context.*}`: `scripts/tests/test_builtin_loops.py`, `test_create_loop.py`, `test_enh2892_subloop_failure_dispatch.py`, `test_fsm_executor.py`, `test_fsm_fragments.py`, `test_interp_sweep.py`, `test_ll_loop_commands.py`, `test_rn_implement.py`, `test_rn_remediate.py`, `test_verify_issue_loop.py`. Any such fixture using a non-allowlisted context key (or `captured`/`prev` namespace) in a shell action begins emitting a new MR-11 WARNING post-widening; the step-6 triage plan (marker or convert) is scoped to `scripts/little_loops/loops/**` and does not name a triage path for test fixtures.
 - **`scripts/tests/test_flux_image_generator.py:187-206` (`test_no_raw_user_input_in_shell_actions`, docstring-labeled "MR-11") independently hand-duplicates the exact fixed seven-key list** (`${context.input}`, `${context.description}`, `${context.prompt}`, `${context.query}`, `${context.task}`, `${context.goal}`, `${context.topic}`) this issue drops from `_UNSAFE_CONTEXT_INTERP_RE`, checked as raw substring absence against `WRAPPER`/`ORACLE`. It won't break post-widening, but it stays a narrower, hand-maintained duplicate of exactly the mechanism this issue's Motivation says should be the single ratchet.
 
+_Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
+
+- **Correction to the `:190-193` citation (Current Behavior and Integration Map → Files to Modify): the `if shell_quote: continue` block is `:193-194`, not `:190-193`.** Verified against the current tree: `shell_safety.py:190-192` is the `try: ... except InterpolationError: shell_quote = False` block that *computes* `shell_quote`; the actual `if shell_quote:` statement is at `:193` and its `continue` is at `:194`. Both existing `:190-193` citations should be read as `:193-194` — the range as written omits the `continue` line the finding is about and includes three unrelated lines. (A separate, later citation elsewhere in this same Codebase Research Findings history correctly uses `:193` alone for this block; only the two `:190-193` range citations need this correction.)
+- **Correction to the marker-precedent finding's ALLOWLIST citation: `test_builtin_loops.py:16399-16429` is the wrong range for the "ratcheted-category ALLOWLIST … hardcoded tuple literal" claim.** Verified against the current tree: `ALLOWLIST: dict[tuple[str, str], set[str]] = {` starts at `:16345` and its closing `}` is at `:16385`. Lines `:16399-16429` instead contain `_collect_findings` (`:16399-16411`) and `test_deterministic_warning_categories_do_not_regrow` (`:16413-16425`) — code that *reads* ALLOWLIST, not its definition — and the range still doesn't reach `test_allowlist_entries_are_not_stale` (`:16427` onward). Use `:16345-16385` for the ALLOWLIST definition claim.
+- **Correction to the ENH-3338 baseline citation: `test_builtin_loops.py:19183-19226` names the wrong class for the "exact-set equality (`discovered == expected`)" claim.** Verified against the current tree: `class TestInterpSweepBaseline:` starts at `:19225` and its `test_completeness_guard`'s `assert discovered == expected` is at `:19247`. Lines `:19183-19226` are almost entirely `class TestUntrustedOutputSurvey:` (a BUG-3334 completeness guard for untrusted sub-loop output reaching prompt states — unrelated to the interpolation baseline), with only the tail of the range touching `TestInterpSweepBaseline`'s docstring. The substantive claim (a JSON baseline compared via exact-set equality) is correct; cite `:19225` for the class and `:19247` for the assertion instead.
+- **Correction to the "Design Rules table format" finding: `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` has no `###`-level "Canonical MR-1 example" subsection.** Verified via `grep -n "^### "` on the file: no such heading exists anywhere. The text at `:122`, `**Canonical MR-1 example — …**: When a…`, is inline bold text embedded in ordinary running prose directly under the `##`-level `## The Design Rules (MR-1…MR-14)` heading (`:85`; MR-11's own row is at `:104`, already corrected from `:92` above) — not a separate `###` subsection. The convention to follow for the two new idiom blocks is therefore: inline bold-labeled prose/code directly under `## The Design Rules`, in the same shape as the MR-1 example at `:122`, not a new `###` heading — inventing a `###` subsection would not match the doc's actual existing convention.
+
+_Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
+
+- **`test_mr11_does_not_fire_inside_quoted_heredoc` (`test_fsm_validation_shell_safety.py:267-273`) already asserts the correct behavior after widening — it is not the fixture item 3 above says is wrong.** Verified against the current tree: the fixture's action is `cat > "${context.run_dir}/in.txt" <<'LL_EOF'\n${context.input}\nLL_EOF\n` — a `cat` heredoc (a data sink writing `${context.input}` to a file), not a Python body. Under this issue's own § Program Design Decision Rules table ("inside a quoted heredoc that is **not** a Python body -> clean (unchanged)") and per `interp_sweep.py`'s `heredoc_is_python` gate (only true when `python3` appears before the `<<` on the opener line), this exact scenario stays correctly unflagged post-widening — `errors == []` remains the right assertion, unchanged. What AC 3's "unit test for each side" actually requires is a **new**, separate fixture using a `python3 <<'EOF'` heredoc that **is** flagged (the Python-body side of the distinction); the existing `cat`-heredoc fixture is the already-correct "not a Python body -> clean" side and should be left standing, not revised.
+
 ## Scope Boundaries
 
 **In scope:** MR-11's matcher width, namespace coverage, Python-literal position
@@ -519,6 +530,10 @@ _Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
 - **Adapter gap between `scan_action()`'s shape and `_find_unsafe_context_interpolations`'s current contract.** `scan_action(action, *, state, file)` (`interp_sweep.py:128`) takes a mandatory keyword-only `file: str` and returns `list[InterpSite]` (`var`/`cls`/`host_shape`/`line`/`count` fields), not `(state_name, token)` tuples. `FSMLoop` (`schema.py`) has no source-file-path field to supply as `file`. `InterpSite.var` is the bare `namespace.key_path` with no suffix chain, whereas the current `token` returned by `_find_unsafe_context_interpolations` is the full `${context.<raw>}` text including suffixes, which `_validate_unsafe_context_interpolation`'s message builder interpolates directly into the WARNING text. Reconciling these two shapes (what `file` value to pass for the Python-body half; how to reconstruct a message-worthy token from an `InterpSite` for that half) is required before "same signature" in the Signatures entry above is achievable.
 - **The Decision Rules table's two bash-token-position rows are not actually "(unchanged)".** Today, bash-token-position scanning uses `_UNSAFE_CONTEXT_INTERP_RE`, which matches only `context.*` with the old fixed 7-key list — so `${prev.output}` and `${captured.*}` at a bash-token position are invisible today (per Current Behavior item 2 and AC 2b). Post-widening, bash-token-position untrusted-ness must also come from `classify_site()` across all namespaces (same source as the Python-literal-position rows), not a namespace-restricted regex. The `:shell`-clears-it / not-single-quoted mechanics at that position are unchanged, but the namespace scope feeding into "is this token untrusted" is not — the table's "(unchanged)" label describes only the flag/clean mechanics, not the namespace coverage, and should not be read as "bash-position scanning needs no code change."
 
+_Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
+
+- **Actionable rewrite for the Signatures over-claim identified above.** The `_find_unsafe_context_interpolations` Signatures entry's "same signature; body delegates to `interp_sweep.scan_action()` / `classify_site()`" over-claims full delegation, per the finding immediately above (`scan_action()`'s own docstring excludes bash-token-position sites, needed for AC 2b, by design). The precise correction — for the implementer to apply when this over-claim is resolved — is: "same signature; the bash-token-position half stays an independent scan using `classify_site()` directly (the existing `_UNSAFE_CONTEXT_INTERP_RE.finditer` loop, widened to a namespace-generic lookup), and only the Python-literal-position half (AC 1, 2, 3, 5b's Python-body case) delegates to `interp_sweep.scan_action()`." This matches the Summary's weaker, accurate claim ("MR-11 consumes `classify_site()` rather than reimplementing the classification rule") and the two-scan-path design already reflected in `## Implementation Steps` step 1. This correction exists so the literal Signatures bullet is not read in isolation as full delegation — that isolated reading is the most direct textual source of the persisted `verify_verdict: PROPOSAL_UNSOUND`.
+
 ## Implementation Steps
 
 1. Replace the bash-token-position scan's fixed seven-key regex match with a
@@ -544,6 +559,7 @@ _Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
    case, and the `:shell`-inside-a-Python-body vs.
    `:shell`-at-bash-token-position cases) — distinct from the
    marker-constraint tests in step 5.
+   > ⚠ Superseded — fixture is a cat heredoc, not Python; see § Codebase Research Findings under Integration Map
 5. Implement the `# ll-lint: mr11-ok(<var>) <reason>` marker: grammar, per-
    variable matching, both placements, the `${`-rejection guard, the
    malformed-marker ERROR, and the checked-in marker-count ratchet. Do this
@@ -591,6 +607,13 @@ _Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
 - **No listed step directs writing the new unit tests Acceptance Criteria 1, 2, 2b, 3, 4, and 5b each require.** Step 4 only revises one pre-existing fixture (`test_mr11_does_not_fire_inside_quoted_heredoc`); Step 5 (marker implementation) covers AC 8b's per-constraint tests but not these six. Constraint: `scripts/tests/test_fsm_validation_shell_safety.py` needs new cases covering — a `${context.<key>}` outside the old 7-key allowlist inside a Python literal (AC 1); `${captured.*}` inside a Python literal (AC 2); `${prev.output}`/`${prev.stderr}` flagged and `${prev.exit_code}` clean, each at a bash-token position (AC 2b); a quoted-heredoc-as-Python-body case flagged vs. quoted-heredoc-as-non-Python-body clean (AC 3); an indented marker-equal line not closing the tracked heredoc block (AC 4); and `:shell` flagged inside a Python body but clean at a bash-token position, with the Python-body message naming the `LL_ARG_` hoist remedy (AC 5b). These are additive test cases the acceptance criteria require, distinct from the AC 8b marker-constraint tests already named in Step 5.
 - **The two-scan-path constraint from § Program Design's Codebase Research Findings above (independent bash-token-position scan via `classify_site()`, separate from `scan_action()` delegation for the Python-body half) is not expressed anywhere in these steps.** Step 1 as written ("replace MR-11's regex-based detection with a call into ENH-3338's scanner") reads as a single full substitution; literally executed, it satisfies AC 1/2/3/5b (the Python-body cases `scan_action()` covers) but cannot produce AC 2b's bash-token-position finding, since `scan_action()`'s own docstring excludes that position by design. The bash-token-position half needs its own widened scan (namespace-generic `classify_site()` lookup replacing the old fixed-key regex match), kept alongside — not replaced by — the `scan_action()` delegation.
 
+_Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
+
+- **AC 8c's "grep enumeration recorded in this issue" half has no directing step.** Step 5 covers the marker mechanism plus the count-ratchet test; step 7 covers per-site triage (convert vs. mark). Neither step, nor any other, directs pasting the `grep -rn "ll-lint: mr11-ok" scripts/little_loops/loops/` output back into this issue document. As written, executing every listed step produces the marker mechanism and the triage but not the enumeration text living in this issue — that requires an explicit action at the end of step 7 (or a new step immediately after it): run the grep and record its output (or "none" if the residual set is empty) in this issue, e.g. as a subsection under `## Acceptance Criteria` or `## Impact`.
+- **AC 9's marker-documentation half has no directing step.** Step 8 (the only step touching `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md`) is scoped to the two interpolation idioms plus the column-0 hoist and `<state>-<capture>.txt` naming rules — it never mentions the `# ll-lint: mr11-ok(...)` marker. AC 9 additionally requires the guide to document the marker's grammar, both placement rules, that it is a last resort, and that it must not quote the token it exempts. That content is currently written only in this issue's own `### The # ll-lint: mr11-ok(...) marker` section, which is a design record for this issue, not the user-facing guide; no step routes it into `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md`. Step 8 needs to additionally document the marker (grammar, placement, last-resort framing, no-`${`-quoting constraint) alongside the two idioms, not only the idioms.
+- **AC 10's severity decision has no named recording mechanism.** `## Severity`'s "Record this as a decision" and AC 10 itself do not name this codebase's actual decision-recording mechanism: `.ll/decisions.yaml` / `.ll/decisions.d/`, written via `ll-issues decisions add --type decision --category <cat> --rule "<text>" --rationale "<why>" --issue ENH-3342` (documented in `.claude/CLAUDE.md` § Project Configuration; sibling issue ENH-2106 uses this exact mechanism for its own decision, listing `.ll/decisions.yaml` under its Integration Map and citing the `ll-issues decisions add` invocation directly). As written, "recorded with its rationale" has no file, no schema field, and no test/gate verifying it happened — it is satisfiable by prose anywhere, including nowhere durable. No step in `## Implementation Steps`, and no bullet under `## Integration Map` → Files to Modify/Configuration, currently names `.ll/decisions.yaml` as a file this issue touches. Step 9 (the severity-decision step) should additionally run `ll-issues decisions add` for the WARNING-vs-ERROR decision, and `## Integration Map` → Configuration should list `.ll/decisions.yaml` rather than staying "N/A" for this one item.
+- **Step 6 (the validator message-rewrite step) has no constraint protecting `test_builtin_loops.py`'s `CATEGORY_PATTERNS["unsafe-context-interp"]` classifier.** Verified in the current tree: `TestValidatorWarningBudget.CATEGORY_PATTERNS` (`test_builtin_loops.py:16321-16330`) hardcodes the exact substring `"interpolates user-controlled context raw into a shell body"` as the sole classifier tying MR-11's WARNING message to the corpus-wide regression ratchet (`_classify()` does `if pattern in message: return category`; `_collect_findings()` does `if category is None: continue`). This is the same class whose `ALLOWLIST` was mis-cited above (definition at `:16345-16385`, not `:16399-16429`). If step 6's message rewrite drops that exact substring, every MR-11 finding becomes invisible to both `test_deterministic_warning_categories_do_not_regrow` and `test_allowlist_entries_are_not_stale` — with no test failure to signal it, since there is currently no `unsafe-context-interp` ALLOWLIST entry to go stale (the corpus is MR-11-clean today). Step 6's message rewrite must either preserve this exact substring somewhere in the rewritten text, or `CATEGORY_PATTERNS["unsafe-context-interp"]` must be updated to match the new message in the same change — one of the two, not neither.
+
 ## Acceptance Criteria
 
 1. MR-11 flags an untrusted `${context.<any-key>}` — not only the seven
@@ -621,6 +644,7 @@ _Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
    `shell_safety.py`.
 7. `test_mr11_does_not_fire_inside_quoted_heredoc` is revised, and the reason the
    original assertion was wrong is recorded in the test or this issue.
+   > ⚠ Superseded — fixture is a cat heredoc, not Python; see § Codebase Research Findings under Integration Map
 8. Every finding surfaced by the widening is triaged — converted in this issue,
    or exempted with a well-formed `# ll-lint: mr11-ok(<var>) <reason>` marker
    citing a tracking issue. None is suppressed via
@@ -754,7 +778,68 @@ below — this run incorporates both._
   `InterpSite`'s bare `namespace.key_path` — left to the implementer with no
   stated resolution.
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-08-29_
+
+**Readiness Score**: 80/100 → PROCEED WITH CAUTION
+**Outcome Confidence**: 45/100 → LOW
+
+_Supersedes the 75/45 scores from the prior `/ll:confidence-check` pass
+(2026-08-29T16:51:34). Re-run after the subsequent `/ll:reconcile-issue`
+(16:58:40) and `/ll:refine-issue` (17:06:37) passes. All six `blocked_by`
+dependencies (ENH-3337, ENH-3338, BUG-3339, BUG-3340, BUG-3341, ENH-3347) are
+now `done` — Criterion 5 scores full. `superseded_marker_count` dropped from
+8 to 2 (`ll-issues format-check --format json`). Outcome sub-scores are
+unchanged from the prior pass; the underlying risk factors (open-ended corpus
+triage, unresolved adapter-gap) have not changed._
+
+### Concerns
+- `verify_verdict: PROPOSAL_UNSOUND` is still persisted on this issue, with
+  no subsequent `/ll:verify-issues` re-run recorded in the Session Log to
+  clear it. The concrete source is the Program Design § Signatures entry for
+  `_find_unsafe_context_interpolations`, which still states "same signature;
+  body delegates to `interp_sweep.scan_action()` / `classify_site()`" — an
+  over-claim the section's own Codebase Research Findings identify and
+  correct ("the bash-token-position half stays an independent scan ... and
+  only the Python-literal-position half ... delegates to
+  `interp_sweep.scan_action()`"). `## Implementation Steps` step 1 already
+  reflects the corrected two-scan-path design accurately, so an implementer
+  following the steps (not just the Signatures bullet in isolation) has the
+  sound version — but the stale bullet itself has not been rewritten, and the
+  persisted verdict has not been recomputed against the correction.
+- Two `⚠ Superseded` markers remain unresolved (Implementation Steps step 4
+  and Acceptance Criteria 7), both pointing at the same resolved finding (the
+  `test_mr11_does_not_fire_inside_quoted_heredoc` fixture is a `cat` heredoc,
+  not a Python body, so the original assertion was already correct) — a
+  `/ll:reconcile-issue` pass to renumber/remove these two would tidy the
+  document but does not block implementation, since the correct guidance is
+  already stated in the adjacent Codebase Research Findings.
+- The `# ll-lint: mr11-ok(<var>) <reason>` marker remains genuinely new
+  mechanism (no existing per-site inline suppression precedent in the FSM
+  validation family) — new grammar, a new ERROR path, and a count ratchet,
+  not a pure widening of existing logic.
+- Step 7's corpus-wide triage (convert vs. mark each newly surfaced finding)
+  is open-ended by design, and the blast radius is confirmed wider than the
+  built-in loop corpus alone: `validate_fsm()` also runs over inline FSM YAML
+  fixtures in ~10 test files outside `scripts/little_loops/loops/**`, with no
+  named triage path for that fixture set specifically.
+
+### Outcome Risk Factors
+- Change surface is an unenumerated, per-site-judgment sweep (Pattern A, not
+  Pattern B's mechanical fanout) — the triage step requires a convert-vs-mark
+  judgment call per finding across an open-ended set of loop and test-fixture
+  files, so it scores as a very wide blast radius despite touching an
+  enumerated set of documentation files elsewhere in the issue.
+- Ambiguity: the unresolved Program Design adapter-gap (see Concerns) — what
+  value to pass as `scan_action()`'s keyword-only `file` argument, and how to
+  reconstruct a message-worthy token from `InterpSite`'s bare
+  `namespace.key_path` — is a concrete open engineering decision left to the
+  implementer with no stated resolution.
+
 ## Session Log
+- `/ll:confidence-check` - 2026-08-29T17:20:07 - `ae75495c-b3b3-484c-ab1b-67f636f84f94.jsonl`
+- `/ll:refine-issue` - 2026-08-29T17:06:37 - `ae75495c-b3b3-484c-ab1b-67f636f84f94.jsonl`
 - `/ll:reconcile-issue` - 2026-08-29T16:58:40 - `48e9d546-94fd-4111-9bec-ae917ba67439.jsonl`
 - `/ll:confidence-check` - 2026-08-29T16:51:34 - `58d393ce-925a-4f28-b052-80c8ddfba7fe.jsonl`
 - `/ll:verify-issues` - 2026-08-29T16:43:36 - `2b9cf0aa-17fa-4c56-a0c2-6a6f4f822dae.jsonl`

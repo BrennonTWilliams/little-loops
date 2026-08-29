@@ -15,12 +15,12 @@ labels:
 - feat-3328-followup
 relates_to:
 - FEAT-3328
-confidence_score: 95
-outcome_confidence: 78
+confidence_score: 100
+outcome_confidence: 93
 decision_needed: false
 score_complexity: 18
 score_test_coverage: 25
-score_ambiguity: 10
+score_ambiguity: 25
 score_change_surface: 25
 ---
 
@@ -55,6 +55,12 @@ type/required-field vocabulary. Nothing checks it against
 change, the prompt keeps instructing the model with the stale vocabulary, and
 defects surface downstream at `validate_artifact` — the exact laundering
 pattern FEAT-3328's Summary describes.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
+
+The fallback pattern this issue mandates for the generator command's redirect (`> "$DIR/evaluator-vocab.md" 2>/dev/null`, with a fallback write mirroring `baseline-ref.txt`'s `|| : > "$DIR/evaluator-vocab.md"`, per this section's redirect finding above) makes any generation-time failure (e.g. an import error inside the `python3 -c` body) produce a silently EMPTY `evaluator-vocab.md` — the exception itself is discarded by `2>/dev/null` and nothing else records that generation failed. This loop already has a diagnosability sink built for exactly this failure shape: `init` resets `.emit_errors.txt` at the top of its action (`scripts/little_loops/loops/workflow-generator.yaml:63`), and `emit_artifact`'s shell action tees its own command's failures into that same file, clearing it only on success (`scripts/little_loops/loops/workflow-generator.yaml:559,599-601`). Nothing in this issue routes the generator block's failure through `.emit_errors.txt` or any other diagnosable signal — as specified, a generation failure makes `attach_evaluators` run with zero evaluator-vocabulary guidance and no error trail anywhere in the run's artifacts, which is strictly less diagnosable than today's hand-listed prompt text (which can never be blank).
 
 ## Expected Behavior
 
@@ -208,6 +214,20 @@ No new Python functions. The design is a shell `python3 -c` block embedded in
 curated subset, per the Decision Needed above) and formats each entry against
 `EVALUATOR_REQUIRED_FIELDS[t]`.
 
+The Decision Needed above is now resolved to Option 2: the allowed-type loop
+iterates `sorted(NON_LLM_EVALUATOR_TYPES - {"open_question_stall",
+"harbor_scorer"})`, not the full `NON_LLM_EVALUATOR_TYPES`. The block's
+output is not this one loop alone — it must also emit a second, derived line
+for the "Do not use" exclusion list: `sorted(EVALUATOR_REQUIRED_FIELDS.keys()
+- NON_LLM_EVALUATOR_TYPES)`, which evaluates to `advisor_consult`,
+`comparator`, `contract`, `llm_structured` today. Expected Behavior's `python3
+-c` sketch above shows only the allowed-type loop; it does not show this
+second emit. Both emits belong to the same generator block — the
+exclusion-list line is part of this design, not an optional extra, since it
+is what closes the `advisor_consult` omission Current Behavior's Codebase
+Research Findings and Acceptance Criteria both require closed "by
+construction."
+
 ### Call Path
 
 `init` -> writes `evaluator-vocab.md` (via a `python3 -c` block reading
@@ -296,6 +316,10 @@ _Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
 
 scripts/tests/data/loop_interpolation_baseline.json + `TestInterpSweepBaseline::test_completeness_guard` (`scripts/tests/test_builtin_loops.py:19236`, backed by `scan_corpus` in `scripts/little_loops/fsm/interp_sweep.py`) is an exact-match corpus gate over every `${context.*}`/`${captured.*}`/`${prev.*}` reference embedded inside `python3 -c`/heredoc bodies in shell actions across all built-in loops (EPIC-3336). `init` currently has zero entries for it in the baseline — its existing action contains no such embedded interpolation site. As sketched (reusing the bash `$DIR` var already set earlier in `init`, not a `${context.run_dir}` interpolation inside the new Python body — see Program Design > Call Path), the new generator block introduces no new site and needs no baseline update. If the real implementation instead interpolates `${context.run_dir}` (or any `${captured.*}`/`${prev.*}` var) directly into the new Python body, that is a new, un-baselined `(file, state, var, class)` tuple and `test_completeness_guard` fails until `loop_interpolation_baseline.json` is updated in the same change.
 
+_Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
+
+Correction to the wire-issue findings above: `_run_init` (line 18446), `test_xiii_init_stdout_exactly_one_line_in_repo` (line 18710), and `test_xiii_init_stdout_exactly_one_line_in_non_repo` (line 18719) are methods of `TestCheckIntentScopeShellAction` (`scripts/tests/test_builtin_loops.py:18423-18785`; FEAT-3332's `check_intent_scope`-gate test class, which sets `LOOP_FILE = BUILTIN_LOOPS_DIR / "workflow-generator.yaml"` and drives `init`'s full action through that same `_run_init` helper) — not `TestWorkflowGeneratorLoop` (`scripts/tests/test_builtin_loops.py:17899-18422`). Only `test_init_resets_emit_errors_and_retry_count` (line 18225) is correctly attributed to `TestWorkflowGeneratorLoop`; verified directly: `grep -n "^class Test" scripts/tests/test_builtin_loops.py` shows `TestWorkflowGeneratorLoop` ending at line 18422, immediately followed by `class TestCheckIntentScopeShellAction:` at 18423. An implementer following the wiring bullets literally would look for `_run_init` inside `TestWorkflowGeneratorLoop` and not find it; `TestCheckIntentScopeShellAction` also carries the `_init_repo`/`_setup` git-fixture helpers (lines 18437, 18465) the proposed generator-block execution test would need alongside `_run_init`.
+
 ## Acceptance Criteria
 
 - [ ] The Decision Needed above is resolved and recorded in this issue
@@ -323,6 +347,7 @@ scripts/tests/data/loop_interpolation_baseline.json + `TestInterpSweepBaseline::
 - [ ] If FEAT-3328's gate-completeness guide entry has landed, its
       cross-reference to this issue in
       `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` is updated to "resolved".
+      > ⚠ Superseded — FEAT-3328 open, no guide entry exists yet
 
 ### Codebase Research Findings
 
@@ -331,6 +356,41 @@ _Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
 - [ ] The concrete mechanism for the first bullet's "resolved and recorded": `ll-issues check-decidable ENH-3355` exits 0 against the machine-visible `**Option 1**`/`**Option 2**` blocks under Decision Needed (added by this pass), `decision_needed: true` is set in frontmatter (set by this pass), and `/ll:decide-issue ENH-3355` has appended a `> **Selected:**` callout beneath the chosen option before the prompt/generator edits land.
 - [ ] The generator's output includes the derived "Do not use" exclusion list — `sorted(EVALUATOR_REQUIRED_FIELDS.keys() - NON_LLM_EVALUATOR_TYPES)` — alongside the allowed-type table, so the current hand-listed line's `advisor_consult` omission (identified in Decision Needed) is closed by construction; this is the concrete check for the third bullet's "stays coherent with the generated list."
 - [ ] If the real generator block interpolates any `${context.*}`/`${captured.*}`/`${prev.*}` var directly into the new `python3 -c` Python body (rather than reusing bash's own already-set `$DIR`), `scripts/tests/data/loop_interpolation_baseline.json` is updated in the same change and `TestInterpSweepBaseline::test_completeness_guard` (`scripts/tests/test_builtin_loops.py:19236`) passes.
+
+_Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
+
+- [ ] The generator block's failure path is diagnosable, not silent: on a
+      generation-time failure (e.g. an import error in the `python3 -c`
+      body), the run surfaces that failure somewhere diagnosable — e.g. this
+      loop's existing `.emit_errors.txt` sink, reset by `init`
+      (`scripts/little_loops/loops/workflow-generator.yaml:63`) and already
+      used by `emit_artifact` for its own command failures (`:559,599-601`)
+      — rather than only falling back to a silently empty
+      `evaluator-vocab.md`; a test exercises the failure path and asserts a
+      diagnosable signal is left behind. See Current Behavior's Codebase
+      Research Findings for the concrete gap this closes.
+- [ ] The concrete check for the third bullet's "stays coherent with the
+      generated list" prose-guidance half: `attach_evaluators`'s action
+      string still contains the `output_contains` preference sentence
+      ("Prefer `output_contains` for a \"kind: prompt\" state that emits
+      free text") and the `output_json` three-field warning ("you MUST
+      supply all three fields") after the hand-listed vocabulary/
+      required-field table is replaced by the generated-file read — a test
+      asserts both substrings remain present in `action`, the same
+      assertion shape `test_attach_evaluators_documents_every_required_field`
+      (`scripts/tests/test_builtin_loops.py:18118`) already uses for the
+      table this issue removes.
+- [ ] Concrete redefinition for the seventh bullet (superseded below): as of
+      this pass, FEAT-3328 is `status: open` and
+      `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` contains no
+      gate-completeness rule entry and no cross-reference to ENH-3355
+      (grepped `FEAT-3328`/`gate-completeness`/`ENH-3355` in that file: one
+      unrelated `FEAT-3328` mention at line 675, nothing else). Treat the
+      seventh bullet as not-yet-checkable until FEAT-3328 lands a
+      gate-completeness guide entry that names ENH-3355; at that point
+      "resolved" means that entry's ENH-3355 cross-reference line no longer
+      carries open/pending/tracked language — the concrete marker to check
+      for, once the entry exists.
 
 ## Impact
 
@@ -358,6 +418,9 @@ FEAT-3328 § Known coverage gap.
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-29T17:12:27 - `ae75495c-b3b3-484c-ab1b-67f636f84f94.jsonl`
+- `/ll:verify-issues` - 2026-08-29T17:08:23 - `ae75495c-b3b3-484c-ab1b-67f636f84f94.jsonl`
+- `/ll:refine-issue` - 2026-08-29T17:03:11 - `349c7330-13ab-43c2-bdc2-9bd5e349f81e.jsonl`
 - `/ll:decide-issue` - 2026-08-29T16:53:52 - `349c7330-13ab-43c2-bdc2-9bd5e349f81e.jsonl`
 - `/ll:confidence-check` - 2026-08-29T16:48:50 - `1a3ef653-fb3c-418b-9f59-cf436fe3c24c.jsonl`
 - `/ll:verify-issues` - 2026-08-29T16:44:28 - `8cef6ec1-5cb0-4cb4-8f7b-ed8c1bc53873.jsonl`

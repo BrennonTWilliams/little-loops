@@ -16,10 +16,10 @@ decision_needed: false
 reconcile_attempted: true
 confidence_score: 90
 verify_verdict: VALID
-outcome_confidence: 63
+outcome_confidence: 78
 score_complexity: 10
 score_test_coverage: 25
-score_ambiguity: 10
+score_ambiguity: 25
 score_change_surface: 18
 ---
 
@@ -54,6 +54,15 @@ Acceptance: see the formal `## Acceptance Criteria` section below (lifted from t
 ## Current Behavior
 
 Only two `parallel.*` events are ever emitted: `parallel.worker_completed` (`orchestrator.py:1285`, on worker finish) and `parallel.epic_branch_stale` (`worker_pool.py:1979`, on stale-branch detection). A subscriber sees a worker only at the moment it finishes — there is no signal for spawn, blocked/waiting, merge outcome, or queue depth while a run is in progress.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
+
+- **Fully-qualified anchors for the two existing emit sites (confirmed live, 2026-08-29)**: `parallel.worker_completed` is emitted at `scripts/little_loops/parallel/orchestrator.py` line 1285, inside `ParallelOrchestrator._on_worker_complete` (lines 1077-1294). `parallel.epic_branch_stale` is emitted at `scripts/little_loops/parallel/worker_pool.py` line 1979, inside `WorkerPool._ensure_epic_branch` (lines 1948-1991), gated on `status.action in ("warned", "merged", "merge_conflict")`. Both emit only when `self._event_bus` is truthy.
+- **`_process_parallel`'s only production caller is `ParallelOrchestrator._execute`** (`scripts/little_loops/parallel/orchestrator.py` line 942, confirmed via call-graph query) — the overlap-deferral/blocked transition sits on the single per-run dispatch loop, not a code path reachable from more than one entry point.
+- **`MergeCoordinator._handle_failure` has more call sites than previously enumerated, all still satisfying the terminal-fires-once invariant**: within `_process_merge` itself (`scripts/little_loops/parallel/merge_coordinator.py`, lines 580-812) at line 602 (paused circuit-breaker), line 616 (git-index-recovery failure), line 801 (generic exception); within `_handle_conflict` (lines 813-963, called from `_process_merge` line 785) at line 838 (used-merge-strategy), line 936 (stash-pop conflict after rebase), line 954 (rebase failed), line 959 (retries exhausted); within `_handle_untracked_conflict` (lines 964-1032, called from `_process_merge` line 777) at line 977 and line 1000 (retries exhausted / unparseable conflict list). All nine sites are reachable only after `_process_merge` has already run past its top-of-method entry point, so the Program Design's top-of-`_process_merge`, `retry_count == 0`-gated `merge_started` placement covers every one of them without special-casing any individual branch.
+- **`IssuePriorityQueue.requeue()` already has dedicated state-transition test coverage independent of event emission**: `TestIssuePriorityQueueStateTransitions` in `scripts/tests/test_priority_queue.py` (lines 394-501) covers `test_requeue_removes_from_in_progress`, `test_requeue_adds_to_queue`, `test_requeue_without_demote_keeps_priority`, `test_requeue_with_demote_lowers_priority`, `test_requeue_demote_caps_at_p5`, `test_requeue_removes_from_failed`, `test_requeue_clears_skipped`, and `test_requeue_is_idempotent_against_queued_id` — all assert on queue state only, none on event emission, so the new `worker_unblocked`/`queue_changed` test coverage this issue adds is additive alongside this existing suite rather than a replacement for any of it.
 
 ## Expected Behavior
 
@@ -104,6 +113,17 @@ Key evidence: `priority_queue.py:50-73` (`add()`'s existing `-> bool` contract a
 
 Each new emitter builds its event dict inline via `self._event_bus.emit({...})`, following the existing `parallel.worker_completed`/`parallel.epic_branch_stale` pattern, and stamps `run_id` from `ParallelOrchestrator.run_id` (threaded into `MergeCoordinator`/`IssuePriorityQueue` alongside `event_bus`). ENH-3345's `FSMExecutor._emit()` stamping is FSM-path-only and is not reused here; `loop` is omitted since it has no meaning for a parallel run. Additionally, add the same `run_id` stamp to the two existing emitters (`parallel.worker_completed`, `parallel.epic_branch_stale`) — an additive field, explicitly in scope (see Scope Boundaries), since correlation across a merged stream is the point of this issue.
 
+**Selected**: Option A — alias `worker_id` to `issue_id`.
+
+Every worker-tracking structure in `worker_pool.py` (`_active_workers`, `_pending_callbacks`, `_worker_stages`, `_active_processes`, `_worker_epic_branches`) is already keyed on `issue_id`, and `WorkerPool._process_issue` handles exactly one issue per invocation with no reassignment path — `issue_id` is already 1:1 and stable for a worker's full lifetime. Option B (deriving `worker_id` from the worktree name) has a timing mismatch: dispatch happens in `orchestrator.py`'s `_process_parallel`/`_process_sequential` before any worktree exists, so a `worker_started` event fired at true dispatch time cannot use a worktree-derived ID without either delaying the event or duplicating naming logic to precompute one.
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|---|---|---|---|---|---|
+| A — alias to `issue_id` | 3 | 3 | 3 | 3 | 12/12 |
+| B — derive from worktree name | 1 | 0 | 1 | 1 | 3/12 |
+
+Key evidence: `worker_pool.py:187,297` (`_active_workers` keyed by `issue_id`), `worker_pool.py:200,2012,2024,2048` (`_worker_stages` keyed by `issue_id`), `worker_pool.py:278-304` (`submit()` takes one `IssueInfo`, no reassignment), `worker_pool.py:352-362` (worktree/timestamp not computed until inside `_process_issue`, after dispatch), `orchestrator.py:1287-1293` (existing `worker_completed` event's only precedent for worker identity).
+
 ### Codebase Research Findings
 
 _Added by `/ll:refine-issue` — 2026-08-27 — based on codebase analysis:_
@@ -128,19 +148,6 @@ _Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
   1. No class named `TestEpicBranchStaleEvent` exists anywhere in `scripts/tests/test_worker_pool.py` (grep: zero hits). The class at that location is `TestEnsureEpicBranchEventEmission`, starting at line 4133 (not 4134) — its docstring does say "Modeled on test_orchestrator.py's" tests, so the described content is real but was attached to the wrong class name. The Wiring Phase section below already cites the correct name (`test_worker_pool.py::TestEnsureEpicBranchEventEmission`, `:4133-4277`) — this corrects the earlier, wrong citation to match it.
   2. The no-op test at `test_worker_pool.py:4249` is named `test_no_emission_without_event_bus`, not `test_on_worker_complete_no_emission_without_event_bus`. That longer name belongs to a different test in a different file: `test_orchestrator.py:2766`.
 
-### Decision Rationale
-
-**Selected**: Option A — alias `worker_id` to `issue_id`.
-
-Every worker-tracking structure in `worker_pool.py` (`_active_workers`, `_pending_callbacks`, `_worker_stages`, `_active_processes`, `_worker_epic_branches`) is already keyed on `issue_id`, and `WorkerPool._process_issue` handles exactly one issue per invocation with no reassignment path — `issue_id` is already 1:1 and stable for a worker's full lifetime. Option B (deriving `worker_id` from the worktree name) has a timing mismatch: dispatch happens in `orchestrator.py`'s `_process_parallel`/`_process_sequential` before any worktree exists, so a `worker_started` event fired at true dispatch time cannot use a worktree-derived ID without either delaying the event or duplicating naming logic to precompute one.
-
-| Option | Consistency | Simplicity | Testability | Risk | Total |
-|---|---|---|---|---|---|
-| A — alias to `issue_id` | 3 | 3 | 3 | 3 | 12/12 |
-| B — derive from worktree name | 1 | 0 | 1 | 1 | 3/12 |
-
-Key evidence: `worker_pool.py:187,297` (`_active_workers` keyed by `issue_id`), `worker_pool.py:200,2012,2024,2048` (`_worker_stages` keyed by `issue_id`), `worker_pool.py:278-304` (`submit()` takes one `IssueInfo`, no reassignment), `worker_pool.py:352-362` (worktree/timestamp not computed until inside `_process_issue`, after dispatch), `orchestrator.py:1287-1293` (existing `worker_completed` event's only precedent for worker identity).
-
 ## Integration Map
 
 ### Files to Modify
@@ -158,6 +165,9 @@ _Remediation pass, 2026-08-29 — based on codebase analysis:_
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/little_loops/observability/schema.py` — add six new `@dataclass(frozen=True)` `DESVariant` subclasses to the `DES_VARIANTS` registry (pattern: `ParallelWorkerCompletedVariant` `:505`/`ParallelEpicBranchStaleVariant` `:514`; `DES_VARIANTS` registry at `:657`, existing parallel entries `:718-719`); without these, `test_des_schema.py::test_variants_cover_all_schema_definitions` fails listing the six new `parallel.*` types as missing [Agent 1/2 finding]
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/parallel/types.py` — Program Design's Types section proposes `WorkerBlockedReason: Literal["overlap"]` and `MergeOutcome: Literal["merged", "failed"]` but never names a module for them; `types.py` is the established home for shared `parallel/` type definitions (`MergeStatus` `:176`, `WorkerStage` `:187`, both `Enum` subclasses), and every module this issue touches — `orchestrator.py`, `merge_coordinator.py`, `worker_pool.py`, `priority_queue.py` — already imports from it (confirmed via grep, e.g. `orchestrator.py:33`, `merge_coordinator.py:20`). Define both `Literal` aliases here and import them into `orchestrator.py`/`merge_coordinator.py` rather than declaring them ad hoc at the call sites [Agent 1/2 finding]
 
 ### Dependent Files (Callers/Importers)
 - Any subscriber of `self._event_bus` (event consumers, dashboards, `ll-events` tooling) — new event types are additive, so existing subscribers filtering on known `event` values are unaffected
@@ -183,6 +193,10 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_generate_schemas.py` — four pinned-count assertions break (42→48): `test_all_41_event_types_defined` (`:17-19`), `test_creates_41_files` (`:73-77`), `test_creates_output_dir_if_missing` (`:79-84`), `TestGenerateSchemasCLI.test_cli_creates_files` (`:207-213`); plus `test_expected_event_types_present` (`:21-67`)'s literal `expected` set needs the six new `parallel.*` strings [Agent 2/3 finding]
 - `scripts/tests/test_merge_coordinator.py` — no existing `EventBus`/event-emission tests (confirmed via grep, zero hits); add a new test class for `merge_started`/`merge_completed` following `test_worker_pool.py`'s `TestEnsureEpicBranchEventEmission` template (`:4133-4277`) — real `EventBus()`, lambda observer, assert on captured dict [Agent 3 finding]
 - `scripts/tests/test_priority_queue.py` — no existing `EventBus`/event-emission tests; add a new test class for `queue_changed` (same template), plus a bus-injectable fixture variant since the current fixture (`:34`) builds `IssuePriorityQueue()` with no args [Agent 3 finding]
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_orchestrator.py::TestOverlapDetection::test_requeue_deferred_issues_real_queue_dequeueable_again` (`:4564-4600`) — this is the concrete, already-existing site to extend, not a new test to write: it already builds a real (unmocked) `IssuePriorityQueue`, walks `add → get → defer → requeue-deferred` end to end, and is the BUG-3348 regression test the Tests section above (`test_orchestrator.py` entry) and Wiring Phase already call for ("must use a REAL `IssuePriorityQueue`... walking add → get → defer → requeue-deferred") — add `worker_unblocked` emission assertions directly to it rather than writing a parallel test [Agent 1/3 finding]
+- `scripts/tests/test_merge_coordinator.py::TestCircuitBreaker::test_pause_skips_merges` (`:1656-1682`) — the concrete, already-existing site for the paused-circuit-breaker pairing test the Wiring Phase already calls for ("a circuit-breaker test asserting the paused-skip path... still yields a `merge_started`/`merge_completed(failed)` pair"); it already sets `coordinator._paused = True` and calls `_process_merge(request)` directly — add the pairing assertions here rather than writing a new test [Agent 1/3 finding]
 
 ### Documentation
 - `docs/reference/EVENT-SCHEMA.md` — add payload tables for the six new event types
@@ -274,6 +288,9 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - Update `docs/reference/EVENT-SCHEMA.md` — update all three additional enumeration sites (`:1379-1423`, `:1429-1435`, `:1545-1546`), not just the subsystem section
 - Update `docs/reference/API.md:4097,7871` — refresh the hardcoded `parallel.*` example list and the no-arg `IssuePriorityQueue()` example
 - Regenerate `docs/observability/des-audit.md` via `ll-verify-des-audit` after `DES_VARIANTS` changes (do not hand-edit)
+- Update `scripts/little_loops/parallel/types.py` — add `WorkerBlockedReason: Literal["overlap"]` and `MergeOutcome: Literal["merged", "failed"]` type aliases alongside the existing `MergeStatus`/`WorkerStage` enums; import both into `orchestrator.py` and `merge_coordinator.py` respectively, mirroring the existing `from little_loops.parallel.types import ...` pattern each already uses
+- Extend `scripts/tests/test_orchestrator.py::test_requeue_deferred_issues_real_queue_dequeueable_again` (`:4564`) — add `worker_unblocked` emission assertions to this existing real-queue BUG-3348 regression test
+- Extend `scripts/tests/test_merge_coordinator.py::test_pause_skips_merges` (`:1656`) — add `merge_started`/`merge_completed(failed)` pairing assertions to this existing paused-circuit-breaker test
 
 ## Program Design
 
@@ -453,6 +470,10 @@ _Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
 - **Remediation-pass adjudication of the interim `NON_VALID` reading**: confirmed live that frontmatter `verify_verdict` is `VALID` (not `NON_VALID`) as of this pass, and the Outcome Risk Factors note above already records why: `/ll:verify-issues` recorded an interim `NON_VALID` at 2026-08-29T15:57:01 (Session Log), then re-ran at 2026-08-29T16:22:34 and recorded `VALID`, superseding it. No unresolved third finding was located behind the interim `NON_VALID` reading — the two known false positives (`unapplied_decision`, `stale_symbol_ref`), each already marked RESOLVED above, account for the entirety of the format-check gap surface that produced it. No further adjudication is outstanding.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-29T17:27:45 - `1af8753e-4f9c-4ef2-97a5-4e6f8d5943ea.jsonl`
+- `/ll:verify-issues` - 2026-08-29T17:19:53 - `ae75495c-b3b3-484c-ab1b-67f636f84f94.jsonl`
+- `/ll:wire-issue` - 2026-08-29T17:14:47 - `ae75495c-b3b3-484c-ab1b-67f636f84f94.jsonl`
+- `/ll:refine-issue` - 2026-08-29T17:07:46 - `ae75495c-b3b3-484c-ab1b-67f636f84f94.jsonl`
 - `/ll:decide-issue` - 2026-08-29T16:58:25 - `48e9d546-94fd-4111-9bec-ae917ba67439.jsonl`
 - `/ll:confidence-check` - 2026-08-29T16:51:37 - `58d393ce-925a-4f28-b052-80c8ddfba7fe.jsonl`
 - `/ll:refine-issue` - 2026-08-29T16:35:13 - `2b9cf0aa-17fa-4c56-a0c2-6a6f4f822dae.jsonl`
