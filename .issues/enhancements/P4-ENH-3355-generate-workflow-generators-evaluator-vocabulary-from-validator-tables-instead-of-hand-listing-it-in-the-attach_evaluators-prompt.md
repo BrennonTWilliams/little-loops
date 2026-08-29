@@ -105,6 +105,15 @@ test ("covers every member of `NON_LLM_EVALUATOR_TYPES`") must match the
 chosen option — under option 2 it asserts coverage of every *non-excluded*
 member instead.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
+
+- **The two excluded types are excluded for more than staleness — each needs infrastructure the generator's pipeline does not produce.** `EVALUATOR_REQUIRED_FIELDS` lists no required companion fields for either (`"open_question_stall": []`, `"harbor_scorer": []`, `scripts/little_loops/fsm/validation/_base.py:53,57`), so this gap is invisible to a generation pass driven only by that table:
+  - `open_question_stall` (`evaluate_open_question_stall`, `scripts/little_loops/fsm/evaluators.py:736-770`) reads a maintained per-round open-question-count history file — nothing in `graph-sketch.yaml`'s generic `name`/`purpose`/`kind` state shape produces or updates that file.
+  - `harbor_scorer` (`evaluate_harbor_scorer`, `scripts/little_loops/fsm/evaluators.py:1008`) expects the state's own shell action to run an actual Harbor-format benchmark scorer and emit a float on stdout — a specific external-tool contract, not something a generically-sketched state satisfies.
+  - This bears on the option 1 vs. option 2 trade-off above: widening to all 12 (option 1) would offer two types whose *structural* validation passes (no required fields, so `validate_evaluators` and `ll-loop validate` both accept them) but whose evaluators would misbehave against generically-generated state output, unlike the other 10 offered types, which are all general-purpose and require no extra generated infrastructure.
+
 ## Program Design
 
 ### Types
@@ -157,6 +166,14 @@ reads that file from `${context.run_dir}/evaluator-vocab.md`
 - `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` — the gate-completeness rule
   entry (added by FEAT-3328) cites this issue as the tracked remedy for its
   known `prompt`-action coverage gap; update the cross-reference once landed
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
+
+- **Existing shell-side precedent for the same import-don't-restate rule**: `validate_evaluators` (`scripts/little_loops/loops/workflow-generator.yaml:466-500`), the very next state after `attach_evaluators`, already imports `EVALUATOR_REQUIRED_FIELDS`/`NON_LLM_EVALUATOR_TYPES` directly (`from little_loops.fsm.validation import (...)`, lines 479-483) inside its `action_type: shell` python3 heredoc, with its own comment stating the drift-proofing rationale nearly identical to this issue's Summary. `attach_evaluators` cannot take the same direct-import route because it is `action_type: prompt` — a prompt action has no Python import available to it, which is exactly why this issue's file-based route (generate in `init`, read via `${captured.run_dir.output}` in the prompt) is the right shape rather than a shortcut around the simpler import.
+- **The file-written-in-a-shell-state / read-by-a-later-prompt convention is already in use in this same loop**: `attach_evaluators`'s own action already opens with `Read ${captured.run_dir.output}/graph-sketch.yaml.` — a shell/init-written artifact consumed by a later prompt state through the `captured.run_dir.output` interpolation (`init`'s `capture: run_dir`, `workflow-generator.yaml:167`). The proposed `evaluator-vocab.md` read follows this identical, already-established shape; no new mechanism needs to be introduced.
+- **An existing test inspects `attach_evaluators`'s prompt text directly and will need explicit rework, not just extension**: `test_attach_evaluators_documents_every_required_field` (`scripts/tests/test_builtin_loops.py:18118-18141`) currently computes `offered = [t for t in NON_LLM_EVALUATOR_TYPES if t in action]` against the prompt's raw `action` string, then asserts every required field name of every offered type is a substring of that same `action` string. Once the vocabulary/required-field text moves out of the prompt into a generated file, none of those substrings will be present in `action` any more and this test's assertions go stale — it needs to be pointed at the `init` generator's output (or its python3 body) rather than silently broken or deleted.
 
 ## Acceptance Criteria
 
@@ -212,4 +229,5 @@ FEAT-3328 § Known coverage gap.
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-08-29T16:14:49 - `b7bcafc8-2a6b-479f-8e57-018d577b3945.jsonl`
 - `/ll:format-issue` - 2026-08-29T16:07:26 - `980cbc7a-2998-4ff5-83ab-7e00435d03b9.jsonl`

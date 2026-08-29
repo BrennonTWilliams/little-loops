@@ -98,6 +98,12 @@ _Added by `/ll:refine-issue` — 2026-08-27 — based on codebase analysis:_
 
 **Recommended**: Option A for v1 — it requires no new state and matches how every other identity concept in `parallel/` (`_active_workers`, `_worker_stages`, `_pending_callbacks`) already keys on `issue_id`. If a future need for true worker-thread identity (independent of the issue being processed) emerges, it can be introduced then without disrupting this event surface's contract, since `worker_id == issue_id` is a valid instance of "stable for the worker's lifetime."
 
+_Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
+
+- **Citation corrections to the "Test pattern for new event coverage" finding above (confirmed live, 2026-08-29)**:
+  1. No class named `TestEpicBranchStaleEvent` exists anywhere in `scripts/tests/test_worker_pool.py` (grep: zero hits). The class at that location is `TestEnsureEpicBranchEventEmission`, starting at line 4133 (not 4134) — its docstring does say "Modeled on test_orchestrator.py's" tests, so the described content is real but was attached to the wrong class name. The Wiring Phase section below already cites the correct name (`test_worker_pool.py::TestEnsureEpicBranchEventEmission`, `:4133-4277`) — this corrects the earlier, wrong citation to match it.
+  2. The no-op test at `test_worker_pool.py:4249` is named `test_no_emission_without_event_bus`, not `test_on_worker_complete_no_emission_without_event_bus`. That longer name belongs to a different test in a different file: `test_orchestrator.py:2766`.
+
 ### Decision Rationale
 
 **Selected**: Option A — alias `worker_id` to `issue_id`.
@@ -394,6 +400,7 @@ _Added by `/ll:confidence-check` on 2026-08-27; reconfirmed 2026-08-29 (no mater
 - Moderate breadth × moderate depth: six new emitters plus `run_id` stamping on two existing ones span 6 source files (orchestrator.py, worker_pool.py, merge_coordinator.py, priority_queue.py, generate_schemas.py, observability/schema.py) and 6 doc/test files, with constructor-signature changes (threading `event_bus` into `IssuePriorityQueue`/`MergeCoordinator`) rather than pure mechanical substitution — expect more iteration than a single-file change.
 
 ## Session Log
+- `/ll:refine-issue` - 2026-08-29T16:14:50 - `b7bcafc8-2a6b-479f-8e57-018d577b3945.jsonl`
 - `/ll:confidence-check` - 2026-08-29T16:06:15 - `6fdc2e2c-92d6-4705-9bc4-d9f033068370.jsonl`
 - `/ll:verify-issues` - 2026-08-29T15:57:01 - `c54a423f-c560-4b02-ba94-5edb4f845eaa.jsonl`
 - `/ll:refine-issue` - 2026-08-29T15:47:04 - `e1f51e56-4700-4629-9064-1d81eae9d21d.jsonl`
