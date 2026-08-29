@@ -25,18 +25,19 @@ Group of 5 related issues concerning splitting oversized modules along concern
 boundaries and correcting layering inversions between the `fsm` and `cli`
 packages. Includes: ENH-2772 (Split session_store.py god module into a
 subpackage), ENH-2773 (Fix fsm→cli layering inversion), ENH-2774 (Split
-fsm/validation.py by rule family), ENH-2775 (Split history_reader.py and
-fsm/executor.py along concern boundaries), ENH-2776 (Dissolve
-cli/loop/_helpers.py grab-bag into named modules).
+fsm/validation.py by rule family), ENH-2775 (Split history_reader.py into a
+subpackage — the fsm/executor.py half was rescoped into ENH-3359, deferred),
+ENH-2776 (Dissolve cli/loop/_helpers.py grab-bag into named modules).
 
 ## Children
 
 - ~~**ENH-2772** — Split session_store.py god module into a subpackage~~ **done**
 - ~~**ENH-2773** — Fix fsm→cli layering inversion (move resolve_loop_path out of cli/loop/_helpers)~~ **done**
 - ~~**ENH-2774** — Split fsm/validation.py by rule family~~ **done**
-- **ENH-2775** — Split history_reader.py and fsm/executor.py along concern boundaries
+- **ENH-2775** — Split history_reader.py into a subpackage (rescoped 2026-08-29; executor half moved to ENH-3359)
 - **ENH-2776** — Dissolve cli/loop/_helpers.py grab-bag into named modules
 - **ENH-2784** — Extract coercion helpers in issue_parser.py (open)
+- **ENH-3359** — Extract `_prepatch_*`/`_tamper_guard_*` collaborators from fsm/executor.py (deferred; split out of ENH-2775)
 
 ## Related Key Documentation
 
