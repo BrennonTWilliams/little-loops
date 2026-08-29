@@ -185,6 +185,10 @@ _Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
 - Test-fixture prerequisite: `scripts/tests/test_refine_status.py::_make_issue()` (lines 19-32) takes no `status` parameter and has no catch-all mechanism for arbitrary frontmatter fields — its `frontmatter_lines` list only ever appends `confidence_score`/`outcome_confidence`/`score_*`/`size`. `IssueInfo.status` comes exclusively from a `status:` frontmatter key (`issue_parser.py:3608`, `frontmatter.get("status", "open")`) with no directory-based inference — placing a file under the test's existing `deferred`/`completed` dirs (already created by `_setup_dir`, `test_refine_status.py:2003-2011`) does not set status. Writing the deferred/done/cancelled test this step calls for requires first extending `_make_issue()` with a `status` parameter (or hand-writing frontmatter that includes a `status:` line) — without this, a literal `_make_issue(..., status="deferred")` call raises `TypeError`.
 - Message-wording gap: once the id-filter branch resolves status-agnostically (Option A, via `resolve_issue_path()`), the not-found message's own wording — `Error: issue '{issue_id_filter}' not found in active issues.` (`refine_status.py:288`) — becomes an inaccurate description of the new behavior for an id that genuinely resolves to nothing under any status. No step here calls for revising the string itself (only its stdout->stderr channel, per the exit-code correction above), and `test_single_issue_not_found`'s loose substring check (`"not found" in out`) passes whether or not the stale "in active issues" phrase is corrected. The fix should drop or generalize that phrase (e.g. "not found") alongside the channel change.
 
+_Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
+
+- Pattern-finder confirmation (remediation pass, 2026-08-29): the exact sibling message convention is `Error: Issue '{id}' not found.` — capitalized "Issue" — printed to `sys.stderr`, and it is duplicated verbatim (not shared via a common helper) across all ~15 sibling single-ID commands: `check_flag.py:28`, `check_decidable.py:32`, `check_design.py:36`, `check_open_questions.py:55`, `check_verify_verdict.py:83`, `check_acceptance_criteria.py:101`, `check_readiness.py:139`, `check_unresolved_decisions.py:67`, `fold_findings.py:104`, `format_check.py:551`, `locate_options.py:35`, `path_cmd.py:29`, `research_triage.py:58`, `set_scores.py:32`, `set_status.py:262`, `skip.py:35` (verified via direct grep). `refine_status.py:288`'s current text — `Error: issue '{issue_id_filter}' not found in active issues.` — differs on both counts: lowercase "issue" and the now-inaccurate "in active issues" qualifier. This gives the Message-wording gap noted above a concrete target string to match (`Error: Issue '{id}' not found.`) rather than leaving "drop or generalize" open-ended; there is no shared helper to call into, so matching the convention means duplicating this exact literal like every sibling file already does, not refactoring toward a new shared function.
+
 ## Impact
 
 - **Priority**: P3 - Silently defeats a safety cap (`check_lifetime_limit`) rather than crashing or misbehaving loudly; scoped to one automation loop state, not a user-facing correctness bug.
@@ -208,6 +212,7 @@ _Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-08-29T19:00:13 - `1af8753e-4f9c-4ef2-97a5-4e6f8d5943ea.jsonl`
 - `/ll:confidence-check` - 2026-08-29T18:47:00 - `237f015b-641f-4613-8e7e-3269af82a4c8.jsonl`
 - `/ll:refine-issue` - 2026-08-29T18:35:51 - `477f6591-ae32-49d7-bc90-ee1e0759ddc3.jsonl`
 - `/ll:confidence-check` - 2026-08-29T18:31:19 - `477f6591-ae32-49d7-bc90-ee1e0759ddc3.jsonl`
