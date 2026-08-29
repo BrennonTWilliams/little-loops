@@ -398,10 +398,14 @@ extending the marker to other MR rules; removing or deprecating the loop-level
   lookup); only the Python-literal-position half (AC 1, 2, 3, 5b's Python-body
   case) delegates to `interp_sweep.scan_action(action, state=..., file=fsm.name)`
   — `fsm.name` per `## Spike Results`, since no real call site has a disk path
-  to thread. `InterpSite.var`'s bare `namespace.key_path` (no suffix chain)
-  must be reconciled with the full raw-token text the WARNING message embeds;
-  this half of the adapter gap is not retired by the spike and is left to the
-  implementer.
+  to thread. **Token reconstruction for the delegated half — resolved
+  2026-08-29:** the message embeds `${<InterpSite.var>}`, appending `:shell`
+  when `InterpSite.misapplied_remedy` is true (`interp_sweep.py:101`, set from
+  `shell_quote` at `:222` — it is exactly the `:shell`-in-Python-body flag
+  AC 5b's message branch needs). The full suffix chain is only cosmetic for
+  Python-body findings, since the verdict there is suffix-independent; no
+  suffix-chain round-trip is required. This closes the second half of the
+  adapter gap the spike left open.
 - `_validate_unsafe_context_interpolation(fsm: FSMLoop) -> list[ValidationError]`
   (`shell_safety.py:191`) — same signature; message text updated.
 - `classify_site(namespace: str, key: str) -> str` (ENH-3338,
@@ -432,6 +436,19 @@ The rule MR-11 enforces after widening:
 Untrusted-ness comes from `classify_site()`: `captured.*` always,
 `prev.output`/`prev.stderr` always, `context.*` minus the enumerated trusted set.
 **Not** a fixed untrusted-key allowlist.
+
+**Namespace scope of the bash-token-position scan — decided 2026-08-29: limited
+to `context`, `captured`, and `prev`.** `classify_site()`'s safe-direction
+default classifies *every* other namespace "B" (untrusted) — a decision made
+for Python-body sweeps, where no such site exists in the corpus. The corpus's
+bash positions are different: `${state.` ×19, `${param.` ×14, `${env.` ×3
+(measured 2026-08-29). Feeding those through `classify_site()` at bash position
+would flag runner-constructed `${state.*}` and author-controlled `${param.*}`
+sites as new findings, none of which is the class this epic fixed. The
+bash-position scan therefore matches only the three namespaces named in Current
+Behavior item 2 and skips the rest; the Python-body (delegated) half keeps
+`scan_action()`'s wider safe-direction default unchanged. Widening the
+bash-position namespace set further is a follow-up decision, not this issue.
 
 **`:shell` is position-dependent, and an earlier draft of this table got it
 wrong.** It read "carries `:shell` anywhere in its suffix chain → clean,"

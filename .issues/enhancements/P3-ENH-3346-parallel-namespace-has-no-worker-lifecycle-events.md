@@ -157,6 +157,10 @@ _Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
 - **`docs/reference/API.md`'s `IssuePriorityQueue` Methods table has no return-value column for `requeue()`, and is not in this issue's Documentation/Files-to-Modify/Wiring-Phase scope.** Confirmed live at `:4116`: the row `| `requeue(issue_info, demote_priority=False)` | Requeue an issue; clears it from the in-progress, failed, and skipped buckets |` carries only a one-line description — unlike sibling rows in the same table (`add(issue_info) -> bool` at `:4108`, `add_many(issues) -> int` at `:4109`) which do show a return type. Once Decision Rationale's selected Option A lands (`requeue()` widened to `-> bool`), this row will not reflect the True/False success signal that this issue's own `worker_unblocked`-gating logic (Program Design) depends on. Add this table row to Files to Modify/Documentation so a reader of the public API reference can learn that `requeue()` now signals success/no-op via return value.
 - **Citation correction (remediation pass, confirmed live): the `load_completed`/`load_failed` anchor used in this section's `queue_changed` bullet is off by a few lines.** `load_completed` is defined at `priority_queue.py:228` (body ends `:235`); `load_failed` is defined at `:237` (body ends `:244`) — the correct combined range for both functions is `228-244`, not the `225-241` cited here (and repeated in Implementation Steps' Step 2 and the matching Files-to-Modify remediation-pass entry). The underlying claim (both resume-path bulk loaders mutate the counters and need a batch-emit) is unaffected — only the anchor was stale.
 
+_Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
+
+- **Citation correction (remediation pass, confirmed live, 2026-08-29): `add()`'s cited line range is two lines short and excludes its own success-path return.** `IssuePriorityQueue.add()` (`scripts/little_loops/parallel/priority_queue.py`) spans lines 50-75, not 50-73 (as cited in Decision Rationale's "Key evidence" line and in the surrounding prose) or the truncated `50-` (as cited in Option A's description). Line 74 is `self._queued.add(issue.issue_id)` and line 75 is `return True` — the actual `-> bool` success-path return the citation exists to prove. The correct range is `priority_queue.py:50-75` everywhere it is cited in this section.
+
 ## Integration Map
 
 ### Files to Modify
@@ -177,6 +181,10 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/little_loops/parallel/types.py` — Program Design's Types section proposes `WorkerBlockedReason: Literal["overlap"]` and `MergeOutcome: Literal["merged", "failed"]` but never names a module for them; `types.py` is the established home for shared `parallel/` type definitions (`MergeStatus` `:176`, `WorkerStage` `:187`, both `Enum` subclasses), and every module this issue touches — `orchestrator.py`, `merge_coordinator.py`, `worker_pool.py`, `priority_queue.py` — already imports from it (confirmed via grep, e.g. `orchestrator.py:33`, `merge_coordinator.py:20`). Define both `Literal` aliases here and import them into `orchestrator.py`/`merge_coordinator.py` rather than declaring them ad hoc at the call sites [Agent 1/2 finding]
+
+_Remediation pass, 2026-08-29 (round 3) — based on codebase analysis:_
+- `docs/reference/API.md` — add `#### WorkerBlockedReason`/`#### MergeOutcome` subsections to `### Additional Types` (`:4133` onward, mirroring the existing `#### MergeStatus`/`#### WorkerStage` subsections), and update the `#### MergeCoordinator` → `#### Constructor` code block (`:3866-3874`) to add `git_lock`, `event_bus`, `run_id`
+- `docs/development/MERGE-COORDINATOR.md` — update the `### Constructor` section (`:371-386`) and its three example snippets (`:59`, `:74`, `:428`) to add `event_bus`/`run_id`
 
 ### Dependent Files (Callers/Importers)
 - Any subscriber of `self._event_bus` (event consumers, dashboards, `ll-events` tooling) — new event types are additive, so existing subscribers filtering on known `event` values are unaffected
@@ -224,7 +232,12 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `CONTRIBUTING.md:784-798` — the "Event Schema Maintenance" checklist's 4 steps don't mention updating `DES_VARIANTS`, an existing process gap this issue's implementation will hit directly [Agent 2 finding]
 
 _Remediation pass, 2026-08-29 (round 2) — based on codebase analysis:_
-- `CONTRIBUTING.md` — add step 5 to the "## Event Schema Maintenance" checklist (heading `:784`, steps 1-4 at `:786-798`): "Add or update the matching `DESVariant` entry in `DES_VARIANTS`, `scripts/little_loops/observability/schema.py`, and confirm `python -m pytest scripts/tests/test_des_schema.py` passes" — and add a matching `("CONTRIBUTING.md", <step-5 text>, "ENH-3346")` row to `scripts/tests/test_wiring_guides_and_meta.py`'s `DOC_STRINGS_PRESENT` table so the addition is machine-checked (see Tests/Wiring Phase under Integration Map)
+- `CONTRIBUTING.md` — add step 5 to the "## Event Schema Maintenance" checklist (heading `:784`, steps 1-4 at `:788-798`): "Add or update the matching `DESVariant` entry in `DES_VARIANTS`, `scripts/little_loops/observability/schema.py`, and confirm `python -m pytest scripts/tests/test_des_schema.py` passes" — and add a matching `("CONTRIBUTING.md", <step-5 text>, "ENH-3346")` row to `scripts/tests/test_wiring_guides_and_meta.py`'s `DOC_STRINGS_PRESENT` table so the addition is machine-checked (see Tests/Wiring Phase under Integration Map)
+
+_Remediation pass, 2026-08-29 (round 3) — based on codebase analysis:_
+- `docs/reference/API.md` — the `### Additional Types` section (`:4133` onward, confirmed live) already carries a dedicated `#### MergeStatus` (`:4163`) and `#### WorkerStage` (`:4202`) subsection for every other public type in `little_loops.parallel.types`; add matching `#### WorkerBlockedReason` and `#### MergeOutcome` subsections there, or the two new types are re-exported via `parallel/__init__.py`'s `__all__` (Wiring Phase) but left undocumented in the one file that documents their siblings
+- `docs/reference/API.md` — the `#### MergeCoordinator` section's `#### Constructor` code block (`:3866-3874`, confirmed live) hand-writes `MergeCoordinator(config: ParallelConfig, logger: Logger, repo_path: Path | None = None)`, a 3-arg signature already missing today's `git_lock` param; update it to include `git_lock`, `event_bus`, and `run_id`
+- `docs/development/MERGE-COORDINATOR.md` — the `### Constructor` section (`:371-386`, confirmed live, currently 4-arg including `git_lock`) plus its three example instantiation snippets (`:59`, `:74`, `:428`) hand-write the pre-`event_bus`/`run_id` signature; update the section and all three snippets
 
 ### Configuration
 - N/A
