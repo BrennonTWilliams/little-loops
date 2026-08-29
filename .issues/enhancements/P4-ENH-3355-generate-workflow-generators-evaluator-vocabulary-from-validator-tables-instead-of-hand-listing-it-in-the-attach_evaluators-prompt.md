@@ -209,3 +209,7 @@ FEAT-3328 § Known coverage gap.
 ## Status
 
 **Open** | Created: 2026-08-28 | Priority: P4
+
+
+## Session Log
+- `/ll:format-issue` - 2026-08-29T16:07:26 - `980cbc7a-2998-4ff5-83ab-7e00435d03b9.jsonl`
