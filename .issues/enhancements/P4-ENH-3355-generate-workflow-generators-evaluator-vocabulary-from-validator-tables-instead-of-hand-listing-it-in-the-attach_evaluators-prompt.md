@@ -343,6 +343,15 @@ _Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
   assertion currently exists
 - A test exercising the generator's failure path that asserts
   `.evaluator_vocab_errors.txt` is left non-empty on a generation-time failure
+- A negative-assertion test that the removed restatement sites are actually
+  gone from `attach_evaluators`'s `action` string: assert `classify`,
+  `mcp_result`, `action_stall`, `diff_stall`, and `score_stall` do not appear
+  in it (these five appear only in the removed enumerations — the inline
+  allowed-vocabulary sentence at `workflow-generator.yaml:420-421`, the
+  bullet table at `:433-438`, and the YAML template's "required if" comments
+  at `:457-460` — never in the retained `output_contains`/`output_json`
+  prose-guidance sentences, so their absence is a safe proxy for all three
+  sites being replaced rather than only the bullet table)
 - A new assertion in (or sibling to)
   `test_xiii_init_stdout_exactly_one_line_in_non_repo`
   (`TestCheckIntentScopeShellAction`, line 18748) that `evaluator-vocab.md`
@@ -440,7 +449,26 @@ _Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
 - [ ] `attach_evaluators`'s prompt reads the generated vocab file instead of
       hand-listing the type/required-field table, and its remaining prose
       guidance (prefer `output_contains`; `output_json` field warnings) stays
-      coherent with the generated list.
+      coherent with the generated list. "Hand-listing" covers ALL THREE
+      restatement sites in the current action, not only the bullet table:
+      (1) the inline allowed-vocabulary sentence
+      (`workflow-generator.yaml:420-421`) and the "Do not use:
+      llm_structured, comparator, or contract" sentence (`:425-427`) — the
+      very line whose `advisor_consult` omission Decision Needed identifies;
+      (2) the bullet table (`:433-438`); (3) the YAML example template's
+      per-field "required if" comments (`:457-460`), which restate the
+      required-fields mapping a fourth time and drift identically. Sites (1)
+      and (3) are replaced by references to the generated file (the template
+      comments genericized to "include exactly the companion fields
+      evaluator-vocab.md lists for the chosen type"), not left standing as
+      residual drift channels.
+- [ ] A negative-assertion test proves the removed enumerations are gone:
+      type names that appear ONLY in the removed restatement sites and not in
+      the retained prose-guidance sentences — `classify`, `mcp_result`,
+      `action_stall`, `diff_stall`, `score_stall` — are asserted absent from
+      `attach_evaluators`'s `action` string after the edit. Without this, an
+      implementer can replace only the bullet table, leave sites (1) and (3)
+      as live drift channels, and every test in this plan still passes.
 - [ ] `test_attach_evaluators_documents_every_required_field`
       (`TestWorkflowGeneratorLoop`, `scripts/tests/test_builtin_loops.py:18147`)
       is repointed at the generated `evaluator-vocab.md` content instead of
