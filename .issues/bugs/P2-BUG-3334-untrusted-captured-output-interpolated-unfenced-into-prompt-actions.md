@@ -48,6 +48,23 @@ relates_to:
 > (missed by every prior pass), are in Scope / Integration Map / Program
 > Design / Root Cause → Codebase Research Findings below.
 
+> **Pre-implementation review — 2026-08-29 (session review, not a refine pass):**
+> all load-bearing anchors re-verified against the current working tree:
+> `dispatch`'s three transitions still point at `review` (`loop-router.yaml:426-428`),
+> the raw interpolation is still at `:452`, all **16** fencing-site interpolations
+> exist at their cited lines, and `fence.py` still has no
+> `FENCE_CORE_UNTRUSTED_OUTPUT`/`UNTRUSTED_OUTPUT_ROLES` symbols — the work is
+> genuinely unstarted. Two standing directives from this review:
+> **(1) No further citation-drift passes.** `test_builtin_loops.py` is 19743
+> lines as of this review — already past the tenth pass's 19651 citation — and
+> the eleven passes of drift-correction notes have repeatedly introduced errors
+> they later had to un-correct (the fifth pass's `HARNESS_OPTIMIZATION_GUIDE.md`
+> citation, the ninth pass's certified off-by-ones). All line numbers in this
+> issue are **advisory**: the implementer re-derives every anchor with
+> `grep -n` at implementation time and trusts symbols, not line numbers. Do not
+> add another drifting copy of any symbol table.
+> **(2) Land in two commits** — see Implementation Steps → Landing order.
+
 ## Summary
 
 BUG-3327 fences the *user's own brief* where it enters a prompt. But at several
@@ -490,6 +507,30 @@ restate them._
    that no longer exists, which is exactly what `test_host_artifacts_are_not_stale`
    and `test_skill_mirrors_carry_companions` (`scripts/tests/test_wiring_skills_and_commands.py:460,583`)
    are already in the suite to catch — checked by Acceptance Criteria item 13.
+
+### Landing order (added by pre-implementation review — 2026-08-29)
+
+Land the remaining scope as **two commits**, not one. The two halves share no
+code, and the second carries all the wiring risk (Acceptance Criteria items
+11-14); separating them keeps a revert surgical.
+
+1. **Commit A — fencing mechanism + in-place fences** (Implementation Steps
+   1, 3, 5, 6): `fence.py` constants (`FENCE_CORE_UNTRUSTED_OUTPUT`,
+   `UNTRUSTED_OUTPUT_ROLES`, `KNOWN_UNFENCED_UNTRUSTED_OUTPUT_SITES`,
+   `render_fence()` `core` parameter), the 16 hand-pasted fences,
+   `TestUntrustedOutputFencing` (including the nonce-suffix guard and the
+   doc/docstring substring assertions), and the
+   `HARNESS_OPTIMIZATION_GUIDE.md`/docstring updates. Purely additive; no
+   state-machine change; every existing test passes unmodified.
+2. **Commit B — `loop-router` structural change** (Implementation Steps 2, 4,
+   8): the new `write_sub_loop_output` shell state, the `dispatch` repoint,
+   the `UNTRUSTED_OUTPUT_SITES` reconciliation (step 4), the
+   `test_loop_router.py` updates (AC11/AC12/AC4/AC14 assertions), and the
+   `skills/create-loop` doc edits plus `ll-adapt` mirror regeneration for all
+   three hosts (AC13).
+
+Implementation Step 7 (full suite + `ll-loop validate`) gates **each** commit
+independently, not just the pair.
 
 ### Wiring Phase (added by `/ll:wire-issue` — 2026-08-29)
 
@@ -1077,7 +1118,7 @@ _Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
 
 Remediation pass, 2026-08-29 (second pass — corrects this section's own prior 2026-08-29 additions, which drifted or mis-cited on arrival):
 
-- Files to Modify's `eval-driven-development.yaml` entry (added 2026-08-28) names only `diagnose` as a fencing target. It is incomplete: Scope → Codebase Research Findings (2026-08-29) and the superseded annotation on Acceptance Criteria item 5 both establish that `eval-driven-development.yaml` has **two** hand-classified shell-capture sites sharing the identical `${captured.run_harness.output}` value — `capture_issues` (`action_type: prompt`, opens `:84`, interpolates `:89`, reached via `run_harness`'s `on_yes: capture_issues` at `:80`) and `diagnose` (`:144`/`:152`, reached via `on_no: diagnose` at `:81`). Both are required for the corrected 14-site count (13-entry `UNTRUSTED_OUTPUT_SITES` table minus `loop-router.yaml::review`, plus both `eval-driven-development.yaml::capture_issues` and `::diagnose`) and for Acceptance Criteria item 6's structural sentinel, which explicitly requires asserting `run_harness` feeds both `capture_issues` and `diagnose`. `capture_issues` is therefore an in-scope Files-to-Modify target equal in kind to `diagnose`, not an incidental mention.
+- Files to Modify's `eval-driven-development.yaml` entry (added 2026-08-28) names only `diagnose` as a fencing target. It is incomplete: Scope → Codebase Research Findings (2026-08-29) and the superseded annotation on Acceptance Criteria item 5 both establish that `eval-driven-development.yaml` has **two** hand-classified shell-capture sites sharing the identical `${captured.run_harness.output}` value — `capture_issues` (`action_type: prompt`, opens `:84`, interpolates `:89`, reached via `run_harness`'s `on_yes: capture_issues` at `:80`) and `diagnose` (`:144`/`:152`, reached via `on_no: diagnose` at `:81`). Both are required for the corrected final count (⚠ *Superseded — 2026-08-29 review: the "14" this note derived is stale; the `plan_display` finding later raised the final count to **16** — 13-entry table minus `loop-router.yaml::review`, plus `capture_issues`/`diagnose`, plus both composer `plan_display` sites. AC5 / Implementation Steps 3 / Program Design → Types carry the authoritative 16.*) and for Acceptance Criteria item 6's structural sentinel, which explicitly requires asserting `run_harness` feeds both `capture_issues` and `diagnose`. `capture_issues` is therefore an in-scope Files-to-Modify target equal in kind to `diagnose`, not an incidental mention.
 - Correcting this section's own 2026-08-29 citation for the sub-loop dispatch capture join: `executor.py:1114-1117` has drifted by 2 lines. Confirmed current tree: `self.captured[state.capture] = {` at `:1112`, the join expression at `:1113`, `"exit_code": None` at `:1114`. Same correction filed against Root Cause's independent copy.
 - Correcting this section's own 2026-08-29 citation for the `PROMPT_SIZE_WARN_EVENT`/`compress_action_text` safety layer: `:2209-2230`/`:2237-2248` has drifted by 2 lines. Confirmed current tree: `guard = self.fsm.prompt_size_guard` at `:2211`, `cc = self.compression_config` at `:2235`, the `compress_action_text(...)` call spans `:2239-2246`. Same correction filed against Program Design's independent copy.
 
@@ -1096,7 +1137,7 @@ _Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
 Remediation pass, 2026-08-29 (fourth pass) — closing four gaps found by adversarial fact-check, each re-verified against the current working tree:
 
 - **Files to Modify's `eval-driven-development.yaml` entry named only `diagnose`.** Confirmed via `grep -n "captured.run_harness\|action_type" scripts/little_loops/loops/eval-driven-development.yaml`: `run_harness` (`action_type: shell`, `capture: run_harness`, :74-77) has `on_yes: capture_issues` (:80) and `on_no: diagnose` (:81). `capture_issues` (`action_type: prompt`, opens :84) interpolates `${captured.run_harness.output}` at :89 — the identical capture `diagnose` (opens :144, interpolation :152) also interpolates. A `⚠ Superseded` annotation has been added directly under the Files to Modify bullet naming both sites as required.
-- **Neither `UNTRUSTED_OUTPUT_SITES` nor `KNOWN_INDIRECT_UNTRUSTED_OUTPUT_SITES` (`test_builtin_loops.py`, now :19129/:19164, 13/2 entries respectively — re-confirmed by direct read) carries an `eval-driven-development.yaml` tuple.** These two sets are the only enumeration surface a `TestUntrustedOutputFencing`-style parametrization (Acceptance Criteria item 5) can iterate. `capture_issues`/`diagnose` are shell-capture provenance, not dispatch — exactly like the composer `review_chain` sites — so the only precedent this issue itself sets for surfacing a non-discoverable site is the composer pattern: add both `("eval-driven-development.yaml", "capture_issues", "${captured.run_harness.output}")` and `("eval-driven-development.yaml", "diagnose", "${captured.run_harness.output}")` to `UNTRUSTED_OUTPUT_SITES`, and to `KNOWN_INDIRECT_UNTRUSTED_OUTPUT_SITES` (both are reached via shell-capture relay, not a `loop:`-state dispatch, so `_discover_untrusted_output_sites` will never find them — the indirect set exists precisely for sites the guard cannot discover but that still need a slot in `expected`). Without this extension, the 14-site final count (Acceptance Criteria item 5) has no wiring path for two of its fourteen sites. This gap is closed in `scripts/tests/test_builtin_loops.py` itself, not by a new Files-to-Modify bullet (the carve-out that lets this pass touch directive sections is annotation-only, not addition).
+- **Neither `UNTRUSTED_OUTPUT_SITES` nor `KNOWN_INDIRECT_UNTRUSTED_OUTPUT_SITES` (`test_builtin_loops.py`, now :19129/:19164, 13/2 entries respectively — re-confirmed by direct read) carries an `eval-driven-development.yaml` tuple.** These two sets are the only enumeration surface a `TestUntrustedOutputFencing`-style parametrization (Acceptance Criteria item 5) can iterate. `capture_issues`/`diagnose` are shell-capture provenance, not dispatch — exactly like the composer `review_chain` sites — so the only precedent this issue itself sets for surfacing a non-discoverable site is the composer pattern: add both `("eval-driven-development.yaml", "capture_issues", "${captured.run_harness.output}")` and `("eval-driven-development.yaml", "diagnose", "${captured.run_harness.output}")` to `UNTRUSTED_OUTPUT_SITES`, and to `KNOWN_INDIRECT_UNTRUSTED_OUTPUT_SITES` (both are reached via shell-capture relay, not a `loop:`-state dispatch, so `_discover_untrusted_output_sites` will never find them — the indirect set exists precisely for sites the guard cannot discover but that still need a slot in `expected`). Without this extension, the final fenced-site count (⚠ *Superseded — 2026-08-29 review: "14" is stale; the authoritative count is **16** per AC5 / Implementation Steps 3 / Program Design → Types, after the `plan_display` finding*) has no wiring path for two of its sites. This gap is closed in `scripts/tests/test_builtin_loops.py` itself, not by a new Files-to-Modify bullet (the carve-out that lets this pass touch directive sections is annotation-only, not addition).
 - **`fence.py`'s `FENCE_ROLES` key-line citations for the composer sites are themselves off by one.** Confirmed via `grep -n` against the current working tree: `("loop-composer.yaml", "review_chain")` opens at `fence.py:100` (the dict-key line); `:101` is the first *value* line inside the tuple (the string `"GOAL"`), not the key line. Likewise `("loop-composer-adaptive.yaml", "review_chain")` opens at `:112`, not `:113`. Two prior remediation-pass notes (Proposed Solution → Codebase Research Findings' 2026-08-29 citation-correction note, and this section's own `⚠ Superseded` annotation on the `fence.py` Files-to-Modify bullet) both re-cited `:101`/`:113` as "exact matches, unaffected" — that re-verification pass itself introduced and certified the off-by-one. Correct citations: `fence.py:100` / `fence.py:112`.
 - **`TestLoopComposerFunnelConsistency` is not a real class name.** Confirmed via `grep -n '^class Test' scripts/tests/test_loop_composer.py`: the only classes are `TestLoopComposerFile`, `TestLoopComposerStates` (opens :96), `TestComposerLibFragment`, `TestCatalogExclusivity`, `TestValidatePlanFragmentExecution`, `TestLoopComposerLive`. The `review_chain` funnel-consistency assertion this section's third-pass addition cited (`test_review_chain_cannot_judge_follows_funnel`, :207-209) is real and at the cited lines, but lives inside `TestLoopComposerStates`, not a class of the cited name — the correct class name is `TestLoopComposerStates`. Separately, `scripts/tests/test_loop_composer_adaptive.py` has no equivalent funnel-consistency assertion: `review_chain` occurs exactly once in that file (line 47), as a member of an expected-states list, not inside any test method. See the correction appended to Dependent Files (Callers/Importers) above.
 
@@ -1126,7 +1167,7 @@ Remediation pass, 2026-08-29 (eighth pass) — Files-to-Modify/Tests entries for
 
 _Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
 
-Locator re-check (2026-08-29, ninth refine pass): `ll-issues research-triage` flagged this axis for re-check because `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` and `scripts/tests/test_builtin_loops.py` changed after the last refine pass. Confirmed via `git diff HEAD` on both files: the working tree currently carries a large, uncommitted, in-progress change touching nearly every loop YAML in the repo, `scripts/little_loops/fsm/validation/{reachability,shell_safety}.py`, and both flagged files — this belongs to EPIC-3336/ENH-3342's corpus conversion plus a new untracked `ENH-3358` (MR-11 marker triage), not to this issue. Grepped both diffs for this issue's own tracked symbols (`FENCE_ROLES`, `UNTRUSTED_OUTPUT_SITES`, `TestBriefFencing`, `TestUntrustedOutputSurvey`, `Fencing a User-Authored Brief/Goal`): zero hits in either diff. The only uncommitted changes to this issue's three primary tier-A files (`loop-router.yaml`, `loop-composer.yaml`, `loop-composer-adaptive.yaml`) are single-line `# ll-lint: mr11-ok(...)` comment annotations appended in place to `check_auto_create`/`check_auto_plan` (unrelated states, no line-count shift) — `dispatch`/`review`/`review_chain`'s previously-recorded anchors are unaffected. No new sub-loop-dispatch-provenance loop files have landed since the last pass (`git log --since=2026-08-27 --diff-filter=A -- scripts/little_loops/loops/*.yaml` is empty) — the 14-site count stands, and no further per-line citation re-verification is warranted from this file-level check alone.
+Locator re-check (2026-08-29, ninth refine pass): `ll-issues research-triage` flagged this axis for re-check because `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` and `scripts/tests/test_builtin_loops.py` changed after the last refine pass. Confirmed via `git diff HEAD` on both files: the working tree currently carries a large, uncommitted, in-progress change touching nearly every loop YAML in the repo, `scripts/little_loops/fsm/validation/{reachability,shell_safety}.py`, and both flagged files — this belongs to EPIC-3336/ENH-3342's corpus conversion plus a new untracked `ENH-3358` (MR-11 marker triage), not to this issue. Grepped both diffs for this issue's own tracked symbols (`FENCE_ROLES`, `UNTRUSTED_OUTPUT_SITES`, `TestBriefFencing`, `TestUntrustedOutputSurvey`, `Fencing a User-Authored Brief/Goal`): zero hits in either diff. The only uncommitted changes to this issue's three primary tier-A files (`loop-router.yaml`, `loop-composer.yaml`, `loop-composer-adaptive.yaml`) are single-line `# ll-lint: mr11-ok(...)` comment annotations appended in place to `check_auto_create`/`check_auto_plan` (unrelated states, no line-count shift) — `dispatch`/`review`/`review_chain`'s previously-recorded anchors are unaffected. No new sub-loop-dispatch-provenance loop files have landed since the last pass (`git log --since=2026-08-27 --diff-filter=A -- scripts/little_loops/loops/*.yaml` is empty) — the site count stands (⚠ *2026-08-29 review: this note's "14" was already stale when written — the authoritative final count is **16** per AC5 / Implementation Steps 3 / Program Design → Types*), and no further per-line citation re-verification is warranted from this file-level check alone.
 
 _Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
 
