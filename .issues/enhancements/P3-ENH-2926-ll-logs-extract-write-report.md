@@ -15,11 +15,11 @@ labels:
 - cli-consistency
 parent: EPIC-1918
 verify_verdict: VALID
-confidence_score: 98
-outcome_confidence: 90
-score_complexity: 20
-score_test_coverage: 23
-score_ambiguity: 22
+confidence_score: 90
+outcome_confidence: 96
+score_complexity: 21
+score_test_coverage: 25
+score_ambiguity: 25
 score_change_surface: 25
 ---
 
@@ -124,6 +124,19 @@ reporting, not gating.
 
 _Added by `/ll:refine-issue` — 2026-08-16 — based on codebase analysis:_
 
+_Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
+
+- **Correction — `extract_parser` construction**: now spans `logs.py:2166-2175` (drifted from the previously-cited `logs.py:2103-2112`). Still no `add_json_arg(extract_parser)` call — confirmed by the full current list of `add_json_arg(` call sites in this file: `logs.py:2149,2204,2218,2257,2282,2294,2328,2362` (`extract_parser` absent).
+- **Correction — `docs/reference/CLI.md`**: the `## ll-logs` section now begins at line 3324 (not ~3129); the `extract` subcommand row is at line 3334; the **`extract` flags** table is at lines 3356-3362 (only `--all`/`--project DIR`/`--cmd TOOL` — no `-j/--json` row, consistent with the parser gap above); usage examples are at lines 3459-3461 (not ~3260).
+- **Correction — OSError-swallow sibling citations** (Conventions in Force): the previously-cited sibling sites `logs.py:1226-1227`, `:1448-1449`, `:1763-1764` have drifted to `logs.py:1274` (`_cmd_scan_failures`), `:1511`, `:1826` respectively — same bare `except OSError: continue` idiom, no logging, no count, at every site.
+- **Correction — `_cmd_scan_failures`'s zero-result block** (the cited model for the decided zero-match convention): now at `logs.py:1325-1330`, not the previously-cited `:1263-1268`.
+- **New — the decided zero-match convention is contested by a third, previously-uncatalogued variant**: `_cmd_stats` (`logs.py:1420-1425`) and `_cmd_dead_skills`'s catalog-empty check (`logs.py:992-997`) test emptiness *before* branching on `args.json` at all, so `--json` degrades to a `logger.warning`/plain `print()` line rather than valid JSON on that path — `_cmd_dead_skills` contains both this variant (catalog-empty) and the fall-through-to-`print_json([])` variant (rows-empty, `:1017-1023`) in the same function. This issue's own Acceptance Criteria ("stdout is a single valid JSON document... under -j/--json") already rules this variant out for `_cmd_extract`; noted so the implementer knows `_cmd_scan_failures`'s shape, not `_cmd_stats`'s, is the one to follow.
+- **New — a private (non-shared) pluralization helper already exists**: `_plural(n: int, word: str) -> str` (`scripts/little_loops/cli/issues/clusters.py:91-93`), module-private and not imported elsewhere — confirms no shared helper exists in `cli/output.py` today; a concrete existing precedent either to model inline or to promote.
+- **New (Tests) — stdout assertion convention in this file**: summary-line assertions run via pytest's `capsys` against `main_logs()` (not `_cmd_*` in isolation) — e.g. `test_ll_logs.py:123-154` (plain text) and `:432-471` (`json.loads(capsys.readouterr().out)`); `logger.warning` presence/absence is asserted via `caplog.at_level(logging.WARNING, logger="little_loops.cli.logs")` (`test_ll_logs.py:259-295`).
+- **New (Tests) — no existing test combines an induced `OSError` with a reported-message assertion**: the two existing unreadable-file tests in this codebase (`test_des_audit.py:77-86`, a directory disguised as a file; `test_tool_catalog.py:107-121`, `monkeypatch.setattr(Path, "read_text", ...)` raising `OSError`) both assert silent-degrade-but-succeed, never a `capsys`/`caplog` assertion on a reported message. The "unreadable-file skip is reported" acceptance criterion has no same-shape existing test to copy — it combines two previously-separate test idioms (induce-`OSError` + assert-on-output).
+- **New (edge case, not covered by Root Cause/Current Behavior)**: a record with a missing/empty `sessionId` is bucketed under the empty string (`buckets[""]`, `logs.py:774-775`) and would be written as `logs/<slug>/.jsonl` — a dot-file with no stem — rather than flagged or dropped.
+- **New (edge case)**: `slug = cwd_path.resolve().name` (`logs.py:758`) is just the resolved directory's basename with no collision handling — two different `cwd_path`s sharing a basename would write into the same `logs/<slug>/` output directory in the same run. Relevant to any per-project summary keyed by `slug`.
+
 ### Files to Modify
 - `scripts/little_loops/cli/logs.py` — `_cmd_extract` (lines 740-796) needs summary/JSON reporting; `extract_parser` (lines 2103-2112) needs `add_json_arg(extract_parser)` added, matching the wiring used by `discover_parser`, `sequences_parser`, `stats_parser`, `dead_skills_parser`, `scan_failures_parser`, `diff_parser`, `eval_export_parser`, `loop_fleet_parser`.
 
@@ -131,6 +144,7 @@ _Added by `/ll:refine-issue` — 2026-08-16 — based on codebase analysis:_
 - `scripts/little_loops/cli/logs.py:2328` — `main_logs()` dispatches to `_cmd_extract`; its call site is unaffected by an output-only change.
 - `.loops/ll-logs-telemetry-digest.yaml:13-23` — the only current caller of `ll-logs extract` in the loop corpus (`refresh_corpus` state). Confirmed via direct read: its `output_contains: "REFRESHED"` gate matches the shell wrapper's own `echo "REFRESHED"`/`echo "REFRESH_FAILED"` text, not `extract`'s raw stdout — the gate depends only on `extract`'s exit code via `&&`/`||` chaining, and stderr is discarded (`2>/dev/null`). Changing what `extract` prints to stdout on success does not affect this consumer, which corrects the issue's `## Impact` claim that low risk stems from "extract currently prints nothing" — the actual invariant this loop needs preserved is exit-code semantics, not stdout silence.
 - Separately (pre-existing, not introduced by this issue): that same loop state invokes `ll-logs extract --quiet` with no `--project`/`--all` target. Both are argument-surface errors and the state resolves to `REFRESH_FAILED` on every run today, independent of ENH-2926. **Split out as BUG-3216** — do not fix it here; this issue's scope stays on `_cmd_extract`'s reporting. Note the sequencing interaction: BUG-3216 optionally wires a real `--quiet` via `add_quiet_arg`, which is most meaningful *after* this issue gives `extract` output worth suppressing. Neither issue blocks the other.
+- **Correction (2026-08-29 refine pass)**: the `main_logs()` dispatch call site above has drifted from `logs.py:2328` to `logs.py:2405` (`main_logs()` itself now defined at `logs.py:2372`) — confirmed via the code graph (`callers-of _cmd_extract`) plus a direct read. Behavior is otherwise unchanged: the call site remains unaffected by an output-only change.
 
 ### Conventions in Force
 - Dual-mode `_cmd_*` functions build one plain `list[dict]`/dataclass once, then branch a single time on `args.json`: `print_json(...)` vs. text/`table()` built from the same structure — evidence: `_cmd_stats` (`logs.py:1336-1396`), `_cmd_sequences` (`logs.py:630-683`), `_cmd_dead_skills` (`logs.py:972-1028`), `_cmd_diff` (`logs.py:1519-1576`).
@@ -153,6 +167,10 @@ _Added by `/ll:refine-issue` — 2026-08-16 — based on codebase analysis:_
 
 _Added by `/ll:refine-issue` — 2026-08-16 — based on codebase analysis:_
 
+_Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
+
+- **Correction — Signatures**: `extract_parser` construction now spans `logs.py:2166-2175` (drifted from the previously-cited `logs.py:2103-2112`); `add_json_arg(extract_parser)` is still absent — confirmed against the current full list of `add_json_arg(` call sites (`logs.py:2149,2204,2218,2257,2282,2294,2328,2362`).
+
 ### Types
 - No new type is strictly required if following the `_cmd_stats`/`_cmd_dead_skills` convention (plain `list[dict]` per-project rows). If a dataclass is preferred instead (matching `_cmd_diff`'s `SessionDiff`/`to_dict()` shape), it needs fields for `project`, `slug`, `out_dir`, `sessions`, `records` per row, plus a run-level `skipped: list[str]`.
 
@@ -163,6 +181,8 @@ _Added by `/ll:refine-issue` — 2026-08-16 — based on codebase analysis:_
 
 ### Call Path
 `main_logs` (`logs.py:2328`) -> `_cmd_extract` (`logs.py:740`) -> per-project loop (`logs.py:757`) -> `get_project_folder` (`user_messages.py:744,753`) / `discover_all_projects` (`logs.py:750`) -> per-file read loop (`open(jsonl_file)`, `logs.py:763-777`) -> `_is_ll_relevant` (`logs.py:773`) -> optional `_cmd_matches` filter (`logs.py:782`) -> per-session write (`logs.py:789-793`) -> `generate_index` (`logs.py:795`, itself reading files at `logs.py:700-715` with the same silent `except OSError: continue` pattern) -> `return 0`.
+
+**Correction (2026-08-29 refine pass)**: `main_logs`'s dispatch call to `_cmd_extract` has drifted to `logs.py:2405` (`main_logs` def at `logs.py:2372`); `generate_index`'s own `except OSError: continue` is precisely at `logs.py:714-715` (def spans `logs.py:686-737`). Every other hop in the chain above was re-confirmed unchanged: `get_project_folder` calls at `user_messages.py:744,753`, `discover_all_projects` at `logs.py:750`, the file-read loop opening at `logs.py:764` with its `OSError` swallow at `logs.py:776-777`, `_is_ll_relevant` at `logs.py:773`, `_cmd_matches` at `logs.py:782`, and the per-session write loop at `logs.py:787-793`.
 
 ### Decision Rules
 - Zero-match `--cmd` filter: fires when `--cmd` is supplied AND a project's final `buckets` dict is empty after filtering (`logs.py:779-785`). No numeric threshold; boolean per-project (or per-run, if aggregated) condition. Reported via the `_cmd_scan_failures` explicit-both-modes idiom — decided under Conventions in Force above; the distinction must be visible in the `--json` payload, not only in text.
@@ -224,6 +244,8 @@ issue is unblocked and its core ask is unchanged.
 - 2026-08-16 (pre-implementation review): citations re-confirmed against `logs.py:740-796` and `logs.py:2103-2112`. Frontmatter `verify_verdict` corrected `NON_VALID` -> `VALID` — it had never been updated after the citation refresh above, and the issue's core claims all hold. The two conventions the refine pass left open (zero-match reporting style; `skipped` in the JSON body vs. stderr) are now decided in place. The `--quiet` observation in the Integration Map was split out as BUG-3216.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-29T23:01:50 - `5eb49b5f-91aa-4f15-a849-be73909ec012.jsonl`
+- `/ll:refine-issue` - 2026-08-29T22:57:50 - `aa00f654-f91b-4b9a-bd21-42a5197c668d.jsonl`
 - `/ll:confidence-check` - 2026-08-16T21:37:50 - `1dcb449c-4f4b-4f5f-adf6-409fd8c076d0.jsonl`
 - `/ll:refine-issue` - 2026-08-16T21:02:31 - `a6423fbb-ab55-421d-8910-104e95cc23b4.jsonl`
 - `/ll:verify-issues` - 2026-08-16T16:40:22 - `688cfc38-322a-447f-94a0-315f2c2aee33.jsonl`

@@ -1,5 +1,5 @@
 ---
-id: 3183
+id: FEAT-3183
 title: Local agent-quality report over history.db
 type: FEAT
 priority: P2
@@ -441,7 +441,7 @@ alone concealed. They pin the prior model without having to hand-assemble a sess
 
 ## Impact
 
-- **Priority**: P1 — the first reader of `usage_events`, and the load-bearing input to any future
+- **Priority**: P2 — the first reader of `usage_events`, and the load-bearing input to any future
   quality-regression detection. Not blocking, but nothing else surfaces this data.
 - **Effort**: Medium — the windowing/min-sample/rendering scaffolding is inherited from
   `rework.py`; the real work is the `_utils` extraction, the three net-new metrics
@@ -488,6 +488,7 @@ Remaining unresolved:
 
 
 ## Session Log
+- `/ll:ready-issue` - 2026-08-29T22:53:31 - `4b1b868d-82c2-4215-81b0-b47fc6f857e5.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-28T20:02:58 - `4c46442f-f29f-4ed0-a178-b65ed74c4dc1.jsonl`
 - `/ll:confidence-check` - 2026-08-16T06:14:00 - `626afca1-c50f-4d88-96c2-8085727c7eca.jsonl`
 - `/ll:refine-issue` - 2026-08-16T06:04:27 - `7c646ce3-f44e-4eef-97cb-1c8c88c8d9d9.jsonl`
