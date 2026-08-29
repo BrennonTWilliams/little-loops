@@ -122,8 +122,6 @@ _Added by `/ll:refine-issue` — 2026-08-11 — based on codebase analysis:_
 
 ### Codebase Research Findings
 
-_Added by `/ll:refine-issue` — 2026-08-11 — based on codebase analysis:_
-
 ### Types
 - `ClusterProposal` — exactly four fields: `member_ids: list[str]`, `placeholder_title: str`, `modal_priority: str`, `pairwise_min_score: float`; defined at `scripts/little_loops/cli/issues/link_epics.py:63-79`. `to_dict()` (line 72-79) serializes exactly those four. No `evidence`/`justification`/`rationale` field exists on this dataclass or on `EpicProposal` (the `--mode assign` sibling, line 44-60). `--deep`'s evidence-citation requirement (this issue's Proposed Solution) needs a new field added here — none of `TestSynthesizeClusters`'s five assertions probe such a field, so adding one is additive, not breaking.
 

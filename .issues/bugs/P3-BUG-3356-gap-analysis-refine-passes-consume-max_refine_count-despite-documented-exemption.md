@@ -9,12 +9,12 @@ discovered_date: '2026-08-28'
 captured_at: '2026-08-28T23:26:59Z'
 verify_verdict: VALID
 confidence_score: 95
-outcome_confidence: 67
+outcome_confidence: 75
 score_complexity: 14
 score_test_coverage: 25
 score_ambiguity: 18
-score_change_surface: 10
-decision_needed: true
+score_change_surface: 18
+decision_needed: false
 ---
 
 # BUG-3356: gap-analysis refine passes consume max_refine_count despite documented exemption
@@ -126,11 +126,41 @@ N/A — no new data shape; the existing `dict[str, int]` session-command-count m
 The discriminator's exact literal shape is an open decision — both candidates below satisfy the `[\w:-]+` regex constraint (see the Expected Behavior correction note above) and every downstream count site examined behaves identically under either, per this pass's direct read of the consuming code (not just the string shape):
 
 1. **Discriminator shape: colon suffix — `/ll:refine-issue:gap-analysis`** — round-trips through `_COMMAND_RE`/`_TIMESTAMPED_ENTRY_RE` (`session_log.py:25,28-30`; `[\w:-]+` permits `:`). Differs from the literal `/ll:refine-issue` dict key, so `refine_status.py`'s `refine_count` (`:339,364`, `session_command_counts.get("/ll:refine-issue", 0)`) and `next_action.py:58`'s `NEEDS_REFINE` gate (same `.get("/ll:refine-issue", 0)` pattern) already exclude it with **zero code change** — both are exact dict-key lookups, not prefix/filter logic. `search.py`'s `"refinement"` sort field (`_sort_issues`'s `key()`, `:271-279`) likewise excludes it for free — `refinement_commands` is a fixed frozenset tested by membership, and a differently-keyed string is simply absent from the sum. Requires `_REFINE_ENTRY` (`program_design.py:130-132`, currently an exact-literal match on `` `/ll:refine-issue` ``) to be broadened to also accept a `:`-suffixed form — otherwise `issue_design_timestamp()` stops treating gap-analysis touches as refine activity and the Program Design gate's staleness clock regresses. In the human-facing `ll-issues refine-status` table (not its `--json` output, which is what `refine_count` above actually is) it sorts after every canonical column and displays as an un-aliased raw-string header until `_CANONICAL_CMD_ORDER`/`_CMD_ALIASES` (`refine_status.py:39-58`) are extended — cosmetic only, does not affect any counted value.
+
+   > **Selected:** (1) — per the stated recommendation
 2. **Discriminator shape: dash suffix — `/ll:refine-issue-gap-analysis`** — identical round-trip, count-exclusion, `_REFINE_ENTRY`, and display-table consequences to Option 1 above: every downstream site keys on exact string equality or frozenset membership, not on which non-`/ll:refine-issue` shape the string takes. The only material difference from Option 1 is readability — a dash-suffixed string reads as a distinct command name rather than a mode of the existing one, both in the raw `## Session Log` text and in that same un-aliased table column.
 
 **Recommended**: Option 1 (colon suffix) — reads as a mode of `/ll:refine-issue` rather than a new command name, consistent with `_CMD_ALIASES` (`refine_status.py:50-58`) only ever aliasing bare command names today. No prior mode-suffixed Session Log entry exists in this codebase to establish a stronger precedent either way (see Codebase Research Findings → Conventions in Force below) — the two options are functionally identical everywhere this pass checked.
 
 Independently of which shape is chosen: this is new recognition logic at exactly one site — `_REFINE_ENTRY` gains a second accepted token shape (see Option 1 above) — but it is **not** new branching/filtering logic at `refine_count`, `next_action.py:58`, or `search.py`'s `"refinement"` sort, which already exclude any non-matching key by construction (see Codebase Research Findings → correction below for the full trace).
+
+### Decision Rationale
+
+**Selected**: Option 1 — colon suffix (`/ll:refine-issue:gap-analysis`).
+
+**Reasoning**: Both discriminator shapes are functionally identical at every downstream
+count site this issue's own research already traced directly against the code —
+`refine_status.py`'s `refine_count`, `next_action.py:58`'s `NEEDS_REFINE` gate, and
+`search.py`'s `"refinement"` sort field all exclude a differently-keyed entry by
+construction (exact dict-key `.get()` / frozenset membership), and both shapes round-trip
+identically through `_COMMAND_RE`/`_TIMESTAMPED_ENTRY_RE` and require the identical
+`_REFINE_ENTRY` broadening. The deciding factor is convention fit: a colon suffix reads
+as a *mode* of the existing `/ll:refine-issue` command, consistent with how
+`_CMD_ALIASES` (`refine_status.py:50-58`) only ever aliases bare command names rather than
+minting new ones — the same reasoning already stated as this issue's own **Recommended**
+line above. A dash suffix reads as an unrelated new command name, a weaker fit with that
+convention.
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+| --- | --- | --- | --- | --- | --- |
+| 1 — colon suffix | 3 | 3 | 3 | 3 | 12/12 |
+| 2 — dash suffix | 2 | 3 | 3 | 3 | 11/12 |
+
+**Key evidence**: `refine_status.py:339,364`, `next_action.py:58`, and `search.py:271-279`
+are exact-key/frozenset-membership lookups that exclude either shape with zero code
+change (per this issue's own Codebase Research Findings correction); `_CMD_ALIASES`
+(`refine_status.py:50-58`) aliases only bare command names today, favoring the mode-suffix
+reading of Option 1 over the new-command-name reading of Option 2.
 
 ## Implementation Steps
 
@@ -169,6 +199,7 @@ Independently of which shape is chosen: this is new recognition logic at exactly
 6. `python -m pytest scripts/tests/` exits 0, including new/extended coverage in `test_session_log.py`, `test_refine_status.py`, `test_program_design_gate.py`, `test_research_triage.py`, `test_next_action.py`, `test_issues_search.py`, and `test_refine_issue_command.py`.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-29T19:18:52 - `2c13c55a-19b4-426e-82a9-8daecd5791a5.jsonl`
 - `/ll:verify-issues` - 2026-08-29T19:12:46 - `fedec3ab-76ac-4b03-acac-d98d32d4349a.jsonl`
 - `/ll:refine-issue` - 2026-08-29T19:08:43 - `0ffc86a7-1497-4d98-b701-beefa90422f4.jsonl`
 - `/ll:confidence-check` - 2026-08-29T18:59:15 - `91e591d4-09fb-4f3a-8a30-1b46c4420b97.jsonl`

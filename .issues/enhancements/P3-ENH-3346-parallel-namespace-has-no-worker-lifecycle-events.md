@@ -575,6 +575,7 @@ _Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
 - **Remediation-pass adjudication of the interim `NON_VALID` reading**: confirmed live that frontmatter `verify_verdict` is `VALID` (not `NON_VALID`) as of this pass, and the Outcome Risk Factors note above already records why: `/ll:verify-issues` recorded an interim `NON_VALID` at 2026-08-29T15:57:01 (Session Log), then re-ran at 2026-08-29T16:22:34 and recorded `VALID`, superseding it. No unresolved third finding was located behind the interim `NON_VALID` reading — the two known false positives (`unapplied_decision`, `stale_symbol_ref`), each already marked RESOLVED above, account for the entirety of the format-check gap surface that produced it. No further adjudication is outstanding.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-29T19:20:15 - `2c13c55a-19b4-426e-82a9-8daecd5791a5.jsonl`
 - `/ll:verify-issues` - 2026-08-29T19:10:10 - `1af8753e-4f9c-4ef2-97a5-4e6f8d5943ea.jsonl`
 - `/ll:refine-issue` - 2026-08-29T19:02:22 - `1af8753e-4f9c-4ef2-97a5-4e6f8d5943ea.jsonl`
 - `/ll:refine-issue` - 2026-08-29T18:39:26 - `477f6591-ae32-49d7-bc90-ee1e0759ddc3.jsonl`

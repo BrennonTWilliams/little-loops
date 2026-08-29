@@ -1136,6 +1136,7 @@ the heuristic's known inability to distinguish "resolved and cleared" from
   mechanical widening of existing logic.
 
 ## Session Log
+- `/ll:ready-issue` - 2026-08-29T19:21:07 - `095cbd0a-db00-46a3-adc4-bd813f5370ea.jsonl`
 - `/ll:confidence-check` - 2026-08-29T19:16:08 - `fedec3ab-76ac-4b03-acac-d98d32d4349a.jsonl`
 - `/ll:refine-issue` - 2026-08-29T18:47:09 - `237f015b-641f-4613-8e7e-3269af82a4c8.jsonl`
 - `/ll:verify-issues` - 2026-08-29T18:14:01 - `48e9d546-94fd-4111-9bec-ae917ba67439.jsonl`
