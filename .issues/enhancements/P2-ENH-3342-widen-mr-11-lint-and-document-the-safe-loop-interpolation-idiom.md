@@ -15,13 +15,13 @@ blocked_by:
 - BUG-3340
 - BUG-3341
 - ENH-3347
-confidence_score: 85
+confidence_score: 75
 verify_verdict: PROPOSAL_UNSOUND
-outcome_confidence: 71
+outcome_confidence: 45
 score_complexity: 10
 score_test_coverage: 25
-score_ambiguity: 18
-score_change_surface: 18
+score_ambiguity: 10
+score_change_surface: 0
 ---
 
 # ENH-3342: Widen MR-11 lint and document the safe loop-interpolation idiom
@@ -643,10 +643,43 @@ already sequences the edits — land in that order.
 
 _Added by `/ll:confidence-check` on 2026-08-29_
 
-**Readiness Score**: 85/100 → PROCEED WITH CAUTION
-**Outcome Confidence**: 71/100 → MODERATE
+**Readiness Score**: 75/100 → PROCEED WITH CAUTION
+**Outcome Confidence**: 45/100 → LOW
+
+_Supersedes the 85/71 scores from the prior `/ll:confidence-check` pass
+(2026-08-29T16:27:18), which ran **before** the subsequent `/ll:refine-issue`
+(16:34:32) and `/ll:verify-issues` (16:43:36) passes surfaced the Program
+Design adapter-gap finding and the `verify_verdict: PROPOSAL_UNSOUND` verdict
+below — this run incorporates both._
 
 ### Concerns
+- `verify_verdict: PROPOSAL_UNSOUND` is currently persisted on this issue (no
+  accompanying body findings — `/ll:verify-issues --check` mode writes only
+  the frontmatter verdict). Per its definition, this means the Proposed
+  Solution, implemented as written, contradicts the code it names. The most
+  plausible source, from this issue's own text, is the Program Design
+  "Adapter gap" finding below.
+- **Program Design's own Codebase Research Findings admit the Signatures
+  entry over-claims.** `_find_unsafe_context_interpolations` is stated to
+  have the "same signature; body delegates to `interp_sweep.scan_action()`",
+  but the findings immediately below it say this "over-claims full
+  delegation" — `scan_action()`'s own docstring excludes bash-token-position
+  findings (needed for AC 2b) by design, so two independent scan paths are
+  actually required, sharing `classify_site()`. Beyond that, the shape
+  mismatch itself is unresolved: `scan_action()` requires a keyword-only
+  `file: str` that `FSMLoop` has no field to supply, and `InterpSite.var` is
+  a bare `namespace.key_path` with no suffix chain, while the current
+  WARNING message interpolates the full raw token including suffixes. The
+  finding says reconciling these "is required before 'same signature' ... is
+  achievable" but does not itself propose the adapter — this is a concrete,
+  unresolved implementation-shape question, not a citation staleness issue.
+- Eight `⚠ Superseded` markers remain unresolved in the Integration Map and
+  Implementation Steps (confirmed via `ll-issues format-check --format json`
+  → `superseded_marker_count: 8`), including two consecutive steps both
+  numbered "6" with cross-referencing annotations about which should run
+  first — the issue itself calls out that `/ll:reconcile-issue` is needed to
+  renumber them. An implementer would need to resolve this ordering before
+  starting Step 5/6.
 - The `# ll-lint: mr11-ok(<var>) <reason>` marker is genuinely new mechanism —
   codebase research found no existing precedent for a per-site inline
   suppression marker anywhere in the FSM validation family (every other
@@ -655,12 +688,32 @@ _Added by `/ll:confidence-check` on 2026-08-29_
   it is new parsing + a new ERROR path + a count ratchet, not a pure widening
   of existing logic.
 - Step 6's triage of newly-surfaced findings across the loop corpus is
-  explicitly open-ended by design (per § Impact: "open-ended by design") —
-  the number of sites requiring conversion vs. marking cannot be bounded
-  until the widened rule actually runs, which is reflected in this issue's
-  own effort estimate ("Medium-Large").
+  explicitly open-ended by design (per § Impact: "open-ended by design"), and
+  a later Codebase Research Finding confirms the blast radius is even wider
+  than originally scoped — `validate_fsm()` also runs over inline FSM YAML
+  fixtures in ~10 test files outside `scripts/little_loops/loops/**`
+  (`test_builtin_loops.py`, `test_create_loop.py`, `test_fsm_executor.py`,
+  etc.), for which no triage path is named. The number of sites requiring
+  conversion vs. marking cannot be bounded until the widened rule actually
+  runs.
+
+### Outcome Risk Factors
+- **Change surface is an unenumerated, per-site-judgment sweep, not a
+  uniform mechanical substitution** — the Triage section requires deciding
+  "convert it" vs. "mark it" per finding, so this does not qualify as
+  Pattern B's enumerated mechanical fanout despite touching an enumerated
+  set of doc files. The core surface (every loop in the corpus, plus the
+  newly-identified ~10 test-fixture files) is open-ended by the issue's own
+  admission — broad, unbounded enumeration across many sites, each requiring
+  individual judgment.
+- Ambiguity: the unresolved Program Design adapter-gap (see Concerns) is a
+  concrete open engineering decision — what value to pass as `scan_action`'s
+  `file` argument, and how to reconstruct a message-worthy token from
+  `InterpSite`'s bare `namespace.key_path` — left to the implementer with no
+  stated resolution.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-29T16:51:34 - `58d393ce-925a-4f28-b052-80c8ddfba7fe.jsonl`
 - `/ll:verify-issues` - 2026-08-29T16:43:36 - `2b9cf0aa-17fa-4c56-a0c2-6a6f4f822dae.jsonl`
 - `/ll:refine-issue` - 2026-08-29T16:34:32 - `2b9cf0aa-17fa-4c56-a0c2-6a6f4f822dae.jsonl`
 - `/ll:confidence-check` - 2026-08-29T16:27:18 - `2b9cf0aa-17fa-4c56-a0c2-6a6f4f822dae.jsonl`

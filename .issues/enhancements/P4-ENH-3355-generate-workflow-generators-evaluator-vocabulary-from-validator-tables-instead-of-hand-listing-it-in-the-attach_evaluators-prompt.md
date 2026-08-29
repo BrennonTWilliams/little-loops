@@ -138,7 +138,54 @@ For machine-visibility: `ll-issues check-decidable ENH-3355`'s enumerable-option
 
 **Option 2**: Keep a curated exclusion set in the generator block — `sorted(NON_LLM_EVALUATOR_TYPES - {"open_question_stall", "harbor_scorer"})`.
 
+> **Selected:** Option 2 — the curated exclusion set. `open_question_stall` and
+> `harbor_scorer` need pipeline infrastructure (a maintained open-question-count
+> history file; an actual Harbor-format benchmark scorer) that a generically
+> sketched state never produces, so they would pass `validate_evaluators`
+> structurally while misbehaving at runtime if the LLM selected them — a risk
+> Option 1's straight widening would introduce. Option 2 preserves today's
+> working 10-type vocabulary, adds only the derived "Do not use" fix
+> (`advisor_consult`), and costs one extra set-difference literal over Option 1.
+
 This decision is recorded by `/ll:decide-issue ENH-3355`, which appends a `> **Selected:**` callout beneath the chosen Option block above — that callout, plus `decision_needed: true` in frontmatter (set by this refine pass), is the concrete mechanism the Acceptance Criteria's "resolved and recorded" bullet resolves through.
+
+### Decision Rationale
+
+Decided by `/ll:decide-issue` on 2026-08-29.
+
+**Selected**: Option 2 — Keep a curated exclusion set in the generator block
+
+**Reasoning**: `validate_evaluators` (`workflow-generator.yaml:466-500`) imports
+`NON_LLM_EVALUATOR_TYPES` directly and would structurally accept all 12 members
+including `open_question_stall` and `harbor_scorer`, but codebase research
+(`fsm/evaluators.py:736-770`, `:1008`) shows both require infrastructure — a
+maintained per-round question-count history file, and an actual Harbor
+benchmark scorer emitting a float on stdout — that a generically-sketched
+`graph-sketch.yaml` state never produces. Widening to all 12 (Option 1) would
+therefore offer two types that pass structural validation but misbehave at
+runtime, a landmine the current hand-listed 10-type vocabulary already avoids
+by omission. Option 2 keeps that same working boundary while still deriving
+the required-field prose from the shared table, closing the `advisor_consult`
+"Do not use" omission by construction.
+
+#### Scoring Summary
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|--------|-------------|------------|-------------|------|-------|
+| Option 1 (accept widening) | 2/3 | 3/3 | 3/3 | 1/3 | 9/12 |
+| Option 2 (curated exclusion) | 3/3 | 2/3 | 3/3 | 3/3 | 11/12 |
+
+**Key evidence**:
+- Option 1: Matches `NON_LLM_EVALUATOR_TYPES` and `validate_evaluators`
+  exactly with the simplest possible generator body (`sorted(NON_LLM_EVALUATOR_TYPES)`,
+  no exclusion literal), but reintroduces two types (`open_question_stall`,
+  `harbor_scorer`) whose evaluators expect pipeline output the generator does
+  not produce (`fsm/evaluators.py:736-770,1008`) — structurally valid,
+  functionally broken if selected.
+- Option 2: One extra set-difference literal over Option 1, but preserves the
+  vocabulary boundary the current hand-list already enforces (10 types) and
+  avoids the same functional landmine, while still closing the
+  `advisor_consult` exclusion-line gap via the shared table.
 
 ## Program Design
 
@@ -309,6 +356,7 @@ FEAT-3328 § Known coverage gap.
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-29T16:48:50 - `1a3ef653-fb3c-418b-9f59-cf436fe3c24c.jsonl`
 - `/ll:verify-issues` - 2026-08-29T16:44:28 - `8cef6ec1-5cb0-4cb4-8f7b-ed8c1bc53873.jsonl`
 - `/ll:refine-issue` - 2026-08-29T16:39:19 - `2b9cf0aa-17fa-4c56-a0c2-6a6f4f822dae.jsonl`
 - `/ll:confidence-check` - 2026-08-29T16:32:21 - `2b9cf0aa-17fa-4c56-a0c2-6a6f4f822dae.jsonl`
