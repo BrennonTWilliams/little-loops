@@ -475,6 +475,18 @@ path-reference/fence per Open Question 2; per-site literal nonce markers)._
       (Under the decided Option B, `FENCE_ROLES` stays at exactly 13 entries —
       new sites go in `UNTRUSTED_OUTPUT_ROLES` — so the guide's existing
       "13 sites" count is not stale and needs no correction.)
+      This is the only criterion in this issue with no test coupling —
+      contrary to this issue's own stated policy (Proposed Solution →
+      Codebase Research Findings: any new fence-related table "should follow
+      that same three-part contract ... rather than a weaker spot-check").
+      Pair it with a mechanical assertion, mirroring how `TestBriefFencing`
+      pins `FENCE_CORE`'s text rather than trusting prose review: a test
+      asserting `fence.py`'s module docstring contains a substring naming
+      the untrusted-output class (e.g. `"BUG-3334"` or
+      `"FENCE_CORE_UNTRUSTED_OUTPUT"`), and a test asserting
+      `HARNESS_OPTIMIZATION_GUIDE.md`'s fencing section contains a matching
+      substring — so a doc/docstring edit made without the other, or skipped
+      entirely, fails the suite instead of passing silently.
 - [ ] Full suite (`python -m pytest scripts/tests/`) shows no new failures.
 
 ## Scope
