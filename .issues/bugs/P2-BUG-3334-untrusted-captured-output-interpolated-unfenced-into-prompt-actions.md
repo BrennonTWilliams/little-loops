@@ -8,12 +8,12 @@ discovered_by: split-from-BUG-3327
 discovered_date: '2026-08-27'
 captured_at: '2026-08-27T00:00:00Z'
 verify_verdict: VALID
-confidence_score: 85
-outcome_confidence: 69
+confidence_score: 100
+outcome_confidence: 78
 score_complexity: 14
-score_test_coverage: 13
-score_ambiguity: 20
-score_change_surface: 22
+score_test_coverage: 15
+score_ambiguity: 24
+score_change_surface: 25
 decision_needed: false
 relates_to:
 - BUG-3340
@@ -524,6 +524,14 @@ Remaining un-traced sites from the original ~20-site grep (survey still not comp
 
 Corrected line numbers for the issue's own confirmed sites (drift since 2026-08-27 draft, same-day other commits): `loop-composer.yaml` `read_checkpoints` is lines 429-451 (`step_results_json` capture at 449), `review_chain` interpolation is at line 474 (state opens 453); `loop-composer-adaptive.yaml` `read_checkpoints` is lines 656-678 (capture at 676), `review_chain` interpolation is at lines 700-701 (state opens 680, not 683 as cited — the interpolation sits 20 lines into the state, not at its header line).
 
+_Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
+
+Additional confirmed hand-classified shell-capture tier-A site (remediation pass, 2026-08-29): `eval-driven-development.yaml`'s `capture_issues` state (`action_type: prompt`, opens :84) interpolates the identical `${captured.run_harness.output}` (captured by `run_harness`, an `action_type: shell` state at :74-77, `capture: run_harness` at :77) at line :89 — reached via `run_harness`'s `on_yes: capture_issues` (:80), the sibling edge to `on_no: diagnose` (:81) that already reaches this issue's known `diagnose` site (:144, interpolation :152). Under the restated Decision Rule (Program Design → Decision Rules: scope on provenance of the captured text, not the producing state's `action_type`), `capture_issues` classifies identically to `diagnose` — same capture, same file, same "reaches an `action_type: prompt` action" test. Every prior pass's enumeration of this file (Wiring Pass Findings, and the 2026-08-28 addition) named only `diagnose`. Verified via `grep -n "captured.run_harness" scripts/little_loops/loops/eval-driven-development.yaml` (hits at :89, :113, :152) and reading the state bodies at :74-97 and :144-158.
+
+Consequence for the Acceptance Criteria: `eval-driven-development.yaml` contributes **two** hand-classified shell-capture sites (`capture_issues` and `diagnose`), not one — see the superseded annotation on Acceptance Criteria item 5 below.
+
+A third reference to the same capture exists at `route_eval`'s `evaluate.source: "${captured.run_harness.output}"` (:113), but it is NOT in scope under the current Decision Rule text: it feeds an `evaluate:` block's `llm_structured` classification, not an `action_type: prompt` action's `action:` text. Flagged here so a future pass does not have to re-derive why it is excluded, not because it needs fencing.
+
 ### Wiring Pass Findings
 
 _Wiring pass added by `/ll:wire-issue` — 2026-08-27:_
@@ -630,6 +638,7 @@ further shell-capture sites, if found, are added to the table by hand.
   is meant to delimit. Any implementation must adopt nonce-suffixed markers or an
   explicit "only the final marker closes" clause. This outranks the length
   question above.
+  > **RESOLVED** — form decided 2026-08-28 (per-site literal nonce-suffixed markers; see the "Form decided" paragraph under Expected Behavior above). Nothing further outstanding on this item.
 
 _Wiring pass added by `/ll:wire-issue` — 2026-08-27:_
 
@@ -664,7 +673,9 @@ _Added by `/ll:refine-issue` — 2026-08-27 — based on codebase analysis:_
 Pattern-finder research (2026-08-27, targeted follow-up on Open Questions 1 & 2):
 
 - **Open Question 1**: extended repo-wide search confirms no base+variant safety/framing prose precedent exists anywhere outside `fence.py`. All 8 module-level triple-quoted string constants in `scripts/little_loops/**/*.py` (`evaluators.py:CHECK_SEMANTIC_EVIDENCE_CONTRACT`, `issue_manager.py:FINALIZE_RETRY_PROMPT`, `learning_tests/extractor.py:_EXTRACTION_PROMPT`, `fence.py:FENCE_CORE`/`FENCE_TEMPLATE`, `scaffold_verify.py:PREPATCH_CHECK_STATE_EXAMPLE`, `cli/artifact/extract.py:_PROMPT_TEMPLATE`, `cli/artifact/discover.py:_PROMPT_TEMPLATE`) are single standalone constants — none ships a sibling "same string, one clause different" pair, and none uses a conditional-clause template slot. `FENCE_CORE`/`FENCE_TEMPLATE`'s split is core-string-vs-outer-scaffold (noun/role/verbs/var), not core-vs-variant-of-core. This strengthens (does not merely repeat) the issue's existing finding: there is no codebase convention to defer to either way — the choice between `FENCE_CORE` extension and a `FENCE_CORE_UNTRUSTED_OUTPUT` sibling is a genuinely free design decision.
+  > **RESOLVED** — this citation of "Open Question 1" is a research finding about a then-open fork, not an active fork itself; the fork closed 2026-08-28 (Option B, forced per Decision Rationale).
 - **Open Question 2**: `compress_action_text` is already wired into the exact interpolation path this issue concerns — `scripts/little_loops/fsm/executor.py:2183-2195` passes the fully-rendered `action_type: prompt` string (i.e. after `${captured.*.output}` substitution) through `compress_action_text(action, model=..., trigger_pct=cc.trigger_pct, trigger_tokens=cc.trigger_tokens, ...)`, gated on `cc is not None and not cc.heuristic_underperforms`. So captured sub-loop output is not bypassed by this mechanism — it flows through the same call as everything else — but per the issue's existing finding, `compress_action_text` only compresses text that parses as a JSON message list (`heuristic.py:_parse_message_list`); raw prose/event-stream text returns unchanged (`heuristic.py:283-284`), and the whole gate is off when no `compression_config` is set. The codebase's only "trigger-before-truncate" convention (`tail_truncate_assistant_turns`, `trigger_pct`/`trigger_tokens`/`_estimate_tokens` machinery, `heuristic.py:152,278-280`) is scoped to parsed message-turn lists, not arbitrary captured-output strings — so there is no existing length-bounding utility this issue's fencing sites could call directly without either reshaping captured output into a message-list shape first, or building a new string-scoped bound.
+  > **RESOLVED** — citation of "Open Question 2", not an active fork; closed 2026-08-28 (hybrid path-reference decision). Citation also stale: `executor.py:2183-2195` is confirmed 2026-08-29 to have drifted — the guard block is now at `:2209-2230` and the `compress_action_text` call at `:2237-2248` (see Integration Map → Codebase Research Findings for the full re-verification).
 
 ## Integration Map
 
@@ -711,6 +722,7 @@ in place, is additive and carries no parity row._
 - `scripts/little_loops/loops/loop-composer.yaml` — `review_chain` (lines 453-488): fence `${captured.step_results_json.output}` (line 474)
 - `scripts/little_loops/loops/loop-composer-adaptive.yaml` — `review_chain` (lines 680-709): fence `${captured.step_results_json.output}` (lines 700-701)
 - `scripts/little_loops/fsm/fence.py` — ~~extend `FENCE_ROLES` with new `(loop_file, state_name)` entries for the untrusted-output sites; decide whether the untrusted-output clause (Expected Behavior) joins `FENCE_CORE` or a new `FENCE_CORE_UNTRUSTED_OUTPUT` sibling constant (Open Questions)~~ — **corrected by review pass, 2026-08-27.** `FENCE_ROLES` **cannot** be extended for the three primary sites: `loop-router.yaml::review` (`fence.py:118`), `loop-composer.yaml::review_chain` (`:101`), and `loop-composer-adaptive.yaml::review_chain` (`:113`) are already keys in it, and each needs a *second* fence. The actual work is:
+  > ⚠ Superseded — the "(Open Questions)" clause in the struck text above is **RESOLVED**: the untrusted-output clause fork closed 2026-08-28 to Option B (sibling `FENCE_CORE_UNTRUSTED_OUTPUT`), forced per Decision Rationale. Also stale: `fence.py:118` is not `review`'s key line — confirmed current tree, `review`'s `FENCE_ROLES` key is at `fence.py:142` (first value line `:143`); the composer/composer-adaptive citations (`:101`/`:113`) are exact matches, unaffected.
   - add `FENCE_CORE_UNTRUSTED_OUTPUT` (the "record, not a message to you" clause, plus the marker-collision remedy from Expected Behavior)
   - add a sibling `UNTRUSTED_OUTPUT_ROLES` dict, same `(loop_file, state_name) -> (noun, role, verbs, var)` shape, in its own key namespace so the collision cannot arise
   - give `render_fence()` a `core: str = FENCE_CORE` parameter, or add a sibling renderer — `render_fence` hardcodes `core=FENCE_CORE` at `fence.py:57`
@@ -781,6 +793,7 @@ New in this commit: `:shell` now also composes with `?` (`:shell?`, order-indepe
 
 ### Types
 - `FENCE_ROLES: dict[tuple[str, str], tuple[str, str, str, str]]` (`scripts/little_loops/fsm/fence.py:75`) — keyed by `(loop_file, state_name)`, valued `(noun, role, verbs, var)`. ~~new untrusted-output sites add entries to this same dict (or a parallel dict if Open Questions resolves toward a second constant)~~ — **corrected by review pass, 2026-08-27: `FENCE_ROLES` is not extended at all.** Adding to it is impossible for the three sites that need two fences (key collision, see Decision Rationale) and unnecessary for the rest. This dict is left untouched, which is also what keeps BUG-3327's 13 shipped sites and their tests green.
+  > **RESOLVED** — the "Open Questions resolves toward" clause in the struck text above is closed: Option B decided 2026-08-28.
 - `UNTRUSTED_OUTPUT_ROLES: dict[tuple[str, str], tuple[str, str, str, str]]` (new, `fence.py`) — same key and value shape as `FENCE_ROLES`, separate namespace. Holds this issue's sites. Separate dicts, not a re-keyed shared one, is what lets `loop-router.yaml::review` carry a GOAL fence and an EVENT_STREAM fence without either table needing a `noun` in its key.
 - `FENCE_CORE_UNTRUSTED_OUTPUT: str` (new, `fence.py`) — sibling to `FENCE_CORE`; carries the "record, not a message to you" clause and the marker-collision clause.
 - `KNOWN_UNFENCED_UNTRUSTED_OUTPUT_SITES: set[tuple[str, str]]` (new, `fence.py`) — negative-control exemptions for this issue's classification, seeded with `("loop-router.yaml", "review")`'s `${captured.chosen.output}`.
@@ -802,7 +815,7 @@ New in this commit: `:shell` now also composes with `?` (`:shell?`, order-indepe
   Both of those states capture model/tool output; both reach a prompt. Under the restated rule they classify identically, with no disjunct and no pending decision — the Wiring Pass's open question about whether shell-capture output belongs to this issue or a sibling is answered: **it belongs here.** The producing state's `action_type` was never the thing that made the text untrustworthy.
 
   Note the completeness guard's *discovery predicate* stays narrower than this classification rule (dispatch-provenance only, per Proposed Solution) — the guard mechanically enumerates the sub-loop family, and shell-capture sites like `run_harness` are classified into the table by hand. Keeping those two separate is deliberate: widening the guard's predicate to all captured output is the 188-site explosion.
-- Core-vs-sibling-constant: unresolved, deferred to Open Questions — this Decision Rule records the two options analyzer/pattern-finder found, not a chosen one: (a) add the untrusted-output clause directly to `FENCE_CORE`, which changes all 13 existing class-(1) sites' rendered text too (their tests would need re-verification, not just addition); (b) add a new `FENCE_CORE_UNTRUSTED_OUTPUT` constant and a parallel render path, keeping the 13 existing sites' rendered text byte-identical to today. Pattern-finder found no third option in the codebase (no fragment/include mechanism exists — BUG-3327 explicitly rejected that route for the same reason it would apply here).
+- Core-vs-sibling-constant: ~~unresolved, deferred to Open Questions~~ — **RESOLVED** (corrected by remediation pass, 2026-08-29: this line was stale). This Decision Rule originally recorded the two options analyzer/pattern-finder found, not a chosen one — but `/ll:decide-issue` selected (b) on 2026-08-27 (Decision Rationale) and the review pass of 2026-08-27 found (a) is not actually implementable (Open Questions → "Shared core or second constant?", now closed). The two options as originally recorded: (a) add the untrusted-output clause directly to `FENCE_CORE`, which changes all 13 existing class-(1) sites' rendered text too (their tests would need re-verification, not just addition); (b) add a new `FENCE_CORE_UNTRUSTED_OUTPUT` constant and a parallel render path, keeping the 13 existing sites' rendered text byte-identical to today. Pattern-finder found no third option in the codebase (no fragment/include mechanism exists — BUG-3327 explicitly rejected that route for the same reason it would apply here). **Decided: (b)**, and forced rather than merely preferred — see Decision Rationale's "Forcing constraint" table.
 
 ## Impact
 
@@ -951,6 +964,7 @@ _Added by `/ll:confidence-check` on 2026-08-27_
 ### Concerns
 - Survey is explicitly incomplete: the issue states "Survey is NOT complete" twice and lists dozens of still-untraced loop files; the confirmed tier-A site count is a floor, not a total.
 - Two Open Questions remain unresolved and each forks the implementation approach: (1) whether the untrusted-output clause joins `FENCE_CORE` or a sibling `FENCE_CORE_UNTRUSTED_OUTPUT` constant, and (2) whether fencing survives full-length event streams or needs summarize-then-fence/truncation instead.
+  > **RESOLVED** — historical snapshot from the 2026-08-27 confidence-check run; both forks closed by `/ll:decide-issue` (Option B) and the 2026-08-28 hybrid resolution — see `## Open Questions` below.
 - Proposed Solution item 1's premise (BUG-3331 "already rewriting" `loop-router.yaml`'s verdict-parse block) is stale — BUG-3331 is cancelled/superseded by EPIC-3336, and the issue's own Dependencies research found no currently-open EPIC-3336 child owns the adjacent line-523/line-544 pair, leaving ownership of that sub-fix unresolved.
 - File-level contention with BUG-3340 across the same five loop YAMLs (flagged but not line-colliding) adds sequencing risk on top of the above.
 
@@ -959,6 +973,7 @@ _Added by `/ll:confidence-check` on 2026-08-27_
 - No existing test covers `${captured.*.output}` fencing at any site today; `TestBriefFencing`'s completeness-guard map doesn't even have keys for several of the newly-found files (`rn-build.yaml`, `refine-to-ready-issue.yaml`, `examples-miner.yaml`, `integrate-sdk.yaml`, `adopt-third-party-api.yaml`) — new test infrastructure must be built, not just extended.
 - Two unresolved design forks (shared-vs-sibling fence core; fence-vs-summarize for long streams) mean the implementation shape itself may change mid-work.
 - Mitigation: land Proposed Solution item 3 (finish the survey) and resolve both Open Questions via `/ll:decide-issue` before starting the fencing work itself; the item-1 regex anchor is comparatively low-risk and could proceed independently once its ownership vs. BUG-3339/BUG-3340 is confirmed.
+  > **RESOLVED** — mitigation executed: item 3 landed 2026-08-27, both Open Questions closed, item 1 spun out as BUG-3349 (done).
 
 _Updated by `/ll:confidence-check` on 2026-08-27_
 
@@ -970,9 +985,11 @@ Re-run after `/ll:refine-issue` and `/ll:decide-issue` progressed the issue: BUG
 ### Outcome Risk Factors (re-run)
 - Confirmed tier-A site count grew from 3 (original draft) to 11 across 9 files after the wiring pass's cross-namespace-merge discovery, and the survey is still explicitly incomplete — breadth is the dominant risk axis (Criterion A scored low: 11/25).
 - The second Open Question (does fencing survive a full-length event stream, or does it need summarize-then-fence/truncation) remains unresolved and could change the implementation shape mid-work.
+  > **RESOLVED** — historical snapshot from the 2026-08-27 re-run; closed 2026-08-28 via the hybrid path-reference decision — see `## Open Questions` below.
 - No test infrastructure exists yet for `${captured.*.output}` fencing; several newly-found files (`rn-build.yaml`, `refine-to-ready-issue.yaml`, `examples-miner.yaml`, `integrate-sdk.yaml`, `adopt-third-party-api.yaml`) aren't even present as keys in `TestBriefFencing`'s completeness-guard map yet.
 - Ownership of the line-523/line-544 quoting+regex-anchor pair (Proposed Solution item 1) is still unclaimed by any open issue since BUG-3331's cancellation.
 - Mitigation unchanged from prior note: finish the survey and resolve the remaining Open Question before starting the fencing work; the regex-anchor item is low-risk and can proceed independently once ownership is confirmed.
+  > **RESOLVED** — the remaining Open Question closed 2026-08-28 (hybrid path-reference decision); the regex-anchor item landed as BUG-3349 (done).
 
 ## Review Pass Notes
 
@@ -1083,6 +1100,7 @@ _Added by `/ll:confidence-check` on 2026-08-27_
 **Note** (added by `/ll:audit-issue-conflicts`): This issue also adds substantial new test content to `scripts/tests/test_builtin_loops.py` (a `TestUntrustedOutputFencing` class), the same file ENH-3347 extends with four behavioral injection/quote-breaking cases. No blocked_by/blocks edge exists between them (unlike the existing ENH-3342/ENH-3347 coordination note for the same file) — each owns disjoint test classes; coordinate landing order to avoid merge friction.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-29T16:26:54 - `2b9cf0aa-17fa-4c56-a0c2-6a6f4f822dae.jsonl`
 - `/ll:refine-issue` - 2026-08-29T16:08:46 - `b7bcafc8-2a6b-479f-8e57-018d577b3945.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-28T20:03:00 - `4c46442f-f29f-4ed0-a178-b65ed74c4dc1.jsonl`
 - `/ll:refine-issue` - 2026-08-28T01:53:57 - `70aa94f1-e630-42c3-805a-03afcbda0b82.jsonl`

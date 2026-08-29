@@ -8,12 +8,20 @@ status: open
 discovered_by: ll-issues-create
 discovered_date: '2026-08-28'
 captured_at: '2026-08-28T22:35:07Z'
+verify_verdict: VALID
 labels:
 - workflow-generator
 - drift
 - feat-3328-followup
 relates_to:
 - FEAT-3328
+confidence_score: 95
+outcome_confidence: 78
+decision_needed: true
+score_complexity: 18
+score_test_coverage: 25
+score_ambiguity: 10
+score_change_surface: 25
 ---
 
 # ENH-3355: Generate workflow-generator's evaluator vocabulary from validator tables instead of hand-listing it in the attach_evaluators prompt
@@ -80,6 +88,14 @@ block must be escaped `$${...}` (e.g. `$${DIR}`) per the loop-authoring
 rule — a bare `${DIR}` raises "expected namespace.path" at interpolation
 time.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
+
+The sketch's `python3 -c "..." > "$DIR/evaluator-vocab.md"` redirect above only redirects stdout. `init`'s own header comment (`scripts/little_loops/loops/workflow-generator.yaml:54-55`) states the actual convention every other command in that block follows: "Every new command below redirects stdout to a file (or $(...)) and stderr to /dev/null so init's stdout stays exactly one line." Without a matching `2>/dev/null` on the new command, a Python exception at generation time (e.g. an import failure) leaks a traceback onto init's stderr — not its stdout-contract-violating stdout, but still a deviation from the documented per-command convention every other addition to this block follows. The real implementation's redirect must carry both `> "$DIR/evaluator-vocab.md" 2>/dev/null` (with a fallback write, mirroring how every existing command in this block degrades — e.g. `git -C "$ROOT" rev-parse HEAD > "$DIR/baseline-ref.txt" 2>/dev/null || : > "$DIR/baseline-ref.txt"`, same file, line 70), not stdout redirection alone.
+
+The vocabulary that must stop drifting is not only the allowed-type table — it is also the "Do not use" exclusion line, whose current omission of `advisor_consult` the Decision Needed section identifies as a live inaccuracy. That line is generatable from the same import with no new judgment call: `sorted(EVALUATOR_REQUIRED_FIELDS.keys() - NON_LLM_EVALUATOR_TYPES)` evaluates to exactly `advisor_consult`, `comparator`, `contract`, `llm_structured` today (verified against `scripts/little_loops/fsm/validation/_base.py:45-71`), because `NON_LLM_EVALUATOR_TYPES` is itself defined as that same set difference in reverse. The generator block's output must include this derived exclusion list alongside the allowed-type table, so the `advisor_consult` omission is closed by construction rather than needing a hand-fix that could drift again the same way the original list did.
+
 ## Decision Needed
 
 **The hand-listed vocabulary is a curated proper subset, not a stale copy.**
@@ -114,12 +130,27 @@ _Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
   - `harbor_scorer` (`evaluate_harbor_scorer`, `scripts/little_loops/fsm/evaluators.py:1008`) expects the state's own shell action to run an actual Harbor-format benchmark scorer and emit a float on stdout — a specific external-tool contract, not something a generically-sketched state satisfies.
   - This bears on the option 1 vs. option 2 trade-off above: widening to all 12 (option 1) would offer two types whose *structural* validation passes (no required fields, so `validate_evaluators` and `ll-loop validate` both accept them) but whose evaluators would misbehave against generically-generated state output, unlike the other 10 offered types, which are all general-purpose and require no extra generated infrastructure.
 
+_Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
+
+For machine-visibility: `ll-issues check-decidable ENH-3355`'s enumerable-option probe (`locate_enumerable_options()`, `scripts/little_loops/issue_parser.py:2456`) only recognizes an `### Option A` heading, a `**Option A**` bold-label line, a `1. **Option ...` numbered line, or a `- Option A` bullet — the numbered prose above (`1. **Accept the widening**...`, `2. **Keep a curated exclusion set...`) matches none of the four tiers, and confirmed via a direct run: `ll-issues check-decidable ENH-3355` exits 1 (`OPTIONS_MISSING`) against the issue as it stood before this pass. The same two alternatives restated in canonical bold-label form, so `/ll:decide-issue ENH-3355` and `ll-issues check-decidable` can locate them (this restates, not replaces, the numbered prose above — that prose stays the fuller explanation):
+
+**Option 1**: Accept the widening — generate all 12 members of `NON_LLM_EVALUATOR_TYPES`.
+
+**Option 2**: Keep a curated exclusion set in the generator block — `sorted(NON_LLM_EVALUATOR_TYPES - {"open_question_stall", "harbor_scorer"})`.
+
+This decision is recorded by `/ll:decide-issue ENH-3355`, which appends a `> **Selected:**` callout beneath the chosen Option block above — that callout, plus `decision_needed: true` in frontmatter (set by this refine pass), is the concrete mechanism the Acceptance Criteria's "resolved and recorded" bullet resolves through.
+
 ## Program Design
 
 ### Types
 
-- `NON_LLM_EVALUATOR_TYPES: set[str]` — existing, `scripts/little_loops/fsm/validation/_base.py`
-- `EVALUATOR_REQUIRED_FIELDS: dict[str, list[str]]` — existing, same module
+- `NON_LLM_EVALUATOR_TYPES: frozenset[str]` — existing,
+  `scripts/little_loops/fsm/validation/_base.py:66-71`
+  (`frozenset(EVALUATOR_REQUIRED_FIELDS.keys()) - {"llm_structured",
+  "comparator", "contract", "advisor_consult"}` — the four excluded types are
+  a *derived* set difference, not a separately hand-maintained literal)
+- `EVALUATOR_REQUIRED_FIELDS: dict[str, list[str]]` — existing,
+  `scripts/little_loops/fsm/validation/_base.py:45-62`
 
 ### Signatures
 
@@ -131,8 +162,23 @@ curated subset, per the Decision Needed above) and formats each entry against
 ### Call Path
 
 `init` -> writes `evaluator-vocab.md` (via a `python3 -c` block reading
-`EVALUATOR_REQUIRED_FIELDS`/`NON_LLM_EVALUATOR_TYPES`) -> `attach_evaluators`
-reads that file from `${context.run_dir}/evaluator-vocab.md`
+`EVALUATOR_REQUIRED_FIELDS`/`NON_LLM_EVALUATOR_TYPES` and redirected using
+bash's own already-set `$DIR` var — the same variable the existing
+mkdir/echo block in `init` uses — never a raw `${context.run_dir}`
+interpolation inside the new Python body) -> `attach_evaluators` reads that
+file via `${captured.run_dir.output}/evaluator-vocab.md`.
+
+Constraint this corrects: every existing `action_type: prompt` state in this
+loop (`capture_intent`, `sketch_state_graph`, `attach_evaluators` itself,
+`resolve_routing`, `emit_artifact`, `await_confirmation`) reads run-dir
+files exclusively via `${captured.run_dir.output}` — never
+`${context.run_dir}`, which appears only inside `init` and inside
+`action_type: shell` `validate_*` states, always wrapped in
+`os.path.abspath(...)` (guarding the double-prefixing hazard `init`'s own
+header comment attributes to BUG-2435). `attach_evaluators`'s own current
+action already opens with `Read ${captured.run_dir.output}/graph-sketch.yaml.`
+— the new `evaluator-vocab.md` read must follow that identical, already-
+established variable, not `${context.run_dir}`.
 
 ## Scope Boundaries
 
@@ -151,8 +197,10 @@ reads that file from `${context.run_dir}/evaluator-vocab.md`
 
 ### Files to Modify
 - `scripts/little_loops/loops/workflow-generator.yaml` — `init` (generator
-  block writing `${context.run_dir}/evaluator-vocab.md`) and
-  `attach_evaluators` (prompt reads the file instead of hand-listing)
+  block writing `evaluator-vocab.md` into the run dir via bash's own
+  already-set `$DIR` var, per Program Design > Call Path) and
+  `attach_evaluators` (prompt reads the file via
+  `${captured.run_dir.output}/evaluator-vocab.md` instead of hand-listing)
 
 ### Tests
 - `scripts/tests/test_builtin_loops.py::TestWorkflowGeneratorLoop` — extend to
@@ -195,6 +243,10 @@ _Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
 - **The file-written-in-a-shell-state / read-by-a-later-prompt convention is already in use in this same loop**: `attach_evaluators`'s own action already opens with `Read ${captured.run_dir.output}/graph-sketch.yaml.` — a shell/init-written artifact consumed by a later prompt state through the `captured.run_dir.output` interpolation (`init`'s `capture: run_dir`, `workflow-generator.yaml:167`). The proposed `evaluator-vocab.md` read follows this identical, already-established shape; no new mechanism needs to be introduced.
 - **An existing test inspects `attach_evaluators`'s prompt text directly and will need explicit rework, not just extension**: `test_attach_evaluators_documents_every_required_field` (`scripts/tests/test_builtin_loops.py:18118-18141`) currently computes `offered = [t for t in NON_LLM_EVALUATOR_TYPES if t in action]` against the prompt's raw `action` string, then asserts every required field name of every offered type is a substring of that same `action` string. Once the vocabulary/required-field text moves out of the prompt into a generated file, none of those substrings will be present in `action` any more and this test's assertions go stale — it needs to be pointed at the `init` generator's output (or its python3 body) rather than silently broken or deleted.
 
+_Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
+
+scripts/tests/data/loop_interpolation_baseline.json + `TestInterpSweepBaseline::test_completeness_guard` (`scripts/tests/test_builtin_loops.py:19236`, backed by `scan_corpus` in `scripts/little_loops/fsm/interp_sweep.py`) is an exact-match corpus gate over every `${context.*}`/`${captured.*}`/`${prev.*}` reference embedded inside `python3 -c`/heredoc bodies in shell actions across all built-in loops (EPIC-3336). `init` currently has zero entries for it in the baseline — its existing action contains no such embedded interpolation site. As sketched (reusing the bash `$DIR` var already set earlier in `init`, not a `${context.run_dir}` interpolation inside the new Python body — see Program Design > Call Path), the new generator block introduces no new site and needs no baseline update. If the real implementation instead interpolates `${context.run_dir}` (or any `${captured.*}`/`${prev.*}` var) directly into the new Python body, that is a new, un-baselined `(file, state, var, class)` tuple and `test_completeness_guard` fails until `loop_interpolation_baseline.json` is updated in the same change.
+
 ## Acceptance Criteria
 
 - [ ] The Decision Needed above is resolved and recorded in this issue
@@ -223,6 +275,14 @@ _Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
       cross-reference to this issue in
       `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` is updated to "resolved".
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
+
+- [ ] The concrete mechanism for the first bullet's "resolved and recorded": `ll-issues check-decidable ENH-3355` exits 0 against the machine-visible `**Option 1**`/`**Option 2**` blocks under Decision Needed (added by this pass), `decision_needed: true` is set in frontmatter (set by this pass), and `/ll:decide-issue ENH-3355` has appended a `> **Selected:**` callout beneath the chosen option before the prompt/generator edits land.
+- [ ] The generator's output includes the derived "Do not use" exclusion list — `sorted(EVALUATOR_REQUIRED_FIELDS.keys() - NON_LLM_EVALUATOR_TYPES)` — alongside the allowed-type table, so the current hand-listed line's `advisor_consult` omission (identified in Decision Needed) is closed by construction; this is the concrete check for the third bullet's "stays coherent with the generated list."
+- [ ] If the real generator block interpolates any `${context.*}`/`${captured.*}`/`${prev.*}` var directly into the new `python3 -c` Python body (rather than reusing bash's own already-set `$DIR`), `scripts/tests/data/loop_interpolation_baseline.json` is updated in the same change and `TestInterpSweepBaseline::test_completeness_guard` (`scripts/tests/test_builtin_loops.py:19236`) passes.
+
 ## Impact
 
 - **Priority**: P4 — no current mismatch between prompt and tables; this
@@ -249,6 +309,10 @@ FEAT-3328 § Known coverage gap.
 
 
 ## Session Log
+- `/ll:verify-issues` - 2026-08-29T16:44:28 - `8cef6ec1-5cb0-4cb4-8f7b-ed8c1bc53873.jsonl`
+- `/ll:refine-issue` - 2026-08-29T16:39:19 - `2b9cf0aa-17fa-4c56-a0c2-6a6f4f822dae.jsonl`
+- `/ll:confidence-check` - 2026-08-29T16:32:21 - `2b9cf0aa-17fa-4c56-a0c2-6a6f4f822dae.jsonl`
+- `/ll:verify-issues` - 2026-08-29T16:27:38 - `2b9cf0aa-17fa-4c56-a0c2-6a6f4f822dae.jsonl`
 - `/ll:wire-issue` - 2026-08-29T16:21:14 - `7e3e461d-c448-4f5e-b605-da4742b390e0.jsonl`
 - `/ll:refine-issue` - 2026-08-29T16:14:49 - `b7bcafc8-2a6b-479f-8e57-018d577b3945.jsonl`
 - `/ll:format-issue` - 2026-08-29T16:07:26 - `980cbc7a-2998-4ff5-83ab-7e00435d03b9.jsonl`

@@ -8,7 +8,20 @@ discovered_by: ll-issues-create
 discovered_date: '2026-08-27'
 captured_at: '2026-08-27T17:51:35Z'
 parent: EPIC-3336
-blocked_by: [ENH-3337, ENH-3338, BUG-3339, BUG-3340, BUG-3341, ENH-3347]
+blocked_by:
+- ENH-3337
+- ENH-3338
+- BUG-3339
+- BUG-3340
+- BUG-3341
+- ENH-3347
+confidence_score: 85
+verify_verdict: PROPOSAL_UNSOUND
+outcome_confidence: 71
+score_complexity: 10
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 18
 ---
 
 # ENH-3342: Widen MR-11 lint and document the safe loop-interpolation idiom
@@ -80,6 +93,12 @@ Documentation: nothing describes the `-c "` vs. heredoc host shapes, the
 `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` holds the MR rule table and is where
 they belong.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
+
+- **Stale line citations — this section describes the pre-ENH-3337 file, not the current one.** ENH-3337 landed in commit `4ca5cbb91` (2026-08-27 22:35), before this issue's own prior `/ll:refine-issue` session (2026-08-29T16:03:29), but the citations above were never updated. Current locations (verified against the tree): `_UNSAFE_CONTEXT_INTERP_RE` is `:34-36`; `_find_unsafe_context_interpolations` spans `:149-198`; `_validate_unsafe_context_interpolation` spans `:201-237`; the heredoc terminator check (`stripped == heredoc_marker`) is at `:175`, not `:173`. Most importantly, item 4's `:183` no longer contains `token.endswith(":shell}")` anywhere — ENH-3337 replaced that exact check with `parse_interpolation_suffixes(raw)` returning a `shell_quote` boolean, unconditionally cleared by `if shell_quote: continue` (current `:190-193`). The quoted snippet `token.endswith(":shell}")` does not exist in the current tree. The remedy AC 5b needs (making `:shell` position-aware, not merely suffix-chain-aware) must be made to that `if shell_quote: continue` block at `:193`, not to any `token.endswith(...)` call.
+
 ## Expected Behavior
 
 MR-11 flags any untrusted interpolation reaching a Python literal, regardless of
@@ -110,13 +129,17 @@ loop — including loops in consuming projects, which no baseline covers.
     merely suffix-chain-aware. ENH-3337 fixes *where* the suffix is recognized;
     this issue fixes *whether recognizing it clears the site* (it does not,
     inside a Python body)
+    > ⚠ Superseded — dead citation; current `:183` is `for match in _UNSAFE_CONTEXT_INTERP_RE.finditer(line):`. ENH-3337 already removed `token.endswith(":shell}")` and replaced it with `parse_interpolation_suffixes(raw)` → `shell_quote`, unconditionally cleared at `if shell_quote: continue` (current `:190-193`) — that is the line needing the position-aware fix
   - `:41` — `_QUOTED_HEREDOC_START_RE` and the terminator check at `:173`:
     column-0 semantics
+    > ⚠ Superseded — terminator check is at current `:175`, not `:173`
   - `:148-188` — `_find_unsafe_context_interpolations`: the Python-literal
     position distinction and the `-c "` host shape
+    > ⚠ Superseded — current span is `:149-198`, not `:148-188`
   - `:191-227` — the validator's message text (see below), plus the marker's
     own well-formedness check, which emits `ValidationSeverity.ERROR` (not
     WARNING) for a malformed or reasonless marker
+    > ⚠ Superseded — current span is `:201-237`, not `:191-227`
   - **new** — marker parsing: grammar, per-variable matching, placement
     (trailing or preceding-line), and the `${`-rejection guard. Note the
     existing scanner `continue`s on any line whose `stripped.startswith("#")`
@@ -289,6 +312,16 @@ _Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
   code blocks this issue adds should follow that same after-the-table
   subsection convention rather than inventing a new placement.
 
+_Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
+
+- **Correction to the "no per-site marker precedent" finding above: the `policy_rules.py:131` citation is misplaced.** `policy_rules.py` lives at `scripts/little_loops/fsm/policy_rules.py` — outside the `scripts/little_loops/fsm/validation/*.py` glob that finding is scoped to — and implements an unrelated policy-router/decision-table predicate-rule parser (`lhs -> rhs` routing rules), not any FSM validation rule. Line 131's `if not line or line.startswith("#"): continue` is real, but it is not evidence about conventions inside the FSM-validation rule family; the underlying claim (no existing per-site marker mechanism in `fsm/validation/*.py`) still holds, just not on this citation.
+- **Correction to the "Design Rules table format" finding above: `:92` is the table header row, not MR-11's row.** `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md:92` is `| Rule | What it requires | Why | Severity | Suppress with |`. The current MR-11 row is at `:104`.
+- **Correction to the `mechanize-skills.yaml:283-286` marker-rationale example: it is stale.** BUG-3341 (status: done) already converted the second reference at these lines. Current `mechanize-skills.yaml:283` reads `SKILL_FILE="${captured.current_skill.output}" python3 << 'PYEOF'` (bash-token position, already converted) and `:286` reads `${context.run_dir}` — `run_dir` is a trusted key per this issue's own Decision Rules table, not a raw "unsafe sibling". The file no longer exhibits the unconverted-raw-sibling failure shape at these lines; it is historical precedent from before BUG-3341 landed, not a live example. The design principle it illustrates (a bare line-level marker would exempt every site on the line) stands independent of this specific example being live.
+- **Correction to the "ERROR severity fires in exactly two shapes" finding above: two of its own cited examples don't fit either named bucket.** `meta_rules.py:106` (MR-1) fires because the loop declares no non-LLM evaluator at all, and `structural_rules.py:908` fires because a template-capable loop has no `artifact_output` block — both verified at those lines. Neither is "an unresolvable static reference" nor "a value outside a fixed enum/grammar"; they are a third shape (a required field/capability is absent). This weakens, but does not defeat, the conclusion that the enum-membership check (tamper_guard/prepatch_check) is the closest existing shape for the marker's malformed-syntax ERROR to imitate — a missing-required-declaration shape is at least as close a fit.
+- **`scripts/tests/test_builtin_loops.py:16311-16330` (`TestValidatorWarningBudget.CATEGORY_PATTERNS["unsafe-context-interp"]`) hardcodes the substring `"interpolates user-controlled context raw into a shell body"`** as the sole classifier mapping MR-11's live WARNING message to the pre-existing corpus-wide regression ratchet (`test_deterministic_warning_categories_do_not_regrow` / `test_allowlist_entries_are_not_stale`, `:16394` onward). Verified via grep: this is the only other consumer of that exact substring in the repo. Step 6/message-update step's planned message rewrite must preserve this substring (or the classifier's pattern must be updated in the same change) — if the rewritten message drops it, `_classify()` silently returns `None` for every MR-11 warning and this ratchet stops tracking MR-11 with no test failure to signal it.
+- **The blast radius of "every loop in `scripts/little_loops/loops/**`" is incomplete.** `validate_fsm()` also runs over inline FSM YAML fixtures embedded directly in test files outside that glob. Confirmed via grep for `action_type: shell` fixtures containing `${context.*}`: `scripts/tests/test_builtin_loops.py`, `test_create_loop.py`, `test_enh2892_subloop_failure_dispatch.py`, `test_fsm_executor.py`, `test_fsm_fragments.py`, `test_interp_sweep.py`, `test_ll_loop_commands.py`, `test_rn_implement.py`, `test_rn_remediate.py`, `test_verify_issue_loop.py`. Any such fixture using a non-allowlisted context key (or `captured`/`prev` namespace) in a shell action begins emitting a new MR-11 WARNING post-widening; the step-6 triage plan (marker or convert) is scoped to `scripts/little_loops/loops/**` and does not name a triage path for test fixtures.
+- **`scripts/tests/test_flux_image_generator.py:187-206` (`test_no_raw_user_input_in_shell_actions`, docstring-labeled "MR-11") independently hand-duplicates the exact fixed seven-key list** (`${context.input}`, `${context.description}`, `${context.prompt}`, `${context.query}`, `${context.task}`, `${context.goal}`, `${context.topic}`) this issue drops from `_UNSAFE_CONTEXT_INTERP_RE`, checked as raw substring absence against `WRAPPER`/`ORACLE`. It won't break post-widening, but it stays a narrower, hand-maintained duplicate of exactly the mechanism this issue's Motivation says should be the single ratchet.
+
 ## Scope Boundaries
 
 **In scope:** MR-11's matcher width, namespace coverage, Python-literal position
@@ -453,10 +486,20 @@ corpus sets it and none may start.
 
 No runtime path — validation only.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
+
+- **Stale signature-anchor citations.** `_find_unsafe_context_interpolations` is at `:149` (not `:148`); `_validate_unsafe_context_interpolation` is at `:201` (not `:191`) — both shifted by the same ENH-3337 offset noted under Current Behavior/Integration Map above.
+- **`scan_action()` cannot supply AC 2b's bash-token-position finding, and the Signatures/Summary framing of "delegates to scan_action()" is inconsistent with the Decision Rules table.** `interp_sweep.scan_action()`'s own docstring (`interp_sweep.py:128-134`) states it reports only sites inside an embedded Python body (heredoc-is-python or a `python3 -c "…"` string) and states verbatim: "Tokens outside any Python body (plain bash position, including a `:shell` binding on a `python3` invocation line) are not reported here — that position is MR-11's territory (ENH-3342), not this baseline's." AC 2b requires MR-11 to keep flagging a bash-token-position site (`PREV_OUTPUT="${prev.output}"`, `rlhf-svg-evaluate.yaml:517` — confirmed a plain double-quoted bash assignment, no heredoc or `-c` body around it, and confirmed absent from `scripts/tests/data/loop_interpolation_baseline.json`, since ENH-3338's own scanner never records bash-position sites). Full delegation to `scan_action()` as the Signatures entry states cannot produce this finding. The constraint this issue must satisfy: MR-11 needs **two independent scan paths** sharing the same classification primitive — (1) the existing bash-token-position line scan (today's `_UNSAFE_CONTEXT_INTERP_RE.finditer` loop), re-targeted from the fixed 7-key regex to extract `namespace.key` for **any** namespace and classify it via `interp_sweep.classify_site(namespace, key)`, keeping the existing single-quote / `:shell`-position rules unchanged at that position; and (2) delegation to `interp_sweep.scan_action()` for the Python-literal-position half (AC 1, 2, 3, 5b's Python-body case). The Summary's weaker claim ("MR-11 consumes `classify_site()` rather than reimplementing the classification rule") is the accurate one; the Signatures entry's stronger "body delegates to `interp_sweep.scan_action()`" over-claims full delegation and should be read as "delegates to `scan_action()` for the Python-body half only."
+- **Adapter gap between `scan_action()`'s shape and `_find_unsafe_context_interpolations`'s current contract.** `scan_action(action, *, state, file)` (`interp_sweep.py:128`) takes a mandatory keyword-only `file: str` and returns `list[InterpSite]` (`var`/`cls`/`host_shape`/`line`/`count` fields), not `(state_name, token)` tuples. `FSMLoop` (`schema.py`) has no source-file-path field to supply as `file`. `InterpSite.var` is the bare `namespace.key_path` with no suffix chain, whereas the current `token` returned by `_find_unsafe_context_interpolations` is the full `${context.<raw>}` text including suffixes, which `_validate_unsafe_context_interpolation`'s message builder interpolates directly into the WARNING text. Reconciling these two shapes (what `file` value to pass for the Python-body half; how to reconstruct a message-worthy token from an `InterpSite` for that half) is required before "same signature" in the Signatures entry above is achievable.
+- **The Decision Rules table's two bash-token-position rows are not actually "(unchanged)".** Today, bash-token-position scanning uses `_UNSAFE_CONTEXT_INTERP_RE`, which matches only `context.*` with the old fixed 7-key list — so `${prev.output}` and `${captured.*}` at a bash-token position are invisible today (per Current Behavior item 2 and AC 2b). Post-widening, bash-token-position untrusted-ness must also come from `classify_site()` across all namespaces (same source as the Python-literal-position rows), not a namespace-restricted regex. The `:shell`-clears-it / not-single-quoted mechanics at that position are unchanged, but the namespace scope feeding into "is this token untrusted" is not — the table's "(unchanged)" label describes only the flag/clean mechanics, not the namespace coverage, and should not be read as "bash-position scanning needs no code change."
+
 ## Implementation Steps
 
 1. Replace MR-11's regex-based detection with a call into ENH-3338's scanner,
    keeping MR-11's per-state / `action_type` / suppression-flag scaffolding.
+   > ⚠ Superseded — full delegation misses AC 2b's bash-position case; see § Program Design Codebase Research Findings
 2. Add the Python-literal-position distinction and the `-c "` host shape.
 3. Tighten the heredoc terminator to column 0.
 4. Revise `test_mr11_does_not_fire_inside_quoted_heredoc` to assert the corrected
@@ -466,13 +509,16 @@ No runtime path — validation only.
    malformed-marker ERROR, and the checked-in marker-count ratchet. Do this
    **before** step 6 — triaging without the mechanism is what forced the earlier
    draft's contradiction.
+   > ⚠ Superseded — "step 6" is ambiguous below (two consecutive steps are both numbered 6); run `/ll:reconcile-issue` to renumber
 6. Run `ll-loop validate` across the corpus; triage every newly surfaced finding
    — convert it, or mark it with a reason citing a tracking issue. Do not set
    `unsafe_context_interpolation_ok`, do not re-narrow the pattern, and do not
    baseline (MR-11 does not read ENH-3338's baseline).
+   > ⚠ Superseded — duplicate step number; this is the corpus-triage step and should run after the validator-message-update step immediately below, not before it (triage should surface findings against the final message text) — see next marker
 6. Update the validator's message to name both remedies concretely — the
    `LL_ARG_X=${context.x:shell}` + `os.environ` idiom and the
    `LL_RAW_9F3C1A7E_EOF` heredoc-to-file idiom — and link the guide section.
+   > ⚠ Superseded — duplicate step number; this message-update step should be sequenced before the corpus-triage step above, not after it
 7. Document both idioms in `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` with the
    canonical copy-pasteable blocks, including the column-0 hoisting rule and the
    `<state>-<capture>.txt` naming rule.
@@ -495,6 +541,13 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - Verify `scripts/tests/test_interp_sweep.py` stays green — it is the
   existing unit coverage for the `classify_site()`/`scan_action()` behavior
   step 1 delegates to; no new test file is needed there, only confirmation.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
+
+- **No listed step directs writing the new unit tests Acceptance Criteria 1, 2, 2b, 3, 4, and 5b each require.** Step 4 only revises one pre-existing fixture (`test_mr11_does_not_fire_inside_quoted_heredoc`); Step 5 (marker implementation) covers AC 8b's per-constraint tests but not these six. Constraint: `scripts/tests/test_fsm_validation_shell_safety.py` needs new cases covering — a `${context.<key>}` outside the old 7-key allowlist inside a Python literal (AC 1); `${captured.*}` inside a Python literal (AC 2); `${prev.output}`/`${prev.stderr}` flagged and `${prev.exit_code}` clean, each at a bash-token position (AC 2b); a quoted-heredoc-as-Python-body case flagged vs. quoted-heredoc-as-non-Python-body clean (AC 3); an indented marker-equal line not closing the tracked heredoc block (AC 4); and `:shell` flagged inside a Python body but clean at a bash-token position, with the Python-body message naming the `LL_ARG_` hoist remedy (AC 5b). These are additive test cases the acceptance criteria require, distinct from the AC 8b marker-constraint tests already named in Step 5.
+- **The two-scan-path constraint from § Program Design's Codebase Research Findings above (independent bash-token-position scan via `classify_site()`, separate from `scan_action()` delegation for the Python-body half) is not expressed anywhere in these steps.** Step 1 as written ("replace MR-11's regex-based detection with a call into ENH-3338's scanner") reads as a single full substitution; literally executed, it satisfies AC 1/2/3/5b (the Python-body cases `scan_action()` covers) but cannot produce AC 2b's bash-token-position finding, since `scan_action()`'s own docstring excludes that position by design. The bash-token-position half needs its own widened scan (namespace-generic `classify_site()` lookup replacing the old fixed-key regex match), kept alongside — not replaced by — the `scan_action()` delegation.
 
 ## Acceptance Criteria
 
@@ -586,7 +639,31 @@ marker-count ratchet assertion (AC 8c) and keeps ENH-3338's baseline test
 green. The existing `blocked_by`/`blocks` edge (ENH-3347 blocks this issue)
 already sequences the edits — land in that order.
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-08-29_
+
+**Readiness Score**: 85/100 → PROCEED WITH CAUTION
+**Outcome Confidence**: 71/100 → MODERATE
+
+### Concerns
+- The `# ll-lint: mr11-ok(<var>) <reason>` marker is genuinely new mechanism —
+  codebase research found no existing precedent for a per-site inline
+  suppression marker anywhere in the FSM validation family (every other
+  suppression is a loop-level boolean flag). The design is well justified and
+  modeled on the nearest analogous shape (enum-membership ERROR checks), but
+  it is new parsing + a new ERROR path + a count ratchet, not a pure widening
+  of existing logic.
+- Step 6's triage of newly-surfaced findings across the loop corpus is
+  explicitly open-ended by design (per § Impact: "open-ended by design") —
+  the number of sites requiring conversion vs. marking cannot be bounded
+  until the widened rule actually runs, which is reflected in this issue's
+  own effort estimate ("Medium-Large").
+
 ## Session Log
+- `/ll:verify-issues` - 2026-08-29T16:43:36 - `2b9cf0aa-17fa-4c56-a0c2-6a6f4f822dae.jsonl`
+- `/ll:refine-issue` - 2026-08-29T16:34:32 - `2b9cf0aa-17fa-4c56-a0c2-6a6f4f822dae.jsonl`
+- `/ll:confidence-check` - 2026-08-29T16:27:18 - `2b9cf0aa-17fa-4c56-a0c2-6a6f4f822dae.jsonl`
 - `/ll:wire-issue` - 2026-08-29T16:12:58 - `d066a1db-8c85-4efb-8d7e-f8a88f18b677.jsonl`
 - `/ll:refine-issue` - 2026-08-29T16:03:29 - `c54a423f-c560-4b02-ba94-5edb4f845eaa.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-28T02:22:57 - `bd65b096-20a2-4a7e-b430-c4b13ac5b81d.jsonl`
