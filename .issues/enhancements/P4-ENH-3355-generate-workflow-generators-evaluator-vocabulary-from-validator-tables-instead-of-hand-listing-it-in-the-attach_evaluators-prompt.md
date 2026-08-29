@@ -490,6 +490,7 @@ FEAT-3328 § Known coverage gap.
 
 
 ## Session Log
+- `/ll:verify-issues` - 2026-08-29T19:13:35 - `fedec3ab-76ac-4b03-acac-d98d32d4349a.jsonl`
 - `/ll:refine-issue` - 2026-08-29T19:08:20 - `0ffc86a7-1497-4d98-b701-beefa90422f4.jsonl`
 - `/ll:confidence-check` - 2026-08-29T19:04:18 - `1af8753e-4f9c-4ef2-97a5-4e6f8d5943ea.jsonl`
 - `/ll:refine-issue` - 2026-08-29T18:45:12 - `237f015b-641f-4613-8e7e-3269af82a4c8.jsonl`

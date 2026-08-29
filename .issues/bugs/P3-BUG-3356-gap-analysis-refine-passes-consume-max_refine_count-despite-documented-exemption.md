@@ -169,6 +169,7 @@ Independently of which shape is chosen: this is new recognition logic at exactly
 6. `python -m pytest scripts/tests/` exits 0, including new/extended coverage in `test_session_log.py`, `test_refine_status.py`, `test_program_design_gate.py`, `test_research_triage.py`, `test_next_action.py`, `test_issues_search.py`, and `test_refine_issue_command.py`.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-08-29T19:12:46 - `fedec3ab-76ac-4b03-acac-d98d32d4349a.jsonl`
 - `/ll:refine-issue` - 2026-08-29T19:08:43 - `0ffc86a7-1497-4d98-b701-beefa90422f4.jsonl`
 - `/ll:confidence-check` - 2026-08-29T18:59:15 - `91e591d4-09fb-4f3a-8a30-1b46c4420b97.jsonl`
 - `/ll:wire-issue` - 2026-08-29T18:51:10 - `5b08caaf-d6d9-41cd-a302-ae95669f4151.jsonl`

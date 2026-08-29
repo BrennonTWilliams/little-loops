@@ -15,12 +15,12 @@ blocked_by:
 - BUG-3340
 - BUG-3341
 - ENH-3347
-confidence_score: 93
+confidence_score: 96
 verify_verdict: VALID
-outcome_confidence: 53
+outcome_confidence: 57
 score_complexity: 10
 score_test_coverage: 25
-score_ambiguity: 18
+score_ambiguity: 22
 score_change_surface: 0
 reconcile_attempted: true
 spike_attempted: true
@@ -1098,7 +1098,45 @@ already retired that risk)._
   token-reconstruction question above remains a genuine open design call the
   implementer must make in step 1/2.
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-08-29_
+
+**Readiness Score**: 96/100 → PROCEED
+**Outcome Confidence**: 57/100 → LOW
+
+_Supersedes the 93/53 scores from the prior `/ll:confidence-check` pass
+(2026-08-29T18:02:56). Re-run after the subsequent `/ll:verify-issues`
+(18:14:01) cleared `verify_verdict` from `PROPOSAL_UNSOUND` to `VALID`, and
+`/ll:refine-issue` (18:47:09) resolved the token-reconstruction half of the
+Program Design adapter gap (`## Program Design` § Signatures now states
+"Token reconstruction for the delegated half — resolved 2026-08-29" instead
+of leaving it open) plus corrected two line-citation drifts caused by
+FEAT-3328. All six `blocked_by` dependencies remain `done`; the Program
+Design gate (`ll-issues check-design`) passes clean; no learning-test record
+applies; `unproven_mechanism` is not set (the spike already retired that
+risk). `format-check --format json` still reports
+`unmarked_superseded_directive` (benign — the flagged correction describes a
+now-historical example, and `superseded_marker_count` is 0, consistent with
+the heuristic's known inability to distinguish "resolved and cleared" from
+"never marked")._
+
+### Outcome Risk Factors
+- Change surface remains an unenumerated, per-site-judgment sweep (Pattern A,
+  `score_change_surface: 0`) — the corpus-wide triage (convert vs. mark)
+  spans the full loop corpus plus ~10 test-fixture files, open-ended by the
+  issue's own admission. This is the dominant, structural drag on outcome
+  confidence and is unchanged from the prior pass — it is inherent to the
+  work, not reducible by further issue refinement.
+- Complexity (`score_complexity: 10`) reflects wide breadth (16+ distinct
+  change sites across source, docs, and two test-file classes) alongside a
+  genuinely new mechanism at moderate depth — the `# ll-lint: mr11-ok(...)`
+  marker (grammar, ERROR path, count ratchet) and the dual bash-token /
+  Python-body scan-path design in `shell_safety.py`, neither a pure
+  mechanical widening of existing logic.
+
 ## Session Log
+- `/ll:confidence-check` - 2026-08-29T19:16:08 - `fedec3ab-76ac-4b03-acac-d98d32d4349a.jsonl`
 - `/ll:refine-issue` - 2026-08-29T18:47:09 - `237f015b-641f-4613-8e7e-3269af82a4c8.jsonl`
 - `/ll:verify-issues` - 2026-08-29T18:14:01 - `48e9d546-94fd-4111-9bec-ae917ba67439.jsonl`
 - `/ll:confidence-check` - 2026-08-29T18:02:56 - `7123d651-4594-4bf8-9409-d68bea464210.jsonl`
