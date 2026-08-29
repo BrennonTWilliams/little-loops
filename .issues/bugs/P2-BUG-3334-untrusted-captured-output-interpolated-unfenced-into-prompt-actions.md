@@ -8,12 +8,12 @@ discovered_by: split-from-BUG-3327
 discovered_date: '2026-08-27'
 captured_at: '2026-08-27T00:00:00Z'
 verify_verdict: VALID
-confidence_score: 100
-outcome_confidence: 82
+confidence_score: 95
+outcome_confidence: 79
 score_complexity: 14
 score_test_coverage: 18
-score_ambiguity: 25
-score_change_surface: 25
+score_ambiguity: 24
+score_change_surface: 23
 decision_needed: false
 relates_to:
 - BUG-3340
@@ -451,9 +451,12 @@ restate them._
    `UNTRUSTED_OUTPUT_ROLES`, with a per-site literal nonce-suffixed marker so
    the fence survives material that itself contains fence-shaped text (Expected
    Behavior → "Requirement: markers must survive appearing inside their own
-   material"). Each dual/triple-fenced state (GOAL plus one or two
-   untrusted-output fences in one action) uses a distinct noun per fence so
-   the between-markers test can't confuse them — checked by Acceptance
+   material"). Each multi-fence state (more than one untrusted-output fence
+   in one action, with or without a pre-existing GOAL fence — `rn-build.yaml::synthesize_result`
+   and `integrate-sdk.yaml::diagnose_and_block` carry two untrusted-output
+   fences with no GOAL fence at all, per Acceptance Criteria item 7) uses a
+   distinct noun per fence so the between-markers test can't confuse them —
+   checked by Acceptance
    Criteria items 3, 5, and 7. The two `eval-driven-development.yaml` sites
    and both composer files' `plan_display` also need `UNTRUSTED_OUTPUT_SITES`/
    `KNOWN_INDIRECT_UNTRUSTED_OUTPUT_SITES` entries added in
@@ -540,7 +543,17 @@ path-reference/fence per Open Question 2; per-site literal nonce markers)._
       `${context.run_dir}/sub-loop-events.jsonl` via `:shell:default=` env-var
       binding (never a raw literal, and never bare `:shell`, which raises
       `InterpolationError` on a missing capture — see Program Design), and the
-      prompt references the path. `${captured.chosen.output}` stays unfenced;
+      prompt references the path. The `:shell:default=` binding must sit at a
+      plain bash-token position (e.g. a `VAR=${captured.sub_loop_output.output:shell:default=}`
+      assignment line), not inside a `python3 -c`/heredoc Python body — this
+      is what `scripts/little_loops/fsm/validation/shell_safety.py`'s MR-11
+      rule (`_validate_unsafe_context_interpolation`) already recognizes as
+      the safe form for a `:shell`-suffixed interpolation; placed correctly,
+      the new state introduces no new finding and needs no
+      `TestValidatorWarningBudget.ALLOWLIST` entry for `("loop-router",
+      "unsafe-context-interp")` (`test_builtin_loops.py`) — the WARNING-only
+      ratchet test `test_deterministic_warning_categories_do_not_regrow`
+      would otherwise fail on an unallowlisted new finding. `${captured.chosen.output}` stays unfenced;
       **neither var is recorded in `KNOWN_UNFENCED_UNTRUSTED_OUTPUT_SITES`**
       — the set stays seeded empty. `sub_loop_output`'s interpolation is
       removed from `review` entirely (not merely exempted), so a post-fix
@@ -572,19 +585,29 @@ path-reference/fence per Open Question 2; per-site literal nonce markers)._
 - [ ] A `TestUntrustedOutputFencing` class pins each fenced site with the
       three-property contract (rendered-substring via `normalize_fence_text`,
       interpolation-between-markers, per-var exactly-once), plus a
-      classification guard asserting fenced ∪ exempt equals the discovered
-      site set, plus a noun-specific negative control so exempt sites cannot
-      silently acquire a fence (mirror of
+      classification guard, plus a noun-specific negative control so exempt
+      sites cannot silently acquire a fence (mirror of
       `test_known_unfenced_sites_stay_unfenced`, extended for the new nouns).
-      This classification guard's "discovered site set" is structurally
-      limited to the mechanically-discoverable dispatch-provenance sites
+      The classification guard's "discovered site set"
       (`_discover_untrusted_output_sites`, dispatch-only per Proposed
-      Solution). It cannot see `loop-composer{,-adaptive}.yaml`'s
+      Solution) is structurally limited to mechanically-discoverable
+      dispatch-provenance sites — it cannot see `loop-composer{,-adaptive}.yaml`'s
       `review_chain` sites (checkpoint-relay/shell-capture, not a textual
       `${captured...}` chain — this covers both `step_results_json` and
       `plan_display`) or `eval-driven-development.yaml`'s
-      `capture_issues`/`diagnose` pair (shell-capture, not dispatch). The
-      composer sites already have a bespoke structural sentinel
+      `capture_issues`/`diagnose` pair (shell-capture, not dispatch). Because
+      `UNTRUSTED_OUTPUT_ROLES` (Program Design → Types) is a single flat
+      dict holding all 16 sites with no origin tag, the guard must mirror
+      `TestUntrustedOutputSurvey::test_completeness_guard`'s own shape
+      exactly: `expected = set(UNTRUSTED_OUTPUT_ROLES) - KNOWN_INDIRECT_UNTRUSTED_OUTPUT_SITES`
+      (the same `KNOWN_INDIRECT_UNTRUSTED_OUTPUT_SITES` set in
+      `test_builtin_loops.py`, extended per Files to Modify with the two
+      `eval-driven-development.yaml` entries and both composer `plan_display`
+      entries alongside its existing `step_results_json` pair), and only then
+      assert `discovered == expected`. Asserting `discovered == fenced ∪
+      exempt` directly against the full 16-entry `UNTRUSTED_OUTPUT_ROLES`
+      (with `exempt` seeded empty) would fail on the 6 indirect sites, which
+      `discovered` can never contain. The composer sites already have a bespoke structural sentinel
       (`test_known_indirect_sites_chain_still_present`) — extend it to also
       pin `parse_plan` still feeding `plan_display` into `review_chain`,
       alongside `read_checkpoints`/`step_results_json`. Add an equivalent
@@ -595,12 +618,20 @@ path-reference/fence per Open Question 2; per-site literal nonce markers)._
       or removal (the kind of drift this issue's own line-anchors
       repeatedly document) does not silently go unfenced with no test
       noticing the tier-A classification has gone stale.
-- [ ] Dual/triple-fence sites (GOAL plus one or two untrusted-output fences
-      in one action — `loop-router.yaml::review` carries GOAL only after the
-      path-reference change; both composer `review_chain` states carry GOAL
-      plus STEP_RESULTS plus PLAN_DISPLAY) use a distinct noun per fence and
-      each var passes the exactly-once/between-markers properties
-      independently.
+- [ ] Multi-fence sites (more than one untrusted-output fence in one action,
+      with or without a pre-existing GOAL fence from `FENCE_ROLES`) use a
+      distinct noun per fence. `loop-router.yaml::review` carries GOAL only
+      after the path-reference change; both composer `review_chain` states
+      carry GOAL plus STEP_RESULTS plus PLAN_DISPLAY. Two sites carry
+      multiple untrusted-output fences with **no** GOAL fence at all — neither
+      is a `FENCE_ROLES` key (`grep` confirms zero entries for either loop
+      file): `rn-build.yaml::synthesize_result` (`${captured.cluster_result.output}`
+      and `${captured.eval_result.output:default=not run}`) and
+      `integrate-sdk.yaml::diagnose_and_block` (`${captured.prove.enumeration.output:default=not-reached}`
+      and `${captured.prove.targets.output:default=not-reached}`) — these two
+      need the same distinct-noun treatment as the GOAL-bearing sites above.
+      Every multi-fence site's vars pass the exactly-once/between-markers
+      properties independently.
 - [ ] `ll-loop validate` passes on every modified loop YAML.
 - [ ] `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` § fencing gains the
       untrusted-output class documentation; `fence.py`'s docstring names it.
@@ -684,11 +715,21 @@ path-reference/fence per Open Question 2; per-site literal nonce markers)._
       Codebase Research Findings, "The path-reference mechanism does not
       remove the length ceiling — it relocates it"). A test exercises this
       write path with a stream sized at or beyond a test-scaled fraction of
-      that ceiling and asserts a graceful outcome — a size guard, a
-      truncation, or a delivery mechanism that does not place the full
-      stream in the `bash -c` argv, implementer's choice — rather than an
-      uncaught `E2BIG`/`OSError` reaching the loop run.
-      > ⚠ Superseded — incomplete; if truncation is chosen, the write path must also leave a machine-checkable signal of truncation (e.g. a trailing marker line in `sub-loop-events.jsonl`, a sibling flag file, or a written-vs-actual byte/line count), and `review`'s prompt text must account for that signal being possibly present — see § Codebase Research Findings under Acceptance Criteria (tenth pass, escalated eleventh pass). The test named for this item must assert the signal is present whenever the exercised write path actually truncates, not merely that no exception was raised.
+      that ceiling, sized with quote-dense filler (embedded single quotes,
+      not a repeated non-quote character) so the `shlex.quote()` expansion
+      the `:shell:default=` binding applies (`interpolation.py:406`, roughly
+      4x per embedded `'`) is actually exercised against the ARG_MAX ceiling,
+      not just the pre-quoting length — and asserts a graceful outcome: a
+      size guard, a truncation, or a delivery mechanism that does not place
+      the full stream in the `bash -c` argv, implementer's choice, rather
+      than an uncaught `E2BIG`/`OSError` reaching the loop run. If truncation
+      is the chosen remedy, the write path must also leave a
+      machine-checkable signal of truncation (e.g. a trailing marker line in
+      `sub-loop-events.jsonl`, a sibling flag file, or a written-vs-actual
+      byte/line count), `review`'s prompt text must account for that signal
+      being possibly present, and the test must assert the signal is present
+      whenever the exercised write path actually truncates — not merely that
+      no exception was raised.
 
 ### Codebase Research Findings
 
@@ -1085,14 +1126,14 @@ Remediation pass, 2026-08-29 (eighth pass) — Files-to-Modify/Tests entries for
 
 _Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
 
-Locator re-check (2026-08-29, ninth refine pass): `ll-issues research-triage` flagged this axis stale because `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` and `scripts/tests/test_builtin_loops.py` changed after the last refine pass. Confirmed via `git diff HEAD` on both files: the working tree currently carries a large, uncommitted, in-progress change touching nearly every loop YAML in the repo, `scripts/little_loops/fsm/validation/{reachability,shell_safety}.py`, and both flagged files — this belongs to EPIC-3336/ENH-3342's corpus conversion plus a new untracked `ENH-3358` (MR-11 marker triage), not to this issue. Grepped both diffs for this issue's own tracked symbols (`FENCE_ROLES`, `UNTRUSTED_OUTPUT_SITES`, `TestBriefFencing`, `TestUntrustedOutputSurvey`, `Fencing a User-Authored Brief/Goal`): zero hits in either diff. The only uncommitted changes to this issue's three primary tier-A files (`loop-router.yaml`, `loop-composer.yaml`, `loop-composer-adaptive.yaml`) are single-line `# ll-lint: mr11-ok(...)` comment annotations appended in place to `check_auto_create`/`check_auto_plan` (unrelated states, no line-count shift) — `dispatch`/`review`/`review_chain`'s previously-recorded anchors are unaffected. No new sub-loop-dispatch-provenance loop files have landed since the last pass (`git log --since=2026-08-27 --diff-filter=A -- scripts/little_loops/loops/*.yaml` is empty) — the 14-site count stands, and no further per-line citation re-verification is warranted from this file-level check alone.
+Locator re-check (2026-08-29, ninth refine pass): `ll-issues research-triage` flagged this axis for re-check because `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` and `scripts/tests/test_builtin_loops.py` changed after the last refine pass. Confirmed via `git diff HEAD` on both files: the working tree currently carries a large, uncommitted, in-progress change touching nearly every loop YAML in the repo, `scripts/little_loops/fsm/validation/{reachability,shell_safety}.py`, and both flagged files — this belongs to EPIC-3336/ENH-3342's corpus conversion plus a new untracked `ENH-3358` (MR-11 marker triage), not to this issue. Grepped both diffs for this issue's own tracked symbols (`FENCE_ROLES`, `UNTRUSTED_OUTPUT_SITES`, `TestBriefFencing`, `TestUntrustedOutputSurvey`, `Fencing a User-Authored Brief/Goal`): zero hits in either diff. The only uncommitted changes to this issue's three primary tier-A files (`loop-router.yaml`, `loop-composer.yaml`, `loop-composer-adaptive.yaml`) are single-line `# ll-lint: mr11-ok(...)` comment annotations appended in place to `check_auto_create`/`check_auto_plan` (unrelated states, no line-count shift) — `dispatch`/`review`/`review_chain`'s previously-recorded anchors are unaffected. No new sub-loop-dispatch-provenance loop files have landed since the last pass (`git log --since=2026-08-27 --diff-filter=A -- scripts/little_loops/loops/*.yaml` is empty) — the 14-site count stands, and no further per-line citation re-verification is warranted from this file-level check alone.
 
 _Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
 
 Remediation pass, 2026-08-29 (tenth pass) — closing four citation-drift/citation-error findings from adversarial fact-check, all confirmed via `grep -n`/`wc -l` against the current working tree today:
 
-- **The `scripts/tests/test_builtin_loops.py` symbol table (this section's own "fifth pass" addition, and Program Design's own "eighth pass" copy) is stale again, and the "ninth pass" locator re-check's "no further per-line citation re-verification is warranted from this file-level check alone" conclusion is therefore false as of this pass.** File is now **19651** lines (was 19400 at the fifth-pass citation, 19409 at Program Design's eighth-pass citation). Corrected: `_FENCE_LOOP_INPUT_VARS` `:19028`, `class TestBriefFencing` `:19037` (`test_completeness_guard` `:19092`), `UNTRUSTED_OUTPUT_SITES` `:19141`, `KNOWN_INDIRECT_UNTRUSTED_OUTPUT_SITES` `:19176`, `_direct_ref_pattern` `:19182`, `_merge_ref_pattern` `:19186`, `_discover_untrusted_output_sites` `:19194`, `class TestUntrustedOutputSurvey` `:19222` (`test_completeness_guard` `:19237`, `test_known_indirect_sites_chain_still_present` `:19248`). The `TestValidatorWarningBudget`/timeout-audit region has also drifted further from its own last-corrected values: class opens `:16343`, `CATEGORY_PATTERNS` `:16353`, `ALLOWLIST` `:16377`, `_collect_findings` `:16431`, `test_deterministic_warning_categories_do_not_regrow` `:16445`; `TestConfidenceGateThresholdsNotHardcoded` opens `:19573`; `TestSubLoopStateTimeoutAudit` opens `:19624` (`ALLOWED` `:19630`, `test_no_unreviewed_timeout_on_loop_states` `:19638`) — a new `MR11_MARKER_ALLOWLIST` block (`:19342`, unrelated to this issue — ENH-3358 marker triage per the ninth-pass locator note) inserted between the two tables accounts for most of the added offset versus the eighth/ninth-pass values. Content and shapes throughout are unchanged; only line numbers moved, consistent with the drift pattern this section has repeatedly hit across ten passes — any future editor should re-`grep -n` before trusting these numbers rather than trusting a prior pass's own "re-verified, no further drift" claim, including this one.
-- **Files to Modify's `refine-to-ready-issue.yaml` wiring-pass bullet (citing `:586`/`:970`) is stale.** This section's own later 2026-08-29 addition ("Confirmed against the working tree...") already corrected the capture rename and interpolation line to `:588`/`:972`, but the original Files-to-Modify bullet was never updated to match, leaving two contradictory citations for the same fact standing in this document simultaneously. Confirmed current tree: `capture: confidence_check_events` is at `refine-to-ready-issue.yaml:588`, and `${captured.confidence_check_events.output?}` in `diagnose` is at `:972`. The Files-to-Modify bullet's `:586`/`:970` citation is the one still needing correction.
+- **The `scripts/tests/test_builtin_loops.py` symbol table (this section's own "fifth pass" addition, and Program Design's own "eighth pass" copy) has drifted again, so the "ninth pass" locator re-check's "no further per-line citation re-verification is warranted from this file-level check alone" conclusion no longer holds as of this pass.** File is now **19651** lines (was 19400 at the fifth-pass citation, 19409 at Program Design's eighth-pass citation). Corrected: `_FENCE_LOOP_INPUT_VARS` `:19028`, `class TestBriefFencing` `:19037` (`test_completeness_guard` `:19092`), `UNTRUSTED_OUTPUT_SITES` `:19141`, `KNOWN_INDIRECT_UNTRUSTED_OUTPUT_SITES` `:19176`, `_direct_ref_pattern` `:19182`, `_merge_ref_pattern` `:19186`, `_discover_untrusted_output_sites` `:19194`, `class TestUntrustedOutputSurvey` `:19222` (`test_completeness_guard` `:19237`, `test_known_indirect_sites_chain_still_present` `:19248`). The `TestValidatorWarningBudget`/timeout-audit region has also drifted further from its own last-corrected values: class opens `:16343`, `CATEGORY_PATTERNS` `:16353`, `ALLOWLIST` `:16377`, `_collect_findings` `:16431`, `test_deterministic_warning_categories_do_not_regrow` `:16445`; `TestConfidenceGateThresholdsNotHardcoded` opens `:19573`; `TestSubLoopStateTimeoutAudit` opens `:19624` (`ALLOWED` `:19630`, `test_no_unreviewed_timeout_on_loop_states` `:19638`) — a new `MR11_MARKER_ALLOWLIST` block (`:19342`, unrelated to this issue — ENH-3358 marker triage per the ninth-pass locator note) inserted between the two tables accounts for most of the added offset versus the eighth/ninth-pass values. Content and shapes throughout are unchanged; only line numbers moved, consistent with the drift pattern this section has repeatedly hit across ten passes — any future editor should re-`grep -n` before trusting these numbers rather than trusting a prior pass's own "re-verified, no further drift" claim, including this one.
+- **Files to Modify's `refine-to-ready-issue.yaml` wiring-pass bullet, previously citing `:586`/`:970`, is now synced to this section's own "Confirmed against the working tree..." addition** — both now read `capture: confidence_check_events` at `refine-to-ready-issue.yaml:588`, and `${captured.confidence_check_events.output?}` in `diagnose` at `:972`, closing the earlier contradiction between the two citations of the same fact.
 - **This section's own "fifth pass" correction to the `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` § "Fencing a User-Authored Brief/Goal" citation is itself wrong.** That pass claimed the section drifted to `:652-705` (next heading at `:706`) due to commit `1445fd3e4`'s insertions. Confirmed current tree: the heading is at `:720`, running through `:773` (`## Runtime Containment Gates` opens `:774`) — matching the Documentation section's own `:720-770` citation and its `:756`/`:759`/`:763` class-marker and `:757` "13 sites" citations, all reconfirmed exact matches today. `1445fd3e4`'s cited insertions (the gate-completeness MR-table row and the "Review heuristic — retry reachability" subsection) are real — confirmed at `:117` and `:205` respectively — but the claimed downstream 27-line shift to the Fencing section did not happen; the fifth-pass note's `:652`/`:705`/`:706` citations are simply wrong and should not be relied on. The Documentation section's `:720-770`/`:756`/`:759`/`:763`/`:757` citations remain the correct ones.
 - **The `loop-composer-adaptive.yaml` Files-to-Modify bullet's "lines 700-701" citation for the `${captured.step_results_json.output}` interpolation overstates it by one line.** Confirmed current tree: that interpolation is a single occurrence at `:701`; line `:700` is the preceding label text ("STEP RESULTS (JSON):"), not part of the interpolation — the sibling `${captured.plan_display.output}` fence target in the same bullet is correctly cited at its own single line, `:698`. The sibling `loop-composer.yaml` bullet in the same section correctly cites its identical-shape interpolation as a single line (`:474`); the adaptive file's citation should match that convention: `:701`, not `:700-701`.
 
@@ -1135,7 +1176,7 @@ in place, is additive and carries no parity row._
 
 _Wiring pass added by `/ll:wire-issue` — 2026-08-27:_ the following confirmed tier-A sites (Scope's Codebase Research Findings and Wiring Pass Findings) are not yet reflected above:
 - `scripts/little_loops/loops/rn-build.yaml` — `capture_eval_failures` opens `:859`, fence `${captured.eval_result.output}` at its interpolation `:868`; `synthesize_result` opens `:1257`, fence `${captured.cluster_result.output}` at `:1264` and `${captured.eval_result.output:default=not run}` at `:1265`
-- `scripts/little_loops/loops/refine-to-ready-issue.yaml` — the sub-loop dispatch capture was renamed to `confidence_check_events` (`refine-to-ready-issue.yaml:586`, commit `8060f8ccc`); fence `${captured.confidence_check_events.output?}` in `diagnose` (line `:970`) — the nullable `?` suffix is already present (`diagnose`'s own comment at `:939-941` explains every ref there is nullable, since only the failing state's capture is populated on a given run)
+- `scripts/little_loops/loops/refine-to-ready-issue.yaml` — the sub-loop dispatch capture was renamed to `confidence_check_events` (`refine-to-ready-issue.yaml:588`, commit `8060f8ccc`); fence `${captured.confidence_check_events.output?}` in `diagnose` (line `:972`) — the nullable `?` suffix is already present (`diagnose`'s own comment at `:939-941` explains every ref there is nullable, since only the failing state's capture is populated on a given run)
 - `scripts/little_loops/loops/examples-miner.yaml` — fence `${captured.run_optimizer.gradient.output}` in `synthesize` (line 156)
 - `scripts/little_loops/loops/integrate-sdk.yaml` — fence `${captured.prove.targets.output}` in `scaffold_integration` (line 149) and `${captured.prove.enumeration.output:default=not-reached}`/`${captured.prove.targets.output:default=not-reached}` in `diagnose_and_block` (lines 206-207)
 - `scripts/little_loops/loops/adopt-third-party-api.yaml` — fence `${captured.prove.enumeration.output}` in `build_playbook` (line 80) and `build_playbook_partial` (line 109)
@@ -1265,7 +1306,7 @@ Remediation pass, 2026-08-29 (eighth pass) — three corrections found by advers
 
 _Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
 
-Remediation pass, 2026-08-29 (tenth pass): this section's own "eighth pass" `test_builtin_loops.py` symbol table (cited at 19409 lines) is stale again — file is now 19651 lines, and the "ninth pass" locator re-check (Integration Map → Codebase Research Findings) concluding "no further per-line citation re-verification is warranted" no longer holds. Corrected values are filed against Integration Map → Codebase Research Findings' own tenth-pass correction (`_FENCE_LOOP_INPUT_VARS` `:19028` through `TestUntrustedOutputSurvey`'s `:19222`/`:19237`/`:19248`, plus the `TestValidatorWarningBudget`/`TestConfidenceGateThresholdsNotHardcoded`/`TestSubLoopStateTimeoutAudit` region, all shifted a further ~240 lines by a new `MR11_MARKER_ALLOWLIST` block at `:19342` inserted after this section's eighth-pass check — unrelated to this issue, per Integration Map's ninth-pass locator note); not repeated here in full, to avoid adding a third independently-drifting copy of the same table.
+Remediation pass, 2026-08-29 (tenth pass): this section's own "eighth pass" `test_builtin_loops.py` symbol table (cited at 19409 lines) has drifted again — file is now 19651 lines, and the "ninth pass" locator re-check (Integration Map → Codebase Research Findings) concluding "no further per-line citation re-verification is warranted" no longer holds. Corrected values are filed against Integration Map → Codebase Research Findings' own tenth-pass correction (`_FENCE_LOOP_INPUT_VARS` `:19028` through `TestUntrustedOutputSurvey`'s `:19222`/`:19237`/`:19248`, plus the `TestValidatorWarningBudget`/`TestConfidenceGateThresholdsNotHardcoded`/`TestSubLoopStateTimeoutAudit` region, all shifted a further ~240 lines by a new `MR11_MARKER_ALLOWLIST` block at `:19342` inserted after this section's eighth-pass check — unrelated to this issue, per Integration Map's ninth-pass locator note); not repeated here in full, to avoid adding a third independently-drifting copy of the same table.
 
 ### Types
 - `FENCE_ROLES: dict[tuple[str, str], tuple[str, str, str, str]]` (`scripts/little_loops/fsm/fence.py:75`) — keyed by `(loop_file, state_name)`, valued `(noun, role, verbs, var)`. ~~new untrusted-output sites add entries to this same dict (or a parallel dict if Open Questions resolves toward a second constant)~~ — **corrected by review pass, 2026-08-27: `FENCE_ROLES` is not extended at all.** Adding to it is impossible for the three sites that need two fences (key collision, see Decision Rationale) and unnecessary for the rest. This dict is left untouched, which is also what keeps BUG-3327's 13 shipped sites and their tests green.
@@ -1467,7 +1508,7 @@ Line-citation correction, remediation pass 2026-08-29 (second pass — the 2026-
 
 _Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
 
-Remediation pass, 2026-08-29 (third pass) — citation correction, confirmed via `grep -n` against the current working tree: this section's 2026-08-27 addition's `str(value)` citation (`interpolation.py:274`) is wrong and was never corrected despite two later passes in this same section re-verifying every other symbol location in the same paragraph (`resolve()`, `_get_nested()`, `interpolate()`, `parse_interpolation_suffixes()`). Current tree: `interpolation.py:274` is `return _format_duration(self.elapsed_ms)` (inside `_get_loop_value`), unrelated to the resolved-value-to-string conversion. The actual `str(value)` calls that back the claim ("plain dict/dot-path traversal followed by `str(value)`, with no fencing, no wrapping, and no size limit applied at the interpolation layer itself") are at `interpolation.py:406-407` (`return shlex.quote(str(value))` / `return str(value)`), inside `interpolate()`'s (`:344`) `replace_var()` closure (`:376`). The substantive claim is unaffected — only this one line citation needed correcting.
+Remediation pass, 2026-08-29 (third pass) — citation correction, confirmed via `grep -n` against the current working tree: this section's 2026-08-27 addition's `str(value)` citation (`interpolation.py:274`) needs correcting, having survived uncorrected despite two later passes in this same section re-verifying every other symbol location in the same paragraph (`resolve()`, `_get_nested()`, `interpolate()`, `parse_interpolation_suffixes()`). Current tree: `interpolation.py:274` is `return _format_duration(self.elapsed_ms)` (inside `_get_loop_value`), unrelated to the resolved-value-to-string conversion. The actual `str(value)` calls that back the claim ("plain dict/dot-path traversal followed by `str(value)`, with no fencing, no wrapping, and no size limit applied at the interpolation layer itself") are at `interpolation.py:406-407` (`return shlex.quote(str(value))` / `return str(value)`), inside `interpolate()`'s (`:344`) `replace_var()` closure (`:376`). The substantive claim is unaffected — only this one line citation needed correcting.
 
 ## Confidence Check Notes
 
@@ -1615,6 +1656,7 @@ _Added by `/ll:confidence-check` on 2026-08-27_
 **Note** (added by `/ll:audit-issue-conflicts`): This issue also adds substantial new test content to `scripts/tests/test_builtin_loops.py` (a `TestUntrustedOutputFencing` class), the same file ENH-3347 extends with four behavioral injection/quote-breaking cases. No blocked_by/blocks edge exists between them (unlike the existing ENH-3342/ENH-3347 coordination note for the same file) — each owns disjoint test classes; coordinate landing order to avoid merge friction.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-29T21:54:33 - `50c46bf0-423e-4388-a12d-c46c8485daa9.jsonl`
 - `/ll:verify-issues` - 2026-08-29T21:45:25 - `e192d75f-f3ee-4b3c-a103-ff7462b261c5.jsonl`
 - `/ll:verify-issues` - 2026-08-29T21:44:41 - `1f91fe13-2f6b-4ac1-a3cc-cd7be0cd3fa1.jsonl`
 - `/ll:refine-issue` - 2026-08-29T21:40:10 - `48e9d546-94fd-4111-9bec-ae917ba67439.jsonl`

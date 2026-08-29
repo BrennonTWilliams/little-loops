@@ -14,10 +14,10 @@ verify_verdict: PROPOSAL_UNSOUND
 reconcile_attempted: true
 decision_needed: false
 confidence_score: 90
-outcome_confidence: 75
-score_complexity: 14
+outcome_confidence: 78
+score_complexity: 10
 score_test_coverage: 18
-score_ambiguity: 18
+score_ambiguity: 25
 score_change_surface: 25
 ---
 
@@ -539,6 +539,7 @@ skill markdown.
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-29T21:48:18 - `c9c1c0a3-4ed0-4475-ae26-5a077ef3a172.jsonl`
 - `/ll:reconcile-issue` - 2026-08-29T21:45:28 - `322e1b2a-53a1-4728-8048-b3876fc3c8b8.jsonl`
 - `/ll:confidence-check` - 2026-08-29T20:39:31 - `56a8dea0-aa3e-460a-b690-91edf1aee623.jsonl`
 - `/ll:refine-issue` - 2026-08-29T20:24:37 - `1af8753e-4f9c-4ef2-97a5-4e6f8d5943ea.jsonl`

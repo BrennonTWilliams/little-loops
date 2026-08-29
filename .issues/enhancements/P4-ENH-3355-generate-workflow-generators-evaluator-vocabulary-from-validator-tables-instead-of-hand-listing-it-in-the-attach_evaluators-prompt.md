@@ -18,6 +18,7 @@ relates_to:
 confidence_score: 100
 outcome_confidence: 93
 decision_needed: false
+reconcile_attempted: true
 score_complexity: 18
 score_test_coverage: 25
 score_ambiguity: 25
@@ -320,12 +321,33 @@ _Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
   silent gap)
 
 ### Tests
-- `scripts/tests/test_builtin_loops.py::TestWorkflowGeneratorLoop` — extend to
-  assert the prompt no longer hand-lists the required-field table and that
-  `init` emits the vocab file under `${context.run_dir}/` (per-run artifact
-  isolation, not bare `.loops/tmp/`)
-- A generator-block execution test: run the `python3 -c` body and assert its
-  output covers every member of `NON_LLM_EVALUATOR_TYPES`
+- Repoint `test_attach_evaluators_documents_every_required_field`
+  (`TestWorkflowGeneratorLoop`, `scripts/tests/test_builtin_loops.py:18147`)
+  at the generated `evaluator-vocab.md` content instead of the removed
+  hand-listed prompt table — the retained prompt template still contains
+  enough of the old substrings (`output_json`, `path`, `operator`, `target`)
+  that this test would otherwise keep passing for the wrong reason — and
+  assert `init` emits the vocab file under `${context.run_dir}/` (per-run
+  artifact isolation, not bare `.loops/tmp/`)
+- A generator-block execution test (reusing the `_run_init` helper on
+  `TestCheckIntentScopeShellAction`): run the `python3 -c` body and assert
+  its output covers every member of `NON_LLM_EVALUATOR_TYPES -
+  {open_question_stall, harbor_scorer}` (the curated Option 2 allowed set)
+  plus the derived "Do not use" exclusion list (`advisor_consult`,
+  `comparator`, `contract`, `llm_structured`)
+- A test asserting `diagnose`'s file-inspection list names
+  `evaluator-vocab.md` and `.evaluator_vocab_errors.txt`, mirroring the
+  existing one-line substring assertions `test_diagnose_reads_emit_errors_file`
+  (`:18214`), `test_diagnose_mentions_intent_retry_files` (`:18313`), and
+  `test_diagnose_mentions_both_retry_exhaustion_paths` (`:18318`) — no such
+  assertion currently exists
+- A test exercising the generator's failure path that asserts
+  `.evaluator_vocab_errors.txt` is left non-empty on a generation-time failure
+- A new assertion in (or sibling to)
+  `test_xiii_init_stdout_exactly_one_line_in_non_repo`
+  (`TestCheckIntentScopeShellAction`, line 18748) that `evaluator-vocab.md`
+  exists and is non-empty after a non-repo `init` run — the existing test
+  only checks stdout is one line
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_builtin_loops.py::TestWorkflowGeneratorLoop::test_xiii_init_stdout_exactly_one_line_in_repo`
@@ -351,6 +373,13 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` — the gate-completeness rule
   entry (added by FEAT-3328) cites this issue as the tracked remedy for its
   known `prompt`-action coverage gap; update the cross-reference once landed
+- `docs/guides/LOOPS_REFERENCE.md:2659` — describes `attach_evaluators` as
+  attaching an evaluator "restricted to the same vocabulary `ll-loop
+  validate`'s MR-1 accepts," which is already inaccurate (10 offered types vs.
+  12 accepted) and stays inaccurate by design under the recorded Option 2
+  decision, which deliberately keeps that narrower boundary; update to state
+  the vocabulary is generated but intentionally narrower than the full
+  validator-accepted set
 
 ### Codebase Research Findings
 
@@ -397,29 +426,29 @@ _Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
 - [ ] The Decision Needed above is resolved and recorded in this issue
       (widen to all 12 vs. curated exclusion set) before the prompt/generator
       edits land.
-- [ ] `init` gains a generator block that writes
-      `${context.run_dir}/evaluator-vocab.md` derived from
-      `NON_LLM_EVALUATOR_TYPES` / `EVALUATOR_REQUIRED_FIELDS`, minus the
-      curated exclusion set `{open_question_stall, harbor_scorer}` per the
-      recorded Option 2 decision, respecting the `init` stdout contract
-      (write to a file; `case`/`echo` block stays last) and escaping bash
-      interpolation as `$${...}`.
+- [ ] `init` gains a generator block, placed in the unconditional
+      pre-`$ROOT` region of its action (or between it and the git-conditional
+      `if [ -n "$ROOT" ]` block) and never nested inside that block, so it
+      also runs on non-repo runs, that writes `evaluator-vocab.md` into the
+      run dir via bash's own already-set `$DIR` var — never a raw
+      `${context.run_dir}` interpolation inside the new Python body, per
+      Program Design > Call Path — derived from `NON_LLM_EVALUATOR_TYPES` /
+      `EVALUATOR_REQUIRED_FIELDS`, minus the curated exclusion set
+      `{open_question_stall, harbor_scorer}` per the recorded Option 2
+      decision, respecting the `init` stdout contract (write to a file;
+      `case`/`echo` block stays last).
 - [ ] `attach_evaluators`'s prompt reads the generated vocab file instead of
       hand-listing the type/required-field table, and its remaining prose
       guidance (prefer `output_contains`; `output_json` field warnings) stays
       coherent with the generated list.
-- [ ] `scripts/tests/test_builtin_loops.py::TestWorkflowGeneratorLoop` is
-      extended: the prompt no longer hand-lists the required-field table, and
-      `init` emits the vocab file under `${context.run_dir}/` (per-run
-      artifact isolation, not bare `.loops/tmp/`).
-      > ⚠ Superseded — "extended" must include repointing
-      > `test_attach_evaluators_documents_every_required_field`
-      > (`scripts/tests/test_builtin_loops.py:18147`) at the generated
-      > `evaluator-vocab.md` content; the retained prompt template already
-      > contains enough of the old substrings (`output_json`, `path`,
-      > `operator`, `target`) that this test would keep passing unchanged for
-      > the wrong reason, silently defeating its own regression guard — see
-      > Integration Map's Codebase Research Findings.
+- [ ] `test_attach_evaluators_documents_every_required_field`
+      (`TestWorkflowGeneratorLoop`, `scripts/tests/test_builtin_loops.py:18147`)
+      is repointed at the generated `evaluator-vocab.md` content instead of
+      the removed hand-listed prompt table — the retained prompt template
+      otherwise still contains enough of the old substrings (`output_json`,
+      `path`, `operator`, `target`) to keep passing for the wrong reason —
+      and asserts `init` emits the vocab file under `${context.run_dir}/`
+      (per-run artifact isolation, not bare `.loops/tmp/`).
 - [ ] A generator-block execution test runs the generator body and asserts
       its output covers every member of `NON_LLM_EVALUATOR_TYPES -
       {open_question_stall, harbor_scorer}` (the curated allowed set per the
@@ -428,17 +457,9 @@ _Added by `/ll:refine-issue` — 2026-08-29 — based on codebase analysis:_
       `llm_structured`).
 - [ ] `ll-loop validate scripts/little_loops/loops/workflow-generator.yaml`
       passes with no new violations.
-- [ ] If FEAT-3328's gate-completeness guide entry has landed, its
-      cross-reference to this issue in
-      `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` is updated to "resolved".
-      > ⚠ Superseded — the condition already holds (FEAT-3328 is
-      > `status: done` and the guide entry exists at
-      > `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md:117`) and the bullet is
-      > unconditionally unresolved as of this pass: the entry's
-      > ENH-3355 cross-reference still reads "tracked separately as
-      > ENH-3355" — exactly the pending language this bullet watches for.
-      > Read as: "the cross-reference is updated to 'resolved'", not as
-      > still-conditional. See Codebase Research Findings below.
+- [ ] FEAT-3328's gate-completeness guide entry's ENH-3355 cross-reference in
+      `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md:117` is updated from
+      "tracked separately as ENH-3355" to reflect this issue as resolved.
 
 ### Codebase Research Findings
 
@@ -530,6 +551,8 @@ FEAT-3328 § Known coverage gap.
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-29T21:51:31 - `50c46bf0-423e-4388-a12d-c46c8485daa9.jsonl`
+- `/ll:reconcile-issue` - 2026-08-29T21:47:59 - `c9c1c0a3-4ed0-4475-ae26-5a077ef3a172.jsonl`
 - `/ll:confidence-check` - 2026-08-29T19:43:51 - `56a8dea0-aa3e-460a-b690-91edf1aee623.jsonl`
 - `/ll:refine-issue` - 2026-08-29T19:34:10 - `095cbd0a-db00-46a3-adc4-bd813f5370ea.jsonl`
 - `/ll:confidence-check` - 2026-08-29T19:21:26 - `2c13c55a-19b4-426e-82a9-8daecd5791a5.jsonl`
